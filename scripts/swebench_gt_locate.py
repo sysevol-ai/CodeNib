@@ -81,7 +81,7 @@ class GTLocator:
             self.work_dir = work_dir
             self.is_temp_dir = False
         self.language = language
-        self.chunker = create_chunker(language)
+        self.chunker = create_chunker(language, include_class_level=True)
         logger.info(f"Initialized GTLocator with work_dir: {self.work_dir}")
 
     def get_target_files(self, patch_content: str) -> List[str]:
@@ -114,6 +114,7 @@ class GTLocator:
     ) -> Dict[str, List[Tuple[int, int]]]:
         """
         Extract the line ranges that were changed in each file from the patch.
+        Only extracts lines that were actually added or modified (lines starting with '+').
 
         Args:
             patch_content: Content of the patch in unified diff format
@@ -132,7 +133,6 @@ class GTLocator:
         while i < len(lines):
             line = lines[i]
 
-            # Currently no detections
             # Check for "before" file header (--- a/...)
             if line.startswith("--- a/"):
                 old_file = line[6:]  # Remove '--- a/' prefix
@@ -156,10 +156,45 @@ class GTLocator:
                 new_start = int(hunk_match.group(1))
                 new_count = int(hunk_match.group(2)) if hunk_match.group(2) else 1
 
-                if new_count > 0:
-                    changed_ranges[current_file].append(
-                        (new_start, new_start + new_count - 1)
-                    )
+                # Parse the hunk content to find actual changed lines
+                i += 1
+                current_line_num = new_start
+                range_start = None
+                range_end = None
+
+                while i < len(lines) and not lines[i].startswith('@@') and not lines[i].startswith('---'):
+                    hunk_line = lines[i]
+
+                    if hunk_line.startswith('+') and not hunk_line.startswith('+++'):
+                        # This is an added line
+                        if range_start is None:
+                            range_start = current_line_num
+                        range_end = current_line_num
+                        current_line_num += 1
+                    elif hunk_line.startswith('-'):
+                        # This is a deleted line (don't increment line number)
+                        # If we had a range going, save it (convert to 0-based)
+                        if range_start is not None:
+                            changed_ranges[current_file].append((range_start - 1, range_end - 1))
+                            range_start = None
+                            range_end = None
+                    elif not hunk_line.startswith('\\'):
+                        # This is a context line (unchanged)
+                        # If we had a range going, save it (convert to 0-based)
+                        if range_start is not None:
+                            changed_ranges[current_file].append((range_start - 1, range_end - 1))
+                            range_start = None
+                            range_end = None
+                        current_line_num += 1
+
+                    i += 1
+
+                # Save any remaining range
+                # Convert to 0-based indexing to match chunker's format
+                if range_start is not None:
+                    changed_ranges[current_file].append((range_start - 1, range_end - 1))
+
+                continue
 
             i += 1
 
@@ -325,6 +360,87 @@ class GTLocator:
             logger.error(f"Error applying patch: {e}")
             return False
 
+    def _is_class_itself_modified(
+        self,
+        class_symbol_name: str,
+        symbols_modified: List[str],
+        symbols_added: List[str],
+        changed_ranges: Dict[str, List[Tuple[int, int]]],
+        symbols_after: Dict[str, any],
+    ) -> bool:
+        """
+        Check if a class itself is modified (excluding modifications only to its methods).
+
+        Args:
+            class_symbol_name: Full qualified name of the class (e.g., "path/file.py:ClassName")
+            symbols_modified: List of all modified symbols (including methods)
+            symbols_added: List of all added symbols (including methods)
+            changed_ranges: Dictionary mapping file paths to list of changed line ranges
+            symbols_after: Dictionary mapping symbol names to CodeChunk objects after patch
+
+        Returns:
+            True if class itself is modified (not just its methods), False otherwise
+        """
+        if class_symbol_name not in symbols_after:
+            return False
+
+        class_chunk = symbols_after[class_symbol_name]
+        file_path = class_symbol_name.split(":")[0]
+        class_name = class_symbol_name.split(":")[1]
+
+        if file_path not in changed_ranges:
+            return False
+
+        # Find all methods of this class that were modified
+        modified_methods = []
+        for symbol in symbols_modified:
+            # Check if this is a method of the class
+            # Format: "path/file.py:ClassName.method_name()"
+            if symbol.startswith(f"{file_path}:{class_name}.") and symbol.endswith("()"):
+                if symbol in symbols_after:
+                    modified_methods.append(symbols_after[symbol])
+
+        # Find all methods of this class that were added
+        added_methods = []
+        for symbol in symbols_added:
+            # Check if this is a method of the class
+            # Format: "path/file.py:ClassName.method_name()"
+            if symbol.startswith(f"{file_path}:{class_name}.") and symbol.endswith("()"):
+                if symbol in symbols_after:
+                    added_methods.append(symbols_after[symbol])
+
+        # Get all changed line ranges for this file
+        file_changes = changed_ranges[file_path]
+
+        # Check if any changes fall outside the methods' ranges
+        for change_start, change_end in file_changes:
+            # Check if this change overlaps with the class range
+            if change_end < class_chunk.start_line or change_start > class_chunk.end_line:
+                continue
+
+            # This change is within the class range
+            # Check if it's covered by any modified method
+            covered_by_method = False
+            for method_chunk in modified_methods:
+                if change_start >= method_chunk.start_line and change_end <= method_chunk.end_line:
+                    covered_by_method = True
+                    break
+
+            # Check if it's covered by any added method
+            # For added methods, allow 1 line tolerance at the end for trailing whitespace
+            if not covered_by_method:
+                for method_chunk in added_methods:
+                    method_end_with_tolerance = method_chunk.end_line + 1
+                    if change_start >= method_chunk.start_line and change_end <= method_end_with_tolerance:
+                        covered_by_method = True
+                        break
+
+            # If this change is not covered by any method, then class itself is modified
+            if not covered_by_method:
+                return True
+
+        return False
+
     def compare_symbols(
         self,
         symbols_before: Dict[str, any],
@@ -363,8 +479,6 @@ class GTLocator:
 
         for symbol_name in common:
             file_path, _, _ = symbol_name.partition(":")
-            if file_path not in changed_ranges:
-                continue
 
             chunk_before = symbols_before[symbol_name]
             chunk_after = symbols_after[symbol_name]
@@ -382,29 +496,63 @@ class GTLocator:
                 continue
 
             # Length is the same, check if any changed lines overlap with this symbol's range
-            has_overlap = any(
-                change_end >= chunk_after.start_line
-                and change_start <= chunk_after.end_line
-                for change_start, change_end in changed_ranges[file_path]
-            )
+            # Only check overlap if we have changed_ranges for this file
+            if file_path in changed_ranges:
+                has_overlap = any(
+                    change_end >= chunk_after.start_line
+                    and change_start <= chunk_after.end_line
+                    for change_start, change_end in changed_ranges[file_path]
+                )
 
-            if has_overlap:
-                # Length is same but has changes in range, compare content directly
-                if chunk_before.content != chunk_after.content:
-                    symbols_modified.append(symbol_name)
-                    logger.debug(
-                        f"Symbol modified (content changed): {symbol_name} "
-                        f"(lines {chunk_after.start_line}-{chunk_after.end_line})"
-                    )
-                else:
-                    logger.debug(
-                        f"Content identical for {symbol_name}, not marking as modified"
-                    )
+                if has_overlap:
+                    # Length is same but has changes in range, compare content directly
+                    if chunk_before.content != chunk_after.content:
+                        symbols_modified.append(symbol_name)
+                        logger.debug(
+                            f"Symbol modified (content changed): {symbol_name} "
+                            f"(lines {chunk_after.start_line}-{chunk_after.end_line})"
+                        )
+                    else:
+                        logger.debug(
+                            f"Content identical for {symbol_name}, not marking as modified"
+                        )
 
         symbols_modified = sorted(symbols_modified)
-        logger.debug(f"Found {len(symbols_modified)} modified symbols")
+        logger.debug(f"Found {len(symbols_modified)} modified symbols (before class filtering)")
 
-        return symbols_modified, symbols_added, symbols_deleted
+        # Filter out classes that were only modified through their methods
+        # Keep only classes that have modifications to the class itself (not just methods)
+        filtered_modified = []
+        for symbol in symbols_modified:
+            # Check if this is a class (not a function/method)
+            # Classes don't end with "()"
+            if ":" in symbol:
+                symbol_name = symbol.split(":")[-1]
+                # If it's a method (contains "." and ends with "()"), keep it
+                if "." in symbol_name and symbol_name.endswith("()"):
+                    filtered_modified.append(symbol)
+                # If it's a function (no "." but ends with "()"), keep it
+                elif "." not in symbol_name and symbol_name.endswith("()"):
+                    filtered_modified.append(symbol)
+                # If it's a class (no "." and no "()" at end), check if class itself is modified
+                elif "." not in symbol_name and not symbol_name.endswith("()"):
+                    if self._is_class_itself_modified(
+                        symbol, symbols_modified, symbols_added, changed_ranges, symbols_after
+                    ):
+                        filtered_modified.append(symbol)
+                        logger.debug(f"Class itself modified: {symbol}")
+                    else:
+                        logger.debug(f"Class not modified (only methods changed): {symbol}")
+                else:
+                    # Unexpected format, keep it to be safe
+                    filtered_modified.append(symbol)
+            else:
+                # No ":" in symbol, unexpected format, keep it
+                filtered_modified.append(symbol)
+
+        logger.debug(f"Found {len(filtered_modified)} modified symbols (after class filtering)")
+
+        return filtered_modified, symbols_added, symbols_deleted
 
     def analyze_instance(self, instance: Dict) -> Dict:
         """
