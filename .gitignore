@@ -11,3 +11,4 @@ build/
 key.cfg
 logs/
 uv.lock
+scripts/sampling_output/plots/*
