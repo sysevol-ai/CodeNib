@@ -21,8 +21,8 @@ def get_cache_dir() -> str:
     Returns:
         Absolute path to cache directory (~/.codeminer)
     """
-    cache_dir = str(Path.home()) + "/.codeminer"
-    cache_dir = os.path.abspath(cache_dir)
+    cache_dir = Path.home() / ".codeminer"
+    cache_dir = os.path.abspath(str(cache_dir))
     os.makedirs(cache_dir, exist_ok=True)
     return cache_dir
 
