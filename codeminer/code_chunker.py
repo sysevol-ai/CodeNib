@@ -26,6 +26,8 @@ class RepoChunkingConfig:
     python_extensions: Set[str] = None
     cpp_extensions: Set[str] = None
     rust_extensions: Set[str] = None
+    javascript_extensions: Set[str] = None
+    typescript_extensions: Set[str] = None
 
     # Directory filtering
     ignore_dirs: Set[str] = None
@@ -49,6 +51,12 @@ class RepoChunkingConfig:
 
         if self.rust_extensions is None:
             self.rust_extensions = {".rs"}
+
+        if self.javascript_extensions is None:
+            self.javascript_extensions = {".js", ".jsx", ".mjs"}
+
+        if self.typescript_extensions is None:
+            self.typescript_extensions = {".ts", ".tsx", ".mts", ".cts"}
 
         if self.ignore_dirs is None:
             self.ignore_dirs = {
@@ -343,6 +351,12 @@ class CodeChunker:
             elif language.lower() == "rust":
                 for ext in self.repo_config.rust_extensions:
                     extension_to_language[ext] = "rust"
+            elif language.lower() in ("javascript", "js"):
+                for ext in self.repo_config.javascript_extensions:
+                    extension_to_language[ext] = "javascript"
+            elif language.lower() in ("typescript", "ts"):
+                for ext in self.repo_config.typescript_extensions:
+                    extension_to_language[ext] = "typescript"
             else:
                 logger.warning("Language %r not supported yet", language)
 
