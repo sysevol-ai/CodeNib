@@ -68,7 +68,7 @@ def _setup_plot_style() -> None:
         try:
             plt.style.use(style)
             break
-        except Exception:
+        except ValueError:
             continue
 
     plt.rcParams.update(
