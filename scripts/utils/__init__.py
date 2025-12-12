@@ -1,5 +1,5 @@
 """
-SWE-bench 采样脚本工具模块
+SWE-bench sampling script utility module
 """
 
 from .output import (
