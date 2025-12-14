@@ -1,6 +1,9 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = [
+    "scikit-build-core>=0.3.3",
+    "pybind11>=2.10.0",
+]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "codeminer"
@@ -76,6 +79,22 @@ norecursedirs = [
     "build",
     "dist",
 ]
+
+[tool.scikit-build]
+cmake.source-dir = "core"
+cmake.build-type = "Release"
+cmake.version = ">=3.15"
+cmake.args = [
+    "-DBUILD_PYTHON_BINDINGS=ON",
+    "-DCODEMINER_ENABLE_O3=ON",
+]
+# Exclude CMake build artifacts and test executables from the wheel
+wheel.exclude = ["*.cmake", "CMakeFiles/**", "scip_decode_test*", "scip_decode_repo*", "libcodeminer_core.a"]
+wheel.packages = ["codeminer"]
+
+[tool.scikit-build.cmake.define]
+BUILD_PYTHON_BINDINGS = "ON"
+CODEMINER_ENABLE_O3 = "ON"
 
 [tool.black]
 line-length = 88
