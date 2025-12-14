@@ -9,16 +9,16 @@ This script:
 
 Usage Examples:
     # Test single SWE-bench instance
-    python test/scip/test_scip_core_w_python.py --instance django__django-11099
+    python test/scip/test_scip_core_standalone.py --instance django__django-11099
 
     # Test default instances (7 predefined instances)
-    python test/scip/test_scip_core_w_python.py --multiple-instances
+    python test/scip/test_scip_core_standalone.py --multiple-instances
 
     # Test random N instances from SWE-bench_Verified
-    python test/scip/test_scip_core_w_python.py --num-instances 10
+    python test/scip/test_scip_core_standalone.py --num-instances 10
 
     # Test local project
-    python test/scip/test_scip_core_w_python.py /tmp/httpie-cli
+    python test/scip/test_scip_core_standalone.py /tmp/httpie-cli
 
 Output:
     Results are saved in test/scip/comparison_results/

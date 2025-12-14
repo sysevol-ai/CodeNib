@@ -61,6 +61,33 @@ std::string escape_json(const std::string& input) {
     return oss.str();
 }
 
+std::string escape_xml(const std::string& input) {
+    std::ostringstream oss;
+    for (char ch : input) {
+        switch (ch) {
+            case '&':
+                oss << "&amp;";
+                break;
+            case '<':
+                oss << "&lt;";
+                break;
+            case '>':
+                oss << "&gt;";
+                break;
+            case '"':
+                oss << "&quot;";
+                break;
+            case '\'':
+                oss << "&apos;";
+                break;
+            default:
+                oss << ch;
+                break;
+        }
+    }
+    return oss.str();
+}
+
 std::optional<std::string> read_file(const std::string& path) {
     std::ifstream input(path);
     if (!input.is_open()) {
@@ -530,81 +557,143 @@ std::string CodeGraph::get_node_content(VertexId vertex_id) const {
 }
 
 void CodeGraph::save_graph(const std::string& output_path) const {
+    // Write GraphML manually since igraph C API doesn't have easy attribute setting
     std::ofstream out(output_path);
     if (!out.is_open()) {
-        throw std::runtime_error("Failed to open output file for writing graph");
+        throw std::runtime_error("Failed to open output file for writing GraphML: " + output_path);
     }
 
-    out << "{\n";
-    out << "  \"project_root\": " << escape_json(project_root_) << ",\n";
-    out << "  \"vertices\": [\n";
+    // Write GraphML header
+    out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    out << "<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\"\n";
+    out << "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n";
+    out << "         xsi:schemaLocation=\"http://graphml.graphdrawing.org/xmlns\n";
+    out << "         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd\">\n";
+
+    // Define vertex attribute keys
+    out << "  <key id=\"v_name\" for=\"node\" attr.name=\"name\" attr.type=\"string\"/>\n";
+    out << "  <key id=\"v_type\" for=\"node\" attr.name=\"type\" attr.type=\"string\"/>\n";
+    out << "  <key id=\"v_file\" for=\"node\" attr.name=\"file\" attr.type=\"string\"/>\n";
+    out << "  <key id=\"v_start_line\" for=\"node\" attr.name=\"start_line\" attr.type=\"int\"/>\n";
+    out << "  <key id=\"v_end_line\" for=\"node\" attr.name=\"end_line\" attr.type=\"int\"/>\n";
+
+    // Define edge attribute key
+    out << "  <key id=\"e_type\" for=\"edge\" attr.name=\"type\" attr.type=\"string\"/>\n";
+
+    // Start graph
+    out << "  <graph id=\"G\" edgedefault=\"directed\">\n";
+
+    // Write vertices
     for (std::size_t i = 0; i < vertices_.size(); ++i) {
         const auto& v = vertices_[i];
-        out << "    {\n";
-        out << "      \"id\": " << i << ",\n";
-        out << "      \"name\": " << escape_json(v.name) << ",\n";
-        out << "      \"type\": " << escape_json(v.type) << ",\n";
-        out << "      \"file\": ";
-        if (v.file.has_value()) {
-            out << escape_json(*v.file);
-        } else {
-            out << "null";
+        out << "    <node id=\"n" << i << "\">\n";
+        out << "      <data key=\"v_name\">" << escape_xml(v.name) << "</data>\n";
+        out << "      <data key=\"v_type\">" << escape_xml(v.type) << "</data>\n";
+        if (v.file.has_value() && !v.file->empty()) {
+            out << "      <data key=\"v_file\">" << escape_xml(*v.file) << "</data>\n";
         }
-        out << ",\n";
-        out << "      \"start_line\": ";
         if (v.start_line.has_value()) {
-            out << *v.start_line;
-        } else {
-            out << "null";
+            out << "      <data key=\"v_start_line\">" << *v.start_line << "</data>\n";
         }
-        out << ",\n";
-        out << "      \"end_line\": ";
         if (v.end_line.has_value()) {
-            out << *v.end_line;
-        } else {
-            out << "null";
+            out << "      <data key=\"v_end_line\">" << *v.end_line << "</data>\n";
         }
-        out << "\n";
-        out << "    }";
-        if (i + 1 < vertices_.size()) {
-            out << ",";
-        }
-        out << "\n";
+        out << "    </node>\n";
     }
-    out << "  ],\n";
 
-    out << "  \"edges\": [\n";
+    // Write edges
     for (std::size_t i = 0; i < edges_.size(); ++i) {
         const auto& e = edges_[i];
-        out << "    {\n";
-        out << "      \"id\": " << i << ",\n";
-        out << "      \"source\": " << e.source << ",\n";
-        out << "      \"target\": " << e.target << ",\n";
-        out << "      \"type\": " << escape_json(e.type) << "\n";
-        out << "    }";
-        if (i + 1 < edges_.size()) {
-            out << ",";
-        }
-        out << "\n";
+        out << "    <edge id=\"e" << i << "\" source=\"n" << e.source << "\" target=\"n" << e.target << "\">\n";
+        out << "      <data key=\"e_type\">" << escape_xml(e.type) << "</data>\n";
+        out << "    </edge>\n";
     }
-    out << "  ],\n";
 
-    out << "  \"symbol_ranges\": {\n";
-    std::size_t counter = 0;
-    for (const auto& [symbol, range] : symbol_ranges_) {
-        out << "    " << escape_json(symbol) << ": ";
-        if (range.has_range) {
-            out << "[" << range.start_line << ", " << range.end_line << "]";
-        } else {
-            out << "null";
-        }
-        if (++counter < symbol_ranges_.size()) {
-            out << ",";
-        }
-        out << "\n";
+    // Close graph and graphml
+    out << "  </graph>\n";
+    out << "</graphml>\n";
+
+    out.close();
+    if (!out.good()) {
+        throw std::runtime_error("Failed to write GraphML file: " + output_path);
     }
-    out << "  }\n";
-    out << "}\n";
+
+    // Old JSON implementation (commented out)
+    // std::ofstream out(output_path);
+    // if (!out.is_open()) {
+    //     throw std::runtime_error("Failed to open output file for writing graph");
+    // }
+    //
+    // out << "{\n";
+    // out << "  \"project_root\": " << escape_json(project_root_) << ",\n";
+    // out << "  \"vertices\": [\n";
+    // for (std::size_t i = 0; i < vertices_.size(); ++i) {
+    //     const auto& v = vertices_[i];
+    //     out << "    {\n";
+    //     out << "      \"id\": " << i << ",\n";
+    //     out << "      \"name\": " << escape_json(v.name) << ",\n";
+    //     out << "      \"type\": " << escape_json(v.type) << ",\n";
+    //     out << "      \"file\": ";
+    //     if (v.file.has_value()) {
+    //         out << escape_json(*v.file);
+    //     } else {
+    //         out << "null";
+    //     }
+    //     out << ",\n";
+    //     out << "      \"start_line\": ";
+    //     if (v.start_line.has_value()) {
+    //         out << *v.start_line;
+    //     } else {
+    //         out << "null";
+    //     }
+    //     out << ",\n";
+    //     out << "      \"end_line\": ";
+    //     if (v.end_line.has_value()) {
+    //         out << *v.end_line;
+    //     } else {
+    //         out << "null";
+    //     }
+    //     out << "\n";
+    //     out << "    }";
+    //     if (i + 1 < vertices_.size()) {
+    //         out << ",";
+    //     }
+    //     out << "\n";
+    // }
+    // out << "  ],\n";
+    //
+    // out << "  \"edges\": [\n";
+    // for (std::size_t i = 0; i < edges_.size(); ++i) {
+    //     const auto& e = edges_[i];
+    //     out << "    {\n";
+    //     out << "      \"id\": " << i << ",\n";
+    //     out << "      \"source\": " << e.source << ",\n";
+    //     out << "      \"target\": " << e.target << ",\n";
+    //     out << "      \"type\": " << escape_json(e.type) << "\n";
+    //     out << "    }";
+    //     if (i + 1 < edges_.size()) {
+    //         out << ",";
+    //     }
+    //     out << "\n";
+    // }
+    // out << "  ],\n";
+    //
+    // out << "  \"symbol_ranges\": {\n";
+    // std::size_t counter = 0;
+    // for (const auto& [symbol, range] : symbol_ranges_) {
+    //     out << "    " << escape_json(symbol) << ": ";
+    //     if (range.has_range) {
+    //         out << "[" << range.start_line << ", " << range.end_line << "]";
+    //     } else {
+    //         out << "null";
+    //     }
+    //     if (++counter < symbol_ranges_.size()) {
+    //         out << ",";
+    //     }
+    //     out << "\n";
+    // }
+    // out << "  }\n";
+    // out << "}\n";
 }
 
 CodeGraph CodeGraph::load_graph(const std::string& /*input_path*/) {
