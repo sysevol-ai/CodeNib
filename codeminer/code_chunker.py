@@ -94,6 +94,43 @@ class RepoChunkingConfig:
             }
 
 
+@dataclass
+class HybridChunkingConfig:
+    """
+    Configuration for hybrid chunk selection.
+
+    The goal is to route high-importance chunks to a stronger embedding model while
+    sending the rest to a smaller/faster model. Importance is currently measured
+    with a simple heuristic (chunk size), but the config keeps things flexible for
+    future graph-aware signals.
+    """
+
+    importance_metric: str = "chunk_size"
+    high_importance_ratio: float = 0.3
+    min_high_importance_lines: int = 40
+
+    def __post_init__(self):
+        if self.high_importance_ratio <= 0 or self.high_importance_ratio > 1:
+            logger.warning(
+                "high_importance_ratio must be in (0, 1]; falling back to 0.3"
+            )
+            self.high_importance_ratio = 0.3
+
+
+@dataclass
+class HybridChunkingResult:
+    """Result of hybrid chunk selection with importance annotations."""
+
+    primary_chunks: List[Dict[str, Any]]
+    secondary_chunks: List[Dict[str, Any]]
+    cutoff_score: float
+    config: HybridChunkingConfig
+
+    def all_chunks(self) -> List[Dict[str, Any]]:
+        """Return all annotated chunks, primary first."""
+        return self.primary_chunks + self.secondary_chunks
+
+
 # For backward compatibility, expose the old class name
 class CodeChunker:
     """
@@ -655,3 +692,85 @@ class CodeChunker:
     def clear_nodes(self):
         """Clear the collected nodes list."""
         self.nodes.clear()
+
+    # Hybrid chunking helpers -------------------------------------------------
+    def hybrid_chunk_repository(
+        self,
+        repo_path: str,
+        hybrid_config: Optional[HybridChunkingConfig] = None,
+    ) -> HybridChunkingResult:
+        """
+        Chunk the repository and annotate chunks with importance tiers for hybrid
+        embedding strategies. Primary chunks can be embedded with a larger/more
+        accurate model while secondary chunks use a lighter model.
+
+        Args:
+            repo_path: Path to the repository root.
+            hybrid_config: Configuration controlling the importance heuristic.
+
+        Returns:
+            HybridChunkingResult with primary/secondary chunk lists that include
+            importance metadata.
+        """
+        config = hybrid_config or HybridChunkingConfig()
+        chunks = self.chunk_repository(repo_path)
+        if not chunks:
+            return HybridChunkingResult(
+                primary_chunks=[],
+                secondary_chunks=[],
+                cutoff_score=0.0,
+                config=config,
+            )
+
+        # Score chunks using the selected heuristic
+        scored_chunks = [
+            (self._score_chunk_importance(chunk, config), chunk) for chunk in chunks
+        ]
+        scored_chunks.sort(key=lambda pair: pair[0], reverse=True)
+
+        num_primary = max(1, int(len(scored_chunks) * config.high_importance_ratio))
+        cutoff_score = scored_chunks[num_primary - 1][0] if scored_chunks else 0.0
+
+        primary_chunks: List[Dict[str, Any]] = []
+        secondary_chunks: List[Dict[str, Any]] = []
+
+        for idx, (score, chunk) in enumerate(scored_chunks):
+            tier = "primary"
+            if idx >= num_primary or score < config.min_high_importance_lines:
+                tier = "secondary"
+
+            annotated = chunk._asdict()
+            annotated["importance_score"] = score
+            annotated["importance_tier"] = tier
+
+            if tier == "primary":
+                primary_chunks.append(annotated)
+            else:
+                secondary_chunks.append(annotated)
+
+        return HybridChunkingResult(
+            primary_chunks=primary_chunks,
+            secondary_chunks=secondary_chunks,
+            cutoff_score=cutoff_score,
+            config=config,
+        )
+
+    def _score_chunk_importance(
+        self, chunk: CodeChunk, config: HybridChunkingConfig
+    ) -> float:
+        """
+        Score a chunk for importance. Currently uses chunk size (lines of code)
+        as a simple heuristic, but can be extended with graph reference counts
+        or other signals.
+        """
+        if config.importance_metric == "chunk_size":
+            return max(1, chunk.end_line - chunk.start_line + 1)
+
+        if config.importance_metric == "content_length":
+            return len(chunk.content)
+
+        logger.warning(
+            "Unknown importance_metric %r; defaulting to chunk_size",
+            config.importance_metric,
+        )
+        return max(1, chunk.end_line - chunk.start_line + 1)
