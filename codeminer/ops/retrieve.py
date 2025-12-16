@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from ..index.embedding.vector_store import CodeVectorStore
 from ..index.regex_idx.regex_idx import RegexNodeIndex
@@ -24,6 +24,7 @@ class RetrieveContext:
     regex_index: Optional[RegexNodeIndex] = None
     default_top_k: int = 10
     default_level: str = "l2"  # "l0" (file skeletons) or "l2" (functions/methods)
+    masks: Dict[str, Set[str]] = field(default_factory=dict)
 
 
 def register_retrieve_ops(engine: ExecutionEngine, context: RetrieveContext) -> None:
@@ -84,24 +85,37 @@ def _vector_kernel(context: RetrieveContext):
         # Support hierarchical retrieval level (l0 = file skeletons, l2 = functions/methods)
         level = node.params.get("level", context.default_level)
 
+        mask_name = node.params.get("mask") or node.params.get("mask_name")
+        mask_ids = context.masks.get(mask_name) if mask_name else None
+        search_top_k = top_k
+
         logger.debug(
             "Executing vector retrieval",
             extra={
                 "query": query,
-                "k": top_k,
+                "k": search_top_k,
                 "level": level,
                 "score_threshold": score_threshold,
+                "mask": mask_name,
             },
         )
 
         scored = store.search(
-            query=query, top_k=top_k, score_threshold=score_threshold, level=level
+            query=query,
+            top_k=search_top_k,
+            score_threshold=score_threshold,
+            level=level,
+            mask_node_ids=mask_ids,
         )
 
         content_map: Dict[Tuple[str, str, Optional[int], Optional[int]], str] = {}
         if include_content:
             with_content = store.search_with_content(
-                query=query, top_k=top_k, score_threshold=score_threshold, level=level
+                query=query,
+                top_k=search_top_k,
+                score_threshold=score_threshold,
+                level=level,
+                mask_node_ids=mask_ids,
             )
             for item in with_content:
                 data = _dump_model(item)
@@ -127,6 +141,10 @@ def _vector_kernel(context: RetrieveContext):
             data["content"] = content_map.get(key)
             normalized.append(QueriedNode(**data))
 
+        if mask_ids:
+            normalized = [item for item in normalized if item.node_id in mask_ids]
+        if top_k:
+            normalized = normalized[:top_k]
         return normalized
 
     return run

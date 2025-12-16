@@ -121,8 +121,8 @@ class HybridChunkingConfig:
 class HybridChunkingResult:
     """Result of hybrid chunk selection with importance annotations."""
 
-    primary_chunks: List[Dict[str, Any]]
-    secondary_chunks: List[Dict[str, Any]]
+    primary_chunks: List[CodeChunk]
+    secondary_chunks: List[CodeChunk]
     cutoff_score: float
     config: HybridChunkingConfig
 
@@ -731,22 +731,18 @@ class CodeChunker:
         num_primary = max(1, int(len(scored_chunks) * config.high_importance_ratio))
         cutoff_score = scored_chunks[num_primary - 1][0] if scored_chunks else 0.0
 
-        primary_chunks: List[Dict[str, Any]] = []
-        secondary_chunks: List[Dict[str, Any]] = []
+        primary_chunks: List[CodeChunk] = []
+        secondary_chunks: List[CodeChunk] = []
 
         for idx, (score, chunk) in enumerate(scored_chunks):
             tier = "primary"
             if idx >= num_primary or score < config.min_high_importance_lines:
                 tier = "secondary"
 
-            annotated = chunk._asdict()
-            annotated["importance_score"] = score
-            annotated["importance_tier"] = tier
-
             if tier == "primary":
-                primary_chunks.append(annotated)
+                primary_chunks.append(chunk)
             else:
-                secondary_chunks.append(annotated)
+                secondary_chunks.append(chunk)
 
         return HybridChunkingResult(
             primary_chunks=primary_chunks,

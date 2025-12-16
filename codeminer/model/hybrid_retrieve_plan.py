@@ -35,11 +35,13 @@ class HybridEmbeddingConfig:
 
     # Chunking
     max_lines_per_chunk: Optional[int] = 100
-    chunk_depth: int = 2
     languages: Optional[List[str]] = None
 
     # Hybrid chunking params
     hybrid_chunking: HybridChunkingConfig = field(default_factory=HybridChunkingConfig)
+    hybrid_levels: List[str] = field(default_factory=lambda: ["l2"])
+    shared_levels: List[str] = field(default_factory=lambda: ["l0"])
+    plan_name: str = "hybrid"
 
 
 def build_hybrid_embeddings(
@@ -64,9 +66,11 @@ def build_hybrid_embeddings(
         repo_path=config.repo_path,
         index_path=str(config.index_path),
         languages=languages,
-        chunk_depth=config.chunk_depth,
         max_lines_per_chunk=config.max_lines_per_chunk,
         hybrid_config=config.hybrid_chunking,
+        hybrid_levels=config.hybrid_levels,
+        shared_levels=config.shared_levels,
+        plan_name=config.plan_name,
         primary_embedding_model=config.primary_embedding_model,
         primary_embedding_provider=config.primary_embedding_provider,
         primary_embedding_dimension=config.primary_embedding_dimension,

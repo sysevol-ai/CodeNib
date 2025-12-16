@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-from ..code_chunker import CodeChunker, RepoChunkingConfig
-from ..index.embedding import CodeVectorStore
+from ..code_chunker import CodeChunker
+from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.llm_config import LLMConfig, LLMProvider
 from ..log_utils import get_logger
@@ -108,6 +108,7 @@ class RetrieveRerankPipeline:
         rerank_window_size: Optional[int] = None,
         rerank_window_step: Optional[int] = None,
         enable_rerank: bool = True,
+        vector_masks: Optional[Dict[str, Set[str]]] = None,
     ) -> None:
         self.repo_path = self._validate_repo(repo_path)
         self.index_path = Path(index_path)
@@ -184,6 +185,7 @@ class RetrieveRerankPipeline:
             regex_index=None,
             default_top_k=self._default_stage_top_k,
             default_level=self.retrieval_level,
+            masks=vector_masks or {},
         )
         register_retrieve_ops(self.engine, self.retrieve_context)
 
@@ -310,50 +312,19 @@ class RetrieveRerankPipeline:
             vector_store.clear()
 
         logger.info("Building hierarchical vector store index.")
-        # Build L0 and L2 chunks
-        repo_cfg = RepoChunkingConfig(languages=self.languages)
-
-        # L0 chunks (file-level skeletons)
-        l0_chunker = CodeChunker(
-            language=self.languages[0],
-            repo_config=repo_cfg,
-            max_lines_per_chunk=None,
-            chunk_depth=0,
-            skeleton_mode=True,
-        )
-        l0_chunks = l0_chunker.chunk_repository(repo_path=self.repo_path)
-
-        # L2 chunks (function/method-level)
-        l2_chunker = CodeChunker(
-            language=self.languages[0],
-            repo_config=repo_cfg,
+        vector_store = build_hierarchical_vector_store(
+            repo_path=self.repo_path,
+            index_path=str(self.index_path),
+            plan_name=None,
+            languages=self.languages,
             max_lines_per_chunk=self.max_lines_per_chunk,
-            chunk_depth=2,
-            l2_level_exclusive=True,
-            skeleton_mode=False,
-        )
-        l2_chunks = l2_chunker.chunk_repository(repo_path=self.repo_path)
-
-        if not l0_chunks and not l2_chunks:
-            raise ValueError("No code chunks generated from repository.")
-
-        # Add L0 chunks
-        if l0_chunks:
-            l0_chunks_for_indexing = [chunk._asdict() for chunk in l0_chunks]
-            vector_store.add_code_chunks(l0_chunks_for_indexing, level="l0")
-
-        # Add L2 chunks
-        if l2_chunks:
-            l2_chunks_for_indexing = [chunk._asdict() for chunk in l2_chunks]
-            vector_store.add_code_chunks(l2_chunks_for_indexing, level="l2")
-
-        vector_store.save(str(self.index_path))
-        logger.info(
-            "Hierarchical vector store built and cached.",
-            extra={
-                "l0_chunks": len(l0_chunks),
-                "l2_chunks": len(l2_chunks),
-            },
+            build_levels=["l0", "l2"],
+            embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
+            embedding_dimension=embedding_dimension,
+            embedding_kwargs=embedding_kwargs,
+            index_metric=self.index_metric,
+            profiler=self.profiler,
         )
         return vector_store
 
