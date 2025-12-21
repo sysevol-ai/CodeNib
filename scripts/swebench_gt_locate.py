@@ -4,17 +4,17 @@ Analyze SWE-bench patches to extract symbol-level changes.
 
 This script extracts ground truth (GT) localization information from SWE-bench patches,
 identifying which symbols (functions, methods, classes) were modified, added, or deleted.
-Supports both SWE-bench Verified and Lite datasets.
+Supports SWE-bench Verified, Lite, and Multilingual datasets.
 
 Usage Examples:
     # Process all instances in the test split using Verified dataset (default)
     python scripts/swebench_gt_locate.py
 
-    # Process all instances using Lite dataset
-    python scripts/swebench_gt_locate.py --dataset lite
+    # Process multiple datasets with selected instances and upload to HuggingFace Hub
+    python scripts/swebench_gt_locate.py --dataset lite multilingual \
+        --filter-file scripts/sampling_output/selected_instances.csv \
+        --push-to-hub
 
-    # Process first 10 instances of repo "django/django", output into local file
-    python scripts/swebench_gt_locate.py --dataset verified --filter "django__django-.*" --limit 10 --output results/test_gt.json --keep-repos
 
 Output Format:
     Each entry in the output JSON array contains:
@@ -23,30 +23,35 @@ Output Format:
         "repo": "astropy/astropy",
         "base_commit": "6500928dc0e57be8f06d1162eacc3ba5e2eff692",
         "target_files":     ["astropy/coordinates/builtin_frames/itrs.py", ...],
-        "symbols_modified": ["astropy/coordinates/builtin_frames/itrs.py:ITRS", ...],
-        "symbols_added":    ["astropy/coordinates/builtin_frames/itrs_observed_transforms.py:itrs_to_observed()", ...],
-        "symbols_deleted": [],
+        "symbols_modified": ["file.py:Foo.bar()@10:50", "file.py:Baz()@60:80"],
+        "symbols_added":    ["file.py:NewFunc()"],
+        "symbols_deleted":  ["file.py:OldFunc()@100:120"],
         "error": null
     }
 
-    Symbol Naming:
-    - Top-level functions: "module/file.py:function_name()"
-    - Classes: "module/file.py:ClassName"
-    - Class methods: "module/file.py:ClassName.method_name()"
+    Symbol Naming (with line range @start:end for modified/deleted):
+    - Top-level functions: "module/file.py:function_name()@start:end"
+    - Classes: "module/file.py:ClassName@start:end"
+    - Class methods: "module/file.py:ClassName.method_name()@start:end"
+
+HuggingFace Hub:
+    When --push-to-hub is specified, results are uploaded to:
+    stzoozz/codeminer_swebench
+
+    Load with: datasets.load_dataset("stzoozz/codeminer_swebench", split="test")
 """
 
 import argparse
+import csv
 import json
 import os
 import re
 import shutil
 import subprocess
-
-# Add parent directory to path to import codeminer modules
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import datasets
 from datasets import Features, Value
@@ -58,20 +63,43 @@ from codeminer.log_utils import get_logger  # noqa: E402
 
 logger = get_logger(__name__)
 
+DATASET_NAMES = {
+    "verified": "princeton-nlp/SWE-bench_Verified",
+    "lite": "princeton-nlp/SWE-bench_Lite",
+    "multilingual": "SWE-bench/SWE-bench_Multilingual",
+}
+
+# Supported file extensions and their corresponding languages
+SUPPORTED_EXTENSIONS: Dict[str, str] = {
+    ".py": "python",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".cxx": "cpp",
+    ".c": "cpp",
+    ".h": "cpp",
+    ".hpp": "cpp",
+    ".rs": "rust",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+}
+
+# Extensions we recognize but don't support yet (for logging)
+UNSUPPORTED_EXTENSIONS: Set[str] = {".java", ".go"}
+
 
 class GTLocator:
     """Ground truth locator that analyzes patches to extract symbol-level changes."""
 
-    def __init__(self, work_dir: str = None, language: str = "python"):
+    def __init__(self, work_dir: Optional[str] = None):
         """
         Initialize the ground truth locator.
 
         Args:
             work_dir: Working directory for cloning repos (default: ~/.codeminer/tmp)
-            language: Programming language to analyze (default: python)
         """
         if work_dir is None:
-            # Create a temporary directory under ~/.codeminer
             cache_dir = str(Path.home()) + "/.codeminer"
             os.makedirs(cache_dir, exist_ok=True)
             self.work_dir = os.path.join(cache_dir, "tmp")
@@ -80,9 +108,21 @@ class GTLocator:
         else:
             self.work_dir = work_dir
             self.is_temp_dir = False
-        self.language = language
-        self.chunker = create_chunker(language)
+
+        # Cache chunkers by language
+        self._chunkers: Dict[str, Any] = {}
         logger.info(f"Initialized GTLocator with work_dir: {self.work_dir}")
+
+    def _get_chunker(self, language: str) -> Any:
+        """Get or create a chunker for the specified language."""
+        if language not in self._chunkers:
+            self._chunkers[language] = create_chunker(language)
+        return self._chunkers[language]
+
+    def _detect_language(self, file_path: str) -> Optional[str]:
+        """Detect language from file extension."""
+        ext = os.path.splitext(file_path)[1].lower()
+        return SUPPORTED_EXTENSIONS.get(ext)
 
     def get_target_files(self, patch_content: str) -> List[str]:
         """
@@ -95,14 +135,10 @@ class GTLocator:
             List of file paths affected by the patch
         """
         target_files = []
-
-        # Match file paths in diff headers
-        # Format: --- a/path/to/file.py or +++ b/path/to/file.py
         file_pattern = re.compile(r"^(?:\+\+\+|---) [ab]/(.+)$", re.MULTILINE)
 
         for match in file_pattern.finditer(patch_content):
             file_path = match.group(1)
-            # Skip /dev/null entries (for new/deleted files)
             if file_path != "/dev/null" and file_path not in target_files:
                 target_files.append(file_path)
 
@@ -119,63 +155,50 @@ class GTLocator:
             patch_content: Content of the patch in unified diff format
 
         Returns:
-            Dictionary mapping file paths to list of (start_line, end_line) tuples
+            Dict mapping file paths to list of (start_line, end_line) tuples
+            (new file coords, 0-based, inclusive)
         """
         changed_ranges = defaultdict(list)
         current_file = None
-        old_file = None  # Track the "before" file for deleted files
+        old_file = None
 
-        # Parse the patch line by line
-        lines = patch_content.split("\n")
-        i = 0
-
-        while i < len(lines):
-            line = lines[i]
-
-            # Currently no detections
-            # Check for "before" file header (--- a/...)
+        for line in patch_content.split("\n"):
             if line.startswith("--- a/"):
-                old_file = line[6:]  # Remove '--- a/' prefix
+                old_file = line[6:]
                 if old_file == "/dev/null":
                     old_file = None
-                i += 1
                 continue
 
-            # Check for "after" file header (+++ b/...)
             if line.startswith("+++ b/"):
-                current_file = line[6:]  # Remove '+++ b/' prefix
+                current_file = line[6:]
                 if current_file == "/dev/null":
-                    # File is being deleted, use the old file path
                     current_file = old_file
-                i += 1
                 continue
 
-            # Check for hunk header: @@ -old_start,old_count +new_start,new_count @@
-            hunk_match = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", line)
+            hunk_match = re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
             if hunk_match and current_file:
-                new_start = int(hunk_match.group(1))
-                new_count = int(hunk_match.group(2)) if hunk_match.group(2) else 1
-
+                # Unified diff line numbers are 1-based; convert to 0-based
+                # for chunk overlap checks.
+                new_start = int(hunk_match.group(3)) - 1
+                new_count = int(hunk_match.group(4)) if hunk_match.group(4) else 1
                 if new_count > 0:
                     changed_ranges[current_file].append(
                         (new_start, new_start + new_count - 1)
                     )
 
-            i += 1
-
         logger.debug(f"Extracted changed line ranges for {len(changed_ranges)} files")
         return dict(changed_ranges)
 
     def extract_symbols_from_file(
-        self, file_path: str, relative_path: Optional[str] = None
-    ) -> Dict[str, any]:
+        self, file_path: str, language: str, relative_path: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Extract all symbols from a file with their chunks.
 
         Args:
             file_path: Absolute path to the source file
-            relative_path: Relative path for node_id generation. If provided,
-                          the returned dictionary keys will use this path prefix.
+            language: Programming language of the file
+            relative_path: Relative path for node_id generation
 
         Returns:
             Dictionary mapping node_id (file:symbol format) to CodeChunk objects
@@ -185,12 +208,12 @@ class GTLocator:
             return {}
 
         try:
-            chunks = self.chunker.chunk_file(file_path, relative_path)
+            chunker = self._get_chunker(language)
+            chunks = chunker.chunk_file(file_path, relative_path)
             symbols = {}
 
             for chunk in chunks:
                 if chunk.chunk_type in ("function", "method", "class"):
-                    # Use chunk.node_id directly (already in file:symbol format)
                     symbols[chunk.node_id] = chunk
 
             logger.debug(f"Extracted {len(symbols)} symbols from {file_path}")
@@ -200,16 +223,7 @@ class GTLocator:
             return {}
 
     def clone_repo(self, repo_url: str, target_dir: str) -> bool:
-        """
-        Clone a git repository if it doesn't exist.
-
-        Args:
-            repo_url: URL of the repository
-            target_dir: Directory to clone into
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Clone a git repository if it doesn't exist."""
         try:
             if os.path.exists(target_dir):
                 logger.info(f"Repository already exists at {target_dir}")
@@ -230,24 +244,13 @@ class GTLocator:
             return False
 
     def checkout_commit(self, repo_dir: str, commit_hash: str) -> bool:
-        """
-        Checkout a specific commit in a git repository.
-
-        Args:
-            repo_dir: Path to the repository
-            commit_hash: Commit hash to checkout
-
-        Returns:
-            True if successful, False otherwise
-        """
-        # Check if it's a valid git repository
+        """Checkout a specific commit in a git repository."""
         git_dir = os.path.join(repo_dir, ".git")
         if not os.path.exists(git_dir):
             logger.error(f"Not a git repository: {repo_dir}")
             return False
 
         try:
-            # Reset any local changes to ensure clean state
             logger.debug("Resetting repository to clean state")
             subprocess.run(
                 ["git", "reset", "--hard"],
@@ -257,7 +260,6 @@ class GTLocator:
                 stderr=subprocess.PIPE,
             )
 
-            # Clean untracked files
             subprocess.run(
                 ["git", "clean", "-fd"],
                 cwd=repo_dir,
@@ -266,7 +268,6 @@ class GTLocator:
                 stderr=subprocess.PIPE,
             )
 
-            # Fetch all updates to ensure we can checkout the commit
             logger.info("Fetching updates from remote repository")
             subprocess.run(
                 ["git", "fetch", "--all"],
@@ -276,7 +277,6 @@ class GTLocator:
                 stderr=subprocess.PIPE,
             )
 
-            # Checkout to the base commit
             logger.info(f"Checking out commit {commit_hash}")
             subprocess.run(
                 ["git", "checkout", "-f", commit_hash],
@@ -292,16 +292,7 @@ class GTLocator:
             return False
 
     def apply_patch(self, repo_dir: str, patch_content: str) -> bool:
-        """
-        Apply a patch to a repository.
-
-        Args:
-            repo_dir: Path to the repository
-            patch_content: Content of the patch to apply
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Apply a patch to a repository."""
         try:
             logger.info("Applying patch")
             process = subprocess.run(
@@ -327,8 +318,8 @@ class GTLocator:
 
     def compare_symbols(
         self,
-        symbols_before: Dict[str, any],
-        symbols_after: Dict[str, any],
+        symbols_before: Dict[str, Any],
+        symbols_after: Dict[str, Any],
         changed_ranges: Dict[str, List[Tuple[int, int]]],
     ) -> Tuple[List[str], List[str], List[str]]:
         """
@@ -350,7 +341,12 @@ class GTLocator:
         after_set = set(symbols_after.keys())
 
         # Symbols that were deleted
-        symbols_deleted = sorted(list(before_set - after_set))
+        deleted_names = sorted(list(before_set - after_set))
+        symbols_deleted = [
+            # CodeChunk lines are 0-based; output as 1-based inclusive ranges.
+            f"{name}@{symbols_before[name].start_line + 1}:{symbols_before[name].end_line + 1}"
+            for name in deleted_names
+        ]
         logger.debug(f"Found {len(symbols_deleted)} deleted symbols")
 
         # Symbols that were added
@@ -359,9 +355,9 @@ class GTLocator:
 
         # Symbols that exist in both - check if they were modified
         common = before_set & after_set
-        symbols_modified = []
+        symbols_modified: List[str] = []
 
-        for symbol_name in common:
+        for symbol_name in sorted(common):
             file_path, _, _ = symbol_name.partition(":")
             if file_path not in changed_ranges:
                 continue
@@ -369,41 +365,28 @@ class GTLocator:
             chunk_before = symbols_before[symbol_name]
             chunk_after = symbols_after[symbol_name]
 
-            # First check if length changed (cheapest check)
             length_before = chunk_before.end_line - chunk_before.start_line + 1
             length_after = chunk_after.end_line - chunk_after.start_line + 1
 
+            is_modified = False
             if length_before != length_after:
-                symbols_modified.append(symbol_name)
-                logger.debug(
-                    f"Symbol modified (length changed): {symbol_name} "
-                    f"(before: {length_before} lines, after: {length_after} lines)"
+                is_modified = True
+            else:
+                has_overlap = any(
+                    change_end >= chunk_after.start_line
+                    and change_start <= chunk_after.end_line
+                    for change_start, change_end in changed_ranges[file_path]
                 )
-                continue
+                if has_overlap and chunk_before.content != chunk_after.content:
+                    is_modified = True
 
-            # Length is the same, check if any changed lines overlap with this symbol's range
-            has_overlap = any(
-                change_end >= chunk_after.start_line
-                and change_start <= chunk_after.end_line
-                for change_start, change_end in changed_ranges[file_path]
-            )
+            if is_modified:
+                symbols_modified.append(
+                    # CodeChunk lines are 0-based; output as 1-based inclusive ranges.
+                    f"{symbol_name}@{chunk_before.start_line + 1}:{chunk_before.end_line + 1}"
+                )
 
-            if has_overlap:
-                # Length is same but has changes in range, compare content directly
-                if chunk_before.content != chunk_after.content:
-                    symbols_modified.append(symbol_name)
-                    logger.debug(
-                        f"Symbol modified (content changed): {symbol_name} "
-                        f"(lines {chunk_after.start_line}-{chunk_after.end_line})"
-                    )
-                else:
-                    logger.debug(
-                        f"Content identical for {symbol_name}, not marking as modified"
-                    )
-
-        symbols_modified = sorted(symbols_modified)
         logger.debug(f"Found {len(symbols_modified)} modified symbols")
-
         return symbols_modified, symbols_added, symbols_deleted
 
     def analyze_instance(self, instance: Dict) -> Dict:
@@ -434,7 +417,7 @@ class GTLocator:
             "error": None,
         }
 
-        # Setup repository - use shared repo directory (one per repository, not per instance)
+        # Setup repository
         repo_dir_name = repo.replace("/", "_")
         repo_dir = os.path.join(self.work_dir, repo_dir_name)
         repo_url = f"https://github.com/{repo}.git"
@@ -459,25 +442,41 @@ class GTLocator:
             result["error"] = "No target files found in patch"
             return result
 
-        # Filter for Python files only (for now)
-        python_files = [f for f in target_files if f.endswith(".py")]
-        logger.info(
-            f"Found {len(python_files)} Python files in {len(target_files)} target files"
-        )
+        # Group files by language
+        files_by_language: Dict[str, List[str]] = defaultdict(list)
+        unsupported_files: List[str] = []
 
-        if not python_files:
-            logger.info(f"No Python files affected in {instance_id}")
+        for file_path in target_files:
+            lang = self._detect_language(file_path)
+            if lang:
+                files_by_language[lang].append(file_path)
+            else:
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in UNSUPPORTED_EXTENSIONS:
+                    logger.warning(f"Skipping unsupported file: {file_path} ({ext})")
+                unsupported_files.append(file_path)
+
+        if not files_by_language:
+            logger.info(f"No supported files in {instance_id}")
+            result["error"] = "No supported language files found"
             return result
+
+        supported_count = sum(len(files) for files in files_by_language.values())
+        logger.info(
+            f"Found {supported_count} supported files, {len(unsupported_files)} unsupported"
+        )
 
         # Extract symbols before patch
         logger.info("Extracting symbols BEFORE patch")
         symbols_before = {}
-        for file_path in python_files:
-            full_path = os.path.join(repo_dir, file_path)
-            if os.path.exists(full_path):
-                # Pass relative_path for proper node_id generation
-                file_symbols = self.extract_symbols_from_file(full_path, file_path)
-                symbols_before.update(file_symbols)
+        for lang, files in files_by_language.items():
+            for file_path in files:
+                full_path = os.path.join(repo_dir, file_path)
+                if os.path.exists(full_path):
+                    file_symbols = self.extract_symbols_from_file(
+                        full_path, lang, file_path
+                    )
+                    symbols_before.update(file_symbols)
         logger.info(f"Extracted {len(symbols_before)} symbols before patch")
 
         # Get changed line ranges
@@ -492,12 +491,14 @@ class GTLocator:
         # Extract symbols after patch
         logger.info("Extracting symbols AFTER patch")
         symbols_after = {}
-        for file_path in python_files:
-            full_path = os.path.join(repo_dir, file_path)
-            if os.path.exists(full_path):
-                # Pass relative_path for proper node_id generation
-                file_symbols = self.extract_symbols_from_file(full_path, file_path)
-                symbols_after.update(file_symbols)
+        for lang, files in files_by_language.items():
+            for file_path in files:
+                full_path = os.path.join(repo_dir, file_path)
+                if os.path.exists(full_path):
+                    file_symbols = self.extract_symbols_from_file(
+                        full_path, lang, file_path
+                    )
+                    symbols_after.update(file_symbols)
         logger.info(f"Extracted {len(symbols_after)} symbols after patch")
 
         # Compare symbols to identify changes
@@ -528,74 +529,163 @@ class GTLocator:
             logger.info(f"Keeping repositories in work directory: {self.work_dir}")
 
 
+def load_instance_ids_from_file(file_path: str) -> Set[str]:
+    """
+    Load instance IDs from a CSV or JSON file.
+
+    Args:
+        file_path: Path to CSV or JSON file
+
+    Returns:
+        Set of instance IDs
+    """
+    instance_ids: Set[str] = set()
+    file_path = os.path.expanduser(file_path)
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Filter file not found: {file_path}")
+
+    ext = os.path.splitext(file_path)[1].lower()
+
+    if ext == ".csv":
+        with open(file_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if "instance_id" in row:
+                    instance_ids.add(row["instance_id"])
+        logger.info(f"Loaded {len(instance_ids)} instance IDs from CSV: {file_path}")
+
+    elif ext == ".json":
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict) and "instance_id" in item:
+                    instance_ids.add(item["instance_id"])
+                elif isinstance(item, str):
+                    instance_ids.add(item)
+        logger.info(f"Loaded {len(instance_ids)} instance IDs from JSON: {file_path}")
+
+    else:
+        raise ValueError(f"Unsupported filter file format: {ext}")
+
+    return instance_ids
+
+
 def load_swebench(
     split: str = "test",
-    filter_pattern: str = ".*",
+    filter_pattern: Optional[str] = None,
+    filter_ids: Optional[Set[str]] = None,
     limit: Optional[int] = None,
-    dataset_type: str = "verified",
+    dataset_types: Optional[List[str]] = None,
 ) -> datasets.Dataset:
     """
     Load the SWE-bench dataset with optional filtering and limiting.
 
     Args:
         split: Dataset split to load (default: "test")
-        filter_pattern: Regex pattern to filter instance IDs (default: ".*" - no filter)
-        limit: Maximum number of instances to return (default: None - no limit)
-        dataset_type: Dataset type - "verified" or "lite" (default: "verified")
+        filter_pattern: Regex pattern to filter instance IDs
+        filter_ids: Set of specific instance IDs to include
+        limit: Maximum number of instances to return
+        dataset_types: List of dataset types to load and merge
 
     Returns:
         Dataset object
     """
-    # Validate dataset_type
-    if dataset_type.lower() not in ("verified", "lite"):
-        raise ValueError(
-            f"Invalid dataset_type: {dataset_type}. Must be 'verified' or 'lite'"
-        )
+    if dataset_types is None:
+        dataset_types = ["verified"]
 
-    logger.info(
-        f"Loading SWE-bench {dataset_type.capitalize()} dataset (split: {split})"
-    )
+    # Validate dataset types
+    for dt in dataset_types:
+        if dt.lower() not in DATASET_NAMES:
+            raise ValueError(
+                f"Invalid dataset_type: {dt}. Must be one of {list(DATASET_NAMES.keys())}"
+            )
+
+    logger.info(f"Loading SWE-bench datasets: {dataset_types} (split: {split})")
 
     cache_dir = str(Path.home()) + "/.codeminer"
     os.makedirs(cache_dir, exist_ok=True)
 
-    # Select dataset name based on type
-    if dataset_type.lower() == "lite":
-        dataset_name = "princeton-nlp/SWE-bench_Lite"
-    else:
-        dataset_name = "princeton-nlp/SWE-bench_Verified"
+    all_instances: Dict[str, Dict] = {}  # Deduplicate by instance_id
 
-    dataset_file = f'{dataset_name.replace("/", "__")}_{split}.json'
-    dataset_path = f"{cache_dir}/{dataset_file}"
+    for dataset_type in dataset_types:
+        dataset_name = DATASET_NAMES[dataset_type.lower()]
+        dataset_file = f'{dataset_name.replace("/", "__")}_{split}.json'
+        dataset_path = f"{cache_dir}/{dataset_file}"
 
-    if not os.path.exists(dataset_path):
-        ds = datasets.load_dataset(dataset_name, split=split)
-        logger.info(f"Loaded {len(ds)} instances from {dataset_name}")
-        ds.to_json(dataset_path)
-    else:
-        logger.info(f"Loading cached dataset from {dataset_path}")
-        base_features = {
-            "repo": Value("string"),
-            "instance_id": Value("string"),
-            "base_commit": Value("string"),
-            "patch": Value("string"),
-            "test_patch": Value("string"),
-            "problem_statement": Value("string"),
-            "hints_text": Value("string"),
-            "created_at": Value("string"),
-            "version": Value("string"),
-            "FAIL_TO_PASS": Value("string"),
-            "PASS_TO_PASS": Value("string"),
-            "environment_setup_commit": Value("string"),
-            "difficulty": Value("string"),
-        }
-        ft = Features(base_features)
-        ds = datasets.load_dataset(
-            "json", data_files={split: dataset_path}, split=split, features=ft
+        if not os.path.exists(dataset_path):
+            logger.info(f"Downloading {dataset_name}...")
+            ds = datasets.load_dataset(dataset_name, split=split)
+            logger.info(f"Loaded {len(ds)} instances from {dataset_name}")
+            ds.to_json(dataset_path)
+        else:
+            logger.info(f"Loading cached dataset from {dataset_path}")
+            # Define features based on dataset type
+            base_features = {
+                "repo": Value("string"),
+                "instance_id": Value("string"),
+                "base_commit": Value("string"),
+                "patch": Value("string"),
+                "test_patch": Value("string"),
+                "problem_statement": Value("string"),
+                "hints_text": Value("string"),
+                "created_at": Value("string"),
+                "version": Value("string"),
+                "FAIL_TO_PASS": Value("string"),
+                "PASS_TO_PASS": Value("string"),
+                "environment_setup_commit": Value("string"),
+            }
+            # Some datasets have additional fields
+            if dataset_type.lower() in ("verified", "lite"):
+                base_features["difficulty"] = Value("string")
+
+            ft = Features(base_features)
+            try:
+                ds = datasets.load_dataset(
+                    "json", data_files={split: dataset_path}, split=split, features=ft
+                )
+            except Exception:
+                # Fallback without strict features
+                ds = datasets.load_dataset(
+                    "json", data_files={split: dataset_path}, split=split
+                )
+
+        # Add instances, deduplicating by instance_id
+        for instance in ds:
+            iid = instance["instance_id"]
+            if iid not in all_instances:
+                # Normalize instance: serialize complex types to strings
+                inst_dict = {}
+                for k, v in instance.items():
+                    if v is None:
+                        inst_dict[k] = None
+                    elif hasattr(v, "isoformat"):  # datetime object
+                        inst_dict[k] = v.isoformat()
+                    elif isinstance(v, (list, dict)):
+                        inst_dict[k] = json.dumps(v)
+                    elif isinstance(v, bytes):
+                        inst_dict[k] = v.decode("utf-8", errors="replace")
+                    else:
+                        inst_dict[k] = str(v) if not isinstance(v, str) else v
+                all_instances[iid] = inst_dict
+
+        logger.info(
+            f"After {dataset_type}: {len(all_instances)} unique instances total"
         )
 
-    # Apply filter if specified
-    if filter_pattern != ".*":
+    # Convert back to dataset
+    instances_list = list(all_instances.values())
+    ds = datasets.Dataset.from_list(instances_list)
+
+    # Apply filter_ids if specified
+    if filter_ids:
+        logger.info(f"Filtering to {len(filter_ids)} specific instance IDs")
+        ds = ds.filter(lambda x: x["instance_id"] in filter_ids)
+        logger.info(f"Filtered to {len(ds)} instances")
+
+    # Apply regex filter if specified
+    if filter_pattern and filter_pattern != ".*":
         logger.info(f"Filtering instances with pattern: {filter_pattern}")
         ds = ds.filter(lambda x: bool(re.match(filter_pattern, x["instance_id"])))
         logger.info(f"Filtered to {len(ds)} instances")
@@ -616,9 +706,10 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        default="verified",
-        choices=["verified", "lite"],
-        help="Dataset type to use: 'verified' or 'lite' (default: verified)",
+        nargs="+",
+        default=["verified"],
+        choices=["verified", "lite", "multilingual"],
+        help="Dataset type(s) to use (default: verified)",
     )
     parser.add_argument(
         "--split",
@@ -630,13 +721,13 @@ def main():
         "--output",
         type=str,
         default=None,
-        help="Output JSON file path (default: ~/.codeminer/swebench_{dataset}_gt.json)",
+        help="Output JSON file path (default: ~/.codeminer/swebench_gt.json)",
     )
     parser.add_argument(
         "--work-dir",
         type=str,
         default=None,
-        help="Working directory for cloning repos (default: ~/.codeminer)",
+        help="Working directory for cloning repos (default: ~/.codeminer/tmp)",
     )
     parser.add_argument(
         "--limit",
@@ -647,13 +738,24 @@ def main():
     parser.add_argument(
         "--filter",
         type=str,
-        default=".*",
-        help="Regex filter for instance IDs (default: .*)",
+        default=None,
+        help="Regex filter for instance IDs",
+    )
+    parser.add_argument(
+        "--filter-file",
+        type=str,
+        default=None,
+        help="Path to CSV or JSON file containing instance IDs to process",
     )
     parser.add_argument(
         "--keep-repos",
         action="store_true",
         help="Keep cloned repositories after analysis (default: cleanup)",
+    )
+    parser.add_argument(
+        "--push-to-hub",
+        action="store_true",
+        help="Push results to HuggingFace Hub",
     )
 
     args = parser.parse_args()
@@ -662,14 +764,21 @@ def main():
     if args.output is None:
         cache_dir = str(Path.home()) + "/.codeminer"
         os.makedirs(cache_dir, exist_ok=True)
-        args.output = os.path.join(cache_dir, f"swebench_{args.dataset}_gt.json")
+        dataset_suffix = "_".join(args.dataset)
+        args.output = os.path.join(cache_dir, f"swebench_{dataset_suffix}_gt.json")
+
+    # Load instance IDs from filter file if specified
+    filter_ids = None
+    if args.filter_file:
+        filter_ids = load_instance_ids_from_file(args.filter_file)
 
     # Load dataset with filtering and limiting
     dataset = load_swebench(
         split=args.split,
         filter_pattern=args.filter,
+        filter_ids=filter_ids,
         limit=args.limit,
-        dataset_type=args.dataset,
+        dataset_types=args.dataset,
     )
 
     logger.info(f"Processing {len(dataset)} instances")
@@ -679,10 +788,20 @@ def main():
 
     # Process instances
     results = []
+    skipped_count = 0
     for i, instance in enumerate(dataset):
-        logger.info(f"Processing instance {i+1}/{len(dataset)}")
+        logger.info(f"Processing instance {i + 1}/{len(dataset)}")
         try:
             result = locator.analyze_instance(instance)
+            # Skip instances that only have symbols_added (no modified or deleted)
+            if (
+                not result.get("symbols_modified")
+                and not result.get("symbols_deleted")
+                and not result.get("error")
+            ):
+                skipped_count += 1
+                logger.info(f"Skipping {result['instance_id']}: only has symbols_added")
+                continue
             results.append(result)
         except Exception as e:
             logger.error(
@@ -690,8 +809,11 @@ def main():
             )
             results.append({"instance_id": instance["instance_id"], "error": str(e)})
 
-    # Save results
+    # Save results to local JSON
     output_path = args.output
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     logger.info(f"Saving results to {output_path}")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
@@ -700,16 +822,29 @@ def main():
     success_count = sum(1 for r in results if not r.get("error"))
     error_count = len(results) - success_count
 
-    logger.info(f"\n{'='*60}")
-    logger.info(f"Analysis complete!")
-    logger.info(f"Total instances: {len(results)}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info("Analysis complete!")
+    logger.info(f"Total processed: {len(dataset)}")
+    logger.info(f"Skipped (added-only): {skipped_count}")
+    logger.info(f"Output instances: {len(results)}")
     logger.info(f"Successful: {success_count}")
     logger.info(f"Errors: {error_count}")
     logger.info(f"Results saved to: {output_path}")
     logger.info(f"Repositories cached in: {locator.work_dir}")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
-    # Cleanup (will skip if using default cache directory)
+    # Push to HuggingFace Hub if requested
+    if args.push_to_hub:
+        repo_id = f"stzoozz/codeminer_swebench"
+        logger.info(f"Pushing results to HuggingFace Hub: {repo_id}")
+
+        ds = datasets.Dataset.from_list(results)
+        ds_dict = datasets.DatasetDict({args.split: ds})
+        ds_dict.push_to_hub(repo_id, private=False)
+
+        logger.info(f"Successfully pushed to https://huggingface.co/datasets/{repo_id}")
+
+    # Cleanup
     if not args.keep_repos:
         locator.cleanup()
     else:
