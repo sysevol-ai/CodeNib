@@ -3,7 +3,9 @@ This script preprocesses and creates graph indexes for SWE-bench instances.
 It generates SCIP-based code graphs for each instance in the dataset.
 
 Usage example:
-    python scripts/swebench_graph_index.py --dataset princeton-nlp/SWE-bench_Lite --split test --filter-instance "^(django__django-11099)$" --output-path /tmp/swebench_indexes
+    python scripts/swebench_graph_index.py --dataset princeton-nlp/SWE-bench_Lite \
+        --split test --filter-instance "^(django__django-11099)$" \
+        --output-path /tmp/swebench_indexes
 """
 
 import argparse
@@ -11,10 +13,7 @@ import json
 import logging
 from pathlib import Path
 
-from codeminer.env.process_swebench_data import (
-    load_filter_swebench_dataset,
-    process_swebench_instance,
-)
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.log_utils import get_logger
 from codeminer.profiler import Profiler
 from codeminer.scip_interface.scip_indexer import SCIPIndexer
@@ -79,7 +78,10 @@ def parse_args():
         type=str,
         choices=["graph", "decode", "raw", None],
         default="graph",
-        help="Cache/skip level: 'graph' (check graph.pkl), 'decode' (check index.decoded), 'raw' (check index.scip), or None (run full pipeline)",
+        help=(
+            "Cache/skip level: 'graph' (check graph.pkl), 'decode' (check "
+            "index.decoded), 'raw' (check index.scip), or None (run full pipeline)"
+        ),
     )
 
     # Repository cache
@@ -93,7 +95,10 @@ def parse_args():
         "--profile-dir",
         type=str,
         default=None,
-        help="Directory to store profiler summaries (default: <output-path>/profile_log)",
+        help=(
+            "Directory to store profiler summaries (default: "
+            "<output-path>/profile_log)"
+        ),
     )
 
     return parser.parse_args()
@@ -107,7 +112,8 @@ def main():
     logger.info(f"Loading dataset: {args.dataset}, split: {args.split}")
     logger.info(f"Filter pattern: {args.filter_instance}")
 
-    dataset = load_filter_swebench_dataset(args)
+    dataset_obj = SwebenchDataset.from_args(args)
+    dataset = dataset_obj.load()
 
     logger.info(f"Loaded {len(dataset)} instances from dataset")
 
@@ -141,7 +147,8 @@ def main():
 
         try:
             # Process the instance (clone repo and checkout commit)
-            repo_path = process_swebench_instance(instance, cache_dir=args.cache_dir)
+            dataset_obj.process_instance(instance, repo_root=args.cache_dir)
+            repo_path = dataset_obj.get_repo_path(instance, repo_root=args.cache_dir)
             logger.info(f"Repository checked out at: {repo_path}")
 
             # Create output directory for this instance
@@ -201,7 +208,10 @@ def main():
                 logger.info(f"  Successfully created graph index for {instance_id}")
                 logger.info(f"   Graph saved to: {indexer.graph_file}")
                 logger.info(
-                    f"   Graph stats: {len(graph.graph.vs)} nodes, {len(graph.graph.es)} edges"
+                    (
+                        f"   Graph stats: {len(graph.graph.vs)} nodes, "
+                        f"{len(graph.graph.es)} edges"
+                    )
                 )
             else:
                 logger.error(f"L Failed to create graph index for {instance_id}")

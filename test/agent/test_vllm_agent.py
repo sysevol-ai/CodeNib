@@ -1,7 +1,7 @@
 import argparse
 
 from codeminer.agent.extract_agent import KeywordExtractor
-from codeminer.env.process_swebench_data import load_filter_swebench_dataset
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.llm.llm_config import LLMConfig, LLMProvider
 
 args_dict = {
@@ -18,7 +18,8 @@ args_dict = {
 if __name__ == "__main__":
     # load instance from command line
     args = argparse.Namespace(**args_dict)
-    dataset = load_filter_swebench_dataset(args=args)
+    dataset_obj = SwebenchDataset.from_args(args)
+    dataset = dataset_obj.load()
     llm_config = LLMConfig(
         model_name=args_dict["model"],
         provider=LLMProvider.VLLM_OPENAI,  # Use vLLM with OpenAI-compatible API

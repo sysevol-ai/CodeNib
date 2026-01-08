@@ -2,10 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.env.process_swebench_data import (
-    load_filter_swebench_dataset,
-    process_swebench_instance,
-)
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.graph.transverse_graph import traverse_tree_structure
 from codeminer.scip_interface import SCIPIndexer
 from codeminer.types import (
@@ -33,14 +30,17 @@ def test_instance(swebench_args):
     import argparse
 
     args = argparse.Namespace(**swebench_args)
-    dataset = load_filter_swebench_dataset(args=args)
+    dataset_obj = SwebenchDataset.from_args(args)
+    dataset = dataset_obj.load()
     return next(iter(dataset))
 
 
 @pytest.fixture
 def indexed_repo(test_instance):
     """Fixture providing an indexed repository for testing."""
-    repo_path = process_swebench_instance(test_instance)
+    dataset_obj = SwebenchDataset()
+    dataset_obj.process_instance(test_instance)
+    repo_path = dataset_obj.get_repo_path(test_instance)
     output_path = str(Path.home()) + "/.codeminer/" + test_instance["instance_id"]
 
     repo_indexer = SCIPIndexer(repo_path, output_dir=output_path)

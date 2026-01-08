@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-This script demonstrates the usage of AgentlessPipeline on SWE-bench or LocBench datasets.
+This script demonstrates the usage of AgentlessPipeline on SWE-bench or LocBench
+datasets.
 Before running the pipeline, start a vLLM server for the llm model:
 
 ```bash
@@ -8,21 +9,17 @@ python scripts/start_vllm_server.py --model Qwen/Qwen2.5-Coder-7B
 ```
 
 Usage example:
-    python examples/agentless.py --dataset swebench_lite  --filter-instance "^(psf__requests-1963)$" --llm-model "Qwen/Qwen3-32B" --llm-provider "vllm_openai"
+    python examples/agentless.py --dataset swebench_lite \
+        --filter-instance "^(psf__requests-1963)$" \
+        --llm-model "Qwen/Qwen3-32B" --llm-provider "vllm_openai"
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-from codeminer.env.process_locbench_data import (
-    load_filter_locbench_dataset,
-    process_locbench_instance,
-)
-from codeminer.env.process_swebench_data import (
-    load_filter_swebench_dataset,
-    process_swebench_instance,
-)
+from codeminer.dataset.locbench import LocbenchDataset
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.llm.llm_config import LLMProvider
 from codeminer.log_utils import get_logger
 from codeminer.model import AgentlessPipeline
@@ -37,14 +34,12 @@ DATASET_CONFIGS = {
     "swebench_lite": {
         "dataset": "princeton-nlp/SWE-bench_Lite",
         "split": "test",
-        "loader": load_filter_swebench_dataset,
-        "processor": process_swebench_instance,
+        "class": SwebenchDataset,
     },
     "locbench_v1": {
         "dataset": "czlll/Loc-Bench_V1",
         "split": "test",
-        "loader": load_filter_locbench_dataset,
-        "processor": process_locbench_instance,
+        "class": LocbenchDataset,
     },
 }
 
@@ -139,15 +134,13 @@ def run_pipeline(args):
     dataset = args.dataset
     dataset_config = DATASET_CONFIGS[dataset]
 
-    # Prepare dataset args
-    dataset_args = argparse.Namespace(
+    # Load dataset
+    dataset_obj = dataset_config["class"](
         dataset=dataset_config["dataset"],
         split=args.split,
-        filter_instance=args.filter_instance,
+        filter_instance=args.filter_instance or ".*",
     )
-
-    # Load dataset
-    dataset_instances = dataset_config["loader"](args=dataset_args)
+    dataset_instances = dataset_obj.load()
 
     if len(dataset_instances) == 0:
         raise ValueError(f"No instances found in {dataset} dataset")
@@ -156,18 +149,9 @@ def run_pipeline(args):
 
     # Process each instance
     for _, instance in enumerate(dataset_instances):
-        # Process instance to get repo path and commit
-        repo_info = dataset_config["processor"](instance)
-
-        # Extract repo_path and repo_commit
-        if isinstance(repo_info, dict):
-            repo_path = repo_info.get("repo_path")
-            repo_commit = repo_info.get("base_commit") or repo_info.get(
-                "commit", "HEAD"
-            )
-        else:
-            repo_path = repo_info
-            repo_commit = instance.get("base_commit", "HEAD")
+        dataset_obj.process_instance(instance)
+        repo_path = dataset_obj.get_repo_path(instance)
+        repo_commit = instance.get("base_commit", "HEAD")
 
         # Get instance_id and convert to directory name
         instance_id = instance["instance_id"]

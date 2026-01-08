@@ -2,19 +2,22 @@
 """
 Analyze SWE-bench patches to extract symbol-level changes.
 
-This script extracts ground truth (GT) localization information from SWE-bench patches,
-identifying which symbols (functions, methods, classes) were modified, added, or deleted.
+This module extracts ground truth (GT) localization information from SWE-bench patches,
+identifying which symbols (functions, methods, classes) were modified, added,
+or deleted.
 Supports both SWE-bench Verified and Lite datasets.
 
 Usage Examples:
     # Process all instances in the test split using Verified dataset (default)
-    python scripts/swebench_gt_locate.py
+    python codeminer/dataset/gt_locate.py
 
     # Process all instances using Lite dataset
-    python scripts/swebench_gt_locate.py --dataset lite
+    python codeminer/dataset/gt_locate.py --dataset lite
 
     # Process first 10 instances of repo "django/django", output into local file
-    python scripts/swebench_gt_locate.py --dataset verified --filter "django__django-.*" --limit 10 --output results/test_gt.json --keep-repos
+    python codeminer/dataset/gt_locate.py --dataset verified \
+        --filter "django__django-.*" --limit 10 --output results/test_gt.json \
+        --keep-repos
 
 Output Format:
     Each entry in the output JSON array contains:
@@ -24,7 +27,11 @@ Output Format:
         "base_commit": "6500928dc0e57be8f06d1162eacc3ba5e2eff692",
         "target_files":     ["astropy/coordinates/builtin_frames/itrs.py", ...],
         "symbols_modified": ["astropy/coordinates/builtin_frames/itrs.py:ITRS", ...],
-        "symbols_added":    ["astropy/coordinates/builtin_frames/itrs_observed_transforms.py:itrs_to_observed()", ...],
+        "symbols_added":    [
+            "astropy/coordinates/builtin_frames/"
+            "itrs_observed_transforms.py:itrs_to_observed()",
+            ...,
+        ],
         "symbols_deleted": [],
         "error": null
     }
@@ -41,20 +48,13 @@ import os
 import re
 import shutil
 import subprocess
-
-# Add parent directory to path to import codeminer modules
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import datasets
-from datasets import Features, Value
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from codeminer.code_chunking import create_chunker  # noqa: E402
-from codeminer.log_utils import get_logger  # noqa: E402
+from ..code_chunking import create_chunker
+from ..log_utils import get_logger
+from .swebench import SwebenchDataset
 
 logger = get_logger(__name__)
 
@@ -335,15 +335,20 @@ class GTLocator:
         Compare symbols before and after patch to identify changes.
 
         Args:
-            symbols_before: Dictionary mapping symbol names to CodeChunk objects before patch
-            symbols_after: Dictionary mapping symbol names to CodeChunk objects after patch
+            symbols_before: Dictionary mapping symbol names to CodeChunk objects before
+                patch
+            symbols_after: Dictionary mapping symbol names to CodeChunk objects after
+                patch
             changed_ranges: Dictionary mapping file paths to list of changed line ranges
 
         Returns:
             Tuple of (symbols_modified, symbols_added, symbols_deleted)
         """
         logger.debug(
-            f"Comparing symbols: {len(symbols_before)} before, {len(symbols_after)} after"
+            (
+                f"Comparing symbols: {len(symbols_before)} before, "
+                f"{len(symbols_after)} after"
+            )
         )
 
         before_set = set(symbols_before.keys())
@@ -381,7 +386,8 @@ class GTLocator:
                 )
                 continue
 
-            # Length is the same, check if any changed lines overlap with this symbol's range
+            # Length is the same, check if any changed lines overlap with this symbol's
+            # range.
             has_overlap = any(
                 change_end >= chunk_after.start_line
                 and change_start <= chunk_after.end_line
@@ -434,7 +440,8 @@ class GTLocator:
             "error": None,
         }
 
-        # Setup repository - use shared repo directory (one per repository, not per instance)
+        # Setup repository - use shared repo directory (one per repository, not per
+        # instance).
         repo_dir_name = repo.replace("/", "_")
         repo_dir = os.path.join(self.work_dir, repo_dir_name)
         repo_url = f"https://github.com/{repo}.git"
@@ -462,7 +469,10 @@ class GTLocator:
         # Filter for Python files only (for now)
         python_files = [f for f in target_files if f.endswith(".py")]
         logger.info(
-            f"Found {len(python_files)} Python files in {len(target_files)} target files"
+            (
+                f"Found {len(python_files)} Python files in {len(target_files)} "
+                "target files"
+            )
         )
 
         if not python_files:
@@ -528,85 +538,26 @@ class GTLocator:
             logger.info(f"Keeping repositories in work directory: {self.work_dir}")
 
 
-def load_swebench(
-    split: str = "test",
-    filter_pattern: str = ".*",
-    limit: Optional[int] = None,
-    dataset_type: str = "verified",
-) -> datasets.Dataset:
-    """
-    Load the SWE-bench dataset with optional filtering and limiting.
-
-    Args:
-        split: Dataset split to load (default: "test")
-        filter_pattern: Regex pattern to filter instance IDs (default: ".*" - no filter)
-        limit: Maximum number of instances to return (default: None - no limit)
-        dataset_type: Dataset type - "verified" or "lite" (default: "verified")
-
-    Returns:
-        Dataset object
-    """
-    # Validate dataset_type
-    if dataset_type.lower() not in ("verified", "lite"):
-        raise ValueError(
-            f"Invalid dataset_type: {dataset_type}. Must be 'verified' or 'lite'"
-        )
-
-    logger.info(
-        f"Loading SWE-bench {dataset_type.capitalize()} dataset (split: {split})"
-    )
-
-    cache_dir = str(Path.home()) + "/.codeminer"
-    os.makedirs(cache_dir, exist_ok=True)
-
-    # Select dataset name based on type
-    if dataset_type.lower() == "lite":
-        dataset_name = "princeton-nlp/SWE-bench_Lite"
-    else:
-        dataset_name = "princeton-nlp/SWE-bench_Verified"
-
-    dataset_file = f'{dataset_name.replace("/", "__")}_{split}.json'
-    dataset_path = f"{cache_dir}/{dataset_file}"
-
-    if not os.path.exists(dataset_path):
-        ds = datasets.load_dataset(dataset_name, split=split)
-        logger.info(f"Loaded {len(ds)} instances from {dataset_name}")
-        ds.to_json(dataset_path)
-    else:
-        logger.info(f"Loading cached dataset from {dataset_path}")
-        base_features = {
-            "repo": Value("string"),
-            "instance_id": Value("string"),
-            "base_commit": Value("string"),
-            "patch": Value("string"),
-            "test_patch": Value("string"),
-            "problem_statement": Value("string"),
-            "hints_text": Value("string"),
-            "created_at": Value("string"),
-            "version": Value("string"),
-            "FAIL_TO_PASS": Value("string"),
-            "PASS_TO_PASS": Value("string"),
-            "environment_setup_commit": Value("string"),
-            "difficulty": Value("string"),
-        }
-        ft = Features(base_features)
-        ds = datasets.load_dataset(
-            "json", data_files={split: dataset_path}, split=split, features=ft
-        )
-
-    # Apply filter if specified
-    if filter_pattern != ".*":
-        logger.info(f"Filtering instances with pattern: {filter_pattern}")
-        ds = ds.filter(lambda x: bool(re.match(filter_pattern, x["instance_id"])))
-        logger.info(f"Filtered to {len(ds)} instances")
-
-    # Apply limit if specified
-    if limit is not None:
-        logger.info(f"Limiting to {limit} instances")
-        ds = ds.select(range(min(limit, len(ds))))
-
-    logger.info(f"Final dataset size: {len(ds)} instances")
-    return ds
+def build_gt_metadata(
+    dataset,
+    work_dir: Optional[str] = None,
+    keep_repos: bool = True,
+) -> List[Dict[str, Optional[str]]]:
+    locator = GTLocator(work_dir=work_dir)
+    results = []
+    for i, instance in enumerate(dataset):
+        logger.info(f"Processing instance {i+1}/{len(dataset)}")
+        try:
+            result = locator.analyze_instance(instance)
+            results.append(result)
+        except Exception as e:
+            logger.error(
+                f"Error processing {instance['instance_id']}: {e}", exc_info=True
+            )
+            results.append({"instance_id": instance["instance_id"], "error": str(e)})
+    if not keep_repos:
+        locator.cleanup()
+    return results
 
 
 def main():
@@ -662,33 +613,32 @@ def main():
     if args.output is None:
         cache_dir = str(Path.home()) + "/.codeminer"
         os.makedirs(cache_dir, exist_ok=True)
-        args.output = os.path.join(cache_dir, f"swebench_{args.dataset}_gt.json")
+        args.output = os.path.join(
+            cache_dir, f"swebench_{args.dataset}_{args.split}_gt.json"
+        )
 
-    # Load dataset with filtering and limiting
-    dataset = load_swebench(
-        split=args.split,
-        filter_pattern=args.filter,
-        limit=args.limit,
-        dataset_type=args.dataset,
+    dataset_name = (
+        "princeton-nlp/SWE-bench_Lite"
+        if args.dataset == "lite"
+        else "princeton-nlp/SWE-bench_Verified"
     )
+    dataset_obj = SwebenchDataset(
+        dataset=dataset_name,
+        split=args.split,
+        filter_instance=args.filter,
+    )
+    dataset = dataset_obj.load()
 
     logger.info(f"Processing {len(dataset)} instances")
 
-    # Initialize locator
-    locator = GTLocator(work_dir=args.work_dir)
+    if args.limit is not None:
+        dataset = dataset.select(range(min(args.limit, len(dataset))))
 
-    # Process instances
-    results = []
-    for i, instance in enumerate(dataset):
-        logger.info(f"Processing instance {i+1}/{len(dataset)}")
-        try:
-            result = locator.analyze_instance(instance)
-            results.append(result)
-        except Exception as e:
-            logger.error(
-                f"Error processing {instance['instance_id']}: {e}", exc_info=True
-            )
-            results.append({"instance_id": instance["instance_id"], "error": str(e)})
+    results = build_gt_metadata(
+        dataset=dataset,
+        work_dir=args.work_dir,
+        keep_repos=args.keep_repos,
+    )
 
     # Save results
     output_path = args.output
@@ -706,14 +656,13 @@ def main():
     logger.info(f"Successful: {success_count}")
     logger.info(f"Errors: {error_count}")
     logger.info(f"Results saved to: {output_path}")
-    logger.info(f"Repositories cached in: {locator.work_dir}")
+    logger.info(f"Repositories cached in: {args.work_dir or '~/.codeminer/tmp'}")
     logger.info(f"{'='*60}")
 
-    # Cleanup (will skip if using default cache directory)
-    if not args.keep_repos:
-        locator.cleanup()
-    else:
-        logger.info(f"Keeping all repositories in: {locator.work_dir}")
+    if args.keep_repos:
+        logger.info(
+            f"Keeping all repositories in: {args.work_dir or '~/.codeminer/tmp'}"
+        )
 
 
 if __name__ == "__main__":

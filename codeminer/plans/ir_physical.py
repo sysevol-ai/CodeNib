@@ -17,6 +17,7 @@ class PhysicalOperator(str, Enum):
     GRAPH_WALK = "graph.walk"
     REGEX_FILTER = "regex.filter"
     LLM_RERANK = "llm.rerank"
+    EMBEDDING_RERANK = "embedding.rerank"
     PASS_THROUGH = "pass.through"
 
 

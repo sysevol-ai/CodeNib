@@ -35,10 +35,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from codeminer.env.process_swebench_data import (
-    load_filter_swebench_dataset_explicit,
-    process_swebench_instance,
-)
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.scip_interface.scip_decode import SCIPGraphDecoder
 from codeminer.scip_interface.scip_indexer import SCIPIndexer
 
@@ -54,20 +51,24 @@ DEFAULT_TEST_INSTANCES = [
 ]
 
 
-def get_or_generate_scip_file(project_root: Path, instance_id: str = None) -> Tuple[Path | None, bool]:
+def get_or_generate_scip_file(
+    project_root: Path, instance_id: str = None
+) -> Tuple[Path | None, bool]:
     """
     Get cached SCIP file or generate new one.
 
     Args:
         project_root: Project root directory
-        instance_id: Optional instance ID to use as cache key (recommended for SWE-bench instances)
+        instance_id: Optional instance ID to use as cache key (recommended for
+            SWE-bench instances)
 
     Returns:
         Tuple of (scip_file_path, success)
         If failed, returns (None, False)
     """
     # Use platform-independent temporary directory
-    # Use instance_id if provided (for SWE-bench), otherwise use project_root.name (for local projects)
+    # Use instance_id if provided (for SWE-bench), otherwise use project_root.name
+    # (for local projects).
     cache_dir_name = instance_id if instance_id else project_root.name
     scip_cache_dir = Path(tempfile.gettempdir()) / cache_dir_name
     scip_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -118,7 +119,8 @@ def generate_scip_index(project_root: Path, output_dir: Path) -> Path:
             return indexer.decoded_file
 
         # Generate new index
-        # IMPORTANT: Pass project_root as cwd so scip-python indexes the correct directory
+        # IMPORTANT: Pass project_root as cwd so scip-python indexes the correct
+        # directory.
         if not indexer.generate_index(cwd=project_root):
             raise RuntimeError("Failed to generate SCIP index")
 
@@ -151,7 +153,7 @@ def ensure_decoded_scip(scip_file: Path) -> Path:
         proto_file = module_dir / "scip.proto"
 
         if not proto_file.exists():
-            raise FileNotFoundError(f"scip.proto not found at {proto_file}")
+            raise FileNotFoundError(f"scip.proto not found at {proto_file}") from None
 
         # Use protoc to decode binary SCIP to text format (safe from shell injection)
         with (
@@ -174,7 +176,7 @@ def ensure_decoded_scip(scip_file: Path) -> Path:
         if result.returncode != 0:
             raise RuntimeError(
                 f"Failed to decode SCIP file: {result.stderr.decode('utf-8')}"
-            )
+            ) from None
 
         return decoded_file
 
@@ -283,9 +285,8 @@ def cpp_decode(
         elapsed = time.time() - start_time
 
         if result.returncode != 0:
-            print(
-                f"  ❌ Error (after {elapsed:.1f}s): {result.stderr if result.stderr else 'unknown error'}"
-            )
+            error_msg = result.stderr if result.stderr else "unknown error"
+            print(f"  ❌ Error (after {elapsed:.1f}s): {error_msg}")
             return False
 
         print(f"  ✓ C++ decoding completed in {elapsed:.1f}s")
@@ -372,9 +373,7 @@ def compare_nodes(py_nodes: List[Dict], cpp_nodes: List[Dict]) -> Tuple[int, Lis
                 node_diffs.append(f"    {key}: Python={py_val}, C++={cpp_val}")
 
         if node_diffs:
-            differences.append(
-                f"  Node '{name}':\n" + "\n".join(node_diffs) + "\n"
-            )
+            differences.append(f"  Node {name!r}:\n" + "\n".join(node_diffs) + "\n")
 
     return 0, differences
 
@@ -540,13 +539,19 @@ def generate_report(
             # Show count mismatches
             if node_count_mismatch > 0:
                 report.append(
-                    f"❌ Node count mismatch: Python={len(py_nodes)}, C++={len(cpp_nodes)}"
+                    (
+                        f"❌ Node count mismatch: Python={len(py_nodes)}, "
+                        f"C++={len(cpp_nodes)}"
+                    )
                 )
                 report.append("")
 
             if edge_count_mismatch > 0:
                 report.append(
-                    f"❌ Edge count mismatch: Python={len(py_edges)}, C++={len(cpp_edges)}"
+                    (
+                        f"❌ Edge count mismatch: Python={len(py_edges)}, "
+                        f"C++={len(cpp_edges)}"
+                    )
                 )
                 report.append("")
 
@@ -596,11 +601,14 @@ def process_single_instance(
 
     try:
         # Load the dataset and filter by instance ID
-        dataset = load_filter_swebench_dataset_explicit(
+        dataset_obj = SwebenchDataset(
             dataset=args.swebench_dataset,
-            filter_instance=instance_id,
             split=args.swebench_split,
+            filter_instance=instance_id,
+            root=args.cache_dir,
+            repo_root=args.cache_dir,
         )
+        dataset = dataset_obj.load()
 
         if len(dataset) == 0:
             print(f"❌ Instance {instance_id} not found in {args.swebench_dataset}")
@@ -611,8 +619,9 @@ def process_single_instance(
         print(f"  Base commit: {instance['base_commit']}")
 
         # Process the instance (download and checkout)
+        dataset_obj.process_instance(instance, repo_root=args.cache_dir)
         project_root = Path(
-            process_swebench_instance(instance, cache_dir=args.cache_dir)
+            dataset_obj.get_repo_path(instance, repo_root=args.cache_dir)
         )
         print(f"  Project root: {project_root}")
 
@@ -710,7 +719,10 @@ def process_local_project(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Compare C++ and Python SCIP decoders. See file docstring for usage examples."
+        description=(
+            "Compare C++ and Python SCIP decoders. See file docstring for usage "
+            "examples."
+        )
     )
 
     parser.add_argument(
@@ -782,11 +794,13 @@ def main():
         import random
 
         print(f"Loading dataset {swebench_dataset}...")
-        dataset = load_filter_swebench_dataset_explicit(
+        dataset_obj = SwebenchDataset(
             dataset=swebench_dataset,
-            filter_instance=".*",  # Load all
             split=swebench_split,
+            filter_instance=".*",
+            root=cache_dir,
         )
+        dataset = dataset_obj.load()
 
         # Randomly select N instances
         total_instances = len(dataset)
@@ -796,7 +810,10 @@ def main():
 
         instance_ids = [item["instance_id"] for item in dataset]
         print(
-            f"Randomly selected {len(instance_ids)} instances from {total_instances} total"
+            (
+                f"Randomly selected {len(instance_ids)} instances from "
+                f"{total_instances} total"
+            )
         )
 
     elif args.instance:
@@ -839,8 +856,10 @@ def main():
                     total_issues = stats.get("total_issues", 0)
                     node_diffs = stats.get("node_diffs", 0)
                     edge_diffs = stats.get("edge_diffs", 0)
-                    print(f"  ❌ {instance_id}: {total_issues} issues "
-                          f"({node_diffs} node diffs, {edge_diffs} edge diffs)")
+                    print(
+                        f"  ❌ {instance_id}: {total_issues} issues "
+                        f"({node_diffs} node diffs, {edge_diffs} edge diffs)"
+                    )
         else:
             print("✅ All instances passed!")
 
@@ -860,7 +879,8 @@ def main():
     # Traditional mode: test local project
     if args.project_root is None:
         print(
-            "❌ Error: Either provide project_root or use --instance/--multiple-instances/--num-instances"
+            "❌ Error: Either provide project_root or use "
+            "--instance/--multiple-instances/--num-instances"
         )
         parser.print_help()
         return 1

@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from codeminer.env import load_filter_locbench_dataset, process_locbench_instance
+from codeminer.dataset.locbench import LocbenchDataset
 from codeminer.graph.transverse_graph import traverse_tree_structure
 from codeminer.scip_interface import SCIPIndexer
 
@@ -17,10 +17,12 @@ def test_scip_exclude():
     # exclude_file = "sympy/polys/numberfields/resolvent_lookup.py"
     exclude_pattern = "test_*"
     args = argparse.Namespace(**args_dict)
-    dataset = load_filter_locbench_dataset(args=args)
+    dataset_obj = LocbenchDataset.from_args(args)
+    dataset = dataset_obj.load()
 
     instance = dataset[0]
-    repo_path = process_locbench_instance(instance)
+    dataset_obj.process_instance(instance)
+    repo_path = dataset_obj.get_repo_path(instance)
     # set output path with ~/.codeminer/instance_id
     output_path = str(Path.home()) + "/.codeminer/" + instance["instance_id"]
     # setup codegraph with exclude patterns

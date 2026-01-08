@@ -2,10 +2,7 @@ import argparse
 from pathlib import Path
 
 from codeminer.agent.rerank_agent import RerankAgent
-from codeminer.env.process_swebench_data import (
-    load_filter_swebench_dataset,
-    process_swebench_instance,
-)
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.graph.roi_subgraph import ROISubgraph
 from codeminer.index import BM25CodeIndexer
 from codeminer.llm.llm_config import LLMConfig, LLMProvider
@@ -32,14 +29,16 @@ args_dict = {
 if __name__ == "__main__":
     # load instance from command line
     args = argparse.Namespace(**args_dict)
-    dataset = load_filter_swebench_dataset(args=args)
+    dataset_obj = SwebenchDataset.from_args(args)
+    dataset = dataset_obj.load()
     for _, instance in enumerate(dataset):
         print(
             f"Loaded instance: {instance['instance_id']} from repo {instance['repo']}"
         )
         print(f"Base commit: {instance['base_commit']}")
         print(f"Problem statement: {instance['problem_statement']}")
-        repo_path = process_swebench_instance(instance)
+        dataset_obj.process_instance(instance)
+        repo_path = dataset_obj.get_repo_path(instance)
         # set output path with ~/.codeminer/instance_id
         output_path = str(Path.home()) + "/.codeminer/" + instance["instance_id"]
 

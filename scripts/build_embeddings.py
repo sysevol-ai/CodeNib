@@ -15,12 +15,8 @@ import logging
 import sys
 from pathlib import Path
 
-from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-from codeminer.env.process_swebench_data import (
-    load_filter_swebench_dataset,
-    process_swebench_instance,
-)
-from codeminer.index.embedding import CodeVectorStore
+from codeminer.dataset.swebench import SwebenchDataset
+from codeminer.index.embedding import build_hierarchical_vector_store
 from codeminer.log_utils import get_logger
 from codeminer.profiler import Profiler
 
@@ -96,7 +92,6 @@ def parse_args():
         choices=["ip", "l2"],
         help="Distance metric for FAISS index (ip: inner product, l2: L2 distance)",
     )
-
     # Repository processing configuration
     parser.add_argument(
         "--languages",
@@ -122,6 +117,12 @@ def parse_args():
         choices=["L0", "L2"],
         help="Chunk levels to build and index (choose one or both)",
     )
+    parser.add_argument(
+        "--plan-name",
+        type=str,
+        default=None,
+        help="Optional plan name to nest embedding artifacts under.",
+    )
 
     # Storage configuration
     parser.add_argument(
@@ -144,6 +145,11 @@ def parse_args():
         default=None,
         help="Directory to store profiler summaries (default: <storage-dir>/profile_log)",
     )
+    parser.add_argument(
+        "--enable-profiler",
+        action="store_true",
+        help="Enable profiler summaries even if --profile-dir is not provided.",
+    )
     return parser.parse_args()
 
 
@@ -152,15 +158,13 @@ def build_embeddings(args):
 
     build_levels = [level.lower() for level in args.build_levels]
 
-    # Prepare dataset args
-    dataset_args = argparse.Namespace(
+    # Load dataset
+    dataset_obj = SwebenchDataset(
         dataset=args.dataset,
         split=args.split,
         filter_instance=args.filter_instance,
     )
-
-    # Load dataset
-    dataset_instances = load_filter_swebench_dataset(args=dataset_args)
+    dataset_instances = dataset_obj.load()
 
     if len(dataset_instances) == 0:
         raise ValueError(f"No instances found in {args.dataset}")
@@ -193,10 +197,13 @@ def build_embeddings(args):
                 emit_events=False,
                 summary_level=logging.INFO,
             )
-            instance_profiler.enabled = args.profile_dir is not None
+            instance_profiler.enabled = (
+                args.enable_profiler or args.profile_dir is not None
+            )
 
             # Process instance to get repo path
-            repo_path = process_swebench_instance(instance)
+            dataset_obj.process_instance(instance)
+            repo_path = dataset_obj.get_repo_path(instance)
 
             # Convert instance_id to directory name (replace / with __)
             instance_dir_name = instance_id.replace("/", "__")
@@ -218,103 +225,35 @@ def build_embeddings(args):
                 continue
             elif config_file.exists() and args.force_rebuild:
                 logger.info(
-                    f"⚠ Embedding already exists but force-rebuild is enabled, rebuilding..."
+                    f" Embedding already exists but force-rebuild is enabled, rebuilding..."
                 )
 
-            # Shared repo config
-            repo_cfg = RepoChunkingConfig(languages=list(args.languages))
+            embedding_kwargs = {}
+            if args.trust_remote_code:
+                embedding_kwargs["model_kwargs"] = {"trust_remote_code": True}
+            if args.batch_size:
+                embedding_kwargs["encode_kwargs"] = {"batch_size": args.batch_size}
 
-            # Build requested levels
-            chunks_by_level = {}
-
-            level_configs = {
-                "l0": {
-                    "log": "Generating L0 chunks (file-level skeletons)...",
-                    "profiler_section": "chunk_repository_l0",
-                    "chunker_kwargs": dict(
-                        language=args.languages[0],
-                        repo_config=repo_cfg,
-                        max_lines_per_chunk=None,
-                        chunk_depth=0,
-                        skeleton_mode=True,
-                    ),
-                    "log_suffix": "L0 chunks (file skeletons)",
-                },
-                "l2": {
-                    "log": "Generating L2 chunks (function/method-level)...",
-                    "profiler_section": "chunk_repository_l2",
-                    "chunker_kwargs": dict(
-                        language=args.languages[0],
-                        repo_config=repo_cfg,
-                        max_lines_per_chunk=args.max_lines_per_chunk,
-                        chunk_depth=2,
-                        l2_level_exclusive=True,
-                        skeleton_mode=False,
-                    ),
-                    "log_suffix": "L2 chunks (functions/methods)",
-                },
-            }
-
-            for level in build_levels:
-                cfg = level_configs[level]
-                logger.info(cfg["log"])
-                with instance_profiler.section(cfg["profiler_section"]):
-                    chunker = CodeChunker(**cfg["chunker_kwargs"])
-                    chunks_by_level[level] = chunker.chunk_repository(
-                        repo_path=repo_path
-                    )
-                logger.info(
-                    f"Generated {len(chunks_by_level[level])} {cfg['log_suffix']}"
-                )
-
-            l0_chunks = chunks_by_level.get("l0", [])
-            l2_chunks = chunks_by_level.get("l2", [])
-
-            if not l0_chunks and not l2_chunks:
-                logger.warning(f"No code chunks generated from repository, skipping...")
-                continue
-
-            # [Main] Create vector store
-            logger.info("Creating vector store...")
-            with instance_profiler.section("create_vector_store"):
-                # Prepare embedding kwargs
-                embedding_kwargs = {}
-                if args.trust_remote_code:
-                    embedding_kwargs["model_kwargs"] = {"trust_remote_code": True}
-                if args.batch_size:
-                    embedding_kwargs["encode_kwargs"] = {"batch_size": args.batch_size}
-
-                vector_store = CodeVectorStore(
+            logger.info("Building hierarchical vector store...")
+            plan_name = args.plan_name
+            with instance_profiler.section("build_vector_store"):
+                build_hierarchical_vector_store(
+                    repo_path=repo_path,
+                    index_path=str(instance_final_dir),
+                    plan_name=plan_name,
+                    languages=list(args.languages),
+                    max_lines_per_chunk=args.max_lines_per_chunk,
+                    build_levels=build_levels,
                     embedding_model=args.embedding_model,
                     embedding_provider=args.embedding_provider,
-                    dimension=args.embedding_dimension,
+                    embedding_dimension=args.embedding_dimension,
+                    embedding_kwargs=embedding_kwargs,
                     index_metric=args.index_metric,
-                    store_path=str(instance_final_dir),
                     profiler=instance_profiler,
-                    **embedding_kwargs,
                 )
 
-            # [Main] Add L0 chunks to vector store
-            if l0_chunks:
-                logger.info("Adding L0 chunks to vector store...")
-                with instance_profiler.section("add_chunks_l0"):
-                    l0_chunks_for_indexing = [chunk._asdict() for chunk in l0_chunks]
-                    vector_store.add_code_chunks(l0_chunks_for_indexing, level="l0")
-
-            # [Main] Add L2 chunks to vector store
-            if l2_chunks:
-                logger.info("Adding L2 chunks to vector store...")
-                with instance_profiler.section("add_chunks_l2"):
-                    l2_chunks_for_indexing = [chunk._asdict() for chunk in l2_chunks]
-                    vector_store.add_code_chunks(l2_chunks_for_indexing, level="l2")
-
-            # Save vector store
-            logger.info("Saving vector store...")
-            with instance_profiler.section("save_vector_store"):
-                vector_store.save(str(instance_final_dir))
-
             # Save profiler report
-            if args.profile_dir:
+            if args.enable_profiler or args.profile_dir:
                 logger.info(f"Profiler summary for {instance_id}:")
                 profile_summary = instance_profiler.report(reset=True)
 
@@ -335,9 +274,6 @@ def build_embeddings(args):
                     "instance_id": instance_id,
                     "repo": instance.get("repo", "unknown"),
                     "base_commit": instance.get("base_commit", "unknown"),
-                    "l0_chunks": len(l0_chunks),
-                    "l2_chunks": len(l2_chunks),
-                    "total_chunks": len(l0_chunks) + len(l2_chunks),
                     "embedding_model": args.embedding_model,
                     "embedding_dimension": args.embedding_dimension,
                     "total_duration": sum(
@@ -346,20 +282,16 @@ def build_embeddings(args):
                     "sections": sections_payload,
                 }
 
+                model_suffix = args.embedding_model.replace("/", "__")
                 profile_file = (
-                    profile_output_dir / f"{instance_id.replace('/', '__')}.json"
+                    profile_output_dir
+                    / f"{instance_id.replace('/', '__')}__{model_suffix}.json"
                 )
                 profile_file.write_text(json.dumps(profile_payload, indent=2))
                 logger.info(f"Saved profiler results to {profile_file}")
 
             logger.info(
                 f"✓ Successfully built hierarchical embedding for {instance_id}"
-            )
-            logger.info(
-                f"  - L0 chunks (file skeletons): {len(vector_store.l0_documents)}"
-            )
-            logger.info(
-                f"  - L2 chunks (functions/methods): {len(vector_store.l2_documents)}"
             )
             logger.info(f"  - Saved to: {instance_final_dir}")
 

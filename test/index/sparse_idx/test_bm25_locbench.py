@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from codeminer.env import load_filter_locbench_dataset, process_locbench_instance
+from codeminer.dataset.locbench import LocbenchDataset
 from codeminer.index import BM25CodeIndexer
 from codeminer.scip_interface import SCIPIndexer
 
@@ -14,9 +14,10 @@ args_dict = {
 
 
 def test_bm25_index():
-    """Test compatibility between BM25 graph-like output and traverse graph get_node_data."""
+    """Test compatibility between BM25 graph-like output and get_node_data."""
     args = argparse.Namespace(**args_dict)
-    dataset = load_filter_locbench_dataset(args=args)
+    dataset_obj = LocbenchDataset.from_args(args)
+    dataset = dataset_obj.load()
     exclude_pattern = "test_*"
     for _, instance in enumerate(dataset):
         print(
@@ -24,7 +25,8 @@ def test_bm25_index():
         )
         print(f"Base commit: {instance['base_commit']}")
         print(f"Problem statement: {instance['problem_statement']}")
-        repo_path = process_locbench_instance(instance)
+        dataset_obj.process_instance(instance)
+        repo_path = dataset_obj.get_repo_path(instance)
         # set output path with ~/.codeminer/instance_id
         output_path = str(Path.home()) + "/.codeminer/" + instance["instance_id"]
 
@@ -33,7 +35,8 @@ def test_bm25_index():
             repo_path, output_dir=output_path, exclude_patterns=[exclude_pattern]
         )
 
-        # Run the indexing pipeline, allowing skip_index and skip_decode for faster tests
+        # Run the indexing pipeline, allowing skip_index and skip_decode for faster
+        # tests.
         graph = repo_indexer.run_pipeline(
             project_name="test_swebench", skip_level="graph"
         )
@@ -54,7 +57,7 @@ def test_bm25_index():
         results_filtered = bm25_indexer.search(
             query, top_k=10, return_code_content=False, filter_test=True
         )
-        print(f"BM25 query results for '{query}':")
+        print(f"BM25 query results for {query!r}:")
         for result in results_filtered:
             print(f"Node: {result.node_name}")
             print(f"  {result}")

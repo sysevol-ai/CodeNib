@@ -2,10 +2,7 @@ import argparse
 from pathlib import Path
 
 from codeminer.code_chunker import CodeChunker
-from codeminer.env.process_swebench_data import (
-    load_filter_swebench_dataset,
-    process_swebench_instance,
-)
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.index import BM25CodeIndexer
 from codeminer.scip_interface import SCIPIndexer
 
@@ -18,16 +15,18 @@ args_dict = {
 
 
 def test_bm25_transgraph_compatibility():
-    """Test compatibility between BM25 graph-like output and traverse graph get_node_data."""
+    """Test compatibility between BM25 graph-like output and get_node_data."""
     args = argparse.Namespace(**args_dict)
-    dataset = load_filter_swebench_dataset(args=args)
+    dataset_obj = SwebenchDataset.from_args(args)
+    dataset = dataset_obj.load()
     for _, instance in enumerate(dataset):
         print(
             f"Loaded instance: {instance['instance_id']} from repo {instance['repo']}"
         )
         print(f"Base commit: {instance['base_commit']}")
         print(f"Problem statement: {instance['problem_statement']}")
-        repo_path = process_swebench_instance(instance)
+        dataset_obj.process_instance(instance)
+        repo_path = dataset_obj.get_repo_path(instance)
         # set output path with ~/.codeminer/instance_id
         output_path = str(Path.home()) + "/.codeminer/" + instance["instance_id"]
 
@@ -47,7 +46,7 @@ def test_bm25_transgraph_compatibility():
         # query_test = "separability_matrix()."
         # query = query_test
         results = bm25_indexer.search(query, top_k=5)
-        print(f"BM25 query results for '{query}':")
+        print(f"BM25 query results for {query!r}:")
         for result in results:
             print(f"Node: {result.node_name}")
             print(f"  {result}")  # Uses the new __repr__ method
@@ -60,10 +59,12 @@ def test_bm25_indexer_from_chunks():
     """Test building BM25 index from CodeChunker output."""
     # Path to repo
     args = argparse.Namespace(**args_dict)
-    dataset = load_filter_swebench_dataset(args=args)
+    dataset_obj = SwebenchDataset.from_args(args)
+    dataset = dataset_obj.load()
     instance = dataset[0]  # Just take the first instance for testing
     print(f"Loaded instance: {instance['instance_id']} from repo {instance['repo']}")
-    repo_path = process_swebench_instance(instance)
+    dataset_obj.process_instance(instance)
+    repo_path = dataset_obj.get_repo_path(instance)
     # chunk repository
     chunker = CodeChunker(language="python")
     chunks = chunker.chunk_repository(str(repo_path))
@@ -83,7 +84,7 @@ def test_bm25_indexer_from_chunks():
     for query in search_queries:
         results = bm25_indexer.search(query, top_k=3, return_code_content=False)
         assert isinstance(results, list)
-        print(f"Search results for query '{query}':")
+        print(f"Search results for query {query!r}:")
         for result in results:
             print(f"Node: {result.node_name}")
             print(f"  {result}")  # Uses the __repr__ method
@@ -93,7 +94,7 @@ def test_bm25_indexer_from_chunks():
             query, top_k=3, return_code_content=False, filter_test=True
         )
         assert isinstance(results_filtered, list)
-        print(f"\nSearch results for query '{query}' (filter_test=True):")
+        print(f"\nSearch results for query {query!r} (filter_test=True):")
         for result in results_filtered:
             print(f"Node: {result.node_name}")
             print(f"  {result}")

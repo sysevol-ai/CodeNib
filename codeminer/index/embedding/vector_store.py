@@ -8,7 +8,7 @@ import json
 import pickle
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Set
 
 import faiss
 from langchain_community.docstore import InMemoryDocstore
@@ -159,8 +159,10 @@ class CodeVectorStore:
         """
         Determine if a result should be filtered based on score threshold.
 
-        For inner product (ip): higher scores are better (similarity), filter if score < threshold
-        For L2 distance (l2): lower scores are better (distance), filter if score > threshold
+        For inner product (ip): higher scores are better (similarity),
+        filter if score < threshold
+        For L2 distance (l2): lower scores are better (distance),
+        filter if score > threshold
         """
         if self.index_metric == "ip":
             # Inner product: higher is better (similarity score)
@@ -192,7 +194,8 @@ class CodeVectorStore:
 
         Args:
             code_chunks: List of code chunk dictionaries with content and metadata
-            level: Index level to add chunks to ("l0" for file skeletons, "l2" for functions/methods)
+            level: Index level to add chunks to
+            ("l0" for file skeletons, "l2" for functions/methods)
         """
         if not code_chunks:
             logger.warning("No code chunks provided")
@@ -271,6 +274,7 @@ class CodeVectorStore:
         top_k: int = 10,
         score_threshold: Optional[float] = None,
         level: Level = "l2",
+        mask_node_ids: Optional[Set[str]] = None,
     ) -> List[NodeInfo]:
         """
         Search for similar code chunks using semantic similarity.
@@ -280,6 +284,7 @@ class CodeVectorStore:
             top_k: Number of top results to return
             score_threshold: Minimum similarity score threshold
             level: Index level to search ("l0" for file skeletons, "l2" for functions/methods)
+            mask_node_ids: Optional set of CodeChunk.node_id values to filter results.
 
         Returns:
             List of NodeInfo objects with scores populated
@@ -292,7 +297,6 @@ class CodeVectorStore:
 
         logger.debug(f"Searching {level} for: {query[:100]}...")
 
-        # Perform similarity search with scores
         docs_with_scores = vector_store.similarity_search_with_score(query, k=top_k)
 
         # Convert to NodeInfo objects
@@ -319,7 +323,14 @@ class CodeVectorStore:
             )
             results.append(node_with_score)
 
-        logger.debug(f"Found {len(results)} results in {level}")
+        if mask_node_ids:
+            results = [r for r in results if r.node_id in mask_node_ids]
+        if top_k:
+            results = results[:top_k]
+
+        logger.debug(
+            f"Found {len(results)} results in {level} (masked={bool(mask_node_ids)})"
+        )
         return results
 
     def search_with_content(
@@ -328,6 +339,7 @@ class CodeVectorStore:
         top_k: int = 10,
         score_threshold: Optional[float] = None,
         level: Level = "l2",
+        mask_node_ids: Optional[Set[str]] = None,
     ) -> List[NodeInfo]:
         """
         Search and return results with content included.
@@ -337,6 +349,7 @@ class CodeVectorStore:
             top_k: Number of top results to return
             score_threshold: Minimum similarity score threshold
             level: Index level to search ("l0" for file skeletons, "l2" for functions/methods)
+            mask_node_ids: Optional set of CodeChunk.node_id values to filter results.
 
         Returns:
             List of NodeInfo objects with content populated
@@ -347,7 +360,6 @@ class CodeVectorStore:
             logger.warning(f"No {level} vector store available. Add code chunks first.")
             return []
 
-        # Perform similarity search with scores
         docs_with_scores = vector_store.similarity_search_with_score(query, k=top_k)
 
         # Convert to NodeInfo objects
@@ -375,6 +387,15 @@ class CodeVectorStore:
             )
             results.append(node_with_content)
 
+        if mask_node_ids:
+            results = [r for r in results if r.node_id in mask_node_ids]
+        if top_k:
+            results = results[:top_k]
+
+        logger.debug(
+            f"Found {len(results)} results with content in {level} "
+            f"(masked={bool(mask_node_ids)})"
+        )
         return results
 
     def hierarchical_search(

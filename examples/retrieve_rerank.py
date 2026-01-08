@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-This script demonstrates the usage of RetrieveRerankPipeline on SWE-bench or LocBench datasets.
-Before running the pipeline, start a vLLM server for the rerank model:
+This script demonstrates RetrieveRerankPipeline on SWE-bench or LocBench
+datasets. Before running the pipeline, start a vLLM server for the rerank
+model:
 
 ```bash
 python scripts/start_vllm_server.py --model Qwen/Qwen2.5-Coder-7B
@@ -21,7 +22,13 @@ Usage:
         --embedding-provider huggingface
 
     # Run with hybrid (dense + sparse) retrieval before rerank
-    python examples/retrieve_rerank.py --dataset swebench_lite --retrieval-mode hybrid
+    python examples/retrieve_rerank.py --dataset swebench_lite \\
+        --retrieval-mode hybrid
+
+    # Use embedding-based rerank instead of LLM listwise reranker
+    python examples/retrieve_rerank.py --dataset swebench_lite \\
+        --rerank-strategy embedding \\
+        --rerank-embedding-model jinaai/jina-code-embeddings-v2-base
 
     # Override cache directories (one for indices, one for repos)
     python examples/retrieve_rerank.py --dataset swebench_lite \\
@@ -31,17 +38,10 @@ Usage:
 
 import argparse
 import json
-import os
 from pathlib import Path
 
-from codeminer.env.process_locbench_data import (
-    load_filter_locbench_dataset,
-    process_locbench_instance,
-)
-from codeminer.env.process_swebench_data import (
-    load_filter_swebench_dataset,
-    process_swebench_instance,
-)
+from codeminer.dataset.locbench import LocbenchDataset
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
@@ -52,23 +52,9 @@ from codeminer.eval.retrieval_eval import (
 from codeminer.llm.llm_config import LLMProvider
 from codeminer.log_utils import get_logger
 from codeminer.model import RetrieveRerankPipeline, build_retrieve_plan
+from codeminer.model.retrieve_rerank_pipeline import RETRIEVAL_TOP_K
 
 logger = get_logger(__name__)
-
-DATASET_CONFIGS = {
-    "swebench_lite": {
-        "dataset": "princeton-nlp/SWE-bench_Lite",
-        "split": "test",
-        "loader": load_filter_swebench_dataset,
-        "processor": process_swebench_instance,
-    },
-    "locbench_v1": {
-        "dataset": "czlll/Loc-Bench_V1",
-        "split": "test",
-        "loader": load_filter_locbench_dataset,
-        "processor": process_locbench_instance,
-    },
-}
 
 
 def parse_args():
@@ -137,7 +123,17 @@ def parse_args():
         "--retrieval-only",
         action="store_true",
         default=False,
-        help="Run retrieval only without reranking (for evaluating retrieval performance)",
+        help=(
+            "Run retrieval only without reranking "
+            "(for evaluating retrieval performance)"
+        ),
+    )
+    parser.add_argument(
+        "--rerank-strategy",
+        type=str,
+        default="llm",
+        choices=["llm", "embedding"],
+        help="Rerank method to apply after retrieval.",
     )
     parser.add_argument(
         "--rerank-model",
@@ -166,8 +162,52 @@ def parse_args():
         type=int,
         default=None,
         help=(
-            "Stride between rerank windows; defaults to the window size when unspecified."
+            "Stride between rerank windows; defaults to the window size "
+            "when unspecified."
         ),
+    )
+    parser.add_argument(
+        "--rerank-top-k",
+        type=int,
+        default=None,
+        help=(
+            "Maximum number of candidates to pass to the reranker."
+            "Must be >= max(metrics-k) and <= retrieve top_k."
+        ),
+    )
+    parser.add_argument(
+        "--rerank-embedding-model",
+        type=str,
+        default=None,
+        help=(
+            "Optional embedding model for embedding-based rerank "
+            "(defaults to retrieval model)."
+        ),
+    )
+    parser.add_argument(
+        "--rerank-embedding-provider",
+        type=str,
+        default=None,
+        choices=["openai", "huggingface"],
+        help=(
+            "Embedding provider for rerank embeddings "
+            "(defaults to retrieval provider)."
+        ),
+    )
+    parser.add_argument(
+        "--rerank-embedding-dimension",
+        type=int,
+        default=None,
+        help=(
+            "Embedding dimension for rerank embeddings "
+            "(defaults to retrieval dimension)."
+        ),
+    )
+    parser.add_argument(
+        "--rerank-embedding-batch-size",
+        type=int,
+        default=32,
+        help="Batch size for rerank embedding encoding (embedding strategy only).",
     )
 
     # Repository processing configuration
@@ -204,14 +244,16 @@ def parse_args():
     )
 
     # Evaluation configuration
-    default_eval_path = Path.home() / ".codeminer" / "swebench_lite_gt.json"
+    default_eval_path = Path.home() / ".codeminer" / "swebench_lite_dev_gt.json"
     parser.add_argument(
         "--eval-instances",
         type=str,
         default=str(default_eval_path),
         help=(
-            "Path to JSON file containing evaluation annotations (target_files, symbols_*). "
-            "Defaults to ~/.codeminer/swebench_lite_gt.json."
+            "Path to JSON file containing evaluation annotations "
+            "(target_files, symbols_*). "
+            "Defaults to ~/.codeminer/swebench_lite_dev_gt.json. "
+            "For SWE-bench, the file is generated if missing."
         ),
     )
     parser.add_argument(
@@ -245,56 +287,54 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_eval_metadata(path: str):
-    resolved = Path(os.path.expanduser(path)).resolve()
-    if not resolved.exists():
-        raise FileNotFoundError(
-            f"Evaluation annotations file not found at {resolved}. "
-            "Generate it via scripts/swebench_gt_locate.py or point --eval-instances elsewhere."
-        )
-    with open(resolved, "r", encoding="utf-8") as fh:
-        payload = json.load(fh)
-    if isinstance(payload, dict) and "instances" in payload:
-        records = payload["instances"]
-    elif isinstance(payload, list):
-        records = payload
-    else:
-        records = [payload]
-    metadata = {}
-    for entry in records:
-        instance_id = entry.get("instance_id")
-        if instance_id:
-            metadata[instance_id] = entry
-    return metadata
-
-
 def run_pipeline(args):
     """Run the retrieve + rerank pipeline on the specified dataset."""
 
     # Get dataset configuration
     dataset = args.dataset
-    dataset_config = DATASET_CONFIGS[dataset]
-
-    # Prepare dataset args
-    dataset_args = argparse.Namespace(
-        dataset=dataset_config["dataset"],
-        split=args.split,
-        filter_instance=args.filter_instance,
-    )
+    if dataset == "swebench_lite":
+        dataset_name = "princeton-nlp/SWE-bench_Lite"
+        dataset_split = "dev"
+        dataset_class = SwebenchDataset
+    elif dataset == "locbench_v1":
+        dataset_name = "czlll/Loc-Bench_V1"
+        dataset_split = "test"
+        dataset_class = LocbenchDataset
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset}")
 
     # Load dataset
-    dataset_instances = dataset_config["loader"](args=dataset_args)
+    dataset_obj = dataset_class(
+        dataset=dataset_name,
+        split=dataset_split,
+        filter_instance=args.filter_instance,
+        repo_root=args.repo_cache_dir,
+    )
+    dataset_instances = dataset_obj.load()
 
     if len(dataset_instances) == 0:
         raise ValueError(f"No instances found in {dataset} dataset")
 
     logger.info("Loaded %d instance(s)", len(dataset_instances))
 
-    eval_metadata = load_eval_metadata(args.eval_instances)
+    eval_metadata = dataset_obj.load_eval_metadata(args.eval_instances)
     retrieve_plan = build_retrieve_plan(args.retrieval_mode)
+    retrieve_top_k = max((stage.top_k or RETRIEVAL_TOP_K) for stage in retrieve_plan)
     aggregate = {}
     metrics_k = sorted(set(args.metrics_k))
-    max_k = max(metrics_k)
+    metric_max_k = max(metrics_k)
+    if not args.retrieval_only and args.rerank_top_k is not None:
+        if args.rerank_top_k < metric_max_k:
+            raise ValueError(
+                "rerank_top_k must be >= the largest metrics-k value "
+                f"({metric_max_k}), got {args.rerank_top_k}."
+            )
+        if args.rerank_top_k > retrieve_top_k:
+            raise ValueError(
+                "rerank_top_k must be <= retrieve top_k "
+                f"({retrieve_top_k}), got {args.rerank_top_k}."
+            )
+    query_top_k = metric_max_k
     eval_count = 0
     all_results = [] if args.result_path else None
 
@@ -312,7 +352,8 @@ def run_pipeline(args):
             continue
 
         # Process instance to get repo path
-        repo_path = dataset_config["processor"](instance, cache_dir=args.repo_cache_dir)
+        dataset_obj.process_instance(instance)
+        repo_path = dataset_obj.get_repo_path(instance)
 
         # Compute index path
         instance_dir_name = instance_id.replace("/", "__")
@@ -325,6 +366,12 @@ def run_pipeline(args):
                 "batch_size": args.batch_size,
             },
         }
+        rerank_embedding_kwargs = {
+            "trust_remote_code": args.trust_remote_code,
+            "encode_kwargs": {
+                "batch_size": args.rerank_embedding_batch_size,
+            },
+        }
 
         pipeline = RetrieveRerankPipeline(
             repo_path=repo_path,
@@ -335,6 +382,11 @@ def run_pipeline(args):
             embedding_model_kwargs=embedding_model_kwargs,
             rerank_model=args.rerank_model,
             rerank_provider=LLMProvider(args.rerank_provider),
+            rerank_strategy=args.rerank_strategy,
+            rerank_embedding_model=args.rerank_embedding_model,
+            rerank_embedding_provider=args.rerank_embedding_provider,
+            rerank_embedding_dimension=args.rerank_embedding_dimension,
+            rerank_embedding_model_kwargs=rerank_embedding_kwargs,
             languages=args.languages,
             max_lines_per_chunk=args.max_lines_per_chunk,
             retrieval_plan=retrieve_plan,
@@ -342,11 +394,12 @@ def run_pipeline(args):
             rerank_window_size=args.rerank_window_size,
             rerank_window_step=args.rerank_window_step,
             enable_rerank=not args.retrieval_only,
+            rerank_candidate_top_k=args.rerank_top_k,
         )
 
         # Query the pipeline
         query = instance["problem_statement"]
-        results = pipeline.query(query=query, top_k=max_k)
+        results = pipeline.query(query=query, top_k=query_top_k)
 
         metrics = evaluate_predictions(
             nodes=results,
@@ -372,8 +425,8 @@ def run_pipeline(args):
         # Collect results if result_path is provided
         if all_results is not None:
             unique_files_ordered, normalized_symbols = extract_predictions(results)
-            metric_k_files = unique_files_ordered[:max_k]
-            metric_k_node_ids = normalized_symbols[:max_k]
+            metric_k_files = unique_files_ordered[:metric_max_k]
+            metric_k_node_ids = normalized_symbols[:metric_max_k]
 
             result_entry = {
                 "instance_id": instance_id,
