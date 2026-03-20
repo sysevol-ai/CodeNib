@@ -19,6 +19,38 @@ from claude_agent_sdk import query, ClaudeAgentOptions
 
 from ..log_utils import get_logger
 
+# JSON Schema for structured output from the localization agent
+LOC_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "locations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "type": {
+                        "type": "string",
+                        "enum": ["function", "class", "method", "field", "module", "variable"],
+                    },
+                    "file_path": {"type": "string"},
+                    "line_start": {"type": "integer"},
+                    "line_end": {"type": "integer"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["modify", "add", "delete"],
+                    },
+                    "description": {"type": "string"},
+                },
+                "required": ["name", "type", "file_path", "line_start", "line_end", "action"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["locations"],
+    "additionalProperties": False,
+}
+
 
 @dataclass
 class CodeSymbol:
@@ -148,12 +180,17 @@ class ClaudeLocAgent:
                 allowed_tools=self.allowed_tools,
                 permission_mode=self.permission_mode,
                 model=self.model,
+                output_format={
+                    "type": "json_schema",
+                    "schema": LOC_OUTPUT_SCHEMA,
+                },
             )
 
             self.logger.info(f"Starting code localization in: {repo_path}")
             self.logger.debug(f"Query: {query_text[:200]}...")
 
             execution_log = []
+            structured_result = None
             turn_count = 0
             usage_info = {}
             async for message in query(prompt=full_prompt, options=options):
@@ -165,8 +202,12 @@ class ClaudeLocAgent:
                     if turn_count % 10 == 0:
                         self.logger.info(f"  ... {turn_count} assistant messages received")
 
-                # Extract result text from ResultMessage
+                # Extract result from ResultMessage
                 if msg_type == "ResultMessage":
+                    # Prefer structured_output from output_format schema
+                    structured = getattr(message, 'structured_output', None)
+                    if structured is not None:
+                        structured_result = structured
                     if getattr(message, 'result', None):
                         execution_log.append(message.result)
                     usage = getattr(message, 'usage', None) or {}
@@ -206,7 +247,13 @@ class ClaudeLocAgent:
                     f"({turn_count} assistant messages)."
                 )
                 
-            locations = self._parse_locations(execution_log)
+            # Parse locations: prefer structured output, fall back to regex
+            if structured_result is not None:
+                self.logger.info("Parsing locations from structured_output (schema-validated)")
+                locations = self._parse_structured(structured_result)
+            else:
+                self.logger.info("No structured_output found, falling back to regex parsing")
+                locations = self._parse_locations(execution_log)
 
             return LocResult(
                 success=True,
@@ -278,6 +325,39 @@ class ClaudeLocAgent:
         )
 
         return "\n".join(parts)
+
+    def _parse_structured(self, data: Any) -> List[CodeSymbol]:
+        """Parse CodeSymbol objects from structured_output (schema-validated JSON)."""
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                self.logger.warning("structured_output is a string but not valid JSON.")
+                return []
+
+        items = []
+        if isinstance(data, dict) and isinstance(data.get("locations"), list):
+            items = data["locations"]
+        elif isinstance(data, list):
+            items = data
+        else:
+            self.logger.warning("Unexpected structured_output format: %s", type(data))
+            return []
+
+        symbols = []
+        for item in items:
+            if not isinstance(item, dict) or 'name' not in item:
+                continue
+            symbols.append(CodeSymbol(
+                name=item.get('name', ''),
+                type=item.get('type', ''),
+                file_path=item.get('file_path', ''),
+                line_start=int(item.get('line_start', 0)),
+                line_end=int(item.get('line_end', 0)),
+                action=item.get('action', ''),
+                description=item.get('description', ''),
+            ))
+        return symbols
 
     def _parse_locations(self, execution_log: List[str]) -> List[CodeSymbol]:
         """
