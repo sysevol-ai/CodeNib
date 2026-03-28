@@ -56,6 +56,7 @@ nav:
   - Guides:
       - SWE-bench Collection: collect_swebench.md
       - Upload to HuggingFace: upload_dataset_to_huggingface.md
+      - CI/CD: ci_cd.md
   - Components:
       - GT Locator: gt_locator.md
       - Incremental Graph: incremental_graph.md
