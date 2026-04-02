@@ -608,6 +608,8 @@ class ClaudeQuerySynthesizer:
             file_path = attrs.get("file")
             if not file_path or is_test_file(file_path):
                 continue
+            if self._is_declaration_file(file_path):
+                continue
 
             start_line = attrs.get("start_line")
             end_line = attrs.get("end_line")
@@ -659,16 +661,106 @@ class ClaudeQuerySynthesizer:
 
         return sorted(blocks, key=lambda blk: blk.char_count, reverse=True)
 
+    # ---- Core-block selection heuristics ----
+    # Blocks above this line count are likely config tables, enum mappings,
+    # or generated dispatch code — not the kind of behavioral logic we want.
+    _MAX_CORE_LINES = 400
+    # Blocks below this line count are too small to produce rich questions.
+    _MIN_CORE_LINES = 8
+    # If the ratio of unique meaningful statements to total lines is below
+    # this threshold, the block is likely a repetitive mapping/enum table.
+    _MIN_STATEMENT_DIVERSITY = 0.12
+
+    @staticmethod
+    def _is_repetitive_block(content: str, line_count: int) -> bool:
+        """Detect blocks that are mostly repetitive mappings or enum tables.
+
+        Heuristic: count lines that start with a repeated pattern token.
+        If > 70% of lines share the same leading token the block is likely a
+        lookup table, match arm list, or enum variant listing — none of which
+        make good behavioral query targets.
+        """
+        lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
+        if len(lines) < 15:
+            return False
+        # Extract first "word" (token) from each line
+        leading_tokens: Dict[str, int] = {}
+        for ln in lines:
+            token = re.split(r"[\s({\[,.:=>#|]", ln, maxsplit=1)[0]
+            if token:
+                leading_tokens[token] = leading_tokens.get(token, 0) + 1
+        if not leading_tokens:
+            return False
+        most_common_count = max(leading_tokens.values())
+        return most_common_count / len(lines) > 0.70
+
+    def _score_core_block(self, blk: SampledCodeBlock, graph_degree: int) -> float:
+        """Score a candidate block for core-block selection.
+
+        Balances size, connectivity, and behavioral richness while penalizing
+        blocks that are too large (config tables) or too repetitive (enum
+        mappings).
+        """
+        # Hard filters — return negative score to exclude
+        if blk.line_count > self._MAX_CORE_LINES:
+            return -1.0
+        if blk.line_count < self._MIN_CORE_LINES:
+            return -1.0
+        if self._is_repetitive_block(blk.content, blk.line_count):
+            return -1.0
+
+        # Prefer functions/methods over classes — they tend to have more
+        # focused, describable behavior.
+        type_bonus = 1.0
+        if blk.node_type in (NODE_TYPE_FUNCTION, NODE_TYPE_METHOD):
+            type_bonus = 1.3
+        elif blk.node_type == NODE_TYPE_CLASS:
+            type_bonus = 0.8
+
+        # Size component: use log to dampen the advantage of very large blocks.
+        # A 200-line function should not score 10x higher than a 20-line one.
+        size_score = math.log(blk.char_count + 1)
+
+        # Connectivity component (graph degree): useful but capped to prevent
+        # hub nodes (like giant dispatchers) from dominating.
+        degree_score = min(graph_degree, 15) * 3.0
+
+        return (size_score + degree_score) * type_bonus
+
     def _pick_core_block(
         self, blocks: List[SampledCodeBlock], code_graph, *, query_index: int = 0
     ) -> SampledCodeBlock:
+        """Select the best core block for behavioral query synthesis.
+
+        Filters out non-behavioral blocks (config tables, huge enums, tiny
+        stubs) and scores the rest by a balance of size, graph connectivity,
+        and node type.  Falls back to the original size-based ranking when
+        all blocks are filtered out.
+        """
         graph = code_graph.get_graph()
-        scored = sorted(
-            blocks,
-            key=lambda blk: blk.char_count + 20 * graph.degree(blk.node_id),
-            reverse=True,
-        )
-        return scored[min(query_index, len(scored) - 1)]
+
+        scored = [
+            (blk, self._score_core_block(blk, graph.degree(blk.node_id)))
+            for blk in blocks
+        ]
+        # Keep only blocks that passed the hard filters (score >= 0)
+        valid = [(blk, s) for blk, s in scored if s >= 0]
+
+        if not valid:
+            # Fallback: relax filters, just sort by size (original behavior)
+            logger.warning(
+                "All %d candidate blocks filtered out; falling back to size-based selection.",
+                len(blocks),
+            )
+            valid = sorted(
+                [(blk, float(blk.char_count)) for blk in blocks],
+                key=lambda t: t[1],
+                reverse=True,
+            )
+
+        valid.sort(key=lambda t: t[1], reverse=True)
+        idx = min(query_index, len(valid) - 1)
+        return valid[idx][0]
 
     def _collect_neighborhood_blocks(
         self,
@@ -855,58 +947,24 @@ class ClaudeQuerySynthesizer:
             "selected_block_ids": [blk.block_id for blk in selected_blocks],
         }
 
-    # Patterns that indicate chain-of-thought leaks or meta-language rather
-    # than genuine behavioral queries.
-    _BAD_QUERY_PATTERNS = re.compile(
-        r"(?i)"
-        r"(?:^let me |^I (?:will|need to|want to|should|can) |"
-        r"examine (?:the |this )?(?:core )?block|"
-        r"look (?:at|into) (?:the |this )?(?:core )?block|"
-        r"understand (?:the |its |this )?(?:full )?content|"
-        r"(?:core|context|sampled|candidate) block|"
-        r"blk_\d+|"
-        r"^(?:now|first|next),? (?:let|I)|"
-        r"read (?:the |this )?(?:source |code )?(?:more )?closely)"
-    )
+    # Cheap pre-filter: catch synthesis artifacts that never need an LLM call.
+    _SYNTHESIS_ARTIFACT_RE = re.compile(r"blk_\d+")
     _MIN_QUERY_LENGTH = 60
 
     @classmethod
-    def _validate_query_quality(cls, question: str) -> Tuple[bool, str]:
-        """Check whether *question* is a valid behavioral query.
+    def _is_trivially_invalid(cls, question: str) -> Tuple[bool, str]:
+        """Fast pre-filter for obviously broken queries (no LLM needed).
 
-        Returns ``(is_valid, reason)`` where *reason* explains the failure
-        when *is_valid* is ``False``.
+        Returns ``(is_invalid, reason)``.
         """
         if not question or not question.strip():
-            return False, "empty question"
+            return True, "empty question"
         q = question.strip()
         if len(q) < cls._MIN_QUERY_LENGTH:
-            return False, f"too short ({len(q)} chars, need >= {cls._MIN_QUERY_LENGTH})"
-        m = cls._BAD_QUERY_PATTERNS.search(q)
-        if m:
-            return False, f"meta-language detected: {m.group()!r}"
-        return True, ""
-
-    def _pick_best_valid_question(
-        self,
-        result: Dict[str, Any],
-        runs: List[Dict[str, Any]],
-    ) -> bool:
-        """Try to replace *result*'s question with a valid one from *runs*.
-
-        Mutates *result* in place and returns ``True`` if a valid question was
-        found, ``False`` otherwise.
-        """
-        for run in runs:
-            alt_q = run.get("question", "")
-            if not alt_q or alt_q == result["question"]:
-                continue
-            ok, _ = self._validate_query_quality(alt_q)
-            if ok:
-                result["question"] = alt_q
-                result["focus"] = run.get("focus")
-                return True
-        return False
+            return True, f"too short ({len(q)} chars, need >= {cls._MIN_QUERY_LENGTH})"
+        if cls._SYNTHESIS_ARTIFACT_RE.search(q):
+            return True, "contains synthesis block ID (blk_NNN)"
+        return False, ""
 
     def _apply_verification(
         self,
@@ -916,14 +974,25 @@ class ClaudeQuerySynthesizer:
         *,
         cwd: str,
     ) -> Dict[str, Any]:
-        """Run quality check + post-consensus verification (sync)."""
-        # ---- Quality gate: reject degenerate questions first ----
-        ok, reason = self._validate_query_quality(result["question"])
-        if not ok:
+        """Run quality + alignment verification (sync)."""
+        # ---- Cheap pre-filter for obvious garbage ----
+        bad, reason = self._is_trivially_invalid(result["question"])
+        if bad:
             logger.warning(
-                "Query quality check failed (%s): %r", reason, result["question"]
+                "Trivially invalid query (%s): %r", reason, result["question"]
             )
-            if not self._pick_best_valid_question(result, runs):
+            # Try to salvage from alternate runs
+            for run in runs:
+                alt_q = run.get("question", "")
+                if not alt_q or alt_q == result["question"]:
+                    continue
+                alt_bad, _ = self._is_trivially_invalid(alt_q)
+                if not alt_bad:
+                    result["question"] = alt_q
+                    result["focus"] = run.get("focus")
+                    bad = False
+                    break
+            if bad:
                 result["verification_passed"] = False
                 result["verification_block_id"] = None
                 return result
@@ -933,6 +1002,7 @@ class ClaudeQuerySynthesizer:
             result["verification_block_id"] = None
             return result
 
+        # ---- LLM verification: quality + alignment in one call ----
         vr = self._verify_question_alignment(
             result["question"], behavioral_context, cwd=cwd
         )
@@ -943,16 +1013,12 @@ class ClaudeQuerySynthesizer:
 
         # Verification failed — try alternate runs in strict mode
         if self.verification_mode == "strict":
-            ranked_runs = sorted(
-                runs,
-                key=lambda r: r.get("question", "") != result["question"],
-            )
-            for alt_run in ranked_runs:
+            for alt_run in runs:
                 alt_q = alt_run.get("question", "")
                 if not alt_q or alt_q == result["question"]:
                     continue
-                alt_ok, _ = self._validate_query_quality(alt_q)
-                if not alt_ok:
+                alt_bad, _ = self._is_trivially_invalid(alt_q)
+                if alt_bad:
                     continue
                 alt_vr = self._verify_question_alignment(
                     alt_q, behavioral_context, cwd=cwd
@@ -977,14 +1043,24 @@ class ClaudeQuerySynthesizer:
         *,
         cwd: str,
     ) -> Dict[str, Any]:
-        """Run quality check + post-consensus verification (async)."""
-        # ---- Quality gate: reject degenerate questions first ----
-        ok, reason = self._validate_query_quality(result["question"])
-        if not ok:
+        """Run quality + alignment verification (async)."""
+        # ---- Cheap pre-filter for obvious garbage ----
+        bad, reason = self._is_trivially_invalid(result["question"])
+        if bad:
             logger.warning(
-                "Query quality check failed (%s): %r", reason, result["question"]
+                "Trivially invalid query (%s): %r", reason, result["question"]
             )
-            if not self._pick_best_valid_question(result, runs):
+            for run in runs:
+                alt_q = run.get("question", "")
+                if not alt_q or alt_q == result["question"]:
+                    continue
+                alt_bad, _ = self._is_trivially_invalid(alt_q)
+                if not alt_bad:
+                    result["question"] = alt_q
+                    result["focus"] = run.get("focus")
+                    bad = False
+                    break
+            if bad:
                 result["verification_passed"] = False
                 result["verification_block_id"] = None
                 return result
@@ -994,6 +1070,7 @@ class ClaudeQuerySynthesizer:
             result["verification_block_id"] = None
             return result
 
+        # ---- LLM verification: quality + alignment in one call ----
         vr = await self._verify_question_alignment_async(
             result["question"], behavioral_context, cwd=cwd
         )
@@ -1004,16 +1081,12 @@ class ClaudeQuerySynthesizer:
 
         # Verification failed — try alternate runs in strict mode
         if self.verification_mode == "strict":
-            ranked_runs = sorted(
-                runs,
-                key=lambda r: r.get("question", "") != result["question"],
-            )
-            for alt_run in ranked_runs:
+            for alt_run in runs:
                 alt_q = alt_run.get("question", "")
                 if not alt_q or alt_q == result["question"]:
                     continue
-                alt_ok, _ = self._validate_query_quality(alt_q)
-                if not alt_ok:
+                alt_bad, _ = self._is_trivially_invalid(alt_q)
+                if alt_bad:
                     continue
                 alt_vr = await self._verify_question_alignment_async(
                     alt_q, behavioral_context, cwd=cwd
@@ -1035,7 +1108,7 @@ class ClaudeQuerySynthesizer:
         question: str,
         behavioral_context: BehavioralContext,
     ) -> str:
-        """Build a blind verification prompt (no core label) to check alignment."""
+        """Build a blind verification prompt that checks both quality and alignment."""
         all_blocks = [behavioral_context.core_block] + list(
             behavioral_context.neighborhood_blocks
         )
@@ -1043,12 +1116,30 @@ class ClaudeQuerySynthesizer:
             self._format_prompt_block(block, is_core=False) for block in all_blocks
         )
         return (
-            "Given the following code-search question, identify which code block "
-            "the question is primarily about.\n\n"
+            "You are evaluating a code-search question for quality and correctness.\n\n"
             f"Question: {question!r}\n\n"
             f"Code blocks:\n{block_text}\n\n"
-            "Which block does this question primarily describe? "
-            "Return strict JSON with keys: block_id (string), confidence (high|medium|low)."
+            "Evaluate the question on TWO criteria:\n\n"
+            "1) QUALITY — Is this a valid behavioral code-search query?\n"
+            "   A valid query describes specific, observable behavior of code "
+            "(e.g., how inputs are processed, what conditions trigger certain logic, "
+            "what transformations are applied).\n"
+            "   REJECT if the query is:\n"
+            "   - Chain-of-thought or internal reasoning (e.g., 'Let me examine...', "
+            "'I need to understand...')\n"
+            "   - Too vague or generic to locate any specific code\n"
+            "   - About the synthesis process itself\n"
+            "   - Contains code identifiers (function names, class names, variable names, "
+            "file paths, or backtick-wrapped code spans like `foo()` or `bar.py`)\n"
+            "   - References bugs, issues, or test failures instead of describing code behavior\n"  # noqa: B950
+            "   - Not actually a question about code behavior\n\n"
+            "2) ALIGNMENT — Which code block does the question primarily describe?\n"
+            "   Identify the single block whose behavior the question is asking about.\n\n"
+            "Return strict JSON with keys:\n"
+            "  valid_query (bool): true if the question passes the QUALITY check\n"
+            "  reject_reason (string): reason for rejection if valid_query is false, else empty\n"  # noqa: B950
+            "  block_id (string): the block ID the question describes (even if invalid)\n"
+            "  confidence (high|medium|low): how confident you are in the block_id match"
         )
 
     def _verify_question_alignment(
@@ -1080,19 +1171,27 @@ class ClaudeQuerySynthesizer:
         payload: str,
         behavioral_context: BehavioralContext,
     ) -> Dict[str, Any]:
-        """Parse verification LLM response into block_id + confidence."""
+        """Parse verification LLM response — checks both quality and alignment."""
         blob = self._extract_json_blob(payload)
         core_id = behavioral_context.core_block.block_id
         try:
             data = json.loads(blob)
+            valid_query = data.get("valid_query", True)
+            reject_reason = data.get("reject_reason", "")
             block_id = data.get("block_id", "")
             confidence = data.get("confidence", "low")
         except (json.JSONDecodeError, AttributeError):
             logger.warning("Verification returned non-JSON; assuming failed.")
             return {"block_id": "", "confidence": "low", "passed": False}
 
-        passed = block_id == core_id
-        if not passed:
+        if not valid_query:
+            logger.warning(
+                "Verification rejected query as low quality: %s", reject_reason
+            )
+            return {"block_id": block_id, "confidence": confidence, "passed": False}
+
+        aligned = block_id == core_id
+        if not aligned:
             logger.warning(
                 "Verification mismatch: question maps to %s, expected %s (confidence=%s)",
                 block_id,
@@ -1105,7 +1204,7 @@ class ClaudeQuerySynthesizer:
                 core_id,
                 confidence,
             )
-        return {"block_id": block_id, "confidence": confidence, "passed": passed}
+        return {"block_id": block_id, "confidence": confidence, "passed": aligned}
 
     def _build_behavioral_prompt(
         self,
@@ -1134,7 +1233,11 @@ class ClaudeQuerySynthesizer:
             )
 
         parts = [
-            "You are generating a behavioral code-search query from sampled code blocks.\n",
+            "You are generating a behavioral code-search query from sampled code blocks.\n"
+            "The query will be used as a code-search benchmark: a developer types this\n"
+            "query into a search tool to find the relevant code. Write it like a real\n"
+            "developer search query — concise, focused on ONE key behavior or design\n"
+            "decision, not an exhaustive summary of the entire function.\n",
             "=== PRIMARY TARGET (CORE BLOCK) ===\n"
             "Your question MUST describe the behavior of this block.\n\n"
             f"{core_block_text}",
@@ -1152,15 +1255,26 @@ class ClaudeQuerySynthesizer:
             f"Source instance id: {instance.get('instance_id', 'unknown')}\n"
             f"Verification pass: {run_index + 1}\n\n"
             "RULES:\n"
-            f"1) The question MUST describe what the CORE BLOCK"
-            f" ({core.block_id}) does behaviorally.\n"
-            "2) The question MUST NOT mention function names, class names,"
-            " signatures, or file paths.\n"
-            "3) Pick required blocks (IDs) needed to answer the question. "
+            f"1) The question MUST describe a SPECIFIC behavior or design"
+            f" decision in the CORE BLOCK ({core.block_id}). Focus on ONE"
+            " interesting aspect — e.g., a particular edge case, a key"
+            " branching condition, an important invariant, or how a specific"
+            " category of input is handled. Do NOT summarize the entire"
+            " function; pick the most distinctive behavioral aspect.\n"
+            "2) The question MUST NOT mention any code identifiers:"
+            " no function names, class names, variable names, method names,"
+            " file paths, or module names. Describe behavior in plain English"
+            " using generic terms (e.g., 'the entry point', 'the main"
+            " orchestration routine', 'the validation logic').\n"
+            "3) The question MUST focus ONLY on what the CORE BLOCK's code"
+            " does. Do NOT reference bugs, issues, test failures, or any"
+            " external problem context. Describe the code's normal behavior.\n"
+            "4) Keep the question to 1 sentence.\n"
+            "5) Pick required blocks (IDs) needed to answer the question. "
             f"Always include {core.block_id}.\n"
-            "4) In your rationale, explain how your question relates to"
+            "6) In your rationale, explain how your question relates to"
             " the CORE BLOCK's behavior.\n"
-            "5) Return strict JSON only with keys:"
+            "7) Return strict JSON only with keys:"
             " question, focus, required_block_ids, rationale."
         )
 
@@ -1771,13 +1885,19 @@ class ClaudeQuerySynthesizer:
         return [name for name in names if len(name) > 2]
 
     def _sanitize_question(self, text: str) -> str:
-        text = re.sub(r"`[^`]+`", "", text)
-        text = re.sub(
-            r"\b[\w/\.-]+\.(?:py|js|ts|rs|go|java|cpp|c|h|hpp)\b",
-            "a module",
-            text,
-        )
-        text = re.sub(r"\b[A-Za-z_]\w*\(\)", "a function", text)
+        """Minimal sanitization for behavioral queries.
+
+        We deliberately do NO regex-based identifier stripping.  The generation
+        prompt already instructs the LLM to avoid identifiers, and the LLM
+        verification step will reject queries that leak them.
+
+        Any post-hoc removal of identifiers from natural language (whether via
+        backtick stripping or bare-name regex) produces garbled text:
+          - "functions like `exec` and `open`" → "functions like and"
+          - "uses exec() or suggests" → "uses or suggests"
+
+        The only cleanup we do is collapsing whitespace.
+        """
         text = re.sub(r"\s{2,}", " ", text).strip()
         return text
 
