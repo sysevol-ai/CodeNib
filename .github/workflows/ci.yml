@@ -157,6 +157,18 @@ jobs:
           mkdir -p "$CACHE_DIR"
           ln -sfn "$CACHE_DIR" "$HOME/.codeminer"
 
+      - name: Purge stale SCIP Python caches (one-time)
+        run: |
+          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          MARKER="$CACHE_DIR/.scip-cache-v2"
+          if [ ! -f "$MARKER" ]; then
+            echo "Purging stale SCIP Python graph caches..."
+            find "$CACHE_DIR" -name "graph.pkl" -delete 2>/dev/null || true
+            find "$CACHE_DIR" -name "index.scip" -delete 2>/dev/null || true
+            find "$CACHE_DIR" -name "index.decoded" -delete 2>/dev/null || true
+            touch "$MARKER"
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
