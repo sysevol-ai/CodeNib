@@ -27,6 +27,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         output_dir: Optional[Union[str, Path]] = None,
         exclude_patterns: Optional[List] = None,
         profiler: Optional[Profiler] = None,
+        decoder_backend: Optional[str] = None,
     ):
         """
         Initialize the Python SCIP indexer.
@@ -36,6 +37,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             output_dir: Directory to store output files (defaults to /tmp/project_name)
             exclude_patterns: List of patterns to exclude from indexing
             profiler: Profiler instance for performance tracking
+            decoder_backend: ``"serial"`` (default) or ``"core"``.
         """
         # Python uses /tmp/project_name as default output dir for backward compatibility
         if output_dir is None:
@@ -47,6 +49,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             exclude_patterns=exclude_patterns,
             profiler=profiler,
             language="python",
+            decoder_backend=decoder_backend,
         )
 
         # Conda environment configuration

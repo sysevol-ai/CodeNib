@@ -24,6 +24,8 @@ class SCIPIndexerBase(ABC):
     the indexing process.
     """
 
+    _VALID_BACKENDS = ("serial", "core")
+
     def __init__(
         self,
         project_root: Union[str, Path],
@@ -31,6 +33,7 @@ class SCIPIndexerBase(ABC):
         exclude_patterns: Optional[List] = None,
         profiler: Optional[Profiler] = None,
         language: str = "unknown",
+        decoder_backend: Optional[str] = None,
     ):
         """
         Initialize the SCIP indexer.
@@ -41,9 +44,13 @@ class SCIPIndexerBase(ABC):
             exclude_patterns: List of patterns to exclude from indexing
             profiler: Profiler instance for performance tracking
             language: Language being indexed (for logging)
+            decoder_backend: Which decoder to use when ``process_index`` runs.
+                ``"serial"`` (default) uses the pure-Python per-language decoder;
+                ``"core"`` uses the C++ pybind decoder from ``core/``.
         """
         self.project_root = Path(project_root).absolute()
         self.language = language
+        self.decoder_backend = self._resolve_backend(decoder_backend)
 
         # Set output directory to /tmp/project_name by default
         if output_dir:
@@ -64,6 +71,33 @@ class SCIPIndexerBase(ABC):
         # Path to the scip.proto file (shared across all indexers)
         self.module_dir = Path(__file__).parent
         self.proto_file = self.module_dir / "scip.proto"
+
+    @classmethod
+    def _resolve_backend(cls, backend: Optional[str]) -> str:
+        if backend is None:
+            return "serial"
+        normalized = backend.lower()
+        if normalized not in cls._VALID_BACKENDS:
+            raise ValueError(
+                f"Unknown decoder_backend {backend!r}. "
+                f"Supported: {cls._VALID_BACKENDS}"
+            )
+        return normalized
+
+    def _make_decoder(self, index_file: str, project_root: Union[str, Path]):
+        """Instantiate the decoder selected by ``self.decoder_backend``.
+
+        Returns an object with ``decode() -> CodeGraph`` and ``save_graph(path)``.
+        """
+        if self.decoder_backend == "core":
+            from .scip_decode_core import SCIPDecoderCore
+
+            return SCIPDecoderCore(
+                index_file_path=index_file,
+                project_root=str(project_root) if project_root else None,
+                language=self.language,
+            )
+        return self._get_decoder_class()(index_file, project_root=project_root)
 
     @abstractmethod
     def _check_indexer_available(self) -> bool:
@@ -210,13 +244,11 @@ class SCIPIndexerBase(ABC):
             return None
 
         try:
-            # Get the decoder class for this language
-            decoder_class = self._get_decoder_class()
-
-            # Pass the project root to the decoder to enable directory indexing
-            logger.info("Starting SCIP index processing...")
+            logger.info(
+                f"Starting SCIP index processing (backend={self.decoder_backend})..."
+            )
             with self.profiler.section("process_index.decode") as section:
-                decoder = decoder_class(
+                decoder = self._make_decoder(
                     str(self.decoded_file), project_root=self.project_root
                 )
                 graph: CodeGraph = decoder.decode()

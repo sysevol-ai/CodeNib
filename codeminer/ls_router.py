@@ -68,9 +68,11 @@ class LSIndexer:
         exclude_patterns: Optional[List] = None,
         profiler: Optional[Profiler] = None,
         language: Optional[str] = None,
+        decoder_backend: Optional[str] = None,
     ):
         self.project_root = Path(project_root).absolute()
         self.language = _normalize_language(language)
+        self.decoder_backend = decoder_backend
 
         self._delegate = self._create_indexer(
             project_root=project_root,
@@ -98,6 +100,12 @@ class LSIndexer:
         if self.language == "cpp":
             from .ls_index.clangd_indexer import ClangdIndexer
 
+            # clangd uses its own .idx format, no SCIP decoder backend choice.
+            if self.decoder_backend is not None:
+                logger.warning(
+                    "decoder_backend=%r ignored for cpp (clangd has no SCIP decoder)",
+                    self.decoder_backend,
+                )
             return ClangdIndexer(
                 project_root=project_root,
                 output_dir=output_dir,
@@ -112,6 +120,7 @@ class LSIndexer:
                 output_dir=output_dir,
                 exclude_patterns=exclude_patterns,
                 profiler=profiler,
+                decoder_backend=self.decoder_backend,
             )
         elif self.language == "ts":
             from .scip_interface.scip_indexer_ts import SCIPTypeScriptIndexer
@@ -121,6 +130,7 @@ class LSIndexer:
                 output_dir=output_dir,
                 exclude_patterns=exclude_patterns,
                 profiler=profiler,
+                decoder_backend=self.decoder_backend,
             )
         elif self.language == "python":
             from .scip_interface.scip_indexer_python import SCIPPythonIndexer
@@ -130,6 +140,7 @@ class LSIndexer:
                 output_dir=output_dir,
                 exclude_patterns=exclude_patterns,
                 profiler=profiler,
+                decoder_backend=self.decoder_backend,
             )
         elif self.language == "go":
             from .scip_interface.scip_indexer_go import SCIPGoIndexer
@@ -139,6 +150,7 @@ class LSIndexer:
                 output_dir=output_dir,
                 exclude_patterns=exclude_patterns,
                 profiler=profiler,
+                decoder_backend=self.decoder_backend,
             )
         else:
             raise ValueError(f"No indexer for language: {self.language}")
