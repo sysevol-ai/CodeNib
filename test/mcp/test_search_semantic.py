@@ -1,0 +1,123 @@
+"""
+Unit tests for search_semantic MCP tool.
+
+Tests the tool wrapper logic with mocked CodeVectorStore.
+"""
+
+import pytest
+from unittest.mock import Mock, AsyncMock
+
+from codeminer.compiler.manifest import RepoManifest
+from codeminer.mcp.context import ServerContext
+from codeminer.mcp.tools.search import search_semantic
+from codeminer.types import NodeInfo
+
+
+@pytest.fixture
+def mock_context():
+    """Create a ServerContext with mocked vector store."""
+    manifest = RepoManifest(
+        repo_path="/fake/repo",
+        commit="abc123",
+    )
+    ctx = ServerContext(manifest=manifest)
+    ctx.vector = Mock()
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_search_semantic_normal_path(mock_context):
+    """Test search_semantic with normal successful search."""
+    # Setup mock to return NodeInfo objects
+    mock_results = [
+        NodeInfo(
+            node_name="test.py::test_function",
+            type="function",
+            file="test.py",
+            start_line=10,
+            end_line=20,
+            score=0.95,
+            content="def test_function():\n    pass",
+        ),
+        NodeInfo(
+            node_name="main.py::main",
+            type="function",
+            file="main.py",
+            start_line=1,
+            end_line=5,
+            score=0.82,
+            content="def main():\n    print('hello')",
+        ),
+    ]
+    mock_context.vector.search_with_content = Mock(return_value=mock_results)
+
+    # Call search_semantic
+    results = await search_semantic(
+        mock_context, query="test function", top_k=2, level="l2"
+    )
+
+    # Verify
+    assert len(results) == 2
+    assert all(isinstance(r, dict) for r in results)
+    assert results[0]["node_name"] == "test.py::test_function"
+    assert results[0]["score"] == 0.95
+    assert results[0]["content"] == "def test_function():\n    pass"
+    assert "type" in results[0]
+    assert "file" in results[0]
+
+    # Verify parameters were forwarded correctly
+    mock_context.vector.search_with_content.assert_called_once_with(
+        query="test function", top_k=2, level="l2", score_threshold=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_semantic_missing_index(mock_context):
+    """Test search_semantic when vector index is not loaded."""
+    mock_context.vector = None
+
+    results = await search_semantic(mock_context, query="test")
+
+    # Should return error dict, not raise exception
+    assert isinstance(results, dict)
+    assert "error" in results
+    assert "not loaded" in results["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_search_semantic_score_threshold_forwarding(mock_context):
+    """Test that score_threshold is correctly forwarded."""
+    mock_context.vector.search_with_content = Mock(return_value=[])
+
+    await search_semantic(
+        mock_context, query="test", top_k=5, score_threshold=0.7
+    )
+
+    # Verify score_threshold was passed
+    call_args = mock_context.vector.search_with_content.call_args
+    assert call_args.kwargs["score_threshold"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_search_semantic_default_parameters(mock_context):
+    """Test search_semantic with default parameters."""
+    mock_context.vector.search_with_content = Mock(return_value=[])
+
+    await search_semantic(mock_context, query="test")
+
+    # Verify defaults
+    call_args = mock_context.vector.search_with_content.call_args
+    assert call_args.kwargs["top_k"] == 10
+    assert call_args.kwargs["level"] == "l2"  # Default to "l2" if not specified
+    assert call_args.kwargs["score_threshold"] is None
+
+
+@pytest.mark.asyncio
+async def test_search_semantic_empty_results(mock_context):
+    """Test search_semantic with no matching results."""
+    mock_context.vector.search_with_content = Mock(return_value=[])
+
+    results = await search_semantic(mock_context, query="nonexistent")
+
+    assert results == []
+    assert isinstance(results, list)
