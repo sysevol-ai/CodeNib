@@ -21,6 +21,7 @@ with ``output_file=None`` avoids clobbering the serial ``graph.pkl``.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 from pathlib import Path
 from typing import Dict, Set, Tuple
 
@@ -29,14 +30,7 @@ import pytest
 pytestmark = pytest.mark.integration_serial
 
 
-try:
-    import codeminer_core  # type: ignore[import-not-found]  # noqa: F401
-
-    _PYBIND_AVAILABLE = True
-except ImportError:
-    _PYBIND_AVAILABLE = False
-
-if not _PYBIND_AVAILABLE:
+if importlib.util.find_spec("codeminer_core") is None:
     pytest.skip(
         "codeminer_core pybind module not built. "
         "cmake -S core -B build/core && cmake --build build/core && "
