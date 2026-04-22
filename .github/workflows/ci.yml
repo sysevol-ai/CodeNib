@@ -223,10 +223,22 @@ jobs:
           install-bear: "true"
 
       - name: Install C++ build deps (libigraph, re2, cmake)
+        shell: bash -l {0}
+        timeout-minutes: 5
         run: |
+          set -eu
+          NEED=()
+          command -v pkg-config >/dev/null 2>&1 || NEED+=(pkg-config)
+          command -v cmake      >/dev/null 2>&1 || NEED+=(cmake)
+          pkg-config --exists igraph 2>/dev/null || NEED+=(libigraph-dev)
+          pkg-config --exists re2    2>/dev/null || NEED+=(libre2-dev)
+          if [ ${#NEED[@]} -eq 0 ]; then
+            echo "[deps] all present — skipping apt"
+            exit 0
+          fi
+          echo "[deps] missing: ${NEED[*]}"
           sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends \
-            cmake libigraph-dev libre2-dev pkg-config
+          sudo apt-get install -y --no-install-recommends "${NEED[@]}"
 
       - name: Install pybind11
         shell: bash -l {0}
