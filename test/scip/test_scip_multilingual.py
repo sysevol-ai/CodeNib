@@ -269,7 +269,11 @@ def test_run_pipeline_swebench_multilingual_instance(language: str) -> None:
         language=language,
         decoder_backend="serial",
     )
-    graph = indexer.run_pipeline(skip_level="graph", report_profile=False, **kwargs)
+    # skip_level="decode" (not "graph"): reuse cached index.scip / index.decoded
+    # but rebuild the graph each run. Using "graph" loads a stale graph.pkl
+    # from a prior decoder version — the scip-core parity job then compares
+    # new core output against that stale cache and fails.
+    graph = indexer.run_pipeline(skip_level="decode", report_profile=False, **kwargs)
 
     assert graph is not None, f"run_pipeline returned None for {language} (dataset)"
     ig = graph.graph

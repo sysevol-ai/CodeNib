@@ -35,5 +35,7 @@ def test_scip_exclude():
         exclude_patterns=[exclude_pattern],
     )
 
-    # Run the indexing pipeline from scratch (skip_level=None)
-    repo_indexer.run_pipeline(project_name="test_swebench", skip_level="graph")
+    # skip_level="decode" (not "graph"): reuse cached index.scip / index.decoded
+    # but rebuild the graph each run. A stale graph.pkl from an older decoder
+    # version would silently mask bugs and break the scip-core parity job.
+    repo_indexer.run_pipeline(project_name="test_swebench", skip_level="decode")
