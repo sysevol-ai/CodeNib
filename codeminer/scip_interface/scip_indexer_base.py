@@ -15,6 +15,130 @@ from ..profiler import Profiler
 logger = get_logger("scip_indexer_base")
 
 
+def extract_symbol(text: str) -> Optional[str]:
+    """Return the unescaped value of the first ``symbol: "..."`` field in a
+    decoded SCIP occurrence/symbol_information block.
+
+    Mirrors ``core/scip_decode_base.cpp::extract_symbol`` so Python and C++
+    decoders see byte-identical symbol strings. A naive regex
+    ``r'symbol:\\s*"([^"]+)"'`` stops at the first ``"`` byte, which cuts a
+    SCIP symbol containing a literal ``"`` (emitted by scip-typescript as
+    ``\\"`` for JS string-literal object keys like ``"version"``) in half
+    and yields a trailing ``\\`` on the captured portion.
+
+    The function walks the literal, honouring protobuf TextFormat escapes
+    (``\\"``, ``\\\\``, ``\\'``, ``\\n``, ``\\t``, ``\\r``), and returns the
+    decoded string. Unknown ``\\x`` escapes fall through to the next char
+    (matches protobuf's lenient TextFormat parser).
+    """
+    kw = "symbol:"
+    pos = 0
+    while pos < len(text):
+        k = text.find(kw, pos)
+        if k < 0:
+            return None
+        if k > 0:
+            prev = text[k - 1]
+            if prev.isalnum() or prev == "_":
+                pos = k + len(kw)
+                continue
+        i = k + len(kw)
+        while i < len(text) and text[i] in " \t":
+            i += 1
+        if i >= len(text) or text[i] != '"':
+            pos = k + len(kw)
+            continue
+        i += 1
+        buf: List[str] = []
+        while i < len(text):
+            ch = text[i]
+            if ch == '"':
+                return "".join(buf)
+            if ch == "\\" and i + 1 < len(text):
+                nxt = text[i + 1]
+                if nxt == "n":
+                    buf.append("\n")
+                elif nxt == "t":
+                    buf.append("\t")
+                elif nxt == "r":
+                    buf.append("\r")
+                elif nxt == "\\":
+                    buf.append("\\")
+                elif nxt == '"':
+                    buf.append('"')
+                elif nxt == "'":
+                    buf.append("'")
+                else:
+                    buf.append(nxt)
+                i += 2
+                continue
+            buf.append(ch)
+            i += 1
+        return None
+    return None
+
+
+def extract_scip_blocks(text: str, keyword: str) -> List[str]:
+    """Return the content of every top-level ``<keyword> { ... }`` block
+    in the decoded SCIP text format, with proper brace counting.
+
+    Mirrors ``core/scip_decode_base.cpp::extract_blocks`` so Python and
+    C++ decoders segment the same ``documents`` / ``occurrences`` blocks.
+    A naive regex ``r"<kw>\\s*{(.*?)}"`` truncates at the first ``}``
+    which corrupts any SCIP symbol containing literal ``{``/``}`` (e.g.
+    JS object keys like ``'obj{}'``).
+    """
+    blocks: List[str] = []
+    pos = 0
+    kw_len = len(keyword)
+    while pos < len(text):
+        k = text.find(keyword, pos)
+        if k < 0:
+            break
+        if k > 0:
+            prev = text[k - 1]
+            if prev.isalnum() or prev == "_" or prev == "/":
+                pos = k + kw_len
+                continue
+        b = k + kw_len
+        while b < len(text) and text[b].isspace():
+            b += 1
+        if b >= len(text) or text[b] != "{":
+            pos = k + kw_len
+            continue
+        start = b + 1
+        depth = 1
+        in_string = False
+        escape = False
+        matched = False
+        i = start
+        while i < len(text):
+            ch = text[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        blocks.append(text[start:i])
+                        pos = i + 1
+                        matched = True
+                        break
+            i += 1
+        if not matched:
+            break
+    return blocks
+
+
 class SCIPIndexerBase(ABC):
     """
     Abstract base class for SCIP indexers.

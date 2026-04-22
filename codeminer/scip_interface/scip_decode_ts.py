@@ -12,6 +12,7 @@ from ..types import (
     NODE_TYPE_METHOD,
     ROOT_NODE,
 )
+from .scip_indexer_base import extract_scip_blocks, extract_symbol
 
 
 class SCIPTypeScriptGraphDecoder:
@@ -92,8 +93,10 @@ class SCIPTypeScriptGraphDecoder:
             str(Path(file_path).parent), file_path, EDGE_TYPE_CONTAIN
         )
 
-        # Process occurrences
-        occurrences = re.findall(r"occurrences\s*{(.*?)}", document_text, re.DOTALL)
+        # Process occurrences.  Use brace-balanced parsing (not a naive
+        # regex) so SCIP symbols containing literal "{" / "}" — e.g. a
+        # JS object key written as 'obj{}' — do not truncate the block.
+        occurrences = extract_scip_blocks(document_text, "occurrences")
         for occurrence in occurrences:
             self._process_occurrence(occurrence, file_path)
 
@@ -105,12 +108,10 @@ class SCIPTypeScriptGraphDecoder:
 
         line = int(ranges[0])
 
-        # Extract symbol
-        symbol_match = re.search(r'symbol:\s*"([^"]+)"', occurrence_text)
-        if not symbol_match:
+        # Extract symbol (unescape-aware; see extract_symbol docstring).
+        symbol = extract_symbol(occurrence_text)
+        if not symbol:
             return
-
-        symbol = symbol_match.group(1)
 
         # Skip stdlib/builtin symbols
         # Check the symbol field specifically, not "scip-typescript" tool name
@@ -211,7 +212,10 @@ class SCIPTypeScriptGraphDecoder:
         symbol_display = self._extract_symbol_display(unified_symbol)
 
         # Add () suffix for methods/functions
-        if symbol_type in (NODE_TYPE_METHOD, NODE_TYPE_FUNCTION) and not symbol_display.endswith("()"):
+        if symbol_type in (
+            NODE_TYPE_METHOD,
+            NODE_TYPE_FUNCTION,
+        ) and not symbol_display.endswith("()"):
             symbol_display = f"{symbol_display}()"
 
         if file_path and symbol_display:

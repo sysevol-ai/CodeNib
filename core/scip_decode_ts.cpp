@@ -77,15 +77,15 @@ bool is_stdlib_symbol(const std::string &symbol) {
 void SCIPTSDecoder::prescan(const std::vector<std::string> &document_blocks) {
   // Collect pkg_name from all DEFINITIONS with scip-typescript prefix so that
   // references can be filtered consistently across parallel workers.
-  static const re2::RE2 symbol_re(R"re2(symbol:\s*"([^"]+)")re2");
   static const re2::RE2 symbol_roles_re(R"re2(symbol_roles:\s*(\d+))re2");
 
   for (const auto &doc : document_blocks) {
     auto occurrences = extract_blocks(doc, "occurrences");
     for (const auto &occ : occurrences) {
-      std::string symbol;
-      if (!re2::RE2::PartialMatch(occ, symbol_re, &symbol))
+      auto symbol_opt = extract_symbol(occ);
+      if (!symbol_opt)
         continue;
+      const std::string &symbol = *symbol_opt;
       if (symbol.rfind("scip-typescript ", 0) != 0)
         continue;
       auto parts = split_ws(symbol);
@@ -315,7 +315,6 @@ void SCIPTSDecoder::process_occurrence(const std::string &occurrence_block,
                                        const std::string &file_path,
                                        SubgraphBuilder &builder) const {
   static const re2::RE2 range_re(R"re2(range:\s*(\d+))re2");
-  static const re2::RE2 symbol_re(R"re2(symbol:\s*"([^"]+)")re2");
   static const re2::RE2 symbol_roles_re(R"re2(symbol_roles:\s*(\d+))re2");
   static const re2::RE2 enclosing_re(R"re2(enclosing_range:\s*(\d+))re2");
 
@@ -324,9 +323,10 @@ void SCIPTSDecoder::process_occurrence(const std::string &occurrence_block,
     return;
   int line = ranges[0];
 
-  std::string symbol;
-  if (!re2::RE2::PartialMatch(occurrence_block, symbol_re, &symbol))
+  auto symbol_opt = extract_symbol(occurrence_block);
+  if (!symbol_opt || symbol_opt->empty())
     return;
+  const std::string &symbol = *symbol_opt;
   if (is_stdlib_symbol(symbol))
     return;
   if (symbol.rfind("local ", 0) == 0)

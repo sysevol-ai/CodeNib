@@ -58,4 +58,11 @@ protected:
 std::vector<std::string> extract_blocks(const std::string &text,
                                         const std::string &keyword);
 
+// Return the unescaped value of the first ``symbol: "..."`` field.
+// Handles protobuf TextFormat escapes (\", \\, \', \n, \t, \r). Mirrors
+// ``extract_symbol`` in ``scip_indexer_base.py`` so both decoders see
+// byte-identical symbol strings. Returns std::nullopt when no symbol
+// field is present or the string is unterminated.
+std::optional<std::string> extract_symbol(const std::string &text);
+
 } // namespace codeminer::core

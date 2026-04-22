@@ -373,7 +373,6 @@ void SCIPRustDecoder::process_occurrence(const std::string &occurrence_block,
                                          const std::string &file_path,
                                          SubgraphBuilder &builder) const {
   static const re2::RE2 range_re(R"re2(range:\s*(\d+))re2");
-  static const re2::RE2 symbol_re(R"re2(symbol:\s*"([^"]+)")re2");
   static const re2::RE2 symbol_roles_re(R"re2(symbol_roles:\s*(\d+))re2");
   static const re2::RE2 enclosing_re(R"re2(enclosing_range:\s*(\d+))re2");
 
@@ -384,9 +383,10 @@ void SCIPRustDecoder::process_occurrence(const std::string &occurrence_block,
   int col_start = ranges[1];
   int col_end = ranges[2];
 
-  std::string symbol;
-  if (!re2::RE2::PartialMatch(occurrence_block, symbol_re, &symbol))
+  auto symbol_opt = extract_symbol(occurrence_block);
+  if (!symbol_opt || symbol_opt->empty())
     return;
+  const std::string &symbol = *symbol_opt;
   if (symbol.find("local ") != std::string::npos)
     return;
 

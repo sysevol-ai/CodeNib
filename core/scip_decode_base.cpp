@@ -103,6 +103,69 @@ std::vector<std::string> extract_blocks(const std::string &text,
   return blocks;
 }
 
+std::optional<std::string> extract_symbol(const std::string &text) {
+  static const std::string kw = "symbol:";
+  std::size_t pos = 0;
+  while (pos < text.size()) {
+    std::size_t k = text.find(kw, pos);
+    if (k == std::string::npos)
+      return std::nullopt;
+    if (k > 0) {
+      unsigned char prev = static_cast<unsigned char>(text[k - 1]);
+      if (std::isalnum(prev) || prev == '_') {
+        pos = k + kw.size();
+        continue;
+      }
+    }
+    std::size_t i = k + kw.size();
+    while (i < text.size() && (text[i] == ' ' || text[i] == '\t'))
+      ++i;
+    if (i >= text.size() || text[i] != '"') {
+      pos = k + kw.size();
+      continue;
+    }
+    ++i;
+    std::string buf;
+    while (i < text.size()) {
+      char ch = text[i];
+      if (ch == '"')
+        return buf;
+      if (ch == '\\' && i + 1 < text.size()) {
+        char nxt = text[i + 1];
+        switch (nxt) {
+        case 'n':
+          buf.push_back('\n');
+          break;
+        case 't':
+          buf.push_back('\t');
+          break;
+        case 'r':
+          buf.push_back('\r');
+          break;
+        case '\\':
+          buf.push_back('\\');
+          break;
+        case '"':
+          buf.push_back('"');
+          break;
+        case '\'':
+          buf.push_back('\'');
+          break;
+        default:
+          buf.push_back(nxt);
+          break;
+        }
+        i += 2;
+        continue;
+      }
+      buf.push_back(ch);
+      ++i;
+    }
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 SCIPDecoderBase::SCIPDecoderBase(std::string index_file_path,
                                  std::optional<std::string> project_root)
     : index_file_path_(std::move(index_file_path)),
