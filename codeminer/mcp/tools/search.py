@@ -62,4 +62,13 @@ async def search_semantic(
     )
 
     # Convert NodeInfo objects to dicts for JSON serialization
-    return [node.model_dump() for node in results]
+    result_dicts = []
+    for node in results:
+        node_dict = node.model_dump()
+        # Ensure score is a float (not tensor) for JSON serialization
+        if hasattr(node_dict.get("score"), "item"):
+            node_dict["score"] = float(node_dict["score"].item())
+        elif isinstance(node_dict.get("score"), (int, float)):
+            node_dict["score"] = float(node_dict["score"])
+        result_dicts.append(node_dict)
+    return result_dicts
