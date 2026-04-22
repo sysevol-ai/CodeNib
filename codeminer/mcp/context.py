@@ -65,6 +65,16 @@ class ServerContext:
                 # Load FAISS index from disk (requires self.embedding)
                 ctx.vector.load()
 
+                # Validate model consistency (Phase 2)
+                loaded_model = ctx.vector.embedding_model
+                manifest_model = cfg["embedding_model"]
+                if loaded_model != manifest_model:
+                    raise RuntimeError(
+                        f"Embedding model mismatch: manifest specifies "
+                        f"'{manifest_model}', but loaded store has '{loaded_model}'. "
+                        f"Re-run indexing with the correct model."
+                    )
+
                 logger.info(
                     f"Loaded vector store: {cfg['embedding_model']} "
                     f"({ctx.vector.get_stats()['total_documents']} docs)"
