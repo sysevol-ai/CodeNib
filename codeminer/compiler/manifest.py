@@ -71,6 +71,7 @@ class RepoManifest:
     version: str = MANIFEST_VERSION
     repo_path: str = ""
     commit: str = ""
+    last_indexed_commit: str = ""
     languages: List[str] = field(default_factory=list)
     file_count: int = 0
     indexes: Dict[str, IndexEntry] = field(default_factory=dict)
@@ -84,6 +85,7 @@ class RepoManifest:
             "repo": {
                 "path": self.repo_path,
                 "commit": self.commit,
+                "last_indexed_commit": self.last_indexed_commit,
                 "languages": list(self.languages),
                 "file_count": self.file_count,
             },
@@ -103,6 +105,7 @@ class RepoManifest:
             version=data.get("version", MANIFEST_VERSION),
             repo_path=repo.get("path", ""),
             commit=repo.get("commit", ""),
+            last_indexed_commit=repo.get("last_indexed_commit", repo.get("commit", "")),
             languages=repo.get("languages", []),
             file_count=repo.get("file_count", 0),
             indexes=indexes,

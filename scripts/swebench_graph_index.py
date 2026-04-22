@@ -23,8 +23,8 @@ from codeminer.dataset.locbench import LocbenchDataset
 from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
 from codeminer.log_utils import get_logger
-from codeminer.profiler import Profiler
 from codeminer.ls_router import LSIndexer
+from codeminer.profiler import Profiler
 
 logger = get_logger(__name__)
 

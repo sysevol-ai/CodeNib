@@ -52,8 +52,8 @@ class ClangdIndexer:
 
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.index_file = None      # clangd generates .idx files in idx_directory
-        self.decoded_file = None    # no protoc decode step for clangd
+        self.index_file = None  # clangd generates .idx files in idx_directory
+        self.decoded_file = None  # no protoc decode step for clangd
         self.graph_file = self.output_dir / "graph.pkl"
         self.exclude_patterns = exclude_patterns if exclude_patterns else []
         self.profiler = profiler or Profiler("clangd_indexer")
@@ -187,9 +187,7 @@ class ClangdIndexer:
 
         There is no protoc decode step for the clangd binary format.
         """
-        logger.info(
-            "Skipping protoc decode (clangd .idx files are parsed directly)"
-        )
+        logger.info("Skipping protoc decode (clangd .idx files are parsed directly)")
         return True
 
     def process_index(
@@ -213,9 +211,7 @@ class ClangdIndexer:
             logger.error(f"No .idx files found in {self.idx_directory}")
             return None
 
-        logger.info(
-            f"Processing {len(idx_files)} .idx files from {self.idx_directory}"
-        )
+        logger.info(f"Processing {len(idx_files)} .idx files from {self.idx_directory}")
 
         try:
             decoder_class = self._get_decoder_class()
@@ -280,9 +276,8 @@ class ClangdIndexer:
                 logger.warning(f"Failed to load cached graph: {e}. Continuing ...")
 
         # Determine whether we already have .idx files
-        has_idx_files = (
-            self.idx_directory.exists()
-            and any(self.idx_directory.glob("*.idx"))
+        has_idx_files = self.idx_directory.exists() and any(
+            self.idx_directory.glob("*.idx")
         )
 
         if skip_level in ("graph", "decode", "raw") and has_idx_files:
@@ -295,7 +290,9 @@ class ClangdIndexer:
             should_generate = True
 
         # Auto-discover / generate compile_commands.json when needed
-        if should_generate and ("compdb_path" not in kwargs or not kwargs.get("compdb_path")):
+        if should_generate and (
+            "compdb_path" not in kwargs or not kwargs.get("compdb_path")
+        ):
             for candidate in (
                 self.project_root / "compile_commands.json",
                 self.project_root / "build" / "compile_commands.json",
@@ -304,13 +301,17 @@ class ClangdIndexer:
                     kwargs["compdb_path"] = str(candidate)
                     break
                 if candidate.exists():
-                    logger.warning("Ignoring invalid compilation database: %s", candidate)
+                    logger.warning(
+                        "Ignoring invalid compilation database: %s", candidate
+                    )
             else:
                 generated = self._auto_generate_compdb()
                 if generated is not None and self._is_valid_compdb(generated):
                     kwargs["compdb_path"] = str(generated)
                 elif generated is not None:
-                    logger.warning("Auto-generated compilation database is invalid: %s", generated)
+                    logger.warning(
+                        "Auto-generated compilation database is invalid: %s", generated
+                    )
 
         if reset_profiler:
             self.profiler.reset()
@@ -321,9 +322,8 @@ class ClangdIndexer:
                 logger.info("Generating clangd index (.idx files)")
                 if not self.generate_index(**kwargs):
                     # Check if .idx files appeared despite the failure
-                    has_idx_files = (
-                        self.idx_directory.exists()
-                        and any(self.idx_directory.glob("*.idx"))
+                    has_idx_files = self.idx_directory.exists() and any(
+                        self.idx_directory.glob("*.idx")
                     )
                     if not has_idx_files:
                         return None
@@ -430,24 +430,30 @@ class ClangdIndexer:
 
         try:
             # LSP initialize (fire-and-forget — don't read the response)
-            self._lsp_send(process, {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "processId": os.getpid(),
-                    "rootUri": f"file://{self.project_root}",
-                    "capabilities": {},
+            self._lsp_send(
+                process,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "processId": os.getpid(),
+                        "rootUri": f"file://{self.project_root}",
+                        "capabilities": {},
+                    },
                 },
-            })
+            )
             time.sleep(2)
 
             # LSP initialized — triggers BackgroundIndex
-            self._lsp_send(process, {
-                "jsonrpc": "2.0",
-                "method": "initialized",
-                "params": {},
-            })
+            self._lsp_send(
+                process,
+                {
+                    "jsonrpc": "2.0",
+                    "method": "initialized",
+                    "params": {},
+                },
+            )
             time.sleep(1)
 
             # Open source files listed in compile_commands.json to nudge
@@ -462,18 +468,24 @@ class ClangdIndexer:
         finally:
             # Graceful shutdown (best-effort)
             try:
-                self._lsp_send(process, {
-                    "jsonrpc": "2.0",
-                    "id": 99,
-                    "method": "shutdown",
-                    "params": None,
-                })
+                self._lsp_send(
+                    process,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 99,
+                        "method": "shutdown",
+                        "params": None,
+                    },
+                )
                 time.sleep(0.5)
-                self._lsp_send(process, {
-                    "jsonrpc": "2.0",
-                    "method": "exit",
-                    "params": None,
-                })
+                self._lsp_send(
+                    process,
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "exit",
+                        "params": None,
+                    },
+                )
                 process.wait(timeout=5)
             except Exception:
                 process.kill()
@@ -485,7 +497,9 @@ class ClangdIndexer:
             if d.exists() and self._get_max_mtime(d) > pre_mtimes.get(d, 0):
                 self.idx_directory = d
                 count = len(list(d.glob("*.idx")))
-                logger.info(f"Using .idx directory (mtime changed): {d} ({count} files)")
+                logger.info(
+                    f"Using .idx directory (mtime changed): {d} ({count} files)"
+                )
                 return True
 
         # Fallback: pick first candidate with any .idx files
@@ -494,7 +508,9 @@ class ClangdIndexer:
                 idx_files = list(d.glob("*.idx"))
                 if idx_files:
                     self.idx_directory = d
-                    logger.info(f"Using .idx directory (fallback): {d} ({len(idx_files)} files)")
+                    logger.info(
+                        f"Using .idx directory (fallback): {d} ({len(idx_files)} files)"
+                    )
                     return True
 
         return False
@@ -549,18 +565,21 @@ class ClangdIndexer:
             except Exception:
                 continue
 
-            self._lsp_send(process, {
-                "jsonrpc": "2.0",
-                "method": "textDocument/didOpen",
-                "params": {
-                    "textDocument": {
-                        "uri": f"file://{src_file}",
-                        "languageId": "cpp",
-                        "version": 1,
-                        "text": text,
-                    }
+            self._lsp_send(
+                process,
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didOpen",
+                    "params": {
+                        "textDocument": {
+                            "uri": f"file://{src_file}",
+                            "languageId": "cpp",
+                            "version": 1,
+                            "text": text,
+                        }
+                    },
                 },
-            })
+            )
 
     def _wait_for_indexing(
         self,
@@ -675,15 +694,20 @@ class ClangdIndexer:
 
         cmd = [
             "cmake",
-            "-S", str(self.project_root),
-            "-B", str(build_dir),
+            "-S",
+            str(self.project_root),
+            "-B",
+            str(build_dir),
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         ]
         logger.info("Attempting CMake compilation DB generation: %s", " ".join(cmd))
         try:
             subprocess.run(
-                cmd, check=True, cwd=self.project_root,
-                capture_output=True, text=True,
+                cmd,
+                check=True,
+                cwd=self.project_root,
+                capture_output=True,
+                text=True,
             )
         except subprocess.CalledProcessError as e:
             logger.warning("Failed to generate compile_commands.json with CMake: %s", e)
@@ -706,7 +730,9 @@ class ClangdIndexer:
         # otherwise go directly to subdirectory search.
         if not self._has_root_makefile():
             if self._is_autotools_project():
-                logger.info("Autotools project detected (no Makefile yet); bootstrapping first")
+                logger.info(
+                    "Autotools project detected (no Makefile yet); bootstrapping first"
+                )
                 self._bootstrap_autotools()
                 # After bootstrap, the Makefile should exist now
                 if self._has_root_makefile():
@@ -812,7 +838,10 @@ class ClangdIndexer:
             self._run_build_command(["git", "submodule", "update", "--init"])
 
         for subdir in candidates:
-            logger.info("Found Makefile in subdirectory %s, attempting bear -- make there", subdir)
+            logger.info(
+                "Found Makefile in subdirectory %s, attempting bear -- make there",
+                subdir,
+            )
             self._run_build_command(["make", "-C", str(subdir), "clean"])
             if self._run_build_command(
                 ["bear", "--", "make", "-k", "-C", str(subdir), "-j"]
@@ -827,7 +856,8 @@ class ClangdIndexer:
                         if entries:
                             logger.info(
                                 "Generated compile_commands.json from %s (%d entries)",
-                                subdir, len(entries),
+                                subdir,
+                                len(entries),
                             )
                             return compdb
                     except (json.JSONDecodeError, OSError):
@@ -875,11 +905,11 @@ class ClangdIndexer:
 
         # Detect --with-<dep>=builtin patterns from AC_ARG_WITH declarations
         # that mention "builtin" as an option. Common in projects bundling deps.
-        for m in re.finditer(r'AC_ARG_WITH\(\[?(\w+)\]?', text):
+        for m in re.finditer(r"AC_ARG_WITH\(\[?(\w+)\]?", text):
             dep_name = m.group(1)
             # Check if "builtin" is mentioned near this AC_ARG_WITH block
             start = m.start()
-            snippet = text[start:start + 500]
+            snippet = text[start : start + 500]
             if "builtin" in snippet:
                 flags.append(f"--with-{dep_name}=builtin")
                 logger.info("Detected bundled dependency: --with-%s=builtin", dep_name)
@@ -890,12 +920,18 @@ class ClangdIndexer:
         logger.info("Running build command: %s", " ".join(cmd))
         try:
             subprocess.run(
-                cmd, check=True, cwd=self.project_root,
-                capture_output=True, text=True, timeout=timeout_sec,
+                cmd,
+                check=True,
+                cwd=self.project_root,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
             )
             return True
         except subprocess.TimeoutExpired:
-            logger.warning("Command timed out after %ss: %s", timeout_sec, " ".join(cmd))
+            logger.warning(
+                "Command timed out after %ss: %s", timeout_sec, " ".join(cmd)
+            )
             return False
         except subprocess.CalledProcessError as e:
             logger.warning("Command failed: %s", " ".join(cmd))

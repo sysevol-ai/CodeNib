@@ -4,11 +4,12 @@ This module provides functionality to create, store, and query vector embeddings
 of code chunks for semantic similarity search.
 """
 
+import hashlib
 import json
 import pickle
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 import faiss
 import numpy as np
@@ -391,6 +392,9 @@ class CodeVectorStore:
         documents: List[_Document] = []
         for i, chunk in enumerate(code_chunks):
             content = chunk.get("content", "")
+            content_hash = hashlib.md5(
+                content.encode("utf-8", errors="replace")
+            ).hexdigest()
             metadata = {
                 "chunk_id": len(documents_list) + i,
                 "chunk_type": chunk.get("chunk_type", "unknown"),
@@ -400,6 +404,7 @@ class CodeVectorStore:
                 "end_line": chunk.get("end_line", 0),
                 "node_id": chunk.get("node_id", ""),
                 "level": level,
+                "content_hash": content_hash,
             }
             for key, value in chunk.items():
                 if key not in ["content"] and key not in metadata:
@@ -958,6 +963,247 @@ class CodeVectorStore:
             stats["l2_chunk_types"] = l2_chunk_types
 
         return stats
+
+    def get_embeddings_by_content_hash(
+        self, level: Level = "l2"
+    ) -> Dict[str, np.ndarray]:
+        """
+        Extract raw embedding vectors from the FAISS index, keyed by content hash.
+
+        This is used to seed the ``EmbeddingsCache`` after a full build so that
+        the first incremental update achieves ~100% cache hit rate for unchanged
+        chunks.
+
+        Each document's content is MD5-hashed to produce the key.  If the
+        document metadata already contains a ``content_hash`` field it is used
+        directly; otherwise the hash is computed on the fly.
+
+        Returns:
+            Dict mapping content_hash → np.ndarray (float32 vectors).
+        """
+        index, documents = self._get_index_and_docs(level)
+        if not documents or index is None or index.ntotal == 0:
+            return {}
+
+        result: Dict[str, np.ndarray] = {}
+        for i, doc in enumerate(documents):
+            content_hash = doc.metadata.get("content_hash")
+            if content_hash is None:
+                content_hash = hashlib.md5(
+                    doc.page_content.encode("utf-8", errors="replace")
+                ).hexdigest()
+
+            vec = index.reconstruct(i)
+            result[content_hash] = np.asarray(vec, dtype=np.float32)
+
+        logger.info(
+            "Extracted %d embedding vectors from %s FAISS index for cache seeding.",
+            len(result),
+            level,
+        )
+        return result
+
+    def rebuild_from_embeddings(
+        self,
+        documents: list,
+        embeddings: List[np.ndarray],
+        level: Level = "l2",
+    ) -> None:
+        """
+        Clear *level* and rebuild its FAISS index from pre-computed embeddings.
+
+        Used by the incremental update path: unchanged chunks contribute their
+        cached vectors, so only genuinely new/modified chunks require model
+        inference.  No embedding model calls are made by this method.
+
+        Args:
+            documents: Document-like objects with ``page_content`` and
+                ``metadata`` attributes (``_Document`` or compatible).
+            embeddings: Corresponding embedding vectors as ``np.ndarray``
+                (shape ``[dim]``, dtype ``float32``).
+            level: Which index level to rebuild (``"l0"`` or ``"l2"``).
+
+        Raises:
+            ValueError: If *documents* and *embeddings* have different lengths.
+        """
+        if len(documents) != len(embeddings):
+            raise ValueError(
+                f"documents ({len(documents)}) and embeddings ({len(embeddings)}) "
+                "must have the same length."
+            )
+
+        # Wipe the existing index for this level
+        self.clear(level)
+
+        if not documents:
+            logger.debug(
+                "rebuild_from_embeddings: no documents; level %s cleared.", level
+            )
+            return
+
+        # Convert to _Document if needed and add vectors to the raw FAISS index
+        native_docs = [_to_document(d) for d in documents]
+        vectors = np.array(
+            [
+                emb if isinstance(emb, np.ndarray) else np.asarray(emb)
+                for emb in embeddings
+            ],
+            dtype=np.float32,
+        )
+
+        if level == "l0":
+            self.l0_index.add(vectors)
+            self.l0_documents = native_docs
+        else:
+            self.l2_index.add(vectors)
+            self.l2_documents = native_docs
+
+        logger.info(
+            "rebuild_from_embeddings: %s index rebuilt with %d documents.",
+            level,
+            len(documents),
+        )
+
+    def delta_update(
+        self,
+        all_documents: list,
+        all_embeddings: List[np.ndarray],
+        changed_content_hashes: Set[str],
+        level: Level = "l2",
+        threshold: float = 0.1,
+    ) -> None:
+        """
+        Patch the FAISS index in place when the change set is small.
+
+        When the fraction of changed chunks is below *threshold*, this uses
+        ``IndexFlat.remove_ids`` + ``add`` to modify only the affected rows,
+        keeping unchanged vectors and their aligned documents untouched.  If
+        the change ratio exceeds the threshold (or the index is empty), it
+        falls back to a full rebuild via :meth:`rebuild_from_embeddings`.
+
+        Args:
+            all_documents: The complete desired set of documents for *level*
+                after the update.  Must carry ``content_hash`` in metadata.
+            all_embeddings: Corresponding embedding vectors, aligned with
+                *all_documents*.
+            changed_content_hashes: Content hashes of chunks that were
+                added, removed, or modified in this update cycle.  Used both
+                to decide between delta/rebuild and to identify stale rows.
+            level: Which index level to update.
+            threshold: Maximum change ratio (changed/total) for the delta
+                path; above this a full rebuild is performed.
+        """
+        total = len(all_documents)
+
+        if total == 0:
+            self.clear(level)
+            return
+
+        index, current_docs = self._get_index_and_docs(level)
+        change_ratio = len(changed_content_hashes) / total
+
+        # Fall back to full rebuild when the delta path can't help.
+        if (
+            index is None
+            or index.ntotal == 0
+            or not current_docs
+            or change_ratio > threshold
+        ):
+            logger.info(
+                "delta_update: %d/%d changed (%.0f%%) → full rebuild of %s.",
+                len(changed_content_hashes),
+                total,
+                change_ratio * 100,
+                level,
+            )
+            self.rebuild_from_embeddings(all_documents, all_embeddings, level=level)
+            return
+
+        # --- Delta path: in-place patch -------------------------------
+        # Use a list per hash so duplicate-content docs (same code in
+        # different files) are all preserved.
+        from collections import defaultdict
+
+        target_by_hash: Dict[str, List[Tuple[object, np.ndarray]]] = defaultdict(list)
+        for doc, emb in zip(all_documents, all_embeddings, strict=True):
+            ch = doc.metadata.get("content_hash")
+            if ch is None:
+                # Can't align by hash → safest to rebuild.
+                logger.warning(
+                    "delta_update: target doc missing content_hash → full rebuild."
+                )
+                self.rebuild_from_embeddings(all_documents, all_embeddings, level=level)
+                return
+            target_by_hash[ch].append((doc, emb))
+
+        current_hashes = [d.metadata.get("content_hash") for d in current_docs]
+
+        # For each hash, allow at most target-count survivors (handles
+        # both duplicate-content additions and removals correctly).
+        target_avail: Dict[str, int] = {h: len(v) for h, v in target_by_hash.items()}
+        rows_to_remove: List[int] = []
+        for i, h in enumerate(current_hashes):
+            if (
+                h is None
+                or h not in target_avail
+                or h in changed_content_hashes
+                or target_avail[h] <= 0
+            ):
+                rows_to_remove.append(i)
+            else:
+                target_avail[h] -= 1
+
+        # Unclaimed target entries become additions.
+        docs_to_add: List[Tuple[object, np.ndarray]] = []
+        for h, entries in target_by_hash.items():
+            claimed = len(entries) - target_avail.get(h, 0)
+            docs_to_add.extend(entries[claimed:])
+
+        if rows_to_remove:
+            selector = faiss.IDSelectorBatch(np.array(rows_to_remove, dtype=np.int64))
+            index.remove_ids(selector)
+
+        # Survivors: prefer the fresh target doc (same content_hash) so that
+        # pure metadata changes — file rename, start_line shift, name edit —
+        # are reflected without requiring a full rebuild.  The vector is
+        # identical because content_hash is identical, so no FAISS op needed.
+        remove_set = set(rows_to_remove)
+        survivor_idx: Dict[str, int] = {}
+        new_docs_list: List[_Document] = []
+        for i, d in enumerate(current_docs):
+            if i in remove_set:
+                continue
+            h = current_hashes[i]
+            idx = survivor_idx.get(h, 0)
+            survivor_idx[h] = idx + 1
+            entries = target_by_hash.get(h)
+            if entries and idx < len(entries):
+                new_docs_list.append(_to_document(entries[idx][0]))
+            else:
+                new_docs_list.append(d)
+
+        if docs_to_add:
+            add_vectors = np.array(
+                [np.asarray(e, dtype=np.float32) for _, e in docs_to_add],
+                dtype=np.float32,
+            )
+            index.add(add_vectors)
+            new_docs_list.extend(_to_document(d) for d, _ in docs_to_add)
+
+        if level == "l0":
+            self.l0_documents = new_docs_list
+        else:
+            self.l2_documents = new_docs_list
+
+        logger.info(
+            "delta_update: %s patched in place — removed %d, added %d "
+            "(ntotal=%d, %.0f%% changed).",
+            level,
+            len(rows_to_remove),
+            len(docs_to_add),
+            index.ntotal,
+            change_ratio * 100,
+        )
 
     def clear(self, level: Optional[Level] = None) -> None:
         """

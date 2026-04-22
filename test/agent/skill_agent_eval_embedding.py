@@ -220,7 +220,9 @@ def build_or_load_vector_store(
     )
 
 
-def _get_embedding_kwargs(embedding_provider: str, batch_size: int = 4) -> Dict[str, Any]:
+def _get_embedding_kwargs(
+    embedding_provider: str, batch_size: int = 4
+) -> Dict[str, Any]:
     """Build embedding model kwargs for GPU optimization.
 
     Args:
@@ -251,7 +253,9 @@ def load_embedding_skill(retrieve_ctx: RetrieveContext) -> SkillRegistry:
     registry = SkillRegistry()
     registry.reset()
     loader = SkillLoader()
-    metadata = loader.load_skill(_EMBEDDING_SKILL_DIR, contexts={"retrieve": retrieve_ctx})
+    metadata = loader.load_skill(
+        _EMBEDDING_SKILL_DIR, contexts={"retrieve": retrieve_ctx}
+    )
     if metadata is None:
         raise RuntimeError(
             f"Failed to load embedding_search skill from {_EMBEDDING_SKILL_DIR}"

@@ -111,7 +111,9 @@ class ROISubgraph:
 
         logger.info(
             "PPR expansion: %d seeds -> %d nodes (damping=%.2f)",
-            seed_count, len(results), damping,
+            seed_count,
+            len(results),
+            damping,
         )
         return results
 
