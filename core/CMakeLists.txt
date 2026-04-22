@@ -80,6 +80,13 @@ if(CODEMINER_BUILD_PYBIND)
         OUTPUT_NAME "codeminer_core"
     )
     target_link_libraries(codeminer_core_py PRIVATE codeminer_core)
+    # Statically link libstdc++ and libgcc_s so the pybind module does
+    # not depend on the runtime Python env's bundled libstdc++, which
+    # may lack the GLIBCXX symbols our system GCC references.
+    target_link_options(codeminer_core_py PRIVATE
+        $<$<CXX_COMPILER_ID:GNU>:-static-libstdc++>
+        $<$<CXX_COMPILER_ID:GNU>:-static-libgcc>
+    )
     if(CODEMINER_ENABLE_O3)
         target_compile_options(codeminer_core_py PRIVATE -O3)
     endif()

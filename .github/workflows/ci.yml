@@ -257,7 +257,22 @@ jobs:
         shell: bash -l {0}
         env:
           PYTHONPATH: ${{ github.workspace }}/build/core
-        run: pytest test/scip/test_scip_core.py -v --tb=short
+        # Force the dynamic loader to resolve libstdc++ against the same
+        # GCC that compiled our pybind .so.  Any conda env on the runner
+        # may carry an older libstdc++ whose GLIBCXX_* tags don't cover
+        # the symbols our build references; libigraph/libre2 also drag
+        # libstdc++ in transitively so a runtime override is required.
+        # `gcc -print-file-name` yields the distro-appropriate path on
+        # any Linux host (Ubuntu, RHEL, Arch, ...).
+        run: |
+          SYS_STDCPP="$(gcc -print-file-name=libstdc++.so.6 2>/dev/null || true)"
+          if [ -e "$SYS_STDCPP" ]; then
+            export LD_PRELOAD="$SYS_STDCPP"
+            echo "[ld] LD_PRELOAD=$LD_PRELOAD"
+          else
+            echo "[ld] system libstdc++.so.6 not found via gcc; running without LD_PRELOAD"
+          fi
+          pytest test/scip/test_scip_core.py -v --tb=short
 
   # =============================================================
   # Job 4 — Slow tests  (LLM API, GPU embeddings, ~15 min)
