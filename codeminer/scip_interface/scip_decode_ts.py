@@ -49,6 +49,13 @@ class SCIPTypeScriptGraphDecoder:
         # Add the root node to the graph
         self.code_graph.add_root_node(ROOT_NODE)
 
+        # Prescan: collect project packages from every definition across all
+        # documents before filtering references. Mirrors
+        # ``core::SCIPTSDecoder::prescan`` so cross-package refs seen in the
+        # SCIP file BEFORE their own package's definitions aren't filtered
+        # out for lack of a populated ``_project_packages``.
+        self._prescan_project_packages(document_blocks)
+
         # Process all documents
         for document in document_blocks:
             self._process_document(document)
@@ -60,6 +67,33 @@ class SCIPTypeScriptGraphDecoder:
         )
 
         return self.code_graph
+
+    def _prescan_project_packages(self, document_blocks):
+        """Walk every occurrence in every document and seed
+        ``_project_packages`` from DEFINITIONS (``symbol_roles & 1``) whose
+        ``pkg_name`` / ``pkg_version`` are both known (not ``"."``).
+
+        Without this pass, a cross-package reference emitted before its own
+        package's first definition gets dropped by the reference filter in
+        ``_process_occurrence``. C++ core runs this same pass before
+        parallel document processing — mirror it here so both decoders see
+        byte-identical graphs.
+        """
+        for document in document_blocks:
+            for occurrence in extract_scip_blocks(document, "occurrences"):
+                symbol = extract_symbol(occurrence)
+                if not symbol or not symbol.startswith("scip-typescript "):
+                    continue
+                parts = symbol.split(" ")
+                if len(parts) < 5:
+                    continue
+                if parts[2] == "." or parts[3] == ".":
+                    continue
+                m = re.search(r"symbol_roles:\s*(\d+)", occurrence)
+                if not m:
+                    continue
+                if int(m.group(1)) & 1:
+                    self._project_packages.add(parts[2])
 
     def _process_document(self, document_text):
         # Extract file path
@@ -131,25 +165,26 @@ class SCIPTypeScriptGraphDecoder:
 
         # Filter external / third-party package references.
         # SCIP symbol: "scip-typescript npm <pkg> <ver> <descriptor>"
+        # ``_project_packages`` is populated by ``_prescan_project_packages``
+        # (sole source of truth, mirrors ``core::SCIPTSDecoder::prescan``);
+        # per-occurrence code only *filters* against it.
         scip_parts = symbol.split(" ")
-        if len(scip_parts) >= 5 and scip_parts[0] == "scip-typescript":
+        if (
+            len(scip_parts) >= 5
+            and scip_parts[0] == "scip-typescript"
+            and not (symbol_roles & 1)
+        ):
             pkg_name = scip_parts[2]
-            pkg_version = scip_parts[3]
-            if symbol_roles & 1:
-                # Record project packages from definitions
-                if pkg_name != "." and pkg_version != ".":
-                    self._project_packages.add(pkg_name)
-            else:
-                # Always filter @types/* references
-                if pkg_name.startswith("@types/"):
-                    return
-                # Filter non-project packages once we know our own
-                if (
-                    self._project_packages
-                    and pkg_name != "."
-                    and pkg_name not in self._project_packages
-                ):
-                    return
+            # Always filter @types/* references
+            if pkg_name.startswith("@types/"):
+                return
+            # Filter non-project packages once we know our own
+            if (
+                self._project_packages
+                and pkg_name != "."
+                and pkg_name not in self._project_packages
+            ):
+                return
 
         # Extract enclosing range if available
         enclosing_ranges = re.findall(r"enclosing_range:\s*(\d+)", occurrence_text)
