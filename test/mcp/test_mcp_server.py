@@ -18,7 +18,6 @@ from codeminer.mcp.context import ServerContext
 
 # Import server module components
 import codeminer.mcp.server as server_module
-from codeminer.mcp.server import get_context
 
 
 @pytest.fixture
@@ -71,7 +70,7 @@ def test_init_server_success(mock_manifest: Path):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):
                     server_module.init_server(str(mock_manifest))
-                    ctx = get_context()
+                    ctx = server_module.get_context()
 
                     assert isinstance(ctx, ServerContext)
                     # Check basic manifest loading worked
@@ -84,7 +83,7 @@ def test_get_context_uninitialized():
     server_module._ctx = None
 
     with pytest.raises(RuntimeError, match="ServerContext not initialized"):
-        get_context()
+        server_module.get_context()
 
 
 @pytest.mark.asyncio
