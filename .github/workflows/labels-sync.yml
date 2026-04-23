@@ -1,0 +1,46 @@
+name: Sync labels
+
+# Mirrors .github/labels.yml to the repository's labels.
+# Runs automatically when labels.yml changes on main, and can be
+# triggered manually via workflow_dispatch for first-run / debugging.
+#
+# `delete-other-labels` is OFF by default so existing flat labels are
+# preserved until issues have been migrated to the new taxonomy. Once
+# migration is complete, trigger the workflow manually with
+# `delete_unused: true` to prune the old labels.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/labels.yml
+      - .github/workflows/labels-sync.yml
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print planned changes without applying them'
+        required: false
+        default: 'false'
+        type: boolean
+      delete_unused:
+        description: 'Delete labels not present in labels.yml'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync labels from labels.yml
+        uses: EndBug/label-sync@v2
+        with:
+          config-file: .github/labels.yml
+          delete-other-labels: ${{ github.event_name == 'workflow_dispatch' && inputs.delete_unused || false }}
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}

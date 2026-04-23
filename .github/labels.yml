@@ -1,0 +1,125 @@
+# Canonical label taxonomy for the CodeMiner repo.
+# Synced by .github/workflows/labels-sync.yml (uses EndBug/label-sync@v2).
+#
+# Conventions (see issue #122):
+#   type/*      blue    — what the change is
+#   priority/*  red     — how urgent it is
+#   status/*    purple  — where it sits in the workflow
+#   scope/*     green   — which subsystem it touches
+#   effort/*    gray    — rough size estimate (optional)
+#
+# An issue/PR should carry at most one label per prefix dimension.
+
+# ── type/ ────────────────────────────────────────────────────────────
+- name: type/bug
+  color: '1d76db'
+  description: Behavior does not match expectations
+- name: type/feature
+  color: '1d76db'
+  description: New functionality
+- name: type/refactor
+  color: '1d76db'
+  description: Restructure without behavior change
+- name: type/perf
+  color: '1d76db'
+  description: Performance optimization
+- name: type/docs
+  color: '1d76db'
+  description: Documentation
+- name: type/test
+  color: '1d76db'
+  description: Test-related
+- name: type/chore
+  color: '1d76db'
+  description: Build, CI, dependency updates
+
+# ── priority/ ────────────────────────────────────────────────────────
+- name: priority/P0
+  color: 'b60205'
+  description: Blocker — fix immediately
+- name: priority/P1
+  color: 'd93f0b'
+  description: This week
+- name: priority/P2
+  color: 'fbca04'
+  description: This milestone
+- name: priority/P3
+  color: 'c5def5'
+  description: Nice to have
+
+# ── status/ ──────────────────────────────────────────────────────────
+- name: status/triage
+  color: '5319e7'
+  description: New issue default, not yet categorized
+- name: status/needs-info
+  color: '5319e7'
+  description: Waiting for reporter to provide more info
+- name: status/blocked
+  color: '5319e7'
+  description: Blocked by external dependency
+- name: status/in-progress
+  color: '5319e7'
+  description: Someone is actively working on it
+- name: status/needs-review
+  color: '5319e7'
+  description: PR awaiting review
+- name: status/wontfix
+  color: '5319e7'
+  description: Will not be addressed
+
+# ── scope/ ───────────────────────────────────────────────────────────
+- name: scope/retrieval
+  color: '0e8a16'
+  description: BM25, embedding search, hybrid retrieval
+- name: scope/indexing
+  color: '0e8a16'
+  description: FAISS, vector store, incremental pipeline
+- name: scope/graph
+  color: '0e8a16'
+  description: Code graph, igraph, ROI subgraph, SCIP decode
+- name: scope/agent
+  color: '0e8a16'
+  description: Agent runner, skills, tool execution
+- name: scope/compiler
+  color: '0e8a16'
+  description: Index compiler, manifest, build integration
+- name: scope/eval
+  color: '0e8a16'
+  description: Evaluation, baselines, experiment scripts
+- name: scope/chunking
+  color: '0e8a16'
+  description: Tree-sitter chunkers, code chunking
+- name: scope/llm
+  color: '0e8a16'
+  description: LiteLLM chat, prompts
+- name: scope/infra
+  color: '0e8a16'
+  description: CI, packaging, repo config
+
+# ── effort/ ──────────────────────────────────────────────────────────
+- name: effort/small
+  color: 'bfdadc'
+  description: Less than half a day
+- name: effort/medium
+  color: 'bfdadc'
+  description: 1–3 days
+- name: effort/large
+  color: 'bfdadc'
+  description: 1 week or more
+
+# ── Special (preserved across sync) ──────────────────────────────────
+- name: good first issue
+  color: '7057ff'
+  description: Good for newcomers
+- name: help wanted
+  color: '008672'
+  description: Extra attention is needed
+- name: duplicate
+  color: 'cfd3d7'
+  description: This issue or pull request already exists
+- name: question
+  color: 'd876e3'
+  description: Further information is requested
+- name: security
+  color: 'ee0701'
+  description: Security-sensitive — triage immediately

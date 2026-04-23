@@ -1,6 +1,6 @@
 name: RFC / Design Proposal
 description: Propose a significant design change or architectural decision
-labels: ["rfc"]
+labels: ["type/feature", "status/triage"]
 body:
   - type: markdown
     attributes:
