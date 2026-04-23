@@ -5,7 +5,7 @@ Tests the tool wrapper logic with mocked CodeVectorStore.
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 
 from codeminer.compiler.manifest import RepoManifest
 from codeminer.mcp.context import ServerContext
