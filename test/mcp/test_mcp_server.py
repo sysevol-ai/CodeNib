@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.compiler.manifest import RepoManifest
 from codeminer.index.embedding.vector_store import CodeVectorStore
 from codeminer.mcp.context import ServerContext
 
