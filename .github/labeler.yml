@@ -1,89 +1,78 @@
-# Auto-label PRs based on changed file paths
+# Auto-label PRs based on changed file paths.
+# Labels follow the prefix-based taxonomy defined in .github/labels.yml.
 # See https://github.com/actions/labeler
 
-# ── Domains ──────────────────────────────────────────────────────────
-agent:
+# ── scope/ ───────────────────────────────────────────────────────────
+scope/agent:
   - changed-files:
       - any-glob-to-any-file:
           - codeminer/agent/**
           - test/agent/**
 
-chunking:
+scope/chunking:
   - changed-files:
       - any-glob-to-any-file:
           - codeminer/code_chunking/**
           - test/chunker/**
 
-graph:
+scope/graph:
   - changed-files:
       - any-glob-to-any-file:
           - codeminer/graph/**
+          - codeminer/ops/**
+          - codeminer/scip_interface/**
+          - codeminer/ls_index/**
           - test/graph/**
+          - test/ops/**
+          - test/scip/**
 
-index:
+scope/indexing:
   - changed-files:
       - any-glob-to-any-file:
           - codeminer/index/**
           - test/index/**
 
-dataset:
-  - changed-files:
-      - any-glob-to-any-file:
-          - codeminer/dataset/**
-          - test/dataset/**
-
-scip:
-  - changed-files:
-      - any-glob-to-any-file:
-          - codeminer/scip_interface/**
-          - codeminer/ls_index/**
-          - test/scip/**
-
-llm:
+scope/llm:
   - changed-files:
       - any-glob-to-any-file:
           - codeminer/llm/**
 
-ops:
-  - changed-files:
-      - any-glob-to-any-file:
-          - codeminer/ops/**
-          - test/ops/**
-
-compiler:
+scope/compiler:
   - changed-files:
       - any-glob-to-any-file:
           - codeminer/compiler/**
           - test/compiler/**
 
-eval:
+scope/eval:
   - changed-files:
       - any-glob-to-any-file:
+          - codeminer/dataset/**
           - codeminer/eval/**
+          - test/dataset/**
 
-# ── Cross-cutting ────────────────────────────────────────────────────
-ci:
+scope/infra:
   - changed-files:
       - any-glob-to-any-file:
           - .github/**
 
-documentation:
+# ── type/ ────────────────────────────────────────────────────────────
+type/docs:
   - changed-files:
       - any-glob-to-any-file:
           - "**.md"
           - docs/**
 
-tests:
+type/test:
   - changed-files:
       - any-glob-to-any-file:
           - test/**
           - conftest.py
-          - pyproject.toml
 
-dependencies:
+type/chore:
   - changed-files:
       - any-glob-to-any-file:
           - requirements*.txt
           - setup.py
           - setup.cfg
           - pyproject.toml
+          - .github/**

@@ -1,6 +1,6 @@
 name: Feature Request
 description: Propose a new feature or enhancement
-labels: ["enhancement"]
+labels: ["type/feature", "status/triage"]
 body:
   - type: markdown
     attributes:
@@ -29,22 +29,20 @@ body:
       description: What other approaches did you consider?
 
   - type: dropdown
-    id: component
+    id: scope
     attributes:
-      label: Component
-      description: Which part of CodeMiner does this relate to?
+      label: Scope
+      description: Which area of CodeMiner does this relate to? (Triage will apply the matching `scope/` label.)
       options:
-        - agent
-        - chunking
-        - graph
-        - index
-        - dataset
-        - scip
-        - llm
-        - ops
-        - compiler
-        - eval
-        - ci
+        - scope/agent
+        - scope/chunking
+        - scope/graph
+        - scope/indexing
+        - scope/retrieval
+        - scope/compiler
+        - scope/eval
+        - scope/llm
+        - scope/infra
         - other
     validations:
       required: true
