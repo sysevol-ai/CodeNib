@@ -6,6 +6,7 @@ Tests server initialization, tool registration, and resource endpoints.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -85,8 +86,8 @@ def test_get_context_uninitialized():
         server_module.get_context()
 
 
-@pytest.mark.asyncio
-async def test_semantic_search_tool_no_vector_index(mock_manifest: Path):
+
+def test_semantic_search_tool_no_vector_index(mock_manifest: Path):
     """Test semantic_search tool returns error when vector index not loaded."""
     # Initialize server with mock that fails vector loading
     mock_mcp = MagicMock()
@@ -95,15 +96,15 @@ async def test_semantic_search_tool_no_vector_index(mock_manifest: Path):
             with patch.object(CodeVectorStore, "load", side_effect=Exception("Load failed")):
                 server_module.init_server(str(mock_manifest))
 
-    result = await server_module.semantic_search(query="test query")
+    result = asyncio.run(server_module.semantic_search(query="test query"))
 
     # Should return error message instead of raising
     assert isinstance(result, dict)
     assert "error" in result or "Vector index not loaded" in str(result)
 
 
-@pytest.mark.asyncio
-async def test_semantic_search_tool_with_vector_index(mock_manifest: Path):
+
+def test_semantic_search_tool_with_vector_index(mock_manifest: Path):
     """Test semantic_search tool with mocked vector store."""
     mock_vector = MagicMock(spec=CodeVectorStore)
     mock_vector.embedding_model = "text-embedding-3-small"
@@ -125,10 +126,10 @@ async def test_semantic_search_tool_with_vector_index(mock_manifest: Path):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):
                     server_module.init_server(str(mock_manifest))
-                    ctx = get_context()
+                    ctx = server_module.get_context()
                     ctx.vector = mock_vector
 
-    result = await server_module.semantic_search(query="test query", top_k=5)
+    result = asyncio.run(server_module.semantic_search(query="test query", top_k=5))
 
     assert isinstance(result, list)
     assert len(result) == 1
@@ -148,7 +149,7 @@ def test_server_status_resource(mock_manifest: Path):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):
                     server_module.init_server(str(mock_manifest))
-                    ctx = get_context()
+                    ctx = server_module.get_context()
                     ctx.vector = mock_vector
 
     status = server_module.server_status()

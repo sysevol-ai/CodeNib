@@ -4,6 +4,7 @@ Unit tests for search_semantic MCP tool.
 Tests the tool wrapper logic with mocked CodeVectorStore.
 """
 
+import asyncio
 import pytest
 from unittest.mock import Mock
 
@@ -25,8 +26,7 @@ def mock_context():
     return ctx
 
 
-@pytest.mark.asyncio
-async def test_search_semantic_normal_path(mock_context):
+def test_search_semantic_normal_path(mock_context):
     """Test search_semantic with normal successful search."""
     # Setup mock to return NodeInfo objects
     mock_results = [
@@ -52,8 +52,8 @@ async def test_search_semantic_normal_path(mock_context):
     mock_context.vector.search_with_content = Mock(return_value=mock_results)
 
     # Call search_semantic
-    results = await search_semantic(
-        mock_context, query="test function", top_k=2, level="l2"
+    results = asyncio.run(
+        search_semantic(mock_context, query="test function", top_k=2, level="l2")
     )
 
     # Verify
@@ -71,12 +71,12 @@ async def test_search_semantic_normal_path(mock_context):
     )
 
 
-@pytest.mark.asyncio
-async def test_search_semantic_missing_index(mock_context):
+
+def test_search_semantic_missing_index(mock_context):
     """Test search_semantic when vector index is not loaded."""
     mock_context.vector = None
 
-    results = await search_semantic(mock_context, query="test")
+    results = asyncio.run(search_semantic(mock_context, query="test"))
 
     # Should return error dict, not raise exception
     assert isinstance(results, dict)
@@ -84,13 +84,13 @@ async def test_search_semantic_missing_index(mock_context):
     assert "not loaded" in results["error"].lower()
 
 
-@pytest.mark.asyncio
-async def test_search_semantic_score_threshold_forwarding(mock_context):
+
+def test_search_semantic_score_threshold_forwarding(mock_context):
     """Test that score_threshold is correctly forwarded."""
     mock_context.vector.search_with_content = Mock(return_value=[])
 
-    await search_semantic(
-        mock_context, query="test", top_k=5, score_threshold=0.7
+    asyncio.run(
+        search_semantic(mock_context, query="test", top_k=5, score_threshold=0.7)
     )
 
     # Verify score_threshold was passed
@@ -98,12 +98,12 @@ async def test_search_semantic_score_threshold_forwarding(mock_context):
     assert call_args.kwargs["score_threshold"] == 0.7
 
 
-@pytest.mark.asyncio
-async def test_search_semantic_default_parameters(mock_context):
+
+def test_search_semantic_default_parameters(mock_context):
     """Test search_semantic with default parameters."""
     mock_context.vector.search_with_content = Mock(return_value=[])
 
-    await search_semantic(mock_context, query="test")
+    asyncio.run(search_semantic(mock_context, query="test"))
 
     # Verify defaults
     call_args = mock_context.vector.search_with_content.call_args
@@ -112,12 +112,12 @@ async def test_search_semantic_default_parameters(mock_context):
     assert call_args.kwargs["score_threshold"] is None
 
 
-@pytest.mark.asyncio
-async def test_search_semantic_empty_results(mock_context):
+
+def test_search_semantic_empty_results(mock_context):
     """Test search_semantic with no matching results."""
     mock_context.vector.search_with_content = Mock(return_value=[])
 
-    results = await search_semantic(mock_context, query="nonexistent")
+    results = asyncio.run(search_semantic(mock_context, query="nonexistent"))
 
     assert results == []
     assert isinstance(results, list)
