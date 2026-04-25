@@ -5,6 +5,7 @@ Tests MCP server layer (init_server, semantic_search) using pre-built indexes
 from codeminer-base-dataset at /mnt/data/codeminer.
 """
 
+import asyncio
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -83,8 +84,8 @@ class TestMCPServerE2E:
                 print(f"  L0: {stats.get('l0_documents', 0)}")
                 print(f"  L2: {stats.get('l2_documents', 0)}")
 
-    @pytest.mark.asyncio
-    async def test_mcp_semantic_search(self, test_manifest_path):
+    
+    def test_mcp_semantic_search(self, test_manifest_path):
         """Test MCP semantic_search tool with real query."""
         # Initialize server
         mock_mcp = MagicMock()
@@ -95,11 +96,11 @@ class TestMCPServerE2E:
         # Known query for astropy separability issue
         query = "function that calculates model separability matrix"
 
-        results = await server_module.semantic_search(
+        results = asyncio.run(server_module.semantic_search(
             query=query,
             top_k=10,
             level="l2",
-        )
+        ))
 
         # Validate results
         assert isinstance(results, list)
@@ -132,8 +133,8 @@ class TestMCPServerE2E:
             print(f"   File: {Path(r['file']).name}")
             print()
 
-    @pytest.mark.asyncio
-    async def test_mcp_vs_direct_call_equivalence(self, test_manifest_path):
+    
+    def test_mcp_vs_direct_call_equivalence(self, test_manifest_path):
         """
         Verify MCP layer produces identical results to direct API call.
 
@@ -164,9 +165,9 @@ class TestMCPServerE2E:
             with patch.object(server_module, "mcp", mock_mcp):
                 server_module.init_server(test_manifest_path)
 
-        mcp_results = await server_module.semantic_search(
+        mcp_results = asyncio.run(server_module.semantic_search(
             query=query, top_k=top_k, level="l2"
-        )
+        ))
 
         # Should have same number of results
         assert len(mcp_results) == len(direct_results)
@@ -186,8 +187,8 @@ class TestMCPServerE2E:
         print("Scores match: ✓")
         print("MCP adds no transformation overhead: ✓")
 
-    @pytest.mark.asyncio
-    async def test_mcp_server_status(self, test_manifest_path):
+    
+    def test_mcp_server_status(self, test_manifest_path):
         """Test server_status resource returns correct info."""
         mock_mcp = MagicMock()
         with patch.object(server_module, "FastMCP", return_value=mock_mcp):

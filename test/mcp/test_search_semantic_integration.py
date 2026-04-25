@@ -4,6 +4,7 @@ Integration tests for search_semantic with real embedding indexes.
 Uses pre-built indexes from /mnt/data/codeminer (Turquoise-T's dataset).
 """
 
+import asyncio
 import pytest
 from pathlib import Path
 
@@ -67,15 +68,15 @@ class TestSearchSemanticIntegration:
 
         return ctx
 
-    @pytest.mark.asyncio
-    async def test_search_semantic_real_query(self, real_context):
+    
+    def test_search_semantic_real_query(self, real_context):
         """Test semantic search with a real query on astropy code."""
-        results = await search_semantic(
+        results = asyncio.run(search_semantic(
             real_context,
             query="find coordinate transformation functions",
             top_k=5,
             level="l2",
-        )
+        ))
 
         # Basic validation
         assert isinstance(results, list)
@@ -103,18 +104,18 @@ class TestSearchSemanticIntegration:
             print(f"   Type: {r['type']}")
             print()
 
-    @pytest.mark.asyncio
-    async def test_search_semantic_score_threshold(self, real_context):
+    
+    def test_search_semantic_score_threshold(self, real_context):
         """Test score threshold filtering with real index."""
         # Search without threshold
-        all_results = await search_semantic(
+        all_results = asyncio.run(search_semantic(
             real_context, query="unit test", top_k=20
-        )
+        ))
 
         # Search with threshold
-        filtered_results = await search_semantic(
+        filtered_results = asyncio.run(search_semantic(
             real_context, query="unit test", top_k=20, score_threshold=0.5
-        )
+        ))
 
         # Filtered should have fewer or equal results
         assert len(filtered_results) <= len(all_results)
@@ -123,15 +124,15 @@ class TestSearchSemanticIntegration:
         for r in filtered_results:
             assert r["score"] >= 0.5
 
-    @pytest.mark.asyncio
-    async def test_search_semantic_performance(self, real_context):
+    
+    def test_search_semantic_performance(self, real_context):
         """Test that search completes in reasonable time."""
         import time
 
         start = time.time()
-        results = await search_semantic(
+        results = asyncio.run(search_semantic(
             real_context, query="coordinate transformation", top_k=10
-        )
+        ))
         elapsed = time.time() - start
 
         # Should complete within 2 seconds (generous threshold)
