@@ -2,6 +2,7 @@
 Test RegexNodeIndex functionality using the httpie CLI repository.
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -13,7 +14,8 @@ from codeminer.ls_router import LSIndexer
 pytestmark = pytest.mark.integration
 
 HTTPIE_REPO_URL = "https://github.com/httpie/cli.git"
-HTTPIE_REPO_PATH = Path("/tmp/httpie-cli")
+# Use user-specific path to avoid conflicts in multi-user environments (e.g., CI runners)
+HTTPIE_REPO_PATH = Path(f"/tmp/httpie-cli-{os.getuid()}")
 
 
 def ensure_httpie_repo() -> Path:
@@ -32,7 +34,8 @@ def test_regex_index_basic(httpie_cli_repo=None, tmp_path_factory=None):
     if tmp_path_factory:
         output_path = tmp_path_factory.mktemp("httpie_cli_regex")
     else:
-        output_path = Path("/tmp") / "httpie_cli_regex"
+        # Use user-specific path to avoid conflicts in multi-user environments
+        output_path = Path(f"/tmp/httpie_cli_regex-{os.getuid()}")
         output_path.mkdir(parents=True, exist_ok=True)
 
     print(f"Testing with httpie repo at: {repo_path}")
