@@ -13,15 +13,18 @@ For each language with a C++ decoder (python, go, rust, ts):
 
 This test intentionally does **not** rebuild the serial graph — it depends on
 the ``integration-serial → scip-core`` job chain in ``ci.yml`` to have
-populated ``graph.pkl``. If the cache is missing, the test skips with a
-pointer to what should have produced it. Running core's ``process_index``
-with ``output_file=None`` avoids clobbering the serial ``graph.pkl``.
+populated ``graph.pkl``. If the cache is missing, the test fails under CI
+(``$CI`` set) since that indicates an ``integration-serial`` regression, and
+skips locally with a pointer to what should have produced it. Running core's
+``process_index`` with ``output_file=None`` avoids clobbering the serial
+``graph.pkl``.
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 from pathlib import Path
 from typing import Dict, Set, Tuple
 
@@ -144,12 +147,15 @@ def _run_parity(language: str) -> None:
     graph_pkl = output_dir / "graph.pkl"
     decoded = output_dir / "index.decoded"
     if not graph_pkl.exists() or not decoded.exists():
-        pytest.skip(
+        msg = (
             f"[{language}] cache missing at {output_dir}. "
             f"graph.pkl={graph_pkl.exists()}, index.decoded={decoded.exists()}. "
             "integration-serial job should have produced these "
             "(test_scip_multilingual or test_scip_swebench)."
         )
+        if os.getenv("CI"):
+            pytest.fail(msg)
+        pytest.skip(msg)
 
     from codeminer.graph.code_graph import CodeGraph
 
