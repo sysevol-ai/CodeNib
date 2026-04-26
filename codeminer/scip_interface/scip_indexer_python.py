@@ -97,8 +97,13 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         if target_dir:
             cmd.extend(["--target-only", target_dir])
 
-        for pattern in self.exclude_patterns:
-            cmd.extend(["--exclude", pattern])
+        # Note: scip-python does not support --exclude option
+        # exclude_patterns are silently ignored for Python indexing
+        if self.exclude_patterns:
+            logger.warning(
+                f"scip-python does not support exclude patterns. "
+                f"Ignoring: {self.exclude_patterns}"
+            )
 
         return cmd
 
