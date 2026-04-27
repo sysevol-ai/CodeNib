@@ -206,7 +206,9 @@ void SCIPPythonDecoder::process_symbol(const std::string &symbol, int line,
       std::replace(module_dir.begin(), module_dir.end(), '.', '/');
       std::string file = module_dir + ".py";
       if (is_reference) {
-        builder.add_edge(builder.current_scope(), file, EDGE_TYPE_REFERENCE);
+        builder.add_edge(builder.current_scope(), file, EDGE_TYPE_REFERENCE,
+                          /*anchor_file=*/builder.current_file(),
+                          /*anchor_line=*/line);
       }
     }
     return;
@@ -226,7 +228,8 @@ void SCIPPythonDecoder::process_symbol(const std::string &symbol, int line,
                             symbol_type);
     builder.add_edge(builder.current_scope(), unified, EDGE_TYPE_CONTAIN);
   } else if (is_reference) {
-    builder.add_symbol_reference(unified, module_path, symbol_type);
+    builder.add_symbol_reference(unified, module_path, symbol_type,
+                                  /*anchor_line=*/line);
   }
 }
 

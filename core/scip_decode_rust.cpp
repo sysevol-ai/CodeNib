@@ -451,7 +451,7 @@ void SCIPRustDecoder::process_symbol(const std::string &symbol,
       builder.add_edge(builder.current_scope(), unified, EDGE_TYPE_CONTAIN);
     }
   } else {
-    builder.add_symbol_reference(unified, file_path, type);
+    builder.add_symbol_reference(unified, file_path, type, /*anchor_line=*/line);
     builder.set_unified_name(unified, unified_name(unified, file_path, type),
                              /*only_if_missing=*/true);
   }

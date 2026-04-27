@@ -251,7 +251,9 @@ void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
   //   - Later REFERENCE leaves existing attrs alone (matches serial
   //     add_symbol_reference's "only create if missing").
   std::unordered_map<std::string, Subgraph::Node> merged_nodes;
-  std::vector<std::tuple<std::string, std::string, std::string>> all_edges;
+  std::vector<std::tuple<std::string, std::string, std::string,
+                          std::optional<std::string>, std::optional<int>>>
+      all_edges;
 
   std::size_t estimated = 0;
   for (const auto &sg : subgraphs)
@@ -281,7 +283,8 @@ void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
       // else: subsequent ref on existing node — leave attrs alone.
     }
     for (const auto &e : sg.edges) {
-      all_edges.emplace_back(e.source, e.target, e.type);
+      all_edges.emplace_back(e.source, e.target, e.type, e.anchor_file,
+                              e.anchor_line);
     }
   }
 

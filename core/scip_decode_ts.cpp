@@ -171,29 +171,40 @@ std::string SCIPTSDecoder::unify_symbol_name(const std::string &cleaned_symbol,
                       : original_symbol.substr(last_sp + 1);
   }
 
+  // SCIP TS descriptor shape:
+  //   [dir/prefix/]`filename`[/<nested-symbol-segments>]<kind-suffix>
+  // The optional dir prefix lives OUTSIDE the first backtick block — the
+  // previous implementation discarded it, collapsing e.g.
+  //   `examples/`server.js`/'Content-Type'0`:` and
+  //   `sandbox/`server.js`/'Content-Type'0`:`
+  // into the same symbol id. This block mirrors the Python decoder's fix:
+  // include the outside-backtick prefix in module_path; descriptor is the
+  // tail after the first backtick block (subsequent backticks stripped).
   std::string module_path;
   std::string descriptor;
-  auto bt_segments = all_backtick_segments(sym_with_bt);
-  if (!bt_segments.empty()) {
-    if (bt_segments.size() == 1) {
-      module_path = bt_segments[0];
-    } else {
-      // First segment might use dots for slashes
-      static const re2::RE2 ext_strip(R"re2(\.(ts|tsx|js|jsx)$)re2");
-      std::string first = bt_segments[0];
-      re2::RE2::Replace(&first, ext_strip, "");
-      std::replace(first.begin(), first.end(), '.', '/');
-      std::ostringstream oss;
-      oss << first;
-      for (std::size_t i = 1; i < bt_segments.size(); ++i)
-        oss << '/' << bt_segments[i];
-      module_path = oss.str();
-    }
-    auto last_bt = sym_with_bt.rfind('`');
-    std::string tail = sym_with_bt.substr(last_bt + 1);
+  auto first_bt_open = sym_with_bt.find('`');
+  auto first_bt_close =
+      first_bt_open == std::string::npos
+          ? std::string::npos
+          : sym_with_bt.find('`', first_bt_open + 1);
+
+  if (first_bt_open != std::string::npos &&
+      first_bt_close != std::string::npos &&
+      first_bt_close > first_bt_open) {
+    std::string dir_prefix = sym_with_bt.substr(0, first_bt_open);
+    while (!dir_prefix.empty() && dir_prefix.back() == '/')
+      dir_prefix.pop_back();
+    std::string file_part = sym_with_bt.substr(
+        first_bt_open + 1, first_bt_close - first_bt_open - 1);
+    if (!dir_prefix.empty())
+      module_path = dir_prefix + "/" + file_part;
+    else
+      module_path = file_part;
+
+    std::string tail = sym_with_bt.substr(first_bt_close + 1);
     while (!tail.empty() && tail.front() == '/')
       tail.erase(tail.begin());
-    descriptor = tail;
+    descriptor = strip_backticks(tail);
   } else {
     module_path = file_path.empty() ? std::string("unknown") : file_path;
     descriptor = strip_backticks(cleaned_symbol);
@@ -396,7 +407,9 @@ void SCIPTSDecoder::process_symbol(const std::string &symbol, int line,
   bool is_simple_symbol = unified.find('#') == std::string::npos;
   if (is_index_file && is_simple_symbol && !(symbol_roles & 1)) {
     if (builder.current_scope() != file_path) {
-      builder.add_edge(builder.current_scope(), file_path, EDGE_TYPE_REFERENCE);
+      builder.add_edge(builder.current_scope(), file_path, EDGE_TYPE_REFERENCE,
+                        /*anchor_file=*/file_path,
+                        /*anchor_line=*/line);
     }
     return;
   }
@@ -417,7 +430,7 @@ void SCIPTSDecoder::process_symbol(const std::string &symbol, int line,
     builder.set_unified_name(unified, unified_name(unified, file_path, type));
     builder.add_edge(builder.current_scope(), unified, EDGE_TYPE_CONTAIN);
   } else {
-    builder.add_symbol_reference(unified, file_path, type);
+    builder.add_symbol_reference(unified, file_path, type, /*anchor_line=*/line);
     builder.set_unified_name(unified, unified_name(unified, file_path, type),
                              /*only_if_missing=*/true);
   }
