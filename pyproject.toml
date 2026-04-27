@@ -38,7 +38,11 @@ dependencies = [
     "PyStemmer>=3.0.0",                 # For stemmer (faster than NLTK)
     # "vllm>=0.10.2" removed — use vLLM OpenAI-compatible server via litellm
     "requests>=2.25.0",                 # For HTTP requests (health checks, etc.)
+    "mcp>=1.0.0",                        # Model Context Protocol SDK (stdio server)
 ]
+
+[project.scripts]
+codeminer-mcp = "codeminer.mcp.server:main"
 
 [project.optional-dependencies]
 dev = [
