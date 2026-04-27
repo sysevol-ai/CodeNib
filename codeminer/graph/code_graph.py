@@ -1,4 +1,8 @@
+import bisect
 import pickle
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 
 import igraph as ig
 import matplotlib.pyplot as plt
@@ -19,7 +23,20 @@ from ..types import (
 # Bump when the persisted graph schema changes (vertex/edge attributes,
 # top-level pickle keys). load_graph() refuses mismatching pickles so stale
 # caches surface as a loud error instead of silent attribute drift.
-_SCHEMA_VERSION = 2
+#
+# v2 (main): adds file_to_vertices index + new pickle keys
+# v3 (this branch): edges carry anchor_file / anchor_line; range indexes
+#                   (file_nodes / file_edge_anchors) pickled with graph
+_SCHEMA_VERSION = 3
+
+
+@dataclass
+class RangeQueryResult:
+    """Result of CodeGraph.query_range — three lists of igraph ids."""
+
+    defined: List[int] = field(default_factory=list)   # node ids
+    outgoing: List[int] = field(default_factory=list)  # edge ids, anchor in range
+    incoming: List[int] = field(default_factory=list)  # edge ids, target def in range
 
 
 class CodeGraph:
@@ -39,6 +56,13 @@ class CodeGraph:
         self.symbol_ranges = {}
         # Map symbol names to vertex IDs
         self.name_to_vertex = {}
+
+        # Range indexes — per-file, populated by build_range_indexes() after the
+        # graph is fully built or after a patcher batch. Pickled with the graph.
+        # _file_nodes[file] -> list of (start_line, end_line, vid), unsorted.
+        # _file_edge_anchors[file] -> sorted list of (anchor_line, eid).
+        self._file_nodes: Dict[str, List[Tuple[int, int, int]]] = {}
+        self._file_edge_anchors: Dict[str, List[Tuple[int, int]]] = {}
 
     def add_file_node(self, file_path):
         """
@@ -99,7 +123,14 @@ class CodeGraph:
                 },
             )
 
-    def add_symbol_reference(self, symbol, module_path=None, symbol_type=None):
+    def add_symbol_reference(
+        self,
+        symbol,
+        module_path=None,
+        symbol_type=None,
+        anchor_file: Optional[str] = None,
+        anchor_line: Optional[int] = None,
+    ):
         """
         Add a reference to a symbol.
 
@@ -108,6 +139,8 @@ class CodeGraph:
             module_path: Path of the module containing the symbol (optional)
             symbol_type: Type of symbol
                 (NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FUNCTION) (optional)
+            anchor_file: File where the reference site is located (optional)
+            anchor_line: 0-based line of the reference site (optional)
         """
         # If the symbol doesn't exist, create it without range info
         if symbol not in self.name_to_vertex:
@@ -115,8 +148,16 @@ class CodeGraph:
             node_type = symbol_type if symbol_type else NODE_TYPE_SYMBOL
             self._add_vertex(symbol, {"type": node_type, "file": file_attr})
 
-        # Add reference edge
-        self._add_edge(self.current_scope, symbol, EDGE_TYPE_REFERENCE)
+        # Add reference edge with anchor info (defaults: current file)
+        if anchor_file is None:
+            anchor_file = self.current_file
+        self._add_edge(
+            self.current_scope,
+            symbol,
+            EDGE_TYPE_REFERENCE,
+            anchor_file=anchor_file,
+            anchor_line=anchor_line,
+        )
 
     def update_current_scope(self, symbol, start_line=None, end_line=None):
         """
@@ -168,16 +209,31 @@ class CodeGraph:
                 # Scope is still active
                 break
 
-    def add_containment_edge(self, target_symbol):
+    def add_containment_edge(
+        self,
+        target_symbol,
+        anchor_file: Optional[str] = None,
+        anchor_line: Optional[int] = None,
+    ):
         """
         Add a containment edge from current scope to a symbol.
 
         Args:
             target_symbol: Symbol being contained
+            anchor_file: File where the contained symbol is declared (optional)
+            anchor_line: 0-based line of the declaration (optional)
         """
         # Use the current scope directly (not parent scope)
         parent_scope = self.current_scope
-        self._add_edge(parent_scope, target_symbol, EDGE_TYPE_CONTAIN)
+        if anchor_file is None:
+            anchor_file = self.current_file
+        self._add_edge(
+            parent_scope,
+            target_symbol,
+            EDGE_TYPE_CONTAIN,
+            anchor_file=anchor_file,
+            anchor_line=anchor_line,
+        )
 
     def _add_vertex(self, name, attributes=None):
         """
@@ -213,17 +269,31 @@ class CodeGraph:
 
         return vertex_id
 
-    def _add_edge(self, source_name, target_name, edge_type):
+    def _add_edge(
+        self,
+        source_name,
+        target_name,
+        edge_type,
+        anchor_file: Optional[str] = None,
+        anchor_line: Optional[int] = None,
+    ):
         """
         Add an edge between two vertices.
+
+        Multiple edges between the same `(source, target)` pair are allowed —
+        each call creates a new edge. Pass `anchor_file` / `anchor_line` to
+        record where the reference originated (e.g., the line of a call site);
+        these are used by `build_range_indexes()` to support range queries.
 
         Args:
             source_name: Name of the source vertex
             target_name: Name of the target vertex
             edge_type: Type of the edge (e.g., "reference", "contain")
+            anchor_file: File containing the call/reference site (optional)
+            anchor_line: 0-based line number of the call/reference site (optional)
 
         Returns:
-            Edge ID
+            Edge ID of the newly created edge.
         """
         # Make sure both vertices exist
         source_id = (
@@ -237,21 +307,100 @@ class CodeGraph:
             else self.name_to_vertex[target_name]
         )
 
-        # Check if the edge already exists
-        if self.graph.are_adjacent(source_id, target_id):
-            # Edge already exists, return its ID
-            edge_id = self.graph.get_eid(source_id, target_id, error=False)
-            if edge_id is not None:
-                return edge_id
-
-        # Add edge
+        # Add edge — multi-edges allowed; no dedup.
         self.graph.add_edges([(source_id, target_id)])
         edge_id = self.graph.ecount() - 1
 
-        # Set edge type
+        # Set edge attributes
         self.graph.es[edge_id]["type"] = edge_type
+        if anchor_file is not None:
+            self.graph.es[edge_id]["anchor_file"] = anchor_file
+        if anchor_line is not None:
+            self.graph.es[edge_id]["anchor_line"] = anchor_line
 
         return edge_id
+
+    # ------------------------------------------------------------------
+    # Range indexes (LSP-aligned line-range queries)
+    # ------------------------------------------------------------------
+
+    def build_range_indexes(self) -> None:
+        """Rebuild per-file line-range indexes from current graph state.
+
+        Call this after the graph is fully constructed by a decoder, and
+        again after any incremental patcher batch. The two indexes are
+        pickled with the graph by `save_graph`, so subsequent `load_graph`
+        calls do not need to rebuild.
+
+        Cost: O(V + E) — one linear pass over vertices and edges.
+        """
+        nodes: Dict[str, List[Tuple[int, int, int]]] = defaultdict(list)
+        for vid in range(self.graph.vcount()):
+            v = self.graph.vs[vid]
+            attrs = v.attributes()
+            f = attrs.get("file")
+            s = attrs.get("start_line")
+            e = attrs.get("end_line")
+            if f and s is not None and e is not None:
+                nodes[f].append((s, e, vid))
+        self._file_nodes = dict(nodes)
+
+        edges: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
+        for eid in range(self.graph.ecount()):
+            edge = self.graph.es[eid]
+            attrs = edge.attributes()
+            f = attrs.get("anchor_file")
+            line = attrs.get("anchor_line")
+            if f and line is not None:
+                edges[f].append((line, eid))
+        for f in edges:
+            edges[f].sort()
+        self._file_edge_anchors = dict(edges)
+
+    def query_range(
+        self, file: str, start_line: int, end_line: int
+    ) -> RangeQueryResult:
+        """Query the graph by source-file line range (LSP-aligned).
+
+        Returns three lists of igraph ids:
+        - `defined`: vids whose def range overlaps `[start_line, end_line]`
+          (overlap semantics — matches IDE outline behavior; nested scopes
+          are all returned).
+        - `outgoing`: eids whose `anchor_file == file` and
+          `anchor_line ∈ [start_line, end_line]` — call sites / references
+          originating inside the range.
+        - `incoming`: eids pointing into any node in `defined` — references
+          *to* symbols defined in the range, regardless of where they
+          originate. No separate index; uses `igraph.incident(mode='in')`.
+
+        Build `build_range_indexes()` must have been called once (decoder
+        and patcher hooks do this automatically; loaded graphs carry the
+        indexes in their pickle).
+        """
+        # defined: brute-force overlap scan over per-file node list.
+        # Per-file symbol counts are typically 10–1000; this stays well
+        # under 0.1 ms even on the largest files.
+        nodes = self._file_nodes.get(file, [])
+        defined = [vid for s, e, vid in nodes if s <= end_line and e >= start_line]
+
+        # outgoing: bisect on the sorted (anchor_line, eid) list.
+        # The (line, -1) / (line, +inf) sentinel pairs ensure we capture
+        # all edges on the boundary lines regardless of eid ordering.
+        arr = self._file_edge_anchors.get(file, [])
+        lo = bisect.bisect_left(arr, (start_line, -1))
+        hi = bisect.bisect_right(arr, (end_line, float("inf")))
+        outgoing = [eid for _, eid in arr[lo:hi]]
+
+        # incoming: use igraph's adjacency directly — no separate index.
+        incoming: List[int] = []
+        for vid in defined:
+            incoming.extend(self.graph.incident(vid, mode="in"))
+
+        return RangeQueryResult(
+            defined=defined, outgoing=outgoing, incoming=incoming
+        )
+
+    # ------------------------------------------------------------------
 
     def add_root_node(self, project_root):
         """Add the root node to the graph"""
@@ -275,6 +424,8 @@ class CodeGraph:
             "graph": self.graph,  # igraph objects are picklable
             "symbol_ranges": self.symbol_ranges,
             "name_to_vertex": self.name_to_vertex,
+            "file_nodes": self._file_nodes,
+            "file_edge_anchors": self._file_edge_anchors,
         }
 
         with open(output_path, "wb") as f:
@@ -309,6 +460,8 @@ class CodeGraph:
         graph_instance.graph = data["graph"]
         graph_instance.symbol_ranges = data.get("symbol_ranges", {})
         graph_instance.name_to_vertex = data.get("name_to_vertex", {})
+        graph_instance._file_nodes = data.get("file_nodes", {})
+        graph_instance._file_edge_anchors = data.get("file_edge_anchors", {})
 
         return graph_instance
 
