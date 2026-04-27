@@ -185,40 +185,49 @@ class SubgraphMgr(ABC):
 
         severed_incoming = []
         severed_outgoing = []
-        seen_outgoing = set()
         for vid in vids:
             v = g.graph.vs[vid]
             v_uname = v.attributes().get("unified_name") or ""
-            # Outgoing reference edges
+            # Outgoing: one entry per anchored call site (NO (src,tgt) dedup).
+            # Multi-edge schema means (src, tgt) may have N edges, one per
+            # call site; remap path needs each anchor preserved.
             for eid in g.graph.incident(vid, mode="out"):
                 edge = g.graph.es[eid]
-                if edge["type"] == EDGE_TYPE_REFERENCE:
-                    tv = g.graph.vs[edge.target]
-                    key = (v["name"], tv["name"])
-                    if key not in seen_outgoing:
-                        seen_outgoing.add(key)
-                        severed_outgoing.append(
-                            (
-                                v["name"],
-                                tv["name"],
-                                v_uname,
-                                tv.attributes().get("unified_name") or "",
-                            )
-                        )
-            # Incoming reference edges from outside
+                if edge["type"] != EDGE_TYPE_REFERENCE:
+                    continue
+                if edge.target in vids:
+                    continue
+                tv = g.graph.vs[edge.target]
+                eattrs = edge.attributes()
+                severed_outgoing.append(
+                    (
+                        v["name"],
+                        tv["name"],
+                        v_uname,
+                        tv.attributes().get("unified_name") or "",
+                        eattrs.get("anchor_file"),
+                        eattrs.get("anchor_line"),
+                    )
+                )
+            # Incoming: similarly per-anchor.
             for eid in g.graph.incident(vid, mode="in"):
                 edge = g.graph.es[eid]
-                if edge["type"] == EDGE_TYPE_REFERENCE:
-                    sv = g.graph.vs[edge.source]
-                    if edge.source not in vids:
-                        severed_incoming.append(
-                            (
-                                sv["name"],
-                                v["name"],
-                                sv.attributes().get("unified_name") or "",
-                                v_uname,
-                            )
-                        )
+                if edge["type"] != EDGE_TYPE_REFERENCE:
+                    continue
+                if edge.source in vids:
+                    continue
+                sv = g.graph.vs[edge.source]
+                eattrs = edge.attributes()
+                severed_incoming.append(
+                    (
+                        sv["name"],
+                        v["name"],
+                        sv.attributes().get("unified_name") or "",
+                        v_uname,
+                        eattrs.get("anchor_file"),
+                        eattrs.get("anchor_line"),
+                    )
+                )
 
         deleted_names = [g.graph.vs[vid]["name"] for vid in vids]
         g.graph.delete_vertices(sorted(vids))
@@ -253,32 +262,43 @@ class SubgraphMgr(ABC):
         for vid in vids:
             v = g.graph.vs[vid]
             v_uname = v.attributes().get("unified_name") or ""
+            # Outgoing: one entry per anchored call site (multi-edge aware).
             for eid in g.graph.incident(vid, mode="out"):
                 edge = g.graph.es[eid]
-                if edge["type"] == EDGE_TYPE_REFERENCE:
-                    tv = g.graph.vs[edge.target]
-                    if edge.target not in vids:
-                        severed_outgoing.append(
-                            (
-                                v["name"],
-                                tv["name"],
-                                v_uname,
-                                tv.attributes().get("unified_name") or "",
-                            )
-                        )
+                if edge["type"] != EDGE_TYPE_REFERENCE:
+                    continue
+                if edge.target in vids:
+                    continue
+                tv = g.graph.vs[edge.target]
+                eattrs = edge.attributes()
+                severed_outgoing.append(
+                    (
+                        v["name"],
+                        tv["name"],
+                        v_uname,
+                        tv.attributes().get("unified_name") or "",
+                        eattrs.get("anchor_file"),
+                        eattrs.get("anchor_line"),
+                    )
+                )
             for eid in g.graph.incident(vid, mode="in"):
                 edge = g.graph.es[eid]
-                if edge["type"] == EDGE_TYPE_REFERENCE:
-                    sv = g.graph.vs[edge.source]
-                    if edge.source not in vids:
-                        severed_incoming.append(
-                            (
-                                sv["name"],
-                                v["name"],
-                                sv.attributes().get("unified_name") or "",
-                                v_uname,
-                            )
-                        )
+                if edge["type"] != EDGE_TYPE_REFERENCE:
+                    continue
+                if edge.source in vids:
+                    continue
+                sv = g.graph.vs[edge.source]
+                eattrs = edge.attributes()
+                severed_incoming.append(
+                    (
+                        sv["name"],
+                        v["name"],
+                        sv.attributes().get("unified_name") or "",
+                        v_uname,
+                        eattrs.get("anchor_file"),
+                        eattrs.get("anchor_line"),
+                    )
+                )
 
         deleted_names = [g.graph.vs[vid]["name"] for vid in vids]
         g.graph.delete_vertices(sorted(vids))
@@ -303,6 +323,43 @@ class SubgraphMgr(ABC):
             for eid in g.graph.incident(vid, mode="out")
             if g.graph.es[eid]["type"] == EDGE_TYPE_REFERENCE
         ]
+        if to_delete:
+            g.graph.delete_edges(to_delete)
+        return len(to_delete)
+
+    def delete_edges_by_anchor(
+        self,
+        source_name: str,
+        target_name: str,
+        edge_type: str,
+        anchor_file: str,
+        anchor_line: int,
+    ) -> int:
+        """Delete edges matching `(src, tgt, type, anchor_file, anchor_line)`.
+
+        Multi-edge aware: if the (src, tgt) pair has multiple edges (one per
+        call site), only the edge whose anchor matches is removed. Returns
+        the count of edges deleted.
+        """
+        g = self.code_graph
+        src_vid = g.name_to_vertex.get(source_name)
+        tgt_vid = g.name_to_vertex.get(target_name)
+        if src_vid is None or tgt_vid is None:
+            return 0
+
+        to_delete = []
+        for eid in g.graph.incident(src_vid, mode="out"):
+            edge = g.graph.es[eid]
+            if edge.target != tgt_vid:
+                continue
+            if edge["type"] != edge_type:
+                continue
+            attrs = edge.attributes()
+            if (
+                attrs.get("anchor_file") == anchor_file
+                and attrs.get("anchor_line") == anchor_line
+            ):
+                to_delete.append(eid)
         if to_delete:
             g.graph.delete_edges(to_delete)
         return len(to_delete)

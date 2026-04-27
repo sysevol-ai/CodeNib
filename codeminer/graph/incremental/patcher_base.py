@@ -350,6 +350,12 @@ class PatcherBase(SubgraphMgr):
             f"edges {edges_before}→{edges_after} (Δ{edges_after - edges_before:+d})"
         )
 
+        # Rebuild line-range indexes after each patcher batch so range
+        # queries reflect the post-patch graph state. Cost is O(V+E),
+        # negligible relative to the patch itself.
+        with self.profiler.section("patch_files.build_range_indexes"):
+            self.code_graph.build_range_indexes()
+
         # Profiler summary
         self.profiler.report(reset=True)
 
@@ -797,19 +803,28 @@ class PatcherBase(SubgraphMgr):
 
         remapped = 0
 
-        # Incoming: always safe to remap
+        # Incoming: always safe to remap. Severed entries are 6-tuples
+        # `(src, tgt, src_uname, tgt_uname, anchor_file, anchor_line)` —
+        # one entry per anchored call site. Anchor is threaded through to
+        # _add_edge so the rebuilt edge carries the same anchor metadata.
         for entry in severed_incoming:
-            src_name, _, _, tgt_uname = entry
+            src_name, _, _, tgt_uname, anchor_file, anchor_line = entry
             if not tgt_uname:
                 continue
             new_target = uname_to_new.get(tgt_uname)
             if new_target and src_name in self.code_graph.name_to_vertex:
-                self.code_graph._add_edge(src_name, new_target, EDGE_TYPE_REFERENCE)
+                self.code_graph._add_edge(
+                    src_name,
+                    new_target,
+                    EDGE_TYPE_REFERENCE,
+                    anchor_file=anchor_file,
+                    anchor_line=anchor_line,
+                )
                 remapped += 1
 
-        # Outgoing: skip if source body changed
+        # Outgoing: skip if source body changed.
         for entry in severed_outgoing:
-            src_name, tgt_name, src_uname, tgt_uname = entry
+            src_name, tgt_name, src_uname, tgt_uname, anchor_file, anchor_line = entry
 
             if src_uname:
                 if src_uname in changed_unames:
@@ -828,7 +843,13 @@ class PatcherBase(SubgraphMgr):
                 resolved_tgt = None
 
             if new_src and resolved_tgt:
-                self.code_graph._add_edge(new_src, resolved_tgt, EDGE_TYPE_REFERENCE)
+                self.code_graph._add_edge(
+                    new_src,
+                    resolved_tgt,
+                    EDGE_TYPE_REFERENCE,
+                    anchor_file=anchor_file,
+                    anchor_line=anchor_line,
+                )
                 remapped += 1
 
         return remapped
@@ -895,10 +916,14 @@ class PatcherBase(SubgraphMgr):
         severed_incoming: list[tuple],
         severed_outgoing: list[tuple],
     ) -> set[str]:
-        """Get set of vertex names whose edges were remapped."""
+        """Get set of vertex names whose edges were remapped.
+
+        Severed entries are 6-tuples since the multi-edge fix:
+        `(src, tgt, src_uname, tgt_uname, anchor_file, anchor_line)`.
+        """
         remapped_unames = set()
         for entry in severed_incoming:
-            _, _, _, tgt_uname = entry
+            _, _, _, tgt_uname, _, _ = entry
             if tgt_uname:
                 for vname in new_vertices:
                     vid = self.code_graph.name_to_vertex.get(vname)
@@ -911,7 +936,7 @@ class PatcherBase(SubgraphMgr):
                         if u == tgt_uname:
                             remapped_unames.add(vname)
         for entry in severed_outgoing:
-            _, _, src_uname, _ = entry
+            _, _, src_uname, _, _, _ = entry
             if src_uname:
                 for vname in new_vertices:
                     vid = self.code_graph.name_to_vertex.get(vname)
