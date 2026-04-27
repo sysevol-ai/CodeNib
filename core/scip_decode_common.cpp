@@ -81,7 +81,8 @@ void SubgraphBuilder::add_symbol_node(const std::string &symbol, int line,
 
 void SubgraphBuilder::add_symbol_reference(
     const std::string &symbol, const std::optional<std::string> &module_path,
-    const std::string &symbol_type) {
+    const std::string &symbol_type, std::optional<int> anchor_line,
+    std::optional<std::string> anchor_file) {
   // Serial CodeGraph.add_symbol_reference: only populates attrs on FIRST
   // add. Subsequent refs leave the node alone (defs still overwrite via
   // add_symbol_node).
@@ -95,17 +96,28 @@ void SubgraphBuilder::add_symbol_reference(
                  std::nullopt, std::nullopt);
     node.is_definition = false;
   }
-  add_edge(current_scope_, symbol, EDGE_TYPE_REFERENCE);
+  // Default anchor_file to the current document so range queries can
+  // route reference edges to the file they originate from.
+  if (!anchor_file.has_value() && !current_file_.empty()) {
+    anchor_file = current_file_;
+  }
+  add_edge(current_scope_, symbol, EDGE_TYPE_REFERENCE, anchor_file,
+           anchor_line);
 }
 
 void SubgraphBuilder::add_containment_edge(const std::string &target_symbol) {
+  // CONTAIN edges carry no anchor — see anchor invariant ii on the Python
+  // CodeGraph::query_range docstring.
   add_edge(current_scope_, target_symbol, EDGE_TYPE_CONTAIN);
 }
 
 void SubgraphBuilder::add_edge(const std::string &source,
                                const std::string &target,
-                               const std::string &edge_type) {
-  subgraph_.edges.push_back(Subgraph::Edge{source, target, edge_type});
+                               const std::string &edge_type,
+                               std::optional<std::string> anchor_file,
+                               std::optional<int> anchor_line) {
+  subgraph_.edges.push_back(Subgraph::Edge{
+      source, target, edge_type, std::move(anchor_file), anchor_line});
 }
 
 void SubgraphBuilder::set_unified_name(const std::string &symbol,

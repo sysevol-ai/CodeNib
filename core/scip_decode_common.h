@@ -19,6 +19,12 @@ struct Subgraph {
     std::string source;
     std::string target;
     std::string type;
+    // Optional call-site location (LSP-aligned line-range query support).
+    // Set for reference edges threaded with `occurrence.range`; nullopt for
+    // structural edges (file/dir containment, inheritance) where there is
+    // no meaningful anchor.
+    std::optional<std::string> anchor_file;
+    std::optional<int> anchor_line;
   };
 
   struct Node {
@@ -51,14 +57,21 @@ public:
   // Reference — mirrors serial CodeGraph.add_symbol_reference:
   //   attributes are set only the FIRST time the name is seen; subsequent
   //   references leave existing attrs alone (defs via add_symbol_node are
-  //   the only thing that overwrites).
-  void add_symbol_reference(const std::string &symbol,
-                            const std::optional<std::string> &module_path,
-                            const std::string &symbol_type);
+  //   the only thing that overwrites). Pass `anchor_line` for the call-site
+  //   line; `anchor_file` defaults to the current document.
+  void
+  add_symbol_reference(const std::string &symbol,
+                       const std::optional<std::string> &module_path,
+                       const std::string &symbol_type,
+                       std::optional<int> anchor_line = std::nullopt,
+                       std::optional<std::string> anchor_file = std::nullopt);
 
+  // CONTAIN edges carry no anchor — see CodeGraph::add_containment_edge.
   void add_containment_edge(const std::string &target_symbol);
   void add_edge(const std::string &source, const std::string &target,
-                const std::string &edge_type);
+                const std::string &edge_type,
+                std::optional<std::string> anchor_file = std::nullopt,
+                std::optional<int> anchor_line = std::nullopt);
 
   // Set unified_name on a node. When `only_if_missing`, preserves an
   // already-set value (matches serial "first-ref-wins for unified_name"
