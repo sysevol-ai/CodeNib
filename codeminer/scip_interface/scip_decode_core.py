@@ -21,6 +21,10 @@ logger = get_logger(__name__)
 
 try:
     # Primary import path — codeminer_core must be on sys.path / installed.
+    # Note: `codeminer/__init__.py` also pre-imports this module so that the
+    # extension's bundled libigraph wins the dynamic-linker race against the
+    # system libigraph that Python's `igraph` package brings in. The try here
+    # remains the source of truth for the optional-dependency contract.
     import codeminer_core as _cpp  # type: ignore[import-not-found]
 except ImportError as _import_err:  # pragma: no cover — optional dep
     _cpp = None
@@ -77,25 +81,41 @@ def _build_code_graph(
             ranges[v["name"]] = (v["start_line"], v["end_line"])
 
     # --- Edges ---
+    # Multi-edges between the same `(src, tgt)` pair are allowed (one per
+    # call site). The current C++ binding emits 5-tuples
+    # `(src, tgt, type, anchor_file_or_None, anchor_line_or_None)` so range
+    # queries work on graphs produced by this backend. The 3-tuple branch
+    # below is kept for backward compatibility with older binary builds.
     if edges:
-        # Dedupe by (src, tgt) only (type-agnostic), matching serial
-        # CodeGraph._add_edge's `are_adjacent` check.
-        seen = set()
         pairs: List = []
         types: List[str] = []
-        for src, tgt, etype in edges:
-            key = (src, tgt)
-            if key in seen:
-                continue
-            seen.add(key)
+        anchor_files: List[Optional[str]] = []
+        anchor_lines: List[Optional[int]] = []
+        for edge in edges:
+            # Standard format is 5-tuple; legacy 3-tuple is tolerated.
+            if len(edge) >= 5:
+                src, tgt, etype, a_file, a_line = edge[:5]
+            else:
+                src, tgt, etype = edge[:3]
+                a_file = None
+                a_line = None
             src_id = n2v.get(src)
             tgt_id = n2v.get(tgt)
             if src_id is None or tgt_id is None:
                 continue
             pairs.append((src_id, tgt_id))
             types.append(etype)
+            anchor_files.append(a_file)
+            anchor_lines.append(a_line)
         if pairs:
-            g.add_edges(pairs, attributes={"type": types})
+            g.add_edges(
+                pairs,
+                attributes={
+                    "type": types,
+                    "anchor_file": anchor_files,
+                    "anchor_line": anchor_lines,
+                },
+            )
 
     return code_graph
 

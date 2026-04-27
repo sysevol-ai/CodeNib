@@ -286,24 +286,42 @@ class SCIPTypeScriptGraphDecoder:
         else:
             sym_with_bt = original_symbol.split(" ")[-1]
 
-        # --- Extract file path from backtick boundaries ---
-        # SCIP format: `file/path.js`/SymbolDescriptor
-        all_bt_segments = re.findall(r"`([^`]+)`", sym_with_bt)
-
-        if all_bt_segments:
-            if len(all_bt_segments) == 1:
-                module_path = all_bt_segments[0]
-            else:
-                # Multi-segment: first segment may use dots for slashes
-                first = re.sub(r"\.(ts|tsx|js|jsx)$", "", all_bt_segments[0])
-                first = first.replace(".", "/")
-                module_path = first + "/" + "/".join(all_bt_segments[1:])
-
-            # Everything after the last closing backtick is the descriptor
-            last_bt_end = sym_with_bt.rfind("`") + 1
-            symbol_descriptor = sym_with_bt[last_bt_end:].lstrip("/")
+        # --- Extract file path + symbol descriptor from backtick boundaries ---
+        # SCIP TS descriptor shape:
+        #   [dir/prefix/]`filename`[/<nested-symbol-segments>]<kind-suffix>
+        # where:
+        #   * the optional `dir/prefix/` outside the first backtick is the
+        #     containing directory (e.g. "examples/"),
+        #   * the FIRST backtick wraps the filename (".js"/".ts" etc. need
+        #     escaping due to the dot),
+        #   * subsequent backticks wrap nested-name segments that contain
+        #     special characters (quotes, dots, colons),
+        #   * the trailing kind suffix is one of `:` / `#` / `().` / `.`.
+        # The previous implementation took only backtick-extracted segments
+        # for module_path and dropped the outside-backtick prefix, which
+        # collapsed e.g. ``examples/`server.js`/'Content-Type'0`:`` and
+        # ``sandbox/`server.js`/'Content-Type'0`:`` into the same id.
+        first_bt_open = sym_with_bt.find("`")
+        if first_bt_open >= 0:
+            first_bt_close = sym_with_bt.find("`", first_bt_open + 1)
         else:
-            # Fallback: no backticks — use the document file path
+            first_bt_close = -1
+
+        if first_bt_open >= 0 and first_bt_close > first_bt_open:
+            # `dir_prefix/` (without trailing slash); empty if symbol begins
+            # with a backtick.
+            dir_prefix = sym_with_bt[:first_bt_open].rstrip("/")
+            file_part = sym_with_bt[first_bt_open + 1 : first_bt_close]
+            module_path = (
+                f"{dir_prefix}/{file_part}" if dir_prefix else file_part
+            )
+            # Everything after the file's closing backtick is the symbol
+            # descriptor; strip any inner backticks (they only escape special
+            # chars within name segments).
+            tail = sym_with_bt[first_bt_close + 1 :].lstrip("/")
+            symbol_descriptor = tail.replace("`", "")
+        else:
+            # No backticks — fall back to the document file path.
             module_path = file_path or "unknown"
             symbol_descriptor = symbol.replace("`", "")
 
@@ -431,7 +449,11 @@ class SCIPTypeScriptGraphDecoder:
             if not (symbol_roles & 1):
                 if self.code_graph.current_scope != file_path:
                     self.code_graph._add_edge(
-                        self.code_graph.current_scope, file_path, EDGE_TYPE_REFERENCE
+                        self.code_graph.current_scope,
+                        file_path,
+                        EDGE_TYPE_REFERENCE,
+                        anchor_file=file_path,
+                        anchor_line=line,
                     )
                 return
 
@@ -501,7 +523,9 @@ class SCIPTypeScriptGraphDecoder:
         # Handle reference (not a definition)
         # Use bitwise check instead of exact match to handle all reference types
         else:
-            self.code_graph.add_symbol_reference(unified_symbol, file_path, symbol_type)
+            self.code_graph.add_symbol_reference(
+                unified_symbol, file_path, symbol_type, anchor_line=line
+            )
             # Set unified_name for reference-only nodes (first occurrence wins)
             if unified_symbol in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[unified_symbol]

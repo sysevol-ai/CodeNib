@@ -411,7 +411,9 @@ class SCIPGoGraphDecoder:
 
         # Handle reference (not a definition)
         else:
-            self.code_graph.add_symbol_reference(symbol_key, file_path, symbol_type)
+            self.code_graph.add_symbol_reference(
+                symbol_key, file_path, symbol_type, anchor_line=line
+            )
             if symbol_key in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[symbol_key]
                 if not self.code_graph.graph.vs[vid].attributes().get("unified_name"):

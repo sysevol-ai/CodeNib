@@ -548,7 +548,9 @@ class SCIPRustGraphDecoder:
 
         # Handle reference (not a definition)
         else:
-            self.code_graph.add_symbol_reference(unified_symbol, file_path, symbol_type)
+            self.code_graph.add_symbol_reference(
+                unified_symbol, file_path, symbol_type, anchor_line=line
+            )
             if unified_symbol in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[unified_symbol]
                 if not self.code_graph.graph.vs[vid].attributes().get("unified_name"):

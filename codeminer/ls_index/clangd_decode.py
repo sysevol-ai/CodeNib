@@ -21,7 +21,7 @@ import logging
 import struct
 import zlib
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ..code_chunking import CppCodeChunker
 from ..graph.code_graph import CodeGraph
@@ -372,8 +372,13 @@ class ClangdGraphDecoder:
 
         # Buffered edges for batch insert — filled by _queue_edge during the
         # three _add_*_edges passes, flushed once at the end of _build_graph.
-        # Preserves CodeGraph._add_edge's first-wins dedup semantics.
-        self._pending_edges: Dict[Tuple[int, int], str] = {}
+        # Each entry: (src_id, tgt_id, edge_type, anchor_file, anchor_line).
+        # Multi-edges between the same (src, tgt) pair are allowed so each
+        # call site survives as its own edge (matches CodeGraph._add_edge's
+        # post-anchor-schema behavior).
+        self._pending_edges: List[
+            Tuple[int, int, str, Optional[str], Optional[int]]
+        ] = []
 
         # Code chunker for range detection
         self._chunker = CppCodeChunker()
@@ -649,39 +654,46 @@ class ClangdGraphDecoder:
     # under 1% of wall time.
     # ------------------------------------------------------------------
 
-    def _queue_edge(self, src_name: str, tgt_name: str, edge_type: str) -> None:
+    def _queue_edge(
+        self,
+        src_name: str,
+        tgt_name: str,
+        edge_type: str,
+        anchor_file: Optional[str] = None,
+        anchor_line: Optional[int] = None,
+    ) -> None:
         """Buffer an edge for the batch flush.
 
-        Mirrors CodeGraph._add_edge's first-wins dedup on (src, tgt): if a
-        pair was already queued with any type, subsequent calls are no-ops
-        so the earlier edge's type survives.
+        Multi-edges between the same `(src, tgt)` pair are allowed; each
+        call site (or relation) becomes its own edge. Pass `anchor_file` /
+        `anchor_line` for reference edges that need range-query support.
         """
         n2v = self.code_graph.name_to_vertex
         src_id = n2v.get(src_name)
         tgt_id = n2v.get(tgt_name)
         if src_id is None or tgt_id is None:
             return
-        key = (src_id, tgt_id)
-        if key not in self._pending_edges:
-            self._pending_edges[key] = edge_type
+        self._pending_edges.append(
+            (src_id, tgt_id, edge_type, anchor_file, anchor_line)
+        )
 
     def _flush_edges(self) -> None:
         """Insert all queued edges in one batched igraph call."""
         if not self._pending_edges:
             return
         g = self.code_graph.graph
-        # Skip pairs that already exist on the graph (edges added during
-        # _add_symbol_nodes via _ensure_file_hierarchy go through the serial
-        # _add_edge path).
-        existing = set(map(tuple, g.get_edgelist()))
-        pairs, types = [], []
-        for pair, etype in self._pending_edges.items():
-            if pair in existing:
-                continue
-            pairs.append(pair)
-            types.append(etype)
-        if pairs:
-            g.add_edges(pairs, attributes={"type": types})
+        pairs = [(s, t) for s, t, *_ in self._pending_edges]
+        types = [e[2] for e in self._pending_edges]
+        anchor_files = [e[3] for e in self._pending_edges]
+        anchor_lines = [e[4] for e in self._pending_edges]
+        g.add_edges(
+            pairs,
+            attributes={
+                "type": types,
+                "anchor_file": anchor_files,
+                "anchor_line": anchor_lines,
+            },
+        )
         self._pending_edges.clear()
 
     def _ensure_file_hierarchy(self, relative_path: str):
@@ -828,7 +840,14 @@ class ClangdGraphDecoder:
                 self._queue_edge(file_path, sym_name, EDGE_TYPE_CONTAIN)
 
     def _add_reference_edges(self):
-        """Add reference edges from refs with Reference kind."""
+        """Add reference edges from refs with Reference kind.
+
+        Each ref carries a ``location`` (file URI + (line, col)) — extract it
+        as ``anchor_file`` / ``anchor_line`` so range queries can find call
+        sites. Note that with multi-edge support (no `_add_edge` dedup),
+        repeated calls between the same `(container, sym)` pair create one
+        edge per call site instead of being collapsed into one.
+        """
         for sym_id, ref_list in self._refs.items():
             sym_name = self._resolve_sym_id(sym_id)
             if not sym_name:
@@ -847,7 +866,22 @@ class ClangdGraphDecoder:
                         container_name
                         and container_name in self.code_graph.name_to_vertex
                     ):
-                        self._queue_edge(container_name, sym_name, EDGE_TYPE_REFERENCE)
+                        loc = ref.get("location") or {}
+                        anchor_file_uri = loc.get("file")
+                        anchor_file = (
+                            self._file_uri_to_relative(anchor_file_uri)
+                            if anchor_file_uri
+                            else None
+                        )
+                        start = loc.get("start")
+                        anchor_line = start[0] if start else None
+                        self._queue_edge(
+                            container_name,
+                            sym_name,
+                            EDGE_TYPE_REFERENCE,
+                            anchor_file=anchor_file,
+                            anchor_line=anchor_line,
+                        )
 
     def _add_relation_edges(self):
         """Add edges from rela chunk (inheritance, override)."""

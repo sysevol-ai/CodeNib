@@ -224,6 +224,11 @@ class ClangdIndexer:
                 graph: CodeGraph = decoder.decode()
             duration = section.duration
 
+            # Build line-range indexes once the graph is fully assembled.
+            # Must happen before save_graph so the indexes are persisted.
+            with self.profiler.section("process_index.build_range_indexes"):
+                graph.build_range_indexes()
+
             if output_file:
                 with self.profiler.section("process_index.save_graph") as save_section:
                     graph.save_graph(output_file)

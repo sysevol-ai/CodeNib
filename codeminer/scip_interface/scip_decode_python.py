@@ -325,7 +325,11 @@ class SCIPPythonGraphDecoder:
 
                 if symbol_roles == 8:
                     self.code_graph._add_edge(
-                        self.code_graph.current_scope, file_path, EDGE_TYPE_REFERENCE
+                        self.code_graph.current_scope,
+                        file_path,
+                        EDGE_TYPE_REFERENCE,
+                        anchor_file=self.code_graph.current_file,
+                        anchor_line=line,
                     )
                 return
 
@@ -373,7 +377,10 @@ class SCIPPythonGraphDecoder:
         # Handle reference (symbol_roles == 8)
         elif symbol_roles == 8:
             self.code_graph.add_symbol_reference(
-                unified_symbol, module_path, symbol_type
+                unified_symbol,
+                module_path,
+                symbol_type,
+                anchor_line=line,
             )
 
     def save_graph(self, output_path):
