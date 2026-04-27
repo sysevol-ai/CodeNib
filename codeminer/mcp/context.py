@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from ..compiler.manifest import RepoManifest
 from ..graph.code_graph import CodeGraph
