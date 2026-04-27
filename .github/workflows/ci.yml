@@ -101,7 +101,7 @@ jobs:
 
       - name: Run unit tests
         shell: bash -l {0}
-        run: pytest -n auto -m "not slow and not integration and not integration_serial" -x --tb=short
+        run: pytest -n auto -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short
 
   # =============================================================
   # Job 2 — Integration tests  (read-only, parallel-safe, ~2 min)
@@ -160,7 +160,11 @@ jobs:
       - name: Purge stale SCIP Python caches (one-time)
         run: |
           CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
-          MARKER="$CACHE_DIR/.scip-cache-v3"
+          # Cleanup orphan v3 marker from an earlier graph-index iteration —
+          # #120's _SCHEMA_VERSION check now handles graph.pkl invalidation,
+          # so the ci.yml marker bump is no longer needed.
+          rm -f "$CACHE_DIR/.scip-cache-v3"
+          MARKER="$CACHE_DIR/.scip-cache-v2"
           if [ ! -f "$MARKER" ]; then
             echo "Purging stale SCIP Python graph caches..."
             find "$CACHE_DIR" -name "graph.pkl" -delete 2>/dev/null || true
@@ -290,6 +294,50 @@ jobs:
           pytest test/scip/test_scip_core.py -v --tb=short
 
   # =============================================================
+  # Job 5 — Graph cache consumer tests (~5 min)
+  #
+  # Reads graph.pkl written by integration-serial (specifically
+  # test_scip_multilingual) and runs query / range / anchor checks against
+  # it via skip_level="graph". Mirrors scip-core's job-level dependency on
+  # integration-serial — runs in a separate job so the cached pickle is
+  # always fresh from the most recent decoder.
+  # =============================================================
+  graph-consumer:
+    needs: [preflight, integration-serial]
+    if: needs.preflight.outputs.should-run == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 15
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
+      npm_config_cache: ${{ github.workspace }}/../.cache/npm
+    steps:
+      - name: Prepare temp HOME
+        run: |
+          mkdir -p "$RUNNER_TEMP/home"
+          echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+
+      - name: Persist codeminer cache across runs
+        run: |
+          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          mkdir -p "$CACHE_DIR"
+          ln -sfn "$CACHE_DIR" "$HOME/.codeminer"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        with:
+          install-clangd: "true"
+          install-bear: "true"
+
+      - name: Run graph consumer tests
+        shell: bash -l {0}
+        run: pytest -m "integration_serial_consumer" -v --tb=short
+
+  # =============================================================
   # Job 4 — Slow tests  (LLM API, GPU embeddings, ~15 min)
   # =============================================================
   slow:
@@ -315,7 +363,11 @@ jobs:
       - name: Purge stale SCIP Python caches (one-time)
         run: |
           CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
-          MARKER="$CACHE_DIR/.scip-cache-v3"
+          # Cleanup orphan v3 marker from an earlier graph-index iteration —
+          # #120's _SCHEMA_VERSION check now handles graph.pkl invalidation,
+          # so the ci.yml marker bump is no longer needed.
+          rm -f "$CACHE_DIR/.scip-cache-v3"
+          MARKER="$CACHE_DIR/.scip-cache-v2"
           if [ ! -f "$MARKER" ]; then
             echo "Purging stale SCIP Python graph caches..."
             find "$CACHE_DIR" -name "graph.pkl" -delete 2>/dev/null || true

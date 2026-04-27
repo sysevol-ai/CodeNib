@@ -6,9 +6,10 @@ Parametrized over 5 languages following the ``test_scip_multilingual`` pattern:
 - rust / ts / go / cpp via ``SwebenchMultilingualDataset``
 
 Verifies the new line-range query surface end-to-end: SCIP decode → CodeGraph
-→ build_range_indexes → query_range on real source. Forces a fresh graph
-build (``skip_level="decode"``) so we never load a cached graph.pkl from a
-prior schema version.
+→ build_range_indexes → query_range on real source. Uses ``skip_level="graph"``
+to fast-path off cached ``graph.pkl`` when present; ``CodeGraph.load_graph``
+raises ``ValueError`` on schema mismatch which ``run_pipeline`` catches and
+falls back to rebuilding from the cached SCIP decode.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.integration_serial
+pytestmark = pytest.mark.integration_serial_consumer
 
 from codeminer.graph.code_graph import CodeGraph, EdgeRef, NodeRef
 from codeminer.ls_router import LSIndexer
@@ -119,11 +120,12 @@ def language(request) -> str:
 
 @pytest.fixture(scope="module")
 def indexed_repo(language) -> CodeGraph:
-    """Build a fresh CodeGraph at the current schema (v3+) for ``language``.
+    """Load (or build) a CodeGraph at the current schema for ``language``.
 
-    Uses ``skip_level="decode"`` so SCIP indexing + protoc decode are reused
-    from cache, but the graph itself is rebuilt via the serial decoder so it
-    carries edge anchors and the new range indexes get persisted.
+    Uses ``skip_level="graph"`` to load a cached ``graph.pkl`` when present
+    (fast path). ``load_graph`` raises ``ValueError`` if the cached pickle's
+    schema differs from ``_SCHEMA_VERSION``; ``run_pipeline`` catches the
+    error and falls back to rebuilding from cached SCIP decode.
     """
     if not _tools_ready(language):
         pytest.skip(f"SCIP tool {_tool_for(language)!r} not installed")
@@ -154,7 +156,7 @@ def indexed_repo(language) -> CodeGraph:
         decoder_backend="serial",
     )
     graph = indexer.run_pipeline(
-        skip_level="decode",
+        skip_level="graph",
         report_profile=False,
         **kwargs,
     )

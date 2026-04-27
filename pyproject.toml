@@ -80,6 +80,7 @@ markers = [
     "slow: marks tests that need LLM API, GPU, or HuggingFace downloads (deselect with '-m \"not slow\"')",
     "integration: marks tests that use external repos but are read-only / parallel-safe (chunkers, fixture-based SCIP)",
     "integration_serial: marks tests that mutate shared repos (process_instance, git checkout/apply) and must run sequentially",
+    "integration_serial_consumer: marks tests that consume graph.pkl written by integration_serial (run in a separate job after integration-serial via job-level needs, mirroring scip-core)",
 ]
 
 [tool.black]
