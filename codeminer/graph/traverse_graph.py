@@ -31,7 +31,12 @@ class RepoDependencySearcher:
         etype_filter=None,
         ignore_test_file=True,
     ):
-        """Get neighbors of a node with filtering options"""
+        """Get neighbors of a node with filtering options.
+
+        Iterates over edges (not unique neighbors) so multi-edges between
+        the same pair — possible after the anchor-aware schema upgrade —
+        are each surfaced with their own type.
+        """
         nodes, edges = [], []
 
         if nid not in self.code_graph.name_to_vertex:
@@ -39,18 +44,28 @@ class RepoDependencySearcher:
 
         vertex_id = self.code_graph.name_to_vertex[nid]
 
+        # Pick incident edge sets for the requested direction(s).
         if direction == "forward":
-            neighbor_ids = self.graph.successors(vertex_id)
+            edge_ids = self.graph.incident(vertex_id, mode="out")
         elif direction == "backward":
-            neighbor_ids = self.graph.predecessors(vertex_id)
+            edge_ids = self.graph.incident(vertex_id, mode="in")
         else:
-            neighbor_ids = self.graph.neighbors(vertex_id)
+            edge_ids = self.graph.incident(vertex_id, mode="all")
 
-        for neighbor_id in neighbor_ids:
+        for eid in edge_ids:
+            edge = self.graph.es[eid]
+            # The "other" end depends on direction; for "all" we infer per-edge.
+            if edge.source == vertex_id:
+                neighbor_id = edge.target
+                edge_dir = "forward"
+            else:
+                neighbor_id = edge.source
+                edge_dir = "backward"
+
             neighbor_vertex = self.graph.vs[neighbor_id]
             neighbor_nid = neighbor_vertex["name"]
 
-            # Apply filters
+            # Node-type filter
             if ntype_filter and (
                 "type" not in neighbor_vertex.attributes()
                 or neighbor_vertex["type"] not in ntype_filter
@@ -59,25 +74,15 @@ class RepoDependencySearcher:
             if ignore_test_file and is_test_file(neighbor_nid):
                 continue
 
-            # Get edge information
-            if direction == "forward":
-                edge_id = self.graph.get_eid(vertex_id, neighbor_id, error=False)
-                if edge_id is not None:
-                    edge = self.graph.es[edge_id]
-                    etype = edge["type"] if "type" in edge.attributes() else "unknown"
-                    if etype_filter and etype not in etype_filter:
-                        continue
-                    edges.append((nid, neighbor_nid, 0, {"type": etype}))
-                    nodes.append(neighbor_nid)
-            elif direction == "backward":
-                edge_id = self.graph.get_eid(neighbor_id, vertex_id, error=False)
-                if edge_id is not None:
-                    edge = self.graph.es[edge_id]
-                    etype = edge["type"] if "type" in edge.attributes() else "unknown"
-                    if etype_filter and etype not in etype_filter:
-                        continue
-                    edges.append((neighbor_nid, nid, 0, {"type": etype}))
-                    nodes.append(neighbor_nid)
+            etype = edge["type"] if "type" in edge.attributes() else "unknown"
+            if etype_filter and etype not in etype_filter:
+                continue
+
+            if edge_dir == "forward":
+                edges.append((nid, neighbor_nid, 0, {"type": etype}))
+            else:
+                edges.append((neighbor_nid, nid, 0, {"type": etype}))
+            nodes.append(neighbor_nid)
 
         return nodes, edges
 
@@ -147,10 +152,12 @@ def traverse_tree_structure(
 
         vertex_id = code_graph.name_to_vertex[node]
 
-        # Downstream traversal
+        # Downstream traversal — iterate edges directly so multi-edges
+        # between the same pair are each surfaced with their own type.
         if "downstream" == edirection or (node == root and direction == "both"):
-            neighbor_ids = code_graph.graph.successors(vertex_id)
-            for neighbor_id in neighbor_ids:
+            for eid in code_graph.graph.incident(vertex_id, mode="out"):
+                edge = code_graph.graph.es[eid]
+                neighbor_id = edge.target
                 neighbor_vertex = code_graph.graph.vs[neighbor_id]
                 neighbor = neighbor_vertex["name"]
                 neigh_type = (
@@ -162,33 +169,24 @@ def traverse_tree_structure(
                 if is_ntype_not_valid(neigh_type):
                     continue
 
-                # Get edge type
-                edge_id = code_graph.graph.get_eid(vertex_id, neighbor_id, error=False)
-                if edge_id is not None:
-                    etype = (
-                        code_graph.graph.es[edge_id]["type"]
-                        if "type" in code_graph.graph.es[edge_id].attributes()
-                        else "unknown"
-                    )
-                    if is_etype_not_valid(etype):
-                        continue
-                    if not is_test_file(neighbor):
-                        if (node, etype, neighbor) not in traversed_edges:
-                            traversed_edges.add((node, etype, neighbor))
-                            # Separate by edge type: "contain" vs others
-                            if etype == "contain":
-                                contain_neighbors.append(
-                                    (neighbor, etype, "downstream")
-                                )
-                            else:
-                                reference_neighbors.append(
-                                    (neighbor, etype, "downstream")
-                                )
+                etype = edge["type"] if "type" in edge.attributes() else "unknown"
+                if is_etype_not_valid(etype):
+                    continue
+                if is_test_file(neighbor):
+                    continue
+                if (node, etype, neighbor) in traversed_edges:
+                    continue
+                traversed_edges.add((node, etype, neighbor))
+                if etype == "contain":
+                    contain_neighbors.append((neighbor, etype, "downstream"))
+                else:
+                    reference_neighbors.append((neighbor, etype, "downstream"))
 
         # Upstream traversal
         if "upstream" == edirection or (node == root and direction == "both"):
-            neighbor_ids = code_graph.graph.predecessors(vertex_id)
-            for neighbor_id in neighbor_ids:
+            for eid in code_graph.graph.incident(vertex_id, mode="in"):
+                edge = code_graph.graph.es[eid]
+                neighbor_id = edge.source
                 neighbor_vertex = code_graph.graph.vs[neighbor_id]
                 neighbor = neighbor_vertex["name"]
                 neigh_type = (
@@ -200,26 +198,18 @@ def traverse_tree_structure(
                 if is_ntype_not_valid(neigh_type):
                     continue
 
-                # Get edge type
-                edge_id = code_graph.graph.get_eid(neighbor_id, vertex_id, error=False)
-                if edge_id is not None:
-                    etype = (
-                        code_graph.graph.es[edge_id]["type"]
-                        if "type" in code_graph.graph.es[edge_id].attributes()
-                        else "unknown"
-                    )
-                    if is_etype_not_valid(etype):
-                        continue
-                    if not is_test_file(neighbor):
-                        if (neighbor, etype, node) not in traversed_edges:
-                            traversed_edges.add((neighbor, etype, node))
-                            # Separate by edge type: "contain" vs others
-                            if etype == "contain":
-                                contain_neighbors.append((neighbor, etype, "upstream"))
-                            else:
-                                reference_neighbors.append(
-                                    (neighbor, etype, "upstream")
-                                )
+                etype = edge["type"] if "type" in edge.attributes() else "unknown"
+                if is_etype_not_valid(etype):
+                    continue
+                if is_test_file(neighbor):
+                    continue
+                if (neighbor, etype, node) in traversed_edges:
+                    continue
+                traversed_edges.add((neighbor, etype, node))
+                if etype == "contain":
+                    contain_neighbors.append((neighbor, etype, "upstream"))
+                else:
+                    reference_neighbors.append((neighbor, etype, "upstream"))
 
         # Combine: containment first, then references
         all_neighbors = contain_neighbors + reference_neighbors

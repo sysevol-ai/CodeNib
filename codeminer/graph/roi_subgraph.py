@@ -146,7 +146,7 @@ class ROISubgraph:
             try:
                 # Convert node name to node ID
                 if node_name not in self.code_graph.name_to_vertex:
-                    logger.warning(f"Node name '{node_name}' not found in graph")
+                    logger.warning(f"Node name {node_name!r} not found in graph")
                     continue
 
                 node_id = self.code_graph.name_to_vertex[node_name]
@@ -199,7 +199,8 @@ class ROISubgraph:
         start_line equals end_line (unless explicitly included).
 
         Args:
-            subgraph: An igraph Graph object (from extract_subgraph or extract_roi_from_search_results)
+            subgraph: An igraph Graph object (from extract_subgraph or
+                extract_roi_from_search_results)
             node_types: Optional list of node types to include (None for all types)
 
         Returns:
@@ -266,6 +267,12 @@ class ROISubgraph:
         """
         Get neighbors of a node, optionally filtered by edge type and direction.
 
+        Iterates over edges (not unique neighbors) so multi-edges between
+        the same pair — possible after the anchor-aware schema upgrade —
+        are each inspected for type filtering. Returned neighbor list may
+        contain duplicates only if multiple matching edges exist between
+        the same pair; callers using sets handle this naturally.
+
         Args:
             node_id: ID of the node
             edge_types: Optional list of edge types to filter by
@@ -274,45 +281,44 @@ class ROISubgraph:
         Returns:
             List of neighbor node IDs
         """
-        # Get neighbors based on direction
+        # Map direction to the edge-set we should iterate over.
         if direction == "forward":
-            neighbors = self.full_graph.successors(node_id)
+            edge_ids = self.full_graph.incident(node_id, mode="out")
         elif direction == "backward":
-            neighbors = self.full_graph.predecessors(node_id)
-        else:  # direction == "both"
-            neighbors = self.full_graph.neighbors(node_id)
+            edge_ids = self.full_graph.incident(node_id, mode="in")
+        else:  # "both"
+            edge_ids = self.full_graph.incident(node_id, mode="all")
 
-        # If no edge type filter, return all neighbors
+        # No edge-type filter: return unique neighbors directly.
         if not edge_types:
-            return neighbors
+            seen = set()
+            result = []
+            for eid in edge_ids:
+                e = self.full_graph.es[eid]
+                neighbor = e.target if e.source == node_id else e.source
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    result.append(neighbor)
+            return result
 
-        # Filter neighbors by edge type
-        filtered_neighbors = []
-        for neighbor in neighbors:
-            # Get edge between node and neighbor based on direction
+        # With edge-type filter: include each neighbor at most once but only
+        # if at least one of the edges between them passes the type filter.
+        filtered_neighbors: List[int] = []
+        seen = set()
+        for eid in edge_ids:
             try:
-                edge_id = None
-                if direction == "forward":
-                    edge_id = self.full_graph.get_eid(node_id, neighbor, error=False)
-                elif direction == "backward":
-                    edge_id = self.full_graph.get_eid(neighbor, node_id, error=False)
-                else:  # direction == "both"
-                    edge_id = self.full_graph.get_eid(node_id, neighbor, error=False)
-                    if edge_id is None:
-                        # Try the reverse direction
-                        edge_id = self.full_graph.get_eid(
-                            neighbor, node_id, error=False
-                        )
-
-                if (
-                    edge_id is not None
-                    and "type" in self.full_graph.es[edge_id].attributes()
-                ):
-                    edge_type = self.full_graph.es[edge_id]["type"]
-                    if edge_type in edge_types:
-                        filtered_neighbors.append(neighbor)
-            except Exception as e:
-                logger.error(f"Error getting edge type: {e}")
+                e = self.full_graph.es[eid]
+                if "type" not in e.attributes():
+                    continue
+                if e["type"] not in edge_types:
+                    continue
+                neighbor = e.target if e.source == node_id else e.source
+                if neighbor in seen:
+                    continue
+                seen.add(neighbor)
+                filtered_neighbors.append(neighbor)
+            except Exception as exc:
+                logger.error(f"Error inspecting edge {eid}: {exc}")
                 continue
 
         return filtered_neighbors
