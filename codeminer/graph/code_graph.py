@@ -26,17 +26,60 @@ from ..types import (
 #
 # v2 (main): adds file_to_vertices index + new pickle keys
 # v3 (this branch): edges carry anchor_file / anchor_line; range indexes
-#                   (file_nodes / file_edge_anchors) pickled with graph
+#                   (file_nodes / file_edge_anchors) pickled with graph;
+#                   unified_to_names aux dict (display -> identity names)
 _SCHEMA_VERSION = 3
 
 
-@dataclass
-class RangeQueryResult:
-    """Result of CodeGraph.query_range — three lists of igraph ids."""
+@dataclass(slots=True)
+class NodeRef:
+    """Resolved vertex record returned by range/symbol queries.
 
-    defined: List[int] = field(default_factory=list)   # node ids
-    outgoing: List[int] = field(default_factory=list)  # edge ids, anchor in range
-    incoming: List[int] = field(default_factory=list)  # edge ids, target def in range
+    Carries identity (`name`), display (`unified_name`), span, and kind so
+    consumers don't poke `graph.vs[vid][...]` directly.
+    """
+
+    vid: int
+    name: str
+    unified_name: str
+    file: str
+    start_line: int
+    end_line: int
+    kind: str
+
+
+@dataclass(slots=True)
+class EdgeRef:
+    """Resolved edge record returned by range queries.
+
+    `anchor_file`/`anchor_line` are populated only for REFERENCE edges
+    (see anchor invariants in `query_range` docstring).
+    """
+
+    eid: int
+    source_vid: int
+    target_vid: int
+    edge_kind: str
+    anchor_file: Optional[str] = None
+    anchor_line: Optional[int] = None
+
+
+@dataclass(slots=True)
+class RangeQueryResult:
+    """Result of CodeGraph.query_range — typed records, not raw ids.
+
+    Anchor invariants (also enforced in `query_range`'s docstring):
+        (i)   anchor_file == source vertex's file (anchor lives at the call
+              site, never the target).
+        (ii)  anchor_file/anchor_line are meaningful only on REFERENCE edges;
+              CONTAIN edges leave both fields None.
+        (iii) outgoing ∩ incoming = ∅ for any single query (call site and
+              target are in distinct scopes by definition).
+    """
+
+    defined: List[NodeRef] = field(default_factory=list)
+    outgoing: List[EdgeRef] = field(default_factory=list)
+    incoming: List[EdgeRef] = field(default_factory=list)
 
 
 class CodeGraph:
@@ -63,6 +106,11 @@ class CodeGraph:
         # _file_edge_anchors[file] -> sorted list of (anchor_line, eid).
         self._file_nodes: Dict[str, List[Tuple[int, int, int]]] = {}
         self._file_edge_anchors: Dict[str, List[Tuple[int, int]]] = {}
+
+        # Aux: unified_name (display, may collide) -> list of identity names.
+        # Populated by build_range_indexes(). Pickled with the graph.
+        # Consumers disambiguate via file context (this layer just lists candidates).
+        self._unified_to_names: Dict[str, List[str]] = {}
 
     def add_file_node(self, file_path):
         """
@@ -209,31 +257,19 @@ class CodeGraph:
                 # Scope is still active
                 break
 
-    def add_containment_edge(
-        self,
-        target_symbol,
-        anchor_file: Optional[str] = None,
-        anchor_line: Optional[int] = None,
-    ):
+    def add_containment_edge(self, target_symbol):
         """
         Add a containment edge from current scope to a symbol.
 
+        CONTAIN edges deliberately carry no anchor — containment is a
+        structural relation, not a call/reference site. (See anchor invariant
+        ii on `query_range`.)
+
         Args:
-            target_symbol: Symbol being contained
-            anchor_file: File where the contained symbol is declared (optional)
-            anchor_line: 0-based line of the declaration (optional)
+            target_symbol: Symbol being contained.
         """
         # Use the current scope directly (not parent scope)
-        parent_scope = self.current_scope
-        if anchor_file is None:
-            anchor_file = self.current_file
-        self._add_edge(
-            parent_scope,
-            target_symbol,
-            EDGE_TYPE_CONTAIN,
-            anchor_file=anchor_file,
-            anchor_line=anchor_line,
-        )
+        self._add_edge(self.current_scope, target_symbol, EDGE_TYPE_CONTAIN)
 
     def _add_vertex(self, name, attributes=None):
         """
@@ -280,10 +316,18 @@ class CodeGraph:
         """
         Add an edge between two vertices.
 
-        Multiple edges between the same `(source, target)` pair are allowed —
-        each call creates a new edge. Pass `anchor_file` / `anchor_line` to
-        record where the reference originated (e.g., the line of a call site);
-        these are used by `build_range_indexes()` to support range queries.
+        Anchored edges (those carrying ``anchor_file`` / ``anchor_line``) are
+        intentionally multi-edge — each call site keeps its own edge so range
+        queries can address them individually. Pass ``anchor_file`` /
+        ``anchor_line`` to record where the reference originated (e.g., the
+        line of a call site); these feed ``build_range_indexes()``.
+
+        Structural edges WITHOUT anchor info (CONTAIN edges, file/dir
+        containment, etc.) are deduped by ``(source, target)`` — repeating
+        them adds no information and would inflate the graph for languages
+        like Rust where SCIP records the same containment site twice (struct
+        decl + impl block). The C++ ``batch_add_edges`` does the same dedup
+        for parity.
 
         Args:
             source_name: Name of the source vertex
@@ -293,7 +337,7 @@ class CodeGraph:
             anchor_line: 0-based line number of the call/reference site (optional)
 
         Returns:
-            Edge ID of the newly created edge.
+            Edge ID of the newly created (or already-existing) edge.
         """
         # Make sure both vertices exist
         source_id = (
@@ -307,7 +351,22 @@ class CodeGraph:
             else self.name_to_vertex[target_name]
         )
 
-        # Add edge — multi-edges allowed; no dedup.
+        # Structural edges (no anchor) — dedup by (source, target). Mirrors the
+        # C++ `batch_add_edges` structural dedup (see core/code_graph.cpp).
+        is_structural = anchor_file is None and anchor_line is None
+        if is_structural:
+            for eid in self.graph.incident(source_id, mode="out"):
+                edge = self.graph.es[eid]
+                if edge.target == target_id and edge["type"] == edge_type:
+                    eattrs = edge.attributes()
+                    if (
+                        eattrs.get("anchor_file") is None
+                        and eattrs.get("anchor_line") is None
+                    ):
+                        return eid
+
+        # Add edge — multi-edges allowed for anchored edges; structural have
+        # been deduped above.
         self.graph.add_edges([(source_id, target_id)])
         edge_id = self.graph.ecount() - 1
 
@@ -357,48 +416,128 @@ class CodeGraph:
             edges[f].sort()
         self._file_edge_anchors = dict(edges)
 
+        unified: Dict[str, List[str]] = defaultdict(list)
+        for vid in range(self.graph.vcount()):
+            v = self.graph.vs[vid]
+            uname = v.attributes().get("unified_name")
+            if uname:
+                unified[uname].append(v["name"])
+        self._unified_to_names = dict(unified)
+
     def query_range(
-        self, file: str, start_line: int, end_line: int
+        self,
+        file: str,
+        start_line: int,
+        end_line: int,
+        kinds: Optional[set] = None,
+        depth: int = 1,
     ) -> RangeQueryResult:
         """Query the graph by source-file line range (LSP-aligned).
 
-        Returns three lists of igraph ids:
-        - `defined`: vids whose def range overlaps `[start_line, end_line]`
-          (overlap semantics — matches IDE outline behavior; nested scopes
-          are all returned).
-        - `outgoing`: eids whose `anchor_file == file` and
-          `anchor_line ∈ [start_line, end_line]` — call sites / references
-          originating inside the range.
-        - `incoming`: eids pointing into any node in `defined` — references
-          *to* symbols defined in the range, regardless of where they
-          originate. No separate index; uses `igraph.incident(mode='in')`.
+        Args:
+            file: source file (graph-relative path).
+            start_line, end_line: inclusive 0-based line span.
+            kinds: edge kinds to include in `outgoing` AND `incoming`.
+                Defaults to `{EDGE_TYPE_REFERENCE}` — CONTAIN edges have no
+                meaningful anchor and are excluded by default. Pass an
+                explicit set (e.g. `{EDGE_TYPE_REFERENCE, EDGE_TYPE_CONTAIN}`)
+                to opt in.
+            depth: reserved for future multi-hop expansion. Only `depth=1`
+                is supported in v1; raises NotImplementedError otherwise.
 
-        Build `build_range_indexes()` must have been called once (decoder
-        and patcher hooks do this automatically; loaded graphs carry the
-        indexes in their pickle).
+        Returns: RangeQueryResult with typed `NodeRef`/`EdgeRef` records.
+
+        Anchor invariants:
+            (i)   anchor_file == source.file (anchor lives at the call site,
+                  never the target).
+            (ii)  anchor_* is meaningful only on EDGE_TYPE_REFERENCE; CONTAIN
+                  edges leave both fields None.
+            (iii) outgoing ∩ incoming = ∅ for any single query (call site
+                  and target are in distinct scopes by definition).
         """
-        # defined: brute-force overlap scan over per-file node list.
-        # Per-file symbol counts are typically 10–1000; this stays well
-        # under 0.1 ms even on the largest files.
-        nodes = self._file_nodes.get(file, [])
-        defined = [vid for s, e, vid in nodes if s <= end_line and e >= start_line]
+        if depth != 1:
+            raise NotImplementedError(
+                f"query_range supports only depth=1 in v1; got depth={depth}"
+            )
+        if kinds is None:
+            kinds = {EDGE_TYPE_REFERENCE}
 
-        # outgoing: bisect on the sorted (anchor_line, eid) list.
-        # The (line, -1) / (line, +inf) sentinel pairs ensure we capture
-        # all edges on the boundary lines regardless of eid ordering.
+        # defined: brute-force overlap on per-file node list.
+        nodes = self._file_nodes.get(file, [])
+        defined_vids = [vid for s, e, vid in nodes if s <= end_line and e >= start_line]
+        defined = [self._build_node_ref(vid) for vid in defined_vids]
+
+        # outgoing: bisect on sorted (anchor_line, eid) list, then filter by kind.
         arr = self._file_edge_anchors.get(file, [])
         lo = bisect.bisect_left(arr, (start_line, -1))
         hi = bisect.bisect_right(arr, (end_line, float("inf")))
-        outgoing = [eid for _, eid in arr[lo:hi]]
+        outgoing: List[EdgeRef] = []
+        for _, eid in arr[lo:hi]:
+            edge = self.graph.es[eid]
+            if edge["type"] in kinds:
+                outgoing.append(self._build_edge_ref(eid))
 
-        # incoming: use igraph's adjacency directly — no separate index.
-        incoming: List[int] = []
-        for vid in defined:
-            incoming.extend(self.graph.incident(vid, mode="in"))
+        # incoming: walk igraph adjacency directly; carry target_vid so the
+        # consumer can map the inbound edge back to which defined node it hit.
+        incoming: List[EdgeRef] = []
+        for vid in defined_vids:
+            for eid in self.graph.incident(vid, mode="in"):
+                edge = self.graph.es[eid]
+                if edge["type"] in kinds:
+                    incoming.append(self._build_edge_ref(eid))
 
-        return RangeQueryResult(
-            defined=defined, outgoing=outgoing, incoming=incoming
+        return RangeQueryResult(defined=defined, outgoing=outgoing, incoming=incoming)
+
+    def _build_node_ref(self, vid: int) -> NodeRef:
+        v = self.graph.vs[vid]
+        attrs = v.attributes()
+        return NodeRef(
+            vid=vid,
+            name=v["name"],
+            unified_name=attrs.get("unified_name", ""),
+            file=attrs.get("file", ""),
+            start_line=attrs.get("start_line", 0),
+            end_line=attrs.get("end_line", 0),
+            kind=attrs.get("type", ""),
         )
+
+    def _build_edge_ref(self, eid: int) -> EdgeRef:
+        edge = self.graph.es[eid]
+        attrs = edge.attributes()
+        return EdgeRef(
+            eid=eid,
+            source_vid=edge.source,
+            target_vid=edge.target,
+            edge_kind=edge["type"],
+            anchor_file=attrs.get("anchor_file"),
+            anchor_line=attrs.get("anchor_line"),
+        )
+
+    def query_range_by_symbol(
+        self,
+        name: str,
+        kinds: Optional[set] = None,
+        depth: int = 1,
+    ) -> RangeQueryResult:
+        """Range-query by symbol identity (`name`).
+
+        Resolves `name` -> vid -> `(file, start_line, end_line)` and forwards
+        to `query_range`. `name` is the globally-unique identity attribute
+        (semi-raw SCIP symbol), not the `unified_name` display.
+
+        Returns an empty RangeQueryResult if the symbol is unknown or has
+        no associated file/range (e.g. a SCIP reference-only vertex).
+        """
+        vid = self.name_to_vertex.get(name)
+        if vid is None:
+            return RangeQueryResult()
+        attrs = self.graph.vs[vid].attributes()
+        f = attrs.get("file")
+        s = attrs.get("start_line")
+        e = attrs.get("end_line")
+        if f is None or s is None or e is None:
+            return RangeQueryResult()
+        return self.query_range(f, s, e, kinds=kinds, depth=depth)
 
     # ------------------------------------------------------------------
 
@@ -426,6 +565,7 @@ class CodeGraph:
             "name_to_vertex": self.name_to_vertex,
             "file_nodes": self._file_nodes,
             "file_edge_anchors": self._file_edge_anchors,
+            "unified_to_names": self._unified_to_names,
         }
 
         with open(output_path, "wb") as f:
@@ -462,6 +602,7 @@ class CodeGraph:
         graph_instance.name_to_vertex = data.get("name_to_vertex", {})
         graph_instance._file_nodes = data.get("file_nodes", {})
         graph_instance._file_edge_anchors = data.get("file_edge_anchors", {})
+        graph_instance._unified_to_names = data.get("unified_to_names", {})
 
         return graph_instance
 
