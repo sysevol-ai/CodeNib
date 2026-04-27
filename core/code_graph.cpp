@@ -303,36 +303,41 @@ igraph_integer_t CodeGraph::add_edge(const std::string &source,
   VertexId source_id = ensure_vertex(source);
   VertexId target_id = ensure_vertex(target);
 
-  // Structural edges (no anchor) — dedup by (source, target, type) to mirror
-  // the Python `CodeGraph._add_edge` and the `batch_add_edges` structural
-  // dedup. CONTAIN edges from rust struct + impl pairs would otherwise
-  // become duplicates after the anchor strip on CONTAIN edges.
-  // Anchored edges are intentionally multi-edge (one per call site).
+  // Dedup by (src, tgt, type, anchor_file, anchor_line). Structural edges
+  // (no anchor) collapse on (src, tgt, type). Mirrors Python _add_edge.
   const bool is_structural =
       !anchor_file.has_value() && !anchor_line.has_value();
-  if (is_structural) {
-    igraph_vector_int_t out_eids;
-    igraph_vector_int_init(&out_eids, 0);
-    if (igraph_incident(&graph_, &out_eids, source_id, IGRAPH_OUT) ==
-        IGRAPH_SUCCESS) {
-      const igraph_integer_t n = igraph_vector_int_size(&out_eids);
-      for (igraph_integer_t i = 0; i < n; ++i) {
-        igraph_integer_t eid =
-            static_cast<igraph_integer_t>(VECTOR(out_eids)[i]);
-        if (static_cast<std::size_t>(eid) >= edges_.size()) {
-          continue;
-        }
-        const EdgeData &existing = edges_[eid];
-        if (existing.target == target_id && existing.type == edge_type &&
-            !existing.anchor_file.has_value() &&
+  igraph_vector_int_t out_eids;
+  igraph_vector_int_init(&out_eids, 0);
+  if (igraph_incident(&graph_, &out_eids, source_id, IGRAPH_OUT) ==
+      IGRAPH_SUCCESS) {
+    const igraph_integer_t n = igraph_vector_int_size(&out_eids);
+    for (igraph_integer_t i = 0; i < n; ++i) {
+      igraph_integer_t eid =
+          static_cast<igraph_integer_t>(VECTOR(out_eids)[i]);
+      if (static_cast<std::size_t>(eid) >= edges_.size()) {
+        continue;
+      }
+      const EdgeData &existing = edges_[eid];
+      if (existing.target != target_id || existing.type != edge_type) {
+        continue;
+      }
+      if (is_structural) {
+        if (!existing.anchor_file.has_value() &&
             !existing.anchor_line.has_value()) {
+          igraph_vector_int_destroy(&out_eids);
+          return eid;
+        }
+      } else {
+        if (existing.anchor_file == anchor_file &&
+            existing.anchor_line == anchor_line) {
           igraph_vector_int_destroy(&out_eids);
           return eid;
         }
       }
     }
-    igraph_vector_int_destroy(&out_eids);
   }
+  igraph_vector_int_destroy(&out_eids);
 
   if (igraph_add_edge(&graph_, source_id, target_id) != IGRAPH_SUCCESS) {
     throw std::runtime_error("Failed to add edge to graph");
@@ -420,37 +425,51 @@ void CodeGraph::batch_add_edges(
     return;
   }
 
-  // Anchored edges (those carrying an anchor_file/anchor_line) are
-  // intentionally multi-edge — each call site keeps its own edge so
-  // range queries can address them individually.
-  //
-  // Structural edges WITHOUT anchor info (file/dir containment,
-  // inheritance, etc.) are deduped by (source, target). Without this,
-  // every parallel decoder worker would re-emit the file/dir hierarchy
-  // it traversed, producing N duplicates of "root → src/" etc. — the
-  // serial Python decoder avoids this via decoder-level
-  // ``indexed_directories`` tracking that the per-worker SubgraphBuilder
-  // can't share, so dedup at merge time keeps parity.
+  // Structural edges (no anchor) dedup on (src, tgt). Without this,
+  // parallel workers re-emit shared file/dir hierarchy as duplicates.
+  // Anchored edges dedup on (src, tgt, type, anchor_file, anchor_line)
+  // so cross-side reconnect in the Python patcher can't double-add.
   struct StructuralKey {
     VertexId source;
     VertexId target;
-
-    bool operator==(const StructuralKey &other) const {
-      return source == other.source && target == other.target;
+    bool operator==(const StructuralKey &o) const {
+      return source == o.source && target == o.target;
     }
   };
-
   struct StructuralKeyHash {
-    std::size_t operator()(const StructuralKey &key) const {
-      return std::hash<VertexId>{}(key.source) ^
-             (std::hash<VertexId>{}(key.target) << 1);
+    std::size_t operator()(const StructuralKey &k) const {
+      return std::hash<VertexId>{}(k.source) ^
+             (std::hash<VertexId>{}(k.target) << 1);
+    }
+  };
+  struct AnchoredKey {
+    VertexId source;
+    VertexId target;
+    std::string type;
+    std::optional<std::string> anchor_file;
+    std::optional<int> anchor_line;
+    bool operator==(const AnchoredKey &o) const {
+      return source == o.source && target == o.target && type == o.type &&
+             anchor_file == o.anchor_file && anchor_line == o.anchor_line;
+    }
+  };
+  struct AnchoredKeyHash {
+    std::size_t operator()(const AnchoredKey &k) const {
+      std::size_t h = std::hash<VertexId>{}(k.source);
+      h ^= std::hash<VertexId>{}(k.target) << 1;
+      h ^= std::hash<std::string>{}(k.type) << 2;
+      if (k.anchor_file.has_value())
+        h ^= std::hash<std::string>{}(*k.anchor_file) << 3;
+      if (k.anchor_line.has_value())
+        h ^= std::hash<int>{}(*k.anchor_line) << 4;
+      return h;
     }
   };
 
   std::unordered_set<StructuralKey, StructuralKeyHash> seen_structural;
+  std::unordered_set<AnchoredKey, AnchoredKeyHash> seen_anchored;
 
-  // Pre-seed with existing structural edges already on the graph (added
-  // through the serial `add_edge` path before this batch).
+  // Pre-seed with edges already on the graph from prior add_edge calls.
   igraph_integer_t current_ecount = igraph_ecount(&graph_);
   for (igraph_integer_t i = 0; i < current_ecount; ++i) {
     if (i < static_cast<igraph_integer_t>(edges_.size())) {
@@ -458,6 +477,10 @@ void CodeGraph::batch_add_edges(
       if (!existing.anchor_file.has_value() &&
           !existing.anchor_line.has_value()) {
         seen_structural.insert(StructuralKey{existing.source, existing.target});
+      } else {
+        seen_anchored.insert(AnchoredKey{existing.source, existing.target,
+                                         existing.type, existing.anchor_file,
+                                         existing.anchor_line});
       }
     }
   }
@@ -493,11 +516,15 @@ void CodeGraph::batch_add_edges(
     if (is_structural) {
       StructuralKey key{source_id, target_id};
       if (seen_structural.find(key) != seen_structural.end()) {
-        log_debug("Structural edge from '" + source + "' to '" + target +
-                  "' already exists, skipping");
         continue;
       }
       seen_structural.insert(key);
+    } else {
+      AnchoredKey key{source_id, target_id, type, anchor_file, anchor_line};
+      if (seen_anchored.find(key) != seen_anchored.end()) {
+        continue;
+      }
+      seen_anchored.insert(key);
     }
 
     VECTOR(edge_vector)[edge_idx * 2] = source_id;

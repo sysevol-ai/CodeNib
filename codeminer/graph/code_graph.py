@@ -351,22 +351,22 @@ class CodeGraph:
             else self.name_to_vertex[target_name]
         )
 
-        # Structural edges (no anchor) — dedup by (source, target). Mirrors the
-        # C++ `batch_add_edges` structural dedup (see core/code_graph.cpp).
+        # Dedup by (src, tgt, type, anchor_file, anchor_line). Structural
+        # edges (no anchor) collapse on (src, tgt, type). Mirrors C++
+        # add_edge / batch_add_edges.
         is_structural = anchor_file is None and anchor_line is None
-        if is_structural:
-            for eid in self.graph.incident(source_id, mode="out"):
-                edge = self.graph.es[eid]
-                if edge.target == target_id and edge["type"] == edge_type:
-                    eattrs = edge.attributes()
-                    if (
-                        eattrs.get("anchor_file") is None
-                        and eattrs.get("anchor_line") is None
-                    ):
-                        return eid
+        for eid in self.graph.incident(source_id, mode="out"):
+            edge = self.graph.es[eid]
+            if edge.target != target_id or edge["type"] != edge_type:
+                continue
+            eattrs = edge.attributes()
+            if is_structural:
+                if eattrs.get("anchor_file") is None and eattrs.get("anchor_line") is None:
+                    return eid
+            elif (eattrs.get("anchor_file") == anchor_file
+                  and eattrs.get("anchor_line") == anchor_line):
+                return eid
 
-        # Add edge — multi-edges allowed for anchored edges; structural have
-        # been deduped above.
         self.graph.add_edges([(source_id, target_id)])
         edge_id = self.graph.ecount() - 1
 
