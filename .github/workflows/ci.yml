@@ -222,15 +222,16 @@ jobs:
           install-clangd: "true"
           install-bear: "true"
 
-      - name: Install C++ build deps (libigraph, re2, cmake)
+      - name: Install C++ build deps (re2, cmake)
         shell: bash -l {0}
         timeout-minutes: 5
+        # libigraph is vendored via FetchContent in core/CMakeLists.txt
+        # (see comment there) so we only need re2 + cmake from the system.
         run: |
           set -eu
           NEED=()
           command -v pkg-config >/dev/null 2>&1 || NEED+=(pkg-config)
           command -v cmake      >/dev/null 2>&1 || NEED+=(cmake)
-          pkg-config --exists igraph 2>/dev/null || NEED+=(libigraph-dev)
           pkg-config --exists re2    2>/dev/null || NEED+=(libre2-dev)
           if [ ${#NEED[@]} -eq 0 ]; then
             echo "[deps] all present — skipping apt"
@@ -243,6 +244,19 @@ jobs:
       - name: Install pybind11
         shell: bash -l {0}
         run: python -m pip install pybind11
+
+      - name: Cache build/core
+        uses: actions/cache@v4
+        with:
+          path: build/core
+          # Reuse the build dir whenever core sources, CMakeLists, and the
+          # vendored c-igraph pin are unchanged. c-igraph compile is the
+          # bulk of the build cost (~30s on cold cache); cmake's own
+          # incremental cache handles partial rebuilds when only our .cpp
+          # files change.
+          key: core-${{ runner.os }}-${{ hashFiles('core/**/*.cpp','core/**/*.h','core/CMakeLists.txt','core/bindings/*.cpp') }}
+          restore-keys: |
+            core-${{ runner.os }}-
 
       - name: Build core/ (pybind)
         shell: bash -l {0}
@@ -260,10 +274,11 @@ jobs:
         # Force the dynamic loader to resolve libstdc++ against the same
         # GCC that compiled our pybind .so.  Any conda env on the runner
         # may carry an older libstdc++ whose GLIBCXX_* tags don't cover
-        # the symbols our build references; libigraph/libre2 also drag
-        # libstdc++ in transitively so a runtime override is required.
-        # `gcc -print-file-name` yields the distro-appropriate path on
-        # any Linux host (Ubuntu, RHEL, Arch, ...).
+        # the symbols our build references.
+        #
+        # (No libigraph PRELOAD needed: c-igraph is vendored privately
+        # into codeminer_core.so via --exclude-libs,ALL, so it cannot
+        # clash with the c-igraph that Python's `igraph` wheel bundles.)
         run: |
           SYS_STDCPP="$(gcc -print-file-name=libstdc++.so.6 2>/dev/null || true)"
           if [ -e "$SYS_STDCPP" ]; then
