@@ -264,6 +264,13 @@ class LSGraphDecoder:
                 index_file_path=index_file_path,
                 project_root=project_root,
             )
+        elif self.language == "go":
+            from .scip_interface.scip_decode_go import SCIPGoGraphDecoder
+
+            return SCIPGoGraphDecoder(
+                index_file_path=index_file_path,
+                project_root=project_root,
+            )
         else:
             raise ValueError(f"No decoder for language: {self.language}")
 

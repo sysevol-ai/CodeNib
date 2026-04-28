@@ -239,6 +239,8 @@ class ContextLoader:
             return "ts"
         if "c++" in language_group or language_group == "c":
             return "cpp"
+        if "go" in language_group:
+            return "go"
         return "python"
 
     def sample_candidate_blocks(

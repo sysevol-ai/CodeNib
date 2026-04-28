@@ -90,6 +90,8 @@ def _to_compact_record(item: Dict[str, Any]) -> Dict[str, Any]:
         record["language_group"] = item["language_group"]
     if "verification_passed" in item:
         record["verification_passed"] = item["verification_passed"]
+    if "error" in item:
+        record["error"] = item["error"]
     return record
 
 
@@ -168,10 +170,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated list of allowed tools.",
     )
     parser.add_argument(
-        "--synthesis-limit",
+        "--start",
+        type=int,
+        default=0,
+        help="Start index of instances to synthesize (0-based, inclusive).",
+    )
+    parser.add_argument(
+        "--end",
         type=int,
         default=None,
-        help="Synthesize only first N instances.",
+        help="End index of instances to synthesize (exclusive). Defaults to all.",
     )
     parser.add_argument(
         "--repeat-per-instance",
@@ -219,6 +227,15 @@ def build_parser() -> argparse.ArgumentParser:
             "none (skip verification)."
         ),
     )
+    parser.add_argument(
+        "--max-pipeline-restarts",
+        type=int,
+        default=2,
+        help=(
+            "For behavioral synthesis, restart the full checkout/index/sample/"
+            "generate/verify pipeline this many additional times before failing."
+        ),
+    )
     return parser
 
 
@@ -228,6 +245,8 @@ def main() -> None:
 
     if args.repeat_per_instance < 1:
         raise ValueError("--repeat-per-instance must be >= 1")
+    if args.max_pipeline_restarts < 0:
+        raise ValueError("--max-pipeline-restarts must be >= 0")
 
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else Path(".")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -299,9 +318,13 @@ def main() -> None:
         tool.strip() for tool in args.allowed_tools.split(",") if tool.strip()
     ]
     query_types = _parse_query_types(args.query_types)
+    if QueryType.BEHAVIORAL in query_types and args.verification_mode == "none":
+        logger.warning(
+            "behavioral synthesis with --verification-mode none skips "
+            "query-target alignment checks"
+        )
 
-    limit = args.synthesis_limit or len(selected_instances)
-    synth_inputs = selected_instances[:limit]
+    synth_inputs = selected_instances[args.start : args.end]
     missing_required = [
         row.get("instance_id", "unknown")
         for row in synth_inputs
@@ -354,30 +377,62 @@ def main() -> None:
         for inst_idx, instance in enumerate(expanded_inputs):
             run_id = run_ids[inst_idx] if inst_idx < len(run_ids) else 1
             for qi in range(args.num_queries):
-                try:
-                    gt = _extract_ground_truth(instance)
-                    result = synthesizer.synthesize_query(
-                        instance,
-                        repo_root=args.repo_cache_dir,
-                        cache_dir=str(cache_dir),
-                        ground_truth=gt,
-                        query_index=qi,
-                    )
-                except Exception as exc:
-                    instance_id = instance.get("instance_id", "unknown")
-                    logger.error(
-                        "Failed to synthesize query for %s (q%d): %s",
-                        instance_id,
-                        qi + 1,
-                        exc,
-                        exc_info=True,
-                    )
-                    result = {
-                        "instance_id": instance_id,
-                        "repo": instance.get("repo"),
-                        "base_commit": instance.get("base_commit"),
-                        "error": str(exc),
-                    }
+                result = None
+                max_attempts = (
+                    args.max_pipeline_restarts + 1
+                    if query_type == QueryType.BEHAVIORAL
+                    else 1
+                )
+                for attempt in range(max_attempts):
+                    attempt_instance = dict(instance)
+                    attempt_query_index = qi
+                    if query_type == QueryType.BEHAVIORAL and attempt:
+                        attempt_instance["synthesis_run_id"] = f"{run_id}-r{attempt}"
+                        attempt_query_index = qi + attempt
+                    try:
+                        gt = _extract_ground_truth(instance)
+                        result = synthesizer.synthesize_query(
+                            attempt_instance,
+                            repo_root=args.repo_cache_dir,
+                            cache_dir=str(cache_dir),
+                            ground_truth=gt,
+                            query_index=attempt_query_index,
+                        )
+                        if (
+                            query_type == QueryType.BEHAVIORAL
+                            and args.verification_mode == "strict"
+                            and result.get("verification_passed") is False
+                        ):
+                            raise ValueError("behavioral query failed verification")
+                        break
+                    except Exception as exc:
+                        instance_id = instance.get("instance_id", "unknown")
+                        if attempt + 1 < max_attempts:
+                            logger.warning(
+                                "Pipeline attempt %d/%d failed for %s (q%d): %s, "
+                                "restarting",
+                                attempt + 1,
+                                max_attempts,
+                                instance_id,
+                                qi + 1,
+                                exc,
+                            )
+                        else:
+                            logger.error(
+                                "Failed to synthesize query for %s (q%d) "
+                                "after %d attempt(s): %s",
+                                instance_id,
+                                qi + 1,
+                                max_attempts,
+                                exc,
+                                exc_info=True,
+                            )
+                            result = {
+                                "instance_id": instance_id,
+                                "repo": instance.get("repo"),
+                                "base_commit": instance.get("base_commit"),
+                                "error": str(exc),
+                            }
 
                 result["language_group"] = instance.get("language_group")
 

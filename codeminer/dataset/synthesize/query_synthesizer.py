@@ -120,6 +120,8 @@ class ClaudeQuerySynthesizer:
     # Public API
     # ------------------------------------------------------------------
 
+    _MAX_BEHAVIORAL_RETRIES = 2
+
     def synthesize_query(
         self,
         instance: Dict[str, Any],
@@ -136,16 +138,31 @@ class ClaudeQuerySynthesizer:
             instance, repo_path, cache_dir=cache_dir, query_index=query_index
         )
 
-        if self.query_type == QueryType.BEHAVIORAL and behavioral_context is not None:
-            result = self._curator.generate_with_consensus(
-                instance=instance,
-                snapshot=snapshot,
-                behavioral_context=behavioral_context,
+        if self.query_type == QueryType.BEHAVIORAL and behavioral_context is None:
+            raise RuntimeError(
+                "behavioral synthesis could not build sampled code-block context"
             )
-            runs = result.pop("_runs", [])
-            result = self._verifier.verify(
-                result, runs, behavioral_context, cwd=str(snapshot.root)
-            )
+
+        if self.query_type == QueryType.BEHAVIORAL:
+            for attempt in range(self._MAX_BEHAVIORAL_RETRIES + 1):
+                result = self._curator.generate_with_consensus(
+                    instance=instance,
+                    snapshot=snapshot,
+                    behavioral_context=behavioral_context,
+                )
+                runs = result.pop("_runs", [])
+                result = self._verifier.verify(
+                    result, runs, behavioral_context, cwd=str(snapshot.root)
+                )
+                if result.get("verification_passed") is not False:
+                    break
+                if attempt < self._MAX_BEHAVIORAL_RETRIES:
+                    logger.warning(
+                        "Attempt %d/%d: verification failed for %s, retrying",
+                        attempt + 1,
+                        self._MAX_BEHAVIORAL_RETRIES + 1,
+                        instance.get("instance_id", "unknown"),
+                    )
             gt = self._build_ground_truth_from_blocks(
                 result.get("selected_blocks") or [behavioral_context.core_block]
             )
@@ -196,16 +213,31 @@ class ClaudeQuerySynthesizer:
             instance, repo_path, cache_dir=cache_dir, query_index=query_index
         )
 
-        if self.query_type == QueryType.BEHAVIORAL and behavioral_context is not None:
-            result = await self._curator.generate_with_consensus_async(
-                instance=instance,
-                snapshot=snapshot,
-                behavioral_context=behavioral_context,
+        if self.query_type == QueryType.BEHAVIORAL and behavioral_context is None:
+            raise RuntimeError(
+                "behavioral synthesis could not build sampled code-block context"
             )
-            runs = result.pop("_runs", [])
-            result = await self._verifier.verify_async(
-                result, runs, behavioral_context, cwd=str(snapshot.root)
-            )
+
+        if self.query_type == QueryType.BEHAVIORAL:
+            for attempt in range(self._MAX_BEHAVIORAL_RETRIES + 1):
+                result = await self._curator.generate_with_consensus_async(
+                    instance=instance,
+                    snapshot=snapshot,
+                    behavioral_context=behavioral_context,
+                )
+                runs = result.pop("_runs", [])
+                result = await self._verifier.verify_async(
+                    result, runs, behavioral_context, cwd=str(snapshot.root)
+                )
+                if result.get("verification_passed") is not False:
+                    break
+                if attempt < self._MAX_BEHAVIORAL_RETRIES:
+                    logger.warning(
+                        "Attempt %d/%d: verification failed for %s, retrying",
+                        attempt + 1,
+                        self._MAX_BEHAVIORAL_RETRIES + 1,
+                        instance.get("instance_id", "unknown"),
+                    )
             gt = self._build_ground_truth_from_blocks(
                 result.get("selected_blocks") or [behavioral_context.core_block]
             )

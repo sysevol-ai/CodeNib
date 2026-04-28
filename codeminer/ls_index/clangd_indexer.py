@@ -554,14 +554,22 @@ class ClangdIndexer:
         except Exception:
             return
 
-        source_files = [e["file"] for e in entries if "file" in e]
+        source_files: List[Path] = []
+        for e in entries:
+            if "file" not in e:
+                continue
+            f_path = Path(e["file"])
+            if not f_path.is_absolute():
+                base = Path(e.get("directory") or self.project_root)
+                f_path = (base / f_path).resolve()
+            source_files.append(f_path)
         logger.info(f"Opening {len(source_files)} source files to trigger indexing")
 
         for src_file in source_files:
-            if not Path(src_file).is_file():
+            if not src_file.is_file():
                 continue
             try:
-                text = Path(src_file).read_text(errors="replace")
+                text = src_file.read_text(errors="replace")
             except Exception:
                 continue
 
