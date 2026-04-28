@@ -381,6 +381,7 @@ def build_embeddings(args):
                     embedding_kwargs=embedding_kwargs,
                     index_metric=args.index_metric,
                     profiler=instance_profiler,
+                    force_rebuild=args.force_rebuild,
                 )
 
             # Save profiler report

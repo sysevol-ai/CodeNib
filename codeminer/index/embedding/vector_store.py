@@ -53,8 +53,29 @@ class _HuggingFaceEmbeddingWrapper:
     def __init__(self, model_name: str, max_seq_length: Optional[int] = None, **kwargs):
         from sentence_transformers import SentenceTransformer
 
+        from .prompt_registry import resolve_prompts
+
         model_kwargs = kwargs.pop("model_kwargs", {})
         self._encode_kwargs = kwargs.pop("encode_kwargs", {})
+
+        # Pop prompt-related kwargs so they aren't forwarded to
+        # SentenceTransformer's __init__. Anything left as None falls back to
+        # the per-model registry; anything set explicitly (including "")
+        # overrides the registry.
+        explicit = {
+            "query_prompt_name": kwargs.pop("query_prompt_name", None),
+            "query_prompt": kwargs.pop("query_prompt", None),
+            "document_prompt_name": kwargs.pop("document_prompt_name", None),
+            "document_prompt": kwargs.pop("document_prompt", None),
+        }
+        defaults = resolve_prompts(model_name)
+        merged = {
+            k: (v if v is not None else defaults.get(k)) for k, v in explicit.items()
+        }
+        self._query_prompt_name = merged["query_prompt_name"]
+        self._query_prompt = merged["query_prompt"]
+        self._document_prompt_name = merged["document_prompt_name"]
+        self._document_prompt = merged["document_prompt"]
 
         # Build SentenceTransformer init kwargs
         st_kwargs: Dict[str, Any] = {}
@@ -68,6 +89,20 @@ class _HuggingFaceEmbeddingWrapper:
 
         # Cap the effective sequence length to avoid CUDA OOM.
         self._apply_max_seq_length(model_name, max_seq_length)
+
+        logger.info(
+            "Embedding wrapper for %s: query_prompt_name=%r query_prompt=%r "
+            "document_prompt_name=%r document_prompt=%r",
+            model_name,
+            self._query_prompt_name,
+            (
+                (self._query_prompt[:60] + "…")
+                if isinstance(self._query_prompt, str) and len(self._query_prompt) > 60
+                else self._query_prompt
+            ),
+            self._document_prompt_name,
+            self._document_prompt,
+        )
 
     # Expose the underlying SentenceTransformer so that callers that
     # previously reached through ``store.embedding._client`` (langchain-
@@ -115,12 +150,36 @@ class _HuggingFaceEmbeddingWrapper:
             else:
                 logger.debug("Could not check tokenizer max length: %s", e)
 
+    def _build_encode_kwargs(
+        self,
+        prompt: Optional[str],
+        prompt_name: Optional[str],
+    ) -> Dict[str, Any]:
+        """Merge per-call prompt args on top of self._encode_kwargs.
+
+        ``prompt`` (raw string) wins over ``prompt_name``; either being a
+        non-None value disables the other. Empty string is a valid prompt
+        meaning "encode with empty prefix" — same as no-prefix.
+        """
+        kwargs = dict(self._encode_kwargs)
+        if prompt is not None:
+            kwargs["prompt"] = prompt
+            kwargs.pop("prompt_name", None)
+        elif prompt_name is not None:
+            kwargs["prompt_name"] = prompt_name
+            kwargs.pop("prompt", None)
+        return kwargs
+
     def embed_query(self, text: str) -> List[float]:
-        vec = self._model.encode([text], **self._encode_kwargs)
+        kwargs = self._build_encode_kwargs(self._query_prompt, self._query_prompt_name)
+        vec = self._model.encode([text], **kwargs)
         return vec[0].tolist()
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        vecs = self._model.encode(texts, **self._encode_kwargs)
+        kwargs = self._build_encode_kwargs(
+            self._document_prompt, self._document_prompt_name
+        )
+        vecs = self._model.encode(texts, **kwargs)
         return vecs.tolist()
 
 
