@@ -91,7 +91,49 @@ def parse_args():
         nargs="+",
         required=True,
         type=_parse_pair,
-        help="Large (rerank) models as MODEL:DIM (one or more).",
+        help=(
+            "Large (rerank) models as MODEL:DIM (one or more). "
+            "DIM is ignored for --rerank-strategy cross-encoder; pass :0 "
+            "if you don't know it."
+        ),
+    )
+    p.add_argument(
+        "--rerank-strategy",
+        choices=["embedding", "cross-encoder"],
+        default="embedding",
+        help=(
+            "How to score the small model's top-K candidates. "
+            "'embedding' (default): re-encode (query, doc) with the large "
+            "embedding model and use vector similarity. "
+            "'cross-encoder': use a dedicated pairwise reranker "
+            "(mxbai-rerank-*, BAAI/bge-reranker-*, jinaai/jina-reranker-*, "
+            "or Qwen3-Reranker-*)."
+        ),
+    )
+    p.add_argument(
+        "--cross-encoder-batch-size",
+        type=int,
+        default=8,
+        help="Batch size for cross-encoder scoring.",
+    )
+    p.add_argument(
+        "--cross-encoder-instruction",
+        type=str,
+        default=(
+            "Given a github issue, identify the code that needs to be "
+            "changed to fix the issue."
+        ),
+        help=(
+            "Task instruction for Qwen3-Reranker-style models. Ignored by "
+            "standard CrossEncoder backends (they do not consume an "
+            "instruction)."
+        ),
+    )
+    p.add_argument(
+        "--cross-encoder-backend",
+        choices=["auto", "st", "qwen"],
+        default="auto",
+        help=("Force a cross-encoder backend (default: auto-detect by model " "name)."),
     )
     p.add_argument(
         "--dataset",
@@ -296,6 +338,30 @@ def _rerank_with_large(
     return [c.model_copy(update={"score": float(score)}) for score, c in ranked[:top_k]]
 
 
+def _rerank_with_cross_encoder(
+    query: str,
+    candidates: List[QueriedNode],
+    reranker,
+    top_k: int,
+) -> List[QueriedNode]:
+    """Score candidates with a pairwise cross-encoder reranker.
+
+    ``reranker`` may be either ``STCrossEncoderWrapper`` or
+    ``QwenRerankerWrapper``; both expose ``score(query, docs)``.
+    """
+    candidates_with_content = [c for c in candidates if c.content]
+    if not candidates_with_content:
+        return []
+
+    scores = reranker.score(query, [c.content for c in candidates_with_content])
+    ranked = sorted(
+        zip(scores, candidates_with_content, strict=True),
+        key=lambda pair: pair[0],
+        reverse=True,
+    )
+    return [c.model_copy(update={"score": float(s)}) for s, c in ranked[:top_k]]
+
+
 def _release_gpu(*objs):
     for obj in objs:
         if obj is None:
@@ -412,32 +478,58 @@ def run_sweep(args):
                 if args.profile_tag:
                     pair_tag = f"{pair_tag}__{_sanitize(args.profile_tag)}"
 
-                result_file = (
-                    results_dir / f"rerank_codeminer_base_{args.split}_{pair_tag}.json"
+                strategy_tag = (
+                    "embedding"
+                    if args.rerank_strategy == "embedding"
+                    else "cross_encoder"
+                )
+                method_label = f"dense_retrieve_plus_{strategy_tag}_rerank"
+                result_file = results_dir / (
+                    f"rerank_{strategy_tag}_codeminer_base_"
+                    f"{args.split}_{pair_tag}.json"
                 )
                 profile_file = profile_dir / (
                     "codeminer_base__"
-                    "dense_retrieve_plus_embedding_rerank__"
+                    f"{method_label}__"
                     f"{_sanitize(s_model)}__{pair_tag}.json"
                 )
 
                 logger.info(
-                    "  Pair: small=%s × large=%s (%dd)",
+                    "  Pair: small=%s × large=%s (%dd)  strategy=%s",
                     s_model,
                     l_model,
                     l_dim,
+                    args.rerank_strategy,
                 )
                 logger.info("  → %s", result_file)
 
                 large_store: Optional[CodeVectorStore] = None
+                reranker = None
                 try:
-                    large_store = _build_large_store(
-                        l_model,
-                        l_dim,
-                        args.large_batch_size,
-                        args.max_seq_length,
-                    )
-                    logger.info("  Large model loaded: %s", l_model)
+                    if args.rerank_strategy == "embedding":
+                        large_store = _build_large_store(
+                            l_model,
+                            l_dim,
+                            args.large_batch_size,
+                            args.max_seq_length,
+                        )
+                        logger.info("  Large embedding model loaded: %s", l_model)
+                    else:
+                        from codeminer.index.rerank import build_reranker
+
+                        backend = (
+                            None
+                            if args.cross_encoder_backend == "auto"
+                            else args.cross_encoder_backend
+                        )
+                        reranker = build_reranker(
+                            l_model,
+                            backend=backend,
+                            max_length=args.max_seq_length,
+                            batch_size=args.cross_encoder_batch_size,
+                            instruction=args.cross_encoder_instruction,
+                        )
+                        logger.info("  Cross-encoder reranker loaded: %s", l_model)
 
                     aggregate = {}
                     eval_count = 0
@@ -487,13 +579,26 @@ def run_sweep(args):
                                         top_k=args.rerank_top_k,
                                     )
 
-                                with prof.section("rerank.large"):
-                                    reranked = _rerank_with_large(
-                                        instance["problem_statement"],
-                                        candidates,
-                                        large_store,
-                                        top_k=metric_max_k,
-                                    )
+                                rerank_section = (
+                                    "rerank.embedding"
+                                    if args.rerank_strategy == "embedding"
+                                    else "rerank.cross_encoder"
+                                )
+                                with prof.section(rerank_section):
+                                    if args.rerank_strategy == "embedding":
+                                        reranked = _rerank_with_large(
+                                            instance["problem_statement"],
+                                            candidates,
+                                            large_store,
+                                            top_k=metric_max_k,
+                                        )
+                                    else:
+                                        reranked = _rerank_with_cross_encoder(
+                                            instance["problem_statement"],
+                                            candidates,
+                                            reranker,
+                                            top_k=metric_max_k,
+                                        )
 
                                 with prof.section("evaluate_predictions"):
                                     metrics = evaluate_predictions(
@@ -513,11 +618,10 @@ def run_sweep(args):
                                 pair_results.append(
                                     {
                                         "instance_id": instance_id,
-                                        "method": (
-                                            "dense_retrieve_plus_" "embedding_rerank"
-                                        ),
+                                        "method": method_label,
                                         "small_model": s_model,
                                         "large_model": l_model,
+                                        "rerank_strategy": args.rerank_strategy,
                                         "rerank_top_k": args.rerank_top_k,
                                         "metric_k_files": (unique_files[:metric_max_k]),
                                         "metric_k_node_ids": (
@@ -599,7 +703,8 @@ def run_sweep(args):
                             "dataset": "codeminer_base",
                             "split": args.split,
                             "filter_instance": args.filter_instance,
-                            "method": "dense_retrieve_plus_embedding_rerank",
+                            "method": method_label,
+                            "rerank_strategy": args.rerank_strategy,
                             "small_model": s_model,
                             "small_dimension": s_dim,
                             "large_model": l_model,
@@ -617,8 +722,9 @@ def run_sweep(args):
                         )
                         logger.info("  Saved profile: %s", profile_file)
                 finally:
-                    _release_gpu(large_store)
+                    _release_gpu(large_store, reranker)
                     large_store = None
+                    reranker = None
         finally:
             _release_gpu(small_pipe)
             small_pipe = None
