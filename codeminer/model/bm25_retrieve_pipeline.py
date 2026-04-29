@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..log_utils import get_logger
-from ..scip_interface import SCIPIndexerBase as SCIPIndexer
+from ..ls_router import LSIndexer
 from ..types import QueriedNode
 
 logger = get_logger(__name__)
@@ -33,13 +33,16 @@ class BM25RetrievePipeline:
         *,
         top_k: int = 50,
         project_name: Optional[str] = None,
+        language: str = "python",
     ) -> None:
         self.top_k = top_k
 
         pname = project_name or Path(index_path).name
 
-        # Build CodeGraph via SCIP indexing
-        repo_indexer = SCIPIndexer(repo_path, output_dir=index_path)
+        # Build CodeGraph via language-aware indexer (SCIP for most, clangd for C/C++)
+        repo_indexer = LSIndexer(
+            project_root=repo_path, output_dir=index_path, language=language
+        )
         self.code_graph = repo_indexer.run_pipeline(
             project_name=pname, skip_level="graph"
         )
