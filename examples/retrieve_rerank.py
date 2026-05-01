@@ -508,7 +508,10 @@ def run_pipeline(args):
         instance_profiler.enabled = profiling_enabled
         metadata = eval_metadata.get(instance_id)
         if metadata:
-            target_files, target_symbols = collect_targets(metadata)
+            target_files, target_symbols = collect_targets(
+                metadata,
+                simplified_symbols=getattr(dataset_obj, "simplified_symbols", True),
+            )
             if not target_symbols:
                 logger.info(f"Skipping {instance_id} - no valid target symbols")
                 continue
