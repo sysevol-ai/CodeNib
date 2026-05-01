@@ -147,6 +147,21 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--rerank-listwise-format",
+        type=str,
+        default="structured",
+        choices=["structured", "rankgpt"],
+        help=(
+            "Listwise output format for the LLM reranker. 'structured' "
+            "(default) enforces a JSON schema via with_structured_output — "
+            "right for general-purpose LLMs. 'rankgpt' uses SweRank/RankGPT "
+            "text format ([3] > [5] > [1] > ...) and a regex parser; "
+            "required for SweRankLLM-* and other models fine-tuned on this "
+            "format (forcing JSON on them collapses output to a single "
+            "index)."
+        ),
+    )
+    parser.add_argument(
         "--rerank-window-size",
         type=int,
         default=10,
@@ -552,6 +567,7 @@ def run_pipeline(args):
                         retrieval_level=args.retrieval_level,
                         rerank_window_size=args.rerank_window_size,
                         rerank_window_step=args.rerank_window_step,
+                        rerank_listwise_format=args.rerank_listwise_format,
                         enable_rerank=not args.retrieval_only,
                         rerank_candidate_top_k=args.rerank_top_k,
                     )

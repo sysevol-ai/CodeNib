@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 from ..agent.rerank_agent import RerankAgent
 from ..index.embedding.vector_store import CodeVectorStore
@@ -22,6 +22,7 @@ class RerankContext:
     candidate_top_k: Optional[int] = None
     window_size: Optional[int] = None
     window_step: Optional[int] = None
+    listwise_format: Literal["structured", "rankgpt"] = "structured"
 
     def ensure_agent(self) -> RerankAgent:
         if self.agent is None:
@@ -29,7 +30,10 @@ class RerankContext:
                 raise RuntimeError("Rerank agent requested but no LLM was provided.")
             logger.info(
                 "Creating rerank agent.",
-                extra={"model": self.llm.model},
+                extra={
+                    "model": self.llm.model,
+                    "listwise_format": self.listwise_format,
+                },
             )
-            self.agent = RerankAgent(llm=self.llm)
+            self.agent = RerankAgent(llm=self.llm, listwise_format=self.listwise_format)
         return self.agent

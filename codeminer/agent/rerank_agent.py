@@ -3,8 +3,9 @@ Rerank agent for ranking code nodes based on relevance to a query.
 This module uses LLM APIs to rank NodeInfo objects and return QueriedNode objects.
 """
 
+import re
 from collections import Counter, defaultdict
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -27,21 +28,45 @@ class RerankResult(BaseModel):
     )
 
 
+# Max chars from each candidate's content embedded in a rankgpt-style prompt.
+# Approximate proxy for SweRank's 1024-token cap (≈3-4k chars for code).
+_RANKGPT_MAX_CONTENT_CHARS = 3000
+
+
 class RerankAgent:
     """Agent for reranking code nodes based on query relevance using LLM APIs."""
 
     def __init__(
         self,
         llm: LiteLLMChat,
+        listwise_format: Literal["structured", "rankgpt"] = "structured",
     ):
         """Initialize the rerank agent.
 
         Args:
             llm: A configured LiteLLMChat instance.
+            listwise_format: How to ask the LLM to format the ranking.
+                ``"structured"`` (default) uses a JSON schema enforced via
+                ``with_structured_output``; suitable for general-purpose LLMs
+                that follow JSON-mode prompts well.
+                ``"rankgpt"`` uses SweRank/RankGPT-style text output
+                (``[3] > [5] > [1] > ...``) and a regex parser. Required for
+                listwise rerankers fine-tuned on this format
+                (Salesforce/SweRankLLM-*, RankZephyr, etc.) — forcing JSON on
+                them collapses the output to the first index only.
         """
         self.llm = llm
-        self.structured_llm = self.llm.with_structured_output(RerankResult)
-        logger.info(f"Initialized rerank agent with model: {self.llm.model}")
+        self.listwise_format = listwise_format
+        self.structured_llm = (
+            self.llm.with_structured_output(RerankResult)
+            if listwise_format == "structured"
+            else None
+        )
+        logger.info(
+            "Initialized rerank agent with model=%s listwise_format=%s",
+            self.llm.model,
+            listwise_format,
+        )
 
     def rerank_nodes(
         self,
@@ -186,7 +211,14 @@ class RerankAgent:
         """Invoke the LLM to rerank a specific window of nodes."""
         if not window_nodes:
             return []
+        if self.listwise_format == "rankgpt":
+            return self._rerank_window_rankgpt(query, window_nodes)
+        return self._rerank_window_structured(query, window_nodes)
 
+    def _rerank_window_structured(
+        self, query: str, window_nodes: Sequence[Tuple[int, NodeInfo]]
+    ) -> List[Tuple[int, float]]:
+        """Default JSON-schema path; suitable for general-purpose LLMs."""
         system_prompt = (
             "You are a code relevance ranking specialist. Your task is to rank code snippets "
             "based on their relevance to a given query. You should consider:\n\n"
@@ -246,6 +278,106 @@ class RerankAgent:
             len(window_nodes),
         )
         return window_scores
+
+    # ------------------------------------------------------------------
+    # RankGPT / SweRank-style listwise rerank
+    # ------------------------------------------------------------------
+    #
+    # Mirrors the github_issue prompt + parser in Salesforce/SweRank:
+    #   src/reranker/utils/rank_listwise_os_llm.py  (prompt construction)
+    #   src/reranker/utils/rankllm.py               (_clean_response /
+    #                                                receive_permutation)
+    # https://github.com/SalesforceAIResearch/SweRank
+    #
+    # Models trained for this format (SweRankLLM-Small/Large, RankZephyr,
+    # RankT5, …) emit a permutation as plain text such as
+    #   ``[3] > [5] > [1] > ...``
+    # rather than JSON. Forcing JSON-mode on those models collapses the
+    # response to the first index and discards 90%+ of the ranking signal.
+
+    def _rerank_window_rankgpt(
+        self, query: str, window_nodes: Sequence[Tuple[int, NodeInfo]]
+    ) -> List[Tuple[int, float]]:
+        num = len(window_nodes)
+
+        prefix_prompt = (
+            f"I will provide you with {num} code functions, each indicated by "
+            f"a numerical identifier []. Rank the code functions based on "
+            f"their relevance to contain the faults causing the GitHub issue: "
+            f"{query}.\n"
+        )
+        body_lines: List[str] = [prefix_prompt]
+        for rank, (_, node) in enumerate(window_nodes, start=1):
+            content = node.content or ""
+            if len(content) > _RANKGPT_MAX_CONTENT_CHARS:
+                content = content[:_RANKGPT_MAX_CONTENT_CHARS]
+            body_lines.append(f"[{rank}] {content}\n")
+
+        post_prompt = (
+            f"GitHub Issue: {query}.\nRank the {num} code functions above "
+            f"based on their relevance to contain the faults causing the "
+            f"GitHub issue. All the code functions should be included and "
+            f"listed using identifiers, in descending order of relevance. "
+            f"The output format should be [] > [], e.g., [4] > [2]. Only "
+            f"respond with the ranking results, do not say any word or "
+            f"explain."
+        )
+        body_lines.append(post_prompt)
+
+        user_msg = human_message("\n".join(body_lines))
+
+        try:
+            response_text = self.llm.invoke([user_msg])
+        except Exception as exc:
+            logger.error("LLM rankgpt rerank invocation failed: %s", exc)
+            return []
+
+        permutation = self._parse_rankgpt_permutation(response_text, num)
+        # Items not mentioned in the permutation keep their original order
+        # behind the ranked items (matches SweRank's receive_permutation).
+        ranked_set = set(permutation)
+        tail = [r for r in range(num) if r not in ranked_set]
+        ordering = permutation + tail
+
+        # Convert position to a [0, 1] descending score so cross-window
+        # averaging keeps consistent rankings high.
+        window_scores: List[Tuple[int, float]] = []
+        denom = float(max(num, 1))
+        for position, local_idx in enumerate(ordering):
+            original_idx = window_nodes[local_idx][0]
+            score = (num - position) / denom
+            window_scores.append((original_idx, score))
+
+        logger.debug(
+            "rankgpt window: parsed %d ranked + %d unranked (window size %d), "
+            "raw response head=%r",
+            len(permutation),
+            len(tail),
+            num,
+            response_text[:100] if isinstance(response_text, str) else "",
+        )
+        return window_scores
+
+    @staticmethod
+    def _parse_rankgpt_permutation(response: str, num: int) -> List[int]:
+        """Extract the ordered list of (0-based) indices from RankGPT-style output.
+
+        Robust to surrounding text and whitespace; mirrors SweRank's
+        ``_clean_response`` (replace non-digits with whitespace, split,
+        coerce to ints, dedupe, drop out-of-range).
+        """
+        if not isinstance(response, str) or not response:
+            return []
+        cleaned = re.sub(r"[^0-9]", " ", response)
+        seen: List[int] = []
+        for tok in cleaned.split():
+            try:
+                idx = int(tok) - 1
+            except ValueError:
+                continue
+            if 0 <= idx < num and idx not in seen:
+                seen.append(idx)
+        return seen
 
 
 def rerank_nodes_with_query(
