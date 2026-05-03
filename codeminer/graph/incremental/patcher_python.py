@@ -10,6 +10,14 @@ class PatcherPython(PatcherBase):
     """Python incremental patcher. Matches SCIPPythonGraphDecoder naming."""
 
     def get_lsp_command(self):
+        # ty 0.0.33 is faster on small queries but hangs on some larger
+        # workspaces (observed on xarray bin=300, 36min+ no response).
+        # basedpyright is slower but reliable; default to it. Override via
+        # ``CODEMINER_PYTHON_LSP_CMD=ty\ server`` to experiment with ty.
+        import os
+        cmd = os.environ.get("CODEMINER_PYTHON_LSP_CMD")
+        if cmd:
+            return cmd.split()
         return ["basedpyright-langserver", "--stdio"]
 
     def _language_id(self):

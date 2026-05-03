@@ -17,6 +17,12 @@ class PatcherGo(PatcherBase):
     def _language_id(self):
         return "go"
 
+    def _should_skip_path(self, path: str) -> bool:
+        """SCIP-go skips ``*_test.go`` files (see scip_decode_go.py:92).
+        Match that so patcher graphs and rebuild graphs share the same
+        file scope."""
+        return path.endswith("_test.go")
+
     def _get_crossfile_token_types(self):
         return {
             "type",

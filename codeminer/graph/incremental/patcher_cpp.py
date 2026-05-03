@@ -45,7 +45,8 @@ class PatcherCpp(PatcherBase):
             "macro",
         }
 
-    def _build_unified_name(self, file_path, name, parent_unified_part, kind):
+    def _build_unified_name(self, file_path, name, parent_unified_part, kind,
+                            parent_kind: int = 0):
         node_type = self._classify_symbol_type(kind)
         clean_name = name.replace("::", ".")
 
@@ -95,7 +96,8 @@ class PatcherCpp(PatcherBase):
             + [new for _, new in changed_files.get("renamed", [])]
         )
 
-        # Delete old subgraphs
+        # Delete old subgraphs (severed edges are discarded — cpp recovers
+        # them by re-reading .idx data, see _apply_idx_data below).
         for path in changed_files.get("deleted", []):
             with self.profiler.section("delete_subgraph"):
                 self.delete_file_subgraph(path)
@@ -228,8 +230,22 @@ class PatcherCpp(PatcherBase):
                     logger.debug(f"Failed to parse {candidate}: {exc}")
                     continue
         if comp_db is None:
-            logger.warning("No valid compile_commands.json found")
-            return None
+            # Autotools / fresh-checkout case: compile_commands.json hasn't
+            # been generated yet. Trigger ClangdIndexer's auto-generate
+            # path (cmake/bear -- make) to produce one, then resume.
+            logger.info(
+                "No compile_commands.json — calling ClangdIndexer's "
+                "auto-generate (cmake / bear -- make) to produce one"
+            )
+            from codeminer.ls_index.clangd_indexer import ClangdIndexer
+
+            indexer = ClangdIndexer(project_root=str(self.project_root))
+            generated = indexer._auto_generate_compdb()
+            if generated is None or not indexer._is_valid_compdb(generated):
+                logger.warning("Auto-generate compile_commands failed")
+                return None
+            comp_db = generated
+            logger.info(f"Auto-generated compile_commands at {comp_db}")
 
         candidates = [
             Path(self.project_root) / ".cache" / "clangd" / "index",
@@ -237,7 +253,10 @@ class PatcherCpp(PatcherBase):
         ]
         idx_dir = None
         for d in candidates:
-            if d.exists() and any(d.glob("*.idx")):
+            exists = d.exists()
+            n_idx = len(list(d.glob("*.idx"))) if exists else 0
+            logger.info(f"[patcher_cpp DEBUG] candidate {d}: exists={exists} idx_count={n_idx}")
+            if exists and n_idx > 0:
                 idx_dir = d
                 break
 
@@ -245,8 +264,13 @@ class PatcherCpp(PatcherBase):
             logger.info("No .idx cache, running full clangd index")
             from codeminer.ls_index.clangd_indexer import ClangdIndexer
 
+            cache_path = Path(self.project_root) / ".cache" / "clangd" / "index"
+            n_before = len(list(cache_path.glob("*.idx"))) if cache_path.exists() else 0
+            logger.info(f"[patcher_cpp DEBUG] before ClangdIndexer: {cache_path} has {n_before} .idx")
             indexer = ClangdIndexer(project_root=str(self.project_root))
             success = indexer.generate_index(compdb_path=str(comp_db))
+            n_after = len(list(cache_path.glob("*.idx"))) if cache_path.exists() else 0
+            logger.info(f"[patcher_cpp DEBUG] after ClangdIndexer: {cache_path} has {n_after} .idx (success={success})")
             return indexer.idx_directory if success else None
 
         pre_mtime = max(
@@ -258,6 +282,59 @@ class PatcherCpp(PatcherBase):
             f"C++ incremental: {pre_count} .idx in {idx_dir}, "
             f"didOpen {len(changed_files)} files"
         )
+
+        # Force-invalidate .idx files for affected TUs so clangd's startup
+        # background-index loader sees them as missing → MUST rebuild.
+        #
+        # Why this is needed: clangd 18.1.3 only verifies the *main file*
+        # digest when loading existing shards. If a header file changes
+        # but the .cc TU's source content didn't, clangd considers the
+        # TU shard valid and skips reindex — leaving header symbol
+        # changes invisible. By deleting .idx files we eliminate the
+        # "shard valid" optimization and force a real reindex, matching
+        # what `clear_indexer_cache` does for full rebuild but only for
+        # the affected files.
+        HEADER_EXTS = (".h", ".hpp", ".hxx", ".hh")
+        TU_EXTS = (".c", ".cc", ".cpp", ".cxx")
+        deleted = 0
+        header_changed = False
+        for changed_file in changed_files:
+            name = Path(changed_file).name
+            if name.endswith(HEADER_EXTS):
+                header_changed = True
+            for idx in idx_dir.glob(f"{name}.*.idx"):
+                try:
+                    idx.unlink()
+                    deleted += 1
+                except OSError:
+                    pass
+        if header_changed:
+            # Header changes can affect any TU. Delete all .idx files for
+            # source-file TUs so clangd rebuilds them. Header-only .idx
+            # are kept as-is — they'll be regenerated as a side effect of
+            # indexing the TUs that include them.
+            for idx in idx_dir.glob("*.idx"):
+                # match files like "format.cc.HASH.idx" or "foo.c.HASH.idx"
+                stem = idx.name
+                # strip ".HASH.idx" tail
+                base = stem.rsplit(".", 2)[0]  # "format.cc"
+                if base.endswith(TU_EXTS):
+                    try:
+                        idx.unlink()
+                        deleted += 1
+                    except OSError:
+                        pass
+        if deleted:
+            logger.info(
+                f"Pre-invalidated {deleted} .idx file(s) for affected TUs "
+                f"(header-changed={header_changed})"
+            )
+            # Update pre_mtime/count for the polling logic below.
+            pre_mtime = max(
+                (f.stat().st_mtime for f in idx_dir.glob("*.idx")),
+                default=0,
+            )
+            pre_count = len(list(idx_dir.glob("*.idx")))
 
         cmd = [
             clangd,
@@ -273,6 +350,22 @@ class PatcherCpp(PatcherBase):
             stderr=subprocess.PIPE,
             cwd=str(self.project_root),
         )
+
+        # Drain stdout/stderr in background threads. Without this clangd
+        # blocks on its first reply once the pipe buffer fills (~64KB),
+        # which silently halts the BackgroundIndex queue.
+        def _drain(stream):
+            try:
+                while True:
+                    chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(4096)
+                    if not chunk:
+                        return
+            except Exception:
+                return
+
+        import threading
+        threading.Thread(target=_drain, args=(process.stdout,), daemon=True).start()
+        threading.Thread(target=_drain, args=(process.stderr,), daemon=True).start()
 
         def lsp_send(msg):
             content = json.dumps(msg).encode()
@@ -326,6 +419,16 @@ class PatcherCpp(PatcherBase):
                     }
                 )
 
+            # Poll for clangd to update .idx after didOpen.
+            # Two exit conditions:
+            #   (a) success: clangd touched .idx (cur > pre) AND has been
+            #       quiet for ``idle_after_change`` seconds
+            #   (b) no-op:   clangd never updates .idx (e.g. didOpen on
+            #       a header file in fmt — header isn't its own TU). Bail
+            #       after ``idle_no_change`` seconds; further waiting is
+            #       pure overhead.
+            idle_after_change = 5
+            idle_no_change = 5
             stable = 0
             last_mtime = pre_mtime
             for _ in range(120):
@@ -339,9 +442,9 @@ class PatcherCpp(PatcherBase):
                     stable = 0
                 else:
                     stable += 1
-                    if stable >= 5 and cur_mtime > pre_mtime:
+                    if cur_mtime > pre_mtime and stable >= idle_after_change:
                         break
-                    if stable >= 30:
+                    if cur_mtime <= pre_mtime and stable >= idle_no_change:
                         break
 
             post_count = len(list(idx_dir.glob("*.idx")))
@@ -377,13 +480,21 @@ class PatcherCpp(PatcherBase):
         decoder,
         changed_files: list[str],
     ) -> tuple[int, int]:
-        """Add symbols and edges from .idx data for changed files."""
+        """Add symbols and edges from .idx data for changed files.
+
+        Edges go through ``EdgeBatch`` (one ``add_edges`` call instead of
+        thousands of single-edge inserts). On redis-scale graphs (~95k
+        edges) this drops graph rebuild from ~50s/step to seconds because
+        each ``CodeGraph._add_edge`` does an O(out-degree) dedup walk plus
+        a Python↔C round-trip — quadratic at thousands of edges per patch.
+        """
         from codeminer.ls_index.clangd_decode import (
             KIND_MACRO,
             REF_KIND_DEFINITION,
             REF_KIND_REFERENCE,
             ZERO_SYMBOL_ID,
         )
+        from .subgraph_mgr import EdgeBatch
 
         changed_set = set(changed_files)
         new_vertices = 0
@@ -430,6 +541,11 @@ class PatcherCpp(PatcherBase):
                 self.code_graph.graph.vs[vid]["file"] = rel_file
                 new_vertices += 1
 
+        # All edge inserts go through one batch. EdgeBatch.stage rejects
+        # duplicates; on caller contract violation (vertex missing) it
+        # transparently falls back to _add_edge.
+        batch = EdgeBatch(self.code_graph)
+
         contained = set()
         for sym_id in changed_sym_ids:
             if sym_id not in self.code_graph.name_to_vertex:
@@ -442,9 +558,7 @@ class PatcherCpp(PatcherBase):
                         and container_id != ZERO_SYMBOL_ID
                         and container_id in self.code_graph.name_to_vertex
                     ):
-                        self.code_graph._add_edge(
-                            container_id, sym_id, EDGE_TYPE_CONTAIN
-                        )
+                        batch.stage(container_id, sym_id, EDGE_TYPE_CONTAIN)
                         contained.add(sym_id)
                         break
 
@@ -456,7 +570,7 @@ class PatcherCpp(PatcherBase):
             vid = self.code_graph.name_to_vertex[sym_id]
             file_path = self.code_graph.graph.vs[vid].attributes().get("file")
             if file_path and file_path in self.code_graph.name_to_vertex:
-                self.code_graph._add_edge(file_path, sym_id, EDGE_TYPE_CONTAIN)
+                batch.stage(file_path, sym_id, EDGE_TYPE_CONTAIN)
 
         for sym_id, ref_list in decoder._refs.items():
             if sym_id not in self.code_graph.name_to_vertex:
@@ -470,7 +584,28 @@ class PatcherCpp(PatcherBase):
                 if container_id not in self.code_graph.name_to_vertex:
                     continue
                 if sym_id in changed_sym_ids or container_id in changed_sym_ids:
-                    self.code_graph._add_edge(container_id, sym_id, EDGE_TYPE_REFERENCE)
+                    # Carry call-site anchor metadata through (matches
+                    # what clangd_decode does on full rebuild) — otherwise
+                    # the patcher's reference edges land with anchor_*=None
+                    # and miss range-query indexes.
+                    loc = ref.get("location") or {}
+                    anchor_uri = loc.get("file")
+                    anchor_file = (
+                        decoder._file_uri_to_relative(anchor_uri)
+                        if anchor_uri else None
+                    )
+                    start = loc.get("start")
+                    anchor_line = start[0] if start else None
+                    batch.stage(
+                        container_id,
+                        sym_id,
+                        EDGE_TYPE_REFERENCE,
+                        anchor_file=anchor_file,
+                        anchor_line=anchor_line,
+                    )
                     new_refs += 1
+
+        with self.profiler.section("cpp.edge_batch_flush"):
+            batch.flush()
 
         return new_vertices, new_refs

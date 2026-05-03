@@ -148,6 +148,31 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         if not package_json.exists():
             return
 
+        # Indexer-only experiment: skip install if lockfile unchanged from
+        # the cached prior install. Saves ~30s per cold-start on monorepos
+        # like docusaurus where yarn install does a no-op integrity check.
+        import hashlib
+        sentinel = self.project_root / ".codeminer_install_cache"
+        node_modules = self.project_root / "node_modules"
+        lockfile = None
+        for name in ("yarn.lock", "package-lock.json", "pnpm-lock.yaml",
+                     "bun.lock", "bun.lockb"):
+            if (self.project_root / name).exists():
+                lockfile = self.project_root / name
+                break
+        if lockfile and node_modules.is_dir() and sentinel.exists():
+            cur_h = hashlib.sha1(lockfile.read_bytes()).hexdigest()
+            try:
+                saved_h = sentinel.read_text().strip()
+                if cur_h == saved_h:
+                    logger.info(
+                        "Skipping install: %s unchanged (cached)",
+                        lockfile.name,
+                    )
+                    return
+            except Exception:
+                pass
+
         needs_pnpm = (self.project_root / "pnpm-lock.yaml").exists() or (
             self.project_root / "pnpm-workspace.yaml"
         ).exists()
@@ -213,6 +238,22 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 text=True,
                 timeout=timeout_sec,
             )
+            # Cache: write lockfile hash so next call can skip if unchanged
+            import hashlib
+            sentinel = self.project_root / ".codeminer_install_cache"
+            lockfile = None
+            for name in ("yarn.lock", "package-lock.json", "pnpm-lock.yaml",
+                         "bun.lock", "bun.lockb"):
+                if (self.project_root / name).exists():
+                    lockfile = self.project_root / name
+                    break
+            if lockfile:
+                try:
+                    sentinel.write_text(
+                        hashlib.sha1(lockfile.read_bytes()).hexdigest()
+                    )
+                except Exception:
+                    pass
             return
         except FileNotFoundError:
             logger.warning(
