@@ -801,8 +801,10 @@ class TestSWEBenchGo:
         assert stats["vertices_created"] > 0
 
         unames_after = _get_unified_names(g)
-        # Modified files' symbols should exist
+        # Modified files' symbols should exist (SCIP-Go skips _test.go).
         for f in changed["modified"]:
+            if f.endswith("_test.go"):
+                continue
             file_syms = [u for u in unames_after if u.startswith(f + ":")]
             assert len(file_syms) > 0, f"Modified file {f} should have symbols"
 
@@ -830,62 +832,60 @@ class TestSWEBenchGo:
         assert total_refs > 0, f"Expected reference edges for Go, got {total_refs}"
 
         # ── Strict cross-file edge assertions (10+) ──
-        # Go SCIP edge source is file vertex (name), target has unified_name
-        # connpolicy.go → values.go
         assert _has_ref_edge(
             g,
-            "modules/caddytls/connpolicy.go",
+            "modules/caddytls/connpolicy.go:ConnectionPolicy.buildStandardTLSConfig()",
             "modules/caddytls/values.go:CipherSuiteID()",
-        ), "connpolicy.go → CipherSuiteID()"
+        ), "connpolicy.go:buildStandardTLSConfig → values.go:CipherSuiteID()"
         assert _has_ref_edge(
             g,
-            "modules/caddytls/connpolicy.go",
+            "modules/caddytls/connpolicy.go:ConnectionPolicy.buildStandardTLSConfig()",
             "modules/caddytls/values.go:SupportedCurves",
-        ), "connpolicy.go → SupportedCurves"
+        ), "connpolicy.go:buildStandardTLSConfig → values.go:SupportedCurves"
         assert _has_ref_edge(
             g,
-            "modules/caddytls/connpolicy.go",
+            "modules/caddytls/connpolicy.go:ConnectionPolicy.buildStandardTLSConfig()",
             "modules/caddytls/values.go:SupportedProtocols",
-        ), "connpolicy.go → SupportedProtocols"
+        ), "connpolicy.go:buildStandardTLSConfig → values.go:SupportedProtocols"
         assert _has_ref_edge(
             g,
-            "modules/caddytls/connpolicy.go",
+            "modules/caddytls/connpolicy.go:setDefaultTLSParams()",
             "modules/caddytls/values.go:getOptimalDefaultCipherSuites()",
-        ), "connpolicy.go → getOptimalDefaultCipherSuites()"
+        ), "connpolicy.go:setDefaultTLSParams → values.go:getOptimalDefaultCipherSuites()"
         # builtins.go → values.go (unmodified file referencing values.go)
         assert _has_ref_edge(
             g,
-            "caddyconfig/httpcaddyfile/builtins.go",
+            "caddyconfig/httpcaddyfile/builtins.go:parseTLS()",
             "modules/caddytls/values.go:SupportedProtocols",
-        ), "builtins.go → SupportedProtocols"
+        ), "builtins.go:parseTLS → values.go:SupportedProtocols"
         assert _has_ref_edge(
             g,
-            "caddyconfig/httpcaddyfile/builtins.go",
+            "caddyconfig/httpcaddyfile/builtins.go:parseTLS()",
             "modules/caddytls/values.go:SupportedCurves",
-        ), "builtins.go → SupportedCurves"
+        ), "builtins.go:parseTLS → values.go:SupportedCurves"
         assert _has_ref_edge(
             g,
-            "caddyconfig/httpcaddyfile/builtins.go",
+            "caddyconfig/httpcaddyfile/builtins.go:parseTLS()",
             "modules/caddytls/values.go:CipherSuiteNameSupported()",
-        ), "builtins.go → CipherSuiteNameSupported()"
+        ), "builtins.go:parseTLS → values.go:CipherSuiteNameSupported()"
         # automation.go → values.go
         assert _has_ref_edge(
             g,
-            "modules/caddytls/automation.go",
+            "modules/caddytls/automation.go:AutomationPolicy.Provision()",
             "modules/caddytls/values.go:supportedCertKeyTypes",
-        ), "automation.go → supportedCertKeyTypes"
+        ), "automation.go:Provision → values.go:supportedCertKeyTypes"
         # replacer.go → values.go
         assert _has_ref_edge(
             g,
-            "modules/caddyhttp/replacer.go",
+            "modules/caddyhttp/replacer.go:getReqTLSReplacement()",
             "modules/caddytls/values.go:ProtocolName()",
-        ), "replacer.go → ProtocolName()"
+        ), "replacer.go:getReqTLSReplacement → values.go:ProtocolName()"
         # fastcgi → values.go
         assert _has_ref_edge(
             g,
-            "modules/caddyhttp/reverseproxy/fastcgi/fastcgi.go",
+            "modules/caddyhttp/reverseproxy/fastcgi/fastcgi.go:Transport.buildEnv()",
             "modules/caddytls/values.go:SupportedCipherSuites()",
-        ), "fastcgi.go → SupportedCipherSuites()"
+        ), "fastcgi.go:Transport.buildEnv → values.go:SupportedCipherSuites()"
 
 
 class TestSWEBenchRust:

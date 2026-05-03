@@ -23,6 +23,54 @@ from ...log_utils import get_logger
 
 logger = get_logger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Per-call profiling (env-controlled, zero overhead when off)
+#
+# Enable by setting ``LSP_PROFILE_PATH=/path/to/calls.jsonl``. Each call to
+# definition / references / semantic_tokens_* writes one line:
+#   {"m": method, "f": abs_file, "l": line, "c": char, "ms": elapsed_ms, "n": result_count}
+# Aggregate offline to find slow positions.
+# ---------------------------------------------------------------------------
+_LSP_PROFILE_FH = None
+_LSP_PROFILE_PATH: str | None = None
+
+
+def _profile_log(method: str, abs_file: str, line, character, elapsed_s: float, n_results) -> None:
+    """Append one call to the file at ``$LSP_PROFILE_PATH``.
+
+    Re-reads the env var each call and reopens the file when the path
+    changes — so a single Python process can cleanly switch profile
+    files between strategies (chain runner sets a fresh path per
+    (step, strategy) and expects the next calls to land in the new file).
+    """
+    global _LSP_PROFILE_FH, _LSP_PROFILE_PATH
+    path = os.environ.get("LSP_PROFILE_PATH")
+    if path != _LSP_PROFILE_PATH:
+        if _LSP_PROFILE_FH is not None:
+            try:
+                _LSP_PROFILE_FH.close()
+            except Exception:
+                pass
+        _LSP_PROFILE_FH = None
+        _LSP_PROFILE_PATH = path
+        if path:
+            try:
+                _LSP_PROFILE_FH = open(path, "a", buffering=1)  # line-buffered
+            except Exception:
+                _LSP_PROFILE_FH = None
+    if _LSP_PROFILE_FH is None:
+        return
+    try:
+        _LSP_PROFILE_FH.write(
+            json.dumps({"t": round(time.time(), 3),
+                        "m": method, "f": abs_file,
+                        "l": line, "c": character,
+                        "ms": round(elapsed_s * 1000, 2), "n": n_results}) + "\n"
+        )
+    except Exception:
+        pass
+
 # LSP SymbolKind integer → human-readable name
 SYMBOL_KIND_NAMES = {
     1: "File",
@@ -141,6 +189,11 @@ class LSPClient:
         # Populated during start() from server capabilities
         self.semantic_tokens_legend: Optional[dict] = None
         self.supports_semantic_tokens_range: bool = False
+
+        # Active $/progress tokens (set by _handle_progress, cleared by
+        # 'end' notifications). wait_until_idle() polls this for emptiness
+        # to know when LSP background work has finished.
+        self._active_progress: dict = {}
 
         # Pending request tracking: limit in-flight requests to avoid
         # overwhelming the LSP server (clangd hangs after ~570 queued requests)
@@ -341,13 +394,17 @@ class LSPClient:
     # ── LSP queries ───────────────────────────────────────────
 
     def document_symbol(
-        self, file_path: str, retries: int = 5, retry_delay: float = 5.0
+        self, file_path: str, retries: int = 0, retry_delay: float = 0.5
     ) -> list[dict]:
         """Get hierarchical document symbols for a file.
 
-        Some LSP servers (e.g. rust-analyzer) return null while the workspace
-        is still loading.  We retry a few times to wait for readiness.
+        Default ``retries=0`` — null is a legitimate "no symbols" answer
+        per LSP spec. Previous default of 5 retries × 5s sleep wasted up
+        to 25s/call when servers returned null. If the server is still
+        loading at warmup time, callers should wait at the call-site,
+        not inside this primitive.
         """
+        t0 = time.monotonic()
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
         uri = Path(abs_path).as_uri()
@@ -358,8 +415,12 @@ class LSPClient:
                 {
                     "textDocument": {"uri": uri},
                 },
+                timeout=10,  # longest non-empty observed: 138ms
             )
             if result is not None:
+                _profile_log("documentSymbol", file_path, None, None,
+                             time.monotonic() - t0,
+                             len(result) if isinstance(result, list) else 0)
                 return result
             if attempt < retries:
                 logger.debug(
@@ -368,21 +429,43 @@ class LSPClient:
                 )
                 time.sleep(retry_delay)
 
+        _profile_log("documentSymbol", file_path, None, None,
+                     time.monotonic() - t0, 0)
         return []
 
-    def references(
+    def references(self, *args, **kwargs):
+        t0 = time.monotonic()
+        out = self._references_inner(*args, **kwargs)
+        _profile_log("references", args[0] if args else kwargs.get("file_path"),
+                     args[1] if len(args) > 1 else kwargs.get("line"),
+                     args[2] if len(args) > 2 else kwargs.get("character"),
+                     time.monotonic() - t0, len(out) if out else 0)
+        return out
+
+    def _references_inner(
         self,
         file_path: str,
         line: int,
         character: int,
         include_declaration: bool = False,
-        timeout: float = 30,
-        retries: int = 3,
+        timeout: float = 10,
+        retries: int = 0,
     ) -> list[dict]:
         """Find all references to the symbol at the given position.
 
-        Retries on transient errors (e.g. 'content modified' from VFS updates).
-        Checks response buffer for late-arriving responses from prior attempts.
+        Default ``timeout=10``. Across 25 v8 trials there were 0 references
+        calls that took >10s and returned a non-empty result (longest
+        non-empty was 9.6s). Calls hitting 30s were always rust-analyzer /
+        basedpyright pathological hangs returning n=0. Cap at 10s to fail
+        fast on hangs while keeping all legitimate slow calls.
+
+        Default ``retries=0``. Per LSP 3.17 spec, null is a legitimate
+        response meaning "no references at this position". Retrying on
+        null wastes 9s (3×3s sleep) per call; with N callers many calls
+        return null and the cumulative cost was the dominant patcher
+        bottleneck. Caller-side warmup handles "server still loading".
+        Checks response buffer for late-arriving responses from prior
+        attempts.
         """
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
@@ -424,25 +507,47 @@ class LSPClient:
                     f"references failed for {file_path}:{line} ({reason}), "
                     f"retrying ({attempt + 1}/{retries})"
                 )
-                time.sleep(3)
-        logger.warning(
-            f"references failed for {file_path}:{line} " f"after {retries} retries"
-        )
+                time.sleep(0.5)
+        if retries > 0:
+            logger.warning(
+                f"references failed for {file_path}:{line} after {retries} retries"
+            )
         return []
 
-    def definition(
+    def definition(self, *args, **kwargs):
+        t0 = time.monotonic()
+        out = self._definition_inner(*args, **kwargs)
+        _profile_log("definition", args[0] if args else kwargs.get("file_path"),
+                     args[1] if len(args) > 1 else kwargs.get("line"),
+                     args[2] if len(args) > 2 else kwargs.get("character"),
+                     time.monotonic() - t0, len(out) if out else 0)
+        return out
+
+    def _definition_inner(
         self,
         file_path: str,
         line: int,
         character: int,
-        timeout: float = 30,
-        retries: int = 3,
+        timeout: float = 10,
+        retries: int = 0,
     ) -> list[dict]:
         """Go to definition of the symbol at the given position.
 
         Returns a list of Location or LocationLink objects.
-        Retries on transient errors (e.g. 'content modified' from VFS updates).
-        Checks response buffer for late-arriving responses from prior attempts.
+
+        Default ``timeout=10``: longest non-empty definition across 25 v8
+        trials was 1.9s. Hits at 30s were all rust-analyzer / basedpyright
+        timeouts on pathological positions returning n=0.
+
+        Default ``retries=0`` because the most common cause of a null
+        response is "no definition at this position" (a legitimate answer
+        for whitespace, comments, or already-resolved tokens) — NOT a
+        transient error. The previous default of 3 retries × 3s sleep
+        wasted ~9s per null token; on xarray bin=30 that pushed
+        ``reconnect_outgoing`` from a few seconds to 39s. Callers that
+        want to wait for server warmup should retry at the call-site,
+        not inside this primitive. Checks response buffer for
+        late-arriving responses from prior attempts.
         """
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
@@ -488,22 +593,30 @@ class LSPClient:
                     f"definition failed for {file_path}:{line}:{character} ({reason}), "
                     f"retrying ({attempt + 1}/{retries})"
                 )
-                time.sleep(3)
-        logger.warning(
-            f"definition failed for {file_path}:{line}:{character} "
-            f"after {retries} retries"
-        )
+                time.sleep(0.5)
+        if retries > 0:
+            logger.warning(
+                f"definition failed for {file_path}:{line}:{character} "
+                f"after {retries} retries"
+            )
         return []
 
     def semantic_tokens_full(
-        self, file_path: str, timeout: float = 60
+        self, file_path: str, timeout: float = 15
     ) -> Optional[dict]:
         """Get semantic tokens for the entire file.
 
         Returns raw response with ``data`` field (delta-encoded integers).
         Use ``decode_semantic_tokens()`` to decode.
         Returns None on timeout or error (details logged by _request).
+
+        Default timeout 15s: a server that needs longer is pathological
+        (basedpyright on sklearn's test_pls.py used to take 60s). The
+        patcher tolerates None — that file simply skips outgoing-ref
+        discovery for this run. 60s × N pathological files dominated
+        runtime before this cap.
         """
+        t0 = time.monotonic()
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
         uri = Path(abs_path).as_uri()
@@ -514,9 +627,12 @@ class LSPClient:
             },
             timeout=timeout,
         )
+        n_tokens = 0
         if result is not None:
             n_tokens = len(result.get("data", [])) // 5
             logger.debug(f"semanticTokens for {file_path}: {n_tokens} tokens")
+        _profile_log("semanticTokens/full", file_path, None, None,
+                     time.monotonic() - t0, n_tokens)
         return result
 
     def semantic_tokens_range(
@@ -531,6 +647,7 @@ class LSPClient:
         Faster than full for large files when only a small range is needed.
         Returns None if not supported or on error.
         """
+        t0 = time.monotonic()
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
         uri = Path(abs_path).as_uri()
@@ -545,12 +662,16 @@ class LSPClient:
             },
             timeout=timeout,
         )
+        n_tokens = 0
         if result is not None:
             n_tokens = len(result.get("data", [])) // 5
             logger.debug(
                 f"semanticTokens/range for {file_path} "
                 f"L{start_line}-{end_line}: {n_tokens} tokens"
             )
+        _profile_log("semanticTokens/range", file_path,
+                     start_line, end_line,
+                     time.monotonic() - t0, n_tokens)
         return result
 
     def decode_semantic_tokens(
@@ -803,14 +924,19 @@ class LSPClient:
                         )
                         continue
 
-                # Skip server notifications that we don't need
-                # (these would otherwise clog the message loop)
+                # Server notifications we don't return upstream.
                 if "method" in message and "id" not in message:
+                    if message["method"] == "$/progress":
+                        # Track LSP background work (rust-analyzer indexing,
+                        # gopls workspace setup, basedpyright analysis...)
+                        # so callers can wait_until_idle() before timed
+                        # regions instead of guessing with sleeps.
+                        self._handle_progress(message.get("params", {}))
+                        continue
                     skip_methods = {
                         "window/logMessage",
                         "window/showMessage",
                         "textDocument/publishDiagnostics",
-                        "$/progress",
                     }
                     if message["method"] in skip_methods:
                         continue
@@ -818,6 +944,67 @@ class LSPClient:
                 return message
 
         return None
+
+    # ── progress / idleness tracking ─────────────────────────────────
+    # Servers signal background work via ``$/progress`` notifications:
+    #   begin → report* → end
+    # We track active tokens; ``wait_until_idle`` polls for empty.
+
+    def _handle_progress(self, params: dict) -> None:
+        token = params.get("token")
+        if token is None:
+            return
+        kind = (params.get("value") or {}).get("kind")
+        if kind == "begin":
+            self._active_progress[token] = time.monotonic()
+        elif kind == "end":
+            self._active_progress.pop(token, None)
+        # report: keep the token active
+
+    def drain_notifications(self, timeout_s: float = 0.5) -> int:
+        """Drain any pending notifications without waiting for a response.
+
+        Returns the number of messages drained. Used by ``wait_until_idle``
+        to keep the progress map fresh while polling.
+        """
+        n = 0
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            ready, _, _ = select.select([self.process.stdout], [], [], min(remaining, 0.05))
+            if not ready:
+                break
+            msg = self._read_message(timeout=remaining)
+            if msg is None:
+                break
+            n += 1
+            # We don't dispatch unmatched responses here; just count and
+            # let _handle_progress (called inside _read_message) update state.
+        return n
+
+    def wait_until_idle(self, max_wait_s: float = 60.0, idle_grace_s: float = 1.0) -> bool:
+        """Wait until no ``$/progress`` tokens are active for ``idle_grace_s``.
+
+        Returns True if the server became idle within ``max_wait_s``,
+        False on timeout. Useful before timed regions so background
+        indexing (rust-analyzer cache priming, gopls workspace load,
+        basedpyright type analysis) doesn't bleed into measurements.
+        """
+        deadline = time.monotonic() + max_wait_s
+        idle_since: Optional[float] = None
+        while time.monotonic() < deadline:
+            self.drain_notifications(timeout_s=0.2)
+            if not self._active_progress:
+                if idle_since is None:
+                    idle_since = time.monotonic()
+                elif time.monotonic() - idle_since >= idle_grace_s:
+                    return True
+            else:
+                idle_since = None
+            time.sleep(0.1)
+        return False
 
     def _request(self, method: str, params: Any, timeout: float = 30) -> Any:
         """Send a request and wait for the matching response.

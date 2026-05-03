@@ -30,6 +30,7 @@ def _create_patcher(
     language: str,
     project_root: str,
     code_graph: Optional[CodeGraph],
+    mode: str = "symbol",
 ) -> PatcherBase:
     """Factory: create language-specific patcher."""
     from .patcher_cpp import PatcherCpp
@@ -51,7 +52,7 @@ def _create_patcher(
     cls = PATCHER_MAP.get(language)
     if cls is None:
         raise ValueError(f"Unsupported language: {language}")
-    return cls(project_root, code_graph or CodeGraph(project_root))
+    return cls(project_root, code_graph or CodeGraph(project_root), mode=mode)
 
 
 class GraphPatcher:
@@ -75,10 +76,14 @@ class GraphPatcher:
         project_root: str,
         code_graph: Optional[CodeGraph],
         language: str,
+        mode: str = "symbol",
     ):
         self.project_root = project_root
         self.language = language
-        self._impl: PatcherBase = _create_patcher(language, project_root, code_graph)
+        self.mode = mode
+        self._impl: PatcherBase = _create_patcher(
+            language, project_root, code_graph, mode=mode
+        )
 
     @property
     def code_graph(self) -> CodeGraph:
@@ -126,8 +131,12 @@ class GraphPatcher:
         file_path: str,
         base_commit: str,
         target_commit: str = "HEAD",
-    ) -> list[tuple[int, int]]:
-        """Get line ranges changed between two commits."""
+    ) -> list[tuple[int, int, int, int]]:
+        """Get line ranges changed between two commits.
+
+        Each hunk is reported as (old_start, old_end, new_start, new_end)
+        in 0-indexed inclusive form so callers can compare line counts.
+        """
         return change_mgr.get_changed_line_ranges(
             project_root, file_path, base_commit, target_commit
         )

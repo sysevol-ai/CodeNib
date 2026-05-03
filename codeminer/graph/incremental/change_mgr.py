@@ -89,11 +89,13 @@ def get_changed_line_ranges(
     file_path: str,
     base_commit: str,
     target_commit: str = "HEAD",
-) -> list[tuple[int, int]]:
+) -> list[tuple[int, int, int, int]]:
     """Get changed line ranges between two commits for a single file.
 
-    Uses ``git diff -U0`` to extract exact changed line ranges in the
-    target (new) version of the file.
+    Uses ``git diff -U0`` to extract both the OLD and NEW side of each hunk
+    so callers can compare line counts (case 3 vs case 4 in the patcher
+    classification): if ``(old_end - old_start) == (new_end - new_start)``,
+    the body length is preserved and the patcher's fast path is safe.
 
     Args:
         project_root: Path to the git repository root.
@@ -102,7 +104,10 @@ def get_changed_line_ranges(
         target_commit: Target commit hash or ref (default HEAD).
 
     Returns:
-        List of (start_line, end_line) tuples (0-indexed, inclusive).
+        List of (old_start, old_end, new_start, new_end) tuples
+        (0-indexed, inclusive). For pure-insertion hunks the old side
+        collapses to a marker (old_start == old_end); for pure-deletion
+        hunks the new side collapses similarly.
     """
     try:
         output = subprocess.check_output(
@@ -123,14 +128,34 @@ def get_changed_line_ranges(
         logger.debug(f"git diff failed for {file_path}")
         return []
 
-    ranges = []
-    for match in re.finditer(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", output):
-        start = int(match.group(1)) - 1  # Convert to 0-indexed
-        count = int(match.group(2)) if match.group(2) else 1
-        if count == 0:
-            # Pure deletion: mark the deletion point
-            ranges.append((max(0, start - 1), max(0, start - 1)))
-            continue
-        end = start + count - 1
-        ranges.append((start, end))
+    ranges: list[tuple[int, int, int, int]] = []
+    pattern = r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@"
+    for match in re.finditer(pattern, output):
+        old_start_1 = int(match.group(1))
+        old_count = int(match.group(2)) if match.group(2) else 1
+        new_start_1 = int(match.group(3))
+        new_count = int(match.group(4)) if match.group(4) else 1
+
+        old_start_0 = old_start_1 - 1
+        new_start_0 = new_start_1 - 1
+
+        # Preserve the historical "deletion marker" quirk: pure-deletion
+        # hunks (new_count==0) land at max(0, new_start_0 - 1) on the new
+        # side, since there's no actual new line to point at.
+        if new_count == 0:
+            new_marker = max(0, new_start_0 - 1)
+            new_s, new_e = new_marker, new_marker
+        else:
+            new_s = new_start_0
+            new_e = new_start_0 + new_count - 1
+
+        # Mirror semantics for pure-insertion hunks on the old side.
+        if old_count == 0:
+            old_marker = max(0, old_start_0 - 1)
+            old_s, old_e = old_marker, old_marker
+        else:
+            old_s = old_start_0
+            old_e = old_start_0 + old_count - 1
+
+        ranges.append((old_s, old_e, new_s, new_e))
     return ranges

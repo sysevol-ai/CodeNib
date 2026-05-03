@@ -65,6 +65,100 @@ _INCOMING_REF_TYPES = frozenset(
 )
 
 
+class EdgeBatch:
+    """Stage edges across many reconnect calls, flush in one igraph op.
+
+    Per-edge ``CodeGraph._add_edge`` does an O(out-degree) dedup walk plus a
+    Python↔C round-trip per edge — at thousands of edges per patch this is
+    the second-largest non-LSP cost. The batch:
+
+      1. Builds an index of existing edges keyed by
+         ``(src_id, tgt_id, type, anchor_file, anchor_line)`` once.
+      2. ``stage(src_name, tgt_name, type, anchor_file, anchor_line)`` resolves
+         names to ids, dedups against existing + already-staged, queues into
+         a list.
+      3. ``flush()`` issues a single ``graph.add_edges(pairs, attributes=...)``
+         call and clears the queue.
+
+    Falls back to ``CodeGraph._add_edge`` when staging would be wrong (vertex
+    creation needed) — keeps the contract simple: callers pass *names* of
+    vertices they expect to already exist.
+    """
+
+    def __init__(self, code_graph):
+        self.cg = code_graph
+        self.pairs: list[tuple[int, int]] = []
+        self.types: list[str] = []
+        self.anchor_files: list = []
+        self.anchor_lines: list = []
+        self._staged_keys: set = set()
+        self._existing: dict = self._build_existing_index()
+
+    def _build_existing_index(self) -> dict:
+        idx = {}
+        es = self.cg.graph.es
+        for eid in range(self.cg.graph.ecount()):
+            e = es[eid]
+            attrs = e.attributes()
+            key = (
+                e.source,
+                e.target,
+                attrs.get("type"),
+                attrs.get("anchor_file"),
+                attrs.get("anchor_line"),
+            )
+            idx[key] = eid
+        return idx
+
+    def stage(self, source_name: str, target_name: str, edge_type: str,
+              anchor_file=None, anchor_line=None) -> bool:
+        """Stage an edge. Returns True if newly staged, False if dedup hit.
+
+        Caller guarantees both vertices already exist (no implicit creation).
+        """
+        cg = self.cg
+        src = cg.name_to_vertex.get(source_name)
+        tgt = cg.name_to_vertex.get(target_name)
+        if src is None or tgt is None:
+            # Caller-violated contract — fall back to the safe path that
+            # creates vertices on demand.
+            cg._add_edge(source_name, target_name, edge_type,
+                         anchor_file=anchor_file, anchor_line=anchor_line)
+            return True
+        key = (src, tgt, edge_type, anchor_file, anchor_line)
+        if key in self._existing or key in self._staged_keys:
+            return False
+        self._staged_keys.add(key)
+        self.pairs.append((src, tgt))
+        self.types.append(edge_type)
+        self.anchor_files.append(anchor_file)
+        self.anchor_lines.append(anchor_line)
+        return True
+
+    def flush(self) -> int:
+        n = len(self.pairs)
+        if not n:
+            return 0
+        old_ecount = self.cg.graph.ecount()
+        self.cg.graph.add_edges(self.pairs)
+        # Bulk attribute set: one Python-level loop, but no add_edges calls.
+        for i in range(n):
+            eid = old_ecount + i
+            self.cg.graph.es[eid]["type"] = self.types[i]
+            af = self.anchor_files[i]
+            if af is not None:
+                self.cg.graph.es[eid]["anchor_file"] = af
+            al = self.anchor_lines[i]
+            if al is not None:
+                self.cg.graph.es[eid]["anchor_line"] = al
+        self.pairs.clear()
+        self.types.clear()
+        self.anchor_files.clear()
+        self.anchor_lines.clear()
+        self._staged_keys.clear()
+        return n
+
+
 class SubgraphMgr(ABC):
     """Manages incremental subgraph operations on a CodeGraph.
 
@@ -364,6 +458,89 @@ class SubgraphMgr(ABC):
             g.graph.delete_edges(to_delete)
         return len(to_delete)
 
+    def delete_outgoing_in_anchor_ranges(
+        self,
+        vertex_name: str,
+        anchor_file: str,
+        ranges: list[tuple[int, int]],
+    ) -> int:
+        """Delete outgoing REFERENCE edges from ``vertex_name`` whose
+        ``(anchor_file, anchor_line)`` falls inside any of the given ranges.
+
+        Used by the patcher's affected-symbol path to surgically remove only
+        the outgoing edges whose call sites lie in the changed body region,
+        keeping anchors in unchanged regions intact. CONTAIN edges (no
+        anchor) are never touched. Edges with no ``anchor_line`` set are
+        also skipped.
+
+        Returns the count of edges deleted.
+        """
+        g = self.code_graph
+        vid = g.name_to_vertex.get(vertex_name)
+        if vid is None or not ranges:
+            return 0
+
+        to_delete = []
+        for eid in g.graph.incident(vid, mode="out"):
+            edge = g.graph.es[eid]
+            if edge["type"] != EDGE_TYPE_REFERENCE:
+                continue
+            attrs = edge.attributes()
+            if attrs.get("anchor_file") != anchor_file:
+                continue
+            line = attrs.get("anchor_line")
+            if line is None:
+                continue
+            for start, end in ranges:
+                if start <= line <= end:
+                    to_delete.append(eid)
+                    break
+        if to_delete:
+            g.graph.delete_edges(to_delete)
+        return len(to_delete)
+
+    def shift_outgoing_anchor_lines(
+        self,
+        vertex_name: str,
+        anchor_file: str,
+        old_start: int,
+        old_end: int,
+        shift: int,
+    ) -> int:
+        """Shift ``anchor_line`` on outgoing REFERENCE edges from
+        ``vertex_name`` whose ``(anchor_file, anchor_line)`` falls inside
+        ``[old_start, old_end]`` by ``shift``.
+
+        Used by the patcher's shifted-symbol path: when a symbol moves up
+        or down by N lines but its body is unmodified, every anchor in its
+        old body region needs the same uniform shift to stay aligned with
+        the new line numbering.
+
+        Returns the count of edges modified. ``shift=0`` is a no-op.
+        """
+        if shift == 0:
+            return 0
+        g = self.code_graph
+        vid = g.name_to_vertex.get(vertex_name)
+        if vid is None:
+            return 0
+
+        moved = 0
+        for eid in g.graph.incident(vid, mode="out"):
+            edge = g.graph.es[eid]
+            if edge["type"] != EDGE_TYPE_REFERENCE:
+                continue
+            attrs = edge.attributes()
+            if attrs.get("anchor_file") != anchor_file:
+                continue
+            line = attrs.get("anchor_line")
+            if line is None:
+                continue
+            if old_start <= line <= old_end:
+                edge["anchor_line"] = line + shift
+                moved += 1
+        return moved
+
     def rename_vertex(self, old_name: str, new_name: str, new_attrs: dict = None):
         """Rename a vertex without deleting it. All edges preserved."""
         g = self.code_graph
@@ -401,6 +578,11 @@ class SubgraphMgr(ABC):
     def rebuild_file_subgraph(self, file_path: str, symbols: list[dict]) -> list[str]:
         """Add file vertex + symbol vertices + containment edges.
 
+        Also keeps ``file_to_vertices`` consistent for this file so callers
+        can use ``match_location_to_*`` immediately without an explicit
+        ``build_indexes()`` step. Other index dicts (``unified_name_to_vertex``)
+        are still rebuilt by the caller via ``build_indexes()`` at batch end.
+
         Returns list of created vertex names.
         """
         g = self.code_graph
@@ -411,6 +593,14 @@ class SubgraphMgr(ABC):
             if parent_dir not in g.name_to_vertex:
                 g.add_directory_node(parent_dir)
             g._add_edge(parent_dir, file_path, EDGE_TYPE_CONTAIN)
+
+        # Seed file_to_vertices for this file so match_location_to_* works
+        # without a follow-up build_indexes(). Vertices created by
+        # _process_symbol_tree below get appended via _track_file_vertex.
+        if not hasattr(g, "file_to_vertices") or g.file_to_vertices is None:
+            g.file_to_vertices = {}
+        file_vid = g.name_to_vertex[file_path]
+        g.file_to_vertices.setdefault(file_path, set()).add(file_vid)
 
         return self._process_symbol_tree(
             symbols,
@@ -457,6 +647,10 @@ class SubgraphMgr(ABC):
                 },
             )
             g.symbol_ranges[vertex_name] = (start_line, end_line)
+            # Keep file_to_vertices consistent for live callers.
+            if hasattr(g, "file_to_vertices") and g.file_to_vertices is not None:
+                vid = g.name_to_vertex[vertex_name]
+                g.file_to_vertices.setdefault(file_path, set()).add(vid)
 
             sel_start = sel_range.get("start", {})
             sel_end = sel_range.get("end", {})
@@ -500,6 +694,7 @@ class SubgraphMgr(ABC):
         file_path: str,
         vertex_names: list[str],
         stats: dict,
+        batch: "EdgeBatch | None" = None,
     ):
         """For each vertex, call LSP references to find external callers."""
         if not self.lsp_client:
@@ -528,8 +723,19 @@ class SubgraphMgr(ABC):
                 ref_line = loc.get("range", {}).get("start", {}).get("line", 0)
                 ref_scope = self.match_location_to_scope(ref_file, ref_line)
                 if ref_scope:
-                    self.code_graph._add_edge(ref_scope, vname, EDGE_TYPE_REFERENCE)
-                    stats["incoming_added"] += 1
+                    if batch is not None:
+                        if batch.stage(ref_scope, vname, EDGE_TYPE_REFERENCE,
+                                       anchor_file=ref_file, anchor_line=ref_line):
+                            stats["incoming_added"] += 1
+                    else:
+                        self.code_graph._add_edge(
+                            ref_scope,
+                            vname,
+                            EDGE_TYPE_REFERENCE,
+                            anchor_file=ref_file,
+                            anchor_line=ref_line,
+                        )
+                        stats["incoming_added"] += 1
                 else:
                     stats["unmatched"] += 1
 
@@ -539,6 +745,7 @@ class SubgraphMgr(ABC):
         vertex_names: list[str],
         stats: dict,
         line_ranges: list[tuple[int, int]] | None = None,
+        batch: "EdgeBatch | None" = None,
     ):
         """Use semanticTokens + definition to find outgoing refs."""
         if not self.lsp_client:
@@ -580,16 +787,13 @@ class SubgraphMgr(ABC):
                     abs_file, t["line"], t["character"]
                 )
 
-        # Retry empty definitions — server may still be analyzing new files.
-        # Only retry the ones that returned [] (not the ones that succeeded).
+        # Retry empty definitions once with NO sleep — null is a legitimate
+        # "no definition here" answer per LSP spec, but on cold servers a
+        # second pass occasionally resolves more. The previous 3s sleep
+        # added per-file overhead with ~zero real benefit (most empties
+        # remain empty on retry).
         empty_keys = [k for k, v in seen_text.items() if v == []]
         if empty_keys:
-            logger.debug(
-                f"{len(empty_keys)}/{len(seen_text)} definitions returned "
-                f"empty for {file_path}, retrying after 3s"
-            )
-            time.sleep(3)
-            # Build text → token mapping for retry
             text_to_token = {}
             for t in ref_tokens:
                 if t["text"] not in text_to_token:
@@ -609,8 +813,10 @@ class SubgraphMgr(ABC):
                     f"Retry resolved {resolved}/{len(empty_keys)} " "empty definitions"
                 )
 
-        # Build edges
-        added_edges = set()
+        # Build edges. Each call site becomes its own anchored edge so the
+        # multi-edge schema preserves call-site identity for range queries.
+        # _add_edge dedups on (src, tgt, type, anchor_file, anchor_line),
+        # so identical anchors collapse but distinct call sites stay distinct.
         for ref_token in ref_tokens:
             defn_list = seen_text.get(ref_token["text"])
             if not defn_list:
@@ -637,11 +843,20 @@ class SubgraphMgr(ABC):
             target_vertex = self.match_location_to_vertex(target_file, target_line)
 
             if scope and target_vertex:
-                edge_key = (scope, target_vertex)
-                if edge_key not in added_edges:
-                    self.code_graph._add_edge(scope, target_vertex, EDGE_TYPE_REFERENCE)
+                if batch is not None:
+                    if batch.stage(scope, target_vertex, EDGE_TYPE_REFERENCE,
+                                   anchor_file=file_path,
+                                   anchor_line=ref_token["line"]):
+                        stats["outgoing_added"] += 1
+                else:
+                    self.code_graph._add_edge(
+                        scope,
+                        target_vertex,
+                        EDGE_TYPE_REFERENCE,
+                        anchor_file=file_path,
+                        anchor_line=ref_token["line"],
+                    )
                     stats["outgoing_added"] += 1
-                    added_edges.add(edge_key)
             else:
                 stats["unmatched"] += 1
 
@@ -685,21 +900,14 @@ class SubgraphMgr(ABC):
             logger.debug(f"Using semanticTokens/full for {file_path} ({reason})")
             tokens_response = self.lsp_client.semantic_tokens_full(abs_file)
 
-        # Retry once if still empty
-        if tokens_response is None or not tokens_response.get("data"):
-            logger.debug(
-                f"semanticTokens returned "
-                f"{'None' if tokens_response is None else 'empty'} "
-                f"for {file_path}, retrying after 5s"
-            )
-            time.sleep(5)
-            tokens_response = self.lsp_client.semantic_tokens_full(abs_file)
-            if tokens_response and tokens_response.get("data"):
-                logger.debug(f"semanticTokens retry succeeded for {file_path}")
-
+        # No retry: null/empty semanticTokens is a legitimate response per
+        # LSP spec. On pathological files (e.g. basedpyright hanging on
+        # sklearn's test_pls.py for 60s) a retry pays the full server
+        # timeout twice. The cache entry below ensures repeat callers
+        # within this patcher run skip immediately.
         if not tokens_response or not tokens_response.get("data"):
             logger.warning(
-                f"semanticTokens failed for {file_path} after retry, "
+                f"semanticTokens failed for {file_path}, "
                 "skipping outgoing reference discovery"
             )
             self._semantic_tokens_cache[file_path] = None
@@ -729,36 +937,40 @@ class SubgraphMgr(ABC):
 
         Level 1: Exact (file, start_line) match.
         Level 2: Innermost enclosing scope.
+
+        Uses ``file_to_vertices`` to constrain the scan to one file's
+        vertices instead of the whole graph (5985 calls × 31k vertices
+        was a 500s+ hot loop on ruff).
         """
-        candidates = [
-            vname
-            for vname, (start, _) in self.code_graph.symbol_ranges.items()
-            if self._vertex_file(vname) == file_path and start == line
-        ]
+        g = self.code_graph
+        vids = getattr(g, "file_to_vertices", {}).get(file_path, ())
+        candidates = []
+        for vid in vids:
+            vname = g.graph.vs[vid]["name"]
+            sr = g.symbol_ranges.get(vname)
+            if sr and sr[0] == line:
+                candidates.append(vname)
         if len(candidates) == 1:
             return candidates[0]
         return self.match_location_to_scope(file_path, line)
 
     def match_location_to_scope(self, file_path: str, line: int) -> Optional[str]:
         """Find the innermost scope vertex containing (file, line)."""
+        g = self.code_graph
+        vids = getattr(g, "file_to_vertices", {}).get(file_path, ())
         candidates = []
-        for vname, (start, end) in self.code_graph.symbol_ranges.items():
-            if self._vertex_file(vname) == file_path and start <= line <= end:
-                candidates.append((vname, end - start))
+        for vid in vids:
+            vname = g.graph.vs[vid]["name"]
+            sr = g.symbol_ranges.get(vname)
+            if sr and sr[0] <= line <= sr[1]:
+                candidates.append((vname, sr[1] - sr[0]))
 
         if not candidates:
-            if file_path in self.code_graph.name_to_vertex:
+            if file_path in g.name_to_vertex:
                 return file_path
             return None
 
         return min(candidates, key=lambda x: x[1])[0]
-
-    def _vertex_file(self, vname: str) -> Optional[str]:
-        """Get the file attribute of a vertex by name."""
-        vid = self.code_graph.name_to_vertex.get(vname)
-        if vid is None:
-            return None
-        return self.code_graph.graph.vs[vid].attributes().get("file")
 
     def clear_cache(self):
         """Clear semantic tokens cache between patch_files runs."""

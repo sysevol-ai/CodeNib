@@ -73,6 +73,8 @@ def _make_decoder():
     g._add_edge("src/main.rs", "src/main.rs:main():0", EDGE_TYPE_CONTAIN)
 
     decoder = PatcherRust("/tmp/test", g)
+    # match_location_to_* needs file_to_vertices, populated by build_indexes()
+    decoder.build_indexes()
     return decoder, g
 
 
