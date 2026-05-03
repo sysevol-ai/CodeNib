@@ -49,6 +49,18 @@ CROSS_ENCODER_BATCH_SIZE="${CROSS_ENCODER_BATCH_SIZE:-8}"
 CROSS_ENCODER_BACKEND="${CROSS_ENCODER_BACKEND:-auto}"  # auto | st | qwen
 CROSS_ENCODER_INSTRUCTION="${CROSS_ENCODER_INSTRUCTION:-Given a github issue, identify the code that needs to be changed to fix the issue.}"
 
+# Auto-suffix the profile tag with the top-K window when non-default so that
+# K-sweep runs (K=50, 100, …) write to distinct result/profile files instead
+# of overwriting each other. Existing K=30 runs (the default) keep their
+# previous filenames untouched.
+if [[ "${RERANK_TOP_K}" != "30" ]]; then
+  if [[ -n "${PROFILE_TAG}" ]]; then
+    PROFILE_TAG="${PROFILE_TAG}_k${RERANK_TOP_K}"
+  else
+    PROFILE_TAG="k${RERANK_TOP_K}"
+  fi
+fi
+
 # format: "model_name:dim"
 SMALL_MODELS_DEFAULT=(
   "Salesforce/SweRankEmbed-Small:768"

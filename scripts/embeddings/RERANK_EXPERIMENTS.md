@@ -90,17 +90,21 @@ The backend auto-detects from the model name; force it with
 ### Window-size sweep (recall ceiling vs online cost)
 
 ```bash
-for K in 30 50 70 100; do
+for K in 50 70 100; do
   RERANK_TOP_K=$K \
   SMALL_MODELS='Salesforce/SweRankEmbed-Small:768' \
   LARGE_MODELS='Qwen/Qwen3-Reranker-0.6B:0' \
   RERANK_STRATEGY='cross-encoder' \
-  PROFILE_TAG="ce_qwen3_0p6b_k${K}" \
+  PROFILE_TAG='ce_qwen3_0p6b' \
     bash scripts/embeddings/eval_codeminer_base_rerank_matrix.sh
 done
 ```
 
-`PROFILE_TAG` per run is what keeps output files distinct.
+The shell wrapper auto-appends `_k<K>` to `PROFILE_TAG` when
+`RERANK_TOP_K` differs from the default 30, so the resulting result and
+profile files end up distinct (e.g. `ce_qwen3_0p6b_k50.json`,
+`ce_qwen3_0p6b_k100.json`) without you having to thread `${K}` into the
+tag yourself. Existing K=30 runs keep their previous filenames untouched.
 
 ### Smoke test (one instance, one pair)
 
