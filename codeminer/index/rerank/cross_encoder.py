@@ -89,10 +89,15 @@ class STCrossEncoderWrapper:
         return [float(s) for s in scores]
 
     def close(self) -> None:
+        # Best-effort teardown; never raise from close() but keep cleanup
+        # failures observable at debug level for diagnostics.
         try:
             del self._model
         except Exception:
-            pass
+            logger.debug(
+                "STCrossEncoderWrapper.close: model already absent or " "non-deletable",
+                exc_info=True,
+            )
         try:
             import gc
 
@@ -102,7 +107,10 @@ class STCrossEncoderWrapper:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         except Exception:
-            pass
+            logger.debug(
+                "STCrossEncoderWrapper.close: gc/cuda cleanup raised; " "continuing",
+                exc_info=True,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -253,11 +261,17 @@ class QwenRerankerWrapper:
         return out
 
     def close(self) -> None:
+        # Best-effort teardown; never raise from close() but keep cleanup
+        # failures observable at debug level for diagnostics.
         try:
             del self._model
             del self._tokenizer
         except Exception:
-            pass
+            logger.debug(
+                "QwenRerankerWrapper.close: model/tokenizer already absent or "
+                "non-deletable",
+                exc_info=True,
+            )
         try:
             import gc
 
@@ -267,7 +281,10 @@ class QwenRerankerWrapper:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         except Exception:
-            pass
+            logger.debug(
+                "QwenRerankerWrapper.close: gc/cuda cleanup raised; " "continuing",
+                exc_info=True,
+            )
 
 
 # ---------------------------------------------------------------------------

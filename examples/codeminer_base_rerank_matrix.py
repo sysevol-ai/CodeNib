@@ -377,7 +377,13 @@ def _release_gpu(*objs):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     except Exception:
-        pass
+        # Best-effort GPU cache release. torch may not be importable in
+        # CPU-only environments, or cuda may be in a degraded state — neither
+        # case should fail _release_gpu().
+        logger.debug(
+            "_release_gpu: torch/cuda cleanup raised; continuing",
+            exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------
