@@ -38,4 +38,15 @@ def test_scip_exclude():
     # skip_level="decode" (not "graph"): reuse cached index.scip / index.decoded
     # but rebuild the graph each run. A stale graph.pkl from an older decoder
     # version would silently mask bugs and break the scip-core parity job.
-    repo_indexer.run_pipeline(project_name="test_swebench", skip_level="decode")
+    graph = repo_indexer.run_pipeline(project_name="test_swebench", skip_level="decode")
+    # Asserting non-None is load-bearing: scip-core parity job depends on this
+    # test producing graph.pkl + index.decoded under
+    # ~/.codeminer/<instance_id>/. If run_pipeline silently returns None
+    # (scip-python crash, generate_index failure, etc.) and we don't assert
+    # here, the test passes but the cache is empty, and scip-core then fails
+    # in a confusing way several minutes later.
+    assert graph is not None, (
+        f"run_pipeline returned None for {instance['instance_id']}; "
+        "scip-python or downstream decode likely failed — check captured "
+        "stderr above for the real error."
+    )
