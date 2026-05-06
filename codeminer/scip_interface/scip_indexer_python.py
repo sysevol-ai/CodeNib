@@ -310,6 +310,15 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 # and causes pip3 to resolve to the wrong environment.
                 env = os.environ.copy()
                 env["PATH"] = f"{scip_bin}:{env.get('PATH', '')}"
+                # scip-python is Node-based; on large repos (e.g. sympy,
+                # ~944 files) it blows past the default V8 ~4 GB old-space
+                # limit and dies with a SIGABRT'd OOM. Bump for this
+                # subprocess only; honor an explicit caller-set value.
+                node_opts = env.get("NODE_OPTIONS", "")
+                if "--max-old-space-size" not in node_opts:
+                    env["NODE_OPTIONS"] = (
+                        node_opts + " --max-old-space-size=8192"
+                    ).strip()
                 logger.info(f"Running with scip-env PATH ({scip_bin}): {cmd}")
                 subprocess.run(
                     cmd,
