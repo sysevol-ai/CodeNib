@@ -1,16 +1,27 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..graph.roi_subgraph import ROISubgraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..log_utils import get_logger
+from ..profiler import Profiler
 from ..scip_interface import SCIPIndexerBase as SCIPIndexer
 from ..types import QueriedNode
 
 logger = get_logger(__name__)
+
+
+def _section(
+    profiler: Optional[Profiler], label: str, metadata: Optional[Dict[str, Any]] = None
+):
+    """Open a profiler section if profiler is provided, otherwise a no-op."""
+    if profiler is None:
+        return nullcontext()
+    return profiler.section(label, metadata)
 
 
 class GraphRetrievePipeline:
@@ -54,6 +65,7 @@ class GraphRetrievePipeline:
         languages: Optional[List[str]] = None,
         max_lines_per_chunk: int = 300,
         project_name: Optional[str] = None,
+        profiler: Optional[Profiler] = None,
     ) -> None:
         self.stage1_topk = stage1_topk
         self.stage2_topk = stage2_topk
@@ -65,106 +77,132 @@ class GraphRetrievePipeline:
         pname = project_name or Path(index_path).name
 
         # Build CodeGraph via SCIP indexing
-        repo_indexer = SCIPIndexer(repo_path, output_dir=index_path)
-        self.code_graph = repo_indexer.run_pipeline(
-            project_name=pname, skip_level="graph"
-        )
-        if self.code_graph is None:
-            raise RuntimeError(f"Failed to build code graph for {repo_path!r}")
+        with _section(profiler, "index.graph_build", {"repo": pname}):
+            repo_indexer = SCIPIndexer(repo_path, output_dir=index_path)
+            self.code_graph = repo_indexer.run_pipeline(
+                project_name=pname, skip_level="graph"
+            )
+            if self.code_graph is None:
+                raise RuntimeError(f"Failed to build code graph for {repo_path!r}")
 
         # Build BM25 index from graph
-        self.bm25_index = BM25CodeIndexer(max_k=stage1_topk, language="english")
-        self.bm25_index.build_index_from_graph(self.code_graph)
+        with _section(profiler, "index.bm25_build", {"max_k": stage1_topk}):
+            self.bm25_index = BM25CodeIndexer(max_k=stage1_topk, language="english")
+            self.bm25_index.build_index_from_graph(self.code_graph)
 
         # Build vector store for Stage 3 if requested
         self.vector_store: Optional[CodeVectorStore] = None
         if use_embedding_rerank:
-            self.vector_store = build_hierarchical_vector_store(
-                repo_path=repo_path,
-                index_path=index_path,
-                plan_name=None,
-                languages=languages or ["python"],
-                max_lines_per_chunk=max_lines_per_chunk,
-                build_levels=["l2"],
-                embedding_model=embedding_model,
-                embedding_provider=embedding_provider,
-                embedding_dimension=embedding_dimension,
-                embedding_kwargs={
-                    "model_kwargs": {"trust_remote_code": True},
-                    "encode_kwargs": {"batch_size": 4},
-                },
-                index_metric="ip",
-            )
+            with _section(
+                profiler,
+                "index.vector_store_build",
+                {"model": embedding_model, "dim": embedding_dimension},
+            ):
+                self.vector_store = build_hierarchical_vector_store(
+                    repo_path=repo_path,
+                    index_path=index_path,
+                    plan_name=None,
+                    languages=languages or ["python"],
+                    max_lines_per_chunk=max_lines_per_chunk,
+                    build_levels=["l2"],
+                    embedding_model=embedding_model,
+                    embedding_provider=embedding_provider,
+                    embedding_dimension=embedding_dimension,
+                    embedding_kwargs={
+                        "model_kwargs": {"trust_remote_code": True},
+                        "encode_kwargs": {"batch_size": 4},
+                    },
+                    index_metric="ip",
+                    profiler=profiler,
+                )
 
-    def query(self, query: str) -> List[QueriedNode]:
+    def query(
+        self,
+        query: str,
+        profiler: Optional[Profiler] = None,
+    ) -> List[QueriedNode]:
         """Run the three-stage graph retrieval pipeline.
 
         Args:
             query: The search query (e.g., problem statement).
+            profiler: Optional profiler. When provided, stages are recorded as
+                ``query.bm25_seed``, ``query.graph_expand``,
+                ``query.embedding_rerank``.
 
         Returns:
             List of QueriedNode results.
         """
         # Stage 1: BM25 seed selection
-        bm25_results = self.bm25_index.search(query, top_k=self.stage1_topk)
-        seed_names = [r.node_name for r in bm25_results]
+        with _section(profiler, "query.bm25_seed", {"top_k": self.stage1_topk}):
+            bm25_results = self.bm25_index.search(query, top_k=self.stage1_topk)
+            seed_names = [r.node_name for r in bm25_results]
         logger.info("Stage 1: %d seed nodes from BM25", len(seed_names))
 
         # Stage 2: Graph expansion
-        roi = ROISubgraph(self.code_graph)
-        if self.use_ppr:
-            expanded_nodes = roi.expand_ppr(
-                seed_names,
-                top_k=self.stage2_topk,
-                damping=self.ppr_damping,
-                filter_tests=True,
-            )
-            logger.info(
-                "Stage 2: %d nodes after PPR expansion (damping=%.2f)",
-                len(expanded_nodes),
-                self.ppr_damping,
-            )
-        else:
-            subgraph = roi.extract_subgraph(
-                seed_names, k_hop=self.k_hop, direction="both"
-            )
-            expanded_nodes = roi.get_filtered_subgraph_nodes(
-                subgraph, exclude_nodes=None, filter_tests=True
-            )
-            expanded_nodes = expanded_nodes[: self.stage2_topk]
-            logger.info(
-                "Stage 2: %d nodes after %d-hop BFS expansion",
-                len(expanded_nodes),
-                self.k_hop,
-            )
+        with _section(
+            profiler,
+            "query.graph_expand",
+            {"mode": "ppr" if self.use_ppr else "bfs", "top_k": self.stage2_topk},
+        ):
+            roi = ROISubgraph(self.code_graph)
+            if self.use_ppr:
+                expanded_nodes = roi.expand_ppr(
+                    seed_names,
+                    top_k=self.stage2_topk,
+                    damping=self.ppr_damping,
+                    filter_tests=True,
+                )
+                logger.info(
+                    "Stage 2: %d nodes after PPR expansion (damping=%.2f)",
+                    len(expanded_nodes),
+                    self.ppr_damping,
+                )
+            else:
+                subgraph = roi.extract_subgraph(
+                    seed_names, k_hop=self.k_hop, direction="both"
+                )
+                expanded_nodes = roi.get_filtered_subgraph_nodes(
+                    subgraph, exclude_nodes=None, filter_tests=True
+                )
+                expanded_nodes = expanded_nodes[: self.stage2_topk]
+                logger.info(
+                    "Stage 2: %d nodes after %d-hop BFS expansion",
+                    len(expanded_nodes),
+                    self.k_hop,
+                )
 
         # Stage 3 (optional): Embedding rerank within expanded set only
         if self.use_embedding_rerank and expanded_nodes and self.vector_store:
-            mask_ids: set = set()
-            for node in expanded_nodes:
-                if node.node_name:
-                    mask_ids.add(node.node_name)
-                if node.node_id:
-                    mask_ids.add(node.node_id)
-            # Search ONLY within the graph-expanded node set — do NOT search
-            # the full FAISS index globally.  This is the key design: graph
-            # expansion reduces the corpus, then embedding ranks within it.
-            reranked = self.vector_store.search_within_ids(
-                query, mask_node_ids=mask_ids, top_k=self.stage2_topk
-            )
-            results = [
-                QueriedNode(
-                    node_name=n.node_name,
-                    type=n.type,
-                    file=n.file,
-                    node_id=n.node_id or n.node_name,
-                    start_line=n.start_line,
-                    end_line=n.end_line,
-                    score=n.score,
-                    content=n.content,
+            with _section(
+                profiler,
+                "query.embedding_rerank",
+                {"candidates": len(expanded_nodes)},
+            ):
+                mask_ids: set = set()
+                for node in expanded_nodes:
+                    if node.node_name:
+                        mask_ids.add(node.node_name)
+                    if node.node_id:
+                        mask_ids.add(node.node_id)
+                # Search ONLY within the graph-expanded node set — do NOT search
+                # the full FAISS index globally.  This is the key design: graph
+                # expansion reduces the corpus, then embedding ranks within it.
+                reranked = self.vector_store.search_within_ids(
+                    query, mask_node_ids=mask_ids, top_k=self.stage2_topk
                 )
-                for n in reranked
-            ]
+                results = [
+                    QueriedNode(
+                        node_name=n.node_name,
+                        type=n.type,
+                        file=n.file,
+                        node_id=n.node_id or n.node_name,
+                        start_line=n.start_line,
+                        end_line=n.end_line,
+                        score=n.score,
+                        content=n.content,
+                    )
+                    for n in reranked
+                ]
             logger.info("Stage 3: %d nodes after embedding rerank", len(results))
         else:
             # ROISubgraph returns node_id=None; use node_name as node_id since

@@ -28,6 +28,7 @@ Usage:
 """
 import argparse
 import json
+import logging
 import time
 from pathlib import Path
 
@@ -42,8 +43,103 @@ from codeminer.eval.retrieval_eval import (
 )
 from codeminer.log_utils import get_logger
 from codeminer.model import GraphRetrievePipeline
+from codeminer.profiler import Profiler
 
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Profiling helpers
+# ---------------------------------------------------------------------------
+
+
+def _to_sections_payload(profile_summary):
+    """Convert ``Profiler.report()`` output to a JSON-serialisable list."""
+    return [
+        {
+            "label": label,
+            "total": stats.total,
+            "count": stats.count,
+            "average": stats.average,
+            "min": stats.safe_min,
+            "max": stats.max_duration,
+            "errors": stats.errors,
+        }
+        for label, stats in profile_summary
+    ]
+
+
+def _aggregate_section_stats(instance_profiles):
+    """Sum per-instance section payloads into a single aggregate list."""
+    aggregate = {}
+    for profile in instance_profiles:
+        for section in profile.get("sections", []):
+            label = section["label"]
+            entry = aggregate.setdefault(
+                label,
+                {
+                    "label": label,
+                    "total": 0.0,
+                    "count": 0,
+                    "min": float("inf"),
+                    "max": 0.0,
+                    "errors": 0,
+                },
+            )
+            entry["total"] += float(section["total"])
+            entry["count"] += int(section["count"])
+            entry["min"] = min(entry["min"], float(section["min"]))
+            entry["max"] = max(entry["max"], float(section["max"]))
+            entry["errors"] += int(section["errors"])
+
+    payload = []
+    for label, stats in aggregate.items():
+        count = stats["count"]
+        payload.append(
+            {
+                "label": label,
+                "total": stats["total"],
+                "count": count,
+                "average": (stats["total"] / count) if count else 0.0,
+                "min": 0.0 if stats["min"] == float("inf") else stats["min"],
+                "max": stats["max"],
+                "errors": stats["errors"],
+            }
+        )
+
+    payload.sort(key=lambda item: item["total"], reverse=True)
+    return payload
+
+
+def _split_sections_by_phase(sections):
+    """Split a flat section list into ``index_time`` and ``query_time`` buckets.
+
+    Index-time sections include any label produced during pipeline initialisation
+    (``index.*`` plus the inner labels emitted by ``build_hierarchical_vector_store``
+    and ``CodeVectorStore`` — ``chunking_*``, ``embedding_encode_*``,
+    ``faiss_index_add_*``). Query-time sections are everything matching
+    ``query.*``.
+    """
+    index_prefixes = (
+        "index.",
+        "chunking_",
+        "embedding_encode_",
+        "faiss_index_add_",
+    )
+    index_sections, query_sections = [], []
+    for section in sections:
+        label = section["label"]
+        if label.startswith("query."):
+            query_sections.append(section)
+        elif label.startswith(index_prefixes):
+            index_sections.append(section)
+        else:
+            index_sections.append(section)
+    return index_sections, query_sections
+
+
+def _sanitize_filename_part(value):
+    return str(value).replace("/", "__").replace(" ", "_")
 
 
 def parse_args():
@@ -142,11 +238,91 @@ def parse_args():
     )
     parser.add_argument("--result-path", type=str, default=None)
 
+    # Rerank strategy (forward-compatible flag; cross-encoder backends
+    # are introduced in PR #128 and not yet available on main).
+    parser.add_argument(
+        "--rerank-strategy",
+        type=str,
+        choices=["none", "embedding", "cross-encoder"],
+        default=None,
+        help=(
+            "Rerank strategy for Stage 3. 'none' disables rerank, "
+            "'embedding' uses FAISS within the expanded set (legacy), "
+            "'cross-encoder' requires PR #128 (Qwen3-Reranker / "
+            "STCrossEncoderWrapper) and currently raises NotImplementedError."
+        ),
+    )
+    parser.add_argument(
+        "--rerank-model",
+        type=str,
+        default=None,
+        help="Cross-encoder rerank model id (used when rerank-strategy=cross-encoder).",
+    )
+
+    # Profiling
+    parser.add_argument(
+        "--enable-profiler",
+        action="store_true",
+        help="Enable runtime profiler summaries.",
+    )
+    parser.add_argument(
+        "--profile-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory to store runtime profiler summaries "
+            "(default: <index-cache-dir>/profile_log/graph_rag)."
+        ),
+    )
+    parser.add_argument(
+        "--profile-tag",
+        type=str,
+        default=None,
+        help="Optional tag appended to profiler filename.",
+    )
+
     return parser.parse_args()
+
+
+def _resolve_rerank_strategy(args):
+    """Combine legacy ``--embedding`` flag with ``--rerank-strategy``.
+
+    Returns one of: ``"none"``, ``"embedding"``, ``"cross-encoder"``.
+    """
+    if args.rerank_strategy is not None:
+        if args.rerank_strategy == "cross-encoder":
+            raise NotImplementedError(
+                "rerank-strategy='cross-encoder' requires the rerank "
+                "wrappers from PR #128 (codeminer/index/rerank/cross_encoder.py). "
+                "That PR has not landed on main yet."
+            )
+        return args.rerank_strategy
+    return "embedding" if args.embedding else "none"
 
 
 def run_graph_pipeline(args):
     """Run the graph-based retrieval baseline."""
+
+    rerank_strategy = _resolve_rerank_strategy(args)
+    use_embedding_rerank = rerank_strategy == "embedding"
+
+    # Profiler setup ---------------------------------------------------------
+    profiling_enabled = args.enable_profiler or args.profile_dir is not None
+    if profiling_enabled:
+        profile_output_dir = (
+            Path(args.profile_dir).expanduser().resolve()
+            if args.profile_dir
+            else Path(args.index_cache_dir).expanduser().resolve()
+            / "profile_log"
+            / "graph_rag"
+        )
+        profile_output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Profiler summaries will be stored in: %s", profile_output_dir)
+    else:
+        profile_output_dir = None
+
+    instance_index_profiles = []
+    instance_query_profiles = []
 
     # Load dataset
     if args.dataset == "swebench_lite":
@@ -194,6 +370,21 @@ def run_graph_pipeline(args):
             continue
 
         pipeline = None
+        index_profiler = None
+        query_profiler = None
+        if profiling_enabled:
+            index_profiler = Profiler(
+                name=f"graph_rag[index][{instance_id}]",
+                logger=logger,
+                emit_events=False,
+                summary_level=logging.INFO,
+            )
+            query_profiler = Profiler(
+                name=f"graph_rag[query][{instance_id}]",
+                logger=logger,
+                emit_events=False,
+                summary_level=logging.INFO,
+            )
         try:
             t0 = time.time()
 
@@ -211,14 +402,38 @@ def run_graph_pipeline(args):
                 k_hop=args.k_hop,
                 use_ppr=args.ppr,
                 ppr_damping=args.ppr_damping,
-                use_embedding_rerank=args.embedding,
+                use_embedding_rerank=use_embedding_rerank,
                 embedding_model=args.embedding_model,
                 embedding_provider=args.embedding_provider,
                 embedding_dimension=args.embedding_dimension,
                 project_name=instance_id.replace("/", "__"),
+                profiler=index_profiler,
             )
-            results = pipeline.query(instance["problem_statement"])
+            if query_profiler is not None:
+                with query_profiler.section("query.total"):
+                    results = pipeline.query(
+                        instance["problem_statement"], profiler=query_profiler
+                    )
+            else:
+                results = pipeline.query(instance["problem_statement"])
             elapsed = time.time() - t0
+
+            if profiling_enabled:
+                index_summary = index_profiler.report()
+                query_summary = query_profiler.report()
+                index_sections = _to_sections_payload(index_summary)
+                query_sections = _to_sections_payload(query_summary)
+                # Internal labels emitted by builders/vector_store land in
+                # the index profiler — split by phase here so any cross-talk
+                # stays in the right bucket.
+                index_only, _query_leak = _split_sections_by_phase(index_sections)
+                _index_leak, query_only = _split_sections_by_phase(query_sections)
+                instance_index_profiles.append(
+                    {"instance_id": instance_id, "sections": index_only}
+                )
+                instance_query_profiles.append(
+                    {"instance_id": instance_id, "sections": query_only}
+                )
 
             metrics = evaluate_predictions(
                 nodes=results,
@@ -260,7 +475,8 @@ def run_graph_pipeline(args):
                         "k_hop": args.k_hop,
                         "use_ppr": args.ppr,
                         "ppr_damping": args.ppr_damping,
-                        "embedding_rerank": args.embedding,
+                        "embedding_rerank": use_embedding_rerank,
+                        "rerank_strategy": rerank_strategy,
                         "num_results": len(results),
                         "elapsed_s": elapsed,
                         "metric_k_files": unique_files[:metric_max_k],
@@ -302,6 +518,46 @@ def run_graph_pipeline(args):
             json.dump(all_results, f, indent=2, ensure_ascii=False)
         logger.info("Results saved to %s", result_path)
 
+    if profiling_enabled:
+        config_payload = {
+            "dataset": args.dataset,
+            "split": args.split,
+            "filter_instance": args.filter_instance,
+            "expansion": "ppr" if args.ppr else "bfs",
+            "stage1_topk": args.stage1_topk,
+            "stage2_topk": args.stage2_topk,
+            "k_hop": args.k_hop,
+            "ppr_damping": args.ppr_damping,
+            "rerank_strategy": rerank_strategy,
+            "embedding_model": (
+                args.embedding_model if rerank_strategy == "embedding" else None
+            ),
+            "rerank_model": args.rerank_model,
+        }
+        profile_payload = {
+            "config": config_payload,
+            "instances_profiled": len(instance_query_profiles),
+            "index_time": {
+                "per_instance": instance_index_profiles,
+                "aggregate_sections": _aggregate_section_stats(instance_index_profiles),
+            },
+            "query_time": {
+                "per_instance": instance_query_profiles,
+                "aggregate_sections": _aggregate_section_stats(instance_query_profiles),
+            },
+        }
+        tag_part = (
+            f"__{_sanitize_filename_part(args.profile_tag)}" if args.profile_tag else ""
+        )
+        expansion = "ppr" if args.ppr else "bfs"
+        profile_filename = (
+            f"graph_rag_{args.dataset}_{expansion}_" f"{rerank_strategy}{tag_part}.json"
+        )
+        profile_path = profile_output_dir / profile_filename
+        with open(profile_path, "w", encoding="utf-8") as f:
+            json.dump(profile_payload, f, indent=2, ensure_ascii=False)
+        logger.info("Profiler summary saved to %s", profile_path)
+
 
 def main():
     args = parse_args()
@@ -311,11 +567,17 @@ def main():
         if args.ppr
         else f"Graph({args.k_hop}-hop, max {args.stage2_topk})"
     )
+    rerank_strategy = _resolve_rerank_strategy(args)
+    rerank_desc = {
+        "none": "",
+        "embedding": "-> Embedding rerank",
+        "cross-encoder": "-> Cross-encoder rerank (PR #128)",
+    }[rerank_strategy]
     logger.info(
         "Pipeline: BM25(top%d) -> %s %s",
         args.stage1_topk,
         stage2_desc,
-        "-> Embedding rerank" if args.embedding else "",
+        rerank_desc,
     )
     run_graph_pipeline(args)
 
