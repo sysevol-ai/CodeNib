@@ -219,7 +219,20 @@ class BM25CodeIndexer:
             metadata["start_line"] = start_line
             metadata["end_line"] = end_line
 
-            content = node_name
+            # Prefer `unified_name` for the indexed text. Raw `name` is
+            # readable for Python but semi-raw SCIP for rust/ts/go and a USR
+            # for clangd, which silently degrades BM25 recall on those
+            # languages. `unified_name` is always `file_path:SymbolDisplay`
+            # across decoders and tokenizes cleanly via `_apply_stemming`.
+            # Identity (`node_id`, `name` metadata, returned `node_name`)
+            # stays raw so the downstream `name_to_vertex` invariant used by
+            # ROISubgraph / graph_expand is unchanged.
+            unified = (
+                vertex["unified_name"]
+                if "unified_name" in vertex.attributes()
+                else None
+            )
+            content = unified if unified else node_name
         else:
             # Unknown or root-like node types: index minimally
             content = node_name
