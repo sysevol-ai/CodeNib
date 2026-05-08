@@ -653,6 +653,19 @@ def run_sweep(args):
 
                         except Exception:
                             logger.exception("  Error processing %s", instance_id)
+                            # Clear CUDA cache so a transient OOM/error in
+                            # one instance can't poison the context for the
+                            # rest of the sweep.
+                            try:
+                                import torch
+
+                                if torch.cuda.is_available():
+                                    torch.cuda.empty_cache()
+                            except Exception:
+                                logger.debug(
+                                    "post-error cuda empty_cache failed",
+                                    exc_info=True,
+                                )
                             continue
                         finally:
                             if profiling_enabled:

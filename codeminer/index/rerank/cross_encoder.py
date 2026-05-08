@@ -239,26 +239,65 @@ class QwenRerankerWrapper:
         )
 
     def score(self, query: str, docs: List[str]) -> List[float]:
+        """Score (query, doc) pairs as P(yes-token) at the last position.
+
+        Defends against CUDA OOM on long-context instances (long L2 chunks
+        from large repos like prometheus, jq, ruff) by halving the batch
+        size on each ``OutOfMemoryError`` and retrying the same chunk. At
+        batch=1, a single still-OOMing doc is assigned score 0.0 so the
+        rest of the candidates still get ranked instead of poisoning the
+        whole run.
+        """
         if not docs:
             return []
         import torch
 
+        pair_texts = [self._format_pair(query, d) for d in docs]
         out: List[float] = []
-        with torch.inference_mode():
-            for start in range(0, len(docs), self.batch_size):
-                batch_docs = docs[start : start + self.batch_size]
-                pair_texts = [self._format_pair(query, d) for d in batch_docs]
-                inputs = self._build_input_ids(pair_texts)
-                inputs = {k: v.to(self._device) for k, v in inputs.items()}
+        i = 0
+        batch_size = self.batch_size
 
-                logits = self._model(**inputs).logits  # (B, T, V)
-                last = logits[:, -1, :]  # (B, V)
-                yes_no = torch.stack(
-                    [last[:, self._yes_id], last[:, self._no_id]], dim=-1
-                )
-                probs = torch.softmax(yes_no.float(), dim=-1)
-                out.extend(probs[:, 0].tolist())  # P(yes)
+        with torch.inference_mode():
+            while i < len(pair_texts):
+                chunk = pair_texts[i : i + batch_size]
+                try:
+                    out.extend(self._score_chunk(chunk))
+                    i += len(chunk)
+                except torch.cuda.OutOfMemoryError:
+                    torch.cuda.empty_cache()
+                    if batch_size > 1:
+                        new_bs = max(1, batch_size // 2)
+                        logger.warning(
+                            "QwenRerankerWrapper OOM at batch=%d; halving "
+                            "to %d and retrying (%d docs remaining)",
+                            batch_size,
+                            new_bs,
+                            len(pair_texts) - i,
+                        )
+                        batch_size = new_bs
+                        continue
+                    logger.error(
+                        "QwenRerankerWrapper OOM at batch=1 on doc %d "
+                        "(content len=%d); assigning score 0.0 and "
+                        "continuing",
+                        i,
+                        len(docs[i]) if i < len(docs) else 0,
+                    )
+                    out.append(0.0)
+                    i += 1
         return out
+
+    def _score_chunk(self, pair_texts: List[str]) -> List[float]:
+        """Single forward pass + yes/no-token softmax for a batch."""
+        import torch
+
+        inputs = self._build_input_ids(pair_texts)
+        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+        logits = self._model(**inputs).logits  # (B, T, V)
+        last = logits[:, -1, :]  # (B, V)
+        yes_no = torch.stack([last[:, self._yes_id], last[:, self._no_id]], dim=-1)
+        probs = torch.softmax(yes_no.float(), dim=-1)
+        return probs[:, 0].tolist()
 
     def close(self) -> None:
         # Best-effort teardown; never raise from close() but keep cleanup
