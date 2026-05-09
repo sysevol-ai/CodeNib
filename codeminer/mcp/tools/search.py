@@ -103,3 +103,60 @@ def search_regex_impl(
         ) from exc
 
     return [_node_to_dict(n) for n in results[:top_k]]
+
+
+# ------------------------------------------------------------------
+# search_zoekt
+# ------------------------------------------------------------------
+
+
+def search_zoekt_impl(
+    ctx: Any,
+    query: str,
+    top_k: int = 20,
+    file_filter: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Run a Zoekt trigram search and return file-level matches.
+
+    Zoekt indexes the raw repository contents -- not the CodeGraph -- so
+    results are file-level (``type="file"``) rather than the symbol-level
+    ``NodeInfo`` returned by BM25 / regex.  Use this tool when you need
+    fast substring or regex lookup across the whole repo (e.g. "where is
+    this magic string defined", "find every occurrence of this token in
+    comments").
+
+    Args:
+        ctx: ServerContext with an active ``zoekt`` searcher.
+        query: Zoekt query string.  Plain substrings, regex (``r:foo``),
+            and atoms like ``case:yes`` / ``lang:python`` are all valid.
+        top_k: Maximum number of file matches to return.
+        file_filter: Optional glob/regex appended as ``file:<expr>``.
+
+    Returns:
+        List of dicts with keys: ``node_name`` (file path), ``type``
+        (``"file"``), ``file``, ``start_line``, ``end_line``, ``content``,
+        ``score``, ``node_id`` (language hint, when reported).
+    """
+    if ctx.zoekt is None:
+        raise RuntimeError(
+            "Zoekt index is not available. "
+            + ctx.errors.get(
+                "zoekt",
+                "No 'zoekt' entry in manifest, status != fresh, or "
+                "zoekt-webserver could not be started. "
+                "Install via 'go install github.com/sourcegraph/zoekt/cmd/...@latest'.",
+            )
+        )
+
+    from ...index.trigram import ZoektUnavailableError
+
+    try:
+        results: List[NodeInfo] = ctx.zoekt.search(
+            query=query,
+            top_k=top_k,
+            file_filter=file_filter or None,
+        )
+    except ZoektUnavailableError as exc:
+        raise RuntimeError(f"Zoekt search failed: {exc}") from exc
+
+    return [_node_to_dict(n) for n in results]

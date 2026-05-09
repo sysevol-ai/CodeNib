@@ -21,7 +21,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .context import ServerContext
 from .prompts import CODEMINER_GUIDE
-from .tools.search import search_bm25_impl, search_regex_impl
+from .tools.search import search_bm25_impl, search_regex_impl, search_zoekt_impl
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,9 @@ mcp = FastMCP(
     "codeminer",
     instructions=(
         "CodeMiner provides semantic code search over pre-built indexes. "
-        "Use search_bm25 for keyword lookups and search_regex for pattern matching."
+        "Use search_bm25 for keyword lookups, search_regex for symbol-level "
+        "pattern matching, and search_zoekt for fast trigram-based substring/"
+        "regex search across raw file contents."
     ),
 )
 
@@ -95,6 +97,35 @@ async def search_regex(
         file_glob or None,
         node_type or None,
         case_sensitive,
+    )
+    return results
+
+
+@mcp.tool(
+    name="search_zoekt",
+    description=(
+        "Search raw repository contents using a Zoekt trigram index. "
+        "Returns file-level matches with line ranges and snippet content. "
+        "Best for fast substring or regex lookups that span the whole "
+        "repo (magic strings, comments, identifiers across files). "
+        "Prefer search_bm25 / search_regex when you want symbol-level "
+        "(function/class/method) results bound to the CodeGraph."
+    ),
+)
+async def search_zoekt(
+    query: str,
+    top_k: int = 20,
+    file_filter: str = "",
+) -> list[dict[str, Any]]:
+    """Trigram-based search over raw repository contents."""
+    if _ctx is None:
+        raise RuntimeError("Server not initialized")
+    results = await asyncio.to_thread(
+        search_zoekt_impl,
+        _ctx,
+        query,
+        top_k,
+        file_filter or None,
     )
     return results
 

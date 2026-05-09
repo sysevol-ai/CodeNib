@@ -130,3 +130,83 @@ def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
     assert ctx.symbol_graph is mock_graph
     assert ctx.regex_index is not None
     assert len(ctx.regex_index.nodes) == 1
+
+
+# ------------------------------------------------------------------
+# Zoekt loading
+# ------------------------------------------------------------------
+
+
+def _add_zoekt_entry(manifest_path: Path, shard_dir: Path) -> None:
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["zoekt"] = IndexEntry(
+        index_type="zoekt",
+        path=str(shard_dir),
+        built_at="2026-01-01T00:00:00",
+        built_at_epoch=0.0,
+        status="fresh",
+    )
+    manifest.save(manifest_path)
+
+
+def test_zoekt_started_when_entry_fresh(manifest_dir: Path) -> None:
+    """When the manifest declares a fresh zoekt entry, the searcher is started."""
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    _add_zoekt_entry(manifest_dir / "repo_manifest.json", shard_dir)
+
+    fake_searcher = MagicMock()
+    fake_searcher.port = 9999
+
+    with patch("codeminer.mcp.context.ZoektSearcher", return_value=fake_searcher):
+        ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
+
+    fake_searcher.start.assert_called_once()
+    assert ctx.zoekt is fake_searcher
+    assert "zoekt" not in ctx.errors
+
+
+def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:
+    """If the zoekt binary is missing, ServerContext records the error and keeps zoekt=None."""
+    from codeminer.index.trigram import ZoektUnavailableError
+
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    _add_zoekt_entry(manifest_dir / "repo_manifest.json", shard_dir)
+
+    fake_searcher = MagicMock()
+    fake_searcher.start.side_effect = ZoektUnavailableError("binary not found")
+
+    with patch("codeminer.mcp.context.ZoektSearcher", return_value=fake_searcher):
+        ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
+
+    assert ctx.zoekt is None
+    assert "zoekt" in ctx.errors
+    assert "binary not found" in ctx.errors["zoekt"]
+
+
+def test_zoekt_skipped_when_entry_absent(manifest_dir: Path) -> None:
+    ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
+    assert ctx.zoekt is None
+    assert "zoekt" not in ctx.errors
+
+
+def test_zoekt_skipped_when_entry_failed(manifest_dir: Path) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    manifest = RepoManifest.load(manifest_dir / "repo_manifest.json")
+    manifest.indexes["zoekt"] = IndexEntry(
+        index_type="zoekt",
+        path=str(shard_dir),
+        built_at="2026-01-01T00:00:00",
+        built_at_epoch=0.0,
+        status="failed",
+    )
+    manifest.save(manifest_dir / "repo_manifest.json")
+
+    with patch("codeminer.mcp.context.ZoektSearcher") as mock_cls:
+        ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
+
+    mock_cls.assert_not_called()
+    assert ctx.zoekt is None
+    assert "zoekt" not in ctx.errors

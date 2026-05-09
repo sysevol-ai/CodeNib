@@ -27,19 +27,43 @@ Examples:
 - `TODO|FIXME`: find code annotations
 - `class\\s+\\w+Error`: find all custom exception classes
 
+### search_zoekt
+Best for **fast raw-text** lookups over the whole repository.  Backed by a
+trigram index, so substring and regex queries return in tens of
+milliseconds even on large codebases.  Results are *file*-level (with line
+ranges and matched snippets), not symbol-level -- use this when you need
+hits that span comments, configuration files, vendored data, or any text
+that BM25/regex (CodeGraph-only) cannot see.
+
+Default queries are case-sensitive substring matches.  Use Zoekt query
+atoms to refine: ``regex:<pattern>`` for regex, ``case:no`` for
+case-insensitive, ``lang:python`` to scope by language, ``sym:<name>``
+to match symbol definitions.
+
+Examples:
+- ``"InvalidTokenError"``: find every textual occurrence of an identifier
+- ``"regex:^class\\s+\\w+Repository"`` with ``file_filter="*.py"``: regex
+  scoped to Python files
+- ``"TODO case:no"``: case-insensitive substring across the repo
+
 ### Choosing between them
 | Scenario | Tool |
 |----------|------|
 | Know the exact symbol name | search_bm25 |
-| Looking for a pattern across many files | search_regex |
+| Looking for a pattern across many files (symbol-level) | search_regex |
 | Natural-language description of what the code does | search_bm25 |
 | Need structural filters (by file glob or node type) | search_regex |
+| Need raw-text occurrence anywhere in the repo, fast | search_zoekt |
+| Hit may live in comments / docs / configs (off-graph) | search_zoekt |
 
 ## Tips
 - `search_bm25` returns results ranked by BM25 relevance.  Start with
   `top_k=10` and increase if the target is not in the first page.
 - `search_regex` returns **all** matches up to `top_k`.  Use `file_glob`
   and `node_type` to narrow down large result sets.
-- Both tools return symbol-level results: `node_name`, `type`, `file`,
-  `start_line`, `end_line`, and `content`.
+- `search_zoekt` returns file-level matches.  Use ``file_filter`` to
+  restrict by path glob/regex.  Zoekt query atoms (``case:yes``,
+  ``lang:python``, ``r:<regex>``) can be inlined in the ``query``.
+- BM25 / regex tools return symbol-level fields (`type` is one of
+  ``function``, ``class``, ``method``).  Zoekt results carry ``type="file"``.
 """

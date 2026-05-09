@@ -11,6 +11,7 @@ from ..compiler.manifest import RepoManifest
 from ..graph.code_graph import CodeGraph
 from ..index.regex_idx import RegexNodeIndex
 from ..index.sparse_idx import BM25CodeIndexer
+from ..index.trigram import ZoektSearcher, ZoektUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class ServerContext:
     symbol_graph: Optional[CodeGraph] = None
     bm25: Optional[BM25CodeIndexer] = None
     regex_index: Optional[RegexNodeIndex] = None
+    zoekt: Optional[ZoektSearcher] = None
     # ROISubgraph and vector store will be added by graph / vector tool phases.
     errors: Dict[str, str] = field(default_factory=dict)
 
@@ -44,6 +46,7 @@ class ServerContext:
         ctx._load_symbol_graph()
         ctx._load_bm25()
         ctx._load_regex_index()
+        ctx._load_zoekt()
 
         cap_summary = {k: v for k, v in manifest.capabilities.items() if v}
         logger.info(
@@ -95,3 +98,30 @@ class ServerContext:
         except Exception as exc:
             self.errors["regex_index"] = str(exc)
             logger.warning("Failed to build RegexNodeIndex: %s", exc)
+
+    def _load_zoekt(self) -> None:
+        """Spawn a ``zoekt-webserver`` against the indexed shard directory.
+
+        The Zoekt binary is a soft dependency.  When the binary is missing
+        or the webserver fails to come up, the failure is recorded in
+        :attr:`errors` and ``self.zoekt`` stays ``None`` so the
+        ``search_zoekt`` MCP tool can return a clear error.
+        """
+        entry = self.manifest.indexes.get("zoekt")
+        if not entry or entry.status != "fresh":
+            return
+        try:
+            searcher = ZoektSearcher(index_dir=entry.path)
+            searcher.start()
+            self.zoekt = searcher
+            logger.info(
+                "Started zoekt-webserver  shards=%s  port=%d",
+                entry.path,
+                searcher.port,
+            )
+        except ZoektUnavailableError as exc:
+            self.errors["zoekt"] = str(exc)
+            logger.warning("Zoekt unavailable: %s", exc)
+        except Exception as exc:
+            self.errors["zoekt"] = str(exc)
+            logger.warning("Failed to start zoekt-webserver: %s", exc)

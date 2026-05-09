@@ -1,4 +1,4 @@
-"""Unit tests for codeminer.mcp.tools.search — BM25 and regex tool impls."""
+"""Unit tests for codeminer.mcp.tools.search — BM25, regex, zoekt tool impls."""
 
 from __future__ import annotations
 
@@ -6,7 +6,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.mcp.tools.search import search_bm25_impl, search_regex_impl
+from codeminer.index.trigram import ZoektUnavailableError
+from codeminer.mcp.tools.search import (
+    search_bm25_impl,
+    search_regex_impl,
+    search_zoekt_impl,
+)
 from codeminer.types import NodeInfo
 
 
@@ -15,11 +20,12 @@ from codeminer.types import NodeInfo
 # ------------------------------------------------------------------
 
 
-def _make_ctx(*, bm25=None, regex_index=None, errors=None):
+def _make_ctx(*, bm25=None, regex_index=None, zoekt=None, errors=None):
     """Create a minimal mock ServerContext."""
     ctx = MagicMock()
     ctx.bm25 = bm25
     ctx.regex_index = regex_index
+    ctx.zoekt = zoekt
     ctx.errors = errors or {}
     return ctx
 
@@ -167,3 +173,81 @@ class TestSearchRegex:
 
         with pytest.raises(RuntimeError, match="Invalid regex pattern"):
             search_regex_impl(ctx, pattern=r"[")
+
+
+# ------------------------------------------------------------------
+# search_zoekt
+# ------------------------------------------------------------------
+
+
+class TestSearchZoekt:
+    def _zoekt_results(self) -> list[NodeInfo]:
+        return [
+            NodeInfo(
+                node_name="src/auth.py",
+                type="file",
+                file="src/auth.py",
+                start_line=10,
+                end_line=12,
+                content="def login(user):\n    raise InvalidTokenError",
+                score=42.0,
+                node_id="Python",
+            ),
+        ]
+
+    def test_basic_search(self) -> None:
+        mock_zoekt = MagicMock()
+        mock_zoekt.search.return_value = self._zoekt_results()
+        ctx = _make_ctx(zoekt=mock_zoekt)
+
+        results = search_zoekt_impl(ctx, query="InvalidTokenError", top_k=10)
+
+        assert len(results) == 1
+        assert results[0]["type"] == "file"
+        assert results[0]["file"] == "src/auth.py"
+        assert results[0]["start_line"] == 10
+        mock_zoekt.search.assert_called_once_with(
+            query="InvalidTokenError",
+            top_k=10,
+            file_filter=None,
+        )
+
+    def test_forwards_file_filter(self) -> None:
+        mock_zoekt = MagicMock()
+        mock_zoekt.search.return_value = []
+        ctx = _make_ctx(zoekt=mock_zoekt)
+
+        search_zoekt_impl(ctx, query="TODO", top_k=5, file_filter="*.py")
+
+        _, kwargs = mock_zoekt.search.call_args
+        assert kwargs["file_filter"] == "*.py"
+        assert kwargs["top_k"] == 5
+
+    def test_empty_file_filter_normalized_to_none(self) -> None:
+        """Passing the empty string for file_filter should be treated as no filter."""
+        mock_zoekt = MagicMock()
+        mock_zoekt.search.return_value = []
+        ctx = _make_ctx(zoekt=mock_zoekt)
+
+        search_zoekt_impl(ctx, query="x", file_filter="")
+
+        _, kwargs = mock_zoekt.search.call_args
+        assert kwargs["file_filter"] is None
+
+    def test_raises_when_zoekt_missing(self) -> None:
+        ctx = _make_ctx(zoekt=None)
+        with pytest.raises(RuntimeError, match="Zoekt index is not available"):
+            search_zoekt_impl(ctx, query="anything")
+
+    def test_uses_error_message_from_ctx(self) -> None:
+        ctx = _make_ctx(zoekt=None, errors={"zoekt": "binary not found at /usr/bin/zoekt"})
+        with pytest.raises(RuntimeError, match="binary not found"):
+            search_zoekt_impl(ctx, query="anything")
+
+    def test_zoekt_unavailable_translated_to_runtime_error(self) -> None:
+        mock_zoekt = MagicMock()
+        mock_zoekt.search.side_effect = ZoektUnavailableError("connection refused")
+        ctx = _make_ctx(zoekt=mock_zoekt)
+
+        with pytest.raises(RuntimeError, match="Zoekt search failed.*connection refused"):
+            search_zoekt_impl(ctx, query="x")
