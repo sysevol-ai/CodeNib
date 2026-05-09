@@ -229,6 +229,7 @@ void SCIPPythonDecoder::process_symbol(const std::string &symbol, int line,
     builder.add_edge(builder.current_scope(), unified, EDGE_TYPE_CONTAIN);
   } else if (is_reference) {
     builder.add_symbol_reference(unified, module_path, symbol_type,
+                                  /*anchor_file=*/std::nullopt,
                                   /*anchor_line=*/line);
   }
 }

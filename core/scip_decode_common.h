@@ -63,8 +63,8 @@ public:
   add_symbol_reference(const std::string &symbol,
                        const std::optional<std::string> &module_path,
                        const std::string &symbol_type,
-                       std::optional<int> anchor_line = std::nullopt,
-                       std::optional<std::string> anchor_file = std::nullopt);
+                       std::optional<std::string> anchor_file = std::nullopt,
+                       std::optional<int> anchor_line = std::nullopt);
 
   // CONTAIN edges carry no anchor — see CodeGraph::add_containment_edge.
   void add_containment_edge(const std::string &target_symbol);

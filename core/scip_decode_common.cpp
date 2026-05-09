@@ -81,8 +81,8 @@ void SubgraphBuilder::add_symbol_node(const std::string &symbol, int line,
 
 void SubgraphBuilder::add_symbol_reference(
     const std::string &symbol, const std::optional<std::string> &module_path,
-    const std::string &symbol_type, std::optional<int> anchor_line,
-    std::optional<std::string> anchor_file) {
+    const std::string &symbol_type, std::optional<std::string> anchor_file,
+    std::optional<int> anchor_line) {
   // Serial CodeGraph.add_symbol_reference: only populates attrs on FIRST
   // add. Subsequent refs leave the node alone (defs still overwrite via
   // add_symbol_node).

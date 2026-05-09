@@ -200,6 +200,28 @@ def test_incoming_no_definitions_in_range():
     assert r.incoming == []
 
 
+def test_recursion_self_edge_not_in_both_outgoing_and_incoming():
+    """Invariant (iii): outgoing ∩ incoming = ∅ even for recursive calls.
+
+    A recursive function `f` defined at lines 5–20 with a self-reference at
+    line 12 produces a single REFERENCE edge whose source == target == f.
+    Without filtering, that edge appears in `outgoing` (anchor in range)
+    AND `incoming` (target def in range). The implementation drops self-
+    edges from `incoming` so the recursion shows up exactly once.
+    """
+    g = CodeGraph()
+    g.add_file_node("foo.py")
+    g.add_symbol_node("foo.py:f", 10, 5, 20, "function")
+    g.update_current_scope("foo.py:f", 5, 20)
+    g.add_symbol_reference("foo.py:f", anchor_line=12)
+    g.build_range_indexes()
+
+    r = g.query_range("foo.py", 5, 20)
+    assert len(r.outgoing) == 1
+    assert r.outgoing[0].anchor_line == 12
+    assert r.incoming == []
+
+
 # ---------------------------------------------------------------------------
 # Multi-edge handling (no `_add_edge` dedup)
 # ---------------------------------------------------------------------------

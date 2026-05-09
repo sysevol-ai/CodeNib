@@ -325,6 +325,7 @@ class SubgraphMgr(ABC):
 
         deleted_names = [g.graph.vs[vid]["name"] for vid in vids]
         g.graph.delete_vertices(sorted(vids))
+        g._invalidate_edge_index()
         self._rebuild_indexes()
         for n in deleted_names:
             g.symbol_ranges.pop(n, None)
@@ -396,6 +397,7 @@ class SubgraphMgr(ABC):
 
         deleted_names = [g.graph.vs[vid]["name"] for vid in vids]
         g.graph.delete_vertices(sorted(vids))
+        g._invalidate_edge_index()
         self._rebuild_indexes()
         for n in deleted_names:
             g.symbol_ranges.pop(n, None)
@@ -419,6 +421,7 @@ class SubgraphMgr(ABC):
         ]
         if to_delete:
             g.graph.delete_edges(to_delete)
+            g._invalidate_edge_index()
         return len(to_delete)
 
     def delete_edges_by_anchor(
@@ -456,6 +459,7 @@ class SubgraphMgr(ABC):
                 to_delete.append(eid)
         if to_delete:
             g.graph.delete_edges(to_delete)
+            g._invalidate_edge_index()
         return len(to_delete)
 
     def delete_outgoing_in_anchor_ranges(
@@ -497,6 +501,7 @@ class SubgraphMgr(ABC):
                     break
         if to_delete:
             g.graph.delete_edges(to_delete)
+            g._invalidate_edge_index()
         return len(to_delete)
 
     def shift_outgoing_anchor_lines(
@@ -539,6 +544,8 @@ class SubgraphMgr(ABC):
             if old_start <= line <= old_end:
                 edge["anchor_line"] = line + shift
                 moved += 1
+        if moved:
+            g._invalidate_edge_index()
         return moved
 
     def rename_vertex(self, old_name: str, new_name: str, new_attrs: dict = None):

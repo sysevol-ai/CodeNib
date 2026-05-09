@@ -73,8 +73,9 @@ class RangeQueryResult:
               site, never the target).
         (ii)  anchor_file/anchor_line are meaningful only on REFERENCE edges;
               CONTAIN edges leave both fields None.
-        (iii) outgoing ∩ incoming = ∅ for any single query (call site and
-              target are in distinct scopes by definition).
+        (iii) outgoing ∩ incoming = ∅ — query_range filters self-edges
+              (source == target) out of `incoming` so a recursive call
+              site appears once, in `outgoing`.
     """
 
     defined: List[NodeRef] = field(default_factory=list)
@@ -111,6 +112,13 @@ class CodeGraph:
         # Populated by build_range_indexes(). Pickled with the graph.
         # Consumers disambiguate via file context (this layer just lists candidates).
         self._unified_to_names: Dict[str, List[str]] = {}
+
+        # Edge dedup index: (src_id, tgt_id, type, anchor_file, anchor_line) -> eid.
+        # Populated lazily on first _add_edge / invalidated to None when callers
+        # delete edges or vertices (igraph compacts eids on delete, so cached
+        # eids would point at wrong edges). Lookup via _ensure_edge_index().
+        # Not pickled — rebuilt on demand after load.
+        self._edge_index: Optional[Dict[Tuple, int]] = None
 
     def add_file_node(self, file_path):
         """
@@ -351,21 +359,15 @@ class CodeGraph:
             else self.name_to_vertex[target_name]
         )
 
-        # Dedup by (src, tgt, type, anchor_file, anchor_line). Structural
-        # edges (no anchor) collapse on (src, tgt, type). Mirrors C++
-        # add_edge / batch_add_edges.
-        is_structural = anchor_file is None and anchor_line is None
-        for eid in self.graph.incident(source_id, mode="out"):
-            edge = self.graph.es[eid]
-            if edge.target != target_id or edge["type"] != edge_type:
-                continue
-            eattrs = edge.attributes()
-            if is_structural:
-                if eattrs.get("anchor_file") is None and eattrs.get("anchor_line") is None:
-                    return eid
-            elif (eattrs.get("anchor_file") == anchor_file
-                  and eattrs.get("anchor_line") == anchor_line):
-                return eid
+        # Dedup by (src, tgt, type, anchor_file, anchor_line) via O(1) hash
+        # lookup. Structural edges (no anchor) collapse on (src, tgt, type).
+        # Mirrors C++ add_edge / batch_add_edges.
+        if self._edge_index is None:
+            self._rebuild_edge_index()
+        key = (source_id, target_id, edge_type, anchor_file, anchor_line)
+        existing = self._edge_index.get(key)
+        if existing is not None:
+            return existing
 
         self.graph.add_edges([(source_id, target_id)])
         edge_id = self.graph.ecount() - 1
@@ -377,7 +379,31 @@ class CodeGraph:
         if anchor_line is not None:
             self.graph.es[edge_id]["anchor_line"] = anchor_line
 
+        self._edge_index[key] = edge_id
         return edge_id
+
+    def _rebuild_edge_index(self) -> None:
+        """Rebuild the edge dedup index by walking all current edges. O(E).
+        Called lazily after construct/load and after any operation that
+        invalidates eids (delete_edges / delete_vertices)."""
+        idx: Dict[Tuple, int] = {}
+        for e in self.graph.es:
+            attrs = e.attributes()
+            key = (
+                e.source, e.target, attrs.get("type"),
+                attrs.get("anchor_file"), attrs.get("anchor_line"),
+            )
+            # Earlier eid wins on duplicate keys; igraph batch paths can
+            # produce parallel edges with identical keys before this index
+            # existed, so first-write semantics keeps the index stable.
+            idx.setdefault(key, e.index)
+        self._edge_index = idx
+
+    def _invalidate_edge_index(self) -> None:
+        """Mark the edge index stale. Next _add_edge will rebuild it.
+        Call after any igraph delete_edges/delete_vertices — eids shift on
+        delete and cached values would point at wrong edges."""
+        self._edge_index = None
 
     # ------------------------------------------------------------------
     # Range indexes (LSP-aligned line-range queries)
@@ -470,7 +496,7 @@ class CodeGraph:
         # outgoing: bisect on sorted (anchor_line, eid) list, then filter by kind.
         arr = self._file_edge_anchors.get(file, [])
         lo = bisect.bisect_left(arr, (start_line, -1))
-        hi = bisect.bisect_right(arr, (end_line, float("inf")))
+        hi = bisect.bisect_right(arr, (end_line + 1, 0))
         outgoing: List[EdgeRef] = []
         for _, eid in arr[lo:hi]:
             edge = self.graph.es[eid]
@@ -479,10 +505,14 @@ class CodeGraph:
 
         # incoming: walk igraph adjacency directly; carry target_vid so the
         # consumer can map the inbound edge back to which defined node it hit.
+        # Self-edges (recursion) are emitted by `outgoing` already, so skip
+        # them here to keep outgoing ∩ incoming = ∅ (invariant iii).
         incoming: List[EdgeRef] = []
         for vid in defined_vids:
             for eid in self.graph.incident(vid, mode="in"):
                 edge = self.graph.es[eid]
+                if edge.source == edge.target:
+                    continue
                 if edge["type"] in kinds:
                     incoming.append(self._build_edge_ref(eid))
 

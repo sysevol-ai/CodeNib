@@ -239,8 +239,8 @@ void CodeGraph::add_symbol_node(const std::string &symbol, int line,
 
 void CodeGraph::add_symbol_reference(
     const std::string &symbol, const std::optional<std::string> &module_path,
-    const std::string &symbol_type, std::optional<int> anchor_line,
-    std::optional<std::string> anchor_file) {
+    const std::string &symbol_type, std::optional<std::string> anchor_file,
+    std::optional<int> anchor_line) {
   const bool already_exists =
       name_to_vertex_.find(symbol) != name_to_vertex_.end();
   VertexId id = ensure_vertex(symbol);

@@ -452,7 +452,7 @@ class SCIPTypeScriptGraphDecoder:
                         self.code_graph.current_scope,
                         file_path,
                         EDGE_TYPE_REFERENCE,
-                        anchor_file=file_path,
+                        anchor_file=self.code_graph.current_file,
                         anchor_line=line,
                     )
                 return
