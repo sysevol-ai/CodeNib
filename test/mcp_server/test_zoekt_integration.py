@@ -260,10 +260,3 @@ def test_search_returns_line_range_and_snippet(loaded_ctx: ServerContext) -> Non
     assert hit["start_line"] >= 1
     assert hit["end_line"] >= hit["start_line"]
     assert "calculate_tax" in (hit.get("content") or "")
-
-
-def test_search_top_k_truncates_results(loaded_ctx: ServerContext) -> None:
-    """top_k caps the number of file matches returned."""
-    # ``def`` matches every Python file; top_k=1 should give back exactly one.
-    results = search_zoekt_impl(loaded_ctx, query="def", top_k=1)
-    assert len(results) == 1

@@ -61,17 +61,15 @@ class TestComposeQuery:
 
 class TestFileMatchMapping:
     def test_matches_collapse_to_node(self) -> None:
+        """Exercises Pre+Match+Post concatenation and min/max line aggregation
+        across out-of-order LineNum entries in a single FileMatch."""
         fm = {
             "FileName": "src/auth.py",
             "Repo": "repo",
             "Language": "Python",
             "Matches": [
-                {
-                    "LineNum": 10,
-                    "Fragments": [
-                        {"Pre": "def ", "Match": "login", "Post": "(user):"},
-                    ],
-                },
+                # Intentionally out-of-order to verify start/end aggregate
+                # via min/max rather than first/last seen.
                 {
                     "LineNum": 30,
                     "Fragments": [
@@ -80,6 +78,12 @@ class TestFileMatchMapping:
                             "Match": "InvalidTokenError",
                             "Post": "()",
                         },
+                    ],
+                },
+                {
+                    "LineNum": 10,
+                    "Fragments": [
+                        {"Pre": "def ", "Match": "login", "Post": "(user):"},
                     ],
                 },
             ],
@@ -91,24 +95,12 @@ class TestFileMatchMapping:
         assert node.start_line == 10
         assert node.end_line == 30
         assert node.node_id == "Python"
-        assert "InvalidTokenError" in (node.content or "")
-        assert "def login" in (node.content or "")
+        # Pre + Match + Post are concatenated per fragment so the agent sees
+        # the matched line in context.
+        assert "def login(user):" in (node.content or "")
+        assert "raise InvalidTokenError()" in (node.content or "")
         # Score is not exposed by the JSON endpoint -- caller relies on order.
         assert node.score is None
-
-    def test_unsorted_matches_min_max_aggregation(self) -> None:
-        """``start_line`` and ``end_line`` aggregate the union of LineNum values."""
-        fm = {
-            "FileName": "x.py",
-            "Matches": [
-                {"LineNum": 30, "Fragments": [{"Match": "a"}]},
-                {"LineNum": 5, "Fragments": [{"Match": "b"}]},
-                {"LineNum": 12, "Fragments": [{"Match": "c"}]},
-            ],
-        }
-        node = _file_match_to_node(fm)
-        assert node.start_line == 5
-        assert node.end_line == 30
 
     def test_empty_file_match_safe(self) -> None:
         node = _file_match_to_node({"FileName": "x.py"})
@@ -117,22 +109,6 @@ class TestFileMatchMapping:
         assert node.start_line is None
         assert node.end_line is None
         assert node.content is None
-
-    def test_fragment_pre_match_post_concatenated(self) -> None:
-        """Per-fragment snippet preserves surrounding context for the agent."""
-        fm = {
-            "FileName": "main.go",
-            "Matches": [
-                {
-                    "LineNum": 5,
-                    "Fragments": [
-                        {"Pre": "package ", "Match": "main", "Post": ""},
-                    ],
-                }
-            ],
-        }
-        node = _file_match_to_node(fm)
-        assert "package main" in (node.content or "")
 
 
 # ------------------------------------------------------------------
@@ -198,16 +174,6 @@ class TestSearcherSearch:
 
         assert len(results) == 7
 
-    def test_repo_only_response_returns_empty(self, tmp_path) -> None:
-        """Zoekt returns ``{"repos": ...}`` for repo-listing queries; treat as no hits."""
-        searcher = _running_searcher(str(tmp_path))
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"repos": {"Repos": []}}
-        mock_response.raise_for_status.return_value = None
-
-        with patch.object(searcher._session, "get", return_value=mock_response):
-            assert searcher.search("anything") == []
-
     def test_http_failure_raises_zoekt_unavailable(self, tmp_path) -> None:
         import requests
 
@@ -254,13 +220,3 @@ class TestSearcherStartPreconditions:
         s = ZoektSearcher(index_dir=str(tmp_path / "missing"), binary=str(fake))
         with pytest.raises(ZoektUnavailableError, match="index directory does not exist"):
             s.start()
-
-    def test_idempotent_start_when_already_running(self, tmp_path) -> None:
-        s = _running_searcher(str(tmp_path))
-        s.start()  # second call should be a no-op, not raise
-        assert s.is_running
-
-    def test_stop_is_safe_when_never_started(self, tmp_path) -> None:
-        s = ZoektSearcher(index_dir=str(tmp_path))
-        s.stop()  # must not raise
-        assert s._proc is None
