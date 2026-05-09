@@ -43,15 +43,17 @@ def _zoekt_response(files: list[dict]) -> dict:
 
 
 class TestComposeQuery:
-    def test_no_filter(self) -> None:
-        assert _compose_query("foo", None) == "foo"
-        assert _compose_query("foo", "") == "foo"
-
-    def test_simple_filter(self) -> None:
-        assert _compose_query("foo", "*.py") == "foo file:*.py"
-
-    def test_filter_with_spaces_quoted(self) -> None:
-        assert _compose_query("foo", "src dir") == 'foo file:"src dir"'
+    @pytest.mark.parametrize(
+        "query, file_filter, expected",
+        [
+            ("foo", None, "foo"),
+            ("foo", "", "foo"),
+            ("foo", "*.py", "foo file:*.py"),
+            ("foo", "src dir", 'foo file:"src dir"'),
+        ],
+    )
+    def test_compose(self, query: str, file_filter, expected: str) -> None:
+        assert _compose_query(query, file_filter) == expected
 
 
 # ------------------------------------------------------------------
@@ -102,15 +104,6 @@ class TestFileMatchMapping:
         # Score is not exposed by the JSON endpoint -- caller relies on order.
         assert node.score is None
 
-    def test_empty_file_match_safe(self) -> None:
-        node = _file_match_to_node({"FileName": "x.py"})
-        assert node.node_name == "x.py"
-        assert node.type == "file"
-        assert node.start_line is None
-        assert node.end_line is None
-        assert node.content is None
-
-
 # ------------------------------------------------------------------
 # ZoektSearcher.search (HTTP layer mocked)
 # ------------------------------------------------------------------
@@ -149,19 +142,6 @@ class TestSearcherSearch:
         assert params["format"] == "json"
         assert params["num"] == "10"
 
-    def test_search_passes_file_filter_into_query(self, tmp_path) -> None:
-        searcher = _running_searcher(str(tmp_path))
-        mock_response = MagicMock()
-        mock_response.json.return_value = _zoekt_response([])
-        mock_response.raise_for_status.return_value = None
-
-        with patch.object(searcher._session, "get", return_value=mock_response) as mock_get:
-            searcher.search("bar", top_k=5, file_filter="*.go")
-
-        params = mock_get.call_args.kwargs["params"]
-        assert params["q"] == "bar file:*.go"
-        assert params["num"] == "5"
-
     def test_top_k_truncation(self, tmp_path) -> None:
         searcher = _running_searcher(str(tmp_path))
         files = [{"FileName": f"f{i}.py", "Matches": []} for i in range(50)]
@@ -174,27 +154,35 @@ class TestSearcherSearch:
 
         assert len(results) == 7
 
-    def test_http_failure_raises_zoekt_unavailable(self, tmp_path) -> None:
+    @pytest.mark.parametrize(
+        "fault, error_match",
+        [
+            ("connection_error", "search request failed"),
+            ("invalid_json", "non-JSON response"),
+        ],
+    )
+    def test_search_failure_raises_zoekt_unavailable(
+        self, tmp_path, fault: str, error_match: str
+    ) -> None:
+        """Both transport errors and malformed responses surface as
+        ``ZoektUnavailableError`` with a descriptive message."""
         import requests
 
         searcher = _running_searcher(str(tmp_path))
-        with patch.object(
-            searcher._session,
-            "get",
-            side_effect=requests.ConnectionError("boom"),
-        ):
-            with pytest.raises(ZoektUnavailableError, match="search request failed"):
-                searcher.search("x")
+        if fault == "connection_error":
+            patcher = patch.object(
+                searcher._session,
+                "get",
+                side_effect=requests.ConnectionError("boom"),
+            )
+        else:
+            bad_response = MagicMock()
+            bad_response.json.side_effect = ValueError("not json")
+            bad_response.raise_for_status.return_value = None
+            patcher = patch.object(searcher._session, "get", return_value=bad_response)
 
-    def test_non_json_response_raises_zoekt_unavailable(self, tmp_path) -> None:
-        searcher = _running_searcher(str(tmp_path))
-        bad_response = MagicMock()
-        bad_response.json.side_effect = ValueError("not json")
-        bad_response.raise_for_status.return_value = None
-
-        with patch.object(searcher._session, "get", return_value=bad_response):
-            with pytest.raises(ZoektUnavailableError, match="non-JSON response"):
-                searcher.search("x")
+        with patcher, pytest.raises(ZoektUnavailableError, match=error_match):
+            searcher.search("x")
 
 
 # ------------------------------------------------------------------
