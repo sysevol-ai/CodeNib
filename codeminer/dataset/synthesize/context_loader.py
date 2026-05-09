@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import random
 import re
 from pathlib import Path
@@ -309,18 +310,90 @@ class ContextLoader:
 
         return sorted(blocks, key=lambda blk: blk.char_count, reverse=True)
 
+    # Core-block selection heuristics
+    _MAX_CORE_LINES = 400
+    _MIN_CORE_LINES = 8
+
     @staticmethod
+    def _is_repetitive_block(content: str, line_count: int) -> bool:
+        """Detect blocks that are mostly repetitive mappings or enum tables.
+
+        If > 70% of non-empty lines share the same leading token the block is
+        likely a lookup table, match arm list, or enum variant listing.
+        """
+        lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
+        if len(lines) < 15:
+            return False
+        leading_tokens: Dict[str, int] = {}
+        for ln in lines:
+            token = re.split(r"[\s({\[,.:=>#|]", ln, maxsplit=1)[0]
+            if token:
+                leading_tokens[token] = leading_tokens.get(token, 0) + 1
+        if not leading_tokens:
+            return False
+        most_common_count = max(leading_tokens.values())
+        return most_common_count / len(lines) > 0.70
+
+    @classmethod
+    def _score_core_block(cls, blk: SampledCodeBlock, graph_degree: int) -> float:
+        """Score a candidate block for core-block selection.
+
+        Balances size, connectivity, and behavioral richness while filtering
+        out blocks that are too large, too small, or repetitive.
+        """
+        if blk.line_count > cls._MAX_CORE_LINES:
+            return -1.0
+        if blk.line_count < cls._MIN_CORE_LINES:
+            return -1.0
+        if cls._is_repetitive_block(blk.content, blk.line_count):
+            return -1.0
+
+        type_bonus = 1.0
+        if blk.node_type in (NODE_TYPE_FUNCTION, NODE_TYPE_METHOD):
+            type_bonus = 1.3
+        elif blk.node_type == NODE_TYPE_CLASS:
+            type_bonus = 0.8
+
+        size_score = math.log(blk.char_count + 1)
+        degree_score = min(graph_degree, 15) * 3.0
+
+        return (size_score + degree_score) * type_bonus
+
+    @classmethod
     def pick_core_block(
-        blocks: List[SampledCodeBlock], code_graph, *, query_index: int = 0
+        cls, blocks: List[SampledCodeBlock], code_graph, *, query_index: int = 0
     ) -> SampledCodeBlock:
-        """Select the core block by scoring char_count + 20 * degree."""
+        """Select the best core block for behavioral query synthesis.
+
+        Filters out non-behavioral blocks (config tables, huge enums, tiny
+        stubs) and scores the rest by a balance of size, graph connectivity,
+        and node type.  Falls back to size-based ranking when all blocks are
+        filtered out.
+        """
         graph = code_graph.get_graph()
-        scored = sorted(
-            blocks,
-            key=lambda blk: blk.char_count + 20 * graph.degree(blk.node_id),
-            reverse=True,
-        )
-        return scored[min(query_index, len(scored) - 1)]
+
+        scored = [
+            (blk, cls._score_core_block(blk, graph.degree(blk.node_id)))
+            for blk in blocks
+        ]
+        valid = [(blk, s) for blk, s in scored if s >= 0]
+
+        if not valid:
+            logger.warning(
+                "All %d candidate blocks filtered out; "
+                "falling back to size-based selection.",
+                len(blocks),
+            )
+            valid = sorted(
+                [(blk, float(blk.char_count)) for blk in blocks],
+                key=lambda t: t[1],
+                reverse=True,
+            )
+        else:
+            valid.sort(key=lambda t: t[1], reverse=True)
+
+        idx = min(query_index, len(valid) - 1)
+        return valid[idx][0]
 
     def collect_neighborhood_blocks(
         self,

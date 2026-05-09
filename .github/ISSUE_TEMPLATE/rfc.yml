@@ -1,6 +1,6 @@
 name: RFC / Design Proposal
 description: Propose a significant design change or architectural decision
-labels: ["rfc"]
+labels: ["type/feature", "status/triage"]
 body:
   - type: markdown
     attributes:
@@ -47,13 +47,13 @@ body:
       description: Break the work into phases or milestones if applicable.
 
   - type: dropdown
-    id: scope
+    id: effort
     attributes:
-      label: Scope
-      description: How large is this change?
+      label: Effort
+      description: How large is this change? (Triage will apply the matching `effort/` label.)
       options:
-        - "Small — single module, < 1 week"
-        - "Medium — multiple modules, 1-2 weeks"
-        - "Large — cross-cutting, > 2 weeks"
+        - effort/small
+        - effort/medium
+        - effort/large
     validations:
       required: true

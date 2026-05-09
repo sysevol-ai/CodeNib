@@ -7,7 +7,7 @@ from ..graph.roi_subgraph import ROISubgraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..log_utils import get_logger
-from ..scip_interface import SCIPIndexer
+from ..scip_interface import SCIPIndexerBase as SCIPIndexer
 from ..types import QueriedNode
 
 logger = get_logger(__name__)
@@ -121,7 +121,8 @@ class GraphRetrievePipeline:
             )
             logger.info(
                 "Stage 2: %d nodes after PPR expansion (damping=%.2f)",
-                len(expanded_nodes), self.ppr_damping,
+                len(expanded_nodes),
+                self.ppr_damping,
             )
         else:
             subgraph = roi.extract_subgraph(
@@ -133,7 +134,8 @@ class GraphRetrievePipeline:
             expanded_nodes = expanded_nodes[: self.stage2_topk]
             logger.info(
                 "Stage 2: %d nodes after %d-hop BFS expansion",
-                len(expanded_nodes), self.k_hop,
+                len(expanded_nodes),
+                self.k_hop,
             )
 
         # Stage 3 (optional): Embedding rerank within expanded set only

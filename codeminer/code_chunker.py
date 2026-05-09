@@ -38,6 +38,8 @@ class RepoChunkingConfig:
     ignore_patterns: Set[str] = None
     max_file_size_mb: float = 10.0  # Skip files larger than this
     filter_tests: bool = True  # Skip test files by default
+    skip_minified: bool = True  # Skip minified/bundled files
+    minified_line_threshold: int = 10000  # Max chars per line before a file is minified
 
     def __post_init__(self):
         """Initialize default values."""
@@ -95,6 +97,11 @@ class RepoChunkingConfig:
                 "*~",
                 "*.bak",
                 "*.tmp",
+                "*.min.js",
+                "*.min.css",
+                "*.min.mjs",
+                "*.bundle.js",
+                "*.bundle.mjs",
             }
 
 
@@ -415,6 +422,11 @@ class CodeChunker:
         except OSError:
             return False
 
+        # Check for minified/bundled files
+        if self.repo_config.skip_minified:
+            if self._is_minified_file(file_path):
+                return False
+
         # Check ignore patterns (basic pattern matching)
         file_name = file_path.name
         for pattern in self.repo_config.ignore_patterns:
@@ -431,6 +443,34 @@ class CodeChunker:
                 return False
 
         return True
+
+    def _is_minified_file(self, file_path: Path) -> bool:
+        """Detect minified/bundled files by checking for extremely long lines.
+
+        Minified JS/CSS bundles pack thousands of statements onto a single
+        line, producing chunks that each contain the entire file content.
+        These have no semantic search value and cause massive slowdowns
+        during embedding (e.g. babel's Makefile.js: 131KB in 3 lines →
+        ~480 duplicate chunks each hitting the 8192-token cap).
+        """
+        threshold = self.repo_config.minified_line_threshold
+        try:
+            with open(file_path, "r", errors="replace") as f:
+                for line in f:
+                    if len(line) > threshold:
+                        logger.debug(
+                            "Skipping minified file (line > %d chars): %s",
+                            threshold,
+                            file_path,
+                        )
+                        return True
+        except OSError as exc:
+            logger.debug(
+                "Unable to inspect file for minification, treating as not minified: %s (%s)",
+                file_path,
+                exc,
+            )
+        return False
 
     def _chunk_file_with_language(
         self, file_path: Path, language: str, repo_path: Optional[Path] = None

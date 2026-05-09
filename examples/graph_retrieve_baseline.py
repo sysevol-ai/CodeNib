@@ -31,8 +31,8 @@ import json
 import time
 from pathlib import Path
 
-from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.dataset.locbench import LocbenchDataset
+from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
@@ -53,7 +53,9 @@ def parse_args():
     )
     # Dataset
     parser.add_argument(
-        "--dataset", type=str, required=True,
+        "--dataset",
+        type=str,
+        required=True,
         choices=["swebench_lite", "locbench_v1"],
     )
     parser.add_argument("--split", type=str, default="test")
@@ -61,57 +63,82 @@ def parse_args():
 
     # Stage 1: BM25 seed selection
     parser.add_argument(
-        "--stage1-topk", type=int, default=5,
+        "--stage1-topk",
+        type=int,
+        default=5,
         help="Number of seed nodes from BM25.",
     )
     # Stage 2: Graph expansion
     parser.add_argument(
-        "--stage2-topk", type=int, default=50,
+        "--stage2-topk",
+        type=int,
+        default=50,
         help="Max nodes after graph expansion.",
     )
     parser.add_argument(
-        "--k-hop", type=int, default=2,
+        "--k-hop",
+        type=int,
+        default=2,
         help="Number of hops for graph BFS expansion (ignored with --ppr).",
     )
     # Stage 2 alternative: PPR expansion
     parser.add_argument(
-        "--ppr", action="store_true",
+        "--ppr",
+        action="store_true",
         help="Use Personalized PageRank instead of BFS for graph expansion.",
     )
     parser.add_argument(
-        "--ppr-damping", type=float, default=0.85,
+        "--ppr-damping",
+        type=float,
+        default=0.85,
         help="PPR damping factor (0-1). Higher = more global spread.",
     )
     # Stage 3: Optional embedding rerank
     parser.add_argument(
-        "--embedding", action="store_true",
+        "--embedding",
+        action="store_true",
         help="Use embedding rerank within expanded set.",
     )
     parser.add_argument(
-        "--embedding-model", type=str, default="nomic-ai/CodeRankEmbed",
+        "--embedding-model",
+        type=str,
+        default="nomic-ai/CodeRankEmbed",
     )
     parser.add_argument(
-        "--embedding-provider", type=str, default="huggingface",
+        "--embedding-provider",
+        type=str,
+        default="huggingface",
     )
     parser.add_argument(
-        "--embedding-dimension", type=int, default=768,
+        "--embedding-dimension",
+        type=int,
+        default=768,
     )
 
     # Evaluation
     parser.add_argument(
-        "--eval-instances", type=str, default=None,
+        "--eval-instances",
+        type=str,
+        default=None,
         help="Path to eval annotations JSON. Auto-generated if not provided.",
     )
     parser.add_argument(
-        "--metrics-k", type=int, nargs="+", default=[1, 3, 5, 10, 15, 20],
+        "--metrics-k",
+        type=int,
+        nargs="+",
+        default=[1, 3, 5, 10, 15, 20],
     )
 
     # Cache
     parser.add_argument(
-        "--index-cache-dir", type=str, default="/mnt/data/codeminer",
+        "--index-cache-dir",
+        type=str,
+        default="/mnt/data/codeminer",
     )
     parser.add_argument(
-        "--repo-cache-dir", type=str, default="~/.codeminer/",
+        "--repo-cache-dir",
+        type=str,
+        default="~/.codeminer/",
     )
     parser.add_argument("--result-path", type=str, default=None)
 
@@ -203,34 +230,44 @@ def run_graph_pipeline(args):
             eval_count += 1
 
             logger.info(
-                "[%s] Done in %.1fs (%d results)", instance_id, elapsed, len(results),
+                "[%s] Done in %.1fs (%d results)",
+                instance_id,
+                elapsed,
+                len(results),
             )
             for scope, per_k in metrics.items():
                 for k, stats in per_k.items():
                     logger.info(
                         "  [%s] k=%d acc=%.3f prec=%.3f recall=%.3f hits=%d",
-                        scope, k,
-                        stats["accuracy"], stats["precision"],
-                        stats["recall"], int(stats["hits"]),
+                        scope,
+                        k,
+                        stats["accuracy"],
+                        stats["precision"],
+                        stats["recall"],
+                        int(stats["hits"]),
                     )
 
             if all_results is not None:
                 unique_files, normalized_symbols = extract_predictions(results)
-                all_results.append({
-                    "instance_id": instance_id,
-                    "method": "graph_ppr_baseline" if args.ppr else "graph_baseline",
-                    "stage1_topk": args.stage1_topk,
-                    "stage2_topk": args.stage2_topk,
-                    "k_hop": args.k_hop,
-                    "use_ppr": args.ppr,
-                    "ppr_damping": args.ppr_damping,
-                    "embedding_rerank": args.embedding,
-                    "num_results": len(results),
-                    "elapsed_s": elapsed,
-                    "metric_k_files": unique_files[:metric_max_k],
-                    "metric_k_node_ids": normalized_symbols[:metric_max_k],
-                    "metrics": metrics,
-                })
+                all_results.append(
+                    {
+                        "instance_id": instance_id,
+                        "method": (
+                            "graph_ppr_baseline" if args.ppr else "graph_baseline"
+                        ),
+                        "stage1_topk": args.stage1_topk,
+                        "stage2_topk": args.stage2_topk,
+                        "k_hop": args.k_hop,
+                        "use_ppr": args.ppr,
+                        "ppr_damping": args.ppr_damping,
+                        "embedding_rerank": args.embedding,
+                        "num_results": len(results),
+                        "elapsed_s": elapsed,
+                        "metric_k_files": unique_files[:metric_max_k],
+                        "metric_k_node_ids": normalized_symbols[:metric_max_k],
+                        "metrics": metrics,
+                    }
+                )
 
         except Exception:
             logger.exception("Error processing %s", instance_id)
@@ -243,15 +280,19 @@ def run_graph_pipeline(args):
     if aggregate and eval_count:
         averaged = average_metrics(aggregate, eval_count)
         logger.info(
-            "=== Graph Baseline Aggregate (%d instances) ===", eval_count,
+            "=== Graph Baseline Aggregate (%d instances) ===",
+            eval_count,
         )
         for scope, per_k in averaged.items():
             for k, stats in per_k.items():
                 logger.info(
                     "[%s] k=%d acc=%.3f prec=%.3f recall=%.3f avg_hits=%.3f",
-                    scope, k,
-                    stats["accuracy"], stats["precision"],
-                    stats["recall"], stats["avg_hits"],
+                    scope,
+                    k,
+                    stats["accuracy"],
+                    stats["precision"],
+                    stats["recall"],
+                    stats["avg_hits"],
                 )
 
     if args.result_path and all_results is not None:
@@ -272,7 +313,8 @@ def main():
     )
     logger.info(
         "Pipeline: BM25(top%d) -> %s %s",
-        args.stage1_topk, stage2_desc,
+        args.stage1_topk,
+        stage2_desc,
         "-> Embedding rerank" if args.embedding else "",
     )
     run_graph_pipeline(args)

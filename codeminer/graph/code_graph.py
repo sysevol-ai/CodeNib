@@ -16,6 +16,11 @@ from ..types import (
     is_symbol_node,
 )
 
+# Bump when the persisted graph schema changes (vertex/edge attributes,
+# top-level pickle keys). load_graph() refuses mismatching pickles so stale
+# caches surface as a loud error instead of silent attribute drift.
+_SCHEMA_VERSION = 2
+
 
 class CodeGraph:
     """
@@ -62,7 +67,8 @@ class CodeGraph:
             line: Line number of the symbol
             scope_start_line: Start line of the symbol's scope (optional)
             scope_end_line: End line of the symbol's scope (optional)
-            symbol_type: Type of symbol (NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FUNCTION) (optional)
+            symbol_type: Type of symbol
+                (NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FUNCTION) (optional)
         """
         # Use specific symbol type if provided, otherwise default to generic symbol
         node_type = symbol_type if symbol_type else NODE_TYPE_SYMBOL
@@ -100,7 +106,8 @@ class CodeGraph:
         Args:
             symbol: Symbol being referenced
             module_path: Path of the module containing the symbol (optional)
-            symbol_type: Type of symbol (NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FUNCTION) (optional)
+            symbol_type: Type of symbol
+                (NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FUNCTION) (optional)
         """
         # If the symbol doesn't exist, create it without range info
         if symbol not in self.name_to_vertex:
@@ -263,6 +270,7 @@ class CodeGraph:
         """
         # Prepare data for pickling
         data = {
+            "schema_version": _SCHEMA_VERSION,
             "project_root": str(self.project_root) if self.project_root else None,
             "graph": self.graph,  # igraph objects are picklable
             "symbol_ranges": self.symbol_ranges,
@@ -285,6 +293,14 @@ class CodeGraph:
         """
         with open(input_path, "rb") as f:
             data = pickle.load(f)
+
+        on_disk = data.get("schema_version")
+        if on_disk != _SCHEMA_VERSION:
+            raise ValueError(
+                f"graph.pkl at {input_path} has schema_version={on_disk!r}, "
+                f"expected {_SCHEMA_VERSION}. Delete the cached pickle and "
+                "regenerate via the indexing pipeline (e.g. integration-serial)."
+            )
 
         # Create new CodeGraph instance
         graph_instance = cls(project_root=data.get("project_root"))

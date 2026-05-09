@@ -85,7 +85,19 @@ class LiteLLMChat:
         return self._call_raw(msg_dicts, **overrides)
 
     def _call_raw(self, messages: List[Dict[str, Any]], **overrides: Any) -> Any:
-        """Like ``_call`` but accepts raw message dicts (for tool-calling flows)."""
+        """Like ``_call`` but accepts raw message dicts (for tool-calling flows).
+
+        Accepts two optional control kwargs (not forwarded to litellm):
+
+        - ``usage_tracker``: a :class:`codeminer.llm.usage.UsageTracker`. If
+          provided, the response's token usage and cost are recorded.
+        - ``usage_turn``: turn index attached to the recorded usage entry.
+        """
+        import time as _time
+
+        usage_tracker = overrides.pop("usage_tracker", None)
+        usage_turn = overrides.pop("usage_turn", None)
+
         kwargs: Dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -102,7 +114,19 @@ class LiteLLMChat:
         # Drop None values so litellm uses its defaults
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
-        return litellm.completion(**kwargs)
+        start = _time.monotonic()
+        response = litellm.completion(**kwargs)
+        duration_ms = (_time.monotonic() - start) * 1000
+
+        if usage_tracker is not None:
+            usage_tracker.record_response(
+                response,
+                model=self.model,
+                duration_ms=duration_ms,
+                turn=usage_turn,
+            )
+
+        return response
 
 
 # ---------------------------------------------------------------------------

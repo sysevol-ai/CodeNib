@@ -12,6 +12,7 @@ import time
 from typing import Any, Dict, List, Optional, Set
 
 from ..llm.litellm_chat import LiteLLMChat
+from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
 from .skills.registry import SkillRegistry
@@ -60,6 +61,7 @@ class AgentRunner:
         max_tokens: int = 512,
         system_prompt: Optional[str] = None,
         max_turns: int = 10,
+        allow_skills: Optional[Set[str]] = None,
         exclude_skills: Optional[Set[str]] = None,
         manifest: Optional[Any] = None,
         session_ctx: Optional[Any] = None,
@@ -79,6 +81,7 @@ class AgentRunner:
         self.session_ctx = session_ctx
 
         # Resource guard: filter unavailable skills and collect warnings
+        allow = set(allow_skills) if allow_skills is not None else None
         exclude = set(exclude_skills) if exclude_skills else set()
         resource_warnings: List[str] = []
 
@@ -90,7 +93,7 @@ class AgentRunner:
             exclude |= report.unavailable
             resource_warnings = report.warnings
 
-        self.tools = registry_to_tools(self.registry, exclude=exclude)
+        self.tools = registry_to_tools(self.registry, allow=allow, exclude=exclude)
 
         # Build system prompt with optional resource warnings
         base_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
@@ -112,12 +115,16 @@ class AgentRunner:
             {"role": "user", "content": query},
         ]
         all_tool_calls: List[ToolCallRecord] = []
+        usage_tracker = UsageTracker()
         start = time.monotonic()
 
         for turn in range(max_turns):
             logger.debug("agent turn %d/%d", turn + 1, max_turns)
 
-            call_kwargs: Dict[str, Any] = {}
+            call_kwargs: Dict[str, Any] = {
+                "usage_tracker": usage_tracker,
+                "usage_turn": turn + 1,
+            }
             if self.tools:
                 call_kwargs["tools"] = self.tools
 
@@ -140,6 +147,8 @@ class AgentRunner:
                     messages=messages,
                     total_turns=turn + 1,
                     total_duration_ms=elapsed,
+                    usage=usage_tracker.totals(),
+                    usage_records=list(usage_tracker.records),
                 )
 
             # Execute each tool call
@@ -172,6 +181,8 @@ class AgentRunner:
             messages=messages,
             total_turns=max_turns,
             total_duration_ms=elapsed,
+            usage=usage_tracker.totals(),
+            usage_records=list(usage_tracker.records),
         )
 
     # ------------------------------------------------------------------

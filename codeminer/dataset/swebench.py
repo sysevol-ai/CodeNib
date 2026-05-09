@@ -131,8 +131,12 @@ class SwebenchDataset(DatasetBase):
                 "hints_text": Value("string"),
                 "created_at": Value("string"),
                 "version": Value("string"),
-                "FAIL_TO_PASS": Sequence(Value("string")) if is_multilingual else Value("string"),
-                "PASS_TO_PASS": Sequence(Value("string")) if is_multilingual else Value("string"),
+                "FAIL_TO_PASS": (
+                    Sequence(Value("string")) if is_multilingual else Value("string")
+                ),
+                "PASS_TO_PASS": (
+                    Sequence(Value("string")) if is_multilingual else Value("string")
+                ),
                 "environment_setup_commit": Value("string"),
             }
 

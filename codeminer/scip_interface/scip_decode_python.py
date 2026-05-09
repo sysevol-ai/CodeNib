@@ -22,6 +22,7 @@ from ..types import (
     NODE_TYPE_METHOD,
     ROOT_NODE,
 )
+from .scip_indexer_base import extract_scip_blocks, extract_symbol
 
 
 class SCIPPythonGraphDecoder:
@@ -134,7 +135,9 @@ class SCIPPythonGraphDecoder:
         )
 
         # Process occurrences
-        occurrences = re.findall(r"occurrences\s*{(.*?)}", document_text, re.DOTALL)
+        # Brace-balanced: see extract_scip_blocks docstring (regex truncates
+        # on symbols containing literal "{" / "}").
+        occurrences = extract_scip_blocks(document_text, "occurrences")
         for occurrence in occurrences:
             self._process_occurrence(occurrence)
 
@@ -156,12 +159,10 @@ class SCIPPythonGraphDecoder:
 
         line = int(ranges[0])
 
-        # Extract symbol
-        symbol_match = re.search(r'symbol:\s*"([^"]+)"', occurrence_text)
-        if not symbol_match:
+        # Extract symbol (unescape-aware; see extract_symbol docstring).
+        symbol = extract_symbol(occurrence_text)
+        if not symbol:
             return
-
-        symbol = symbol_match.group(1)
 
         # Skip local symbols (scip represents them as 'local <id>')
         if symbol.startswith("local "):
@@ -240,7 +241,8 @@ class SCIPPythonGraphDecoder:
             original_symbol: Original symbol name (for additional context)
 
         Returns:
-            Symbol type: NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FIELD, or NODE_TYPE_FUNCTION
+            Symbol type: NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FIELD,
+            or NODE_TYPE_FUNCTION
         """
         if ":" in unified_symbol:
             symbol_part = unified_symbol.split(":", 1)[1]
@@ -284,12 +286,14 @@ class SCIPPythonGraphDecoder:
 
         # Exit scopes that have ended based on current line
         try:
+            stack = self.code_graph.scope_stack
             self.logger.scip_debug(
-                f"Scope stack before exit: {[list(s.keys())[0] for s in self.code_graph.scope_stack]}"
+                f"Scope stack before exit: {[list(s.keys())[0] for s in stack]}"
             )
             self.code_graph.exit_scopes_by_line(line)
+            stack = self.code_graph.scope_stack
             self.logger.scip_debug(
-                f"Scope stack after exit: {[list(s.keys())[0] for s in self.code_graph.scope_stack]}"
+                f"Scope stack after exit: {[list(s.keys())[0] for s in stack]}"
             )
         except Exception as e:
             self.logger.error(f"Error exiting scopes at line {line}: {e}")
@@ -350,9 +354,7 @@ class SCIPPythonGraphDecoder:
                         unified_symbol, scope_start_line, scope_end_line
                     )
                 except Exception as e:
-                    self.logger.error(
-                        f"Error updating scope for {unified_symbol}: {e}"
-                    )
+                    self.logger.error(f"Error updating scope for {unified_symbol}: {e}")
                     raise
 
         # Handle definition with no enclosing range

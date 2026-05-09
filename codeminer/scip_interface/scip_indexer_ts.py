@@ -3,7 +3,6 @@
 SCIP indexer for TypeScript and JavaScript projects using scip-typescript.
 """
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -30,15 +29,18 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         output_dir: Optional[Union[str, Path]] = None,
         exclude_patterns: Optional[List] = None,
         profiler: Optional[Profiler] = None,
+        decoder_backend: Optional[str] = None,
     ):
         """
         Initialize the TypeScript SCIP indexer.
 
         Args:
             project_root: Root directory of the TypeScript/JavaScript project
-            output_dir: Directory to store output files (defaults to ~/.codeminer/{project_name})
+            output_dir: Directory to store output files
+                (defaults to ~/.codeminer/{project_name})
             exclude_patterns: List of patterns to exclude from indexing
             profiler: Profiler instance for performance tracking
+            decoder_backend: ``"serial"`` (default) or ``"core"``.
         """
         super().__init__(
             project_root=project_root,
@@ -46,6 +48,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             exclude_patterns=exclude_patterns,
             profiler=profiler,
             language="typescript",
+            decoder_backend=decoder_backend,
         )
 
     def _check_indexer_available(self) -> bool:
@@ -86,7 +89,8 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
 
         Args:
             project_name: Project name (not used by scip-typescript, kept for compatibility)
-            infer_tsconfig: Infer tsconfig for JavaScript projects without tsconfig.json and jsconfig.json
+            infer_tsconfig: Infer tsconfig for JavaScript projects
+                without tsconfig.json and jsconfig.json
             yarn_workspaces: Enable Yarn workspaces support
             pnpm_workspaces: Enable pnpm workspaces support
             npm_workspaces: Enable npm workspaces support
@@ -161,10 +165,9 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             except Exception as e:
                 logger.warning("Failed to install pnpm: %s", e)
 
-        has_bun_lock = (
-            (self.project_root / "bun.lockb").exists()
-            or (self.project_root / "bun.lock").exists()
-        )
+        has_bun_lock = (self.project_root / "bun.lockb").exists() or (
+            self.project_root / "bun.lock"
+        ).exists()
 
         # Determine install command and a fallback without --frozen-lockfile.
         # The fallback is used when the lock file is out of sync with
@@ -230,9 +233,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
 
         # Retry without --frozen-lockfile if the strict install failed.
         if fallback_cmd is not None:
-            logger.info(
-                "Retrying without frozen lockfile: %s", " ".join(fallback_cmd)
-            )
+            logger.info("Retrying without frozen lockfile: %s", " ".join(fallback_cmd))
             try:
                 subprocess.run(
                     fallback_cmd,
@@ -332,7 +333,8 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 needs_patch = True
                 logger.info(
                     "Broadened tsconfig include with %d JS patterns (e.g. %s)",
-                    len(extra), extra[0],
+                    len(extra),
+                    extra[0],
                 )
 
         if not needs_patch and not created_from_jsconfig:
@@ -491,14 +493,19 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             has_jsconfig = (self.project_root / "jsconfig.json").exists()
             if not has_tsconfig and not has_jsconfig:
                 kwargs["infer_tsconfig"] = True
-                logger.info("No tsconfig.json/jsconfig.json; enabling infer_tsconfig for %s", self.project_root)
+                logger.info(
+                    "No tsconfig.json/jsconfig.json; enabling infer_tsconfig for %s",
+                    self.project_root,
+                )
             else:
                 kwargs["infer_tsconfig"] = False
-                logger.info("Using existing tsconfig/jsconfig for %s", self.project_root)
+                logger.info(
+                    "Using existing tsconfig/jsconfig for %s", self.project_root
+                )
 
         kwargs = self._normalize_workspace_kwargs(kwargs)
 
-        # Determine whether index generation will actually run. 
+        # Determine whether index generation will actually run.
         # and dependency installation / tsconfig patching
         needs_generate = True
         if skip_level == "graph" and self.graph_file.exists():
@@ -514,7 +521,9 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             if patched_tsconfig is not None:
                 kwargs["patched_tsconfig"] = str(patched_tsconfig)
         else:
-            logger.info("Skipping dependency install and tsconfig patching (cached artifacts exist)")
+            logger.info(
+                "Skipping dependency install and tsconfig patching (cached artifacts exist)"
+            )
 
         logger.info("TypeScript run_pipeline kwargs: %s", kwargs)
         try:

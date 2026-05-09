@@ -1,6 +1,6 @@
 name: Bug Report
 description: Report a bug or unexpected behavior
-labels: ["bug"]
+labels: ["type/bug", "status/triage"]
 body:
   - type: markdown
     attributes:
@@ -33,22 +33,20 @@ body:
       render: shell
 
   - type: dropdown
-    id: component
+    id: scope
     attributes:
-      label: Component
-      description: Which part of CodeMiner is affected?
+      label: Scope
+      description: Which area of CodeMiner is affected? (Triage will apply the matching `scope/` label.)
       options:
-        - agent
-        - chunking
-        - graph
-        - index
-        - dataset
-        - scip
-        - llm
-        - ops
-        - compiler
-        - eval
-        - ci
+        - scope/agent
+        - scope/chunking
+        - scope/graph
+        - scope/indexing
+        - scope/retrieval
+        - scope/compiler
+        - scope/eval
+        - scope/llm
+        - scope/infra
         - other
     validations:
       required: true

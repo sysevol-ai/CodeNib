@@ -18,7 +18,7 @@ PROFILE_TAG="${PROFILE_TAG:-${SPLIT}_emb_build}"
 mkdir -p "${STORAGE_DIR}"
 
 # echo "Building primary embeddings (${PRIMARY_MODEL})..."
-# python scripts/build_embeddings.py \
+# python scripts/embeddings/build_embeddings.py \
 #   --dataset "${DATASET}" \
 #   --split "${SPLIT}" \
 #   --storage-dir "${STORAGE_DIR}" \
@@ -29,7 +29,7 @@ mkdir -p "${STORAGE_DIR}"
 #   "$@"
 
 echo "Building secondary embeddings (${SECONDARY_MODEL})..."
-python scripts/build_embeddings.py \
+python scripts/embeddings/build_embeddings.py \
   --dataset "${DATASET}" \
   --split "${SPLIT}" \
   --storage-dir "${STORAGE_DIR}" \

@@ -65,7 +65,8 @@ LOCAGENT_LITE_SUBSET_DOC = (
 )
 
 
-# Output Schema 
+# Output Schema
+
 
 @dataclass
 class CodeSymbol:
@@ -105,9 +106,11 @@ class SkillEvalReport:
     eval_mode: str = "agent"
     locagent_lite_subset: bool = False
     gt_symbols_mode: str = "simplified"
+    total_usage: Optional[Dict[str, Any]] = None
 
 
 # QueriedNode -> CodeSymbol conversion
+
 
 def queried_node_to_symbol(node: QueriedNode) -> CodeSymbol:
     """Convert a QueriedNode to CodeSymbol."""
@@ -123,6 +126,7 @@ def queried_node_to_symbol(node: QueriedNode) -> CodeSymbol:
 
 
 # Core evaluation logic
+
 
 def build_bm25_index(
     repo_path: str, languages: List[str], max_k: int = 128
@@ -177,12 +181,16 @@ def run_agent_with_bm25(
     top_k: int = 10,
     max_turns: int = 3,
     repo_path: str = ".",
+    allow_skills: Optional[List[str]] = None,
 ) -> tuple[List[QueriedNode], List[str], Optional[Dict[str, Any]]]:
     """
-    Run AgentRunner with BM25 search skill.
+    Run AgentRunner with the configured skill allowlist.
 
     Uses the full AgentRunner pipeline with LLM tool-calling to let the
-    model decide when and how to use the bm25_search skill.
+    model decide when and how to use the allowed skills. In Phase 1 only
+    the ``bm25_search`` skill has its context wired up here; skills that
+    require a different context (embedding_search, graph_expand, ...)
+    will be enabled by the Phase 2 context_builder.
 
     Returns:
         Tuple of (results, execution_log, usage_stats)
@@ -191,7 +199,8 @@ def run_agent_with_bm25(
     from codeminer.compiler.params import SessionContext
 
     execution_log = []
-    usage_stats = {}
+    usage_stats: Dict[str, Any] = {}
+    allow_set = set(allow_skills or ["bm25_search"])
 
     try:
         skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
@@ -216,17 +225,18 @@ def run_agent_with_bm25(
         )
 
         registry = SkillRegistry()
-        all_skills = set(registry.list_skills())
-        exclude_skills = all_skills - {"bm25_search"}
 
         runner = AgentRunner(
             llm=llm,
             registry=registry,
             max_turns=max_turns,
-            exclude_skills=exclude_skills,
+            allow_skills=allow_set,
             session_ctx=session_ctx,
         )
-        execution_log.append(f"Created AgentRunner (max_turns={max_turns})")
+        execution_log.append(
+            f"Created AgentRunner (max_turns={max_turns}, "
+            f"allow_skills={sorted(allow_set)})"
+        )
 
         # Run the agent
         result = runner.run(query)
@@ -248,6 +258,7 @@ def run_agent_with_bm25(
             "total_turns": result.total_turns,
             "total_duration_ms": result.total_duration_ms,
             "tool_call_count": len(result.tool_calls),
+            "token_usage": result.usage.to_dict() if result.usage else None,
         }
 
         return all_results, execution_log, usage_stats
@@ -286,7 +297,9 @@ def evaluate_instance(
         # Step 2: Build BM25 index
         execution_log.append("Building BM25 index...")
         bm25_index = build_bm25_index(repo_path, args.languages, max_k=128)
-        execution_log.append(f"BM25 index built with {len(bm25_index.documents)} documents")
+        execution_log.append(
+            f"BM25 index built with {len(bm25_index.documents)} documents"
+        )
 
         simplified_gt = args.gt_symbols != "full"
 
@@ -312,7 +325,7 @@ def evaluate_instance(
         else:
             if llm is None:
                 raise RuntimeError("eval_mode=agent requires an LLM")
-            execution_log.append("Running agent with BM25 search...")
+            execution_log.append(f"Running agent with skills={args.skills}...")
             results, search_log, usage = run_agent_with_bm25(
                 query=problem_statement,
                 bm25_index=bm25_index,
@@ -320,6 +333,7 @@ def evaluate_instance(
                 top_k=args.topk,
                 max_turns=args.max_turns,
                 repo_path=repo_path,
+                allow_skills=args.skills,
             )
             execution_log.extend(search_log)
 
@@ -345,7 +359,8 @@ def evaluate_instance(
         if gt_empty:
             logger.warning(
                 "%s: GT has no target_files/target_symbols (HF rows often lack these). "
-                "Retrieval metrics are not meaningful without --eval-instances (gt_locate JSON).",
+                "Retrieval metrics are not meaningful without --eval-instances "
+                "(gt_locate JSON).",
                 instance_id,
             )
 
@@ -399,6 +414,7 @@ def evaluate_instance(
 
 
 # Main evaluation loop
+
 
 def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
     """Run evaluation on the dataset."""
@@ -483,7 +499,9 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
     metric_count = 0
 
     for idx, instance in enumerate(instances):
-        logger.info(f"\n[{idx + 1}/{len(instances)}] Evaluating {instance['instance_id']}")
+        logger.info(
+            f"\n[{idx + 1}/{len(instances)}] Evaluating {instance['instance_id']}"
+        )
 
         result = evaluate_instance(
             instance, dataset, llm, args, eval_metadata=eval_lookup
@@ -496,17 +514,37 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
             metric_count += 1
 
     # Compute average metrics (only over instances that produced metrics)
-    avg_metrics = (
-        average_metrics(aggregate, metric_count) if metric_count else {}
-    )
+    avg_metrics = average_metrics(aggregate, metric_count) if metric_count else {}
 
     # Build report
-    skill_ids = (
-        ["bm25_search"] if args.eval_mode == "agent" else ["bm25_baseline"]
-    )
-    report_model = (
-        args.model if args.eval_mode == "agent" else "bm25_baseline"
-    )
+    skill_ids = list(args.skills) if args.eval_mode == "agent" else ["bm25_baseline"]
+    report_model = args.model if args.eval_mode == "agent" else "bm25_baseline"
+
+    # Aggregate token usage across all instances (agent mode only).
+    total_usage: Optional[Dict[str, Any]] = None
+    if args.eval_mode == "agent":
+        prompt_total = 0
+        completion_total = 0
+        total_total = 0
+        cost_total: Optional[float] = None
+        for r in results:
+            if not r.get("success"):
+                continue
+            usage = r.get("loc_result", {}).get("usage") or {}
+            tu = usage.get("token_usage") or {}
+            prompt_total += int(tu.get("prompt_tokens") or 0)
+            completion_total += int(tu.get("completion_tokens") or 0)
+            total_total += int(tu.get("total_tokens") or 0)
+            c = tu.get("cost_usd")
+            if c is not None:
+                cost_total = (cost_total or 0.0) + float(c)
+        total_usage = {
+            "prompt_tokens": prompt_total,
+            "completion_tokens": completion_total,
+            "total_tokens": total_total,
+            "cost_usd": cost_total,
+        }
+
     report = SkillEvalReport(
         dataset=args.dataset,
         model=report_model,
@@ -517,12 +555,14 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
         eval_mode=args.eval_mode,
         locagent_lite_subset=args.locagent_lite_subset,
         gt_symbols_mode=args.gt_symbols,
+        total_usage=total_usage,
     )
 
     return report
 
 
 # CLI
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -651,6 +691,16 @@ def parse_args() -> argparse.Namespace:
         default=50,
         help="Default top_k for BM25 skill in agent mode (passed to RetrieveContext)",
     )
+    parser.add_argument(
+        "--skills",
+        type=str,
+        nargs="+",
+        default=["bm25_search"],
+        help=(
+            "Skill IDs the agent is allowed to use (allowlist). Phase 1 only "
+            "wires BM25 context; skills that need other contexts require Phase 2."
+        ),
+    )
 
     # Evaluation args
     parser.add_argument(
@@ -698,6 +748,18 @@ def main() -> None:
     logger.info("Evaluation complete!")
     logger.info(f"{'=' * 60}")
     logger.info(f"Results saved to: {result_path}")
+
+    if report.total_usage:
+        tu = report.total_usage
+        cost_str = f"${tu['cost_usd']:.4f}" if tu.get("cost_usd") is not None else "n/a"
+        logger.info(
+            "\nTotal token usage: prompt=%d completion=%d total=%d cost=%s",
+            tu.get("prompt_tokens", 0),
+            tu.get("completion_tokens", 0),
+            tu.get("total_tokens", 0),
+            cost_str,
+        )
+
     logger.info(f"\nAggregate Metrics:")
 
     def _metric_k_key(scope: str, k: int) -> Any:

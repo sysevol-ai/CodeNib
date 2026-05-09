@@ -59,13 +59,16 @@ def skill_to_tool_schema(meta: SkillMetadata) -> Dict[str, Any]:
 def registry_to_tools(
     registry: Optional[SkillRegistry] = None,
     *,
+    allow: Optional[Set[str]] = None,
     exclude: Optional[Set[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Convert all skills in the registry to OpenAI tool schemas.
 
     Args:
         registry: Registry to read from; defaults to the singleton.
-        exclude: Skill IDs to skip (e.g. internal-only skills).
+        allow: If provided, only skills in this set are included (allowlist,
+            applied first). If ``None``, all registered skills are eligible.
+        exclude: Skill IDs to skip (denylist, applied after ``allow``).
 
     Returns:
         List of tool dicts ready for ``litellm.completion(tools=...)``.
@@ -75,6 +78,8 @@ def registry_to_tools(
     tools: List[Dict[str, Any]] = []
 
     for skill_id, meta in reg.list_skills().items():
+        if allow is not None and skill_id not in allow:
+            continue
         if skill_id in exclude:
             continue
         tools.append(skill_to_tool_schema(meta))

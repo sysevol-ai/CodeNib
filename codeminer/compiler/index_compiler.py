@@ -96,9 +96,11 @@ class IndexCompiler:
 
         types_to_build = index_types or self._config.index_types
 
+        head_commit = self._get_head_commit(repo_path)
         manifest = RepoManifest(
             repo_path=repo_path,
-            commit=self._get_head_commit(repo_path),
+            commit=head_commit,
+            last_indexed_commit=head_commit,
             languages=list(self._config.languages),
             file_count=self._count_files(repo_path),
         )

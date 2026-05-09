@@ -4,6 +4,7 @@ __pycache__
 my_project/
 *.json
 graph.png
+graph.pkl
 build/
 *.egg-info/
 *.scip

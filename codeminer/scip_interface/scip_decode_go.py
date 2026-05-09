@@ -26,6 +26,7 @@ from ..types import (
     NODE_TYPE_METHOD,
     ROOT_NODE,
 )
+from .scip_indexer_base import extract_scip_blocks, extract_symbol
 
 
 class SCIPGoGraphDecoder:
@@ -117,7 +118,9 @@ class SCIPGoGraphDecoder:
             self.internal_module = self._load_internal_module()
 
         # Process occurrences
-        occurrences = re.findall(r"occurrences\s*{(.*?)}", document_text, re.DOTALL)
+        # Brace-balanced: see extract_scip_blocks docstring (regex truncates
+        # on symbols containing literal "{" / "}").
+        occurrences = extract_scip_blocks(document_text, "occurrences")
         for occurrence in occurrences:
             self._process_occurrence(occurrence, file_path)
 
@@ -135,7 +138,7 @@ class SCIPGoGraphDecoder:
                 for line in f:
                     line = line.strip()
                     if line.startswith("module "):
-                        module_path = line[len("module "):].strip()
+                        module_path = line[len("module ") :].strip()
                         self.logger.info(f"Loaded Go module path: {module_path}")
                         return module_path
         except Exception as e:
@@ -152,12 +155,10 @@ class SCIPGoGraphDecoder:
 
         line = int(ranges[0])
 
-        # Extract symbol
-        symbol_match = re.search(r'symbol:\s*"([^"]+)"', occurrence_text)
-        if not symbol_match:
+        # Extract symbol (unescape-aware; see extract_symbol docstring).
+        symbol = extract_symbol(occurrence_text)
+        if not symbol:
             return
-
-        symbol = symbol_match.group(1)
 
         # Skip local symbols
         if symbol.startswith("local "):
@@ -192,9 +193,7 @@ class SCIPGoGraphDecoder:
         enclosing_ranges = re.findall(r"enclosing_range:\s*(\d+)", occurrence_text)
 
         # Process the symbol
-        self._process_symbol(
-            symbol, file_path, line, symbol_roles, enclosing_ranges
-        )
+        self._process_symbol(symbol, file_path, line, symbol_roles, enclosing_ranges)
 
     def _make_symbol_key(self, symbol):
         """
@@ -214,7 +213,8 @@ class SCIPGoGraphDecoder:
             scip-go gomod github.com/user/proj abc `github.com/user/proj`/Calculator#
             -> Calculator
 
-            scip-go gomod github.com/user/proj abc `github.com/user/proj/calc`/Calculator#History.
+            scip-go gomod github.com/user/proj abc
+              `github.com/user/proj/calc`/Calculator#History.
             -> calc/Calculator#History
 
         Returns:
@@ -236,7 +236,7 @@ class SCIPGoGraphDecoder:
 
         # Compute relative package path by stripping internal_module prefix
         if self.internal_module and full_pkg_path.startswith(self.internal_module):
-            rel_pkg = full_pkg_path[len(self.internal_module):].lstrip("/")
+            rel_pkg = full_pkg_path[len(self.internal_module) :].lstrip("/")
         else:
             rel_pkg = ""
 
@@ -347,9 +347,7 @@ class SCIPGoGraphDecoder:
                 self._get_unified_name(symbol_key, file_path, symbol_type)
             )
 
-    def _process_symbol(
-        self, symbol, file_path, line, symbol_roles, enclosing_ranges
-    ):
+    def _process_symbol(self, symbol, file_path, line, symbol_roles, enclosing_ranges):
         """Process a symbol occurrence and add it to the graph."""
         self.logger.scip_debug(
             f"Processing Go symbol: {symbol} at {file_path}:{line}, roles: {symbol_roles}"
@@ -385,7 +383,11 @@ class SCIPGoGraphDecoder:
                 self._set_unified_name(symbol_key, file_path, symbol_type)
                 self.code_graph.add_containment_edge(symbol_key)
 
-                if symbol_type in [NODE_TYPE_CLASS, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD]:
+                if symbol_type in [
+                    NODE_TYPE_CLASS,
+                    NODE_TYPE_FUNCTION,
+                    NODE_TYPE_METHOD,
+                ]:
                     self.code_graph.update_current_scope(
                         symbol_key, scope_start_line, scope_end_line
                     )

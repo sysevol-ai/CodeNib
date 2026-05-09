@@ -12,24 +12,49 @@ logger = get_logger(__name__)
 class EmbeddingRetrievePipeline:
     """Embedding-only retrieval pipeline.
 
-    Builds a hierarchical vector store from the repository and retrieves
-    top-K nodes using embedding similarity search.
+    Typical single-instance usage (loads or builds index immediately)::
+
+        pipeline = EmbeddingRetrievePipeline(
+            repo_path=repo_path,
+            index_path=index_path,
+            embedding_model="Qwen/Qwen3-Embedding-0.6B",
+            embedding_dimension=1024,
+        )
+        results = pipeline.query(problem_statement)
+        pipeline.close()
+
+    Multi-instance / hot-swap usage (load model once, swap index per instance)::
+
+        pipeline = EmbeddingRetrievePipeline(
+            embedding_model="Qwen/Qwen3-Embedding-0.6B",
+            embedding_dimension=1024,
+        )
+        for instance in dataset:
+            pipeline.load_index(index_path_for_instance)
+            results = pipeline.query(instance["problem_statement"])
+        pipeline.close()
 
     Args:
-        repo_path: Repository root to index.
-        index_path: Directory used for vector index caches.
+        repo_path: Repository root to index. Only required when
+            ``force_rebuild=True``; ignored when loading a pre-built index.
+        index_path: Directory used for vector index caches. When ``None``,
+            the pipeline is initialised with an empty index so that
+            :meth:`load_index` can be called later (hot-swap pattern).
         embedding_model: Embedding model name.
-        embedding_provider: Embedding provider (huggingface or openai).
+        embedding_provider: Embedding provider (``"huggingface"`` or
+            ``"openai"``).
         embedding_dimension: Embedding vector dimension.
-        languages: Languages to chunk for indexing (default: ["python"]).
+        languages: Languages to chunk for indexing (default: ``["python"]``).
         max_lines_per_chunk: Maximum lines per chunk.
         top_k: Default number of results to retrieve.
+        embedding_kwargs: Extra kwargs forwarded to the embedding wrapper.
+        force_rebuild: Re-chunk and re-embed even if a cached index exists.
     """
 
     def __init__(
         self,
-        repo_path: str,
-        index_path: str,
+        repo_path: Optional[str] = None,
+        index_path: Optional[str] = None,
         *,
         embedding_model: str = "nomic-ai/CodeRankEmbed",
         embedding_provider: str = "huggingface",
@@ -37,23 +62,49 @@ class EmbeddingRetrievePipeline:
         languages: Optional[List[str]] = None,
         max_lines_per_chunk: int = 300,
         top_k: int = 50,
+        embedding_kwargs: Optional[dict] = None,
+        force_rebuild: bool = False,
     ) -> None:
         self.top_k = top_k
-        self.vector_store: CodeVectorStore = build_hierarchical_vector_store(
-            repo_path=repo_path,
-            index_path=index_path,
-            plan_name=None,
-            languages=languages or ["python"],
-            max_lines_per_chunk=max_lines_per_chunk,
-            build_levels=["l2"],
-            embedding_model=embedding_model,
-            embedding_provider=embedding_provider,
-            embedding_dimension=embedding_dimension,
-            embedding_kwargs={
-                "model_kwargs": {"trust_remote_code": True},
-            },
-            index_metric="ip",
-        )
+        _embedding_kwargs = {"model_kwargs": {"trust_remote_code": True}}
+        if embedding_kwargs:
+            _embedding_kwargs.update(embedding_kwargs)
+
+        if index_path is None:
+            # Model-only initialisation — no index loaded yet.
+            # Callers should follow up with load_index().
+            self.vector_store = CodeVectorStore(
+                embedding_model=embedding_model,
+                embedding_provider=embedding_provider,
+                dimension=embedding_dimension,
+                index_metric="ip",
+                store_path=None,
+                **_embedding_kwargs,
+            )
+        else:
+            self.vector_store: CodeVectorStore = build_hierarchical_vector_store(
+                repo_path=repo_path or "",
+                index_path=index_path,
+                plan_name=None,
+                languages=languages or ["python"],
+                max_lines_per_chunk=max_lines_per_chunk,
+                build_levels=["l2"],
+                embedding_model=embedding_model,
+                embedding_provider=embedding_provider,
+                embedding_dimension=embedding_dimension,
+                embedding_kwargs=_embedding_kwargs,
+                index_metric="ip",
+                force_rebuild=force_rebuild,
+            )
+
+    def load_index(self, index_path: str) -> None:
+        """Hot-swap the FAISS index without reloading the embedding model.
+
+        Frees the current index and loads the pre-built index at *index_path*.
+        The embedding model stays in memory, so this is much faster than
+        creating a new :class:`EmbeddingRetrievePipeline` for each instance.
+        """
+        self.vector_store.swap_index(index_path)
 
     def query(self, query: str, top_k: Optional[int] = None) -> List[QueriedNode]:
         """Retrieve top-K nodes using embedding similarity search.
@@ -82,7 +133,7 @@ class EmbeddingRetrievePipeline:
         ]
 
     def close(self) -> None:
-        """Release vector store resources."""
+        """Release all resources including the embedding model."""
         if self.vector_store is not None:
             self.vector_store.close()
             self.vector_store = None

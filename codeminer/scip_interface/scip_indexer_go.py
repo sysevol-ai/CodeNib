@@ -27,6 +27,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
         output_dir: Optional[Union[str, Path]] = None,
         exclude_patterns: Optional[List] = None,
         profiler: Optional[Profiler] = None,
+        decoder_backend: Optional[str] = None,
     ):
         super().__init__(
             project_root=project_root,
@@ -34,6 +35,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
             exclude_patterns=exclude_patterns,
             profiler=profiler,
             language="go",
+            decoder_backend=decoder_backend,
         )
 
     def _check_indexer_available(self) -> bool:

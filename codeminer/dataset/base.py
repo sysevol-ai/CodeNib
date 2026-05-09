@@ -13,6 +13,11 @@ logger = get_logger(__name__)
 class DatasetBase:
     """Base dataset wrapper for loading and summarizing cached datasets."""
 
+    # Controls whether collect_targets uses simplified symbol filtering (functions
+    # only, identified by '(' in the symbol name). Override to False in datasets
+    # whose GT includes non-function symbols (e.g. JS/TS object constants).
+    simplified_symbols: bool = True
+
     def __init__(
         self,
         root: str | None = None,

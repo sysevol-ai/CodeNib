@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Pytest fixtures for dataset tests using real SWE-bench Multilingual data."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,22 @@ from filelock import FileLock
 from codeminer.dataset.gt_locate import GTLocator
 from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
 
-# Persistent cache so repos survive across test runs.
-GT_TEST_WORK_DIR = Path("/tmp/codeminer-gt-test")
+
+def _gt_work_dir() -> Path:
+    """Per-job dir on a CI runner, persistent /tmp dir locally.
+
+    On GitHub Actions ``RUNNER_TEMP`` points at a directory the runner
+    cleans up between jobs, so cross-run ownership drift on a self-hosted
+    runner can't accumulate. Locally we keep a persistent path under
+    ``/tmp`` so iterating on dataset tests doesn't re-clone every repo.
+    """
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    if runner_temp:
+        return Path(runner_temp) / "codeminer-gt-test"
+    return Path("/tmp/codeminer-gt-test")
+
+
+GT_TEST_WORK_DIR = _gt_work_dir()
 
 # One representative repo per language we support in gt_locate.
 # Chosen for moderate size and sufficient instance count.

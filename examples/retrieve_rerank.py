@@ -70,7 +70,7 @@ def parse_args():
         "--dataset",
         type=str,
         required=True,
-        choices=["swebench_lite", "locbench_v1"],
+        choices=["swebench_lite", "locbench_v1", "codeminer_base"],
         help="Type of dataset to run on",
     )
     parser.add_argument(
@@ -144,6 +144,21 @@ def parse_args():
             "Full litellm model identifier for reranking "
             "(e.g. 'openai/Qwen/Qwen2.5-Coder-7B'). "
             "Ignored if --retrieval-only is set."
+        ),
+    )
+    parser.add_argument(
+        "--rerank-listwise-format",
+        type=str,
+        default="structured",
+        choices=["structured", "rankgpt"],
+        help=(
+            "Listwise output format for the LLM reranker. 'structured' "
+            "(default) enforces a JSON schema via with_structured_output — "
+            "right for general-purpose LLMs. 'rankgpt' uses SweRank/RankGPT "
+            "text format ([3] > [5] > [1] > ...) and a regex parser; "
+            "required for SweRankLLM-* and other models fine-tuned on this "
+            "format (forcing JSON on them collapses output to a single "
+            "index)."
         ),
     )
     parser.add_argument(
@@ -308,6 +323,42 @@ def parse_args():
     return parser.parse_args()
 
 
+_LANG_FALLBACK = "python"
+
+
+def _map_language_group(label, fallback=_LANG_FALLBACK):
+    """Map codeminer-base ``language_group`` to chunker language list.
+
+    Mirrors ``scripts/embeddings/build_embeddings.py::_map_language_group``.
+    """
+    if not label:
+        return [fallback]
+    text = label.lower()
+    if "rust" in text:
+        return ["rust"]
+    if "javascript" in text and "typescript" in text:
+        return ["ts", "js"]
+    if "typescript" in text or text == "ts":
+        return ["ts"]
+    if "javascript" in text or text == "js":
+        return ["js"]
+    if "c++" in text or text in ("cpp", "c"):
+        return ["cpp"]
+    if "go" in text or text == "golang":
+        return ["go"]
+    if "python" in text:
+        return ["python"]
+    return [fallback]
+
+
+def _resolve_instance_languages(instance, cli_languages):
+    """Use per-instance ``language_group`` if present, else CLI languages."""
+    lang_group = instance.get("language_group")
+    if lang_group:
+        return _map_language_group(lang_group, fallback=cli_languages[0])
+    return list(cli_languages)
+
+
 def _build_method_tag(args) -> str:
     if args.retrieval_only:
         return f"{args.retrieval_mode}_retrieval_only"
@@ -387,6 +438,12 @@ def run_pipeline(args):
         dataset_name = "czlll/Loc-Bench_V1"
         dataset_split = "test"
         dataset_class = LocbenchDataset
+    elif dataset == "codeminer_base":
+        from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+
+        dataset_name = "fishmingyu/codeminer-base-dataset"
+        dataset_split = args.split
+        dataset_class = CodeMinerBaseDataset
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
 
@@ -451,7 +508,10 @@ def run_pipeline(args):
         instance_profiler.enabled = profiling_enabled
         metadata = eval_metadata.get(instance_id)
         if metadata:
-            target_files, target_symbols = collect_targets(metadata)
+            target_files, target_symbols = collect_targets(
+                metadata,
+                simplified_symbols=getattr(dataset_obj, "simplified_symbols", True),
+            )
             if not target_symbols:
                 logger.info(f"Skipping {instance_id} - no valid target symbols")
                 continue
@@ -486,6 +546,10 @@ def run_pipeline(args):
                     },
                 }
 
+                instance_languages = _resolve_instance_languages(
+                    instance, args.languages
+                )
+
                 with instance_profiler.section("pipeline.initialize"):
                     pipeline = RetrieveRerankPipeline(
                         repo_path=repo_path,
@@ -500,12 +564,13 @@ def run_pipeline(args):
                         rerank_embedding_provider=args.rerank_embedding_provider,
                         rerank_embedding_dimension=args.rerank_embedding_dimension,
                         rerank_embedding_model_kwargs=rerank_embedding_kwargs,
-                        languages=args.languages,
+                        languages=instance_languages,
                         max_lines_per_chunk=args.max_lines_per_chunk,
                         retrieval_plan=retrieve_plan,
                         retrieval_level=args.retrieval_level,
                         rerank_window_size=args.rerank_window_size,
                         rerank_window_step=args.rerank_window_step,
+                        rerank_listwise_format=args.rerank_listwise_format,
                         enable_rerank=not args.retrieval_only,
                         rerank_candidate_top_k=args.rerank_top_k,
                     )

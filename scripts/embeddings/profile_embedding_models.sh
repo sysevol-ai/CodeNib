@@ -24,7 +24,7 @@ for entry in "${MODELS[@]}"; do
   MODEL="${entry%%:*}"
   DIM="${entry##*:}"
   echo "Profiling ${MODEL} (dim=${DIM}) on ${INSTANCE_ID}"
-  python scripts/build_embeddings.py \
+  python scripts/embeddings/build_embeddings.py \
     --dataset "${DATASET}" \
     --split "${SPLIT}" \
     --filter-instance "^(${INSTANCE_ID})$" \

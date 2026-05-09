@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from ..llm.usage import TokenUsage, UsageRecord
+
 
 @dataclass
 class ToolCallRecord:
@@ -27,3 +29,5 @@ class AgentResult:
     messages: List[Dict[str, Any]] = field(default_factory=list)
     total_turns: int = 0
     total_duration_ms: float = 0.0
+    usage: Optional[TokenUsage] = None
+    usage_records: List[UsageRecord] = field(default_factory=list)

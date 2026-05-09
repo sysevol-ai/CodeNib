@@ -180,7 +180,99 @@ jobs:
 
       - name: Run integration serial tests
         shell: bash -l {0}
+        # SCIP outputs land at ~/.codeminer/<instance_id>/ (conftest fixture
+        # hard-codes this path; self-hosted runner's symlink makes it persist
+        # so the downstream `scip-core` job sees it).
         run: pytest -m "integration_serial" -v --tb=short
+
+  # =============================================================
+  # Job 3b — SCIP core  (builds core/ pybind + parity-checks the C++
+  # decoder against the serial graphs persisted by integration-serial.
+  # Depends on integration-serial having run first to populate
+  # $CODEMINER_SCIP_CACHE with graph_ref.pkl per language.)
+  # =============================================================
+  scip-core:
+    needs: [preflight, integration-serial]
+    if: needs.preflight.outputs.should-run == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 30
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
+      npm_config_cache: ${{ github.workspace }}/../.cache/npm
+    steps:
+      - name: Prepare temp HOME
+        run: |
+          mkdir -p "$RUNNER_TEMP/home"
+          echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+
+      - name: Persist codeminer cache across runs
+        run: |
+          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          mkdir -p "$CACHE_DIR"
+          ln -sfn "$CACHE_DIR" "$HOME/.codeminer"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        with:
+          install-clangd: "true"
+          install-bear: "true"
+
+      - name: Install C++ build deps (libigraph, re2, cmake)
+        shell: bash -l {0}
+        timeout-minutes: 5
+        run: |
+          set -eu
+          NEED=()
+          command -v pkg-config >/dev/null 2>&1 || NEED+=(pkg-config)
+          command -v cmake      >/dev/null 2>&1 || NEED+=(cmake)
+          pkg-config --exists igraph 2>/dev/null || NEED+=(libigraph-dev)
+          pkg-config --exists re2    2>/dev/null || NEED+=(libre2-dev)
+          if [ ${#NEED[@]} -eq 0 ]; then
+            echo "[deps] all present — skipping apt"
+            exit 0
+          fi
+          echo "[deps] missing: ${NEED[*]}"
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends "${NEED[@]}"
+
+      - name: Install pybind11
+        shell: bash -l {0}
+        run: python -m pip install pybind11
+
+      - name: Build core/ (pybind)
+        shell: bash -l {0}
+        run: |
+          cmake -S core -B build/core \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCODEMINER_BUILD_PYBIND=ON \
+            -DPython_EXECUTABLE="$(which python)"
+          cmake --build build/core -j "$(nproc)"
+
+      - name: Run SCIP core parity tests
+        shell: bash -l {0}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/build/core
+        # Force the dynamic loader to resolve libstdc++ against the same
+        # GCC that compiled our pybind .so.  Any conda env on the runner
+        # may carry an older libstdc++ whose GLIBCXX_* tags don't cover
+        # the symbols our build references; libigraph/libre2 also drag
+        # libstdc++ in transitively so a runtime override is required.
+        # `gcc -print-file-name` yields the distro-appropriate path on
+        # any Linux host (Ubuntu, RHEL, Arch, ...).
+        run: |
+          SYS_STDCPP="$(gcc -print-file-name=libstdc++.so.6 2>/dev/null || true)"
+          if [ -e "$SYS_STDCPP" ]; then
+            export LD_PRELOAD="$SYS_STDCPP"
+            echo "[ld] LD_PRELOAD=$LD_PRELOAD"
+          else
+            echo "[ld] system libstdc++.so.6 not found via gcc; running without LD_PRELOAD"
+          fi
+          pytest test/scip/test_scip_core.py -v --tb=short
 
   # =============================================================
   # Job 4 — Slow tests  (LLM API, GPU embeddings, ~15 min)

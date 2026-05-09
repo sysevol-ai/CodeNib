@@ -15,6 +15,51 @@ from codeminer.ls_router import LSIndexer
 pytestmark = pytest.mark.integration_serial
 
 
+_REPO_KEYWORDS = {
+    "cpp": ["fmtlib/", "nlohmann/", "jqlang/", "redis/", "valkey-io/", "micropython/"],
+    "rust": ["astral-sh/ruff", "pola-rs/polars", "tokio-rs/", "rust-lang/"],
+    "ts": [
+        "axios/",
+        "vuejs/",
+        "mui/",
+        "darkreader/",
+        "sveltejs/",
+        "expressjs/",
+        "insomnia/",
+        "dayjs/",
+    ],
+    "go": ["caddyserver/", "gin-gonic/", "gohugoio/", "hashicorp/", "prometheus/"],
+}
+
+
+def _pick_swebench_multilingual_instance(language: str) -> dict:
+    dataset_obj = SwebenchMultilingualDataset(split="test", filter_instance=".*")
+    rows = dataset_obj.load()
+    for row in rows:
+        if any(k in row["repo"] for k in _REPO_KEYWORDS[language]):
+            return dict(row)
+    raise RuntimeError(f"No SWE-bench_Multilingual instance for {language}")
+
+
+def _ensure_cpp_compdb(repo: Path) -> None:
+    compdb = repo / "build" / "compile_commands.json"
+    if compdb.exists():
+        return
+    subprocess.run(
+        [
+            "cmake",
+            "-S",
+            str(repo),
+            "-B",
+            str(repo / "build"),
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def _has_node(ig, expected_unified_name, node_type=None):
     """Check if any node has exactly this unified_name (strict match).
 
@@ -191,79 +236,13 @@ def _tools_ready(language: str) -> bool:
     return False
 
 
-def _ensure_cpp_compdb(repo: Path) -> None:
-    compdb = repo / "build" / "compile_commands.json"
-    if compdb.exists():
-        return
-    subprocess.run(
-        [
-            "cmake",
-            "-S",
-            str(repo),
-            "-B",
-            str(repo / "build"),
-            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _repo_keywords(language: str) -> list[str]:
-    if language == "cpp":
-        return [
-            "fmtlib/",
-            "nlohmann/",
-            "jqlang/",
-            "redis/",
-            "valkey-io/",
-            "micropython/",
-        ]
-    if language == "rust":
-        return [
-            "astral-sh/ruff",
-            "pola-rs/polars",
-            "tokio-rs/",
-            "rust-lang/",
-        ]
-    if language == "ts":
-        return [
-            "vuejs/",
-            "mui/",
-            "darkreader/",
-            "sveltejs/",
-            "axios/",
-            "expressjs/",
-            "insomnia/",
-            "dayjs/",
-        ]
-    if language == "go":
-        return [
-            "gin-gonic/",
-            "gohugoio/",
-            "hashicorp/",
-            "prometheus/",
-            "caddyserver/",
-        ]
-    return []
-
-
-def _pick_swebench_multilingual_instance(language: str) -> dict:
-    dataset_obj = SwebenchMultilingualDataset(split="test", filter_instance=".*")
-    rows = dataset_obj.load()
-    keywords = _repo_keywords(language)
-    matches = [row for row in rows if any(k in row["repo"] for k in keywords)]
-    if not matches:
-        raise RuntimeError(f"No SWE-bench_Multilingual instances for {language}")
-    return dict(matches[0])
-
-
 @pytest.mark.parametrize("language", ["cpp", "rust", "ts", "go"])
-def test_run_pipeline_swebench_multilingual_instance(
-    tmp_path: Path,
-    language: str,
-) -> None:
+def test_run_pipeline_swebench_multilingual_instance(language: str) -> None:
+    """Serial-backend regression test on a pinned SWE-bench_Multilingual
+    instance. Writes outputs to ``~/.codeminer/<instance_id>/`` so that
+    ``test_scip_core.py`` picks up the same ``index.decoded`` on the next run
+    (cache shared across CI jobs on self-hosted runner).
+    """
     if not _tools_ready(language):
         pytest.skip(f"Required tooling for {language} is not available in PATH")
 
@@ -277,23 +256,29 @@ def test_run_pipeline_swebench_multilingual_instance(
     dataset_obj = SwebenchMultilingualDataset(split="test", filter_instance=".*")
     dataset_obj.process_instance(instance)
     repo_path = Path(dataset_obj.get_repo_path(instance))
-
     if language == "cpp":
         _ensure_cpp_compdb(repo_path)
+
+    output_dir = Path.home() / ".codeminer" / instance["instance_id"]
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     kwargs = {"infer_tsconfig": True} if language == "ts" else {}
     indexer = LSIndexer(
         project_root=repo_path,
-        output_dir=tmp_path / f"scip_multi_{language}",
+        output_dir=output_dir,
         language=language,
+        decoder_backend="serial",
     )
-    graph = indexer.run_pipeline(skip_level="graph", report_profile=False, **kwargs)
+    # skip_level="decode" (not "graph"): reuse cached index.scip / index.decoded
+    # but rebuild the graph each run. Using "graph" loads a stale graph.pkl
+    # from a prior decoder version — the scip-core parity job then compares
+    # new core output against that stale cache and fails.
+    graph = indexer.run_pipeline(skip_level="decode", report_profile=False, **kwargs)
 
     assert graph is not None, f"run_pipeline returned None for {language} (dataset)"
     ig = graph.graph
     assert len(ig.vs) > 0, f"no graph nodes for {language} (dataset)"
 
-    # Validate expected nodes and edges
     expected = _EXPECTED.get(language)
     if expected:
         for name, node_type in expected["nodes"]:

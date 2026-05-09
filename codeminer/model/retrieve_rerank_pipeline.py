@@ -111,6 +111,7 @@ class RetrieveRerankPipeline:
         sparse_max_k: int = 128,
         rerank_window_size: Optional[int] = None,
         rerank_window_step: Optional[int] = None,
+        rerank_listwise_format: str = "structured",
         enable_rerank: bool = True,
         vector_masks: Optional[Dict[str, Set[str]]] = None,
         rerank_candidate_top_k: Optional[int] = None,
@@ -222,6 +223,7 @@ class RetrieveRerankPipeline:
                 candidate_top_k=self.rerank_candidate_top_k,
                 window_size=rerank_window_size,
                 window_step=rerank_window_step,
+                listwise_format=rerank_listwise_format,
             )
         else:
             self.rerank_context = None
