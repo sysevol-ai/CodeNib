@@ -70,6 +70,8 @@ def _ensure_user_writable_hf_cache() -> None:
                 if os.access(p, os.W_OK):
                     return
             except OSError:
+                # Ignore path creation/access errors for user-provided cache dirs;
+                # we immediately fall back to a known user-writable location below.
                 pass
         os.environ[env_key] = str(fallback)
         fallback.mkdir(parents=True, exist_ok=True)
