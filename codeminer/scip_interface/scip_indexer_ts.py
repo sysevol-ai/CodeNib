@@ -248,12 +248,15 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     lockfile = self.project_root / name
                     break
             if lockfile:
+                # Best-effort: cache write is non-fatal; next run will retry.
                 try:
                     sentinel.write_text(
                         hashlib.sha1(lockfile.read_bytes()).hexdigest()
                     )
-                except Exception:
-                    pass
+                except Exception as cache_err:
+                    logger.debug(
+                        "skip-cache write failed (%s); continuing", cache_err
+                    )
             return
         except FileNotFoundError:
             logger.warning(
