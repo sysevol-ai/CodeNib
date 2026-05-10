@@ -307,7 +307,7 @@ class PatcherCpp(PatcherBase):
                     idx.unlink()
                     deleted += 1
                 except OSError:
-                    pass
+                    pass  # stale .idx; unlink failure is harmless
         if header_changed:
             # Header changes can affect any TU. Delete all .idx files for
             # source-file TUs so clangd rebuilds them. Header-only .idx
@@ -323,7 +323,7 @@ class PatcherCpp(PatcherBase):
                         idx.unlink()
                         deleted += 1
                     except OSError:
-                        pass
+                        pass  # stale .idx; unlink failure is harmless
         if deleted:
             logger.info(
                 f"Pre-invalidated {deleted} .idx file(s) for affected TUs "

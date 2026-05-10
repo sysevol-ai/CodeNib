@@ -9,6 +9,7 @@ Supports the subset of LSP needed for incremental graph updates:
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import select
@@ -36,6 +37,15 @@ _LSP_PROFILE_FH = None
 _LSP_PROFILE_PATH: str | None = None
 
 
+@atexit.register
+def _close_profile_fh() -> None:
+    if _LSP_PROFILE_FH is not None:
+        try:
+            _LSP_PROFILE_FH.close()
+        except Exception:
+            pass
+
+
 def _profile_log(method: str, abs_file: str, line, character, elapsed_s: float, n_results) -> None:
     """Append one call to the file at ``$LSP_PROFILE_PATH``.
 
@@ -51,7 +61,7 @@ def _profile_log(method: str, abs_file: str, line, character, elapsed_s: float, 
             try:
                 _LSP_PROFILE_FH.close()
             except Exception:
-                pass
+                pass  # stale FH; close failures are harmless here
         _LSP_PROFILE_FH = None
         _LSP_PROFILE_PATH = path
         if path:
@@ -69,7 +79,7 @@ def _profile_log(method: str, abs_file: str, line, character, elapsed_s: float, 
                         "ms": round(elapsed_s * 1000, 2), "n": n_results}) + "\n"
         )
     except Exception:
-        pass
+        pass  # best-effort profile write — never break real work
 
 # LSP SymbolKind integer → human-readable name
 SYMBOL_KIND_NAMES = {

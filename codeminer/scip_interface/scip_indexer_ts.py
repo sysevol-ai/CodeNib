@@ -171,7 +171,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     )
                     return
             except Exception:
-                pass
+                pass  # missing/corrupt sentinel; fall through to install
 
         needs_pnpm = (self.project_root / "pnpm-lock.yaml").exists() or (
             self.project_root / "pnpm-workspace.yaml"
