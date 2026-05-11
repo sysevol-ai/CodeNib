@@ -272,3 +272,72 @@ def test_query_range_by_symbol_no_range_returns_empty():
     g.build_range_indexes()
     res = g.query_range_by_symbol("ref_only")
     assert res.defined == [] and res.outgoing == [] and res.incoming == []
+
+
+def test_query_range_excludes_anchor_at_end_line_plus_one():
+    """Regression: bisect upper bound must not leak in `(end_line+1, eid=0)`.
+
+    Previously the upper bound used `bisect_right(arr, (end_line+1, 0))`,
+    which considers `(end_line+1, 0)` to compare equal-or-less and thus
+    *includes* it. Trigger condition: anchored edge at `end_line+1` whose
+    eid is 0 — i.e. it is the very first edge ever added. With `bisect_left`
+    the entry is correctly excluded.
+    """
+    g = CodeGraph(project_root="/tmp/x")
+    g.add_file_node("a.py")
+    # Define two scopes in a.py: caller spans lines 0-4, neighbor at line 5.
+    g._add_vertex(
+        "caller",
+        {
+            "type": "function",
+            "file": "a.py",
+            "start_line": 0,
+            "end_line": 4,
+            "unified_name": "a.py:caller",
+        },
+    )
+    g._add_vertex(
+        "neighbor",
+        {
+            "type": "function",
+            "file": "a.py",
+            "start_line": 5,
+            "end_line": 9,
+            "unified_name": "a.py:neighbor",
+        },
+    )
+    g._add_vertex(
+        "Target",
+        {
+            "type": "function",
+            "file": "b.py",
+            "start_line": 0,
+            "end_line": 1,
+            "unified_name": "b.py:Target",
+        },
+    )
+
+    # Add the offending anchor FIRST so it lands at eid 0 — this is the
+    # narrow trigger the buggy bound used to leak.
+    g._add_edge(
+        "neighbor",
+        "Target",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="a.py",
+        anchor_line=5,  # exactly query end_line + 1
+    )
+    # An in-range anchor for sanity (lands inside [0,4]).
+    g._add_edge(
+        "caller",
+        "Target",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="a.py",
+        anchor_line=2,
+    )
+    g.build_range_indexes()
+
+    res = g.query_range("a.py", 0, 4)
+    anchor_lines = sorted(e.anchor_line for e in res.outgoing)
+    assert anchor_lines == [2], (
+        "Outgoing slice leaked an anchor at end_line+1: " f"{anchor_lines}"
+    )

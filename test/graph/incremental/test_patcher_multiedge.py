@@ -334,6 +334,7 @@ def test_delete_outgoing_in_anchor_ranges_only_reference():
         },
     )
     from codeminer.types import EDGE_TYPE_CONTAIN
+
     g._add_edge("a.py:Foo", "a.py:Foo.helper", EDGE_TYPE_CONTAIN)
 
     mgr = _NoopMgr(project_root="/tmp/x", code_graph=g)
@@ -440,6 +441,7 @@ def test_shift_outgoing_anchor_lines_only_reference():
         },
     )
     from codeminer.types import EDGE_TYPE_CONTAIN
+
     g._add_edge("a.py:Foo", "a.py:Foo.helper", EDGE_TYPE_CONTAIN)
 
     mgr = _NoopMgr(project_root="/tmp/x", code_graph=g)
@@ -483,8 +485,8 @@ class _FakeLSPDefRefs:
 
     def __init__(self, project_root, definitions=None, references=None):
         self.project_root = project_root
-        self._defs = definitions or {}      # text → list[loc]
-        self._refs = references or {}       # (file, line) → list[loc]
+        self._defs = definitions or {}  # text → list[loc]
+        self._refs = references or {}  # (file, line) → list[loc]
 
     def definition(self, abs_file, line, character):
         # Look up by token text — but we don't have text here, so the
@@ -552,18 +554,28 @@ def test_reconnect_outgoing_anchors_each_call_site():
     # Single LSP definition response — both tokens resolve to same target.
     fake_lsp = _FakeLSPDefRefs(project_root)
     fake_lsp._defs = {
-        12: [{"targetUri": f"file://{project_root}/tgt.py",
-              "targetSelectionRange": {"start": {"line": 1, "character": 0}}}],
-        18: [{"targetUri": f"file://{project_root}/tgt.py",
-              "targetSelectionRange": {"start": {"line": 1, "character": 0}}}],
+        12: [
+            {
+                "targetUri": f"file://{project_root}/tgt.py",
+                "targetSelectionRange": {"start": {"line": 1, "character": 0}},
+            }
+        ],
+        18: [
+            {
+                "targetUri": f"file://{project_root}/tgt.py",
+                "targetSelectionRange": {"start": {"line": 1, "character": 0}},
+            }
+        ],
     }
     # _get_semantic_tokens dedups by text BEFORE calling lsp.definition;
     # but the dedup uses text as the key. Stub: same text "Bar" → only one
     # definition lookup. So return the line-1 target either way.
-    fake_lsp.definition = lambda abs_file, line, character: [{
-        "targetUri": f"file://{project_root}/tgt.py",
-        "targetSelectionRange": {"start": {"line": 1, "character": 0}},
-    }]
+    fake_lsp.definition = lambda abs_file, line, character: [
+        {
+            "targetUri": f"file://{project_root}/tgt.py",
+            "targetSelectionRange": {"start": {"line": 1, "character": 0}},
+        }
+    ]
     mgr.lsp_client = fake_lsp
 
     stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
@@ -577,18 +589,22 @@ def test_reconnect_outgoing_anchors_each_call_site():
     )
     src = g.name_to_vertex["caller.py:Foo"]
     ref_eids = [
-        e for e in g.graph.incident(src, mode="out")
+        e
+        for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     ]
     assert len(ref_eids) == 2, f"graph has {len(ref_eids)} ref edges"
     pairs = sorted(
-        (g.graph.es[e].attributes().get("anchor_file"),
-         g.graph.es[e].attributes().get("anchor_line"))
+        (
+            g.graph.es[e].attributes().get("anchor_file"),
+            g.graph.es[e].attributes().get("anchor_line"),
+        )
         for e in ref_eids
     )
-    assert pairs == [("caller.py", 12), ("caller.py", 18)], (
-        f"anchor metadata not threaded through; got {pairs}"
-    )
+    assert pairs == [
+        ("caller.py", 12),
+        ("caller.py", 18),
+    ], f"anchor metadata not threaded through; got {pairs}"
 
 
 def test_reconnect_outgoing_same_anchor_collapses():
@@ -603,10 +619,12 @@ def test_reconnect_outgoing_same_anchor_collapses():
         {"line": 12, "character": 8, "text": "Bar"},
     ]
     fake_lsp = _FakeLSPDefRefs(project_root)
-    fake_lsp.definition = lambda abs_file, line, character: [{
-        "targetUri": f"file://{project_root}/tgt.py",
-        "targetSelectionRange": {"start": {"line": 1, "character": 0}},
-    }]
+    fake_lsp.definition = lambda abs_file, line, character: [
+        {
+            "targetUri": f"file://{project_root}/tgt.py",
+            "targetSelectionRange": {"start": {"line": 1, "character": 0}},
+        }
+    ]
     mgr.lsp_client = fake_lsp
     stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
     mgr.reconnect_outgoing(
@@ -614,7 +632,8 @@ def test_reconnect_outgoing_same_anchor_collapses():
     )
     src = g.name_to_vertex["caller.py:Foo"]
     ref_eids = [
-        e for e in g.graph.incident(src, mode="out")
+        e
+        for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     ]
     # Same anchor → _add_edge dedup collapses to 1 edge.
@@ -673,17 +692,18 @@ def test_reconnect_incoming_anchors_caller_site():
     assert stats["incoming_added"] == 1, f"expected 1 incoming edge, got {stats}"
     src = g.name_to_vertex["caller.py:Caller"]
     ref_eids = [
-        e for e in g.graph.incident(src, mode="out")
+        e
+        for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     ]
     assert len(ref_eids) == 1
     attrs = g.graph.es[ref_eids[0]].attributes()
-    assert attrs.get("anchor_file") == "caller.py", (
-        f"anchor_file should be the caller site file; got {attrs}"
-    )
-    assert attrs.get("anchor_line") == 7, (
-        f"anchor_line should be the call line; got {attrs}"
-    )
+    assert (
+        attrs.get("anchor_file") == "caller.py"
+    ), f"anchor_file should be the caller site file; got {attrs}"
+    assert (
+        attrs.get("anchor_line") == 7
+    ), f"anchor_line should be the call line; got {attrs}"
 
 
 # ---------------------------------------------------------------------------
@@ -699,16 +719,25 @@ def test_shifted_rebases_outgoing_anchor_lines():
     patcher.symbol_selection_ranges["a.py:Foo"] = (10, 4, 10, 7)
 
     file_stats = {
-        "vertices_deleted": 0, "vertices_created": 0, "vertices_shifted": 0,
-        "refs_incoming": 0, "refs_outgoing": 0, "refs_remapped": 0,
+        "vertices_deleted": 0,
+        "vertices_created": 0,
+        "vertices_shifted": 0,
+        "refs_incoming": 0,
+        "refs_outgoing": 0,
+        "refs_remapped": 0,
         "refs_unmatched": 0,
     }
     patcher._process_shifted(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
-        new={"start_line": 15, "end_line": 35,
-             "sel_range": {"start": {"line": 15, "character": 4},
-                           "end": {"line": 15, "character": 7}}},
+        new={
+            "start_line": 15,
+            "end_line": 35,
+            "sel_range": {
+                "start": {"line": 15, "character": 4},
+                "end": {"line": 15, "character": 7},
+            },
+        },
         file_path="a.py",
         file_stats=file_stats,
     )
@@ -725,9 +754,11 @@ def test_shifted_rebases_outgoing_anchor_lines():
         for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     )
-    assert anchor_lines == [17, 23, 30], (
-        f"anchors should shift +5 to [17,23,30]; got {anchor_lines}"
-    )
+    assert anchor_lines == [
+        17,
+        23,
+        30,
+    ], f"anchors should shift +5 to [17,23,30]; got {anchor_lines}"
     assert file_stats["vertices_shifted"] == 1
 
 
@@ -741,9 +772,14 @@ def test_affected_preserved_clears_in_range_outgoing():
     patcher.symbol_selection_ranges["a.py:Foo"] = (10, 4, 10, 7)
 
     file_stats = {
-        "vertices_deleted": 0, "vertices_created": 0, "vertices_shifted": 0,
-        "vertices_affected_preserved": 0, "vertices_affected_rebuilt": 0,
-        "refs_incoming": 0, "refs_outgoing": 0, "refs_remapped": 0,
+        "vertices_deleted": 0,
+        "vertices_created": 0,
+        "vertices_shifted": 0,
+        "vertices_affected_preserved": 0,
+        "vertices_affected_rebuilt": 0,
+        "refs_incoming": 0,
+        "refs_outgoing": 0,
+        "refs_remapped": 0,
         "refs_unmatched": 0,
     }
     # Hunk: line 18 (old) → line 18 (new). 1 line in / 1 line out → preserved.
@@ -751,9 +787,14 @@ def test_affected_preserved_clears_in_range_outgoing():
     _new_vname, new_ranges = patcher._process_affected(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
-        new={"start_line": 10, "end_line": 30,
-             "sel_range": {"start": {"line": 10, "character": 4},
-                           "end": {"line": 10, "character": 7}}},
+        new={
+            "start_line": 10,
+            "end_line": 30,
+            "sel_range": {
+                "start": {"line": 10, "character": 4},
+                "end": {"line": 10, "character": 7},
+            },
+        },
         hunks=hunks,
         file_path="a.py",
         file_stats=file_stats,
@@ -766,9 +807,10 @@ def test_affected_preserved_clears_in_range_outgoing():
         for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     )
-    assert surviving == [12, 25], (
-        f"only line-18 anchor should be cleared; got {surviving}"
-    )
+    assert surviving == [
+        12,
+        25,
+    ], f"only line-18 anchor should be cleared; got {surviving}"
     # Round 2 needs to know which lines to query in the NEW coordinate
     # system; for this hunk that's line 18.
     assert (18, 18) in new_ranges, f"new_changed_ranges missing 18; got {new_ranges}"
@@ -785,9 +827,14 @@ def test_affected_length_changed_clears_all_outgoing():
     patcher.symbol_selection_ranges["a.py:Foo"] = (10, 4, 10, 7)
 
     file_stats = {
-        "vertices_deleted": 0, "vertices_created": 0, "vertices_shifted": 0,
-        "vertices_affected_preserved": 0, "vertices_affected_rebuilt": 0,
-        "refs_incoming": 0, "refs_outgoing": 0, "refs_remapped": 0,
+        "vertices_deleted": 0,
+        "vertices_created": 0,
+        "vertices_shifted": 0,
+        "vertices_affected_preserved": 0,
+        "vertices_affected_rebuilt": 0,
+        "refs_incoming": 0,
+        "refs_outgoing": 0,
+        "refs_remapped": 0,
         "refs_unmatched": 0,
     }
     # Hunk: 1 line at old 18 becomes 4 lines at new 18-21. Length changed.
@@ -795,9 +842,14 @@ def test_affected_length_changed_clears_all_outgoing():
     _new_vname, new_ranges = patcher._process_affected(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
-        new={"start_line": 10, "end_line": 33,
-             "sel_range": {"start": {"line": 10, "character": 4},
-                           "end": {"line": 10, "character": 7}}},
+        new={
+            "start_line": 10,
+            "end_line": 33,
+            "sel_range": {
+                "start": {"line": 10, "character": 4},
+                "end": {"line": 10, "character": 7},
+            },
+        },
         hunks=hunks,
         file_path="a.py",
         file_stats=file_stats,
@@ -806,7 +858,8 @@ def test_affected_length_changed_clears_all_outgoing():
     new_vname = "a.py:Foo:10"
     src = g.name_to_vertex[new_vname]
     surviving = [
-        e for e in g.graph.incident(src, mode="out")
+        e
+        for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     ]
     assert len(surviving) == 0, (
@@ -814,9 +867,9 @@ def test_affected_length_changed_clears_all_outgoing():
         f"{[g.graph.es[e].attributes() for e in surviving]}"
     )
     # Round 2 reconnects over the entire new body.
-    assert new_ranges == [(10, 33)], (
-        f"slow path should report full new body; got {new_ranges}"
-    )
+    assert new_ranges == [
+        (10, 33)
+    ], f"slow path should report full new body; got {new_ranges}"
     assert file_stats["vertices_affected_rebuilt"] == 1
 
 
@@ -830,9 +883,14 @@ def test_affected_preserved_with_start_line_shift_uniform_rebase():
     patcher.symbol_selection_ranges["a.py:Foo"] = (10, 4, 10, 7)
 
     file_stats = {
-        "vertices_deleted": 0, "vertices_created": 0, "vertices_shifted": 0,
-        "vertices_affected_preserved": 0, "vertices_affected_rebuilt": 0,
-        "refs_incoming": 0, "refs_outgoing": 0, "refs_remapped": 0,
+        "vertices_deleted": 0,
+        "vertices_created": 0,
+        "vertices_shifted": 0,
+        "vertices_affected_preserved": 0,
+        "vertices_affected_rebuilt": 0,
+        "refs_incoming": 0,
+        "refs_outgoing": 0,
+        "refs_remapped": 0,
         "refs_unmatched": 0,
     }
     # 5 lines inserted at top of file → symbol shifts +5; old hunk modifies
@@ -841,9 +899,14 @@ def test_affected_preserved_with_start_line_shift_uniform_rebase():
     _new_vname, new_ranges = patcher._process_affected(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
-        new={"start_line": 15, "end_line": 35,
-             "sel_range": {"start": {"line": 15, "character": 4},
-                           "end": {"line": 15, "character": 7}}},
+        new={
+            "start_line": 15,
+            "end_line": 35,
+            "sel_range": {
+                "start": {"line": 15, "character": 4},
+                "end": {"line": 15, "character": 7},
+            },
+        },
         hunks=hunks,
         file_path="a.py",
         file_stats=file_stats,
@@ -857,9 +920,10 @@ def test_affected_preserved_with_start_line_shift_uniform_rebase():
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     )
     # 12 → 17, 25 → 30; anchor at 18 is in changed region → deleted.
-    assert surviving == [17, 30], (
-        f"expected [17, 30] (uniform +5 shift, line-18 deleted); got {surviving}"
-    )
+    assert surviving == [
+        17,
+        30,
+    ], f"expected [17, 30] (uniform +5 shift, line-18 deleted); got {surviving}"
     assert (23, 23) in new_ranges
     assert file_stats["vertices_affected_preserved"] == 1
 
@@ -908,13 +972,16 @@ def test_remap_severed_anchor_line_rebased_by_shift_table():
     # file has since been shifted by +5 in [5, 15] → new anchor should be 12.
     severed_incoming = [
         (
-            "caller.py:Caller", "tgt.py:Bar",
-            "caller.py:Caller", "tgt.py:Bar",
-            "caller.py", 7,
+            "caller.py:Caller",
+            "tgt.py:Bar",
+            "caller.py:Caller",
+            "tgt.py:Bar",
+            "caller.py",
+            7,
         )
     ]
     anchor_shifts = {
-        "caller.py": [(5, 15, 5)],   # (old_start, old_end, delta)
+        "caller.py": [(5, 15, 5)],  # (old_start, old_end, delta)
     }
 
     remapped = patcher._remap_severed_edges(
@@ -926,14 +993,15 @@ def test_remap_severed_anchor_line_rebased_by_shift_table():
     assert remapped == 1
     src = g.name_to_vertex["caller.py:Caller"]
     ref_eids = [
-        e for e in g.graph.incident(src, mode="out")
+        e
+        for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     ]
     assert len(ref_eids) == 1
     attrs = g.graph.es[ref_eids[0]].attributes()
-    assert attrs.get("anchor_line") == 12, (
-        f"anchor_line should rebase 7 + 5 = 12; got {attrs}"
-    )
+    assert (
+        attrs.get("anchor_line") == 12
+    ), f"anchor_line should rebase 7 + 5 = 12; got {attrs}"
 
 
 def test_remap_severed_anchor_line_no_shift_table_keeps_anchor():
@@ -969,17 +1037,23 @@ def test_remap_severed_anchor_line_no_shift_table_keeps_anchor():
     patcher = _StubPatcher(project_root=project_root, code_graph=g)
     remapped = patcher._remap_severed_edges(
         new_vertices=["tgt.py:Bar:1"],
-        severed_incoming=[(
-            "caller.py:Caller", "tgt.py:Bar",
-            "caller.py:Caller", "tgt.py:Bar",
-            "caller.py", 7,
-        )],
+        severed_incoming=[
+            (
+                "caller.py:Caller",
+                "tgt.py:Bar",
+                "caller.py:Caller",
+                "tgt.py:Bar",
+                "caller.py",
+                7,
+            )
+        ],
         severed_outgoing=[],
     )
     assert remapped == 1
     src = g.name_to_vertex["caller.py:Caller"]
     ref_eids = [
-        e for e in g.graph.incident(src, mode="out")
+        e
+        for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     ]
     attrs = g.graph.es[ref_eids[0]].attributes()
@@ -1025,10 +1099,10 @@ def test_remap_severed_incoming_uname_fallback():
     # vname was still in the graph.
     severed_incoming = [
         (
-            "caller.py:Caller",     # src_name (STALE — already renamed)
-            "tgt.py:Bar",           # tgt_name
-            "caller.py:Caller",     # src_uname (stable)
-            "tgt.py:Bar",           # tgt_uname
+            "caller.py:Caller",  # src_name (STALE — already renamed)
+            "tgt.py:Bar",  # tgt_name
+            "caller.py:Caller",  # src_uname (stable)
+            "tgt.py:Bar",  # tgt_uname
             "caller.py",
             7,
         )
@@ -1047,7 +1121,8 @@ def test_remap_severed_incoming_uname_fallback():
     )
     src = g.name_to_vertex["caller.py:Caller:5"]
     ref_eids = [
-        e for e in g.graph.incident(src, mode="out")
+        e
+        for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     ]
     assert len(ref_eids) == 1
@@ -1065,16 +1140,25 @@ def test_shifted_zero_shift_is_attribute_only_update():
     patcher.symbol_selection_ranges["a.py:Foo"] = (10, 4, 10, 7)
 
     file_stats = {
-        "vertices_deleted": 0, "vertices_created": 0, "vertices_shifted": 0,
-        "refs_incoming": 0, "refs_outgoing": 0, "refs_remapped": 0,
+        "vertices_deleted": 0,
+        "vertices_created": 0,
+        "vertices_shifted": 0,
+        "refs_incoming": 0,
+        "refs_outgoing": 0,
+        "refs_remapped": 0,
         "refs_unmatched": 0,
     }
     patcher._process_shifted(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
-        new={"start_line": 10, "end_line": 32,
-             "sel_range": {"start": {"line": 10, "character": 4},
-                           "end": {"line": 10, "character": 7}}},
+        new={
+            "start_line": 10,
+            "end_line": 32,
+            "sel_range": {
+                "start": {"line": 10, "character": 4},
+                "end": {"line": 10, "character": 7},
+            },
+        },
         file_path="a.py",
         file_stats=file_stats,
     )
@@ -1087,3 +1171,65 @@ def test_shifted_zero_shift_is_attribute_only_update():
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
     )
     assert anchor_lines == [12, 18]
+
+
+def test_edge_batch_flush_invalidates_edge_index():
+    """Regression: EdgeBatch.flush bypasses CodeGraph._add_edge; if it leaves
+    a stale _edge_index in place, a follow-up _add_edge for one of the
+    flushed keys will think the edge doesn't exist and create a duplicate.
+    """
+    from codeminer.graph.incremental.subgraph_mgr import EdgeBatch
+
+    g = CodeGraph(project_root="/tmp/x")
+    g.add_file_node("a.py")
+    g._add_vertex(
+        "src",
+        {
+            "type": "function",
+            "file": "a.py",
+            "start_line": 0,
+            "end_line": 9,
+            "unified_name": "a.py:src",
+        },
+    )
+    g._add_vertex(
+        "tgt",
+        {
+            "type": "function",
+            "file": "a.py",
+            "start_line": 10,
+            "end_line": 19,
+            "unified_name": "a.py:tgt",
+        },
+    )
+
+    # Force the lazy _edge_index to materialise via a normal _add_edge.
+    g._add_edge("src", "tgt", EDGE_TYPE_REFERENCE, anchor_file="a.py", anchor_line=1)
+    assert g._edge_index is not None  # built lazily on the call above
+
+    # Stage and flush a *different* anchor via EdgeBatch.
+    batch = EdgeBatch(g)
+    staged = batch.stage(
+        "src", "tgt", EDGE_TYPE_REFERENCE, anchor_file="a.py", anchor_line=2
+    )
+    assert staged is True
+    batch.flush()
+
+    ref_eids_before = [
+        e
+        for e in g.graph.incident(g.name_to_vertex["src"], mode="out")
+        if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
+    ]
+    assert len(ref_eids_before) == 2
+
+    # Re-add the flushed key via _add_edge — must dedup, not duplicate.
+    g._add_edge("src", "tgt", EDGE_TYPE_REFERENCE, anchor_file="a.py", anchor_line=2)
+    ref_eids_after = [
+        e
+        for e in g.graph.incident(g.name_to_vertex["src"], mode="out")
+        if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
+    ]
+    assert len(ref_eids_after) == 2, (
+        "EdgeBatch.flush left _edge_index stale: a follow-up _add_edge "
+        "for the same anchor created a duplicate"
+    )

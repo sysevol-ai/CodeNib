@@ -390,8 +390,11 @@ class CodeGraph:
         for e in self.graph.es:
             attrs = e.attributes()
             key = (
-                e.source, e.target, attrs.get("type"),
-                attrs.get("anchor_file"), attrs.get("anchor_line"),
+                e.source,
+                e.target,
+                attrs.get("type"),
+                attrs.get("anchor_file"),
+                attrs.get("anchor_line"),
             )
             # Earlier eid wins on duplicate keys; igraph batch paths can
             # produce parallel edges with identical keys before this index
@@ -494,9 +497,12 @@ class CodeGraph:
         defined = [self._build_node_ref(vid) for vid in defined_vids]
 
         # outgoing: bisect on sorted (anchor_line, eid) list, then filter by kind.
+        # Use bisect_left for the upper bound: bisect_right would include
+        # `(end_line+1, 0)` (eid==0 entries at the line just past the query),
+        # leaking an off-anchor edge into the slice.
         arr = self._file_edge_anchors.get(file, [])
         lo = bisect.bisect_left(arr, (start_line, -1))
-        hi = bisect.bisect_right(arr, (end_line + 1, 0))
+        hi = bisect.bisect_left(arr, (end_line + 1, 0))
         outgoing: List[EdgeRef] = []
         for _, eid in arr[lo:hi]:
             edge = self.graph.es[eid]

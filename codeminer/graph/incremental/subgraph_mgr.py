@@ -13,7 +13,6 @@ patcher_lang subclasses must implement.
 
 from __future__ import annotations
 
-import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
@@ -110,8 +109,14 @@ class EdgeBatch:
             idx[key] = eid
         return idx
 
-    def stage(self, source_name: str, target_name: str, edge_type: str,
-              anchor_file=None, anchor_line=None) -> bool:
+    def stage(
+        self,
+        source_name: str,
+        target_name: str,
+        edge_type: str,
+        anchor_file=None,
+        anchor_line=None,
+    ) -> bool:
         """Stage an edge. Returns True if newly staged, False if dedup hit.
 
         Caller guarantees both vertices already exist (no implicit creation).
@@ -122,8 +127,13 @@ class EdgeBatch:
         if src is None or tgt is None:
             # Caller-violated contract — fall back to the safe path that
             # creates vertices on demand.
-            cg._add_edge(source_name, target_name, edge_type,
-                         anchor_file=anchor_file, anchor_line=anchor_line)
+            cg._add_edge(
+                source_name,
+                target_name,
+                edge_type,
+                anchor_file=anchor_file,
+                anchor_line=anchor_line,
+            )
             return True
         key = (src, tgt, edge_type, anchor_file, anchor_line)
         if key in self._existing or key in self._staged_keys:
@@ -156,6 +166,10 @@ class EdgeBatch:
         self.anchor_files.clear()
         self.anchor_lines.clear()
         self._staged_keys.clear()
+        # Bulk add bypassed CodeGraph._add_edge, so any cached edge index is
+        # now missing the just-flushed edges. Drop it; the next _add_edge
+        # will rebuild lazily and see the batched edges.
+        self.cg._invalidate_edge_index()
         return n
 
 
@@ -731,8 +745,13 @@ class SubgraphMgr(ABC):
                 ref_scope = self.match_location_to_scope(ref_file, ref_line)
                 if ref_scope:
                     if batch is not None:
-                        if batch.stage(ref_scope, vname, EDGE_TYPE_REFERENCE,
-                                       anchor_file=ref_file, anchor_line=ref_line):
+                        if batch.stage(
+                            ref_scope,
+                            vname,
+                            EDGE_TYPE_REFERENCE,
+                            anchor_file=ref_file,
+                            anchor_line=ref_line,
+                        ):
                             stats["incoming_added"] += 1
                     else:
                         self.code_graph._add_edge(
@@ -851,9 +870,13 @@ class SubgraphMgr(ABC):
 
             if scope and target_vertex:
                 if batch is not None:
-                    if batch.stage(scope, target_vertex, EDGE_TYPE_REFERENCE,
-                                   anchor_file=file_path,
-                                   anchor_line=ref_token["line"]):
+                    if batch.stage(
+                        scope,
+                        target_vertex,
+                        EDGE_TYPE_REFERENCE,
+                        anchor_file=file_path,
+                        anchor_line=ref_token["line"],
+                    ):
                         stats["outgoing_added"] += 1
                 else:
                     self.code_graph._add_edge(
