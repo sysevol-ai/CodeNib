@@ -10,20 +10,53 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .log_utils import get_logger
 
-__all__ = ["Profiler", "RangeStats"]
+__all__ = ["Profiler", "RangeStats", "percentile_from_sorted"]
+
+
+def percentile_from_sorted(sorted_values: List[float], p: float) -> float:
+    """Linear-interpolated percentile from a pre-sorted list."""
+    if not sorted_values:
+        return 0.0
+    if p <= 0:
+        return float(sorted_values[0])
+    if p >= 100:
+        return float(sorted_values[-1])
+    n = len(sorted_values)
+    rank = (p / 100.0) * (n - 1)
+    lo = int(rank)
+    hi = min(lo + 1, n - 1)
+    frac = rank - lo
+    return float(sorted_values[lo] + (sorted_values[hi] - sorted_values[lo]) * frac)
 
 
 @dataclass
 class RangeStats:
-    """Aggregate timing statistics captured for a profiler section."""
+    """Aggregate timing statistics captured for a profiler section.
+
+    Optional per-call sample lists (``samples``, ``rss_deltas``, ``gpu_peaks``)
+    are populated only when the owning ``Profiler`` is configured with
+    ``record_samples`` and/or ``record_memory``. When empty, the percentile and
+    memory accessors return zero so consumers can ignore them safely.
+    """
 
     total: float = 0.0
     count: int = 0
     max_duration: float = 0.0
     min_duration: float = field(default_factory=lambda: float("inf"))
     errors: int = 0
+    samples: List[float] = field(default_factory=list)
+    rss_deltas: List[int] = field(default_factory=list)
+    gpu_peaks: List[int] = field(default_factory=list)
 
-    def update(self, duration: float, had_error: bool) -> None:
+    def update(
+        self,
+        duration: float,
+        had_error: bool,
+        *,
+        sample: bool = False,
+        rss_delta: Optional[int] = None,
+        gpu_peak: Optional[int] = None,
+    ) -> None:
         self.total += duration
         self.count += 1
         if duration > self.max_duration:
@@ -32,6 +65,12 @@ class RangeStats:
             self.min_duration = duration
         if had_error:
             self.errors += 1
+        if sample:
+            self.samples.append(duration)
+        if rss_delta is not None:
+            self.rss_deltas.append(int(rss_delta))
+        if gpu_peak is not None:
+            self.gpu_peaks.append(int(gpu_peak))
 
     @property
     def average(self) -> float:
@@ -44,6 +83,39 @@ class RangeStats:
         if self.min_duration == float("inf"):
             return 0.0
         return self.min_duration
+
+    def percentile(self, p: float) -> float:
+        """Linear-interpolated percentile over recorded duration samples."""
+        if not self.samples:
+            return 0.0
+        return percentile_from_sorted(sorted(self.samples), p)
+
+    def percentiles(self, *ps: float) -> Dict[float, float]:
+        """Compute multiple percentiles in one sort pass."""
+        if not self.samples:
+            return {p: 0.0 for p in ps}
+        ordered = sorted(self.samples)
+        return {p: percentile_from_sorted(ordered, p) for p in ps}
+
+    @property
+    def rss_delta_max(self) -> int:
+        return max(self.rss_deltas) if self.rss_deltas else 0
+
+    @property
+    def rss_delta_avg(self) -> float:
+        if not self.rss_deltas:
+            return 0.0
+        return sum(self.rss_deltas) / len(self.rss_deltas)
+
+    @property
+    def gpu_peak_max(self) -> int:
+        return max(self.gpu_peaks) if self.gpu_peaks else 0
+
+    @property
+    def gpu_peak_avg(self) -> float:
+        if not self.gpu_peaks:
+            return 0.0
+        return sum(self.gpu_peaks) / len(self.gpu_peaks)
 
 
 class Profiler:
@@ -74,6 +146,8 @@ class Profiler:
         range_level: int = logging.DEBUG,
         summary_level: int = logging.INFO,
         indent: int = 2,
+        record_samples: bool = False,
+        record_memory: bool = False,
     ) -> None:
         self.name = name
         self.enabled = enabled
@@ -81,11 +155,57 @@ class Profiler:
         self.range_level = range_level
         self.summary_level = summary_level
         self.indent = indent
+        self.record_samples = record_samples
+        self.record_memory = record_memory
         self.logger = logger or get_logger(name)
 
         self._thread_state = threading.local()
         self._lock = threading.Lock()
         self._stats: Dict[str, RangeStats] = {}
+
+        self._psutil_process = None
+        self._torch_cuda = None
+        if self.record_memory:
+            try:
+                import psutil
+
+                self._psutil_process = psutil.Process()
+            except Exception:
+                self._psutil_process = None
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    self._torch_cuda = torch.cuda
+            except Exception:
+                self._torch_cuda = None
+
+    # --------------------------------------------------------------------- #
+    # Memory snapshot helpers
+    # --------------------------------------------------------------------- #
+    def _rss_now(self) -> Optional[int]:
+        if self._psutil_process is None:
+            return None
+        try:
+            return int(self._psutil_process.memory_info().rss)
+        except Exception:
+            return None
+
+    def _gpu_reset_peak(self) -> None:
+        if self._torch_cuda is None:
+            return
+        try:
+            self._torch_cuda.reset_peak_memory_stats()
+        except Exception:
+            pass
+
+    def _gpu_peak(self) -> Optional[int]:
+        if self._torch_cuda is None:
+            return None
+        try:
+            return int(self._torch_cuda.max_memory_allocated())
+        except Exception:
+            return None
 
     # --------------------------------------------------------------------- #
     # Public API
@@ -208,13 +328,22 @@ class Profiler:
         label: str,
         duration: float,
         had_error: bool,
+        *,
+        rss_delta: Optional[int] = None,
+        gpu_peak: Optional[int] = None,
     ) -> None:
         with self._lock:
             stats = self._stats.get(label)
             if stats is None:
                 stats = RangeStats()
                 self._stats[label] = stats
-            stats.update(duration, had_error)
+            stats.update(
+                duration,
+                had_error,
+                sample=self.record_samples,
+                rss_delta=rss_delta,
+                gpu_peak=gpu_peak,
+            )
 
     def _get_stack(self) -> list:
         stack = getattr(self._thread_state, "stack", None)
@@ -289,6 +418,7 @@ class _ProfilerRange(ContextDecorator):
         "duration",
         "depth",
         "had_error",
+        "_rss_start",
     )
 
     def __init__(
@@ -304,6 +434,7 @@ class _ProfilerRange(ContextDecorator):
         self.duration: float = 0.0
         self.depth: int = 0
         self.had_error: bool = False
+        self._rss_start: Optional[int] = None
 
     def __enter__(self) -> "_ProfilerRange":
         if not self._profiler.enabled:
@@ -314,6 +445,10 @@ class _ProfilerRange(ContextDecorator):
         stack = self._profiler._get_stack()
         self.depth = len(stack)
         stack.append(self)
+
+        if self._profiler.record_memory:
+            self._rss_start = self._profiler._rss_now()
+            self._profiler._gpu_reset_peak()
 
         self.start_time = self._profiler._now()
         self._profiler._log_range_start(self.label, self.depth, self.metadata)
@@ -327,6 +462,14 @@ class _ProfilerRange(ContextDecorator):
         self.duration = end_time - self.start_time
         self.had_error = exc_type is not None
 
+        rss_delta: Optional[int] = None
+        gpu_peak: Optional[int] = None
+        if self._profiler.record_memory:
+            rss_end = self._profiler._rss_now()
+            if self._rss_start is not None and rss_end is not None:
+                rss_delta = rss_end - self._rss_start
+            gpu_peak = self._profiler._gpu_peak()
+
         stack = self._profiler._get_stack()
         if stack and stack[-1] is self:
             stack.pop()
@@ -338,7 +481,13 @@ class _ProfilerRange(ContextDecorator):
             except ValueError:
                 stack.clear()
 
-        self._profiler._record(self.label, self.duration, self.had_error)
+        self._profiler._record(
+            self.label,
+            self.duration,
+            self.had_error,
+            rss_delta=rss_delta,
+            gpu_peak=gpu_peak,
+        )
         self._profiler._log_range_stop(
             self.label,
             self.depth,

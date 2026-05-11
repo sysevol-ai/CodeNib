@@ -73,6 +73,10 @@ class GraphRetrievePipeline:
         self.use_ppr = use_ppr
         self.ppr_damping = ppr_damping
         self.use_embedding_rerank = use_embedding_rerank
+        # Populated by query(): BM25 stage-1 results from the most recent
+        # query. Surfaced so callers can compute correctness signals such as
+        # bm25_seed_recall@k without re-running BM25.
+        self.last_bm25_seeds: List[Any] = []
 
         pname = project_name or Path(index_path).name
 
@@ -136,6 +140,7 @@ class GraphRetrievePipeline:
         with _section(profiler, "query.bm25_seed", {"top_k": self.stage1_topk}):
             bm25_results = self.bm25_index.search(query, top_k=self.stage1_topk)
             seed_names = [r.node_name for r in bm25_results]
+        self.last_bm25_seeds = list(bm25_results)
         logger.info("Stage 1: %d seed nodes from BM25", len(seed_names))
 
         # Stage 2: Graph expansion

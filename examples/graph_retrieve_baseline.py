@@ -43,7 +43,7 @@ from codeminer.eval.retrieval_eval import (
 )
 from codeminer.log_utils import get_logger
 from codeminer.model import GraphRetrievePipeline
-from codeminer.profiler import Profiler
+from codeminer.profiler import Profiler, percentile_from_sorted
 
 logger = get_logger(__name__)
 
@@ -54,9 +54,15 @@ logger = get_logger(__name__)
 
 
 def _to_sections_payload(profile_summary):
-    """Convert ``Profiler.report()`` output to a JSON-serialisable list."""
-    return [
-        {
+    """Convert ``Profiler.report()`` output to a JSON-serialisable list.
+
+    When the profiler was configured with ``record_samples`` or
+    ``record_memory``, additional fields are included so the aggregator can
+    recompute global percentiles / memory rollups across instances.
+    """
+    payload = []
+    for label, stats in profile_summary:
+        entry = {
             "label": label,
             "total": stats.total,
             "count": stats.count,
@@ -65,12 +71,31 @@ def _to_sections_payload(profile_summary):
             "max": stats.max_duration,
             "errors": stats.errors,
         }
-        for label, stats in profile_summary
-    ]
+        if stats.samples:
+            pct = stats.percentiles(50.0, 95.0, 99.0)
+            entry["p50"] = pct[50.0]
+            entry["p95"] = pct[95.0]
+            entry["p99"] = pct[99.0]
+            entry["samples"] = list(stats.samples)
+        if stats.rss_deltas:
+            entry["rss_delta_avg"] = stats.rss_delta_avg
+            entry["rss_delta_max"] = stats.rss_delta_max
+            entry["rss_deltas"] = list(stats.rss_deltas)
+        if stats.gpu_peaks:
+            entry["gpu_peak_avg"] = stats.gpu_peak_avg
+            entry["gpu_peak_max"] = stats.gpu_peak_max
+            entry["gpu_peaks"] = list(stats.gpu_peaks)
+        payload.append(entry)
+    return payload
 
 
 def _aggregate_section_stats(instance_profiles):
-    """Sum per-instance section payloads into a single aggregate list."""
+    """Sum per-instance section payloads into a single aggregate list.
+
+    When per-call sample lists are present, concatenate them and recompute
+    global p50/p95/p99 in one sort pass per section; memory lists are rolled
+    up the same way for ``rss_delta_*`` and ``gpu_peak_*``.
+    """
     aggregate = {}
     for profile in instance_profiles:
         for section in profile.get("sections", []):
@@ -84,6 +109,9 @@ def _aggregate_section_stats(instance_profiles):
                     "min": float("inf"),
                     "max": 0.0,
                     "errors": 0,
+                    "samples": [],
+                    "rss_deltas": [],
+                    "gpu_peaks": [],
                 },
             )
             entry["total"] += float(section["total"])
@@ -91,24 +119,62 @@ def _aggregate_section_stats(instance_profiles):
             entry["min"] = min(entry["min"], float(section["min"]))
             entry["max"] = max(entry["max"], float(section["max"]))
             entry["errors"] += int(section["errors"])
+            entry["samples"].extend(section.get("samples", []))
+            entry["rss_deltas"].extend(section.get("rss_deltas", []))
+            entry["gpu_peaks"].extend(section.get("gpu_peaks", []))
 
     payload = []
     for label, stats in aggregate.items():
         count = stats["count"]
-        payload.append(
-            {
-                "label": label,
-                "total": stats["total"],
-                "count": count,
-                "average": (stats["total"] / count) if count else 0.0,
-                "min": 0.0 if stats["min"] == float("inf") else stats["min"],
-                "max": stats["max"],
-                "errors": stats["errors"],
-            }
-        )
+        item = {
+            "label": label,
+            "total": stats["total"],
+            "count": count,
+            "average": (stats["total"] / count) if count else 0.0,
+            "min": 0.0 if stats["min"] == float("inf") else stats["min"],
+            "max": stats["max"],
+            "errors": stats["errors"],
+        }
+        if stats["samples"]:
+            ordered = sorted(stats["samples"])
+            item["p50"] = percentile_from_sorted(ordered, 50.0)
+            item["p95"] = percentile_from_sorted(ordered, 95.0)
+            item["p99"] = percentile_from_sorted(ordered, 99.0)
+            item["sample_count"] = len(ordered)
+        if stats["rss_deltas"]:
+            rss = stats["rss_deltas"]
+            item["rss_delta_avg"] = sum(rss) / len(rss)
+            item["rss_delta_max"] = max(rss)
+        if stats["gpu_peaks"]:
+            gpu = stats["gpu_peaks"]
+            item["gpu_peak_avg"] = sum(gpu) / len(gpu)
+            item["gpu_peak_max"] = max(gpu)
+        payload.append(item)
 
     payload.sort(key=lambda item: item["total"], reverse=True)
     return payload
+
+
+def _compute_bm25_seed_recall(seeds, target_files, ks):
+    """Compute bm25_seed_recall@k for each k in ``ks``.
+
+    Uses the same file-extraction logic as the main retrieval evaluator
+    (``extract_predictions``), so the recall numbers are directly comparable
+    against ``files@k`` reported for the full pipeline output.
+
+    Returns dict of {int(k): float} with recall in [0, 1]. Empty if no
+    target files (instance has no GT files to recall against).
+    """
+    if not target_files:
+        return {}
+    seed_files, _ = extract_predictions(seeds)
+    target_set = set(target_files)
+    out = {}
+    denom = len(target_set)
+    for k in ks:
+        topk = set(seed_files[:k])
+        out[int(k)] = (len(topk & target_set) / denom) if denom else 0.0
+    return out
 
 
 def _split_sections_by_phase(sections):
@@ -280,6 +346,24 @@ def parse_args():
         default=None,
         help="Optional tag appended to profiler filename.",
     )
+    parser.add_argument(
+        "--record-samples",
+        action="store_true",
+        help=(
+            "Retain per-call durations so the harness can emit p50/p95/p99 "
+            "per section (per-instance and aggregate). No effect unless "
+            "--enable-profiler is also set."
+        ),
+    )
+    parser.add_argument(
+        "--record-memory",
+        action="store_true",
+        help=(
+            "Capture RSS delta (psutil) and peak GPU memory (torch.cuda) "
+            "per section. GPU fields are populated only when CUDA is "
+            "available; otherwise the RSS deltas are emitted alone."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -308,21 +392,24 @@ def run_graph_pipeline(args):
 
     # Profiler setup ---------------------------------------------------------
     profiling_enabled = args.enable_profiler or args.profile_dir is not None
-    if profiling_enabled:
-        profile_output_dir = (
+
+    def _resolve_profile_dir() -> Path:
+        base = (
             Path(args.profile_dir).expanduser().resolve()
             if args.profile_dir
             else Path(args.index_cache_dir).expanduser().resolve()
             / "profile_log"
             / "graph_rag"
         )
-        profile_output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info("Profiler summaries will be stored in: %s", profile_output_dir)
-    else:
-        profile_output_dir = None
+        base.mkdir(parents=True, exist_ok=True)
+        return base
+
+    if profiling_enabled:
+        logger.info("Profiler summaries will be stored in: %s", _resolve_profile_dir())
 
     instance_index_profiles = []
     instance_query_profiles = []
+    instance_seed_recalls = []
 
     # Load dataset
     if args.dataset == "swebench_lite":
@@ -378,12 +465,16 @@ def run_graph_pipeline(args):
                 logger=logger,
                 emit_events=False,
                 summary_level=logging.INFO,
+                record_samples=args.record_samples,
+                record_memory=args.record_memory,
             )
             query_profiler = Profiler(
                 name=f"graph_rag[query][{instance_id}]",
                 logger=logger,
                 emit_events=False,
                 summary_level=logging.INFO,
+                record_samples=args.record_samples,
+                record_memory=args.record_memory,
             )
         try:
             t0 = time.time()
@@ -417,6 +508,22 @@ def run_graph_pipeline(args):
             else:
                 results = pipeline.query(instance["problem_statement"])
             elapsed = time.time() - t0
+
+            # bm25_seed_recall@k — saturation-guard signal. Compares the
+            # stage-1 BM25 seeds against GT files at every k in --metrics-k,
+            # using the same file-extraction logic as the main evaluator so
+            # the numbers line up with files@k for the full pipeline.
+            seed_recall = _compute_bm25_seed_recall(
+                pipeline.last_bm25_seeds, target_files, metrics_k
+            )
+            if seed_recall:
+                instance_seed_recalls.append(
+                    {"instance_id": instance_id, "recall_at_k": seed_recall}
+                )
+                logger.info(
+                    "  [bm25_seed] %s",
+                    " ".join(f"r@{k}={v:.3f}" for k, v in seed_recall.items()),
+                )
 
             if profiling_enabled:
                 index_summary = index_profiler.report()
@@ -533,7 +640,21 @@ def run_graph_pipeline(args):
                 args.embedding_model if rerank_strategy == "embedding" else None
             ),
             "rerank_model": args.rerank_model,
+            "record_samples": args.record_samples,
+            "record_memory": args.record_memory,
         }
+        # Aggregate bm25_seed_recall@k by averaging per-instance recall at each k.
+        # Each instance contributes one observation per k (the recall for that
+        # instance's GT set), so the aggregate is a plain mean across instances.
+        aggregate_seed_recall = {}
+        for k in metrics_k:
+            values = [
+                entry["recall_at_k"][int(k)]
+                for entry in instance_seed_recalls
+                if int(k) in entry["recall_at_k"]
+            ]
+            if values:
+                aggregate_seed_recall[int(k)] = sum(values) / len(values)
         profile_payload = {
             "config": config_payload,
             "instances_profiled": len(instance_query_profiles),
@@ -545,6 +666,11 @@ def run_graph_pipeline(args):
                 "per_instance": instance_query_profiles,
                 "aggregate_sections": _aggregate_section_stats(instance_query_profiles),
             },
+            "bm25_seed_recall": {
+                "per_instance": instance_seed_recalls,
+                "aggregate": aggregate_seed_recall,
+                "instances_with_targets": len(instance_seed_recalls),
+            },
         }
         tag_part = (
             f"__{_sanitize_filename_part(args.profile_tag)}" if args.profile_tag else ""
@@ -553,10 +679,17 @@ def run_graph_pipeline(args):
         profile_filename = (
             f"graph_rag_{args.dataset}_{expansion}_" f"{rerank_strategy}{tag_part}.json"
         )
-        profile_path = profile_output_dir / profile_filename
+        profile_path = _resolve_profile_dir() / profile_filename
         with open(profile_path, "w", encoding="utf-8") as f:
             json.dump(profile_payload, f, indent=2, ensure_ascii=False)
         logger.info("Profiler summary saved to %s", profile_path)
+        if aggregate_seed_recall:
+            logger.info(
+                "=== bm25_seed_recall (avg over %d instance(s)) ===",
+                len(instance_seed_recalls),
+            )
+            for k in sorted(aggregate_seed_recall):
+                logger.info("  r@%d = %.3f", k, aggregate_seed_recall[k])
 
 
 def main():
