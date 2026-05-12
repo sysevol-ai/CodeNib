@@ -382,3 +382,74 @@ def test_filter_query_drops_unrecognised_labels_with_warning(runner, runner_capl
     assert any(
         "fancy_new_phase_3_label" in rec.getMessage() for rec in runner_caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# _compute_bm25_seed_recall
+# ---------------------------------------------------------------------------
+
+
+def _seed(node_id):
+    """Minimal duck-typed stand-in for the NodeInfo / QueriedNode seeds the
+    pipeline hands to ``_compute_bm25_seed_recall`` — only ``node_id`` is read
+    by ``extract_predictions``."""
+    return SimpleNamespace(node_id=node_id)
+
+
+def test_seed_recall_empty_targets_returns_empty(runner):
+    """Instance has no GT files → no recall to report."""
+    seeds = [_seed("a.py:foo()"), _seed("b.py:bar()")]
+    assert runner._compute_bm25_seed_recall(seeds, [], [1, 5, 10]) == {}
+
+
+def test_seed_recall_partial_then_full_hit(runner):
+    """First seed misses the GT file, the second hits it; recall climbs
+    from 0/1 at k=1 to 1/1 at k=2 and stays at 1.0 for larger k."""
+    seeds = [_seed("other.py:x()"), _seed("target.py:hit()")]
+    target_files = ["target.py"]
+    out = runner._compute_bm25_seed_recall(seeds, target_files, [1, 2, 5])
+    assert out == {1: 0.0, 2: 1.0, 5: 1.0}
+
+
+def test_seed_recall_multi_target_partial(runner):
+    """Two GT files, three seeds — only one GT file in top-1, both by top-2."""
+    seeds = [
+        _seed("hit_a.py:foo()"),
+        _seed("hit_b.py:bar()"),
+        _seed("miss.py:baz()"),
+    ]
+    out = runner._compute_bm25_seed_recall(seeds, ["hit_a.py", "hit_b.py"], [1, 2, 3])
+    assert out == {1: 0.5, 2: 1.0, 3: 1.0}
+
+
+def test_seed_recall_returns_int_keys(runner):
+    """Keys must be ``int`` even when ``ks`` is supplied as floats / numpy
+    scalars — the aggregator downstream keys into the dict via ``int(k)`` so a
+    str/float key would silently produce zeros."""
+    seeds = [_seed("a.py:foo()")]
+    out = runner._compute_bm25_seed_recall(seeds, ["a.py"], [1.0, 2, 3.0])
+    assert list(out.keys()) == [1, 2, 3]
+    assert all(isinstance(k, int) for k in out.keys())
+
+
+def test_seed_recall_normalizes_file_paths(runner):
+    """Seeds emitted as ``./pkg/mod.py:sym()`` should match a GT entry
+    ``pkg/mod.py`` because ``extract_predictions`` strips the leading ``./``
+    via ``normalize_file_path``."""
+    seeds = [_seed("./pkg/mod.py:foo()")]
+    out = runner._compute_bm25_seed_recall(seeds, ["pkg/mod.py"], [1])
+    assert out == {1: 1.0}
+
+
+def test_seed_recall_dedupes_seeds_before_k_slice(runner):
+    """``extract_predictions`` collapses duplicate files; the top-1 slice
+    should therefore see the second distinct file at k=2, not a re-count of
+    the first."""
+    seeds = [
+        _seed("dup.py:a()"),
+        _seed("dup.py:b()"),
+        _seed("target.py:c()"),
+    ]
+    # k=2 covers the two unique files {dup.py, target.py}, hitting target.py
+    out = runner._compute_bm25_seed_recall(seeds, ["target.py"], [1, 2])
+    assert out == {1: 0.0, 2: 1.0}

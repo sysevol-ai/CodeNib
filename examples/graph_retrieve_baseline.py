@@ -172,8 +172,12 @@ def _compute_bm25_seed_recall(seeds, target_files, ks):
     out = {}
     denom = len(target_set)
     for k in ks:
-        topk = set(seed_files[:k])
-        out[int(k)] = (len(topk & target_set) / denom) if denom else 0.0
+        # Normalise k to int up front so both the slice and the output key
+        # use the same value — argparse hands us ints today, but downstream
+        # callers (sweep scripts) may pass floats / numpy scalars.
+        ik = int(k)
+        topk = set(seed_files[:ik])
+        out[ik] = (len(topk & target_set) / denom) if denom else 0.0
     return out
 
 
@@ -306,7 +310,7 @@ def parse_args():
         "--metrics-k",
         type=int,
         nargs="+",
-        default=[1, 3, 5, 10, 15, 20],
+        default=[1, 5, 10],
     )
 
     # Cache
@@ -434,8 +438,9 @@ def run_graph_pipeline(args):
         base.mkdir(parents=True, exist_ok=True)
         return base
 
-    if profiling_enabled:
-        logger.info("Profiler summaries will be stored in: %s", _resolve_profile_dir())
+    profile_dir = _resolve_profile_dir() if profiling_enabled else None
+    if profile_dir is not None:
+        logger.info("Profiler summaries will be stored in: %s", profile_dir)
 
     instance_index_profiles = []
     instance_query_profiles = []
@@ -465,8 +470,10 @@ def run_graph_pipeline(args):
 
     logger.info("Loaded %d instance(s)", len(dataset_instances))
 
+    # GT files are dataset-specific; derive the default from --dataset so a
+    # Loc-Bench run can't silently align against the SWE-bench ground truth.
     eval_path = args.eval_instances or str(
-        Path.home() / ".codeminer" / f"swebench_lite_{args.split}_gt.json"
+        Path.home() / ".codeminer" / f"{args.dataset}_{args.split}_gt.json"
     )
     eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     metrics_k = sorted(set(args.metrics_k))
@@ -711,9 +718,9 @@ def run_graph_pipeline(args):
         # loosens we don't want to write outside the resolved profile dir.
         dataset_part = _sanitize_filename_part(args.dataset)
         profile_filename = (
-            f"graph_rag_{dataset_part}_{expansion}_" f"{rerank_strategy}{tag_part}.json"
+            f"graph_rag_{dataset_part}_{expansion}_{rerank_strategy}{tag_part}.json"
         )
-        profile_path = _resolve_profile_dir() / profile_filename
+        profile_path = profile_dir / profile_filename
         with open(profile_path, "w", encoding="utf-8") as f:
             json.dump(profile_payload, f, indent=2, ensure_ascii=False)
         logger.info("Profiler summary saved to %s", profile_path)

@@ -191,14 +191,6 @@ class Profiler:
         except Exception:
             return None
 
-    def _gpu_reset_peak(self) -> None:
-        if self._torch_cuda is None:
-            return
-        try:
-            self._torch_cuda.reset_peak_memory_stats()
-        except Exception:
-            pass
-
     def _gpu_peak(self) -> Optional[int]:
         if self._torch_cuda is None:
             return None
@@ -419,6 +411,7 @@ class _ProfilerRange(ContextDecorator):
         "depth",
         "had_error",
         "_rss_start",
+        "_gpu_peak_start",
     )
 
     def __init__(
@@ -435,6 +428,7 @@ class _ProfilerRange(ContextDecorator):
         self.depth: int = 0
         self.had_error: bool = False
         self._rss_start: Optional[int] = None
+        self._gpu_peak_start: Optional[int] = None
 
     def __enter__(self) -> "_ProfilerRange":
         if not self._profiler.enabled:
@@ -448,7 +442,12 @@ class _ProfilerRange(ContextDecorator):
 
         if self._profiler.record_memory:
             self._rss_start = self._profiler._rss_now()
-            self._profiler._gpu_reset_peak()
+            # Snapshot the CUDA peak watermark on entry; the exit handler
+            # reports (max_memory_allocated() - start) so the delta composes
+            # under nesting. The previous approach reset the peak globally
+            # at every section enter, which silently under-reported any
+            # outer section that wrapped an inner memory-recording section.
+            self._gpu_peak_start = self._profiler._gpu_peak()
 
         self.start_time = self._profiler._now()
         self._profiler._log_range_start(self.label, self.depth, self.metadata)
@@ -468,7 +467,11 @@ class _ProfilerRange(ContextDecorator):
             rss_end = self._profiler._rss_now()
             if self._rss_start is not None and rss_end is not None:
                 rss_delta = rss_end - self._rss_start
-            gpu_peak = self._profiler._gpu_peak()
+            gpu_peak_end = self._profiler._gpu_peak()
+            if self._gpu_peak_start is not None and gpu_peak_end is not None:
+                # max(0, ...) guards against the rare case where another
+                # caller resets the peak counter while a section is open.
+                gpu_peak = max(0, gpu_peak_end - self._gpu_peak_start)
 
         stack = self._profiler._get_stack()
         if stack and stack[-1] is self:
