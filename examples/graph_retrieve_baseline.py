@@ -177,31 +177,49 @@ def _compute_bm25_seed_recall(seeds, target_files, ks):
     return out
 
 
-def _split_sections_by_phase(sections):
-    """Split a flat section list into ``index_time`` and ``query_time`` buckets.
+def _filter_index_sections(sections):
+    """Return only the sections that belong in the ``index_time`` bucket.
 
-    Index-time sections include any label produced during pipeline initialisation
-    (``index.*`` plus the inner labels emitted by ``build_hierarchical_vector_store``
-    and ``CodeVectorStore`` — ``chunking_*``, ``embedding_encode_*``,
-    ``faiss_index_add_*``). Query-time sections are everything matching
-    ``query.*``.
+    Anything starting with ``query.`` should never appear in the index
+    profile, but if it does (e.g. a future label addition wires through
+    the wrong profiler), log a warning rather than silently dropping so
+    the leak is visible in CI rather than ghosting from the JSON.
     """
-    index_prefixes = (
-        "index.",
-        "chunking_",
-        "embedding_encode_",
-        "faiss_index_add_",
-    )
-    index_sections, query_sections = [], []
+    keep, leaked = [], []
     for section in sections:
-        label = section["label"]
-        if label.startswith("query."):
-            query_sections.append(section)
-        elif label.startswith(index_prefixes):
-            index_sections.append(section)
+        if section["label"].startswith("query."):
+            leaked.append(section["label"])
         else:
-            index_sections.append(section)
-    return index_sections, query_sections
+            keep.append(section)
+    if leaked:
+        logger.warning(
+            "Dropping %d query.* section(s) leaked into index profile: %s",
+            len(leaked),
+            leaked,
+        )
+    return keep
+
+
+def _filter_query_sections(sections):
+    """Return only the sections that belong in the ``query_time`` bucket.
+
+    Only ``query.*`` labels survive. Anything else — an ``index.*`` label
+    routed through the query profiler, or any unrecognised prefix added in
+    a future phase — is logged rather than silently discarded.
+    """
+    keep, leaked = [], []
+    for section in sections:
+        if section["label"].startswith("query."):
+            keep.append(section)
+        else:
+            leaked.append(section["label"])
+    if leaked:
+        logger.warning(
+            "Dropping %d non-query.* section(s) leaked into query profile: %s",
+            len(leaked),
+            leaked,
+        )
+    return keep
 
 
 def _sanitize_filename_part(value):
@@ -531,10 +549,10 @@ def run_graph_pipeline(args):
                 index_sections = _to_sections_payload(index_summary)
                 query_sections = _to_sections_payload(query_summary)
                 # Internal labels emitted by builders/vector_store land in
-                # the index profiler — split by phase here so any cross-talk
-                # stays in the right bucket.
-                index_only, _query_leak = _split_sections_by_phase(index_sections)
-                _index_leak, query_only = _split_sections_by_phase(query_sections)
+                # the index profiler — filter each side so any cross-talk
+                # is logged rather than silently bucketed.
+                index_only = _filter_index_sections(index_sections)
+                query_only = _filter_query_sections(query_sections)
                 instance_index_profiles.append(
                     {"instance_id": instance_id, "sections": index_only}
                 )
