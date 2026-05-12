@@ -13,7 +13,6 @@ authors = [{ name = "Zhongming Yu", email = "zhy025@ucsd.edu" }]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
-    "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
     "igraph>=0.11.6",                     # For graph data structure and algorithms
