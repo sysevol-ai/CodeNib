@@ -336,6 +336,10 @@ def parse_args():
             "STCrossEncoderWrapper) and currently raises NotImplementedError."
         ),
     )
+    # Forward-compat: wired in PR #128. Currently echoed only into the
+    # profiler `config` payload (no rerank backend reads it), so it is
+    # safe to pass but has no runtime effect until the cross-encoder
+    # wrapper lands.
     parser.add_argument(
         "--rerank-model",
         type=str,
@@ -383,7 +387,15 @@ def parse_args():
         ),
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    # Surface unsupported rerank strategies at parse time, before any
+    # dataset load / profiler-dir creation, with argparse's exit code 2
+    # rather than a stack trace mid-pipeline.
+    try:
+        _resolve_rerank_strategy(args)
+    except NotImplementedError as exc:
+        parser.error(str(exc))
+    return args
 
 
 def _resolve_rerank_strategy(args):
@@ -694,8 +706,12 @@ def run_graph_pipeline(args):
             f"__{_sanitize_filename_part(args.profile_tag)}" if args.profile_tag else ""
         )
         expansion = "ppr" if args.ppr else "bfs"
+        # Sanitize args.dataset for symmetry with profile_tag — today
+        # `choices=` constrains it to safe values, but if that ever
+        # loosens we don't want to write outside the resolved profile dir.
+        dataset_part = _sanitize_filename_part(args.dataset)
         profile_filename = (
-            f"graph_rag_{args.dataset}_{expansion}_" f"{rerank_strategy}{tag_part}.json"
+            f"graph_rag_{dataset_part}_{expansion}_" f"{rerank_strategy}{tag_part}.json"
         )
         profile_path = _resolve_profile_dir() / profile_filename
         with open(profile_path, "w", encoding="utf-8") as f:

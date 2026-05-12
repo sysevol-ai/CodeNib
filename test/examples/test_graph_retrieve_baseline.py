@@ -107,6 +107,29 @@ def test_resolve_strategy_cross_encoder_raises(runner):
         runner._resolve_rerank_strategy(_args(rerank_strategy="cross-encoder"))
 
 
+def test_parse_args_rejects_cross_encoder_at_parse_time(runner, monkeypatch, capsys):
+    """The cross-encoder NotImplementedError should be surfaced by parse_args
+    via parser.error (exit code 2) before any dataset-load side effects, not
+    deep inside run_graph_pipeline."""
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "graph_retrieve_baseline.py",
+            "--dataset",
+            "swebench_lite",
+            "--rerank-strategy",
+            "cross-encoder",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        runner.parse_args()
+    assert exc_info.value.code == 2, (
+        "expected argparse exit code 2, got " f"{exc_info.value.code}"
+    )
+    err = capsys.readouterr().err
+    assert "PR #128" in err, f"expected error mentioning PR #128, got: {err!r}"
+
+
 # ---------------------------------------------------------------------------
 # _aggregate_section_stats
 # ---------------------------------------------------------------------------
