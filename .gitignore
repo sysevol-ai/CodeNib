@@ -14,3 +14,6 @@ logs/
 uv.lock
 hf_dataset/
 site/
+.venv/
+.cursor/
+*.bak

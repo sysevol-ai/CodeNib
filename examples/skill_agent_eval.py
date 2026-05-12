@@ -1,24 +1,35 @@
 #!/usr/bin/env python3
 """
-Single-skill evaluation script for AgentRunner with BM25 search.
+Skill-agent evaluation driver on SWE-bench.
 
-This script evaluates BM25 search skill on SWE-bench dataset using cloud LLMs
-(Gemini 2.5 Flash, etc.) for tool-calling. It tests the Agent + Skill + Eval
-pipeline end-to-end, independent of the LLM provider.
+Runs ``AgentRunner`` with an arbitrary subset of the skill registry against
+SWE-bench instances and reports retrieval accuracy / token usage. The skill
+subset is the unit of variation — the script delegates index lifecycle to
+``codeminer.compiler.build_skill_contexts``, which resolves each skill's
+declared ``index_requirements`` and builds (or reuses cached) BM25 / vector
+/ symbol-graph indexes accordingly.
 
-Usage:
-    # Smoke (test split, optional external GT JSON; file is auto-built if missing)
+Examples:
+
+    # BM25 only (LocAgent-style sparse baseline + agent both supported)
     python examples/skill_agent_eval.py \
-        --split test \
+        --skills bm25_search \
         --filter-instance "^(astropy__astropy-12907)$" \
         --eval-instances "$HOME/.codeminer/swebench_lite_test_gt_single.json" \
-        --result-path "$HOME/skill_eval_test.json"
+        --result-path "$HOME/skill_eval_bm25.json"
 
-    # Vertex project/region (optional; else GOOGLE_CLOUD_PROJECT / litellm defaults)
+    # Embedding search (replaces the deleted skill_agent_eval_embedding.py)
     python examples/skill_agent_eval.py \
-        --vertex-project YOUR_GCP_PROJECT \
-        --vertex-location us-central1 \
-        ...
+        --skills embedding_search \
+        --embedding-model nomic-ai/CodeRankEmbed \
+        --embedding-dimension 768 \
+        --index-cache-dir "$HOME/.codeminer/index_cache" \
+        --result-path "$HOME/skill_eval_embedding.json"
+
+    # Multiple skills — agent picks among them
+    python examples/skill_agent_eval.py \
+        --skills bm25_search embedding_search graph_expand \
+        --max-turns 10
 """
 
 from __future__ import annotations
@@ -37,9 +48,43 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+
+def _ensure_user_writable_hf_cache() -> None:
+    """Redirect HuggingFace caches when ``HF_HOME`` is not writable.
+
+    On shared machines, ``HF_HOME`` may point to e.g. ``/mnt/conda/huggingface``
+    where ``datasets`` then fails on lock-file creation. Must run before
+    importing ``codeminer.dataset`` (which transitively imports ``datasets``).
+    Relevant for any skill that needs the embedding-model side of the
+    HuggingFace cache (e.g. ``embedding_search``).
+    """
+    home_hf = Path.home() / ".cache" / "huggingface"
+    home_hf.mkdir(parents=True, exist_ok=True)
+
+    def _use_fallback_if_unwritable(env_key: str, fallback: Path) -> None:
+        val = os.environ.get(env_key, "").strip()
+        if val:
+            p = Path(os.path.expanduser(val))
+            try:
+                p.mkdir(parents=True, exist_ok=True)
+                if os.access(p, os.W_OK):
+                    return
+            except OSError:
+                # Ignore path creation/access errors for user-provided cache dirs;
+                # we immediately fall back to a known user-writable location below.
+                pass
+        os.environ[env_key] = str(fallback)
+        fallback.mkdir(parents=True, exist_ok=True)
+
+    _use_fallback_if_unwritable("HF_HOME", home_hf)
+    _use_fallback_if_unwritable("HF_DATASETS_CACHE", home_hf / "datasets")
+
+
+_ensure_user_writable_hf_cache()
+
 from codeminer.agent.skills.loader import SkillLoader
 from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
+from codeminer.compiler import build_skill_contexts
 from codeminer.dataset.swebench import SwebenchDataset
 from codeminer.eval.retrieval_eval import (
     aggregate_metrics,
@@ -47,10 +92,9 @@ from codeminer.eval.retrieval_eval import (
     collect_targets,
     evaluate_predictions,
 )
-from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
 from codeminer.llm.litellm_chat import LiteLLMChat
 from codeminer.log_utils import get_logger
-from codeminer.ops.retrieve import RetrieveContext, to_queried_nodes
+from codeminer.ops.retrieve import to_queried_nodes
 from codeminer.types import QueriedNode
 
 logger = get_logger(__name__)
@@ -128,23 +172,6 @@ def queried_node_to_symbol(node: QueriedNode) -> CodeSymbol:
 # Core evaluation logic
 
 
-def build_bm25_index(
-    repo_path: str, languages: List[str], max_k: int = 128
-) -> BM25CodeIndexer:
-    """Chunk the repo and build a BM25 index."""
-    primary = languages[0] if languages else "python"
-    chunker = CodeChunker(
-        language=primary,
-        repo_config=RepoChunkingConfig(languages=languages),
-        max_lines_per_chunk=300,
-    )
-    chunks = chunker.chunk_repository(repo_path=repo_path)
-    if not chunks:
-        raise RuntimeError(f"No code chunks generated from {repo_path}")
-    logger.info(f"  BM25: indexed {len(chunks)} chunks")
-    return BM25CodeIndexer(chunks=chunks, max_k=max_k)
-
-
 def collect_gt_targets(
     meta_or_row: Dict[str, Any], simplified_symbols: bool
 ) -> tuple[List[str], List[str]]:
@@ -160,7 +187,7 @@ def passes_locagent_lite_subset(meta: Dict[str, Any], simplified_symbols: bool) 
 
 def run_bm25_baseline_retrieval(
     problem_statement: str,
-    bm25_index: BM25CodeIndexer,
+    bm25_index: Any,
     retrieve_top_k: int,
 ) -> List[QueriedNode]:
     """Single BM25 call over problem_statement (LocAgent-style sparse baseline)."""
@@ -174,23 +201,21 @@ def run_bm25_baseline_retrieval(
     return to_queried_nodes(raw)
 
 
-def run_agent_with_bm25(
+def run_agent_with_skills(
     query: str,
-    bm25_index: BM25CodeIndexer,
+    contexts: Dict[str, Any],
     llm: LiteLLMChat,
-    top_k: int = 10,
     max_turns: int = 3,
     repo_path: str = ".",
     allow_skills: Optional[List[str]] = None,
 ) -> tuple[List[QueriedNode], List[str], Optional[Dict[str, Any]]]:
-    """
-    Run AgentRunner with the configured skill allowlist.
+    """Run ``AgentRunner`` with the given skill allowlist + pre-built contexts.
 
-    Uses the full AgentRunner pipeline with LLM tool-calling to let the
-    model decide when and how to use the allowed skills. In Phase 1 only
-    the ``bm25_search`` skill has its context wired up here; skills that
-    require a different context (embedding_search, graph_expand, ...)
-    will be enabled by the Phase 2 context_builder.
+    ``contexts`` is the dict returned by
+    ``codeminer.compiler.build_skill_contexts`` — keyed by skill_type
+    (``"retrieve"`` / ``"expand"`` / ...) and carrying the loaded index
+    artifacts. The agent doesn't see the indexes directly; ``SkillLoader``
+    wires each skill executor to the matching context.
 
     Returns:
         Tuple of (results, execution_log, usage_stats)
@@ -204,18 +229,13 @@ def run_agent_with_bm25(
 
     try:
         skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
-        retrieve_ctx = RetrieveContext(
-            bm25=bm25_index,
-            default_top_k=top_k,
-            default_level="l2",
-        )
 
-        # SkillRegistry is a singleton; reset so this instance's BM25 index
-        # replaces the previous one (load_all skips already-registered skills).
+        # SkillRegistry is a singleton; reset so this instance's contexts
+        # replace the previous one (load_all skips already-registered skills).
         SkillRegistry().reset()
 
         loader = SkillLoader()
-        loaded = loader.load_all(skills_dir, contexts={"retrieve": retrieve_ctx})
+        loaded = loader.load_all(skills_dir, contexts=contexts)
         execution_log.append(f"Loaded {len(loaded)} skills")
 
         session_ctx = SessionContext(
@@ -294,23 +314,44 @@ def evaluate_instance(
         repo_path = dataset.get_repo_path(instance)
         execution_log.append(f"Repository prepared at {repo_path}")
 
-        # Step 2: Build BM25 index
-        execution_log.append("Building BM25 index...")
-        bm25_index = build_bm25_index(repo_path, args.languages, max_k=128)
-        execution_log.append(
-            f"BM25 index built with {len(bm25_index.documents)} documents"
+        # Step 2: Build the union of indexes the requested skills need.
+        # In bm25_baseline mode we still go through the compiler so the
+        # build path stays single-source; we just read the BM25 index back
+        # out for the direct-query call.
+        skill_ids = (
+            list(args.skills) if args.eval_mode == "agent" else ["bm25_search"]
         )
+        execution_log.append(
+            f"Building contexts for skills={skill_ids}..."
+        )
+        contexts = build_skill_contexts(
+            repo_path=repo_path,
+            skill_ids=skill_ids,
+            languages=args.languages,
+            cache_dir=args.index_cache_dir,
+            embedding_model=args.embedding_model,
+            embedding_dimension=args.embedding_dimension,
+            default_top_k=args.topk,
+            default_level="l2",
+        )
+        execution_log.append(f"Built contexts for {sorted(contexts.keys())}")
 
         simplified_gt = args.gt_symbols != "full"
 
         # Step 3: Retrieve (agent tool-calling vs single-query BM25 baseline)
         if args.eval_mode == "bm25_baseline":
+            retrieve_ctx = contexts.get("retrieve")
+            if retrieve_ctx is None or retrieve_ctx.bm25 is None:
+                raise RuntimeError(
+                    "bm25_baseline mode requires bm25_search in --skills "
+                    "(it provides the BM25 index used for the direct query)."
+                )
             execution_log.append(
                 "Running BM25 baseline (single query = problem_statement)..."
             )
             retrieve_k = max(max(args.metrics_k), 128)
             results = run_bm25_baseline_retrieval(
-                problem_statement, bm25_index, retrieve_k
+                problem_statement, retrieve_ctx.bm25, retrieve_k
             )
             search_log = [
                 f"BM25 baseline retrieved {len(results)} nodes (top_k={retrieve_k})"
@@ -326,11 +367,10 @@ def evaluate_instance(
             if llm is None:
                 raise RuntimeError("eval_mode=agent requires an LLM")
             execution_log.append(f"Running agent with skills={args.skills}...")
-            results, search_log, usage = run_agent_with_bm25(
+            results, search_log, usage = run_agent_with_skills(
                 query=problem_statement,
-                bm25_index=bm25_index,
+                contexts=contexts,
                 llm=llm,
-                top_k=args.topk,
                 max_turns=args.max_turns,
                 repo_path=repo_path,
                 allow_skills=args.skills,
@@ -566,7 +606,7 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Single-skill evaluation for BM25 search",
+        description="Skill-agent evaluation on SWE-bench (any --skills subset).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # Dataset args
@@ -689,7 +729,7 @@ def parse_args() -> argparse.Namespace:
         "--topk",
         type=int,
         default=50,
-        help="Default top_k for BM25 skill in agent mode (passed to RetrieveContext)",
+        help="Default top_k passed through to retrieval skills via RetrieveContext.",
     )
     parser.add_argument(
         "--skills",
@@ -697,8 +737,35 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         default=["bm25_search"],
         help=(
-            "Skill IDs the agent is allowed to use (allowlist). Phase 1 only "
-            "wires BM25 context; skills that need other contexts require Phase 2."
+            "Skill IDs the agent is allowed to use (allowlist). The compiler "
+            "resolves the union of index_requirements across these skills and "
+            "builds (or reuses cached) indexes accordingly. Examples: "
+            "bm25_search / embedding_search / graph_expand / hybrid_search."
+        ),
+    )
+
+    # Index args (consumed by build_skill_contexts; only relevant for skills
+    # that declare a vector index_requirement, e.g. embedding_search).
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default="nomic-ai/CodeRankEmbed",
+        help="Embedding model used when a requested skill needs a vector index.",
+    )
+    parser.add_argument(
+        "--embedding-dimension",
+        type=int,
+        default=768,
+        help="Embedding vector dimension (must match the embedding model).",
+    )
+    parser.add_argument(
+        "--index-cache-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory under which built indexes are cached "
+            "(default: <repo_path>/.codeminer_cache). Reused across runs; "
+            "delete to force a rebuild."
         ),
     )
 

@@ -1,8 +1,7 @@
-"""
-MCP (Model Context Protocol) server implementation for CodeMiner.
+"""CodeMiner MCP server - exposes backbone capabilities over stdio.
 
-Exposes CodeMiner's backbone capabilities (semantic indexing, CodeGraph,
-hybrid retrieval) as MCP tools over stdio for external agent frameworks.
+Provides MCP tools for semantic indexing, CodeGraph, and hybrid retrieval
+(vector, BM25, regex, Zoekt trigram) for external agent frameworks.
 """
 
 __all__ = ["ServerContext"]

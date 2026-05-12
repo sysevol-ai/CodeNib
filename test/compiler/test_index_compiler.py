@@ -12,6 +12,7 @@ from codeminer.compiler.index_builders import (
     IndexBuilderRegistry,
     SymbolGraphBuilder,
     VectorIndexBuilder,
+    ZoektIndexBuilder,
     register_default_builders,
 )
 from codeminer.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
@@ -198,13 +199,14 @@ class TestSymbolGraphBuilder:
 
 
 class TestRegisterDefaultBuilders:
-    def test_registers_all_three(self):
+    def test_registers_all_defaults(self):
         registry = IndexBuilderRegistry()
         register_default_builders(registry, languages=["python"])
 
         assert registry.has("bm25")
         assert registry.has("vector")
         assert registry.has("symbol_graph")
+        assert registry.has("zoekt")
 
     def test_custom_params_forwarded(self):
         registry = IndexBuilderRegistry()
@@ -223,6 +225,87 @@ class TestRegisterDefaultBuilders:
         assert isinstance(vector, VectorIndexBuilder)
         assert vector.embedding_model == "custom-model"
         assert vector.embedding_dimension == 512
+
+
+# ---------------------------------------------------------------------------
+# ZoektIndexBuilder
+# ---------------------------------------------------------------------------
+
+
+class TestZoektIndexBuilder:
+    def test_build_invokes_zoekt_git_index(self, tmp_path):
+        builder = ZoektIndexBuilder()
+        output_dir = tmp_path / "shards"
+
+        completed = MagicMock()
+        completed.returncode = 0
+        completed.stderr = ""
+
+        with patch(
+            "codeminer.compiler.index_builders.shutil.which",
+            return_value="/fake/zoekt-git-index",
+        ), patch(
+            "codeminer.compiler.index_builders.subprocess.run",
+            return_value=completed,
+        ) as mock_run:
+            status = builder.build(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(output_dir),
+            )
+
+        assert status.index_type == "zoekt"
+        assert status.state == IndexState.FRESH
+        assert status.path == str(output_dir)
+        assert output_dir.exists()
+        cmd = mock_run.call_args.args[0]
+        assert cmd[0] == "/fake/zoekt-git-index"
+        assert "-index" in cmd
+        assert str(output_dir) in cmd
+        assert str(tmp_path) in cmd
+
+    def test_build_raises_when_binary_missing(self, tmp_path):
+        builder = ZoektIndexBuilder(binary="this-binary-does-not-exist-12345")
+
+        with patch(
+            "codeminer.compiler.index_builders.shutil.which",
+            return_value=None,
+        ):
+            try:
+                builder.build(
+                    scope="current_repo",
+                    repo_path=str(tmp_path),
+                    output_dir=str(tmp_path / "shards"),
+                )
+            except RuntimeError as exc:
+                assert "Zoekt binary not found" in str(exc)
+            else:
+                raise AssertionError("Expected RuntimeError when binary missing")
+
+    def test_build_raises_when_subprocess_fails(self, tmp_path):
+        import subprocess
+
+        builder = ZoektIndexBuilder()
+        with patch(
+            "codeminer.compiler.index_builders.shutil.which",
+            return_value="/fake/zoekt-git-index",
+        ), patch(
+            "codeminer.compiler.index_builders.subprocess.run",
+            side_effect=subprocess.CalledProcessError(
+                returncode=2, cmd=["zoekt-git-index"], stderr="boom"
+            ),
+        ):
+            try:
+                builder.build(
+                    scope="current_repo",
+                    repo_path=str(tmp_path),
+                    output_dir=str(tmp_path / "shards"),
+                )
+            except RuntimeError as exc:
+                assert "zoekt-git-index failed" in str(exc)
+                assert "boom" in str(exc)
+            else:
+                raise AssertionError("Expected RuntimeError when subprocess fails")
 
 
 # ---------------------------------------------------------------------------

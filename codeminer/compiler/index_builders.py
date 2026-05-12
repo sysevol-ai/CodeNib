@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
@@ -390,6 +392,78 @@ class VectorIndexBuilder:
 
 
 @dataclass
+class ZoektIndexBuilder:
+    """Build a Zoekt trigram index by shelling out to ``zoekt-git-index``.
+
+    Zoekt is a Go-based code search engine (https://github.com/sourcegraph/zoekt)
+    that indexes source files using a positional trigram index.  We treat it
+    as an external tool: ``zoekt-git-index`` writes shard files into
+    ``output_dir`` from the repository's tracked files, and the MCP server
+    later spawns ``zoekt-webserver`` against that directory to answer
+    queries.
+
+    The builder is a *soft* dependency.  If the binary is missing, ``build()``
+    raises :class:`RuntimeError` with installation guidance; the
+    :class:`IndexCompiler` records the failure in the manifest, and other
+    indexes continue building.
+    """
+
+    binary: str = "zoekt-git-index"
+    extra_args: List[str] = field(default_factory=list)
+
+    def build(self, scope: str, **kwargs: Any) -> IndexStatus:
+        repo_path: str = kwargs["repo_path"]
+        output_dir: str = kwargs["output_dir"]
+
+        binary_path = shutil.which(self.binary) or (
+            self.binary if os.path.isfile(self.binary) else None
+        )
+        if binary_path is None:
+            raise RuntimeError(
+                f"Zoekt binary not found: {self.binary!r}. "
+                "Install via 'go install github.com/sourcegraph/zoekt/cmd/...@latest' "
+                "or use the official Docker image. "
+                "Skipping zoekt index build."
+            )
+
+        os.makedirs(output_dir, exist_ok=True)
+        cmd = [binary_path, "-index", output_dir, *self.extra_args, repo_path]
+        logger.info("Building Zoekt index: %s", " ".join(cmd))
+        try:
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"zoekt-git-index failed (rc={exc.returncode}): "
+                f"{(exc.stderr or '').strip()}"
+            ) from exc
+
+        shard_count = sum(
+            1 for entry in os.listdir(output_dir) if entry.endswith(".zoekt")
+        )
+
+        return IndexStatus(
+            index_type="zoekt",
+            state=IndexState.FRESH,
+            last_built=time.time(),
+            age_seconds=0.0,
+            scope=scope,
+            path=output_dir,
+            metadata={
+                "shard_count": shard_count,
+                "binary": binary_path,
+            },
+        )
+
+    def incremental_update(self, scope: str, **kwargs: Any) -> IndexStatus:
+        return self.build(scope, **kwargs)
+
+
+@dataclass
 class SymbolGraphBuilder:
     """Build a SCIP-based symbol graph."""
 
@@ -471,3 +545,7 @@ def register_default_builders(
         ),
     )
     registry.register("symbol_graph", SymbolGraphBuilder(language=langs[0]))
+    # Zoekt is registered unconditionally; build() raises a clear error at
+    # invocation time if the binary is unavailable so the IndexCompiler can
+    # mark the entry as failed without aborting other index builds.
+    registry.register("zoekt", ZoektIndexBuilder())
