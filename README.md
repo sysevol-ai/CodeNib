@@ -50,4 +50,6 @@ mkdocs serve
 
 ## License
 
-MIT
+CodeMiner is licensed under the [Apache License, Version 2.0](LICENSE).
+Contributions previously made under the MIT License are retained under the
+terms of Section 4 of Apache 2.0; see [NOTICE](NOTICE) for full attribution.

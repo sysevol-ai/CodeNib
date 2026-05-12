@@ -8,11 +8,12 @@ version = "0.1.0"
 description = "A code analysis agent with graph-enhancement"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "Apache-2.0"
 authors = [{ name = "Zhongming Yu", email = "zhy025@ucsd.edu" }]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
+    "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
     "igraph>=0.11.6",                     # For graph data structure and algorithms
