@@ -11,14 +11,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .context import ServerContext
-from .tools.search import search_semantic
+from .tools.search import search_semantic as _search_semantic_impl
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -47,20 +46,24 @@ mcp = FastMCP("codeminer") if FastMCP is not None else None
 # ------------------------------------------------------------------
 
 
-@mcp.tool(
-    name="search_semantic",
-    description=(
-        "Search codebase semantically using vector embeddings. "
-        "Returns functions, classes, and methods ranked by semantic similarity. "
-        "Best for natural language queries describing functionality or code snippets."
-    ),
-) if mcp else lambda f: f
-async def search_semantic_tool(
+@(
+    mcp.tool(
+        name="search_semantic",
+        description=(
+            "Search codebase semantically using vector embeddings. "
+            "Returns functions, classes, and methods ranked by semantic similarity. "
+            "Best for natural language queries describing functionality or code snippets."
+        ),
+    )
+    if mcp
+    else lambda f: f
+)
+async def semantic_search(
     query: str,
     top_k: int = 10,
     level: str = "l2",
     score_threshold: float = 0.0,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | dict[str, str]:
     """
     Semantic search over indexed code using vector embeddings.
 
@@ -73,18 +76,17 @@ async def search_semantic_tool(
 
     Returns:
         List of code nodes with file_path, node_type, content, score, etc.
+        On load failure, returns a dict ``{"error": ...}`` instead of raising.
     """
     if _ctx is None:
         raise RuntimeError("Server not initialized")
-    results = await asyncio.to_thread(
-        search_semantic,
+    return await _search_semantic_impl(
         ctx=_ctx,
         query=query,
         top_k=top_k,
         level=level if level else "l2",
         score_threshold=score_threshold if score_threshold > 0 else None,
     )
-    return results
 
 
 def server_status() -> str:
@@ -160,10 +162,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> None:
-    """Main entry point for MCP server."""
-    global _ctx
+def init_server(manifest_path: str | Path) -> None:
+    """Initialize the global ServerContext from a manifest file.
 
+    Loads the manifest and hydrates the vector store into the module-level
+    ``_ctx``. Safe to call from tests with a temporary manifest path.
+
+    Raises:
+        FileNotFoundError: if ``manifest_path`` does not exist.
+    """
+    global _ctx
+    resolved = Path(manifest_path).resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(f"Manifest not found: {resolved}")
+    logger.info("Loading manifest from %s", resolved)
+    _ctx = ServerContext.load(resolved)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """CLI entry point: ``codeminer-mcp <manifest>``."""
     if mcp is None:
         logger.error("FastMCP not installed. Install with: pip install 'mcp[server]'")
         sys.exit(1)
@@ -172,19 +189,18 @@ def main(argv: list[str] | None = None) -> None:
     manifest_path = args.manifest_flag or args.manifest
 
     if not manifest_path:
-        logger.error("No manifest provided. Use: codeminer-mcp <manifest> or --manifest <path>")
-        sys.exit(1)
-
-    manifest_path = Path(manifest_path).resolve()
-    if not manifest_path.exists():
-        logger.error("Manifest not found: %s", manifest_path)
+        logger.error(
+            "No manifest provided. Use: codeminer-mcp <manifest> or --manifest <path>"
+        )
         sys.exit(1)
 
     try:
-        logger.info("Loading manifest from %s", manifest_path)
-        _ctx = ServerContext.load(manifest_path)
+        init_server(manifest_path)
         logger.info("Starting MCP server on stdio...")
         mcp.run()
+    except FileNotFoundError as exc:
+        logger.error(str(exc))
+        sys.exit(1)
     except Exception as exc:
         logger.error("Failed to start server: %s", exc, exc_info=True)
         sys.exit(1)

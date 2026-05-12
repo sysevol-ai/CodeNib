@@ -13,11 +13,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.index.embedding.vector_store import CodeVectorStore
-from codeminer.mcp.context import ServerContext
-
 # Import server module components
 import codeminer.mcp.server as server_module
+from codeminer.index.embedding.vector_store import CodeVectorStore
+from codeminer.mcp.context import ServerContext
 
 
 @pytest.fixture
@@ -28,7 +27,7 @@ def mock_manifest(tmp_path: Path) -> Path:
         "commit": "abc123",
         "languages": ["python"],
         "file_count": 100,
-        "capabilities": ["vector_search"],
+        "capabilities": {"vector_search": True},
         "compiled_at": "2026-04-20T12:00:00Z",
         "compiled_at_epoch": 1745323200.0,
         "indexes": {
@@ -86,14 +85,15 @@ def test_get_context_uninitialized():
         server_module.get_context()
 
 
-
 def test_semantic_search_tool_no_vector_index(mock_manifest: Path):
     """Test semantic_search tool returns error when vector index not loaded."""
     # Initialize server with mock that fails vector loading
     mock_mcp = MagicMock()
     with patch.object(server_module, "FastMCP", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
-            with patch.object(CodeVectorStore, "load", side_effect=Exception("Load failed")):
+            with patch.object(
+                CodeVectorStore, "load", side_effect=Exception("Load failed")
+            ):
                 server_module.init_server(str(mock_manifest))
 
     result = asyncio.run(server_module.semantic_search(query="test query"))
@@ -101,7 +101,6 @@ def test_semantic_search_tool_no_vector_index(mock_manifest: Path):
     # Should return error message instead of raising
     assert isinstance(result, dict)
     assert "error" in result or "Vector index not loaded" in str(result)
-
 
 
 def test_semantic_search_tool_with_vector_index(mock_manifest: Path):

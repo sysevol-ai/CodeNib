@@ -98,7 +98,7 @@ class ServerContext:
             if loaded_model != manifest_model:
                 raise RuntimeError(
                     f"Embedding model mismatch: manifest specifies "
-                    f"'{manifest_model}', but loaded store has '{loaded_model}'. "
+                    f"{manifest_model!r}, but loaded store has {loaded_model!r}. "
                     f"Re-run indexing with the correct model."
                 )
 
@@ -110,5 +110,6 @@ class ServerContext:
                 cfg["embedding_model"],
             )
         except Exception as exc:
+            self.vector = None
             self.errors["vector"] = str(exc)
             logger.warning("Failed to load vector index: %s", exc)
