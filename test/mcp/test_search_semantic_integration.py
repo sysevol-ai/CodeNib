@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Integration tests for search_semantic with real embedding indexes.
 
@@ -5,13 +9,13 @@ Uses pre-built indexes from /mnt/data/codeminer (Turquoise-T's dataset).
 """
 
 import asyncio
-import pytest
 from pathlib import Path
 
-from codeminer.compiler.manifest import RepoManifest, IndexEntry
+import pytest
+
+from codeminer.compiler.manifest import IndexEntry, RepoManifest
 from codeminer.mcp.context import ServerContext
 from codeminer.mcp.tools.search import search_semantic
-
 
 # Test data directory
 CODEMINER_DATA = Path("/mnt/data/codeminer")
@@ -68,15 +72,16 @@ class TestSearchSemanticIntegration:
 
         return ctx
 
-    
     def test_search_semantic_real_query(self, real_context):
         """Test semantic search with a real query on astropy code."""
-        results = asyncio.run(search_semantic(
-            real_context,
-            query="find coordinate transformation functions",
-            top_k=5,
-            level="l2",
-        ))
+        results = asyncio.run(
+            search_semantic(
+                real_context,
+                query="find coordinate transformation functions",
+                top_k=5,
+                level="l2",
+            )
+        )
 
         # Basic validation
         assert isinstance(results, list)
@@ -97,25 +102,24 @@ class TestSearchSemanticIntegration:
         # Print results for manual inspection
         print("\n=== Search Results ===")
         for i, r in enumerate(results):
-            print(
-                f"{i+1}. {r['node_name']} (score: {r['score']:.3f})"
-            )
+            print(f"{i+1}. {r['node_name']} (score: {r['score']:.3f})")
             print(f"   File: {r['file']}")
             print(f"   Type: {r['type']}")
             print()
 
-    
     def test_search_semantic_score_threshold(self, real_context):
         """Test score threshold filtering with real index."""
         # Search without threshold
-        all_results = asyncio.run(search_semantic(
-            real_context, query="unit test", top_k=20
-        ))
+        all_results = asyncio.run(
+            search_semantic(real_context, query="unit test", top_k=20)
+        )
 
         # Search with threshold
-        filtered_results = asyncio.run(search_semantic(
-            real_context, query="unit test", top_k=20, score_threshold=0.5
-        ))
+        filtered_results = asyncio.run(
+            search_semantic(
+                real_context, query="unit test", top_k=20, score_threshold=0.5
+            )
+        )
 
         # Filtered should have fewer or equal results
         assert len(filtered_results) <= len(all_results)
@@ -124,15 +128,14 @@ class TestSearchSemanticIntegration:
         for r in filtered_results:
             assert r["score"] >= 0.5
 
-    
     def test_search_semantic_performance(self, real_context):
         """Test that search completes in reasonable time."""
         import time
 
         start = time.time()
-        results = asyncio.run(search_semantic(
-            real_context, query="coordinate transformation", top_k=10
-        ))
+        results = asyncio.run(
+            search_semantic(real_context, query="coordinate transformation", top_k=10)
+        )
         elapsed = time.time() - start
 
         # Should complete within 2 seconds (generous threshold)

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for codeminer.mcp.context.ServerContext."""
 
 from __future__ import annotations
@@ -18,7 +22,14 @@ def manifest_dir(tmp_path: Path) -> Path:
     bm25_dir = tmp_path / "bm25"
     bm25_dir.mkdir()
     (bm25_dir / "documents.json").write_text(
-        json.dumps([{"page_content": "def foo(): pass", "metadata": {"node_name": "foo", "type": "function"}}])
+        json.dumps(
+            [
+                {
+                    "page_content": "def foo(): pass",
+                    "metadata": {"node_name": "foo", "type": "function"},
+                }
+            ]
+        )
     )
     (bm25_dir / "bm25_metadata.json").write_text(
         json.dumps({"project_root": str(tmp_path), "max_k": 10, "language": "english"})

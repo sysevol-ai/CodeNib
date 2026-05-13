@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """GraphPatcher: thin router for incremental CodeGraph updates.
 
 Dispatches to language-specific patchers (patcher_*.py).

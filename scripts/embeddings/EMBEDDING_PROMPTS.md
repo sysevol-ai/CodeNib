@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Embedding query/document prompt cheat sheet
 
 Sentence-transformer code retrievers are trained with **asymmetric**

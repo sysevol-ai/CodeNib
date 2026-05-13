@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import re
 from pathlib import Path
 
@@ -312,9 +316,7 @@ class SCIPTypeScriptGraphDecoder:
             # with a backtick.
             dir_prefix = sym_with_bt[:first_bt_open].rstrip("/")
             file_part = sym_with_bt[first_bt_open + 1 : first_bt_close]
-            module_path = (
-                f"{dir_prefix}/{file_part}" if dir_prefix else file_part
-            )
+            module_path = f"{dir_prefix}/{file_part}" if dir_prefix else file_part
             # Everything after the file's closing backtick is the symbol
             # descriptor; strip any inner backticks (they only escape special
             # chars within name segments).

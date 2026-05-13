@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 End-to-end MCP server tests with real embedding indexes.
 
@@ -6,13 +10,14 @@ from codeminer-base-dataset at /mnt/data/codeminer.
 """
 
 import asyncio
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from codeminer.compiler.manifest import RepoManifest, IndexEntry
-from codeminer.mcp.context import ServerContext
+import pytest
+
 import codeminer.mcp.server as server_module
+from codeminer.compiler.manifest import IndexEntry, RepoManifest
+from codeminer.mcp.context import ServerContext
 
 # Test data from codeminer-base-dataset
 CODEMINER_DATA = Path("/mnt/data/codeminer")
@@ -84,7 +89,6 @@ class TestMCPServerE2E:
                 print(f"  L0: {stats.get('l0_documents', 0)}")
                 print(f"  L2: {stats.get('l2_documents', 0)}")
 
-    
     def test_mcp_semantic_search(self, test_manifest_path):
         """Test MCP semantic_search tool with real query."""
         # Initialize server
@@ -96,11 +100,13 @@ class TestMCPServerE2E:
         # Known query for astropy separability issue
         query = "function that calculates model separability matrix"
 
-        results = asyncio.run(server_module.semantic_search(
-            query=query,
-            top_k=10,
-            level="l2",
-        ))
+        results = asyncio.run(
+            server_module.semantic_search(
+                query=query,
+                top_k=10,
+                level="l2",
+            )
+        )
 
         # Validate results
         assert isinstance(results, list)
@@ -133,7 +139,6 @@ class TestMCPServerE2E:
             print(f"   File: {Path(r['file']).name}")
             print()
 
-    
     def test_mcp_vs_direct_call_equivalence(self, test_manifest_path):
         """
         Verify MCP layer produces identical results to direct API call.
@@ -165,9 +170,9 @@ class TestMCPServerE2E:
             with patch.object(server_module, "mcp", mock_mcp):
                 server_module.init_server(test_manifest_path)
 
-        mcp_results = asyncio.run(server_module.semantic_search(
-            query=query, top_k=top_k, level="l2"
-        ))
+        mcp_results = asyncio.run(
+            server_module.semantic_search(query=query, top_k=top_k, level="l2")
+        )
 
         # Should have same number of results
         assert len(mcp_results) == len(direct_results)
@@ -187,7 +192,6 @@ class TestMCPServerE2E:
         print("Scores match: ✓")
         print("MCP adds no transformation overhead: ✓")
 
-    
     def test_mcp_server_status(self, test_manifest_path):
         """Test server_status resource returns correct info."""
         mock_mcp = MagicMock()

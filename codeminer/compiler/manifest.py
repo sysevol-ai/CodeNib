@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Repo manifest — the linking protocol between index compilation (Phase 1)
 and query compilation (Phase 2).

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """End-to-end integration tests for Zoekt search via MCP.
 
 Builds a tiny git-tracked repo, runs the real ``zoekt-git-index`` binary to
@@ -31,8 +35,7 @@ from codeminer.mcp.tools.search import search_zoekt_impl
 
 # Skip the entire module when Zoekt binaries are not installed.
 pytestmark = pytest.mark.skipif(
-    shutil.which("zoekt-git-index") is None
-    or shutil.which("zoekt-webserver") is None,
+    shutil.which("zoekt-git-index") is None or shutil.which("zoekt-webserver") is None,
     reason=(
         "Zoekt binaries (zoekt-git-index, zoekt-webserver) not on $PATH. "
         "Install with: go install github.com/sourcegraph/zoekt/cmd/...@latest"
@@ -55,7 +58,7 @@ REPO_FILES: dict[str, str] = {
         "TAX_RATE = 0.08\n"
         "\n"
         "def calculate_tax(amount):\n"
-        "    \"\"\"Compute MAGIC_BILLING_MARKER sales tax.\"\"\"\n"
+        '    """Compute MAGIC_BILLING_MARKER sales tax."""\n'
         "    return amount * TAX_RATE\n"
     ),
     "docs/README.md": (
@@ -64,10 +67,7 @@ REPO_FILES: dict[str, str] = {
         "Authentication uses InvalidTokenError when credentials are bad.\n"
         "See src/auth.py for details.\n"
     ),
-    "scripts/deploy.sh": (
-        "#!/bin/bash\n"
-        "echo MAGIC_BILLING_MARKER deploy step\n"
-    ),
+    "scripts/deploy.sh": ("#!/bin/bash\n" "echo MAGIC_BILLING_MARKER deploy step\n"),
 }
 
 
@@ -118,9 +118,9 @@ def manifest_path(tmp_path: Path) -> Path:
         repo_path=str(repo_dir),
         output_dir=str(shard_dir),
     )
-    assert status.metadata["shard_count"] >= 1, (
-        f"zoekt-git-index produced no shards: {status.metadata}"
-    )
+    assert (
+        status.metadata["shard_count"] >= 1
+    ), f"zoekt-git-index produced no shards: {status.metadata}"
 
     manifest = RepoManifest(
         repo_path=str(repo_dir),
@@ -228,7 +228,9 @@ def test_search_file_filter_scopes_results(loaded_ctx: ServerContext) -> None:
 
     assert results
     for r in results:
-        assert r["file"].endswith(".py"), f"unexpected file in scoped results: {r['file']}"
+        assert r["file"].endswith(
+            ".py"
+        ), f"unexpected file in scoped results: {r['file']}"
 
 
 def test_search_regex_atom(loaded_ctx: ServerContext) -> None:

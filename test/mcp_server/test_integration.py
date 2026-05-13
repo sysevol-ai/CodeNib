@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """End-to-end integration tests for the MCP server.
 
 Builds a tiny synthetic repo (a few Python files), constructs a real BM25
@@ -21,23 +25,22 @@ from codeminer.index.sparse_idx import BM25CodeIndexer
 from codeminer.mcp.context import ServerContext
 from codeminer.mcp.tools.search import search_bm25_impl, search_regex_impl
 
-
 # Synthetic repo: three small Python files with predictable symbols so that
 # both keyword (BM25) and regex search have something to match.
 REPO_FILES: dict[str, str] = {
     "billing/tax.py": (
         "def calculate_tax(amount):\n"
-        "    \"\"\"Compute sales tax for a given amount.\"\"\"\n"
+        '    """Compute sales tax for a given amount."""\n'
         "    return amount * 0.08\n"
     ),
     "billing/exceptions.py": (
         "class TaxError(Exception):\n"
-        "    \"\"\"Raised when tax computation fails.\"\"\"\n"
+        '    """Raised when tax computation fails."""\n'
         "    pass\n"
     ),
     "auth/session.py": (
         "def authenticate_user(username, password):\n"
-        "    \"\"\"Return True if credentials are valid.\"\"\"\n"
+        '    """Return True if credentials are valid."""\n'
         "    return False\n"
     ),
 }
@@ -146,9 +149,9 @@ def test_search_bm25_finds_known_symbol(manifest_path: Path) -> None:
 
     assert results, "BM25 should return at least one hit"
     names = [r["node_name"] for r in results]
-    assert any("calculate_tax" in n for n in names), (
-        f"calculate_tax not found in BM25 results: {names}"
-    )
+    assert any(
+        "calculate_tax" in n for n in names
+    ), f"calculate_tax not found in BM25 results: {names}"
 
 
 def test_search_regex_finds_function_definitions(manifest_path: Path) -> None:

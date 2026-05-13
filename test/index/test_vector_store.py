@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Test script for the CodeVectorStore functionality.
 Demonstrates how to use the vector store for semantic search over code chunks.

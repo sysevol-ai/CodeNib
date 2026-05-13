@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for ZoektSearcher — HTTP query composition and result mapping."""
 
 from __future__ import annotations
@@ -13,7 +17,6 @@ from codeminer.index.trigram.zoekt_searcher import (
     _compose_query,
     _file_match_to_node,
 )
-
 
 # ------------------------------------------------------------------
 # Helpers
@@ -104,6 +107,7 @@ class TestFileMatchMapping:
         # Score is not exposed by the JSON endpoint -- caller relies on order.
         assert node.score is None
 
+
 # ------------------------------------------------------------------
 # ZoektSearcher.search (HTTP layer mocked)
 # ------------------------------------------------------------------
@@ -128,7 +132,9 @@ class TestSearcherSearch:
         )
         mock_response.raise_for_status.return_value = None
 
-        with patch.object(searcher._session, "get", return_value=mock_response) as mock_get:
+        with patch.object(
+            searcher._session, "get", return_value=mock_response
+        ) as mock_get:
             results = searcher.search("foo", top_k=10)
 
         assert len(results) == 1
@@ -206,5 +212,7 @@ class TestSearcherStartPreconditions:
         os.chmod(fake, 0o755)
 
         s = ZoektSearcher(index_dir=str(tmp_path / "missing"), binary=str(fake))
-        with pytest.raises(ZoektUnavailableError, match="index directory does not exist"):
+        with pytest.raises(
+            ZoektUnavailableError, match="index directory does not exist"
+        ):
             s.start()

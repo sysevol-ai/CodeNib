@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for concrete index builders and the IndexCompiler."""
 
 from __future__ import annotations
@@ -241,13 +245,16 @@ class TestZoektIndexBuilder:
         completed.returncode = 0
         completed.stderr = ""
 
-        with patch(
-            "codeminer.compiler.index_builders.shutil.which",
-            return_value="/fake/zoekt-git-index",
-        ), patch(
-            "codeminer.compiler.index_builders.subprocess.run",
-            return_value=completed,
-        ) as mock_run:
+        with (
+            patch(
+                "codeminer.compiler.index_builders.shutil.which",
+                return_value="/fake/zoekt-git-index",
+            ),
+            patch(
+                "codeminer.compiler.index_builders.subprocess.run",
+                return_value=completed,
+            ) as mock_run,
+        ):
             status = builder.build(
                 scope="current_repo",
                 repo_path=str(tmp_path),
@@ -286,13 +293,16 @@ class TestZoektIndexBuilder:
         import subprocess
 
         builder = ZoektIndexBuilder()
-        with patch(
-            "codeminer.compiler.index_builders.shutil.which",
-            return_value="/fake/zoekt-git-index",
-        ), patch(
-            "codeminer.compiler.index_builders.subprocess.run",
-            side_effect=subprocess.CalledProcessError(
-                returncode=2, cmd=["zoekt-git-index"], stderr="boom"
+        with (
+            patch(
+                "codeminer.compiler.index_builders.shutil.which",
+                return_value="/fake/zoekt-git-index",
+            ),
+            patch(
+                "codeminer.compiler.index_builders.subprocess.run",
+                side_effect=subprocess.CalledProcessError(
+                    returncode=2, cmd=["zoekt-git-index"], stderr="boom"
+                ),
             ),
         ):
             try:

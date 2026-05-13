@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Token usage and cost tracking for LLM calls.
 
 Wraps the native ``response.usage`` field that litellm exposes on

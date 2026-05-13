@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for CodeGraph.query_range and the per-file range indexes.
 
 Covers the surface introduced for the LSP-aligned graph_expand redesign:

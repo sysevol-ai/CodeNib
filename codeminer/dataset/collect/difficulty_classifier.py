@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Agent-based difficulty classification for SWE-bench instances.
 
 Uses a Claude agent to analyze the problem statement and patch content to

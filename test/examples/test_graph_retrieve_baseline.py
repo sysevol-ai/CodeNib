@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for the pure helpers in ``examples/graph_retrieve_baseline.py``.
 
 Phase 1 review called out that the runner's helpers had no tests, so as

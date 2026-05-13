@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Multi-edge correctness: edit one call site, verify only one edge is removed.
 
 #125 review correctness risk: dropping `are_adjacent` dedup means a

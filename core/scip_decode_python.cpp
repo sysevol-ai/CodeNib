@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "scip_decode_python.h"
 
 #include <algorithm>
@@ -207,8 +211,8 @@ void SCIPPythonDecoder::process_symbol(const std::string &symbol, int line,
       std::string file = module_dir + ".py";
       if (is_reference) {
         builder.add_edge(builder.current_scope(), file, EDGE_TYPE_REFERENCE,
-                          /*anchor_file=*/builder.current_file(),
-                          /*anchor_line=*/line);
+                         /*anchor_file=*/builder.current_file(),
+                         /*anchor_line=*/line);
       }
     }
     return;
@@ -229,8 +233,8 @@ void SCIPPythonDecoder::process_symbol(const std::string &symbol, int line,
     builder.add_edge(builder.current_scope(), unified, EDGE_TYPE_CONTAIN);
   } else if (is_reference) {
     builder.add_symbol_reference(unified, module_path, symbol_type,
-                                  /*anchor_file=*/std::nullopt,
-                                  /*anchor_line=*/line);
+                                 /*anchor_file=*/std::nullopt,
+                                 /*anchor_line=*/line);
   }
 }
 

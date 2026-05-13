@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Client for the Zoekt trigram code search engine.
 
 Zoekt is written in Go.  CodeMiner interacts with it as a subprocess:
@@ -251,9 +255,7 @@ class ZoektSearcher:
             )
             resp.raise_for_status()
         except requests.RequestException as exc:
-            raise ZoektUnavailableError(
-                f"Zoekt search request failed: {exc}"
-            ) from exc
+            raise ZoektUnavailableError(f"Zoekt search request failed: {exc}") from exc
 
         try:
             data = resp.json()

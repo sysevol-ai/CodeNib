@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for ``codeminer.compiler.skill_context``.
 
 The function under test orchestrates: skill → index_type union → build/load
@@ -39,9 +43,7 @@ def _make_meta(
     *,
     index_types: List[str] = (),
 ) -> SkillMetadata:
-    reqs = [
-        compiler_resources.IndexRequirement(index_type=t) for t in index_types
-    ]
+    reqs = [compiler_resources.IndexRequirement(index_type=t) for t in index_types]
     return SkillMetadata(
         skill_id=skill_id,
         skill_type=skill_type,
@@ -84,9 +86,7 @@ def test_required_types_empty(registry):
 
 
 def test_required_types_single(registry):
-    got = skill_context.required_index_types(
-        ["bm25_search"], skill_registry=registry
-    )
+    got = skill_context.required_index_types(["bm25_search"], skill_registry=registry)
     assert got == {"bm25"}
 
 
@@ -176,9 +176,7 @@ def test_build_returns_expand_for_graph_expand(registry, mocked_build, tmp_path)
     assert contexts["expand"].code_graph is not None
 
 
-def test_build_returns_both_keys_for_mixed_skills(
-    registry, mocked_build, tmp_path
-):
+def test_build_returns_both_keys_for_mixed_skills(registry, mocked_build, tmp_path):
     contexts = skill_context.build_skill_contexts(
         repo_path=str(tmp_path),
         skill_ids=["bm25_search", "embedding_search", "graph_expand"],
@@ -207,9 +205,7 @@ def test_sibling_skill_with_no_requirement_still_gets_context(
     assert "retrieve" in contexts
 
 
-def test_transform_skill_alone_returns_empty_dict(
-    registry, mocked_build, tmp_path
-):
+def test_transform_skill_alone_returns_empty_dict(registry, mocked_build, tmp_path):
     """``query_transform`` is TRANSFORM type with no index requirements.
     Currently no transform context is plumbed through — the dict stays
     empty rather than fabricating a useless entry."""
@@ -222,9 +218,7 @@ def test_transform_skill_alone_returns_empty_dict(
     assert contexts == {}
 
 
-def test_already_built_index_is_not_rebuilt(
-    registry, mocked_build, tmp_path
-):
+def test_already_built_index_is_not_rebuilt(registry, mocked_build, tmp_path):
     """If ``cache_dir/<index_type>`` already has a file, the compiler is
     not invoked for that type. Loading still happens."""
     cache = tmp_path / "cache"
@@ -242,9 +236,7 @@ def test_already_built_index_is_not_rebuilt(
     assert mocked_build["loaded"] == ["bm25"]
 
 
-def test_missing_index_triggers_build(
-    registry, mocked_build, tmp_path
-):
+def test_missing_index_triggers_build(registry, mocked_build, tmp_path):
     """Empty cache → compiler is invoked for the missing type."""
     skill_context.build_skill_contexts(
         repo_path=str(tmp_path),
@@ -256,9 +248,7 @@ def test_missing_index_triggers_build(
     assert mocked_build["loaded"] == ["bm25"]
 
 
-def test_rebuild_forces_full_recompile(
-    registry, mocked_build, tmp_path
-):
+def test_rebuild_forces_full_recompile(registry, mocked_build, tmp_path):
     """Even with all dirs populated, ``rebuild=True`` rebuilds everything."""
     cache = tmp_path / "cache"
     for t in ("bm25", "vector"):
@@ -276,9 +266,7 @@ def test_rebuild_forces_full_recompile(
     assert mocked_build["compile"] == [("bm25", "vector")]
 
 
-def test_partial_cache_only_rebuilds_missing(
-    registry, mocked_build, tmp_path
-):
+def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):
     """bm25 already built, vector missing → only vector is rebuilt."""
     cache = tmp_path / "cache"
     bm25_dir = cache / "bm25"

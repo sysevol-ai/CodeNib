@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for the MCP server tool registration and async wrappers."""
 
 from __future__ import annotations
@@ -22,7 +26,9 @@ def _reset_ctx():
 
 def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=None):
     ctx = MagicMock()
-    ctx.manifest = RepoManifest(repo_path="/repo", commit="abc123", languages=["python"])
+    ctx.manifest = RepoManifest(
+        repo_path="/repo", commit="abc123", languages=["python"]
+    )
     ctx.bm25 = MagicMock() if bm25_results is not None else None
     ctx.regex_index = MagicMock() if regex_results is not None else None
     ctx.zoekt = MagicMock() if zoekt_results is not None else None
@@ -37,17 +43,25 @@ def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=Non
 
 
 def test_search_bm25_tool() -> None:
-    nodes = [NodeInfo(node_name="foo", type="function", file="a.py", content="def foo(): pass")]
+    nodes = [
+        NodeInfo(
+            node_name="foo", type="function", file="a.py", content="def foo(): pass"
+        )
+    ]
     server_mod._ctx = _make_server_ctx(bm25_results=nodes)
 
-    result = asyncio.run(server_mod.search_bm25(query="foo", top_k=5, filter_test=False))
+    result = asyncio.run(
+        server_mod.search_bm25(query="foo", top_k=5, filter_test=False)
+    )
 
     assert len(result) == 1
     assert result[0]["node_name"] == "foo"
 
 
 def test_search_regex_tool() -> None:
-    nodes = [NodeInfo(node_name="bar", type="class", file="b.py", content="class bar: ...")]
+    nodes = [
+        NodeInfo(node_name="bar", type="class", file="b.py", content="class bar: ...")
+    ]
     server_mod._ctx = _make_server_ctx(regex_results=nodes)
 
     result = asyncio.run(server_mod.search_regex(pattern="class", top_k=10))

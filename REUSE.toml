@@ -1,0 +1,31 @@
+version = 1
+
+# Files we cannot (or should not) annotate with inline SPDX headers:
+#   - prompt templates loaded verbatim as model input
+#   - meta / convention files where Apache 2.0 itself reserves the format
+#     (NOTICE) or where comments are awkward (.gitignore, .flake8)
+# Their licensing is declared here, per the REUSE 3.3 specification.
+
+[[annotations]]
+path = "NOTICE"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ".gitignore"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ".flake8"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "codeminer/model/prompts/*.txt"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"

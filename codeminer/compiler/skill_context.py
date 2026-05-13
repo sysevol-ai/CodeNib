@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Skill-aware context construction.
 
 The agent eval scripts used to chunk repos and instantiate ``BM25CodeIndexer``
@@ -210,9 +214,7 @@ def build_skill_contexts(
                     embedding_model=embedding_model,
                     embedding_dimension=embedding_dimension,
                 )
-            logger.info(
-                "Building missing indexes %s under %s", missing, cache_dir
-            )
+            logger.info("Building missing indexes %s under %s", missing, cache_dir)
             _run_compiler(
                 repo_path,
                 missing,
@@ -258,9 +260,7 @@ def _package_contexts(
     """
     contexts: Dict[str, Any] = {}
 
-    needs_retrieve = bool(
-        skill_types & {SkillType.RETRIEVAL, SkillType.AGGREGATE}
-    )
+    needs_retrieve = bool(skill_types & {SkillType.RETRIEVAL, SkillType.AGGREGATE})
     if needs_retrieve:
         from ..ops.retrieve import RetrieveContext
 

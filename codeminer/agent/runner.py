@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Lightweight agent runner using LLM tool calling.
 
 Implements a think → act → observe loop that lets an LLM decide which

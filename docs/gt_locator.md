@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # GTLocator
 
 Extract symbol-level ground truth changes (functions, classes, methods) from SWE-bench unified diff patches. Identifies which symbols were modified, added, or deleted.

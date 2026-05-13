@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "scip_decode_rust.h"
 
 #include <algorithm>
@@ -452,8 +456,8 @@ void SCIPRustDecoder::process_symbol(const std::string &symbol,
     }
   } else {
     builder.add_symbol_reference(unified, file_path, type,
-                                  /*anchor_file=*/std::nullopt,
-                                  /*anchor_line=*/line);
+                                 /*anchor_file=*/std::nullopt,
+                                 /*anchor_line=*/line);
     builder.set_unified_name(unified, unified_name(unified, file_path, type),
                              /*only_if_missing=*/true);
   }

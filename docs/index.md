@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # CodeMiner
 
 A code analysis agent with graph-enhancement for multi-language codebases.

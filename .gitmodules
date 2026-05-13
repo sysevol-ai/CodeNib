@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 [submodule "third_party/scip-python"]
 	path = third_party/scip-python
 	url = https://github.com/fishmingyu/scip-python.git

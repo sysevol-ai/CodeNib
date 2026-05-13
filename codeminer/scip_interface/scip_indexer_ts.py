@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 SCIP indexer for TypeScript and JavaScript projects using scip-typescript.
 """
@@ -152,11 +157,17 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         # the cached prior install. Saves ~30s per cold-start on monorepos
         # like docusaurus where yarn install does a no-op integrity check.
         import hashlib
+
         sentinel = self.project_root / ".codeminer_install_cache"
         node_modules = self.project_root / "node_modules"
         lockfile = None
-        for name in ("yarn.lock", "package-lock.json", "pnpm-lock.yaml",
-                     "bun.lock", "bun.lockb"):
+        for name in (
+            "yarn.lock",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+            "bun.lock",
+            "bun.lockb",
+        ):
             if (self.project_root / name).exists():
                 lockfile = self.project_root / name
                 break
@@ -240,23 +251,25 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             )
             # Cache: write lockfile hash so next call can skip if unchanged
             import hashlib
+
             sentinel = self.project_root / ".codeminer_install_cache"
             lockfile = None
-            for name in ("yarn.lock", "package-lock.json", "pnpm-lock.yaml",
-                         "bun.lock", "bun.lockb"):
+            for name in (
+                "yarn.lock",
+                "package-lock.json",
+                "pnpm-lock.yaml",
+                "bun.lock",
+                "bun.lockb",
+            ):
                 if (self.project_root / name).exists():
                     lockfile = self.project_root / name
                     break
             if lockfile:
                 # Best-effort: cache write is non-fatal; next run will retry.
                 try:
-                    sentinel.write_text(
-                        hashlib.sha1(lockfile.read_bytes()).hexdigest()
-                    )
+                    sentinel.write_text(hashlib.sha1(lockfile.read_bytes()).hexdigest())
                 except Exception as cache_err:
-                    logger.debug(
-                        "skip-cache write failed (%s); continuing", cache_err
-                    )
+                    logger.debug("skip-cache write failed (%s); continuing", cache_err)
             return
         except FileNotFoundError:
             logger.warning(

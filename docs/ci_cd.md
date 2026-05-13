@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # CI/CD
 
 GitHub Actions pipeline that runs on every push to `main` and on all pull requests.

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """C++ ``core/`` decoder parity test (pybind11).
 
 For each language with a C++ decoder (python, go, rust, ts):
@@ -49,7 +53,6 @@ if importlib.util.find_spec("codeminer_core") is None:
 # integration-serial CI job sequences fixtures so this order falls out
 # naturally; in unit-test runs we have to enforce it explicitly here.
 import codeminer_core  # noqa: E402, F401
-
 
 _COMPARED_ATTRS = ("type", "file", "start_line", "end_line", "unified_name")
 
@@ -136,8 +139,7 @@ def _graph_signature(graph):
         )
     edges_list.sort(key=lambda t: (t[0], t[1], t[2] or "", t[3] or "", t[4] or -1))
     vertex_attrs = {
-        v["name"]: {k: v.attributes().get(k) for k in _COMPARED_ATTRS}
-        for v in graph.vs
+        v["name"]: {k: v.attributes().get(k) for k in _COMPARED_ATTRS} for v in graph.vs
     }
     return names, edges_list, vertex_attrs
 
@@ -252,9 +254,9 @@ def _run_parity(language: str) -> None:
         rebuilt = rebuild_indexer.run_pipeline(
             skip_level="decode", report_profile=False, **kwargs
         )
-        assert rebuilt is not None, (
-            f"[{language}] failed to rebuild serial graph after stale-schema load"
-        )
+        assert (
+            rebuilt is not None
+        ), f"[{language}] failed to rebuild serial graph after stale-schema load"
         serial_graph = CodeGraph.load_graph(str(graph_pkl))
 
     # Core decoder: reuse index.decoded, don't clobber graph.pkl (serial's).

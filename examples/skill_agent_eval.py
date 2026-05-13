@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Skill-agent evaluation driver on SWE-bench.
 
@@ -318,12 +323,8 @@ def evaluate_instance(
         # In bm25_baseline mode we still go through the compiler so the
         # build path stays single-source; we just read the BM25 index back
         # out for the direct-query call.
-        skill_ids = (
-            list(args.skills) if args.eval_mode == "agent" else ["bm25_search"]
-        )
-        execution_log.append(
-            f"Building contexts for skills={skill_ids}..."
-        )
+        skill_ids = list(args.skills) if args.eval_mode == "agent" else ["bm25_search"]
+        execution_log.append(f"Building contexts for skills={skill_ids}...")
         contexts = build_skill_contexts(
             repo_path=repo_path,
             skill_ids=skill_ids,

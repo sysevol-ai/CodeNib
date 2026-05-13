@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Integration test: AgentRunner + graph_expand skill + Vertex AI backend.
 
 Uses the real httpie/cli repo (from conftest.py) with SCIP-python to

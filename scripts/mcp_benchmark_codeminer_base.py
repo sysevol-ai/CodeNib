@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 MCP server benchmark on the CodeMiner base dataset.
 
@@ -22,7 +26,6 @@ from codeminer.compiler.manifest import IndexEntry, RepoManifest
 from codeminer.index.embedding.vector_store import CodeVectorStore
 from codeminer.mcp.context import ServerContext
 from codeminer.mcp.tools.search import search_semantic
-
 
 CODEMINER_DATA = Path("/mnt/data/codeminer")
 # Model + dim defaults: Salesforce/SweRankEmbed-Small has 100/100 prebuilt
@@ -76,7 +79,7 @@ def _make_relative(file_path: str, instance_id: str, repo: str = "") -> str:
     for marker in candidates:
         for i, part in enumerate(parts):
             if part == marker:
-                return "/".join(parts[i + 1:])
+                return "/".join(parts[i + 1 :])
     return file_path
 
 
@@ -170,9 +173,7 @@ async def benchmark_instance(
     start_time = time.time()
 
     try:
-        results = await search_semantic(
-            ctx=ctx, query=query, top_k=top_k, level="l2"
-        )
+        results = await search_semantic(ctx=ctx, query=query, top_k=top_k, level="l2")
         elapsed = time.time() - start_time
     except Exception as e:
         return {

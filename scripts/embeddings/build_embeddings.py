@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Build and cache hierarchical embedding indices for SWE-bench or CodeMiner-base instances.
 Each instance's embedding will be stored in <storage-dir>/{instance_id}/

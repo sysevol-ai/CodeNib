@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Manifest-aware resource checking for the agent.
 
 Before the agent loop starts, ``ResourceGuard`` checks which skills can

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "scip_decode_ts.h"
 
 #include <algorithm>
@@ -183,14 +187,12 @@ std::string SCIPTSDecoder::unify_symbol_name(const std::string &cleaned_symbol,
   std::string module_path;
   std::string descriptor;
   auto first_bt_open = sym_with_bt.find('`');
-  auto first_bt_close =
-      first_bt_open == std::string::npos
-          ? std::string::npos
-          : sym_with_bt.find('`', first_bt_open + 1);
+  auto first_bt_close = first_bt_open == std::string::npos
+                            ? std::string::npos
+                            : sym_with_bt.find('`', first_bt_open + 1);
 
   if (first_bt_open != std::string::npos &&
-      first_bt_close != std::string::npos &&
-      first_bt_close > first_bt_open) {
+      first_bt_close != std::string::npos && first_bt_close > first_bt_open) {
     std::string dir_prefix = sym_with_bt.substr(0, first_bt_open);
     while (!dir_prefix.empty() && dir_prefix.back() == '/')
       dir_prefix.pop_back();
@@ -408,8 +410,8 @@ void SCIPTSDecoder::process_symbol(const std::string &symbol, int line,
   if (is_index_file && is_simple_symbol && !(symbol_roles & 1)) {
     if (builder.current_scope() != file_path) {
       builder.add_edge(builder.current_scope(), file_path, EDGE_TYPE_REFERENCE,
-                        /*anchor_file=*/file_path,
-                        /*anchor_line=*/line);
+                       /*anchor_file=*/file_path,
+                       /*anchor_line=*/line);
     }
     return;
   }
@@ -431,8 +433,8 @@ void SCIPTSDecoder::process_symbol(const std::string &symbol, int line,
     builder.add_edge(builder.current_scope(), unified, EDGE_TYPE_CONTAIN);
   } else {
     builder.add_symbol_reference(unified, file_path, type,
-                                  /*anchor_file=*/std::nullopt,
-                                  /*anchor_line=*/line);
+                                 /*anchor_file=*/std::nullopt,
+                                 /*anchor_line=*/line);
     builder.set_unified_name(unified, unified_name(unified, file_path, type),
                              /*only_if_missing=*/true);
   }

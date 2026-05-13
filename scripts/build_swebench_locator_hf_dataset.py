@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Build a HuggingFace-ready SWE-bench locator dataset from selected instances."""
 
 from __future__ import annotations

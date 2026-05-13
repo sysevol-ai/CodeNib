@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """C/C++-specific incremental patcher.
 
 Uses clangd .idx files instead of LSP queries for incremental updates.
@@ -45,8 +49,9 @@ class PatcherCpp(PatcherBase):
             "macro",
         }
 
-    def _build_unified_name(self, file_path, name, parent_unified_part, kind,
-                            parent_kind: int = 0):
+    def _build_unified_name(
+        self, file_path, name, parent_unified_part, kind, parent_kind: int = 0
+    ):
         node_type = self._classify_symbol_type(kind)
         clean_name = name.replace("::", ".")
 
@@ -255,7 +260,9 @@ class PatcherCpp(PatcherBase):
         for d in candidates:
             exists = d.exists()
             n_idx = len(list(d.glob("*.idx"))) if exists else 0
-            logger.info(f"[patcher_cpp DEBUG] candidate {d}: exists={exists} idx_count={n_idx}")
+            logger.info(
+                f"[patcher_cpp DEBUG] candidate {d}: exists={exists} idx_count={n_idx}"
+            )
             if exists and n_idx > 0:
                 idx_dir = d
                 break
@@ -266,11 +273,15 @@ class PatcherCpp(PatcherBase):
 
             cache_path = Path(self.project_root) / ".cache" / "clangd" / "index"
             n_before = len(list(cache_path.glob("*.idx"))) if cache_path.exists() else 0
-            logger.info(f"[patcher_cpp DEBUG] before ClangdIndexer: {cache_path} has {n_before} .idx")
+            logger.info(
+                f"[patcher_cpp DEBUG] before ClangdIndexer: {cache_path} has {n_before} .idx"
+            )
             indexer = ClangdIndexer(project_root=str(self.project_root))
             success = indexer.generate_index(compdb_path=str(comp_db))
             n_after = len(list(cache_path.glob("*.idx"))) if cache_path.exists() else 0
-            logger.info(f"[patcher_cpp DEBUG] after ClangdIndexer: {cache_path} has {n_after} .idx (success={success})")
+            logger.info(
+                f"[patcher_cpp DEBUG] after ClangdIndexer: {cache_path} has {n_after} .idx (success={success})"
+            )
             return indexer.idx_directory if success else None
 
         pre_mtime = max(
@@ -357,13 +368,18 @@ class PatcherCpp(PatcherBase):
         def _drain(stream):
             try:
                 while True:
-                    chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(4096)
+                    chunk = (
+                        stream.read1(65536)
+                        if hasattr(stream, "read1")
+                        else stream.read(4096)
+                    )
                     if not chunk:
                         return
             except Exception:
                 return
 
         import threading
+
         threading.Thread(target=_drain, args=(process.stdout,), daemon=True).start()
         threading.Thread(target=_drain, args=(process.stderr,), daemon=True).start()
 
@@ -494,6 +510,7 @@ class PatcherCpp(PatcherBase):
             REF_KIND_REFERENCE,
             ZERO_SYMBOL_ID,
         )
+
         from .subgraph_mgr import EdgeBatch
 
         changed_set = set(changed_files)
@@ -592,7 +609,8 @@ class PatcherCpp(PatcherBase):
                     anchor_uri = loc.get("file")
                     anchor_file = (
                         decoder._file_uri_to_relative(anchor_uri)
-                        if anchor_uri else None
+                        if anchor_uri
+                        else None
                     )
                     start = loc.get("start")
                     anchor_line = start[0] if start else None

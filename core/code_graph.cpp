@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "code_graph.h"
 
 #include <cstdlib>
@@ -313,8 +317,7 @@ igraph_integer_t CodeGraph::add_edge(const std::string &source,
       IGRAPH_SUCCESS) {
     const igraph_integer_t n = igraph_vector_int_size(&out_eids);
     for (igraph_integer_t i = 0; i < n; ++i) {
-      igraph_integer_t eid =
-          static_cast<igraph_integer_t>(VECTOR(out_eids)[i]);
+      igraph_integer_t eid = static_cast<igraph_integer_t>(VECTOR(out_eids)[i]);
       if (static_cast<std::size_t>(eid) >= edges_.size()) {
         continue;
       }

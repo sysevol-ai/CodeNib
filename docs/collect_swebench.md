@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Collecting SWE-bench Instances
 
 This guide covers how to use the `collect_swebench.sh` script to sample representative SWE-bench instances across multiple languages.

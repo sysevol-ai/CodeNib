@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for LSP message decoding across all 4 message types.
 
 Tests the full decode pipeline for each LSP message format:

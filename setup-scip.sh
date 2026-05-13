@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 
 SCIP_CLANG_VERSION="${SCIP_CLANG_VERSION:-v0.3.2}"

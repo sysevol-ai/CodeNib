@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 from .agent import KeywordExtractor, RerankAgent
 from .code_chunker import CodeChunker, RepoChunkingConfig
 from .graph.code_graph import CodeGraph

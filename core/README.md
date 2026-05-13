@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Codeminer Core (C++)
 
 This directory contains a C++ implementation of the high-traffic pieces of the Python `codeminer` graph pipeline. The goal is to mirror the behaviour of `codeminer.graph.code_graph.CodeGraph` and `codeminer.scip_interface.scip_decode.SCIPGraphDecoder` while leveraging the libigraph C API for better throughput on large `.decoded` index files.

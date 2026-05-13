@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Production LSP JSON-RPC client for graph-patching.
 
 Supports the subset of LSP needed for incremental graph updates:
@@ -46,7 +50,9 @@ def _close_profile_fh() -> None:
             pass
 
 
-def _profile_log(method: str, abs_file: str, line, character, elapsed_s: float, n_results) -> None:
+def _profile_log(
+    method: str, abs_file: str, line, character, elapsed_s: float, n_results
+) -> None:
     """Append one call to the file at ``$LSP_PROFILE_PATH``.
 
     Re-reads the env var each call and reopens the file when the path
@@ -73,13 +79,22 @@ def _profile_log(method: str, abs_file: str, line, character, elapsed_s: float, 
         return
     try:
         _LSP_PROFILE_FH.write(
-            json.dumps({"t": round(time.time(), 3),
-                        "m": method, "f": abs_file,
-                        "l": line, "c": character,
-                        "ms": round(elapsed_s * 1000, 2), "n": n_results}) + "\n"
+            json.dumps(
+                {
+                    "t": round(time.time(), 3),
+                    "m": method,
+                    "f": abs_file,
+                    "l": line,
+                    "c": character,
+                    "ms": round(elapsed_s * 1000, 2),
+                    "n": n_results,
+                }
+            )
+            + "\n"
         )
     except Exception:
         pass  # best-effort profile write — never break real work
+
 
 # LSP SymbolKind integer → human-readable name
 SYMBOL_KIND_NAMES = {
@@ -428,9 +443,14 @@ class LSPClient:
                 timeout=10,  # longest non-empty observed: 138ms
             )
             if result is not None:
-                _profile_log("documentSymbol", file_path, None, None,
-                             time.monotonic() - t0,
-                             len(result) if isinstance(result, list) else 0)
+                _profile_log(
+                    "documentSymbol",
+                    file_path,
+                    None,
+                    None,
+                    time.monotonic() - t0,
+                    len(result) if isinstance(result, list) else 0,
+                )
                 return result
             if attempt < retries:
                 logger.debug(
@@ -439,17 +459,20 @@ class LSPClient:
                 )
                 time.sleep(retry_delay)
 
-        _profile_log("documentSymbol", file_path, None, None,
-                     time.monotonic() - t0, 0)
+        _profile_log("documentSymbol", file_path, None, None, time.monotonic() - t0, 0)
         return []
 
     def references(self, *args, **kwargs):
         t0 = time.monotonic()
         out = self._references_inner(*args, **kwargs)
-        _profile_log("references", args[0] if args else kwargs.get("file_path"),
-                     args[1] if len(args) > 1 else kwargs.get("line"),
-                     args[2] if len(args) > 2 else kwargs.get("character"),
-                     time.monotonic() - t0, len(out) if out else 0)
+        _profile_log(
+            "references",
+            args[0] if args else kwargs.get("file_path"),
+            args[1] if len(args) > 1 else kwargs.get("line"),
+            args[2] if len(args) > 2 else kwargs.get("character"),
+            time.monotonic() - t0,
+            len(out) if out else 0,
+        )
         return out
 
     def _references_inner(
@@ -527,10 +550,14 @@ class LSPClient:
     def definition(self, *args, **kwargs):
         t0 = time.monotonic()
         out = self._definition_inner(*args, **kwargs)
-        _profile_log("definition", args[0] if args else kwargs.get("file_path"),
-                     args[1] if len(args) > 1 else kwargs.get("line"),
-                     args[2] if len(args) > 2 else kwargs.get("character"),
-                     time.monotonic() - t0, len(out) if out else 0)
+        _profile_log(
+            "definition",
+            args[0] if args else kwargs.get("file_path"),
+            args[1] if len(args) > 1 else kwargs.get("line"),
+            args[2] if len(args) > 2 else kwargs.get("character"),
+            time.monotonic() - t0,
+            len(out) if out else 0,
+        )
         return out
 
     def _definition_inner(
@@ -641,8 +668,14 @@ class LSPClient:
         if result is not None:
             n_tokens = len(result.get("data", [])) // 5
             logger.debug(f"semanticTokens for {file_path}: {n_tokens} tokens")
-        _profile_log("semanticTokens/full", file_path, None, None,
-                     time.monotonic() - t0, n_tokens)
+        _profile_log(
+            "semanticTokens/full",
+            file_path,
+            None,
+            None,
+            time.monotonic() - t0,
+            n_tokens,
+        )
         return result
 
     def semantic_tokens_range(
@@ -679,9 +712,14 @@ class LSPClient:
                 f"semanticTokens/range for {file_path} "
                 f"L{start_line}-{end_line}: {n_tokens} tokens"
             )
-        _profile_log("semanticTokens/range", file_path,
-                     start_line, end_line,
-                     time.monotonic() - t0, n_tokens)
+        _profile_log(
+            "semanticTokens/range",
+            file_path,
+            start_line,
+            end_line,
+            time.monotonic() - t0,
+            n_tokens,
+        )
         return result
 
     def decode_semantic_tokens(
@@ -983,7 +1021,9 @@ class LSPClient:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            ready, _, _ = select.select([self.process.stdout], [], [], min(remaining, 0.05))
+            ready, _, _ = select.select(
+                [self.process.stdout], [], [], min(remaining, 0.05)
+            )
             if not ready:
                 break
             msg = self._read_message(timeout=remaining)
@@ -994,7 +1034,9 @@ class LSPClient:
             # let _handle_progress (called inside _read_message) update state.
         return n
 
-    def wait_until_idle(self, max_wait_s: float = 60.0, idle_grace_s: float = 1.0) -> bool:
+    def wait_until_idle(
+        self, max_wait_s: float = 60.0, idle_grace_s: float = 1.0
+    ) -> bool:
         """Wait until no ``$/progress`` tokens are active for ``idle_grace_s``.
 
         Returns True if the server became idle within ``max_wait_s``,

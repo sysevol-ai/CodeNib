@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Cross-encoder rerankers (pairwise (query, doc) → relevance score).
 
 Two backends:

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for codeminer.mcp.tools.search — BM25, regex, zoekt tool impls."""
 
 from __future__ import annotations
@@ -13,7 +17,6 @@ from codeminer.mcp.tools.search import (
     search_zoekt_impl,
 )
 from codeminer.types import NodeInfo
-
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -240,7 +243,9 @@ class TestSearchZoekt:
             search_zoekt_impl(ctx, query="anything")
 
     def test_uses_error_message_from_ctx(self) -> None:
-        ctx = _make_ctx(zoekt=None, errors={"zoekt": "binary not found at /usr/bin/zoekt"})
+        ctx = _make_ctx(
+            zoekt=None, errors={"zoekt": "binary not found at /usr/bin/zoekt"}
+        )
         with pytest.raises(RuntimeError, match="binary not found"):
             search_zoekt_impl(ctx, query="anything")
 
@@ -249,5 +254,7 @@ class TestSearchZoekt:
         mock_zoekt.search.side_effect = ZoektUnavailableError("connection refused")
         ctx = _make_ctx(zoekt=mock_zoekt)
 
-        with pytest.raises(RuntimeError, match="Zoekt search failed.*connection refused"):
+        with pytest.raises(
+            RuntimeError, match="Zoekt search failed.*connection refused"
+        ):
             search_zoekt_impl(ctx, query="x")

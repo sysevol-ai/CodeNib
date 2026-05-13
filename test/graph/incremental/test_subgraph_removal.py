@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for SubgraphMgr subgraph deletion and index building."""
 
 from codeminer.graph.code_graph import CodeGraph

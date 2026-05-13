@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Unit tests for search_semantic MCP tool.
 
@@ -5,8 +9,9 @@ Tests the tool wrapper logic with mocked CodeVectorStore.
 """
 
 import asyncio
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from codeminer.compiler.manifest import RepoManifest
 from codeminer.mcp.context import ServerContext
@@ -71,7 +76,6 @@ def test_search_semantic_normal_path(mock_context):
     )
 
 
-
 def test_search_semantic_missing_index(mock_context):
     """Test search_semantic when vector index is not loaded."""
     mock_context.vector = None
@@ -82,7 +86,6 @@ def test_search_semantic_missing_index(mock_context):
     assert isinstance(results, dict)
     assert "error" in results
     assert "not loaded" in results["error"].lower()
-
 
 
 def test_search_semantic_score_threshold_forwarding(mock_context):
@@ -98,7 +101,6 @@ def test_search_semantic_score_threshold_forwarding(mock_context):
     assert call_args.kwargs["score_threshold"] == 0.7
 
 
-
 def test_search_semantic_default_parameters(mock_context):
     """Test search_semantic with default parameters."""
     mock_context.vector.search_with_content = Mock(return_value=[])
@@ -110,7 +112,6 @@ def test_search_semantic_default_parameters(mock_context):
     assert call_args.kwargs["top_k"] == 10
     assert call_args.kwargs["level"] == "l2"  # Default to "l2" if not specified
     assert call_args.kwargs["score_threshold"] is None
-
 
 
 def test_search_semantic_empty_results(mock_context):

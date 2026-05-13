@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """LSP-based incremental patching for CodeGraph updates."""
 
 from .graph_patcher import GraphPatcher

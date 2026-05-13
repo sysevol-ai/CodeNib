@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Rerank agent for ranking code nodes based on relevance to a query.
 This module uses LLM APIs to rank NodeInfo objects and return QueriedNode objects.

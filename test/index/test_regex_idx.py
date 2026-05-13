@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Test RegexNodeIndex functionality on a small Python repo.
 
 Uses pallets/flask pinned to a tagged release. Flask was previously httpie/cli,

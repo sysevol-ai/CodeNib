@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Thin Python wrapper around the `codeminer_core` pybind11 extension.
 
 Exposes a `SCIPDecoderCore` that produces a fully-populated `CodeGraph`

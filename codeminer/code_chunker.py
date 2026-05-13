@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Code chunking module with both file-level and repository-level functionality.
 This file maintains backward compatibility with the old API and adds repository processing.

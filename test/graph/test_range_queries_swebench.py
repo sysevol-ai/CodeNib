@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Integration test: build range indexes on real SWE-bench repos (serial).
 
 Parametrized over 5 languages following the ``test_scip_multilingual`` pattern:

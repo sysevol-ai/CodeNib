@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Per-model prompt registry for sentence-transformer embedders.
 
 These embedders are trained with **asymmetric** query/document encoding —

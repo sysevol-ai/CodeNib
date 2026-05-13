@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Utility functions for evaluating retrieval outputs against labeled targets."""
 
 from __future__ import annotations

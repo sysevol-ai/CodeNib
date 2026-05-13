@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Roadmap: `search_semantic` MCP tool
 
 This only covers the embedding/vector part. Graph tools and manifest schema changes can be tracked separately with hengjia if needed.

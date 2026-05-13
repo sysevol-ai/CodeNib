@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Generate short, domain-vocab-stripped query variants — issue #130 Tier-1.
 
 For each ``_behavioral_q1`` query in the input directory, ask an LLM to rewrite

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Integration tests for SCIP cold-start → incremental graph patch pipeline.
 
 Part 1: simple_repos — controlled environment.

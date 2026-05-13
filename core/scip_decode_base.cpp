@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "scip_decode_base.h"
 
 #include <algorithm>
@@ -252,7 +256,7 @@ void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
   //     add_symbol_reference's "only create if missing").
   std::unordered_map<std::string, Subgraph::Node> merged_nodes;
   std::vector<std::tuple<std::string, std::string, std::string,
-                          std::optional<std::string>, std::optional<int>>>
+                         std::optional<std::string>, std::optional<int>>>
       all_edges;
 
   std::size_t estimated = 0;
@@ -284,7 +288,7 @@ void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
     }
     for (const auto &e : sg.edges) {
       all_edges.emplace_back(e.source, e.target, e.type, e.anchor_file,
-                              e.anchor_line);
+                             e.anchor_line);
     }
   }
 

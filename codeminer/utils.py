@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+
 def is_test_file(nid):
     """Check if a node ID belongs to a test file."""
     if ":" in nid:

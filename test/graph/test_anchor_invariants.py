@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Anchor invariants: CONTAIN edges carry no anchor; REFERENCE edges always do.
 
 See `CodeGraph.query_range` docstring for the three anchor invariants.

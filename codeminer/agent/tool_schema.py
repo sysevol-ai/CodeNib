@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Convert SkillMetadata to OpenAI function-calling tool schemas.
 
 This module bridges the SkillRegistry to LLM tool-calling APIs.

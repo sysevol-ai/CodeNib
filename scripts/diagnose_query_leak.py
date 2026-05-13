@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Diagnose vocabulary / lexical leak in synthesized retrieval queries.
 
 Operationalizes the Tier-3 checks from issue #130:

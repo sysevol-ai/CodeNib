@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 // Pybind11 bindings for codeminer::core SCIP decoders.
 //
 // Exposes a single function `decode_scip(index_file, project_root, language)`
@@ -97,8 +101,8 @@ py::dict decode_scip(const std::string &index_file,
         e.anchor_file.has_value() ? py::cast(*e.anchor_file) : py::none();
     py::object anchor_line =
         e.anchor_line.has_value() ? py::cast(*e.anchor_line) : py::none();
-    edge_list.append(py::make_tuple(src_name, tgt_name, e.type, anchor_file,
-                                     anchor_line));
+    edge_list.append(
+        py::make_tuple(src_name, tgt_name, e.type, anchor_file, anchor_line));
   }
 
   py::dict result;

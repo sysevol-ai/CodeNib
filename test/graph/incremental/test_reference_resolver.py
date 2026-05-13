@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for LSPDecoderBase location matching logic (used by reference reconnection)."""
 
 from codeminer.graph.code_graph import CodeGraph

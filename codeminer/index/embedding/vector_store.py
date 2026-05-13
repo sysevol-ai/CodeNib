@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Vector Store implementation using FAISS and sentence-transformers for code embeddings.
 This module provides functionality to create, store, and query vector embeddings

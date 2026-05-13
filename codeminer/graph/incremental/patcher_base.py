@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """PatcherBase: incremental orchestration for CodeGraph updates.
 
 Handles the high-level patch flow (classify, remap, patch) while
@@ -251,10 +255,13 @@ class PatcherBase(SubgraphMgr):
         skip = self._should_skip_path
         return {
             "modified": [p for p in changed_files.get("modified", []) if not skip(p)],
-            "added":    [p for p in changed_files.get("added",    []) if not skip(p)],
-            "deleted":  [p for p in changed_files.get("deleted",  []) if not skip(p)],
-            "renamed":  [(o, n) for o, n in changed_files.get("renamed", [])
-                         if not skip(n) and not skip(o)],
+            "added": [p for p in changed_files.get("added", []) if not skip(p)],
+            "deleted": [p for p in changed_files.get("deleted", []) if not skip(p)],
+            "renamed": [
+                (o, n)
+                for o, n in changed_files.get("renamed", [])
+                if not skip(n) and not skip(o)
+            ],
         }
 
     def patch_files(
@@ -397,8 +404,7 @@ class PatcherBase(SubgraphMgr):
         # benchmarks can read them without parsing logs.
         report = self.profiler.report(reset=True)
         total_stats["profile"] = {
-            label: {"total_s": st.total, "count": st.count}
-            for label, st in report
+            label: {"total_s": st.total, "count": st.count} for label, st in report
         }
 
         return total_stats
@@ -659,6 +665,7 @@ class PatcherBase(SubgraphMgr):
         # end of this file's processing. Avoids ~5000 single-edge
         # ``add_edges`` calls per patch (Python↔C round-trip dominated).
         from .subgraph_mgr import EdgeBatch
+
         batch = EdgeBatch(self.code_graph)
 
         # Affected: outgoing refs for changed lines
@@ -767,10 +774,10 @@ class PatcherBase(SubgraphMgr):
         # symbol-level diff is saving.
         if getattr(self, "mode", "symbol") == "naive":
             return {
-                "deleted":   sorted(old_set),
-                "added":     sorted(new_set),
-                "affected":  [],
-                "shifted":   [],
+                "deleted": sorted(old_set),
+                "added": sorted(new_set),
+                "affected": [],
+                "shifted": [],
                 "unchanged": [],
                 "invisible": [],
             }
@@ -923,13 +930,9 @@ class PatcherBase(SubgraphMgr):
             if old_count != new_count:
                 all_preserving = False
             if body_overlap_old:
-                overlapping_old.append(
-                    (max(h_old_s, old_start), min(h_old_e, old_end))
-                )
+                overlapping_old.append((max(h_old_s, old_start), min(h_old_e, old_end)))
             if body_overlap_new:
-                overlapping_new.append(
-                    (max(h_new_s, new_start), min(h_new_e, new_end))
-                )
+                overlapping_new.append((max(h_new_s, new_start), min(h_new_e, new_end)))
 
         if all_preserving:
             # Fast path: surgical anchor cleanup + uniform shift.

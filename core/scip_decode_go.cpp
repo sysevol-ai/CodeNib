@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "scip_decode_go.h"
 
 #include <algorithm>
@@ -292,8 +296,8 @@ void SCIPGoDecoder::process_symbol(const std::string &symbol,
     }
   } else {
     builder.add_symbol_reference(key, file_path, type,
-                                  /*anchor_file=*/std::nullopt,
-                                  /*anchor_line=*/line);
+                                 /*anchor_file=*/std::nullopt,
+                                 /*anchor_line=*/line);
     builder.set_unified_name(key, unified_name(key, file_path, type),
                              /*only_if_missing=*/true);
   }

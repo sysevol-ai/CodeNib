@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Integration test for axios/axios SCIP indexing — verify start_line values
 for convertValue and toFormData in lib/helpers/toFormData.js.

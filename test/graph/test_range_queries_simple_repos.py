@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Per-language precise tests for range queries on test/scip/simple_repos.
 
 Mirrors the algorithmic tests in ``test_range_queries.py`` (overlap modes,

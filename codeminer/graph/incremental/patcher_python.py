@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Python-specific incremental patcher."""
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ class PatcherPython(PatcherBase):
         # basedpyright is slower but reliable; default to it. Override via
         # ``CODEMINER_PYTHON_LSP_CMD=ty\ server`` to experiment with ty.
         import os
+
         cmd = os.environ.get("CODEMINER_PYTHON_LSP_CMD")
         if cmd:
             return cmd.split()
