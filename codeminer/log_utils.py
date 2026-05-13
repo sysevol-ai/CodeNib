@@ -38,7 +38,8 @@ class LoggingManager:
         self.loggers: Dict[str, logging.Logger] = {}
         self.current_log_dir: str = ""
         self.unified_log_filename: str = "total.log"
-        # Modes: 'stdout' (console only), 'file' (unified file only), 'both' (console + unified file)
+        # Modes: 'stdout' (console only), 'file' (unified file only),
+        # 'both' (console + unified file).
         self.mode: str = "stdout"
         self.scip_debug_enabled: bool = False  # Track if SCIP debug is enabled
         self.scip_loggers: set = set()  # Explicitly registered SCIP loggers
@@ -219,7 +220,7 @@ def setup_detailed_logging(
     # Select output mode
     valid_modes = {None, "stdout", "file", "both"}
     if mode not in valid_modes:
-        raise ValueError(f"Invalid mode '{mode}'. Expected one of: stdout, file, both")
+        raise ValueError(f"Invalid mode {mode!r}. Expected one of: stdout, file, both")
 
     # Backward-compatible behavior if mode not provided
     if mode is None:

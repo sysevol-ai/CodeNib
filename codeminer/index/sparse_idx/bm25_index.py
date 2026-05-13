@@ -279,7 +279,8 @@ class BM25CodeIndexer:
             text = re.sub(r"\(\)", "", text)
 
             # Split on code-specific delimiters: '/', ':', '.', '_'
-            # This handles paths like "test/test_bas.py" and method calls like "sample/core.py:get_hmm"
+            # Handles paths ("test/test_bas.py") and qualified method names
+            # like "sample/core.py:get_hmm".
             tokens = re.split(r"[/:._ ]+", text)
 
             processed_tokens = []
@@ -383,7 +384,7 @@ class BM25CodeIndexer:
 
                                 extracted_lines = lines[start_idx:end_idx]
 
-                                # Remove trailing empty lines to avoid extra whitespace in output
+                                # Strip trailing blank lines to avoid extra whitespace.
                                 original_end_idx = len(extracted_lines)
                                 while (
                                     extracted_lines
