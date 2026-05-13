@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# REUSE / SPDX compliance gate.
+#
+# Lives in its own workflow (not folded into ci.yml) so that it is *not*
+# subject to ci.yml's `paths-ignore` filter for **.md / docs/** / LICENSE /
+# .gitignore — a doc-only PR can still introduce a file without an SPDX
+# header, and we want that caught.
+name: REUSE
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: ["*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reuse-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reuse:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: REUSE compliance check
+        uses: fsfe/reuse-action@v5
