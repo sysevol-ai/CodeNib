@@ -133,10 +133,35 @@ class TestAgentRunnerAllowSkills:
         names = {t["function"]["name"] for t in runner.tools}
         assert names == {"b", "c"}
 
-    def test_allow_skills_empty_set_yields_no_tools(self, three_skill_registry):
-        llm = MagicMock(spec=LiteLLMChat)
-        runner = AgentRunner(llm, three_skill_registry, allow_skills=set())
-        assert runner.tools == []
+    def test_allow_skills_empty_set_falls_back_to_full_registry(
+        self, three_skill_registry
+    ):
+        """Issue #149 pins the empty-allowlist contract: empty → full
+        registry + WARN log. Previously empty set yielded zero tools,
+        which would stall the agent silently on a compile_table miss.
+        """
+        import logging
+
+        # The project logger uses propagate=False, so caplog can't see it;
+        # attach our own list handler to the runner's logger directly.
+        captured: list[logging.LogRecord] = []
+        runner_logger = logging.getLogger("codeminer.agent.runner")
+
+        class _ListHandler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                captured.append(record)
+
+        handler = _ListHandler(level=logging.WARNING)
+        runner_logger.addHandler(handler)
+        try:
+            llm = MagicMock(spec=LiteLLMChat)
+            runner = AgentRunner(llm, three_skill_registry, allow_skills=set())
+        finally:
+            runner_logger.removeHandler(handler)
+
+        names = {t["function"]["name"] for t in runner.tools}
+        assert names == {"a", "b", "c"}
+        assert any("empty allow_skills" in r.getMessage() for r in captured)
 
     def test_allow_skills_unknown_id_ignored(self, three_skill_registry):
         llm = MagicMock(spec=LiteLLMChat)

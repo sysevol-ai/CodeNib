@@ -69,6 +69,7 @@ class AgentRunner:
         exclude_skills: Optional[Set[str]] = None,
         manifest: Optional[Any] = None,
         session_ctx: Optional[Any] = None,
+        compile_table: Optional[Any] = None,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -84,9 +85,13 @@ class AgentRunner:
         self.max_turns = max_turns
         self.session_ctx = session_ctx
 
-        # Resource guard: filter unavailable skills and collect warnings
-        allow = set(allow_skills) if allow_skills is not None else None
-        exclude = set(exclude_skills) if exclude_skills else set()
+        # Resource guard: filter unavailable skills and collect warnings.
+        # The "base" allow / exclude are stored so we can recompute the
+        # tool list per-query when a compile_table is in play.
+        self._base_allow: Optional[Set[str]] = (
+            set(allow_skills) if allow_skills is not None else None
+        )
+        self._base_exclude: Set[str] = set(exclude_skills) if exclude_skills else set()
         resource_warnings: List[str] = []
 
         if manifest is not None:
@@ -94,10 +99,19 @@ class AgentRunner:
 
             guard = ResourceGuard(manifest, self.registry)
             report = guard.preflight()
-            exclude |= report.unavailable
+            self._base_exclude |= report.unavailable
             resource_warnings = report.warnings
 
-        self.tools = registry_to_tools(self.registry, allow=allow, exclude=exclude)
+        self._compile_table = compile_table
+
+        # Pre-compute the static tool list. When a compile_table is set,
+        # ``run()`` recomputes per-query against the resolved allow set.
+        resolved_allow = self._resolve_allow_set(self._base_allow)
+        self.tools = registry_to_tools(
+            self.registry,
+            allow=resolved_allow,
+            exclude=self._base_exclude,
+        )
 
         # Build system prompt with optional resource warnings
         base_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
@@ -105,6 +119,29 @@ class AgentRunner:
             warnings_text = "\n".join(f"- {w}" for w in resource_warnings)
             base_prompt += f"\nIndex warnings:\n{warnings_text}\n"
         self.system_prompt = base_prompt
+
+    # ------------------------------------------------------------------
+    # Allow-set resolution (issue #149)
+    # ------------------------------------------------------------------
+
+    def _resolve_allow_set(self, allow: Optional[Set[str]]) -> Optional[Set[str]]:
+        """Pin the empty-allowlist contract: empty → full registry + WARN.
+
+        ``allow_skills=None`` means "no filter — expose the whole
+        registry". An *empty* set (``frozenset()`` or ``set()``) would
+        otherwise expose zero tools and stall the agent; #149 pins this
+        case to fall back to the full registry with a warning so the
+        caller can debug.
+        """
+        if allow is None:
+            return None
+        if len(allow) == 0:
+            logger.warning(
+                "AgentRunner: empty allow_skills → falling back to full "
+                "registry (no compile_table hit for this scenario)"
+            )
+            return None
+        return set(allow)
 
     def run(
         self,
@@ -114,6 +151,30 @@ class AgentRunner:
     ) -> AgentResult:
         """Execute the agent loop and return the result."""
         max_turns = max_turns or self.max_turns
+
+        # CAR / agent_compile: when a compile_table is set, classify the
+        # query and intersect the table-resolved subset with the
+        # constructor-time allow set. The table can *narrow* allowed
+        # skills, never broaden them, so the user's explicit
+        # ``allow_skills`` remains the upper bound.
+        tools = self.tools
+        if self._compile_table is not None:
+            from .compile import agent_compile
+
+            table_allow = agent_compile(query, self.session_ctx, self._compile_table)
+            if table_allow is not None:
+                effective: Optional[Set[str]]
+                if self._base_allow is None:
+                    effective = set(table_allow)
+                else:
+                    effective = set(table_allow) & self._base_allow
+                resolved = self._resolve_allow_set(effective)
+                tools = registry_to_tools(
+                    self.registry,
+                    allow=resolved,
+                    exclude=self._base_exclude,
+                )
+
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": query},
@@ -129,8 +190,8 @@ class AgentRunner:
                 "usage_tracker": usage_tracker,
                 "usage_turn": turn + 1,
             }
-            if self.tools:
-                call_kwargs["tools"] = self.tools
+            if tools:
+                call_kwargs["tools"] = tools
 
             response = self.llm._call_raw(messages, **call_kwargs)
             choice = response.choices[0]
