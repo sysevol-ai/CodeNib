@@ -38,6 +38,7 @@ Usage:
     # Or from a JSON file:
     python scripts/profile_incremental_graph.py --config instances.json --steps 20
 """
+
 from __future__ import annotations
 
 import argparse
@@ -199,8 +200,6 @@ def is_test_path(path: str) -> bool:
             return True
         if part.startswith("test_"):
             return True
-    if base.startswith("test_"):
-        return True
     if base.endswith("_test.go") or base.endswith("_test.py"):
         return True
     if base.endswith((".test.ts", ".test.tsx", ".test.js", ".test.jsx")):
@@ -376,9 +375,19 @@ def compute_delta_symbols(
     added = removed = modified = 0
     with tempfile.TemporaryDirectory(prefix="chainbench_") as tmpdir:
         tmp = Path(tmpdir)
+        tmp_resolved = tmp.resolve()
         for rel_path in changed_files:
             base_file = tmp / "base" / rel_path
             tgt_file = tmp / "target" / rel_path
+            # Defensive: git diff output shouldn't contain ``..`` segments
+            # for tracked paths, but a malformed entry would let
+            # ``tmp / rel_path`` escape the temporary directory. Drop
+            # anything that doesn't resolve under tmp.
+            try:
+                base_file.resolve().relative_to(tmp_resolved)
+                tgt_file.resolve().relative_to(tmp_resolved)
+            except ValueError:
+                continue
             has_base = git_show_to_file(repo, base, rel_path, base_file)
             has_target = git_show_to_file(repo, target, rel_path, tgt_file)
             base_map = (
@@ -580,6 +589,26 @@ def run_rebuild_step(
 # ---------------------------------------------------------------------------
 
 
+def _first_symbol_position(symbols) -> Optional[Tuple[int, int]]:
+    """First (line, char) found by DFS into LSP documentSymbol output."""
+    for s in symbols or []:
+        sel = s.get("selectionRange", s.get("range", {}))
+        line = sel.get("start", {}).get("line")
+        char = sel.get("start", {}).get("character", 0)
+        if line is not None:
+            return (line, char)
+        nested = _first_symbol_position(s.get("children", []))
+        if nested is not None:
+            return nested
+    return None
+
+
+def _get_lsp_client(patcher):
+    return getattr(patcher, "lsp_client", None) or getattr(
+        getattr(patcher, "_impl", None), "lsp_client", None
+    )
+
+
 def _warmup_lsp(
     patcher, repo: Path, base_sha: str, target_sha: str, language: str
 ) -> float:
@@ -587,20 +616,11 @@ def _warmup_lsp(
     falls outside the timed region. Excluded from t_s.
     """
     t0 = time.monotonic()
-    try:
-        names = subprocess.check_output(
-            ["git", "diff", "--name-only", base_sha, target_sha],
-            cwd=str(repo),
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).split()
-    except subprocess.CalledProcessError:
-        names = []
+    r = run_git(["diff", "--name-only", base_sha, target_sha], cwd=repo, timeout=60)
+    names = r.stdout.split() if r.returncode == 0 else []
     exts = LANG_EXTS.get(language, set())
     abs_paths = [repo / n for n in names if Path(n).suffix in exts]
-    lsp = getattr(patcher, "lsp_client", None) or getattr(
-        getattr(patcher, "_impl", None), "lsp_client", None
-    )
+    lsp = _get_lsp_client(patcher)
     if lsp is None:
         return 0.0
     for p in abs_paths:
@@ -617,22 +637,7 @@ def _warmup_lsp(
             continue
         try:
             syms = lsp.document_symbol(str(p)) or []
-            real_pos = None
-
-            def _walk(items):
-                nonlocal real_pos
-                for s in items or []:
-                    if real_pos:
-                        return
-                    sel = s.get("selectionRange", s.get("range", {}))
-                    line = sel.get("start", {}).get("line")
-                    char = sel.get("start", {}).get("character", 0)
-                    if line is not None:
-                        real_pos = (line, char)
-                        return
-                    _walk(s.get("children", []))
-
-            _walk(syms)
+            real_pos = _first_symbol_position(syms)
             if real_pos:
                 lsp.definition(str(p), real_pos[0], real_pos[1])
         except Exception:
@@ -706,27 +711,16 @@ def run_patcher_phase(
             exts = LANG_EXTS.get(lang, set())
             seen_files: set = set()
             for t in chain:
-                try:
-                    names = subprocess.check_output(
-                        [
-                            "git",
-                            "diff",
-                            "--name-only",
-                            t["from_commit"],
-                            t["to_commit"],
-                        ],
-                        cwd=str(repo),
-                        text=True,
-                        stderr=subprocess.DEVNULL,
-                    ).split()
-                except subprocess.CalledProcessError:
-                    names = []
+                r = run_git(
+                    ["diff", "--name-only", t["from_commit"], t["to_commit"]],
+                    cwd=repo,
+                    timeout=60,
+                )
+                names = r.stdout.split() if r.returncode == 0 else []
                 for n in names:
                     if Path(n).suffix in exts:
                         seen_files.add(n)
-            lsp = getattr(patcher, "lsp_client", None) or getattr(
-                getattr(patcher, "_impl", None), "lsp_client", None
-            )
+            lsp = _get_lsp_client(patcher)
             if lsp is not None:
                 for rel in sorted(seen_files):
                     abs_p = repo / rel
@@ -749,12 +743,28 @@ def run_patcher_phase(
         f"phase-warmup {phase_warmup_s:.1f}s, running {len(chain)} steps"
     )
 
+    # ``poisoned`` flips to True after any timeout/exception inside
+    # ``patch_files``. The in-memory graph mutates in place and the LSP
+    # JSON-RPC socket can be left in an undefined state after a SIGALRM
+    # interrupt, so measurements past that point are unreliable. Remaining
+    # steps are recorded as ``aborted_prior_step_poisoned`` instead of
+    # silently producing bad t_s / v / e numbers.
+    poisoned = False
+    poisoned_at: Optional[int] = None
+
     try:
         for i, t in enumerate(chain):
             step = t["step"]
             step_dir = out_root / iid / f"step{step}"
             step_dir.mkdir(parents=True, exist_ok=True)
             out_pkl = step_dir / out_filename
+
+            if poisoned:
+                sub_records[step] = {
+                    "status": "aborted_prior_step_poisoned",
+                    "poisoned_at_step": poisoned_at,
+                }
+                continue
 
             # Per-step LSP profile capture.
             profile_path: Optional[Path] = None
@@ -824,6 +834,15 @@ def run_patcher_phase(
                     "profile": stats.get("profile") or {},
                 }
             except StrategyTimeout:
+                # Graph + LSP state are now suspect — poison the rest of
+                # the phase so we don't report numbers off a half-mutated
+                # graph or a broken JSON-RPC pipe.
+                poisoned = True
+                poisoned_at = step
+                log(
+                    f"  {strategy} step{step}: timeout — "
+                    f"poisoning remaining {len(chain) - i - 1} step(s)"
+                )
                 sub = {
                     "status": "timeout",
                     "t_s": timeout_s,
@@ -831,6 +850,12 @@ def run_patcher_phase(
                     "warmup_s": warmup_s,
                 }
             except Exception as e:
+                poisoned = True
+                poisoned_at = step
+                log(
+                    f"  {strategy} step{step}: {type(e).__name__}: {e} — "
+                    f"poisoning remaining {len(chain) - i - 1} step(s)"
+                )
                 sub = {
                     "status": "error",
                     "error": f"{type(e).__name__}: {e}",
@@ -964,10 +989,15 @@ def process_instance(
     base_graph_pkl = cache_root / iid / "graph.pkl"
     if not base_graph_pkl.exists():
         log(f"[{iid}] missing base graph: {base_graph_pkl}")
+        # ``step=0`` so the row is keyed and --resume skips it next time;
+        # without a step the resume index drops the row (key (iid, None)
+        # is filtered out at load) and the same error is re-appended on
+        # every retry.
         return [
             {
                 "instance_id": iid,
                 "language": language,
+                "step": 0,
                 "error": f"no base graph at {base_graph_pkl}",
             }
         ]
@@ -1106,16 +1136,29 @@ def parse_instances_config(path: Path) -> List[Tuple[str, str, str]]:
 
 
 def _infer_language(repo: Path) -> Optional[str]:
+    """Sample up to 200 tracked files to guess the dominant language.
+
+    Uses ``os.walk`` with in-place dir pruning to skip dot-dirs
+    (``.git``, ``.cache``) and known build/dependency trees so the scan
+    doesn't traverse millions of objects on large repos.
+    """
     if not repo.is_dir():
         return None
     counts: Dict[str, int] = {lang: 0 for lang in LANG_EXTS}
-    for f in repo.rglob("*"):
-        if f.is_file():
+    prune = {"node_modules", "target", "build", "dist", "vendor", "__pycache__"}
+    sampled = 0
+    for dirpath, dirnames, filenames in os.walk(repo):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in prune]
+        for name in filenames:
+            suffix = Path(name).suffix
             for lang, exts in LANG_EXTS.items():
-                if f.suffix in exts:
+                if suffix in exts:
                     counts[lang] += 1
                     break
-        if sum(counts.values()) > 200:
+            sampled += 1
+            if sampled > 200:
+                break
+        if sampled > 200:
             break
     if not any(counts.values()):
         return None
@@ -1218,8 +1261,11 @@ def main():
     if args.out_root is None:
         args.out_root = args.output.parent / "chain_work"
 
-    # Load already-done keys for --resume.
+    # Load already-done keys for --resume. ``done_steps[iid]`` is the set
+    # of step ids written for that instance, including ``0`` for the
+    # missing-base-graph sentinel from process_instance.
     done: set = set()
+    done_steps: Dict[str, set] = {}
     if args.resume and args.output.exists():
         for line in args.output.open():
             try:
@@ -1230,6 +1276,7 @@ def main():
             step = r.get("step")
             if iid and step is not None:
                 done.add((iid, step))
+                done_steps.setdefault(iid, set()).add(step)
 
     def log(msg: str) -> None:
         print(msg, flush=True)
@@ -1242,12 +1289,21 @@ def main():
     fh = args.output.open("a")
     try:
         for iid, language, base_sha in instances:
-            # Whole-instance short-circuit: if every step is already in the
-            # output file, skip the entire chain so we don't re-walk it just
-            # to throw away the rows at write-time.
-            if args.resume and all((iid, s) in done for s in range(1, args.steps + 1)):
-                log(f"[{iid}] all {args.steps} steps already in output, skipping")
-                continue
+            # Whole-instance short-circuit. Two reasons to skip walking
+            # the chain at all:
+            #   1. every step 1..N already written, OR
+            #   2. step ``0`` (missing-base-graph sentinel) written.
+            # Repos whose first-parent walk produces fewer than --steps
+            # rows can't be detected without re-walking, so they fall
+            # through and rely on the per-row resume-skip below.
+            if args.resume:
+                steps_done = done_steps.get(iid, set())
+                if 0 in steps_done:
+                    log(f"[{iid}] resume-skip (missing-base-graph sentinel)")
+                    continue
+                if all(s in steps_done for s in range(1, args.steps + 1)):
+                    log(f"[{iid}] resume-skip (all {args.steps} steps in output)")
+                    continue
             rows = process_instance(
                 iid,
                 language,
