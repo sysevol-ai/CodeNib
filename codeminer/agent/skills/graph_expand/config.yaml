@@ -4,62 +4,68 @@
 
 skill_id: graph_expand
 skill_type: expand
-operator: graph.walk
-cost: medium
+operator: graph.range_query
+cost: low
 
 defaults:
-  method: bfs
+  mode: all
   top_k: 50
-  hops: 2
-  direction: both
-  damping: 0.85
   filter_tests: true
+  hops: 1
 
 inputs:
-  - name: seed_nodes
-    type: List[QueriedNode]
-    required: true
-    description: Seed nodes from upstream search results to expand from
-  - name: method
+  - name: ranges
+    type: List[Dict]
+    required: false
+    description: |
+      Source ranges to expand from, as
+      [{"file": str, "start_line": int, "end_line": int}, ...].
+      Either `ranges` or `symbols` (or both) must be provided.
+      Lines are 0-based inclusive. Inverted (start > end) ranges are
+      silently swapped; malformed entries are skipped.
+  - name: symbols
+    type: List[str]
+    required: false
+    description: |
+      Symbol identifiers to expand from, as a list of identity names
+      ("module/foo.py:Cls.method") or display unified_names. Resolution
+      tries identity first then unified_name; unknown symbols are dropped.
+  - name: mode
     type: str
     required: false
-    default: bfs
-    description: Expansion method - "bfs" for k-hop BFS or "ppr" for Personalized PageRank
+    default: all
+    description: |
+      Which graph relationships to fetch for each seed:
+      - "defined": symbols whose definition spans the range (what IS here)
+      - "callees": symbols this range calls/references (what this CALLS)
+      - "callers": symbols that call into this range (what calls THIS)
+      - "all": all three concatenated (default; ~3x tokens)
   - name: top_k
     type: int
     required: false
     default: 50
-  - name: hops
-    type: int
-    required: false
-    default: 2
-    description: Number of hops for BFS expansion
-  - name: direction
-    type: str
-    required: false
-    default: both
-    description: Edge traversal direction - "forward", "backward", or "both"
-  - name: damping
-    type: float
-    required: false
-    default: 0.85
-    description: PPR damping factor (only used with method=ppr)
+    description: Maximum number of results to return. When truncated, a sentinel record is appended.
   - name: filter_tests
     type: bool
     required: false
     default: true
-  - name: edge_types
-    type: List[str]
+    description: Exclude test files from results.
+  - name: hops
+    type: int
     required: false
-    description: Edge types to traverse (null for all)
-  - name: node_types
-    type: List[str]
-    required: false
-    description: Node types to include in results (null for all)
+    default: 1
+    description: |
+      Number of expansion hops. v1 supports only hops=1; higher values are
+      silently clamped to 1, reserved for future multi-hop queries when
+      CodeGraph.query_range gains depth>1. The LLM should iterate via
+      repeated 1-hop calls (LSP-style) rather than requesting multi-hop here.
 
 outputs:
   type: List[QueriedNode]
-  description: Expanded related symbols with content
+  description: |
+    Symbols related to the seeds, each tagged with `role` (defined/callees/callers),
+    `edge_kind`, and `anchor_file`/`anchor_line` (call-site location for callees/callers).
+    No code body is included — use `file_read` to fetch any body of interest.
 
 index_requirements:
   - type: symbol_graph

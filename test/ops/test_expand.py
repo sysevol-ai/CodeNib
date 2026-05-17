@@ -58,8 +58,7 @@ class TestExpandContext:
         ctx = ExpandContext()
         assert ctx.code_graph is None
         assert ctx.default_top_k == 50
-        assert ctx.default_hops == 2
-        assert ctx.default_direction == "both"
-        assert ctx.default_method == "bfs"
-        assert ctx.default_damping == 0.85
         assert ctx.filter_tests is True
+        # Post-#147: BFS/PPR tunables (default_hops / default_method /
+        # default_direction / default_damping) were removed — graph_expand
+        # is a 1-hop LSP primitive that doesn't consume them.

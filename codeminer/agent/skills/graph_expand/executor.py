@@ -2,76 +2,269 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+"""Executor factory for the ``graph_expand`` skill.
+
+LSP-aligned range / symbol query that returns graph-relationship metadata
+for symbols adjacent to one or more source ranges (or named symbols).
+
+Each result carries ``role`` (defined / callees / callers), ``edge_kind``,
+and the originating ``anchor_*`` so the LLM can reason about graph
+relationships without reading code. Use ``file_read`` to fetch any body
+the LLM decides is worth inspecting.
+"""
+
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 def create_executor(context: Any) -> Callable[..., List[Any]]:
-    """Factory: returns a callable that expands seed nodes via the symbol graph.
+    """Factory: return a callable that runs ``graph_expand`` against ``context``.
 
     Parameters
     ----------
     context:
-        An ``ExpandContext`` instance (from ``codeminer.ops.expand``)
-        that carries the loaded ``CodeGraph``.
+        An ``ExpandContext`` (from ``codeminer.ops.expand``) carrying the
+        loaded ``CodeGraph``.
     """
-    from ....graph.roi_subgraph import ROISubgraph
-    from ....ops.expand import nodeinfo_to_queried
+    from ....graph.code_graph import CodeGraph
+    from ....types import EDGE_TYPE_REFERENCE, QueriedNode
+    from ....utils import is_test_file
+
+    _VALID_MODES = {"defined", "callees", "callers", "all"}
+    _ROLE_ORDER: Dict[str, int] = {"defined": 0, "callees": 1, "callers": 2}
+
+    def _normalize_path(p: Optional[str]) -> Optional[str]:
+        """Match ``retrieval_eval.normalize_file_path`` so file keys agree."""
+        if not p:
+            return None
+        return str(Path(p).as_posix()).lstrip("./")
+
+    def _build_node_id(file: Optional[str], display: str) -> str:
+        f = file or ""
+        return f"{f}:{display}" if f else display
+
+    def _node_ref_to_queried(ref: Any, role: str, score: float) -> QueriedNode:
+        return QueriedNode(
+            node_name=ref.unified_name or ref.name,
+            type=ref.kind,
+            file=ref.file,
+            node_id=_build_node_id(ref.file, ref.unified_name or ref.name),
+            start_line=ref.start_line,
+            end_line=ref.end_line,
+            score=score,
+            role=role,
+            # `defined` carries no edge — anchor_* and edge_kind stay None.
+        )
+
+    def _vid_to_queried_with_edge(
+        graph: CodeGraph, vid: int, edge: Any, role: str, score: float
+    ) -> Optional[QueriedNode]:
+        attrs = graph.graph.vs[vid].attributes()
+        name = graph.graph.vs[vid]["name"]
+        file = attrs.get("file")
+        if file is None:
+            return None
+        display = attrs.get("unified_name") or name
+        return QueriedNode(
+            node_name=display,
+            type=attrs.get("type", ""),
+            file=file,
+            node_id=_build_node_id(file, display),
+            start_line=attrs.get("start_line"),
+            end_line=attrs.get("end_line"),
+            score=score,
+            role=role,
+            edge_kind=edge.edge_kind,
+            anchor_file=edge.anchor_file,
+            anchor_line=edge.anchor_line,
+        )
+
+    def _flatten_result(graph: CodeGraph, result: Any, mode: str) -> List[QueriedNode]:
+        """Convert a ``RangeQueryResult`` into role-tagged ``QueriedNode``s.
+
+        ``score`` here is a role-priority placeholder (defined > callees >
+        callers), NOT a relevance signal — graph_expand has no notion of
+        relevance. Result ordering is enforced separately by ``_ROLE_ORDER``
+        sort below; downstream consumers should not interpret the score
+        magnitude as quality.
+        """
+        out: List[QueriedNode] = []
+
+        if mode in ("defined", "all"):
+            for n in result.defined:
+                out.append(_node_ref_to_queried(n, role="defined", score=1.0))
+
+        if mode in ("callees", "all"):
+            seen_targets: set = set()
+            for e in result.outgoing:
+                if e.edge_kind != EDGE_TYPE_REFERENCE:
+                    continue
+                if e.target_vid in seen_targets:
+                    continue
+                seen_targets.add(e.target_vid)
+                node = _vid_to_queried_with_edge(
+                    graph, e.target_vid, e, role="callees", score=0.9
+                )
+                if node is not None:
+                    out.append(node)
+
+        if mode in ("callers", "all"):
+            seen_sources: set = set()
+            for e in result.incoming:
+                if e.edge_kind != EDGE_TYPE_REFERENCE:
+                    continue
+                if e.source_vid in seen_sources:
+                    continue
+                seen_sources.add(e.source_vid)
+                node = _vid_to_queried_with_edge(
+                    graph, e.source_vid, e, role="callers", score=0.8
+                )
+                if node is not None:
+                    out.append(node)
+
+        return out
+
+    def _resolve_symbol_to_identities(graph: CodeGraph, symbol: str) -> List[str]:
+        """Resolve LLM-supplied symbol name to identity names.
+
+        Tries identity exact match first; falls back to ``_unified_to_names``
+        reverse lookup. Returns the list of identity names (>= 0).
+        """
+        if symbol in graph.name_to_vertex:
+            return [symbol]
+        return list(graph._unified_to_names.get(symbol, []))
+
+    @lru_cache(maxsize=1024)
+    def _resolve_cached(graph_key: int, symbol: str) -> Tuple[str, ...]:
+        return tuple(_resolve_symbol_to_identities(context.code_graph, symbol))
+
+    def _truncate_with_hint(
+        results: List[QueriedNode], top_k: int
+    ) -> List[QueriedNode]:
+        """Apply top_k cap and append a sentinel record describing truncation."""
+        if len(results) <= top_k:
+            return results
+        kept = results[:top_k]
+        sentinel = QueriedNode(
+            node_name="__truncated__",
+            type="meta",
+            file=None,
+            node_id=None,
+            start_line=None,
+            end_line=None,
+            score=0.0,
+            content=(
+                f"truncated: returned top_k={top_k} of {len(results)} total; "
+                f"narrow the ranges or set mode= to a single role to see more"
+            ),
+        )
+        kept.append(sentinel)
+        return kept
+
+    def _parse_ranges(raw: Any) -> List[Tuple[str, int, int]]:
+        """Normalize the ``ranges`` input into a list of (file, s, e) tuples.
+
+        Skips malformed entries silently (matches LSP tolerance for partial
+        client state).
+        """
+        if not raw:
+            return []
+        out: List[Tuple[str, int, int]] = []
+        for r in raw:
+            if not isinstance(r, dict):
+                continue
+            file = _normalize_path(r.get("file"))
+            s = r.get("start_line")
+            e = r.get("end_line")
+            if file is None or s is None or e is None:
+                continue
+            si, ei = int(s), int(e)
+            if si > ei:
+                si, ei = ei, si
+            out.append((file, si, ei))
+        return out
 
     def execute(
-        seed_nodes: List[Any],
-        method: str = "bfs",
+        ranges: Optional[List[Dict[str, Any]]] = None,
+        symbols: Optional[List[str]] = None,
+        mode: str = "all",
         top_k: int = 50,
+        filter_tests: bool = True,
+        hops: int = 1,
         **kwargs: Any,
-    ) -> List[Any]:
-        if context.code_graph is None:
+    ) -> List[QueriedNode]:
+        graph = context.code_graph
+        if graph is None:
             raise RuntimeError("Symbol graph not available")
 
-        hops: int = kwargs.get("hops", 2)
-        direction: str = kwargs.get("direction", "both")
-        damping: float = kwargs.get("damping", 0.85)
-        filter_tests: bool = kwargs.get("filter_tests", True)
-        edge_types: Optional[List[str]] = kwargs.get("edge_types")
-        node_types: Optional[List[str]] = kwargs.get("node_types")
-
-        # Extract seed names
-        seed_names = []
-        for node in seed_nodes:
-            name = getattr(node, "node_name", None) or (
-                node if isinstance(node, str) else None
-            )
-            if name:
-                seed_names.append(name)
-
-        if not seed_names:
-            return []
-
-        roi = ROISubgraph(context.code_graph)
-
-        if method == "ppr":
-            node_infos = roi.expand_ppr(
-                node_names=seed_names,
-                top_k=top_k,
-                damping=damping,
-                filter_tests=filter_tests,
-            )
-            seed_set = set(seed_names)
-            node_infos = [n for n in node_infos if n.node_name not in seed_set]
-        else:
-            subgraph = roi.extract_subgraph(
-                node_names=seed_names,
-                k_hop=hops,
-                edge_types=edge_types,
-                direction=direction,
-            )
-            node_infos = roi.get_filtered_subgraph_nodes(
-                subgraph,
-                exclude_nodes=seed_names,
-                filter_tests=filter_tests,
-                node_types=node_types,
+        if mode not in _VALID_MODES:
+            raise ValueError(
+                f"mode must be one of {sorted(_VALID_MODES)}, got {mode!r}"
             )
 
-        return nodeinfo_to_queried(node_infos)[:top_k]
+        # `hops` is reserved in the API for forward compatibility (see
+        # docstring) but only depth=1 is implemented today, because
+        # CodeGraph.query_range itself only supports depth=1. Any other value
+        # is silently treated as 1 — no clamp/assignment needed since `hops`
+        # is not read again below.
+        del hops
+
+        if not graph._file_nodes and not graph._unified_to_names:
+            raise RuntimeError(
+                "Range indexes empty — call CodeGraph.build_range_indexes() "
+                "before querying. Likely a partially-built or pre-v3 graph."
+            )
+
+        norm_ranges = _parse_ranges(ranges)
+        norm_symbols = [s for s in (symbols or []) if isinstance(s, str) and s]
+
+        if not norm_ranges and not norm_symbols:
+            raise ValueError(
+                "graph_expand needs either `ranges` "
+                "([{file, start_line, end_line}, ...]) or `symbols` "
+                "([identity_or_unified_name, ...])"
+            )
+
+        results: List[QueriedNode] = []
+
+        for file, s, e in norm_ranges:
+            r = graph.query_range(file, s, e)
+            results.extend(_flatten_result(graph, r, mode))
+
+        for sym in norm_symbols:
+            identities = _resolve_cached(id(graph), sym)
+            for identity in identities:
+                r = graph.query_range_by_symbol(identity)
+                results.extend(_flatten_result(graph, r, mode))
+
+        if filter_tests:
+            results = [
+                n for n in results if not (n.node_id and is_test_file(n.node_id))
+            ]
+
+        # Dedup across multiple seeds + multiple overloads sharing the same
+        # unified_name in the same file: keep only the first (node_id, role)
+        # hit. Consequence — if vertex X is reached from two different seed
+        # ranges, only the FIRST seed's anchor_line is recorded on the
+        # surviving QueriedNode; the second call site is invisible to the
+        # caller. Acceptable for retrieval (each candidate once), surprising
+        # for "every call-site" analysis (which graph_expand doesn't claim
+        # to support — use raw `query_range` for that).
+        seen: set = set()
+        deduped: List[QueriedNode] = []
+        for n in results:
+            key = (n.node_id, n.role)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(n)
+
+        # Sort by role: defined first, then callees, then callers.
+        deduped.sort(key=lambda n: _ROLE_ORDER.get(n.role or "", 99))
+
+        return _truncate_with_hint(deduped, top_k)
 
     return execute

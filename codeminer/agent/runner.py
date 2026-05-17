@@ -31,7 +31,8 @@ to find the information needed, then provide a concise answer.
 
 Guidelines:
 - Start with broad searches, then narrow down.
-- Use graph_expand to find structurally related code after an initial search.
+- Use graph_expand on a (file, line range) or symbol to walk the symbol graph \
+to its defined / callees / callers; chain 1-hop calls to go deeper.
 - When you have enough context, provide a final answer directly.
 - Prefer lower-cost skills unless the query clearly requires semantic understanding.
 - For simple exact-name lookups use bm25_search; \
