@@ -71,13 +71,25 @@ def _reset_registry():
 def codeminer_base_cache(tmp_path_factory) -> Dict[str, Path]:
     """User-owned, cross-worker-safe cache dirs for the codeminer-base e2e tests.
 
-    ``tmp_path_factory.getbasetemp().parent`` resolves to
-    ``/tmp/pytest-of-<user>``, which is owned by the test runner user and
-    persists across pytest sessions for the same user. Using this avoids
-    permission collisions on shared CI runners where a fixed ``/tmp/...``
-    path may already exist owned by a different user.
+    Path resolution, in order:
+
+    1. ``$CODEMINER_TEST_CACHE_DIR`` — if set, used as the base directory.
+       CI admins point this at a persistent runner volume (e.g. a Docker
+       mount) so the ~100MB repo clone and BM25 index build survive across
+       jobs. The runner user must own / have write access to this path.
+    2. ``tmp_path_factory.getbasetemp().parent`` (``/tmp/pytest-of-<user>``) —
+       owned by whoever runs pytest, writable, persists across pytest
+       sessions for the same user. Avoids the cross-user permission
+       collisions a fixed ``/tmp/...`` path causes on shared CI runners.
+
+    Either way, ``repos/``, ``datasets/``, and ``index/`` subdirs are
+    created underneath.
     """
-    base = tmp_path_factory.getbasetemp().parent / "codeminer-base-e2e"
+    env_override = os.environ.get("CODEMINER_TEST_CACHE_DIR")
+    if env_override:
+        base = Path(env_override).expanduser() / "codeminer-base-e2e"
+    else:
+        base = tmp_path_factory.getbasetemp().parent / "codeminer-base-e2e"
     base.mkdir(parents=True, exist_ok=True)
     dirs = {
         "repos": base / "repos",
@@ -90,9 +102,7 @@ def codeminer_base_cache(tmp_path_factory) -> Dict[str, Path]:
 
 
 @pytest.fixture(scope="module")
-def codeminer_base_first_instance(
-    codeminer_base_cache, tmp_path_factory
-) -> Dict[str, Any]:
+def codeminer_base_first_instance(codeminer_base_cache) -> Dict[str, Any]:
     """Load the first instance of the codeminer-base dataset.
 
     Skips the test if the dataset is unreachable (no HF auth / offline /
@@ -105,7 +115,9 @@ def codeminer_base_first_instance(
 
     from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
 
-    lock_path = tmp_path_factory.getbasetemp().parent / "codeminer-base-dataset.lock"
+    # Lock lives alongside the cache so it also coordinates concurrent
+    # CI jobs that share a persistent ``CODEMINER_TEST_CACHE_DIR`` volume.
+    lock_path = codeminer_base_cache["datasets"].parent / "dataset.lock"
     try:
         with FileLock(str(lock_path)):
             ds = CodeMinerBaseDataset(
@@ -123,14 +135,14 @@ def codeminer_base_first_instance(
 
 
 @pytest.fixture(scope="module")
-def prepared_repo(codeminer_base_first_instance, tmp_path_factory) -> Dict[str, Any]:
+def prepared_repo(
+    codeminer_base_first_instance, codeminer_base_cache
+) -> Dict[str, Any]:
     """Clone + checkout the first instance's repo."""
     ds = codeminer_base_first_instance["_dataset"]
     row = codeminer_base_first_instance["row"]
     repo_dir_name = (row.get("repo") or "unknown").replace("/", "_")
-    lock_path = (
-        tmp_path_factory.getbasetemp().parent / f"codeminer-base-{repo_dir_name}.lock"
-    )
+    lock_path = codeminer_base_cache["repos"].parent / f"repo-{repo_dir_name}.lock"
     try:
         with FileLock(str(lock_path)):
             ds.process_instance(row)
