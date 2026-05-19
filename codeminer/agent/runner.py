@@ -13,16 +13,27 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Dict, List, Optional, Set
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Union
 
 from ..llm.litellm_chat import LiteLLMChat
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
+from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
 from .tool_schema import registry_to_tools
 
 logger = get_logger(__name__)
+
+_DEFAULT_MODEL = "claude-sonnet-4-6"
+
+# Path to the bundled skill packages. ``query()`` defaults to this so
+# callers don't have to know where skills live on disk.
+_DEFAULT_SKILLS_DIR: Path = Path(__file__).parent / "skills"
+
+CompileTableInput = Union[str, Path, Mapping[str, Any]]
 
 _DEFAULT_SYSTEM_PROMPT = """\
 You are a code search agent. You have access to tools that search a \
@@ -366,3 +377,236 @@ def _serialize_result(result: Any) -> str:
     if len(text) > _MAX_RESULT_CHARS:
         text = text[:_MAX_RESULT_CHARS] + "\n... (truncated)"
     return text
+
+
+# ---------------------------------------------------------------------------
+# Public facade: query() + CodeMinerAgentOptions
+# ---------------------------------------------------------------------------
+#
+# A repo-manifest-aware entry point that bundles the three things an
+# outside caller currently has to wire by hand:
+#
+#   1. Pre-compile  — building / loading the BM25, FAISS, and symbol-graph
+#      indexes the requested skills need (``build_skill_contexts``).
+#   2. Skill loading — registering skill packages from
+#      ``codeminer/agent/skills``.
+#   3. Agent loop   — constructing ``AgentRunner`` with the right
+#      ``SessionContext`` and (optional) ``compile_table`` and running it.
+#
+# Shape mirrors the Claude Agent SDK's ``query(prompt, options=...)``
+# ergonomics. ``query()`` is sync today — ``AgentRunner.run()`` is sync,
+# and this facade keeps that contract.
+
+
+@dataclass
+class CodeMinerAgentOptions:
+    """Configuration for a single ``query()`` invocation.
+
+    Either ``repo_path`` *or* ``contexts`` must be set:
+
+    * ``repo_path`` set → ``query()`` calls ``build_skill_contexts`` itself
+      and caches indexes under ``index_cache_dir`` (or ``<repo>/.codeminer``).
+    * ``contexts`` set → caller has already built the contexts dict; the
+      pre-compile step is skipped. Useful for sharing one index across many
+      queries.
+
+    Skill selection forms a three-layer funnel::
+
+        registry  ⊇  allowed_skills  ⊇  compile_table[scenario]
+
+    ``compile_table`` *narrows* ``allowed_skills`` per query but never
+    broadens it (see :func:`codeminer.agent.compile.agent_compile`).
+    """
+
+    # --- repo / pre-compile ---
+    repo_path: Optional[str] = None
+    contexts: Optional[Dict[str, Any]] = None
+    languages: Sequence[str] = ("python",)
+    primary_language: Optional[str] = None
+    repo_size: Optional[int] = None
+    index_cache_dir: Optional[str] = None
+    embedding_model: str = "nomic-ai/CodeRankEmbed"
+    embedding_dimension: int = 768
+    default_top_k: int = 10
+    default_level: str = "l2"
+    rebuild_indexes: bool = False
+    skills_dir: Optional[str] = None
+
+    # --- skill gating ---
+    allowed_skills: Optional[List[str]] = None
+    excluded_skills: Optional[List[str]] = None
+    compile_table: Optional[CompileTableInput] = None
+    skill_params: Optional[Dict[str, Dict[str, Any]]] = None
+
+    # --- LLM / agent loop ---
+    llm: Optional[LiteLLMChat] = None
+    model: Optional[str] = None
+    temperature: float = 0.0
+    max_tokens: int = 512
+    system_prompt: Optional[str] = None
+    max_turns: int = 10
+
+    # --- ResourceGuard manifest passthrough ---
+    manifest: Optional[Any] = None
+
+    # --- extras for SessionContext.extras ---
+    session_extras: Dict[str, Any] = field(default_factory=dict)
+
+
+def query(
+    prompt: str,
+    *,
+    options: Optional[CodeMinerAgentOptions] = None,
+) -> AgentResult:
+    """Run one agent turn over a repo and return the result.
+
+    See :class:`CodeMinerAgentOptions` for the full options surface.
+
+    Raises:
+        ValueError: if neither ``options.repo_path`` nor ``options.contexts``
+            is set.
+    """
+    opts = options or CodeMinerAgentOptions()
+
+    if opts.contexts is None and opts.repo_path is None:
+        raise ValueError(
+            "CodeMinerAgentOptions requires either 'repo_path' (to pre-compile "
+            "indexes) or 'contexts' (a pre-built skill-context dict). Both are unset."
+        )
+    if opts.llm is None and opts.model is None:
+        model_for_llm: Optional[str] = _DEFAULT_MODEL
+    else:
+        model_for_llm = opts.model
+
+    # --- 1. Resolve the compile_table (path → dict if needed) ---
+    table = _load_compile_table_if_path(opts.compile_table)
+
+    # --- 2. Reset the singleton registry so this query's contexts win.
+    # SkillLoader.load_all() skips already-registered skills, so without a
+    # reset we'd run against whatever the previous query loaded.
+    SkillRegistry.reset()
+    registry = SkillRegistry()
+
+    # --- 3. Pre-compile indexes if the caller gave us a repo_path ---
+    if opts.contexts is not None:
+        contexts = opts.contexts
+    else:
+        contexts = _build_contexts(opts)
+
+    # --- 4. Load the bundled skill packages with these contexts ---
+    skills_dir = opts.skills_dir or str(_DEFAULT_SKILLS_DIR)
+    loader = SkillLoader()
+    loaded = loader.load_all(skills_dir, contexts=contexts, registry=registry)
+    logger.debug("query(): loaded %d skills from %s", len(loaded), skills_dir)
+
+    # Apply caller-supplied per-skill default overrides (Layer 1+2 of
+    # ``resolve_params``). We mutate the metadata in place because the
+    # registry holds references; this only affects the current process,
+    # and ``SkillRegistry.reset()`` on the next call clears the slate.
+    if opts.skill_params:
+        for skill_id, overrides in opts.skill_params.items():
+            meta = registry.get(skill_id)
+            if meta is None:
+                logger.warning(
+                    "skill_params: skill %r not in registry, ignoring %r",
+                    skill_id,
+                    sorted(overrides),
+                )
+                continue
+            merged = dict(meta.defaults or {})
+            merged.update(overrides)
+            meta.defaults = merged
+
+    # --- 5. Build the SessionContext for CAR + parameter scaling ---
+    from ..compiler.params import SessionContext
+
+    session_ctx = SessionContext(
+        repo_path=opts.repo_path,
+        repo_size=opts.repo_size,
+        primary_language=opts.primary_language,
+        extras=dict(opts.session_extras),
+    )
+
+    # --- 6. Construct the runner and execute ---
+    runner = AgentRunner(
+        llm=opts.llm,
+        registry=registry,
+        model=model_for_llm,
+        temperature=opts.temperature,
+        max_tokens=opts.max_tokens,
+        system_prompt=opts.system_prompt,
+        max_turns=opts.max_turns,
+        allow_skills=set(opts.allowed_skills) if opts.allowed_skills else None,
+        exclude_skills=set(opts.excluded_skills) if opts.excluded_skills else None,
+        manifest=opts.manifest,
+        session_ctx=session_ctx,
+        compile_table=table,
+    )
+    return runner.run(prompt)
+
+
+def _load_compile_table_if_path(
+    table: Optional[CompileTableInput],
+) -> Optional[Dict[str, Any]]:
+    """Coerce a path-or-dict ``compile_table`` argument into a dict."""
+    if table is None:
+        return None
+    if isinstance(table, (str, Path)):
+        from .compile import load_compile_table
+
+        loaded = load_compile_table(Path(table))
+        return dict(loaded)
+    if isinstance(table, Mapping):
+        return dict(table)
+    raise TypeError(
+        f"options.compile_table must be a path or mapping, got {type(table).__name__}"
+    )
+
+
+def _build_contexts(opts: CodeMinerAgentOptions) -> Dict[str, Any]:
+    """Build the index union the requested skills need.
+
+    Delegates to ``codeminer.compiler.build_skill_contexts`` — the same
+    pre-compile entry point used by ``examples/skill_agent_eval.py``.
+    """
+    from ..compiler import build_skill_contexts
+
+    if opts.allowed_skills:
+        skill_ids = list(opts.allowed_skills)
+    else:
+        skill_ids = _discover_skill_ids(opts.skills_dir or str(_DEFAULT_SKILLS_DIR))
+
+    return build_skill_contexts(
+        repo_path=opts.repo_path,  # checked non-None by ``query``
+        skill_ids=skill_ids,
+        languages=tuple(opts.languages),
+        cache_dir=opts.index_cache_dir,
+        embedding_model=opts.embedding_model,
+        embedding_dimension=opts.embedding_dimension,
+        default_top_k=opts.default_top_k,
+        default_level=opts.default_level,
+        rebuild=opts.rebuild_indexes,
+    )
+
+
+def _discover_skill_ids(skills_dir: str) -> List[str]:
+    """Enumerate skill IDs from a packages directory by reading config.yaml."""
+    import yaml
+
+    out: List[str] = []
+    root = Path(skills_dir)
+    if not root.is_dir():
+        return out
+    for entry in sorted(root.iterdir()):
+        cfg = entry / "config.yaml"
+        if not cfg.exists():
+            continue
+        try:
+            with open(cfg) as f:
+                data = yaml.safe_load(f) or {}
+            sid = data.get("skill_id")
+            if sid:
+                out.append(sid)
+        except Exception as exc:
+            logger.warning("skipping malformed skill config %s: %s", cfg, exc)
+    return out
