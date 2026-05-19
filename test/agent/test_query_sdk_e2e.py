@@ -139,6 +139,8 @@ def prepared_repo(
     codeminer_base_first_instance, codeminer_base_cache
 ) -> Dict[str, Any]:
     """Clone + checkout the first instance's repo."""
+    from codeminer.agent.compile import normalize_language
+
     ds = codeminer_base_first_instance["_dataset"]
     row = codeminer_base_first_instance["row"]
     repo_dir_name = (row.get("repo") or "unknown").replace("/", "_")
@@ -148,10 +150,19 @@ def prepared_repo(
             ds.process_instance(row)
     except Exception as exc:
         pytest.skip(f"could not check out repo for {row.get('instance_id')}: {exc}")
+
+    # Normalize the language: codeminer-base uses ``language_group`` whose
+    # casing is dataset-defined (observed: "Rust"), while both
+    # ``build_skill_contexts`` and ``Scenario.key()`` expect canonical
+    # lowercase. Falling back to "python" matches the existing
+    # ``examples/skill_agent_eval.py`` default.
+    raw_lang = row.get("language_group") or row.get("language") or "python"
+    language = normalize_language(raw_lang) or "python"
+
     return {
         "row": row,
         "repo_path": ds.get_repo_path(row),
-        "language": row.get("language_group") or "python",
+        "language": language,
     }
 
 
