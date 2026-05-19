@@ -486,16 +486,30 @@ def query(
     # reset we'd run against whatever the previous query loaded.
     SkillRegistry.reset()
     registry = SkillRegistry()
+    skills_dir = opts.skills_dir or str(_DEFAULT_SKILLS_DIR)
+    loader = SkillLoader()
 
-    # --- 3. Pre-compile indexes if the caller gave us a repo_path ---
+    # --- 3. Load skills + build the index contexts they need.
+    # ``build_skill_contexts`` reads each skill's ``index_requirements``
+    # from the registry to decide which indexes to compile. So when we
+    # have to build the contexts ourselves, we need a two-pass load:
+    #
+    #   pass 1 — load skill metadata with empty contexts so the registry
+    #            knows the index_requirements; executor_fn may be None
+    #            because the actual contexts aren't built yet.
+    #   pass 2 — re-load with the real contexts to bind executor_fn.
+    #
+    # When the caller pre-built ``opts.contexts`` themselves, one pass is
+    # enough — they've already done their own equivalent of step 1.
     if opts.contexts is not None:
         contexts = opts.contexts
     else:
+        loader.load_all(skills_dir, contexts={}, registry=registry)
         contexts = _build_contexts(opts)
+        SkillRegistry.reset()
+        registry = SkillRegistry()
 
-    # --- 4. Load the bundled skill packages with these contexts ---
-    skills_dir = opts.skills_dir or str(_DEFAULT_SKILLS_DIR)
-    loader = SkillLoader()
+    # --- 4. Load (or reload) the skill packages with the real contexts ---
     loaded = loader.load_all(skills_dir, contexts=contexts, registry=registry)
     logger.debug("query(): loaded %d skills from %s", len(loaded), skills_dir)
 
