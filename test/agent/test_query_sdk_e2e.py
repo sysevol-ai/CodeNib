@@ -41,6 +41,7 @@ from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
 import pytest
+from filelock import FileLock
 
 from codeminer.agent import CodeMinerAgentOptions, query
 from codeminer.agent.skills.registry import SkillRegistry
@@ -59,11 +60,6 @@ _VERTEX_MODELS = [
 ]
 
 
-_REPO_ROOT_CACHE = "/tmp/codeminer-gt-test/repos"
-_DATASET_CACHE = "/tmp/codeminer-gt-test/datasets"
-_INDEX_CACHE = "/tmp/codeminer-gt-test/index"
-
-
 @pytest.fixture(autouse=True)
 def _reset_registry():
     SkillRegistry.reset()
@@ -71,8 +67,32 @@ def _reset_registry():
     SkillRegistry.reset()
 
 
+@pytest.fixture(scope="session")
+def codeminer_base_cache(tmp_path_factory) -> Dict[str, Path]:
+    """User-owned, cross-worker-safe cache dirs for the codeminer-base e2e tests.
+
+    ``tmp_path_factory.getbasetemp().parent`` resolves to
+    ``/tmp/pytest-of-<user>``, which is owned by the test runner user and
+    persists across pytest sessions for the same user. Using this avoids
+    permission collisions on shared CI runners where a fixed ``/tmp/...``
+    path may already exist owned by a different user.
+    """
+    base = tmp_path_factory.getbasetemp().parent / "codeminer-base-e2e"
+    base.mkdir(parents=True, exist_ok=True)
+    dirs = {
+        "repos": base / "repos",
+        "datasets": base / "datasets",
+        "index": base / "index",
+    }
+    for d in dirs.values():
+        d.mkdir(parents=True, exist_ok=True)
+    return dirs
+
+
 @pytest.fixture(scope="module")
-def codeminer_base_first_instance() -> Dict[str, Any]:
+def codeminer_base_first_instance(
+    codeminer_base_cache, tmp_path_factory
+) -> Dict[str, Any]:
     """Load the first instance of the codeminer-base dataset.
 
     Skips the test if the dataset is unreachable (no HF auth / offline /
@@ -85,16 +105,16 @@ def codeminer_base_first_instance() -> Dict[str, Any]:
 
     from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
 
-    Path(_REPO_ROOT_CACHE).mkdir(parents=True, exist_ok=True)
-    Path(_DATASET_CACHE).mkdir(parents=True, exist_ok=True)
+    lock_path = tmp_path_factory.getbasetemp().parent / "codeminer-base-dataset.lock"
     try:
-        ds = CodeMinerBaseDataset(
-            split="test",
-            root=_DATASET_CACHE,
-            repo_root=_REPO_ROOT_CACHE,
-            log=False,
-        )
-        rows = ds.load(idx_range=[0, 1])
+        with FileLock(str(lock_path)):
+            ds = CodeMinerBaseDataset(
+                split="test",
+                root=str(codeminer_base_cache["datasets"]),
+                repo_root=str(codeminer_base_cache["repos"]),
+                log=False,
+            )
+            rows = ds.load(idx_range=[0, 1])
     except Exception as exc:
         pytest.skip(f"codeminer-base dataset unavailable: {exc}")
 
@@ -103,12 +123,17 @@ def codeminer_base_first_instance() -> Dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
-def prepared_repo(codeminer_base_first_instance) -> Dict[str, Any]:
+def prepared_repo(codeminer_base_first_instance, tmp_path_factory) -> Dict[str, Any]:
     """Clone + checkout the first instance's repo."""
     ds = codeminer_base_first_instance["_dataset"]
     row = codeminer_base_first_instance["row"]
+    repo_dir_name = (row.get("repo") or "unknown").replace("/", "_")
+    lock_path = (
+        tmp_path_factory.getbasetemp().parent / f"codeminer-base-{repo_dir_name}.lock"
+    )
     try:
-        ds.process_instance(row)
+        with FileLock(str(lock_path)):
+            ds.process_instance(row)
     except Exception as exc:
         pytest.skip(f"could not check out repo for {row.get('instance_id')}: {exc}")
     return {
@@ -186,7 +211,7 @@ def _tools_passed_first_turn(llm) -> List[str]:
 
 
 @pytest.mark.integration
-def test_query_runs_end_to_end_on_codeminer_base(prepared_repo):
+def test_query_runs_end_to_end_on_codeminer_base(prepared_repo, codeminer_base_cache):
     """Smoke: the full query() facade runs against a real codeminer-base repo."""
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
@@ -202,7 +227,7 @@ def test_query_runs_end_to_end_on_codeminer_base(prepared_repo):
             allowed_skills=["bm25_search"],  # cheapest skill, no GPU
             primary_language=language,
             languages=(language,),
-            index_cache_dir=_INDEX_CACHE,
+            index_cache_dir=str(codeminer_base_cache["index"]),
             max_turns=3,
         ),
     )
@@ -222,7 +247,9 @@ def test_query_runs_end_to_end_on_codeminer_base(prepared_repo):
 
 
 @pytest.mark.integration
-def test_compile_table_narrows_when_prompt_has_stacktrace(prepared_repo):
+def test_compile_table_narrows_when_prompt_has_stacktrace(
+    prepared_repo, codeminer_base_cache
+):
     """A traceback-laden prompt collapses the allow-set to A0 via the table."""
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
@@ -253,7 +280,7 @@ def test_compile_table_narrows_when_prompt_has_stacktrace(prepared_repo):
             primary_language=language,
             languages=(language,),
             compile_table=table,
-            index_cache_dir=_INDEX_CACHE,
+            index_cache_dir=str(codeminer_base_cache["index"]),
             max_turns=3,
         ),
     )
@@ -284,7 +311,7 @@ def _skip_if_vertex_unconfigured() -> None:
 
 @pytest.mark.slow
 @pytest.mark.parametrize("model", _VERTEX_MODELS)
-def test_query_with_real_vertex_model(prepared_repo, model):
+def test_query_with_real_vertex_model(prepared_repo, codeminer_base_cache, model):
     """End-to-end with a real LLM call via Vertex AI through litellm.
 
     Parametrized over the models declared in ``_VERTEX_MODELS`` (currently
@@ -327,7 +354,7 @@ def test_query_with_real_vertex_model(prepared_repo, model):
             primary_language=language,
             languages=(language,),
             compile_table=table,
-            index_cache_dir=_INDEX_CACHE,
+            index_cache_dir=str(codeminer_base_cache["index"]),
             # Cap turns tightly — the test cares that the wiring works,
             # not that the model produces a brilliant answer.
             max_turns=4,
