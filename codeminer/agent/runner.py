@@ -416,6 +416,15 @@ class CodeMinerAgentOptions:
 
     ``compile_table`` *narrows* ``allowed_skills`` per query but never
     broadens it (see :func:`codeminer.agent.compile.agent_compile`).
+
+    ``compile_table`` also operates at the **index-build stage**: when set,
+    only indexes for skills it ever names are compiled. Formally::
+
+        index_skills = allowed_skills  ∩  union(compile_table.values())
+
+    A vector index isn't built if every scenario in the table maps to
+    bm25-only, even when ``embedding_search`` is in ``allowed_skills`` —
+    CAR couldn't route to it at runtime anyway.
     """
 
     # --- repo / pre-compile ---
@@ -505,7 +514,7 @@ def query(
         contexts = opts.contexts
     else:
         loader.load_all(skills_dir, contexts={}, registry=registry)
-        contexts = _build_contexts(opts)
+        contexts = _build_contexts(opts, table=table)
         SkillRegistry.reset()
         registry = SkillRegistry()
 
@@ -577,8 +586,24 @@ def _load_compile_table_if_path(
     )
 
 
-def _build_contexts(opts: CodeMinerAgentOptions) -> Dict[str, Any]:
+def _build_contexts(
+    opts: CodeMinerAgentOptions,
+    *,
+    table: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Build the index union the requested skills need.
+
+    Skill set used for pre-compile:
+
+        index_skills = allowed_skills  ∩  union(table.values())   (if table)
+                     = allowed_skills                             (otherwise)
+
+    ``allowed_skills`` is the *agent's* upper bound (what the LLM can ever
+    pick); ``compile_table`` is the *index's* upper bound — if a skill is
+    never named on the right-hand side of any scenario, CAR can't route to
+    it, so its index never needs to exist. Intersecting the two avoids
+    building indexes that the runtime would never read (e.g. a vector
+    index when every compile_table scenario maps to bm25-only).
 
     Delegates to ``codeminer.compiler.build_skill_contexts`` — the same
     pre-compile entry point used by ``examples/skill_agent_eval.py``.
@@ -586,13 +611,26 @@ def _build_contexts(opts: CodeMinerAgentOptions) -> Dict[str, Any]:
     from ..compiler import build_skill_contexts
 
     if opts.allowed_skills:
-        skill_ids = list(opts.allowed_skills)
+        skill_ids: Set[str] = set(opts.allowed_skills)
     else:
-        skill_ids = _discover_skill_ids(opts.skills_dir or str(_DEFAULT_SKILLS_DIR))
+        skill_ids = set(
+            _discover_skill_ids(opts.skills_dir or str(_DEFAULT_SKILLS_DIR))
+        )
+
+    if table:
+        table_skills: Set[str] = set()
+        for v in table.values():
+            table_skills.update(v)
+        skill_ids = skill_ids & table_skills
+        logger.debug(
+            "query(): compile_table narrows index-build set to %d skill(s): %s",
+            len(skill_ids),
+            sorted(skill_ids),
+        )
 
     return build_skill_contexts(
         repo_path=opts.repo_path,  # checked non-None by ``query``
-        skill_ids=skill_ids,
+        skill_ids=sorted(skill_ids),
         languages=tuple(opts.languages),
         cache_dir=opts.index_cache_dir,
         embedding_model=opts.embedding_model,

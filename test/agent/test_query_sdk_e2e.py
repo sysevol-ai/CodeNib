@@ -273,15 +273,29 @@ def test_query_runs_end_to_end_on_codeminer_base(prepared_repo, codeminer_base_c
 def test_compile_table_narrows_when_prompt_has_stacktrace(
     prepared_repo, codeminer_base_cache
 ):
-    """A traceback-laden prompt collapses the allow-set to A0 via the table."""
+    """A traceback-laden prompt collapses the allow-set to A0 via the table.
+
+    Two things are exercised here:
+
+    1. **Index-build narrowing.** ``allowed_skills`` is the wide set
+       ``[bm25, embedding, graph]`` but every entry on the right-hand
+       side of ``table`` is ``{bm25_search}``. The
+       ``allowed_skills ∩ union(table.values())`` rule in
+       :func:`codeminer.agent.runner._build_contexts` therefore narrows
+       the index-build set to just BM25 — no embedding model / SCIP
+       graph build is triggered. (Critical for this test to stay cheap
+       enough for CI; see #152 CI run.)
+    2. **Per-query narrowing.** With the wide ``allowed_skills``, CAR
+       still picks ``{bm25_search}`` for the classified scenario, so the
+       LLM only sees the bm25_search tool on its first turn.
+    """
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
 
+    # All scenarios collapse to bm25_search; union(values) = {bm25_search}.
     table = {
         f"{language}:stacktrace": frozenset({"bm25_search"}),
-        f"{language}:no_stacktrace": frozenset(
-            {"bm25_search", "embedding_search", "graph_expand"}
-        ),
+        f"{language}:no_stacktrace": frozenset({"bm25_search"}),
     }
 
     prompt = (
