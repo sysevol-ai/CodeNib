@@ -490,6 +490,15 @@ def query(
     # --- 1. Resolve the compile_table (path → dict if needed) ---
     table = _load_compile_table_if_path(opts.compile_table)
 
+    # --- 1b. Surface allowed_skills ↔ compile_table mismatches before any
+    # work happens. Two failure modes the caller almost certainly didn't
+    # intend; both fail at runtime ("Skill 'X' not available") deep in
+    # the agent loop, which is a miserable debugging path.
+    _warn_on_skill_set_mismatch(
+        set(opts.allowed_skills) if opts.allowed_skills else None,
+        table,
+    )
+
     # --- 2. Reset the singleton registry so this query's contexts win.
     # SkillLoader.load_all() skips already-registered skills, so without a
     # reset we'd run against whatever the previous query loaded.
@@ -584,6 +593,61 @@ def _load_compile_table_if_path(
     raise TypeError(
         f"options.compile_table must be a path or mapping, got {type(table).__name__}"
     )
+
+
+def _warn_on_skill_set_mismatch(
+    allowed: Optional[Set[str]],
+    table: Optional[Dict[str, Any]],
+) -> None:
+    """Warn when ``allowed_skills`` and ``compile_table`` don't line up.
+
+    Two asymmetries are worth surfacing because both fail deep in the
+    agent loop rather than at config time:
+
+    * **orphans in allowed_skills** (``allowed - union(table.values())``):
+      CAR can never pick these for any scenario in the table. They become
+      reachable only on a *table miss* (CAR fallback to base_allow), and
+      because ``_build_contexts`` correctly skips them at pre-compile,
+      their executors will be unbound — the LLM will be offered tools
+      that crash with "Skill 'X' not available".
+    * **overflow in table** (``union(table.values()) - allowed``): CAR
+      will compute these for matching scenarios, but
+      ``AgentRunner.run`` silently drops them via
+      ``table_allow ∩ base_allow`` before reaching the LLM. The table
+      entry is dead.
+
+    Warn only — caller might intentionally keep orphans as a safety net
+    on table miss. Empty inputs short-circuit (nothing to compare).
+    """
+    if not allowed or not table:
+        return
+    table_skills: Set[str] = set()
+    for v in table.values():
+        table_skills.update(v)
+
+    orphans = allowed - table_skills
+    if orphans:
+        logger.warning(
+            "allowed_skills contains %d skill(s) compile_table never names: "
+            "%s. These are only reachable on a table miss (CAR fallback); "
+            "their indexes are NOT pre-built, so the LLM will fail with "
+            "\"Skill 'X' not available\" if it picks one. Fix: add them "
+            "to a compile_table scenario, or drop them from allowed_skills.",
+            len(orphans),
+            sorted(orphans),
+        )
+
+    overflow = table_skills - allowed
+    if overflow:
+        logger.warning(
+            "compile_table names %d skill(s) outside allowed_skills: %s. "
+            "AgentRunner intersects table_allow with allowed_skills before "
+            "exposing tools to the LLM, so these entries are silently "
+            "dropped per-query. Fix: add them to allowed_skills, or "
+            "remove them from compile_table.",
+            len(overflow),
+            sorted(overflow),
+        )
 
 
 def _build_contexts(

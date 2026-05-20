@@ -270,29 +270,27 @@ def test_query_runs_end_to_end_on_codeminer_base(prepared_repo, codeminer_base_c
 
 
 @pytest.mark.integration
-def test_compile_table_narrows_when_prompt_has_stacktrace(
+def test_compile_table_flows_through_query_pipeline(
     prepared_repo, codeminer_base_cache
 ):
-    """A traceback-laden prompt collapses the allow-set to A0 via the table.
+    """End-to-end smoke for the compile_table code path in ``query()``.
 
-    Two things are exercised here:
+    Exercises load → classify → intersect → reach the runner against a
+    real repo + BM25 index. The narrowing *logic* is covered exhaustively
+    in unit tests
+    (``test_query_sdk.py::TestCompileTable``) and runtime tests
+    (``test_compile_runtime.py``); this e2e test only confirms the wiring
+    survives a real ``query()`` call with a ``compile_table`` argument.
 
-    1. **Index-build narrowing.** ``allowed_skills`` is the wide set
-       ``[bm25, embedding, graph]`` but every entry on the right-hand
-       side of ``table`` is ``{bm25_search}``. The
-       ``allowed_skills ∩ union(table.values())`` rule in
-       :func:`codeminer.agent.runner._build_contexts` therefore narrows
-       the index-build set to just BM25 — no embedding model / SCIP
-       graph build is triggered. (Critical for this test to stay cheap
-       enough for CI; see #152 CI run.)
-    2. **Per-query narrowing.** With the wide ``allowed_skills``, CAR
-       still picks ``{bm25_search}`` for the classified scenario, so the
-       LLM only sees the bm25_search tool on its first turn.
+    Uses a coherent table (``allowed_skills`` ⊆ ``union(table.values())``)
+    so :func:`codeminer.agent.runner._warn_on_skill_set_mismatch`
+    stays silent — orphan/overflow warnings have dedicated unit-test
+    coverage in ``test_query_sdk.py``.
     """
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
 
-    # All scenarios collapse to bm25_search; union(values) = {bm25_search}.
+    # Coherent table: every scenario maps to the same allowed_skills.
     table = {
         f"{language}:stacktrace": frozenset({"bm25_search"}),
         f"{language}:no_stacktrace": frozenset({"bm25_search"}),
@@ -311,9 +309,7 @@ def test_compile_table_narrows_when_prompt_has_stacktrace(
         options=CodeMinerAgentOptions(
             repo_path=repo_path,
             llm=llm,
-            # Upper-bound allowlist includes all 3, but the stacktrace
-            # scenario in ``table`` narrows it to bm25_search only.
-            allowed_skills=["bm25_search", "embedding_search", "graph_expand"],
+            allowed_skills=["bm25_search"],
             primary_language=language,
             languages=(language,),
             compile_table=table,
@@ -322,7 +318,7 @@ def test_compile_table_narrows_when_prompt_has_stacktrace(
         ),
     )
 
-    # CAR narrowed the tool list the LLM saw to {bm25_search}.
+    # CAR picked bm25_search for the scenario; LLM saw exactly that.
     assert _tools_passed_first_turn(llm) == ["bm25_search"]
     assert result.tool_calls[0].skill_id == "bm25_search"
 

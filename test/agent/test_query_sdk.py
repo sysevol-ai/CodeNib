@@ -18,7 +18,7 @@ For the real end-to-end path with a built BM25 index, see
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -79,6 +79,33 @@ def _tools_passed_to_llm(llm) -> List[str]:
     args, kwargs = llm._call_raw.call_args
     schemas = kwargs.get("tools", [])
     return sorted(t["function"]["name"] for t in schemas)
+
+
+def _capture_runner_warnings():
+    """Return a (records_list, install, uninstall) tuple.
+
+    The runner logger has ``propagate=False`` (see ``codeminer.log_utils``)
+    so pytest's ``caplog`` doesn't see its records. Attach a list-collecting
+    handler directly to the named logger instead.
+    """
+    import logging
+
+    records: List[logging.LogRecord] = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    runner_logger = logging.getLogger("codeminer.agent.runner")
+    handler = _ListHandler(level=logging.WARNING)
+
+    def install():
+        runner_logger.addHandler(handler)
+
+    def uninstall():
+        runner_logger.removeHandler(handler)
+
+    return records, install, uninstall
 
 
 # ---------------------------------------------------------------------------
@@ -231,23 +258,11 @@ class TestSkillParams:
             assert meta.defaults.get("extra") == "x"
 
     def test_unknown_skill_in_skill_params_is_ignored(self):
-        """Overrides for a non-existent skill log a warning and don't crash.
-
-        The runner logger has ``propagate=False`` (see ``codeminer.log_utils``)
-        so we can't use pytest's ``caplog``. We attach a list-collecting
-        handler directly to the named logger instead.
-        """
+        """Overrides for a non-existent skill log a warning and don't crash."""
         import logging
 
-        records: List[logging.LogRecord] = []
-
-        class _ListHandler(logging.Handler):
-            def emit(self, record: logging.LogRecord) -> None:
-                records.append(record)
-
-        runner_logger = logging.getLogger("codeminer.agent.runner")
-        handler = _ListHandler(level=logging.WARNING)
-        runner_logger.addHandler(handler)
+        records, install, uninstall = _capture_runner_warnings()
+        install()
         try:
             query(
                 "noop",
@@ -258,9 +273,99 @@ class TestSkillParams:
                 ),
             )
         finally:
-            runner_logger.removeHandler(handler)
+            uninstall()
 
         assert any(
             "no_such_skill" in r.getMessage() and r.levelno == logging.WARNING
             for r in records
         )
+
+
+# ---------------------------------------------------------------------------
+# allowed_skills ↔ compile_table mismatch warnings
+# ---------------------------------------------------------------------------
+
+
+class TestSkillSetMismatchWarning:
+    """Cover ``_warn_on_skill_set_mismatch`` (orphan + overflow cases).
+
+    The function fires at ``query()`` entry, before any heavy work, so the
+    failure mode it warns about (unbuilt indexes / silently-dropped table
+    entries) can't bite the caller mid-run.
+    """
+
+    def _query_with(
+        self,
+        allowed_skills: Optional[List[str]],
+        table: Optional[dict],
+    ) -> List[Any]:
+        import logging
+
+        records, install, uninstall = _capture_runner_warnings()
+        install()
+        try:
+            query(
+                "noop",
+                options=CodeMinerAgentOptions(
+                    contexts={},
+                    llm=_mock_llm_final_answer(),
+                    allowed_skills=allowed_skills,
+                    compile_table=table,
+                ),
+            )
+        finally:
+            uninstall()
+        return [r for r in records if r.levelno == logging.WARNING]
+
+    def test_orphans_in_allowed_skills_warn(self):
+        """allowed_skills contains skills no compile_table scenario names."""
+        warnings = self._query_with(
+            allowed_skills=["bm25_search", "embedding_search"],
+            table={"python:stacktrace": ["bm25_search"]},
+        )
+        msgs = [w.getMessage() for w in warnings]
+        # Orphan warning fires and names the offending skill.
+        assert any(
+            "compile_table never names" in m and "embedding_search" in m for m in msgs
+        )
+
+    def test_overflow_in_table_warns(self):
+        """compile_table names skills outside the allowed_skills cap."""
+        warnings = self._query_with(
+            allowed_skills=["bm25_search"],
+            table={"python:stacktrace": ["bm25_search", "embedding_search"]},
+        )
+        msgs = [w.getMessage() for w in warnings]
+        assert any(
+            "outside allowed_skills" in m and "embedding_search" in m for m in msgs
+        )
+
+    def test_coherent_config_is_silent(self):
+        """When allowed_skills == union(table.values()), no warning fires."""
+        warnings = self._query_with(
+            allowed_skills=["bm25_search"],
+            table={
+                "python:stacktrace": ["bm25_search"],
+                "python:no_stacktrace": ["bm25_search"],
+            },
+        )
+        msgs = [w.getMessage() for w in warnings]
+        assert not any("compile_table" in m for m in msgs)
+
+    def test_no_table_is_silent(self):
+        """No compile_table → no mismatch check → no warning."""
+        warnings = self._query_with(
+            allowed_skills=["bm25_search", "embedding_search"],
+            table=None,
+        )
+        msgs = [w.getMessage() for w in warnings]
+        assert not any("compile_table" in m for m in msgs)
+
+    def test_no_allowed_skills_is_silent(self):
+        """No allowed_skills cap → no mismatch check → no warning."""
+        warnings = self._query_with(
+            allowed_skills=None,
+            table={"python:stacktrace": ["bm25_search"]},
+        )
+        msgs = [w.getMessage() for w in warnings]
+        assert not any("compile_table" in m for m in msgs)
