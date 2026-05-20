@@ -38,8 +38,8 @@ reading lines via shell / other available file-reading primitive).
 
 ## Upstream seeding contract
 
-When `graph_expand` is reached from another tool, the **caller must pass
-`ranges`, not `symbols`** — because:
+When `graph_expand` is reached from another tool, the caller **should** pass
+`ranges`, not `symbols` — because:
 
 - BM25 / embedding hits naturally carry `file + start_line + end_line` on
   every result; passing those directly avoids a string-based symbol name

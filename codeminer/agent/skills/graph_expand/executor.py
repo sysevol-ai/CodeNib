@@ -46,7 +46,11 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
         f = file or ""
         return f"{f}:{display}" if f else display
 
-    def _node_ref_to_queried(ref: Any, role: str, score: float) -> QueriedNode:
+    # graph_expand has no relevance signal — `score` is left at 0.0 (matches
+    # bm25_search's convention when scores aren't available). Result ordering
+    # is driven by `role` via `_ROLE_ORDER` below, not by score.
+
+    def _node_ref_to_queried(ref: Any, role: str) -> QueriedNode:
         return QueriedNode(
             node_name=ref.unified_name or ref.name,
             type=ref.kind,
@@ -54,13 +58,13 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
             node_id=_build_node_id(ref.file, ref.unified_name or ref.name),
             start_line=ref.start_line,
             end_line=ref.end_line,
-            score=score,
+            score=0.0,
             role=role,
             # `defined` carries no edge — anchor_* and edge_kind stay None.
         )
 
     def _vid_to_queried_with_edge(
-        graph: CodeGraph, vid: int, edge: Any, role: str, score: float
+        graph: CodeGraph, vid: int, edge: Any, role: str
     ) -> Optional[QueriedNode]:
         attrs = graph.graph.vs[vid].attributes()
         name = graph.graph.vs[vid]["name"]
@@ -75,7 +79,7 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
             node_id=_build_node_id(file, display),
             start_line=attrs.get("start_line"),
             end_line=attrs.get("end_line"),
-            score=score,
+            score=0.0,
             role=role,
             edge_kind=edge.edge_kind,
             anchor_file=edge.anchor_file,
@@ -83,19 +87,12 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
         )
 
     def _flatten_result(graph: CodeGraph, result: Any, mode: str) -> List[QueriedNode]:
-        """Convert a ``RangeQueryResult`` into role-tagged ``QueriedNode``s.
-
-        ``score`` here is a role-priority placeholder (defined > callees >
-        callers), NOT a relevance signal — graph_expand has no notion of
-        relevance. Result ordering is enforced separately by ``_ROLE_ORDER``
-        sort below; downstream consumers should not interpret the score
-        magnitude as quality.
-        """
+        """Convert a ``RangeQueryResult`` into role-tagged ``QueriedNode``s."""
         out: List[QueriedNode] = []
 
         if mode in ("defined", "all"):
             for n in result.defined:
-                out.append(_node_ref_to_queried(n, role="defined", score=1.0))
+                out.append(_node_ref_to_queried(n, role="defined"))
 
         if mode in ("callees", "all"):
             seen_targets: set = set()
@@ -105,9 +102,7 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
                 if e.target_vid in seen_targets:
                     continue
                 seen_targets.add(e.target_vid)
-                node = _vid_to_queried_with_edge(
-                    graph, e.target_vid, e, role="callees", score=0.9
-                )
+                node = _vid_to_queried_with_edge(graph, e.target_vid, e, role="callees")
                 if node is not None:
                     out.append(node)
 
@@ -119,9 +114,7 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
                 if e.source_vid in seen_sources:
                     continue
                 seen_sources.add(e.source_vid)
-                node = _vid_to_queried_with_edge(
-                    graph, e.source_vid, e, role="callers", score=0.8
-                )
+                node = _vid_to_queried_with_edge(graph, e.source_vid, e, role="callers")
                 if node is not None:
                     out.append(node)
 
@@ -181,7 +174,12 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
             e = r.get("end_line")
             if file is None or s is None or e is None:
                 continue
-            si, ei = int(s), int(e)
+            try:
+                si, ei = int(s), int(e)
+            except (TypeError, ValueError):
+                # LLM-generated tool-call JSON may carry non-numeric strings
+                # in numeric fields ("abc", "12.5", lists). Drop, don't crash.
+                continue
             if si > ei:
                 si, ei = ei, si
             out.append((file, si, ei))

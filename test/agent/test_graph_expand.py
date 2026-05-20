@@ -120,6 +120,33 @@ def _build_graph_with_test_caller() -> CodeGraph:
     return g
 
 
+def _build_recursive_graph() -> CodeGraph:
+    """Single function foo.py:rec calling itself (self-edge).
+
+    Used to verify that under mode='all' a recursive vertex appears with
+    BOTH callees and callers roles — dedup is keyed by (node_id, role),
+    not by node_id alone. query_range excludes self-edges from `incoming`
+    (invariant iii) so the caller-side surface comes from a *separate*
+    incoming reference. We provide that by adding a second function `boot`
+    that also calls rec.
+    """
+    g = CodeGraph()
+    g.add_file_node("foo.py")
+    g.add_symbol_node("foo.py:rec", 10, 5, 20, "function")
+    g.add_symbol_node("foo.py:boot", 30, 25, 30, "function")
+
+    # rec calls itself at line 12 (recursion → outgoing self-edge)
+    g.update_current_scope("foo.py:rec", 5, 20)
+    g.add_symbol_reference("foo.py:rec", anchor_line=12)
+
+    # boot calls rec at line 28 (provides the non-self incoming edge)
+    g.update_current_scope("foo.py:boot", 25, 30)
+    g.add_symbol_reference("foo.py:rec", anchor_line=28)
+
+    g.build_range_indexes()
+    return g
+
+
 def _build_hot_target_graph(n_callers: int) -> CodeGraph:
     """target.py:hot has many callers; used for top_k truncation tests."""
     g = CodeGraph(project_root="/tmp/x")
@@ -277,6 +304,20 @@ class TestGraphExpandRangeInput:
         )
         assert any(r.node_name == "foo.py:bar" for r in results)
 
+    def test_skips_non_integer_line_numbers(self):
+        # LLM-generated JSON occasionally puts strings/floats/lists into
+        # numeric fields. Drop those entries, don't crash, but keep valid ones.
+        execute = self._execute(_build_simple_graph())
+        results = execute(
+            ranges=[
+                {"file": "foo.py", "start_line": "abc", "end_line": 15},
+                {"file": "foo.py", "start_line": 8, "end_line": [15]},
+                {"file": "foo.py", "start_line": 8, "end_line": 15},  # valid
+            ],
+            mode="defined",
+        )
+        assert any(r.node_name == "foo.py:bar" for r in results)
+
     # --- multi-range path ---
 
     def test_multiple_ranges_union_results(self):
@@ -377,6 +418,32 @@ class TestGraphExpandCombinedInput:
         names = {r.node_name for r in results}
         assert "target.py:fn" in names
         assert "caller.py:c" in names
+
+    def test_recursive_vertex_appears_in_both_roles(self):
+        # Dedup key is (node_id, role), NOT node_id alone — a recursive
+        # function (rec calls itself) must surface as BOTH a callee (via
+        # the outgoing self-edge) AND a caller (when another fn calls rec).
+        # If someone weakens dedup to just node_id, the role would collapse
+        # and the graph relationships become ambiguous to the LLM.
+        execute = self._execute(_build_recursive_graph())
+        results = execute(
+            ranges=[{"file": "foo.py", "start_line": 5, "end_line": 20}],
+            mode="all",
+            filter_tests=False,
+        )
+        rec_entries = [r for r in results if r.node_name == "foo.py:rec"]
+        roles_for_rec = {r.role for r in rec_entries}
+        # "defined" (rec is in the seed range) + "callees" (rec calls itself).
+        # "callers" is excluded for rec itself because invariant iii filters
+        # self-edges from incoming; the boot→rec edge surfaces foo.py:boot
+        # as the caller, not rec.
+        assert {"defined", "callees"}.issubset(
+            roles_for_rec
+        ), f"recursive rec missing expected roles: {roles_for_rec}"
+        # boot shows up as a caller (incoming edge into rec from outside).
+        assert any(
+            r.node_name == "foo.py:boot" and r.role == "callers" for r in results
+        )
 
     def test_dedup_preserves_first_seed_anchor(self):
         # T3: When two seed ranges both surface the same callee, dedup keeps
@@ -503,6 +570,10 @@ class TestGraphExpandLoader:
 # was rebuilt post-#127 so it carries schema_version=3 + populated
 # `file_edge_anchors`. Auto-skip per language if the path is missing or the
 # graph is pre-v3 (no anchored edges) — non-self-hosted devs aren't blocked.
+# Expected symbol sets below are pinned to the graph build pipeline (schema
+# version, decoder unified_name format, edge-kind filters). If the pipeline
+# changes the pickle gets rebuilt and unified_name / edge sets may shift —
+# re-probe via /tmp/test_probe_graphs.py and update the expected_* sets.
 _PREBUILT_GRAPHS = {
     "python": "/mnt/data/codeminer/pydata__xarray-3151/graph.pkl",
     "ts": "/mnt/data/codeminer/axios__axios-4731/graph.pkl",
@@ -730,8 +801,11 @@ class TestGraphExpandLanguageMatrix:
                 continue
             missing = expected - by_role[role_name]
             assert not missing, (
-                f"{lang}: missing expected {role_name} entries: {sorted(missing)}\n"
-                f"  got {role_name}: {sorted(by_role[role_name])}"
+                f"{lang}: missing expected {role_name} entries: "
+                f"{sorted(missing)}\n"
+                f"  got {role_name}: {sorted(by_role[role_name])}\n"
+                f"  hint: if the graph build pipeline changed, re-pin "
+                f"expected_{role_name} (see _PREBUILT_GRAPHS docstring)."
             )
 
     def test_python(self):
