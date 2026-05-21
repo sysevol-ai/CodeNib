@@ -3,6 +3,7 @@
 __pycache__
 my_project/
 *.json
+!.claude/settings.json
 graph.png
 graph.pkl
 build/

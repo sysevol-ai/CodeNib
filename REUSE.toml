@@ -25,6 +25,12 @@ SPDX-FileCopyrightText = "CodeMiner Contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
+path = ".claude/settings.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
 path = "codeminer/model/prompts/*.txt"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "CodeMiner Contributors"

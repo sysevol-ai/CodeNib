@@ -77,6 +77,23 @@ pytest -m slow                                 # slow only
   `interface`, `object`, `enum`, `trait`, `impl`, `var`, `const`, `static`,
   `declaration`, `macro`, `variable`.
 
+## Git & PR conventions
+
+Rules for any AI/code agent (Claude Code, etc.) committing or opening PRs here.
+
+- **No agent attribution.** Do **not** add `Co-Authored-By: Claude ...`,
+  `🤖 Generated with Claude Code`, session links, or any "made by an AI"
+  footer to commit messages, PR bodies, or review comments. This is also
+  enforced by `includeCoAuthoredBy: false` in `.claude/settings.json`.
+- **Commit messages**: Conventional Commits — `type(scope): summary`, where
+  `type` is `feat`/`fix`/`docs`/`refactor`/`perf`/`test`/`chore`/`ci`.
+  Imperative mood, ≤72-char subject; body explains *why* + how it was verified.
+- **PRs must follow `.github/PULL_REQUEST_TEMPLATE.md` verbatim** — keep every
+  section heading (`Summary`, `Changes`, `Type of Change`, `Testing`,
+  `Checklist`) in order. Fill the bullets, tick the relevant `- [x]` boxes;
+  do not substitute ad-hoc sections. Add extra context *below* the template,
+  never in place of it.
+
 ## CI
 
 Three parallel jobs on a self-hosted runner (see `.github/workflows/ci.yml`):
