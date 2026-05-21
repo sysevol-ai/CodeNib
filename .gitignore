@@ -18,3 +18,14 @@ site/
 .venv/
 .cursor/
 *.bak
+
+# DeepWiki demo
+.codeminer_demo/
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+# *.json is ignored globally above; keep the demo frontend config tracked.
+!web/package.json
+!web/tsconfig.json
+!web/package-lock.json

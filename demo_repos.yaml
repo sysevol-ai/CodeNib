@@ -1,0 +1,33 @@
+# DeepWiki-style demo configuration.
+#
+# Build indexes:   python scripts/build_demo_index.py
+# Serve:           codeminer-web   (or: uvicorn codeminer.web.app:app)
+#
+# `model` is a litellm model string; override at runtime with the
+# CODEMINER_DEMO_MODEL env var. Provider API keys come from the environment
+# (e.g. OPENAI_API_KEY), exactly as litellm expects.
+
+model: gpt-4o
+mode: sparse            # "sparse" (BM25 only) or "hybrid" (BM25 + embeddings)
+data_dir: .codeminer_demo
+max_turns: 5
+max_tokens: 1024
+
+cors_origins:
+  - http://localhost:3000
+
+repos:
+  # A small, self-contained Python library — fast to index.
+  - id: click
+    name: Click
+    description: Python package for creating command line interfaces.
+    url: https://github.com/pallets/click
+    commit: 8.1.7
+    languages: [python]
+
+  # Index this checkout of CodeMiner itself (no network needed).
+  - id: codeminer
+    name: CodeMiner
+    description: This repository — graph-enhanced code search agent.
+    path: .
+    languages: [python]
