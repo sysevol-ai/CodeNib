@@ -26,7 +26,7 @@ for real. The test verifies that:
 Marked ``integration`` because it downloads a HuggingFace dataset shard
 and clones a git repository. To run explicitly::
 
-    pytest test/agent/test_query_sdk_e2e.py -v -m integration
+    pytest test/agent/test_query_e2e.py -v -m integration
 
 Repo + index caches are shared with the rest of the suite under
 ``/tmp/codeminer-gt-test/``.
@@ -278,14 +278,14 @@ def test_compile_table_flows_through_query_pipeline(
     Exercises load → classify → intersect → reach the runner against a
     real repo + BM25 index. The narrowing *logic* is covered exhaustively
     in unit tests
-    (``test_query_sdk.py::TestCompileTable``) and runtime tests
+    (``test_query.py::TestCompileTable``) and runtime tests
     (``test_compile_runtime.py``); this e2e test only confirms the wiring
     survives a real ``query()`` call with a ``compile_table`` argument.
 
     Uses a coherent table (``allowed_skills`` ⊆ ``union(table.values())``)
     so :func:`codeminer.agent.runner._warn_on_skill_set_mismatch`
     stays silent — orphan/overflow warnings have dedicated unit-test
-    coverage in ``test_query_sdk.py``.
+    coverage in ``test_query.py``.
     """
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]

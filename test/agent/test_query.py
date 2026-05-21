@@ -13,7 +13,7 @@ build or network call happens. They exercise:
 * SessionContext construction (primary_language, repo_size).
 
 For the real end-to-end path with a built BM25 index, see
-``test_query_sdk_e2e.py``.
+``test_query_e2e.py``.
 """
 
 from __future__ import annotations
