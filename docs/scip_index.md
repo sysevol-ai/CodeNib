@@ -93,7 +93,7 @@ The `LSIndexer` class provides a Python interface for working with SCIP indices.
 
 The indexer automatically:
 1. Checks if conda is installed
-2. Creates a dedicated `scip-env` environment (if not exists) using [scip-environment.yml](scip-environment.yml)
+2. Creates a dedicated `scip-env` environment (if not exists) using [scip-environment.yml](https://github.com/sysevol-ai/CodeMiner/blob/main/codeminer/scip_interface/scip-environment.yml)
 3. Runs all `scip-python` commands within this isolated environment
 
 **Manual conda environment setup** (optional - the indexer does this automatically):
