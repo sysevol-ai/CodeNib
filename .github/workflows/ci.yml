@@ -22,6 +22,10 @@ on:
       - "docs/**"
       - "LICENSE"
       - ".gitignore"
+  schedule:
+    # 07:00 UTC daily — forces a full serial-chain run so the graph.pkl cache
+    # and C++ parity never silently rot on light-only weeks.
+    - cron: "0 7 * * *"
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -45,7 +49,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should-run: ${{ steps.check.outputs.should-run }}
+      run-serial: ${{ steps.serial.outputs.run-serial }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Evaluate skip condition
         id: check
         run: |
@@ -69,6 +77,43 @@ jobs:
           else
             echo "should-run=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # Detect whether any changed file lies OUTSIDE the "light" set (docs,
+      # scripts, examples). Expressed as a catch-all '**' plus '!light'
+      # negations under predicate-quantifier 'every': a file matches `heavy`
+      # only if it matches '**' AND none of the negations exclude it — i.e. it
+      # is outside the light set. Output `heavy` is true iff >=1 heavy file.
+      - name: Detect heavy (serial-chain) source changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          base: ${{ github.event_name == 'push' && github.ref || '' }}
+          predicate-quantifier: "every"
+          filters: |
+            heavy:
+              - "**"
+              - "!scripts/**"
+              - "!examples/**"
+              - "!docs/**"
+              - "!**/*.md"
+              - "!LICENSE"
+              - "!.gitignore"
+
+      - name: Compute run-serial
+        id: serial
+        run: |
+          # Fail closed: run the serial chain unless we are sure it isn't needed.
+          RUN_SERIAL=true
+          case "${{ github.event_name }}" in
+            schedule|workflow_dispatch)
+              RUN_SERIAL=true ;;          # forced full run
+            push|pull_request)
+              # Only skip when the filter ran cleanly and found no heavy files.
+              if [[ "${{ steps.filter.outputs.heavy }}" == "false" ]]; then
+                RUN_SERIAL=false
+              fi ;;
+          esac
+          echo "run-serial=$RUN_SERIAL" >> "$GITHUB_OUTPUT"
 
   # =============================================================
   # Job 1 — Unit tests  (pure logic, mocks only, ~1 min)
@@ -143,7 +188,7 @@ jobs:
   # =============================================================
   integration-serial:
     needs: [preflight, integration]
-    if: needs.preflight.outputs.should-run == 'true'
+    if: needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-serial == 'true'
     runs-on: self-hosted
     timeout-minutes: 45
     env:
@@ -201,7 +246,7 @@ jobs:
   # =============================================================
   scip-core:
     needs: [preflight, integration-serial]
-    if: needs.preflight.outputs.should-run == 'true'
+    if: needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-serial == 'true'
     runs-on: self-hosted
     timeout-minutes: 30
     env:
@@ -308,7 +353,7 @@ jobs:
   # =============================================================
   graph-consumer:
     needs: [preflight, integration-serial]
-    if: needs.preflight.outputs.should-run == 'true'
+    if: needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-serial == 'true'
     runs-on: self-hosted
     timeout-minutes: 15
     env:
