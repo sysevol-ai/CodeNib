@@ -44,7 +44,9 @@ def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except ProcessLookupError:
-                pass
+                # The process group may already have exited between timeout and kill.
+                # In that race, there is nothing left to terminate.
+                logger.debug("Process group %s already exited before SIGKILL", proc.pid)
             proc.communicate()
             raise
         retcode = proc.poll()
