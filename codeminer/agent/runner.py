@@ -19,6 +19,7 @@ from ..llm.litellm_chat import LiteLLMChat
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
+from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .skills.registry import SkillRegistry
 from .tool_schema import registry_to_tools
 
@@ -212,6 +213,9 @@ class AgentRunner:
 
         # Apply parameter scaling if session context is available
         resolved_args = self._resolve_params(meta, arguments)
+        # Agent boundary (#153): inputs declared ``is_line_number`` arrive
+        # 1-based from the LLM; convert to 0-based before the executor.
+        resolved_args = self._apply_input_boundary(meta, resolved_args)
 
         start = time.monotonic()
         try:
@@ -254,6 +258,25 @@ class AgentRunner:
         )
         return resolved.params
 
+    def _apply_input_boundary(self, meta: Any, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert ``is_line_number`` inputs from 1-based (LLM) to 0-based.
+
+        No-op for skills that declare no line-number inputs, so the common
+        path is untouched. See ``codeminer/agent/boundary.py`` (#153).
+        """
+        line_params = {
+            i.name
+            for i in getattr(meta, "inputs", [])
+            if getattr(i, "is_line_number", False)
+        }
+        if not line_params:
+            return args
+        converted = dict(args)
+        for name in line_params:
+            if name in converted:
+                converted[name] = from_agent_repr_arg(converted[name])
+        return converted
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -287,13 +310,18 @@ def _serialize_result(result: Any) -> str:
     elif isinstance(result, (list, tuple)):
         items = []
         for item in result:
-            if hasattr(item, "model_dump"):
+            # Agent boundary (#153): emit line numbers 1-based to the LLM.
+            if is_line_bearing(item):
+                items.append(to_agent_repr(item))
+            elif hasattr(item, "model_dump"):
                 items.append(item.model_dump(exclude_none=True))
             elif hasattr(item, "__dict__"):
                 items.append(item.__dict__)
             else:
                 items.append(item)
         text = json.dumps(items, default=str, ensure_ascii=False)
+    elif is_line_bearing(result):
+        text = json.dumps(to_agent_repr(result), default=str, ensure_ascii=False)
     elif hasattr(result, "model_dump"):
         text = json.dumps(result.model_dump(exclude_none=True), default=str)
     else:

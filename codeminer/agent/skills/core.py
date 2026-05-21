@@ -55,6 +55,10 @@ class SkillInputSpec:
     required: bool = True
     default: Any = None
     description: str = ""
+    # Marks an input carrying 1-based line numbers from the LLM; the runner
+    # applies ``from_agent_repr`` (1-based → 0-based) before the executor
+    # sees it. See ``codeminer/agent/boundary.py`` (#153).
+    is_line_number: bool = False
 
 
 @dataclass(slots=True)
@@ -119,6 +123,7 @@ class SkillMetadata:
                     "required": i.required,
                     "default": i.default,
                     "description": i.description,
+                    "is_line_number": i.is_line_number,
                 }
                 for i in self.inputs
             ],
