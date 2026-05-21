@@ -180,6 +180,19 @@ class AgentRunner:
                     effective = set(table_allow)
                 else:
                     effective = set(table_allow) & self._base_allow
+                    # A compile_table subset that is disjoint from a
+                    # non-empty allow_skills upper bound must NOT broaden
+                    # back to the full registry via the empty→full
+                    # fallback. The table can only narrow, never broaden,
+                    # so fall back to the upper bound itself.
+                    if not effective and self._base_allow:
+                        logger.warning(
+                            "AgentRunner: compile_table scenario is disjoint "
+                            "from the allow_skills upper bound %s; keeping "
+                            "allow_skills (table narrows, never broadens)",
+                            sorted(self._base_allow),
+                        )
+                        effective = set(self._base_allow)
                 resolved = self._resolve_allow_set(effective)
                 tools = registry_to_tools(
                     self.registry,

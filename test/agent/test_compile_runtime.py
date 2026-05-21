@@ -213,6 +213,44 @@ class TestEmptyAllowFallback:
         }
         assert any("empty allow_skills" in r.getMessage() for r in captured)
 
+    def test_disjoint_table_and_allow_keeps_allow_not_full_registry(self, skills):
+        """Regression: a table subset disjoint from a non-empty
+        ``allow_skills`` upper bound must fall back to the upper bound,
+        NOT broaden back to the full registry via the empty→full path.
+
+        Before the fix, ``{embedding_search} & {bm25_search} == set()``
+        hit the empty-allowlist contract and exposed all four skills,
+        silently violating the funnel invariant
+        ``registry ⊇ allow_skills ⊇ table[scenario]``.
+        """
+        table = {"python:stacktrace": frozenset({"embedding_search"})}
+        llm = _mock_llm_no_tool_call()
+
+        captured: List[logging.LogRecord] = []
+        runner_logger = logging.getLogger("codeminer.agent.runner")
+
+        class _Handler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                captured.append(record)
+
+        handler = _Handler(level=logging.WARNING)
+        runner_logger.addHandler(handler)
+        try:
+            runner = AgentRunner(
+                llm=llm,
+                registry=skills,
+                session_ctx=SessionContext(primary_language="python"),
+                compile_table=table,
+                allow_skills={"bm25_search"},
+            )
+            runner.run("Traceback (most recent call last):\n  File 'x.py'")
+        finally:
+            runner_logger.removeHandler(handler)
+
+        # Falls back to the allow_skills upper bound, never the full registry.
+        assert _tools_passed_to_llm(llm) == ["bm25_search"]
+        assert any("disjoint" in r.getMessage() for r in captured)
+
 
 # ---------------------------------------------------------------------------
 # YAML / JSON loader roundtrip via AgentRunner
