@@ -46,7 +46,7 @@ The patcher queries three LSP methods to rebuild the graph:
 
 ## Prerequisites
 
-- An existing `CodeGraph` (built via `LSIndexer.run_pipeline()`, see [scip_index](scip_index.md))
+- An existing `CodeGraph` (built via `LSIndexer.run_pipeline()`, see [scip_index](../scip_index.md))
 - The corresponding language server installed (see table above)
 - The project must be a git repository with both the base and target commits reachable
 
@@ -87,4 +87,4 @@ graph.save_graph("/cache/project/graph.pkl")
 
 ## Interactive Demo
 
-See the [Interactive Demo](incremental_interactive.md) for a step-by-step visual walkthrough of the symbol classification and graph rebuild process.
+See the [Interactive Demo](interactive.md) for a step-by-step visual walkthrough of the symbol classification and graph rebuild process.
