@@ -1147,7 +1147,7 @@ def _infer_language(repo: Path) -> Optional[str]:
     counts: Dict[str, int] = {lang: 0 for lang in LANG_EXTS}
     prune = {"node_modules", "target", "build", "dist", "vendor", "__pycache__"}
     sampled = 0
-    for dirpath, dirnames, filenames in os.walk(repo):
+    for _dirpath, dirnames, filenames in os.walk(repo):
         dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in prune]
         for name in filenames:
             suffix = Path(name).suffix
