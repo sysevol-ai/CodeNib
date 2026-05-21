@@ -47,6 +47,13 @@ jobs:
   # =============================================================
   preflight:
     runs-on: ubuntu-latest
+    # paths-filter fetches the PR's changed-file list via the GitHub API
+    # (base is empty for pull_request events), which needs pull-requests:read.
+    # Job-level permissions replace the top-level block, so contents:read is
+    # repeated here for actions/checkout.
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       should-run: ${{ steps.check.outputs.should-run }}
       run-serial: ${{ steps.serial.outputs.run-serial }}
