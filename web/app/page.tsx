@@ -1,156 +1,60 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import {
-  askQuestion,
-  fetchRepos,
-  type ChatResponse,
-  type Citation,
-  type RepoInfo,
-} from "@/lib/api";
-
-interface Message {
-  role: "user" | "assistant";
-  text: string;
-  citations?: Citation[];
-}
-
-function CitationCard({ c }: { c: Citation }) {
-  const loc =
-    c.start_line != null ? `${c.file}:${c.start_line}-${c.end_line}` : c.file;
-  return (
-    <div className="citation">
-      <div className="head">
-        {c.node_name ? `${c.node_name} — ` : ""}
-        {loc}
-      </div>
-      {c.content && <pre>{c.content}</pre>}
-    </div>
-  );
-}
+import Link from "next/link";
+import Mermaid from "@/components/Mermaid";
+import { getWiki, relativeTime } from "@/lib/wiki";
 
 export default function Home() {
-  const [repos, setRepos] = useState<RepoInfo[]>([]);
-  const [activeRepo, setActiveRepo] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchRepos()
-      .then((r) => {
-        setRepos(r);
-        if (r.length > 0) setActiveRepo(r[0].id);
-      })
-      .catch((e) => setError(String(e)));
-  }, []);
-
-  function selectRepo(id: string) {
-    setActiveRepo(id);
-    setMessages([]);
-    setError(null);
-  }
-
-  async function send() {
-    const query = input.trim();
-    if (!query || !activeRepo || loading) return;
-    setInput("");
-    setError(null);
-    setMessages((m) => [...m, { role: "user", text: query }]);
-    setLoading(true);
-    try {
-      const resp: ChatResponse = await askQuestion(activeRepo, query);
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: resp.answer, citations: resp.citations },
-      ]);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const { repo, modules, architecture_mermaid } = getWiki();
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <h1>CodeMiner Wiki</h1>
-        <div className="tagline">Chat with a repository</div>
-        {repos.map((r) => (
-          <button
-            key={r.id}
-            className={`repo-item ${r.id === activeRepo ? "active" : ""}`}
-            onClick={() => selectRepo(r.id)}
-          >
-            <div className="name">{r.name}</div>
-            <div className="meta">
-              {r.languages.join(", ")} · {r.file_count} files
-            </div>
-          </button>
-        ))}
-        {repos.length === 0 && !error && (
-          <div className="spinner">Loading repos…</div>
-        )}
-      </aside>
+    <article className="page home">
+      <section className="hero">
+        <h1>{repo.name}</h1>
+        <p className="lede">{repo.description}</p>
+        <div className="hero-chips">
+          <span className="chip strong">{repo.languages.join(", ")}</span>
+          <span className="chip">{repo.license}</span>
+          <span className="chip">{repo.file_count} files</span>
+          <span className="chip">{repo.loc.toLocaleString()} LOC</span>
+          <span className="chip" title={repo.commit_subject}>
+            {repo.commit_short} · {relativeTime(repo.commit_date)}
+          </span>
+        </div>
+        <p className="hero-supports">
+          Parses <strong>{repo.supports.join(", ")}</strong> with tree-sitter.
+        </p>
+      </section>
 
-      <main className="main">
-        <div className="messages">
-          {messages.length === 0 && (
-            <div className="empty">
-              {activeRepo
-                ? "Ask a question about this repository."
-                : "Select a repository to begin."}
-            </div>
-          )}
-          {messages.map((m, i) => (
-            <div className="msg" key={i}>
-              <div className="role">{m.role === "user" ? "You" : "CodeMiner"}</div>
-              <div className={`bubble ${m.role}`}>
-                {m.role === "assistant" ? (
-                  <ReactMarkdown>{m.text || "(no answer)"}</ReactMarkdown>
-                ) : (
-                  m.text
-                )}
-                {m.citations && m.citations.length > 0 && (
-                  <details className="citations">
-                    <summary>{m.citations.length} code references</summary>
-                    {m.citations.map((c, j) => (
-                      <CitationCard c={c} key={j} />
-                    ))}
-                  </details>
-                )}
+      <section className="block">
+        <h2>Architecture</h2>
+        <p className="muted">
+          From source ingestion through index build to query-time retrieval.
+        </p>
+        <div className="diagram-card">
+          <Mermaid chart={architecture_mermaid} />
+        </div>
+      </section>
+
+      <section className="block">
+        <h2>Modules</h2>
+        <div className="module-grid">
+          {modules.map((m) => (
+            <Link
+              key={m.id}
+              href={`/modules/${m.id}`}
+              className="module-card"
+            >
+              <div className="module-card-title">{m.title}</div>
+              <div className="module-card-path">{m.path}</div>
+              <p className="module-card-desc">{m.description}</p>
+              <div className="module-card-stats">
+                <span>{m.file_count} files</span>
+                <span>{m.symbol_count} symbols</span>
+                <span>{m.loc.toLocaleString()} LOC</span>
               </div>
-            </div>
+            </Link>
           ))}
-          {loading && (
-            <div className="msg">
-              <div className="spinner">CodeMiner is searching the codebase…</div>
-            </div>
-          )}
-          {error && (
-            <div className="msg">
-              <div className="error">{error}</div>
-            </div>
-          )}
         </div>
-
-        <div className="composer">
-          <input
-            value={input}
-            placeholder="How does X work?"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") send();
-            }}
-            disabled={!activeRepo || loading}
-          />
-          <button onClick={send} disabled={!activeRepo || loading || !input.trim()}>
-            Ask
-          </button>
-        </div>
-      </main>
-    </div>
+      </section>
+    </article>
   );
 }
