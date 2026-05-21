@@ -36,7 +36,7 @@ and ``usage``.
 import argparse
 import asyncio
 
-from codeminer.agent.claude_agent import ClaudeLocAgent
+from codeminer.agent.external.claude_agent import ClaudeLocAgent
 from codeminer.eval.loc_agent_runner import add_common_args, run_agent_baseline
 from codeminer.log_utils import get_logger
 

@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional
 from openai_codex import ApprovalMode, AsyncCodex
 from openai_codex.types import SandboxMode
 
-from ..log_utils import get_logger
+from ...log_utils import get_logger
 from .claude_agent import (
     LOC_OUTPUT_SCHEMA,
     LOC_SYMBOL_NAMING_RULES,
