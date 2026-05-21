@@ -4,7 +4,11 @@ export const API_BASE =
 export interface RepoInfo {
   id: string;
   name: string;
-  description: string;
+  repo: string;
+  base_commit: string;
+  commit_short: string;
+  language: string;
+  problem_statement: string;
   languages: string[];
   file_count: number;
   capabilities: Record<string, boolean>;

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Load pre-indexed demo repos and expose one agent per repo.
+"""Load pre-indexed dataset repos and expose one agent per repo.
 
 Each repo gets its **own** ``SkillRegistry`` instance (not the global
 singleton) so that skill executors stay bound to that repo's indexes. This
@@ -28,7 +28,7 @@ from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
 from ..ops.rerank import RerankContext
 from ..ops.retrieve import RetrieveContext
-from .config import DemoConfig, RepoConfig
+from .config import QAConfig, RepoEntry, load_registry
 from .schemas import RepoInfo
 
 logger = get_logger(__name__)
@@ -51,15 +51,19 @@ def _fresh_registry() -> SkillRegistry:
 class RepoBundle:
     """Everything needed to answer questions about one repo."""
 
-    config: RepoConfig
+    entry: RepoEntry
     manifest: RepoManifest
     runner: AgentRunner
 
     def info(self) -> RepoInfo:
         return RepoInfo(
-            id=self.config.id,
-            name=self.config.name,
-            description=self.config.description,
+            id=self.entry.instance_id,
+            name=f"{self.entry.repo} @ {self.entry.commit_short}",
+            repo=self.entry.repo,
+            base_commit=self.entry.base_commit,
+            commit_short=self.entry.commit_short,
+            language=self.entry.language,
+            problem_statement=self.entry.problem_statement,
             languages=self.manifest.languages,
             file_count=self.manifest.file_count,
             capabilities=self.manifest.capabilities,
@@ -67,32 +71,39 @@ class RepoBundle:
 
 
 class RepoRegistry:
-    """Holds the loaded :class:`RepoBundle` objects, keyed by repo id."""
+    """Holds the loaded :class:`RepoBundle` objects, keyed by instance id."""
 
-    def __init__(self, config: DemoConfig) -> None:
+    def __init__(self, config: QAConfig) -> None:
         self._config = config
         self._bundles: Dict[str, RepoBundle] = {}
 
     def load_all(self) -> None:
-        """Load every configured repo whose index manifest is present."""
-        for repo in self._config.repos:
-            manifest_path = self._config.manifest_path(repo)
-            if not os.path.exists(manifest_path):
+        """Load every dataset repo in the registry whose manifest exists."""
+        entries = load_registry(self._config.registry_path)
+        if not entries:
+            logger.warning(
+                "No QA registry at %s — run scripts/build_qa_index.py first.",
+                self._config.registry_path,
+            )
+            return
+        for entry in entries:
+            if not os.path.exists(entry.manifest_path):
                 logger.warning(
-                    "Skipping %r: manifest not found at %s "
-                    "(run scripts/build_demo_index.py first)",
-                    repo.id,
-                    manifest_path,
+                    "Skipping %r: manifest not found at %s",
+                    entry.instance_id,
+                    entry.manifest_path,
                 )
                 continue
             try:
-                self._bundles[repo.id] = self._load_repo(repo, manifest_path)
-                logger.info("Loaded repo %r (%s)", repo.id, repo.name)
-            except Exception as exc:  # noqa: BLE001 - demo: keep other repos alive
-                logger.error("Failed to load repo %r: %s", repo.id, exc, exc_info=True)
+                self._bundles[entry.instance_id] = self._load_repo(entry)
+                logger.info("Loaded %r (%s)", entry.instance_id, entry.repo)
+            except Exception as exc:  # noqa: BLE001 - keep other repos alive
+                logger.error(
+                    "Failed to load %r: %s", entry.instance_id, exc, exc_info=True
+                )
 
-    def _load_repo(self, repo: RepoConfig, manifest_path: str) -> RepoBundle:
-        manifest = RepoManifest.load(manifest_path)
+    def _load_repo(self, entry: RepoEntry) -> RepoBundle:
+        manifest = RepoManifest.load(entry.manifest_path)
 
         bm25_index: Optional[BM25CodeIndexer] = None
         vector_store: Optional[CodeVectorStore] = None
@@ -136,7 +147,7 @@ class RepoRegistry:
             repo_path=manifest.repo_path,
             repo_size=manifest.file_count,
             primary_language=(
-                manifest.languages[0] if manifest.languages else "python"
+                manifest.languages[0] if manifest.languages else entry.language
             ),
         )
 
@@ -152,7 +163,7 @@ class RepoRegistry:
             manifest=manifest,
             session_ctx=session_ctx,
         )
-        return RepoBundle(config=repo, manifest=manifest, runner=runner)
+        return RepoBundle(entry=entry, manifest=manifest, runner=runner)
 
     # -- queries --
 

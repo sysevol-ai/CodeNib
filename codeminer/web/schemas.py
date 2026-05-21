@@ -16,11 +16,19 @@ from pydantic import BaseModel, Field
 
 
 class RepoInfo(BaseModel):
-    """A repository the demo can answer questions about."""
+    """A repository the demo can answer questions about.
+
+    ``id`` is the dataset ``instance_id``; ``repo`` @ ``commit_short`` identifies
+    the exact snapshot that was indexed.
+    """
 
     id: str
     name: str
-    description: str = ""
+    repo: str = ""
+    base_commit: str = ""
+    commit_short: str = ""
+    language: str = ""
+    problem_statement: str = ""
     languages: List[str] = Field(default_factory=list)
     file_count: int = 0
     capabilities: dict[str, bool] = Field(default_factory=dict)

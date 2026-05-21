@@ -1,0 +1,30 @@
+# Code-QA demo configuration.
+#
+# Build indexes:   python scripts/build_qa_index.py   (needs network: HF + git)
+# Serve:           codeminer-web                       (or: uvicorn codeminer.web.app:app)
+#
+# `model` is a litellm model string; override with CODEMINER_DEMO_MODEL.
+# Provider API keys come from the environment (e.g. OPENAI_API_KEY).
+
+model: gpt-4o
+mode: sparse              # "sparse" (BM25 only) or "hybrid" (BM25 + embeddings)
+data_dir: .codeminer_qa
+max_turns: 8
+max_tokens: 1024
+
+cors_origins:
+  - http://localhost:3000
+
+# --- which repos to feature (from the codeminer-base-dataset) ---
+dataset: fishmingyu/codeminer-base-dataset
+split: test
+
+# Either pin explicit instance ids here:
+instances: []
+# …or, when `instances` is empty, sample this many instances per language group:
+per_language: 1
+languages:
+  - python
+  - javascript
+  - go
+  - rust

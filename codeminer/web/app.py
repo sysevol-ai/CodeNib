@@ -36,14 +36,14 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     config = load_config()
     registry = RepoRegistry(config)
-    logger.info("Loading %d demo repo(s)...", len(config.repos))
+    logger.info("Loading QA repos from %s ...", config.registry_path)
     registry.load_all()
     app.state.registry = registry
     logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
     yield
 
 
-app = FastAPI(title="CodeMiner DeepWiki Demo", lifespan=lifespan)
+app = FastAPI(title="CodeMiner Code QA", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
