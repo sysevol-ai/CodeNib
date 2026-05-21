@@ -114,8 +114,11 @@ def _capture_runner_warnings():
 
 
 class TestPreconditions:
-    def test_query_without_repo_path_or_contexts_raises(self):
-        with pytest.raises(ValueError, match="repo_path"):
+    def test_query_without_any_index_source_raises(self):
+        """Zero modes set → ValueError listing all three options."""
+        with pytest.raises(
+            ValueError, match=r"repo_path.*contexts.*manifest|All three are unset"
+        ):
             query(
                 "anything",
                 options=CodeMinerAgentOptions(

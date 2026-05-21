@@ -11,7 +11,7 @@ from .extract_agent import (
     extract_keywords_from_statement,
 )
 from .rerank_agent import RerankAgent, RerankResult, rerank_nodes_with_query
-from .runner import AgentRunner, CodeMinerAgentOptions, query
+from .runner import AgentRunner, CodeMinerAgentOptions, compile_repo, query
 from .tool_schema import registry_to_tools, skill_to_tool_schema
 
 __all__ = [
@@ -23,6 +23,7 @@ __all__ = [
     "RerankAgent",
     "RerankResult",
     "ToolCallRecord",
+    "compile_repo",
     "extract_keywords_from_statement",
     "query",
     "rerank_nodes_with_query",

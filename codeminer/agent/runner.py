@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Union
 
+from ..compiler.manifest import RepoManifest
 from ..llm.litellm_chat import LiteLLMChat
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
@@ -402,13 +403,27 @@ def _serialize_result(result: Any) -> str:
 class CodeMinerAgentOptions:
     """Configuration for a single ``query()`` invocation.
 
-    Either ``repo_path`` *or* ``contexts`` must be set:
+    **Exactly one** of ``repo_path``, ``contexts``, or ``manifest`` must
+    be set — these are the three mutually-exclusive ways to tell
+    ``query()`` where its indexes come from:
 
-    * ``repo_path`` set → ``query()`` calls ``build_skill_contexts`` itself
-      and caches indexes under ``index_cache_dir`` (or ``<repo>/.codeminer``).
-    * ``contexts`` set → caller has already built the contexts dict; the
-      pre-compile step is skipped. Useful for sharing one index across many
-      queries.
+    * ``repo_path`` → ``query()`` calls
+      :func:`~codeminer.compiler.build_skill_contexts` itself and caches
+      indexes under ``index_cache_dir`` (or ``<repo>/.codeminer_cache``).
+      The "build once at first query" path.
+    * ``contexts`` → caller pre-built the contexts dict (advanced; see
+      :func:`~codeminer.compiler.build_skill_contexts` /
+      :func:`~codeminer.compiler.load_contexts_from_manifest` for what
+      shape to pass).
+    * ``manifest`` → caller compiled indexes ahead of time via
+      :func:`~codeminer.agent.compile_repo` (or
+      :class:`~codeminer.compiler.IndexCompiler` directly) and passes
+      either a loaded :class:`~codeminer.compiler.RepoManifest` or a
+      path string to ``repo_manifest.json``. The AoT (ahead-of-time)
+      path: ``query()`` loads the artifacts named in the manifest and
+      threads the manifest itself into ``AgentRunner`` so
+      :class:`~codeminer.agent.resource_guard.ResourceGuard` can run
+      freshness checks. No inline build happens.
 
     Skill selection forms a three-layer funnel::
 
@@ -417,19 +432,24 @@ class CodeMinerAgentOptions:
     ``compile_table`` *narrows* ``allowed_skills`` per query but never
     broadens it (see :func:`codeminer.agent.compile.agent_compile`).
 
-    ``compile_table`` also operates at the **index-build stage**: when set,
-    only indexes for skills it ever names are compiled. Formally::
+    ``compile_table`` also operates at the **index-build stage** (for
+    ``repo_path`` mode only): when set, only indexes for skills it ever
+    names are compiled. Formally::
 
         index_skills = allowed_skills  ∩  union(compile_table.values())
 
     A vector index isn't built if every scenario in the table maps to
     bm25-only, even when ``embedding_search`` is in ``allowed_skills`` —
-    CAR couldn't route to it at runtime anyway.
+    CAR couldn't route to it at runtime anyway. (In ``manifest`` mode
+    this rule is moot — the manifest dictates what exists.)
     """
 
-    # --- repo / pre-compile ---
+    # --- index source: exactly one of these three must be set ---
     repo_path: Optional[str] = None
     contexts: Optional[Dict[str, Any]] = None
+    manifest: Optional[Union["RepoManifest", str, Path]] = None
+
+    # --- pre-compile knobs (only consulted in repo_path mode) ---
     languages: Sequence[str] = ("python",)
     primary_language: Optional[str] = None
     repo_size: Optional[int] = None
@@ -455,9 +475,6 @@ class CodeMinerAgentOptions:
     system_prompt: Optional[str] = None
     max_turns: int = 10
 
-    # --- ResourceGuard manifest passthrough ---
-    manifest: Optional[Any] = None
-
     # --- extras for SessionContext.extras ---
     session_extras: Dict[str, Any] = field(default_factory=dict)
 
@@ -469,19 +486,20 @@ def query(
 ) -> AgentResult:
     """Run one agent turn over a repo and return the result.
 
-    See :class:`CodeMinerAgentOptions` for the full options surface.
+    See :class:`CodeMinerAgentOptions` for the full options surface,
+    including the three mutually-exclusive index-source modes
+    (``repo_path``, ``contexts``, ``manifest``).
 
     Raises:
-        ValueError: if neither ``options.repo_path`` nor ``options.contexts``
-            is set.
+        ValueError: if not exactly one of ``options.repo_path``,
+            ``options.contexts``, or ``options.manifest`` is set; or if a
+            manifest is supplied but is missing an index required by
+            ``options.allowed_skills``.
     """
     opts = options or CodeMinerAgentOptions()
 
-    if opts.contexts is None and opts.repo_path is None:
-        raise ValueError(
-            "CodeMinerAgentOptions requires either 'repo_path' (to pre-compile "
-            "indexes) or 'contexts' (a pre-built skill-context dict). Both are unset."
-        )
+    _check_exactly_one_mode(opts)
+
     if opts.llm is None and opts.model is None:
         model_for_llm: Optional[str] = _DEFAULT_MODEL
     else:
@@ -490,7 +508,13 @@ def query(
     # --- 1. Resolve the compile_table (path → dict if needed) ---
     table = _load_compile_table_if_path(opts.compile_table)
 
-    # --- 1b. Surface allowed_skills ↔ compile_table mismatches before any
+    # --- 1b. Resolve the manifest (path → loaded RepoManifest if needed).
+    # We do this early so the resolved manifest can be threaded into both
+    # ``load_contexts_from_manifest`` (loading) and ``AgentRunner`` (for
+    # ``ResourceGuard`` freshness checks).
+    manifest = _load_manifest_if_path(opts.manifest)
+
+    # --- 1c. Surface allowed_skills ↔ compile_table mismatches before any
     # work happens. Two failure modes the caller almost certainly didn't
     # intend; both fail at runtime ("Skill 'X' not available") deep in
     # the agent loop, which is a miserable debugging path.
@@ -507,21 +531,35 @@ def query(
     skills_dir = opts.skills_dir or str(_DEFAULT_SKILLS_DIR)
     loader = SkillLoader()
 
-    # --- 3. Load skills + build the index contexts they need.
-    # ``build_skill_contexts`` reads each skill's ``index_requirements``
-    # from the registry to decide which indexes to compile. So when we
-    # have to build the contexts ourselves, we need a two-pass load:
-    #
-    #   pass 1 — load skill metadata with empty contexts so the registry
-    #            knows the index_requirements; executor_fn may be None
-    #            because the actual contexts aren't built yet.
-    #   pass 2 — re-load with the real contexts to bind executor_fn.
-    #
-    # When the caller pre-built ``opts.contexts`` themselves, one pass is
-    # enough — they've already done their own equivalent of step 1.
+    # --- 3. Resolve contexts according to the selected mode.
+    # The two on-disk paths (manifest, repo_path) need a metadata-only
+    # pre-pass of SkillLoader so the registry exposes index_requirements
+    # to the loader/compiler. The ``contexts`` mode skips that — the
+    # caller already did the equivalent.
     if opts.contexts is not None:
         contexts = opts.contexts
+    elif manifest is not None:
+        # AoT mode: load indexes directly from the manifest's recorded
+        # paths. No build step.
+        loader.load_all(skills_dir, contexts={}, registry=registry)
+        skill_ids = (
+            list(opts.allowed_skills)
+            if opts.allowed_skills
+            else _discover_skill_ids(skills_dir)
+        )
+        from ..compiler import load_contexts_from_manifest
+
+        contexts = load_contexts_from_manifest(
+            manifest,
+            skill_ids=skill_ids,
+            skill_registry=registry,
+            default_top_k=opts.default_top_k,
+            default_level=opts.default_level,
+        )
+        SkillRegistry.reset()
+        registry = SkillRegistry()
     else:
+        # repo_path mode: inline build via build_skill_contexts.
         loader.load_all(skills_dir, contexts={}, registry=registry)
         contexts = _build_contexts(opts, table=table)
         SkillRegistry.reset()
@@ -560,6 +598,8 @@ def query(
     )
 
     # --- 6. Construct the runner and execute ---
+    # Pass the *resolved* manifest (RepoManifest | None) so ResourceGuard
+    # sees the loaded object — never a raw path string.
     runner = AgentRunner(
         llm=opts.llm,
         registry=registry,
@@ -570,11 +610,68 @@ def query(
         max_turns=opts.max_turns,
         allow_skills=set(opts.allowed_skills) if opts.allowed_skills else None,
         exclude_skills=set(opts.excluded_skills) if opts.excluded_skills else None,
-        manifest=opts.manifest,
+        manifest=manifest,
         session_ctx=session_ctx,
         compile_table=table,
     )
     return runner.run(prompt)
+
+
+def _check_exactly_one_mode(opts: CodeMinerAgentOptions) -> None:
+    """Enforce exactly one of {repo_path, contexts, manifest} is set.
+
+    The three modes are conceptually disjoint (build now / consume
+    pre-built dict / consume pre-built manifest); silent precedence
+    ordering would be a footgun. Raise loudly at ``query()`` entry
+    instead of letting one mode silently mask another.
+    """
+    set_modes = []
+    if opts.repo_path is not None:
+        set_modes.append("repo_path")
+    if opts.contexts is not None:
+        set_modes.append("contexts")
+    if opts.manifest is not None:
+        set_modes.append("manifest")
+
+    if len(set_modes) == 1:
+        return
+
+    if not set_modes:
+        raise ValueError(
+            "CodeMinerAgentOptions requires exactly one of 'repo_path' "
+            "(inline build), 'contexts' (pre-built dict), or 'manifest' "
+            "(AoT-compiled RepoManifest or path). All three are unset."
+        )
+    raise ValueError(
+        f"CodeMinerAgentOptions requires exactly one of 'repo_path', "
+        f"'contexts', or 'manifest' — got {len(set_modes)} set: "
+        f"{sorted(set_modes)}."
+    )
+
+
+def _load_manifest_if_path(
+    manifest: Optional[Union["RepoManifest", str, Path]],
+) -> Optional["RepoManifest"]:
+    """Coerce a path-or-instance manifest argument into a ``RepoManifest``.
+
+    Returns ``None`` if ``manifest is None``. A string or ``Path`` is
+    treated as a filesystem path to a ``repo_manifest.json`` file; the
+    file must exist. An already-loaded :class:`RepoManifest` is returned
+    unchanged.
+    """
+    if manifest is None:
+        return None
+    if isinstance(manifest, RepoManifest):
+        return manifest
+    if isinstance(manifest, (str, Path)):
+        p = Path(manifest)
+        if not p.exists():
+            raise FileNotFoundError(f"options.manifest path does not exist: {p}")
+        return RepoManifest.load(p)
+    raise TypeError(
+        f"options.manifest must be a RepoManifest, path, or None — "
+        f"got {type(manifest).__name__}"
+    )
 
 
 def _load_compile_table_if_path(
@@ -726,3 +823,72 @@ def _discover_skill_ids(skills_dir: str) -> List[str]:
         except Exception as exc:
             logger.warning("skipping malformed skill config %s: %s", cfg, exc)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Public AoT helper: compile_repo()
+# ---------------------------------------------------------------------------
+
+
+def compile_repo(
+    repo_path: str,
+    *,
+    index_types: Sequence[str] = ("bm25",),
+    languages: Sequence[str] = ("python",),
+    cache_dir: Optional[str] = None,
+    embedding_model: str = "nomic-ai/CodeRankEmbed",
+    embedding_dimension: int = 768,
+) -> "RepoManifest":
+    """Compile indexes for *repo_path* ahead of time and return the manifest.
+
+    Thin convenience wrapper over :class:`~codeminer.compiler.IndexCompiler`
+    that registers the default index builders for the requested
+    ``languages`` and writes ``<cache_dir>/repo_manifest.json``.
+
+    Pair with :func:`query` to run the agent against the result without
+    re-indexing on every call::
+
+        manifest = compile_repo(
+            "/path/to/repo",
+            index_types=("bm25", "vector"),
+            languages=("python",),
+        )
+        result = query(
+            "where is auth wired up?",
+            options=CodeMinerAgentOptions(
+                manifest=manifest,
+                allowed_skills=["bm25_search", "embedding_search"],
+            ),
+        )
+
+    For advanced cases — custom builder registries, partial rebuilds —
+    use :class:`~codeminer.compiler.IndexCompiler` directly.
+    """
+    from ..compiler.index_builders import (
+        IndexBuilderRegistry,
+        register_default_builders,
+    )
+    from ..compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+
+    if cache_dir is None:
+        cache_dir = str(Path(repo_path).resolve() / ".codeminer_cache")
+
+    builder_registry = IndexBuilderRegistry()
+    register_default_builders(
+        builder_registry,
+        languages=list(languages),
+        embedding_model=embedding_model,
+        embedding_dimension=embedding_dimension,
+    )
+
+    cfg = IndexCompilerConfig(
+        cache_dir_name=Path(cache_dir).name,
+        index_types=list(index_types),
+        languages=list(languages),
+    )
+    compiler = IndexCompiler(builder_registry, cfg)
+    return compiler.compile_repo(
+        repo_path,
+        index_types=list(index_types),
+        cache_dir=cache_dir,
+    )

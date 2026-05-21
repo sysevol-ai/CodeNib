@@ -38,6 +38,7 @@ from ..agent.skills.core import SkillType
 from ..agent.skills.registry import SkillRegistry
 from .index_builders import IndexBuilderRegistry, register_default_builders
 from .index_compiler import IndexCompiler, IndexCompilerConfig
+from .manifest import RepoManifest
 
 logger = logging.getLogger(__name__)
 
@@ -107,15 +108,22 @@ def _looks_built(cache_dir: str, index_type: str) -> bool:
     return any(p.iterdir())
 
 
-def _load_bm25(cache_dir: str):
+def _load_bm25(index_path: str):
+    """Load a BM25 index from an arbitrary directory path.
+
+    ``index_path`` is the directory passed to ``BM25CodeIndexer.save_index``
+    — typically ``<cache_dir>/bm25`` for ``build_skill_contexts``, or a
+    manifest-supplied path for ``load_contexts_from_manifest``.
+    """
     from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 
     indexer = BM25CodeIndexer()
-    indexer.load_index(_index_dir(cache_dir, "bm25"))
+    indexer.load_index(index_path)
     return indexer
 
 
-def _load_vector(cache_dir: str, *, embedding_model: str, embedding_dimension: int):
+def _load_vector(index_path: str, *, embedding_model: str, embedding_dimension: int):
+    """Load a FAISS vector store from an arbitrary directory path."""
     from ..index.embedding.vector_store import CodeVectorStore
 
     store = CodeVectorStore(
@@ -123,14 +131,15 @@ def _load_vector(cache_dir: str, *, embedding_model: str, embedding_dimension: i
         embedding_provider="huggingface",
         dimension=embedding_dimension,
     )
-    store.load(_index_dir(cache_dir, "vector"))
+    store.load(index_path)
     return store
 
 
-def _load_symbol_graph(cache_dir: str):
+def _load_symbol_graph(index_path: str):
+    """Load a symbol graph from ``<index_path>/graph.pkl``."""
     from ..graph.code_graph import CodeGraph
 
-    graph_path = os.path.join(_index_dir(cache_dir, "symbol_graph"), "graph.pkl")
+    graph_path = os.path.join(index_path, "graph.pkl")
     return CodeGraph.load_graph(graph_path)
 
 
@@ -226,15 +235,95 @@ def build_skill_contexts(
     # Load artifacts for the union of types.
     loaded: Dict[str, Any] = {}
     if "bm25" in needed:
-        loaded["bm25"] = _load_bm25(cache_dir)
+        loaded["bm25"] = _load_bm25(_index_dir(cache_dir, "bm25"))
     if "vector" in needed:
         loaded["vector"] = _load_vector(
-            cache_dir,
+            _index_dir(cache_dir, "vector"),
             embedding_model=embedding_model,
             embedding_dimension=embedding_dimension,
         )
     if "symbol_graph" in needed:
-        loaded["symbol_graph"] = _load_symbol_graph(cache_dir)
+        loaded["symbol_graph"] = _load_symbol_graph(
+            _index_dir(cache_dir, "symbol_graph")
+        )
+
+    return _package_contexts(
+        loaded,
+        skill_types=skill_types,
+        default_top_k=default_top_k,
+        default_level=default_level,
+    )
+
+
+def load_contexts_from_manifest(
+    manifest: RepoManifest,
+    *,
+    skill_ids: Iterable[str],
+    skill_registry: Optional[SkillRegistry] = None,
+    default_top_k: int = 10,
+    default_level: str = "l2",
+) -> Dict[str, Any]:
+    """Load index artifacts directly from a pre-built ``RepoManifest``.
+
+    The AoT counterpart to :func:`build_skill_contexts`: instead of
+    deciding what to build from ``skill_ids`` and then building, this
+    function consumes a manifest written by a previous
+    :class:`~codeminer.compiler.index_compiler.IndexCompiler.compile_repo`
+    run, validates that the indexes the requested ``skill_ids`` need
+    exist in it, and packages them into the same context dict shape that
+    :class:`~codeminer.agent.skills.loader.SkillLoader` consumes.
+
+    Source of truth for paths and configs is the manifest itself —
+    ``manifest.indexes[t].path`` is loaded directly, ignoring any
+    conventional ``<cache_dir>/<t>`` layout. The vector index's embedding
+    model/dimension are read from ``manifest.indexes["vector"].config``
+    when present.
+
+    Raises:
+        ValueError: if any ``skill_ids`` requires an ``index_type`` that
+            isn't present in the manifest or whose ``status != "fresh"``.
+            Loud failure here beats the deferred "Skill not available"
+            that would otherwise surface at tool-call time.
+    """
+    skill_ids = list(skill_ids)
+    registry = skill_registry or SkillRegistry()
+
+    # Map skill_id → list of required index_types, with up-front validation.
+    needed: Set[str] = set()
+    for sid in skill_ids:
+        meta = registry.get(sid)
+        if meta is None:
+            continue
+        for req in meta.index_requirements or []:
+            entry = manifest.indexes.get(req.index_type)
+            if entry is None or entry.status != "fresh":
+                raise ValueError(
+                    f"Manifest is missing required index {req.index_type!r} "
+                    f"for skill {sid!r}. Rebuild the manifest with this "
+                    f"index_type, or drop {sid!r} from allowed_skills."
+                )
+            needed.add(req.index_type)
+
+    skill_types = _skill_types_for(skill_ids, registry)
+
+    loaded: Dict[str, Any] = {}
+    if "bm25" in needed:
+        loaded["bm25"] = _load_bm25(manifest.indexes["bm25"].path)
+    if "vector" in needed:
+        vec_entry = manifest.indexes["vector"]
+        # Prefer the embedding config that was used at build time so the
+        # load uses a compatible tokenizer/dimension.
+        emb_model = vec_entry.config.get("embedding_model", "nomic-ai/CodeRankEmbed")
+        emb_dim = vec_entry.config.get("embedding_dimension", 768)
+        loaded["vector"] = _load_vector(
+            vec_entry.path,
+            embedding_model=emb_model,
+            embedding_dimension=emb_dim,
+        )
+    if "symbol_graph" in needed:
+        loaded["symbol_graph"] = _load_symbol_graph(
+            manifest.indexes["symbol_graph"].path
+        )
 
     return _package_contexts(
         loaded,

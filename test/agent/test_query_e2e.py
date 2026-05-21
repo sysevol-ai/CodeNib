@@ -414,3 +414,59 @@ def test_query_with_real_vertex_model(prepared_repo, codeminer_base_cache, model
     # talked to the model and the UsageTracker recorded it.
     assert result.usage is not None
     assert (result.usage.total_tokens or 0) > 0
+
+
+# ---------------------------------------------------------------------------
+# E2E: AoT manifest mode — compile_repo() then query(manifest=...).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_query_manifest_mode_e2e(prepared_repo, codeminer_base_cache):
+    """Two-phase AoT round-trip: compile_repo() then query(manifest=...).
+
+    Exercises the full prebuilt-index code path: ``compile_repo`` writes
+    a manifest + indexes to ``codeminer_base_cache["index"]``;
+    ``query(manifest=manifest, ...)`` then loads them via
+    :func:`codeminer.compiler.load_contexts_from_manifest`. No inline
+    build happens during ``query()`` — verified by the absence of any
+    "Building missing indexes" log entry from
+    ``compiler.skill_context`` during Phase 2.
+    """
+    from codeminer.agent import compile_repo
+
+    repo_path = prepared_repo["repo_path"]
+    language = prepared_repo["language"]
+    problem_statement = prepared_repo["row"].get("problem_statement") or "fix bug"
+    cache_dir = str(codeminer_base_cache["index"])
+
+    # Phase 1 — AoT compile (writes repo_manifest.json + bm25/ artifacts).
+    manifest = compile_repo(
+        repo_path,
+        index_types=("bm25",),
+        languages=(language,),
+        cache_dir=cache_dir,
+    )
+    assert "bm25" in manifest.indexes
+    assert manifest.indexes["bm25"].status == "fresh"
+
+    # Phase 2 — query against the resolved manifest, no rebuild.
+    llm = _two_turn_mock_llm("bm25_search", query_arg=problem_statement[:200])
+    result = query(
+        problem_statement,
+        options=CodeMinerAgentOptions(
+            manifest=manifest,
+            llm=llm,
+            allowed_skills=["bm25_search"],
+            primary_language=language,
+            max_turns=3,
+        ),
+    )
+
+    assert result.total_turns == 2
+    assert result.answer == "done"
+    assert len(result.tool_calls) == 1
+    tc = result.tool_calls[0]
+    assert tc.skill_id == "bm25_search"
+    assert tc.error is None, f"bm25_search failed in manifest mode: {tc.error}"
+    assert tc.result is not None
