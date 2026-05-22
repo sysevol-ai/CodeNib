@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Code-QA demo configuration.
+#
+# Build indexes:   python scripts/build_qa_index.py   (needs network: HF + git)
+# Serve:           codeminer-web                       (or: uvicorn codeminer.web.app:app)
+#
+# `model` is a litellm model string; override with CODEMINER_DEMO_MODEL.
+# Provider API keys come from the environment (e.g. OPENAI_API_KEY).
+
+model: vertex_ai/gemini-2.5-flash
+mode: hybrid              # "sparse" (BM25 only) or "hybrid" (BM25 + embeddings)
+data_dir: .codeminer_qa
+# Reuse pre-built per-instance indexes (source @ base_commit + L0/L2 vectors)
+# from this read-only tree. BM25 is still built locally under data_dir.
+prebuilt_dir: /mnt/data/codeminer
+# Must match the embedding model whose files live under
+# <prebuilt_dir>/<instance_id>/{l0,l2}/index_<model_suffix>.faiss
+embedding_model: Qwen/Qwen3-Embedding-0.6B
+embedding_dimension: 1024
+max_turns: 8
+max_tokens: 1024
+
+cors_origins:
+  - http://localhost:3000
+
+# --- which repos to feature (from the codeminer-base-dataset) ---
+dataset: fishmingyu/codeminer-base-dataset
+split: test
+
+# Either pin explicit instance ids here:
+instances: []
+# …or, when `instances` is empty, sample this many instances per language group:
+per_language: 1
+languages:
+  - python
+  - javascript
+  - go
+  - rust

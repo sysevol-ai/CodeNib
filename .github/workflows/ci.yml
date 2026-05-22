@@ -129,6 +129,7 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.should-run == 'true'
     runs-on: self-hosted
+    timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
@@ -167,6 +168,7 @@ jobs:
     needs: [preflight, unit]
     if: needs.preflight.outputs.should-run == 'true'
     runs-on: self-hosted
+    timeout-minutes: 30
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
@@ -400,6 +402,7 @@ jobs:
     needs: [preflight, unit]
     if: needs.preflight.outputs.should-run == 'true'
     runs-on: self-hosted
+    timeout-minutes: 60
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
