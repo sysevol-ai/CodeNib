@@ -1,0 +1,5 @@
+# Generated each run — not committed.
+app/*.png
+diffs/*.png
+# Reference screenshots ARE committed (the loop diffs against them); keep dirs.
+!.gitkeep
