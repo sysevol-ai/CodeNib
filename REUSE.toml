@@ -35,3 +35,19 @@ path = "codeminer/model/prompts/*.txt"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "CodeMiner Contributors"
 SPDX-License-Identifier = "Apache-2.0"
+
+# Demo frontend (Next.js scaffold + lockfiles); SPDX comments are awkward
+# in JSON / .css and get clobbered by tooling-regenerated files.
+[[annotations]]
+path = "web/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Out-of-tree Claude Code worktree checkouts created during local agent
+# sessions — not part of the repo, but reuse-tool walks the working dir.
+[[annotations]]
+path = ".claude/worktrees/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"

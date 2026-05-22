@@ -55,6 +55,13 @@ class QAConfig:
     embedding_dimension: int = 384
     # Where checked-out repos + indexes + the registry live.
     data_dir: str = ".codeminer_qa"
+    # Optional read-only tree of pre-built per-instance artifacts:
+    #   <prebuilt_dir>/<instance_id>/repo/           — source @ base_commit
+    #   <prebuilt_dir>/<instance_id>/{l0,l2}/...    — hierarchical vector index
+    # When set, build_qa_index reuses the checkout (no clone) and points the
+    # manifest's ``vector`` entry at the pre-built files. BM25 is still built
+    # locally into ``data_dir`` because the pre-built tree has no BM25.
+    prebuilt_dir: Optional[str] = None
     max_turns: int = 8
     max_tokens: int = 1024
     cors_origins: List[str] = field(default_factory=lambda: ["http://localhost:3000"])
@@ -97,6 +104,7 @@ def load_config(path: Optional[str] = None) -> QAConfig:
             "embedding_dimension", QAConfig.embedding_dimension
         ),
         data_dir=data.get("data_dir", QAConfig.data_dir),
+        prebuilt_dir=data.get("prebuilt_dir", QAConfig.prebuilt_dir),
         max_turns=data.get("max_turns", QAConfig.max_turns),
         max_tokens=data.get("max_tokens", QAConfig.max_tokens),
         cors_origins=data.get("cors_origins", ["http://localhost:3000"]),
@@ -114,6 +122,8 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.model = os.environ["CODEMINER_DEMO_MODEL"]
     if os.environ.get("CODEMINER_DEMO_DATA_DIR"):
         cfg.data_dir = os.environ["CODEMINER_DEMO_DATA_DIR"]
+    if os.environ.get("CODEMINER_DEMO_PREBUILT_DIR"):
+        cfg.prebuilt_dir = os.environ["CODEMINER_DEMO_PREBUILT_DIR"]
 
     return cfg
 
