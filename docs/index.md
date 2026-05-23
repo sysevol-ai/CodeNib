@@ -16,6 +16,7 @@ CodeMiner provides tools for structural code analysis, symbol-level change detec
 
 | Component | Description |
 |-----------|-------------|
+| [Web Demo](web_demo.md) | DeepWiki-style wiki + Ask site over a pool of indexed repos |
 | [MCP Server](mcp.md) | Serve semantic/BM25/regex/Zoekt search to LLM agents over MCP |
 | [Agent Skills](agent_skills.md) | Composable retrieval/rerank/expand skills with index-aware gating |
 | [GT Locator](gt_locator.md) | Extract symbol-level ground truth from SWE-bench patches |

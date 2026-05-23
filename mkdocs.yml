@@ -64,6 +64,7 @@ nav:
       - CI/CD: ci_cd.md
       - Diagnose Query Leak: diagnose_query_leak.md
   - Components:
+      - Web Demo: web_demo.md
       - MCP Server: mcp.md
       - Agent Skills: agent_skills.md
       - GT Locator: gt_locator.md
