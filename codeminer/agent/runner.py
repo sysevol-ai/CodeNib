@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Set
 from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
+from .skills.defaults import DEFAULT_SKILL_IDS, ensure_defaults_registered
 from .skills.registry import SkillRegistry
 from .tool_schema import registry_to_tools
 
@@ -78,6 +79,10 @@ class AgentRunner:
         self.max_turns = max_turns
         self.session_ctx = session_ctx
 
+        # Always-on defaults: file_read + grep are registered here so they
+        # are available regardless of which Ax skill subset is loaded.
+        ensure_defaults_registered(self.registry)
+
         # Resource guard: filter unavailable skills and collect warnings
         exclude = set(exclude_skills) if exclude_skills else set()
         resource_warnings: List[str] = []
@@ -89,6 +94,11 @@ class AgentRunner:
             report = guard.preflight()
             exclude |= report.unavailable
             resource_warnings = report.warnings
+
+        # Default skills (file_read, grep) are never excluded — strip them
+        # from the exclude set so they survive any allow_skills / exclude_skills
+        # filtering applied to sweep-variable skills.
+        exclude -= DEFAULT_SKILL_IDS
 
         self.tools = registry_to_tools(self.registry, exclude=exclude)
 

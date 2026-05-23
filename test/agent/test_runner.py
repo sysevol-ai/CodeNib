@@ -211,12 +211,22 @@ class TestAgentRunner:
         assert "echo: hi" in tool_msgs[0]["content"]
 
     def test_exclude_skills(self, echo_registry):
-        """Excluded skills should not appear in tool schemas."""
+        """Excluded sweep-variable skills should not appear in tool schemas.
+
+        Note: default skills (file_read, grep) are NEVER excluded — the
+        runner strips them from the exclude set before building the tool list.
+        """
+        from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
+
         llm = _make_llm()
         llm._call_raw.return_value = _make_response(content="ok")
 
         runner = AgentRunner(llm, echo_registry, exclude_skills={"echo"})
-        assert runner.tools == []
+        tool_names = {t["function"]["name"] for t in runner.tools}
+        # echo is excluded
+        assert "echo" not in tool_names
+        # defaults are always present
+        assert DEFAULT_SKILL_IDS.issubset(tool_names)
 
 
 # ---------------------------------------------------------------------------
