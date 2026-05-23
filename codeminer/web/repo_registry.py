@@ -14,6 +14,7 @@ concurrent queries are safe.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -40,6 +41,40 @@ _SKILLS_DIR = os.path.join(
 )
 
 
+_README_SKIP = re.compile(
+    r"\b(install|download|getting started|to get started|usage|build from source"
+    r"|clone|npm i\b|pip install|cargo add|see (the )?docs|documentation"
+    r"|these steps|version information|for example|e\.g\.)\b",
+    re.IGNORECASE,
+)
+# Lines that are clearly boilerplate prefixes, not a project tagline.
+_README_SKIP_PREFIX = ("note:", "warning:", "tip:", "see ", "run ", "$ ")
+
+
+def _readme_summary(text: str, limit: int = 160) -> str:
+    """A descriptive sentence from a README — skipping headings, badges, HTML,
+    and install/usage boilerplate (prefers the project tagline)."""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith(("#", ">", "<", "---", "===", "|", "- ", "* ", "```")):
+            continue
+        if line.startswith(("![", "[![")) or line.startswith("["):
+            continue  # badge / image / link-only line
+        # Strip markdown links/emphasis, keep the visible text.
+        line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
+        line = re.sub(r"[*_`]", "", line)
+        line = re.sub(r"<[^>]+>", "", line).strip()
+        # Require a real sentence: skip labels ("Requirements:"), short lines.
+        if line.endswith(":") or len(line.split()) < 6 or _README_SKIP.search(line):
+            continue
+        if line.lower().startswith(_README_SKIP_PREFIX):
+            continue
+        return (line[:limit] + "…") if len(line) > limit else line
+    return ""
+
+
 def _fresh_registry() -> SkillRegistry:
     """Create an isolated registry that bypasses the global singleton."""
     reg = object.__new__(SkillRegistry)
@@ -54,6 +89,9 @@ class RepoBundle:
     entry: RepoEntry
     manifest: RepoManifest
     runner: AgentRunner
+    # Read-only handles reused by the wiki builder (index-derived docs).
+    vector_store: Optional[CodeVectorStore] = None
+    bm25: Optional[BM25CodeIndexer] = None
 
     def info(self) -> RepoInfo:
         return RepoInfo(
@@ -63,11 +101,44 @@ class RepoBundle:
             base_commit=self.entry.base_commit,
             commit_short=self.entry.commit_short,
             language=self.entry.language,
+            description=self._description(),
             problem_statement=self.entry.problem_statement,
             languages=self.manifest.languages,
-            file_count=self.manifest.file_count,
+            file_count=self._file_count(),
             capabilities=self.manifest.capabilities,
         )
+
+    def _file_count(self) -> int:
+        cached = getattr(self, "_file_count_cache", None)
+        if cached is not None:
+            return cached
+        n = self.manifest.file_count or 0
+        vs = self.vector_store
+        if vs is not None:
+            docs = getattr(vs, "l0_documents", None)
+            if docs:
+                n = len(docs)
+        self._file_count_cache = n
+        return n
+
+    def _description(self) -> str:
+        cached = getattr(self, "_description_cache", None)
+        if cached is not None:
+            return cached
+        desc = ""
+        repo_dir = self.entry.repo_dir
+        for name in ("README.md", "README.rst", "README.txt", "README", "readme.md"):
+            path = os.path.join(repo_dir, name)
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    desc = _readme_summary(fh.read())
+            except OSError:
+                desc = ""
+            break
+        self._description_cache = desc
+        return desc
 
 
 class RepoRegistry:
@@ -163,7 +234,13 @@ class RepoRegistry:
             manifest=manifest,
             session_ctx=session_ctx,
         )
-        return RepoBundle(entry=entry, manifest=manifest, runner=runner)
+        return RepoBundle(
+            entry=entry,
+            manifest=manifest,
+            runner=runner,
+            vector_store=vector_store,
+            bm25=bm25_index,
+        )
 
     # -- queries --
 

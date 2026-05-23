@@ -64,7 +64,12 @@ class QAConfig:
     prebuilt_dir: Optional[str] = None
     max_turns: int = 8
     max_tokens: int = 1024
-    cors_origins: List[str] = field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: List[str] = field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    )
 
     # --- instance selection (used by the build script) ---
     dataset: str = "fishmingyu/codeminer-base-dataset"
@@ -107,7 +112,10 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         prebuilt_dir=data.get("prebuilt_dir", QAConfig.prebuilt_dir),
         max_turns=data.get("max_turns", QAConfig.max_turns),
         max_tokens=data.get("max_tokens", QAConfig.max_tokens),
-        cors_origins=data.get("cors_origins", ["http://localhost:3000"]),
+        cors_origins=data.get(
+            "cors_origins",
+            ["http://localhost:3000", "http://127.0.0.1:3000"],
+        ),
         dataset=data.get("dataset", QAConfig.dataset),
         split=data.get("split", QAConfig.split),
         instances=data.get("instances", []),

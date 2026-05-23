@@ -9,17 +9,24 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "geist": "^1.7.1",
+    "highlight.js": "^11.11.1",
+    "mermaid": "^11.15.0",
     "next": "14.2.5",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-markdown": "9.0.1",
+    "rehype-highlight": "^7.0.2",
+    "rehype-slug": "^6.0.0",
     "remark-gfm": "4.0.0"
   },
   "devDependencies": {
     "@types/node": "20.14.10",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "pixelmatch": "^7.2.0",
     "playwright": "^1.56.1",
+    "pngjs": "^7.0.0",
     "typescript": "5.5.3"
   }
 }

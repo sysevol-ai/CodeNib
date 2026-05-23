@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CodeMiner · Code QA",
+  title: "CodeMiner Wiki · AI documentation you can talk to",
   description:
-    "Ask questions about a repository and get answers grounded in its code, powered by CodeMiner.",
+    "Browse AI-generated, source-grounded documentation for indexed repositories — and ask questions answered with citations, powered by CodeMiner.",
 };
+
+// Set the theme before paint to avoid a flash of the wrong theme.
+const themeInit = `(() => { try { const t = localStorage.getItem("cm-theme"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch (e) {} })();`;
 
 export default function RootLayout({
   children,
@@ -13,7 +18,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      data-theme="light"
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+      </head>
       <body>{children}</body>
     </html>
   );

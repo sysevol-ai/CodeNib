@@ -10,7 +10,7 @@
 # `model` is a litellm model string; override with CODEMINER_DEMO_MODEL.
 # Provider API keys come from the environment (e.g. OPENAI_API_KEY).
 
-model: vertex_ai/gemini-2.5-flash
+model: vertex_ai/gemini-2.5-flash   # uses gcloud ADC; override via CODEMINER_DEMO_MODEL
 mode: hybrid              # "sparse" (BM25 only) or "hybrid" (BM25 + embeddings)
 data_dir: .codeminer_qa
 # Reuse pre-built per-instance indexes (source @ base_commit + L0/L2 vectors)
@@ -21,10 +21,11 @@ prebuilt_dir: /mnt/data/codeminer
 embedding_model: Qwen/Qwen3-Embedding-0.6B
 embedding_dimension: 1024
 max_turns: 8
-max_tokens: 1024
+max_tokens: 4096   # generous: gemini-2.5 is a thinking model (we disable thinking, but keep headroom)
 
 cors_origins:
   - http://localhost:3000
+  - http://127.0.0.1:3000
 
 # --- which repos to feature (from the codeminer-base-dataset) ---
 dataset: fishmingyu/codeminer-base-dataset

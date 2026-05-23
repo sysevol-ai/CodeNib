@@ -28,6 +28,7 @@ class RepoInfo(BaseModel):
     base_commit: str = ""
     commit_short: str = ""
     language: str = ""
+    description: str = ""  # repo purpose (README-derived), not the issue text
     problem_statement: str = ""
     languages: List[str] = Field(default_factory=list)
     file_count: int = 0

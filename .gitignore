@@ -19,12 +19,15 @@ site/
 .cursor/
 *.bak
 
-# Code-QA demo
-.codeminer_qa/
+# Code-QA demo (dir or symlink to a shared data dir)
+.codeminer_qa
 .codeminer_demo/
 # Local verification evidence / scratch (Playwright screenshots); not source.
 /verification/
 /references/
+# DeepWiki parity self-improvement harness — local scratch/evidence, not source.
+web/loop/
+web/LOOP.md
 web/node_modules/
 web/.next/
 web/out/

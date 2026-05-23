@@ -25,6 +25,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..log_utils import get_logger
+from ..wiki import WikiBuilder
+from ..wiki.narrator import Narrator
 from .config import load_config
 from .repo_registry import RepoRegistry
 from .schemas import ChatRequest, ChatResponse, RepoInfo, agent_result_to_response
@@ -39,6 +41,17 @@ async def lifespan(app: FastAPI):
     logger.info("Loading QA repos from %s ...", config.registry_path)
     registry.load_all()
     app.state.registry = registry
+    app.state.wiki_builders = {}
+    # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
+    # to templated text when no model/creds are available.
+    wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
+    app.state.narrator = Narrator(model=config.model, cache_dir=wiki_cache)
+    logger.info(
+        "Wiki narrator: model=%s enabled=%s cache=%s",
+        app.state.narrator.model,
+        app.state.narrator.enabled,
+        wiki_cache,
+    )
     logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
     yield
 
@@ -60,6 +73,23 @@ def _registry() -> RepoRegistry:
     return registry
 
 
+def _bundle(repo_id: str):
+    bundle = _registry().get(repo_id)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail=f"Unknown repo: {repo_id!r}")
+    return bundle
+
+
+def _wiki(repo_id: str) -> WikiBuilder:
+    """Lazily build + cache a WikiBuilder per repo."""
+    cache = app.state.wiki_builders
+    if repo_id not in cache:
+        cache[repo_id] = WikiBuilder(
+            _bundle(repo_id), narrator=getattr(app.state, "narrator", None)
+        )
+    return cache[repo_id]
+
+
 @app.get("/api/health")
 async def health() -> dict:
     registry = getattr(app.state, "registry", None)
@@ -72,6 +102,30 @@ async def health() -> dict:
 @app.get("/api/repos", response_model=list[RepoInfo])
 async def list_repos() -> list[RepoInfo]:
     return _registry().list_infos()
+
+
+@app.get("/api/repos/{repo_id}/wiki")
+async def wiki_tree(repo_id: str) -> dict:
+    builder = _wiki(repo_id)
+    return {"repo": _bundle(repo_id).entry.repo, "pages": builder.page_tree()}
+
+
+@app.get("/api/repos/{repo_id}/wiki/{page_id}")
+async def wiki_page(repo_id: str, page_id: str) -> dict:
+    page = _wiki(repo_id).page(page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail=f"Unknown wiki page: {page_id!r}")
+    return page
+
+
+@app.get("/api/repos/{repo_id}/source")
+async def source(
+    repo_id: str, file: str, start: int | None = None, end: int | None = None
+) -> dict:
+    result = _wiki(repo_id).source(file, start, end)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"File not found: {file!r}")
+    return result
 
 
 @app.post("/api/chat", response_model=ChatResponse)
