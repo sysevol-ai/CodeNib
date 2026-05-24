@@ -3,28 +3,33 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Always-on default tool primitives: ``file_read`` and ``regex_search``.
+Always-on default tool primitives: ``file_read`` and ``file_search``.
 
 These two tools are registered into ``AgentRunner``'s skill registry at
 startup and are **never** removed by the ``exclude_skills`` or
 ``allow_skills`` arguments — every skill subset (A0–A6) builds on top of
 them.
 
-Per #145, the ``regex_search`` slot is "grep / glob / bash-style
-primitives (single tool or split — your call)". This module takes the
-**single tool** route: ``regex_search`` is one skill that dispatches via
-a ``mode`` argument:
+Per #145, the search default is "grep / glob / bash-style primitives
+(single tool or split — your call)". This module takes the **single
+tool** route: ``file_search`` is one skill that dispatches via a
+``mode`` argument:
 
 - ``mode="content"`` *(default)* — grep-style regex over file contents.
 - ``mode="files"`` — glob-style filename enumeration (``Path.rglob``).
 - ``mode="shell"`` — bash-style shell command execution.
 
-The internal helpers ``_regex_search_content`` / ``_regex_search_files``
-/ ``_regex_search_shell`` implement each back-end; the public
-``_regex_search`` is the dispatcher referenced by
-``_build_regex_search_skill``. Shell mode has a loose safety policy
-(``shell=True``, no allow/deny list); see
-``docs/agent/default_tools_design.md`` for the rationale.
+The tool is named ``file_search`` (not ``regex_search``) so it does not
+collide with the existing index-backed ``regex_search`` retrieval skill
+in ``skills/regex_search/`` — that one searches the in-memory node index
+(``regex.retrieve``), this one scans the raw filesystem with no index.
+
+The internal helpers ``_file_search_content`` / ``_file_search_files``
+/ ``_file_search_shell`` implement each back-end; the public
+``_file_search`` is the dispatcher referenced by
+``_build_file_search_skill``. Shell mode has a loose safety policy
+(``shell=True``, no allow/deny list); see the shell skill_doc for the
+trust-boundary contract.
 
 Reference design
 ----------------
@@ -63,7 +68,7 @@ from typing import Any, List, Optional
 from .core import Cost, SkillInputSpec, SkillMetadata, SkillOutputSpec, SkillType
 
 # Canonical skill IDs for the always-on defaults.
-DEFAULT_SKILL_IDS: frozenset = frozenset({"file_read", "regex_search"})
+DEFAULT_SKILL_IDS: frozenset = frozenset({"file_read", "file_search"})
 
 # Sensible token-safety caps.
 _MAX_LINES_DEFAULT: int = 200
@@ -257,15 +262,15 @@ def _build_file_read_skill() -> SkillMetadata:
 
 
 # ---------------------------------------------------------------------------
-# regex_search — multi-mode primitive (content / files / shell)
+# file_search — multi-mode primitive (content / files / shell)
 #
-# Per #145, the ``regex_search`` slot is "grep / glob / bash-style primitives
+# Per #145, the ``file_search`` slot is "grep / glob / bash-style primitives
 # (single tool or split — your call)". This module takes the **single tool**
 # route: one skill, three internal modes, dispatched by the ``mode`` argument.
 # ---------------------------------------------------------------------------
 
 
-def _regex_search_content(
+def _file_search_content(
     pattern: str,
     path: str = ".",
     include: Optional[str] = None,
@@ -341,7 +346,7 @@ def _regex_search_content(
     return text
 
 
-def _regex_search_files(
+def _file_search_files(
     pattern: str,
     path: str = ".",
     max_results: int = _MAX_RESULTS_DEFAULT,
@@ -392,7 +397,7 @@ def _regex_search_files(
     return text
 
 
-def _regex_search_shell(
+def _file_search_shell(
     command: str,
     cwd: Optional[str] = None,
     timeout: int = _BASH_TIMEOUT_DEFAULT,
@@ -404,7 +409,7 @@ def _regex_search_shell(
     command, exit code, stdout, stderr; capped at ``_BASH_MAX_OUTPUT_CHARS``.
     On timeout / spawn failure returns ``"Error: ..."``.
 
-    Loose safety policy — see ``docs/agent/default_tools_design.md``.
+    Loose safety policy — see the "Safety" section of the skill_doc.
     """
     try:
         proc = subprocess.run(
@@ -437,10 +442,10 @@ def _regex_search_shell(
 # ---------------------------------------------------------------------------
 
 
-_REGEX_SEARCH_MODES = frozenset({"content", "files", "shell"})
+_FILE_SEARCH_MODES = frozenset({"content", "files", "shell"})
 
 
-def _regex_search(
+def _file_search(
     pattern: str,
     mode: str = "content",
     path: str = ".",
@@ -453,7 +458,7 @@ def _regex_search(
     cwd: Optional[str] = None,
     timeout: int = _BASH_TIMEOUT_DEFAULT,
 ) -> str:
-    """Multi-mode search primitive (the ``regex_search`` slot in #145).
+    """Multi-mode search primitive (the ``file_search`` slot in #145).
 
     The ``mode`` argument dispatches between three back-ends:
 
@@ -467,13 +472,13 @@ def _regex_search(
     Mode-irrelevant parameters are accepted (the SkillMetadata is one flat
     schema) but silently ignored.
     """
-    if mode not in _REGEX_SEARCH_MODES:
+    if mode not in _FILE_SEARCH_MODES:
         return (
             f"Error: invalid mode {mode!r}; "
-            f"expected one of {sorted(_REGEX_SEARCH_MODES)}"
+            f"expected one of {sorted(_FILE_SEARCH_MODES)}"
         )
     if mode == "content":
-        return _regex_search_content(
+        return _file_search_content(
             pattern=pattern,
             path=path,
             include=include,
@@ -482,18 +487,19 @@ def _regex_search(
             max_results=max_results,
         )
     if mode == "files":
-        return _regex_search_files(pattern=pattern, path=path, max_results=max_results)
+        return _file_search_files(pattern=pattern, path=path, max_results=max_results)
     # mode == "shell"
-    return _regex_search_shell(command=pattern, cwd=cwd, timeout=timeout)
+    return _file_search_shell(command=pattern, cwd=cwd, timeout=timeout)
 
 
-_REGEX_SEARCH_SKILL_DOC = """\
-# regex_search
+_FILE_SEARCH_SKILL_DOC = """\
+# file_search
 
 Multi-mode search primitive — pick a `mode` to choose the back-end. This
-is the `regex_search` slot from #145 / #133 (A5), bundling
+is the always-on search default from #145 / #133, bundling
 grep / glob / bash-style search into one tool per #145's "single tool"
-option.
+option. It scans the raw filesystem (no index); for index-backed regex
+retrieval over parsed nodes, use the separate `regex_search` skill.
 
 ## Modes
 
@@ -525,20 +531,31 @@ option.
 - **`files`** — enumerate files matching a structure (`**/__init__.py`,
   `**/*.proto`); confirm a file exists before `file_read`.
 - **`shell`** — anything that doesn't fit the above (`pytest`, `git log`,
-  `find . -newer ...`, `wc -l`). Loose safety — see safety section in
-  the design doc.
+  `find . -newer ...`, `wc -l`). See Safety below.
+
+## Safety (shell mode)
+
+Shell mode runs `subprocess.run(command, shell=True)` with **no command
+filtering, no allow/deny list, and no path jail** — loose by design. An
+in-process filter is either too restrictive (blocks legitimate `pytest` /
+`git`) or trivially bypassed (`bash -c '...'`, `eval`), so the trust
+boundary is the *environment*: callers running the agent on untrusted
+input MUST sandbox at the container / VM / process level. `timeout`
+(default 30s) guards against hangs; a 16k-char output cap guards against
+runaway producers (`yes`, `seq`).
 
 ## When NOT to Use
 
 - Single file content — prefer `file_read` (predictable, line-numbered).
+- Index-backed regex over parsed nodes — use the `regex_search` skill.
 - Semantic / intent queries — use `embedding_search`.
 - Ranked full-text retrieval — use `bm25_search`.
 """
 
 
-def _build_regex_search_skill() -> SkillMetadata:
+def _build_file_search_skill() -> SkillMetadata:
     return SkillMetadata(
-        skill_id="regex_search",
+        skill_id="file_search",
         skill_type=SkillType.CUSTOM,
         inputs=[
             SkillInputSpec(
@@ -629,7 +646,7 @@ def _build_regex_search_skill() -> SkillMetadata:
                 "or shell stdout/stderr/exit code."
             ),
         ),
-        executor_fn=_regex_search,
+        executor_fn=_file_search,
         async_capable=False,
         cacheable=False,
         cost=Cost.LOW,
@@ -643,7 +660,7 @@ def _build_regex_search_skill() -> SkillMetadata:
             "max_results": _MAX_RESULTS_DEFAULT,
             "timeout": _BASH_TIMEOUT_DEFAULT,
         },
-        skill_doc=_REGEX_SEARCH_SKILL_DOC,
+        skill_doc=_FILE_SEARCH_SKILL_DOC,
         description=(
             "Multi-mode search: grep-style content (default), glob-style "
             "filename enumeration, or shell command execution. One tool, "
@@ -662,7 +679,7 @@ def get_default_skill_metadata() -> List[SkillMetadata]:
 
     Returns a new list on every call so callers can safely mutate it.
     """
-    return [_build_file_read_skill(), _build_regex_search_skill()]
+    return [_build_file_read_skill(), _build_file_search_skill()]
 
 
 def ensure_defaults_registered(registry: Any) -> None:
@@ -670,7 +687,7 @@ def ensure_defaults_registered(registry: Any) -> None:
 
     Safe to call multiple times (idempotent): skips any skill already in the
     registry.  Called by :class:`~codeminer.agent.runner.AgentRunner` during
-    ``__init__`` so that the default tools (``file_read``, ``regex_search``)
+    ``__init__`` so that the default tools (``file_read``, ``file_search``)
     are available regardless of which ``Ax`` skill subset is loaded.
     """
     for meta in get_default_skill_metadata():
