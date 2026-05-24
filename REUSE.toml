@@ -29,3 +29,11 @@ path = "codeminer/model/prompts/*.txt"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "CodeMiner Contributors"
 SPDX-License-Identifier = "Apache-2.0"
+
+# Generated experiment artifacts (reports / metrics / derived tables) — data
+# files that cannot carry inline SPDX headers.
+[[annotations]]
+path = "results/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
