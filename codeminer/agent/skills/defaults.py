@@ -59,7 +59,9 @@ convention), #153 (1-based boundary).
 
 from __future__ import annotations
 
+import os
 import re
+import signal
 import subprocess
 from pathlib import Path
 from typing import List, Optional
@@ -126,35 +128,46 @@ def _file_read(
     Returns:
         Formatted string, or an error message prefixed with ``"Error: "``.
     """
+    # Coerce inputs up front: a non-integer arg returns an Error string (the
+    # module contract) instead of raising into the caller. `max_lines` is
+    # floored at 1 so `max_lines=0` cannot emit a "0 lines; continue at the
+    # same start_line" notice that loops forever.
+    try:
+        start = max(1, int(start_line))
+        max_lines = max(1, int(max_lines))
+        end = int(end_line) if end_line is not None else None
+    except (TypeError, ValueError):
+        return "Error: start_line, end_line, and max_lines must be integers"
+    if end is not None and start > end:
+        return f"Error: start_line {start} > end_line {end}"
+
+    # Stream the file: keep at most `max_lines` lines in memory and merely
+    # *count* any further requested lines (for the truncation notice) without
+    # storing them, so a huge file is never fully materialised.
+    selected: List[str] = []
+    extra = 0  # requested lines present beyond the kept window
+    total = 0
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
-            all_lines = fh.readlines()
+            for idx, line in enumerate(fh, start=1):
+                total = idx
+                if idx < start:
+                    continue
+                if end is not None and idx > end:
+                    break
+                if len(selected) < max_lines:
+                    selected.append(line)
+                else:
+                    extra += 1
     except FileNotFoundError:
         return f"Error: file not found: {path!r}"
     except OSError as exc:
         return f"Error reading {path!r}: {exc}"
 
-    total = len(all_lines)
     if total == 0:
         return f"(empty file: {path})"
-
-    # Clamp to valid 1-based range.
-    start = max(1, int(start_line))
-    end = int(end_line) if end_line is not None else total
-    end = min(end, total)
-
     if start > total:
         return f"Error: start_line {start} exceeds file length {total} in {path!r}"
-    if start > end:
-        return f"Error: start_line {start} > end_line {end}"
-
-    # Convert to 0-based slice.
-    selected = all_lines[start - 1 : end]
-
-    truncated_next: Optional[int] = None
-    if len(selected) > max_lines:
-        truncated_next = start + max_lines  # first omitted line (1-based)
-        selected = selected[:max_lines]
 
     lines_out = [
         f"{lineno:6d} | {line.rstrip()}"
@@ -162,11 +175,11 @@ def _file_read(
     ]
     result = "\n".join(lines_out)
 
-    if truncated_next is not None:
-        remaining = end - truncated_next + 1
+    if extra > 0:
+        next_start = start + max_lines  # first omitted line (1-based)
         result += (
-            f"\n... ({remaining} more lines; "
-            f"use start_line={truncated_next} to continue)"
+            f"\n... ({extra} more lines; "
+            f"use start_line={next_start} to continue)"
         )
 
     return result
@@ -338,16 +351,20 @@ def _file_search_content(
         # check, and the max_results cap gives no protection against that).
         # Traversal order is filesystem-dependent, but content matches are
         # identified by `{file}:{lineno}`, so cross-file ordering is not
-        # load-bearing.
-        for file_path in root.rglob(include or "*"):
-            if not file_path.is_file():
-                continue
-            # Skip noise directories.
-            if any(part in _SKIP_DIR_PREFIXES for part in file_path.parts):
-                continue
-            if _search_file(file_path):
-                capped = True
-                break
+        # load-bearing. rglob is a generator, so a bad `include` glob raises
+        # during iteration (ValueError/OSError/NotImplementedError) — wrap it.
+        try:
+            for file_path in root.rglob(include or "*"):
+                if not file_path.is_file():
+                    continue
+                # Skip noise directories.
+                if any(part in _SKIP_DIR_PREFIXES for part in file_path.parts):
+                    continue
+                if _search_file(file_path):
+                    capped = True
+                    break
+        except (ValueError, OSError, NotImplementedError) as exc:
+            return f"Error: invalid include glob {include!r}: {exc}"
 
     if not results:
         return "No matches found."
@@ -385,25 +402,27 @@ def _file_search_files(
 
     matches: List[str] = []
     capped = False
+    # rglob is a generator: a bad pattern (empty, absolute, unsupported glob)
+    # raises during *iteration*, not at creation, and may raise
+    # NotImplementedError as well as ValueError — so wrap the whole loop, not
+    # just the rglob() call.
     try:
-        iterator = root_path.rglob(pattern)
-    except (ValueError, OSError) as exc:
+        for found in root_path.rglob(pattern):
+            if not found.is_file():
+                continue
+            # Skip noise directories.
+            if any(part in _SKIP_DIR_PREFIXES for part in found.parts):
+                continue
+            try:
+                rel = found.relative_to(root_path)
+            except ValueError:
+                rel = found
+            matches.append(str(rel))
+            if len(matches) >= max_results:
+                capped = True
+                break
+    except (ValueError, OSError, NotImplementedError) as exc:
         return f"Error: invalid glob pattern {pattern!r}: {exc}"
-
-    for found in iterator:
-        if not found.is_file():
-            continue
-        # Skip noise directories.
-        if any(part in _SKIP_DIR_PREFIXES for part in found.parts):
-            continue
-        try:
-            rel = found.relative_to(root_path)
-        except ValueError:
-            rel = found
-        matches.append(str(rel))
-        if len(matches) >= max_results:
-            capped = True
-            break
 
     if not matches:
         return f"No files match {pattern!r} under {path!r}."
@@ -424,32 +443,49 @@ def _file_search_shell(
 ) -> str:
     """Bash-style shell execution.
 
-    ``command`` is run via ``subprocess.run(shell=True, capture_output=True,
-    text=True, timeout=timeout)``. Returns a multi-section string with the
-    command, exit code, stdout, stderr; capped at ``_BASH_MAX_OUTPUT_CHARS``.
-    On timeout / spawn failure returns ``"Error: ..."``.
+    ``command`` runs in its own session (``start_new_session=True``) so that on
+    timeout the entire process *group* is killed — otherwise ``subprocess``
+    kills only the spawned ``/bin/sh`` and leaves its children (the actual
+    ``pytest`` / ``find`` / ...) orphaned and still running. Returns a
+    multi-section string with the command, exit code, stdout, stderr; capped at
+    ``_BASH_MAX_OUTPUT_CHARS``. On timeout / spawn failure returns
+    ``"Error: ..."``.
 
     Loose safety policy — see the "Safety" section of the skill_doc.
     """
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(  # noqa: S602 — loose shell policy by design
             command,
             shell=True,
             cwd=cwd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
+            start_new_session=True,
         )
-    except subprocess.TimeoutExpired:
-        return f"Error: command timed out after {timeout}s: {command!r}"
     except (OSError, ValueError) as exc:
         return f"Error executing command {command!r}: {exc}"
 
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # Kill the whole process group, not just the shell, then reap.
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            proc.kill()
+        proc.communicate()
+        return f"Error: command timed out after {timeout}s: {command!r}"
+    except (OSError, ValueError) as exc:
+        proc.kill()
+        proc.communicate()
+        return f"Error executing command {command!r}: {exc}"
+
     parts: List[str] = [f"$ {command}", f"(exit code: {proc.returncode})"]
-    if proc.stdout:
-        parts.append(f"--- stdout ---\n{proc.stdout.rstrip()}")
-    if proc.stderr:
-        parts.append(f"--- stderr ---\n{proc.stderr.rstrip()}")
+    if stdout:
+        parts.append(f"--- stdout ---\n{stdout.rstrip()}")
+    if stderr:
+        parts.append(f"--- stderr ---\n{stderr.rstrip()}")
     text = "\n".join(parts)
 
     if len(text) > _BASH_MAX_OUTPUT_CHARS:
@@ -497,6 +533,13 @@ def _file_search(
             f"Error: invalid mode {mode!r}; "
             f"expected one of {sorted(_FILE_SEARCH_MODES)}"
         )
+    # Coerce numeric args: a non-integer (e.g. an LLM emitting "5") returns an
+    # Error string rather than raising a TypeError into the caller.
+    try:
+        max_results = max(1, int(max_results))
+        timeout = max(1, int(timeout))
+    except (TypeError, ValueError):
+        return "Error: max_results and timeout must be integers"
     if mode == "content":
         return _file_search_content(
             pattern=pattern,
