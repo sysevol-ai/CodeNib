@@ -19,6 +19,7 @@ from ..llm.litellm_chat import LiteLLMChat
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
+from .skills.defaults import DEFAULT_SKILL_IDS, ensure_defaults_registered
 from .skills.registry import SkillRegistry
 from .tool_schema import registry_to_tools
 
@@ -84,6 +85,10 @@ class AgentRunner:
         self.max_turns = max_turns
         self.session_ctx = session_ctx
 
+        # Always-on defaults (file_read, regex_search) are registered here so
+        # they are available regardless of which Ax skill subset is loaded.
+        ensure_defaults_registered(self.registry)
+
         # Resource guard: filter unavailable skills and collect warnings
         allow = set(allow_skills) if allow_skills is not None else None
         exclude = set(exclude_skills) if exclude_skills else set()
@@ -96,6 +101,14 @@ class AgentRunner:
             report = guard.preflight()
             exclude |= report.unavailable
             resource_warnings = report.warnings
+
+        # Default skills (DEFAULT_SKILL_IDS) are never filtered — strip them
+        # from `exclude` and union them into `allow` so they survive both
+        # exclude_skills and allow_skills filtering applied to sweep-variable
+        # skills.
+        exclude -= DEFAULT_SKILL_IDS
+        if allow is not None:
+            allow |= DEFAULT_SKILL_IDS
 
         self.tools = registry_to_tools(self.registry, allow=allow, exclude=exclude)
 
