@@ -59,16 +59,16 @@ convention), #153 (1-based boundary).
 
 from __future__ import annotations
 
-import fnmatch
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from .core import Cost, SkillInputSpec, SkillMetadata, SkillOutputSpec, SkillType
+from .registry import SkillRegistry
 
 # Canonical skill IDs for the always-on defaults.
-DEFAULT_SKILL_IDS: frozenset = frozenset({"file_read", "file_search"})
+DEFAULT_SKILL_IDS: frozenset[str] = frozenset({"file_read", "file_search"})
 
 # Sensible token-safety caps.
 _MAX_LINES_DEFAULT: int = 200
@@ -198,6 +198,16 @@ is reached.
 - Read context lines around a match.
 - Retrieve a known file at a specific line range.
 - Follow up on a `grep` result to read surrounding code.
+
+## Safety
+
+`file_read` opens the `path` as given — there is **no path jail**. The
+`path` description says "repo-relative", but this is not enforced: an
+absolute path reads any file the process can (`/etc/shadow`,
+`~/.ssh/id_rsa`, ...). As an always-on tool every agent turn can call,
+this means untrusted query input or prompt injection could exfiltrate any
+readable file. Callers running the agent on untrusted input MUST sandbox
+at the container / VM / process level.
 """
 
 
@@ -322,13 +332,18 @@ def _file_search_content(
     if root.is_file():
         _search_file(root)
     else:
-        for file_path in sorted(root.rglob("*")):
+        # Pass `include` straight to rglob so the OS filters file *names*
+        # during traversal — avoids materialising the whole tree (a `sorted()`
+        # over `rglob("*")` would allocate one Path per file before any match
+        # check, and the max_results cap gives no protection against that).
+        # Traversal order is filesystem-dependent, but content matches are
+        # identified by `{file}:{lineno}`, so cross-file ordering is not
+        # load-bearing.
+        for file_path in root.rglob(include or "*"):
             if not file_path.is_file():
                 continue
             # Skip noise directories.
             if any(part in _SKIP_DIR_PREFIXES for part in file_path.parts):
-                continue
-            if include and not fnmatch.fnmatch(file_path.name, include):
                 continue
             if _search_file(file_path):
                 capped = True
@@ -356,6 +371,11 @@ def _file_search_files(
     ``pattern`` follows ``Path.rglob`` syntax (e.g. ``"*.py"``,
     ``"**/test_*.py"``). Returns a sorted newline-separated list of relative
     paths, or a no-match message when empty.
+
+    Ordering contract: the ``max_results`` cap is applied during traversal
+    (filesystem order) and only the *returned* subset is sorted — so which
+    files survive the cap is filesystem-dependent on large match sets. The
+    output is sorted among returned results, not globally sorted.
     """
     root_path = Path(path)
     if not root_path.exists():
@@ -682,7 +702,7 @@ def get_default_skill_metadata() -> List[SkillMetadata]:
     return [_build_file_read_skill(), _build_file_search_skill()]
 
 
-def ensure_defaults_registered(registry: Any) -> None:
+def ensure_defaults_registered(registry: SkillRegistry) -> None:
     """Register default skills into *registry* if not already present.
 
     Safe to call multiple times (idempotent): skips any skill already in the

@@ -164,14 +164,16 @@ class TestRegexSearchContent:
 
     def test_case_sensitive_flag(self, sample_dir):
         """Default is case-insensitive; case_sensitive=True flips it."""
-        (sample_dir / "cls.py").write_text("class Foo:\n    pass\n")
+        (sample_dir / "cls.py").write_text("class Foo:\n    pass\n", encoding="utf-8")
         assert "cls.py" in _file_search_content("CLASS", path=str(sample_dir))
         assert "No matches found" in _file_search_content(
             "CLASS", path=str(sample_dir), case_sensitive=True
         )
 
     def test_literal_mode_escapes_regex_chars(self, sample_dir):
-        (sample_dir / "special.py").write_text("x = a.b()\ny = a.c()\n")
+        (sample_dir / "special.py").write_text(
+            "x = a.b()\ny = a.c()\n", encoding="utf-8"
+        )
         result = _file_search_content("a.b()", path=str(sample_dir), use_regex=False)
         assert "special.py" in result
 
@@ -183,7 +185,9 @@ class TestRegexSearchContent:
 
     def test_max_results_cap(self, sample_dir):
         many = sample_dir / "many.py"
-        many.write_text("\n".join(f"match_{i} = 1" for i in range(100)))
+        many.write_text(
+            "\n".join(f"match_{i} = 1" for i in range(100)), encoding="utf-8"
+        )
         result = _file_search_content("match_", path=str(sample_dir), max_results=5)
         assert "max_results=5" in result
         hits = [line for line in result.splitlines() if "many.py" in line]
@@ -212,9 +216,9 @@ class TestRegexSearchFiles:
 
     def test_recursive_double_star(self, tmp_path):
         (tmp_path / "src").mkdir()
-        (tmp_path / "src" / "x.py").write_text("# x")
+        (tmp_path / "src" / "x.py").write_text("# x", encoding="utf-8")
         (tmp_path / "src" / "nested").mkdir()
-        (tmp_path / "src" / "nested" / "y.py").write_text("# y")
+        (tmp_path / "src" / "nested" / "y.py").write_text("# y", encoding="utf-8")
         result = _file_search_files("**/*.py", path=str(tmp_path))
         lines = set(result.splitlines())
         assert "src/x.py" in lines and "src/nested/y.py" in lines
@@ -225,7 +229,7 @@ class TestRegexSearchFiles:
 
     def test_max_results_cap(self, tmp_path):
         for i in range(10):
-            (tmp_path / f"f{i}.py").write_text("x = 1\n")
+            (tmp_path / f"f{i}.py").write_text("x = 1\n", encoding="utf-8")
         result = _file_search_files("*.py", path=str(tmp_path), max_results=3)
         assert "max_results=3" in result
         names = [line for line in result.splitlines() if line.endswith(".py")]
