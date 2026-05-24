@@ -85,7 +85,7 @@ class AgentRunner:
         self.max_turns = max_turns
         self.session_ctx = session_ctx
 
-        # Always-on defaults (file_read, regex_search) are registered here so
+        # Always-on defaults (file_read, file_search) are registered here so
         # they are available regardless of which Ax skill subset is loaded.
         ensure_defaults_registered(self.registry)
 

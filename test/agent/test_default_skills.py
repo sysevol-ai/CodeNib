@@ -2,12 +2,12 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for default tool primitives: file_read + regex_search (issue #145).
+"""Tests for default tool primitives: file_read + file_search (issue #145).
 
 Two skills, both always-on:
 
 - ``file_read`` — bounded reader with opencode-style line numbers.
-- ``regex_search`` — multi-mode primitive dispatching to grep / glob /
+- ``file_search`` — multi-mode primitive dispatching to grep / glob /
   bash back-ends via the ``mode`` argument (``content`` / ``files`` /
   ``shell``).
 
@@ -16,7 +16,7 @@ Test layout:
 - ``TestRegexSearchContent``       — grep-style content search back-end.
 - ``TestRegexSearchFiles``         — glob-style filename enumeration back-end.
 - ``TestRegexSearchShell``         — shell-execution back-end.
-- ``TestRegexSearchDispatch``      — the public ``_regex_search`` dispatcher.
+- ``TestRegexSearchDispatch``      — the public ``_file_search`` dispatcher.
 - ``TestGetDefaultSkillMetadata``  — registry-facing metadata.
 - ``TestEnsureDefaultsRegistered`` — idempotent registration.
 - ``TestAgentRunnerDefaults``      — defaults survive allow/exclude filters
@@ -40,10 +40,10 @@ from codeminer.agent.skills.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
     DEFAULT_SKILL_IDS,
     _file_read,
-    _regex_search,
-    _regex_search_content,
-    _regex_search_files,
-    _regex_search_shell,
+    _file_search,
+    _file_search_content,
+    _file_search_files,
+    _file_search_shell,
     ensure_defaults_registered,
     get_default_skill_metadata,
 )
@@ -148,64 +148,64 @@ class TestFileRead:
 
 
 # ---------------------------------------------------------------------------
-# regex_search — content mode (grep-style)
+# file_search — content mode (grep-style)
 # ---------------------------------------------------------------------------
 
 
 class TestRegexSearchContent:
     def test_basic_match_1_based(self, sample_dir):
-        result = _regex_search_content("def foo", path=str(sample_dir))
+        result = _file_search_content("def foo", path=str(sample_dir))
         assert "a.py:1:" in result and "def foo" in result
 
     def test_no_match_returns_message(self, sample_dir):
-        assert "No matches found" in _regex_search_content(
+        assert "No matches found" in _file_search_content(
             "ZZZNOMATCH_XYZ", path=str(sample_dir)
         )
 
     def test_case_sensitive_flag(self, sample_dir):
         """Default is case-insensitive; case_sensitive=True flips it."""
         (sample_dir / "cls.py").write_text("class Foo:\n    pass\n")
-        assert "cls.py" in _regex_search_content("CLASS", path=str(sample_dir))
-        assert "No matches found" in _regex_search_content(
+        assert "cls.py" in _file_search_content("CLASS", path=str(sample_dir))
+        assert "No matches found" in _file_search_content(
             "CLASS", path=str(sample_dir), case_sensitive=True
         )
 
     def test_literal_mode_escapes_regex_chars(self, sample_dir):
         (sample_dir / "special.py").write_text("x = a.b()\ny = a.c()\n")
-        result = _regex_search_content("a.b()", path=str(sample_dir), use_regex=False)
+        result = _file_search_content("a.b()", path=str(sample_dir), use_regex=False)
         assert "special.py" in result
 
     def test_include_filter(self, sample_dir):
         """include='*.py' filters out the .md file."""
-        result = _regex_search_content("foo", path=str(sample_dir), include="*.py")
+        result = _file_search_content("foo", path=str(sample_dir), include="*.py")
         assert "readme.md" not in result
         assert "a.py" in result or "b.py" in result
 
     def test_max_results_cap(self, sample_dir):
         many = sample_dir / "many.py"
         many.write_text("\n".join(f"match_{i} = 1" for i in range(100)))
-        result = _regex_search_content("match_", path=str(sample_dir), max_results=5)
+        result = _file_search_content("match_", path=str(sample_dir), max_results=5)
         assert "max_results=5" in result
         hits = [line for line in result.splitlines() if "many.py" in line]
         assert len(hits) <= 5
 
     def test_invalid_regex_returns_error(self, sample_dir):
-        result = _regex_search_content("[invalid", path=str(sample_dir))
+        result = _file_search_content("[invalid", path=str(sample_dir))
         assert result.startswith("Error:") and "invalid regex" in result
 
     def test_nonexistent_path_returns_error(self, tmp_path):
-        result = _regex_search_content("x", path=str(tmp_path / "missing"))
+        result = _file_search_content("x", path=str(tmp_path / "missing"))
         assert result.startswith("Error:") and "does not exist" in result
 
 
 # ---------------------------------------------------------------------------
-# regex_search — files mode (glob-style)
+# file_search — files mode (glob-style)
 # ---------------------------------------------------------------------------
 
 
 class TestRegexSearchFiles:
     def test_basic_glob_lists_matching_names(self, sample_dir):
-        result = _regex_search_files("*.py", path=str(sample_dir))
+        result = _file_search_files("*.py", path=str(sample_dir))
         names = set(result.splitlines())
         assert {"a.py", "b.py"}.issubset(names)
         assert "readme.md" not in names
@@ -215,84 +215,84 @@ class TestRegexSearchFiles:
         (tmp_path / "src" / "x.py").write_text("# x")
         (tmp_path / "src" / "nested").mkdir()
         (tmp_path / "src" / "nested" / "y.py").write_text("# y")
-        result = _regex_search_files("**/*.py", path=str(tmp_path))
+        result = _file_search_files("**/*.py", path=str(tmp_path))
         lines = set(result.splitlines())
         assert "src/x.py" in lines and "src/nested/y.py" in lines
 
     def test_no_match_returns_message(self, sample_dir):
-        result = _regex_search_files("*.rs", path=str(sample_dir))
+        result = _file_search_files("*.rs", path=str(sample_dir))
         assert result.startswith("No files match")
 
     def test_max_results_cap(self, tmp_path):
         for i in range(10):
             (tmp_path / f"f{i}.py").write_text("x = 1\n")
-        result = _regex_search_files("*.py", path=str(tmp_path), max_results=3)
+        result = _file_search_files("*.py", path=str(tmp_path), max_results=3)
         assert "max_results=3" in result
         names = [line for line in result.splitlines() if line.endswith(".py")]
         assert len(names) <= 3
 
     def test_nonexistent_root_returns_error(self, tmp_path):
-        result = _regex_search_files("*.py", path=str(tmp_path / "missing"))
+        result = _file_search_files("*.py", path=str(tmp_path / "missing"))
         assert result.startswith("Error:") and "does not exist" in result
 
 
 # ---------------------------------------------------------------------------
-# regex_search — shell mode (bash-style)
+# file_search — shell mode (bash-style)
 # ---------------------------------------------------------------------------
 
 
 class TestRegexSearchShell:
     def test_basic_echo(self):
-        result = _regex_search_shell("echo hello")
+        result = _file_search_shell("echo hello")
         assert "hello" in result and "exit code: 0" in result
 
     def test_stdout_and_stderr_sections(self):
-        result = _regex_search_shell("echo out; echo err 1>&2")
+        result = _file_search_shell("echo out; echo err 1>&2")
         assert "--- stdout ---" in result and "out" in result
         assert "--- stderr ---" in result and "err" in result
 
     def test_non_zero_exit_and_command_not_found(self):
         """`false` → exit 1; unknown command → exit 127."""
-        assert "exit code: 1" in _regex_search_shell("false")
-        not_found = _regex_search_shell("nonexistent_cmd_xyz_zzz")
+        assert "exit code: 1" in _file_search_shell("false")
+        not_found = _file_search_shell("nonexistent_cmd_xyz_zzz")
         assert "exit code:" in not_found and "127" in not_found
 
     def test_timeout_returns_error(self):
-        result = _regex_search_shell("sleep 2", timeout=1)
+        result = _file_search_shell("sleep 2", timeout=1)
         assert result.startswith("Error:") and "timed out" in result
 
     def test_cwd_argument(self, tmp_path):
-        result = _regex_search_shell("pwd", cwd=str(tmp_path))
+        result = _file_search_shell("pwd", cwd=str(tmp_path))
         # macOS may symlink /var → /private/var; check tail.
         assert str(tmp_path) in result or tmp_path.name in result
 
     def test_output_truncation(self):
-        result = _regex_search_shell("yes hello | head -n 20000")
+        result = _file_search_shell("yes hello | head -n 20000")
         assert "(output truncated)" in result
         assert len(result) <= _BASH_MAX_OUTPUT_CHARS + 200
 
 
 # ---------------------------------------------------------------------------
-# regex_search — dispatcher
+# file_search — dispatcher
 # ---------------------------------------------------------------------------
 
 
 class TestRegexSearchDispatch:
     def test_mode_default_is_content(self, sample_dir):
         """Calling without `mode` should grep file contents."""
-        result = _regex_search("def foo", path=str(sample_dir))
+        result = _file_search("def foo", path=str(sample_dir))
         assert "a.py:1:" in result
 
     def test_files_mode_routes_to_glob(self, sample_dir):
-        result = _regex_search("*.py", mode="files", path=str(sample_dir))
+        result = _file_search("*.py", mode="files", path=str(sample_dir))
         assert "a.py" in result.splitlines()
 
     def test_shell_mode_runs_command(self):
-        result = _regex_search("echo dispatched", mode="shell")
+        result = _file_search("echo dispatched", mode="shell")
         assert "dispatched" in result and "exit code: 0" in result
 
     def test_invalid_mode_returns_error(self):
-        result = _regex_search("x", mode="bogus")
+        result = _file_search("x", mode="bogus")
         assert result.startswith("Error:") and "invalid mode" in result
 
 
@@ -304,15 +304,15 @@ class TestRegexSearchDispatch:
 class TestGetDefaultSkillMetadata:
     def test_returns_exactly_two_defaults(self):
         ids = {m.skill_id for m in get_default_skill_metadata()}
-        assert ids == DEFAULT_SKILL_IDS == {"file_read", "regex_search"}
+        assert ids == DEFAULT_SKILL_IDS == {"file_read", "file_search"}
 
     def test_file_read_requires_path(self):
         meta = {m.skill_id: m for m in get_default_skill_metadata()}["file_read"]
         required = {i.name for i in meta.inputs if i.required}
         assert "path" in required
 
-    def test_regex_search_requires_pattern_exposes_mode(self):
-        meta = {m.skill_id: m for m in get_default_skill_metadata()}["regex_search"]
+    def test_file_search_requires_pattern_exposes_mode(self):
+        meta = {m.skill_id: m for m in get_default_skill_metadata()}["file_search"]
         required = {i.name for i in meta.inputs if i.required}
         all_inputs = {i.name for i in meta.inputs}
         assert "pattern" in required
@@ -434,13 +434,13 @@ class TestAgentRunnerDefaults:
         record = AgentRunner(llm, SkillRegistry()).run("Read it").tool_calls[0]
         assert record.error is None and "x = 1" in record.result
 
-    def test_runner_executes_regex_search_shell_mode(self):
+    def test_runner_executes_file_search_shell_mode(self):
         """End-to-end with the dispatcher: shell mode via mode argument."""
         tc = SimpleNamespace(
             id="tc_rs",
             type="function",
             function=SimpleNamespace(
-                name="regex_search",
+                name="file_search",
                 arguments=json.dumps(
                     {"pattern": "echo runner_dispatch", "mode": "shell"}
                 ),
@@ -483,9 +483,9 @@ class TestSmokeRealFile:
         lines = result.splitlines()
         assert lines[0].lstrip().startswith("1 |") and len(lines) == 10
 
-    def test_regex_search_for_agent_runner_in_runner_py(self):
+    def test_file_search_for_agent_runner_in_runner_py(self):
         """Default (content) mode regex-search for 'AgentRunner' in runner.py."""
         source = self._runner_source_path()
-        result = _regex_search("AgentRunner", path=str(source))
+        result = _file_search("AgentRunner", path=str(source))
         assert "AgentRunner" in result
         assert any(":" in line for line in result.splitlines())
