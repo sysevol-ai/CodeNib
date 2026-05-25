@@ -142,3 +142,112 @@ harder at symbol granularity.
   model-matrix) is out of scope for this sample.
 - Selection used `τ = A6 files@k − 0.05` (RFC open question §2); an absolute
   floor would change the rust fallback only.
+
+---
+
+# Follow-up: default tool layer (file_read + file_search)
+
+The sweep above ran **without** filesystem primitives — the agent could only
+call retrieval skills. That is unrealistic (real coding agents have
+bash/grep/read) and it hid a methodology bug. This follow-up adds an always-on
+default tool layer (`file_read` + `file_search`: grep / glob / shell, from
+#145 / PR #169) under every A0–A6 subset and re-runs.
+
+**Setup delta:** defaults always-on; `graph_expand` made seedable from a file
+(`seed_files=[...]`) so the agent can pivot from a file it read into the call
+graph; system prompt rewritten as an explore→locate→expand→read→answer
+workflow + `<environment>` block; **localization scored from the agent's final
+answer + the files it `file_read` + retrieval-skill nodes** (not skill nodes
+alone); `max_turns` 20→10. Re-run: reps=1 on 3 shared instances
+(`astropy-12907` py, `caddy-5870` go, `axios-4731` ts).
+
+## Baseline (no defaults) vs default tool layer — same 3 instances
+
+| subset | base files@5 | base tokens | **+defaults** files@5 | **+defaults** tokens | graph_expand cells (base→def) |
+|---|---|---|---|---|---|
+| A0 bm25 | 0.67 | 128 k | **1.00** | 134 k | 0 → 0 |
+| A1 embedding | 1.00 | 113 k | 1.00 | **84 k** | 0 → 0 |
+| A2 bm25+emb | 0.67 | 111 k | **1.00** | 133 k | 0 → 0 |
+| A3 bm25+graph | 0.67 | 107 k | **1.00** | 159 k | **3 → 0** |
+| A4 trio | 0.67 | 124 k | **1.00** | 152 k | 2 → 0 |
+| A5 trio+regex | 0.67 | 152 k | **1.00** | 160 k | 1 → 0 |
+| A6 full | 0.67 | 110 k | **1.00** | 183 k | **3 → 0** |
+
+Pareto front (files@5 ↑ / tokens ↓) with defaults: **{A1}** (embedding +
+file layer — cheapest at full accuracy).
+
+## Findings
+
+1. **The default layer makes accuracy uniform.** files@5 goes 0.67 → **1.00
+   for every subset**: file navigation rescues the instances bm25/embedding
+   alone missed. Once the agent can grep/read, the *retrieval skill choice
+   stops mattering for accuracy* on this sample — the only remaining
+   differentiator is token cost.
+
+2. **The model abandons `graph_expand` when given file tools — even when it's
+   trivial to seed.** In the no-defaults baseline the agent *did* call
+   `graph_expand` (3/3 cells in A3 and A6). With the default layer it calls it
+   **0 times across all 21 cells**, despite (a) `seed_files=[...]` requiring
+   only a path it already read and (b) the system prompt explicitly preferring
+   it over grepping. `file_read`/`file_search` are invoked in **100 %** of
+   cells. The file layer *cannibalized* graph navigation. This is consistent
+   with OpenHands' observation that LLMs strongly prefer bash/grep/read over
+   bespoke tools — and it means graph/LSP value will not surface from
+   voluntary tool choice with this model; it must be made the path of least
+   resistance (or forced) to be measured.
+
+3. **More skills = more cost, no accuracy gain.** Beyond A1, every added skill
+   only raises tokens (A1 84 k → A6 183 k, 2.2×) at identical files@5 and
+   equal-or-worse files@1. With a default file layer, the bespoke retrieval
+   stack does not earn its keep on this sample.
+
+4. **Scoring had to change.** Scoring localization from retrieval-skill node
+   outputs alone scored 0 for an agent that reads files (verified: on caddy
+   the agent read the GT `admin.go` ~10× yet scored 0 and ran to the turn
+   cap). Localization is now scored from the agent's answer (`Files:` /
+   `Symbols:` lines) + `file_read` targets + skill nodes.
+
+5. **Convergence.** The default-tool agent over-explored: at `max_turns=20` it
+   hit the cap 50–100 % of the time (3–6× tokens). `max_turns=10` ~halves cost
+   with no accuracy loss, but the agent still uses all 10 turns — it is
+   truncated, not self-converging. A firmer stop signal is future work.
+
+## Implications for agent-compile
+
+- With a competent default tool layer, the A0–A6 *accuracy* sweep collapses
+  (everything hits files@5 = 1.0 on this sample); the meaningful axis becomes
+  **token cost**, where embedding-only (A1) dominates and graph/extra skills
+  are pure overhead.
+- The open research question shifts from "which skills for which scenario"
+  to **"can graph/LSP navigation be made the agent's preferred move so its
+  token-efficiency advantage is realized?"** — e.g. expose graph_expand as the
+  primary "find related code" verb, or evaluate a model less biased toward
+  grep. Testing the LSP-saves-tokens thesis likely requires *withholding*
+  `file_search` (forcing graph use) as a controlled condition.
+
+## Corroboration at larger N (5 instances, reps=2, max_turns=20)
+
+A fuller default-tool run over all 5 instances × 2 reps (70 cells,
+`results/agent_compile/sample_defaults/`) confirms the headline results and
+strengthens two of them:
+
+- **`graph_expand` invocation = 0 % across all 70 cells** — the agent never
+  reaches for it once file tools exist, regardless of subset, instance, or
+  rep. Not a fluke of the 3-instance run.
+- **The file layer solved the previously-unsolvable instance.** `ruff-15309`
+  (Rust) scored files@5 = 0 for *every* subset in the no-defaults sweep; with
+  the default layer the **hard set is empty** — all 5 instances become "easy"
+  (files@5 0.90–1.00 across subsets). File navigation generalizes where the
+  language-specific retrieval stack did not.
+- Cost at `max_turns=20` is 200–311 k tokens/subset (vs 84–183 k at
+  `max_turns=10`), re-confirming the over-exploration the tighter budget curbs.
+
+## Caveats
+
+- Headline table: 3 instances, reps=1, one agent model (vertex haiku-4.5);
+  corroboration: 5 instances, reps=2. Directional, not statistically grounded.
+  Baseline numbers are restricted to the 3 shared instances from the (reps=2,
+  max_turns=20) run above, so token magnitudes are not perfectly matched
+  across conditions.
+- `graph_expand`'s `seed_files` path is exercised by unit tests but, because
+  the agent never called it, has no end-to-end agent coverage here.
