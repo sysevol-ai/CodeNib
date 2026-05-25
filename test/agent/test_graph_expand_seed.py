@@ -92,6 +92,40 @@ def test_graph_expand_raises_when_all_seeds_unresolved():
         execute(seed_symbols=["nonexistent.symbol"])
 
 
+def test_symbols_in_files_resolves_via_file_nodes():
+    from codeminer.agent.skills.graph_expand.executor import _symbols_in_files
+
+    class _VS:
+        def __init__(self, names):
+            self._n = names
+
+        def __getitem__(self, vid):
+            return {"name": self._n[vid]}
+
+    class _Graph:
+        def __init__(self, names):
+            self.vs = _VS(names)
+
+    class _CG:
+        def __init__(self):
+            self.graph = _Graph({0: "pkg.adminHandler", 1: "pkg.deleteConfig"})
+            self._file_nodes = {"admin.go": [(1, 10, 0), (12, 20, 1)]}
+
+    cg = _CG()
+    # exact key
+    assert _symbols_in_files(cg, ["admin.go"]) == [
+        "pkg.adminHandler",
+        "pkg.deleteConfig",
+    ]
+    # suffix / absolute-ish path still matches
+    assert _symbols_in_files(cg, ["/repo/admin.go"]) == [
+        "pkg.adminHandler",
+        "pkg.deleteConfig",
+    ]
+    # unknown file → nothing
+    assert _symbols_in_files(cg, ["nope.go"]) == []
+
+
 def test_graph_expand_accepts_legacy_seed_nodes_shim():
     """Back-compat: objects with .node_name still work via seed_nodes."""
     create_executor = _load_executor()

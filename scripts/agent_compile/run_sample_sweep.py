@@ -78,6 +78,7 @@ class SampleConfig:
     temperature: float = 0.0
     max_tokens: int = 4096
     topk: int = 50
+    num_retries: int = 8
     dataset: str = "fishmingyu/codeminer-base-dataset"
     split: str = "test"
     prebuilt_dir: str = "/mnt/data/codeminer"
@@ -350,6 +351,9 @@ def run_sweep(cfg: SampleConfig, output_dir: Path, *, resume: bool = True) -> Di
         vertex_extra["vertex_project"] = cfg.vertex_project
     if cfg.vertex_location:
         vertex_extra["vertex_location"] = cfg.vertex_location
+    # The default-tool agent makes many LLM calls (grep/read turns), so vertex
+    # rate limits are common; let litellm retry with exponential backoff.
+    vertex_extra["num_retries"] = cfg.num_retries
     llm = LiteLLMChat(
         model=cfg.model,
         temperature=cfg.temperature,
@@ -504,6 +508,20 @@ def run_sweep(cfg: SampleConfig, output_dir: Path, *, resume: bool = True) -> Di
                 }
                 summary["failed"].append({"cell_id": cell_id, "reason": str(exc)})
                 print(f"sweep:   FAIL {cell_id}: {exc}", file=sys.stderr)
+                # Transient (rate-limit/quota) failures must not poison resume:
+                # skip persisting so a later run retries this cell.
+                if any(
+                    s in str(exc).lower()
+                    for s in (
+                        "ratelimit",
+                        "rate limit",
+                        "429",
+                        "quota",
+                        "resourceexhausted",
+                    )
+                ):
+                    print(f"sweep:   (transient; not persisting {cell_id})")
+                    continue
 
             with cell_path.open("w", encoding="utf-8") as f:
                 json.dump(record, f, indent=2, ensure_ascii=False)

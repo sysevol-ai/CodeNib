@@ -55,8 +55,9 @@ Depending on the request you may also have retrieval skills:
 - bm25_search(query) — fast lexical search for exact names / identifiers
 - embedding_search(query) — semantic search for concepts / intent
 - hybrid_search(...) — combine retrievers for maximum recall
-- graph_expand(seed_symbols=[...]) — from symbols you already found, walk the \
-symbol graph to structurally related code (callers, callees, members)
+- graph_expand(seed_files=[...]) — after you read a file, pass it here to \
+pull in related code (callers / callees / references) via the call graph, \
+instead of grepping around manually. Also accepts seed_symbols=[...].
 
 Workflow:
 1. ORIENT — skim the repo layout (file_search files/shell) so you know where \
@@ -64,10 +65,10 @@ things live; the <environment> block below lists the top-level entries.
 2. LOCATE — search for the target: bm25_search for exact names, \
 embedding_search for conceptual queries, file_search(mode="content") to grep \
 for a literal string or pattern.
-3. EXPAND (optional) — once a search returns a relevant symbol, call \
-graph_expand(seed_symbols=[...]) passing the EXACT node_name strings from \
-those results. It needs real seeds: copy node_name verbatim; if a name does \
-not resolve, grep for it with file_search(mode="content") first.
+3. EXPAND — when a file looks relevant, prefer graph_expand(seed_files=[that \
+file]) to discover related code through the call graph (callers / callees / \
+references) rather than grepping repeatedly. This is usually faster than \
+manual exploration. (You can also seed with seed_symbols from search results.)
 4. READ — open the most promising files with file_read to confirm.
 5. ANSWER — as soon as you can name the location(s) to change, STOP calling \
 tools and reply. End your reply with two lines, repo-relative:
