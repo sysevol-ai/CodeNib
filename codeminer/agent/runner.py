@@ -70,6 +70,7 @@ class AgentRunner:
         exclude_skills: Optional[Set[str]] = None,
         manifest: Optional[Any] = None,
         session_ctx: Optional[Any] = None,
+        allow_shell_mode: bool = False,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -87,7 +88,9 @@ class AgentRunner:
 
         # Always-on defaults (file_read, file_search) are registered here so
         # they are available regardless of which Ax skill subset is loaded.
-        ensure_defaults_registered(self.registry)
+        # file_search's shell back-end is opt-in (off by default): an always-on
+        # tool must not grant shell execution that exclude_skills cannot remove.
+        ensure_defaults_registered(self.registry, allow_shell_mode=allow_shell_mode)
 
         # Resource guard: filter unavailable skills and collect warnings
         allow = set(allow_skills) if allow_skills is not None else None

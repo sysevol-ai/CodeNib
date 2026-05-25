@@ -59,6 +59,7 @@ convention), #153 (1-based boundary).
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import signal
@@ -97,6 +98,21 @@ _SKIP_DIR_PREFIXES = frozenset(
         "build",
     }
 )
+
+
+def _in_skip_dir(file_path: Path, root: Path) -> bool:
+    """True if *file_path* lies inside a noise directory *below root*.
+
+    Only the components beneath ``root`` are checked — matching against the
+    full (possibly absolute) path would wrongly skip every file when the search
+    root's own path contains a skip name (e.g. ``/home/ci/build/project`` has a
+    ``build`` component).
+    """
+    try:
+        parts = file_path.relative_to(root).parts
+    except ValueError:
+        parts = file_path.parts
+    return any(part in _SKIP_DIR_PREFIXES for part in parts)
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +373,7 @@ def _file_search_content(
             for file_path in root.rglob(include or "*"):
                 if not file_path.is_file():
                     continue
-                # Skip noise directories.
-                if any(part in _SKIP_DIR_PREFIXES for part in file_path.parts):
+                if _in_skip_dir(file_path, root):
                     continue
                 if _search_file(file_path):
                     capped = True
@@ -410,8 +425,7 @@ def _file_search_files(
         for found in root_path.rglob(pattern):
             if not found.is_file():
                 continue
-            # Skip noise directories.
-            if any(part in _SKIP_DIR_PREFIXES for part in found.parts):
+            if _in_skip_dir(found, root_path):
                 continue
             try:
                 rel = found.relative_to(root_path)
@@ -513,6 +527,8 @@ def _file_search(
     # shell mode:
     cwd: Optional[str] = None,
     timeout: int = _BASH_TIMEOUT_DEFAULT,
+    *,
+    allow_shell: bool = True,
 ) -> str:
     """Multi-mode search primitive (the ``file_search`` slot in #145).
 
@@ -524,6 +540,10 @@ def _file_search(
       as a ``Path.rglob`` glob, plus ``path`` (root) and ``max_results``.
     - ``"shell"`` — execute ``pattern`` as a shell command line. Uses
       ``cwd`` and ``timeout``. Loose safety policy.
+
+    ``allow_shell`` is bound by the skill builder, not exposed to the LLM:
+    when ``False`` (the default for an ``AgentRunner`` deployment), shell mode
+    is refused so an always-on tool never grants un-opt-out-able shell exec.
 
     Mode-irrelevant parameters are accepted (the SkillMetadata is one flat
     schema) but silently ignored.
@@ -552,61 +572,101 @@ def _file_search(
     if mode == "files":
         return _file_search_files(pattern=pattern, path=path, max_results=max_results)
     # mode == "shell"
+    if not allow_shell:
+        return (
+            "Error: shell mode is disabled for this agent. Use mode 'content' "
+            "or 'files', or enable shell with allow_shell_mode=True on "
+            "AgentRunner."
+        )
     return _file_search_shell(command=pattern, cwd=cwd, timeout=timeout)
 
 
-_FILE_SEARCH_SKILL_DOC = """\
+def _file_search_skill_doc(allow_shell: bool) -> str:
+    """Assemble the file_search skill_doc, advertising the shell back-end only
+    when it is enabled — so a disabled agent never invites the LLM to use it."""
+    modes = [
+        '- `"content"` *(default)* — grep-style regex over file contents.\n'
+        "  Returns `{file}:{lineno}: {content}` lines (1-based).",
+        '- `"files"` — glob-style filename enumeration (`Path.rglob`).\n'
+        "  Returns a sorted newline-separated list of paths.",
+    ]
+    param_rows = [
+        "| `pattern` | str | *required* | all | Regex / glob"
+        + (" / shell command" if allow_shell else "")
+        + ". |",
+        "| `mode` | str | `content` | all | `content` / `files`"
+        + (" / `shell`" if allow_shell else "")
+        + ". |",
+        "| `path` | str | `.` | content, files | Directory (or file) to search. |",
+        "| `max_results` | int | 50 | content, files | Cap on matches / paths. "
+        "Applied in filesystem traversal order before sorting, so which files "
+        "survive a large-match cap is non-deterministic. |",
+        "| `include` | str | null | content | Glob filter for file *names*. |",
+        "| `case_sensitive` | bool | false | content | Case-sensitive matching. |",
+        "| `use_regex` | bool | true | content | Regex (true) vs literal (false). |",
+    ]
+    when = [
+        "- **`content`** — find call sites, error strings, identifier usage "
+        'anywhere in the repo without an index. Narrow by `include="*.py"`.',
+        "- **`files`** — enumerate files matching a structure "
+        "(`**/__init__.py`, `**/*.proto`); confirm a file exists before "
+        "`file_read`.",
+    ]
+    safety = ""
+    if allow_shell:
+        modes.append(
+            '- `"shell"` — execute the pattern as a shell command line.\n'
+            "  Returns `$ <cmd>` / exit code / stdout / stderr."
+        )
+        param_rows.append(
+            "| `cwd` | str | null | shell | Working dir for the command. |"
+        )
+        param_rows.append(
+            "| `timeout` | int | 30 | shell | Wall-clock seconds before kill. |"
+        )
+        when.append(
+            "- **`shell`** — anything that doesn't fit the above (`pytest`, "
+            "`git log`, `find . -newer ...`, `wc -l`). See Safety below."
+        )
+        safety = (
+            "\n## Safety (shell mode)\n\n"
+            "Shell mode runs `subprocess.Popen(command, shell=True)` with **no "
+            "command filtering, no allow/deny list, and no path jail** — loose "
+            "by design. An in-process filter is either too restrictive (blocks "
+            "legitimate `pytest` / `git`) or trivially bypassed "
+            "(`bash -c '...'`, `eval`), so the trust boundary is the "
+            "*environment*: callers running the agent on untrusted input MUST "
+            "sandbox at the container / VM / process level. `timeout` (default "
+            "30s) guards against hangs; a 16k-char output cap guards against "
+            "runaway producers (`yes`, `seq`). Shell mode is opt-in — available "
+            "only when `allow_shell_mode=True` on `AgentRunner`.\n"
+        )
+
+    modes_block = "\n".join(modes)
+    rows_block = "\n".join(param_rows)
+    when_block = "\n".join(when)
+    return f"""\
 # file_search
 
-Multi-mode search primitive — pick a `mode` to choose the back-end. This
-is the always-on search default from #145 / #133, bundling
-grep / glob / bash-style search into one tool per #145's "single tool"
-option. It scans the raw filesystem (no index); for index-backed regex
-retrieval over parsed nodes, use the separate `regex_search` skill.
+Multi-mode search primitive — pick a `mode` to choose the back-end. This is
+an always-on search default from #145 / #133. It scans the raw filesystem
+(no index); for index-backed regex retrieval over parsed nodes, use the
+separate `regex_search` skill.
 
 ## Modes
 
-- `"content"` *(default)* — grep-style regex over file contents.
-  Returns `{file}:{lineno}: {content}` lines (1-based).
-- `"files"` — glob-style filename enumeration (`Path.rglob`).
-  Returns a sorted newline-separated list of paths.
-- `"shell"` — execute the pattern as a shell command line.
-  Returns `$ <cmd>` / exit code / stdout / stderr.
+{modes_block}
 
 ## Parameters
 
 | Name | Type | Default | Used by | Description |
 |------|------|---------|---------|-------------|
-| `pattern` | str | *required* | all | Regex / glob / shell command. |
-| `mode` | str | `content` | all | `content` / `files` / `shell`. |
-| `path` | str | `.` | content, files | Directory (or file) to search. |
-| `max_results` | int | 50 | content, files | Cap on matches / paths. |
-| `include` | str | null | content | Glob filter for file *names*. |
-| `case_sensitive` | bool | false | content | Case-sensitive matching. |
-| `use_regex` | bool | true | content | Regex (true) vs literal (false). |
-| `cwd` | str | null | shell | Working dir for the command. |
-| `timeout` | int | 30 | shell | Wall-clock seconds before kill. |
+{rows_block}
 
 ## When to Use which mode
 
-- **`content`** — find call sites, error strings, identifier usage anywhere
-  in the repo without an index. Narrow by `include="*.py"`.
-- **`files`** — enumerate files matching a structure (`**/__init__.py`,
-  `**/*.proto`); confirm a file exists before `file_read`.
-- **`shell`** — anything that doesn't fit the above (`pytest`, `git log`,
-  `find . -newer ...`, `wc -l`). See Safety below.
-
-## Safety (shell mode)
-
-Shell mode runs `subprocess.run(command, shell=True)` with **no command
-filtering, no allow/deny list, and no path jail** — loose by design. An
-in-process filter is either too restrictive (blocks legitimate `pytest` /
-`git`) or trivially bypassed (`bash -c '...'`, `eval`), so the trust
-boundary is the *environment*: callers running the agent on untrusted
-input MUST sandbox at the container / VM / process level. `timeout`
-(default 30s) guards against hangs; a 16k-char output cap guards against
-runaway producers (`yes`, `seq`).
-
+{when_block}
+{safety}
 ## When NOT to Use
 
 - Single file content — prefer `file_read` (predictable, line-numbered).
@@ -616,92 +676,121 @@ runaway producers (`yes`, `seq`).
 """
 
 
-def _build_file_search_skill() -> SkillMetadata:
-    return SkillMetadata(
-        skill_id="file_search",
-        skill_type=SkillType.CUSTOM,
-        inputs=[
-            SkillInputSpec(
-                name="pattern",
-                type_hint="str",
-                required=True,
-                description=(
-                    "Mode-dependent: regex (content) / glob (files) / "
-                    "shell command (shell)."
-                ),
+def _build_file_search_skill(allow_shell: bool = False) -> SkillMetadata:
+    """Build the ``file_search`` skill.
+
+    When *allow_shell* is ``False`` (the default), the shell back-end is
+    neither advertised in the schema/doc nor executable — the bound
+    ``allow_shell`` refuses ``mode="shell"`` with an Error string. Operators
+    opt in via ``allow_shell_mode=True`` on :class:`AgentRunner`.
+    """
+    pattern_modes = "regex (content) / glob (files)" + (
+        " / shell command (shell)" if allow_shell else ""
+    )
+    mode_choices = "'content' (grep), 'files' (glob)" + (
+        ", 'shell' (bash)" if allow_shell else ""
+    )
+    inputs = [
+        SkillInputSpec(
+            name="pattern",
+            type_hint="str",
+            required=True,
+            description=f"Mode-dependent: {pattern_modes}.",
+        ),
+        SkillInputSpec(
+            name="mode",
+            type_hint="str",
+            required=False,
+            default="content",
+            description=(
+                f"Back-end to dispatch to: {mode_choices}. Defaults to 'content'."
             ),
-            SkillInputSpec(
-                name="mode",
-                type_hint="str",
-                required=False,
-                default="content",
-                description=(
-                    "Back-end to dispatch to: 'content' (grep), 'files' "
-                    "(glob), 'shell' (bash). Defaults to 'content'."
-                ),
+        ),
+        SkillInputSpec(
+            name="path",
+            type_hint="str",
+            required=False,
+            default=".",
+            description="Directory (or file, content mode) to search.",
+        ),
+        SkillInputSpec(
+            name="max_results",
+            type_hint="int",
+            required=False,
+            default=_MAX_RESULTS_DEFAULT,
+            description=(
+                "Hard cap on matches/paths returned "
+                f"(content / files modes; default {_MAX_RESULTS_DEFAULT})."
             ),
-            SkillInputSpec(
-                name="path",
-                type_hint="str",
-                required=False,
-                default=".",
-                description=(
-                    "Directory (or file, content mode) to search. "
-                    "Ignored in shell mode (use cwd)."
-                ),
+        ),
+        SkillInputSpec(
+            name="include",
+            type_hint="str",
+            required=False,
+            default=None,
+            description="Content mode: glob filter for file names (e.g. '*.py').",
+        ),
+        SkillInputSpec(
+            name="case_sensitive",
+            type_hint="bool",
+            required=False,
+            default=False,
+            description="Content mode: case-sensitive matching.",
+        ),
+        SkillInputSpec(
+            name="use_regex",
+            type_hint="bool",
+            required=False,
+            default=True,
+            description=(
+                "Content mode: treat pattern as regex (true) or "
+                "literal string (false)."
             ),
-            SkillInputSpec(
-                name="max_results",
-                type_hint="int",
-                required=False,
-                default=_MAX_RESULTS_DEFAULT,
-                description=(
-                    "Hard cap on matches/paths returned "
-                    f"(content / files modes; default {_MAX_RESULTS_DEFAULT})."
-                ),
-            ),
-            SkillInputSpec(
-                name="include",
-                type_hint="str",
-                required=False,
-                default=None,
-                description=("Content mode: glob filter for file names (e.g. '*.py')."),
-            ),
-            SkillInputSpec(
-                name="case_sensitive",
-                type_hint="bool",
-                required=False,
-                default=False,
-                description="Content mode: case-sensitive matching.",
-            ),
-            SkillInputSpec(
-                name="use_regex",
-                type_hint="bool",
-                required=False,
-                default=True,
-                description=(
-                    "Content mode: treat pattern as regex (true) or "
-                    "literal string (false)."
-                ),
-            ),
+        ),
+    ]
+    skill_defaults = {
+        "mode": "content",
+        "path": ".",
+        "case_sensitive": False,
+        "use_regex": True,
+        "max_results": _MAX_RESULTS_DEFAULT,
+    }
+    if allow_shell:
+        inputs.append(
             SkillInputSpec(
                 name="cwd",
                 type_hint="str",
                 required=False,
                 default=None,
                 description="Shell mode: working directory for the command.",
-            ),
+            )
+        )
+        inputs.append(
             SkillInputSpec(
                 name="timeout",
                 type_hint="int",
                 required=False,
                 default=_BASH_TIMEOUT_DEFAULT,
                 description=(
-                    f"Shell mode: wall-clock seconds before kill "
+                    "Shell mode: wall-clock seconds before kill "
                     f"(default {_BASH_TIMEOUT_DEFAULT})."
                 ),
-            ),
-        ],
+            )
+        )
+        skill_defaults["timeout"] = _BASH_TIMEOUT_DEFAULT
+
+    description = (
+        "Multi-mode search: grep-style content (default), glob-style "
+        "filename enumeration"
+        + (", or shell command execution" if allow_shell else "")
+        + ". One tool, "
+        + ("three" if allow_shell else "two")
+        + " modes via `mode` argument."
+    )
+    return SkillMetadata(
+        skill_id="file_search",
+        skill_type=SkillType.CUSTOM,
+        inputs=inputs,
         outputs=SkillOutputSpec(
             type_hint="str",
             description=(
@@ -709,26 +798,15 @@ def _build_file_search_skill() -> SkillMetadata:
                 "or shell stdout/stderr/exit code."
             ),
         ),
-        executor_fn=_file_search,
+        executor_fn=functools.partial(_file_search, allow_shell=allow_shell),
         async_capable=False,
         cacheable=False,
         cost=Cost.LOW,
         dependencies=[],
         resources=[],
-        defaults={
-            "mode": "content",
-            "path": ".",
-            "case_sensitive": False,
-            "use_regex": True,
-            "max_results": _MAX_RESULTS_DEFAULT,
-            "timeout": _BASH_TIMEOUT_DEFAULT,
-        },
-        skill_doc=_FILE_SEARCH_SKILL_DOC,
-        description=(
-            "Multi-mode search: grep-style content (default), glob-style "
-            "filename enumeration, or shell command execution. One tool, "
-            "three modes via `mode` argument."
-        ),
+        defaults=skill_defaults,
+        skill_doc=_file_search_skill_doc(allow_shell),
+        description=description,
     )
 
 
@@ -737,22 +815,32 @@ def _build_file_search_skill() -> SkillMetadata:
 # ---------------------------------------------------------------------------
 
 
-def get_default_skill_metadata() -> List[SkillMetadata]:
+def get_default_skill_metadata(allow_shell_mode: bool = False) -> List[SkillMetadata]:
     """Return fresh :class:`SkillMetadata` objects for all default tools.
 
     Returns a new list on every call so callers can safely mutate it.
+    ``allow_shell_mode`` gates whether ``file_search`` exposes (and will run)
+    its shell back-end; off by default so an always-on tool never grants
+    un-opt-out-able shell execution.
     """
-    return [_build_file_read_skill(), _build_file_search_skill()]
+    return [
+        _build_file_read_skill(),
+        _build_file_search_skill(allow_shell=allow_shell_mode),
+    ]
 
 
-def ensure_defaults_registered(registry: SkillRegistry) -> None:
+def ensure_defaults_registered(
+    registry: SkillRegistry, allow_shell_mode: bool = False
+) -> None:
     """Register default skills into *registry* if not already present.
 
     Safe to call multiple times (idempotent): skips any skill already in the
     registry.  Called by :class:`~codeminer.agent.runner.AgentRunner` during
     ``__init__`` so that the default tools (``file_read``, ``file_search``)
     are available regardless of which ``Ax`` skill subset is loaded.
+    ``allow_shell_mode`` is forwarded to ``file_search`` (see
+    :func:`get_default_skill_metadata`).
     """
-    for meta in get_default_skill_metadata():
+    for meta in get_default_skill_metadata(allow_shell_mode=allow_shell_mode):
         if not registry.has(meta.skill_id):
             registry.register(meta)

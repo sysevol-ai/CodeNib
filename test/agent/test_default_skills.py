@@ -201,6 +201,15 @@ class TestRegexSearchContent:
         result = _file_search_content("x", path=str(tmp_path / "missing"))
         assert result.startswith("Error:") and "does not exist" in result
 
+    def test_skip_dir_not_applied_to_root_path(self, tmp_path):
+        """A root whose own path contains a skip name ('build') must still
+        search files under it — skip prefixes apply only below the root."""
+        root = tmp_path / "build" / "project"
+        root.mkdir(parents=True)
+        (root / "main.py").write_text("def foo(): pass\n", encoding="utf-8")
+        result = _file_search_content("def foo", path=str(root))
+        assert "main.py" in result
+
 
 # ---------------------------------------------------------------------------
 # file_search — files mode (glob-style)
@@ -238,6 +247,15 @@ class TestRegexSearchFiles:
     def test_nonexistent_root_returns_error(self, tmp_path):
         result = _file_search_files("*.py", path=str(tmp_path / "missing"))
         assert result.startswith("Error:") and "does not exist" in result
+
+    def test_skip_dir_not_applied_to_root_path(self, tmp_path):
+        """A root path containing a skip name ('dist') must not suppress its
+        own files — skip prefixes apply only to components below the root."""
+        root = tmp_path / "dist" / "output"
+        root.mkdir(parents=True)
+        (root / "main.py").write_text("x = 1\n", encoding="utf-8")
+        result = _file_search_files("*.py", path=str(root))
+        assert "main.py" in result
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +313,10 @@ class TestRegexSearchDispatch:
         result = _file_search("echo dispatched", mode="shell")
         assert "dispatched" in result and "exit code: 0" in result
 
+    def test_shell_mode_refused_when_disabled(self):
+        result = _file_search("echo nope", mode="shell", allow_shell=False)
+        assert result.startswith("Error:") and "shell mode is disabled" in result
+
     def test_invalid_mode_returns_error(self):
         result = _file_search("x", mode="bogus")
         assert result.startswith("Error:") and "invalid mode" in result
@@ -322,6 +344,25 @@ class TestGetDefaultSkillMetadata:
         assert "pattern" in required
         # mode is optional but must appear in the schema for the LLM to use.
         assert "mode" in all_inputs and "mode" not in required
+
+    def test_shell_not_advertised_when_disabled(self):
+        """Default (shell off): schema/doc must not invite the shell back-end."""
+        meta = {m.skill_id: m for m in get_default_skill_metadata()}["file_search"]
+        inputs = {i.name: i for i in meta.inputs}
+        # shell-only params are dropped from the schema.
+        assert "cwd" not in inputs and "timeout" not in inputs
+        mode_desc = inputs["mode"].description.lower()
+        assert "shell" not in mode_desc and "shell" not in meta.skill_doc.lower()
+
+    def test_shell_advertised_when_enabled(self):
+        metas = {
+            m.skill_id: m
+            for m in get_default_skill_metadata(allow_shell_mode=True)
+        }
+        meta = metas["file_search"]
+        inputs = {i.name for i in meta.inputs}
+        assert "cwd" in inputs and "timeout" in inputs
+        assert "shell" in meta.skill_doc.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -438,9 +479,9 @@ class TestAgentRunnerDefaults:
         record = AgentRunner(llm, SkillRegistry()).run("Read it").tool_calls[0]
         assert record.error is None and "x = 1" in record.result
 
-    def test_runner_executes_file_search_shell_mode(self):
-        """End-to-end with the dispatcher: shell mode via mode argument."""
-        tc = SimpleNamespace(
+    @staticmethod
+    def _shell_tool_call():
+        return SimpleNamespace(
             id="tc_rs",
             type="function",
             function=SimpleNamespace(
@@ -450,16 +491,34 @@ class TestAgentRunnerDefaults:
                 ),
             ),
         )
+
+    def test_runner_executes_file_search_shell_mode_when_enabled(self):
+        """End-to-end with the dispatcher: shell mode runs when opted in."""
         llm = _make_llm()
         llm._call_raw.side_effect = [
-            _make_tool_call_response(tc),
+            _make_tool_call_response(self._shell_tool_call()),
             _make_final_response("Ran it."),
         ]
-
-        record = AgentRunner(llm, SkillRegistry()).run("Run echo").tool_calls[0]
+        record = (
+            AgentRunner(llm, SkillRegistry(), allow_shell_mode=True)
+            .run("Run echo")
+            .tool_calls[0]
+        )
         assert record.error is None
         assert "runner_dispatch" in record.result
         assert "exit code: 0" in record.result
+
+    def test_runner_refuses_shell_mode_by_default(self):
+        """Without allow_shell_mode, the always-on file_search refuses shell."""
+        llm = _make_llm()
+        llm._call_raw.side_effect = [
+            _make_tool_call_response(self._shell_tool_call()),
+            _make_final_response("Done."),
+        ]
+        record = AgentRunner(llm, SkillRegistry()).run("Run echo").tool_calls[0]
+        assert record.error is None
+        assert "runner_dispatch" not in record.result
+        assert "shell mode is disabled" in record.result
 
 
 # ---------------------------------------------------------------------------
