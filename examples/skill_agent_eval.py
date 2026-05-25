@@ -206,6 +206,26 @@ def run_bm25_baseline_retrieval(
     return to_queried_nodes(raw)
 
 
+def run_hybrid_baseline_retrieval(
+    problem_statement: str,
+    repo_path: str,
+    args: argparse.Namespace,
+) -> List[QueriedNode]:
+    """Pure-retrieval baseline: BM25 → embedding rerank (RFC #133 baseline)."""
+    from codeminer.model import HybridRetrievePipeline
+
+    pipeline = HybridRetrievePipeline(
+        repo_path=repo_path,
+        index_cache_dir=args.index_cache_dir,
+        stage1_topk=128,  # BM25 candidate pool
+        stage2_topk=args.topk,  # Final results (align with agent default_top_k)
+        embedding_model=args.embedding_model,
+        embedding_dimension=args.embedding_dimension,
+        languages=args.languages,
+    )
+    return pipeline.query(problem_statement)
+
+
 def run_agent_with_skills(
     query: str,
     contexts: Dict[str, Any],
@@ -323,23 +343,33 @@ def evaluate_instance(
         # In bm25_baseline mode we still go through the compiler so the
         # build path stays single-source; we just read the BM25 index back
         # out for the direct-query call.
-        skill_ids = list(args.skills) if args.eval_mode == "agent" else ["bm25_search"]
+        # In hybrid_baseline mode, the pipeline builds indexes internally.
+        if args.eval_mode == "agent":
+            skill_ids = list(args.skills)
+        elif args.eval_mode == "bm25_baseline":
+            skill_ids = ["bm25_search"]
+        else:
+            # hybrid_baseline: skip build_skill_contexts (HybridRetrievePipeline does it)
+            skill_ids = []
+
         execution_log.append(f"Building contexts for skills={skill_ids}...")
-        contexts = build_skill_contexts(
-            repo_path=repo_path,
-            skill_ids=skill_ids,
-            languages=args.languages,
-            cache_dir=args.index_cache_dir,
-            embedding_model=args.embedding_model,
-            embedding_dimension=args.embedding_dimension,
-            default_top_k=args.topk,
-            default_level="l2",
-        )
-        execution_log.append(f"Built contexts for {sorted(contexts.keys())}")
+        contexts = {}
+        if skill_ids:  # Skip for hybrid_baseline
+            contexts = build_skill_contexts(
+                repo_path=repo_path,
+                skill_ids=skill_ids,
+                languages=args.languages,
+                cache_dir=args.index_cache_dir,
+                embedding_model=args.embedding_model,
+                embedding_dimension=args.embedding_dimension,
+                default_top_k=args.topk,
+                default_level="l2",
+            )
+            execution_log.append(f"Built contexts for {sorted(contexts.keys())}")
 
         simplified_gt = args.gt_symbols != "full"
 
-        # Step 3: Retrieve (agent tool-calling vs single-query BM25 baseline)
+        # Step 3: Retrieve (agent tool-calling vs single-query BM25 baseline vs hybrid cascade)
         if args.eval_mode == "bm25_baseline":
             retrieve_ctx = contexts.get("retrieve")
             if retrieve_ctx is None or retrieve_ctx.bm25 is None:
@@ -363,6 +393,23 @@ def evaluate_instance(
                 "total_duration_ms": 0.0,
                 "tool_call_count": 0,
                 "eval_mode": "bm25_baseline",
+            }
+        elif args.eval_mode == "hybrid_baseline":
+            execution_log.append(
+                "Running hybrid baseline (BM25 → embedding rerank)..."
+            )
+            results = run_hybrid_baseline_retrieval(
+                problem_statement, repo_path, args
+            )
+            search_log = [
+                f"Hybrid baseline retrieved {len(results)} nodes (cascade mode)"
+            ]
+            execution_log.extend(search_log)
+            usage = {
+                "total_turns": 0,
+                "total_duration_ms": 0.0,
+                "tool_call_count": 0,
+                "eval_mode": "hybrid_baseline",
             }
         else:
             if llm is None:
@@ -477,19 +524,82 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
         )
 
     # Load dataset
-    dataset = SwebenchDataset(
-        dataset=args.dataset,
-        split=args.split,
-        filter_instance=args.filter_instance,
-        root=args.cache_dir,
-        repo_root=args.repo_cache_dir,
-    )
-    instances = dataset.load()
-    logger.info(f"Loaded {len(instances)} instances")
-
+    # If --eval-instances points to a complete instance JSON (not just GT),
+    # load instances directly from it instead of from HF dataset
     eval_lookup: Optional[Dict[str, Any]] = None
     if args.eval_instances:
-        eval_lookup = dataset.load_eval_metadata(args.eval_instances)
+        eval_instances_path = Path(os.path.expanduser(args.eval_instances))
+        if eval_instances_path.exists():
+            with open(eval_instances_path, encoding="utf-8") as f:
+                eval_instances_data = json.load(f)
+
+            # Check if this is a complete instance file (has 'repo', 'problem_statement')
+            # vs just GT metadata (has 'target_files', 'code_blocks')
+            if isinstance(eval_instances_data, list) and len(eval_instances_data) > 0:
+                first_item = eval_instances_data[0]
+                is_complete_instance = "repo" in first_item and "problem_statement" in first_item
+
+                if is_complete_instance:
+                    logger.info(
+                        f"Loading instances directly from {args.eval_instances} "
+                        f"({len(eval_instances_data)} instances)"
+                    )
+                    # Convert to Arrow dataset format for compatibility
+                    import datasets
+                    instances = datasets.Dataset.from_list(eval_instances_data)
+
+                    # Build eval_lookup from the same data (extract GT fields)
+                    eval_lookup = {}
+                    for inst in eval_instances_data:
+                        iid = inst["instance_id"]
+                        eval_lookup[iid] = {
+                            "instance_id": iid,
+                            "repo": inst.get("repo"),
+                            "base_commit": inst.get("base_commit"),
+                            "target_files": inst.get("gt_target_files", []),
+                            "code_blocks": inst.get("gt_code_blocks", []),
+                            "symbols_modified": inst.get("gt_symbols_modified", []),
+                            "symbols_added": inst.get("gt_symbols_added", []),
+                            "symbols_deleted": inst.get("gt_symbols_deleted", []),
+                        }
+
+                    # Still need dataset object for process_instance/get_repo_path
+                    # Create a dataset object but don't load from HF (instances already loaded)
+                    dataset = SwebenchDataset(
+                        dataset=args.dataset,
+                        split=args.split,
+                        filter_instance=args.filter_instance,
+                        root=args.cache_dir,
+                        repo_root=args.repo_cache_dir,
+                    )
+                else:
+                    # Just GT metadata, load instances from HF as usual
+                    dataset = SwebenchDataset(
+                        dataset=args.dataset,
+                        split=args.split,
+                        filter_instance=args.filter_instance,
+                        root=args.cache_dir,
+                        repo_root=args.repo_cache_dir,
+                    )
+                    instances = dataset.load()
+                    logger.info(f"Loaded {len(instances)} instances from {args.dataset}")
+                    eval_lookup = dataset.load_eval_metadata(args.eval_instances)
+            else:
+                # Empty or invalid file
+                raise ValueError(f"Invalid eval_instances file: {args.eval_instances}")
+        else:
+            raise FileNotFoundError(f"Eval instances file not found: {args.eval_instances}")
+    else:
+        # No --eval-instances, load from HF dataset
+        dataset = SwebenchDataset(
+            dataset=args.dataset,
+            split=args.split,
+            filter_instance=args.filter_instance,
+            root=args.cache_dir,
+            repo_root=args.repo_cache_dir,
+        )
+        instances = dataset.load()
+        logger.info(f"Loaded {len(instances)} instances")
 
     if args.locagent_lite_subset:
         if not eval_lookup:
@@ -511,7 +621,7 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
             before,
         )
 
-    # Initialize LLM (agent mode only)
+    # Initialize LLM (agent mode only; baselines don't need LLM)
     llm: Optional[LiteLLMChat] = None
     if args.eval_mode == "agent":
         llm_kwargs = {}
@@ -558,8 +668,15 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
     avg_metrics = average_metrics(aggregate, metric_count) if metric_count else {}
 
     # Build report
-    skill_ids = list(args.skills) if args.eval_mode == "agent" else ["bm25_baseline"]
-    report_model = args.model if args.eval_mode == "agent" else "bm25_baseline"
+    if args.eval_mode == "agent":
+        skill_ids = list(args.skills)
+        report_model = args.model
+    elif args.eval_mode == "bm25_baseline":
+        skill_ids = ["bm25_baseline"]
+        report_model = "bm25_baseline"
+    else:  # hybrid_baseline
+        skill_ids = ["hybrid_baseline"]
+        report_model = "hybrid_baseline"
 
     # Aggregate token usage across all instances (agent mode only).
     total_usage: Optional[Dict[str, Any]] = None
@@ -646,12 +763,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--eval-mode",
         type=str,
-        choices=["agent", "bm25_baseline"],
+        choices=["agent", "bm25_baseline", "hybrid_baseline"],
         default="agent",
         help=(
             "agent: AgentRunner + bm25_search tool-calling. "
             "bm25_baseline: one BM25 query per instance using problem_statement "
-            "(LocAgent Table 4 sparse baseline style; no LLM calls)."
+            "(LocAgent Table 4 sparse baseline style; no LLM calls). "
+            "hybrid_baseline: cascade BM25 → embedding rerank (pure-retrieval baseline "
+            "for RFC #133; no agent loop)."
         ),
     )
     parser.add_argument(

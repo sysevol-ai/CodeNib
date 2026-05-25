@@ -8,6 +8,7 @@ from .agentless_pipeline import AgentlessPipeline
 from .bm25_retrieve_pipeline import BM25RetrievePipeline
 from .embedding_retrieve_pipeline import EmbeddingRetrievePipeline
 from .graph_retrieve_pipeline import GraphRetrievePipeline
+from .hybrid_retrieve_pipeline import HybridRetrievePipeline
 from .retrieve_rerank_pipeline import (
     RetrieveRerankPipeline,
     RetrieveStageConfig,
@@ -19,6 +20,7 @@ __all__ = [
     "BM25RetrievePipeline",
     "EmbeddingRetrievePipeline",
     "GraphRetrievePipeline",
+    "HybridRetrievePipeline",
     "RetrieveRerankPipeline",
     "RetrieveStageConfig",
     "build_retrieve_plan",

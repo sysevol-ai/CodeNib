@@ -122,6 +122,7 @@ def _load_vector(cache_dir: str, *, embedding_model: str, embedding_dimension: i
         embedding_model=embedding_model,
         embedding_provider="huggingface",
         dimension=embedding_dimension,
+        trust_remote_code=True,  # Required for models like nomic-ai/CodeRankEmbed
     )
     store.load(_index_dir(cache_dir, "vector"))
     return store
