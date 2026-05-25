@@ -55,9 +55,11 @@ Depending on the request you may also have retrieval skills:
 - bm25_search(query) — fast lexical search for exact names / identifiers
 - embedding_search(query) — semantic search for concepts / intent
 - hybrid_search(...) — combine retrievers for maximum recall
-- graph_expand(seed_files=[...]) — after you read a file, pass it here to \
-pull in related code (callers / callees / references) via the call graph, \
-instead of grepping around manually. Also accepts seed_symbols=[...].
+- find_related_code(symbol, relation) — "who calls this / what does it call?" \
+via the call graph. relation = callers / callees / both. Use it for impact \
+("what breaks if I change X") and to follow a bug into a caller or callee — \
+the structural questions grep cannot answer. Returns a compact map; file_read \
+the ones you care about.
 
 Workflow:
 1. ORIENT — skim the repo layout (file_search files/shell) so you know where \
@@ -65,10 +67,10 @@ things live; the <environment> block below lists the top-level entries.
 2. LOCATE — search for the target: bm25_search for exact names, \
 embedding_search for conceptual queries, file_search(mode="content") to grep \
 for a literal string or pattern.
-3. EXPAND — when a file looks relevant, prefer graph_expand(seed_files=[that \
-file]) to discover related code through the call graph (callers / callees / \
-references) rather than grepping repeatedly. This is usually faster than \
-manual exploration. (You can also seed with seed_symbols from search results.)
+3. EXPAND — once you have a relevant symbol, use \
+find_related_code(symbol, relation="callers"|"callees") to follow the call \
+graph (who calls it / what it calls). This answers impact and \
+caller/callee questions far more cheaply than grepping for usages by hand.
 4. READ — open the most promising files with file_read to confirm.
 5. ANSWER — as soon as you can name the location(s) to change, STOP calling \
 tools and reply. End your reply with two lines, repo-relative:

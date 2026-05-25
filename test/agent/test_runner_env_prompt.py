@@ -56,9 +56,10 @@ def test_no_environment_block_without_repo_path():
     assert "repo_path:" not in runner.system_prompt
 
 
-def test_workflow_prompt_teaches_seed_flow():
+def test_workflow_prompt_teaches_graph_and_files():
     llm = MagicMock(spec=LiteLLMChat)
     runner = AgentRunner(llm, SkillRegistry())
     p = runner.system_prompt
-    assert "seed_symbols" in p
+    assert "find_related_code" in p  # graph navigation verb
+    assert "file_search" in p and "file_read" in p
     assert "file_search" in p and "file_read" in p

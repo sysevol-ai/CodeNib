@@ -305,3 +305,41 @@ embedding.
   across conditions.
 - `graph_expand`'s `seed_files` path is exercised by unit tests but, because
   the agent never called it, has no end-to-end agent coverage here.
+
+---
+
+# Follow-up: an agent-friendly graph tool (`find_related_code`)
+
+The cost study suggested `graph_expand` was ignored partly because it was
+*unfriendly* (exact-name seeds, 8 knobs, code-body blobs). So we built a
+LocAgent/CodeGraph-style replacement, `find_related_code(symbol, relation)`:
+seed by a plain name (fuzzy-resolved; ambiguity returns candidates), `relation`
+∈ {callers, callees, both}, and a **compact** result (name · file:line · kind ·
+"caller/callee of X") with **no code bodies** — the agent uses `file_read` for
+the one or two it cares about. Standalone it works well (bare `"doWatch"` →
+40 compact related symbols, repo-relative paths).
+
+**Result: still not adopted when grep coexists.** With `find_related_code`
+available *and* the system prompt explicitly recommending it for caller/callee
+and impact questions, neither haiku nor gemini-2.5-flash called it (0×) on
+vuejs-11589 — both localized with `file_search` + `file_read`.
+
+This reconciles our results with LocAgent: **LocAgent does not give the agent
+grep/read — its graph tools are the only interface.** A well-formed graph tool
+is *necessary but not sufficient* for adoption; when grep is available these
+models prefer it on tasks grep can already solve. To realize the graph's value
+we therefore need one of:
+
+1. **Graph-only interface** (LocAgent-style): withhold file tools so graph
+   navigation is the path. (Our `include_default_tools=false` enables this; the
+   earlier "structured" run shows the agent then uses retrieval — though it
+   spammed embedding rather than graph, so embedding may also need withholding
+   to isolate graph.)
+2. **Deterministic graph augmentation** (AoT): expand the call graph in the
+   pipeline after the first hit, independent of the agent's tool choice.
+3. **Task-targeted evaluation**: measure on impact / deep cross-file-chain
+   localization where grep genuinely fails — not the moderate single-file
+   localizations in this sample, where grep+read suffices.
+
+`find_related_code` is the right *interface* (it matches the designs that work
+in the literature); the open problem is **adoption / harness**, not the tool.
