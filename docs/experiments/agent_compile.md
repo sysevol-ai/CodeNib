@@ -366,3 +366,53 @@ whenever grep/read are available.** The tool shape is not the bottleneck; the
 search→graph-expand→snippet-assembly *internally* so the agent makes one call
 instead of choosing graph over grep — and (c) measuring at large-repo scale.
 Building a nicer agent-chosen graph tool has been exhausted.
+
+---
+
+# The graph-aware harness works: `codeminer_context` (one-call composer)
+
+Since three *agent-chosen* graph tools were all ignored, we moved the graph
+into the **harness**: `codeminer_context(query)` — one call that internally
+(1) searches for entry-point symbols (bm25 + embedding), (2) **deterministically
+expands** each along the call graph (callers + callees via `_graphnav`), and
+(3) returns a compact, deduped, budget-capped set (name · file:line · kind ·
+relation; no bodies). The agent makes *one* call instead of choosing graph over
+grep. The prompt steers "call codeminer_context FIRST." (Loader change: `custom`
+skills receive the full `contexts` dict so the composer can read both
+`retrieve` and `expand`.)
+
+## Result — adoption solved, and token savings where the agent fans out
+
+haiku, defaults (grep/read) also available, vs the FREE grep/read baseline:
+
+| instance | FREE files@5 / tokens | codeminer_context files@5 / tokens | Δtokens | ctx calls |
+|---|---|---|---|---|
+| vuejs-11589 (cross-file) | 1.0 / 226 817 | 1.0 / **111 903** | **−51 %** | 1 |
+| micropython-13569 | 1.0 / 140 828 | 1.0 / 137 666 | −2 % | 1 |
+| babel-15445 (grep already cheap) | 1.0 / 117 202 | 1.0 / 131 969 | +13 % | 1 |
+| **total** | 484 847 | **381 538** | **−21 %** | 3/3 |
+
+Two findings:
+
+1. **Adoption is solved by the harness, not the tool.** `codeminer_context`
+   was called in **3/3** cells — versus **0** for every standalone graph tool
+   (graph_expand, find_related_code, find_callers/callees/trace). Framing the
+   graph as a one-call "map this task" composer that the prompt tells the agent
+   to call first gets it used; offering graph navigation as an optional tool
+   next to grep does not.
+2. **The token win shows where the grep agent fans out** — vuejs (cross-file)
+   −51 % at equal accuracy; flat on micropython; slightly negative on babel,
+   where grep already localized cheaply (the composer call isn't free). Net
+   −21 % across three. This is exactly CodeGraph's profile: gains concentrate
+   on large / cross-file cases and are marginal where grep was already
+   efficient — so the headline win requires large-repo scale + more instances.
+
+## Takeaway
+
+This validates the project's value proposition on the right axis (**cost at
+equal accuracy**) and via the right mechanism (a **graph-aware harness**, not a
+free wrapper tool). Next: trust the composer more (the agent still did 6–7
+confirming `file_read`s after the one context call — room for further savings),
+benchmark at VS-Code / Next.js scale, and expose `codeminer_context` +
+`find_callers/callees/trace` over the MCP server (the infra already exists) for
+the host-agent path CodeGraph uses.

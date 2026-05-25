@@ -60,12 +60,18 @@ call-graph navigation (who calls X, what X calls, the path from X to Y). Use \
 for impact and to follow a bug across functions — the structural questions \
 grep cannot answer. Compact results; file_read the ones you care about.
 
+Fastest path: call **codeminer_context(query)** FIRST — one call searches for \
+the relevant entry-point symbols and expands them along the call graph \
+(callers + callees), returning a compact map. It usually gives you the edit \
+location (or a tight shortlist) without manual grep/read fan-out.
+
 Workflow:
-1. ORIENT — skim the repo layout (file_search files/shell) so you know where \
-things live; the <environment> block below lists the top-level entries.
-2. LOCATE — search for the target: bm25_search for exact names, \
-embedding_search for conceptual queries, file_search(mode="content") to grep \
-for a literal string or pattern.
+1. ORIENT — start with codeminer_context(query). Only fall back to file_search \
+(files/shell) to browse layout if you still need it; the <environment> block \
+below lists the top-level entries.
+2. LOCATE — if you need more, search for the target: bm25_search for exact \
+names, embedding_search for conceptual queries, file_search(mode="content") to \
+grep for a literal string or pattern.
 3. EXPAND — once you have a relevant symbol, use find_callers / find_callees / \
 trace to follow the call graph (who calls it, what it calls, how X reaches Y). \
 This answers impact and caller/callee questions far more cheaply than grepping \
