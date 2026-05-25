@@ -343,3 +343,26 @@ we therefore need one of:
 
 `find_related_code` is the right *interface* (it matches the designs that work
 in the literature); the open problem is **adoption / harness**, not the tool.
+
+## Update: intent verbs (find_callers / find_callees / trace) — same outcome
+
+Replaced the single `find_related_code` with three agent-native verbs:
+`find_callers(symbol)`, `find_callees(symbol)`, `trace(from, to)` — sharing one
+engine (`skills/_graphnav.py`, wrapping `CodeGraph.get_predecessors/successors`
++ shortest-path), compact (no bodies), fuzzy-resolved with ambiguity →
+candidates. Functionally validated on vuejs (doWatch → 6 callers / 40 callees;
+watchEffect()→doWatch() trace = 2 hops).
+
+**Adoption unchanged: 0 graph-verb calls** on vuejs (haiku, verbs + grep both
+available, prompt recommends them) — file_search×3, bm25×2, file_read×9.
+
+We have now tried **three** graph-tool designs — generic `graph_expand`,
+friendly `find_related_code`, and intent verbs — and **all three are ignored
+whenever grep/read are available.** The tool shape is not the bottleneck; the
+**harness** is. Per the CodeGraph analysis, adoption + token wins come from:
+(a) serving the graph via the warm **MCP server** with host-agent steering
+(CodeMiner already has `codeminer/mcp/server.py` + the manifest/compiler), and
+(b) a **one-call context composer** (`codeminer_context`) that runs
+search→graph-expand→snippet-assembly *internally* so the agent makes one call
+instead of choosing graph over grep — and (c) measuring at large-repo scale.
+Building a nicer agent-chosen graph tool has been exhausted.

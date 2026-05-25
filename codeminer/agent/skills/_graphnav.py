@@ -1,0 +1,126 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Shared call-graph navigation helpers (callers / callees / trace).
+
+Centralises the engine so the agent skills (``find_callers`` /
+``find_callees`` / ``trace``) and the MCP server tools share one
+implementation. All results are COMPACT — name, file:line, kind, and a short
+relation marker, with no code bodies (callers fetch source with file_read /
+the search tools). This module is not a skill itself (no ``config.yaml``), so
+``SkillLoader`` ignores it.
+"""
+
+from __future__ import annotations
+
+from typing import Any, List, Optional, Tuple
+
+
+def candidates(graph: Any, symbol: str, limit: int = 8) -> List[str]:
+    """Graph node names that could match *symbol* (exact → suffix → substring)."""
+    n2v = getattr(graph, "name_to_vertex", {}) or {}
+    s = (symbol or "").strip().strip("`'\"")
+    if not s:
+        return []
+    if s in n2v:
+        return [s]
+    base = s.split(".")[-1].split(":")[-1]
+    suf = [k for k in n2v if k.endswith("." + s) or k.split(".")[-1] == base]
+    if suf:
+        return suf[:limit]
+    sub = [k for k in n2v if base and base.lower() in k.lower()]
+    return sub[:limit]
+
+
+def resolve(graph: Any, symbol: str) -> Tuple[Optional[str], List[str]]:
+    """Return (canonical_name | None, candidates). None when ambiguous/missing."""
+    n2v = getattr(graph, "name_to_vertex", {}) or {}
+    if symbol in n2v:
+        return symbol, [symbol]
+    cands = candidates(graph, symbol)
+    return (cands[0] if len(cands) == 1 else None), cands
+
+
+def _compact(graph: Any, name: str, relation: str):
+    """Build a body-less QueriedNode for a graph node *name*."""
+    from ...types import QueriedNode
+
+    info = graph.get_node_info_by_name(name) or {}
+    f = info.get("file")
+    return QueriedNode(
+        node_name=name,
+        type=info.get("type", ""),
+        file=f,
+        start_line=info.get("start_line"),
+        end_line=info.get("end_line"),
+        node_id=f"{f}:{name}" if f else name,
+        score=1.0,
+        content=relation,  # short marker, e.g. "caller of X" — no code body
+    )
+
+
+def _names_for_ids(graph: Any, vids: List[int]) -> List[str]:
+    out = []
+    for vid in vids:
+        info = graph.get_node_info_by_id(vid) or {}
+        nm = info.get("name")
+        if nm:
+            out.append(nm)
+    return out
+
+
+def neighbors(graph: Any, symbol: str, relation: str, top_k: int = 40) -> List[Any]:
+    """Callers (predecessors) and/or callees (successors) of *symbol*, compact.
+
+    ``relation`` ∈ {"callers", "callees", "both"}. Raises ValueError with
+    candidates when the symbol can't be resolved (so the agent can re-seed).
+    """
+    name, cands = resolve(graph, symbol)
+    if name is None:
+        if cands:
+            raise ValueError(
+                f"symbol {symbol!r} is ambiguous; candidates: {cands}. "
+                "Call again with one exact name."
+            )
+        raise ValueError(
+            f"symbol {symbol!r} not found in the code graph. Use a name from a "
+            "search result, or grep with file_search to find it."
+        )
+    results: List[Any] = []
+    if relation in ("callees", "both"):
+        for nm in _names_for_ids(graph, graph.get_successors(name)):
+            results.append(_compact(graph, nm, f"callee of {name}"))
+    if relation in ("callers", "both"):
+        for nm in _names_for_ids(graph, graph.get_predecessors(name)):
+            results.append(_compact(graph, nm, f"caller of {name}"))
+    return results[:top_k]
+
+
+def trace(
+    graph: Any, from_symbol: str, to_symbol: str, max_hops: int = 10
+) -> List[Any]:
+    """Shortest call path from *from_symbol* to *to_symbol* (compact hops).
+
+    Returns the ordered nodes on the path (empty if unreachable). Raises
+    ValueError if either endpoint can't be resolved.
+    """
+    a, a_c = resolve(graph, from_symbol)
+    b, b_c = resolve(graph, to_symbol)
+    if a is None:
+        raise ValueError(f"from_symbol {from_symbol!r} unresolved; candidates: {a_c}")
+    if b is None:
+        raise ValueError(f"to_symbol {to_symbol!r} unresolved; candidates: {b_c}")
+    n2v = graph.name_to_vertex
+    try:
+        paths = graph.graph.get_shortest_paths(n2v[a], to=n2v[b], mode="out")
+    except Exception:  # noqa: BLE001
+        paths = []
+    path = paths[0] if paths else []
+    if not path or len(path) > max_hops + 1:
+        return []
+    names = _names_for_ids(graph, list(path))
+    out = []
+    for i, nm in enumerate(names):
+        out.append(_compact(graph, nm, f"hop {i} on path {a} -> {b}"))
+    return out

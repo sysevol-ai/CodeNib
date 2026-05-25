@@ -60,6 +60,6 @@ def test_workflow_prompt_teaches_graph_and_files():
     llm = MagicMock(spec=LiteLLMChat)
     runner = AgentRunner(llm, SkillRegistry())
     p = runner.system_prompt
-    assert "find_related_code" in p  # graph navigation verb
+    assert "find_callers" in p and "find_callees" in p  # graph navigation verbs
     assert "file_search" in p and "file_read" in p
     assert "file_search" in p and "file_read" in p

@@ -46,4 +46,6 @@ subsets:
   GRAPHF:
     - bm25_search
     - embedding_search
-    - find_related_code
+    - find_callers
+    - find_callees
+    - trace
