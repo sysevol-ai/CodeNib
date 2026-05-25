@@ -183,6 +183,8 @@ class _HuggingFaceEmbeddingWrapper:
         kwargs = self._build_encode_kwargs(
             self._document_prompt, self._document_prompt_name
         )
+        # Use smaller batch size to avoid CUDA OOM on large repos
+        kwargs.setdefault("batch_size", 8)
         vecs = self._model.encode(texts, **kwargs)
         return vecs.tolist()
 
