@@ -86,6 +86,7 @@ class SampleConfig:
     embedding_dimension: int = 1024
     metrics_k: List[int] = field(default_factory=lambda: [1, 3, 5, 10])
     gt_simplified_symbols: bool = True
+    include_default_tools: bool = True
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SampleConfig":
@@ -199,6 +200,7 @@ def _run_cell(
         max_turns=cfg.max_turns,
         allow_skills=set(skills),
         session_ctx=sctx,
+        include_default_tools=cfg.include_default_tools,
     )
     # The always-on default tools (file_read / file_search) resolve relative
     # paths against the process cwd, so run the agent from the instance repo.
@@ -544,6 +546,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--instances", nargs="+", default=None, help="Override config instance list."
     )
     parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--model", default=None, help="Override config model.")
+    parser.add_argument(
+        "--vertex-location", default=None, help="Override config vertex_location."
+    )
     args = parser.parse_args(argv)
 
     cfg = SampleConfig.from_yaml(args.config)
@@ -551,6 +557,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         cfg.reps = args.reps
     if args.instances:
         cfg.instances = args.instances
+    if args.model:
+        cfg.model = args.model
+    if args.vertex_location:
+        cfg.vertex_location = args.vertex_location
 
     summary = run_sweep(cfg, args.output_dir, resume=not args.no_resume)
     print(

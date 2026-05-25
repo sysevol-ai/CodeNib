@@ -116,6 +116,7 @@ class AgentRunner:
         manifest: Optional[Any] = None,
         session_ctx: Optional[Any] = None,
         compile_table: Optional[Any] = None,
+        include_default_tools: bool = True,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -132,8 +133,14 @@ class AgentRunner:
         # unconditionally so every query — and every agent-compile subset —
         # has the filesystem primitives (read / grep / glob / shell) the model
         # is pretrained on. These sit *outside* the allow/compile_table funnel.
-        ensure_defaults_registered(self.registry)
-        self._default_ids: Set[str] = set(DEFAULT_SKILL_IDS)
+        # ``include_default_tools=False`` withholds them — used to force the
+        # structured (retrieval + graph) path in cost-comparison experiments.
+        self._include_defaults = include_default_tools
+        if include_default_tools:
+            ensure_defaults_registered(self.registry)
+        self._default_ids: Set[str] = (
+            set(DEFAULT_SKILL_IDS) if include_default_tools else set()
+        )
         self.max_turns = max_turns
         self.session_ctx = session_ctx
 

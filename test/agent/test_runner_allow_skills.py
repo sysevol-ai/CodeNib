@@ -177,6 +177,20 @@ class TestAgentRunnerAllowSkills:
         runner = AgentRunner(llm, three_skill_registry, allow_skills={"a", "ghost"})
         assert _swept(runner.tools) == {"a"}
 
+    def test_include_default_tools_false_withholds_defaults(self, three_skill_registry):
+        """The cost-study 'structured' condition: defaults are withheld so the
+        agent must use the swept skills only."""
+        llm = MagicMock(spec=LiteLLMChat)
+        runner = AgentRunner(
+            llm,
+            three_skill_registry,
+            allow_skills={"a"},
+            include_default_tools=False,
+        )
+        names = {t["function"]["name"] for t in runner.tools}
+        assert names == {"a"}
+        assert not (set(DEFAULT_SKILL_IDS) & names)
+
 
 # ---------------------------------------------------------------------------
 # allow_skills × ResourceGuard interaction
