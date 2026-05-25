@@ -199,10 +199,19 @@ def _run_cell(
         allow_skills=set(skills),
         session_ctx=sctx,
     )
-    result = runner.run(query)
+    # The always-on default tools (file_read / file_search) resolve relative
+    # paths against the process cwd, so run the agent from the instance repo.
+    # The sweep is sequential, so chdir is safe here.
+    prev_cwd = os.getcwd()
+    try:
+        os.chdir(repo_path)
+        result = runner.run(query)
+    finally:
+        os.chdir(prev_cwd)
 
     nodes: List[Any] = []
     tool_calls: List[Dict[str, Any]] = []
+    file_read_paths: List[str] = []
     for tc in result.tool_calls:
         n = len(tc.result) if isinstance(tc.result, list) else 0
         tool_calls.append(
@@ -214,12 +223,18 @@ def _run_cell(
         )
         if isinstance(tc.result, list):
             nodes.extend(tc.result)
+        if tc.skill_id == "file_read" and not tc.error:
+            p = (tc.arguments or {}).get("path")
+            if p:
+                file_read_paths.append(str(p))
 
     usage = result.usage.to_dict() if result.usage else {}
     token_usage = usage.get("token_usage") or usage or {}
     return {
         "nodes": nodes,
         "tool_calls": tool_calls,
+        "file_read_paths": file_read_paths,
+        "answer": result.answer or "",
         "total_turns": result.total_turns,
         "total_duration_ms": result.total_duration_ms,
         "tool_call_count": len(result.tool_calls),
@@ -231,12 +246,100 @@ def _run_cell(
 
 
 # ---------------------------------------------------------------------------
+# Localization scoring (agent answer + file_read targets + retrieval nodes)
+# ---------------------------------------------------------------------------
+
+_FILES_LINE = re.compile(r"(?im)^\s*files?\s*[:=]\s*(.+)$")
+_SYMBOLS_LINE = re.compile(r"(?im)^\s*symbols?\s*[:=]\s*(.+)$")
+_PATH_TOKEN = re.compile(r"[\w./\\-]+\.[A-Za-z0-9_]+")
+
+
+def _rel_norm(path: str, repo_path: str):
+    """Normalize a path to the repo-relative posix form used by the GT."""
+    from codeminer.eval.retrieval_eval import normalize_file_path
+
+    p = (path or "").strip().strip("`'\"")
+    if not p:
+        return None
+    if repo_path and os.path.isabs(p):
+        try:
+            p = os.path.relpath(p, repo_path)
+        except ValueError:
+            pass
+    return normalize_file_path(p)
+
+
+def _dedup(seq):
+    seen, out = set(), []
+    for x in seq:
+        if x and x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def _answer_files(answer: str) -> List[str]:
+    """Files named in the answer: explicit ``Files:`` line, else path tokens."""
+    explicit: List[str] = []
+    for m in _FILES_LINE.finditer(answer or ""):
+        explicit.extend(t for t in re.split(r"[,\s]+", m.group(1).strip()) if t)
+    if explicit:
+        return explicit
+    return _PATH_TOKEN.findall(answer or "")  # soft fallback
+
+
+def _answer_symbols(answer: str) -> List[str]:
+    syms: List[str] = []
+    for m in _SYMBOLS_LINE.finditer(answer or ""):
+        syms.extend(t for t in re.split(r"[,\s]+", m.group(1).strip()) if t)
+    return syms
+
+
+def score_localization(
+    out: Dict[str, Any],
+    target_files: Sequence[str],
+    target_symbols: Sequence[str],
+    ks: Sequence[int],
+    repo_path: str,
+):
+    """files@k / symbols@k from the agent's answer + file_read + skill nodes.
+
+    Predicted files are an ordered union of (1) the answer's Files: line /
+    path tokens, (2) the paths the agent file_read, (3) retrieval-skill node
+    files — reflecting how the agent actually localized rather than only the
+    retrieval-skill output. Same output shape as ``evaluate_predictions``.
+    """
+    from codeminer.eval.retrieval_eval import (
+        compute_metrics,
+        extract_predictions,
+        normalize_symbol_identifier,
+    )
+
+    node_files, node_symbols = extract_predictions(out.get("nodes") or [])
+    answer = out.get("answer") or ""
+    pred_files = _dedup(
+        [_rel_norm(f, repo_path) for f in _answer_files(answer)]
+        + [_rel_norm(p, repo_path) for p in (out.get("file_read_paths") or [])]
+        + list(node_files)
+    )
+    pred_symbols = _dedup(
+        [normalize_symbol_identifier(s) for s in _answer_symbols(answer)]
+        + list(node_symbols)
+    )
+    metrics: Dict[str, Dict[int, Dict[str, float]]] = {"files": {}, "symbols": {}}
+    for k in ks:
+        metrics["files"][k] = compute_metrics(pred_files[:k], target_files)
+        metrics["symbols"][k] = compute_metrics(pred_symbols[:k], target_symbols)
+    return metrics
+
+
+# ---------------------------------------------------------------------------
 # Sweep loop
 # ---------------------------------------------------------------------------
 
 
 def run_sweep(cfg: SampleConfig, output_dir: Path, *, resume: bool = True) -> Dict:
-    from codeminer.eval.retrieval_eval import collect_targets, evaluate_predictions
+    from codeminer.eval.retrieval_eval import collect_targets
     from codeminer.llm.litellm_chat import LiteLLMChat
 
     cells_dir = output_dir / "cells"
@@ -341,11 +444,12 @@ def run_sweep(cfg: SampleConfig, output_dir: Path, *, resume: bool = True) -> Di
                     subset_id=subset_id,
                     skills=skills,
                 )
-                metrics = evaluate_predictions(
-                    nodes=out["nodes"],
+                metrics = score_localization(
+                    out,
                     target_files=target_files,
                     target_symbols=target_symbols,
                     ks=cfg.metrics_k,
+                    repo_path=repo_path,
                 )
                 record = {
                     "cell_id": cell_id,
@@ -362,6 +466,8 @@ def run_sweep(cfg: SampleConfig, output_dir: Path, *, resume: bool = True) -> Di
                     "target_files": target_files,
                     "target_symbols": target_symbols,
                     "tool_calls": out["tool_calls"],
+                    "file_read_paths": out["file_read_paths"],
+                    "answer": out["answer"],
                     "total_turns": out["total_turns"],
                     "total_duration_ms": out["total_duration_ms"],
                     "tool_call_count": out["tool_call_count"],

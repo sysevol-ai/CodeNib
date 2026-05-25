@@ -69,13 +69,19 @@ graph_expand(seed_symbols=[...]) passing the EXACT node_name strings from \
 those results. It needs real seeds: copy node_name verbatim; if a name does \
 not resolve, grep for it with file_search(mode="content") first.
 4. READ — open the most promising files with file_read to confirm.
-5. ANSWER — when you have enough context, stop calling tools and state the \
-relevant file(s) / symbol(s) concisely.
+5. ANSWER — as soon as you can name the location(s) to change, STOP calling \
+tools and reply. End your reply with two lines, repo-relative:
+   Files: path/one.ext, path/two.ext
+   Symbols: path/one.ext:symbol_name, ...
+Do not keep exploring once you can name the relevant file(s) — a few \
+confirming reads are enough.
 
 Guidelines:
 - Start broad, then narrow. Prefer lower-cost tools first.
 - Do not loop on the same query; if a tool returns nothing useful, switch \
 strategy (grep, read a file, or a different retriever).
+- You have a limited tool budget. Converge: once a file looks right, confirm \
+it and answer rather than exhaustively reading every candidate.
 """
 
 # Maximum characters for a single tool result to avoid context blowup.
