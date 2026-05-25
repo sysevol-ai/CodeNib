@@ -22,6 +22,11 @@ from ..llm.litellm_chat import LiteLLMChat
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
+from .skills.defaults import (
+    _SKIP_DIR_PREFIXES,
+    DEFAULT_SKILL_IDS,
+    ensure_defaults_registered,
+)
 from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
 from .tool_schema import registry_to_tools
@@ -37,18 +42,40 @@ _DEFAULT_SKILLS_DIR: Path = Path(__file__).parent / "skills"
 CompileTableInput = Union[str, Path, Mapping[str, Any]]
 
 _DEFAULT_SYSTEM_PROMPT = """\
-You are a code search agent. You have access to tools that search a \
-codebase and retrieve relevant code snippets. Use the tools iteratively \
-to find the information needed, then provide a concise answer.
+You are a code localization agent. Find the code locations (files and \
+symbols) relevant to the request, then give a concise answer naming them.
+
+You always have a filesystem toolset for navigating the repository:
+- file_search(mode="files", pattern=...) — list files by glob (explore layout)
+- file_search(mode="content", pattern=...) — grep file contents (regex/literal)
+- file_search(mode="shell", command=...) — run a shell command (ls, find, git)
+- file_read(path, start_line, end_line) — read a file or a line range
+
+Depending on the request you may also have retrieval skills:
+- bm25_search(query) — fast lexical search for exact names / identifiers
+- embedding_search(query) — semantic search for concepts / intent
+- hybrid_search(...) — combine retrievers for maximum recall
+- graph_expand(seed_symbols=[...]) — from symbols you already found, walk the \
+symbol graph to structurally related code (callers, callees, members)
+
+Workflow:
+1. ORIENT — skim the repo layout (file_search files/shell) so you know where \
+things live; the <environment> block below lists the top-level entries.
+2. LOCATE — search for the target: bm25_search for exact names, \
+embedding_search for conceptual queries, file_search(mode="content") to grep \
+for a literal string or pattern.
+3. EXPAND (optional) — once a search returns a relevant symbol, call \
+graph_expand(seed_symbols=[...]) passing the EXACT node_name strings from \
+those results. It needs real seeds: copy node_name verbatim; if a name does \
+not resolve, grep for it with file_search(mode="content") first.
+4. READ — open the most promising files with file_read to confirm.
+5. ANSWER — when you have enough context, stop calling tools and state the \
+relevant file(s) / symbol(s) concisely.
 
 Guidelines:
-- Start with broad searches, then narrow down.
-- Use graph_expand to find structurally related code after an initial search.
-- When you have enough context, provide a final answer directly.
-- Prefer lower-cost skills unless the query clearly requires semantic understanding.
-- For simple exact-name lookups use bm25_search; \
-for conceptual / intent queries use embedding_search; \
-for maximum coverage use hybrid_search.
+- Start broad, then narrow. Prefer lower-cost tools first.
+- Do not loop on the same query; if a tool returns nothing useful, switch \
+strategy (grep, read a file, or a different retriever).
 """
 
 # Maximum characters for a single tool result to avoid context blowup.
@@ -94,6 +121,12 @@ class AgentRunner:
         else:
             raise ValueError("Either 'llm' or 'model' must be provided")
         self.registry = registry or SkillRegistry()
+        # Always-on default tool layer (file_read + file_search): registered
+        # unconditionally so every query — and every agent-compile subset —
+        # has the filesystem primitives (read / grep / glob / shell) the model
+        # is pretrained on. These sit *outside* the allow/compile_table funnel.
+        ensure_defaults_registered(self.registry)
+        self._default_ids: Set[str] = set(DEFAULT_SKILL_IDS)
         self.max_turns = max_turns
         self.session_ctx = session_ctx
 
@@ -114,27 +147,78 @@ class AgentRunner:
             self._base_exclude |= report.unavailable
             resource_warnings = report.warnings
 
+        # Defaults are always-on: no exclude (guard or caller) may drop them.
+        self._base_exclude -= self._default_ids
+
         self._compile_table = compile_table
 
         # Pre-compute the static tool list. When a compile_table is set,
         # ``run()`` recomputes per-query against the resolved allow set.
-        resolved_allow = self._resolve_allow_set(self._base_allow)
-        self.tools = registry_to_tools(
-            self.registry,
-            allow=resolved_allow,
-            exclude=self._base_exclude,
-        )
+        self.tools = self._tools_for(self._base_allow)
 
-        # Build system prompt with optional resource warnings
+        # Build system prompt: base + environment block + resource warnings.
         base_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
+        env_block = self._build_environment_block(self.session_ctx)
+        if env_block:
+            base_prompt += f"\n{env_block}\n"
         if resource_warnings:
             warnings_text = "\n".join(f"- {w}" for w in resource_warnings)
             base_prompt += f"\nIndex warnings:\n{warnings_text}\n"
         self.system_prompt = base_prompt
 
+    @staticmethod
+    def _build_environment_block(session_ctx: Optional[Any]) -> str:
+        """Render an <environment> block giving the agent a starting point.
+
+        Mirrors OpenCode's environment-info layer: the agent sees the repo
+        path, primary language, and a depth-1 listing so it can orient
+        before searching. Returns "" when no repo_path is available (keeps
+        prompt-free tests unchanged).
+        """
+        repo_path = getattr(session_ctx, "repo_path", None) if session_ctx else None
+        if not repo_path:
+            return ""
+        lines = ["<environment>", f"repo_path: {repo_path}"]
+        lang = getattr(session_ctx, "primary_language", None)
+        if lang:
+            lines.append(f"primary_language: {lang}")
+        size = getattr(session_ctx, "repo_size", None)
+        if size:
+            lines.append(f"repo_size: {size} files")
+        try:
+            entries = []
+            for child in sorted(Path(repo_path).iterdir(), key=lambda p: p.name):
+                if child.name.startswith(".") or child.name in _SKIP_DIR_PREFIXES:
+                    continue
+                entries.append(child.name + ("/" if child.is_dir() else ""))
+            if entries:
+                lines.append("top-level entries: " + ", ".join(entries[:40]))
+        except OSError:
+            pass
+        lines.append("</environment>")
+        return "\n".join(lines)
+
     # ------------------------------------------------------------------
     # Allow-set resolution (issue #149)
     # ------------------------------------------------------------------
+
+    def _tools_for(self, allow: Optional[Set[str]]) -> List[Dict[str, Any]]:
+        """Tool schemas for an allow set, with defaults always unioned in.
+
+        The always-on default layer (``self._default_ids``) is added *after*
+        any allow/compile_table narrowing, so the funnel's "table narrows,
+        never broadens" rule still governs the swept skills while file_read /
+        file_search remain available in every subset. ``allow=None`` exposes
+        the full registry (defaults already registered there).
+        """
+        resolved = self._resolve_allow_set(allow)
+        if resolved is not None:
+            resolved = resolved | self._default_ids
+        return registry_to_tools(
+            self.registry,
+            allow=resolved,
+            exclude=self._base_exclude,
+        )
 
     def _resolve_allow_set(self, allow: Optional[Set[str]]) -> Optional[Set[str]]:
         """Pin the empty-allowlist contract: empty → full registry + WARN.
@@ -193,12 +277,7 @@ class AgentRunner:
                             sorted(self._base_allow),
                         )
                         effective = set(self._base_allow)
-                resolved = self._resolve_allow_set(effective)
-                tools = registry_to_tools(
-                    self.registry,
-                    allow=resolved,
-                    exclude=self._base_exclude,
-                )
+                tools = self._tools_for(effective)
 
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": self.system_prompt},

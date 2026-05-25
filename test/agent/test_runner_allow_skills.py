@@ -18,9 +18,21 @@ from codeminer.agent.skills.core import (
     SkillOutputSpec,
     SkillType,
 )
+from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.agent.tool_schema import registry_to_tools
 from codeminer.llm.litellm_chat import LiteLLMChat
+
+
+def _swept(tools) -> set:
+    """Tool names minus the always-on default layer (file_read/file_search).
+
+    The default tool layer is unioned into every AgentRunner tool set
+    regardless of allow_skills/exclude, so allow-filtering assertions test
+    the *swept* skills with the defaults removed.
+    """
+    return {t["function"]["name"] for t in tools} - set(DEFAULT_SKILL_IDS)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -105,21 +117,20 @@ class TestAgentRunnerAllowSkills:
         """Runner's tool schema list only contains allowed skills."""
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(llm, three_skill_registry, allow_skills={"a", "b"})
+        assert _swept(runner.tools) == {"a", "b"}
+        # Defaults are always present on top of the allow set.
         names = {t["function"]["name"] for t in runner.tools}
-        assert names == {"a", "b"}
-        assert len(runner.tools) == 2
+        assert set(DEFAULT_SKILL_IDS) <= names
 
     def test_allow_skills_none_includes_all(self, three_skill_registry):
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(llm, three_skill_registry)
-        names = {t["function"]["name"] for t in runner.tools}
-        assert names == {"a", "b", "c"}
+        assert _swept(runner.tools) == {"a", "b", "c"}
 
     def test_allow_skills_single(self, three_skill_registry):
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(llm, three_skill_registry, allow_skills={"c"})
-        assert len(runner.tools) == 1
-        assert runner.tools[0]["function"]["name"] == "c"
+        assert _swept(runner.tools) == {"c"}
 
     def test_allow_and_exclude_combined(self, three_skill_registry):
         """exclude is applied on top of allow; overlap is excluded."""
@@ -130,8 +141,7 @@ class TestAgentRunnerAllowSkills:
             allow_skills={"a", "b", "c"},
             exclude_skills={"a"},
         )
-        names = {t["function"]["name"] for t in runner.tools}
-        assert names == {"b", "c"}
+        assert _swept(runner.tools) == {"b", "c"}
 
     def test_allow_skills_empty_set_falls_back_to_full_registry(
         self, three_skill_registry
@@ -159,15 +169,13 @@ class TestAgentRunnerAllowSkills:
         finally:
             runner_logger.removeHandler(handler)
 
-        names = {t["function"]["name"] for t in runner.tools}
-        assert names == {"a", "b", "c"}
+        assert _swept(runner.tools) == {"a", "b", "c"}
         assert any("empty allow_skills" in r.getMessage() for r in captured)
 
     def test_allow_skills_unknown_id_ignored(self, three_skill_registry):
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(llm, three_skill_registry, allow_skills={"a", "ghost"})
-        names = {t["function"]["name"] for t in runner.tools}
-        assert names == {"a"}
+        assert _swept(runner.tools) == {"a"}
 
 
 # ---------------------------------------------------------------------------
@@ -204,14 +212,16 @@ class TestAllowSkillsWithResourceGuard:
                 manifest=MagicMock(name="manifest"),
             )
 
-        names = {t["function"]["name"] for t in runner.tools}
         # 'b' is silently dropped even though the user allowed it.
-        assert names == {"a"}
+        assert _swept(runner.tools) == {"a"}
         # Warning from the guard is surfaced in the system prompt.
         assert "missing indexes" in runner.system_prompt
 
-    def test_guard_all_unavailable_with_allow_yields_empty(self, three_skill_registry):
-        """Every allowed skill is unavailable → no tools at all."""
+    def test_guard_all_unavailable_with_allow_yields_only_defaults(
+        self, three_skill_registry
+    ):
+        """Every *swept* skill is unavailable → only the always-on default
+        tool layer remains (the guard can never drop file_read/file_search)."""
         fake_guard = MagicMock()
         fake_guard.preflight.return_value = PreflightReport(
             unavailable={"a", "b", "c"},
@@ -230,7 +240,9 @@ class TestAllowSkillsWithResourceGuard:
                 manifest=MagicMock(name="manifest"),
             )
 
-        assert runner.tools == []
+        assert _swept(runner.tools) == set()
+        names = {t["function"]["name"] for t in runner.tools}
+        assert names == set(DEFAULT_SKILL_IDS)
 
     def test_guard_does_not_expand_allow(self, three_skill_registry):
         """A skill marked ``available`` by the guard but NOT in
@@ -255,5 +267,4 @@ class TestAllowSkillsWithResourceGuard:
                 manifest=MagicMock(name="manifest"),
             )
 
-        names = {t["function"]["name"] for t in runner.tools}
-        assert names == {"a"}
+        assert _swept(runner.tools) == {"a"}

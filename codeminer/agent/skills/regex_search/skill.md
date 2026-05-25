@@ -6,6 +6,11 @@ SPDX-License-Identifier: Apache-2.0
 
 # Regex Search
 
+> **DEPRECATED.** This skill needs a `RegexNodeIndex` that the current
+> pipeline does not build, so it raises at call time. For grep-style regex
+> over file contents, use the always-on **`file_search(mode="content")`**
+> default tool instead — plain regex over files needs no index.
+
 ## When to Use
 
 Regex search performs pattern-based retrieval against the in-memory node index.

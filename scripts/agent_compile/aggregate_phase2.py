@@ -43,6 +43,13 @@ A0_SUBSET = "A0"
 FULL_SUBSET = "A6"
 EASY_FILES_AT_5 = 0.5  # A0 mean-rep files@5 >= this => "easy" instance
 
+# Always-on default tool layer (file_read / file_search). These are unioned
+# into every subset by AgentRunner, so they are NOT sweep variables: they must
+# never appear in a derived compile_table. They DO show in the invocation
+# histogram (tagged "always-on") so we can see how the agent uses them.
+# Kept as a literal to keep this script free of heavy agent imports.
+ALWAYS_ON_SKILLS = frozenset({"file_read", "file_search"})
+
 
 # ---------------------------------------------------------------------------
 # Loading / small helpers
@@ -332,7 +339,10 @@ def derive_compile_table(
         else:
             # nothing clears tau -> fall back to the full registry
             best, best_acc = FULL_SUBSET, full_s
-        table[scenario] = list(skills_for.get(best) or [])
+        # Defaults are always-on, never part of the swept compile_table.
+        table[scenario] = [
+            s for s in (skills_for.get(best) or []) if s not in ALWAYS_ON_SKILLS
+        ]
         rationale["scenarios"][scenario] = {
             "chosen_subset": best,
             "tau": tau,
@@ -419,6 +429,11 @@ def render_markdown(agg, table, rationale, front, ks) -> str:
 
     L.append("## Skill-invocation histogram")
     L.append("")
+    L.append(
+        "`file_read` / `file_search` are the always-on default tool layer "
+        "(present in every subset, not swept)."
+    )
+    L.append("")
     for sid in sorted(agg["subsets"]):
         h = agg["subsets"][sid]["invocation_histogram"]
         if not h:
@@ -431,8 +446,9 @@ def render_markdown(agg, table, rationale, front, ks) -> str:
         L.append("| skill | invoke_rate | calls/cell | files@5 \\| invoked |")
         L.append("| --- | --- | --- | --- |")
         for skill, s in sorted(h.items(), key=lambda kv: -kv[1]["invocation_rate"]):
+            label = skill + (" *(always-on)*" if skill in ALWAYS_ON_SKILLS else "")
             L.append(
-                f"| {skill} | {s['invocation_rate']:.0%} | "
+                f"| {label} | {s['invocation_rate']:.0%} | "
                 f"{s['mean_calls_per_cell']:.2f} | {_fmt(s['conditional_files_at_5'], 3)} |"
             )
         L.append("")

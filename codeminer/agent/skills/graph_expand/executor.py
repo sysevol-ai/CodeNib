@@ -20,7 +20,8 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
     from ....ops.expand import nodeinfo_to_queried
 
     def execute(
-        seed_nodes: List[Any],
+        seed_symbols: Optional[List[str]] = None,
+        seed_nodes: Optional[List[Any]] = None,
         method: str = "bfs",
         top_k: int = 50,
         **kwargs: Any,
@@ -35,9 +36,12 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
         edge_types: Optional[List[str]] = kwargs.get("edge_types")
         node_types: Optional[List[str]] = kwargs.get("node_types")
 
-        # Extract seed names
-        seed_names = []
-        for node in seed_nodes:
+        # Primary input is ``seed_symbols`` (list of qualified name strings the
+        # model copies from prior search results). ``seed_nodes`` is a
+        # back-compat shim accepting QueriedNode-like objects or strings.
+        raw_seeds: List[Any] = list(seed_symbols or []) + list(seed_nodes or [])
+        seed_names: List[str] = []
+        for node in raw_seeds:
             name = getattr(node, "node_name", None) or (
                 node if isinstance(node, str) else None
             )
@@ -45,7 +49,25 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
                 seed_names.append(name)
 
         if not seed_names:
-            return []
+            raise ValueError(
+                "graph_expand needs seeds: pass seed_symbols as a list of "
+                "exact node_name strings (e.g. 'module.ClassName.method') "
+                "copied from prior bm25_search / embedding_search results, "
+                "or use file_search / bm25_search to find them first."
+            )
+
+        # Surface seeds that don't exist in the graph so the model can re-seed
+        # instead of getting a silent empty result.
+        name_to_vertex = getattr(context.code_graph, "name_to_vertex", {}) or {}
+        if name_to_vertex:
+            unresolved = [n for n in seed_names if n not in name_to_vertex]
+            if len(unresolved) == len(seed_names):
+                raise ValueError(
+                    "graph_expand: none of the seed_symbols resolve to graph "
+                    f"nodes: {unresolved}. Copy the exact node_name from a "
+                    "search result, or grep for the symbol with "
+                    "file_search(mode='content')."
+                )
 
         roi = ROISubgraph(context.code_graph)
 

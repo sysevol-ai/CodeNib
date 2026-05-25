@@ -16,10 +16,14 @@ defaults:
   filter_tests: true
 
 inputs:
-  - name: seed_nodes
-    type: List[QueriedNode]
+  - name: seed_symbols
+    type: List[str]
     required: true
-    description: Seed nodes from upstream search results to expand from
+    description: >-
+      Qualified symbol names to expand from, e.g. "module.ClassName.method".
+      Copy the exact node_name strings from prior bm25_search /
+      embedding_search / hybrid_search results. If a name does not resolve,
+      grep for it with file_search(mode="content") first.
   - name: method
     type: str
     required: false

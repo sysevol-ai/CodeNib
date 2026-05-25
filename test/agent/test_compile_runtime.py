@@ -26,6 +26,7 @@ from codeminer.agent.skills.core import (
     SkillOutputSpec,
     SkillType,
 )
+from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.compiler.params import SessionContext
 from codeminer.llm.litellm_chat import LiteLLMChat
@@ -77,8 +78,19 @@ def _mock_llm_no_tool_call() -> LiteLLMChat:
 
 
 def _tools_passed_to_llm(llm) -> List[str]:
-    """Pull the tools kwarg from the last ``_call_raw`` invocation."""
-    args, kwargs = llm._call_raw.call_args
+    """Swept tool names from the last ``_call_raw`` call (defaults removed).
+
+    The always-on default layer (file_read / file_search) is unioned into
+    every tool set regardless of compile_table narrowing, so these
+    narrowing assertions look at the swept skills with defaults stripped.
+    Use :func:`_all_tools_passed_to_llm` to assert defaults are present.
+    """
+    return sorted(set(_all_tools_passed_to_llm(llm)) - set(DEFAULT_SKILL_IDS))
+
+
+def _all_tools_passed_to_llm(llm) -> List[str]:
+    """All tool names (including defaults) from the last ``_call_raw`` call."""
+    _args, kwargs = llm._call_raw.call_args
     schemas = kwargs.get("tools", [])
     return sorted(t["function"]["name"] for t in schemas)
 
@@ -110,6 +122,8 @@ class TestCompileTableNarrowing:
         )
         runner.run(query)
         assert _tools_passed_to_llm(llm) == ["bm25_search"]
+        # Always-on defaults survive even the most aggressive narrowing.
+        assert set(DEFAULT_SKILL_IDS) <= set(_all_tools_passed_to_llm(llm))
 
     def test_no_stacktrace_scenario_uses_wider_subset(self, skills):
         table = {

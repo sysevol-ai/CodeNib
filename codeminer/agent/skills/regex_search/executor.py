@@ -20,7 +20,15 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
     def execute(pattern: str, top_k: int = 20, **kwargs: Any) -> List[Any]:
         index = context.regex_index
         if index is None:
-            raise RuntimeError("Regex index not available")
+            # DEPRECATED: regex_search needs a RegexNodeIndex that is not built
+            # in the current pipeline (skill_context wires regex_index=None).
+            # Plain regex over file content needs no index — use the always-on
+            # default tool instead.
+            raise RuntimeError(
+                "regex_search is unavailable (no regex node index is built). "
+                "Use file_search(mode='content', pattern=...) for grep-style "
+                "regex over file contents — it is always available."
+            )
 
         file_glob: Optional[str] = kwargs.get("file_glob")
         node_type: Optional[str] = kwargs.get("node_type")

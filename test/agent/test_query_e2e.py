@@ -222,10 +222,17 @@ def _two_turn_mock_llm(skill_id: str, query_arg: str) -> LiteLLMChat:
 
 
 def _tools_passed_first_turn(llm) -> List[str]:
-    """Pull the tool list the LLM saw on its *first* call (pre-narrowing)."""
+    """Swept tool names the LLM saw on its *first* call (defaults stripped).
+
+    The always-on default layer (file_read/file_search) is unioned into every
+    tool set; narrowing assertions look at the swept skills only.
+    """
+    from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
+
     first_call = llm._call_raw.call_args_list[0]
     schemas = first_call.kwargs.get("tools", [])
-    return sorted(t["function"]["name"] for t in schemas)
+    names = {t["function"]["name"] for t in schemas} - set(DEFAULT_SKILL_IDS)
+    return sorted(names)
 
 
 # ---------------------------------------------------------------------------
