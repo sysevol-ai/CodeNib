@@ -242,6 +242,60 @@ strengthens two of them:
 - Cost at `max_turns=20` is 200–311 k tokens/subset (vs 84–183 k at
   `max_turns=10`), re-confirming the over-exploration the tighter budget curbs.
 
+# Cost study: can structured navigation beat the grep/read agent?
+
+The previous sections showed the file-tool agent reaches high accuracy but at
+high token cost, and never uses `graph_expand`. This study tests the hoped-for
+payoff directly: **withhold the file tools (force embedding + graph) and see if
+the agent reaches the same files at lower cost.** FREE = file tools +
+bm25/embedding; STRUCTURED = `include_default_tools=false`, only
+`embedding_search` + `graph_expand`. 3 hard/big-repo instances, reps=1,
+`max_turns=12`, two models (haiku-4.5, gemini-2.5-flash).
+
+| model | instance | FREE files@5 / tokens | STRUCTURED files@5 / tokens | Δtokens |
+|---|---|---|---|---|
+| haiku | babel-15445 | 1.0 / 117 k | 1.0 / 135 k | +15 % |
+| haiku | vuejs-11589 | 1.0 / 227 k | 1.0 / 196 k | −13 % |
+| haiku | micropython-13569 | 1.0 / 141 k | 1.0 / **424 k** | **+201 %** |
+| gemini | babel-15445 | **0.0** / 69 k | 1.0 / 30 k | (free failed) |
+| gemini | vuejs-11589 | 1.0 / 129 k | **0.0** / 58 k | (struct failed) |
+| gemini | micropython-13569 | **0.0** / 134 k | 1.0 / 72 k | (free failed) |
+
+## Findings — the cost-saving thesis did NOT cleanly replicate
+
+1. **Withholding file tools does not force graph use — it forces
+   *embedding-spam*.** Across all 6 structured cells the agent called
+   `embedding_search` 8–13× and `graph_expand` **once total** (and that one
+   errored). Given grep it greps; given no grep it re-queries embedding. It
+   never adopts graph navigation. So "structured" here really means
+   "embedding-only", not "graph/LSP".
+
+2. **That can be *more* expensive, not less.** micropython structured =
+   424 k tokens (13 embedding calls, each returning large chunks) vs 141 k for
+   the free grep/read agent — a 3× regression. A promising single-instance
+   smoke (vuejs −13 %) did not generalize; haiku structured was **+56 %
+   tokens overall**.
+
+3. **gemini-2.5-flash is cheaper but flaky** (free 1/3, structured 2/3 at
+   files@5=1.0; 30–134 k tokens). When it *does* solve via the structured path
+   it is very cheap (babel 30 k), hinting the efficient-structured regime
+   exists — but accuracy variance at reps=1 makes per-instance comparison
+   unreliable.
+
+## Conclusion — graph value needs a *deterministic* path, not agent tool choice
+
+The agent will not choose `graph_expand` under any condition (file tools on:
+greps; file tools off: embedding-spams). Therefore the graph/LSP
+token-efficiency advantage **cannot be demonstrated through free agent tool
+selection** with these models. To realize it, graph expansion must be a
+**deterministic pipeline step** — e.g. after the first retrieval hit,
+automatically expand along the call graph and feed the result to the agent —
+rather than an optional tool the agent is trusted to call. This matches
+CodeMiner's AoT (`compile_repo`) direction and is the recommended next
+experiment. A fair test also needs reps ≥ 3 (tool-calling variance is large)
+and a graph-only condition (embedding withheld too) to isolate graph from
+embedding.
+
 ## Caveats
 
 - Headline table: 3 instances, reps=1, one agent model (vertex haiku-4.5);
