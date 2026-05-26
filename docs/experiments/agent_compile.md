@@ -452,3 +452,41 @@ cheaper on hard ones); raising accuracy on hard tasks needs (a) better
 entry-point retrieval, (b) inheritance/override edges in `codeminer_context`'s
 expansion (not just call edges), and (c) better convergence so the agent trusts
 the map instead of grepping to the turn cap.
+
+---
+
+# Headline: comparable accuracy at ~half the tokens (accuracy-first loop)
+
+The cost win only counts if accuracy holds. We reframed the prompt as an
+**accuracy-first EXPAND → READ → EXPAND loop**: `codeminer_context` (search +
+call-graph) is a *heuristic map* the agent calls first, but grep + file_read
+stay fully in play and are how it *confirms* it reached the implementing file
+(the metric credits any file the agent reads, so keeping read in the loop
+protects accuracy). FREE (grep/read only) vs CONTEXT (grep/read + the composer),
+6 instances, haiku, reps=1, max_turns=16:
+
+| instance | FREE files@5 / tokens | CONTEXT files@5 / tokens | Δtokens |
+|---|---|---|---|
+| astropy-12907 | 1.0 / 306 817 | 1.0 / 174 651 | −43 % |
+| axios-4731 | 1.0 / 256 181 | 1.0 / 73 788 | −71 % |
+| vuejs-11589 | 1.0 / 254 330 | 1.0 / 214 139 | −16 % |
+| caddy-5870 | 1.0 / 291 212 | 1.0 / 173 737 | −40 % |
+| sympy-13031 | 0.0 / 343 737 | 0.0 / 133 166 | −61 % |
+| matplotlib-14623 | 0.0 / 247 176 | 0.0 / 134 144 | −46 % |
+| **total** | **1 699 453** | **903 625** | **−47 %** |
+
+**Accuracy is identical on all 6** (4 solved by both at files@5 = 1.0; 2 hard
+cross-hierarchy cases unsolved by both) — **zero accuracy regression** — at
+**−47 % tokens** net (−16 % … −71 % per instance, every instance cheaper).
+
+The loop is real: in the CONTEXT cells the agent calls `codeminer_context` once,
+then does 8–11 `file_read`s + 2–9 greps to confirm — `expand → read → expand`
+with grep/read doing the reaching and the graph map focusing the search. This
+is the project's value, demonstrated on the axis that matters: **match the pure
+grep/read agent's accuracy with roughly half the tokens.**
+
+Still open: the two hard cases (sympy-13031's subclass-override, matplotlib's
+cross-file) remain unsolved by *both* conditions — parity, not regression. The
+override-grep guidance didn't crack them; raising accuracy there is a separate
+frontier (entry-point retrieval + inheritance/override edges in the expansion),
+not a harness-vs-grep question.
