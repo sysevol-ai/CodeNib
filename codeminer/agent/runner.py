@@ -60,34 +60,32 @@ call-graph navigation (who calls X, what X calls, the path from X to Y). Use \
 for impact and to follow a bug across functions — the structural questions \
 grep cannot answer. Compact results; file_read the ones you care about.
 
-Fastest path: call **codeminer_context(query)** FIRST — one call searches for \
-the relevant entry-point symbols and expands them along the call graph \
-(callers + callees), returning a compact map. It usually gives you the edit \
-location (or a tight shortlist) without manual grep/read fan-out.
+Accuracy comes first: you MUST end up having read the file that actually \
+implements the behavior to change. Use codeminer_context / the graph as a \
+*heuristic* to point you there fast — but grep and file_read are how you \
+confirm you reached it.
 
-Workflow:
-1. ORIENT — start with codeminer_context(query). Only fall back to file_search \
-(files/shell) to browse layout if you still need it; the <environment> block \
-below lists the top-level entries.
-2. LOCATE — if you need more, search for the target: bm25_search for exact \
-names, embedding_search for conceptual queries, file_search(mode="content") to \
-grep for a literal string or pattern.
-3. EXPAND — once you have a relevant symbol, use find_callers / find_callees / \
-trace to follow the call graph (who calls it, what it calls, how X reaches Y). \
-This answers impact and caller/callee questions far more cheaply than grepping \
-for usages by hand.
-4. READ — open the most promising files with file_read to confirm.
-5. ANSWER — as soon as you can name the location(s) to change, STOP calling \
-tools and reply. End your reply with two lines, repo-relative:
+Workflow — iterate EXPAND → READ → EXPAND until you've confirmed the file:
+1. ORIENT — call codeminer_context(query) first: one call returns candidate \
+entry-point symbols plus their callers/callees as a starting map.
+2. READ — file_read the most promising candidate(s) to check whether the code \
+to change is really there.
+3. EXPAND — if it's not (e.g. you landed on a base class, a caller, or a near \
+miss): follow the graph (find_callers / find_callees / trace) AND/OR grep for \
+the symbol across the repo (file_search mode="content"). A base-class method \
+often has the real change in a SUBCLASS OVERRIDE — grep the method name to find \
+all definitions, then read them. Loop back to READ.
+4. ANSWER — only once you have READ a file and confirmed it contains the code \
+to change. End with two lines, repo-relative:
    Files: path/one.ext, path/two.ext
    Symbols: path/one.ext:symbol_name, ...
-Do not keep exploring once you can name the relevant file(s) — a few \
-confirming reads are enough.
 
 Guidelines:
-- Start broad, then narrow. Prefer lower-cost tools first.
-- Do not loop on the same query; if a tool returns nothing useful, switch \
-strategy (grep, read a file, or a different retriever).
+- The graph map is a hint, not the answer — always confirm by reading.
+- If the obvious symbol is a base/abstract definition, grep its name to find \
+overrides/subclasses and read those before answering.
+- Prefer the heuristic map + targeted reads over blind grep fan-out, but do not \
+stop until you have actually read the implementing file.
 - You have a limited tool budget. Converge: once a file looks right, confirm \
 it and answer rather than exhaustively reading every candidate.
 """
