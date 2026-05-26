@@ -490,3 +490,59 @@ cross-file) remain unsolved by *both* conditions — parity, not regression. The
 override-grep guidance didn't crack them; raising accuracy there is a separate
 frontier (entry-point retrieval + inheritance/override edges in the expansion),
 not a harness-vs-grep question.
+
+---
+
+# Diverse-repo broadening (Rust / TS / Go / C / Python) — what to improve
+
+Ran FREE vs `codeminer_context` on 6 previously-untested repos (haiku, reps=1,
+max_turns=16). Accuracy-first read.
+
+| instance (lang) | FREE files@5 / tokens | CONTEXT files@5 / tokens | Δtokens |
+|---|---|---|---|
+| tokio-4898 (Rust) | 1.0 / 94 965 | 1.0 / 81 721 | −14 % |
+| docusaurus-10130 (TS) | 1.0 / 338 765 | 1.0 / 195 668 | −42 % |
+| terraform-34814 (Go) | 1.0 / 338 294 | 1.0 / 194 550 | −42 % |
+| xarray-2905 (Python) | 1.0 / 271 582 | 1.0 / 117 292 | −57 % |
+| redis-10095 (C) | 1.0 / 97 524 | 1.0 / **258 158** | **+165 %** |
+| bat-2201 (Rust) | 1.0 / — | — (GPU OOM) | — |
+
+5 scored: **accuracy parity on all 5** (every cell 1.0 = 1.0, no regression);
+net **−26 % tokens** — but dragged down by one regression.
+
+## What to improve (ranked by the evidence)
+
+1. **Composer must never net-harm (redis +165 %).** On redis the
+   `codeminer_context` call returned **0 results** (no error) — so the agent
+   paid for the call, got nothing, and fanned out anyway (15 turns vs FREE's 9).
+   Root cause: redis (C) symbols are stored as **content-hash node names**, so
+   call-graph expansion off the bm25/embedding seeds yields nothing useful.
+   Fixes: (a) always return the search seeds even when graph expansion is empty;
+   (b) if the composed context is thin, *say so* so the agent doesn't double-pay;
+   (c) cap/skip on low-value output.
+2. **C/C++ graph quality.** Hash-named symbols + sparse C call edges
+   (clangd/SCIP) make the graph far less useful than for Py/TS/Go/Rust — the
+   composer's value is language-dependent. Needs readable C symbol names +
+   better edges.
+3. **Routing (this is the original agent-compile / CAR idea, full circle).** The
+   composer helps on large/fan-out repos (docusaurus/terraform/xarray −42…−57 %)
+   and *hurts* on small ones where grep is already cheap (redis FREE = 98 k).
+   Decision: invoke `codeminer_context` only when the scenario warrants it
+   (repo size / expected fan-out), exactly the compile_table selection this RFC
+   set out to build.
+4. **Symbol-level accuracy.** Still measuring files@k; symbols@k remains the
+   harder, more useful target.
+5. **Serving / environment.** Vector load OOMs under GPU contention (bat) —
+   a warm shared embedding server + memory management is needed for reliable
+   runs and for the MCP serving path.
+6. **Statistical hardening.** reps ≥ 3, larger instance set, and CIs before any
+   headline number is quoted.
+
+## Where it stands
+
+Across all runs, the harness holds **accuracy parity with the grep/read agent**
+and saves tokens on medium/large/fan-out repos (the −16…−71 % cases), with two
+known failure modes: (i) the composer returning empty (C / redis) and net-harming,
+and (ii) hard cross-hierarchy localizations unsolved by both. The next, highest-
+leverage work is **routing** (#3 — only invoke when it pays) and **composer
+robustness** (#1), which together turn the −47 % demo into a dependable win.
