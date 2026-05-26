@@ -190,6 +190,37 @@ def test_build_returns_both_keys_for_mixed_skills(registry, mocked_build, tmp_pa
     assert contexts["expand"].code_graph is not None
 
 
+def test_custom_composer_alone_gets_retrieve_and_expand(
+    registry, mocked_build, tmp_path
+):
+    """A CUSTOM skill (e.g. ``codeminer_context``) that declares bm25 + vector
+    + symbol_graph requirements must receive ``retrieve`` AND ``expand``
+    contexts even though it isn't a RETRIEVAL/EXPAND skill type.
+
+    Regression: packaging keyed only on skill_type silently dropped the
+    loaded indexes for a lone custom composer, so it received
+    ``retrieve=None``/``expand=None`` and returned nothing (n_results=0).
+    """
+    registry.register(
+        _make_meta(
+            "codeminer_context",
+            SkillType.CUSTOM,
+            index_types=["bm25", "vector", "symbol_graph"],
+        )
+    )
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["codeminer_context"],
+        cache_dir=str(tmp_path / "cache"),
+        skill_registry=registry,
+    )
+    assert set(contexts.keys()) == {"retrieve", "expand"}
+    rc = contexts["retrieve"]
+    assert rc.bm25 is not None
+    assert rc.vector_store is not None
+    assert contexts["expand"].code_graph is not None
+
+
 def test_sibling_skill_with_no_requirement_still_gets_context(
     registry, mocked_build, tmp_path
 ):

@@ -122,3 +122,79 @@ def test_trace_ambiguous_endpoint_raises():
     g = _FakeGraph()
     with pytest.raises(ValueError, match="unresolved"):
         _graphnav.trace(g, "notify", "helper")
+
+
+class _HashNamedGraph:
+    """Mimics a clang/SCIP-indexed C repo: canonical ``name`` is a content
+    hash, the readable identifier lives in ``unified_name``.
+
+    ``popGenericCommand`` (caller) -> ``addReplyNull`` (callee).
+    """
+
+    def __init__(self):
+        self.name_to_vertex = {"deadbeef00": 0, "cafef00d11": 1}
+        self._attr = {
+            0: {
+                "name": "deadbeef00",
+                "unified_name": "src/t_list.c:popGenericCommand()",
+                "type": "function",
+                "file": "src/t_list.c",
+                "start_line": 488,
+            },
+            1: {
+                "name": "cafef00d11",
+                "unified_name": "src/networking.c:addReplyNull()",
+                "type": "function",
+                "file": "src/networking.c",
+                "start_line": 700,
+            },
+        }
+        self._unified_to_names = {
+            "src/t_list.c:popGenericCommand()": ["deadbeef00"],
+            "src/networking.c:addReplyNull()": ["cafef00d11"],
+        }
+        self._succ = {"deadbeef00": [1]}
+        self._pred = {"cafef00d11": [0]}
+
+    def get_node_info_by_name(self, name):
+        return self._attr.get(self.name_to_vertex.get(name))
+
+    def get_node_info_by_id(self, vid):
+        return self._attr.get(vid)
+
+    def get_successors(self, name):
+        return self._succ.get(name, [])
+
+    def get_predecessors(self, name):
+        return self._pred.get(name, [])
+
+
+def test_display_name_prefers_unified():
+    g = _HashNamedGraph()
+    assert _graphnav.display_name(g, "deadbeef00") == "src/t_list.c:popGenericCommand()"
+
+
+def test_resolve_bare_symbol_to_hash_canonical():
+    """Agent re-seeds with a readable bare symbol; resolution returns the
+    canonical hash so graph ops still work, with a readable candidate."""
+    g = _HashNamedGraph()
+    name, cands = _graphnav.resolve(g, "popGenericCommand")
+    assert name == "deadbeef00"  # canonical identity for get_successors
+    assert cands == ["src/t_list.c:popGenericCommand()"]  # readable display
+
+
+def test_resolve_accepts_full_unified_name():
+    g = _HashNamedGraph()
+    name, _ = _graphnav.resolve(g, "src/networking.c:addReplyNull()")
+    assert name == "cafef00d11"
+
+
+def test_neighbors_emit_readable_names_for_hash_graph():
+    g = _HashNamedGraph()
+    callees = _graphnav.neighbors(g, "popGenericCommand", "callees")
+    assert {n.node_name for n in callees} == {"src/networking.c:addReplyNull()"}
+    assert callees[0].content == "callee of src/t_list.c:popGenericCommand()"
+    # no raw content hash leaks into what the agent reads
+    assert "deadbeef00" not in callees[0].node_id
+    assert "cafef00d11" not in callees[0].node_id
+    assert callees[0].node_id == "src/networking.c:addReplyNull()"

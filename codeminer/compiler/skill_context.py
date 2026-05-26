@@ -344,13 +344,20 @@ def _package_contexts(
 
     Mirrors ``SkillLoader._CONTEXT_KEY_FOR_TYPE``: retrieval/aggregate skills
     share the ``retrieve`` key, expand skills share the ``expand`` key, etc.
-    Rerank/transform/custom skills currently do not consume index artifacts,
-    so they get no entry here even if requested.
+
+    A ``retrieve``/``expand`` context is packaged when *either* a skill of the
+    corresponding type was requested *or* the matching index artifacts were
+    loaded. The second clause covers ``custom`` composers (e.g.
+    ``codeminer_context``) that declare ``bm25``/``vector``/``symbol_graph``
+    index_requirements but aren't a RETRIEVAL/EXPAND skill type — without it
+    their loaded indexes would be silently dropped and the composer would
+    receive ``retrieve=None``/``expand=None`` and return nothing.
     """
     contexts: Dict[str, Any] = {}
 
     needs_retrieve = bool(skill_types & {SkillType.RETRIEVAL, SkillType.AGGREGATE})
-    if needs_retrieve:
+    has_retrieve_index = ("bm25" in loaded) or ("vector" in loaded)
+    if needs_retrieve or has_retrieve_index:
         from ..ops.retrieve import RetrieveContext
 
         contexts["retrieve"] = RetrieveContext(
@@ -361,7 +368,7 @@ def _package_contexts(
             default_level=default_level,
         )
 
-    if SkillType.EXPAND in skill_types:
+    if SkillType.EXPAND in skill_types or "symbol_graph" in loaded:
         from ..ops.expand import ExpandContext
 
         contexts["expand"] = ExpandContext(code_graph=loaded.get("symbol_graph"))

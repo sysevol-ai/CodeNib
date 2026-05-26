@@ -546,3 +546,75 @@ known failure modes: (i) the composer returning empty (C / redis) and net-harmin
 and (ii) hard cross-hierarchy localizations unsolved by both. The next, highest-
 leverage work is **routing** (#3 — only invoke when it pays) and **composer
 robustness** (#1), which together turn the −47 % demo into a dependable win.
+
+> **⚠️ Correction (see next section).** Every `codeminer_context` cell above —
+> including the "−47 %" headline and the "−26 % / redis +165 %" diverse run —
+> ran with a composer that returned **0 results in every cell** due to a context-
+> packaging bug. Those token deltas measured a *no-op* tool call vs the grep/read
+> agent (pure variance), and the "weak C/C++ graph" diagnosis was wrong. The bug
+> and the first valid comparison are below.
+
+---
+
+# Correction + real result: the composer was a no-op; root cause and fix
+
+**The bug.** `codeminer_context` is `skill_type: custom`. `build_skill_contexts`
+correctly loaded bm25 + vector + symbol_graph (its declared
+`index_requirements`), but `_package_contexts` only wrapped them into the
+`retrieve`/`expand` context objects for `RETRIEVAL`/`AGGREGATE`/`EXPAND` skill
+*types*. A lone `custom` composer matched neither, so the loaded indexes were
+**silently dropped** → the executor received `retrieve=None, expand=None` and
+returned `[]`. Confirmed across **every** recorded CTX cell: `n_results: 0`
+(acc_ctx and div_ctx alike). The graph-aware harness had never actually run.
+
+**The "weak C/C++ graph" was a presentation bug, not a quality problem.** redis
+has the real names all along: 8860/9068 nodes are content-hash `name`d (clang/
+SCIP identity keys) but **every one carries a readable `unified_name`** — e.g.
+`src/t_list.c:popGenericCommand()`. The composer and `_graphnav` surfaced only
+the hash, which is ungroundable. Nothing was wrong with the edges.
+
+**Fixes.**
+1. `_package_contexts` now builds `retrieve`/`expand` whenever the matching
+   index artifacts *loaded*, not just by skill type — so a custom composer that
+   declares the requirements gets wired. (regression test:
+   `test_custom_composer_alone_gets_retrieve_and_expand`)
+2. `_graphnav` + the composer surface `unified_name` for display **and accept it
+   for re-seeding** (`resolve()` maps a readable bare/qualified name back to the
+   canonical key for `get_successors`/`predecessors`). Zero cost to languages
+   whose `name` is already readable; makes C/C++ groundable. (regression tests:
+   `test_*_for_hash_graph`, `test_resolve_bare_symbol_to_hash_canonical`)
+
+Verified on redis post-fix: composer **0 → 14 readable, on-topic symbols**
+(`RESP2_NULL_BULK_STRING`, `RESP2_NULL_ARRAY`, `parseBulk()` — exactly the RESP
+null-reply path the LPOP fix edits).
+
+## First valid FREE vs `codeminer_context` (haiku, reps=1, max_turns=16, CPU embed)
+
+| instance (lang) | FREE f@1 / f@5 / tok | CTX f@1 / f@5 / tok | n_results | Δtok |
+|---|---|---|---|---|
+| docusaurus (TS) | 1.0 / 1.0 / 193 919 | 1.0 / 1.0 / 231 484 | 15 | +19 % |
+| terraform (Go) | 1.0 / 1.0 / 353 055 | **0.0** / 1.0 / 135 271 | 16 | −62 % |
+| xarray (Py) | **0.0** / 1.0 / 327 741 | **1.0** / 1.0 / 142 135 | 23 | −57 % |
+| redis (C++) | 1.0 / 1.0 / 161 009 | 1.0 / 1.0 / 208 809 | 19 | +30 % |
+| tokio (Rust) | 1.0 / 1.0 / 103 460 | 1.0 / 1.0 / 70 422 | 25 | −32 % |
+
+- **files@5 parity on all 5** (1.0 = 1.0). At @1, one swing each way
+  (terraform CTX 1.0→0.0, xarray CTX 0.0→1.0) — within single-rep noise.
+- Net **−31 % tokens** this run. The **redis C++ regression collapsed from +165 %
+  to +30 %** — the no-op composer was the cause, not the C graph.
+- **Magnitude is not yet trustworthy.** redis FREE swung **97 k → 161 k (+65 %)
+  on the identical cell config** between two runs; tokio FREE was stable
+  (95 k → 103 k). Single-rep token deltas are directional only — **reps ≥ 3 + CIs
+  required** before quoting any headline number.
+
+## What this changes about "what to improve"
+
+- The composer now genuinely returns graph-aware context everywhere, including
+  C/C++. "Composer never net-harm" is largely addressed (no more empty returns
+  on the wired path); the residual is **token efficiency, not correctness**.
+- **Routing still matters, now for tokens not bugs:** redis/docusaurus go
+  token-positive (grep is already cheap on small/well-named-file repos), while
+  terraform/xarray/tokio save 32–62 %. Gate the composer on expected fan-out
+  (repo size / hits) — the original CAR `compile_table` selection.
+- Next: reps ≥ 3 with CIs on this set to pin the real distribution, then the
+  routing gate.

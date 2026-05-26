@@ -36,7 +36,25 @@ def create_executor(contexts: Dict[str, Any]) -> Callable[..., List[Any]]:
     expand = (contexts or {}).get("expand")
 
     from ....ops.retrieve import to_queried_nodes
-    from .._graphnav import neighbors
+    from .._graphnav import _node_id, display_name, neighbors
+
+    def _readable(graph: Any, node: Any) -> Any:
+        """Relabel a search-seed node with its readable unified_name.
+
+        Search indexes are keyed by the canonical identity name (a content
+        hash for clang/SCIP-indexed C/C++). Surface the readable display so
+        the agent can ground / grep / re-seed it.
+        """
+        if graph is None:
+            return node
+        nm = getattr(node, "node_name", None)
+        if not nm:
+            return node
+        disp = display_name(graph, nm)
+        if disp and disp != nm:
+            node.node_name = disp
+            node.node_id = _node_id(getattr(node, "file", None), disp)
+        return node
 
     def execute(
         query: str,
@@ -67,8 +85,10 @@ def create_executor(contexts: Dict[str, Any]) -> Callable[..., List[Any]]:
         entry = _dedup_by_id(found)[:seeds]
 
         # 2) GRAPH-EXPAND each seed deterministically (callers + callees).
-        results: List[Any] = list(entry)
+        #    Expand on the canonical (hash) name FIRST — it resolves exactly —
+        #    then relabel the seed itself to its readable display.
         graph = getattr(expand, "code_graph", None) if expand is not None else None
+        expanded: List[Any] = []
         if graph is not None:
             per = max(2, (max_results - len(entry)) // max(1, len(entry)))
             for s in entry:
@@ -76,10 +96,11 @@ def create_executor(contexts: Dict[str, Any]) -> Callable[..., List[Any]]:
                 if not name:
                     continue
                 try:
-                    results += neighbors(graph, name, "both", top_k=per)
+                    expanded += neighbors(graph, name, "both", top_k=per)
                 except ValueError:
                     continue  # unresolved seed — skip, keep the rest
 
+        results: List[Any] = [_readable(graph, s) for s in entry] + expanded
         return _dedup_by_id(results)[:max_results]
 
     return execute
