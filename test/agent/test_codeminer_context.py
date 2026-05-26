@@ -95,6 +95,48 @@ def test_context_composes_search_plus_graph():
     assert len(res) == len({n.node_id for n in res})  # deduped
 
 
+class _ManyBM25:
+    """bm25 floods 5 off-target lexical hits (mimics 'null array' matching
+    response-encoding constants on a redis bug report)."""
+
+    def search(self, query, top_k, **kw):
+        return [
+            QueriedNode(
+                node_name=f"pkg.noise.const{i}",
+                node_id=f"c.py:const{i}",
+                file="c.py",
+            )
+            for i in range(5)
+        ]
+
+
+class _OnTargetVec:
+    def search(self, query, top_k, level="l2", **kw):
+        return [
+            QueriedNode(
+                node_name="pkg.a.doWatch", node_id="a.py:pkg.a.doWatch", file="a.py"
+            )
+        ]
+
+
+def test_interleave_keeps_embedding_seed_when_bm25_floods():
+    """With round-robin interleave, the lone on-target embedding hit must reach
+    the seed set even though bm25 returned a full page of off-target hits.
+    Regression for the redis +30 % overhead: bm25-then-embedding concatenation
+    truncated the embedding seeds off the budget."""
+    create_executor = _load()
+    retrieve = SimpleNamespace(
+        bm25=_ManyBM25(), vector_store=_OnTargetVec(), default_level="l2"
+    )
+    expand = SimpleNamespace(code_graph=_FakeGraph())
+    ex = create_executor({"retrieve": retrieve, "expand": expand})
+    res = ex(query="watch effect bug", seeds=2, max_results=20)
+    names = {n.node_name for n in res}
+    assert "pkg.a.doWatch" in names  # embedding seed survived the bm25 flood
+    # and it graph-expanded (its caller/callee are present)
+    assert "pkg.a.watchEffect" in names or "pkg.b.helper" in names
+
+
 def test_context_handles_missing_graph_gracefully():
     create_executor = _load()
     retrieve = SimpleNamespace(bm25=_FakeBM25(), vector_store=None, default_level="l2")

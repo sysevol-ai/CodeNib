@@ -18,7 +18,17 @@ Skill type is ``custom`` so the loader hands it the full ``contexts`` dict
 
 from __future__ import annotations
 
+from itertools import zip_longest
 from typing import Any, Callable, Dict, List
+
+
+def _interleave(*seqs: List[Any]) -> List[Any]:
+    """Round-robin merge: seqs[0][0], seqs[1][0], seqs[0][1], ... (no source
+    is allowed to crowd the others out of the seed budget)."""
+    out: List[Any] = []
+    for tup in zip_longest(*seqs):
+        out.extend(x for x in tup if x is not None)
+    return out
 
 
 def _dedup_by_id(nodes: List[Any]) -> List[Any]:
@@ -66,9 +76,15 @@ def create_executor(contexts: Dict[str, Any]) -> Callable[..., List[Any]]:
         max_results = max(seeds, int(max_results or 30))
 
         # 1) SEARCH for entry-point symbols (compact; no bodies).
-        found: List[Any] = []
+        #    Keep the two sources SEPARATE and INTERLEAVE them — concatenating
+        #    bm25-then-embedding lets one source crowd out the other. On NL bug
+        #    reports bm25 latches onto literal tokens (e.g. "null array" ->
+        #    response-encoding constants) while embedding finds the actual edit
+        #    site (the command handler); round-robin guarantees both are seeded.
+        bm: List[Any] = []
+        ve: List[Any] = []
         if retrieve is not None and getattr(retrieve, "bm25", None) is not None:
-            found += to_queried_nodes(
+            bm = to_queried_nodes(
                 retrieve.bm25.search(
                     query=query,
                     top_k=seeds * 2,
@@ -79,10 +95,10 @@ def create_executor(contexts: Dict[str, Any]) -> Callable[..., List[Any]]:
             )
         if retrieve is not None and getattr(retrieve, "vector_store", None) is not None:
             level = getattr(retrieve, "default_level", "l2")
-            found += to_queried_nodes(
+            ve = to_queried_nodes(
                 retrieve.vector_store.search(query=query, top_k=seeds * 2, level=level)
             )
-        entry = _dedup_by_id(found)[:seeds]
+        entry = _dedup_by_id(_interleave(bm, ve))[:seeds]
 
         # 2) GRAPH-EXPAND each seed deterministically (callers + callees).
         #    Expand on the canonical (hash) name FIRST — it resolves exactly —
