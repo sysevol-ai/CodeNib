@@ -416,3 +416,39 @@ confirming `file_read`s after the one context call — room for further savings)
 benchmark at VS-Code / Next.js scale, and expose `codeminer_context` +
 `find_callers/callees/trace` over the MCP server (the infra already exists) for
 the host-agent path CodeGraph uses.
+
+## Large-repo check (sympy + matplotlib, codeminer_base)
+
+Picked larger Python repos from `codeminer_base`: `sympy-13031`, `sympy-12419`
+(~1.45k files), `matplotlib-14623` (~4.4k files, 3 GT files). FREE (grep/read)
+vs `codeminer_context`, haiku, reps=1:
+
+| instance | FREE f@5 / tokens | codeminer_context f@5 / tokens | Δtokens | ctx calls |
+|---|---|---|---|---|
+| sympy-12419 | 0.0 / 269 264 | 0.0 / **64 258** | **−76 %** | 1 |
+| matplotlib-14623 | 0.0 / 240 370 | 0.0 / **89 098** | **−63 %** | 1 |
+| sympy-13031 | 0.0 / 119 559 | 0.0 / 87 506 | −27 % | 1 |
+
+**Two honest readings:**
+
+1. **Token efficiency is real and grows with repo size** — the composer is
+   adopted 3/3 and cuts tokens 27–76 % (largest on the biggest/most-fan-out
+   cases), consistent with CodeGraph's "gains scale with size."
+2. **But all three are unsolved by *both* conditions (f@5 = 0)** — so this batch
+   shows "converges/fails cheaper," not an accuracy win. The clean accuracy+cost
+   win remains the *solvable* cross-file case (vuejs: f@5 = 1.0 at −51 %).
+
+Why the misses: e.g. sympy-13031's fix is in `SparseMatrix.hstack`
+(`matrices/sparse.py`) — a **subclass override** — while both agents fixate on
+the base `hstack` in `matrices/common.py`. Entry-point search points at the
+base, and a 1-hop caller/callee expansion doesn't cross the inheritance/override
+relationship to the subclass. So on hard cross-hierarchy localizations the
+limiter is **entry-point search quality + missing inheritance/override edges in
+the expansion**, not the harness mechanism. Both agents also hit the 12-turn cap
+without converging.
+
+**Implication:** the harness delivers the cost win on solvable tasks (and fails
+cheaper on hard ones); raising accuracy on hard tasks needs (a) better
+entry-point retrieval, (b) inheritance/override edges in `codeminer_context`'s
+expansion (not just call edges), and (c) better convergence so the agent trusts
+the map instead of grepping to the turn cap.
