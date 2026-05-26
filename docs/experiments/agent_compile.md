@@ -728,6 +728,44 @@ callee/caller hop from a search hit. (End-to-end confirmation on these 5 —
 search-only vs graph — runs next.)
 
 **Takeaway for a comprehensive system:** the call-graph isn't the default
-localization win; it's the **rescue path for the ~5 % of bugs whose edit site is
-one call-edge away from what search finds** but unreachable by search alone.
-That's a real, defensible contribution — sized honestly, not oversold.
+localization win; it's a candidate **rescue path for the ~5 % of bugs whose edit
+site is one call-edge away from what search finds** but unreachable by search
+alone. Whether that retrieval-recall gain converts end-to-end is tested next.
+
+## End-to-end on the 5 favorable instances: recall ≠ accuracy
+
+Running search-only (graph OFF) vs +graph (reps=3) on exactly the 5 instances
+where the graph recovers a search-missed target file:
+
+| instance (lang) | search-only f@5 | +graph f@5 | Δtok |
+|---|---|---|---|
+| ruff-15309 (Rust) | 0.33 | **1.00** | +12 % |
+| sympy-13031 (Py) | 0.00 | **0.33** | +81 % |
+| matplotlib-14623 (Py) | 0.00 | 0.00 | +18 % |
+| ruff-15356 (Rust) | 0.67 | **0.00** | +0 % |
+| terraform-35611 (Go) | 1.00 | **0.00** | +16 % |
+
+**Mixed: 2 helped, 2 hurt, 1 unchanged; +25 % tokens.** The retrieval-level
+recovery does **not** reliably convert to agent accuracy. Worse, the extra graph
+context can **distract** the agent into a worse localization than search alone
+(terraform: search-only nails it at 1.0; +graph drops to 0.0). N=5 is noisy, but
+the direction is clear and consistent with the dataset-wide ablation: **adding
+graph context to a strong search+grep agent is not a reliable win — even in the
+regime where the graph demonstrably improves retrieval recall.** More retrieved
+context is not more localized truth; distractors cost both tokens and accuracy.
+
+## Overall verdict (honest, not oversold)
+
+1. **Retrieval (bm25+embedding) is the proven win:** −19 % tokens at
+   equal-or-better accuracy, CI excludes zero; lifts files@1 0.58→0.79.
+2. **The LSP call-graph expansion does not earn its keep on localization@k** —
+   net token cost, no reliable accuracy gain, and it can distract. It helps only
+   sporadically (ruff-15309, sympy) and hurts about as often.
+3. **Ship the retrieval composer with graph expansion OFF by default.** Keep the
+   graph as opt-in and as the indexing/relationship backbone of the system; its
+   end-to-end value needs (a) a different task regime (multi-file, cross-file
+   causal tracing where search alone fails *and* the agent can't grep around it)
+   and/or (b) a graph-primary harness that *substitutes* graph hops for grep/read
+   fan-out rather than adding to it — the additive setup measured here shows the
+   agent double-dips (1 composer call but still 5 greps + 7 reads/cell), so graph
+   context is read-once overhead, not a replacement.
