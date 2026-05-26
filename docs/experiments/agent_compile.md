@@ -687,3 +687,47 @@ by this task distribution.
 3. To prove the graph's value at all, **evaluate on cross-file tasks where
    search alone fails** (the regime call-graphs are for); localization@k is the
    wrong instrument.
+
+---
+
+# Finding the regime where the graph DOES help (dataset-wide recall scan)
+
+Rather than oversell the graph as a universal token-saver (it isn't — see
+above), find the scenarios where it genuinely adds value. The honest, isolating
+question, asked cheaply over **all 100 instances** with no agent/LLM
+(`graph_recall_ablation.py`):
+
+> Does the composer surface a target file that **deep search misses** — i.e. a
+> target reachable only by a caller/callee edge from a search hit, not by
+> retrieving more search results? (The composer's seeds are a subset of deep
+> search, so any recovered target *must* come from graph expansion.)
+
+Budget K=30 (bm25 top-30 ∪ embedding top-30) vs composer (5 seeds + graph).
+
+| language | graph recovers a search-miss | search misses ≥1 target | total |
+|---|---|---|---|
+| C++/C | 0 | 4 | 20 |
+| Go | 1 | 5 | 21 |
+| Python | 2 | 4 | 20 |
+| Rust | 2 | 8 | 20 |
+| TS/JS | 0 | 3 | 19 |
+| **all** | **5** | **24** | **100** |
+
+**The graph-favorable regime is real but niche: ~5 % of instances (≈21 % of the
+24 cases where search misses).** On 76/100, deep search already has every target
+file — no headroom for the graph at file-recall level. The 5 recoveries:
+
+- `sympy-13031` → `sympy/matrices/sparse.py`
+- `matplotlib-14623` → `lib/mpl_toolkits/mplot3d/axes3d.py`
+- `terraform-35611` → `internal/terraform/transform_attach_config_resource.go`
+- `ruff-15309`, `ruff-15356` (Rust) → linter rule files
+
+Notably `sympy-13031` is exactly the instance the grep/read agent failed
+end-to-end (files@5 = 0.00) — search can't reach `sparse.py`, but it's a
+callee/caller hop from a search hit. (End-to-end confirmation on these 5 —
+search-only vs graph — runs next.)
+
+**Takeaway for a comprehensive system:** the call-graph isn't the default
+localization win; it's the **rescue path for the ~5 % of bugs whose edit site is
+one call-edge away from what search finds** but unreachable by search alone.
+That's a real, defensible contribution — sized honestly, not oversold.
