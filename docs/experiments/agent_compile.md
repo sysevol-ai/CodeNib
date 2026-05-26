@@ -618,3 +618,72 @@ null-reply path the LPOP fix edits).
   (repo size / hits) — the original CAR `compile_table` selection.
 - Next: reps ≥ 3 with CIs on this set to pin the real distribution, then the
   routing gate.
+
+---
+
+# Definitive 3-way ablation: does the LSP graph earn its keep? (reps=3, N=8)
+
+The CTX-vs-GREP comparisons above conflate two things — the composer is
+**search seeds (bm25+embedding) + call-graph expansion** — and earlier runs had
+graph expansion partly broken (see the two bugs below). To fairly isolate the
+graph we run three arms that share everything (same haiku, temp=0, max_turns=16,
+same 8 repos/queries/indexes, reps=3) and differ in exactly one variable:
+
+| arm | search seeds | graph expansion | isolates |
+|---|---|---|---|
+| **A** grep/read only (`file_read`+`file_search`) | — | — | baseline agent |
+| **B** composer, `CODEMINER_COMPOSER_NO_GRAPH=1` | ✓ | — | value of *search* |
+| **C** composer, full | ✓ | ✓ | value of *graph* |
+
+Accuracy reduced as MEAN over reps; tokens as MEDIAN over reps (robust to the
+±60–115 % single-rep swing); deltas paired per instance, Student-t 95 % CI.
+
+**A second graph-LSP bug, found and fixed first.** The prebuilt graph ships an
+EMPTY `_unified_to_names` even though every vertex has a `unified_name`, so the
+readable seeds the embedding search returns (`popGenericCommand`, …) never
+resolved to a vertex → the on-target embedding seeds were NEVER expanded; only
+hash-named bm25 seeds were. Fixed by rebuilding the index from vertex
+attributes. Post-fix the composer expands both sources (median 15 vs search
+only's 5 nodes). Arm C below uses the fixed graph.
+
+## Results
+
+| metric | A grep | B search-only | C +graph |
+|---|---|---|---|
+| files@1 (mean) | 0.58 | **0.79** | 0.75 |
+| files@5 (mean) | 0.88 | 0.88 | 0.88 |
+| symbols@5 (mean) | 0.00 | **0.25** | 0.25 |
+| tokens vs A (paired median) | — | **−19 %** [CI −34, −3] | −7 % [CI −23, +8] |
+
+- **B − A (search):** **−19 % tokens, 95 % CI excludes 0 — a real win** at equal
+  files@5, and it *lifts* accuracy (files@1 0.58→0.79; symbols@5 0→0.25).
+- **C − B (graph, the fair test):** **+18 % tokens** [CI −12, +48], **no accuracy
+  gain** at any k (slightly worse at files@1, incl. an xarray regression). Graph
+  helps on only 2/8 (redis −21 %, terraform −3 %) and adds cost on 6/8.
+
+## Conclusion (honest)
+
+**The retrieval earns its keep; the LSP call-graph expansion, fairly measured,
+does not — on this localization@k benchmark.** The token win and the accuracy
+lift both come from the bm25+embedding seeds. Adding graph expansion costs
+~18 % more tokens (more context the agent reads but doesn't convert into fewer
+turns) for zero accuracy gain.
+
+Why — and what it does *not* mean: the graph isn't broken (edges are real —
+redis has 86 k reference edges; `lpopCommand→redisCommandTable`; redis itself
+benefits −21 % when expansion lands on the edit-site neighborhood). The issue is
+**headroom**: search already puts the file in top-5 (0.88) / top-1 (0.79) on
+these mostly single-file SWE-bench fixes, so multi-hop call-graph traversal has
+little to add and only adds cost. The graph's hypothesized value — reaching
+files/symbols search *misses* via cross-file causal tracing — is not exercised
+by this task distribution.
+
+**Decisions this supports:**
+1. **Ship the retrieval composer with graph expansion OFF by default** for
+   localization (the proven −19 % arm), exposing graph as opt-in.
+2. If graph stays on, **gate it** to the redis-like case (seeds cluster in a
+   call neighborhood near the edit site) — routing, but now *inside* the
+   composer, not composer-vs-grep.
+3. To prove the graph's value at all, **evaluate on cross-file tasks where
+   search alone fails** (the regime call-graphs are for); localization@k is the
+   wrong instrument.
