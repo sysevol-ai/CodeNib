@@ -18,8 +18,14 @@ Skill type is ``custom`` so the loader hands it the full ``contexts`` dict
 
 from __future__ import annotations
 
+import os
 from itertools import zip_longest
 from typing import Any, Callable, Dict, List
+
+# Ablation knob (#133): set CODEMINER_COMPOSER_NO_GRAPH=1 to return only the
+# search seeds (no call-graph expansion). Used to isolate how much the graph/LSP
+# expansion contributes on top of plain bm25+embedding search.
+_NO_GRAPH = os.environ.get("CODEMINER_COMPOSER_NO_GRAPH") == "1"
 
 
 def _interleave(*seqs: List[Any]) -> List[Any]:
@@ -105,7 +111,7 @@ def create_executor(contexts: Dict[str, Any]) -> Callable[..., List[Any]]:
         #    then relabel the seed itself to its readable display.
         graph = getattr(expand, "code_graph", None) if expand is not None else None
         expanded: List[Any] = []
-        if graph is not None:
+        if graph is not None and not _NO_GRAPH:
             per = max(2, (max_results - len(entry)) // max(1, len(entry)))
             for s in entry:
                 name = getattr(s, "node_name", None)

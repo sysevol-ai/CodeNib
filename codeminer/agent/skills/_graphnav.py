@@ -14,7 +14,7 @@ the search tools). This module is not a skill itself (no ``config.yaml``), so
 
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def _bare(s: str) -> str:
@@ -34,6 +34,45 @@ def display_name(graph: Any, name: str) -> str:
     return info.get("unified_name") or name
 
 
+def _unified_index(graph: Any) -> Dict[str, List[str]]:
+    """Map readable ``unified_name`` (full + bare) -> canonical identity names.
+
+    The prebuilt graph's persisted ``_unified_to_names`` dict is often EMPTY
+    (older builder didn't serialize it), even though every vertex carries a
+    ``unified_name`` attribute. Without this index, readable seeds — exactly
+    the on-target symbols the embedding search returns (e.g.
+    ``popGenericCommand``) — fail to resolve back to a graph vertex and never
+    get expanded. So build the index from vertex attributes and cache it on
+    the graph object.
+    """
+    cache = getattr(graph, "_gn_uni_index", None)
+    if cache is not None:
+        return cache
+    index: Dict[str, List[str]] = {}
+
+    def _add(key: str, name: str) -> None:
+        index.setdefault(key, []).append(name)
+
+    pre = getattr(graph, "_unified_to_names", None) or {}
+    if pre:
+        for disp, names in pre.items():
+            for nm in names:
+                _add(disp, nm)
+                _add(_bare(disp), nm)
+    else:
+        for nm in getattr(graph, "name_to_vertex", {}) or {}:
+            info = graph.get_node_info_by_name(nm) or {}
+            u = info.get("unified_name")
+            if u:
+                _add(u, nm)
+                _add(_bare(u), nm)
+    try:
+        graph._gn_uni_index = index
+    except Exception:  # noqa: BLE001 — read-only graph object; just skip caching
+        pass
+    return index
+
+
 def candidates(graph: Any, symbol: str, limit: int = 8) -> List[str]:
     """Canonical node names that could match *symbol*.
 
@@ -50,27 +89,28 @@ def candidates(graph: Any, symbol: str, limit: int = 8) -> List[str]:
         return [s]
 
     # unified_name matching (readable display -> canonical identity name(s)).
-    uni = getattr(graph, "_unified_to_names", {}) or {}
+    uni = _unified_index(graph)
     if uni:
         sbase = _bare(s)
-        exact: List[str] = []
-        suffix: List[str] = []
-        sub: List[str] = []
-        for disp, ids in uni.items():
-            if disp == s or disp == s + "()":
-                exact += ids
-            elif _bare(disp) == sbase:
-                suffix += ids
-            elif sbase and sbase.lower() in disp.lower():
-                sub += ids
-        hits = exact or suffix or sub
-        if hits:
+
+        def _dedup(names: List[str]) -> List[str]:
             seen, out = set(), []
-            for h in hits:
+            for h in names:
                 if h not in seen:
                     seen.add(h)
                     out.append(h)
             return out[:limit]
+
+        for key in (s, s + "()", sbase):  # exact display, then bare token
+            if key in uni:
+                return _dedup(uni[key])
+        # substring over the distinct full display keys
+        sub: List[str] = []
+        for disp, names in uni.items():
+            if sbase and sbase.lower() in disp.lower():
+                sub += names
+        if sub:
+            return _dedup(sub)
 
     # fallback: name-based fuzzy (languages whose canonical name is readable).
     base = s.split(".")[-1].split(":")[-1]

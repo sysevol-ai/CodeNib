@@ -189,6 +189,19 @@ def test_resolve_accepts_full_unified_name():
     assert name == "cafef00d11"
 
 
+def test_resolves_when_unified_dict_empty_rebuilds_from_vertices():
+    """The prebuilt graph often ships an EMPTY ``_unified_to_names`` even though
+    vertices carry ``unified_name``. Resolution must rebuild the index from
+    vertex attributes — otherwise readable embedding seeds never expand
+    (the redis graph-LSP bug)."""
+    g = _HashNamedGraph()
+    g._unified_to_names = {}  # simulate the un-serialized prebuilt dict
+    name, _ = _graphnav.resolve(g, "popGenericCommand")
+    assert name == "deadbeef00"
+    callees = _graphnav.neighbors(g, "popGenericCommand", "callees")
+    assert {n.node_name for n in callees} == {"src/networking.c:addReplyNull()"}
+
+
 def test_neighbors_emit_readable_names_for_hash_graph():
     g = _HashNamedGraph()
     callees = _graphnav.neighbors(g, "popGenericCommand", "callees")
