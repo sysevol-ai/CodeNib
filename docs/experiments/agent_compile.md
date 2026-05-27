@@ -709,6 +709,26 @@ trace / impact_analysis. reps=3, N=8, vs the grep/read baseline (`cost_grep`).
    held (and sympy went 0→1.0 — but via bm25+read, *not* the graph: 0 graph
    calls).
 
+## Strict LocAgent: ban file_read too (read code ONLY by symbol)
+
+The purest graph-primary regime — `include_default_tools: false` (no grep, no
+file_read); the agent reads code only via `read_code_block(symbol)` (resolve →
+node span). reps=3, N=8.
+
+| metric | result |
+|---|---|
+| tool use | bm25_search 8.8/cell, read_code_block 3.2/cell, **graph verbs ~0.25/cell (6 calls / 24)** |
+| tokens vs grep/read | **+77 % [95 % CI +6 %, +148 %]** |
+| accuracy | files@5 **regressed** on docusaurus (1.0→0.67); rest parity, sympy still 0 |
+
+Removing the filesystem entirely is *worse*: still essentially no graph
+navigation, +77 % tokens, and an accuracy regression (read-by-symbol gives only
+the node span, so the agent can't browse surrounding context). Across **four**
+harness designs now — additive composer, free-choice verbs, graph-primary
+(no grep, +113 %), strict (no filesystem, +77 %) — the call-graph tools are used
+0–0.25×/cell and removing filesystem primitives only raises cost (and can hurt
+accuracy). The agent's preferred primitives are search + read, full stop.
+
 **The LocAgent token-savings thesis does not replicate here.** Likely because
 LocAgent uses a graph-*native* agent (trained/forced to navigate the graph) vs
 a weak baseline; our zero-shot model, given strong search + read, ignores the
