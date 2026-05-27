@@ -38,8 +38,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Group by PR head ref so only a *new commit on the same PR* preempts the
+  # in-flight run. On main/master pushes and scheduled runs (no head_ref) we
+  # fall back to a per-run-unique group, so those runs never cancel each other.
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  # cancel-in-progress only for pull_request events; never on main/release or
+  # schedule (those must always run to completion).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # =============================================================
