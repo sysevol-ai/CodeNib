@@ -678,6 +678,48 @@ little to add and only adds cost. The graph's hypothesized value — reaching
 files/symbols search *misses* via cross-file causal tracing — is not exercised
 by this task distribution.
 
+# LocAgent-style graph-primary harness (bm25 + call-graph, NO grep)
+
+Tests the natural objection: maybe graph only saves tokens once you remove the
+grep escape hatch (the LocAgent regime — graph as the navigation spine). Arm:
+`file_read` only (no `file_search`), tools = bm25 + find_callers / find_callees /
+trace / impact_analysis. reps=3, N=8, vs the grep/read baseline (`cost_grep`).
+
+| instance (lang) | GREP f@5 / tok | LocAgent f@5 / tok | Δtok |
+|---|---|---|---|
+| tokio (Rust) | 1.0 / 110 996 | 1.0 / 50 969 | −54 % |
+| redis (C++) | 1.0 / 136 202 | 1.0 / 143 720 | +6 % |
+| terraform (Go) | 1.0 / 204 862 | 1.0 / 270 039 | +32 % |
+| docusaurus (TS) | 1.0 / 213 827 | 1.0 / 379 622 | +78 % |
+| axios (TS) | 1.0 / 127 673 | 1.0 / 246 011 | +93 % |
+| caddy (Go) | 1.0 / 127 103 | 1.0 / 317 414 | +150 % |
+| sympy (Py) | 0.0 / 118 694 | **1.0** / 430 115 | +262 % |
+| xarray (Py) | 1.0 / 123 925 | 1.0 / 545 293 | +340 % |
+
+**Two findings, both decisive:**
+
+1. **Zero graph-tool adoption.** Across all 24 cells the agent called
+   `bm25_search` (7.6/cell) + `file_read` (4.9/cell) and the call-graph verbs
+   (`find_callers`/`find_callees`/`trace`/`impact_analysis`) **0 times** — even
+   though grep was removed and the graph was the *only* structured navigation
+   tool. The model reaches for the primitives it was pretrained on (search +
+   read), not bespoke graph tools, regardless of what's on offer.
+2. **Removing grep costs +113 % tokens [95 % CI +2 %, +224 %]**, not less.
+   Without grep the agent fans out with bm25 + read, a worse substitute. files@5
+   held (and sympy went 0→1.0 — but via bm25+read, *not* the graph: 0 graph
+   calls).
+
+**The LocAgent token-savings thesis does not replicate here.** Likely because
+LocAgent uses a graph-*native* agent (trained/forced to navigate the graph) vs
+a weak baseline; our zero-shot model, given strong search + read, ignores the
+graph interface and grep is simply an efficient localization primitive that the
+graph-primary harness removes. Consistent across all three harness designs we
+measured: prefetch composer (additive overhead), free-choice graph verbs (~0
+adoption), and graph-primary/no-grep (0 adoption + +113 % tokens). For this
+model on localization, **search + grep/read is the efficient frontier; the
+call-graph does not earn its keep in the agent loop** — only offline, as the
+dependency-analysis plugin.
+
 **Decisions this supports:**
 1. **Ship the retrieval composer with graph expansion OFF by default** for
    localization (the proven −19 % arm), exposing graph as opt-in.
