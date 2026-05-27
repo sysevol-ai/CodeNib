@@ -20,9 +20,9 @@ any per-instance regression (treatment mean files@5 < baseline) is flagged —
 a token win at the cost of accuracy is NOT a win.
 
 Usage:
-    python -m scripts.agent_compile.aggregate_proof \
+    python -m scripts.agent_compile.compare_harnesses \
         --baseline results/agent_compile/proof_grep \
-        --treatment results/agent_compile/proof_ctx \
+        --treatment results/agent_compile/proof_locagent_faithful \
         --k 5
 """
 
