@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+skill_id: read_code_block
+skill_type: expand
+operator: graph.read_block
+cost: low
+defaults: {}
+inputs:
+  - name: symbol
+    type: str
+    required: true
+    description: >-
+      Symbol to read the source of (fuzzy-matched against the graph; ambiguity
+      returns candidates). Reads the symbol's code block by its graph node span
+      — there is no file_read; you navigate and read by symbol, LocAgent-style.
+outputs:
+  type: str
+  description: The symbol's source (file:line header + body).
+index_requirements:
+  - type: symbol_graph
+    max_age_seconds: 3600
+    scope: current_repo
+resources: []
