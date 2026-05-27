@@ -754,20 +754,35 @@ actions (~1.6/cell vs ~17 search+read) — the agent reads the *named* candidate
 directly rather than traversing to it, since for localization search already
 names the target.
 
-**Five harness designs, one verdict** (vs the grep/read agent):
-| harness | graph use | tokens | accuracy |
-|---|---|---|---|
-| search-only composer (+grep/read) | — | **−19 %** | parity+ |
-| additive composer (+graph, +grep/read) | 1/cell | +18 % | parity |
-| LocAgent (content-bm25, no grep) | 0/cell | +113 % | parity |
-| strict (no fs, read_code_block) | ~0.25/cell | +77 % | −1 regression |
-| **faithful (names-bm25, no fs)** | 1.6/cell | +43 % | −3 regressions |
+**Five harness designs** (vs the grep/read agent). The **"graph used"** column is
+critical: several arms *offered* the graph tools but the agent barely touched
+them, so they are NOT tests of the graph — read them as "search+read without
+grep."
 
-The only configuration that beats grep/read is **search seeds *added to* grep/
-read** (−19 %). Every graph-primary variant that *removes* grep/read is more
-expensive and no more (often less) accurate. The call-graph does not earn its
-keep in the agent loop on localization, in any harness — its value is offline,
-as the dependency-analysis plugin.
+| harness | graph used (cells / total calls) | tokens | accuracy | tests the graph? |
+|---|---|---|---|---|
+| search-only composer (+grep/read) | — | **−19 %** | parity+ | no (search seeds) |
+| additive composer (+graph, +grep/read) | deterministic, 1×/cell | +18 % | parity | **yes (forced)** |
+| LocAgent (content-bm25, no grep) | **0/24, 0 calls** | +113 % | parity | **NO — graph unused** |
+| strict (no fs, read_code_block) | 5/24, 6 calls | +77 % | −1 regression | barely |
+| faithful (names-bm25, no fs) | **18/24, 39 calls** | +43 % | −3 regressions | **yes (agent-chosen)** |
+
+So only **two** rows actually exercise the call-graph:
+
+1. **additive composer** — the graph is expanded *deterministically* (not by
+   agent choice); the ablation C−B isolates it at **+18 % tokens, no accuracy
+   gain** at any k.
+2. **faithful LocAgent** — the agent *chooses* to traverse (18/24 cells, 39
+   calls), at **+43 % tokens and 3 accuracy regressions**.
+
+The `content-bm25 LocAgent` (+113 %) and `strict` (+77 %) rows are **not** graph
+results — the agent used ~0 graph calls; they only show that removing grep and
+leaning on bm25+read is expensive. The honest conclusion stands on the two rows
+that *do* test the graph: whether forced (deterministic, +18 %/no gain) or
+chosen (faithful, +43 %/−3 acc), **the call-graph does not help in the agent
+loop on localization.** The only config that beats grep/read is **search seeds
+*added to* grep/read** (−19 %). The graph's value is offline — the
+dependency-analysis plugin.
 
 **The LocAgent token-savings thesis does not replicate here.** Likely because
 LocAgent uses a graph-*native* agent (trained/forced to navigate the graph) vs
