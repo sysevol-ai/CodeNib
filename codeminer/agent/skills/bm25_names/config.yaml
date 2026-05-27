@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+skill_id: bm25_names
+skill_type: custom
+operator: retrieve.bm25_names
+cost: low
+defaults:
+  top_k: 20
+inputs:
+  - name: query
+    type: str
+    required: true
+    description: Keywords / identifiers to look up.
+  - name: top_k
+    type: int
+    required: false
+    default: 20
+    description: How many symbol names to return.
+outputs:
+  type: List[QueriedNode]
+  description: >-
+    Symbol NAME tags only — name + file:line + kind, NO code bodies. The
+    LocAgent-style entry point: get candidate symbol names, then navigate the
+    call graph from them and read_code_block the ones you want.
+index_requirements:
+  - type: bm25
+    max_age_seconds: 3600
+    scope: current_repo
+  - type: symbol_graph
+    max_age_seconds: 3600
+    scope: current_repo
+resources: []
