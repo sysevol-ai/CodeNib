@@ -87,6 +87,12 @@ class SampleConfig:
     metrics_k: List[int] = field(default_factory=lambda: [1, 3, 5, 10])
     gt_simplified_symbols: bool = True
     include_default_tools: bool = True
+    # LocAgent-style harness: restrict the always-on defaults to this subset
+    # (e.g. ["file_read"] → no grep). None = both file_read + file_search.
+    default_tool_ids: Optional[List[str]] = None
+    # Override the agent system prompt (e.g. a graph-primary prompt with no grep
+    # guidance). None = runner's default localization prompt.
+    system_prompt: Optional[str] = None
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SampleConfig":
@@ -201,6 +207,10 @@ def _run_cell(
         allow_skills=set(skills),
         session_ctx=sctx,
         include_default_tools=cfg.include_default_tools,
+        default_tool_ids=(
+            set(cfg.default_tool_ids) if cfg.default_tool_ids is not None else None
+        ),
+        system_prompt=cfg.system_prompt,
     )
     # The always-on default tools (file_read / file_search) resolve relative
     # paths against the process cwd, so run the agent from the instance repo.
