@@ -15,7 +15,7 @@ the metrics, and the analysis methodology end-to-end — **not** the full
 Reproduce:
 
 ```bash
-python scripts/agent_compile/run_sample_sweep.py \
+python scripts/agent_compile/run_agent_sweep.py \
     --config configs/agent_compile/sample.yaml \
     --output-dir results/agent_compile/sample
 python scripts/agent_compile/aggregate_phase2.py \

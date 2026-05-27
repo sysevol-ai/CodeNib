@@ -15,7 +15,9 @@ cell. For each instance it reduces the reps to:
 
 The headline is a PAIRED comparison across instances: per-instance token delta
 % = (treat_median - base_median) / base_median, then the mean delta with a
-Student-t 95% CI over the N instances. Accuracy parity is checked first and
+95% confidence interval (CI — *confidence interval*, not continuous integration;
+Student-t, appropriate for the small N) over the N instances. Accuracy parity is
+checked first and
 any per-instance regression (treatment mean files@5 < baseline) is flagged —
 a token win at the cost of accuracy is NOT a win.
 
@@ -157,7 +159,7 @@ def render(report: Dict[str, Any]) -> str:
         )
     lines.append("-" * 92)
     ci = report["ci95"]
-    ci_s = f" 95% CI [{ci[0]:+.0f}%, {ci[1]:+.0f}%]" if ci else ""
+    ci_s = f" 95% confidence interval [{ci[0]:+.0f}%, {ci[1]:+.0f}%]" if ci else ""
     lines.append(
         f"mean token delta (paired, median-of-reps): "
         f"{report['mean_dtok_pct']:+.0f}%{ci_s}  "

@@ -97,7 +97,7 @@ def _analyze_instance(
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.eval.retrieval_eval import collect_targets
     from scripts.agent_compile.prebuilt import repo_path_for, stage_prebuilt_indexes
-    from scripts.agent_compile.run_sample_sweep import (
+    from scripts.agent_compile.run_agent_sweep import (
         _load_dataset_rows,
         _load_full_contexts,
     )
@@ -134,7 +134,7 @@ def _analyze_instance(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from scripts.agent_compile.run_sample_sweep import SampleConfig
+    from scripts.agent_compile.run_agent_sweep import SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)
