@@ -74,7 +74,8 @@ def _load_cells(out_dir: Path) -> Dict[str, List[Dict[str, Any]]]:
     """instance_id -> list of rep cells."""
     by_inst: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for p in sorted((out_dir / "cells").glob("*.json")):
-        c = json.load(open(p))
+        with p.open("r", encoding="utf-8") as f:
+            c = json.load(f)
         by_inst[c["instance_id"]].append(c)
     return by_inst
 

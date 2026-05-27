@@ -220,8 +220,11 @@ class AgentRunner:
                 entries.append(child.name + ("/" if child.is_dir() else ""))
             if entries:
                 lines.append("top-level entries: " + ", ".join(entries[:40]))
-        except OSError:
-            pass
+        except OSError as exc:
+            # Top-level listing is best-effort context; skip it if the repo dir
+            # can't be read (missing / perms). The environment block is still
+            # returned without it.
+            logger.debug("env block: could not list %s: %s", repo_path, exc)
         lines.append("</environment>")
         return "\n".join(lines)
 

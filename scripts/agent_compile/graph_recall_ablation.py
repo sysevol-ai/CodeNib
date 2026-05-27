@@ -39,10 +39,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-_PROJECT_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
-
 
 def _norm(p: str) -> str:
     return (p or "").strip().strip("`'\"").replace("\\", "/")

@@ -278,6 +278,9 @@ def _rel_norm(path: str, repo_path: str):
         try:
             p = os.path.relpath(p, repo_path)
         except ValueError:
+            # Path can't be made relative to repo_path (e.g. different drive on
+            # Windows, or an unrelated root): keep the original absolute path and
+            # let normalize_file_path handle it. Non-fatal — scoring tolerates it.
             pass
     return normalize_file_path(p)
 
