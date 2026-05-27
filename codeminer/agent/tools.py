@@ -21,45 +21,59 @@ def search_code_snippets(
     file_path_or_pattern: Optional[str] = "**/*.py",
     repo_path: Optional[str] = None,
 ) -> str:
-    """
-    Searches the codebase to retrieve relevant code snippets based on given queries(terms or line numbers).
-    This function supports retrieving the complete content of a code entity,
-    searching for code entities such as classes or functions by keywords, or locating specific lines within a file.
-    It also supports filtering searches based on a file path or file pattern.
+    """Search the codebase for code snippets matching terms or line numbers.
+
+    Supports retrieving the complete content of a code entity, searching for
+    code entities (classes/functions) by keyword, or locating specific lines
+    within a file. Results can be filtered by file path or glob pattern.
 
     Note:
-    1. If `search_terms` are provided, it searches for code snippets based on each term:
-        - If a term is formatted as 'file_path:QualifiedName' (e.g., 'src/helpers/math_helpers.py:MathUtils.calculate_sum') ,
-          or just 'file_path', the corresponding complete code is retrieved or file content is retrieved.
-        - If a term matches a file, class, or function name, matched entities are retrieved.
-        - If there is no match with any module name, it attempts to find code snippets that likely contain the term.
-    2. If `line_nums` is provided, it searches for code snippets at the specified lines within the file defined by
-       `file_path_or_pattern`.
+        1. If ``search_terms`` is provided, each term is searched as follows:
+            - 'file_path:QualifiedName' (e.g.
+              'src/helpers/math.py:MathUtils.calculate_sum') or just
+              'file_path' retrieves the corresponding entity or full file.
+            - A term that matches a file, class, or function name returns
+              the matched entities.
+            - Otherwise the function falls back to a snippet-level search.
+        2. If ``line_nums`` is provided, snippets at the specified lines
+           within ``file_path_or_pattern`` are returned.
 
     Args:
-        search_terms (Optional[List[str]]): A list of names, keywords, or code snippets to search for within the codebase.
-            Terms can be formatted as 'file_path:QualifiedName' to search for a specific module or entity within a file
-            (e.g., 'src/helpers/math_helpers.py:MathUtils.calculate_sum') or as 'file_path' to retrieve the complete content
-            of a file. This can also include potential function names, class names, or general code fragments.
-        line_nums (Optional[List[int]]): Specific line numbers to locate code snippets within a specified file.
-            When provided, `file_path_or_pattern` must specify a valid file path.
-        file_path_or_pattern (Optional[str]): A glob pattern or specific file path used to filter search results
-            to particular files or directories. Defaults to '**/*.py', meaning all Python files are searched by default.
-            If `line_nums` are provided, this must specify a specific file path.
-        repo_path (Optional[str]): Path to the repository. If not provided, uses current working directory.
+        search_terms: Names, keywords, or code snippets to search for.
+            Terms may be ``'file_path:QualifiedName'`` to scope the search
+            to a specific module or entity, or just ``'file_path'`` to
+            retrieve a full file. Can also include function names, class
+            names, or general code fragments.
+        line_nums: Specific line numbers to locate snippets within the
+            file given by ``file_path_or_pattern``. Requires the latter
+            to be a concrete file path.
+        file_path_or_pattern: Glob or path used to filter results.
+            Defaults to ``'**/*.py'``. Must be a concrete file path when
+            ``line_nums`` is set.
+        repo_path: Repository root. Defaults to the current working
+            directory if not provided.
 
     Returns:
-        str: The search results, which may include code snippets, matching entities, or complete file content.
+        Search results: snippets, matching entities, or complete file
+        contents.
 
     Example Usage:
-        # Search for the full content of a specific file
+        # Full content of a file
         result = search_code_snippets(search_terms=['src/my_file.py'])
-        # Search for a specific function
-        result = search_code_snippets(search_terms=['src/my_file.py:MyClass.func_name'])
-        # Search for specific lines (10 and 15) within a file
-        result = search_code_snippets(line_nums=[10, 15], file_path_or_pattern='src/example.py')
-        # Combined search for a module name and within a specific file pattern
-        result = search_code_snippets(search_terms=["MyClass"], file_path_or_pattern="src/**/*.py")
+        # A specific function
+        result = search_code_snippets(
+            search_terms=['src/my_file.py:MyClass.func_name'],
+        )
+        # Specific lines within a file
+        result = search_code_snippets(
+            line_nums=[10, 15],
+            file_path_or_pattern='src/example.py',
+        )
+        # Class name within a file pattern
+        result = search_code_snippets(
+            search_terms=["MyClass"],
+            file_path_or_pattern="src/**/*.py",
+        )
     """
 
     if repo_path is None:
@@ -88,7 +102,7 @@ def search_code_snippets(
             if not term:
                 continue
 
-            result += f'## Searching for term "{term}"...\n### Search Result:\n'
+            result += f"## Searching for term {term!r}...\n### Search Result:\n"
 
             # 2.1 Check if term is file_path:entity format
             if ":" in term:
@@ -132,7 +146,10 @@ def _search_by_line_numbers(
         with open(full_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-        result = f'## Searching for lines {line_nums} in file "{file_path}"...\n### Search Result:\n'
+        result = (
+            f"## Searching for lines {line_nums} in file {file_path!r}...\n"
+            f"### Search Result:\n"
+        )
 
         for line_num in line_nums:
             if 1 <= line_num <= len(lines):
@@ -186,7 +203,10 @@ def _search_file_entity(term: str, repo_path: str, include_files: List[str]) -> 
         for i, line in enumerate(lines):
             if is_entity_definition(line, entity_part):
                 entity_content = extract_entity_content(lines, i)
-                return f"**Entity: {entity_part} in {file_part}**\n```python\n{entity_content}\n```\n\n"
+                return (
+                    f"**Entity: {entity_part} in {file_part}**\n"
+                    f"```python\n{entity_content}\n```\n\n"
+                )
 
         # If entity not found, search for any occurrence
         return search_entity_occurrence(lines, entity_part, file_part)
@@ -255,7 +275,10 @@ def _search_with_engine(term: str, repo_path: str, include_files: List[str]) -> 
                 continue
 
             match_counter += 1
-            result += f"**Match {match_counter}: {file_path}** (Type: {node_type}, Score: {score:.3f})\n"
+            result += (
+                f"**Match {match_counter}: {file_path}** "
+                f"(Type: {node_type}, Score: {score:.3f})\n"
+            )
 
             try:
                 code_context = search_engine.get_code_context(search_result)

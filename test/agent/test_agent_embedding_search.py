@@ -25,7 +25,8 @@ EMBEDDING_INDEX_PATH = "/tmp/embedding_e2e_index"
 
 class TestAgentEmbeddingSearch:
     """
-    Vertex (or CODEMINER_VERTEX_ROUTING_MODEL) + real FAISS; assert tool_calls use embedding_search.
+    Vertex (or CODEMINER_VERTEX_ROUTING_MODEL) + real FAISS; assert
+    tool_calls use embedding_search.
 
     Index default: /tmp/codeminer_e2e_index — override with CODEMINER_INDEX_PATH.
     """

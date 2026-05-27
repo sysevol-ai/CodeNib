@@ -62,11 +62,16 @@ nav:
       - SWE-bench Collection: collect_swebench.md
       - Upload to HuggingFace: upload_dataset_to_huggingface.md
       - CI/CD: ci_cd.md
+      - Diagnose Query Leak: diagnose_query_leak.md
   - Components:
+      - MCP Server: mcp.md
+      - Agent Skills: agent_skills.md
       - GT Locator: gt_locator.md
       - Incremental Graph:
           - incremental_graph/index.md
           - Interactive Demo: incremental_graph/interactive.md
+      - Graph Range Query: graph_query.md
       - Regex Index: regex_index.md
       - SCIP Index: scip_index.md
       - Graph Cache: graph_cache_usage.md
+      - Core C++ Backend: core_cpp.md

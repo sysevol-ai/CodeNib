@@ -25,8 +25,10 @@ make scip
 
 - **LSP-oriented symbol graphs** -- structural code intelligence via SCIP protocol and language servers (scip-python, rust-analyzer, clangd, gopls, scip-typescript)
 - **Incremental graph patching** -- update CodeGraph in-place via LSP without full re-indexing, enabling fast iteration on evolving codebases
-- **Lightweight hybrid retrieval** -- BM25 sparse, regex, and FAISS/Milvus dense indexes with LLM re-ranking
+- **Lightweight hybrid retrieval** -- BM25 sparse, regex, Zoekt trigram, and FAISS/Milvus dense indexes with LLM re-ranking
 - **Tree-sitter chunking** at file, symbol, and method granularity
+- **MCP server** -- expose semantic, BM25, regex, and Zoekt search to LLM agents over the Model Context Protocol (`codeminer-mcp`)
+- **Composable agent skills** -- retrieval/rerank/expand skills selected via a registry with `allow_skills` gating and index-aware resource guards
 - **SWE-bench integration** -- ground-truth extraction, multi-language dataset collection, and evaluation
 
 ## Development

@@ -21,7 +21,7 @@ def normalize_file_path(value: Optional[str]) -> Optional[str]:
 
 
 def normalize_symbol_identifier(value: Optional[str]) -> Optional[str]:
-    """Normalize `file:Symbol` identifiers to ensure file portion matches the retrieved format."""
+    """Normalize ``file:Symbol`` so the file portion matches the retrieved form."""
     if not value:
         return None
     if ":" not in value:
@@ -37,8 +37,10 @@ def collect_targets(
     instance: Mapping[str, object], simplified_symbols: bool = True
 ) -> Tuple[List[str], List[str]]:
     """Aggregate and normalize file + symbol labels from a dataset instance.
-    If simplified_symbols is True, use symbols_modified and symbols_deleted, exclude symbols_added.
-    If simplified_symbols is False, use all symbols_modified, symbols_added and symbols_deleted.
+
+    If ``simplified_symbols`` is True, use ``symbols_modified`` and
+    ``symbols_deleted`` (excluding ``symbols_added``); otherwise include
+    all three.
     """
     target_files = instance.get("target_files") or []
 

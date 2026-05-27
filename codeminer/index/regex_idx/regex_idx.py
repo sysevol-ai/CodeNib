@@ -82,7 +82,7 @@ class RegexNodeIndex:
 
         Args:
             pattern: Search pattern (regex or plain string)
-            file_glob: Optional glob pattern to filter by file path (e.g., '*.py', '**/calculator.py')
+            file_glob: Optional glob to filter by file path (e.g., '*.py', '**/calc.py')
             node_type: Optional node type to filter (e.g., 'function', 'class', 'file')
             case_sensitive: Whether search is case-sensitive (default: False)
             use_regex: Whether to use regex (default: True) or plain string matching
@@ -91,7 +91,7 @@ class RegexNodeIndex:
             List of NodeInfo objects matching the pattern
 
         Examples:
-            >>> idx.search(r'def\s+\w+', file_glob='*.py')  # Find function definitions in Python files
+            >>> idx.search(r'def\s+\w+', file_glob='*.py')  # Find function defs
             >>> idx.search('calculator', use_regex=False)  # Plain string search
             >>> idx.search('class', node_type='file')  # Search in file nodes only
         """
@@ -115,8 +115,8 @@ class RegexNodeIndex:
             try:
                 regex = re.compile(pattern, flags)
             except re.error as e:
-                logger.error(f"Invalid regex pattern '{pattern}': {e}")
-                raise ValueError(f"Invalid regex pattern: {e}")
+                logger.error(f"Invalid regex pattern {pattern!r}: {e}")
+                raise ValueError(f"Invalid regex pattern: {e}") from e
 
             matches = [n for n in candidates if n.content and regex.search(n.content)]
         else:
@@ -132,7 +132,7 @@ class RegexNodeIndex:
                 ]
 
         logger.debug(
-            f"Search pattern='{pattern}' file_glob={file_glob} node_type={node_type}: "
+            f"Search pattern={pattern!r} file_glob={file_glob} node_type={node_type}: "
             f"found {len(matches)} matches from {len(candidates)} candidates"
         )
 

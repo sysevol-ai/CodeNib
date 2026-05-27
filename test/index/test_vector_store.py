@@ -156,7 +156,7 @@ def test_vector_store_with_huggingface():
         ]
 
         for query in test_queries:
-            print(f"\nSearching for: '{query}'")
+            print(f"\nSearching for: {query!r}")
             results = vector_store.search(query, top_k=5)  # Show all results
 
             for i, result in enumerate(results, 1):
@@ -225,7 +225,7 @@ def test_with_real_code_chunks(httpie_cli_repo=None):
         ]
 
         for query in search_queries:
-            print(f"\nSearching for: '{query}'")
+            print(f"\nSearching for: {query!r}")
             results = vector_store.search(query, top_k=3)
 
             for i, result in enumerate(results, 1):

@@ -280,7 +280,10 @@ class PatcherCpp(PatcherBase):
             success = indexer.generate_index(compdb_path=str(comp_db))
             n_after = len(list(cache_path.glob("*.idx"))) if cache_path.exists() else 0
             logger.info(
-                f"[patcher_cpp DEBUG] after ClangdIndexer: {cache_path} has {n_after} .idx (success={success})"
+                "[patcher_cpp DEBUG] after ClangdIndexer: %s has %d .idx (success=%s)",
+                cache_path,
+                n_after,
+                success,
             )
             return indexer.idx_directory if success else None
 

@@ -7,6 +7,8 @@
 """
 SCIP indexer for Python projects using scip-python (via conda environment).
 """
+import os
+import signal
 import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
@@ -16,6 +18,46 @@ from ..profiler import Profiler
 from .scip_indexer_base import SCIPIndexerBase
 
 logger = get_logger("scip_python_indexer")
+
+# Upper bounds (seconds) that turn a hung child process into a fast, clear
+# failure instead of letting it run until the CI job's wall-clock timeout.
+# scip-python indexes sympy in a few minutes, so these are generous and only
+# fire on a genuine stall. They must stay comfortably below the integration-
+# serial job's timeout-minutes: the final test reaches scip-python ~26 min in,
+# so a too-high bound (e.g. 20 min) can never fire before the 45-min job cap
+# kills the whole job — defeating the point of the timeout.
+_SCIP_PYTHON_INDEX_TIMEOUT_S = 600  # scip-python (Node) index run
+_CONDA_ENV_CREATE_TIMEOUT_S = 600  # fallback `conda env create`
+
+
+def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
+    """Like ``subprocess.run(cmd, check=True, timeout=...)`` but kills the whole
+    process group on timeout.
+
+    ``subprocess.run``'s own timeout only SIGKILLs the immediate child. conda
+    (libmamba solver) and scip-python (Node) spawn grandchildren that survive
+    as orphans, keep holding the conda env/pkg lock, and wedge a self-hosted
+    runner so later steps block forever. Running in a new session and killing
+    the group ensures no descendant leaks past the timeout.
+    """
+    with subprocess.Popen(cmd, start_new_session=True, **popen_kwargs) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                # The process group may already have exited between timeout and kill.
+                # In that race, there is nothing left to terminate.
+                logger.debug("Process group %s already exited before SIGKILL", proc.pid)
+            proc.communicate()
+            raise
+        retcode = proc.poll()
+        if retcode:
+            raise subprocess.CalledProcessError(
+                retcode, cmd, output=stdout, stderr=stderr
+            )
+    return subprocess.CompletedProcess(proc.args, retcode, stdout, stderr)
 
 
 class SCIPPythonIndexer(SCIPIndexerBase):
@@ -238,15 +280,15 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 ]
 
                 try:
-                    subprocess.run(create_cmd, check=True, timeout=300)
+                    _run_checked_with_timeout(create_cmd, timeout=300)
                 except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
                     logger.warning(
                         f"Fast environment creation failed: {e}. "
                         "Falling back to standard method..."
                     )
-                    subprocess.run(
+                    _run_checked_with_timeout(
                         ["conda", "env", "create", "--file", str(self.env_file)],
-                        check=True,
+                        timeout=_CONDA_ENV_CREATE_TIMEOUT_S,
                     )
 
                 logger.info(
@@ -257,6 +299,12 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 logger.error(f"Environment file not found at {self.env_file}")
                 return False
 
+        except subprocess.TimeoutExpired as e:
+            logger.error(
+                f"Conda environment creation timed out after {e.timeout}s "
+                f"(cmd: {e.cmd}). Aborting instead of hanging the job."
+            )
+            return False
         except subprocess.CalledProcessError as e:
             logger.error(f"Error setting up conda environment: {e}")
             if hasattr(e, "output") and e.output:
@@ -308,8 +356,6 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             bool: True if command succeeded, False otherwise
         """
         try:
-            import os
-
             scip_bin = self._get_conda_env_bin()
             # Resolve symlinks so subprocess cwd matches real paths
             work_dir = Path(cwd if cwd else self.project_root).resolve()
@@ -330,22 +376,28 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                         node_opts + " --max-old-space-size=8192"
                     ).strip()
                 logger.info(f"Running with scip-env PATH ({scip_bin}): {cmd}")
-                subprocess.run(
+                _run_checked_with_timeout(
                     cmd,
-                    check=True,
                     cwd=work_dir,
                     env=env,
+                    timeout=_SCIP_PYTHON_INDEX_TIMEOUT_S,
                 )
             else:
                 # Fallback: use conda run (may have PATH issues)
                 conda_cmd = ["conda", "run", "-n", self.conda_env_name] + cmd
                 logger.info(f"Running via conda run (fallback): {cmd}")
-                subprocess.run(
+                _run_checked_with_timeout(
                     conda_cmd,
-                    check=True,
                     cwd=work_dir,
+                    timeout=_SCIP_PYTHON_INDEX_TIMEOUT_S,
                 )
             return True
+        except subprocess.TimeoutExpired as e:
+            logger.error(
+                f"scip-python timed out after {e.timeout}s (cmd: {e.cmd}). "
+                "Aborting instead of hanging the job."
+            )
+            return False
         except subprocess.CalledProcessError as e:
             logger.error(f"Error running command in conda environment: {e}")
             return False

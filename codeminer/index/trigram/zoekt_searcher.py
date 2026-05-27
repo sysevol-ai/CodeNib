@@ -291,7 +291,7 @@ def _compose_query(query: str, file_filter: Optional[str]) -> str:
     if not expr:
         return query
     if " " in expr or "(" in expr:
-        expr = f'"{expr}"'
+        expr = f'"{expr}"'  # noqa: B907 — Zoekt requires literal quotes here
     return f"{query} file:{expr}"
 
 

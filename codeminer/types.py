@@ -28,7 +28,7 @@ SYMBOL_TYPES = {
 
 
 def is_symbol_node(node_type):
-    """Check if a node type represents any kind of symbol (class, function, method, or generic symbol)"""
+    """Whether ``node_type`` is any symbol (class/function/method/generic)."""
     return node_type in SYMBOL_TYPES
 
 

@@ -3,6 +3,7 @@
 __pycache__
 my_project/
 *.json
+!.claude/settings.json
 graph.png
 graph.pkl
 build/
@@ -17,3 +18,18 @@ site/
 .venv/
 .cursor/
 *.bak
+
+# Code-QA demo
+.codeminer_qa/
+.codeminer_demo/
+# Local verification evidence / scratch (Playwright screenshots); not source.
+/verification/
+/references/
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+# *.json is ignored globally above; keep the frontend config tracked.
+!web/package.json
+!web/tsconfig.json
+!web/package-lock.json

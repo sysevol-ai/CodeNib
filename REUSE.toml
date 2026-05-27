@@ -2,15 +2,8 @@ version = 1
 
 # Files we cannot (or should not) annotate with inline SPDX headers:
 #   - prompt templates loaded verbatim as model input
-#   - meta / convention files where Apache 2.0 itself reserves the format
-#     (NOTICE) or where comments are awkward (.gitignore, .flake8)
+#   - meta / convention files where comments are awkward (.gitignore, .flake8)
 # Their licensing is declared here, per the REUSE 3.3 specification.
-
-[[annotations]]
-path = "NOTICE"
-precedence = "aggregate"
-SPDX-FileCopyrightText = "CodeMiner Contributors"
-SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = ".gitignore"
@@ -25,6 +18,12 @@ SPDX-FileCopyrightText = "CodeMiner Contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
+path = ".claude/settings.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
 path = "codeminer/model/prompts/*.txt"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "CodeMiner Contributors"
@@ -34,6 +33,22 @@ SPDX-License-Identifier = "Apache-2.0"
 # files that cannot carry inline SPDX headers.
 [[annotations]]
 path = "results/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Demo frontend (Next.js scaffold + lockfiles); SPDX comments are awkward
+# in JSON / .css and get clobbered by tooling-regenerated files.
+[[annotations]]
+path = "web/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "CodeMiner Contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Out-of-tree Claude Code worktree checkouts created during local agent
+# sessions — not part of the repo, but reuse-tool walks the working dir.
+[[annotations]]
+path = ".claude/worktrees/**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "CodeMiner Contributors"
 SPDX-License-Identifier = "Apache-2.0"

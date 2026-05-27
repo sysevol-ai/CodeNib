@@ -8,25 +8,29 @@ SPDX-License-Identifier: Apache-2.0
 
 CodeMiner is a code analysis agent with graph-enhanced search. It parses
 multi-language codebases with tree-sitter, builds semantic graphs (igraph),
-and provides hybrid retrieval (BM25 + FAISS/Milvus embeddings + LLM re-ranking)
-via litellm. Python 3.10+.
+and provides hybrid retrieval (BM25 + FAISS/Milvus embeddings + regex/trigram +
+LLM re-ranking) via litellm. Retrieval is exposed both as composable agent
+skills and over the Model Context Protocol (MCP). Python 3.10+.
 
 ## Package structure
 
 ```
 codeminer/
   code_chunking/   # Tree-sitter chunkers: Python, Go, Rust, C++, JS/TS
-  graph/           # CodeGraph (igraph), ROI subgraph, incremental patchers
+  graph/           # CodeGraph (igraph), ROI subgraph, range queries; graph/incremental/ LSP patchers
   dataset/         # SWE-bench loading, ground-truth extraction, query synthesis
-  index/           # BM25 sparse index, FAISS embedding search, regex node index
-  agent/           # Keyword extraction, re-ranking, resource guards, tool runners
+  index/           # BM25 sparse, FAISS/embedding, regex node, trigram (Zoekt) indexes
+  incremental/     # Incremental embedding pipeline (git-diff driven chunk/index updates)
+  agent/           # Keyword extraction, re-ranking, resource guards, skills + runner
+  compiler/        # Two-phase index compilation: IndexCompiler -> RepoManifest
+  mcp/             # Model Context Protocol server (semantic/BM25/regex/Zoekt search)
+  model/           # Retrieval pipelines (bm25/embedding/graph/rerank) + agentless prompts
   llm/             # litellm-based chat interface
   scip_interface/  # SCIP indexing bindings (proto, shell scripts)
   ls_index/        # Language server index (clangd, rust-analyzer, scip-typescript)
   ops/             # Graph operations (expand, traverse)
   eval/            # Evaluation utilities
-  compiler/        # Build / compilation integration
-  plans/           # Plan generation and management
+core/              # C++ decoder backend (libigraph) mirroring CodeGraph/SCIPGraphDecoder
 test/              # Mirrors package structure; uses pytest markers
 scripts/           # CLI entry points: dataset collection, embedding, evaluation
 third_party/       # Git submodules (scip-python)
@@ -72,6 +76,23 @@ pytest -m slow                                 # slow only
 - **Symbol chunk types**: `function`, `method`, `class`, `struct`, `type`,
   `interface`, `object`, `enum`, `trait`, `impl`, `var`, `const`, `static`,
   `declaration`, `macro`, `variable`.
+
+## Git & PR conventions
+
+Rules for any AI/code agent (Claude Code, etc.) committing or opening PRs here.
+
+- **No agent attribution.** Do **not** add `Co-Authored-By: Claude ...`,
+  `🤖 Generated with Claude Code`, session links, or any "made by an AI"
+  footer to commit messages, PR bodies, or review comments. This is also
+  enforced by `includeCoAuthoredBy: false` in `.claude/settings.json`.
+- **Commit messages**: Conventional Commits — `type(scope): summary`, where
+  `type` is `feat`/`fix`/`docs`/`refactor`/`perf`/`test`/`chore`/`ci`.
+  Imperative mood, ≤72-char subject; body explains *why* + how it was verified.
+- **PRs must follow `.github/PULL_REQUEST_TEMPLATE.md` verbatim** — keep every
+  section heading (`Summary`, `Changes`, `Type of Change`, `Testing`,
+  `Checklist`) in order. Fill the bullets, tick the relevant `- [x]` boxes;
+  do not substitute ad-hoc sections. Add extra context *below* the template,
+  never in place of it.
 
 ## CI
 
