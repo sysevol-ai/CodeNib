@@ -5,6 +5,7 @@
 import bisect
 import pickle
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -123,6 +124,14 @@ class CodeGraph:
         # eids would point at wrong edges). Lookup via _ensure_edge_index().
         # Not pickled — rebuilt on demand after load.
         self._edge_index: Optional[Dict[Tuple, int]] = None
+
+        # Edge insertion buffer, active only inside a `batch_edges()` block.
+        # igraph rebuilds its adjacency index on every `add_edges` call, so
+        # inserting one edge at a time is O(E^2). Decoders wrap their build
+        # loop in `batch_edges()` to defer insertion into a single add_edges
+        # flush (O(E)). When None, `_add_edge` inserts immediately as before.
+        self._edge_buffer: Optional[List[Tuple[int, int]]] = None
+        self._edge_attr_buffer: Optional[List[Tuple]] = None
 
     def add_file_node(self, file_path):
         """
@@ -373,6 +382,18 @@ class CodeGraph:
         if existing is not None:
             return existing
 
+        # Inside a batch_edges() block: buffer the insertion instead of calling
+        # igraph per edge (which is O(E^2)). The provisional eid is the position
+        # the edge will occupy after flush — current ecount is unchanged while
+        # buffering, so it equals ecount + buffer length. Decoders don't use the
+        # returned eid, and dedup stays correct because the index is updated now.
+        if self._edge_buffer is not None:
+            edge_id = self.graph.ecount() + len(self._edge_buffer)
+            self._edge_buffer.append((source_id, target_id))
+            self._edge_attr_buffer.append((edge_type, anchor_file, anchor_line))
+            self._edge_index[key] = edge_id
+            return edge_id
+
         self.graph.add_edges([(source_id, target_id)])
         edge_id = self.graph.ecount() - 1
 
@@ -385,6 +406,60 @@ class CodeGraph:
 
         self._edge_index[key] = edge_id
         return edge_id
+
+    @contextmanager
+    def batch_edges(self):
+        """Defer igraph edge insertion until the block exits, flushing all
+        buffered edges in a single ``add_edges`` call.
+
+        igraph rebuilds its internal adjacency index on every ``add_edges``
+        call, so inserting one edge at a time (as bare ``_add_edge`` does) is
+        O(E^2) in the number of edges — the dominant cost when decoding a large
+        repo. Wrapping a build loop in this context collapses that to O(E):
+
+            with graph.batch_edges():
+                # ... many add_symbol_reference / _add_edge calls ...
+
+        Edge dedup is unaffected (the dedup index is updated as edges are
+        buffered). Edge *ids* returned by ``_add_edge`` while buffering are
+        provisional and only become real after flush; no caller relies on them
+        mid-build. Outside this block ``_add_edge`` inserts immediately, so the
+        incremental patcher and all other callers are unchanged. Nesting is a
+        no-op (the outermost block owns the flush)."""
+        if self._edge_buffer is not None:
+            # Already batching — let the outer block own the buffer/flush.
+            yield
+            return
+        if self._edge_index is None:
+            self._rebuild_edge_index()
+        self._edge_buffer = []
+        self._edge_attr_buffer = []
+        try:
+            yield
+        finally:
+            self._flush_edge_buffer()
+
+    def _flush_edge_buffer(self) -> None:
+        """Insert all buffered edges in one ``add_edges`` call, then assign
+        per-edge attributes. Attribute assignment mirrors the immediate path
+        exactly (anchor_* set only when not None), and does not trigger the
+        adjacency rebuild that makes per-edge ``add_edges`` quadratic."""
+        pairs = self._edge_buffer
+        attrs = self._edge_attr_buffer
+        self._edge_buffer = None
+        self._edge_attr_buffer = None
+        if not pairs:
+            return
+        base = self.graph.ecount()
+        self.graph.add_edges(pairs)
+        es = self.graph.es
+        for offset, (edge_type, anchor_file, anchor_line) in enumerate(attrs):
+            eid = base + offset
+            es[eid]["type"] = edge_type
+            if anchor_file is not None:
+                es[eid]["anchor_file"] = anchor_file
+            if anchor_line is not None:
+                es[eid]["anchor_line"] = anchor_line
 
     def _rebuild_edge_index(self) -> None:
         """Rebuild the edge dedup index by walking all current edges. O(E).
