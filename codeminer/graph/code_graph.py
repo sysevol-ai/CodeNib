@@ -655,6 +655,92 @@ class CodeGraph:
         """
         return self.graph
 
+    # ------------------------------------------------------------------
+    # Readable-name resolution
+    #
+    # The canonical vertex ``name`` is the identity key — for clang/SCIP
+    # indexed C/C++ it is a content hash (e.g. ``8ee8d723c4a8f670``). The
+    # readable label lives in the ``unified_name`` attribute (e.g.
+    # ``src/t_list.c:popGenericCommand()``). These helpers map a readable /
+    # bare symbol the *caller* knows back to the canonical name graph ops
+    # (get_successors / get_predecessors / incident) need.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _bare_symbol(s: str) -> str:
+        """Strip path/qualifier prefix and a trailing ``()`` to a bare token."""
+        return s.split(":")[-1].split(".")[-1].rstrip("()").strip()
+
+    def unified_index(self):
+        """Readable ``unified_name`` (full + bare) -> [canonical names], cached.
+
+        Rebuilds from vertex attributes when the persisted ``_unified_to_names``
+        is empty (older prebuilt graphs ship it empty even though every vertex
+        carries a ``unified_name``).
+        """
+        cache = getattr(self, "_unified_index_cache", None)
+        if cache is not None:
+            return cache
+        index = {}
+
+        def _add(key, name):
+            index.setdefault(key, []).append(name)
+
+        pre = self._unified_to_names or {}
+        if pre:
+            for disp, names in pre.items():
+                for nm in names:
+                    _add(disp, nm)
+                    _add(self._bare_symbol(disp), nm)
+        else:
+            for nm in self.name_to_vertex:
+                info = self.get_node_info_by_name(nm) or {}
+                u = info.get("unified_name")
+                if u:
+                    _add(u, nm)
+                    _add(self._bare_symbol(u), nm)
+        self._unified_index_cache = index
+        return index
+
+    def display_name(self, name):
+        """Readable label for a canonical *name* (``unified_name`` or itself)."""
+        info = self.get_node_info_by_name(name) or {}
+        return info.get("unified_name") or name
+
+    def resolve_symbol(self, symbol):
+        """Map a readable/bare *symbol* to (canonical_name | None, candidates).
+
+        Tries the canonical name first, then the readable ``unified_name``
+        (full display, then bare token), then a substring match. ``None`` when
+        ambiguous or missing; candidates are readable display names.
+        """
+        n2v = self.name_to_vertex or {}
+        s = (symbol or "").strip().strip("`'\"")
+        if not s:
+            return None, []
+        if s in n2v:
+            return s, [self.display_name(s)]
+
+        uni = self.unified_index()
+        cands = []
+        if uni:
+            sbase = self._bare_symbol(s)
+            for key in (s, s + "()", sbase):
+                if key in uni:
+                    cands = list(dict.fromkeys(uni[key]))
+                    break
+            if not cands:
+                sub = []
+                for disp, names in uni.items():
+                    if sbase and sbase.lower() in disp.lower():
+                        sub += names
+                cands = list(dict.fromkeys(sub))
+        if not cands:  # languages whose canonical name is already readable
+            base = s.split(".")[-1].split(":")[-1]
+            cands = [k for k in n2v if k.endswith("." + s) or k.split(".")[-1] == base]
+        canonical = cands[0] if len(cands) == 1 else None
+        return canonical, [self.display_name(c) for c in cands[:8]]
+
     def get_node_info_by_name(self, node_name):
         """
         Get information about a node in the graph.

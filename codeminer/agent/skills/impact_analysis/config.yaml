@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+skill_id: impact_analysis
+skill_type: expand
+operator: graph.impact
+cost: low
+defaults:
+  direction: impact
+  max_depth: 3
+inputs:
+  - name: symbol
+    type: str
+    required: true
+    description: Function/class name to analyze (fuzzy-matched; ambiguity returns candidates).
+  - name: direction
+    type: str
+    required: false
+    default: impact
+    description: >-
+      "impact" = transitive callers (blast radius: who is affected if you change
+      this); "dependencies" = transitive callees (what this relies on).
+  - name: max_depth
+    type: int
+    required: false
+    default: 3
+    description: Max call-graph hops to traverse (transitive depth).
+outputs:
+  type: List[QueriedNode]
+  description: >-
+    Transitive callers/callees with their hop-distance, each with name,
+    file:line, kind. No code bodies — file_read the ones you need. This is the
+    multi-hop structural question grep cannot answer.
+index_requirements:
+  - type: symbol_graph
+    max_age_seconds: 3600
+    scope: current_repo
+resources: []
