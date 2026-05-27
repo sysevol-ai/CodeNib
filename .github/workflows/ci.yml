@@ -250,7 +250,13 @@ jobs:
         # SCIP outputs land at ~/.codeminer/<instance_id>/ (conftest fixture
         # hard-codes this path; self-hosted runner's symlink makes it persist
         # so the downstream `scip-core` job sees it).
-        run: pytest -m "integration_serial" -v --tb=short
+        #
+        # --timeout=900: per-test hang guardrail. The slowest healthy serial test
+        # is ~7.5 min, so a 15-min cap leaves 2x headroom yet fails a hung test
+        # (e.g. scip-python indexing of sympy, observed hanging ~27 min) fast
+        # instead of letting it run out the 45-min job cap and hog the single
+        # self-hosted runner. Default (signal) method fails just the hung test.
+        run: pytest -m "integration_serial" -v --tb=short --timeout=900
 
   # =============================================================
   # Job 3b — SCIP core  (builds core/ pybind + parity-checks the C++
