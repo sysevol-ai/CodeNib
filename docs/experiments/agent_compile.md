@@ -886,3 +886,43 @@ context is not more localized truth; distractors cost both tokens and accuracy.
    fan-out rather than adding to it — the additive setup measured here shows the
    agent double-dips (1 composer call but still 5 greps + 7 reads/cell), so graph
    context is read-once overhead, not a replacement.
+
+---
+
+# GraphRAG as a *retriever* (recall@k, not the agent loop) — #24
+
+The graph fails in the agent loop but the composer (search seeds → call-graph
+expansion) is a legitimate **retrieval pipeline**. Evaluated as a retriever
+(`scripts/agent_compile/graphrag_retrieve.py`, files@k recall vs ground truth,
+no LLM) over all **100 codeminer-base** instances:
+
+| recall@k | search-only | GraphRAG (search+graph) | GraphRAG + identifier seeding |
+|---|---|---|---|
+| files@1 | 10 % | 10 % | **23 %** |
+| files@5 | 47 % | 48 % | 49 % |
+| files@10 | 47 % | **52 %** | 52 % |
+
+Two distinct, honest wins:
+
+1. **Graph expansion is a strictly-additive recall booster: files@10 47 %→52 %
+   (+5 instances, ZERO regressions).** It appends caller/callee neighbors to the
+   search seeds, so it can only add the right file, never drop it — the opposite
+   of its net-negative behavior as an agent tool. The lift sits at @10 (not @5)
+   because neighbors land in ranks 6–30; the budget squeezes them out of top-5.
+
+2. **Identifier seeding doubles top-1 precision: files@1 10 %→23 %.** This is a
+   *seeding-stage* improvement (independent of graph expansion): extract the
+   code symbols the user named in the query (backtick-quoted, camelCase,
+   ALL_CAPS commands like `LPOP`, snake_case; minus bug-report noise) and
+   bm25-search each as a leading interleaved seed source. Fixes the redis-class
+   miss where NL prose ("null array") misleads full-text bm25 but the named
+   command (`LPOP`→`lpopCommand`) seeds from the right place. Its gain is
+   concentrated at @1; @5/@10 show minor churn (+4/−3, +5/−5) as identifier hits
+   reshuffle the budget — net @5 +1, @10 ±0.
+
+**Takeaway:** the call-graph and query-identifier signals both help *retrieval*
+(graph: +5 @10 additive; identifiers: 2× @1) even though neither helps the agent
+loop. This is the graph's real home — a recall-boosting retrieval pipeline, run
+from scripts, not an in-loop agent tool. (Caveat: identifier seeding would also
+lift a search-only baseline — it's a seeding gain, not a graph gain; the graph's
+own contribution is the strictly-additive +5 @10.)
