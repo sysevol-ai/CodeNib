@@ -143,3 +143,19 @@ def test_context_handles_missing_graph_gracefully():
     ex = create_executor({"retrieve": retrieve, "expand": None})
     res = ex(query="x")
     assert any(n.node_name == "pkg.a.doWatch" for n in res)  # seed still returned
+
+
+def test_query_identifiers_extracts_codeish_tokens():
+    """Identifier seeding (#24): pull symbol/command names the user named,
+    skip plain English Titlecase + bug-report noise words."""
+    from codeminer.agent.skills.codeminer_context.executor import _query_identifiers
+
+    ids = _query_identifiers(
+        "[BUG] LPOP with count returns Null Bulk instead of Null array; "
+        "see popGenericCommand and `addReplyNull` in t_list.c"
+    )
+    assert "LPOP" in ids  # ALL_CAPS command
+    assert "popGenericCommand" in ids  # camelCase symbol
+    assert "addReplyNull" in ids  # backtick-quoted
+    assert "BUG" not in ids  # stoplisted report-noise
+    assert "Null" not in ids and "Bulk" not in ids  # plain Titlecase English
