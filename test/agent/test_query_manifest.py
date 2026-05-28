@@ -1,0 +1,273 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Unit tests for ``query()``'s AoT manifest mode.
+
+Verifies the wiring of ``CodeMinerAgentOptions.manifest`` — that
+``query()`` accepts both ``RepoManifest`` instances and path strings,
+short-circuits the inline build, threads the resolved manifest into
+``AgentRunner``, and fails loudly when the manifest doesn't carry the
+indexes required by ``allowed_skills``.
+
+Heavy machinery (real BM25 build, real LLM) is mocked — these tests
+target the SDK plumbing only. End-to-end coverage with a real index
+build lives in ``test_query_e2e.py``.
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Any, Dict
+from unittest.mock import MagicMock
+
+import pytest
+
+from codeminer.agent import CodeMinerAgentOptions, query
+from codeminer.agent.skills.registry import SkillRegistry
+from codeminer.compiler.manifest import IndexEntry, RepoManifest
+from codeminer.llm.litellm_chat import LiteLLMChat
+
+
+@pytest.fixture(autouse=True)
+def _reset_registry():
+    SkillRegistry.reset()
+    yield
+    SkillRegistry.reset()
+
+
+def _mock_llm_final_answer(answer: str = "done") -> LiteLLMChat:
+    """LLM that immediately produces a final answer (no tool call)."""
+    llm = MagicMock(spec=LiteLLMChat)
+    assistant = MagicMock()
+    assistant.content = answer
+    assistant.tool_calls = None
+    assistant.model_dump = MagicMock(
+        return_value={"role": "assistant", "content": answer}
+    )
+    choice = MagicMock()
+    choice.message = assistant
+    response = MagicMock()
+    response.choices = [choice]
+    llm._call_raw = MagicMock(return_value=response)
+    return llm
+
+
+def _fake_manifest(
+    *, with_bm25: bool = True, repo_path: str = "/tmp/fake-repo"
+) -> RepoManifest:
+    """Construct a minimal in-memory RepoManifest for wiring tests."""
+    indexes: Dict[str, IndexEntry] = {}
+    if with_bm25:
+        indexes["bm25"] = IndexEntry(
+            index_type="bm25",
+            path="/tmp/fake-bm25-dir",  # never actually loaded in these tests
+            built_at="2026-01-01T00:00:00Z",
+            built_at_epoch=time.time(),
+            status="fresh",
+        )
+    manifest = RepoManifest(
+        repo_path=repo_path,
+        commit="deadbeef",
+        languages=["python"],
+        file_count=1,
+        indexes=indexes,
+    )
+    manifest.derive_capabilities()
+    return manifest
+
+
+# ---------------------------------------------------------------------------
+# Exactly-one-mode precondition
+# ---------------------------------------------------------------------------
+
+
+class TestExactlyOneModeEnforced:
+    """``query()`` rejects 0 or 2+ index-source modes at entry."""
+
+    def test_zero_modes_raises(self):
+        with pytest.raises(ValueError, match="All three are unset"):
+            query(
+                "anything",
+                options=CodeMinerAgentOptions(llm=_mock_llm_final_answer()),
+            )
+
+    def test_two_modes_raises_repo_path_and_contexts(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            query(
+                "anything",
+                options=CodeMinerAgentOptions(
+                    repo_path="/tmp/x",
+                    contexts={},
+                    llm=_mock_llm_final_answer(),
+                ),
+            )
+
+    def test_two_modes_raises_manifest_and_repo_path(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            query(
+                "anything",
+                options=CodeMinerAgentOptions(
+                    repo_path="/tmp/x",
+                    manifest=_fake_manifest(),
+                    llm=_mock_llm_final_answer(),
+                ),
+            )
+
+    def test_three_modes_raises(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            query(
+                "anything",
+                options=CodeMinerAgentOptions(
+                    repo_path="/tmp/x",
+                    contexts={},
+                    manifest=_fake_manifest(),
+                    llm=_mock_llm_final_answer(),
+                ),
+            )
+
+
+# ---------------------------------------------------------------------------
+# Manifest mode wiring
+# ---------------------------------------------------------------------------
+
+
+class TestManifestMode:
+    def test_manifest_mode_skips_build_skill_contexts(self, monkeypatch):
+        """When ``manifest`` is set, the inline build path must never run.
+
+        Even one accidental call to ``build_skill_contexts`` would defeat
+        the purpose of AoT — we'd pay for re-indexing on every query.
+        """
+        from codeminer import compiler as compiler_mod
+
+        def _boom(*a, **kw):
+            raise AssertionError("build_skill_contexts must not run in manifest mode")
+
+        monkeypatch.setattr(compiler_mod, "build_skill_contexts", _boom)
+
+        # Also short-circuit the loader so we don't try to open the fake
+        # bm25 path on disk. Returning an empty contexts dict still
+        # exercises the rest of query()'s pipeline.
+        # Patch on the compiler package namespace — that's what
+        # ``query()`` imports from via ``from ..compiler import ...``.
+        from codeminer import compiler as compiler_pkg
+
+        monkeypatch.setattr(
+            compiler_pkg, "load_contexts_from_manifest", lambda *a, **kw: {}
+        )
+
+        result = query(
+            "noop",
+            options=CodeMinerAgentOptions(
+                manifest=_fake_manifest(),
+                llm=_mock_llm_final_answer(answer="ok"),
+                allowed_skills=["bm25_search"],
+            ),
+        )
+        assert result.answer == "ok"
+
+    def test_manifest_path_str_loads_from_disk(self, tmp_path, monkeypatch):
+        """A ``str`` path to repo_manifest.json is auto-loaded."""
+        manifest = _fake_manifest()
+        manifest_path = tmp_path / "repo_manifest.json"
+        manifest.save(manifest_path)
+
+        # Capture what AgentRunner.__init__ is given as manifest=
+        captured: Dict[str, Any] = {}
+        from codeminer import compiler as compiler_pkg
+        from codeminer.agent import runner as runner_mod
+
+        original_init = runner_mod.AgentRunner.__init__
+
+        def _spy_init(self, *args, **kwargs):
+            captured["manifest"] = kwargs.get("manifest")
+            return original_init(self, *args, **kwargs)
+
+        monkeypatch.setattr(runner_mod.AgentRunner, "__init__", _spy_init)
+        monkeypatch.setattr(
+            compiler_pkg, "load_contexts_from_manifest", lambda *a, **kw: {}
+        )
+
+        query(
+            "noop",
+            options=CodeMinerAgentOptions(
+                manifest=str(manifest_path),
+                llm=_mock_llm_final_answer(),
+                allowed_skills=["bm25_search"],
+            ),
+        )
+
+        assert isinstance(captured["manifest"], RepoManifest)
+        assert captured["manifest"].repo_path == manifest.repo_path
+        assert "bm25" in captured["manifest"].indexes
+
+    def test_manifest_path_must_exist(self):
+        """A non-existent manifest path raises FileNotFoundError early."""
+        with pytest.raises(FileNotFoundError, match="manifest path does not exist"):
+            query(
+                "noop",
+                options=CodeMinerAgentOptions(
+                    manifest="/tmp/this-path-does-not-exist/repo_manifest.json",
+                    llm=_mock_llm_final_answer(),
+                    allowed_skills=["bm25_search"],
+                ),
+            )
+
+    def test_manifest_threads_into_agent_runner(self, monkeypatch):
+        """Resolved manifest instance reaches ``AgentRunner(manifest=...)``."""
+        manifest = _fake_manifest()
+        captured: Dict[str, Any] = {}
+
+        from codeminer import compiler as compiler_pkg
+        from codeminer.agent import runner as runner_mod
+
+        original_init = runner_mod.AgentRunner.__init__
+
+        def _spy_init(self, *args, **kwargs):
+            captured["manifest"] = kwargs.get("manifest")
+            return original_init(self, *args, **kwargs)
+
+        monkeypatch.setattr(runner_mod.AgentRunner, "__init__", _spy_init)
+        monkeypatch.setattr(
+            compiler_pkg, "load_contexts_from_manifest", lambda *a, **kw: {}
+        )
+
+        query(
+            "noop",
+            options=CodeMinerAgentOptions(
+                manifest=manifest,
+                llm=_mock_llm_final_answer(),
+                allowed_skills=["bm25_search"],
+            ),
+        )
+
+        assert captured["manifest"] is manifest
+
+    def test_manifest_missing_required_index_raises(self):
+        """``allowed_skills`` requires bm25 but manifest has no bm25 → ValueError.
+
+        Loud failure at query-entry beats the deferred 'Skill not
+        available' that would otherwise surface at tool-call time.
+        """
+        manifest = _fake_manifest(with_bm25=False)
+        with pytest.raises(ValueError, match="missing required index"):
+            query(
+                "noop",
+                options=CodeMinerAgentOptions(
+                    manifest=manifest,
+                    llm=_mock_llm_final_answer(),
+                    allowed_skills=["bm25_search"],
+                ),
+            )
+
+    def test_manifest_type_error_on_garbage_input(self):
+        with pytest.raises(TypeError, match="must be a RepoManifest"):
+            query(
+                "noop",
+                options=CodeMinerAgentOptions(
+                    manifest=12345,  # type: ignore[arg-type]
+                    llm=_mock_llm_final_answer(),
+                    allowed_skills=["bm25_search"],
+                ),
+            )

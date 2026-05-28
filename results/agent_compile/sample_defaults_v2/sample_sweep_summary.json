@@ -1,0 +1,29 @@
+{
+  "sweep_id": "sample",
+  "model": "vertex_ai/claude-haiku-4-5",
+  "completed": [
+    "astropy__astropy-12907__A0__rep1",
+    "astropy__astropy-12907__A1__rep1",
+    "astropy__astropy-12907__A2__rep1",
+    "astropy__astropy-12907__A3__rep1",
+    "astropy__astropy-12907__A4__rep1",
+    "astropy__astropy-12907__A5__rep1",
+    "astropy__astropy-12907__A6__rep1",
+    "caddyserver__caddy-5870__A0__rep1",
+    "caddyserver__caddy-5870__A1__rep1",
+    "caddyserver__caddy-5870__A2__rep1",
+    "caddyserver__caddy-5870__A3__rep1",
+    "caddyserver__caddy-5870__A4__rep1",
+    "caddyserver__caddy-5870__A5__rep1",
+    "caddyserver__caddy-5870__A6__rep1",
+    "axios__axios-4731__A0__rep1",
+    "axios__axios-4731__A1__rep1",
+    "axios__axios-4731__A2__rep1",
+    "axios__axios-4731__A3__rep1",
+    "axios__axios-4731__A4__rep1",
+    "axios__axios-4731__A5__rep1",
+    "axios__axios-4731__A6__rep1"
+  ],
+  "skipped": [],
+  "failed": []
+}

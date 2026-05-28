@@ -1,0 +1,26 @@
+{
+  "rust:no_stacktrace": [
+    "bm25_search",
+    "regex_search",
+    "embedding_search",
+    "hybrid_search",
+    "graph_expand",
+    "embedding_rerank",
+    "llm_rerank",
+    "query_transform",
+    "code_to_query"
+  ],
+  "python:no_stacktrace": [
+    "embedding_search"
+  ],
+  "typescript:no_stacktrace": [
+    "embedding_search"
+  ],
+  "go:no_stacktrace": [
+    "bm25_search",
+    "embedding_search"
+  ],
+  "python:stacktrace": [
+    "embedding_search"
+  ]
+}

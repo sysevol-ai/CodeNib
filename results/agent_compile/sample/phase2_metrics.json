@@ -1,0 +1,965 @@
+{
+  "aggregate": {
+    "subsets": {
+      "A0": {
+        "instance_count": 5,
+        "files_at_k": {
+          "1": 0.2,
+          "3": 0.2,
+          "5": 0.6,
+          "10": 0.6
+        },
+        "symbols_at_k": {
+          "1": 0.0,
+          "3": 0.0,
+          "5": 0.0,
+          "10": 0.2
+        },
+        "mean_total_tokens": 93245.4,
+        "mean_total_turns": 4.4,
+        "mean_total_duration_ms": 15221.81499239814,
+        "mean_cost_usd": 0.09815739999999999,
+        "cap_hit_rate": 0.0,
+        "files_at_5_easy": 1.0,
+        "files_at_5_hard": 0.0,
+        "invocation_histogram": {
+          "bm25_search": {
+            "invocation_rate": 1.0,
+            "mean_calls_per_cell": 7.5,
+            "conditional_files_at_5": 0.6
+          }
+        },
+        "forced_but_ignored": [],
+        "compile_eligible": true,
+        "eligibility_reason": "baseline"
+      },
+      "A1": {
+        "instance_count": 5,
+        "files_at_k": {
+          "1": 0.6,
+          "3": 0.8,
+          "5": 0.8,
+          "10": 1.0
+        },
+        "symbols_at_k": {
+          "1": 0.2,
+          "3": 0.2,
+          "5": 0.2,
+          "10": 0.4
+        },
+        "mean_total_tokens": 83208.8,
+        "mean_total_turns": 4.4,
+        "mean_total_duration_ms": 14520.389994603465,
+        "mean_cost_usd": 0.08774879999999999,
+        "cap_hit_rate": 0.0,
+        "files_at_5_easy": 1.0,
+        "files_at_5_hard": 0.5,
+        "invocation_histogram": {
+          "embedding_search": {
+            "invocation_rate": 1.0,
+            "mean_calls_per_cell": 5.1,
+            "conditional_files_at_5": 0.8
+          }
+        },
+        "forced_but_ignored": [],
+        "compile_eligible": true,
+        "eligibility_reason": "hard lift over A0 = +0.500"
+      },
+      "A2": {
+        "instance_count": 5,
+        "files_at_k": {
+          "1": 0.2,
+          "3": 0.2,
+          "5": 0.6,
+          "10": 0.6
+        },
+        "symbols_at_k": {
+          "1": 0.0,
+          "3": 0.0,
+          "5": 0.0,
+          "10": 0.4
+        },
+        "mean_total_tokens": 88215.2,
+        "mean_total_turns": 4.6,
+        "mean_total_duration_ms": 15826.46578939748,
+        "mean_cost_usd": 0.09327119999999998,
+        "cap_hit_rate": 0.0,
+        "files_at_5_easy": 1.0,
+        "files_at_5_hard": 0.0,
+        "invocation_histogram": {
+          "bm25_search": {
+            "invocation_rate": 1.0,
+            "mean_calls_per_cell": 5.4,
+            "conditional_files_at_5": 0.6
+          },
+          "embedding_search": {
+            "invocation_rate": 1.0,
+            "mean_calls_per_cell": 1.3,
+            "conditional_files_at_5": 0.6
+          }
+        },
+        "forced_but_ignored": [],
+        "compile_eligible": false,
+        "eligibility_reason": "hard lift over A0 = +0.000"
+      },
+      "A3": {
+        "instance_count": 5,
+        "files_at_k": {
+          "1": 0.2,
+          "3": 0.2,
+          "5": 0.6,
+          "10": 0.6
+        },
+        "symbols_at_k": {
+          "1": 0.0,
+          "3": 0.0,
+          "5": 0.0,
+          "10": 0.2
+        },
+        "mean_total_tokens": 93299.6,
+        "mean_total_turns": 4.8,
+        "mean_total_duration_ms": 17299.71793279692,
+        "mean_cost_usd": 0.0987372,
+        "cap_hit_rate": 0.0,
+        "files_at_5_easy": 1.0,
+        "files_at_5_hard": 0.0,
+        "invocation_histogram": {
+          "bm25_search": {
+            "invocation_rate": 1.0,
+            "mean_calls_per_cell": 6.5,
+            "conditional_files_at_5": 0.6
+          },
+          "graph_expand": {
+            "invocation_rate": 0.5,
+            "mean_calls_per_cell": 0.5,
+            "conditional_files_at_5": 0.4
+          }
+        },
+        "forced_but_ignored": [],
+        "compile_eligible": false,
+        "eligibility_reason": "hard lift over A0 = +0.000"
+      },
+      "A4": {
+        "instance_count": 5,
+        "files_at_k": {
+          "1": 0.2,
+          "3": 0.2,
+          "5": 0.6,
+          "10": 0.6
+        },
+        "symbols_at_k": {
+          "1": 0.0,
+          "3": 0.2,
+          "5": 0.2,
+          "10": 0.4
+        },
+        "mean_total_tokens": 99851.4,
+        "mean_total_turns": 5.0,
+        "mean_total_duration_ms": 16790.041823597858,
+        "mean_cost_usd": 0.10516099999999999,
+        "cap_hit_rate": 0.0,
+        "files_at_5_easy": 1.0,
+        "files_at_5_hard": 0.0,
+        "invocation_histogram": {
+          "bm25_search": {
+            "invocation_rate": 1.0,
+            "mean_calls_per_cell": 5.1,
+            "conditional_files_at_5": 0.6
+          },
+          "embedding_search": {
+            "invocation_rate": 0.8,
+            "mean_calls_per_cell": 1.1,
+            "conditional_files_at_5": 0.75
+          },
+          "graph_expand": {
+            "invocation_rate": 0.2,
+            "mean_calls_per_cell": 0.2,
+            "conditional_files_at_5": 1.0
+          }
+        },
+        "forced_but_ignored": [],
+        "compile_eligible": false,
+        "eligibility_reason": "hard lift over A0 = +0.000"
+      },
+      "A5": {
+        "instance_count": 5,
+        "files_at_k": {
+          "1": 0.2,
+          "3": 0.2,
+          "5": 0.6,
+          "10": 0.6
+        },
+        "symbols_at_k": {
+          "1": 0.0,
+          "3": 0.2,
+          "5": 0.2,
+          "10": 0.4
+        },
+        "mean_total_tokens": 120293.0,
+        "mean_total_turns": 5.6,
+        "mean_total_duration_ms": 18286.72132420179,
+        "mean_cost_usd": 0.1261874,
+        "cap_hit_rate": 0.0,
+        "files_at_5_easy": 1.0,
+        "files_at_5_hard": 0.0,
+        "invocation_histogram": {
+          "bm25_search": {
+            "invocation_rate": 1.0,
+            "mean_calls_per_cell": 5.4,
+            "conditional_files_at_5": 0.6
+          },
+          "embedding_search": {
+            "invocation_rate": 0.7,
+            "mean_calls_per_cell": 0.8,
+            "conditional_files_at_5": 0.5714285714285714
+          },
+          "graph_expand": {
+            "invocation_rate": 0.2,
+            "mean_calls_per_cell": 0.2,
+            "conditional_files_at_5": 0.5
+          },
+          "regex_search": {
+            "invocation_rate": 0.8,
+            "mean_calls_per_cell": 0.8,
+            "conditional_files_at_5": 0.625
+          }
+        },
+        "forced_but_ignored": [],
+        "compile_eligible": false,
+        "eligibility_reason": "hard lift over A0 = +0.000"
+      },
+      "A6": {
+        "instance_count": 5,
+        "files_at_k": {
+          "1": 0.2,
+          "3": 0.2,
+          "5": 0.6,
+          "10": 0.6
+        },
+        "symbols_at_k": {
+          "1": 0.0,
+          "3": 0.0,
+          "5": 0.0,
+          "10": 0.3
+        },
+        "mean_total_tokens": 93194.2,
+        "mean_total_turns": 4.6,
+        "mean_total_duration_ms": 15714.769498197711,
+        "mean_cost_usd": 0.0983126,
+        "cap_hit_rate": 0.0,
+        "files_at_5_easy": 1.0,
+        "files_at_5_hard": 0.0,
+        "invocation_histogram": {
+          "bm25_search": {
+            "invocation_rate": 1.0,
+            "mean_calls_per_cell": 4.8,
+            "conditional_files_at_5": 0.6
+          },
+          "embedding_search": {
+            "invocation_rate": 0.9,
+            "mean_calls_per_cell": 1.0,
+            "conditional_files_at_5": 0.6666666666666666
+          },
+          "graph_expand": {
+            "invocation_rate": 0.3,
+            "mean_calls_per_cell": 0.3,
+            "conditional_files_at_5": 0.6666666666666666
+          },
+          "regex_search": {
+            "invocation_rate": 0.1,
+            "mean_calls_per_cell": 0.1,
+            "conditional_files_at_5": 0.0
+          }
+        },
+        "forced_but_ignored": [
+          "hybrid_search",
+          "embedding_rerank",
+          "llm_rerank",
+          "query_transform",
+          "code_to_query"
+        ],
+        "compile_eligible": false,
+        "eligibility_reason": "hard lift over A0 = +0.000"
+      }
+    },
+    "per_scenario": {
+      "rust:no_stacktrace": {
+        "A0": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 43182.0,
+          "instance_count": 1
+        },
+        "A1": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 1.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 45752.0,
+          "instance_count": 1
+        },
+        "A2": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 44630.0,
+          "instance_count": 1
+        },
+        "A3": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 86150.0,
+          "instance_count": 1
+        },
+        "A4": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 59472.0,
+          "instance_count": 1
+        },
+        "A5": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 102869.0,
+          "instance_count": 1
+        },
+        "A6": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 62611.0,
+          "instance_count": 1
+        }
+      },
+      "python:no_stacktrace": {
+        "A0": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 117168.0,
+          "instance_count": 1
+        },
+        "A1": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 232056.0,
+          "instance_count": 1
+        },
+        "A2": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 142283.0,
+          "instance_count": 1
+        },
+        "A3": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 85411.0,
+          "instance_count": 1
+        },
+        "A4": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 169230.0,
+          "instance_count": 1
+        },
+        "A5": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 225327.0,
+          "instance_count": 1
+        },
+        "A6": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 200575.0,
+          "instance_count": 1
+        }
+      },
+      "typescript:no_stacktrace": {
+        "A0": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 73630.0,
+          "instance_count": 1
+        },
+        "A1": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 63129.0,
+          "instance_count": 1
+        },
+        "A2": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 152269.0,
+          "instance_count": 1
+        },
+        "A3": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 75951.0,
+          "instance_count": 1
+        },
+        "A4": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 77564.0,
+          "instance_count": 1
+        },
+        "A5": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 106727.0,
+          "instance_count": 1
+        },
+        "A6": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 85793.0,
+          "instance_count": 1
+        }
+      },
+      "go:no_stacktrace": {
+        "A0": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 193217.0,
+          "instance_count": 1
+        },
+        "A1": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 42342.0,
+          "instance_count": 1
+        },
+        "A2": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 37021.0,
+          "instance_count": 1
+        },
+        "A3": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 160957.0,
+          "instance_count": 1
+        },
+        "A4": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 123998.0,
+          "instance_count": 1
+        },
+        "A5": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 123163.0,
+          "instance_count": 1
+        },
+        "A6": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0,
+            "10": 0.0
+          },
+          "files_at_5": 0.0,
+          "mean_total_tokens": 43448.0,
+          "instance_count": 1
+        }
+      },
+      "python:stacktrace": {
+        "A0": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 39030.0,
+          "instance_count": 1
+        },
+        "A1": {
+          "files_at_k": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 32765.0,
+          "instance_count": 1
+        },
+        "A2": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 64873.0,
+          "instance_count": 1
+        },
+        "A3": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 58029.0,
+          "instance_count": 1
+        },
+        "A4": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 68993.0,
+          "instance_count": 1
+        },
+        "A5": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 43379.0,
+          "instance_count": 1
+        },
+        "A6": {
+          "files_at_k": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0,
+            "10": 1.0
+          },
+          "files_at_5": 1.0,
+          "mean_total_tokens": 73544.0,
+          "instance_count": 1
+        }
+      }
+    },
+    "easy_instances": [
+      "astropy__astropy-12907",
+      "axios__axios-4731",
+      "scikit-learn__scikit-learn-13142"
+    ],
+    "hard_instances": [
+      "astral-sh__ruff-15309",
+      "caddyserver__caddy-5870"
+    ]
+  },
+  "compile_table": {
+    "rust:no_stacktrace": [
+      "bm25_search"
+    ],
+    "python:no_stacktrace": [
+      "bm25_search"
+    ],
+    "typescript:no_stacktrace": [
+      "embedding_search"
+    ],
+    "go:no_stacktrace": [
+      "embedding_search"
+    ],
+    "python:stacktrace": [
+      "embedding_search"
+    ]
+  },
+  "rationale": {
+    "target_k": 5,
+    "tau_global": 0.5499999999999999,
+    "tau_margin": 0.05,
+    "scenarios": {
+      "rust:no_stacktrace": {
+        "chosen_subset": "A0",
+        "tau": -0.05,
+        "chosen_files_at_k": 0.0,
+        "candidates": [
+          {
+            "subset": "A0",
+            "files_at_k": 0.0,
+            "tokens": 43182.0,
+            "eligible": true
+          },
+          {
+            "subset": "A2",
+            "files_at_k": 0.0,
+            "tokens": 44630.0,
+            "eligible": false
+          },
+          {
+            "subset": "A1",
+            "files_at_k": 0.0,
+            "tokens": 45752.0,
+            "eligible": true
+          },
+          {
+            "subset": "A4",
+            "files_at_k": 0.0,
+            "tokens": 59472.0,
+            "eligible": false
+          },
+          {
+            "subset": "A6",
+            "files_at_k": 0.0,
+            "tokens": 62611.0,
+            "eligible": false
+          },
+          {
+            "subset": "A3",
+            "files_at_k": 0.0,
+            "tokens": 86150.0,
+            "eligible": false
+          },
+          {
+            "subset": "A5",
+            "files_at_k": 0.0,
+            "tokens": 102869.0,
+            "eligible": false
+          }
+        ]
+      },
+      "python:no_stacktrace": {
+        "chosen_subset": "A0",
+        "tau": 0.95,
+        "chosen_files_at_k": 1.0,
+        "candidates": [
+          {
+            "subset": "A3",
+            "files_at_k": 1.0,
+            "tokens": 85411.0,
+            "eligible": false
+          },
+          {
+            "subset": "A0",
+            "files_at_k": 1.0,
+            "tokens": 117168.0,
+            "eligible": true
+          },
+          {
+            "subset": "A2",
+            "files_at_k": 1.0,
+            "tokens": 142283.0,
+            "eligible": false
+          },
+          {
+            "subset": "A4",
+            "files_at_k": 1.0,
+            "tokens": 169230.0,
+            "eligible": false
+          },
+          {
+            "subset": "A6",
+            "files_at_k": 1.0,
+            "tokens": 200575.0,
+            "eligible": false
+          },
+          {
+            "subset": "A5",
+            "files_at_k": 1.0,
+            "tokens": 225327.0,
+            "eligible": false
+          },
+          {
+            "subset": "A1",
+            "files_at_k": 1.0,
+            "tokens": 232056.0,
+            "eligible": true
+          }
+        ]
+      },
+      "typescript:no_stacktrace": {
+        "chosen_subset": "A1",
+        "tau": 0.95,
+        "chosen_files_at_k": 1.0,
+        "candidates": [
+          {
+            "subset": "A1",
+            "files_at_k": 1.0,
+            "tokens": 63129.0,
+            "eligible": true
+          },
+          {
+            "subset": "A0",
+            "files_at_k": 1.0,
+            "tokens": 73630.0,
+            "eligible": true
+          },
+          {
+            "subset": "A3",
+            "files_at_k": 1.0,
+            "tokens": 75951.0,
+            "eligible": false
+          },
+          {
+            "subset": "A4",
+            "files_at_k": 1.0,
+            "tokens": 77564.0,
+            "eligible": false
+          },
+          {
+            "subset": "A6",
+            "files_at_k": 1.0,
+            "tokens": 85793.0,
+            "eligible": false
+          },
+          {
+            "subset": "A5",
+            "files_at_k": 1.0,
+            "tokens": 106727.0,
+            "eligible": false
+          },
+          {
+            "subset": "A2",
+            "files_at_k": 1.0,
+            "tokens": 152269.0,
+            "eligible": false
+          }
+        ]
+      },
+      "go:no_stacktrace": {
+        "chosen_subset": "A1",
+        "tau": -0.05,
+        "chosen_files_at_k": 1.0,
+        "candidates": [
+          {
+            "subset": "A2",
+            "files_at_k": 0.0,
+            "tokens": 37021.0,
+            "eligible": false
+          },
+          {
+            "subset": "A1",
+            "files_at_k": 1.0,
+            "tokens": 42342.0,
+            "eligible": true
+          },
+          {
+            "subset": "A6",
+            "files_at_k": 0.0,
+            "tokens": 43448.0,
+            "eligible": false
+          },
+          {
+            "subset": "A5",
+            "files_at_k": 0.0,
+            "tokens": 123163.0,
+            "eligible": false
+          },
+          {
+            "subset": "A4",
+            "files_at_k": 0.0,
+            "tokens": 123998.0,
+            "eligible": false
+          },
+          {
+            "subset": "A3",
+            "files_at_k": 0.0,
+            "tokens": 160957.0,
+            "eligible": false
+          },
+          {
+            "subset": "A0",
+            "files_at_k": 0.0,
+            "tokens": 193217.0,
+            "eligible": true
+          }
+        ]
+      },
+      "python:stacktrace": {
+        "chosen_subset": "A1",
+        "tau": 0.95,
+        "chosen_files_at_k": 1.0,
+        "candidates": [
+          {
+            "subset": "A1",
+            "files_at_k": 1.0,
+            "tokens": 32765.0,
+            "eligible": true
+          },
+          {
+            "subset": "A0",
+            "files_at_k": 1.0,
+            "tokens": 39030.0,
+            "eligible": true
+          },
+          {
+            "subset": "A5",
+            "files_at_k": 1.0,
+            "tokens": 43379.0,
+            "eligible": false
+          },
+          {
+            "subset": "A3",
+            "files_at_k": 1.0,
+            "tokens": 58029.0,
+            "eligible": false
+          },
+          {
+            "subset": "A2",
+            "files_at_k": 1.0,
+            "tokens": 64873.0,
+            "eligible": false
+          },
+          {
+            "subset": "A4",
+            "files_at_k": 1.0,
+            "tokens": 68993.0,
+            "eligible": false
+          },
+          {
+            "subset": "A6",
+            "files_at_k": 1.0,
+            "tokens": 73544.0,
+            "eligible": false
+          }
+        ]
+      }
+    }
+  },
+  "pareto_front": [
+    "A1"
+  ],
+  "cell_count": 70
+}

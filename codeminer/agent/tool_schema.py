@@ -25,13 +25,31 @@ _TYPE_MAP: Dict[str, Dict[str, str]] = {
 }
 
 
+def _schema_for_type(type_hint: str) -> Dict[str, Any]:
+    """JSON Schema for a SkillInputSpec ``type_hint`` string.
+
+    Handles ``List[X]`` / ``list[X]`` → ``{"type":"array","items":<X>}`` so
+    list-valued params (e.g. ``graph_expand.seed_symbols: List[str]``,
+    ``edge_types: List[str]``) get a real schema instead of an empty ``{}``
+    that gives the model no hint how to populate them. Unknown inner or
+    scalar hints fall back to ``string`` (the safest LLM-producible type),
+    never an empty schema.
+    """
+    hint = (type_hint or "").strip()
+    lowered = hint.lower()
+    if lowered.startswith("list[") and hint.endswith("]"):
+        inner = hint[len("list[") : -1].strip()
+        return {"type": "array", "items": _schema_for_type(inner)}
+    return dict(_TYPE_MAP.get(hint, {"type": "string"}))
+
+
 def skill_to_tool_schema(meta: SkillMetadata) -> Dict[str, Any]:
     """Convert a single ``SkillMetadata`` to an OpenAI function tool dict."""
     properties: Dict[str, Any] = {}
     required: List[str] = []
 
     for inp in meta.inputs:
-        prop: Dict[str, Any] = dict(_TYPE_MAP.get(inp.type_hint, {}))
+        prop: Dict[str, Any] = _schema_for_type(inp.type_hint)
         if inp.description:
             prop["description"] = inp.description
         if inp.default is not None:

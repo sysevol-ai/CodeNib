@@ -21,9 +21,12 @@ logger = get_logger("scip_python_indexer")
 
 # Upper bounds (seconds) that turn a hung child process into a fast, clear
 # failure instead of letting it run until the CI job's wall-clock timeout.
-# These are generous relative to normal runtime (scip-python indexes sympy in
-# a few minutes) and only fire on a genuine stall.
-_SCIP_PYTHON_INDEX_TIMEOUT_S = 1200  # scip-python (Node) index run
+# scip-python indexes sympy in a few minutes, so these are generous and only
+# fire on a genuine stall. They must stay comfortably below the integration-
+# serial job's timeout-minutes: the final test reaches scip-python ~26 min in,
+# so a too-high bound (e.g. 20 min) can never fire before the 45-min job cap
+# kills the whole job — defeating the point of the timeout.
+_SCIP_PYTHON_INDEX_TIMEOUT_S = 600  # scip-python (Node) index run
 _CONDA_ENV_CREATE_TIMEOUT_S = 600  # fallback `conda env create`
 
 

@@ -213,6 +213,8 @@ def run_agent_with_skills(
     max_turns: int = 3,
     repo_path: str = ".",
     allow_skills: Optional[List[str]] = None,
+    compile_table: Optional[Dict[str, Any]] = None,
+    primary_language: Optional[str] = None,
 ) -> tuple[List[QueriedNode], List[str], Optional[Dict[str, Any]]]:
     """Run ``AgentRunner`` with the given skill allowlist + pre-built contexts.
 
@@ -221,6 +223,10 @@ def run_agent_with_skills(
     (``"retrieve"`` / ``"expand"`` / ...) and carrying the loaded index
     artifacts. The agent doesn't see the indexes directly; ``SkillLoader``
     wires each skill executor to the matching context.
+
+    When ``compile_table`` is provided (CAR / issue #149), it narrows
+    ``allow_skills`` at agent entry based on the classified scenario.
+    ``allow_skills`` remains the upper bound.
 
     Returns:
         Tuple of (results, execution_log, usage_stats)
@@ -246,7 +252,7 @@ def run_agent_with_skills(
         session_ctx = SessionContext(
             repo_path=repo_path,
             repo_size=1000,
-            primary_language="python",
+            primary_language=primary_language or "python",
         )
 
         registry = SkillRegistry()
@@ -257,10 +263,12 @@ def run_agent_with_skills(
             max_turns=max_turns,
             allow_skills=allow_set,
             session_ctx=session_ctx,
+            compile_table=compile_table,
         )
         execution_log.append(
             f"Created AgentRunner (max_turns={max_turns}, "
-            f"allow_skills={sorted(allow_set)})"
+            f"allow_skills={sorted(allow_set)}, "
+            f"compile_table={'on' if compile_table else 'off'})"
         )
 
         # Run the agent
@@ -368,6 +376,15 @@ def evaluate_instance(
             if llm is None:
                 raise RuntimeError("eval_mode=agent requires an LLM")
             execution_log.append(f"Running agent with skills={args.skills}...")
+            # Pick the per-instance language for CAR / classify().
+            # SWE-bench Multilingual rows carry "language"; SWE-bench
+            # (English) is python-only. Falls back to the first --languages
+            # CLI value, then "python".
+            instance_lang = (
+                instance.get("language")
+                or instance.get("Language")
+                or (args.languages[0] if args.languages else "python")
+            )
             results, search_log, usage = run_agent_with_skills(
                 query=problem_statement,
                 contexts=contexts,
@@ -375,6 +392,8 @@ def evaluate_instance(
                 max_turns=args.max_turns,
                 repo_path=repo_path,
                 allow_skills=args.skills,
+                compile_table=getattr(args, "_compile_table", None),
+                primary_language=instance_lang,
             )
             execution_log.extend(search_log)
 
@@ -474,6 +493,18 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
         logger.warning(
             "No --eval-instances: default HF instances usually lack symbol-level GT; "
             "metrics may stay at zero. Use a gt_locate JSON path for valid retrieval_eval."
+        )
+
+    # Issue #149: load the CAR compile_table once. The agent loop reads
+    # ``args._compile_table`` per instance.
+    args._compile_table = None
+    if getattr(args, "compile_table", None):
+        from codeminer.agent.compile import load_compile_table
+
+        table_path = Path(args.compile_table)
+        args._compile_table = dict(load_compile_table(table_path))
+        logger.info(
+            f"  Compile table: {table_path} ({len(args._compile_table)} scenarios)"
         )
 
     # Load dataset
@@ -742,6 +773,16 @@ def parse_args() -> argparse.Namespace:
             "resolves the union of index_requirements across these skills and "
             "builds (or reuses cached) indexes accordingly. Examples: "
             "bm25_search / embedding_search / graph_expand / hybrid_search."
+        ),
+    )
+    parser.add_argument(
+        "--compile-table",
+        type=str,
+        default=None,
+        help=(
+            "Path to a CAR compile_table (JSON / YAML). When set, the "
+            "AgentRunner narrows --skills per-query based on the classified "
+            "scenario. --skills remains the upper bound."
         ),
     )
 

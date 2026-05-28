@@ -1,0 +1,11 @@
+{
+  "python:no_stacktrace": [
+    "embedding_search"
+  ],
+  "typescript:no_stacktrace": [
+    "embedding_search"
+  ],
+  "go:no_stacktrace": [
+    "embedding_search"
+  ]
+}

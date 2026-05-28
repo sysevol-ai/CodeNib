@@ -101,8 +101,13 @@ class TestSkillToToolSchema:
             == "number"
         )
 
-    def test_complex_type_unconstrained(self):
-        """Complex types like List[QueriedNode] should produce empty schema."""
+    def test_complex_list_type_maps_to_array(self):
+        """List[X] → array schema; unknown inner type degrades to string.
+
+        Previously complex types produced an empty ``{}`` schema, giving the
+        model no hint how to populate list params (e.g.
+        ``graph_expand.seed_symbols``). Now they get ``array`` + ``items``.
+        """
         meta = SkillMetadata(
             skill_id="test_complex",
             skill_type=SkillType.CUSTOM,
@@ -110,8 +115,7 @@ class TestSkillToToolSchema:
         )
         schema = skill_to_tool_schema(meta)
         props = schema["function"]["parameters"]["properties"]
-        # No "type" key for complex types
-        assert "type" not in props["nodes"]
+        assert props["nodes"] == {"type": "array", "items": {"type": "string"}}
 
     def test_default_values(self, sample_meta):
         schema = skill_to_tool_schema(sample_meta)

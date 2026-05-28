@@ -231,8 +231,13 @@ def _load_executor(
     if context is not None:
         return create_fn(context)
 
-    # Try calling without context (executor may not need one).
+    # Skill types without a single conventional context (e.g. CUSTOM composers
+    # like ``codeminer_context`` that need retrieve AND expand) receive the
+    # full ``contexts`` dict; fall back to no-arg for context-free skills.
     try:
-        return create_fn()
+        return create_fn(contexts)
     except TypeError:
-        return None
+        try:
+            return create_fn()
+        except TypeError:
+            return None

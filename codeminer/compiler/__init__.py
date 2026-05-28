@@ -24,7 +24,11 @@ from .index_compiler import IndexCompiler, IndexCompilerConfig
 from .manifest import ManifestIndexStateStore, RepoManifest
 from .params import ResolvedParams, SessionContext, resolve_params
 from .resources import IndexRequirement, IndexState, ResourcePlan, ResourceResolver
-from .skill_context import build_skill_contexts, required_index_types
+from .skill_context import (
+    build_skill_contexts,
+    load_contexts_from_manifest,
+    required_index_types,
+)
 
 __all__ = [
     # Index compilation
@@ -45,5 +49,6 @@ __all__ = [
     "ResolvedParams",
     # Skill-aware contexts
     "build_skill_contexts",
+    "load_contexts_from_manifest",
     "required_index_types",
 ]

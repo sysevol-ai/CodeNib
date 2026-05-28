@@ -16,10 +16,20 @@ defaults:
   filter_tests: true
 
 inputs:
-  - name: seed_nodes
-    type: List[QueriedNode]
-    required: true
-    description: Seed nodes from upstream search results to expand from
+  - name: seed_files
+    type: List[str]
+    required: false
+    description: >-
+      Files you already read (repo-relative paths). Expands from every symbol
+      defined in them — the easiest way to seed: after reading a file, pass it
+      here to pull in callers / callees / related code via the call graph.
+  - name: seed_symbols
+    type: List[str]
+    required: false
+    description: >-
+      Qualified symbol names to expand from, e.g. "module.ClassName.method"
+      (exact node_name strings from prior search results). Provide either
+      seed_files or seed_symbols (at least one).
   - name: method
     type: str
     required: false

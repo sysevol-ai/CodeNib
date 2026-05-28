@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Cost study (#133) — FREE condition: the agent has the always-on default file
+# tools (grep / glob / shell / read) PLUS bm25 + embedding. This is the
+# "let a capable agent navigate" baseline we want to beat on *cost*.
+#
+# Pair with cost_structured.yaml (same instances, no file tools, embedding +
+# graph forced) to test whether graph/LSP navigation reaches the same files at
+# far fewer tokens. Run per model:
+#   python scripts/agent_compile/run_sample_sweep.py --config <this> \
+#       --output-dir results/agent_compile/cost_free_haiku
+#   ... --model vertex_ai/gemini-2.5-flash --vertex-location us-central1 \
+#       --output-dir results/agent_compile/cost_free_gemini
+
+sweep_id: cost_free
+model: vertex_ai/claude-haiku-4-5
+vertex_location: us-east5
+vertex_project: null
+reps: 1
+max_turns: 16
+temperature: 0.0
+max_tokens: 4096
+topk: 50
+num_retries: 8
+
+dataset: fishmingyu/codeminer-base-dataset
+split: test
+prebuilt_dir: /mnt/data/codeminer
+embedding_model: Qwen/Qwen3-Embedding-0.6B
+embedding_dimension: 1024
+metrics_k: [1, 3, 5, 10]
+gt_simplified_symbols: true
+
+include_default_tools: true
+
+# Hard / big-repo instances: large trees + cross-file or long conceptual
+# queries, where a grep/read agent must explore a lot (high token cost).
+instances:
+  - babel__babel-15445            # TS/JS, ~90k files, long conceptual query
+  - vuejs__core-11589             # TS, cross-file (2 GT files)
+  - micropython__micropython-13569  # C/C++, cross-file (2 GT blocks)
+
+subsets:
+  FREE:
+    - bm25_search
+    - embedding_search

@@ -24,7 +24,7 @@ Expand seed code blocks along the symbol graph to discover structurally related 
 
 | Parameter     | Type       | Default | Description                                              |
 |---------------|------------|---------|----------------------------------------------------------|
-| seed_nodes    | List[QueriedNode] | required | Seed nodes from upstream search results         |
+| seed_symbols  | List[str]  | required | Exact `node_name` strings copied from prior search results (e.g. `module.ClassName.method`). If a name doesn't resolve, grep for it with `file_search(mode="content")` first. |
 | method        | str        | bfs     | `"bfs"` for k-hop BFS or `"ppr"` for Personalized PageRank |
 | top_k         | int        | 50      | Maximum number of expanded nodes to return               |
 | hops          | int        | 2       | Number of hops for BFS expansion                         |

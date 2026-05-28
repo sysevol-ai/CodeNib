@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+skill_id: find_callees
+skill_type: expand
+operator: graph.walk
+cost: low
+defaults:
+  top_k: 40
+inputs:
+  - name: symbol
+    type: str
+    required: true
+    description: Function/class name to find callees of (functions it calls) (fuzzy-matched; ambiguity returns candidates).
+outputs:
+  type: List[QueriedNode]
+  description: Compact list of callers (name, file:line, kind). No code bodies — file_read the ones you need.
+index_requirements:
+  - type: symbol_graph
+    max_age_seconds: 3600
+    scope: current_repo
+resources: []

@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+# FAITHFUL LocAgent harness: bm25 returns NAME TAGS ONLY (bm25_names, no code
+# bodies), so the agent must NAVIGATE the call graph from those names and read
+# by symbol (read_code_block). No grep, no file_read. This fixes the two flaws
+# of cost_locagent*: (1) content-returning bm25 ballooned tokens, (2) it handed
+# the agent code directly so it never traversed. Now the only way to SEE code is
+# read_code_block on a name, and the only way to relate names is the graph —
+# the regime LocAgent actually operates in.
+sweep_id: cost_locagent_faithful
+model: vertex_ai/claude-haiku-4-5
+vertex_location: us-east5
+vertex_project: null
+reps: 3
+max_turns: 16
+temperature: 0.0
+max_tokens: 4096
+topk: 50
+num_retries: 8
+dataset: fishmingyu/codeminer-base-dataset
+split: test
+prebuilt_dir: /mnt/data/codeminer
+embedding_model: Qwen/Qwen3-Embedding-0.6B
+embedding_dimension: 1024
+metrics_k: [1, 3, 5, 10]
+gt_simplified_symbols: true
+include_default_tools: false
+system_prompt: |
+  You are a code localization agent. Find the code locations (files and symbols)
+  relevant to the request, then give a concise answer naming them.
+
+  You have NO filesystem — no grep, no file_read. Search returns symbol NAMES
+  only (not code); you navigate the call graph and read code by symbol:
+  - bm25_names(query) — candidate symbol NAMES (name + file:line, NO bodies).
+  - find_callers(symbol) / find_callees(symbol) — who calls X / what X calls.
+  - trace(from_symbol, to_symbol) — the call path between two symbols.
+  - impact_analysis(symbol, direction) — TRANSITIVE callers/callees.
+  - read_code_block(symbol) — read a symbol's source by its graph node.
+
+  Workflow — SEARCH -> NAVIGATE -> READ -> ANSWER:
+  1. SEARCH — bm25_names for the symbols the request names/implies (you get
+     names, not code).
+  2. NAVIGATE — to understand how candidates relate and find the real site,
+     follow the call graph: find_callers / find_callees / trace /
+     impact_analysis, re-seeding with exact names from results.
+  3. READ — read_code_block(symbol) on the most promising names to confirm.
+  4. ANSWER — once you have read the implementing symbol. End with two lines,
+     repo-relative:
+     Files: path/one.ext, path/two.ext
+     Symbols: path/one.ext:symbol_name, ...
+
+  Limited tool budget — converge once a symbol looks right.
+instances:
+  - redis__redis-10095
+  - tokio-rs__tokio-4898
+  - facebook__docusaurus-10130
+  - axios__axios-4731
+  - hashicorp__terraform-34814
+  - caddyserver__caddy-5870
+  - pydata__xarray-2905
+  - sympy__sympy-13031
+subsets:
+  LOCAGENT_FAITHFUL:
+    - bm25_names
+    - find_callers
+    - find_callees
+    - trace
+    - impact_analysis
+    - read_code_block
