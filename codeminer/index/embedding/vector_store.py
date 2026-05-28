@@ -61,6 +61,7 @@ class _HuggingFaceEmbeddingWrapper:
 
         model_kwargs = kwargs.pop("model_kwargs", {})
         self._encode_kwargs = kwargs.pop("encode_kwargs", {})
+        self._default_batch_size: Optional[int] = kwargs.pop("default_batch_size", None)
 
         # Pop prompt-related kwargs so they aren't forwarded to
         # SentenceTransformer's __init__. Anything left as None falls back to
@@ -183,8 +184,9 @@ class _HuggingFaceEmbeddingWrapper:
         kwargs = self._build_encode_kwargs(
             self._document_prompt, self._document_prompt_name
         )
-        # Use smaller batch size to avoid CUDA OOM on large repos
-        kwargs.setdefault("batch_size", 8)
+        # Apply default batch size if configured (e.g., to avoid CUDA OOM)
+        if self._default_batch_size is not None:
+            kwargs.setdefault("batch_size", self._default_batch_size)
         vecs = self._model.encode(texts, **kwargs)
         return vecs.tolist()
 

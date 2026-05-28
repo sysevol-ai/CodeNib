@@ -112,9 +112,7 @@ class VectorIndexBuilder:
     embedding_model: str = "nomic-ai/CodeRankEmbed"
     embedding_provider: str = "huggingface"
     embedding_dimension: int = 768
-    embedding_kwargs: Dict[str, Any] = field(
-        default_factory=lambda: {"model_kwargs": {"trust_remote_code": True}},
-    )
+    embedding_kwargs: Dict[str, Any] = field(default_factory=dict)
     build_levels: List[str] = field(default_factory=lambda: ["l0", "l2"])
     max_lines_per_chunk: int = 300
     index_metric: str = "ip"
@@ -536,16 +534,24 @@ def register_default_builders(
     languages: Optional[List[str]] = None,
     embedding_model: str = "nomic-ai/CodeRankEmbed",
     embedding_dimension: int = 768,
+    trust_remote_code: bool = False,
 ) -> None:
     """Register all standard index builders with sensible defaults."""
     langs = languages or ["python"]
     registry.register("bm25", BM25IndexBuilder(languages=langs))
+
+    # Build embedding_kwargs with trust_remote_code if requested
+    embedding_kwargs = {}
+    if trust_remote_code:
+        embedding_kwargs = {"model_kwargs": {"trust_remote_code": True}}
+
     registry.register(
         "vector",
         VectorIndexBuilder(
             languages=langs,
             embedding_model=embedding_model,
             embedding_dimension=embedding_dimension,
+            embedding_kwargs=embedding_kwargs,
         ),
     )
     registry.register("symbol_graph", SymbolGraphBuilder(language=langs[0]))

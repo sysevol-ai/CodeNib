@@ -98,7 +98,7 @@ class HybridRetrievePipeline:
         embedding_model: Embedding model name (default: nomic-ai/CodeRankEmbed).
         embedding_dimension: Embedding vector dimension (default: 768).
         languages: Languages to index (default: ["python"]).
-        max_lines_per_chunk: Maximum lines per chunk (default: 300).
+        embedding_batch_size: Batch size for embedding inference (default: 8 to avoid CUDA OOM).
 
     Example:
         >>> pipeline = HybridRetrievePipeline(
@@ -120,7 +120,7 @@ class HybridRetrievePipeline:
         embedding_model: str = "nomic-ai/CodeRankEmbed",
         embedding_dimension: int = 768,
         languages: Sequence[str] = ("python",),
-        max_lines_per_chunk: int = 300,
+        embedding_batch_size: int = 8,
     ):
         self.repo_path = repo_path
         self.stage1_topk = stage1_topk
@@ -135,7 +135,6 @@ class HybridRetrievePipeline:
             _os.path.dirname(_os.path.dirname(__file__)), "agent", "skills"
         )
         registry = SkillRegistry()
-        registry.reset()  # Clear any stale state
         loader = SkillLoader()
         loaded_skills = loader.load_all(skills_dir, contexts={}, registry=registry)
         logger.debug("Loaded %d skills into registry", len(loaded_skills))
@@ -155,6 +154,8 @@ class HybridRetrievePipeline:
             embedding_dimension=embedding_dimension,
             default_top_k=stage1_topk,  # BM25 max_k
             default_level="l2",  # embedding level
+            trust_remote_code=True,  # Required for nomic-ai/CodeRankEmbed
+            embedding_batch_size=embedding_batch_size,  # Avoid CUDA OOM
         )
 
         retrieve_ctx = contexts.get("retrieve")

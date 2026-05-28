@@ -210,19 +210,31 @@ def run_hybrid_baseline_retrieval(
     problem_statement: str,
     repo_path: str,
     args: argparse.Namespace,
+    pipeline: Optional[Any] = None,
 ) -> List[QueriedNode]:
-    """Pure-retrieval baseline: BM25 → embedding rerank (RFC #133 baseline)."""
+    """Pure-retrieval baseline: BM25 → embedding rerank (RFC #133 baseline).
+
+    Args:
+        problem_statement: Query string.
+        repo_path: Repository path (used only if pipeline is None).
+        args: Command-line arguments.
+        pipeline: Optional pre-built HybridRetrievePipeline. If None, creates a new one.
+
+    Returns:
+        List of retrieved nodes.
+    """
     from codeminer.model import HybridRetrievePipeline
 
-    pipeline = HybridRetrievePipeline(
-        repo_path=repo_path,
-        index_cache_dir=args.index_cache_dir,
-        stage1_topk=128,  # BM25 candidate pool
-        stage2_topk=args.topk,  # Final results (align with agent default_top_k)
-        embedding_model=args.embedding_model,
-        embedding_dimension=args.embedding_dimension,
-        languages=args.languages,
-    )
+    if pipeline is None:
+        pipeline = HybridRetrievePipeline(
+            repo_path=repo_path,
+            index_cache_dir=args.index_cache_dir,
+            stage1_topk=128,  # BM25 candidate pool
+            stage2_topk=args.topk,  # Final results (align with agent default_top_k)
+            embedding_model=args.embedding_model,
+            embedding_dimension=args.embedding_dimension,
+            languages=args.languages,
+        )
     return pipeline.query(problem_statement)
 
 
@@ -328,6 +340,7 @@ def evaluate_instance(
     llm: Optional[LiteLLMChat],
     args: argparse.Namespace,
     eval_metadata: Optional[Dict[str, Any]] = None,
+    pipeline_cache: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Evaluate a single SWE-bench instance."""
     instance_id = instance["instance_id"]
@@ -406,8 +419,28 @@ def evaluate_instance(
             execution_log.append(
                 "Running hybrid baseline (BM25 → embedding rerank)..."
             )
+            # Reuse pipeline from cache if available (avoids rebuilding indexes)
+            pipeline = None
+            if pipeline_cache is not None:
+                pipeline = pipeline_cache.get(repo_path)
+                if pipeline is None:
+                    from codeminer.model import HybridRetrievePipeline
+                    execution_log.append(f"Building new pipeline for {repo_path}")
+                    pipeline = HybridRetrievePipeline(
+                        repo_path=repo_path,
+                        index_cache_dir=args.index_cache_dir,
+                        stage1_topk=128,
+                        stage2_topk=args.topk,
+                        embedding_model=args.embedding_model,
+                        embedding_dimension=args.embedding_dimension,
+                        languages=args.languages,
+                    )
+                    pipeline_cache[repo_path] = pipeline
+                else:
+                    execution_log.append(f"Reusing cached pipeline for {repo_path}")
+
             results = run_hybrid_baseline_retrieval(
-                problem_statement, repo_path, args
+                problem_statement, repo_path, args, pipeline=pipeline
             )
             search_log = [
                 f"Hybrid baseline retrieved {len(results)} nodes (cascade mode)"
@@ -603,6 +636,8 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
                         root=args.cache_dir,
                         repo_root=args.repo_cache_dir,
                     )
+                    # Set internal state so dataset.load() would return the instances we already loaded
+                    dataset._data = instances
                 else:
                     # Just GT metadata, load instances from HF as usual
                     dataset = SwebenchDataset(
@@ -680,20 +715,34 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
     aggregate = {}
     metric_count = 0
 
-    for idx, instance in enumerate(instances):
-        logger.info(
-            f"\n[{idx + 1}/{len(instances)}] Evaluating {instance['instance_id']}"
-        )
+    # Cache pipelines to avoid rebuilding indexes for each instance
+    # (hybrid_baseline mode only; keyed by repo_path)
+    pipeline_cache: Dict[str, Any] = {}
 
-        result = evaluate_instance(
-            instance, dataset, llm, args, eval_metadata=eval_lookup
-        )
-        results.append(result)
+    try:
+        for idx, instance in enumerate(instances):
+            logger.info(
+                f"\n[{idx + 1}/{len(instances)}] Evaluating {instance['instance_id']}"
+            )
 
-        # Aggregate metrics
-        if result["success"] and "metrics" in result:
-            aggregate_metrics(aggregate, result["metrics"])
-            metric_count += 1
+            result = evaluate_instance(
+                instance, dataset, llm, args, eval_metadata=eval_lookup,
+                pipeline_cache=pipeline_cache,
+            )
+            results.append(result)
+
+            # Aggregate metrics
+            if result["success"] and "metrics" in result:
+                aggregate_metrics(aggregate, result["metrics"])
+                metric_count += 1
+    finally:
+        # Clean up cached pipelines
+        for repo_path, pipeline in pipeline_cache.items():
+            logger.info(f"Closing pipeline for {repo_path}")
+            try:
+                pipeline.close()
+            except Exception as e:
+                logger.warning(f"Error closing pipeline for {repo_path}: {e}")
 
     # Compute average metrics (only over instances that produced metrics)
     avg_metrics = average_metrics(aggregate, metric_count) if metric_count else {}
