@@ -107,8 +107,9 @@ class Narrator:
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump({"model": self.model, "key": key, "text": text}, fh)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - cache write is best-effort
+            # Fail soft: a missing/unwritable cache only costs a recompute.
+            logger.debug("wiki narrator cache write failed for %r: %s", key, exc)
 
     # -- core call ---------------------------------------------------------
 
@@ -216,6 +217,14 @@ class Narrator:
             data = json.loads(s)
             if isinstance(data, dict):
                 return {str(k): str(v) for k, v in data.items()}
-        except Exception:
-            pass
+        except (ValueError, TypeError) as exc:
+            # Malformed / non-JSON model output is non-fatal: fall back to None
+            # so the caller uses templated prose instead.
+            logger.debug(
+                "wiki narrator components parse failed (repo=%s module=%s): %s; raw=%r",
+                repo,
+                module,
+                exc,
+                s[:200],
+            )
         return None

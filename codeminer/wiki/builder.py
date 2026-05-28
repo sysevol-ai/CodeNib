@@ -301,8 +301,10 @@ class WikiBuilder:
         lines += [
             "## Module structure",
             "",
-            "The repository's top-level modules and their relative size "
-            "(by indexed symbol count):",
+            (
+                "The repository's top-level modules and their relative size "
+                + "(by indexed symbol count):"
+            ),
             "",
         ]
         # Mermaid diagram of the top modules. Use .format so the literal quotes
@@ -484,8 +486,10 @@ class WikiBuilder:
             md = [
                 "# Architecture",
                 "",
-                "CodeMiner grouped this repository into the following modules. "
-                "Select a module in the sidebar to explore its components.",
+                (
+                    "CodeMiner grouped this repository into the following modules. "
+                    + "Select a module in the sidebar to explore its components."
+                ),
                 "",
                 "## Modules",
                 "",
