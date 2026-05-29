@@ -926,3 +926,42 @@ loop. This is the graph's real home — a recall-boosting retrieval pipeline, ru
 from scripts, not an in-loop agent tool. (Caveat: identifier seeding would also
 lift a search-only baseline — it's a seeding gain, not a graph gain; the graph's
 own contribution is the strictly-additive +5 @10.)
+
+---
+
+# Fair index comparison: flat vs IVF vs graph-scoped (#25)
+
+Our vector store is `IndexFlatIP` (exhaustive). To judge the graph's retrieval
+value fairly you must control for the index — an IVF/ANN index speeds up flat
+search with NO graph. `index_compare.py`, recall@k + query latency over 100
+codeminer-base instances (no LLM):
+
+| method | median ms | p90 ms | files@1 | files@5 | files@10 |
+|---|---|---|---|---|---|
+| flat (exact) | 1.22 | 3.82 | 34 | 49 | 56 |
+| IVF (approx) | **0.29** | **0.65** | 33 | 49 | 55 |
+| graph-scoped (PPR) | 7.20 | 29.48 | **26** | **33** | **36** |
+
+1. **IVF: ~4× faster than flat at identical recall** (33/49/55 ≈ 34/49/56). The
+   speed comes from the ANN index, not the graph — so "the graph makes retrieval
+   faster" is unsupported; a plain IVF index gets it with zero graph.
+2. **Graph-scoping is strictly worse on both axes**: 6× slower than flat (PPR
+   compute) AND much lower recall (26/33/36). Restricting candidates to the
+   call-graph subgraph *excludes relevant files* — refutes "scope the query to a
+   subgraph helps" for this variant. (Seeds resolved on 77/100; the other 23 had
+   no graph-resolvable seed → empty scoped result, part of the recall drop.)
+
+**Caveat — what was tested:** the scoped arm RANKS the PPR subgraph (graph-only
+ranking from flat-top-5 seeds), it does NOT do embedding search *restricted to*
+the subgraph's vectors (the literal "limit the query in a subgraph" idea). That
+faithful variant is untested — it needs a subgraph-node → vector-row map
+(fragile under C/C++ hash-vs-readable naming). But since PPR-scoping already
+loses recall by excluding relevant files, embedding-within-subgraph faces the
+same risk: the target file must be inside the chosen subgraph.
+
+**Verdict on GraphRAG's retrieval value:** the only positive is the *additive*
+expansion (+5 files@10, zero regressions; earlier section). Graph does NOT win
+speed (IVF does) and does NOT win via scoping (hurts). For retrieval at this
+scale, **IVF is the win** (4× faster, same recall); the call-graph's real value
+remains offline structural/impact analysis (the dependency_subgraph tool), not
+faster or more-accurate flat retrieval.
