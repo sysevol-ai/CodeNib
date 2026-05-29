@@ -220,7 +220,7 @@ class TestAgentRunner:
         Note: default skills (DEFAULT_SKILL_IDS) are NEVER excluded — the
         runner strips them from the exclude set before building the tool list.
         """
-        from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
+        from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
 
         llm = _make_llm()
         llm._call_raw.return_value = _make_response(content="ok")

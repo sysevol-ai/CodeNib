@@ -36,7 +36,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.defaults import (
+from codeminer.agent.skills.registry import SkillRegistry
+from codeminer.agent.tools.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
     DEFAULT_SKILL_IDS,
     _file_read,
@@ -47,7 +48,6 @@ from codeminer.agent.skills.defaults import (
     ensure_defaults_registered,
     get_default_skill_metadata,
 )
-from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.llm.litellm_chat import LiteLLMChat
 
 # ---------------------------------------------------------------------------

@@ -22,14 +22,14 @@ from ..llm.litellm_chat import LiteLLMChat
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
-from .skills.defaults import (
+from .skills.loader import SkillLoader
+from .skills.registry import SkillRegistry
+from .tool_schema import registry_to_tools
+from .tools.defaults import (
     _SKIP_DIR_PREFIXES,
     DEFAULT_SKILL_IDS,
     ensure_defaults_registered,
 )
-from .skills.loader import SkillLoader
-from .skills.registry import SkillRegistry
-from .tool_schema import registry_to_tools
 
 logger = get_logger(__name__)
 

@@ -66,8 +66,14 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
-from .core import Cost, SkillInputSpec, SkillMetadata, SkillOutputSpec, SkillType
-from .registry import SkillRegistry
+from ..skills.core import (
+    Cost,
+    SkillInputSpec,
+    SkillMetadata,
+    SkillOutputSpec,
+    SkillType,
+)
+from ..skills.registry import SkillRegistry
 
 # Canonical skill IDs for the always-on defaults.
 DEFAULT_SKILL_IDS: frozenset[str] = frozenset({"file_read", "file_search"})
@@ -178,8 +184,7 @@ def _file_read(
     if extra > 0:
         next_start = start + max_lines  # first omitted line (1-based)
         result += (
-            f"\n... ({extra} more lines; "
-            f"use start_line={next_start} to continue)"
+            f"\n... ({extra} more lines; " f"use start_line={next_start} to continue)"
         )
 
     return result
@@ -472,7 +477,7 @@ def _file_search_shell(
         # Kill the whole process group, not just the shell, then reap.
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, OSError):
+        except OSError:  # incl. ProcessLookupError / PermissionError
             proc.kill()
         proc.communicate()
         return f"Error: command timed out after {timeout}s: {command!r}"

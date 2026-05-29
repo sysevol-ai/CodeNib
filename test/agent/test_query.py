@@ -79,7 +79,7 @@ def _tools_passed_to_llm(llm) -> List[str]:
     # Strip the always-on default layer (file_read/file_search): it is unioned
     # into every tool set regardless of compile_table narrowing, so narrowing
     # assertions look at the swept skills only.
-    from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
+    from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
 
     args, kwargs = llm._call_raw.call_args
     schemas = kwargs.get("tools", [])
