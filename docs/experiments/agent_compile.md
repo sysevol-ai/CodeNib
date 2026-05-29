@@ -754,7 +754,7 @@ actions (~1.6/cell vs ~17 search+read) — the agent reads the *named* candidate
 directly rather than traversing to it, since for localization search already
 names the target.
 
-**Five harness designs** (vs the grep/read agent). The **"graph used"** column is
+**Six harness designs** (vs the grep/read agent). The **"graph used"** column is
 critical: several arms *offered* the graph tools but the agent barely touched
 them, so they are NOT tests of the graph — read them as "search+read without
 grep."
@@ -766,6 +766,16 @@ grep."
 | LocAgent (content-bm25, no grep) | **0/24, 0 calls** | +113 % | parity | **NO — graph unused** |
 | strict (no fs, read_code_block) | 5/24, 6 calls | +77 % | −1 regression | barely |
 | faithful (names-bm25, no fs) | **18/24, 39 calls** | +43 % | −3 regressions | **yes (agent-chosen)** |
+| **everything (grep+read+search+graph all available)** | **1/24, 1 call** | +9 % [CI −19,+36] | −1 regression | **NO — graph unused despite being offered** |
+
+The **everything-available** arm (task #16) is the decisive one for *voluntary*
+adoption: give the agent grep + file_read + bm25_names + the graph verbs +
+read_code_block all at once, with a neutral prompt that pushes nothing. Result:
+the agent localizes with file_read (5.8/cell) + grep (5.4) + bm25_names (2.2) +
+read_code_block (1.9) and calls the call-graph **once in 24 cells**. So the
+faithful arm's 18/24 graph use was purely an artifact of *removing grep*; restore
+grep and voluntary graph use collapses to ~0. Tokens are neutral (+9 %, CI spans
+0) because grep is back — far cheaper than the no-grep arms.
 
 So only **two** rows actually exercise the call-graph:
 
@@ -777,12 +787,15 @@ So only **two** rows actually exercise the call-graph:
 
 The `content-bm25 LocAgent` (+113 %) and `strict` (+77 %) rows are **not** graph
 results — the agent used ~0 graph calls; they only show that removing grep and
-leaning on bm25+read is expensive. The honest conclusion stands on the two rows
-that *do* test the graph: whether forced (deterministic, +18 %/no gain) or
-chosen (faithful, +43 %/−3 acc), **the call-graph does not help in the agent
-loop on localization.** The only config that beats grep/read is **search seeds
-*added to* grep/read** (−19 %). The graph's value is offline — the
-dependency-analysis plugin.
+leaning on bm25+read is expensive. The honest conclusion stands on the rows that
+*do* test the graph: whether forced (deterministic, +18 %/no gain) or chosen
+(faithful, +43 %/−3 acc), **the call-graph does not help in the agent loop on
+localization.** And the **everything-available** arm settles the adoption
+question outright: when the agent has grep *and* the graph, it picks the graph
+**1 time in 24 cells** — so the graph is not its tool of choice for localization,
+period. The only config that beats grep/read is **search seeds *added to*
+grep/read** (−19 %). The graph's value is offline — the dependency-analysis
+plugin.
 
 **The LocAgent token-savings thesis does not replicate here.** Likely because
 LocAgent uses a graph-*native* agent (trained/forced to navigate the graph) vs

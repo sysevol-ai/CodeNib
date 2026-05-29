@@ -75,9 +75,11 @@ class SCIPGoGraphDecoder:
         # Add the root node to the graph
         self.code_graph.add_root_node(ROOT_NODE)
 
-        # Process all documents
-        for document in document_blocks:
-            self._process_document(document)
+        # Process all documents. Batch edge insertion: per-edge add_edges is
+        # O(E^2) (igraph reindexes each call); buffering flushes once as O(E).
+        with self.code_graph.batch_edges():
+            for document in document_blocks:
+                self._process_document(document)
 
         return self.code_graph
 
