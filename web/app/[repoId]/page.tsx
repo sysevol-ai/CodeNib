@@ -180,7 +180,7 @@ export default function WikiPageView() {
                 className={`mode-tab ${mode === m ? "active" : ""}`}
                 onClick={() => setMode(m)}
               >
-                {m === "wiki" ? "Wiki" : m === "diagram" ? "Diagram" : "Codemap"}
+                {m === "wiki" ? "Wiki" : m === "diagram" ? "Diagram" : "Graph"}
               </button>
             ))}
           </div>

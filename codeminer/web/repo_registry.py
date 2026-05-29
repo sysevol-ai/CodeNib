@@ -41,6 +41,17 @@ _SKILLS_DIR = os.path.join(
     "skills",
 )
 
+# Demo agent prompt: steer the model to search the indexes and ground its
+# answer in retrieved code (so the answer carries citations the code pane uses).
+_DEMO_SYSTEM_PROMPT = (
+    "You answer questions about a code repository for a documentation explorer. "
+    "Use the search tools (hybrid_search / embedding_search / bm25_search) to "
+    "find the relevant code, then write a clear, well-structured explanation. "
+    "Ground every claim in the retrieved code and name the key files and symbols "
+    "you found so the reader can open them. If a search returns nothing useful, "
+    "try a different query or tool before concluding."
+)
+
 
 _README_SKIP = re.compile(
     r"\b(install|download|getting started|to get started|usage|build from source"
@@ -196,6 +207,9 @@ class RepoRegistry:
     def __init__(self, config: QAConfig) -> None:
         self._config = config
         self._bundles: Dict[str, RepoBundle] = {}
+        # One embedding model per model name, shared across repos: the GPU model
+        # is loaded once instead of once per CodeVectorStore (one per repo).
+        self._embeddings: Dict[str, object] = {}
 
     def load_all(self) -> None:
         """Load every dataset repo in the registry whose manifest exists."""
@@ -246,7 +260,10 @@ class RepoRegistry:
                 embedding_provider="huggingface",
                 dimension=emb_dim,
                 store_path=vec_entry.path,
+                embedding=self._embeddings.get(emb_model),
             )
+            # Cache the (possibly just-loaded) model so the next repo reuses it.
+            self._embeddings[emb_model] = vector_store.embedding
             vector_store.load(vec_entry.path)
 
         retrieve_ctx = RetrieveContext(
@@ -282,6 +299,12 @@ class RepoRegistry:
             max_turns=self._config.max_turns,
             manifest=manifest,
             session_ctx=session_ctx,
+            system_prompt=_DEMO_SYSTEM_PROMPT,
+            # The demo answers from the retrieval indexes (BM25 + embeddings),
+            # which return citable nodes that feed the answer's code pane. The
+            # default file_read/file_search tools return plain text (no
+            # citations) and let the model grep-and-give-up, so withhold them.
+            include_default_tools=False,
         )
         return RepoBundle(
             entry=entry,

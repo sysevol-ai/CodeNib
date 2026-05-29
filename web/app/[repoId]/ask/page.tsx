@@ -6,7 +6,7 @@ import Link from "next/link";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
-import CitationItem from "@/components/CitationItem";
+import CodePanel from "@/components/CodePanel";
 import { askQuestion, fetchRepos, type ChatResponse, type RepoInfo } from "@/lib/api";
 
 function AskAnswer() {
@@ -18,6 +18,7 @@ function AskAnswer() {
   const [resp, setResp] = useState<ChatResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [selected, setSelected] = useState(0);
 
   useEffect(() => {
     fetchRepos()
@@ -35,6 +36,7 @@ function AskAnswer() {
     setLoading(true);
     setResp(null);
     setErr(null);
+    setSelected(0);
     askQuestion(repoId, q)
       .then((r) => !cancelled && setResp(r))
       .catch((e) => !cancelled && setErr(String(e)))
@@ -45,6 +47,8 @@ function AskAnswer() {
   }, [repoId, q]);
 
   const repoName = repo ? repo.repo : repoId;
+  const citations = resp?.citations ?? [];
+  const active = citations[selected] ?? citations[0] ?? null;
 
   return (
     <div className="wiki ask-page">
@@ -60,40 +64,60 @@ function AskAnswer() {
         }
       />
 
-      <main className="ask-answer">
-        <Link className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
-          ← Back to wiki
-        </Link>
-        <h1 className="ask-q">{q || "Ask a question"}</h1>
+      {/* DeepWiki-style codemap: hierarchical explanation (left) + code (right). */}
+      <div className="ask-codemap">
+        <section className="ask-explain">
+          <Link className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
+            ← Back to wiki
+          </Link>
+          <h1 className="ask-q">{q || "Ask a question"}</h1>
 
-        {!q && <p className="muted">Type a question in the bar below.</p>}
-        {loading && <p className="muted ask-thinking">Searching {repoName}…</p>}
-        {err && (
-          <p className="muted">
-            Couldn&apos;t reach the retrieval backend. Is the API running?
-          </p>
-        )}
+          {!q && <p className="muted">Type a question in the bar below.</p>}
+          {loading && <p className="muted ask-thinking">Searching {repoName}…</p>}
+          {err && (
+            <p className="muted">
+              Couldn&apos;t reach the retrieval backend. Is the API running?
+            </p>
+          )}
 
-        {resp && (
-          <>
-            <article className="ask-a">
-              <Markdown>{resp.answer || "(no answer)"}</Markdown>
-            </article>
-            {resp.citations.length > 0 && (
-              <details className="citations" open>
-                <summary>{resp.citations.length} code references</summary>
-                {resp.citations.map((c, i) => (
-                  <CitationItem repoId={repoId} c={c} key={i} />
-                ))}
-              </details>
-            )}
-            <div className="ask-tools muted small">
-              {resp.tool_calls.length} tool calls · {resp.total_turns} turns ·{" "}
-              {Math.round(resp.total_duration_ms)} ms
-            </div>
-          </>
-        )}
-      </main>
+          {resp && (
+            <>
+              <article className="ask-a">
+                <Markdown>{resp.answer || "(no answer)"}</Markdown>
+              </article>
+
+              {citations.length > 0 && (
+                <div className="ask-refs">
+                  <div className="ask-refs-title">
+                    Referenced code{citations.length > 12 ? ` (top 12 of ${citations.length})` : ""}
+                  </div>
+                  {citations.slice(0, 12).map((c, i) => (
+                    <button
+                      key={i}
+                      className={`ask-ref ${i === selected ? "active" : ""}`}
+                      onClick={() => setSelected(i)}
+                    >
+                      <span className="ask-ref-name mono">{c.node_name || c.file}</span>
+                      <span className="ask-ref-loc mono">
+                        {c.file}:{c.start_line}-{c.end_line}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="ask-tools muted small">
+                {resp.tool_calls.length} tool calls · {resp.total_turns} turns ·{" "}
+                {Math.round(resp.total_duration_ms)} ms
+              </div>
+            </>
+          )}
+        </section>
+
+        <aside className="ask-code">
+          <CodePanel repoId={repoId} citation={active} />
+        </aside>
+      </div>
 
       <AskBar repoId={repoId} repo={repoName} defaultValue={q} />
     </div>

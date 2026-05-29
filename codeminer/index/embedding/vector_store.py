@@ -234,6 +234,7 @@ class CodeVectorStore:
         index_metric: str = "ip",
         store_path: Optional[str] = None,
         profiler: Optional[Profiler] = None,
+        embedding: Optional[Any] = None,
         **embedding_kwargs,
     ):
         """
@@ -247,6 +248,9 @@ class CodeVectorStore:
             index_metric: Distance metric ("ip" for inner product, "l2" for L2 distance)
             store_path: Path to store/load the vector store
             profiler: Optional profiler instance to capture detailed timings
+            embedding: A pre-built embedding wrapper to reuse. When several
+                stores share one model (e.g. one per repo), pass the same
+                instance so the model is loaded onto the GPU only once.
             **embedding_kwargs: Additional arguments for embedding model
         """
         self.embedding_model = embedding_model
@@ -265,8 +269,13 @@ class CodeVectorStore:
         self.store_path = Path(store_path) if store_path else None
         self.profiler = profiler
 
-        # Initialize embedding model
-        self.embedding = self._initialize_embedding_model(**embedding_kwargs)
+        # Initialize the embedding model — or reuse a shared one so the same
+        # model isn't loaded onto the GPU once per store.
+        self.embedding = (
+            embedding
+            if embedding is not None
+            else self._initialize_embedding_model(**embedding_kwargs)
+        )
         self.dimension = self._infer_embedding_dimension(dimension)
 
         # Initialize L0 (file-level skeletons)
