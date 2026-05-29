@@ -16,7 +16,7 @@ Reproduce:
 
 ```bash
 python scripts/agent_compile/run_agent_sweep.py \
-    --config configs/agent_compile/sample.yaml \
+    --config scripts/agent_compile/configs/sample.yaml \
     --output-dir results/agent_compile/sample
 python scripts/agent_compile/aggregate_phase2.py \
     --cells-dir results/agent_compile/sample/cells \
@@ -48,7 +48,7 @@ Sample instances (one per scenario cell that has prebuilt indexes):
 | `axios__axios-4731` | TS/JS | no | `typescript:no_stacktrace` |
 | `astral-sh__ruff-15309` | Rust | no | `rust:no_stacktrace` |
 
-The skill subsets A0–A6 are the #133 RFC table (`configs/agent_compile/sample.yaml`).
+The skill subsets A0–A6 are the #133 RFC table (`scripts/agent_compile/configs/sample.yaml`).
 `file_read` is always-on infrastructure and not a sweep variable.
 
 ## Per-subset results (mean over 5 instances)
@@ -228,7 +228,7 @@ file layer — cheapest at full accuracy).
 ## Corroboration at larger N (5 instances, reps=2, max_turns=20)
 
 A fuller default-tool run over all 5 instances × 2 reps (70 cells,
-`results/agent_compile/sample_defaults/`) confirms the headline results and
+`docs/experiments/agent_compile_runs/sample_defaults/`) confirms the headline results and
 strengthens two of them:
 
 - **`graph_expand` invocation = 0 % across all 70 cells** — the agent never

@@ -75,7 +75,7 @@ allow* — whereas the manifest is about *which indexes exist*.
 | `graph_recall_ablation.py` | retrieval-only (no LLM): does the call-graph recover a target file that **deep search misses**? Scans the dataset. | cost/ablation | active |
 | `graphrag_retrieve.py` | run the GraphRAG composer as a **standalone retrieval method** (files@k recall; `--no-graph` to ablate the graph). | cost/ablation | active |
 
-## Configs (`configs/agent_compile/*.yaml`)
+## Configs (`scripts/agent_compile/configs/*.yaml`)
 
 | config | harness (agent tools) | result dir | role |
 |---|---|---|---|

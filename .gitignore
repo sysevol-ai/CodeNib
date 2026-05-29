@@ -19,6 +19,10 @@ site/
 .cursor/
 *.bak
 
+# Experiment sweep outputs (regenerable); committed evidence lives under
+# docs/experiments/agent_compile_runs/.
+results/
+
 # Code-QA demo
 .codeminer_qa/
 .codeminer_demo/
@@ -33,3 +37,5 @@ web/next-env.d.ts
 !web/package.json
 !web/tsconfig.json
 !web/package-lock.json
+# Keep committed experiment-run evidence (relocated out of results/).
+!docs/experiments/agent_compile_runs/**/*.json

@@ -26,7 +26,7 @@ per-scenario ``compile_table`` derivation.
 Usage::
 
     python scripts/agent_compile/run_sample_sweep.py \\
-        --config configs/agent_compile/sample.yaml \\
+        --config scripts/agent_compile/configs/sample.yaml \\
         --output-dir results/agent_compile/sample
 """
 
