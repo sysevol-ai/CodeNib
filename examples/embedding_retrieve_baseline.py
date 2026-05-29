@@ -224,6 +224,30 @@ def parse_args():
         ),
     )
 
+    # FAISS index type. "flat" is exact brute force (default); "ivf" is an
+    # IVF inverted-file index (approximate, faster at scale). IVF takes effect
+    # at *build* time, so combine --index-type ivf with --force-rebuild (or
+    # build the prebuilt indices with scripts/embeddings/build_embeddings.py).
+    parser.add_argument(
+        "--index-type",
+        type=str,
+        default="flat",
+        choices=["flat", "ivf"],
+        help="FAISS index type: 'flat' (exact, default) or 'ivf'.",
+    )
+    parser.add_argument(
+        "--ivf-nlist",
+        type=int,
+        default=100,
+        help="IVF only: number of Voronoi cells (clamped to corpus size).",
+    )
+    parser.add_argument(
+        "--ivf-nprobe",
+        type=int,
+        default=8,
+        help="IVF only: cells probed per query (recall/latency knob).",
+    )
+
     # Evaluation
     parser.add_argument(
         "--eval-instances",
@@ -371,6 +395,9 @@ def run_embedding_pipeline(args):
             embedding_provider=args.embedding_provider,
             embedding_dimension=args.embedding_dimension,
             top_k=args.topk,
+            index_type=args.index_type,
+            ivf_nlist=args.ivf_nlist,
+            ivf_nprobe=args.ivf_nprobe,
         )
     logger.info(
         "Embedding model loaded: %s (provider=%s)",

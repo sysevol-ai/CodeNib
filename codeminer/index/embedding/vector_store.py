@@ -232,6 +232,8 @@ class CodeVectorStore:
         dimension: int = 1536,
         index_type: str = "flat",
         index_metric: str = "ip",
+        ivf_nlist: int = 100,
+        ivf_nprobe: int = 8,
         store_path: Optional[str] = None,
         profiler: Optional[Profiler] = None,
         **embedding_kwargs,
@@ -243,8 +245,15 @@ class CodeVectorStore:
             embedding_model: Name of the embedding model to use
             embedding_provider: Provider for embeddings ("openai", "huggingface")
             dimension: Dimension of the embedding vectors
-            index_type: Type of FAISS index (only "flat" is supported)
+            index_type: FAISS index type — "flat" (exact brute force, default)
+                or "ivf" (IVF inverted-file; approximate, faster at scale).
+                IVF indices are trained lazily on the first batch of vectors.
             index_metric: Distance metric ("ip" for inner product, "l2" for L2 distance)
+            ivf_nlist: IVF only — number of Voronoi cells (coarse centroids). On
+                small corpora it is clamped down to the training-set size, since
+                FAISS k-means needs at least ``nlist`` training points.
+            ivf_nprobe: IVF only — cells probed per query; the recall/latency
+                knob. Clamped to the effective ``nlist``.
             store_path: Path to store/load the vector store
             profiler: Optional profiler instance to capture detailed timings
             **embedding_kwargs: Additional arguments for embedding model
@@ -253,15 +262,17 @@ class CodeVectorStore:
         self.embedding_provider = embedding_provider
         self.dimension = dimension
         self.index_type = index_type.lower()
-        if self.index_type != "flat":
+        if self.index_type not in ("flat", "ivf"):
             raise ValueError(
-                f"Unsupported index_type: {index_type}. Only 'flat' is supported."
+                f"Unsupported index_type: {index_type}. Must be 'flat' or 'ivf'."
             )
         self.index_metric = index_metric.lower()
         if self.index_metric not in ["ip", "l2"]:
             raise ValueError(
                 f"Unsupported index_metric: {index_metric}. Must be 'ip' or 'l2'."
             )
+        self.ivf_nlist = max(1, int(ivf_nlist))
+        self.ivf_nprobe = max(1, int(ivf_nprobe))
         self.store_path = Path(store_path) if store_path else None
         self.profiler = profiler
 
@@ -343,16 +354,73 @@ class CodeVectorStore:
                 f"Unsupported index_metric: {self.index_metric}. Must be 'ip' or 'l2'."
             )
 
-    def _build_faiss_index(self) -> faiss.Index:
-        """Create a flat FAISS index with the configured metric."""
+    def _faiss_metric(self) -> int:
+        """Map the configured metric string to a FAISS metric constant."""
+        if self.index_metric == "ip":
+            return faiss.METRIC_INNER_PRODUCT
+        elif self.index_metric == "l2":
+            return faiss.METRIC_L2
+        raise ValueError(
+            f"Unsupported index_metric: {self.index_metric}. Must be 'ip' or 'l2'."
+        )
+
+    def _build_flat_index(self) -> faiss.Index:
+        """Create a flat (exact) FAISS index with the configured metric."""
         if self.index_metric == "ip":
             return faiss.IndexFlatIP(self.dimension)
         elif self.index_metric == "l2":
             return faiss.IndexFlatL2(self.dimension)
-        else:
-            raise ValueError(
-                f"Unsupported index_metric: {self.index_metric}. Must be 'ip' or 'l2'."
-            )
+        raise ValueError(
+            f"Unsupported index_metric: {self.index_metric}. Must be 'ip' or 'l2'."
+        )
+
+    def _build_faiss_index(self, nlist: Optional[int] = None) -> faiss.Index:
+        """Create an empty FAISS index of the configured type and metric.
+
+        Flat indices are ready for ``add``; IVF indices are returned
+        *untrained* and must be trained on a batch of vectors (see
+        :meth:`_add_to_index`) before any vectors are added.
+        """
+        if self.index_type == "flat":
+            return self._build_flat_index()
+        # IVF: a flat quantizer assigns each vector to one of ``cells`` cells.
+        cells = max(1, int(nlist if nlist is not None else self.ivf_nlist))
+        quantizer = self._build_flat_index()
+        index = faiss.IndexIVFFlat(
+            quantizer, self.dimension, cells, self._faiss_metric()
+        )
+        index.nprobe = min(self.ivf_nprobe, cells)
+        return index
+
+    def _add_to_index(self, level: Level, vectors: np.ndarray) -> None:
+        """Add pre-computed ``vectors`` to *level*'s FAISS index.
+
+        Flat indices take a plain ``add``. An untrained IVF index is trained
+        on this first batch — clamping ``nlist`` down to the batch size on
+        small corpora (FAISS k-means requires at least ``nlist`` training
+        points) — then the vectors are added; later batches add to the
+        already-trained index.
+        """
+        if vectors is None or len(vectors) == 0:
+            return
+        index = self.l0_index if level == "l0" else self.l2_index
+        if self.index_type == "ivf" and not index.is_trained:
+            n = int(vectors.shape[0])
+            effective_nlist = max(1, min(self.ivf_nlist, n))
+            if effective_nlist != index.nlist:
+                # nlist is fixed at construction, so rebuild at the size the
+                # training set can actually support, then re-bind the slot.
+                index = self._build_faiss_index(nlist=effective_nlist)
+                if level == "l0":
+                    self.l0_index = index
+                else:
+                    self.l2_index = index
+            with self._profile_section(
+                f"faiss_index_train_{level}",
+                {"num_vectors": n, "nlist": effective_nlist, "level": level},
+            ):
+                index.train(vectors)
+        index.add(vectors)
 
     def _search_index(
         self,
@@ -493,7 +561,7 @@ class CodeVectorStore:
             {"num_vectors": len(embeddings), "level": level},
         ):
             vectors = np.array(embeddings, dtype=np.float32)
-            index.add(vectors)
+            self._add_to_index(level, vectors)
 
         logger.info(
             f"Successfully added {len(documents)} documents to {level} vector store"
@@ -1114,11 +1182,10 @@ class CodeVectorStore:
             dtype=np.float32,
         )
 
+        self._add_to_index(level, vectors)
         if level == "l0":
-            self.l0_index.add(vectors)
             self.l0_documents = native_docs
         else:
-            self.l2_index.add(vectors)
             self.l2_documents = native_docs
 
         logger.info(
@@ -1250,7 +1317,7 @@ class CodeVectorStore:
                 [np.asarray(e, dtype=np.float32) for _, e in docs_to_add],
                 dtype=np.float32,
             )
-            index.add(add_vectors)
+            self._add_to_index(level, add_vectors)
             new_docs_list.extend(_to_document(d) for d, _ in docs_to_add)
 
         if level == "l0":
