@@ -857,3 +857,177 @@ pre {
     z-index: 30;
   }
 }
+
+/* ===== Bottom Ask bar (DeepWiki-style persistent ask) ===== */
+.wiki {
+  padding-bottom: 88px; /* clear the fixed ask bar */
+}
+.askbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  background: linear-gradient(to top, var(--bg) 72%, transparent);
+  pointer-events: none;
+}
+.askbar-inner {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(720px, 100%);
+  padding: 7px 7px 7px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+}
+.askbar-icon {
+  color: var(--accent);
+  font-size: 14px;
+}
+.askbar-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 15px;
+  color: var(--text);
+}
+.askbar-send {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.askbar-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.askbar-kbd {
+  opacity: 0.8;
+  margin-left: 2px;
+}
+
+/* ===== Ask answer page ===== */
+.ask-answer {
+  max-width: var(--content-w);
+  margin: 0 auto;
+  padding: 28px 20px 110px;
+}
+.ask-back {
+  display: inline-block;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+  margin-bottom: 14px;
+}
+.ask-back:hover {
+  color: var(--accent);
+}
+.ask-q {
+  font-size: 22px;
+  line-height: 1.35;
+  margin: 0 0 20px;
+}
+.ask-thinking {
+  animation: ask-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ask-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.ask-tools {
+  margin-top: 16px;
+}
+
+/* ===== Codemap mode (dependency / call graph) ===== */
+.codemap {
+  padding: 4px 0 8px;
+}
+.codemap-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.codemap-symbol {
+  flex: 1;
+  min-width: 220px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+.codemap-controls select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+.codemap-controls button {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+.codemap-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.codemap-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.codemap-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+.codemap-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.codemap-chip.root {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+/* Render the dependency graph at natural size (legible labels) inside a
+   scrollable box rather than letting Mermaid shrink it to the column width. */
+.codemap .mermaid-diagram {
+  max-height: 72vh;
+  overflow: auto;
+}
+.codemap .mermaid-diagram svg {
+  max-width: none !important;
+  height: auto;
+}

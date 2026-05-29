@@ -23,6 +23,7 @@ from ..agent.skills.loader import SkillLoader
 from ..agent.skills.registry import SkillRegistry
 from ..compiler.manifest import RepoManifest
 from ..compiler.params import SessionContext
+from ..graph.code_graph import CodeGraph
 from ..index.embedding.vector_store import CodeVectorStore
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.litellm_chat import LiteLLMChat
@@ -94,6 +95,10 @@ class RepoBundle:
     bm25: Optional[BM25CodeIndexer] = None
 
     def info(self) -> RepoInfo:
+        capabilities = dict(self.manifest.capabilities)
+        # The prebuilt indexes ship a symbol graph that the manifest doesn't
+        # declare; surface a "codemap" capability so the UI can offer the mode.
+        capabilities["codemap"] = self._graph_path() is not None
         return RepoInfo(
             id=self.entry.instance_id,
             name=f"{self.entry.repo} @ {self.entry.commit_short}",
@@ -105,8 +110,52 @@ class RepoBundle:
             problem_statement=self.entry.problem_statement,
             languages=self.manifest.languages,
             file_count=self._file_count(),
-            capabilities=self.manifest.capabilities,
+            capabilities=capabilities,
         )
+
+    def _graph_path(self) -> Optional[str]:
+        """Locate this repo's prebuilt symbol-graph pickle, if any.
+
+        The manifest only declares bm25/vector, but the prebuilt tree ships a
+        ``graph.pkl`` alongside the vector store (and, when present, via a
+        ``symbol_graph`` entry), so probe both. Result is cached.
+        """
+        cached = getattr(self, "_graph_path_cache", "?")
+        if cached != "?":
+            return cached
+        candidates: List[str] = []
+        sg = self.manifest.indexes.get("symbol_graph")
+        if sg is not None and getattr(sg, "path", None):
+            candidates.append(
+                sg.path
+                if sg.path.endswith(".pkl")
+                else os.path.join(sg.path, "graph.pkl")
+            )
+        vec = self.manifest.indexes.get("vector")
+        if vec is not None and getattr(vec, "path", None):
+            candidates.append(os.path.join(vec.path, "graph.pkl"))
+        found = next((p for p in candidates if p and os.path.isfile(p)), None)
+        self._graph_path_cache = found
+        return found
+
+    def code_graph(self) -> Optional[CodeGraph]:
+        """Lazily load + cache the repo's symbol graph (None if unavailable)."""
+        if getattr(self, "_code_graph_loaded", False):
+            return self._code_graph
+        self._code_graph_loaded = True
+        self._code_graph = None
+        path = self._graph_path()
+        if path is None:
+            return None
+        try:
+            self._code_graph = CodeGraph.load_graph(path)
+            logger.info(
+                "codemap: loaded symbol graph for %r (%s)", self.entry.instance_id, path
+            )
+        except Exception as exc:  # noqa: BLE001 - stale/old-format graph: skip codemap
+            logger.warning("codemap: graph at %s unusable: %s", path, exc)
+            self._code_graph = None
+        return self._code_graph
 
     def _file_count(self) -> int:
         cached = getattr(self, "_file_count_cache", None)

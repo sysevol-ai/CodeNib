@@ -118,3 +118,50 @@ export async function askQuestion(
   }
   return res.json();
 }
+
+export interface CodemapNode {
+  id: string;
+  name: string;
+  label: string;
+  short: string;
+  file: string | null;
+  line: number | null;
+  kind: string;
+  depth: number;
+  is_root: boolean;
+}
+
+export interface CodemapEdge {
+  source: string;
+  target: string;
+}
+
+export interface CodemapResponse {
+  available: boolean;
+  root?: string;
+  root_label?: string;
+  direction?: string;
+  depth?: number;
+  truncated?: boolean;
+  nodes: CodemapNode[];
+  edges: CodemapEdge[];
+  mermaid: string;
+  note?: string;
+}
+
+export async function fetchCodemap(
+  repoId: string,
+  opts: { symbol?: string; direction?: string; depth?: number; maxNodes?: number } = {}
+): Promise<CodemapResponse> {
+  const params = new URLSearchParams();
+  if (opts.symbol) params.set("symbol", opts.symbol);
+  if (opts.direction) params.set("direction", opts.direction);
+  if (opts.depth != null) params.set("depth", String(opts.depth));
+  if (opts.maxNodes != null) params.set("max_nodes", String(opts.maxNodes));
+  const qs = params.toString();
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/codemap${qs ? `?${qs}` : ""}`
+  );
+  if (!res.ok) throw new Error(`Failed to load codemap (${res.status})`);
+  return res.json();
+}

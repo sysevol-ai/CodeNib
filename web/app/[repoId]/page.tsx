@@ -5,45 +5,19 @@ import { useParams } from "next/navigation";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import Mermaid from "@/components/Mermaid";
-import AskPanel from "@/components/AskPanel";
+import AskBar from "@/components/AskBar";
+import Codemap from "@/components/Codemap";
+import CitationItem from "@/components/CitationItem";
 import {
   fetchRepos,
-  fetchSource,
   fetchWikiPage,
   fetchWikiTree,
-  type Citation,
   type RepoInfo,
   type WikiPage,
   type WikiPageRef,
 } from "@/lib/api";
 
-function CitationItem({ repoId, c }: { repoId: string; c: Citation }) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  async function toggle() {
-    if (!open && src == null && c.file && c.start_line != null) {
-      try {
-        const s = await fetchSource(repoId, c.file, c.start_line, c.end_line ?? undefined);
-        setSrc(s.content);
-      } catch {
-        setSrc("// source unavailable");
-      }
-    }
-    setOpen((o) => !o);
-  }
-  return (
-    <div className="citation">
-      <button className="head" onClick={toggle} aria-expanded={open}>
-        {c.node_name ? `${c.node_name} — ` : ""}
-        {c.file}:{c.start_line}-{c.end_line}
-        <span className="cite-toggle">{open ? "▾ source" : "▸ view source"}</span>
-      </button>
-      {open && <pre>{src ?? c.content}</pre>}
-    </div>
-  );
-}
-
-type Mode = "wiki" | "diagram" | "ask";
+type Mode = "wiki" | "diagram" | "codemap";
 interface Heading {
   id: string;
   text: string;
@@ -165,7 +139,9 @@ export default function WikiPageView() {
     window.scrollTo({ top: 0 });
   }
 
-  const modes: Mode[] = ["wiki", "diagram", "ask"];
+  const modes: Mode[] = repo?.capabilities?.codemap
+    ? ["wiki", "diagram", "codemap"]
+    : ["wiki", "diagram"];
 
   return (
     <div className="wiki">
@@ -204,7 +180,7 @@ export default function WikiPageView() {
                 className={`mode-tab ${mode === m ? "active" : ""}`}
                 onClick={() => setMode(m)}
               >
-                {m === "wiki" ? "Wiki" : m === "diagram" ? "Diagram" : "Ask"}
+                {m === "wiki" ? "Wiki" : m === "diagram" ? "Diagram" : "Codemap"}
               </button>
             ))}
           </div>
@@ -242,7 +218,7 @@ export default function WikiPageView() {
             </div>
           )}
 
-          {mode === "ask" && <AskPanel repoId={repoId} repo={repo ? repo.repo : repoId} />}
+          {mode === "codemap" && <Codemap repoId={repoId} />}
         </main>
 
         <aside className="wiki-onthispage" data-rail="right">
@@ -276,6 +252,8 @@ export default function WikiPageView() {
           )}
         </aside>
       </div>
+
+      <AskBar repoId={repoId} repo={repo ? repo.repo : repoId} />
     </div>
   );
 }

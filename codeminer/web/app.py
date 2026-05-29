@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..log_utils import get_logger
 from ..wiki import WikiBuilder
 from ..wiki.narrator import Narrator
+from .codemap import build_codemap
 from .config import load_config
 from .repo_registry import RepoRegistry
 from .schemas import ChatRequest, ChatResponse, RepoInfo, agent_result_to_response
@@ -126,6 +127,34 @@ async def source(
     if result is None:
         raise HTTPException(status_code=404, detail=f"File not found: {file!r}")
     return result
+
+
+@app.get("/api/repos/{repo_id}/codemap")
+async def codemap(
+    repo_id: str,
+    symbol: str | None = None,
+    direction: str = "both",
+    depth: int = 2,
+    max_nodes: int = 40,
+) -> dict:
+    """Dependency subgraph ("codemap") around *symbol* (or a central default).
+
+    Returns ``{available, root, nodes, edges, mermaid, ...}``; the ``mermaid``
+    field renders directly in the frontend's existing diagram component.
+    """
+    bundle = _bundle(repo_id)
+    graph = await asyncio.to_thread(bundle.code_graph)
+    if graph is None:
+        return {
+            "available": False,
+            "nodes": [],
+            "edges": [],
+            "mermaid": "",
+            "note": "This repo has no symbol graph.",
+        }
+    return await asyncio.to_thread(
+        build_codemap, graph, symbol, direction, depth, max_nodes
+    )
 
 
 @app.post("/api/chat", response_model=ChatResponse)
