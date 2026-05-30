@@ -232,7 +232,8 @@ class AgentWiki:
             if not content and file:
                 start = self._node_attr(n, "start_line")
                 end = self._node_attr(n, "end_line")
-                src = self._wb.source(file, start, end) if start is not None else None
+                rel = self._rel(file)
+                src = self._wb.source(rel, start, end) if start is not None else None
                 content = (src or {}).get("content", "") if src else ""
             content = (content or "")[:1600]
             if not content:
@@ -244,11 +245,40 @@ class AgentWiki:
             total += len(block)
         return "\n".join(parts)
 
+    def _rel(self, file: Optional[str]) -> Optional[str]:
+        """Normalize an index path to repo-relative — the longest suffix that
+        exists under the repo dir (handles ``.codeminer/`` and ``/repo/`` roots
+        alike). The resolved prefix is cached after the first lookup."""
+        if not file:
+            return file
+        p = file.replace("\\", "/")
+        root = getattr(self, "_iroot", None)
+        if root is not None:
+            return p[len(root) :] if root and p.startswith(root) else p.lstrip("/")
+        repo_dir = getattr(self._bundle.entry, "repo_dir", "") or ""
+        if repo_dir:
+            rd = repo_dir.replace("\\", "/").rstrip("/") + "/"
+            if p.startswith(rd):
+                self._iroot = rd
+                return p[len(rd) :]
+            parts = [x for x in p.split("/") if x]
+            for i in range(len(parts)):
+                rel = "/".join(parts[i:])
+                if os.path.exists(os.path.join(repo_dir, rel)):
+                    self._iroot = p[: len(p) - len(rel)]
+                    return rel
+        mi = p.rfind("/repo/")
+        if mi != -1:
+            self._iroot = p[: mi + 6]
+            return p[mi + 6 :]
+        self._iroot = ""
+        return p.lstrip("/")
+
     def _citation(self, node: Any) -> dict:
         start = self._node_attr(node, "start_line")
         end = self._node_attr(node, "end_line")
         return {
-            "file": self._node_attr(node, "file"),
+            "file": self._rel(self._node_attr(node, "file")),
             "start_line": (start + 1) if isinstance(start, int) else None,
             "end_line": (end + 1) if isinstance(end, int) else None,
             "node_name": self._node_attr(node, "node_name")

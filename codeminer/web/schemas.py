@@ -10,6 +10,7 @@ flat, UI-friendly ``ChatResponse`` the Next.js frontend renders.
 
 from __future__ import annotations
 
+import os
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
@@ -71,9 +72,11 @@ class ChatResponse(BaseModel):
 def _repo_relative(path: Optional[str], repo_path: str = "") -> Optional[str]:
     """Make a source path repo-relative for display + ``/source`` lookup.
 
-    Some indexes store absolute paths (e.g. ``/home/.../repo/lib/x.js``). Strip
-    the repo root — or any ``.../repo/`` ancestor — so the UI shows ``lib/x.js``
-    and the source endpoint can resolve it against the repo dir.
+    Indexes store build-machine-absolute paths under arbitrary roots
+    (``/mnt/.../repo/...``, ``/home/.../.codeminer/<repo>/...``). The robust
+    rule (mirrors ``WikiBuilder._index_root``): the repo-relative path is the
+    longest suffix of *path* that actually exists under *repo_path*. Falls back
+    to stripping the repo root / a ``/repo/`` ancestor / a leading slash.
     """
     if not path:
         return path
@@ -82,6 +85,11 @@ def _repo_relative(path: Optional[str], repo_path: str = "") -> Optional[str]:
         root = repo_path.replace("\\", "/").rstrip("/") + "/"
         if p.startswith(root):
             return p[len(root) :]
+        parts = [x for x in p.split("/") if x]
+        for i in range(len(parts)):
+            rel = "/".join(parts[i:])
+            if os.path.exists(os.path.join(repo_path, rel)):
+                return rel
     marker = "/repo/"
     idx = p.rfind(marker)
     if idx != -1:
