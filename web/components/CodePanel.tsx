@@ -1,160 +1,153 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import hljs from "highlight.js";
-import { fetchSource } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import HighlightedCode from "@/components/HighlightedCode";
+import { fetchSource, repoRelative, type Citation } from "@/lib/api";
 
-const EXT_LANG: Record<string, string> = {
-  py: "python",
-  go: "go",
-  rs: "rust",
-  ts: "typescript",
-  tsx: "typescript",
-  js: "javascript",
-  jsx: "javascript",
-  mjs: "javascript",
-  c: "c",
-  h: "cpp",
-  cc: "cpp",
-  cpp: "cpp",
-  hpp: "cpp",
-  java: "java",
-  rb: "ruby",
-  json: "json",
-  yml: "yaml",
-  yaml: "yaml",
-};
-const MAX_LINES = 1500;
+function ghUrl(repo: string | undefined, commit: string | undefined, c: Citation, rel: string) {
+  if (!repo) return null;
+  const anchor = c.start_line != null ? `#L${c.start_line}-L${c.end_line ?? c.start_line}` : "";
+  return `https://github.com/${repo}/blob/${commit || "HEAD"}/${rel}${anchor}`;
+}
 
-/**
- * DeepWiki-style code window: a tabbed, scrollable source viewer. Each
- * relevant file is a tab along the bottom; the active file is shown in full
- * (scrollable) with syntax highlighting and a line-number gutter.
- */
-export default function CodePanel({
+/** One relevant code fragment: GitHub-linked header + highlighted line range. */
+function Fragment({
   repoId,
-  files,
-  activeFile,
-  onPick,
+  c,
   repo,
   commit,
+  active,
 }: {
   repoId: string;
-  files: string[];
-  activeFile: string | null;
-  onPick: (file: string) => void;
+  c: Citation;
   repo?: string;
   commit?: string;
+  active: boolean;
 }) {
+  const rel = repoRelative(c.file);
   const [code, setCode] = useState("");
-  const [start, setStart] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [unavailable, setUnavailable] = useState(false);
+  const [start, setStart] = useState(c.start_line ?? 1);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(false);
 
   useEffect(() => {
-    if (!activeFile) {
-      setCode("");
-      return;
-    }
     let cancelled = false;
     setLoading(true);
-    setUnavailable(false);
-    fetchSource(repoId, activeFile)
-      .then((res) => {
+    setErr(false);
+    if (c.content) {
+      setCode(c.content);
+      setStart(c.start_line ?? 1);
+      setLoading(false);
+      return;
+    }
+    fetchSource(repoId, rel, c.start_line ?? undefined, c.end_line ?? undefined)
+      .then((s) => {
         if (cancelled) return;
-        setCode(res.content || "");
-        setStart(res.start_line || 1);
+        setCode(s.content || "");
+        setStart(s.start_line || c.start_line || 1);
       })
-      .catch(() => {
-        if (!cancelled) setUnavailable(true);
-      })
+      .catch(() => !cancelled && setErr(true))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [repoId, activeFile]);
+  }, [repoId, rel, c.start_line, c.end_line, c.content]);
 
-  if (!activeFile) {
-    return (
-      <div className="codepanel codepanel-empty">
-        <p className="muted">Select a reference on the left to view its code.</p>
-      </div>
-    );
-  }
-
-  const ext = activeFile.split(".").pop()?.toLowerCase() || "";
-  const lang = EXT_LANG[ext];
-  const allLines = code.split("\n");
-  const clipped = allLines.length > MAX_LINES;
-  const shown = clipped ? allLines.slice(0, MAX_LINES).join("\n") : code;
-  let highlighted = "";
-  try {
-    highlighted = lang
-      ? hljs.highlight(shown, { language: lang }).value
-      : hljs.highlightAuto(shown).value;
-  } catch {
-    highlighted = shown.replace(
-      /[&<>]/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!
-    );
-  }
-  const lineCount = clipped ? MAX_LINES : allLines.length;
-
+  const gh = ghUrl(repo, commit, c, rel);
   return (
-    <div className="codepanel">
-      <div className="codepanel-head mono">
-        {repo ? (
-          <a
-            className="codepanel-name"
-            href={`https://github.com/${repo}/blob/${commit || "HEAD"}/${activeFile}`}
-            target="_blank"
-            rel="noreferrer"
-            title="Open on GitHub"
-          >
-            {activeFile} <span className="codepanel-gh">↗</span>
+    <div className={`frag ${active ? "active" : ""}`}>
+      <div className="frag-head mono">
+        {gh ? (
+          <a href={gh} target="_blank" rel="noreferrer" title="Open on GitHub">
+            <span className="frag-name">{c.node_name || rel}</span>
+            <span className="frag-loc">
+              {rel}
+              {c.start_line != null ? `:${c.start_line}-${c.end_line}` : ""} ↗
+            </span>
           </a>
         ) : (
-          <span className="codepanel-name">{activeFile}</span>
+          <span className="frag-name">{c.node_name || rel}</span>
         )}
       </div>
-
-      <div className="codepanel-body">
-        {loading ? (
-          <p className="muted codepanel-loading">Loading source…</p>
-        ) : unavailable ? (
-          <p className="muted codepanel-loading">Source not available for this file.</p>
-        ) : (
-          <div className="codepanel-scroll">
-            <div className="codepanel-gutter" aria-hidden>
-              {Array.from({ length: lineCount }, (_, i) => (
-                <div key={i}>{start + i}</div>
-              ))}
-              {clipped && <div>…</div>}
-            </div>
-            <pre className="codepanel-pre">
-              <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
-              {clipped && <div className="codepanel-clip">… {allLines.length - MAX_LINES} more lines</div>}
-            </pre>
-          </div>
-        )}
-      </div>
-
-      {files.length > 1 && (
-        <div className="codepanel-tabs" role="tablist">
-          {files.map((f) => (
-            <button
-              key={f}
-              role="tab"
-              aria-selected={f === activeFile}
-              className={`codepanel-tab ${f === activeFile ? "active" : ""}`}
-              title={f}
-              onClick={() => onPick(f)}
-            >
-              {f.split("/").pop()}
-            </button>
-          ))}
-        </div>
+      {loading ? (
+        <p className="muted frag-msg">Loading…</p>
+      ) : err || !code ? (
+        <p className="muted frag-msg">Source not available.</p>
+      ) : (
+        <HighlightedCode code={code} file={rel} startLine={start} />
       )}
+    </div>
+  );
+}
+
+/**
+ * DeepWiki-style code pane: the relevant code shown as a vertical stack of
+ * fragments (the cited line ranges, syntax-highlighted with real line numbers),
+ * with a sticky nav bar of references at the TOP. Clicking a reference scrolls
+ * to and highlights its fragment.
+ */
+export default function CodePanel({
+  repoId,
+  citations,
+  repo,
+  commit,
+}: {
+  repoId: string;
+  citations: Citation[];
+  repo?: string;
+  commit?: string;
+}) {
+  const refs = citations.filter((c) => repoRelative(c.file)).slice(0, 12);
+  const [active, setActive] = useState(0);
+  const fragEls = useRef<(HTMLDivElement | null)[]>([]);
+
+  useEffect(() => {
+    setActive(0);
+    fragEls.current = [];
+  }, [citations]);
+
+  function jump(i: number) {
+    setActive(i);
+    fragEls.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  if (refs.length === 0) {
+    return (
+      <div className="codepane codepane-empty">
+        <p className="muted">No code references for this answer yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="codepane">
+      <div className="codepane-nav" role="tablist">
+        {refs.map((c, i) => (
+          <button
+            key={i}
+            role="tab"
+            aria-selected={i === active}
+            className={`codepane-tab ${i === active ? "active" : ""}`}
+            title={`${c.node_name || ""} ${repoRelative(c.file)}`}
+            onClick={() => jump(i)}
+          >
+            {(c.node_name || repoRelative(c.file).split("/").pop() || "").split(":").pop()}
+          </button>
+        ))}
+      </div>
+      <div className="codepane-body">
+        {refs.map((c, i) => (
+          <div
+            key={i}
+            ref={(el) => {
+              fragEls.current[i] = el;
+            }}
+            onMouseEnter={() => setActive(i)}
+          >
+            <Fragment repoId={repoId} c={c} repo={repo} commit={commit} active={i === active} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

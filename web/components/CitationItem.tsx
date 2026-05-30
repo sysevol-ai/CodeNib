@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import HighlightedCode from "@/components/HighlightedCode";
 import { fetchSource, repoRelative, type Citation } from "@/lib/api";
 
 /** A code reference backing an answer / wiki page; expands to show the source. */
@@ -31,7 +32,13 @@ export default function CitationItem({ repoId, c }: { repoId: string; c: Citatio
         {rel}{c.start_line != null ? `:${c.start_line}-${c.end_line}` : ""}
         <span className="cite-toggle">{open ? "▾ source" : "▸ view source"}</span>
       </button>
-      {open && <pre>{src ?? c.content}</pre>}
+      {open && (
+        <HighlightedCode
+          code={src ?? c.content ?? ""}
+          file={rel}
+          startLine={c.start_line ?? 1}
+        />
+      )}
     </div>
   );
 }

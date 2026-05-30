@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
@@ -18,7 +18,6 @@ function AskAnswer() {
   const [resp, setResp] = useState<ChatResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRepos()
@@ -47,14 +46,6 @@ function AskAnswer() {
 
   const repoName = repo ? repo.repo : repoId;
   const citations = resp?.citations ?? [];
-  // Distinct relevant files, ranked by first appearance (retrieval order).
-  const files = useMemo(
-    () => [...new Set(citations.map((c) => c.file).filter(Boolean) as string[])],
-    [citations]
-  );
-  useEffect(() => {
-    setSelectedFile((cur) => (cur && files.includes(cur) ? cur : files[0] ?? null));
-  }, [files]);
 
   return (
     <div className="wiki ask-page">
@@ -93,7 +84,7 @@ function AskAnswer() {
               </article>
               <div className="ask-tools muted small">
                 {resp.tool_calls.length} tool calls · {resp.total_turns} turns ·{" "}
-                {Math.round(resp.total_duration_ms)} ms · {files.length} files
+                {Math.round(resp.total_duration_ms)} ms · {citations.length} references
               </div>
             </>
           )}
@@ -102,9 +93,7 @@ function AskAnswer() {
         <aside className="ask-code">
           <CodePanel
             repoId={repoId}
-            files={files}
-            activeFile={selectedFile}
-            onPick={setSelectedFile}
+            citations={citations}
             repo={repo?.repo}
             commit={repo?.base_commit}
           />

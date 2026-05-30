@@ -1289,3 +1289,123 @@ a.codepanel-name:hover {
   opacity: 0.55;
   font-size: 11px;
 }
+
+/* ===== Ask code pane: stacked fragments + top reference nav ===== */
+.codepane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.codepane-empty {
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+.codepane-nav {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.codepane-tab {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.codepane-tab:hover {
+  color: var(--text);
+}
+.codepane-tab.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.codepane-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: #fff;
+}
+.frag {
+  border-bottom: 1px solid var(--border);
+}
+.frag.active {
+  background: #f6f8fa;
+}
+.frag-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.frag-head a {
+  text-decoration: none;
+  color: var(--text);
+}
+.frag-head a:hover .frag-name {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.frag-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.frag-loc {
+  color: var(--muted);
+  font-size: 11px;
+}
+.frag-msg {
+  padding: 12px 14px;
+}
+
+/* ===== Shared highlighted code block (aligned line gutter) ===== */
+.hl-code {
+  display: flex;
+  overflow-x: auto;
+  background: #fff;
+}
+.hl-gutter {
+  flex: 0 0 auto;
+  text-align: right;
+  user-select: none;
+  padding: 10px 10px;
+  color: #b3b3b3;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: #fafafa;
+  border-right: 1px solid var(--border);
+}
+.hl-pre {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 10px 14px;
+  background: #fff;
+  overflow: visible;
+}
+.hl-pre code.hljs {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: transparent;
+  padding: 0;
+  white-space: pre;
+}
