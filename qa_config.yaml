@@ -26,6 +26,9 @@ max_tokens: 4096   # generous: gemini-2.5 is a thinking model (we disable thinki
 cors_origins:
   - http://localhost:3000
   - http://127.0.0.1:3000
+  # next dev auto-bumps to 3001 when 3000 is busy; allow it so the fallback works
+  - http://localhost:3001
+  - http://127.0.0.1:3001
 
 # --- which repos to feature (from the codeminer-base-dataset) ---
 dataset: fishmingyu/codeminer-base-dataset

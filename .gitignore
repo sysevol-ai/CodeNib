@@ -32,6 +32,7 @@ web/node_modules/
 web/.next/
 web/out/
 web/next-env.d.ts
+web/*.tsbuildinfo
 # *.json is ignored globally above; keep the frontend config tracked.
 !web/package.json
 !web/tsconfig.json
