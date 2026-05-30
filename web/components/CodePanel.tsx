@@ -36,11 +36,15 @@ export default function CodePanel({
   files,
   activeFile,
   onPick,
+  repo,
+  commit,
 }: {
   repoId: string;
   files: string[];
   activeFile: string | null;
   onPick: (file: string) => void;
+  repo?: string;
+  commit?: string;
 }) {
   const [code, setCode] = useState("");
   const [start, setStart] = useState(1);
@@ -99,10 +103,19 @@ export default function CodePanel({
   return (
     <div className="codepanel">
       <div className="codepanel-head mono">
-        <span className="codepanel-name">{activeFile}</span>
-        <span className="codepanel-loc">
-          {unavailable ? "not found" : `${allLines.length} lines`}
-        </span>
+        {repo ? (
+          <a
+            className="codepanel-name"
+            href={`https://github.com/${repo}/blob/${commit || "HEAD"}/${activeFile}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Open on GitHub"
+          >
+            {activeFile} <span className="codepanel-gh">↗</span>
+          </a>
+        ) : (
+          <span className="codepanel-name">{activeFile}</span>
+        )}
       </div>
 
       <div className="codepanel-body">

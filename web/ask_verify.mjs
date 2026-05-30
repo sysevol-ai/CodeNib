@@ -9,6 +9,16 @@ const pg = await b.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 pg.on("pageerror", (e) => errors.push(e.message));
 
+// Repo page: mode tabs (no Diagram) + wiki relevant files repo-relative.
+await pg.goto(`${BASE}/${REPO}`, { waitUntil: "networkidle", timeout: 60000 });
+await pg.waitForTimeout(2500);
+const modeTabs = await pg.$$eval(".mode-tab", (e) => e.map((x) => x.textContent.trim()));
+const wikiRelFiles = await pg.$$eval(".relevant-files-wiki .relevant-file", (e) =>
+  e.slice(0, 4).map((x) => x.textContent.trim())
+).catch(() => []);
+await pg.screenshot({ path: `${OUT}/repo-page.png` });
+
+// Ask page: code header = GitHub link, no left chip grid, tabs present.
 const q = "How are request interceptors implemented?";
 await pg.goto(`${BASE}/${REPO}/ask?q=${encodeURIComponent(q)}`, {
   waitUntil: "networkidle",
@@ -16,34 +26,15 @@ await pg.goto(`${BASE}/${REPO}/ask?q=${encodeURIComponent(q)}`, {
 });
 await pg.waitForSelector(".ask-a", { timeout: 120000 }).catch(() => {});
 await pg.waitForTimeout(2500);
-
-const relevantFiles = await pg.$$eval(".relevant-file", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
-const tabs = await pg.$$eval(".codepanel-tab", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
-const codeName = await pg.$eval(".codepanel-name", (e) => e.textContent.trim()).catch(() => "(none)");
-const codeLines = await pg.$$eval(".codepanel-gutter div", (e) => e.length).catch(() => 0);
-const hasAbsPath = (codeName + relevantFiles.join(" ")).includes("/home/");
-await pg.screenshot({ path: `${OUT}/ask-codewindow.png` });
-
-// switch to the 2nd file tab
-if (tabs.length > 1) {
-  await (await pg.$$(".codepanel-tab"))[1].click();
-  await pg.waitForTimeout(1800);
-  const codeName2 = await pg.$eval(".codepanel-name", (e) => e.textContent.trim()).catch(() => "");
-  await pg.screenshot({ path: `${OUT}/ask-codewindow-2.png` });
-  console.log("after tab switch, codeName2:", codeName2);
-}
+const leftChips = await pg.$$eval(".ask-explain .relevant-file", (e) => e.length).catch(() => 0);
+const ghHref = await pg.$eval("a.codepanel-name", (e) => e.getAttribute("href")).catch(() => null);
+const tabs = await pg.$$eval(".codepanel-tab", (e) => e.length).catch(() => 0);
+const codeName = await pg.$eval(".codepanel-name", (e) => e.textContent.trim()).catch(() => "");
+await pg.screenshot({ path: `${OUT}/ask-final.png` });
 
 console.log(
   JSON.stringify(
-    {
-      relevantFiles: relevantFiles.slice(0, 6),
-      relevantCount: relevantFiles.length,
-      tabsCount: tabs.length,
-      codeName,
-      codeLines,
-      hasAbsPath,
-      errors,
-    },
+    { modeTabs, wikiRelFiles, leftChips, ghHref, tabs, codeName, errors },
     null,
     2
   )

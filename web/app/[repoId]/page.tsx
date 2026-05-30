@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
-import Mermaid from "@/components/Mermaid";
 import AskBar from "@/components/AskBar";
 import Codemap from "@/components/Codemap";
 import CitationItem from "@/components/CitationItem";
@@ -12,12 +11,13 @@ import {
   fetchRepos,
   fetchWikiPage,
   fetchWikiTree,
+  repoRelative,
   type RepoInfo,
   type WikiPage,
   type WikiPageRef,
 } from "@/lib/api";
 
-type Mode = "wiki" | "diagram" | "codemap";
+type Mode = "wiki" | "codemap";
 interface Heading {
   id: string;
   text: string;
@@ -139,9 +139,7 @@ export default function WikiPageView() {
     window.scrollTo({ top: 0 });
   }
 
-  const modes: Mode[] = repo?.capabilities?.codemap
-    ? ["wiki", "diagram", "codemap"]
-    : ["wiki", "diagram"];
+  const modes: Mode[] = repo?.capabilities?.codemap ? ["wiki", "codemap"] : ["wiki"];
 
   return (
     <div className="wiki">
@@ -180,7 +178,7 @@ export default function WikiPageView() {
                 className={`mode-tab ${mode === m ? "active" : ""}`}
                 onClick={() => setMode(m)}
               >
-                {m === "wiki" ? "Wiki" : m === "diagram" ? "Diagram" : "Graph"}
+                {m === "wiki" ? "Wiki" : "Graph"}
               </button>
             ))}
           </div>
@@ -192,21 +190,25 @@ export default function WikiPageView() {
               </div>
               {page && page.citations.length > 0 && (
                 <details className="relevant-files-wiki">
-                  <summary>
-                    Relevant source files (
-                    {[...new Set(page.citations.map((c) => c.file).filter(Boolean))].length})
-                  </summary>
-                  <div className="relevant-files-list">
-                    {[
+                  {(() => {
+                    const wikiFiles = [
                       ...new Set(
-                        page.citations.map((c) => c.file).filter(Boolean) as string[]
+                        page.citations.map((c) => repoRelative(c.file)).filter(Boolean)
                       ),
-                    ].map((f) => (
-                      <span key={f} className="relevant-file mono">
-                        {f}
-                      </span>
-                    ))}
-                  </div>
+                    ];
+                    return (
+                      <>
+                        <summary>Relevant source files ({wikiFiles.length})</summary>
+                        <div className="relevant-files-list">
+                          {wikiFiles.map((f) => (
+                            <span key={f} className="relevant-file mono">
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </details>
               )}
               {page ? (
@@ -223,16 +225,6 @@ export default function WikiPageView() {
                     <CitationItem repoId={repoId} c={c} key={i} />
                   ))}
                 </details>
-              )}
-            </div>
-          )}
-
-          {mode === "diagram" && (
-            <div className="wiki-diagram">
-              {page && page.diagram ? (
-                <Mermaid chart={page.diagram} />
-              ) : (
-                <p className="muted">No diagram for this page.</p>
               )}
             </div>
           )}

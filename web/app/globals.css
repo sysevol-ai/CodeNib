@@ -1275,3 +1275,17 @@ pre {
   border-color: var(--border);
   color: var(--text);
 }
+
+/* Code window header file path -> GitHub link */
+a.codepanel-name {
+  text-decoration: none;
+  color: var(--text);
+}
+a.codepanel-name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.codepanel-gh {
+  opacity: 0.55;
+  font-size: 11px;
+}

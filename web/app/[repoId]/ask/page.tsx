@@ -78,28 +78,6 @@ function AskAnswer() {
           </Link>
           <h1 className="ask-q">{q || "Ask a question"}</h1>
 
-          {/* Relevant source files — at the top, below the title (DeepWiki). */}
-          {files.length > 0 && (
-            <div className="relevant-files">
-              <div className="relevant-files-title">Relevant source files</div>
-              <div className="relevant-files-list">
-                {files.slice(0, 14).map((f) => (
-                  <button
-                    key={f}
-                    className={`relevant-file mono ${f === selectedFile ? "active" : ""}`}
-                    title={f}
-                    onClick={() => setSelectedFile(f)}
-                  >
-                    {f}
-                  </button>
-                ))}
-                {files.length > 14 && (
-                  <span className="muted small">+{files.length - 14} more</span>
-                )}
-              </div>
-            </div>
-          )}
-
           {!q && <p className="muted">Type a question in the bar below.</p>}
           {loading && <p className="muted ask-thinking">Searching {repoName}…</p>}
           {err && (
@@ -127,6 +105,8 @@ function AskAnswer() {
             files={files}
             activeFile={selectedFile}
             onPick={setSelectedFile}
+            repo={repo?.repo}
+            commit={repo?.base_commit}
           />
         </aside>
       </div>

@@ -1,6 +1,15 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
+/** Strip an absolute index prefix (e.g. /home/.../repo/) to a repo-relative path. */
+export function repoRelative(path: string | null | undefined): string {
+  if (!path) return "";
+  const p = path.replace(/\\/g, "/");
+  const i = p.lastIndexOf("/repo/");
+  if (i !== -1) return p.slice(i + "/repo/".length);
+  return p.replace(/^\/+/, "");
+}
+
 export interface RepoInfo {
   id: string;
   name: string;
