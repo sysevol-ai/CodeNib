@@ -156,6 +156,31 @@ class TestAgentRunner:
         assert result.total_turns == 3
         assert len(result.tool_calls) == 3
 
+    def test_max_turns_forces_final_answer(self, echo_registry):
+        """On max_turns with no prose, force one tool-free summary turn.
+
+        A run that spent every turn calling tools must still return its best
+        answer, not an empty string.
+        """
+        llm = _make_llm()
+        tc = _make_tool_call("call_x", "echo", '{"text": "loop"}')
+        # 3 tool-only turns, then the forced tool-free turn returns prose.
+        llm._call_raw.side_effect = [
+            _make_response(tool_calls=[tc]),
+            _make_response(tool_calls=[tc]),
+            _make_response(tool_calls=[tc]),
+            _make_response(content="Best-effort summary."),
+        ]
+
+        runner = AgentRunner(llm, echo_registry, max_turns=3)
+        result = runner.run("loop forever")
+
+        assert result.total_turns == 3
+        assert len(result.tool_calls) == 3  # forced turn calls no tools
+        assert result.answer == "Best-effort summary."
+        # 3 loop turns + 1 forced summary turn.
+        assert llm._call_raw.call_count == 4
+
     def test_unknown_skill_returns_error(self):
         """Tool call for unregistered skill records an error."""
         llm = _make_llm()
@@ -220,7 +245,7 @@ class TestAgentRunner:
         Note: default skills (DEFAULT_SKILL_IDS) are NEVER excluded — the
         runner strips them from the exclude set before building the tool list.
         """
-        from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
+        from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
 
         llm = _make_llm()
         llm._call_raw.return_value = _make_response(content="ok")

@@ -12,7 +12,7 @@
 #
 # Run:
 #   python scripts/agent_compile/run_sample_sweep.py \
-#       --config configs/agent_compile/sample.yaml \
+#       --config scripts/agent_compile/configs/sample.yaml \
 #       --output-dir results/agent_compile/sample
 #   python scripts/agent_compile/aggregate_phase2.py \
 #       --cells-dir results/agent_compile/sample/cells \

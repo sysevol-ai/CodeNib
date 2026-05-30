@@ -1,3 +1,0 @@
-# Raw per-cell records (bulky, regenerable via run_sample_sweep.py); keep only
-# the aggregated artifacts (phase2_report.md, compile_table.json, metrics).
-cells/

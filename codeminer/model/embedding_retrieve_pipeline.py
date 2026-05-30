@@ -68,6 +68,9 @@ class EmbeddingRetrievePipeline:
         top_k: int = 50,
         embedding_kwargs: Optional[dict] = None,
         force_rebuild: bool = False,
+        index_type: str = "flat",
+        ivf_nlist: int = 100,
+        ivf_nprobe: int = 8,
     ) -> None:
         self.top_k = top_k
         _embedding_kwargs = {"model_kwargs": {"trust_remote_code": True}}
@@ -82,6 +85,9 @@ class EmbeddingRetrievePipeline:
                 embedding_provider=embedding_provider,
                 dimension=embedding_dimension,
                 index_metric="ip",
+                index_type=index_type,
+                ivf_nlist=ivf_nlist,
+                ivf_nprobe=ivf_nprobe,
                 store_path=None,
                 **_embedding_kwargs,
             )
@@ -98,6 +104,9 @@ class EmbeddingRetrievePipeline:
                 embedding_dimension=embedding_dimension,
                 embedding_kwargs=_embedding_kwargs,
                 index_metric="ip",
+                index_type=index_type,
+                ivf_nlist=ivf_nlist,
+                ivf_nprobe=ivf_nprobe,
                 force_rebuild=force_rebuild,
             )
 

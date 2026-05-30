@@ -18,9 +18,9 @@ from codeminer.agent.skills.core import (
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.agent.tool_schema import registry_to_tools
+from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
 from codeminer.llm.litellm_chat import LiteLLMChat
 
 

@@ -30,9 +30,11 @@ SPDX-FileCopyrightText = "CodeMiner Contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 # Generated experiment artifacts (reports / metrics / derived tables) — data
-# files that cannot carry inline SPDX headers.
+# files that cannot carry inline SPDX headers. ``results/`` is the local
+# (gitignored) sweep-output dir; the committed evidence snapshots live under
+# docs/experiments/agent_compile_runs/.
 [[annotations]]
-path = "results/**"
+path = ["results/**", "docs/experiments/agent_compile_runs/**"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "CodeMiner Contributors"
 SPDX-License-Identifier = "Apache-2.0"

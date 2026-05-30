@@ -60,9 +60,11 @@ class SCIPTypeScriptGraphDecoder:
         # out for lack of a populated ``_project_packages``.
         self._prescan_project_packages(document_blocks)
 
-        # Process all documents
-        for document in document_blocks:
-            self._process_document(document)
+        # Process all documents. Batch edge insertion: per-edge add_edges is
+        # O(E^2) (igraph reindexes each call); buffering flushes once as O(E).
+        with self.code_graph.batch_edges():
+            for document in document_blocks:
+                self._process_document(document)
 
         self.logger.info(
             f"Decoded {len(document_blocks)} documents, "

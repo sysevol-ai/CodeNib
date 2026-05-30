@@ -372,13 +372,15 @@ class TestAgentRunnerUsage:
         runner = AgentRunner(llm, echo_registry, max_turns=2)
         result = runner.run("loop forever")
 
-        # Exhausted the budget — answer falls back to last assistant content.
+        # Budget exhausted with no prose → the runner makes one forced
+        # tool-free summary turn (usage_turn = max_turns + 1), whose token
+        # usage must also be tracked. total_turns stays at the loop count.
         assert result.total_turns == 2
-        assert llm._call_raw.call_count == 2
+        assert llm._call_raw.call_count == 3  # 2 loop turns + 1 forced summary
         # Crucial assertion: usage on the max-turns return path.
         assert result.usage is not None
-        assert result.usage.prompt_tokens == 14  # 2 × 7
-        assert result.usage.completion_tokens == 6  # 2 × 3
-        assert result.usage.total_tokens == 20
-        assert len(result.usage_records) == 2
-        assert [r.turn for r in result.usage_records] == [1, 2]
+        assert result.usage.prompt_tokens == 21  # 3 × 7
+        assert result.usage.completion_tokens == 9  # 3 × 3
+        assert result.usage.total_tokens == 30
+        assert len(result.usage_records) == 3
+        assert [r.turn for r in result.usage_records] == [1, 2, 3]

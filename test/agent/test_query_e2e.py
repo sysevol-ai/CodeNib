@@ -227,7 +227,7 @@ def _tools_passed_first_turn(llm) -> List[str]:
     The always-on default layer (file_read/file_search) is unioned into every
     tool set; narrowing assertions look at the swept skills only.
     """
-    from codeminer.agent.skills.defaults import DEFAULT_SKILL_IDS
+    from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
 
     first_call = llm._call_raw.call_args_list[0]
     schemas = first_call.kwargs.get("tools", [])

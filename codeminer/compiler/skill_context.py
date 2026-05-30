@@ -122,14 +122,27 @@ def _load_bm25(index_path: str):
     return indexer
 
 
-def _load_vector(index_path: str, *, embedding_model: str, embedding_dimension: int):
+def _load_vector(
+    index_path: str,
+    *,
+    embedding_model: str,
+    embedding_dimension: int,
+    trust_remote_code: bool = False,
+    default_batch_size: Optional[int] = None,
+):
     """Load a FAISS vector store from an arbitrary directory path."""
     from ..index.embedding.vector_store import CodeVectorStore
+
+    kwargs = {}
+    if default_batch_size is not None:
+        kwargs["default_batch_size"] = default_batch_size
 
     store = CodeVectorStore(
         embedding_model=embedding_model,
         embedding_provider="huggingface",
         dimension=embedding_dimension,
+        trust_remote_code=trust_remote_code,
+        **kwargs,
     )
     store.load(index_path)
     return store
@@ -179,6 +192,8 @@ def build_skill_contexts(
     default_top_k: int = 10,
     default_level: str = "l2",
     rebuild: bool = False,
+    trust_remote_code: bool = False,
+    embedding_batch_size: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build the union of indexes required by *skill_ids* and package them.
 
@@ -222,6 +237,7 @@ def build_skill_contexts(
                     languages=list(languages),
                     embedding_model=embedding_model,
                     embedding_dimension=embedding_dimension,
+                    trust_remote_code=trust_remote_code,
                 )
             logger.info("Building missing indexes %s under %s", missing, cache_dir)
             _run_compiler(
@@ -241,6 +257,8 @@ def build_skill_contexts(
             _index_dir(cache_dir, "vector"),
             embedding_model=embedding_model,
             embedding_dimension=embedding_dimension,
+            trust_remote_code=trust_remote_code,
+            default_batch_size=embedding_batch_size,
         )
     if "symbol_graph" in needed:
         loaded["symbol_graph"] = _load_symbol_graph(

@@ -313,3 +313,38 @@ def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):
     assert mocked_build["compile"] == [("vector",)]
     # Both types are loaded after build (build happened, both dirs populated).
     assert sorted(mocked_build["loaded"]) == ["bm25", "vector"]
+
+
+def test_build_skill_contexts_without_reset_is_idempotent(registry, mocked_build, tmp_path):
+    """Regression test: build_skill_contexts should work without calling
+    registry.reset() - SkillLoader.load_all is idempotent via has() guard.
+
+    This verifies the fix for Issue #146 where HybridRetrievePipeline was
+    incorrectly calling registry.reset(), which destroys the global singleton.
+    """
+    # Simulate skills already being registered (as would happen in production)
+    # The registry fixture already registered skills via the autouse fixture
+
+    # First call should work
+    contexts1 = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["bm25_search"],
+        cache_dir=str(tmp_path / "cache1"),
+        skill_registry=registry,
+    )
+    assert "retrieve" in contexts1
+    assert contexts1["retrieve"].bm25 is not None
+
+    # Second call should also work without reset()
+    contexts2 = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(tmp_path / "cache2"),
+        skill_registry=registry,
+    )
+    assert "retrieve" in contexts2
+    assert contexts2["retrieve"].vector_store is not None
+
+    # Verify registry still has skills (not destroyed by reset)
+    assert registry.get("bm25_search") is not None
+    assert registry.get("embedding_search") is not None

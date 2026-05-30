@@ -16,7 +16,7 @@ Reproduce:
 
 ```bash
 python scripts/agent_compile/run_agent_sweep.py \
-    --config configs/agent_compile/sample.yaml \
+    --config scripts/agent_compile/configs/sample.yaml \
     --output-dir results/agent_compile/sample
 python scripts/agent_compile/aggregate_phase2.py \
     --cells-dir results/agent_compile/sample/cells \
@@ -48,7 +48,7 @@ Sample instances (one per scenario cell that has prebuilt indexes):
 | `axios__axios-4731` | TS/JS | no | `typescript:no_stacktrace` |
 | `astral-sh__ruff-15309` | Rust | no | `rust:no_stacktrace` |
 
-The skill subsets A0–A6 are the #133 RFC table (`configs/agent_compile/sample.yaml`).
+The skill subsets A0–A6 are the #133 RFC table (`scripts/agent_compile/configs/sample.yaml`).
 `file_read` is always-on infrastructure and not a sweep variable.
 
 ## Per-subset results (mean over 5 instances)
@@ -228,7 +228,7 @@ file layer — cheapest at full accuracy).
 ## Corroboration at larger N (5 instances, reps=2, max_turns=20)
 
 A fuller default-tool run over all 5 instances × 2 reps (70 cells,
-`results/agent_compile/sample_defaults/`) confirms the headline results and
+`docs/experiments/agent_compile_runs/sample_defaults/`) confirms the headline results and
 strengthens two of them:
 
 - **`graph_expand` invocation = 0 % across all 70 cells** — the agent never
@@ -754,7 +754,7 @@ actions (~1.6/cell vs ~17 search+read) — the agent reads the *named* candidate
 directly rather than traversing to it, since for localization search already
 names the target.
 
-**Five harness designs** (vs the grep/read agent). The **"graph used"** column is
+**Six harness designs** (vs the grep/read agent). The **"graph used"** column is
 critical: several arms *offered* the graph tools but the agent barely touched
 them, so they are NOT tests of the graph — read them as "search+read without
 grep."
@@ -766,6 +766,16 @@ grep."
 | LocAgent (content-bm25, no grep) | **0/24, 0 calls** | +113 % | parity | **NO — graph unused** |
 | strict (no fs, read_code_block) | 5/24, 6 calls | +77 % | −1 regression | barely |
 | faithful (names-bm25, no fs) | **18/24, 39 calls** | +43 % | −3 regressions | **yes (agent-chosen)** |
+| **everything (grep+read+search+graph all available)** | **1/24, 1 call** | +9 % [CI −19,+36] | −1 regression | **NO — graph unused despite being offered** |
+
+The **everything-available** arm (task #16) is the decisive one for *voluntary*
+adoption: give the agent grep + file_read + bm25_names + the graph verbs +
+read_code_block all at once, with a neutral prompt that pushes nothing. Result:
+the agent localizes with file_read (5.8/cell) + grep (5.4) + bm25_names (2.2) +
+read_code_block (1.9) and calls the call-graph **once in 24 cells**. So the
+faithful arm's 18/24 graph use was purely an artifact of *removing grep*; restore
+grep and voluntary graph use collapses to ~0. Tokens are neutral (+9 %, CI spans
+0) because grep is back — far cheaper than the no-grep arms.
 
 So only **two** rows actually exercise the call-graph:
 
@@ -777,12 +787,15 @@ So only **two** rows actually exercise the call-graph:
 
 The `content-bm25 LocAgent` (+113 %) and `strict` (+77 %) rows are **not** graph
 results — the agent used ~0 graph calls; they only show that removing grep and
-leaning on bm25+read is expensive. The honest conclusion stands on the two rows
-that *do* test the graph: whether forced (deterministic, +18 %/no gain) or
-chosen (faithful, +43 %/−3 acc), **the call-graph does not help in the agent
-loop on localization.** The only config that beats grep/read is **search seeds
-*added to* grep/read** (−19 %). The graph's value is offline — the
-dependency-analysis plugin.
+leaning on bm25+read is expensive. The honest conclusion stands on the rows that
+*do* test the graph: whether forced (deterministic, +18 %/no gain) or chosen
+(faithful, +43 %/−3 acc), **the call-graph does not help in the agent loop on
+localization.** And the **everything-available** arm settles the adoption
+question outright: when the agent has grep *and* the graph, it picks the graph
+**1 time in 24 cells** — so the graph is not its tool of choice for localization,
+period. The only config that beats grep/read is **search seeds *added to*
+grep/read** (−19 %). The graph's value is offline — the dependency-analysis
+plugin.
 
 **The LocAgent token-savings thesis does not replicate here.** Likely because
 LocAgent uses a graph-*native* agent (trained/forced to navigate the graph) vs
@@ -886,3 +899,82 @@ context is not more localized truth; distractors cost both tokens and accuracy.
    fan-out rather than adding to it — the additive setup measured here shows the
    agent double-dips (1 composer call but still 5 greps + 7 reads/cell), so graph
    context is read-once overhead, not a replacement.
+
+---
+
+# GraphRAG as a *retriever* (recall@k, not the agent loop) — #24
+
+The graph fails in the agent loop but the composer (search seeds → call-graph
+expansion) is a legitimate **retrieval pipeline**. Evaluated as a retriever
+(`scripts/agent_compile/graphrag_retrieve.py`, files@k recall vs ground truth,
+no LLM) over all **100 codeminer-base** instances:
+
+| recall@k | search-only | GraphRAG (search+graph) | GraphRAG + identifier seeding |
+|---|---|---|---|
+| files@1 | 10 % | 10 % | **23 %** |
+| files@5 | 47 % | 48 % | 49 % |
+| files@10 | 47 % | **52 %** | 52 % |
+
+Two distinct, honest wins:
+
+1. **Graph expansion is a strictly-additive recall booster: files@10 47 %→52 %
+   (+5 instances, ZERO regressions).** It appends caller/callee neighbors to the
+   search seeds, so it can only add the right file, never drop it — the opposite
+   of its net-negative behavior as an agent tool. The lift sits at @10 (not @5)
+   because neighbors land in ranks 6–30; the budget squeezes them out of top-5.
+
+2. **Identifier seeding doubles top-1 precision: files@1 10 %→23 %.** This is a
+   *seeding-stage* improvement (independent of graph expansion): extract the
+   code symbols the user named in the query (backtick-quoted, camelCase,
+   ALL_CAPS commands like `LPOP`, snake_case; minus bug-report noise) and
+   bm25-search each as a leading interleaved seed source. Fixes the redis-class
+   miss where NL prose ("null array") misleads full-text bm25 but the named
+   command (`LPOP`→`lpopCommand`) seeds from the right place. Its gain is
+   concentrated at @1; @5/@10 show minor churn (+4/−3, +5/−5) as identifier hits
+   reshuffle the budget — net @5 +1, @10 ±0.
+
+**Takeaway:** the call-graph and query-identifier signals both help *retrieval*
+(graph: +5 @10 additive; identifiers: 2× @1) even though neither helps the agent
+loop. This is the graph's real home — a recall-boosting retrieval pipeline, run
+from scripts, not an in-loop agent tool. (Caveat: identifier seeding would also
+lift a search-only baseline — it's a seeding gain, not a graph gain; the graph's
+own contribution is the strictly-additive +5 @10.)
+
+---
+
+# Fair index comparison: flat vs IVF vs graph-scoped (#25)
+
+Our vector store is `IndexFlatIP` (exhaustive). To judge the graph's retrieval
+value fairly you must control for the index — an IVF/ANN index speeds up flat
+search with NO graph. `index_compare.py`, recall@k + query latency over 100
+codeminer-base instances (no LLM):
+
+| method | median ms | p90 ms | files@1 | files@5 | files@10 |
+|---|---|---|---|---|---|
+| flat (exact) | 1.22 | 3.82 | 34 | 49 | 56 |
+| IVF (approx) | **0.29** | **0.65** | 33 | 49 | 55 |
+| graph-scoped (PPR) | 7.20 | 29.48 | **26** | **33** | **36** |
+
+1. **IVF: ~4× faster than flat at identical recall** (33/49/55 ≈ 34/49/56). The
+   speed comes from the ANN index, not the graph — so "the graph makes retrieval
+   faster" is unsupported; a plain IVF index gets it with zero graph.
+2. **Graph-scoping is strictly worse on both axes**: 6× slower than flat (PPR
+   compute) AND much lower recall (26/33/36). Restricting candidates to the
+   call-graph subgraph *excludes relevant files* — refutes "scope the query to a
+   subgraph helps" for this variant. (Seeds resolved on 77/100; the other 23 had
+   no graph-resolvable seed → empty scoped result, part of the recall drop.)
+
+**Caveat — what was tested:** the scoped arm RANKS the PPR subgraph (graph-only
+ranking from flat-top-5 seeds), it does NOT do embedding search *restricted to*
+the subgraph's vectors (the literal "limit the query in a subgraph" idea). That
+faithful variant is untested — it needs a subgraph-node → vector-row map
+(fragile under C/C++ hash-vs-readable naming). But since PPR-scoping already
+loses recall by excluding relevant files, embedding-within-subgraph faces the
+same risk: the target file must be inside the chosen subgraph.
+
+**Verdict on GraphRAG's retrieval value:** the only positive is the *additive*
+expansion (+5 files@10, zero regressions; earlier section). Graph does NOT win
+speed (IVF does) and does NOT win via scoping (hurts). For retrieval at this
+scale, **IVF is the win** (4× faster, same recall); the call-graph's real value
+remains offline structural/impact analysis (the dependency_subgraph tool), not
+faster or more-accurate flat retrieval.

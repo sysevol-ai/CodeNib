@@ -23,7 +23,7 @@ computation; we only orchestrate above it.
 Usage::
 
     python scripts/agent_compile/run_sweep.py \\
-        --config configs/agent_compile/phase0.yaml \\
+        --config scripts/agent_compile/configs/phase0.yaml \\
         --partition data/agent_compile/partition.json \\
         --output-dir results/agent_compile/phase0
 """

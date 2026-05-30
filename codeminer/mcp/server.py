@@ -29,6 +29,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .context import ServerContext
 from .prompts import CODEMINER_GUIDE
+from .tools.dependency import dependency_subgraph_impl
 from .tools.search import search_bm25_impl, search_regex_impl
 from .tools.search import search_semantic as _search_semantic_impl
 from .tools.search import search_zoekt_impl
@@ -171,6 +172,32 @@ async def search_zoekt(
         query,
         top_k,
         file_filter or None,
+    )
+
+
+@mcp.tool(
+    name="dependency_subgraph",
+    description=(
+        "Return the call-graph dependency subgraph for a symbol as nodes+edges "
+        "JSON. direction='impact' = transitive callers (blast radius: what may "
+        "break if you change it); 'dependencies' = transitive callees (what it "
+        "relies on); 'both' = 1-hop caller+callee neighborhood (for a dependency "
+        "view). The structural 'who calls X / what does X reach' question that "
+        "grep/keyword search cannot answer; backs impact analysis and dependency "
+        "visualization. Symbols are fuzzy-matched; unresolved names return a note."
+    ),
+)
+async def dependency_subgraph(
+    symbol: str,
+    direction: str = "both",
+    depth: int = 2,
+    max_nodes: int = 60,
+) -> dict[str, Any]:
+    """Call-graph dependency/impact subgraph for *symbol* (nodes+edges JSON)."""
+    if _ctx is None:
+        raise RuntimeError("Server not initialized")
+    return await asyncio.to_thread(
+        dependency_subgraph_impl, _ctx, symbol, direction, depth, max_nodes
     )
 
 

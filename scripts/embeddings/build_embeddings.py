@@ -130,6 +130,28 @@ def parse_args():
         choices=["ip", "l2"],
         help="Distance metric for FAISS index (ip: inner product, l2: L2 distance)",
     )
+    parser.add_argument(
+        "--index-type",
+        type=str,
+        default="flat",
+        choices=["flat", "ivf"],
+        help=(
+            "FAISS index type: 'flat' (exact, default) or 'ivf' (IVF "
+            "inverted-file; approximate, faster at scale)."
+        ),
+    )
+    parser.add_argument(
+        "--ivf-nlist",
+        type=int,
+        default=100,
+        help="IVF only: number of Voronoi cells (clamped to corpus size).",
+    )
+    parser.add_argument(
+        "--ivf-nprobe",
+        type=int,
+        default=8,
+        help="IVF only: cells probed per query (recall/latency knob).",
+    )
     # Repository processing configuration
     parser.add_argument(
         "--languages",
@@ -385,6 +407,9 @@ def build_embeddings(args):
                     embedding_dimension=args.embedding_dimension,
                     embedding_kwargs=embedding_kwargs,
                     index_metric=args.index_metric,
+                    index_type=args.index_type,
+                    ivf_nlist=args.ivf_nlist,
+                    ivf_nprobe=args.ivf_nprobe,
                     profiler=instance_profiler,
                     force_rebuild=args.force_rebuild,
                 )
