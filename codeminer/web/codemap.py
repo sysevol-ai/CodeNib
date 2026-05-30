@@ -234,6 +234,9 @@ def _to_mermaid(
         lines.append(f'  {n["id"]}["{_mm_escape(n["short"])}"]')  # noqa: B907
     for e in edges:
         lines.append(f'  {e["source"]} --> {e["target"]}')
-    lines.append("  classDef root fill:#2d7ff9,stroke:#1b5fd0,color:#fff;")
+    # Force readable labels: white box + dark text (the Mermaid neutral theme
+    # otherwise renders low-contrast grey-on-grey on a dense graph).
+    lines.append("  classDef default fill:#ffffff,stroke:#c9ccd1,color:#1f2937;")
+    lines.append("  classDef root fill:#2d7ff9,stroke:#1b5fd0,color:#ffffff;")
     lines.append(f"  class {root_id} root;")
     return "\n".join(lines)

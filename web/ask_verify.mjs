@@ -14,28 +14,36 @@ await pg.goto(`${BASE}/${REPO}/ask?q=${encodeURIComponent(q)}`, {
   waitUntil: "networkidle",
   timeout: 60000,
 });
-await pg
-  .waitForSelector(".ask-a, .ask-explain .muted:not(.ask-thinking)", { timeout: 120000 })
-  .catch(() => {});
-await pg.waitForTimeout(2000);
+await pg.waitForSelector(".ask-a", { timeout: 120000 }).catch(() => {});
+await pg.waitForTimeout(2500);
 
-const hasExplain = !!(await pg.$(".ask-explain"));
-const hasCode = !!(await pg.$(".ask-code .codepanel"));
-const refs = await pg.$$eval(".ask-ref", (e) => e.length).catch(() => 0);
-const answerLen = await pg.$eval(".ask-a", (e) => e.textContent.length).catch(() => 0);
-const codeHead = await pg.$eval(".codepanel-head", (e) => e.textContent.trim()).catch(() => "(none)");
+const relevantFiles = await pg.$$eval(".relevant-file", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
+const tabs = await pg.$$eval(".codepanel-tab", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
+const codeName = await pg.$eval(".codepanel-name", (e) => e.textContent.trim()).catch(() => "(none)");
 const codeLines = await pg.$$eval(".codepanel-gutter div", (e) => e.length).catch(() => 0);
-await pg.screenshot({ path: `${OUT}/ask-split.png` });
+const hasAbsPath = (codeName + relevantFiles.join(" ")).includes("/home/");
+await pg.screenshot({ path: `${OUT}/ask-codewindow.png` });
 
-const refBtns = await pg.$$(".ask-ref");
-if (refBtns.length > 1) {
-  await refBtns[1].click();
+// switch to the 2nd file tab
+if (tabs.length > 1) {
+  await (await pg.$$(".codepanel-tab"))[1].click();
   await pg.waitForTimeout(1800);
-  await pg.screenshot({ path: `${OUT}/ask-split-2.png` });
+  const codeName2 = await pg.$eval(".codepanel-name", (e) => e.textContent.trim()).catch(() => "");
+  await pg.screenshot({ path: `${OUT}/ask-codewindow-2.png` });
+  console.log("after tab switch, codeName2:", codeName2);
 }
+
 console.log(
   JSON.stringify(
-    { hasExplain, hasCode, refs, answerLen, codeLines, codeHead: codeHead.slice(0, 70), errors },
+    {
+      relevantFiles: relevantFiles.slice(0, 6),
+      relevantCount: relevantFiles.length,
+      tabsCount: tabs.length,
+      codeName,
+      codeLines,
+      hasAbsPath,
+      errors,
+    },
     null,
     2
   )

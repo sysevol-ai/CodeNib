@@ -68,7 +68,28 @@ class ChatResponse(BaseModel):
     total_duration_ms: float = 0.0
 
 
-def _node_to_citation(node: Any) -> Optional[Citation]:
+def _repo_relative(path: Optional[str], repo_path: str = "") -> Optional[str]:
+    """Make a source path repo-relative for display + ``/source`` lookup.
+
+    Some indexes store absolute paths (e.g. ``/home/.../repo/lib/x.js``). Strip
+    the repo root — or any ``.../repo/`` ancestor — so the UI shows ``lib/x.js``
+    and the source endpoint can resolve it against the repo dir.
+    """
+    if not path:
+        return path
+    p = path.replace("\\", "/")
+    if repo_path:
+        root = repo_path.replace("\\", "/").rstrip("/") + "/"
+        if p.startswith(root):
+            return p[len(root) :]
+    marker = "/repo/"
+    idx = p.rfind(marker)
+    if idx != -1:
+        return p[idx + len(marker) :]
+    return p.lstrip("/")
+
+
+def _node_to_citation(node: Any, repo_path: str = "") -> Optional[Citation]:
     """Coerce a single retrieval result (QueriedNode / dict) into a Citation."""
     if hasattr(node, "model_dump"):
         data = node.model_dump()
@@ -82,7 +103,7 @@ def _node_to_citation(node: Any) -> Optional[Citation]:
     if isinstance(content, str) and len(content) > 2000:
         content = content[:2000] + "\n... (truncated)"
     return Citation(
-        file=data.get("file"),
+        file=_repo_relative(data.get("file"), repo_path),
         start_line=data.get("start_line"),
         end_line=data.get("end_line"),
         node_name=data.get("node_name") or data.get("name") or "",
@@ -92,11 +113,12 @@ def _node_to_citation(node: Any) -> Optional[Citation]:
     )
 
 
-def agent_result_to_response(result: Any) -> ChatResponse:
+def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
     """Flatten an ``AgentResult`` into the API response.
 
     Citations are de-duplicated across all tool calls by (file, start_line,
-    end_line) so a node retrieved by several searches appears once.
+    end_line) so a node retrieved by several searches appears once. ``repo_path``
+    (when given) makes citation file paths repo-relative.
     """
     tool_calls: List[ToolCallInfo] = []
     citations: List[Citation] = []
@@ -114,7 +136,7 @@ def agent_result_to_response(result: Any) -> ChatResponse:
             )
         )
         for node in nodes:
-            cit = _node_to_citation(node)
+            cit = _node_to_citation(node, repo_path)
             if cit is None:
                 continue
             key = (cit.file, cit.start_line, cit.end_line)

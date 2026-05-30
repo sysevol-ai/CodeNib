@@ -188,8 +188,27 @@ export default function WikiPageView() {
           {mode === "wiki" && (
             <div className="wiki-content" ref={contentRef}>
               <div className="wiki-meta mono">
-                {repo ? `Last indexed ${repo.commit_short}` : ""} · Relevant source files
+                {repo ? `Last indexed ${repo.commit_short}` : ""}
               </div>
+              {page && page.citations.length > 0 && (
+                <details className="relevant-files-wiki">
+                  <summary>
+                    Relevant source files (
+                    {[...new Set(page.citations.map((c) => c.file).filter(Boolean))].length})
+                  </summary>
+                  <div className="relevant-files-list">
+                    {[
+                      ...new Set(
+                        page.citations.map((c) => c.file).filter(Boolean) as string[]
+                      ),
+                    ].map((f) => (
+                      <span key={f} className="relevant-file mono">
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                </details>
+              )}
               {page ? (
                 <Markdown>{page.markdown}</Markdown>
               ) : pageError ? (

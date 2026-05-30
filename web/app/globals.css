@@ -1176,3 +1176,102 @@ pre {
     height: 60vh;
   }
 }
+
+/* ===== Relevant source files (top of page, DeepWiki-style) ===== */
+.relevant-files {
+  margin: 6px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.relevant-files-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.relevant-files-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.relevant-file {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.relevant-file:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.relevant-file.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ===== Code window file tabs (bottom, DeepWiki-style) ===== */
+.codepanel-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.codepanel-tab {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.codepanel-tab:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.codepanel-tab.active {
+  color: var(--accent);
+  background: #fff;
+  border-bottom: 2px solid var(--accent);
+}
+.codepanel-clip {
+  color: var(--muted);
+  font-style: italic;
+  padding-top: 8px;
+}
+
+/* Wiki page: "Relevant source files" collapsible (below the title). */
+.relevant-files-wiki {
+  margin: 0 0 18px;
+}
+.relevant-files-wiki > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.relevant-files-wiki > summary:hover {
+  color: var(--text);
+}
+.relevant-files-wiki .relevant-files-list {
+  margin-top: 8px;
+}
+.relevant-files-wiki .relevant-file {
+  cursor: default;
+}
+.relevant-files-wiki .relevant-file:hover {
+  border-color: var(--border);
+  color: var(--text);
+}

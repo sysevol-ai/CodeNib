@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
@@ -18,7 +18,7 @@ function AskAnswer() {
   const [resp, setResp] = useState<ChatResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [selected, setSelected] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRepos()
@@ -36,7 +36,6 @@ function AskAnswer() {
     setLoading(true);
     setResp(null);
     setErr(null);
-    setSelected(0);
     askQuestion(repoId, q)
       .then((r) => !cancelled && setResp(r))
       .catch((e) => !cancelled && setErr(String(e)))
@@ -48,7 +47,14 @@ function AskAnswer() {
 
   const repoName = repo ? repo.repo : repoId;
   const citations = resp?.citations ?? [];
-  const active = citations[selected] ?? citations[0] ?? null;
+  // Distinct relevant files, ranked by first appearance (retrieval order).
+  const files = useMemo(
+    () => [...new Set(citations.map((c) => c.file).filter(Boolean) as string[])],
+    [citations]
+  );
+  useEffect(() => {
+    setSelectedFile((cur) => (cur && files.includes(cur) ? cur : files[0] ?? null));
+  }, [files]);
 
   return (
     <div className="wiki ask-page">
@@ -72,6 +78,28 @@ function AskAnswer() {
           </Link>
           <h1 className="ask-q">{q || "Ask a question"}</h1>
 
+          {/* Relevant source files — at the top, below the title (DeepWiki). */}
+          {files.length > 0 && (
+            <div className="relevant-files">
+              <div className="relevant-files-title">Relevant source files</div>
+              <div className="relevant-files-list">
+                {files.slice(0, 14).map((f) => (
+                  <button
+                    key={f}
+                    className={`relevant-file mono ${f === selectedFile ? "active" : ""}`}
+                    title={f}
+                    onClick={() => setSelectedFile(f)}
+                  >
+                    {f}
+                  </button>
+                ))}
+                {files.length > 14 && (
+                  <span className="muted small">+{files.length - 14} more</span>
+                )}
+              </div>
+            </div>
+          )}
+
           {!q && <p className="muted">Type a question in the bar below.</p>}
           {loading && <p className="muted ask-thinking">Searching {repoName}…</p>}
           {err && (
@@ -85,37 +113,21 @@ function AskAnswer() {
               <article className="ask-a">
                 <Markdown>{resp.answer || "(no answer)"}</Markdown>
               </article>
-
-              {citations.length > 0 && (
-                <div className="ask-refs">
-                  <div className="ask-refs-title">
-                    Referenced code{citations.length > 12 ? ` (top 12 of ${citations.length})` : ""}
-                  </div>
-                  {citations.slice(0, 12).map((c, i) => (
-                    <button
-                      key={i}
-                      className={`ask-ref ${i === selected ? "active" : ""}`}
-                      onClick={() => setSelected(i)}
-                    >
-                      <span className="ask-ref-name mono">{c.node_name || c.file}</span>
-                      <span className="ask-ref-loc mono">
-                        {c.file}:{c.start_line}-{c.end_line}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
               <div className="ask-tools muted small">
                 {resp.tool_calls.length} tool calls · {resp.total_turns} turns ·{" "}
-                {Math.round(resp.total_duration_ms)} ms
+                {Math.round(resp.total_duration_ms)} ms · {files.length} files
               </div>
             </>
           )}
         </section>
 
         <aside className="ask-code">
-          <CodePanel repoId={repoId} citation={active} />
+          <CodePanel
+            repoId={repoId}
+            files={files}
+            activeFile={selectedFile}
+            onPick={setSelectedFile}
+          />
         </aside>
       </div>
 
