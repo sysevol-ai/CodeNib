@@ -81,13 +81,22 @@ def _bundle(repo_id: str):
     return bundle
 
 
-def _wiki(repo_id: str) -> WikiBuilder:
-    """Lazily build + cache a WikiBuilder per repo."""
+def _wiki(repo_id: str):
+    """Lazily build + cache a wiki per repo (conceptual agent wiki by default)."""
     cache = app.state.wiki_builders
     if repo_id not in cache:
-        cache[repo_id] = WikiBuilder(
-            _bundle(repo_id), narrator=getattr(app.state, "narrator", None)
-        )
+        config = load_config()
+        if getattr(config, "wiki_agent", True):
+            from ..wiki.agent_wiki import AgentWiki
+
+            wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
+            cache[repo_id] = AgentWiki(
+                _bundle(repo_id), config.model, cache_dir=wiki_cache
+            )
+        else:
+            cache[repo_id] = WikiBuilder(
+                _bundle(repo_id), narrator=getattr(app.state, "narrator", None)
+            )
     return cache[repo_id]
 
 

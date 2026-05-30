@@ -9,20 +9,34 @@ export default function Mermaid({ chart }: { chart: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    const render = () => {
+    const render = async () => {
       const dark = document.documentElement.dataset.theme === "dark";
       mermaid.initialize({
         startOnLoad: false,
         theme: dark ? "dark" : "neutral",
         securityLevel: "loose",
       });
-      const id = "m" + Math.random().toString(36).slice(2);
-      mermaid
-        .render(id, chart)
-        .then(({ svg }) => {
-          if (!cancelled && ref.current) ref.current.innerHTML = svg;
-        })
-        .catch((e) => !cancelled && setErr(String(e)));
+      // Validate first: a failed mermaid.render() appends an error graphic to
+      // the DOM as a side effect, so on invalid charts we fall back instead.
+      let ok = true;
+      try {
+        ok = (await mermaid.parse(chart, { suppressErrors: true })) !== false;
+      } catch {
+        ok = false;
+      }
+      if (cancelled) return;
+      if (!ok) {
+        setErr("invalid");
+        return;
+      }
+      setErr(null);
+      try {
+        const id = "m" + Math.random().toString(36).slice(2);
+        const { svg } = await mermaid.render(id, chart);
+        if (!cancelled && ref.current) ref.current.innerHTML = svg;
+      } catch (e) {
+        if (!cancelled) setErr(String(e));
+      }
     };
     render();
     // Re-render when the theme toggles.

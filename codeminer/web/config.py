@@ -64,6 +64,9 @@ class QAConfig:
     prebuilt_dir: Optional[str] = None
     max_turns: int = 8
     max_tokens: int = 1024
+    # Use the conceptual agent wiki pipeline (outline + per-page generation)
+    # instead of the directory-based WikiBuilder.
+    wiki_agent: bool = True
     cors_origins: List[str] = field(
         default_factory=lambda: [
             "http://localhost:3000",
