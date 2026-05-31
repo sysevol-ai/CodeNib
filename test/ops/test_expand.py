@@ -58,8 +58,16 @@ class TestExpandContext:
         ctx = ExpandContext()
         assert ctx.code_graph is None
         assert ctx.default_top_k == 50
-        assert ctx.default_hops == 2
-        assert ctx.default_direction == "both"
-        assert ctx.default_method == "bfs"
-        assert ctx.default_damping == 0.85
         assert ctx.filter_tests is True
+
+    def test_bfs_ppr_tunables_removed(self):
+        # Post-#155 graph_expand is a 1-hop range/symbol primitive — the old
+        # BFS/PPR tunables were dropped as dead state.
+        ctx = ExpandContext()
+        for attr in (
+            "default_hops",
+            "default_direction",
+            "default_method",
+            "default_damping",
+        ):
+            assert not hasattr(ctx, attr), f"{attr} should have been removed"

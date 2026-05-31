@@ -76,7 +76,14 @@ def httpie_graph(httpie_cli_repo) -> CodeGraph:
 
 
 def _register_graph_expand(registry: SkillRegistry, graph: CodeGraph) -> None:
-    """Register graph_expand skill backed by a real CodeGraph."""
+    """Register graph_expand skill backed by a real CodeGraph.
+
+    Mirrors the post-#155 graph_expand API: 1-hop LSP-aligned range/symbol
+    query returning defined/callees/callers tagged by role. This test
+    exercises the symbol-input path; a comma-separated ``str`` keeps the
+    Vertex AI tool schema simple (``type_hint="str"``) — the wrapper splits
+    it into the ``List[str]`` the executor expects.
+    """
     ctx = ExpandContext(code_graph=graph)
     raw_executor = create_executor(ctx)
 
@@ -86,19 +93,22 @@ def _register_graph_expand(registry: SkillRegistry, graph: CodeGraph) -> None:
             skill_type=SkillType.EXPAND,
             inputs=[
                 SkillInputSpec(
-                    name="seed_nodes",
+                    name="symbols",
                     type_hint="str",
                     required=True,
-                    description="Comma-separated qualified symbol names to expand from",
+                    description=(
+                        "Comma-separated qualified symbol names to expand "
+                        "from (e.g. 'httpie.core.main, httpie.cli.argparser')."
+                    ),
                 ),
                 SkillInputSpec(
-                    name="method",
+                    name="mode",
                     type_hint="str",
                     required=False,
-                    default="bfs",
+                    default="all",
                     description=(
-                        'Expansion method: "bfs" for k-hop BFS or "ppr" for '
-                        "Personalized PageRank"
+                        'Which relationships to return: "defined" / "callees" '
+                        '/ "callers" / "all" (default).'
                     ),
                 ),
                 SkillInputSpec(
@@ -107,20 +117,13 @@ def _register_graph_expand(registry: SkillRegistry, graph: CodeGraph) -> None:
                     required=False,
                     default=20,
                 ),
-                SkillInputSpec(
-                    name="hops",
-                    type_hint="int",
-                    required=False,
-                    default=2,
-                    description="Number of hops for BFS expansion",
-                ),
             ],
             executor_fn=_wrap_executor_for_agent(raw_executor),
             description=(
-                "Expand from seed code symbols to find structurally related "
-                "symbols (callers, callees, class members, references) in the "
-                "code graph. seed_nodes is a comma-separated list of qualified "
-                "symbol names (e.g. 'httpie.cli.definition.HTTPieArgumentParser')."
+                "1-hop graph query: given one or more symbol names, return "
+                "the symbols defined at each, the symbols they call, and "
+                "the symbols that call them. Each result carries the "
+                "call-site anchor_line."
             ),
         )
     )
@@ -161,8 +164,9 @@ class TestAgentGraphVertexAI:
 
         system_prompt = (
             "You are a code exploration agent for the httpie/cli Python project. "
-            "You have a graph_expand tool that finds structurally related code "
-            "symbols (callers, callees, references) given seed symbol names.\n\n"
+            "You have a graph_expand tool that, given one or more symbol names, "
+            "returns the symbols defined at each (`defined`), the symbols they "
+            "call (`callees`), and the symbols that call them (`callers`).\n\n"
             f"Here are some symbols in the codebase:\n{symbol_list}\n\n"
             "Use graph_expand to explore relationships, then summarize findings."
         )
@@ -178,7 +182,7 @@ class TestAgentGraphVertexAI:
         seed = sample_symbols[0] if sample_symbols else "httpie.core.main"
         result = runner.run(
             f"What symbols are related to {seed!r}? "
-            f"Use graph_expand with seed_nodes={seed!r} to find out."
+            f"Use graph_expand with symbols={seed!r} to find out."
         )
 
         assert isinstance(result, AgentResult)
@@ -209,20 +213,20 @@ class TestAgentGraphVertexAI:
 
 
 def _wrap_executor_for_agent(executor_fn):
-    """Wrap the graph_expand executor so it accepts string-based args from LLM.
+    """Wrap the graph_expand executor so it accepts a comma-separated string.
 
-    The raw executor expects ``seed_nodes: List[Any]``, but the LLM will
-    pass a comma-separated string. This wrapper handles the conversion.
+    Vertex's tool schema has no clean way to express ``List[str]``, so the
+    LLM passes a comma-separated string. This wrapper splits it into
+    ``symbols=[...]`` and forwards remaining kwargs untouched.
     """
 
-    def wrapped(seed_nodes, method="bfs", top_k=20, hops=2, **kwargs):
-        if isinstance(seed_nodes, str):
-            seed_nodes = [s.strip() for s in seed_nodes.split(",") if s.strip()]
+    def wrapped(symbols, mode="all", top_k=20, **kwargs):
+        if isinstance(symbols, str):
+            symbols = [s.strip() for s in symbols.split(",") if s.strip()]
         return executor_fn(
-            seed_nodes=seed_nodes,
-            method=method,
+            symbols=symbols,
+            mode=mode,
             top_k=int(top_k),
-            hops=int(hops),
             **kwargs,
         )
 

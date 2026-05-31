@@ -16,14 +16,17 @@ logger = get_logger(__name__)
 
 @dataclass
 class ExpandContext:
-    """Shared resources for graph expansion operators."""
+    """Shared resources for graph expansion skills.
+
+    Post-#155 ``graph_expand`` is a 1-hop LSP-aligned primitive that does
+    not consume BFS/PPR tunables; those used to live here as
+    ``default_hops`` / ``default_method`` / ``default_direction`` /
+    ``default_damping`` but were removed as dead state. The remaining fields
+    are read by the skill executor at call time.
+    """
 
     code_graph: Optional[CodeGraph] = None
     default_top_k: int = 50
-    default_hops: int = 2
-    default_direction: str = "both"
-    default_method: str = "bfs"
-    default_damping: float = 0.85
     filter_tests: bool = True
 
 

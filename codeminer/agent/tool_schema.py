@@ -29,7 +29,7 @@ def _schema_for_type(type_hint: str) -> Dict[str, Any]:
     """JSON Schema for a SkillInputSpec ``type_hint`` string.
 
     Handles ``List[X]`` / ``list[X]`` → ``{"type":"array","items":<X>}`` so
-    list-valued params (e.g. ``graph_expand.seed_symbols: List[str]``,
+    list-valued params (e.g. ``graph_expand.symbols: List[str]``,
     ``edge_types: List[str]``) get a real schema instead of an empty ``{}``
     that gives the model no hint how to populate them. Unknown inner or
     scalar hints fall back to ``string`` (the safest LLM-producible type),

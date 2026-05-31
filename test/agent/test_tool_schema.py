@@ -106,7 +106,7 @@ class TestSkillToToolSchema:
 
         Previously complex types produced an empty ``{}`` schema, giving the
         model no hint how to populate list params (e.g.
-        ``graph_expand.seed_symbols``). Now they get ``array`` + ``items``.
+        ``graph_expand.symbols``). Now they get ``array`` + ``items``.
         """
         meta = SkillMetadata(
             skill_id="test_complex",

@@ -46,6 +46,15 @@ class NodeInfo(BaseModel):
 
 
 class QueriedNode(NodeInfo):
-    """Node attributes representing ranked nodes that keep optional content."""
+    """Ranked node optionally carrying graph relationship metadata.
 
-    pass
+    Skills like ``graph_expand`` populate ``edge_kind`` / ``role`` /
+    ``anchor_file`` / ``anchor_line`` so the LLM sees how each result relates
+    to the query (range or symbol). Retrieval-only skills (bm25, embedding)
+    leave them ``None``.
+    """
+
+    edge_kind: Optional[str] = None
+    role: Optional[str] = None
+    anchor_file: Optional[str] = None
+    anchor_line: Optional[int] = None
