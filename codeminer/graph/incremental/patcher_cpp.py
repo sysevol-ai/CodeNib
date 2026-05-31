@@ -529,7 +529,7 @@ class PatcherCpp(PatcherBase):
             no_progress_idle_s = 3.0
             poll_interval_s = 0.05
             deadline = time.monotonic() + max_wait_s
-            settle_after_end_s = 0.3  # let trailing .idx writes flush
+            settle_after_end_s = 0.5  # let trailing .idx writes flush
             end_seen_at: float | None = None
             last_mtime = pre_mtime
             last_mtime_change_t = time.monotonic()
@@ -550,7 +550,12 @@ class PatcherCpp(PatcherBase):
                         end_seen_at = time.monotonic()
                     elif time.monotonic() - end_seen_at >= settle_after_end_s:
                         break
-                elif not progress_state["saw_begin"]:
+                elif saw_begin:
+                    # Indexing in flight — wait for the end event (do NOT
+                    # consult mtime; a single long-running TU could
+                    # falsely trip a stability check).
+                    pass
+                else:
                     # No $/progress yet — fall back to .idx mtime polling.
                     cur_mtime = max(
                         (f.stat().st_mtime for f in idx_dir.glob("*.idx")),

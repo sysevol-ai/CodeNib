@@ -479,7 +479,7 @@ class ClangdIndexer:
                     "method": "initialize",
                     "params": {
                         "processId": os.getpid(),
-                        "rootUri": f"file://{self.project_root}",
+                        "rootUri": self.project_root.as_uri(),
                         "capabilities": {
                             "window": {
                                 "workDoneProgress": True,
@@ -662,6 +662,11 @@ class ClangdIndexer:
         while time.time() - start < timeout:
             time.sleep(0.5 if progress_state is not None else 2)
 
+            # Process death is fatal in any state — check once per loop.
+            if process.poll() is not None:
+                logger.warning("clangd process exited during indexing")
+                return
+
             # ── Path A: progress-aware (preferred) ────────────────────
             if progress_state is not None:
                 with progress_state["lock"]:
@@ -682,19 +687,18 @@ class ClangdIndexer:
                             f"{total_files} .idx files ({elapsed:.0f}s)"
                         )
                         return
-                    if process.poll() is not None:
-                        logger.warning("clangd process exited during indexing")
-                        return
                     continue
-                # If progress never started AND we've waited long enough,
-                # fall through to mtime polling — handles old clangd or
-                # capability negotiation failure.
-                if not saw_begin and (time.time() - start) < idle_timeout:
-                    if process.poll() is not None:
-                        logger.warning("clangd process exited during indexing")
-                        return
+                if saw_begin and active:
+                    # Indexing in flight — wait for the end event. Do NOT
+                    # drop into mtime fallback: a single long-running TU
+                    # (>stable_seconds with no other writes) would falsely
+                    # trip the stability check.
                     continue
-                # else: drop into mtime fallback below
+                # not saw_begin yet
+                if (time.time() - start) < idle_timeout:
+                    continue
+                # Progress never started AND we've waited idle_timeout —
+                # drop into mtime fallback (old clangd, capability hiccup).
 
             # ── Path B: mtime fallback (no progress signal) ───────────
             current_max_mtime = 0.0
