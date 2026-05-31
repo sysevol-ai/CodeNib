@@ -31,6 +31,7 @@ from ._types import RepoSnapshot, SampledCodeBlock, TargetDiscoveryResult
 from .context_loader import ContextLoader
 from .query_curator import QueryCurator
 from .verifier import Verifier
+from .vocab_guard import DEFAULT_OVERLAP_THRESHOLD
 
 logger = get_logger(__name__)
 
@@ -65,6 +66,8 @@ class ClaudeQuerySynthesizer:
         behavioral_consensus_runs: int = 3,
         num_queries: int = 1,
         verification_mode: str = "lenient",
+        vocab_overlap_threshold: float = DEFAULT_OVERLAP_THRESHOLD,
+        enforce_vocab_guard: bool = True,
     ) -> None:
         # Parse query type (difficulty_level is a deprecated alias).
         if difficulty_level is not None:
@@ -118,6 +121,8 @@ class ClaudeQuerySynthesizer:
             agent=verifier_agent,
             verification_mode=verification_mode,
             max_block_chars_in_prompt=max_block_chars_in_prompt,
+            vocab_overlap_threshold=vocab_overlap_threshold,
+            enforce_vocab_guard=enforce_vocab_guard,
         )
 
     # ------------------------------------------------------------------
@@ -365,6 +370,9 @@ class ClaudeQuerySynthesizer:
             "selected_block_ids": result.get("selected_block_ids"),
             "verification_passed": result.get("verification_passed"),
             "verification_block_id": result.get("verification_block_id"),
+            "vocab_overlap_ratio": result.get("vocab_overlap_ratio"),
+            "vocab_overlap_flagged": result.get("vocab_overlap_flagged"),
+            "vocab_overlap_tokens": result.get("vocab_overlap_tokens"),
         }
 
     # ------------------------------------------------------------------

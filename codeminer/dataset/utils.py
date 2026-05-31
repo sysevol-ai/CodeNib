@@ -333,10 +333,15 @@ class CodeSearchDataset:
 QUERY_TYPE_PROMPTS: Dict[QueryType, str] = {
     QueryType.BEHAVIORAL: (
         "Craft a natural-language question describing the observed behavior needing a fix. "
-        "The question MUST avoid file paths, function names, class names, or explicit code "
-        "identifiers. Use plain English focusing on behavior, inputs, outputs, "
-        "and user-visible symptoms. The reader should understand WHAT goes wrong "
-        "without knowing WHERE in the code."
+        "Describe the BEHAVIOR, INTENT, and user-visible SYMPTOM in plain English; focus on "
+        "WHAT goes wrong (inputs, outputs, error conditions) without revealing WHERE in the "
+        "code it lives. "
+        "Do NOT copy identifier, function, class, method, variable, module, or file/path "
+        "names verbatim from the code, and do NOT reuse their distinctive sub-words (e.g. if "
+        "the code defines `parse_votable_header`, do not write 'votable' or 'header parser'). "
+        "Paraphrase domain terminology into everyday wording or describe the concept by its "
+        "effect instead of naming it. The reader should be able to understand the symptom "
+        "without knowing any code identifier."
     ),
     QueryType.MODULE_HINT: (
         "Craft a natural-language question describing the issue. You MAY mention module or "

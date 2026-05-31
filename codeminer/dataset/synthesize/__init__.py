@@ -18,6 +18,12 @@ from .context_loader import ContextLoader
 from .query_curator import QueryCurator
 from .query_synthesizer import ClaudeQuerySynthesizer
 from .verifier import Verifier
+from .vocab_guard import (
+    DEFAULT_OVERLAP_THRESHOLD,
+    VocabOverlapResult,
+    VocabularyOverlapGuard,
+    gt_identifier_tokens,
+)
 
 __all__ = [
     "ClaudeQuerySynthesizer",
@@ -25,6 +31,10 @@ __all__ = [
     "QueryCurator",
     "QuerySynthesisResult",
     "Verifier",
+    "VocabularyOverlapGuard",
+    "VocabOverlapResult",
+    "gt_identifier_tokens",
+    "DEFAULT_OVERLAP_THRESHOLD",
     "CodeLocation",
     "CodeSearchDataset",
     "CodeSearchQuery",

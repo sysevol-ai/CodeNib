@@ -8,12 +8,17 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from codeminer.log_utils import get_logger
 
 from ._agent import AgentRunner
-from ._types import BehavioralContext, format_prompt_block
+from ._types import BehavioralContext, SampledCodeBlock, format_prompt_block
+from .vocab_guard import (
+    DEFAULT_OVERLAP_THRESHOLD,
+    VocabOverlapResult,
+    VocabularyOverlapGuard,
+)
 
 logger = get_logger(__name__)
 
@@ -50,6 +55,8 @@ class Verifier:
         agent: AgentRunner,
         verification_mode: str = "lenient",
         max_block_chars_in_prompt: int = 1800,
+        vocab_overlap_threshold: float = DEFAULT_OVERLAP_THRESHOLD,
+        enforce_vocab_guard: bool = True,
     ) -> None:
         if verification_mode not in ("strict", "lenient", "none"):
             raise ValueError(
@@ -58,6 +65,11 @@ class Verifier:
         self.agent = agent
         self.verification_mode = verification_mode
         self.max_block_chars_in_prompt = max_block_chars_in_prompt
+        # Post-generation vocabulary-overlap guard (issue #130): reject queries
+        # that copy too much GT identifier vocabulary. When enforced, a flagged
+        # query triggers regeneration from the alternate consensus runs.
+        self.enforce_vocab_guard = enforce_vocab_guard
+        self.vocab_guard = VocabularyOverlapGuard(threshold=vocab_overlap_threshold)
 
     # ------------------------------------------------------------------
     # Public API
@@ -84,7 +96,13 @@ class Verifier:
             if not self._pick_best_valid_question(result, runs):
                 result["verification_passed"] = False
                 result["verification_block_id"] = None
+                self._record_vocab_overlap(result, behavioral_context)
                 return result
+
+        # Post-generation vocabulary-overlap guard (issue #130). May swap the
+        # question for a clean alternate before alignment verification runs.
+        overlap = self._enforce_vocab_guard(result, runs, behavioral_context)
+        self._record_vocab_overlap(result, behavioral_context, overlap=overlap)
 
         if self.verification_mode == "none":
             result["verification_passed"] = None
@@ -115,6 +133,9 @@ class Verifier:
                     result["focus"] = alt_run.get("focus")
                     result["verification_passed"] = True
                     result["verification_block_id"] = alt_vr["block_id"]
+                    # Re-stamp overlap metrics for the swapped-in question so the
+                    # recorded vocab_overlap_* fields match the final query (#130).
+                    self._record_vocab_overlap(result, behavioral_context)
                     return result
 
         result["verification_passed"] = False
@@ -138,7 +159,13 @@ class Verifier:
             if not self._pick_best_valid_question(result, runs):
                 result["verification_passed"] = False
                 result["verification_block_id"] = None
+                self._record_vocab_overlap(result, behavioral_context)
                 return result
+
+        # Post-generation vocabulary-overlap guard (issue #130). May swap the
+        # question for a clean alternate before alignment verification runs.
+        overlap = self._enforce_vocab_guard(result, runs, behavioral_context)
+        self._record_vocab_overlap(result, behavioral_context, overlap=overlap)
 
         if self.verification_mode == "none":
             result["verification_passed"] = None
@@ -173,6 +200,9 @@ class Verifier:
                     result["focus"] = alt_run.get("focus")
                     result["verification_passed"] = True
                     result["verification_block_id"] = alt_vr["block_id"]
+                    # Re-stamp overlap metrics for the swapped-in question so the
+                    # recorded vocab_overlap_* fields match the final query (#130).
+                    self._record_vocab_overlap(result, behavioral_context)
                     return result
 
         result["verification_passed"] = False
@@ -219,6 +249,101 @@ class Verifier:
                 result["focus"] = run.get("focus")
                 return True
         return False
+
+    # ------------------------------------------------------------------
+    # Vocabulary-overlap guard (issue #130)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _gt_vocab_inputs(
+        result: Dict[str, Any],
+        behavioral_context: BehavioralContext,
+    ) -> Tuple[List[str], List[str]]:
+        """Collect GT files/symbols from the selected (or core) blocks."""
+        blocks: List[SampledCodeBlock] = list(result.get("selected_blocks") or [])
+        if not blocks:
+            blocks = [behavioral_context.core_block]
+        files = [blk.file_path for blk in blocks if blk.file_path]
+        symbols = [blk.node_name for blk in blocks if blk.node_name]
+        return files, symbols
+
+    def check_vocab_overlap(
+        self,
+        result: Dict[str, Any],
+        behavioral_context: BehavioralContext,
+    ) -> VocabOverlapResult:
+        """Score the current question against the GT identifier vocabulary."""
+        files, symbols = self._gt_vocab_inputs(result, behavioral_context)
+        return self.vocab_guard.evaluate(
+            result.get("question", ""),
+            target_files=files,
+            target_symbols=symbols,
+        )
+
+    def _record_vocab_overlap(
+        self,
+        result: Dict[str, Any],
+        behavioral_context: BehavioralContext,
+        *,
+        overlap: Optional[VocabOverlapResult] = None,
+    ) -> None:
+        """Stamp the vocab-overlap diagnostics onto *result*."""
+        if overlap is None:
+            overlap = self.check_vocab_overlap(result, behavioral_context)
+        result["vocab_overlap_ratio"] = overlap.overlap_ratio
+        result["vocab_overlap_flagged"] = overlap.flagged
+        result["vocab_overlap_tokens"] = overlap.overlapping_tokens
+
+    def _enforce_vocab_guard(
+        self,
+        result: Dict[str, Any],
+        runs: List[Dict[str, Any]],
+        behavioral_context: BehavioralContext,
+    ) -> VocabOverlapResult:
+        """Reject vocab-leaky questions, regenerating from alternate runs.
+
+        Returns the :class:`VocabOverlapResult` for whatever question ends up in
+        *result*. When the chosen question leaks, alternate consensus runs that
+        both pass the quality check and the overlap guard are tried first.
+        """
+        files, symbols = self._gt_vocab_inputs(result, behavioral_context)
+        gt_tokens = self.vocab_guard.gt_tokens_from_metadata(files, symbols)
+
+        current = self.vocab_guard.evaluate(
+            result.get("question", ""), gt_tokens=gt_tokens
+        )
+        if not current.flagged or not self.enforce_vocab_guard:
+            if current.flagged:
+                logger.warning(
+                    "Vocabulary-overlap guard flagged query (not enforced): %s",
+                    current.reason,
+                )
+            return current
+
+        logger.warning(
+            "Vocabulary-overlap guard rejected query; trying alternates: %s",
+            current.reason,
+        )
+        for run in runs:
+            alt_q = run.get("question", "")
+            if not alt_q or alt_q == result["question"]:
+                continue
+            ok, _ = self.validate_query_quality(alt_q)
+            if not ok:
+                continue
+            alt_res = self.vocab_guard.evaluate(alt_q, gt_tokens=gt_tokens)
+            if not alt_res.flagged:
+                result["question"] = alt_q
+                result["focus"] = run.get("focus")
+                logger.info(
+                    "Vocabulary-overlap guard regenerated query from alternate run."
+                )
+                return alt_res
+
+        logger.warning(
+            "Vocabulary-overlap guard found no clean alternate; keeping flagged query."
+        )
+        return current
 
     def _build_verification_prompt(
         self,
