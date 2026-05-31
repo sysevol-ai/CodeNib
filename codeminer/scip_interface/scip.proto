@@ -1,5 +1,6 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// Vendored from github.com/sourcegraph/scip — SCIP schema by Sourcegraph, Inc.
 //
+// SPDX-FileCopyrightText: Sourcegraph, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // An index contains one or more pieces of information about a given piece of
