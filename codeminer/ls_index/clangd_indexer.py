@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional, Union
@@ -438,8 +439,38 @@ class ClangdIndexer:
             cwd=str(self.project_root),
         )
 
+        # Track BackgroundIndex progress via the LSP $/progress
+        # notifications clangd emits (LLVM D73218). When clangd has
+        # processed the whole queue we get a ``kind == "end"`` event for
+        # the ``backgroundIndexProgress`` token — a sharp completion
+        # signal so we don't need to poll .idx mtime for 10s of
+        # stability. Falls back to the legacy mtime poll if no progress
+        # arrives (very old clangd or capability hiccup).
+        progress_state = {
+            "saw_begin": False,
+            "active_tokens": set(),
+            "lock": threading.Lock(),
+        }
+        threading.Thread(
+            target=_clangd_progress_reader,
+            args=(process.stdout, progress_state),
+            daemon=True,
+        ).start()
+        # Stderr needs draining too — `--log=error` is small but pipe can
+        # still fill on bigger errors.
+        threading.Thread(
+            target=_clangd_stream_drain,
+            args=(process.stderr,),
+            daemon=True,
+        ).start()
+
         try:
-            # LSP initialize (fire-and-forget — don't read the response)
+            # LSP initialize. ``window.workDoneProgress`` enables the
+            # protocol; ``implicitWorkDoneProgressCreate`` is a clangd
+            # extension that lets the server skip the
+            # ``window/workDoneProgress/create`` handshake — without
+            # it, clangd waits for a client reply we don't send and
+            # silently flips progress to "Unsupported" mode.
             self._lsp_send(
                 process,
                 {
@@ -449,11 +480,16 @@ class ClangdIndexer:
                     "params": {
                         "processId": os.getpid(),
                         "rootUri": f"file://{self.project_root}",
-                        "capabilities": {},
+                        "capabilities": {
+                            "window": {
+                                "workDoneProgress": True,
+                                "implicitWorkDoneProgressCreate": True,
+                            },
+                        },
                     },
                 },
             )
-            time.sleep(2)
+            time.sleep(0.5)
 
             # LSP initialized — triggers BackgroundIndex
             self._lsp_send(
@@ -464,14 +500,19 @@ class ClangdIndexer:
                     "params": {},
                 },
             )
-            time.sleep(1)
+            time.sleep(0.3)
 
             # Open source files listed in compile_commands.json to nudge
             # the background indexer (same approach as test_codegraph_clangd)
             self._open_source_files(process, comp_db)
 
-            # Wait for .idx files to stabilise — check all candidate dirs
-            self._wait_for_indexing(process, candidate_dirs, pre_mtimes)
+            # Wait for indexing — progress-aware, with mtime fallback.
+            self._wait_for_indexing(
+                process,
+                candidate_dirs,
+                pre_mtimes,
+                progress_state=progress_state,
+            )
 
         except Exception as e:
             logger.error(f"Error during clangd indexing: {e}")
@@ -599,17 +640,13 @@ class ClangdIndexer:
         timeout: int = 1200,
         stable_seconds: int = 10,
         idle_timeout: int = 30,
+        progress_state: Optional[dict] = None,
     ):
-        """
-        Wait for background indexing to complete by monitoring multiple
-        candidate .idx directories using mtime-based detection.
+        """Wait for background indexing to complete.
 
-        Considers indexing done when no .idx file mtimes change for
-        *stable_seconds* consecutive seconds across ALL candidate dirs.
-
-        If pre-existing .idx files exist but no activity is detected for
-        *idle_timeout* seconds, assumes clangd has nothing to do and returns
-        early (avoids waiting the full timeout).
+        Prefers clangd's LSP ``$/progress`` ``backgroundIndexProgress``
+        ``end`` event (delivered via ``progress_state``); falls back to
+        polling .idx mtime when no progress signal arrives in time.
         """
         logger.info("Waiting for clangd background indexing to complete ...")
         logger.info(f"Monitoring directories: {[str(d) for d in candidate_dirs]}")
@@ -618,11 +655,48 @@ class ClangdIndexer:
         last_max_mtime = max(pre_mtimes.values()) if pre_mtimes else 0
         activity_detected = False
         has_pre_existing = any(mt > 0 for mt in pre_mtimes.values())
+        settle_after_end_s = 0.5  # let trailing .idx writes flush
+        end_seen_at: Optional[float] = None
+        total_files = 0
 
         while time.time() - start < timeout:
-            time.sleep(2)
+            time.sleep(0.5 if progress_state is not None else 2)
 
-            # Find current max mtime across all candidate dirs
+            # ── Path A: progress-aware (preferred) ────────────────────
+            if progress_state is not None:
+                with progress_state["lock"]:
+                    saw_begin = progress_state["saw_begin"]
+                    active = bool(progress_state["active_tokens"])
+                if saw_begin and not active:
+                    if end_seen_at is None:
+                        end_seen_at = time.time()
+                    elif time.time() - end_seen_at >= settle_after_end_s:
+                        total_files = sum(
+                            len(list(d.glob("*.idx")))
+                            for d in candidate_dirs
+                            if d.exists()
+                        )
+                        elapsed = time.time() - start
+                        logger.info(
+                            "Background indexing complete (progress.end): "
+                            f"{total_files} .idx files ({elapsed:.0f}s)"
+                        )
+                        return
+                    if process.poll() is not None:
+                        logger.warning("clangd process exited during indexing")
+                        return
+                    continue
+                # If progress never started AND we've waited long enough,
+                # fall through to mtime polling — handles old clangd or
+                # capability negotiation failure.
+                if not saw_begin and (time.time() - start) < idle_timeout:
+                    if process.poll() is not None:
+                        logger.warning("clangd process exited during indexing")
+                        return
+                    continue
+                # else: drop into mtime fallback below
+
+            # ── Path B: mtime fallback (no progress signal) ───────────
             current_max_mtime = 0.0
             total_files = 0
             for d in candidate_dirs:
@@ -948,3 +1022,81 @@ class ClangdIndexer:
             if e.stderr:
                 logger.warning("stderr: %s", e.stderr[:600].strip())
             return False
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Module-level helpers (kept outside ClangdIndexer so they can be reused
+# by other clangd-driving code paths without becoming part of the class
+# surface area).
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _clangd_progress_reader(stream, progress_state: dict) -> None:
+    """Parse Content-Length framed JSON-RPC from clangd stdout; track
+    ``backgroundIndexProgress`` ``begin``/``end`` events into
+    ``progress_state`` (a dict with keys ``saw_begin: bool``,
+    ``active_tokens: set``, ``lock: threading.Lock``)."""
+    buf = b""
+    try:
+        while True:
+            while b"\r\n\r\n" not in buf:
+                chunk = (
+                    stream.read1(65536)
+                    if hasattr(stream, "read1")
+                    else stream.read(4096)
+                )
+                if not chunk:
+                    return
+                buf += chunk
+            header_blob, _, rest = buf.partition(b"\r\n\r\n")
+            buf = rest
+            cl = 0
+            for hline in header_blob.split(b"\r\n"):
+                if hline.lower().startswith(b"content-length:"):
+                    try:
+                        cl = int(hline.split(b":", 1)[1].strip())
+                    except ValueError:
+                        cl = 0
+            while len(buf) < cl:
+                chunk = (
+                    stream.read1(65536)
+                    if hasattr(stream, "read1")
+                    else stream.read(4096)
+                )
+                if not chunk:
+                    return
+                buf += chunk
+            body, buf = buf[:cl], buf[cl:]
+            try:
+                msg = json.loads(body)
+            except json.JSONDecodeError:
+                continue
+            if msg.get("method") != "$/progress":
+                continue
+            params = msg.get("params") or {}
+            if params.get("token") != "backgroundIndexProgress":
+                continue
+            kind = (params.get("value") or {}).get("kind")
+            with progress_state["lock"]:
+                if kind == "begin":
+                    progress_state["saw_begin"] = True
+                    progress_state["active_tokens"].add(params["token"])
+                elif kind == "end":
+                    progress_state["active_tokens"].discard(params["token"])
+    except Exception:
+        # Reader exit is non-fatal — fallbacks (mtime poll, process death,
+        # outer timeout) will still terminate the wait loop.
+        return
+
+
+def _clangd_stream_drain(stream) -> None:
+    """Best-effort drain so clangd doesn't block on a full pipe buffer."""
+    try:
+        while True:
+            chunk = (
+                stream.read1(65536) if hasattr(stream, "read1") else stream.read(4096)
+            )
+            if not chunk:
+                return
+    except Exception:
+        return
