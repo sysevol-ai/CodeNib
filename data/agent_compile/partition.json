@@ -1,0 +1,874 @@
+{
+  "attempts": 3,
+  "cells": {
+    "C++/C:no_stacktrace": 4,
+    "C++/C:stacktrace": 3,
+    "Go:no_stacktrace": 7,
+    "Go:stacktrace": 2,
+    "Python:no_stacktrace": 8,
+    "Rust:no_stacktrace": 8,
+    "TypeScript/JavaScript:no_stacktrace": 8
+  },
+  "dataset": "fishmingyu/codeminer-base-dataset",
+  "fit": [
+    "fmtlib__fmt-2317",
+    "fmtlib__fmt-2310",
+    "fmtlib__fmt-3248",
+    "micropython__micropython-13039",
+    "micropython__micropython-10095",
+    "micropython__micropython-13569",
+    "micropython__micropython-15898",
+    "gin-gonic__gin-1805",
+    "gin-gonic__gin-2121",
+    "gin-gonic__gin-2755",
+    "gin-gonic__gin-3741",
+    "gin-gonic__gin-3820",
+    "prometheus__prometheus-10633",
+    "prometheus__prometheus-11859",
+    "prometheus__prometheus-15142",
+    "prometheus__prometheus-14861",
+    "sympy__sympy-12096",
+    "sympy__sympy-11618",
+    "sympy__sympy-12419",
+    "sympy__sympy-13031",
+    "astropy__astropy-12907",
+    "astropy__astropy-13579",
+    "astropy__astropy-13033",
+    "astropy__astropy-13236",
+    "tokio-rs__tokio-4898",
+    "tokio-rs__tokio-6603",
+    "tokio-rs__tokio-6551",
+    "tokio-rs__tokio-6752",
+    "nushell__nushell-12950",
+    "nushell__nushell-12901",
+    "nushell__nushell-13605",
+    "nushell__nushell-13831",
+    "axios__axios-4731",
+    "axios__axios-5085",
+    "axios__axios-4738",
+    "axios__axios-6539",
+    "facebook__docusaurus-10130",
+    "facebook__docusaurus-10309",
+    "facebook__docusaurus-8927",
+    "facebook__docusaurus-9897"
+  ],
+  "fit_size": 30,
+  "heldout": [
+    "valkey-io__valkey-1842",
+    "valkey-io__valkey-790",
+    "valkey-io__valkey-928",
+    "jqlang__jq-2235",
+    "jqlang__jq-2598",
+    "jqlang__jq-2750",
+    "jqlang__jq-2658",
+    "jqlang__jq-2728",
+    "redis__redis-10095",
+    "redis__redis-10068",
+    "redis__redis-13338",
+    "redis__redis-11631",
+    "redis__redis-11734",
+    "caddyserver__caddy-5870",
+    "caddyserver__caddy-4943",
+    "caddyserver__caddy-5404",
+    "caddyserver__caddy-5761",
+    "caddyserver__caddy-6115",
+    "gohugoio__hugo-12343",
+    "gohugoio__hugo-12448",
+    "gohugoio__hugo-12171",
+    "gohugoio__hugo-12562",
+    "gohugoio__hugo-12579",
+    "hashicorp__terraform-34814",
+    "hashicorp__terraform-35611",
+    "matplotlib__matplotlib-13989",
+    "matplotlib__matplotlib-14623",
+    "matplotlib__matplotlib-20488",
+    "matplotlib__matplotlib-20676",
+    "pydata__xarray-2905",
+    "pydata__xarray-3305",
+    "pydata__xarray-6992",
+    "pydata__xarray-3151",
+    "scikit-learn__scikit-learn-10297",
+    "scikit-learn__scikit-learn-13142",
+    "scikit-learn__scikit-learn-10844",
+    "scikit-learn__scikit-learn-10908",
+    "astral-sh__ruff-15309",
+    "astral-sh__ruff-15330",
+    "astral-sh__ruff-15356",
+    "astral-sh__ruff-15443",
+    "sharkdp__bat-2201",
+    "sharkdp__bat-3108",
+    "sharkdp__bat-2260",
+    "sharkdp__bat-2650",
+    "uutils__coreutils-6682",
+    "uutils__coreutils-6575",
+    "uutils__coreutils-6690",
+    "uutils__coreutils-6731",
+    "vuejs__core-11870",
+    "vuejs__core-11589",
+    "vuejs__core-11915",
+    "babel__babel-15445",
+    "babel__babel-13928",
+    "babel__babel-14532",
+    "babel__babel-15649",
+    "preactjs__preact-2757",
+    "preactjs__preact-2896",
+    "preactjs__preact-3567",
+    "preactjs__preact-2927"
+  ],
+  "heldout_size": 70,
+  "imbalanced": true,
+  "labels": [
+    {
+      "has_stacktrace": false,
+      "instance_id": "astral-sh__ruff-15309",
+      "language": "Rust",
+      "repo": "astral-sh/ruff",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "astral-sh__ruff-15330",
+      "language": "Rust",
+      "repo": "astral-sh/ruff",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "astral-sh__ruff-15356",
+      "language": "Rust",
+      "repo": "astral-sh/ruff",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "astral-sh__ruff-15443",
+      "language": "Rust",
+      "repo": "astral-sh/ruff",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "astropy__astropy-12907",
+      "language": "Python",
+      "repo": "astropy/astropy",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "astropy__astropy-13033",
+      "language": "Python",
+      "repo": "astropy/astropy",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "astropy__astropy-13236",
+      "language": "Python",
+      "repo": "astropy/astropy",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "astropy__astropy-13579",
+      "language": "Python",
+      "repo": "astropy/astropy",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "axios__axios-4731",
+      "language": "TypeScript/JavaScript",
+      "repo": "axios/axios",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "axios__axios-4738",
+      "language": "TypeScript/JavaScript",
+      "repo": "axios/axios",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "axios__axios-5085",
+      "language": "TypeScript/JavaScript",
+      "repo": "axios/axios",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "axios__axios-6539",
+      "language": "TypeScript/JavaScript",
+      "repo": "axios/axios",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "babel__babel-13928",
+      "language": "TypeScript/JavaScript",
+      "repo": "babel/babel",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "babel__babel-14532",
+      "language": "TypeScript/JavaScript",
+      "repo": "babel/babel",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": true,
+      "instance_id": "babel__babel-15445",
+      "language": "TypeScript/JavaScript",
+      "repo": "babel/babel",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "babel__babel-15649",
+      "language": "TypeScript/JavaScript",
+      "repo": "babel/babel",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "caddyserver__caddy-4943",
+      "language": "Go",
+      "repo": "caddyserver/caddy",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "caddyserver__caddy-5404",
+      "language": "Go",
+      "repo": "caddyserver/caddy",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "caddyserver__caddy-5761",
+      "language": "Go",
+      "repo": "caddyserver/caddy",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "caddyserver__caddy-5870",
+      "language": "Go",
+      "repo": "caddyserver/caddy",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "caddyserver__caddy-6115",
+      "language": "Go",
+      "repo": "caddyserver/caddy",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "facebook__docusaurus-10130",
+      "language": "TypeScript/JavaScript",
+      "repo": "facebook/docusaurus",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "facebook__docusaurus-10309",
+      "language": "TypeScript/JavaScript",
+      "repo": "facebook/docusaurus",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "facebook__docusaurus-8927",
+      "language": "TypeScript/JavaScript",
+      "repo": "facebook/docusaurus",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "facebook__docusaurus-9897",
+      "language": "TypeScript/JavaScript",
+      "repo": "facebook/docusaurus",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "fmtlib__fmt-2310",
+      "language": "C++/C",
+      "repo": "fmtlib/fmt",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "fmtlib__fmt-2317",
+      "language": "C++/C",
+      "repo": "fmtlib/fmt",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "fmtlib__fmt-3248",
+      "language": "C++/C",
+      "repo": "fmtlib/fmt",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gin-gonic__gin-1805",
+      "language": "Go",
+      "repo": "gin-gonic/gin",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gin-gonic__gin-2121",
+      "language": "Go",
+      "repo": "gin-gonic/gin",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": true,
+      "instance_id": "gin-gonic__gin-2755",
+      "language": "Go",
+      "repo": "gin-gonic/gin",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gin-gonic__gin-3741",
+      "language": "Go",
+      "repo": "gin-gonic/gin",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gin-gonic__gin-3820",
+      "language": "Go",
+      "repo": "gin-gonic/gin",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gohugoio__hugo-12171",
+      "language": "Go",
+      "repo": "gohugoio/hugo",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gohugoio__hugo-12343",
+      "language": "Go",
+      "repo": "gohugoio/hugo",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gohugoio__hugo-12448",
+      "language": "Go",
+      "repo": "gohugoio/hugo",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gohugoio__hugo-12562",
+      "language": "Go",
+      "repo": "gohugoio/hugo",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "gohugoio__hugo-12579",
+      "language": "Go",
+      "repo": "gohugoio/hugo",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "hashicorp__terraform-34814",
+      "language": "Go",
+      "repo": "hashicorp/terraform",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "hashicorp__terraform-35611",
+      "language": "Go",
+      "repo": "hashicorp/terraform",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "jqlang__jq-2235",
+      "language": "C++/C",
+      "repo": "jqlang/jq",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "jqlang__jq-2598",
+      "language": "C++/C",
+      "repo": "jqlang/jq",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "jqlang__jq-2658",
+      "language": "C++/C",
+      "repo": "jqlang/jq",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "jqlang__jq-2728",
+      "language": "C++/C",
+      "repo": "jqlang/jq",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "jqlang__jq-2750",
+      "language": "C++/C",
+      "repo": "jqlang/jq",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "matplotlib__matplotlib-13989",
+      "language": "Python",
+      "repo": "matplotlib/matplotlib",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "matplotlib__matplotlib-14623",
+      "language": "Python",
+      "repo": "matplotlib/matplotlib",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "matplotlib__matplotlib-20488",
+      "language": "Python",
+      "repo": "matplotlib/matplotlib",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "matplotlib__matplotlib-20676",
+      "language": "Python",
+      "repo": "matplotlib/matplotlib",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": true,
+      "instance_id": "micropython__micropython-10095",
+      "language": "C++/C",
+      "repo": "micropython/micropython",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": true,
+      "instance_id": "micropython__micropython-13039",
+      "language": "C++/C",
+      "repo": "micropython/micropython",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": true,
+      "instance_id": "micropython__micropython-13569",
+      "language": "C++/C",
+      "repo": "micropython/micropython",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "micropython__micropython-15898",
+      "language": "C++/C",
+      "repo": "micropython/micropython",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "nushell__nushell-12901",
+      "language": "Rust",
+      "repo": "nushell/nushell",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "nushell__nushell-12950",
+      "language": "Rust",
+      "repo": "nushell/nushell",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "nushell__nushell-13605",
+      "language": "Rust",
+      "repo": "nushell/nushell",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "nushell__nushell-13831",
+      "language": "Rust",
+      "repo": "nushell/nushell",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "preactjs__preact-2757",
+      "language": "TypeScript/JavaScript",
+      "repo": "preactjs/preact",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "preactjs__preact-2896",
+      "language": "TypeScript/JavaScript",
+      "repo": "preactjs/preact",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "preactjs__preact-2927",
+      "language": "TypeScript/JavaScript",
+      "repo": "preactjs/preact",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "preactjs__preact-3567",
+      "language": "TypeScript/JavaScript",
+      "repo": "preactjs/preact",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "prometheus__prometheus-10633",
+      "language": "Go",
+      "repo": "prometheus/prometheus",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "prometheus__prometheus-11859",
+      "language": "Go",
+      "repo": "prometheus/prometheus",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": true,
+      "instance_id": "prometheus__prometheus-14861",
+      "language": "Go",
+      "repo": "prometheus/prometheus",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "prometheus__prometheus-15142",
+      "language": "Go",
+      "repo": "prometheus/prometheus",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "pydata__xarray-2905",
+      "language": "Python",
+      "repo": "pydata/xarray",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "pydata__xarray-3151",
+      "language": "Python",
+      "repo": "pydata/xarray",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "pydata__xarray-3305",
+      "language": "Python",
+      "repo": "pydata/xarray",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "pydata__xarray-6992",
+      "language": "Python",
+      "repo": "pydata/xarray",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "redis__redis-10068",
+      "language": "C++/C",
+      "repo": "redis/redis",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "redis__redis-10095",
+      "language": "C++/C",
+      "repo": "redis/redis",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "redis__redis-11631",
+      "language": "C++/C",
+      "repo": "redis/redis",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "redis__redis-11734",
+      "language": "C++/C",
+      "repo": "redis/redis",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "redis__redis-13338",
+      "language": "C++/C",
+      "repo": "redis/redis",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "scikit-learn__scikit-learn-10297",
+      "language": "Python",
+      "repo": "scikit-learn/scikit-learn",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "scikit-learn__scikit-learn-10844",
+      "language": "Python",
+      "repo": "scikit-learn/scikit-learn",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "scikit-learn__scikit-learn-10908",
+      "language": "Python",
+      "repo": "scikit-learn/scikit-learn",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": true,
+      "instance_id": "scikit-learn__scikit-learn-13142",
+      "language": "Python",
+      "repo": "scikit-learn/scikit-learn",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "sharkdp__bat-2201",
+      "language": "Rust",
+      "repo": "sharkdp/bat",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "sharkdp__bat-2260",
+      "language": "Rust",
+      "repo": "sharkdp/bat",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "sharkdp__bat-2650",
+      "language": "Rust",
+      "repo": "sharkdp/bat",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "sharkdp__bat-3108",
+      "language": "Rust",
+      "repo": "sharkdp/bat",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "sympy__sympy-11618",
+      "language": "Python",
+      "repo": "sympy/sympy",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "sympy__sympy-12096",
+      "language": "Python",
+      "repo": "sympy/sympy",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "sympy__sympy-12419",
+      "language": "Python",
+      "repo": "sympy/sympy",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "sympy__sympy-13031",
+      "language": "Python",
+      "repo": "sympy/sympy",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "tokio-rs__tokio-4898",
+      "language": "Rust",
+      "repo": "tokio-rs/tokio",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "tokio-rs__tokio-6551",
+      "language": "Rust",
+      "repo": "tokio-rs/tokio",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "tokio-rs__tokio-6603",
+      "language": "Rust",
+      "repo": "tokio-rs/tokio",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "tokio-rs__tokio-6752",
+      "language": "Rust",
+      "repo": "tokio-rs/tokio",
+      "split": "fit"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "uutils__coreutils-6575",
+      "language": "Rust",
+      "repo": "uutils/coreutils",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "uutils__coreutils-6682",
+      "language": "Rust",
+      "repo": "uutils/coreutils",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "uutils__coreutils-6690",
+      "language": "Rust",
+      "repo": "uutils/coreutils",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "uutils__coreutils-6731",
+      "language": "Rust",
+      "repo": "uutils/coreutils",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "valkey-io__valkey-1842",
+      "language": "C++/C",
+      "repo": "valkey-io/valkey",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "valkey-io__valkey-790",
+      "language": "C++/C",
+      "repo": "valkey-io/valkey",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "valkey-io__valkey-928",
+      "language": "C++/C",
+      "repo": "valkey-io/valkey",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "vuejs__core-11589",
+      "language": "TypeScript/JavaScript",
+      "repo": "vuejs/core",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "vuejs__core-11870",
+      "language": "TypeScript/JavaScript",
+      "repo": "vuejs/core",
+      "split": "heldout"
+    },
+    {
+      "has_stacktrace": false,
+      "instance_id": "vuejs__core-11915",
+      "language": "TypeScript/JavaScript",
+      "repo": "vuejs/core",
+      "split": "heldout"
+    }
+  ],
+  "scenario": {
+    "C++/C:no_stacktrace": {
+      "corpus": 17,
+      "fit": 4,
+      "heldout": 13
+    },
+    "C++/C:stacktrace": {
+      "corpus": 3,
+      "fit": 3,
+      "heldout": 0
+    },
+    "Go:no_stacktrace": {
+      "corpus": 19,
+      "fit": 7,
+      "heldout": 12
+    },
+    "Go:stacktrace": {
+      "corpus": 2,
+      "fit": 2,
+      "heldout": 0
+    },
+    "Python:no_stacktrace": {
+      "corpus": 19,
+      "fit": 8,
+      "heldout": 11
+    },
+    "Python:stacktrace": {
+      "corpus": 1,
+      "fit": 0,
+      "heldout": 1
+    },
+    "Rust:no_stacktrace": {
+      "corpus": 20,
+      "fit": 8,
+      "heldout": 12
+    },
+    "TypeScript/JavaScript:no_stacktrace": {
+      "corpus": 18,
+      "fit": 8,
+      "heldout": 10
+    },
+    "TypeScript/JavaScript:stacktrace": {
+      "corpus": 1,
+      "fit": 0,
+      "heldout": 1
+    }
+  },
+  "seed": 12,
+  "total": 100,
+  "warnings": [
+    "Corpus too thin to populate cells: Python:stacktrace (corpus n=1), Rust:stacktrace (corpus n=0), TypeScript/JavaScript:stacktrace (corpus n=1)"
+  ]
+}
