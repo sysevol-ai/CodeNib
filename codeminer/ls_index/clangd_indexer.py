@@ -10,6 +10,7 @@ Uses clangd's background indexer to generate .idx files, then
 ClangdGraphDecoder (idx_decode + idx_parser) to build a CodeGraph
 directly from the binary .idx format.
 """
+
 import json
 import os
 import re
