@@ -45,22 +45,97 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_CACHE_DIR_NAME = ".codeminer_cache"
 
+# Module-level cache of parsed ``config.yaml`` payloads keyed by ``skills_dir``.
+# ``index_requirements`` is declarative metadata — it never changes within a
+# process — so we parse each skills directory once and reuse the result. This
+# also avoids re-reading the ~9 bundled configs on every ``query()`` call.
+_SKILL_CONFIG_CACHE: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+
+def _read_skill_configs(skills_dir: str) -> Dict[str, Dict[str, Any]]:
+    """Read every ``<skills_dir>/<skill>/config.yaml`` into ``{skill_id: cfg}``.
+
+    The returned mapping is keyed by each config's ``skill_id`` field. Results
+    are cached per *skills_dir* for the lifetime of the process — skill
+    metadata on disk is immutable while the agent runs. Malformed configs are
+    skipped (and logged) rather than aborting the whole scan.
+    """
+    cache_key = os.path.abspath(skills_dir)
+    cached = _SKILL_CONFIG_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    import yaml
+
+    configs: Dict[str, Dict[str, Any]] = {}
+    root = Path(skills_dir)
+    if root.is_dir():
+        for entry in sorted(root.iterdir()):
+            if not entry.is_dir():
+                continue
+            config_file = entry / "config.yaml"
+            if not config_file.exists():
+                continue
+            try:
+                with open(config_file) as f:
+                    data = yaml.safe_load(f) or {}
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "skipping malformed skill config %s: %s", config_file, exc
+                )
+                continue
+            sid = data.get("skill_id")
+            if sid:
+                configs[sid] = data
+
+    _SKILL_CONFIG_CACHE[cache_key] = configs
+    return configs
+
 
 def required_index_types(
     skill_ids: Iterable[str],
     *,
+    skills_dir: Optional[str] = None,
     skill_registry: Optional[SkillRegistry] = None,
 ) -> Set[str]:
     """Union of ``index_type`` strings required by the given skills.
 
-    Reads ``index_requirements`` from each skill's ``SkillMetadata`` (loaded
-    by ``SkillLoader`` from ``config.yaml``). Skills not present in the
-    registry are ignored — callers that need to fail loudly should check
-    membership themselves.
+    ``index_requirements`` is declarative skill metadata that lives on disk in
+    each skill's ``config.yaml``. The ``SkillRegistry`` is a *runtime* binding
+    layer built on top of that metadata — and it is empty until ``SkillLoader``
+    has loaded the very contexts this resolution feeds into. To break that
+    chicken-and-egg, prefer the on-disk configs.
+
+    Resolution order:
+      1. If ``skills_dir`` is given, read each skill's ``config.yaml`` from
+         disk. This is the authoritative source for bundled skills.
+      2. Fall back to ``skill_registry`` (or the singleton) for skills that
+         don't live on disk — e.g. registered via the ``@skill`` decorator at
+         import time.
+
+    Skills found in neither source are ignored — callers that need to fail
+    loudly should check membership themselves.
     """
-    registry = skill_registry or SkillRegistry()
+    skill_ids = list(skill_ids)
     needed: Set[str] = set()
+    seen_on_disk: Set[str] = set()
+
+    if skills_dir:
+        configs = _read_skill_configs(skills_dir)
+        for sid in skill_ids:
+            cfg = configs.get(sid)
+            if cfg is None:
+                continue
+            seen_on_disk.add(sid)
+            for req in cfg.get("index_requirements") or []:
+                index_type = req.get("type") if isinstance(req, dict) else None
+                if index_type:
+                    needed.add(index_type)
+
+    registry = skill_registry or SkillRegistry()
     for sid in skill_ids:
+        if sid in seen_on_disk:
+            continue
         meta = registry.get(sid)
         if meta is None:
             continue
@@ -71,11 +146,43 @@ def required_index_types(
 
 def _skill_types_for(
     skill_ids: Iterable[str],
-    skill_registry: SkillRegistry,
+    *,
+    skills_dir: Optional[str] = None,
+    skill_registry: Optional[SkillRegistry] = None,
 ) -> Set[SkillType]:
+    """Set of :class:`SkillType` for the given skills.
+
+    Same disk-first / registry-fallback resolution as
+    :func:`required_index_types`: on-disk ``config.yaml`` is authoritative for
+    bundled skills, the registry covers decorator-registered ones.
+    """
+    skill_ids = list(skill_ids)
     types: Set[SkillType] = set()
+    seen_on_disk: Set[str] = set()
+
+    if skills_dir:
+        configs = _read_skill_configs(skills_dir)
+        for sid in skill_ids:
+            cfg = configs.get(sid)
+            if cfg is None:
+                continue
+            seen_on_disk.add(sid)
+            raw_type = cfg.get("skill_type", "custom")
+            try:
+                types.add(SkillType(raw_type))
+            except ValueError:
+                logger.warning(
+                    "skill %r declares unknown skill_type %r; treating as custom",
+                    sid,
+                    raw_type,
+                )
+                types.add(SkillType.CUSTOM)
+
+    registry = skill_registry or SkillRegistry()
     for sid in skill_ids:
-        meta = skill_registry.get(sid)
+        if sid in seen_on_disk:
+            continue
+        meta = registry.get(sid)
         if meta is not None:
             types.add(meta.skill_type)
     return types
@@ -185,6 +292,7 @@ def build_skill_contexts(
     *,
     languages: Sequence[str] = ("python",),
     cache_dir: Optional[str] = None,
+    skills_dir: Optional[str] = None,
     skill_registry: Optional[SkillRegistry] = None,
     builder_registry: Optional[IndexBuilderRegistry] = None,
     embedding_model: str = "nomic-ai/CodeRankEmbed",
@@ -214,6 +322,12 @@ def build_skill_contexts(
     here — its skill type still gets a context if a *sibling* skill needs
     one (e.g. ``regex_search`` shares the ``retrieve`` key with
     ``bm25_search``).
+
+    Skill-metadata resolution: when ``skills_dir`` is given, each skill's
+    ``index_requirements`` / ``skill_type`` are read directly from its
+    ``config.yaml`` on disk, so callers no longer have to pre-populate the
+    ``SkillRegistry`` before calling this (see #154). The registry is only
+    consulted for skills that are not present on disk.
     """
     skill_ids = list(skill_ids)
     skill_registry = skill_registry or SkillRegistry()
@@ -223,8 +337,12 @@ def build_skill_contexts(
     )
     os.makedirs(cache_dir, exist_ok=True)
 
-    needed = required_index_types(skill_ids, skill_registry=skill_registry)
-    skill_types = _skill_types_for(skill_ids, skill_registry)
+    needed = required_index_types(
+        skill_ids, skills_dir=skills_dir, skill_registry=skill_registry
+    )
+    skill_types = _skill_types_for(
+        skill_ids, skills_dir=skills_dir, skill_registry=skill_registry
+    )
 
     if needed:
         missing = _missing_index_types(needed, cache_dir, rebuild=rebuild)
@@ -322,7 +440,7 @@ def load_contexts_from_manifest(
                 )
             needed.add(req.index_type)
 
-    skill_types = _skill_types_for(skill_ids, registry)
+    skill_types = _skill_types_for(skill_ids, skill_registry=registry)
 
     loaded: Dict[str, Any] = {}
     if "bm25" in needed:

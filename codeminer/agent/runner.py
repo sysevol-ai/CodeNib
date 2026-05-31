@@ -682,10 +682,12 @@ def query(
     loader = SkillLoader()
 
     # --- 3. Resolve contexts according to the selected mode.
-    # The two on-disk paths (manifest, repo_path) need a metadata-only
-    # pre-pass of SkillLoader so the registry exposes index_requirements
-    # to the loader/compiler. The ``contexts`` mode skips that — the
-    # caller already did the equivalent.
+    # ``build_skill_contexts`` (repo_path mode) reads each skill's
+    # index_requirements straight off ``config.yaml`` on disk (see #154), so
+    # it no longer needs a metadata-only pre-pass of SkillLoader. The manifest
+    # mode still reads requirements from the registry, so it keeps its
+    # pre-pass + reset. The ``contexts`` mode skips both — the caller already
+    # did the equivalent.
     if opts.contexts is not None:
         contexts = opts.contexts
     elif manifest is not None:
@@ -709,11 +711,10 @@ def query(
         SkillRegistry.reset()
         registry = SkillRegistry()
     else:
-        # repo_path mode: inline build via build_skill_contexts.
-        loader.load_all(skills_dir, contexts={}, registry=registry)
+        # repo_path mode: inline build via build_skill_contexts. It resolves
+        # index_requirements from config.yaml on disk, so no metadata pre-pass
+        # (and no reset to undo it) is needed before the real load in step 4.
         contexts = _build_contexts(opts, table=table)
-        SkillRegistry.reset()
-        registry = SkillRegistry()
 
     # --- 4. Load (or reload) the skill packages with the real contexts ---
     loaded = loader.load_all(skills_dir, contexts=contexts, registry=registry)
@@ -944,6 +945,7 @@ def _build_contexts(
         skill_ids=sorted(skill_ids),
         languages=tuple(opts.languages),
         cache_dir=opts.index_cache_dir,
+        skills_dir=opts.skills_dir or str(_DEFAULT_SKILLS_DIR),
         embedding_model=opts.embedding_model,
         embedding_dimension=opts.embedding_dimension,
         default_top_k=opts.default_top_k,

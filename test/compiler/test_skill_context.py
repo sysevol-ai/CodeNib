@@ -9,8 +9,10 @@ The function under test orchestrates: skill → index_type union → build/load
 (no repo cloning, no real index construction). The contract these tests
 pin down:
 
-- ``required_index_types`` reads ``index_requirements`` straight off the
-  registered skills (no I/O, no cache touch).
+- ``required_index_types`` reads ``index_requirements`` disk-first from each
+  skill's ``config.yaml`` (when ``skills_dir`` is given), falling back to the
+  registered skills otherwise. The disk path works against an *empty*
+  registry (#154).
 - ``build_skill_contexts`` returns a dict with per-skill-type keys,
   populated only when at least one skill of that type is requested.
 - Already-built indexes are loaded; missing types trigger a build.
@@ -315,7 +317,9 @@ def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):
     assert sorted(mocked_build["loaded"]) == ["bm25", "vector"]
 
 
-def test_build_skill_contexts_without_reset_is_idempotent(registry, mocked_build, tmp_path):
+def test_build_skill_contexts_without_reset_is_idempotent(
+    registry, mocked_build, tmp_path
+):
     """Regression test: build_skill_contexts should work without calling
     registry.reset() - SkillLoader.load_all is idempotent via has() guard.
 
@@ -348,3 +352,174 @@ def test_build_skill_contexts_without_reset_is_idempotent(registry, mocked_build
     # Verify registry still has skills (not destroyed by reset)
     assert registry.get("bm25_search") is not None
     assert registry.get("embedding_search") is not None
+
+
+# ---------------------------------------------------------------------------
+# required_index_types / _skill_types_for — disk-first resolution (#154)
+#
+# These pin the fix for the chicken-and-egg ordering bug: the resolvers must
+# read each skill's ``index_requirements`` / ``skill_type`` straight from
+# ``config.yaml`` on disk, WITHOUT a populated SkillRegistry.
+# ---------------------------------------------------------------------------
+
+
+def _write_skill_config(root, skill_id: str, body: str) -> None:
+    """Create ``<root>/<skill_id>/config.yaml`` with *body* contents."""
+    skill_dir = root / skill_id
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "config.yaml").write_text(body)
+
+
+@pytest.fixture
+def skills_dir(tmp_path):
+    """A skills directory on disk mirroring the bundled config.yaml shape."""
+    root = tmp_path / "skills"
+    _write_skill_config(
+        root,
+        "bm25_search",
+        "skill_id: bm25_search\n"
+        "skill_type: retrieval\n"
+        "index_requirements:\n"
+        "  - type: bm25\n"
+        "    max_age_seconds: 3600\n"
+        "    scope: current_repo\n",
+    )
+    _write_skill_config(
+        root,
+        "embedding_search",
+        "skill_id: embedding_search\n"
+        "skill_type: retrieval\n"
+        "index_requirements:\n"
+        "  - type: vector\n",
+    )
+    _write_skill_config(
+        root,
+        "graph_expand",
+        "skill_id: graph_expand\n"
+        "skill_type: expand\n"
+        "index_requirements:\n"
+        "  - type: symbol_graph\n",
+    )
+    # No index_requirements — must contribute nothing to the union.
+    _write_skill_config(
+        root,
+        "regex_search",
+        "skill_id: regex_search\nskill_type: retrieval\n",
+    )
+    # A custom composer declaring all three indexes.
+    _write_skill_config(
+        root,
+        "codeminer_context",
+        "skill_id: codeminer_context\n"
+        "skill_type: custom\n"
+        "index_requirements:\n"
+        "  - type: bm25\n"
+        "  - type: vector\n"
+        "  - type: symbol_graph\n",
+    )
+    return str(root)
+
+
+@pytest.fixture(autouse=True)
+def _clear_config_cache():
+    """Drop the module-level config cache so per-test ``skills_dir`` fixtures
+    (which live under unique tmp paths) never see a stale parse."""
+    skill_context._SKILL_CONFIG_CACHE.clear()
+    yield
+    skill_context._SKILL_CONFIG_CACHE.clear()
+
+
+def test_required_types_disk_first_with_empty_registry(skills_dir):
+    """The core #154 fix: index types resolve from config.yaml on disk even
+    though the SkillRegistry is empty (reset by the autouse fixture)."""
+    assert SkillRegistry().get("bm25_search") is None  # registry really is empty
+
+    got = skill_context.required_index_types(
+        ["bm25_search", "embedding_search", "graph_expand"],
+        skills_dir=skills_dir,
+    )
+    assert got == {"bm25", "vector", "symbol_graph"}
+
+
+def test_required_types_disk_single_with_empty_registry(skills_dir):
+    got = skill_context.required_index_types(["bm25_search"], skills_dir=skills_dir)
+    assert got == {"bm25"}
+
+
+def test_required_types_disk_skips_no_requirement_skills(skills_dir):
+    got = skill_context.required_index_types(["regex_search"], skills_dir=skills_dir)
+    assert got == set()
+
+
+def test_required_types_disk_custom_composer(skills_dir):
+    got = skill_context.required_index_types(
+        ["codeminer_context"], skills_dir=skills_dir
+    )
+    assert got == {"bm25", "vector", "symbol_graph"}
+
+
+def test_required_types_disk_takes_precedence_over_registry(skills_dir):
+    """On-disk config is authoritative: if the registry disagrees with disk
+    for a bundled skill, the disk value wins."""
+    reg = SkillRegistry()
+    # Registry claims bm25_search needs ``vector`` — disk says ``bm25``.
+    reg.register(_make_meta("bm25_search", SkillType.RETRIEVAL, index_types=["vector"]))
+    got = skill_context.required_index_types(
+        ["bm25_search"], skills_dir=skills_dir, skill_registry=reg
+    )
+    assert got == {"bm25"}
+
+
+def test_required_types_registry_fallback_for_off_disk_skill(skills_dir):
+    """A skill not present on disk (e.g. @skill-decorator-registered) falls
+    back to the registry."""
+    reg = SkillRegistry()
+    reg.register(
+        _make_meta("decorator_only", SkillType.RETRIEVAL, index_types=["vector"])
+    )
+    got = skill_context.required_index_types(
+        ["bm25_search", "decorator_only"],
+        skills_dir=skills_dir,
+        skill_registry=reg,
+    )
+    assert got == {"bm25", "vector"}
+
+
+def test_required_types_unknown_skill_ignored_disk(skills_dir):
+    got = skill_context.required_index_types(
+        ["bm25_search", "does_not_exist"], skills_dir=skills_dir
+    )
+    assert got == {"bm25"}
+
+
+def test_skill_types_for_disk_first_with_empty_registry(skills_dir):
+    types = skill_context._skill_types_for(
+        ["bm25_search", "graph_expand", "codeminer_context"],
+        skills_dir=skills_dir,
+    )
+    assert types == {SkillType.RETRIEVAL, SkillType.EXPAND, SkillType.CUSTOM}
+
+
+def test_skill_types_for_registry_fallback(skills_dir):
+    reg = SkillRegistry()
+    reg.register(_make_meta("decorator_only", SkillType.RERANK))
+    types = skill_context._skill_types_for(
+        ["bm25_search", "decorator_only"],
+        skills_dir=skills_dir,
+        skill_registry=reg,
+    )
+    assert types == {SkillType.RETRIEVAL, SkillType.RERANK}
+
+
+def test_read_skill_configs_is_cached(skills_dir):
+    """Second read returns the same cached object (no re-parse)."""
+    first = skill_context._read_skill_configs(skills_dir)
+    second = skill_context._read_skill_configs(skills_dir)
+    assert first is second
+    assert set(first) == {
+        "bm25_search",
+        "embedding_search",
+        "graph_expand",
+        "regex_search",
+        "codeminer_context",
+    }

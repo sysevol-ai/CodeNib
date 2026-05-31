@@ -376,11 +376,15 @@ def evaluate_instance(
         execution_log.append(f"Building contexts for skills={skill_ids}...")
         contexts = {}
         if skill_ids:  # Skip for hybrid_baseline
+            # Resolve index_requirements from config.yaml on disk (#154) so a
+            # cold index cache no longer silently yields an empty index union.
+            skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
             contexts = build_skill_contexts(
                 repo_path=repo_path,
                 skill_ids=skill_ids,
                 languages=args.languages,
                 cache_dir=args.index_cache_dir,
+                skills_dir=skills_dir,
                 embedding_model=args.embedding_model,
                 embedding_dimension=args.embedding_dimension,
                 default_top_k=args.topk,
@@ -416,15 +420,14 @@ def evaluate_instance(
                 "eval_mode": "bm25_baseline",
             }
         elif args.eval_mode == "hybrid_baseline":
-            execution_log.append(
-                "Running hybrid baseline (BM25 → embedding rerank)..."
-            )
+            execution_log.append("Running hybrid baseline (BM25 → embedding rerank)...")
             # Reuse pipeline from cache if available (avoids rebuilding indexes)
             pipeline = None
             if pipeline_cache is not None:
                 pipeline = pipeline_cache.get(repo_path)
                 if pipeline is None:
                     from codeminer.model import HybridRetrievePipeline
+
                     execution_log.append(f"Building new pipeline for {repo_path}")
                     pipeline = HybridRetrievePipeline(
                         repo_path=repo_path,
@@ -601,7 +604,9 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
             # vs just GT metadata (has 'target_files', 'code_blocks')
             if isinstance(eval_instances_data, list) and len(eval_instances_data) > 0:
                 first_item = eval_instances_data[0]
-                is_complete_instance = "repo" in first_item and "problem_statement" in first_item
+                is_complete_instance = (
+                    "repo" in first_item and "problem_statement" in first_item
+                )
 
                 if is_complete_instance:
                     logger.info(
@@ -610,6 +615,7 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
                     )
                     # Convert to Arrow dataset format for compatibility
                     import datasets
+
                     instances = datasets.Dataset.from_list(eval_instances_data)
 
                     # Build eval_lookup from the same data (extract GT fields)
@@ -636,7 +642,8 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
                         root=args.cache_dir,
                         repo_root=args.repo_cache_dir,
                     )
-                    # Set internal state so dataset.load() would return the instances we already loaded
+                    # Set internal state so dataset.load() returns the
+                    # instances we already loaded.
                     dataset._data = instances
                 else:
                     # Just GT metadata, load instances from HF as usual
@@ -648,13 +655,17 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
                         repo_root=args.repo_cache_dir,
                     )
                     instances = dataset.load()
-                    logger.info(f"Loaded {len(instances)} instances from {args.dataset}")
+                    logger.info(
+                        f"Loaded {len(instances)} instances from {args.dataset}"
+                    )
                     eval_lookup = dataset.load_eval_metadata(args.eval_instances)
             else:
                 # Empty or invalid file
                 raise ValueError(f"Invalid eval_instances file: {args.eval_instances}")
         else:
-            raise FileNotFoundError(f"Eval instances file not found: {args.eval_instances}")
+            raise FileNotFoundError(
+                f"Eval instances file not found: {args.eval_instances}"
+            )
     else:
         # No --eval-instances, load from HF dataset
         dataset = SwebenchDataset(
@@ -726,7 +737,11 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
             )
 
             result = evaluate_instance(
-                instance, dataset, llm, args, eval_metadata=eval_lookup,
+                instance,
+                dataset,
+                llm,
+                args,
+                eval_metadata=eval_lookup,
                 pipeline_cache=pipeline_cache,
             )
             results.append(result)
