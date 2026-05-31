@@ -15,9 +15,11 @@ with a single thin wrapper that provides the same two-method interface:
 
 from __future__ import annotations
 
+import random
 import re
+import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import litellm
 from pydantic import BaseModel
@@ -25,6 +27,89 @@ from pydantic import BaseModel
 from ..log_utils import get_logger
 
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Retry policy (issue #109)
+# ---------------------------------------------------------------------------
+#
+# litellm normalizes every provider error to an OpenAI-style exception class.
+# Only a subset are *transient* -- worth retrying because a later attempt may
+# succeed without any change to the request (rate limits, timeouts, upstream
+# 5xx / connection blips). Everything else (auth, bad request, content policy,
+# context-window-exceeded, ...) is a deterministic failure of *this* request
+# and retrying just wastes the budget, so we re-raise immediately.
+
+
+def _transient_exception_types() -> Tuple[type, ...]:
+    """litellm exception classes that warrant a retry.
+
+    Resolved at call time (not import time) so the tuple reflects whatever
+    litellm version is installed; unknown names degrade to ``()`` gracefully.
+    """
+    names = (
+        "RateLimitError",
+        "Timeout",
+        "APIConnectionError",
+        "ServiceUnavailableError",
+        "InternalServerError",
+        "BadGatewayError",
+        "APIError",  # generic upstream error; kept last (broadest)
+    )
+    types: List[type] = []
+    for name in names:
+        exc = getattr(litellm, name, None)
+        if isinstance(exc, type) and issubclass(exc, BaseException):
+            types.append(exc)
+    # Network-level timeouts can surface as the stdlib TimeoutError too.
+    types.append(TimeoutError)
+    return tuple(types)
+
+
+def is_transient_error(exc: BaseException) -> bool:
+    """True if *exc* is a transient LLM error worth retrying.
+
+    Non-transient errors (authentication, bad request, content policy,
+    context-window-exceeded, ...) return ``False`` so the caller fails fast.
+    """
+    transient = _transient_exception_types()
+    if not isinstance(exc, transient):
+        return False
+    # ``ContextWindowExceededError`` subclasses ``BadRequestError`` in some
+    # litellm versions but ``APIError`` in others; it is never transient
+    # (the request is too big and will be on every retry), so exclude it.
+    permanent = tuple(
+        t
+        for name in ("ContextWindowExceededError", "BadRequestError")
+        if isinstance((t := getattr(litellm, name, None)), type)
+    )
+    if permanent and isinstance(exc, permanent):
+        return False
+    return True
+
+
+@dataclass(slots=True)
+class RetryConfig:
+    """Exponential-backoff retry policy for transient LLM errors.
+
+    ``max_retries`` is the number of *additional* attempts after the first,
+    so the call is made at most ``max_retries + 1`` times. ``base_delay`` is
+    the first backoff in seconds; each subsequent wait is ``base_delay *
+    2**attempt`` capped at ``max_delay``. A small random jitter spreads
+    retries out so concurrent callers don't synchronize.
+    """
+
+    max_retries: int = 2
+    base_delay: float = 0.5
+    max_delay: float = 8.0
+    jitter: float = 0.1
+
+    def backoff(self, attempt: int) -> float:
+        """Seconds to sleep before retry ``attempt`` (0-based)."""
+        delay = min(self.base_delay * (2**attempt), self.max_delay)
+        if self.jitter:
+            delay += random.uniform(0, self.jitter * delay)
+        return delay
 
 
 def _no_thinking_kwargs(model: str) -> Dict[str, Any]:
@@ -83,6 +168,7 @@ class LiteLLMChat:
     api_key: Optional[str] = None
     api_base: Optional[str] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+    retry: RetryConfig = field(default_factory=RetryConfig)
 
     def invoke(self, messages: List[ChatMessage]) -> str:
         """Send messages and return the assistant content string."""
@@ -111,8 +197,6 @@ class LiteLLMChat:
           provided, the response's token usage and cost are recorded.
         - ``usage_turn``: turn index attached to the recorded usage entry.
         """
-        import time as _time
-
         usage_tracker = overrides.pop("usage_tracker", None)
         usage_turn = overrides.pop("usage_turn", None)
 
@@ -133,9 +217,9 @@ class LiteLLMChat:
         # Drop None values so litellm uses its defaults
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
-        start = _time.monotonic()
-        response = litellm.completion(**kwargs)
-        duration_ms = (_time.monotonic() - start) * 1000
+        start = time.monotonic()
+        response = self._completion_with_retry(kwargs)
+        duration_ms = (time.monotonic() - start) * 1000
 
         if usage_tracker is not None:
             usage_tracker.record_response(
@@ -146,6 +230,38 @@ class LiteLLMChat:
             )
 
         return response
+
+    def _completion_with_retry(self, kwargs: Dict[str, Any]) -> Any:
+        """Call ``litellm.completion`` with exponential-backoff retries.
+
+        Transient errors (rate limit, timeout, upstream 5xx / connection
+        blips -- see :func:`is_transient_error`) are retried up to
+        ``self.retry.max_retries`` times with backoff. Non-transient errors
+        (auth, bad request, content policy, context-window-exceeded) are
+        re-raised on the first failure so the caller fails fast.
+        """
+        max_retries = max(0, self.retry.max_retries)
+        last_exc: Optional[BaseException] = None
+        for attempt in range(max_retries + 1):
+            try:
+                return litellm.completion(**kwargs)
+            except Exception as exc:  # noqa: BLE001 -- classified below
+                last_exc = exc
+                if attempt >= max_retries or not is_transient_error(exc):
+                    raise
+                delay = self.retry.backoff(attempt)
+                logger.warning(
+                    "litellm.completion transient error (attempt %d/%d), "
+                    "retrying in %.2fs: %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    delay,
+                    exc,
+                )
+                time.sleep(delay)
+        # Unreachable: the loop either returns or raises. Re-raise defensively.
+        assert last_exc is not None
+        raise last_exc
 
 
 # ---------------------------------------------------------------------------

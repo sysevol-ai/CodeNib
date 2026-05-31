@@ -4,11 +4,20 @@
 
 """LLM module for CodeMiner."""
 
-from .litellm_chat import ChatMessage, LiteLLMChat, human_message, system_message
+from .litellm_chat import (
+    ChatMessage,
+    LiteLLMChat,
+    RetryConfig,
+    human_message,
+    is_transient_error,
+    system_message,
+)
 
 __all__ = [
     "ChatMessage",
     "LiteLLMChat",
+    "RetryConfig",
     "human_message",
+    "is_transient_error",
     "system_message",
 ]

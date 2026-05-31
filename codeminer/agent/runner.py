@@ -18,11 +18,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Union
 
 from ..compiler.manifest import RepoManifest
-from ..llm.litellm_chat import LiteLLMChat
+from ..llm.litellm_chat import LiteLLMChat, RetryConfig
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
+from .history import PlainChatHistory, TokenBudgetedChatHistory
 from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
 from .tool_schema import registry_to_tools
@@ -117,6 +118,7 @@ class AgentRunner:
         max_tokens: int = 512,
         system_prompt: Optional[str] = None,
         max_turns: int = 10,
+        max_context_tokens: Optional[int] = None,
         allow_skills: Optional[Set[str]] = None,
         exclude_skills: Optional[Set[str]] = None,
         manifest: Optional[Any] = None,
@@ -124,6 +126,7 @@ class AgentRunner:
         compile_table: Optional[Any] = None,
         include_default_tools: bool = True,
         default_tool_ids: Optional[Set[str]] = None,
+        retry: Optional[RetryConfig] = None,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -132,9 +135,15 @@ class AgentRunner:
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                retry=retry or RetryConfig(),
             )
         else:
             raise ValueError("Either 'llm' or 'model' must be provided")
+        # Optional per-run context-window cap. When set, ``run()`` keeps the
+        # conversation in a :class:`TokenBudgetedChatHistory` that evicts the
+        # oldest non-system messages once the budget would be exceeded, so a
+        # long tool-calling loop can't overflow the model context.
+        self.max_context_tokens = max_context_tokens
         self.registry = registry or SkillRegistry()
         # Always-on default tool layer (read + grep + glob + bash): registered
         # unconditionally so every query — and every agent-compile subset —
@@ -310,10 +319,9 @@ class AgentRunner:
                         effective = set(self._base_allow)
                 tools = self._tools_for(effective)
 
-        messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": query},
-        ]
+        history = self._new_history()
+        history.add_message({"role": "system", "content": self.system_prompt})
+        history.add_message({"role": "user", "content": query})
         all_tool_calls: List[ToolCallRecord] = []
         usage_tracker = UsageTracker()
         start = time.monotonic()
@@ -328,12 +336,13 @@ class AgentRunner:
             if tools:
                 call_kwargs["tools"] = tools
 
-            response = self.llm._call_raw(messages, **call_kwargs)
+            response = self.llm._call_raw(history.get_messages(), **call_kwargs)
             choice = response.choices[0]
             assistant_msg = choice.message
 
-            # Append assistant message to conversation
-            messages.append(_message_to_dict(assistant_msg))
+            # Append assistant message to conversation (may evict oldest
+            # non-system messages when a context-token budget is set).
+            history.add_message(_message_to_dict(assistant_msg))
 
             # Check for tool calls
             tool_calls = getattr(assistant_msg, "tool_calls", None)
@@ -344,7 +353,7 @@ class AgentRunner:
                 return AgentResult(
                     answer=answer,
                     tool_calls=all_tool_calls,
-                    messages=messages,
+                    messages=history.get_messages(),
                     total_turns=turn + 1,
                     total_duration_ms=elapsed,
                     usage=usage_tracker.totals(),
@@ -357,7 +366,7 @@ class AgentRunner:
                 all_tool_calls.append(record)
 
                 # Append tool response message
-                messages.append(
+                history.add_message(
                     {
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -369,7 +378,7 @@ class AgentRunner:
 
         # Max turns exhausted. Prefer the last textual assistant message.
         last_content = ""
-        for msg in reversed(messages):
+        for msg in reversed(history.get_messages()):
             if msg.get("role") == "assistant" and msg.get("content"):
                 last_content = msg["content"]
                 break
@@ -380,7 +389,7 @@ class AgentRunner:
         # work should not report nothing. Best-effort: never crash on the
         # summary call.
         if not last_content and all_tool_calls:
-            messages.append(
+            history.add_message(
                 {
                     "role": "user",
                     "content": (
@@ -392,12 +401,12 @@ class AgentRunner:
             )
             try:
                 final = self.llm._call_raw(
-                    messages,
+                    history.get_messages(),
                     usage_tracker=usage_tracker,
                     usage_turn=max_turns + 1,
                 )
                 forced_msg = final.choices[0].message
-                messages.append(_message_to_dict(forced_msg))
+                history.add_message(_message_to_dict(forced_msg))
                 last_content = getattr(forced_msg, "content", None) or ""
             except Exception as exc:  # best-effort summary; keep the partial run
                 logger.warning("forced final-answer turn failed: %s", exc)
@@ -406,7 +415,7 @@ class AgentRunner:
         return AgentResult(
             answer=last_content,
             tool_calls=all_tool_calls,
-            messages=messages,
+            messages=history.get_messages(),
             total_turns=max_turns,
             total_duration_ms=elapsed,
             usage=usage_tracker.totals(),
@@ -416,6 +425,20 @@ class AgentRunner:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _new_history(self):
+        """Build the chat-history container for one ``run()``.
+
+        Returns a :class:`~codeminer.agent.history.TokenBudgetedChatHistory`
+        when ``max_context_tokens`` is set (so a long loop can't overflow the
+        model context), otherwise an unbounded
+        :class:`~codeminer.agent.history.PlainChatHistory` that behaves like
+        the original bare message list.
+        """
+        if self.max_context_tokens:
+            model = getattr(self.llm, "model", None)
+            return TokenBudgetedChatHistory(self.max_context_tokens, model=model)
+        return PlainChatHistory()
 
     def _execute_tool_call(self, tc: Any) -> ToolCallRecord:
         """Execute a single tool call from the LLM response."""
@@ -654,6 +677,8 @@ class CodeMinerAgentOptions:
     max_tokens: int = 512
     system_prompt: Optional[str] = None
     max_turns: int = 10
+    max_context_tokens: Optional[int] = None
+    retry: Optional[RetryConfig] = None
 
     # --- extras for SessionContext.extras ---
     session_extras: Dict[str, Any] = field(default_factory=dict)
@@ -788,6 +813,8 @@ def query(
         max_tokens=opts.max_tokens,
         system_prompt=opts.system_prompt,
         max_turns=opts.max_turns,
+        max_context_tokens=opts.max_context_tokens,
+        retry=opts.retry,
         allow_skills=set(opts.allowed_skills) if opts.allowed_skills else None,
         exclude_skills=set(opts.excluded_skills) if opts.excluded_skills else None,
         manifest=manifest,
