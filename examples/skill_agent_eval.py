@@ -33,7 +33,7 @@ Examples:
 
     # Multiple skills — agent picks among them
     python examples/skill_agent_eval.py \
-        --skills bm25_search embedding_search graph_expand \
+        --skills bm25_search embedding_search find_callers \
         --max-turns 10
 """
 
@@ -642,7 +642,7 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
                         root=args.cache_dir,
                         repo_root=args.repo_cache_dir,
                     )
-                    # Set internal state so dataset.load() returns the
+                    # Set internal state so dataset.load() would return the
                     # instances we already loaded.
                     dataset._data = instances
                 else:
@@ -955,7 +955,7 @@ def parse_args() -> argparse.Namespace:
             "Skill IDs the agent is allowed to use (allowlist). The compiler "
             "resolves the union of index_requirements across these skills and "
             "builds (or reuses cached) indexes accordingly. Examples: "
-            "bm25_search / embedding_search / graph_expand / hybrid_search."
+            "bm25_search / embedding_search / find_callers / hybrid_search."
         ),
     )
     parser.add_argument(

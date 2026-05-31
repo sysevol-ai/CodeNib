@@ -4,13 +4,13 @@
 
 # Cost study (#133) — STRUCTURED condition: the default file tools are
 # WITHHELD (include_default_tools: false), so the agent must localize with
-# embedding_search (semantic recall) + graph_expand (call-graph navigation).
-# This forces the structured/LSP path the agent otherwise refuses to take, to
-# measure whether it reaches the same files as the FREE (grep/read) agent at
-# far fewer tokens.
+# embedding_search (semantic recall) + the call-graph verbs
+# (find_callers/find_callees/trace). This forces the structured/LSP path the
+# agent otherwise refuses to take, to measure whether it reaches the same files
+# as the FREE (grep/read) agent at far fewer tokens.
 #
 # Run per model (same instances as cost_free.yaml):
-#   python scripts/agent_compile/run_sample_sweep.py --config <this> \
+#   python scripts/agent_compile/run_agent_sweep.py --config <this> \
 #       --output-dir results/agent_compile/cost_structured_haiku
 #   ... --model vertex_ai/gemini-2.5-flash --vertex-location us-central1 ...
 
@@ -43,4 +43,6 @@ instances:
 subsets:
   STRUCT:
     - embedding_search
-    - graph_expand
+    - find_callers
+    - find_callees
+    - trace

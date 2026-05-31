@@ -9,7 +9,7 @@
 # Pair with cost_structured.yaml (same instances, no file tools, embedding +
 # graph forced) to test whether graph/LSP navigation reaches the same files at
 # far fewer tokens. Run per model:
-#   python scripts/agent_compile/run_sample_sweep.py --config <this> \
+#   python scripts/agent_compile/run_agent_sweep.py --config <this> \
 #       --output-dir results/agent_compile/cost_free_haiku
 #   ... --model vertex_ai/gemini-2.5-flash --vertex-location us-central1 \
 #       --output-dir results/agent_compile/cost_free_gemini

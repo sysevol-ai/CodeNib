@@ -4,7 +4,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from ....ops.retrieve import RetrieveContext
+    from ....types import QueriedNode
 
 
 def _get_score(item: Any) -> float:
@@ -50,7 +54,7 @@ def _with_score(item: Any, score: float, content_override: Optional[str] = None)
     return item
 
 
-def create_executor(context: Any) -> Callable[..., List[Any]]:
+def create_executor(context: "RetrieveContext") -> Callable[..., List["QueriedNode"]]:
     """Factory: returns a callable that performs weighted score fusion.
 
     Unlike the other retrieval executors, the hybrid executor does not call
@@ -69,7 +73,7 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
         top_k: int = 20,
         weights: Optional[List[float]] = None,
         **kwargs: Any,
-    ) -> List[Any]:
+    ) -> List["QueriedNode"]:
         if not candidates:
             return []
 

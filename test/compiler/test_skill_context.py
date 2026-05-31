@@ -16,8 +16,10 @@ pin down:
 - ``build_skill_contexts`` returns a dict with per-skill-type keys,
   populated only when at least one skill of that type is requested.
 - Already-built indexes are loaded; missing types trigger a build.
+- ``required_index_types`` excludes requirements marked ``required: false``;
+  ``optional_index_types`` returns exactly those.
 - Skills with no index requirements still get a context if a sibling
-  skill of the same type needs one (e.g. ``regex_search`` shares
+  skill of the same type needs one (e.g. ``embedding_search`` shares
   ``"retrieve"`` with ``bm25_search``).
 """
 
@@ -37,6 +39,7 @@ from codeminer.agent.skills.core import (
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.compiler import resources as compiler_resources
 from codeminer.compiler import skill_context
+from codeminer.compiler.manifest import IndexEntry, RepoManifest
 
 
 def _make_meta(
@@ -70,11 +73,11 @@ def registry():
     reg.register(
         _make_meta("embedding_search", SkillType.RETRIEVAL, index_types=["vector"])
     )
-    reg.register(_make_meta("regex_search", SkillType.RETRIEVAL))
+    reg.register(_make_meta("hybrid_search", SkillType.RETRIEVAL))
     reg.register(
-        _make_meta("graph_expand", SkillType.EXPAND, index_types=["symbol_graph"])
+        _make_meta("find_callers", SkillType.EXPAND, index_types=["symbol_graph"])
     )
-    reg.register(_make_meta("query_transform", SkillType.TRANSFORM))
+    reg.register(_make_meta("code_to_query", SkillType.TRANSFORM))
     return reg
 
 
@@ -94,17 +97,17 @@ def test_required_types_single(registry):
 
 def test_required_types_union(registry):
     got = skill_context.required_index_types(
-        ["bm25_search", "embedding_search", "graph_expand"],
+        ["bm25_search", "embedding_search", "find_callers"],
         skill_registry=registry,
     )
     assert got == {"bm25", "vector", "symbol_graph"}
 
 
 def test_required_types_skips_no_requirement_skills(registry):
-    """``regex_search`` and ``query_transform`` declare no index_requirements;
+    """``hybrid_search`` and ``code_to_query`` declare no index_requirements;
     they must not contaminate the union."""
     got = skill_context.required_index_types(
-        ["regex_search", "query_transform"], skill_registry=registry
+        ["hybrid_search", "code_to_query"], skill_registry=registry
     )
     assert got == set()
 
@@ -115,6 +118,71 @@ def test_required_types_unknown_skill_silently_ignored(registry):
         ["bm25_search", "does_not_exist"], skill_registry=registry
     )
     assert got == {"bm25"}
+
+
+# ---------------------------------------------------------------------------
+# required vs optional split — required_index_types() drops required:false
+# requirements; optional_index_types() returns exactly those.
+# ---------------------------------------------------------------------------
+
+
+def _make_mixed_meta(skill_id: str, skill_type: SkillType) -> SkillMetadata:
+    """A skill that requires ``bm25`` but only *optionally* uses ``symbol_graph``.
+
+    Mirrors ``bm25_search``'s real config, where ``symbol_graph`` is declared
+    ``required: false`` (used to relabel names if present, never force-built).
+    """
+    reqs = [
+        compiler_resources.IndexRequirement(index_type="bm25"),
+        compiler_resources.IndexRequirement(index_type="symbol_graph", required=False),
+    ]
+    return SkillMetadata(
+        skill_id=skill_id,
+        skill_type=skill_type,
+        inputs=[SkillInputSpec(name="query", type_hint="str")],
+        outputs=SkillOutputSpec(type_hint="List[Any]"),
+        cost=Cost.LOW,
+        index_requirements=reqs,
+    )
+
+
+@pytest.fixture
+def mixed_registry():
+    reg = SkillRegistry()
+    reg.register(_make_mixed_meta("mixed_search", SkillType.RETRIEVAL))
+    return reg
+
+
+def test_required_types_excludes_optional(mixed_registry):
+    """``required: false`` requirements must NOT appear in the required union —
+    those are "use if present, don't force a build"."""
+    got = skill_context.required_index_types(
+        ["mixed_search"], skill_registry=mixed_registry
+    )
+    assert got == {"bm25"}
+    assert "symbol_graph" not in got
+
+
+def test_optional_types_returns_only_optional(mixed_registry):
+    """``optional_index_types`` returns exactly the ``required: false`` set,
+    and never the required ones."""
+    got = skill_context.optional_index_types(
+        ["mixed_search"], skill_registry=mixed_registry
+    )
+    assert got == {"symbol_graph"}
+    assert "bm25" not in got
+
+
+def test_required_and_optional_are_disjoint(mixed_registry):
+    required = skill_context.required_index_types(
+        ["mixed_search"], skill_registry=mixed_registry
+    )
+    optional = skill_context.optional_index_types(
+        ["mixed_search"], skill_registry=mixed_registry
+    )
+    assert required.isdisjoint(optional)
+    assert required == {"bm25"}
+    assert optional == {"symbol_graph"}
 
 
 # ---------------------------------------------------------------------------
@@ -167,10 +235,10 @@ def test_build_returns_retrieve_for_bm25(registry, mocked_build, tmp_path):
     assert rc.vector_store is None
 
 
-def test_build_returns_expand_for_graph_expand(registry, mocked_build, tmp_path):
+def test_build_returns_expand_for_find_callers(registry, mocked_build, tmp_path):
     contexts = skill_context.build_skill_contexts(
         repo_path=str(tmp_path),
-        skill_ids=["graph_expand"],
+        skill_ids=["find_callers"],
         cache_dir=str(tmp_path / "cache"),
         skill_registry=registry,
     )
@@ -181,7 +249,7 @@ def test_build_returns_expand_for_graph_expand(registry, mocked_build, tmp_path)
 def test_build_returns_both_keys_for_mixed_skills(registry, mocked_build, tmp_path):
     contexts = skill_context.build_skill_contexts(
         repo_path=str(tmp_path),
-        skill_ids=["bm25_search", "embedding_search", "graph_expand"],
+        skill_ids=["bm25_search", "embedding_search", "find_callers"],
         cache_dir=str(tmp_path / "cache"),
         skill_registry=registry,
     )
@@ -226,12 +294,12 @@ def test_custom_composer_alone_gets_retrieve_and_expand(
 def test_sibling_skill_with_no_requirement_still_gets_context(
     registry, mocked_build, tmp_path
 ):
-    """``regex_search`` declares no index_requirements but is a RETRIEVAL
+    """``hybrid_search`` declares no index_requirements but is a RETRIEVAL
     skill. When requested alongside ``bm25_search``, it shares the
     ``"retrieve"`` context that bm25 forced into existence."""
     contexts = skill_context.build_skill_contexts(
         repo_path=str(tmp_path),
-        skill_ids=["bm25_search", "regex_search"],
+        skill_ids=["bm25_search", "hybrid_search"],
         cache_dir=str(tmp_path / "cache"),
         skill_registry=registry,
     )
@@ -239,12 +307,12 @@ def test_sibling_skill_with_no_requirement_still_gets_context(
 
 
 def test_transform_skill_alone_returns_empty_dict(registry, mocked_build, tmp_path):
-    """``query_transform`` is TRANSFORM type with no index requirements.
+    """``code_to_query`` is TRANSFORM type with no index requirements.
     Currently no transform context is plumbed through — the dict stays
     empty rather than fabricating a useless entry."""
     contexts = skill_context.build_skill_contexts(
         repo_path=str(tmp_path),
-        skill_ids=["query_transform"],
+        skill_ids=["code_to_query"],
         cache_dir=str(tmp_path / "cache"),
         skill_registry=registry,
     )
@@ -315,6 +383,54 @@ def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):
     assert mocked_build["compile"] == [("vector",)]
     # Both types are loaded after build (build happened, both dirs populated).
     assert sorted(mocked_build["loaded"]) == ["bm25", "vector"]
+
+
+# ---------------------------------------------------------------------------
+# optional index handling in build_skill_contexts — load-if-present only,
+# never build.
+# ---------------------------------------------------------------------------
+
+
+def test_optional_index_loaded_when_already_present(
+    mixed_registry, mocked_build, tmp_path
+):
+    """``mixed_search`` requires ``bm25`` and optionally uses ``symbol_graph``.
+    When ``symbol_graph`` already exists on disk it is loaded (and packaged
+    into an ``expand`` context) — but it is never handed to the compiler."""
+    cache = tmp_path / "cache"
+    graph_dir = cache / "symbol_graph"
+    graph_dir.mkdir(parents=True)
+    (graph_dir / "graph.pkl").write_text("x")
+
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["mixed_search"],
+        cache_dir=str(cache),
+        skill_registry=mixed_registry,
+    )
+    # bm25 is required & missing -> built; symbol_graph is optional -> NOT built.
+    assert mocked_build["compile"] == [("bm25",)]
+    assert "symbol_graph" not in [t for tup in mocked_build["compile"] for t in tup]
+    # Present-on-disk optional index is loaded alongside the required bm25.
+    assert sorted(mocked_build["loaded"]) == ["bm25", "symbol_graph"]
+    assert contexts["retrieve"].bm25 is not None
+    assert contexts["expand"].code_graph is not None
+
+
+def test_optional_index_skipped_when_absent(mixed_registry, mocked_build, tmp_path):
+    """When the optional ``symbol_graph`` is absent on disk, it is neither
+    built nor loaded — and no ``expand`` context is fabricated for it."""
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["mixed_search"],
+        cache_dir=str(tmp_path / "cache"),
+        skill_registry=mixed_registry,
+    )
+    # Only the required bm25 is built; optional symbol_graph never triggers one.
+    assert mocked_build["compile"] == [("bm25",)]
+    assert mocked_build["loaded"] == ["bm25"]
+    assert "expand" not in contexts
+    assert contexts["retrieve"].bm25 is not None
 
 
 def test_build_skill_contexts_without_reset_is_idempotent(
@@ -523,3 +639,110 @@ def test_read_skill_configs_is_cached(skills_dir):
         "regex_search",
         "codeminer_context",
     }
+
+
+# ---------------------------------------------------------------------------
+# load_contexts_from_manifest — optional index loads when fresh, skips (no
+# raise) when absent; a missing *required* index still raises.
+# ---------------------------------------------------------------------------
+
+
+def _fresh_entry(index_type: str, path: str) -> IndexEntry:
+    return IndexEntry(
+        index_type=index_type,
+        path=path,
+        built_at="2026-01-01T00:00:00Z",
+        built_at_epoch=0.0,
+        status="fresh",
+    )
+
+
+def test_manifest_loads_optional_index_when_fresh(mixed_registry, mocked_build):
+    """``mixed_search`` requires ``bm25`` and optionally uses ``symbol_graph``.
+    When the manifest has a fresh ``symbol_graph`` entry it is loaded and an
+    ``expand`` context is packaged."""
+    manifest = RepoManifest(
+        indexes={
+            "bm25": _fresh_entry("bm25", "/idx/bm25"),
+            "symbol_graph": _fresh_entry("symbol_graph", "/idx/graph"),
+        }
+    )
+    contexts = skill_context.load_contexts_from_manifest(
+        manifest,
+        skill_ids=["mixed_search"],
+        skill_registry=mixed_registry,
+    )
+    assert sorted(mocked_build["loaded"]) == ["bm25", "symbol_graph"]
+    assert contexts["retrieve"].bm25 is not None
+    assert contexts["expand"].code_graph is not None
+
+
+def test_manifest_skips_optional_index_when_absent(mixed_registry, mocked_build):
+    """When the optional ``symbol_graph`` is absent from the manifest it is
+    skipped silently (no raise) — only the required ``bm25`` is loaded and no
+    ``expand`` context is created."""
+    manifest = RepoManifest(
+        indexes={
+            "bm25": _fresh_entry("bm25", "/idx/bm25"),
+        }
+    )
+    contexts = skill_context.load_contexts_from_manifest(
+        manifest,
+        skill_ids=["mixed_search"],
+        skill_registry=mixed_registry,
+    )
+    assert mocked_build["loaded"] == ["bm25"]
+    assert "expand" not in contexts
+    assert contexts["retrieve"].bm25 is not None
+
+
+def test_manifest_missing_required_index_raises(mixed_registry, mocked_build):
+    """A *required* index that the manifest lacks must raise loudly, rather
+    than deferring to a "Skill not available" error at tool-call time."""
+    manifest = RepoManifest(
+        indexes={
+            "symbol_graph": _fresh_entry("symbol_graph", "/idx/graph"),
+        }
+    )
+    with pytest.raises(ValueError, match="bm25"):
+        skill_context.load_contexts_from_manifest(
+            manifest,
+            skill_ids=["mixed_search"],
+            skill_registry=mixed_registry,
+        )
+
+
+def test_corrupt_optional_graph_degrades_not_crash(
+    mixed_registry, monkeypatch, tmp_path
+):
+    """A present-but-stale/corrupt OPTIONAL symbol_graph must NOT crash the
+    build — it degrades to "no graph" (the ``required: false`` contract).
+
+    Regression: build_skill_contexts opportunistically loads an optional index
+    when its dir is non-empty; a schema-bumped / partial graph.pkl makes
+    CodeGraph.load_graph raise, which previously crashed a bm25-only pipeline.
+    """
+    cache = tmp_path / "cache"
+    (cache / "bm25").mkdir(parents=True)
+    (cache / "bm25" / "documents.json").write_text("{}")
+    # symbol_graph dir present (non-empty) but its load raises.
+    (cache / "symbol_graph").mkdir(parents=True)
+    (cache / "symbol_graph" / "graph.pkl").write_text("corrupt")
+
+    monkeypatch.setattr(skill_context, "_run_compiler", lambda *a, **k: None)
+    monkeypatch.setattr(skill_context, "_load_bm25", lambda d: object())
+
+    def boom(_dir):
+        raise ValueError("schema_version mismatch")
+
+    monkeypatch.setattr(skill_context, "_load_symbol_graph", boom)
+
+    # Must not raise even though the optional graph load fails.
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["mixed_search"],
+        cache_dir=str(cache),
+        skill_registry=mixed_registry,
+    )
+    assert "retrieve" in contexts  # bm25 still loaded
+    assert "expand" not in contexts  # graph degraded to absent

@@ -17,8 +17,8 @@ Test layout:
 - ``TestGrep``                     — content / files / count modes + filters.
 - ``TestGlob``                     — filename enumeration.
 - ``TestBash``                     — shell execution.
-- ``TestGetDefaultSkillMetadata``  — registry-facing metadata + enum schema.
-- ``TestEnsureDefaultsRegistered`` — idempotent registration.
+- ``TestGetDefaultToolSpecs``      — registry-facing metadata + enum schema.
+- ``TestEnsureDefaultToolsRegistered`` — idempotent registration.
 - ``TestAgentRunnerDefaults``      — defaults survive allow/exclude filters
                                      and dispatch end-to-end through the runner.
 - ``TestSmokeRealFile``            — smoke test against the live runner.py.
@@ -37,17 +37,18 @@ import pytest
 
 from codeminer.agent.runner import AgentRunner
 from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.tool_schema import skill_to_tool_schema
+from codeminer.agent.tool_schema import tool_to_schema
 from codeminer.agent.tools.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
-    DEFAULT_SKILL_IDS,
+    DEFAULT_TOOL_IDS,
     _bash,
     _glob,
     _grep,
     _read,
-    ensure_defaults_registered,
-    get_default_skill_metadata,
+    ensure_default_tools_registered,
+    get_default_tool_specs,
 )
+from codeminer.agent.tools.spec import ToolRegistry
 from codeminer.llm.litellm_chat import LiteLLMChat
 
 # ---------------------------------------------------------------------------
@@ -299,26 +300,26 @@ class TestBash:
 
 
 # ---------------------------------------------------------------------------
-# get_default_skill_metadata
+# get_default_tool_specs
 # ---------------------------------------------------------------------------
 
 
-class TestGetDefaultSkillMetadata:
+class TestGetDefaultToolSpecs:
     def test_returns_exactly_four_defaults(self):
-        ids = {m.skill_id for m in get_default_skill_metadata()}
-        assert ids == set(DEFAULT_SKILL_IDS) == {"read", "grep", "glob", "bash"}
+        ids = {m.tool_id for m in get_default_tool_specs()}
+        assert ids == set(DEFAULT_TOOL_IDS) == {"read", "grep", "glob", "bash"}
 
     def test_read_requires_file_path(self):
-        meta = {m.skill_id: m for m in get_default_skill_metadata()}["read"]
-        required = {i.name for i in meta.inputs if i.required}
+        spec = {m.tool_id: m for m in get_default_tool_specs()}["read"]
+        required = {i.name for i in spec.inputs if i.required}
         assert "file_path" in required
 
     def test_grep_requires_pattern_exposes_output_mode_enum(self):
-        meta = {m.skill_id: m for m in get_default_skill_metadata()}["grep"]
-        required = {i.name for i in meta.inputs if i.required}
+        spec = {m.tool_id: m for m in get_default_tool_specs()}["grep"]
+        required = {i.name for i in spec.inputs if i.required}
         assert "pattern" in required
         # output_mode is optional and must carry an enum constraint in-schema.
-        schema = skill_to_tool_schema(meta)
+        schema = tool_to_schema(spec)
         props = schema["function"]["parameters"]["properties"]
         assert "output_mode" in props
         assert props["output_mode"].get("enum") == [
@@ -328,34 +329,34 @@ class TestGetDefaultSkillMetadata:
         ]
 
     def test_glob_requires_pattern(self):
-        meta = {m.skill_id: m for m in get_default_skill_metadata()}["glob"]
-        required = {i.name for i in meta.inputs if i.required}
+        spec = {m.tool_id: m for m in get_default_tool_specs()}["glob"]
+        required = {i.name for i in spec.inputs if i.required}
         assert "pattern" in required
 
     def test_bash_requires_command(self):
-        meta = {m.skill_id: m for m in get_default_skill_metadata()}["bash"]
-        required = {i.name for i in meta.inputs if i.required}
+        spec = {m.tool_id: m for m in get_default_tool_specs()}["bash"]
+        required = {i.name for i in spec.inputs if i.required}
         assert "command" in required
 
 
 # ---------------------------------------------------------------------------
-# ensure_defaults_registered
+# ensure_default_tools_registered
 # ---------------------------------------------------------------------------
 
 
-class TestEnsureDefaultsRegistered:
-    def test_registers_all_default_skills(self):
-        reg = SkillRegistry()
-        ensure_defaults_registered(reg)
-        for skill_id in DEFAULT_SKILL_IDS:
-            assert reg.has(skill_id), f"{skill_id!r} not registered"
+class TestEnsureDefaultToolsRegistered:
+    def test_registers_all_default_tools(self):
+        reg = ToolRegistry()
+        ensure_default_tools_registered(reg)
+        for tool_id in DEFAULT_TOOL_IDS:
+            assert reg.has(tool_id), f"{tool_id!r} not registered"
 
     def test_idempotent_does_not_overwrite(self):
         """Second call is a no-op and preserves the original executor_fn."""
-        reg = SkillRegistry()
-        ensure_defaults_registered(reg)
+        reg = ToolRegistry()
+        ensure_default_tools_registered(reg)
         original_fn = reg.get("read").executor_fn
-        ensure_defaults_registered(reg)  # would ValueError if not idempotent
+        ensure_default_tools_registered(reg)  # would ValueError if not idempotent
         assert reg.get("read").executor_fn is original_fn
 
 
@@ -397,14 +398,14 @@ class TestAgentRunnerDefaults:
     def test_defaults_in_tools_on_empty_registry(self):
         runner = AgentRunner(_make_llm(), SkillRegistry())
         names = {t["function"]["name"] for t in runner.tools}
-        assert set(DEFAULT_SKILL_IDS).issubset(names)
+        assert set(DEFAULT_TOOL_IDS).issubset(names)
 
     def test_defaults_survive_exclude_skills(self):
         runner = AgentRunner(
-            _make_llm(), SkillRegistry(), exclude_skills=set(DEFAULT_SKILL_IDS)
+            _make_llm(), SkillRegistry(), exclude_skills=set(DEFAULT_TOOL_IDS)
         )
         names = {t["function"]["name"] for t in runner.tools}
-        assert set(DEFAULT_SKILL_IDS).issubset(names)
+        assert set(DEFAULT_TOOL_IDS).issubset(names)
 
     def test_defaults_survive_allow_skills(self):
         """allow_skills with a disjoint set still surfaces the defaults."""
@@ -412,7 +413,7 @@ class TestAgentRunnerDefaults:
             _make_llm(), SkillRegistry(), allow_skills={"some_other_skill"}
         )
         names = {t["function"]["name"] for t in runner.tools}
-        assert set(DEFAULT_SKILL_IDS).issubset(names)
+        assert set(DEFAULT_TOOL_IDS).issubset(names)
 
     def test_non_default_skill_still_excluded(self):
         from codeminer.agent.skills.core import SkillMetadata, SkillType
@@ -428,7 +429,31 @@ class TestAgentRunnerDefaults:
         runner = AgentRunner(_make_llm(), reg, exclude_skills={"custom_tool"})
         names = {t["function"]["name"] for t in runner.tools}
         assert "custom_tool" not in names
-        assert set(DEFAULT_SKILL_IDS).issubset(names)
+        assert set(DEFAULT_TOOL_IDS).issubset(names)
+
+    def test_skill_id_colliding_with_default_tool_raises(self):
+        """A skill named like a default tool would emit a duplicate function
+        name and shadow the tool — the runner must reject it at construction."""
+        from codeminer.agent.skills.core import SkillMetadata, SkillType
+
+        reg = SkillRegistry()
+        reg.register(
+            SkillMetadata(
+                skill_id="read",  # collides with the default `read` TOOL
+                skill_type=SkillType.CUSTOM,
+                executor_fn=lambda: "hi",
+            )
+        )
+        with pytest.raises(ValueError, match="collide with default tool"):
+            AgentRunner(_make_llm(), reg)
+
+    def test_empty_default_tool_ids_means_all(self):
+        """An explicitly-empty default_tool_ids restrictor means ALL defaults
+        (mirrors the empty->full skills contract); the off-switch is
+        include_default_tools=False."""
+        runner = AgentRunner(_make_llm(), SkillRegistry(), default_tool_ids=set())
+        names = {t["function"]["name"] for t in runner.tools}
+        assert set(DEFAULT_TOOL_IDS).issubset(names)
 
     def test_runner_executes_read(self, tmp_path):
         """End-to-end: runner dispatches a read tool call."""

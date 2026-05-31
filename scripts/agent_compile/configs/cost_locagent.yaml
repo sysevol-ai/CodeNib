@@ -27,7 +27,7 @@ metrics_k: [1, 3, 5, 10]
 gt_simplified_symbols: true
 include_default_tools: true
 # Graph-primary: read code, but NO grep — structured tools must navigate.
-default_tool_ids: ["file_read"]
+default_tool_ids: ["read"]
 system_prompt: |
   You are a code localization agent. Find the code locations (files and symbols)
   relevant to the request, then give a concise answer naming them.
@@ -37,16 +37,14 @@ system_prompt: |
   - bm25_search(query) — find entry-point symbols by name/identifier.
   - find_callers(symbol) / find_callees(symbol) — who calls X / what X calls.
   - trace(from_symbol, to_symbol) — the call path between two symbols.
-  - impact_analysis(symbol, direction) — TRANSITIVE callers ("impact": blast
-    radius) or callees ("dependencies"); multi-hop structural reach.
-  - file_read(path, start_line, end_line) — read a file / line range to confirm.
+  - read(file_path, offset, limit) — read a file / line range to confirm.
 
   Workflow — SEARCH -> NAVIGATE -> READ -> ANSWER:
   1. SEARCH — bm25_search for the symbols named/implied by the request.
   2. NAVIGATE — follow the call graph from those seeds: find_callers /
-     find_callees to move to adjacent code, trace / impact_analysis to reach the
-     site across functions. Re-seed with exact symbol names from results.
-  3. READ — file_read the most promising candidate(s) to confirm the code to
+     find_callees to move to adjacent code, trace to reach the site across
+     functions. Re-seed with exact symbol names from results.
+  3. READ — read the most promising candidate(s) to confirm the code to
      change is really there. If not, navigate further from what you just read.
   4. ANSWER — only once you have READ the implementing file. End with two lines,
      repo-relative:
@@ -70,4 +68,3 @@ subsets:
     - find_callers
     - find_callees
     - trace
-    - impact_analysis

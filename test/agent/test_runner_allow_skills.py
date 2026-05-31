@@ -20,7 +20,7 @@ from codeminer.agent.skills.core import (
 )
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.agent.tool_schema import registry_to_tools
-from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
+from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
 from codeminer.llm.litellm_chat import LiteLLMChat
 
 
@@ -31,7 +31,7 @@ def _swept(tools) -> set:
     regardless of allow_skills/exclude, so allow-filtering assertions test
     the *swept* skills with the defaults removed.
     """
-    return {t["function"]["name"] for t in tools} - set(DEFAULT_SKILL_IDS)
+    return {t["function"]["name"] for t in tools} - set(DEFAULT_TOOL_IDS)
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ class TestAgentRunnerAllowSkills:
         assert _swept(runner.tools) == {"a", "b"}
         # Defaults are always present on top of the allow set.
         names = {t["function"]["name"] for t in runner.tools}
-        assert set(DEFAULT_SKILL_IDS) <= names
+        assert set(DEFAULT_TOOL_IDS) <= names
 
     def test_allow_skills_none_includes_all(self, three_skill_registry):
         llm = MagicMock(spec=LiteLLMChat)
@@ -189,7 +189,7 @@ class TestAgentRunnerAllowSkills:
         )
         names = {t["function"]["name"] for t in runner.tools}
         assert names == {"a"}
-        assert not (set(DEFAULT_SKILL_IDS) & names)
+        assert not (set(DEFAULT_TOOL_IDS) & names)
 
     def test_default_tool_ids_subset_graph_primary(self, three_skill_registry):
         """LocAgent-style harness: expose read but withhold grep/glob/bash,
@@ -273,7 +273,7 @@ class TestAllowSkillsWithResourceGuard:
 
         assert _swept(runner.tools) == set()
         names = {t["function"]["name"] for t in runner.tools}
-        assert names == set(DEFAULT_SKILL_IDS)
+        assert names == set(DEFAULT_TOOL_IDS)
 
     def test_guard_does_not_expand_allow(self, three_skill_registry):
         """A skill marked ``available`` by the guard but NOT in

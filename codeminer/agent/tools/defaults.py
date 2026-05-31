@@ -4,9 +4,10 @@
 
 """Always-on default tool primitives: ``read`` / ``grep`` / ``glob`` / ``bash``.
 
-These four tools are registered into ``AgentRunner``'s skill registry at
-startup and are **never** removed by the ``exclude_skills`` or ``allow_skills``
-arguments — every skill subset (A0–A6) builds on top of them.
+These four tools are registered into ``AgentRunner``'s :class:`ToolRegistry`
+(separate from the skill registry) at startup and are **never** removed by the
+``exclude_skills`` or ``allow_skills`` arguments — every skill subset builds on
+top of them.
 
 Why four tools (and not the older single ``file_search`` multiplexer)?
 ----------------------------------------------------------------------
@@ -45,9 +46,9 @@ Python identifier. That rules out the reference's literal flag names
 Line numbers follow **opencode** style (``{lineno:6d} | {content}``) and the
 read/grep boundary is **1-based** throughout, aligned with #147/#153.
 
-The ``grep`` tool scans the raw filesystem with no index; for index-backed
-regex retrieval over parsed nodes use the separate ``regex_search`` skill in
-``skills/regex_search/``.
+The ``grep`` tool scans the raw filesystem with no index — it is the regex
+primitive for the agent (an earlier index-backed ``regex_search`` skill was
+removed in favour of it).
 
 Related issues: #133 (Agent Router RFC), #145 (defaults), #147 (line-number
 convention), #153 (1-based boundary).
@@ -62,17 +63,10 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from ..skills.core import (
-    Cost,
-    SkillInputSpec,
-    SkillMetadata,
-    SkillOutputSpec,
-    SkillType,
-)
-from ..skills.registry import SkillRegistry
+from .spec import ToolInputSpec, ToolRegistry, ToolSpec
 
-# Canonical skill IDs for the always-on defaults.
-DEFAULT_SKILL_IDS: frozenset[str] = frozenset({"read", "grep", "glob", "bash"})
+# Canonical tool IDs for the always-on defaults.
+DEFAULT_TOOL_IDS: frozenset[str] = frozenset({"read", "grep", "glob", "bash"})
 
 # Sensible token-safety caps.
 _MAX_LINES_DEFAULT: int = 200
@@ -202,7 +196,7 @@ def _read(
     return result
 
 
-_READ_SKILL_DOC = """\
+_READ_TOOL_DOC = """\
 # read
 
 Read a source file and return its content with per-row 1-based line numbers.
@@ -237,25 +231,24 @@ untrusted input MUST sandbox at the container / VM / process level.
 """
 
 
-def _build_read_skill() -> SkillMetadata:
-    return SkillMetadata(
-        skill_id="read",
-        skill_type=SkillType.CUSTOM,
+def _build_read_tool() -> ToolSpec:
+    return ToolSpec(
+        tool_id="read",
         inputs=[
-            SkillInputSpec(
+            ToolInputSpec(
                 name="file_path",
                 type_hint="str",
                 required=True,
                 description="Absolute or repo-relative path to the file.",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="offset",
                 type_hint="int",
                 required=False,
                 default=1,
                 description="First line to read (1-based, inclusive). Defaults to 1.",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="limit",
                 type_hint="int",
                 required=False,
@@ -263,21 +256,10 @@ def _build_read_skill() -> SkillMetadata:
                 description=(f"Max lines returned (default {_MAX_LINES_DEFAULT})."),
             ),
         ],
-        outputs=SkillOutputSpec(
-            type_hint="str",
-            description=(
-                "File content with 1-based line numbers in "
-                "`{lineno:6d} | {line}` format."
-            ),
-        ),
         executor_fn=_read,
-        async_capable=False,
-        cacheable=False,  # filesystem state may change between calls
-        cost=Cost.LOW,
-        dependencies=[],
-        resources=[],
         defaults={"offset": 1, "limit": _MAX_LINES_DEFAULT},
-        skill_doc=_READ_SKILL_DOC,
+        tool_doc=_READ_TOOL_DOC,
+        output_type_hint="str",
         description=(
             "Read a file with 1-based line numbers (opencode-style); "
             "output is bounded by `limit` for token safety."
@@ -431,12 +413,11 @@ def _grep(
     return text
 
 
-_GREP_SKILL_DOC = """\
+_GREP_TOOL_DOC = """\
 # grep
 
 Regex content search over the raw filesystem (no index). Shape mirrors the
-mainstream Claude Code `Grep` tool. For index-backed regex over parsed nodes,
-use the separate `regex_search` skill.
+mainstream Claude Code `Grep` tool.
 
 ## Parameters
 
@@ -473,32 +454,31 @@ on, and context lines (`-A`/`-B`/`-C`) are not implemented.
 """
 
 
-def _build_grep_skill() -> SkillMetadata:
-    return SkillMetadata(
-        skill_id="grep",
-        skill_type=SkillType.CUSTOM,
+def _build_grep_tool() -> ToolSpec:
+    return ToolSpec(
+        tool_id="grep",
         inputs=[
-            SkillInputSpec(
+            ToolInputSpec(
                 name="pattern",
                 type_hint="str",
                 required=True,
                 description="Regular expression to search for (Python re syntax).",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="path",
                 type_hint="str",
                 required=False,
                 default=".",
                 description="Directory (or single file) to search. Defaults to '.'.",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="glob",
                 type_hint="str",
                 required=False,
                 default=None,
                 description="Filter file names by glob (e.g. '*.py', '**/test_*.py').",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="type",
                 type_hint="str",
                 required=False,
@@ -507,7 +487,7 @@ def _build_grep_skill() -> SkillMetadata:
                     "Filter by language: py, js, ts, go, rust, c, cpp, " "java, rb, md."
                 ),
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="output_mode",
                 type_hint="str",
                 required=False,
@@ -518,21 +498,21 @@ def _build_grep_skill() -> SkillMetadata:
                     "only), or 'count' (matches per file). Defaults to 'content'."
                 ),
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="case_insensitive",
                 type_hint="bool",
                 required=False,
                 default=True,
                 description="Case-insensitive matching (reference '-i'). Default true.",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="multiline",
                 type_hint="bool",
                 required=False,
                 default=False,
                 description="Let '.'/'^'/'$' span line boundaries. Default false.",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="head_limit",
                 type_hint="int",
                 required=False,
@@ -543,19 +523,7 @@ def _build_grep_skill() -> SkillMetadata:
                 ),
             ),
         ],
-        outputs=SkillOutputSpec(
-            type_hint="str",
-            description=(
-                "Matching lines, file paths, or per-file counts depending on "
-                "output_mode."
-            ),
-        ),
         executor_fn=_grep,
-        async_capable=False,
-        cacheable=False,
-        cost=Cost.LOW,
-        dependencies=[],
-        resources=[],
         defaults={
             "path": ".",
             "output_mode": "content",
@@ -563,7 +531,8 @@ def _build_grep_skill() -> SkillMetadata:
             "multiline": False,
             "head_limit": _MAX_RESULTS_DEFAULT,
         },
-        skill_doc=_GREP_SKILL_DOC,
+        tool_doc=_GREP_TOOL_DOC,
+        output_type_hint="str",
         description=(
             "Regex content search over the raw filesystem; output shaped by "
             "output_mode (content / files_with_matches / count)."
@@ -622,7 +591,7 @@ def _glob(pattern: str, path: str = ".") -> str:
     return text
 
 
-_GLOB_SKILL_DOC = """\
+_GLOB_TOOL_DOC = """\
 # glob
 
 Enumerate files by name pattern (the mainstream Claude Code `Glob` shape).
@@ -647,18 +616,17 @@ pattern if you hit it).
 """
 
 
-def _build_glob_skill() -> SkillMetadata:
-    return SkillMetadata(
-        skill_id="glob",
-        skill_type=SkillType.CUSTOM,
+def _build_glob_tool() -> ToolSpec:
+    return ToolSpec(
+        tool_id="glob",
         inputs=[
-            SkillInputSpec(
+            ToolInputSpec(
                 name="pattern",
                 type_hint="str",
                 required=True,
                 description="Glob pattern (Path.rglob syntax, e.g. '**/*.py').",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="path",
                 type_hint="str",
                 required=False,
@@ -666,18 +634,10 @@ def _build_glob_skill() -> SkillMetadata:
                 description="Root directory to search. Defaults to '.'.",
             ),
         ],
-        outputs=SkillOutputSpec(
-            type_hint="str",
-            description="Sorted newline-separated list of matching relative paths.",
-        ),
         executor_fn=_glob,
-        async_capable=False,
-        cacheable=False,
-        cost=Cost.LOW,
-        dependencies=[],
-        resources=[],
         defaults={"path": "."},
-        skill_doc=_GLOB_SKILL_DOC,
+        tool_doc=_GLOB_TOOL_DOC,
+        output_type_hint="str",
         description=(
             "Enumerate files by glob pattern; returns sorted relative paths "
             "(capped at 100)."
@@ -756,7 +716,7 @@ def _bash(
     return text
 
 
-_BASH_SKILL_DOC = """\
+_BASH_TOOL_DOC = """\
 # bash
 
 Execute a shell command (the mainstream Claude Code `Bash` shape). Anything
@@ -795,18 +755,17 @@ because this executor has no session `cd` persistence to rely on.
 """
 
 
-def _build_bash_skill() -> SkillMetadata:
-    return SkillMetadata(
-        skill_id="bash",
-        skill_type=SkillType.CUSTOM,
+def _build_bash_tool() -> ToolSpec:
+    return ToolSpec(
+        tool_id="bash",
         inputs=[
-            SkillInputSpec(
+            ToolInputSpec(
                 name="command",
                 type_hint="str",
                 required=True,
                 description="Shell command line to execute.",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="timeout",
                 type_hint="int",
                 required=False,
@@ -816,14 +775,14 @@ def _build_bash_skill() -> SkillMetadata:
                     f"(default {_BASH_TIMEOUT_MS_DEFAULT})."
                 ),
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="description",
                 type_hint="str",
                 required=False,
                 default=None,
                 description="Short human-readable label for the command (optional).",
             ),
-            SkillInputSpec(
+            ToolInputSpec(
                 name="cwd",
                 type_hint="str",
                 required=False,
@@ -831,18 +790,10 @@ def _build_bash_skill() -> SkillMetadata:
                 description="Working directory for the command (optional).",
             ),
         ],
-        outputs=SkillOutputSpec(
-            type_hint="str",
-            description="Command, exit code, stdout, and stderr sections.",
-        ),
         executor_fn=_bash,
-        async_capable=False,
-        cacheable=False,
-        cost=Cost.LOW,
-        dependencies=[],
-        resources=[],
         defaults={"timeout": _BASH_TIMEOUT_MS_DEFAULT},
-        skill_doc=_BASH_SKILL_DOC,
+        tool_doc=_BASH_TOOL_DOC,
+        output_type_hint="str",
         description=(
             "Execute a shell command; returns exit code plus stdout/stderr. "
             "Loose safety policy — sandbox untrusted input at the OS level."
@@ -855,27 +806,27 @@ def _build_bash_skill() -> SkillMetadata:
 # ---------------------------------------------------------------------------
 
 
-def get_default_skill_metadata() -> List[SkillMetadata]:
-    """Return fresh :class:`SkillMetadata` objects for all default tools.
+def get_default_tool_specs() -> List[ToolSpec]:
+    """Return fresh :class:`ToolSpec` objects for all default tools.
 
     Returns a new list on every call so callers can safely mutate it.
     """
     return [
-        _build_read_skill(),
-        _build_grep_skill(),
-        _build_glob_skill(),
-        _build_bash_skill(),
+        _build_read_tool(),
+        _build_grep_tool(),
+        _build_glob_tool(),
+        _build_bash_tool(),
     ]
 
 
-def ensure_defaults_registered(registry: SkillRegistry) -> None:
-    """Register default skills into *registry* if not already present.
+def ensure_default_tools_registered(registry: ToolRegistry) -> None:
+    """Register default tools into *registry* if not already present.
 
-    Safe to call multiple times (idempotent): skips any skill already in the
-    registry.  Called by :class:`~codeminer.agent.runner.AgentRunner` during
+    Safe to call multiple times (idempotent): skips any tool already in the
+    registry. Called by :class:`~codeminer.agent.runner.AgentRunner` during
     ``__init__`` so that the default tools (``read``, ``grep``, ``glob``,
     ``bash``) are available regardless of which ``Ax`` skill subset is loaded.
     """
-    for meta in get_default_skill_metadata():
-        if not registry.has(meta.skill_id):
-            registry.register(meta)
+    for spec in get_default_tool_specs():
+        if not registry.has(spec.tool_id):
+            registry.register(spec)

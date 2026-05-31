@@ -200,7 +200,7 @@ class TestLoadCompileTable:
             "python:no_stacktrace": [
                 "bm25_search",
                 "embedding_search",
-                "graph_expand",
+                "find_callers",
             ],
         }
         p = tmp_path / "compile_table.json"
@@ -208,7 +208,7 @@ class TestLoadCompileTable:
         table = load_compile_table(p)
         assert table["python:stacktrace"] == frozenset({"bm25_search"})
         assert table["python:no_stacktrace"] == frozenset(
-            {"bm25_search", "embedding_search", "graph_expand"}
+            {"bm25_search", "embedding_search", "find_callers"}
         )
 
     def test_rejects_non_object(self, tmp_path: Path):
@@ -232,12 +232,12 @@ class TestLoadCompileTable:
             "python:no_stacktrace:\n"
             "  - bm25_search\n"
             "  - embedding_search\n"
-            "  - graph_expand\n"
+            "  - find_callers\n"
         )
         table = load_compile_table(p)
         assert table["python:stacktrace"] == frozenset({"bm25_search"})
         assert table["python:no_stacktrace"] == frozenset(
-            {"bm25_search", "embedding_search", "graph_expand"}
+            {"bm25_search", "embedding_search", "find_callers"}
         )
 
     def test_yml_extension_also_works(self, tmp_path: Path):
@@ -286,6 +286,6 @@ class TestAgentCompile:
 
     def test_none_session_ctx(self):
         """Missing session ctx → language=None scenario key."""
-        table = {"unknown:no_stacktrace": ["bm25_search", "regex_search"]}
+        table = {"unknown:no_stacktrace": ["bm25_search", "embedding_search"]}
         skills = agent_compile("find the foo function", None, table)
-        assert skills == frozenset({"bm25_search", "regex_search"})
+        assert skills == frozenset({"bm25_search", "embedding_search"})

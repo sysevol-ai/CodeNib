@@ -25,8 +25,8 @@ skill when:
 - **Exact identifier lookups**: If you know the precise name (`parse_config`,
   `UserModel`), use `bm25_search` -- it is faster and more precise for
   literal matches.
-- **Structural pattern matching**: Use `regex_search` for file-glob or
-  regex-based filtering.
+- **Structural pattern matching**: Use the `grep` default tool for file-glob
+  or regex-based filtering.
 - **Maximum coverage**: When you need both keyword precision and semantic
   recall, prefer `hybrid_search`.
 

@@ -11,13 +11,13 @@ Unit tests for the bm25_search skill executor and loader.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from codeminer.agent.skills.context import ComposerContexts
 from codeminer.agent.skills.loader import SkillLoader
 from codeminer.agent.skills.registry import SkillRegistry
 
@@ -54,15 +54,16 @@ class TestBM25SearchExecutor:
     """Tests that target executor.py directly via create_executor()."""
 
     def _load_executor(self, context: Any):
-        import importlib.util
+        # Import the executor as a proper package submodule so its relative
+        # imports (e.g. ``from ....ops.retrieve import to_queried_nodes``)
+        # resolve against the real package hierarchy.
+        import importlib
 
-        spec = importlib.util.spec_from_file_location(
-            "bm25_search.executor",
-            os.path.join(_skill_dir(), "executor.py"),
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module.create_executor(context)
+        module = importlib.import_module("codeminer.agent.skills.bm25_search.executor")
+        # bm25_search is a ``custom`` skill: create_executor now takes a typed
+        # ComposerContexts bundle, not a bare RetrieveContext. Wrap the mock
+        # RetrieveContext as the ``retrieve`` field.
+        return module.create_executor(ComposerContexts(retrieve=context))
 
     def test_raises_when_bm25_is_none(self):
         """execute() must raise RuntimeError if context.bm25 is None."""
@@ -102,6 +103,36 @@ class TestBM25SearchExecutor:
         assert kwargs["filter_test"] is True
         assert kwargs["return_code_content"] is False
         assert kwargs["wrap_with_ln"] is False
+
+    def test_names_only_relabels_without_double_prefixing_node_id(self):
+        """names_only relabels to unified_name; node_id must NOT double-prefix.
+
+        ``graph.display_name`` returns an already-``file:Symbol`` unified_name, so
+        node_id must stay ``src/x.c:foo()`` — not ``src/x.c:src/x.c:foo()``.
+        """
+        import importlib
+
+        bm25 = MagicMock()
+        bm25.search.return_value = [
+            {"node_name": "deadbeefhash", "node_id": "deadbeefhash", "file": "src/x.c"}
+        ]
+        retrieve = _make_context(bm25=bm25)
+        graph = MagicMock()
+        graph.display_name.return_value = "src/x.c:foo()"
+        expand = MagicMock()
+        expand.code_graph = graph
+
+        module = importlib.import_module("codeminer.agent.skills.bm25_search.executor")
+        execute = module.create_executor(
+            ComposerContexts(retrieve=retrieve, expand=expand)
+        )
+        nodes = execute("q", names_only=True)
+
+        assert len(nodes) == 1
+        node = nodes[0]
+        assert node.node_name == "src/x.c:foo()"
+        assert node.node_id == "src/x.c:foo()"  # not "src/x.c:src/x.c:foo()"
+        assert node.content is None  # names_only strips bodies
 
 
 class TestBM25SearchLoader:

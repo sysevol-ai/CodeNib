@@ -26,12 +26,14 @@ from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .history import PlainChatHistory, TokenBudgetedChatHistory
 from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
-from .tool_schema import registry_to_tools
+from .skills.typecheck import coerce_args
+from .tool_schema import registry_to_tools, tools_to_schemas
 from .tools.defaults import (
     _SKIP_DIR_PREFIXES,
-    DEFAULT_SKILL_IDS,
-    ensure_defaults_registered,
+    DEFAULT_TOOL_IDS,
+    ensure_default_tools_registered,
 )
+from .tools.spec import ToolRegistry
 
 logger = get_logger(__name__)
 
@@ -145,25 +147,42 @@ class AgentRunner:
         # long tool-calling loop can't overflow the model context.
         self.max_context_tokens = max_context_tokens
         self.registry = registry or SkillRegistry()
-        # Always-on default tool layer (read + grep + glob + bash): registered
-        # unconditionally so every query — and every agent-compile subset —
-        # has the filesystem primitives (read / grep / glob / shell) the model
-        # is pretrained on. These sit *outside* the allow/compile_table funnel.
+        # Default tools (read + grep + glob + bash) are a SEPARATE type from
+        # retrieval skills: they live in their own ``ToolRegistry`` and never
+        # pass through the skill allow/exclude/compile_table funnel. Registered
+        # unconditionally so every query — and every agent-compile subset — has
+        # the filesystem primitives the model is pretrained on.
         # ``include_default_tools=False`` withholds them — used to force the
         # structured (retrieval + graph) path in cost-comparison experiments.
+        self.tool_registry = ToolRegistry()
         self._include_defaults = include_default_tools
         self._default_ids: Set[str] = set()
         if include_default_tools:
-            ensure_defaults_registered(self.registry)
+            ensure_default_tools_registered(self.tool_registry)
             # Which of the registered defaults to actually expose. Defaults to
             # ALL (read + grep + glob + bash). Restricting to a subset — e.g.
             # ``{"read"}`` — yields a graph-primary / LocAgent-style harness
             # that can read code but has NO grep escape hatch, so the structured
             # (bm25 + call-graph) tools must carry navigation.
-            allowed = set(DEFAULT_SKILL_IDS)
-            if default_tool_ids is not None:
+            allowed = set(DEFAULT_TOOL_IDS)
+            # A non-empty restrictor narrows to that subset; ``None`` *or* an
+            # empty set means "all defaults" (the off-switch is
+            # ``include_default_tools=False``, not an empty restrictor) — this
+            # mirrors the empty->all skills contract in ``_resolve_allow_set``.
+            if default_tool_ids:
                 allowed &= set(default_tool_ids)
             self._default_ids = allowed
+
+        # Tools and skills share the model-facing namespace: a skill whose id
+        # equals a default-tool id would emit a duplicate function name (which
+        # providers reject) and shadow the tool at dispatch. Fail loudly here.
+        collisions = self._default_ids & set(self.registry.list_skills())
+        if collisions:
+            raise ValueError(
+                f"skill id(s) {sorted(collisions)} collide with default tool "
+                f"id(s); rename the skill(s) — tools and skills share the "
+                f"model-facing tool namespace."
+            )
         self.max_turns = max_turns
         self.session_ctx = session_ctx
 
@@ -184,8 +203,10 @@ class AgentRunner:
             self._base_exclude |= report.unavailable
             resource_warnings = report.warnings
 
-        # Defaults are always-on: no exclude (guard or caller) may drop them.
-        self._base_exclude -= self._default_ids
+        # ``_base_exclude`` applies to *skills* only. Default tools live in a
+        # separate ``ToolRegistry`` (and are gated by ``_default_ids``), so no
+        # skill exclude — caller's ``exclude_skills`` or the ResourceGuard's
+        # ``report.unavailable`` — can ever reach them.
 
         self._compile_table = compile_table
 
@@ -243,22 +264,24 @@ class AgentRunner:
     # ------------------------------------------------------------------
 
     def _tools_for(self, allow: Optional[Set[str]]) -> List[Dict[str, Any]]:
-        """Tool schemas for an allow set, with defaults always unioned in.
+        """Combined schemas for the swept *skills* plus the always-on *tools*.
 
-        The always-on default layer (``self._default_ids``) is added *after*
-        any allow/compile_table narrowing, so the funnel's "table narrows,
-        never broadens" rule still governs the swept skills while the default
-        primitives remain available in every subset. ``allow=None`` exposes
-        the full registry (defaults already registered there).
+        Two registries, two passes: the skill allow/exclude funnel governs the
+        swept retrieval skills (``allow=None`` exposes the whole skill
+        registry), while the default tools are emitted independently from the
+        ``ToolRegistry`` gated by ``self._default_ids``. The default primitives
+        thus remain available in every subset regardless of any
+        allow/compile_table narrowing, without being mixed into the skill
+        allowlist.
         """
         resolved = self._resolve_allow_set(allow)
-        if resolved is not None:
-            resolved = resolved | self._default_ids
-        return registry_to_tools(
+        skill_tools = registry_to_tools(
             self.registry,
             allow=resolved,
             exclude=self._base_exclude,
         )
+        default_tools = tools_to_schemas(self.tool_registry, allow=self._default_ids)
+        return skill_tools + default_tools
 
     def _resolve_allow_set(self, allow: Optional[Set[str]]) -> Optional[Set[str]]:
         """Pin the empty-allowlist contract: empty → full registry + WARN.
@@ -441,31 +464,42 @@ class AgentRunner:
         return PlainChatHistory()
 
     def _execute_tool_call(self, tc: Any) -> ToolCallRecord:
-        """Execute a single tool call from the LLM response."""
+        """Execute a single tool call (a skill or a default tool)."""
         skill_id = tc.function.name
         try:
             arguments = json.loads(tc.function.arguments)
         except (json.JSONDecodeError, TypeError):
             arguments = {}
 
-        meta = self.registry.get(skill_id)
+        # Skills and default tools live in separate registries; check both.
+        meta = self.registry.get(skill_id) or self.tool_registry.get(skill_id)
         if meta is None or meta.executor_fn is None:
             return ToolCallRecord(
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
-                error=f"Skill {skill_id!r} not available",
+                error=f"Tool {skill_id!r} not available",
             )
 
-        # Apply parameter scaling if session context is available
+        # Apply parameter scaling (config defaults + session), then validate +
+        # coerce the LLM's JSON arguments against the declared input types.
         resolved_args = self._resolve_params(meta, arguments)
         # Agent boundary (#153): inputs declared ``is_line_number`` arrive
-        # 1-based from the LLM; convert to 0-based before the executor runs.
+        # 1-based from the LLM; convert to 0-based BEFORE coercion so
+        # ``coerce_args`` validates/coerces the internal 0-based values.
         resolved_args = self._apply_input_boundary(meta, resolved_args)
+        coerced_args, type_error = coerce_args(meta.inputs, resolved_args)
+        if type_error is not None:
+            return ToolCallRecord(
+                tool_call_id=tc.id,
+                skill_id=skill_id,
+                arguments=arguments,
+                error=f"invalid arguments for {skill_id!r}: {type_error}",
+            )
 
         start = time.monotonic()
         try:
-            result = meta.executor_fn(**resolved_args)
+            result = meta.executor_fn(**coerced_args)
             elapsed = (time.monotonic() - start) * 1000
             logger.debug(
                 "tool %s completed in %.0fms",

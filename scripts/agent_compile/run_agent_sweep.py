@@ -25,7 +25,7 @@ per-scenario ``compile_table`` derivation.
 
 Usage::
 
-    python scripts/agent_compile/run_sample_sweep.py \\
+    python scripts/agent_compile/run_agent_sweep.py \\
         --config scripts/agent_compile/configs/sample.yaml \\
         --output-dir results/agent_compile/sample
 """
@@ -209,7 +209,7 @@ def _run_cell(
         ),
         system_prompt=cfg.system_prompt,
     )
-    # The always-on default tools (file_read / file_search) resolve relative
+    # The always-on default tools (read / grep / glob / bash) resolve relative
     # paths against the process cwd, so run the agent from the instance repo.
     # The sweep is sequential, so chdir is safe here.
     prev_cwd = os.getcwd()

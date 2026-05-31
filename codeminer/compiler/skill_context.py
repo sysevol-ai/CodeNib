@@ -98,7 +98,7 @@ def required_index_types(
     skills_dir: Optional[str] = None,
     skill_registry: Optional[SkillRegistry] = None,
 ) -> Set[str]:
-    """Union of ``index_type`` strings required by the given skills.
+    """Union of ``index_type`` strings the given skills *must* have built.
 
     ``index_requirements`` is declarative skill metadata that lives on disk in
     each skill's ``config.yaml``. The ``SkillRegistry`` is a *runtime* binding
@@ -112,6 +112,10 @@ def required_index_types(
       2. Fall back to ``skill_registry`` (or the singleton) for skills that
          don't live on disk — e.g. registered via the ``@skill`` decorator at
          import time.
+
+    Requirements marked ``required: false`` are excluded — those are "use if
+    present, don't force a build" (e.g. ``bm25_search``'s ``symbol_graph``,
+    used only to relabel names). Use :func:`optional_index_types` for those.
 
     Skills found in neither source are ignored — callers that need to fail
     loudly should check membership themselves.
@@ -128,7 +132,12 @@ def required_index_types(
                 continue
             seen_on_disk.add(sid)
             for req in cfg.get("index_requirements") or []:
-                index_type = req.get("type") if isinstance(req, dict) else None
+                # Mirror the registry branch: ``required: false`` reqs are
+                # "use if present, don't force a build" — see
+                # :func:`optional_index_types`.
+                if not isinstance(req, dict) or not req.get("required", True):
+                    continue
+                index_type = req.get("type")
                 if index_type:
                     needed.add(index_type)
 
@@ -140,8 +149,56 @@ def required_index_types(
         if meta is None:
             continue
         for req in meta.index_requirements or []:
-            needed.add(req.index_type)
+            if getattr(req, "required", True):
+                needed.add(req.index_type)
     return needed
+
+
+def optional_index_types(
+    skill_ids: Iterable[str],
+    *,
+    skills_dir: Optional[str] = None,
+    skill_registry: Optional[SkillRegistry] = None,
+) -> Set[str]:
+    """``index_type`` strings the given skills can *use* but don't require.
+
+    These (``required: false`` in ``config.yaml``) are loaded only when they
+    already exist on disk / in the manifest; their absence never triggers a
+    build and never raises.
+
+    Uses the same disk-first / registry-fallback resolution as
+    :func:`required_index_types` so repo_path mode (empty registry) still
+    discovers a skill's optional types straight from ``config.yaml``.
+    """
+    skill_ids = list(skill_ids)
+    optional: Set[str] = set()
+    seen_on_disk: Set[str] = set()
+
+    if skills_dir:
+        configs = _read_skill_configs(skills_dir)
+        for sid in skill_ids:
+            cfg = configs.get(sid)
+            if cfg is None:
+                continue
+            seen_on_disk.add(sid)
+            for req in cfg.get("index_requirements") or []:
+                if not isinstance(req, dict) or req.get("required", True):
+                    continue
+                index_type = req.get("type")
+                if index_type:
+                    optional.add(index_type)
+
+    registry = skill_registry or SkillRegistry()
+    for sid in skill_ids:
+        if sid in seen_on_disk:
+            continue
+        meta = registry.get(sid)
+        if meta is None:
+            continue
+        for req in meta.index_requirements or []:
+            if not getattr(req, "required", True):
+                optional.add(req.index_type)
+    return optional
 
 
 def _skill_types_for(
@@ -318,9 +375,9 @@ def build_skill_contexts(
 
     The function does no agent-side work; it returns context objects ready
     to hand to ``SkillLoader``. If a requested skill has no index
-    requirements (e.g. ``query_transform``), it will not contribute a key
+    requirements (e.g. ``code_to_query``), it will not contribute a key
     here — its skill type still gets a context if a *sibling* skill needs
-    one (e.g. ``regex_search`` shares the ``retrieve`` key with
+    one (e.g. ``embedding_search`` shares the ``retrieve`` key with
     ``bm25_search``).
 
     Skill-metadata resolution: when ``skills_dir`` is given, each skill's
@@ -338,6 +395,9 @@ def build_skill_contexts(
     os.makedirs(cache_dir, exist_ok=True)
 
     needed = required_index_types(
+        skill_ids, skills_dir=skills_dir, skill_registry=skill_registry
+    )
+    optional = optional_index_types(
         skill_ids, skills_dir=skills_dir, skill_registry=skill_registry
     )
     skill_types = _skill_types_for(
@@ -366,11 +426,17 @@ def build_skill_contexts(
                 builder_registry=registry,
             )
 
-    # Load artifacts for the union of types.
+    # Load required types plus any optional type already present on disk
+    # (optional types are never built here — used-if-present only).
+    loadable: Set[str] = set(needed)
+    for t in optional:
+        if _looks_built(cache_dir, t):
+            loadable.add(t)
+
     loaded: Dict[str, Any] = {}
-    if "bm25" in needed:
+    if "bm25" in loadable:
         loaded["bm25"] = _load_bm25(_index_dir(cache_dir, "bm25"))
-    if "vector" in needed:
+    if "vector" in loadable:
         loaded["vector"] = _load_vector(
             _index_dir(cache_dir, "vector"),
             embedding_model=embedding_model,
@@ -378,10 +444,23 @@ def build_skill_contexts(
             trust_remote_code=trust_remote_code,
             default_batch_size=embedding_batch_size,
         )
-    if "symbol_graph" in needed:
-        loaded["symbol_graph"] = _load_symbol_graph(
-            _index_dir(cache_dir, "symbol_graph")
-        )
+    if "symbol_graph" in loadable:
+        try:
+            loaded["symbol_graph"] = _load_symbol_graph(
+                _index_dir(cache_dir, "symbol_graph")
+            )
+        except Exception as exc:  # noqa: BLE001
+            # A REQUIRED graph must surface its load error; an OPTIONAL one
+            # (``required: false``, e.g. bm25_search's relabel graph) must
+            # never crash the build — a present-but-stale/corrupt graph dir
+            # (schema bump, partial SCIP build) degrades to "no graph".
+            if "symbol_graph" in needed:
+                raise
+            logger.warning(
+                "Skipping stale/corrupt optional symbol_graph under %s: %s",
+                cache_dir,
+                exc,
+            )
 
     return _package_contexts(
         loaded,
@@ -416,15 +495,16 @@ def load_contexts_from_manifest(
     when present.
 
     Raises:
-        ValueError: if any ``skill_ids`` requires an ``index_type`` that
+        ValueError: if any ``skill_ids`` *requires* an ``index_type`` that
             isn't present in the manifest or whose ``status != "fresh"``.
-            Loud failure here beats the deferred "Skill not available"
-            that would otherwise surface at tool-call time.
+            Requirements marked ``required: false`` are loaded when fresh and
+            skipped silently when absent. Loud failure for required indexes
+            beats the deferred "Skill not available" at tool-call time.
     """
     skill_ids = list(skill_ids)
     registry = skill_registry or SkillRegistry()
 
-    # Map skill_id → list of required index_types, with up-front validation.
+    # Map skill_id → list of index_types to load, validating required ones.
     needed: Set[str] = set()
     for sid in skill_ids:
         meta = registry.get(sid)
@@ -432,13 +512,16 @@ def load_contexts_from_manifest(
             continue
         for req in meta.index_requirements or []:
             entry = manifest.indexes.get(req.index_type)
-            if entry is None or entry.status != "fresh":
+            fresh = entry is not None and entry.status == "fresh"
+            if fresh:
+                needed.add(req.index_type)
+            elif getattr(req, "required", True):
                 raise ValueError(
                     f"Manifest is missing required index {req.index_type!r} "
                     f"for skill {sid!r}. Rebuild the manifest with this "
                     f"index_type, or drop {sid!r} from allowed_skills."
                 )
-            needed.add(req.index_type)
+            # else: optional + not fresh -> skip silently (used-if-present)
 
     skill_types = _skill_types_for(skill_ids, skill_registry=registry)
 

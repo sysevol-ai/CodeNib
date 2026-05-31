@@ -11,7 +11,7 @@
 # full 30-instance Phase-2 fit pool.
 #
 # Run:
-#   python scripts/agent_compile/run_sample_sweep.py \
+#   python scripts/agent_compile/run_agent_sweep.py \
 #       --config scripts/agent_compile/configs/sample.yaml \
 #       --output-dir results/agent_compile/sample
 #   python scripts/agent_compile/aggregate_phase2.py \
@@ -53,8 +53,11 @@ instances:
   - axios__axios-4731             # TypeScript/JavaScript, no stacktrace
   - astral-sh__ruff-15309         # Rust, no stacktrace
 
-# A0..A6 from the #133 RFC skill-subset sweep table. file_read is always-on
-# infrastructure (not a sweep variable) and is implicit in the agent loop.
+# A0..A6 sweep ladder over the PRUNED skill set (#133). The always-on default
+# tools (read/grep/glob/bash) are infrastructure, not sweep variables, and are
+# implicit in the agent loop. (The graph leg is the call-graph verbs
+# find_callers/find_callees/trace — the bulk graph_expand skill was removed as
+# it never earned its keep in the agent loop.)
 subsets:
   A0:
     - bm25_search
@@ -65,23 +68,27 @@ subsets:
     - embedding_search
   A3:
     - bm25_search
-    - graph_expand
+    - find_callers
   A4:
     - bm25_search
     - embedding_search
-    - graph_expand
+    - find_callers
+    - find_callees
+    - trace
   A5:
     - bm25_search
     - embedding_search
-    - graph_expand
-    - regex_search
+    - hybrid_search
+    - find_callers
+    - find_callees
+    - trace
   A6:
     - bm25_search
-    - regex_search
     - embedding_search
     - hybrid_search
-    - graph_expand
-    - embedding_rerank
+    - codeminer_context
     - llm_rerank
-    - query_transform
+    - find_callers
+    - find_callees
+    - trace
     - code_to_query

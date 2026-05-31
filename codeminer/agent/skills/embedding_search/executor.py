@@ -4,10 +4,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
+
+if TYPE_CHECKING:
+    from ....ops.retrieve import RetrieveContext
+    from ....types import QueriedNode
 
 
-def create_executor(context: Any) -> Callable[..., List[Any]]:
+def create_executor(context: "RetrieveContext") -> Callable[..., List["QueriedNode"]]:
     """Factory: returns a callable that performs vector embedding search.
 
     Parameters
@@ -17,10 +21,10 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
         that carries the backing ``CodeVectorStore``.
     """
 
-    def execute(query: str, top_k: int = 20, **kwargs: Any) -> List[Any]:
-        store = context.vector_store
-        if store is None:
+    def execute(query: str, top_k: int = 20, **kwargs: Any) -> List["QueriedNode"]:
+        if context is None or context.vector_store is None:
             raise RuntimeError("Vector store not available")
+        store = context.vector_store
 
         level: str = kwargs.get("level", context.default_level)
         return_content: bool = kwargs.get("return_content", True)

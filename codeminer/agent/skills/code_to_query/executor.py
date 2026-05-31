@@ -4,10 +4,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List
+from typing import TYPE_CHECKING, Any, Callable, Dict, List
+
+if TYPE_CHECKING:
+    from ....ops.transform import TransformContext
 
 
-def create_executor(context: Any) -> Callable[..., Dict[str, Any]]:
+def create_executor(context: "TransformContext") -> Callable[..., Dict[str, Any]]:
     """Create a code-to-query transform executor bound to the given TransformContext."""
 
     def execute(nodes: List[Any], **kwargs: Any) -> Dict[str, Any]:

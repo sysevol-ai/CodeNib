@@ -242,10 +242,10 @@ class TestAgentRunner:
     def test_exclude_skills(self, echo_registry):
         """Excluded sweep-variable skills should not appear in tool schemas.
 
-        Note: default skills (DEFAULT_SKILL_IDS) are NEVER excluded — the
-        runner strips them from the exclude set before building the tool list.
+        Note: default TOOLS (DEFAULT_TOOL_IDS) are NEVER excluded — they live in
+        a separate ToolRegistry, outside the skill exclude/allow funnel.
         """
-        from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
+        from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
 
         llm = _make_llm()
         llm._call_raw.return_value = _make_response(content="ok")
@@ -254,8 +254,8 @@ class TestAgentRunner:
         tool_names = {t["function"]["name"] for t in runner.tools}
         # echo is excluded
         assert "echo" not in tool_names
-        # defaults are always present
-        assert DEFAULT_SKILL_IDS.issubset(tool_names)
+        # default tools are always present
+        assert DEFAULT_TOOL_IDS.issubset(tool_names)
 
 
 # ---------------------------------------------------------------------------

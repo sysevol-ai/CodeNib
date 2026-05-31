@@ -77,17 +77,34 @@ allow* — whereas the manifest is about *which indexes exist*.
 
 ## Configs (`scripts/agent_compile/configs/*.yaml`)
 
-| config | harness (agent tools) | result dir | role |
-|---|---|---|---|
-| `cost_grep` | file_read + file_search (grep) | `proof_grep` | **baseline** (efficient frontier) |
-| `cost_context` | `codeminer_context` (GraphRAG) + defaults | `proof_ctx2` | +graph composer (and search-only via `CODEMINER_COMPOSER_NO_GRAPH=1`) |
-| `cost_free` | bm25 + embedding + defaults | `cost_free_*` | search-enabled agent |
-| `cost_locagent` | bm25 + graph verbs; file_read only (no grep) | `proof_locagent` | LocAgent (content-bm25) — graph unused |
-| `cost_locagent_strict` | bm25 + graph + read_code_block; no fs | `proof_locagent_strict` | strict graph-primary |
-| `cost_locagent_faithful` | **bm25_names** + graph + read_code_block; no fs | `proof_locagent_faithful` | faithful LocAgent (names-only) |
-| `cost_structured` | embedding + graph_expand; defaults withheld | `cost_structured_*` | early cost study |
-| `cost_graphfriendly` | bm25 + embedding + callers/callees/trace | — | **stale** (never run) |
-| `phase0`, `sample` | A0–A6 full catalog | `sample*` | original Phase-0/2 sweep |
+Default tools are now **`read` / `grep` / `glob` / `bash`** (#184) and are a
+separate type from skills — they live in the runner's `ToolRegistry`, not the
+skill registry, so they are never narrowed by `allow_skills`.
+
+**`design_space.yaml` is the canonical config**: one config with nine isolating
+arms (`defaults_only`, `bm25`, `embedding`, `bm25_embedding`, `hybrid`,
+`rerank`, `graphnav`, `composer`, `everything`) on the SAME 8 instances / model
+/ reps so every arm is directly co-plottable. It supersedes the fragmented
+single-arm `cost_*` configs (which used different instance slices and reps and
+could not be compared head-to-head). Prefer it for new runs.
+
+| config | harness (agent tools) | role |
+|---|---|---|
+| **`design_space`** | all 9 arms, full defaults, neutral prompt | **canonical co-plottable sweep** |
+| `cost_grep` | read/grep/glob/bash only | single-arm grep/read baseline (== `defaults_only`) |
+| `cost_context` | `codeminer_context` + defaults | graph composer on 3 hard instances (`CODEMINER_COMPOSER_NO_GRAPH=1` to ablate the graph) |
+| `cost_free` | bm25 + embedding + defaults | search-enabled agent on 3 hard instances |
+| `cost_structured` | embedding + find_callers/callees/trace; defaults withheld | structured (no-fs) path probe |
+| `cost_locagent` | bm25 + graph verbs; `read` only (no grep) | LocAgent-style graph-primary harness |
+| `phase0`, `sample` | A0–A6 ladder (pruned skill set) | original Phase-0/2 catalog sweep (legacy track) |
+
+Removed in the skill redesign: `cost_everything` (subsumed by
+`design_space.everything`), `cost_locagent_strict` / `cost_locagent_faithful`
+(relied on the removed `read_code_block` skill; the graph-primary story is now
+the single `cost_locagent` arm), and `cost_graphfriendly` (stale, never run).
+Cut skills (`graph_expand`, `impact_analysis`, `regex_search`,
+`embedding_rerank`, `query_transform`, `read_code_block`, `bm25_names` →
+merged into `bm25_search names_only`) no longer appear in any config.
 
 ## "CI" disambiguation
 
@@ -104,6 +121,7 @@ run_agent_sweep.py`.
 not from this work, so they are NOT renamed/deleted here):
 `aggregate.py` (Phase-0, superseded — `test_aggregate.py`),
 `aggregate_phase2.py → aggregate_subset_sweep.py` (`test_aggregate_phase2.py`),
-`run_sweep.py → run_catalog_sweep.py`, `partition.py` (`test_partition.py`),
-and deleting the stale `phase0.yaml` / `cost_graphfriendly.yaml`. A dedicated
-commit with reference + test updates can land these once an owner confirms.
+`run_sweep.py → run_catalog_sweep.py`, `partition.py` (`test_partition.py`).
+(`cost_graphfriendly.yaml` was deleted in the skill redesign; `phase0.yaml` was
+kept and its skill ladder updated to the pruned set.) A dedicated commit with
+reference + test updates can land the renames once an owner confirms.

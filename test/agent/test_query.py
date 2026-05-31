@@ -61,7 +61,7 @@ def _mock_llm_final_answer(answer: str = "done") -> LiteLLMChat:
 def _register_test_skills() -> SkillRegistry:
     """Register a handful of skills with controllable defaults."""
     reg = SkillRegistry()
-    for sid in ("bm25_search", "embedding_search", "graph_expand"):
+    for sid in ("bm25_search", "embedding_search", "find_callers"):
         reg.register(
             SkillMetadata(
                 skill_id=sid,
@@ -79,11 +79,11 @@ def _tools_passed_to_llm(llm) -> List[str]:
     # Strip the always-on default layer (file_read/file_search): it is unioned
     # into every tool set regardless of compile_table narrowing, so narrowing
     # assertions look at the swept skills only.
-    from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
+    from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
 
     args, kwargs = llm._call_raw.call_args
     schemas = kwargs.get("tools", [])
-    names = {t["function"]["name"] for t in schemas} - set(DEFAULT_SKILL_IDS)
+    names = {t["function"]["name"] for t in schemas} - set(DEFAULT_TOOL_IDS)
     return sorted(names)
 
 
@@ -190,7 +190,7 @@ class TestCompileTable:
         table_path = tmp_path / "table.yaml"
         table_path.write_text(
             "python:stacktrace:\n  - bm25_search\n"
-            "python:no_stacktrace:\n  - bm25_search\n  - graph_expand\n",
+            "python:no_stacktrace:\n  - bm25_search\n  - find_callers\n",
             encoding="utf-8",
         )
 
@@ -204,7 +204,7 @@ class TestCompileTable:
                 compile_table=str(table_path),
             ),
         )
-        assert _tools_passed_to_llm(llm) == ["bm25_search", "graph_expand"]
+        assert _tools_passed_to_llm(llm) == ["bm25_search", "find_callers"]
 
     def test_stacktrace_in_prompt_narrows_to_a0(self):
         """A real Python traceback collapses the allow-set to ``bm25_search``."""
@@ -214,7 +214,7 @@ class TestCompileTable:
         table = {
             "python:stacktrace": frozenset({"bm25_search"}),
             "python:no_stacktrace": frozenset(
-                {"bm25_search", "embedding_search", "graph_expand"}
+                {"bm25_search", "embedding_search", "find_callers"}
             ),
         }
         prompt = (

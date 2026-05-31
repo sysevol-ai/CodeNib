@@ -4,15 +4,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, List
+from typing import TYPE_CHECKING, Any, Callable, List
+
+if TYPE_CHECKING:
+    from ....ops.rerank import RerankContext
+    from ....types import QueriedNode
 
 
-def create_executor(context: Any) -> Callable[..., List[Any]]:
+def create_executor(context: "RerankContext") -> Callable[..., List["QueriedNode"]]:
     """Create an LLM rerank executor bound to the given RerankContext."""
 
     def execute(
         query: str, candidates: List[Any], top_k: int = 5, **kwargs: Any
-    ) -> List[Any]:
+    ) -> List["QueriedNode"]:
         agent = context.ensure_agent()
         candidate_top_k = kwargs.get("candidate_top_k", context.candidate_top_k)
         window_size = kwargs.get("window_size", context.window_size)

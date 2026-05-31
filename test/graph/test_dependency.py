@@ -15,7 +15,6 @@ with canonical ``name`` = content hash and the readable name in
 from __future__ import annotations
 
 import igraph as ig
-import pytest
 
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.graph.dependency import DependencyAnalyzer
@@ -122,24 +121,3 @@ def test_works_with_prepopulated_unified_dict():
     g = _make_graph(unified_empty=False)
     res = DependencyAnalyzer(g).impact("leaf", max_depth=3)
     assert {n.name for n in res.nodes} == {"a.c:mid()", "a.c:caller()"}
-
-
-def test_skill_executor_transitive_and_resolves():
-    from types import SimpleNamespace
-
-    from codeminer.agent.skills.impact_analysis.executor import create_executor
-
-    ex = create_executor(SimpleNamespace(code_graph=_make_graph()))
-    nodes = ex(symbol="leaf", direction="impact", max_depth=3)
-    assert {n.node_name for n in nodes} == {"a.c:mid()", "a.c:caller()"}
-    assert all("of b.c:leaf()" in n.content for n in nodes)
-
-
-def test_skill_executor_unresolved_raises():
-    from types import SimpleNamespace
-
-    from codeminer.agent.skills.impact_analysis.executor import create_executor
-
-    ex = create_executor(SimpleNamespace(code_graph=_make_graph()))
-    with pytest.raises(ValueError, match="unresolved"):
-        ex(symbol="ghost_symbol", direction="impact")

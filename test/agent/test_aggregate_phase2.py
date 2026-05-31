@@ -186,19 +186,19 @@ def test_invocation_histogram_and_forced_but_ignored():
         _cell(
             "i1",
             "A5",
-            ["bm25_search", "graph_expand"],
+            ["bm25_search", "find_callers"],
             1,
             f5=1.0,
             tokens=100,
             scenario="s",
             calls=["bm25_search", "bm25_search"],
-        ),  # graph_expand never called
+        ),  # find_callers never called
     ]
     agg = agg2.aggregate(cells, ks=[5], max_turns=20)
     hist = agg["subsets"]["A5"]["invocation_histogram"]
     assert hist["bm25_search"]["invocation_rate"] == 1.0
     assert hist["bm25_search"]["mean_calls_per_cell"] == 2.0
-    assert "graph_expand" in agg["subsets"]["A5"]["forced_but_ignored"]
+    assert "find_callers" in agg["subsets"]["A5"]["forced_but_ignored"]
 
 
 def test_compile_table_picks_cheapest_meeting_tau():

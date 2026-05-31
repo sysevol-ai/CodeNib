@@ -18,7 +18,10 @@ A skill is a package directory containing:
   `index_requirements`, default params)
 - `skill.md` — agent-readable description of when to use the skill
 - `executor.py` — a `create_executor(context) -> Callable` factory returning the
-  execution function
+  execution function. `context` is the typed op-context dataclass for the skill's
+  type (`RetrieveContext` / `RerankContext` / `TransformContext` / `ExpandContext`);
+  `custom` composer skills (`codeminer_context`, `bm25_search`) instead receive a
+  typed `ComposerContexts` bundle (`codeminer/agent/skills/context.py`).
 
 `SkillLoader.load_all(skills_dir, contexts)` scans the directory, parses each
 `config.yaml`, reads `skill.md`, imports the executor, and registers a `SkillMetadata`
@@ -57,24 +60,42 @@ from codeminer.agent.skills.registry import SkillRegistry
 runner = AgentRunner(
     model="gpt-4o",
     registry=SkillRegistry(),
-    allow_skills={"bm25_search", "graph_expand", "llm_rerank"},
+    allow_skills={"bm25_search", "find_callers", "llm_rerank"},
 )
 result = runner.run("How does authentication work in this repo?")
 ```
+
+## Default tools vs skills
+
+The always-on filesystem primitives — **`read` / `grep` / `glob` / `bash`** — are a
+separate type from skills. They are `ToolSpec` objects (`codeminer/agent/tools/spec.py`)
+in a `ToolRegistry` the runner holds alongside the `SkillRegistry`, registered via
+`ensure_default_tools_registered`. They carry no `index_requirements`, no `operator`,
+and no retrieval `skill_type`, and are **never** narrowed by `allow_skills` /
+`exclude_skills` (use the runner's `default_tool_ids` to restrict which defaults are
+exposed, or `include_default_tools=False` to withhold them).
 
 ## Available skills
 
 | Skill | Type | Description |
 |-------|------|-------------|
-| `bm25_search` | retrieval | Fast keyword retrieval (TF-IDF/BM25); best for exact identifiers and tokens. |
+| `bm25_search` | custom | Fast keyword retrieval (TF-IDF/BM25) over symbol chunks; `names_only=true` returns compact NAME tags (no bodies), with `unified_name` relabeling when a graph is present. |
 | `embedding_search` | retrieval | Semantic vector retrieval that matches code by meaning, not literal tokens. |
-| `regex_search` | retrieval | Pattern-based retrieval over the node index for structural queries. |
 | `hybrid_search` | aggregate | Fuses multiple retrievers (e.g. BM25 + embedding) via weighted score normalization. |
-| `graph_expand` | expand | Expands seed code blocks along the symbol graph to surface structurally related symbols. |
-| `embedding_rerank` | rerank | Fast embedding-based reranking for large candidate sets. |
+| `codeminer_context` | custom | One-call GraphRAG composer: search seeds + deterministic call-graph expansion into a compact set (graph step toggle: `CODEMINER_COMPOSER_NO_GRAPH=1`). |
+| `find_callers` | expand | Incoming call-graph edges of a symbol (who calls X). |
+| `find_callees` | expand | Outgoing call-graph edges of a symbol (what X calls). |
+| `trace` | expand | Shortest call path between two symbols. |
 | `llm_rerank` | rerank | High-precision LLM-judged reranking to refine top results. |
-| `query_transform` | transform | Expands/reformulates a query via keyword extraction to improve recall. |
-| `code_to_query` | transform | Turns a code snippet into a search query for finding similar code. |
+| `code_to_query` | transform | Packs retrieved code nodes into a reusable follow-up search query. |
+
+> Removed in the skill redesign (low in-loop value per the #133 cost study; see
+> `docs/experiments/agent_compile.md`): `graph_expand` and `impact_analysis`
+> (bulk/transitive graph nav — ignored when grep is present), `regex_search`
+> (subsumed by the `grep` default tool), `embedding_rerank` (use `llm_rerank`),
+> `query_transform` (the LLM reformulates natively), `read_code_block` (use the
+> `read` default tool), and `bm25_names` (merged into `bm25_search` as
+> `names_only`).
 
 ## Line-numbering at the agent boundary
 

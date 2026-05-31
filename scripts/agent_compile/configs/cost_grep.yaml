@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
-# Pure grep/read baseline: ONLY the default tool layer (file_read + file_search).
-# The subset names the default skills explicitly — an empty subset would fall
-# back to the full registry (see AgentRunner._resolve_allow_set), so we pin the
-# two defaults; they union to exactly themselves. This is "the grep/read agent"
-# the graph-aware composer must beat on tokens at equal accuracy.
+# Pure grep/read baseline: ONLY the default tool layer (read/grep/glob/bash).
+# The subset names the default TOOL ids: tools are not skills, so this matches
+# ZERO retrieval skills (the arm exposes only the always-on default tools) while
+# staying non-empty (an empty subset would trip AgentRunner's empty->full-
+# registry fallback — see AgentRunner._resolve_allow_set). This is "the grep/read
+# agent" the graph-aware composer must beat on tokens at equal accuracy.
+# (Equivalent to design_space.yaml's defaults_only arm.)
 sweep_id: cost_grep
 model: vertex_ai/claude-haiku-4-5
 vertex_location: us-east5
@@ -35,5 +37,7 @@ instances:
   - sympy__sympy-13031
 subsets:
   GREP:
-    - file_read
-    - file_search
+    - read
+    - grep
+    - glob
+    - bash

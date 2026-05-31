@@ -302,7 +302,7 @@ class RepoRegistry:
             system_prompt=_DEMO_SYSTEM_PROMPT,
             # The demo answers from the retrieval indexes (BM25 + embeddings),
             # which return citable nodes that feed the answer's code pane. The
-            # default file_read/file_search tools return plain text (no
+            # default read/grep/glob/bash tools return plain text (no
             # citations) and let the model grep-and-give-up, so withhold them.
             include_default_tools=False,
         )

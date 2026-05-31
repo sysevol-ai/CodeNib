@@ -12,8 +12,8 @@ piece: the graph is used regardless of whether the model would have chosen a
 graph tool itself, while staying token-cheap (names + file:line + relation, no
 code bodies — the agent file_reads the few it needs).
 
-Skill type is ``custom`` so the loader hands it the full ``contexts`` dict
-(it needs both the ``retrieve`` and ``expand`` contexts).
+Skill type is ``custom`` so the loader hands it a typed ``ComposerContexts``
+bundle (it needs both the ``retrieve`` and ``expand`` contexts).
 """
 
 from __future__ import annotations
@@ -21,7 +21,11 @@ from __future__ import annotations
 import os
 import re
 from itertools import zip_longest
-from typing import Any, Callable, Dict, List
+from typing import TYPE_CHECKING, Any, Callable, List
+
+if TYPE_CHECKING:
+    from ....types import QueriedNode
+    from ..context import ComposerContexts
 
 # Ablation knob (#133): set CODEMINER_COMPOSER_NO_GRAPH=1 to return only the
 # search seeds (no call-graph expansion). Used to isolate how much the graph/LSP
@@ -81,9 +85,11 @@ def _dedup_by_id(nodes: List[Any]) -> List[Any]:
     return out
 
 
-def create_executor(contexts: Dict[str, Any]) -> Callable[..., List[Any]]:
-    retrieve = (contexts or {}).get("retrieve")
-    expand = (contexts or {}).get("expand")
+def create_executor(
+    contexts: "ComposerContexts",
+) -> Callable[..., List["QueriedNode"]]:
+    retrieve = contexts.retrieve
+    expand = contexts.expand
 
     from ....ops.retrieve import to_queried_nodes
     from .._graphnav import _node_id, display_name, neighbors
@@ -111,7 +117,7 @@ def create_executor(contexts: Dict[str, Any]) -> Callable[..., List[Any]]:
         max_results: int = 30,
         seeds: int = 5,
         **kwargs: Any,
-    ) -> List[Any]:
+    ) -> List["QueriedNode"]:
         seeds = max(1, int(seeds or 5))
         max_results = max(seeds, int(max_results or 30))
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from codeminer.agent.skills.context import ComposerContexts
 from codeminer.types import QueriedNode
 
 
@@ -86,7 +87,7 @@ def test_context_composes_search_plus_graph():
         bm25=_FakeBM25(), vector_store=_FakeVec(), default_level="l2"
     )
     expand = SimpleNamespace(code_graph=_FakeGraph())
-    ex = create_executor({"retrieve": retrieve, "expand": expand})
+    ex = create_executor(ComposerContexts(retrieve=retrieve, expand=expand))
     res = ex(query="watch effect bug", seeds=2, max_results=20)
     names = {n.node_name for n in res}
     assert "pkg.a.doWatch" in names  # entry-point seed
@@ -129,7 +130,7 @@ def test_interleave_keeps_embedding_seed_when_bm25_floods():
         bm25=_ManyBM25(), vector_store=_OnTargetVec(), default_level="l2"
     )
     expand = SimpleNamespace(code_graph=_FakeGraph())
-    ex = create_executor({"retrieve": retrieve, "expand": expand})
+    ex = create_executor(ComposerContexts(retrieve=retrieve, expand=expand))
     res = ex(query="watch effect bug", seeds=2, max_results=20)
     names = {n.node_name for n in res}
     assert "pkg.a.doWatch" in names  # embedding seed survived the bm25 flood
@@ -140,7 +141,7 @@ def test_interleave_keeps_embedding_seed_when_bm25_floods():
 def test_context_handles_missing_graph_gracefully():
     create_executor = _load()
     retrieve = SimpleNamespace(bm25=_FakeBM25(), vector_store=None, default_level="l2")
-    ex = create_executor({"retrieve": retrieve, "expand": None})
+    ex = create_executor(ComposerContexts(retrieve=retrieve, expand=None))
     res = ex(query="x")
     assert any(n.node_name == "pkg.a.doWatch" for n in res)  # seed still returned
 

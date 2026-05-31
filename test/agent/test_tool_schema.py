@@ -16,7 +16,17 @@ from codeminer.agent.skills.core import (
     SkillType,
 )
 from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.tool_schema import registry_to_tools, skill_to_tool_schema
+from codeminer.agent.tool_schema import (
+    registry_to_tools,
+    skill_to_tool_schema,
+    tool_to_schema,
+    tools_to_schemas,
+)
+from codeminer.agent.tools.defaults import (
+    ensure_default_tools_registered,
+    get_default_tool_specs,
+)
+from codeminer.agent.tools.spec import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -106,7 +116,7 @@ class TestSkillToToolSchema:
 
         Previously complex types produced an empty ``{}`` schema, giving the
         model no hint how to populate list params (e.g.
-        ``graph_expand.seed_symbols``). Now they get ``array`` + ``items``.
+        ``find_callers.seed_symbols``). Now they get ``array`` + ``items``.
         """
         meta = SkillMetadata(
             skill_id="test_complex",
@@ -218,3 +228,52 @@ class TestRegistryToTools:
         tools = registry_to_tools(reg, exclude={"drop"})
         assert len(tools) == 1
         assert tools[0]["function"]["name"] == "keep"
+
+
+# ---------------------------------------------------------------------------
+# tool_to_schema / tools_to_schemas tests (default-tool ToolSpec API)
+# ---------------------------------------------------------------------------
+
+
+class TestToolToSchema:
+    def test_tool_to_schema_basic_structure(self):
+        # `read` has a required `file_path` and optional `offset`/`limit`.
+        spec = next(s for s in get_default_tool_specs() if s.tool_id == "read")
+        schema = tool_to_schema(spec)
+
+        assert schema["type"] == "function"
+        func = schema["function"]
+        assert func["name"] == spec.tool_id == "read"
+        assert "description" in func
+
+        params = func["parameters"]
+        assert params["type"] == "object"
+        assert "file_path" in params["properties"]
+        assert params["required"] == ["file_path"]
+
+    def test_tool_to_schema_for_every_default(self):
+        for spec in get_default_tool_specs():
+            schema = tool_to_schema(spec)
+            assert schema["type"] == "function"
+            assert schema["function"]["name"] == spec.tool_id
+            assert schema["function"]["parameters"]["type"] == "object"
+
+
+class TestToolsToSchemas:
+    @pytest.fixture()
+    def tool_registry(self):
+        reg = ToolRegistry()
+        ensure_default_tools_registered(reg)
+        return reg
+
+    def test_allow_subset_returns_exactly_those(self, tool_registry):
+        schemas = tools_to_schemas(tool_registry, allow={"read", "grep"})
+        names = {s["function"]["name"] for s in schemas}
+        assert names == {"read", "grep"}
+        assert len(schemas) == 2
+
+    def test_allow_none_returns_empty(self, tool_registry):
+        assert tools_to_schemas(tool_registry, allow=None) == []
+
+    def test_allow_empty_returns_empty(self, tool_registry):
+        assert tools_to_schemas(tool_registry, allow=set()) == []

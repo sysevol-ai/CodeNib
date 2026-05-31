@@ -59,18 +59,18 @@ subsets:
     - bm25_search
   A6:
     - bm25_search
-    - regex_search
     - embedding_search
     - hybrid_search
-    - graph_expand
-    - embedding_rerank
+    - codeminer_context
     - llm_rerank
-    - query_transform
+    - find_callers
+    - find_callees
+    - trace
     - code_to_query
 
 # Phase 0 uses one frontier model — kill-switch decision should not be
-# polluted by inter-model variance. Phase 2 (configs/phase2_models.yaml)
-# expands to the multi-tier matrix described in the design ADR.
+# polluted by inter-model variance. The multi-tier model matrix is described
+# in docs/agent_compile_design.md (no separate config file).
 models:
   - claude-sonnet-4-6
 

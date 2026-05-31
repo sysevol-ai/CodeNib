@@ -26,8 +26,8 @@ fusion. Choose this skill when:
   sufficient for exact token matching.
 - **Pure semantic queries**: Use `embedding_search` alone when the query is
   entirely conceptual with no specific identifiers.
-- **Pattern/structural queries**: Use `regex_search` for file-glob or regex
-  based filtering.
+- **Pattern/structural queries**: Use the `grep` default tool for file-glob or
+  regex-based filtering.
 
 ## How It Works
 

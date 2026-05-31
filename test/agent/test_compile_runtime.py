@@ -27,7 +27,7 @@ from codeminer.agent.skills.core import (
     SkillType,
 )
 from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.tools.defaults import DEFAULT_SKILL_IDS
+from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
 from codeminer.compiler.params import SessionContext
 from codeminer.llm.litellm_chat import LiteLLMChat
 
@@ -45,8 +45,8 @@ def skills() -> SkillRegistry:
     for sid in (
         "bm25_search",
         "embedding_search",
-        "graph_expand",
-        "regex_search",
+        "find_callers",
+        "hybrid_search",
     ):
         reg.register(
             SkillMetadata(
@@ -85,7 +85,7 @@ def _tools_passed_to_llm(llm) -> List[str]:
     narrowing assertions look at the swept skills with defaults stripped.
     Use :func:`_all_tools_passed_to_llm` to assert defaults are present.
     """
-    return sorted(set(_all_tools_passed_to_llm(llm)) - set(DEFAULT_SKILL_IDS))
+    return sorted(set(_all_tools_passed_to_llm(llm)) - set(DEFAULT_TOOL_IDS))
 
 
 def _all_tools_passed_to_llm(llm) -> List[str]:
@@ -106,7 +106,7 @@ class TestCompileTableNarrowing:
         table = {
             "python:stacktrace": frozenset({"bm25_search"}),
             "python:no_stacktrace": frozenset(
-                {"bm25_search", "embedding_search", "graph_expand"}
+                {"bm25_search", "embedding_search", "find_callers"}
             ),
         }
         llm = _mock_llm_no_tool_call()
@@ -123,13 +123,13 @@ class TestCompileTableNarrowing:
         runner.run(query)
         assert _tools_passed_to_llm(llm) == ["bm25_search"]
         # Always-on defaults survive even the most aggressive narrowing.
-        assert set(DEFAULT_SKILL_IDS) <= set(_all_tools_passed_to_llm(llm))
+        assert set(DEFAULT_TOOL_IDS) <= set(_all_tools_passed_to_llm(llm))
 
     def test_no_stacktrace_scenario_uses_wider_subset(self, skills):
         table = {
             "python:stacktrace": frozenset({"bm25_search"}),
             "python:no_stacktrace": frozenset(
-                {"bm25_search", "embedding_search", "graph_expand"}
+                {"bm25_search", "embedding_search", "find_callers"}
             ),
         }
         llm = _mock_llm_no_tool_call()
@@ -143,14 +143,14 @@ class TestCompileTableNarrowing:
         assert _tools_passed_to_llm(llm) == [
             "bm25_search",
             "embedding_search",
-            "graph_expand",
+            "find_callers",
         ]
 
     def test_table_intersects_with_user_allow(self, skills):
         """User's ``allow_skills`` is the upper bound — table can only narrow."""
         table = {
             "python:no_stacktrace": frozenset(
-                {"bm25_search", "embedding_search", "graph_expand"}
+                {"bm25_search", "embedding_search", "find_callers"}
             ),
         }
         llm = _mock_llm_no_tool_call()
@@ -162,8 +162,8 @@ class TestCompileTableNarrowing:
             allow_skills={"bm25_search", "embedding_search"},
         )
         runner.run("Some refactor query")
-        # Intersection of table {bm25, embedding, graph} with allow
-        # {bm25, embedding} = {bm25, embedding}. graph_expand is gone.
+        # Intersection of table {bm25, embedding, find_callers} with allow
+        # {bm25, embedding} = {bm25, embedding}. find_callers is gone.
         assert _tools_passed_to_llm(llm) == ["bm25_search", "embedding_search"]
 
 
@@ -187,7 +187,7 @@ class TestEmptyAllowFallback:
         runner.run("Refactor the rust parser.")
         # rust:no_stacktrace not in table → full registry
         assert _tools_passed_to_llm(llm) == sorted(
-            ["bm25_search", "embedding_search", "graph_expand", "regex_search"]
+            ["bm25_search", "embedding_search", "find_callers", "hybrid_search"]
         )
 
     def test_table_returns_empty_subset_falls_back_to_full(self, skills):
@@ -222,8 +222,8 @@ class TestEmptyAllowFallback:
         assert set(names) == {
             "bm25_search",
             "embedding_search",
-            "graph_expand",
-            "regex_search",
+            "find_callers",
+            "hybrid_search",
         }
         assert any("empty allow_skills" in r.getMessage() for r in captured)
 
@@ -307,7 +307,7 @@ class TestLoaderToRunner:
             "python:stacktrace: [bm25_search]\n"
             "python:no_stacktrace:\n"
             "  - bm25_search\n"
-            "  - graph_expand\n"
+            "  - find_callers\n"
         )
         table = load_compile_table(path)
         llm = _mock_llm_no_tool_call()
@@ -318,4 +318,4 @@ class TestLoaderToRunner:
             compile_table=table,
         )
         runner.run("Refactor the parser.")
-        assert _tools_passed_to_llm(llm) == ["bm25_search", "graph_expand"]
+        assert _tools_passed_to_llm(llm) == ["bm25_search", "find_callers"]

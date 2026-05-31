@@ -13,26 +13,19 @@ into ``SkillMetadata`` objects registered in the ``SkillRegistry``.
 from __future__ import annotations
 
 import importlib.util
+import inspect
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import yaml
 
+from .context import CONTEXT_KEY_FOR_TYPE, ComposerContexts
 from .core import Cost, SkillInputSpec, SkillMetadata, SkillOutputSpec, SkillType
 from .registry import SkillRegistry
 
 # Map config.yaml string values to enums.
 _SKILL_TYPE_MAP = {t.value: t for t in SkillType}
 _COST_MAP = {c.value: c for c in Cost}
-
-# Map skill_type to conventional context key.
-_CONTEXT_KEY_FOR_TYPE: Dict[str, str] = {
-    "retrieval": "retrieve",
-    "aggregate": "retrieve",
-    "rerank": "rerank",
-    "transform": "transform",
-    "expand": "expand",
-}
 
 
 class SkillLoader:
@@ -225,20 +218,23 @@ def _load_executor(
     if create_fn is None:
         return None
 
-    # Determine which context to pass based on skill_type.
-    ctx_key = _CONTEXT_KEY_FOR_TYPE.get(skill_type.value)
+    # CUSTOM composer skills (e.g. ``codeminer_context``, the names-mode of
+    # ``bm25_search``) need more than one context, so they receive a typed
+    # ``ComposerContexts`` bundle. Fall back to no-arg for context-free
+    # custom skills.
+    if skill_type == SkillType.CUSTOM:
+        # Decide arg-passing by the factory's *signature* rather than catching
+        # TypeError — a bare ``except TypeError`` would swallow a genuine
+        # TypeError raised inside the factory body and re-raise a misleading
+        # "missing argument" error.
+        if inspect.signature(create_fn).parameters:
+            return create_fn(ComposerContexts.from_mapping(contexts))
+        return create_fn()
+
+    # Single-context skills receive the one typed context dataclass for their
+    # type (``RetrieveContext``/``RerankContext``/...), keyed on the enum. It
+    # may be ``None`` when the backing index wasn't built — the executor
+    # surfaces that as a clean error only if the LLM actually calls it.
+    ctx_key = CONTEXT_KEY_FOR_TYPE.get(skill_type)
     context = contexts.get(ctx_key) if ctx_key else None
-
-    if context is not None:
-        return create_fn(context)
-
-    # Skill types without a single conventional context (e.g. CUSTOM composers
-    # like ``codeminer_context`` that need retrieve AND expand) receive the
-    # full ``contexts`` dict; fall back to no-arg for context-free skills.
-    try:
-        return create_fn(contexts)
-    except TypeError:
-        try:
-            return create_fn()
-        except TypeError:
-            return None
+    return create_fn(context)
