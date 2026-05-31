@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -365,10 +366,77 @@ class PatcherCpp(PatcherBase):
             cwd=str(self.project_root),
         )
 
-        # Drain stdout/stderr in background threads. Without this clangd
-        # blocks on its first reply once the pipe buffer fills (~64KB),
-        # which silently halts the BackgroundIndex queue.
-        def _drain(stream):
+        # Track BackgroundIndex progress via the LSP ``$/progress``
+        # notifications clangd emits (see LLVM D73218). When we see
+        # ``kind == "end"`` for the ``backgroundIndexProgress`` token,
+        # clangd's queue has drained — much sharper signal than polling
+        # .idx mtime with a 5-second idle timeout.
+        progress_state = {
+            "saw_begin": False,
+            "active_tokens": set(),
+            "lock": threading.Lock(),
+        }
+
+        def _stdout_loop():
+            """Parse Content-Length framed JSON-RPC; track $/progress."""
+            buf = b""
+            stream = process.stdout
+            try:
+                while True:
+                    # Read headers
+                    while b"\r\n\r\n" not in buf:
+                        chunk = (
+                            stream.read1(65536)
+                            if hasattr(stream, "read1")
+                            else stream.read(4096)
+                        )
+                        if not chunk:
+                            return
+                        buf += chunk
+                    header_blob, _, rest = buf.partition(b"\r\n\r\n")
+                    buf = rest
+                    cl = 0
+                    for hline in header_blob.split(b"\r\n"):
+                        if hline.lower().startswith(b"content-length:"):
+                            try:
+                                cl = int(hline.split(b":", 1)[1].strip())
+                            except ValueError:
+                                cl = 0
+                    # Read body
+                    while len(buf) < cl:
+                        chunk = (
+                            stream.read1(65536)
+                            if hasattr(stream, "read1")
+                            else stream.read(4096)
+                        )
+                        if not chunk:
+                            return
+                        buf += chunk
+                    body, buf = buf[:cl], buf[cl:]
+                    try:
+                        msg = json.loads(body)
+                    except json.JSONDecodeError:
+                        continue
+                    if msg.get("method") != "$/progress":
+                        continue
+                    params = msg.get("params") or {}
+                    if params.get("token") != "backgroundIndexProgress":
+                        continue
+                    value = params.get("value") or {}
+                    kind = value.get("kind")
+                    with progress_state["lock"]:
+                        if kind == "begin":
+                            progress_state["saw_begin"] = True
+                            progress_state["active_tokens"].add(params["token"])
+                        elif kind == "end":
+                            progress_state["active_tokens"].discard(params["token"])
+            except Exception:
+                # stdout reader dying is non-fatal: progress just stays
+                # in whatever state it last reached. We have fallbacks
+                # (process death + max_wait_s timeout) below.
+                return
+
+        def _drain_stderr(stream):
             try:
                 while True:
                     chunk = (
@@ -381,10 +449,10 @@ class PatcherCpp(PatcherBase):
             except Exception:
                 return
 
-        import threading
-
-        threading.Thread(target=_drain, args=(process.stdout,), daemon=True).start()
-        threading.Thread(target=_drain, args=(process.stderr,), daemon=True).start()
+        threading.Thread(target=_stdout_loop, daemon=True).start()
+        threading.Thread(
+            target=_drain_stderr, args=(process.stderr,), daemon=True
+        ).start()
 
         def lsp_send(msg):
             content = json.dumps(msg).encode()
@@ -393,6 +461,12 @@ class PatcherCpp(PatcherBase):
             process.stdin.flush()
 
         try:
+            # Capabilities: we want backgroundIndexProgress notifications.
+            # ``workDoneProgress: True`` is the LSP-standard opt-in;
+            # ``implicitWorkDoneProgressCreate: True`` is a clangd extension
+            # that lets the server skip the ``window/workDoneProgress/create``
+            # handshake — without it, clangd flips state to "Unsupported"
+            # and never sends progress (verified on Ubuntu clangd 18.1.3).
             lsp_send(
                 {
                     "jsonrpc": "2.0",
@@ -401,11 +475,16 @@ class PatcherCpp(PatcherBase):
                     "params": {
                         "processId": os.getpid(),
                         "rootUri": Path(self.project_root).as_uri(),
-                        "capabilities": {},
+                        "capabilities": {
+                            "window": {
+                                "workDoneProgress": True,
+                                "implicitWorkDoneProgressCreate": True,
+                            },
+                        },
                     },
                 }
             )
-            time.sleep(1)
+            time.sleep(0.3)
             lsp_send(
                 {
                     "jsonrpc": "2.0",
@@ -413,7 +492,7 @@ class PatcherCpp(PatcherBase):
                     "params": {},
                 }
             )
-            time.sleep(0.5)
+            time.sleep(0.2)
 
             for fpath in changed_files:
                 abs_path = Path(self.project_root) / fpath
@@ -438,36 +517,61 @@ class PatcherCpp(PatcherBase):
                     }
                 )
 
-            # Poll for clangd to update .idx after didOpen.
-            # Two exit conditions:
-            #   (a) success: clangd touched .idx (cur > pre) AND has been
-            #       quiet for ``idle_after_change`` seconds
-            #   (b) no-op:   clangd never updates .idx (e.g. didOpen on
-            #       a header file in fmt — header isn't its own TU). Bail
-            #       after ``idle_no_change`` seconds; further waiting is
-            #       pure overhead.
-            idle_after_change = 5
-            idle_no_change = 5
-            stable = 0
+            # Wait for clangd to finish indexing. Three exit conditions:
+            #   (a) Progress: saw begin and queue is now empty → done.
+            #   (b) No progress arrived AND .idx mtime quiet for 3s → done
+            #       (fallback for clients/servers where $/progress fails,
+            #       e.g. very old clangd or capability negotiation hiccup).
+            #   (c) Clangd process died.
+            # Hard cap at max_wait_s so a hung clangd doesn't stall the
+            # bench forever.
+            max_wait_s = 120.0
+            no_progress_idle_s = 3.0
+            poll_interval_s = 0.05
+            deadline = time.monotonic() + max_wait_s
+            settle_after_end_s = 0.3  # let trailing .idx writes flush
+            end_seen_at: float | None = None
             last_mtime = pre_mtime
-            for _ in range(120):
-                time.sleep(1)
-                cur_mtime = max(
-                    (f.stat().st_mtime for f in idx_dir.glob("*.idx")),
-                    default=0,
-                )
-                if cur_mtime > last_mtime:
-                    last_mtime = cur_mtime
-                    stable = 0
-                else:
-                    stable += 1
-                    if cur_mtime > pre_mtime and stable >= idle_after_change:
+            last_mtime_change_t = time.monotonic()
+
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    break  # (c) clangd died
+
+                with progress_state["lock"]:
+                    saw_begin = progress_state["saw_begin"]
+                    active = bool(progress_state["active_tokens"])
+
+                if saw_begin and not active:
+                    # (a) Progress reported done. Wait a short settle window
+                    # so the very-last .idx file rename has time to land
+                    # before we parse them.
+                    if end_seen_at is None:
+                        end_seen_at = time.monotonic()
+                    elif time.monotonic() - end_seen_at >= settle_after_end_s:
                         break
-                    if cur_mtime <= pre_mtime and stable >= idle_no_change:
+                elif not progress_state["saw_begin"]:
+                    # No $/progress yet — fall back to .idx mtime polling.
+                    cur_mtime = max(
+                        (f.stat().st_mtime for f in idx_dir.glob("*.idx")),
+                        default=0,
+                    )
+                    if cur_mtime > last_mtime:
+                        last_mtime = cur_mtime
+                        last_mtime_change_t = time.monotonic()
+                    if time.monotonic() - last_mtime_change_t >= no_progress_idle_s:
+                        # (b) Nothing happening for 3s and no progress
+                        # API in play — assume clangd is done (or never
+                        # going to do anything for this set of files).
                         break
 
+                time.sleep(poll_interval_s)
+
             post_count = len(list(idx_dir.glob("*.idx")))
-            logger.info(f"C++ incremental done: {pre_count}→{post_count} .idx files")
+            logger.info(
+                f"C++ incremental done: {pre_count}→{post_count} .idx files "
+                f"(progress_seen={progress_state['saw_begin']})"
+            )
 
         finally:
             try:
