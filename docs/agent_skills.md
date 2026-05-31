@@ -75,3 +75,38 @@ result = runner.run("How does authentication work in this repo?")
 | `llm_rerank` | rerank | High-precision LLM-judged reranking to refine top results. |
 | `query_transform` | transform | Expands/reformulates a query via keyword extraction to improve recall. |
 | `code_to_query` | transform | Turns a code snippet into a search query for finding similar code. |
+
+## Line-numbering at the agent boundary
+
+Internally, every line number is **0-based** — BM25 docs, FAISS metadata,
+symbol-graph anchors, and the tree-sitter `CodeChunk` all count from 0. The
+*agent boundary* is **1-based outward**: line numbers shown to, and accepted
+back from, the LLM are 1-based. This mirrors the `CodeLocation` convention at
+the dataset/HuggingFace boundary (see `_chunk_to_code_block` in
+`dataset/gt_locate.py`).
+
+All conversion lives in one module, `codeminer/agent/boundary.py`, with one
+site per direction:
+
+- **Output** — `AgentRunner._serialize_result` runs every line-bearing result
+  through `to_agent_repr` (`+1`) before it reaches the LLM, so a result's
+  structured `start_line`/`end_line` agree with its rendered `content` gutter
+  (which `wrap_code_snippet` already renders 1-based).
+- **Input** — a skill input declared `is_line_number: true` in its
+  `config.yaml` is passed through `from_agent_repr` (`-1`) by the runner before
+  the executor sees it, so executors keep working in 0-based internals.
+
+### Authoring a skill that accepts line numbers
+
+Mark the input in `config.yaml`; the runner handles the conversion:
+
+```yaml
+inputs:
+  - name: ranges
+    type: List[List[int]]
+    is_line_number: true
+    description: 1-based [start, end] line ranges (converted to 0-based for you)
+```
+
+Do **not** add ad-hoc `+1`/`-1` in executors or rendering paths — route through
+the boundary helpers so the offset lives in exactly one place.

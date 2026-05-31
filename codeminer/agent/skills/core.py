@@ -60,6 +60,11 @@ class SkillInputSpec:
     # choices in-band (e.g. ``output_mode`` on the ``grep`` default tool) rather
     # than only in prose. Not part of the Python↔Rust ``to_dict`` contract.
     enum: Optional[List[str]] = None
+    # Marks an input carrying 1-based line numbers from the LLM. The runner
+    # applies ``from_agent_repr`` (1-based -> 0-based) before the executor
+    # sees it, so executors keep working in 0-based internals. See
+    # ``codeminer/agent/boundary.py`` (#153).
+    is_line_number: bool = False
 
 
 @dataclass(slots=True)
@@ -124,6 +129,7 @@ class SkillMetadata:
                     "required": i.required,
                     "default": i.default,
                     "description": i.description,
+                    "is_line_number": i.is_line_number,
                 }
                 for i in self.inputs
             ],

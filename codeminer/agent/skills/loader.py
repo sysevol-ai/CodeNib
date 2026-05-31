@@ -170,6 +170,7 @@ def _parse_inputs(raw: List[Dict[str, Any]]) -> List[SkillInputSpec]:
                 required=item.get("required", True),
                 default=item.get("default"),
                 description=item.get("description", ""),
+                is_line_number=item.get("is_line_number", False),
             )
         )
     return result
