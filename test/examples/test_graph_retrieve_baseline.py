@@ -26,6 +26,7 @@ The runner script is not part of the ``codeminer`` package (see
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -457,3 +458,231 @@ def test_seed_recall_dedupes_seeds_before_k_slice(runner):
     # k=2 covers the two unique files {dup.py, target.py}, hitting target.py
     out = runner._compute_bm25_seed_recall(seeds, ["target.py"], [1, 2])
     assert out == {1: 0.0, 2: 1.0}
+
+
+# ---------------------------------------------------------------------------
+# _load_instance_ids_from_csv / _filter_regex_from_ids  (#131 corpus filter)
+# ---------------------------------------------------------------------------
+
+
+def test_load_instance_ids_reads_column_in_order(runner, tmp_path):
+    csv_path = tmp_path / "ids.csv"
+    csv_path.write_text("instance_id\nrepo__a-1\nrepo__b-2\nrepo__c-3\n")
+    assert runner._load_instance_ids_from_csv(str(csv_path)) == [
+        "repo__a-1",
+        "repo__b-2",
+        "repo__c-3",
+    ]
+
+
+def test_load_instance_ids_dedupes_and_strips(runner, tmp_path):
+    """Duplicate / blank / whitespace-padded rows collapse to ordered uniques."""
+    csv_path = tmp_path / "ids.csv"
+    csv_path.write_text("instance_id\nrepo__a-1\n  repo__a-1  \n\nrepo__b-2\n")
+    assert runner._load_instance_ids_from_csv(str(csv_path)) == [
+        "repo__a-1",
+        "repo__b-2",
+    ]
+
+
+def test_load_instance_ids_extra_columns_ok(runner, tmp_path):
+    """A CSV with extra columns still works as long as instance_id is present."""
+    csv_path = tmp_path / "ids.csv"
+    csv_path.write_text("instance_id,language_group\nrepo__a-1,python\nrepo__b-2,go\n")
+    assert runner._load_instance_ids_from_csv(str(csv_path)) == [
+        "repo__a-1",
+        "repo__b-2",
+    ]
+
+
+def test_load_instance_ids_missing_column_raises(runner, tmp_path):
+    csv_path = tmp_path / "bad.csv"
+    csv_path.write_text("id,foo\nrepo__a-1,x\n")
+    with pytest.raises(ValueError, match="instance_id"):
+        runner._load_instance_ids_from_csv(str(csv_path))
+
+
+def test_load_instance_ids_empty_raises(runner, tmp_path):
+    csv_path = tmp_path / "empty.csv"
+    csv_path.write_text("instance_id\n")
+    with pytest.raises(ValueError, match="No instance_id"):
+        runner._load_instance_ids_from_csv(str(csv_path))
+
+
+def test_filter_regex_matches_exactly_listed_ids(runner):
+    """The regex anchors with ^...$, so it matches the listed ids and nothing
+    that merely shares a prefix/suffix — the dataset loaders apply it via
+    re.match, which only anchors the start."""
+    rx = runner._filter_regex_from_ids(["astropy__astropy-14096", "django__django-1"])
+    assert re.match(rx, "astropy__astropy-14096")
+    assert re.match(rx, "django__django-1")
+    # Prefix of a listed id must NOT match (the $ anchor guards the tail).
+    assert not re.match(rx, "astropy__astropy-140960")
+    assert not re.match(rx, "astropy__astropy-1409")
+    assert not re.match(rx, "unrelated__repo-9")
+
+
+def test_filter_regex_escapes_metacharacters(runner):
+    """Instance ids are treated as literals — any regex metacharacter in an id
+    must be escaped so it can't widen the match."""
+    rx = runner._filter_regex_from_ids(["a.b+c"])
+    assert re.match(rx, "a.b+c")
+    assert not re.match(rx, "axbxc")  # '.' and '+' must be literal
+
+
+# ---------------------------------------------------------------------------
+# _count_query_tokens / _query_length_bucket / _aggregate_query_length_buckets
+# ---------------------------------------------------------------------------
+
+
+def test_count_query_tokens_whitespace_fallback(runner, monkeypatch):
+    """When tiktoken is unavailable (sentinel False), fall back to a
+    whitespace token count rather than crashing."""
+    monkeypatch.setattr(runner, "_TIKTOKEN_ENCODING", False)
+    assert runner._count_query_tokens("") == 0
+    assert runner._count_query_tokens("one two three") == 3
+
+
+@pytest.mark.parametrize(
+    "n, expected",
+    [
+        (0, "<128"),
+        (127, "<128"),
+        (128, "128-512"),
+        (511, "128-512"),
+        (512, "512-2k"),
+        (2047, "512-2k"),
+        (2048, ">2k"),
+        (10000, ">2k"),
+    ],
+)
+def test_query_length_bucket_boundaries(runner, monkeypatch, n, expected):
+    """Bucket edges are half-open [lo, hi): 128 lands in 128-512, 512 in
+    512-2k, 2048 in >2k. Drive the count directly so the test is independent
+    of whichever tokenizer is installed."""
+    monkeypatch.setattr(runner, "_count_query_tokens", lambda _text: n)
+    assert runner._query_length_bucket("ignored") == expected
+
+
+def test_aggregate_query_length_buckets_histograms(runner):
+    profiles = [
+        {"query_length_bucket": "<128"},
+        {"query_length_bucket": "512-2k"},
+        {"query_length_bucket": "<128"},
+        {"query_length_bucket": ">2k"},
+    ]
+    assert runner._aggregate_query_length_buckets(profiles) == {
+        "<128": 2,
+        "128-512": 0,
+        "512-2k": 1,
+        ">2k": 1,
+    }
+
+
+def test_aggregate_query_length_buckets_ignores_unknown_and_missing(runner):
+    """All canonical buckets are present even when no instance hit them, and a
+    stray/missing label is not counted (defends against silent schema drift)."""
+    profiles = [
+        {"query_length_bucket": "<128"},
+        {"query_length_bucket": "nonsense"},
+        {"no_bucket_key": True},
+    ]
+    out = runner._aggregate_query_length_buckets(profiles)
+    assert out == {"<128": 1, "128-512": 0, "512-2k": 0, ">2k": 0}
+
+
+# ---------------------------------------------------------------------------
+# _map_language_group / _resolve_instance_languages  (#119 multi-language)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label, expected",
+    [
+        ("python", ["python"]),
+        ("Python", ["python"]),
+        ("rust", ["rust"]),
+        ("go", ["go"]),
+        ("golang", ["go"]),
+        ("cpp", ["cpp"]),
+        ("C++", ["cpp"]),
+        ("typescript", ["ts"]),
+        ("javascript", ["js"]),
+        ("JavaScript/TypeScript", ["ts", "js"]),
+    ],
+)
+def test_map_language_group_known(runner, label, expected):
+    assert runner._map_language_group(label) == expected
+
+
+def test_map_language_group_unknown_uses_fallback(runner):
+    assert runner._map_language_group("klingon", fallback="go") == ["go"]
+    assert runner._map_language_group(None) == ["python"]
+    assert runner._map_language_group("") == ["python"]
+
+
+def test_resolve_instance_languages_prefers_language_group(runner):
+    """codeminer_base instances carry language_group; it wins over the CLI."""
+    inst = {"language_group": "rust"}
+    assert runner._resolve_instance_languages(inst, ["python"]) == ["rust"]
+
+
+def test_resolve_instance_languages_falls_back_to_cli(runner):
+    """SWE-bench instances have no language_group → use --languages verbatim."""
+    assert runner._resolve_instance_languages({}, ["go", "rust"]) == ["go", "rust"]
+
+
+# ---------------------------------------------------------------------------
+# _build_dataset  (#119 dataset factory dispatch)
+# ---------------------------------------------------------------------------
+
+
+def _ds_args(dataset):
+    return SimpleNamespace(
+        dataset=dataset,
+        split="test",
+        filter_instance="^(x)$",
+        repo_cache_dir="/tmp/codeminer-repos",
+    )
+
+
+def test_build_dataset_swebench_lite(runner, monkeypatch):
+    captured = {}
+
+    def _stub(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(runner, "SwebenchDataset", _stub)
+    out = runner._build_dataset(_ds_args("swebench_lite"))
+    assert captured["dataset"] == "princeton-nlp/SWE-bench_Lite"
+    assert captured["filter_instance"] == "^(x)$"
+    assert captured["repo_root"] == "/tmp/codeminer-repos"
+    assert out.split == "test"
+
+
+def test_build_dataset_locbench(runner, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        runner, "LocbenchDataset", lambda **kw: captured.update(kw) or SimpleNamespace()
+    )
+    runner._build_dataset(_ds_args("locbench_v1"))
+    assert captured["dataset"] == "czlll/Loc-Bench_V1"
+
+
+def test_build_dataset_codeminer_base(runner, monkeypatch):
+    """codeminer_base is imported lazily inside the factory; patch the source
+    module so dispatch is verified without importing/loading the HF dataset."""
+    captured = {}
+    monkeypatch.setattr(
+        "codeminer.dataset.codeminer_base.CodeMinerBaseDataset",
+        lambda **kw: captured.update(kw) or SimpleNamespace(),
+    )
+    runner._build_dataset(_ds_args("codeminer_base"))
+    assert captured["dataset"] == "fishmingyu/codeminer-base-dataset"
+    assert captured["filter_instance"] == "^(x)$"
+
+
+def test_build_dataset_unsupported_raises(runner):
+    with pytest.raises(ValueError, match="Unsupported dataset"):
+        runner._build_dataset(_ds_args("nope"))

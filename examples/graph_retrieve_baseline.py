@@ -30,12 +30,25 @@ Usage:
     # Adjust stage parameters
     python examples/graph_retrieve_baseline.py --dataset swebench_lite \\
         --stage1-topk 5 --stage2-topk 50 --k-hop 2
+
+    # codeminer_base (multi-language; GT read from the dataset)
+    python examples/graph_retrieve_baseline.py --dataset codeminer_base \\
+        --metrics-k 1 3 5 10
+
+    # Profiling sweep over a fixed corpus CSV (see
+    # scripts/profiling/profile_graph_rag.sh)
+    python examples/graph_retrieve_baseline.py --dataset swebench_lite \\
+        --filter-csv examples/selected_instance.csv \\
+        --enable-profiler --record-samples --record-memory
 """
 import argparse
+import csv
 import json
 import logging
+import re
 import time
 from pathlib import Path
+from typing import List, Optional
 
 from codeminer.dataset.locbench import LocbenchDataset
 from codeminer.dataset.swebench import SwebenchDataset
@@ -51,6 +64,173 @@ from codeminer.model import GraphRetrievePipeline
 from codeminer.profiler import Profiler, percentile_from_sorted
 
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Language helpers (mirrors embedding_retrieve_baseline / build_embeddings)
+# ---------------------------------------------------------------------------
+
+
+def _map_language_group(label: Optional[str], fallback: str = "python") -> List[str]:
+    """Map a dataset ``language_group`` value to chunker language string(s)."""
+    if not label:
+        return [fallback]
+    text = label.lower()
+    if "rust" in text:
+        return ["rust"]
+    if "javascript" in text and "typescript" in text:
+        return ["ts", "js"]
+    if "typescript" in text or text == "ts":
+        return ["ts"]
+    if "javascript" in text or text == "js":
+        return ["js"]
+    if "c++" in text or text in ("cpp", "c"):
+        return ["cpp"]
+    if "go" in text or text == "golang":
+        return ["go"]
+    if "python" in text:
+        return ["python"]
+    return [fallback]
+
+
+def _resolve_instance_languages(instance: dict, cli_languages: List[str]) -> List[str]:
+    """Return chunker languages for this instance.
+
+    CodeMiner-base instances carry a ``language_group`` column; fall back to
+    the CLI ``--languages`` for datasets that don't have it (SWE-bench /
+    Loc-Bench). Only Stage 3 embedding rerank consumes this — graph build and
+    BM25 are language-agnostic — so SWE-bench runs are unchanged (default
+    ``["python"]``).
+    """
+    lang_group = instance.get("language_group")
+    if lang_group:
+        return _map_language_group(lang_group, fallback=cli_languages[0])
+    return list(cli_languages)
+
+
+# ---------------------------------------------------------------------------
+# Corpus / query helpers
+# ---------------------------------------------------------------------------
+
+# Token-count bins for per-query latency attribution (issue #131 Phase 2).
+_QUERY_LENGTH_BUCKETS = ("<128", "128-512", "512-2k", ">2k")
+_TIKTOKEN_ENCODING = None
+
+
+def _load_instance_ids_from_csv(path: str) -> List[str]:
+    """Read the ``instance_id`` column from a CSV (header required).
+
+    Mirrors the sampled-CSV reader in ``scripts/swebench_graph_index.py``.
+    Returns instance ids in file order with duplicates removed.
+    """
+    resolved = Path(path).expanduser()
+    ids: List[str] = []
+    seen = set()
+    with open(resolved, newline="", encoding="utf-8") as fp:
+        reader = csv.DictReader(fp)
+        if reader.fieldnames is None or "instance_id" not in reader.fieldnames:
+            raise ValueError(
+                f"CSV {resolved} must have an 'instance_id' column; "
+                f"got header {reader.fieldnames!r}"
+            )
+        for row in reader:
+            iid = (row.get("instance_id") or "").strip()
+            if iid and iid not in seen:
+                seen.add(iid)
+                ids.append(iid)
+    if not ids:
+        raise ValueError(f"No instance_id values found in {resolved}")
+    return ids
+
+
+def _filter_regex_from_ids(ids: List[str]) -> str:
+    """Build an anchored regex matching exactly the given instance ids.
+
+    The dataset loaders filter via ``re.match(filter_instance, instance_id)``,
+    so we anchor with ``^...$`` and escape each id (instance ids carry no regex
+    metacharacters today, but escaping keeps this robust to future ids).
+    """
+    return "^(" + "|".join(re.escape(i) for i in ids) + ")$"
+
+
+def _count_query_tokens(text: str) -> int:
+    """Token count of a query string.
+
+    Prefers ``tiktoken`` (cl100k_base) for a model-relevant count and caches
+    the encoder; falls back to whitespace splitting so the harness never hard
+    depends on tiktoken being installed.
+    """
+    if not text:
+        return 0
+    global _TIKTOKEN_ENCODING
+    if _TIKTOKEN_ENCODING is None:
+        try:
+            import tiktoken
+
+            _TIKTOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            _TIKTOKEN_ENCODING = False  # sentinel: tiktoken unavailable
+    if _TIKTOKEN_ENCODING:
+        try:
+            return len(_TIKTOKEN_ENCODING.encode(text))
+        except Exception:
+            pass
+    return len(text.split())
+
+
+def _query_length_bucket(text: str) -> str:
+    """Bin a query's token count into ``<128 / 128-512 / 512-2k / >2k``."""
+    n = _count_query_tokens(text)
+    if n < 128:
+        return "<128"
+    if n < 512:
+        return "128-512"
+    if n < 2048:
+        return "512-2k"
+    return ">2k"
+
+
+def _aggregate_query_length_buckets(instance_query_profiles) -> dict:
+    """Histogram of per-instance ``query_length_bucket`` labels."""
+    counts = {bucket: 0 for bucket in _QUERY_LENGTH_BUCKETS}
+    for profile in instance_query_profiles:
+        bucket = profile.get("query_length_bucket")
+        if bucket in counts:
+            counts[bucket] += 1
+    return counts
+
+
+def _build_dataset(args):
+    """Dataset factory — mirrors ``embedding_retrieve_baseline._build_dataset``.
+
+    ``codeminer_base`` is loaded lazily so SWE-bench / Loc-Bench runs don't
+    import the HuggingFace-backed wrapper (and its ``datasets`` dependency
+    chain) unless they need it.
+    """
+    if args.dataset == "swebench_lite":
+        return SwebenchDataset(
+            dataset="princeton-nlp/SWE-bench_Lite",
+            split=args.split,
+            filter_instance=args.filter_instance,
+            repo_root=args.repo_cache_dir,
+        )
+    if args.dataset == "locbench_v1":
+        return LocbenchDataset(
+            dataset="czlll/Loc-Bench_V1",
+            split=args.split,
+            filter_instance=args.filter_instance,
+            repo_root=args.repo_cache_dir,
+        )
+    if args.dataset == "codeminer_base":
+        from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+
+        return CodeMinerBaseDataset(
+            dataset="fishmingyu/codeminer-base-dataset",
+            split=args.split,
+            filter_instance=args.filter_instance,
+            repo_root=args.repo_cache_dir,
+        )
+    raise ValueError(f"Unsupported dataset: {args.dataset}")
 
 
 # ---------------------------------------------------------------------------
@@ -245,10 +425,33 @@ def parse_args():
         "--dataset",
         type=str,
         required=True,
-        choices=["swebench_lite", "locbench_v1"],
+        choices=["swebench_lite", "locbench_v1", "codeminer_base"],
     )
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--filter-instance", type=str, default=".*")
+    parser.add_argument(
+        "--filter-csv",
+        type=str,
+        default=None,
+        help=(
+            "Path to a CSV with an 'instance_id' column (e.g. "
+            "examples/selected_instance.csv). Restricts the run to exactly "
+            "those instances. Takes precedence over --filter-instance."
+        ),
+    )
+    # Chunker languages for Stage 3 embedding rerank when rebuilding an index.
+    # codeminer_base auto-detects per instance from its language_group column;
+    # SWE-bench / Loc-Bench fall back to this value (default python).
+    parser.add_argument(
+        "--languages",
+        type=str,
+        nargs="+",
+        default=["python"],
+        help=(
+            "Chunker languages for Stage 3 embedding rerank. Ignored for "
+            "codeminer_base instances (read from the language_group column)."
+        ),
+    )
 
     # Stage 1: BM25 seed selection
     parser.add_argument(
@@ -429,6 +632,20 @@ def run_graph_pipeline(args):
     rerank_strategy = _resolve_rerank_strategy(args)
     use_embedding_rerank = rerank_strategy == "embedding"
 
+    # --filter-csv restricts the run to an explicit instance allowlist; build
+    # an anchored regex and let it override --filter-instance (warn if both).
+    if args.filter_csv:
+        ids = _load_instance_ids_from_csv(args.filter_csv)
+        csv_regex = _filter_regex_from_ids(ids)
+        if args.filter_instance not in (".*", csv_regex):
+            logger.warning(
+                "Both --filter-instance and --filter-csv given; "
+                "--filter-csv (%d ids) takes precedence.",
+                len(ids),
+            )
+        args.filter_instance = csv_regex
+        logger.info("Restricting to %d instance(s) from %s", len(ids), args.filter_csv)
+
     # Profiler setup ---------------------------------------------------------
     profiling_enabled = args.enable_profiler or args.profile_dir is not None
 
@@ -452,22 +669,7 @@ def run_graph_pipeline(args):
     instance_seed_recalls = []
 
     # Load dataset
-    if args.dataset == "swebench_lite":
-        dataset_obj = SwebenchDataset(
-            dataset="princeton-nlp/SWE-bench_Lite",
-            split=args.split,
-            filter_instance=args.filter_instance,
-            repo_root=args.repo_cache_dir,
-        )
-    elif args.dataset == "locbench_v1":
-        dataset_obj = LocbenchDataset(
-            dataset="czlll/Loc-Bench_V1",
-            split=args.split,
-            filter_instance=args.filter_instance,
-            repo_root=args.repo_cache_dir,
-        )
-    else:
-        raise ValueError(f"Unsupported dataset: {args.dataset}")
+    dataset_obj = _build_dataset(args)
 
     dataset_instances = dataset_obj.load()
     if not dataset_instances:
@@ -477,9 +679,14 @@ def run_graph_pipeline(args):
 
     # GT files are dataset-specific; derive the default from --dataset so a
     # Loc-Bench run can't silently align against the SWE-bench ground truth.
-    eval_path = args.eval_instances or str(
-        Path.home() / ".codeminer" / f"{args.dataset}_{args.split}_gt.json"
-    )
+    # codeminer_base carries GT in-dataset, so an empty path makes
+    # load_eval_metadata project the gt_* columns directly (no on-disk file).
+    if args.dataset == "codeminer_base":
+        eval_path = args.eval_instances or ""
+    else:
+        eval_path = args.eval_instances or str(
+            Path.home() / ".codeminer" / f"{args.dataset}_{args.split}_gt.json"
+        )
     eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     metrics_k = sorted(set(args.metrics_k))
     metric_max_k = max(metrics_k)
@@ -526,6 +733,9 @@ def run_graph_pipeline(args):
             index_path = str(
                 Path(args.index_cache_dir) / instance_id.replace("/", "__")
             )
+            # Per-instance chunker language for Stage 3 rerank (codeminer_base
+            # is multi-language; SWE-bench / Loc-Bench fall back to --languages).
+            instance_languages = _resolve_instance_languages(instance, args.languages)
 
             pipeline = GraphRetrievePipeline(
                 repo_path=repo_path,
@@ -539,6 +749,7 @@ def run_graph_pipeline(args):
                 embedding_model=args.embedding_model,
                 embedding_provider=args.embedding_provider,
                 embedding_dimension=args.embedding_dimension,
+                languages=instance_languages,
                 project_name=instance_id.replace("/", "__"),
                 profiler=index_profiler,
             )
@@ -581,7 +792,13 @@ def run_graph_pipeline(args):
                     {"instance_id": instance_id, "sections": index_only}
                 )
                 instance_query_profiles.append(
-                    {"instance_id": instance_id, "sections": query_only}
+                    {
+                        "instance_id": instance_id,
+                        "sections": query_only,
+                        "query_length_bucket": _query_length_bucket(
+                            instance["problem_statement"]
+                        ),
+                    }
                 )
 
             metrics = evaluate_predictions(
@@ -672,6 +889,8 @@ def run_graph_pipeline(args):
             "dataset": args.dataset,
             "split": args.split,
             "filter_instance": args.filter_instance,
+            "filter_csv": args.filter_csv,
+            "languages": args.languages,
             "expansion": "ppr" if args.ppr else "bfs",
             "stage1_topk": args.stage1_topk,
             "stage2_topk": args.stage2_topk,
@@ -707,6 +926,9 @@ def run_graph_pipeline(args):
             "query_time": {
                 "per_instance": instance_query_profiles,
                 "aggregate_sections": _aggregate_section_stats(instance_query_profiles),
+                "query_length_buckets": _aggregate_query_length_buckets(
+                    instance_query_profiles
+                ),
             },
             "bm25_seed_recall": {
                 "per_instance": instance_seed_recalls,
