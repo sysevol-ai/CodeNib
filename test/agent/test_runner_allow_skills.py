@@ -192,19 +192,20 @@ class TestAgentRunnerAllowSkills:
         assert not (set(DEFAULT_SKILL_IDS) & names)
 
     def test_default_tool_ids_subset_graph_primary(self, three_skill_registry):
-        """LocAgent-style harness: expose file_read but withhold file_search
-        (grep), so the structured tools carry navigation."""
+        """LocAgent-style harness: expose read but withhold grep/glob/bash,
+        so the structured tools carry navigation."""
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(
             llm,
             three_skill_registry,
             allow_skills={"a"},
             include_default_tools=True,
-            default_tool_ids={"file_read"},
+            default_tool_ids={"read"},
         )
         names = {t["function"]["name"] for t in runner.tools}
-        assert "file_read" in names
-        assert "file_search" not in names  # no grep escape hatch
+        assert "read" in names
+        assert "grep" not in names  # no grep escape hatch
+        assert "glob" not in names and "bash" not in names
         assert "a" in names  # swept skill still present
 
 

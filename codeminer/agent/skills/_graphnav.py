@@ -192,7 +192,7 @@ def neighbors(graph: Any, symbol: str, relation: str, top_k: int = 40) -> List[A
             )
         raise ValueError(
             f"symbol {symbol!r} not found in the code graph. Use a name from a "
-            "search result, or grep with file_search to find it."
+            "search result, or grep to find it."
         )
     label = display_name(graph, name)
     results: List[Any] = []

@@ -2,58 +2,54 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""
-Always-on default tool primitives: ``file_read`` and ``file_search``.
+"""Always-on default tool primitives: ``read`` / ``grep`` / ``glob`` / ``bash``.
 
-These two tools are registered into ``AgentRunner``'s skill registry at
-startup and are **never** removed by the ``exclude_skills`` or
-``allow_skills`` arguments — every skill subset (A0–A6) builds on top of
-them.
+These four tools are registered into ``AgentRunner``'s skill registry at
+startup and are **never** removed by the ``exclude_skills`` or ``allow_skills``
+arguments — every skill subset (A0–A6) builds on top of them.
 
-Per #145, the search default is "grep / glob / bash-style primitives
-(single tool or split — your call)". This module takes the **single
-tool** route: ``file_search`` is one skill that dispatches via a
-``mode`` argument:
+Why four tools (and not the older single ``file_search`` multiplexer)?
+----------------------------------------------------------------------
+The shape mirrors the mainstream Claude Code tool reference
+(https://code.claude.com/docs/en/tools-reference): one focused tool per
+concern — ``Read`` / ``Grep`` / ``Glob`` / ``Bash`` — instead of one
+``file_search`` skill with a ``mode`` discriminator and a flat schema whose
+parameters are silently ignored depending on the mode. Splitting them gives
+each tool a clean, self-describing schema: the model never sees ``timeout`` on
+a content search or ``case_insensitive`` on a shell command.
 
-- ``mode="content"`` *(default)* — grep-style regex over file contents.
-- ``mode="files"`` — glob-style filename enumeration (``Path.rglob``).
-- ``mode="shell"`` — bash-style shell command execution.
+Deviations from the upstream reference (and why)
+------------------------------------------------
+The registry dispatches tool calls as ``executor_fn(**json_args)`` (see
+``AgentRunner._execute_tool_call``), so every schema parameter must be a valid
+Python identifier. That rules out the reference's literal flag names
+(``-i`` / ``-n`` / ``-A`` / ``-B`` / ``-C``). We therefore:
 
-The tool is named ``file_search`` (not ``regex_search``) so it does not
-collide with the existing index-backed ``regex_search`` retrieval skill
-in ``skills/regex_search/`` — that one searches the in-memory node index
-(``regex.retrieve``), this one scans the raw filesystem with no index.
+- name the skills in lowercase snake_case (``read`` / ``grep`` / ``glob`` /
+  ``bash``) to match the existing registry convention (``bm25_search``,
+  ``graph_expand``, ...), not the reference's TitleCase display names;
+- expose ``-i`` as ``case_insensitive`` (defaulting to ``True`` to preserve the
+  prior always-on behaviour, where upstream grep defaults to case-sensitive);
+  line numbers are always emitted (the reference ``-n``) and context lines
+  (``-A`` / ``-B`` / ``-C``) are not implemented;
+- default ``grep.output_mode`` to ``content`` (upstream defaults to
+  ``files_with_matches``) — content is the more useful default for a
+  localization agent;
+- express ``bash.timeout`` in **milliseconds** to match the reference units,
+  drop ``run_in_background`` (no background-task infrastructure here), and add
+  ``cwd`` (the reference relies on session ``cd`` persistence, which this
+  subprocess-per-call executor lacks);
+- cap ``glob`` at 100 results internally (matching the reference's documented
+  cap) rather than exposing a ``max_results`` knob.
 
-The internal helpers ``_file_search_content`` / ``_file_search_files``
-/ ``_file_search_shell`` implement each back-end; the public
-``_file_search`` is the dispatcher referenced by
-``_build_file_search_skill``. Shell mode has a loose safety policy
-(``shell=True``, no allow/deny list); see the shell skill_doc for the
-trust-boundary contract.
+Line numbers follow **opencode** style (``{lineno:6d} | {content}``) and the
+read/grep boundary is **1-based** throughout, aligned with #147/#153.
 
-Reference design
-----------------
-Line-number format follows **opencode** (``{lineno:6d} | {content}``), as
-requested in the code review on issue #145 by @siriuxyu:
+The ``grep`` tool scans the raw filesystem with no index; for index-backed
+regex retrieval over parsed nodes use the separate ``regex_search`` skill in
+``skills/regex_search/``.
 
-    "Please make line numbers visible per row (opencode-style
-    ``<lineno> | <content>``, or similar)."
-
-The ``file_read`` input/output boundary convention uses **1-based** line
-numbers throughout, aligned with the cross-cutting convention settled in
-#147/#153.
-
-Why opencode over openhands / codex?
-- opencode's ``{n} | {line}`` format is the clearest visual separator for an
-  LLM that needs to pick a line number for a follow-up call (e.g.
-  ``graph_expand(ranges=[...])``) without having to count from the top of the
-  snippet — the number is right there.
-- openhands uses a similar scheme but with a different delimiter that is less
-  scan-friendly in monospace output.
-- codex embeds numbers in XML-like tags that add token overhead without
-  readability benefit.
-
-Related issues: #133 (Agent Router RFC), #145 (this PR), #147 (line-number
+Related issues: #133 (Agent Router RFC), #145 (defaults), #147 (line-number
 convention), #153 (1-based boundary).
 """
 
@@ -64,7 +60,7 @@ import re
 import signal
 import subprocess
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ..skills.core import (
     Cost,
@@ -76,12 +72,13 @@ from ..skills.core import (
 from ..skills.registry import SkillRegistry
 
 # Canonical skill IDs for the always-on defaults.
-DEFAULT_SKILL_IDS: frozenset[str] = frozenset({"file_read", "file_search"})
+DEFAULT_SKILL_IDS: frozenset[str] = frozenset({"read", "grep", "glob", "bash"})
 
 # Sensible token-safety caps.
 _MAX_LINES_DEFAULT: int = 200
 _MAX_RESULTS_DEFAULT: int = 50
-_BASH_TIMEOUT_DEFAULT: int = 30  # seconds
+_GLOB_MAX_RESULTS: int = 100  # mirrors the reference Glob's documented cap
+_BASH_TIMEOUT_MS_DEFAULT: int = 30_000  # 30s, expressed in ms (reference units)
 _BASH_MAX_OUTPUT_CHARS: int = 16_000  # matches runner._MAX_RESULT_CHARS
 
 # Directories to skip during recursive search (avoids scanning VCS / cache noise).
@@ -104,17 +101,37 @@ _SKIP_DIR_PREFIXES = frozenset(
     }
 )
 
+# `grep` file-type filter: maps a language token to the extensions it covers.
+# Mirrors the reference Grep's ``type`` parameter (ripgrep types) for the
+# languages CodeMiner indexes, plus a few common siblings.
+_TYPE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
+    "py": (".py", ".pyi"),
+    "python": (".py", ".pyi"),
+    "js": (".js", ".jsx", ".mjs", ".cjs"),
+    "ts": (".ts", ".tsx"),
+    "go": (".go",),
+    "rust": (".rs",),
+    "rs": (".rs",),
+    "c": (".c", ".h"),
+    "cpp": (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".h"),
+    "java": (".java",),
+    "rb": (".rb",),
+    "ruby": (".rb",),
+    "md": (".md", ".markdown"),
+}
+
+_GREP_OUTPUT_MODES = ("content", "files_with_matches", "count")
+
 
 # ---------------------------------------------------------------------------
-# file_read
+# read
 # ---------------------------------------------------------------------------
 
 
-def _file_read(
-    path: str,
-    start_line: int = 1,
-    end_line: Optional[int] = None,
-    max_lines: int = _MAX_LINES_DEFAULT,
+def _read(
+    file_path: str,
+    offset: int = 1,
+    limit: int = _MAX_LINES_DEFAULT,
 ) -> str:
     """Read a file, returning its content with per-row 1-based line numbers.
 
@@ -124,56 +141,53 @@ def _file_read(
            2 |     return 42
 
     Args:
-        path: Absolute or repo-relative path to the file.
-        start_line: First line to read (1-based, inclusive). Defaults to 1.
-        end_line: Last line to read (1-based, inclusive). Defaults to EOF.
-        max_lines: Hard cap on lines returned for token safety. Defaults to
-            200.  A truncation notice with the next ``start_line`` is appended
-            when the cap is reached.
+        file_path: Absolute or repo-relative path to the file.
+        offset: First line to read (1-based, inclusive). Defaults to 1. Mirrors
+            the reference ``Read.offset``.
+        limit: Hard cap on lines returned for token safety. Defaults to 200. A
+            truncation notice with the next ``offset`` is appended when the cap
+            is reached. Mirrors the reference ``Read.limit``.
 
     Returns:
         Formatted string, or an error message prefixed with ``"Error: "``.
     """
     # Coerce inputs up front: a non-integer arg returns an Error string (the
-    # module contract) instead of raising into the caller. `max_lines` is
-    # floored at 1 so `max_lines=0` cannot emit a "0 lines; continue at the
-    # same start_line" notice that loops forever.
+    # module contract) instead of raising into the caller. `limit` is floored at
+    # 1 so `limit=0` cannot emit a "0 lines; continue at the same offset" notice
+    # that loops forever.
     try:
-        start = max(1, int(start_line))
-        max_lines = max(1, int(max_lines))
-        end = int(end_line) if end_line is not None else None
+        start = max(1, int(offset))
+        limit = max(1, int(limit))
     except (TypeError, ValueError):
-        return "Error: start_line, end_line, and max_lines must be integers"
-    if end is not None and start > end:
-        return f"Error: start_line {start} > end_line {end}"
+        return "Error: offset and limit must be integers"
 
-    # Stream the file: keep at most `max_lines` lines in memory and merely
-    # *count* any further requested lines (for the truncation notice) without
-    # storing them, so a huge file is never fully materialised.
+    # Stream the file: keep at most `limit` lines in memory and merely *count*
+    # any further lines (for the truncation notice) without storing them, so a
+    # huge file is never fully materialised.
     selected: List[str] = []
-    extra = 0  # requested lines present beyond the kept window
+    extra = 0  # lines present beyond the kept window
     total = 0
     try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
+        with open(file_path, encoding="utf-8", errors="replace") as fh:
             for idx, line in enumerate(fh, start=1):
                 total = idx
                 if idx < start:
                     continue
-                if end is not None and idx > end:
-                    break
-                if len(selected) < max_lines:
+                if len(selected) < limit:
                     selected.append(line)
                 else:
                     extra += 1
     except FileNotFoundError:
-        return f"Error: file not found: {path!r}"
+        return f"Error: file not found: {file_path!r}"
+    except IsADirectoryError:
+        return f"Error: {file_path!r} is a directory, not a file"
     except OSError as exc:
-        return f"Error reading {path!r}: {exc}"
+        return f"Error reading {file_path!r}: {exc}"
 
     if total == 0:
-        return f"(empty file: {path})"
+        return f"(empty file: {file_path})"
     if start > total:
-        return f"Error: start_line {start} exceeds file length {total} in {path!r}"
+        return f"Error: offset {start} exceeds file length {total} in {file_path!r}"
 
     lines_out = [
         f"{lineno:6d} | {line.rstrip()}"
@@ -182,89 +196,71 @@ def _file_read(
     result = "\n".join(lines_out)
 
     if extra > 0:
-        next_start = start + max_lines  # first omitted line (1-based)
-        result += (
-            f"\n... ({extra} more lines; " f"use start_line={next_start} to continue)"
-        )
+        next_start = start + limit  # first omitted line (1-based)
+        result += f"\n... ({extra} more lines; " f"use offset={next_start} to continue)"
 
     return result
 
 
-_FILE_READ_SKILL_DOC = """\
-# file_read
+_READ_SKILL_DOC = """\
+# read
 
 Read a source file and return its content with per-row 1-based line numbers.
+Shape mirrors the mainstream Claude Code `Read` tool.
 
 ## Parameters
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `path` | `str` | *(required)* | Absolute or repo-relative file path. |
-| `start_line` | `int` | `1` | First line to read (1-based, inclusive). |
-| `end_line` | `int` | EOF | Last line to read (1-based, inclusive). |
-| `max_lines` | `int` | `200` | Hard cap on lines returned; prevents context blowup. |
+| `file_path` | `str` | *(required)* | Absolute or repo-relative file path. |
+| `offset` | `int` | `1` | First line to read (1-based, inclusive). |
+| `limit` | `int` | `200` | Max lines returned; prevents context blowup. |
 
 ## Output
 
 Lines formatted as `{lineno:6d} | {content}` (opencode-style, 1-based).
-A truncation notice with the next `start_line` is appended when `max_lines`
-is reached.
+A truncation notice with the next `offset` is appended when `limit` is reached.
 
 ## When to Use
 
-- Inspect a function or class after a search skill narrowed the location.
-- Read context lines around a match.
-- Retrieve a known file at a specific line range.
-- Follow up on a `grep` result to read surrounding code.
+- Inspect a function or class after a search tool narrowed the location.
+- Read context lines around a `grep` match.
+- Retrieve a known file at a specific line range (pass `offset`/`limit`).
 
 ## Safety
 
-`file_read` opens the `path` as given — there is **no path jail**. The
-`path` description says "repo-relative", but this is not enforced: an
-absolute path reads any file the process can (`/etc/shadow`,
-`~/.ssh/id_rsa`, ...). As an always-on tool every agent turn can call,
-this means untrusted query input or prompt injection could exfiltrate any
-readable file. Callers running the agent on untrusted input MUST sandbox
-at the container / VM / process level.
+`read` opens `file_path` as given — there is **no path jail**. An absolute
+path reads any file the process can (`/etc/shadow`, `~/.ssh/id_rsa`, ...). As
+an always-on tool every agent turn can call, untrusted query input or prompt
+injection could exfiltrate any readable file. Callers running the agent on
+untrusted input MUST sandbox at the container / VM / process level.
 """
 
 
-def _build_file_read_skill() -> SkillMetadata:
+def _build_read_skill() -> SkillMetadata:
     return SkillMetadata(
-        skill_id="file_read",
+        skill_id="read",
         skill_type=SkillType.CUSTOM,
         inputs=[
             SkillInputSpec(
-                name="path",
+                name="file_path",
                 type_hint="str",
                 required=True,
                 description="Absolute or repo-relative path to the file.",
             ),
             SkillInputSpec(
-                name="start_line",
+                name="offset",
                 type_hint="int",
                 required=False,
                 default=1,
                 description="First line to read (1-based, inclusive). Defaults to 1.",
             ),
             SkillInputSpec(
-                name="end_line",
-                type_hint="int",
-                required=False,
-                default=None,
-                description=(
-                    "Last line to read (1-based, inclusive). "
-                    "Defaults to end of file."
-                ),
-            ),
-            SkillInputSpec(
-                name="max_lines",
+                name="limit",
                 type_hint="int",
                 required=False,
                 default=_MAX_LINES_DEFAULT,
-                description=(
-                    f"Hard cap on lines returned (default {_MAX_LINES_DEFAULT})."
-                ),
+                description=(f"Max lines returned (default {_MAX_LINES_DEFAULT})."),
             ),
         ],
         outputs=SkillOutputSpec(
@@ -274,148 +270,336 @@ def _build_file_read_skill() -> SkillMetadata:
                 "`{lineno:6d} | {line}` format."
             ),
         ),
-        executor_fn=_file_read,
+        executor_fn=_read,
         async_capable=False,
         cacheable=False,  # filesystem state may change between calls
         cost=Cost.LOW,
         dependencies=[],
         resources=[],
-        defaults={"start_line": 1, "max_lines": _MAX_LINES_DEFAULT},
-        skill_doc=_FILE_READ_SKILL_DOC,
+        defaults={"offset": 1, "limit": _MAX_LINES_DEFAULT},
+        skill_doc=_READ_SKILL_DOC,
         description=(
             "Read a file with 1-based line numbers (opencode-style); "
-            "output is bounded by max_lines for token safety."
+            "output is bounded by `limit` for token safety."
         ),
     )
 
 
 # ---------------------------------------------------------------------------
-# file_search — multi-mode primitive (content / files / shell)
-#
-# Per #145, the ``file_search`` slot is "grep / glob / bash-style primitives
-# (single tool or split — your call)". This module takes the **single tool**
-# route: one skill, three internal modes, dispatched by the ``mode`` argument.
+# grep — content search over the raw filesystem
 # ---------------------------------------------------------------------------
 
 
-def _file_search_content(
+def _grep_candidate_files(
+    root: Path,
+    glob: Optional[str],
+    type_: Optional[str],
+):
+    """Yield candidate files under *root* honouring ``glob`` / ``type`` filters.
+
+    ``glob`` filters file *names* (passed to ``rglob``); ``type`` further
+    restricts by extension via ``_TYPE_EXTENSIONS``. Noise directories
+    (``_SKIP_DIR_PREFIXES``) are skipped.
+    """
+    exts = _TYPE_EXTENSIONS.get((type_ or "").lower()) if type_ else None
+    for file_path in root.rglob(glob or "*"):
+        if not file_path.is_file():
+            continue
+        if any(part in _SKIP_DIR_PREFIXES for part in file_path.parts):
+            continue
+        if exts is not None and file_path.suffix.lower() not in exts:
+            continue
+        yield file_path
+
+
+def _grep(
     pattern: str,
     path: str = ".",
-    include: Optional[str] = None,
-    case_sensitive: bool = False,
-    use_regex: bool = True,
-    max_results: int = _MAX_RESULTS_DEFAULT,
+    glob: Optional[str] = None,
+    type: Optional[str] = None,  # noqa: A002 — matches the reference param name
+    output_mode: str = "content",
+    case_insensitive: bool = True,
+    multiline: bool = False,
+    head_limit: int = _MAX_RESULTS_DEFAULT,
 ) -> str:
-    """Grep-style content search.
+    """Regex content search over file contents (the reference ``Grep`` shape).
 
-    Returns one match per line: ``{relative_path}:{lineno}: {content}``
-    (1-based). Returns a no-match message when nothing is found.
+    Returns text shaped by ``output_mode``:
+
+    - ``content`` *(default)* — ``{file}:{lineno}: {line}`` per match (1-based).
+    - ``files_with_matches`` — unique file paths that contain a match.
+    - ``count`` — ``{file}:{count}`` per matching file.
+
+    ``head_limit`` caps the number of emitted rows (matches in content mode,
+    files in the other two). A no-match message is returned when nothing hits.
     """
-    flags = 0 if case_sensitive else re.IGNORECASE
-    if use_regex:
-        try:
-            compiled = re.compile(pattern, flags)
-        except re.error as exc:
-            return f"Error: invalid regex {pattern!r}: {exc}"
-    else:
-        compiled = re.compile(re.escape(pattern), flags)
+    if output_mode not in _GREP_OUTPUT_MODES:
+        return (
+            f"Error: invalid output_mode {output_mode!r}; "
+            f"expected one of {list(_GREP_OUTPUT_MODES)}"
+        )
+    try:
+        head_limit = max(1, int(head_limit))
+    except (TypeError, ValueError):
+        return "Error: head_limit must be an integer"
+
+    flags = 0 if case_insensitive is False else re.IGNORECASE
+    if multiline:
+        flags |= re.MULTILINE | re.DOTALL
+    try:
+        compiled = re.compile(pattern, flags)
+    except re.error as exc:
+        return f"Error: invalid regex {pattern!r}: {exc}"
 
     root = Path(path)
     if not root.exists():
         return f"Error: path {path!r} does not exist"
 
-    results: List[str] = []
+    content_rows: List[str] = []  # "{rel}:{lineno}: {line}"
+    file_match_count: "Dict[str, int]" = {}  # rel -> match count, insertion order
     capped = False
 
-    def _search_file(file_path: Path) -> bool:
-        """Append matches from *file_path*; return True if cap was hit."""
+    def _rel(file_path: Path) -> str:
+        if root.is_dir():
+            try:
+                return str(file_path.relative_to(root))
+            except ValueError:
+                return str(file_path)
+        return str(file_path)
+
+    def _scan(file_path: Path) -> bool:
+        """Record matches for *file_path*; return True if the head cap was hit."""
+        rel = _rel(file_path)
         try:
-            with open(file_path, encoding="utf-8", errors="replace") as fh:
-                for lineno, line in enumerate(fh, start=1):
-                    if compiled.search(line):
-                        rel = (
-                            file_path.relative_to(root) if root.is_dir() else file_path
-                        )
-                        results.append(f"{rel}:{lineno}: {line.rstrip()}")
-                        if len(results) >= max_results:
+            if multiline:
+                text = file_path.read_text(encoding="utf-8", errors="replace")
+                for m in compiled.finditer(text):
+                    lineno = text.count("\n", 0, m.start()) + 1
+                    snippet = text[m.start() : m.end()].splitlines()[0]
+                    file_match_count[rel] = file_match_count.get(rel, 0) + 1
+                    if output_mode == "content":
+                        content_rows.append(f"{rel}:{lineno}: {snippet}")
+                        if len(content_rows) >= head_limit:
                             return True
+            else:
+                with open(file_path, encoding="utf-8", errors="replace") as fh:
+                    for lineno, line in enumerate(fh, start=1):
+                        if compiled.search(line):
+                            file_match_count[rel] = file_match_count.get(rel, 0) + 1
+                            if output_mode == "content":
+                                content_rows.append(f"{rel}:{lineno}: {line.rstrip()}")
+                                if len(content_rows) >= head_limit:
+                                    return True
         except OSError:
-            # Best-effort search: a single unreadable file (permission denied,
-            # broken symlink, encoding issue past errors="replace", etc.) must
-            # not abort the overall scan. Silently skip and move on so the LLM
-            # still sees the matches from other files.
+            # Best-effort: a single unreadable file must not abort the scan.
             pass
+        # In file-granular modes, cap on the number of distinct matching files.
+        if output_mode != "content" and len(file_match_count) >= head_limit:
+            return True
         return False
 
     if root.is_file():
-        _search_file(root)
+        _scan(root)
     else:
-        # Pass `include` straight to rglob so the OS filters file *names*
-        # during traversal — avoids materialising the whole tree (a `sorted()`
-        # over `rglob("*")` would allocate one Path per file before any match
-        # check, and the max_results cap gives no protection against that).
-        # Traversal order is filesystem-dependent, but content matches are
-        # identified by `{file}:{lineno}`, so cross-file ordering is not
-        # load-bearing. rglob is a generator, so a bad `include` glob raises
-        # during iteration (ValueError/OSError/NotImplementedError) — wrap it.
         try:
-            for file_path in root.rglob(include or "*"):
-                if not file_path.is_file():
-                    continue
-                # Skip noise directories.
-                if any(part in _SKIP_DIR_PREFIXES for part in file_path.parts):
-                    continue
-                if _search_file(file_path):
+            for file_path in _grep_candidate_files(root, glob, type):
+                if _scan(file_path):
                     capped = True
                     break
         except (ValueError, OSError, NotImplementedError) as exc:
-            return f"Error: invalid include glob {include!r}: {exc}"
+            return f"Error: invalid glob {glob!r}: {exc}"
 
-    if not results:
+    if not file_match_count:
         return "No matches found."
 
-    text = "\n".join(results)
+    if output_mode == "content":
+        rows = content_rows
+        cap_unit = "matches"
+    elif output_mode == "files_with_matches":
+        rows = sorted(file_match_count)[:head_limit]
+        cap_unit = "files"
+    else:  # count
+        rows = [f"{rel}:{n}" for rel, n in list(file_match_count.items())[:head_limit]]
+        cap_unit = "files"
+
+    text = "\n".join(rows)
     if capped:
         text += (
-            f"\n... (max_results={max_results} reached; "
-            "narrow your search with `include` or a more specific `pattern`)"
+            f"\n... (head_limit={head_limit} {cap_unit} reached; "
+            "narrow with `glob`/`type` or a more specific `pattern`)"
         )
     return text
 
 
-def _file_search_files(
-    pattern: str,
-    path: str = ".",
-    max_results: int = _MAX_RESULTS_DEFAULT,
-) -> str:
-    """Glob-style filename enumeration under *path*.
+_GREP_SKILL_DOC = """\
+# grep
+
+Regex content search over the raw filesystem (no index). Shape mirrors the
+mainstream Claude Code `Grep` tool. For index-backed regex over parsed nodes,
+use the separate `regex_search` skill.
+
+## Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `pattern` | str | *required* | Regular expression (Python `re` syntax). |
+| `path` | str | `.` | Directory (or single file) to search. |
+| `glob` | str | null | Filter file *names* (e.g. `*.py`, `**/test_*.py`). |
+| `type` | str | null | Filter by language (`py`, `ts`, `go`, `rust`, `cpp`, ...). |
+| `output_mode` | str | `content` | `content` / `files_with_matches` / `count`. |
+| `case_insensitive` | bool | true | Case-insensitive matching (reference `-i`). |
+| `multiline` | bool | false | Let `.`/`^`/`$` span lines (reference `multiline`). |
+| `head_limit` | int | 50 | Cap on rows (matches, or files in the other modes). |
+
+## Output
+
+- `content` — `{file}:{lineno}: {line}` per match (1-based).
+- `files_with_matches` — sorted unique file paths that contain a match.
+- `count` — `{file}:{count}` per matching file.
+
+## When to Use
+
+- Find call sites, error strings, or identifier usage anywhere in the repo.
+- A base-class method often has the real change in a SUBCLASS OVERRIDE — grep
+  the method name to find all definitions, then `read` them.
+- Use `output_mode="files_with_matches"` to locate *which* files first, then
+  `read` them; `count` to gauge how widespread a symbol is.
+
+## Note vs the reference
+
+Parameter names differ from upstream where they must be Python identifiers:
+`-i` → `case_insensitive` (defaulting to true here), line numbers are always
+on, and context lines (`-A`/`-B`/`-C`) are not implemented.
+"""
+
+
+def _build_grep_skill() -> SkillMetadata:
+    return SkillMetadata(
+        skill_id="grep",
+        skill_type=SkillType.CUSTOM,
+        inputs=[
+            SkillInputSpec(
+                name="pattern",
+                type_hint="str",
+                required=True,
+                description="Regular expression to search for (Python re syntax).",
+            ),
+            SkillInputSpec(
+                name="path",
+                type_hint="str",
+                required=False,
+                default=".",
+                description="Directory (or single file) to search. Defaults to '.'.",
+            ),
+            SkillInputSpec(
+                name="glob",
+                type_hint="str",
+                required=False,
+                default=None,
+                description="Filter file names by glob (e.g. '*.py', '**/test_*.py').",
+            ),
+            SkillInputSpec(
+                name="type",
+                type_hint="str",
+                required=False,
+                default=None,
+                description=(
+                    "Filter by language: py, js, ts, go, rust, c, cpp, " "java, rb, md."
+                ),
+            ),
+            SkillInputSpec(
+                name="output_mode",
+                type_hint="str",
+                required=False,
+                default="content",
+                enum=list(_GREP_OUTPUT_MODES),
+                description=(
+                    "'content' (matching lines), 'files_with_matches' (paths "
+                    "only), or 'count' (matches per file). Defaults to 'content'."
+                ),
+            ),
+            SkillInputSpec(
+                name="case_insensitive",
+                type_hint="bool",
+                required=False,
+                default=True,
+                description="Case-insensitive matching (reference '-i'). Default true.",
+            ),
+            SkillInputSpec(
+                name="multiline",
+                type_hint="bool",
+                required=False,
+                default=False,
+                description="Let '.'/'^'/'$' span line boundaries. Default false.",
+            ),
+            SkillInputSpec(
+                name="head_limit",
+                type_hint="int",
+                required=False,
+                default=_MAX_RESULTS_DEFAULT,
+                description=(
+                    "Cap on rows returned (matches in content mode, files "
+                    f"otherwise; default {_MAX_RESULTS_DEFAULT})."
+                ),
+            ),
+        ],
+        outputs=SkillOutputSpec(
+            type_hint="str",
+            description=(
+                "Matching lines, file paths, or per-file counts depending on "
+                "output_mode."
+            ),
+        ),
+        executor_fn=_grep,
+        async_capable=False,
+        cacheable=False,
+        cost=Cost.LOW,
+        dependencies=[],
+        resources=[],
+        defaults={
+            "path": ".",
+            "output_mode": "content",
+            "case_insensitive": True,
+            "multiline": False,
+            "head_limit": _MAX_RESULTS_DEFAULT,
+        },
+        skill_doc=_GREP_SKILL_DOC,
+        description=(
+            "Regex content search over the raw filesystem; output shaped by "
+            "output_mode (content / files_with_matches / count)."
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# glob — filename enumeration
+# ---------------------------------------------------------------------------
+
+
+def _glob(pattern: str, path: str = ".") -> str:
+    """Glob-style filename enumeration under *path* (the reference ``Glob``).
 
     ``pattern`` follows ``Path.rglob`` syntax (e.g. ``"*.py"``,
     ``"**/test_*.py"``). Returns a sorted newline-separated list of relative
-    paths, or a no-match message when empty.
-
-    Ordering contract: the ``max_results`` cap is applied during traversal
-    (filesystem order) and only the *returned* subset is sorted — so which
-    files survive the cap is filesystem-dependent on large match sets. The
-    output is sorted among returned results, not globally sorted.
+    paths, or a no-match message when empty. Capped at ``_GLOB_MAX_RESULTS``
+    (mirrors the reference cap); the cap is applied during traversal
+    (filesystem order) and only the returned subset is sorted.
     """
     root_path = Path(path)
     if not root_path.exists():
         return f"Error: path {path!r} does not exist"
     if not root_path.is_dir():
-        return f"Error: files-mode root {path!r} is not a directory"
+        return f"Error: glob root {path!r} is not a directory"
 
     matches: List[str] = []
     capped = False
     # rglob is a generator: a bad pattern (empty, absolute, unsupported glob)
-    # raises during *iteration*, not at creation, and may raise
-    # NotImplementedError as well as ValueError — so wrap the whole loop, not
-    # just the rglob() call.
+    # raises during *iteration*, and may raise NotImplementedError as well as
+    # ValueError — so wrap the whole loop, not just the rglob() call.
     try:
         for found in root_path.rglob(pattern):
             if not found.is_file():
                 continue
-            # Skip noise directories.
             if any(part in _SKIP_DIR_PREFIXES for part in found.parts):
                 continue
             try:
@@ -423,7 +607,7 @@ def _file_search_files(
             except ValueError:
                 rel = found
             matches.append(str(rel))
-            if len(matches) >= max_results:
+            if len(matches) >= _GLOB_MAX_RESULTS:
                 capped = True
                 break
     except (ValueError, OSError, NotImplementedError) as exc:
@@ -434,30 +618,104 @@ def _file_search_files(
 
     text = "\n".join(sorted(matches))
     if capped:
-        text += (
-            f"\n... (max_results={max_results} reached; "
-            "narrow the pattern or raise max_results)"
-        )
+        text += f"\n... ({_GLOB_MAX_RESULTS}-result cap reached; " "narrow the pattern)"
     return text
 
 
-def _file_search_shell(
+_GLOB_SKILL_DOC = """\
+# glob
+
+Enumerate files by name pattern (the mainstream Claude Code `Glob` shape).
+
+## Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `pattern` | str | *required* | `Path.rglob` glob (e.g. `*.py`, `**/*.proto`). |
+| `path` | str | `.` | Root directory to search. |
+
+## Output
+
+Sorted newline-separated relative paths. Capped at 100 results (narrow the
+pattern if you hit it).
+
+## When to Use
+
+- Enumerate files matching a structure (`**/__init__.py`, `**/*.proto`).
+- Confirm a file exists before `read`.
+- Map the layout of an unfamiliar subtree.
+"""
+
+
+def _build_glob_skill() -> SkillMetadata:
+    return SkillMetadata(
+        skill_id="glob",
+        skill_type=SkillType.CUSTOM,
+        inputs=[
+            SkillInputSpec(
+                name="pattern",
+                type_hint="str",
+                required=True,
+                description="Glob pattern (Path.rglob syntax, e.g. '**/*.py').",
+            ),
+            SkillInputSpec(
+                name="path",
+                type_hint="str",
+                required=False,
+                default=".",
+                description="Root directory to search. Defaults to '.'.",
+            ),
+        ],
+        outputs=SkillOutputSpec(
+            type_hint="str",
+            description="Sorted newline-separated list of matching relative paths.",
+        ),
+        executor_fn=_glob,
+        async_capable=False,
+        cacheable=False,
+        cost=Cost.LOW,
+        dependencies=[],
+        resources=[],
+        defaults={"path": "."},
+        skill_doc=_GLOB_SKILL_DOC,
+        description=(
+            "Enumerate files by glob pattern; returns sorted relative paths "
+            "(capped at 100)."
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# bash — shell command execution
+# ---------------------------------------------------------------------------
+
+
+def _bash(
     command: str,
+    timeout: int = _BASH_TIMEOUT_MS_DEFAULT,
+    description: Optional[str] = None,  # noqa: ARG001 — reference metadata field
     cwd: Optional[str] = None,
-    timeout: int = _BASH_TIMEOUT_DEFAULT,
 ) -> str:
-    """Bash-style shell execution.
+    """Execute a shell command (the reference ``Bash`` shape).
 
     ``command`` runs in its own session (``start_new_session=True``) so that on
     timeout the entire process *group* is killed — otherwise ``subprocess``
-    kills only the spawned ``/bin/sh`` and leaves its children (the actual
-    ``pytest`` / ``find`` / ...) orphaned and still running. Returns a
-    multi-section string with the command, exit code, stdout, stderr; capped at
-    ``_BASH_MAX_OUTPUT_CHARS``. On timeout / spawn failure returns
-    ``"Error: ..."``.
+    kills only the spawned ``/bin/sh`` and leaves its children orphaned. Returns
+    a multi-section string (command, exit code, stdout, stderr) capped at
+    ``_BASH_MAX_OUTPUT_CHARS``. On timeout / spawn failure returns ``"Error: "``.
 
-    Loose safety policy — see the "Safety" section of the skill_doc.
+    ``timeout`` is in **milliseconds** (reference units); ``description`` is
+    accepted for parity with the reference and is otherwise unused. Loose safety
+    policy — see the "Safety" section of the skill_doc.
     """
+    try:
+        timeout_ms = int(timeout)
+    except (TypeError, ValueError):
+        return "Error: timeout must be an integer (milliseconds)"
+    # Convert ms -> whole seconds for subprocess, flooring at 1s so a small
+    # sub-second value never becomes a 0s (i.e. immediate) timeout.
+    timeout_s = max(1, timeout_ms // 1000)
+
     try:
         proc = subprocess.Popen(  # noqa: S602 — loose shell policy by design
             command,
@@ -472,7 +730,7 @@ def _file_search_shell(
         return f"Error executing command {command!r}: {exc}"
 
     try:
-        stdout, stderr = proc.communicate(timeout=timeout)
+        stdout, stderr = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
         # Kill the whole process group, not just the shell, then reap.
         try:
@@ -480,7 +738,7 @@ def _file_search_shell(
         except OSError:  # incl. ProcessLookupError / PermissionError
             proc.kill()
         proc.communicate()
-        return f"Error: command timed out after {timeout}s: {command!r}"
+        return f"Error: command timed out after {timeout_s}s: {command!r}"
     except (OSError, ValueError) as exc:
         proc.kill()
         proc.communicate()
@@ -498,241 +756,96 @@ def _file_search_shell(
     return text
 
 
-# ---------------------------------------------------------------------------
-# Public dispatcher
-# ---------------------------------------------------------------------------
+_BASH_SKILL_DOC = """\
+# bash
 
-
-_FILE_SEARCH_MODES = frozenset({"content", "files", "shell"})
-
-
-def _file_search(
-    pattern: str,
-    mode: str = "content",
-    path: str = ".",
-    max_results: int = _MAX_RESULTS_DEFAULT,
-    # content mode:
-    include: Optional[str] = None,
-    case_sensitive: bool = False,
-    use_regex: bool = True,
-    # shell mode:
-    cwd: Optional[str] = None,
-    timeout: int = _BASH_TIMEOUT_DEFAULT,
-) -> str:
-    """Multi-mode search primitive (the ``file_search`` slot in #145).
-
-    The ``mode`` argument dispatches between three back-ends:
-
-    - ``"content"`` (default) — grep-style regex over file *contents*. Uses
-      ``path``, ``include``, ``case_sensitive``, ``use_regex``, ``max_results``.
-    - ``"files"`` — glob-style enumeration of file *names*. Uses ``pattern``
-      as a ``Path.rglob`` glob, plus ``path`` (root) and ``max_results``.
-    - ``"shell"`` — execute ``pattern`` as a shell command line. Uses
-      ``cwd`` and ``timeout``. Loose safety policy.
-
-    Mode-irrelevant parameters are accepted (the SkillMetadata is one flat
-    schema) but silently ignored.
-    """
-    if mode not in _FILE_SEARCH_MODES:
-        return (
-            f"Error: invalid mode {mode!r}; "
-            f"expected one of {sorted(_FILE_SEARCH_MODES)}"
-        )
-    # Coerce numeric args: a non-integer (e.g. an LLM emitting "5") returns an
-    # Error string rather than raising a TypeError into the caller.
-    try:
-        max_results = max(1, int(max_results))
-        timeout = max(1, int(timeout))
-    except (TypeError, ValueError):
-        return "Error: max_results and timeout must be integers"
-    if mode == "content":
-        return _file_search_content(
-            pattern=pattern,
-            path=path,
-            include=include,
-            case_sensitive=case_sensitive,
-            use_regex=use_regex,
-            max_results=max_results,
-        )
-    if mode == "files":
-        return _file_search_files(pattern=pattern, path=path, max_results=max_results)
-    # mode == "shell"
-    return _file_search_shell(command=pattern, cwd=cwd, timeout=timeout)
-
-
-_FILE_SEARCH_SKILL_DOC = """\
-# file_search
-
-Multi-mode search primitive — pick a `mode` to choose the back-end. This
-is the always-on search default from #145 / #133, bundling
-grep / glob / bash-style search into one tool per #145's "single tool"
-option. It scans the raw filesystem (no index); for index-backed regex
-retrieval over parsed nodes, use the separate `regex_search` skill.
-
-## Modes
-
-- `"content"` *(default)* — grep-style regex over file contents.
-  Returns `{file}:{lineno}: {content}` lines (1-based).
-- `"files"` — glob-style filename enumeration (`Path.rglob`).
-  Returns a sorted newline-separated list of paths.
-- `"shell"` — execute the pattern as a shell command line.
-  Returns `$ <cmd>` / exit code / stdout / stderr.
+Execute a shell command (the mainstream Claude Code `Bash` shape). Anything
+that doesn't fit `read` / `grep` / `glob`: `git log`, `find -newer`, `wc -l`,
+test runners.
 
 ## Parameters
 
-| Name | Type | Default | Used by | Description |
-|------|------|---------|---------|-------------|
-| `pattern` | str | *required* | all | Regex / glob / shell command. |
-| `mode` | str | `content` | all | `content` / `files` / `shell`. |
-| `path` | str | `.` | content, files | Directory (or file) to search. |
-| `max_results` | int | 50 | content, files | Cap on matches / paths. |
-| `include` | str | null | content | Glob filter for file *names*. |
-| `case_sensitive` | bool | false | content | Case-sensitive matching. |
-| `use_regex` | bool | true | content | Regex (true) vs literal (false). |
-| `cwd` | str | null | shell | Working dir for the command. |
-| `timeout` | int | 30 | shell | Wall-clock seconds before kill. |
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `command` | str | *required* | Shell command line to run. |
+| `timeout` | int | 30000 | Wall-clock **milliseconds** before kill. |
+| `description` | str | null | Short human label (accepted for parity; unused). |
+| `cwd` | str | null | Working directory for the command. |
 
-## When to Use which mode
+## Output
 
-- **`content`** — find call sites, error strings, identifier usage anywhere
-  in the repo without an index. Narrow by `include="*.py"`.
-- **`files`** — enumerate files matching a structure (`**/__init__.py`,
-  `**/*.proto`); confirm a file exists before `file_read`.
-- **`shell`** — anything that doesn't fit the above (`pytest`, `git log`,
-  `find . -newer ...`, `wc -l`). See Safety below.
+`$ <cmd>` / `(exit code: N)` / stdout / stderr sections, capped at 16k chars.
+On timeout or spawn failure, an `Error: ...` string.
 
-## Safety (shell mode)
+## Safety
 
-Shell mode runs `subprocess.run(command, shell=True)` with **no command
-filtering, no allow/deny list, and no path jail** — loose by design. An
-in-process filter is either too restrictive (blocks legitimate `pytest` /
-`git`) or trivially bypassed (`bash -c '...'`, `eval`), so the trust
-boundary is the *environment*: callers running the agent on untrusted
-input MUST sandbox at the container / VM / process level. `timeout`
-(default 30s) guards against hangs; a 16k-char output cap guards against
-runaway producers (`yes`, `seq`).
+Runs `subprocess(command, shell=True)` with **no command filtering, no
+allow/deny list, and no path jail** — loose by design. An in-process filter is
+either too restrictive (blocks legitimate `pytest`/`git`) or trivially bypassed
+(`bash -c '...'`), so the trust boundary is the *environment*: callers running
+the agent on untrusted input MUST sandbox at the container / VM / process level.
+`timeout` guards against hangs; a 16k-char output cap guards against runaway
+producers (`yes`, `seq`).
 
-## When NOT to Use
+## Note vs the reference
 
-- Single file content — prefer `file_read` (predictable, line-numbered).
-- Index-backed regex over parsed nodes — use the `regex_search` skill.
-- Semantic / intent queries — use `embedding_search`.
-- Ranked full-text retrieval — use `bm25_search`.
+`timeout` is in milliseconds (matching the reference units); `run_in_background`
+is not supported (no background-task infrastructure), and `cwd` is added here
+because this executor has no session `cd` persistence to rely on.
 """
 
 
-def _build_file_search_skill() -> SkillMetadata:
+def _build_bash_skill() -> SkillMetadata:
     return SkillMetadata(
-        skill_id="file_search",
+        skill_id="bash",
         skill_type=SkillType.CUSTOM,
         inputs=[
             SkillInputSpec(
-                name="pattern",
+                name="command",
                 type_hint="str",
                 required=True,
-                description=(
-                    "Mode-dependent: regex (content) / glob (files) / "
-                    "shell command (shell)."
-                ),
+                description="Shell command line to execute.",
             ),
             SkillInputSpec(
-                name="mode",
-                type_hint="str",
-                required=False,
-                default="content",
-                description=(
-                    "Back-end to dispatch to: 'content' (grep), 'files' "
-                    "(glob), 'shell' (bash). Defaults to 'content'."
-                ),
-            ),
-            SkillInputSpec(
-                name="path",
-                type_hint="str",
-                required=False,
-                default=".",
-                description=(
-                    "Directory (or file, content mode) to search. "
-                    "Ignored in shell mode (use cwd)."
-                ),
-            ),
-            SkillInputSpec(
-                name="max_results",
+                name="timeout",
                 type_hint="int",
                 required=False,
-                default=_MAX_RESULTS_DEFAULT,
+                default=_BASH_TIMEOUT_MS_DEFAULT,
                 description=(
-                    "Hard cap on matches/paths returned "
-                    f"(content / files modes; default {_MAX_RESULTS_DEFAULT})."
+                    "Wall-clock milliseconds before kill "
+                    f"(default {_BASH_TIMEOUT_MS_DEFAULT})."
                 ),
             ),
             SkillInputSpec(
-                name="include",
+                name="description",
                 type_hint="str",
                 required=False,
                 default=None,
-                description=("Content mode: glob filter for file names (e.g. '*.py')."),
-            ),
-            SkillInputSpec(
-                name="case_sensitive",
-                type_hint="bool",
-                required=False,
-                default=False,
-                description="Content mode: case-sensitive matching.",
-            ),
-            SkillInputSpec(
-                name="use_regex",
-                type_hint="bool",
-                required=False,
-                default=True,
-                description=(
-                    "Content mode: treat pattern as regex (true) or "
-                    "literal string (false)."
-                ),
+                description="Short human-readable label for the command (optional).",
             ),
             SkillInputSpec(
                 name="cwd",
                 type_hint="str",
                 required=False,
                 default=None,
-                description="Shell mode: working directory for the command.",
-            ),
-            SkillInputSpec(
-                name="timeout",
-                type_hint="int",
-                required=False,
-                default=_BASH_TIMEOUT_DEFAULT,
-                description=(
-                    f"Shell mode: wall-clock seconds before kill "
-                    f"(default {_BASH_TIMEOUT_DEFAULT})."
-                ),
+                description="Working directory for the command (optional).",
             ),
         ],
         outputs=SkillOutputSpec(
             type_hint="str",
-            description=(
-                "Mode-dependent text: grep-style matches, sorted paths, "
-                "or shell stdout/stderr/exit code."
-            ),
+            description="Command, exit code, stdout, and stderr sections.",
         ),
-        executor_fn=_file_search,
+        executor_fn=_bash,
         async_capable=False,
         cacheable=False,
         cost=Cost.LOW,
         dependencies=[],
         resources=[],
-        defaults={
-            "mode": "content",
-            "path": ".",
-            "case_sensitive": False,
-            "use_regex": True,
-            "max_results": _MAX_RESULTS_DEFAULT,
-            "timeout": _BASH_TIMEOUT_DEFAULT,
-        },
-        skill_doc=_FILE_SEARCH_SKILL_DOC,
+        defaults={"timeout": _BASH_TIMEOUT_MS_DEFAULT},
+        skill_doc=_BASH_SKILL_DOC,
         description=(
-            "Multi-mode search: grep-style content (default), glob-style "
-            "filename enumeration, or shell command execution. One tool, "
-            "three modes via `mode` argument."
+            "Execute a shell command; returns exit code plus stdout/stderr. "
+            "Loose safety policy — sandbox untrusted input at the OS level."
         ),
     )
 
@@ -747,7 +860,12 @@ def get_default_skill_metadata() -> List[SkillMetadata]:
 
     Returns a new list on every call so callers can safely mutate it.
     """
-    return [_build_file_read_skill(), _build_file_search_skill()]
+    return [
+        _build_read_skill(),
+        _build_grep_skill(),
+        _build_glob_skill(),
+        _build_bash_skill(),
+    ]
 
 
 def ensure_defaults_registered(registry: SkillRegistry) -> None:
@@ -755,8 +873,8 @@ def ensure_defaults_registered(registry: SkillRegistry) -> None:
 
     Safe to call multiple times (idempotent): skips any skill already in the
     registry.  Called by :class:`~codeminer.agent.runner.AgentRunner` during
-    ``__init__`` so that the default tools (``file_read``, ``file_search``)
-    are available regardless of which ``Ax`` skill subset is loaded.
+    ``__init__`` so that the default tools (``read``, ``grep``, ``glob``,
+    ``bash``) are available regardless of which ``Ax`` skill subset is loaded.
     """
     for meta in get_default_skill_metadata():
         if not registry.has(meta.skill_id):

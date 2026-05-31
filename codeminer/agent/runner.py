@@ -46,10 +46,10 @@ You are a code localization agent. Find the code locations (files and \
 symbols) relevant to the request, then give a concise answer naming them.
 
 You always have a filesystem toolset for navigating the repository:
-- file_search(mode="files", pattern=...) — list files by glob (explore layout)
-- file_search(mode="content", pattern=...) — grep file contents (regex/literal)
-- file_search(mode="shell", command=...) — run a shell command (ls, find, git)
-- file_read(path, start_line, end_line) — read a file or a line range
+- glob(pattern, path) — list files by glob (explore layout)
+- grep(pattern, path, glob, type, output_mode) — search file contents (regex)
+- bash(command) — run a shell command (ls, find, git)
+- read(file_path, offset, limit) — read a file or a line range
 
 Depending on the request you may also have retrieval skills:
 - bm25_search(query) — fast lexical search for exact names / identifiers
@@ -58,21 +58,21 @@ Depending on the request you may also have retrieval skills:
 - find_callers(symbol) / find_callees(symbol) / trace(from_symbol, to_symbol) — \
 call-graph navigation (who calls X, what X calls, the path from X to Y). Use \
 for impact and to follow a bug across functions — the structural questions \
-grep cannot answer. Compact results; file_read the ones you care about.
+grep cannot answer. Compact results; read the ones you care about.
 
 Accuracy comes first: you MUST end up having read the file that actually \
 implements the behavior to change. Use codeminer_context / the graph as a \
-*heuristic* to point you there fast — but grep and file_read are how you \
+*heuristic* to point you there fast — but grep and read are how you \
 confirm you reached it.
 
 Workflow — iterate EXPAND → READ → EXPAND until you've confirmed the file:
 1. ORIENT — call codeminer_context(query) first: one call returns candidate \
 entry-point symbols plus their callers/callees as a starting map.
-2. READ — file_read the most promising candidate(s) to check whether the code \
+2. READ — read the most promising candidate(s) to check whether the code \
 to change is really there.
 3. EXPAND — if it's not (e.g. you landed on a base class, a caller, or a near \
 miss): follow the graph (find_callers / find_callees / trace) AND/OR grep for \
-the symbol across the repo (file_search mode="content"). A base-class method \
+the symbol across the repo (grep pattern=...). A base-class method \
 often has the real change in a SUBCLASS OVERRIDE — grep the method name to find \
 all definitions, then read them. Loop back to READ.
 4. ANSWER — only once you have READ a file and confirmed it contains the code \
@@ -135,7 +135,7 @@ class AgentRunner:
         else:
             raise ValueError("Either 'llm' or 'model' must be provided")
         self.registry = registry or SkillRegistry()
-        # Always-on default tool layer (file_read + file_search): registered
+        # Always-on default tool layer (read + grep + glob + bash): registered
         # unconditionally so every query — and every agent-compile subset —
         # has the filesystem primitives (read / grep / glob / shell) the model
         # is pretrained on. These sit *outside* the allow/compile_table funnel.
@@ -146,8 +146,8 @@ class AgentRunner:
         if include_default_tools:
             ensure_defaults_registered(self.registry)
             # Which of the registered defaults to actually expose. Defaults to
-            # ALL (file_read + file_search). Restricting to a subset — e.g.
-            # ``{"file_read"}`` — yields a graph-primary / LocAgent-style harness
+            # ALL (read + grep + glob + bash). Restricting to a subset — e.g.
+            # ``{"read"}`` — yields a graph-primary / LocAgent-style harness
             # that can read code but has NO grep escape hatch, so the structured
             # (bm25 + call-graph) tools must carry navigation.
             allowed = set(DEFAULT_SKILL_IDS)
@@ -237,8 +237,8 @@ class AgentRunner:
 
         The always-on default layer (``self._default_ids``) is added *after*
         any allow/compile_table narrowing, so the funnel's "table narrows,
-        never broadens" rule still governs the swept skills while file_read /
-        file_search remain available in every subset. ``allow=None`` exposes
+        never broadens" rule still governs the swept skills while the default
+        primitives remain available in every subset. ``allow=None`` exposes
         the full registry (defaults already registered there).
         """
         resolved = self._resolve_allow_set(allow)

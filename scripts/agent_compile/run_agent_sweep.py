@@ -49,11 +49,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from scripts.agent_compile.prebuilt import (  # noqa: E402
-    has_full_indexes,
-    repo_path_for,
-    stage_prebuilt_indexes,
-)
+from scripts.agent_compile.prebuilt import has_full_indexes  # noqa: E402
+from scripts.agent_compile.prebuilt import repo_path_for, stage_prebuilt_indexes
 
 # language_group (HF column) -> classify() language key
 _LANG_GROUP_TO_KEY = {
@@ -88,7 +85,7 @@ class SampleConfig:
     gt_simplified_symbols: bool = True
     include_default_tools: bool = True
     # LocAgent-style harness: restrict the always-on defaults to this subset
-    # (e.g. ["file_read"] → no grep). None = both file_read + file_search.
+    # (e.g. ["read"] → no grep). None = all of read + grep + glob + bash.
     default_tool_ids: Optional[List[str]] = None
     # Override the agent system prompt (e.g. a graph-primary prompt with no grep
     # guidance). None = runner's default localization prompt.
@@ -236,8 +233,8 @@ def _run_cell(
         )
         if isinstance(tc.result, list):
             nodes.extend(tc.result)
-        if tc.skill_id == "file_read" and not tc.error:
-            p = (tc.arguments or {}).get("path")
+        if tc.skill_id == "read" and not tc.error:
+            p = (tc.arguments or {}).get("file_path")
             if p:
                 file_read_paths.append(str(p))
 

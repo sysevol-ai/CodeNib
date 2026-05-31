@@ -2,22 +2,22 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for default tool primitives: file_read + file_search (issue #145).
+"""Tests for default tool primitives: read / grep / glob / bash.
 
-Two skills, both always-on:
+Four always-on tools, shaped after the mainstream Claude Code tool reference
+(one focused tool per concern instead of the old ``file_search`` multiplexer):
 
-- ``file_read`` — bounded reader with opencode-style line numbers.
-- ``file_search`` — multi-mode primitive dispatching to grep / glob /
-  bash back-ends via the ``mode`` argument (``content`` / ``files`` /
-  ``shell``).
+- ``read``  — bounded reader with opencode-style 1-based line numbers.
+- ``grep``  — regex content search (content / files_with_matches / count).
+- ``glob``  — filename enumeration.
+- ``bash``  — shell command execution.
 
 Test layout:
-- ``TestFileRead``                 — file_read happy path + token-bound edges.
-- ``TestRegexSearchContent``       — grep-style content search back-end.
-- ``TestRegexSearchFiles``         — glob-style filename enumeration back-end.
-- ``TestRegexSearchShell``         — shell-execution back-end.
-- ``TestRegexSearchDispatch``      — the public ``_file_search`` dispatcher.
-- ``TestGetDefaultSkillMetadata``  — registry-facing metadata.
+- ``TestRead``                     — read happy path + token-bound edges.
+- ``TestGrep``                     — content / files / count modes + filters.
+- ``TestGlob``                     — filename enumeration.
+- ``TestBash``                     — shell execution.
+- ``TestGetDefaultSkillMetadata``  — registry-facing metadata + enum schema.
 - ``TestEnsureDefaultsRegistered`` — idempotent registration.
 - ``TestAgentRunnerDefaults``      — defaults survive allow/exclude filters
                                      and dispatch end-to-end through the runner.
@@ -37,14 +37,14 @@ import pytest
 
 from codeminer.agent.runner import AgentRunner
 from codeminer.agent.skills.registry import SkillRegistry
+from codeminer.agent.tool_schema import skill_to_tool_schema
 from codeminer.agent.tools.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
     DEFAULT_SKILL_IDS,
-    _file_read,
-    _file_search,
-    _file_search_content,
-    _file_search_files,
-    _file_search_shell,
+    _bash,
+    _glob,
+    _grep,
+    _read,
     ensure_defaults_registered,
     get_default_skill_metadata,
 )
@@ -95,121 +95,137 @@ def sample_dir(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# file_read tests
+# read
 # ---------------------------------------------------------------------------
 
 
-class TestFileRead:
+class TestRead:
     def test_reads_full_file_with_opencode_line_format(self, sample_file):
         """All lines present, formatted as `{lineno:6d} | {content}`, 1-based."""
-        result = _file_read(str(sample_file))
+        result = _read(str(sample_file))
         assert "def add(a, b):" in result
         assert "class Calculator:" in result
         lines = result.splitlines()
-        # First line is line-1, formatted with the ' | ' delimiter.
         assert lines[0].lstrip().startswith("1 |")
         for line in lines:
             assert " | " in line, f"missing ' | ' in: {line!r}"
 
-    def test_start_and_end_line(self, sample_file):
-        result = _file_read(str(sample_file), start_line=4, end_line=5)
+    def test_offset_and_limit_window(self, sample_file):
+        result = _read(str(sample_file), offset=4, limit=2)
         lines = result.splitlines()
-        assert len(lines) == 2
+        # 2 content lines (limit=2); line 6 is blank so no truncation notice for
+        # this tiny file is asserted here — just the window contents.
         assert "subtract" in lines[0] and "4" in lines[0]
         assert "5" in lines[1]
 
-    def test_end_line_clamp_to_eof(self, sample_file):
-        result = _file_read(str(sample_file), end_line=9999)
-        assert "Calculator" in result
-
-    def test_max_lines_truncation_emits_next_start(self, sample_file):
-        result = _file_read(str(sample_file), start_line=1, max_lines=3)
+    def test_limit_truncation_emits_next_offset(self, sample_file):
+        result = _read(str(sample_file), offset=1, limit=3)
         lines = result.splitlines()
         # 3 content lines + 1 truncation notice
         assert len(lines) == 4
         assert "more lines" in lines[-1]
-        assert "start_line=4" in result
+        assert "offset=4" in result
 
     def test_missing_file_returns_error(self, tmp_path):
-        result = _file_read(str(tmp_path / "nonexistent.py"))
+        result = _read(str(tmp_path / "nonexistent.py"))
         assert result.startswith("Error:") and "not found" in result
+
+    def test_directory_returns_error(self, tmp_path):
+        result = _read(str(tmp_path))
+        assert result.startswith("Error:") and "directory" in result
 
     def test_empty_file(self, tmp_path):
         empty = tmp_path / "empty.py"
         empty.write_text("", encoding="utf-8")
-        assert "empty" in _file_read(str(empty)).lower()
+        assert "empty" in _read(str(empty)).lower()
 
-    def test_invalid_range_returns_error(self, sample_file):
-        """Both start>EOF and start>end report a clear error."""
-        assert _file_read(str(sample_file), start_line=9999).startswith("Error:")
-        assert _file_read(str(sample_file), start_line=10, end_line=5).startswith(
-            "Error:"
-        )
+    def test_offset_beyond_eof_returns_error(self, sample_file):
+        assert _read(str(sample_file), offset=9999).startswith("Error:")
 
 
 # ---------------------------------------------------------------------------
-# file_search — content mode (grep-style)
+# grep
 # ---------------------------------------------------------------------------
 
 
-class TestRegexSearchContent:
+class TestGrep:
     def test_basic_match_1_based(self, sample_dir):
-        result = _file_search_content("def foo", path=str(sample_dir))
+        result = _grep("def foo", path=str(sample_dir))
         assert "a.py:1:" in result and "def foo" in result
 
     def test_no_match_returns_message(self, sample_dir):
-        assert "No matches found" in _file_search_content(
-            "ZZZNOMATCH_XYZ", path=str(sample_dir)
-        )
+        assert "No matches found" in _grep("ZZZNOMATCH_XYZ", path=str(sample_dir))
 
-    def test_case_sensitive_flag(self, sample_dir):
-        """Default is case-insensitive; case_sensitive=True flips it."""
+    def test_case_insensitive_default_then_disabled(self, sample_dir):
+        """Default is case-insensitive; case_insensitive=False flips it."""
         (sample_dir / "cls.py").write_text("class Foo:\n    pass\n", encoding="utf-8")
-        assert "cls.py" in _file_search_content("CLASS", path=str(sample_dir))
-        assert "No matches found" in _file_search_content(
-            "CLASS", path=str(sample_dir), case_sensitive=True
+        assert "cls.py" in _grep("CLASS", path=str(sample_dir))
+        assert "No matches found" in _grep(
+            "CLASS", path=str(sample_dir), case_insensitive=False
         )
 
-    def test_literal_mode_escapes_regex_chars(self, sample_dir):
-        (sample_dir / "special.py").write_text(
-            "x = a.b()\ny = a.c()\n", encoding="utf-8"
-        )
-        result = _file_search_content("a.b()", path=str(sample_dir), use_regex=False)
-        assert "special.py" in result
-
-    def test_include_filter(self, sample_dir):
-        """include='*.py' filters out the .md file."""
-        result = _file_search_content("foo", path=str(sample_dir), include="*.py")
+    def test_glob_filter(self, sample_dir):
+        """glob='*.py' filters out the .md file."""
+        result = _grep("foo", path=str(sample_dir), glob="*.py")
         assert "readme.md" not in result
         assert "a.py" in result or "b.py" in result
 
-    def test_max_results_cap(self, sample_dir):
+    def test_type_filter(self, sample_dir):
+        """type='py' restricts to Python files by extension."""
+        result = _grep("foo", path=str(sample_dir), type="py")
+        assert "readme.md" not in result
+        assert "a.py" in result or "b.py" in result
+
+    def test_output_mode_files_with_matches(self, sample_dir):
+        result = _grep("foo", path=str(sample_dir), output_mode="files_with_matches")
+        lines = set(result.splitlines())
+        # File paths only — no "lineno:" content rows.
+        assert "a.py" in lines and "b.py" in lines
+        assert not any(line.count(":") >= 2 for line in lines)
+
+    def test_output_mode_count(self, sample_dir):
+        result = _grep("foo", path=str(sample_dir), output_mode="count")
+        # "{rel}:{count}" rows; a.py has one "foo" occurrence.
+        assert any(line.startswith("a.py:") for line in result.splitlines())
+
+    def test_multiline_spans_lines(self, tmp_path):
+        (tmp_path / "m.py").write_text("start\nmiddle\nend\n", encoding="utf-8")
+        result = _grep("start.*end", path=str(tmp_path), multiline=True)
+        assert "m.py:1:" in result
+        # Without multiline, the dot does not cross newlines → no match.
+        assert "No matches found" in _grep("start.*end", path=str(tmp_path))
+
+    def test_head_limit_cap(self, sample_dir):
         many = sample_dir / "many.py"
         many.write_text(
             "\n".join(f"match_{i} = 1" for i in range(100)), encoding="utf-8"
         )
-        result = _file_search_content("match_", path=str(sample_dir), max_results=5)
-        assert "max_results=5" in result
+        result = _grep("match_", path=str(sample_dir), head_limit=5)
+        assert "head_limit=5" in result
         hits = [line for line in result.splitlines() if "many.py" in line]
         assert len(hits) <= 5
 
     def test_invalid_regex_returns_error(self, sample_dir):
-        result = _file_search_content("[invalid", path=str(sample_dir))
+        result = _grep("[invalid", path=str(sample_dir))
         assert result.startswith("Error:") and "invalid regex" in result
 
+    def test_invalid_output_mode_returns_error(self, sample_dir):
+        result = _grep("x", path=str(sample_dir), output_mode="bogus")
+        assert result.startswith("Error:") and "output_mode" in result
+
     def test_nonexistent_path_returns_error(self, tmp_path):
-        result = _file_search_content("x", path=str(tmp_path / "missing"))
+        result = _grep("x", path=str(tmp_path / "missing"))
         assert result.startswith("Error:") and "does not exist" in result
 
 
 # ---------------------------------------------------------------------------
-# file_search — files mode (glob-style)
+# glob
 # ---------------------------------------------------------------------------
 
 
-class TestRegexSearchFiles:
+class TestGlob:
     def test_basic_glob_lists_matching_names(self, sample_dir):
-        result = _file_search_files("*.py", path=str(sample_dir))
+        result = _glob("*.py", path=str(sample_dir))
         names = set(result.splitlines())
         assert {"a.py", "b.py"}.issubset(names)
         assert "readme.md" not in names
@@ -219,85 +235,67 @@ class TestRegexSearchFiles:
         (tmp_path / "src" / "x.py").write_text("# x", encoding="utf-8")
         (tmp_path / "src" / "nested").mkdir()
         (tmp_path / "src" / "nested" / "y.py").write_text("# y", encoding="utf-8")
-        result = _file_search_files("**/*.py", path=str(tmp_path))
+        result = _glob("**/*.py", path=str(tmp_path))
         lines = set(result.splitlines())
         assert "src/x.py" in lines and "src/nested/y.py" in lines
 
     def test_no_match_returns_message(self, sample_dir):
-        result = _file_search_files("*.rs", path=str(sample_dir))
+        result = _glob("*.rs", path=str(sample_dir))
         assert result.startswith("No files match")
 
-    def test_max_results_cap(self, tmp_path):
-        for i in range(10):
+    def test_result_cap(self, tmp_path):
+        for i in range(120):
             (tmp_path / f"f{i}.py").write_text("x = 1\n", encoding="utf-8")
-        result = _file_search_files("*.py", path=str(tmp_path), max_results=3)
-        assert "max_results=3" in result
+        result = _glob("*.py", path=str(tmp_path))
+        assert "cap reached" in result
         names = [line for line in result.splitlines() if line.endswith(".py")]
-        assert len(names) <= 3
+        assert len(names) <= 100
 
     def test_nonexistent_root_returns_error(self, tmp_path):
-        result = _file_search_files("*.py", path=str(tmp_path / "missing"))
+        result = _glob("*.py", path=str(tmp_path / "missing"))
         assert result.startswith("Error:") and "does not exist" in result
 
 
 # ---------------------------------------------------------------------------
-# file_search — shell mode (bash-style)
+# bash
 # ---------------------------------------------------------------------------
 
 
-class TestRegexSearchShell:
+class TestBash:
     def test_basic_echo(self):
-        result = _file_search_shell("echo hello")
+        result = _bash("echo hello")
         assert "hello" in result and "exit code: 0" in result
 
     def test_stdout_and_stderr_sections(self):
-        result = _file_search_shell("echo out; echo err 1>&2")
+        result = _bash("echo out; echo err 1>&2")
         assert "--- stdout ---" in result and "out" in result
         assert "--- stderr ---" in result and "err" in result
 
     def test_non_zero_exit_and_command_not_found(self):
         """`false` → exit 1; unknown command → exit 127."""
-        assert "exit code: 1" in _file_search_shell("false")
-        not_found = _file_search_shell("nonexistent_cmd_xyz_zzz")
+        assert "exit code: 1" in _bash("false")
+        not_found = _bash("nonexistent_cmd_xyz_zzz")
         assert "exit code:" in not_found and "127" in not_found
 
-    def test_timeout_returns_error(self):
-        result = _file_search_shell("sleep 2", timeout=1)
+    def test_timeout_returns_error_ms(self):
+        """timeout is in milliseconds: 1000ms = 1s kills a 2s sleep."""
+        result = _bash("sleep 2", timeout=1000)
         assert result.startswith("Error:") and "timed out" in result
 
+    def test_description_accepted(self):
+        """The reference `description` metadata field is accepted and ignored."""
+        result = _bash("echo labelled", description="say hello")
+        assert "labelled" in result and "exit code: 0" in result
+
     def test_cwd_argument(self, tmp_path):
-        result = _file_search_shell("pwd", cwd=str(tmp_path))
+        result = _bash("pwd", cwd=str(tmp_path))
         # macOS may symlink /var → /private/var; check tail.
         assert str(tmp_path) in result or tmp_path.name in result
 
     def test_output_truncation(self):
-        result = _file_search_shell("yes hello | head -n 20000")
+        result = _bash("yes hello | head -n 20000")
         assert "(output truncated)" in result
         assert len(result) <= _BASH_MAX_OUTPUT_CHARS + 200
-
-
-# ---------------------------------------------------------------------------
-# file_search — dispatcher
-# ---------------------------------------------------------------------------
-
-
-class TestRegexSearchDispatch:
-    def test_mode_default_is_content(self, sample_dir):
-        """Calling without `mode` should grep file contents."""
-        result = _file_search("def foo", path=str(sample_dir))
-        assert "a.py:1:" in result
-
-    def test_files_mode_routes_to_glob(self, sample_dir):
-        result = _file_search("*.py", mode="files", path=str(sample_dir))
-        assert "a.py" in result.splitlines()
-
-    def test_shell_mode_runs_command(self):
-        result = _file_search("echo dispatched", mode="shell")
-        assert "dispatched" in result and "exit code: 0" in result
-
-    def test_invalid_mode_returns_error(self):
-        result = _file_search("x", mode="bogus")
-        assert result.startswith("Error:") and "invalid mode" in result
 
 
 # ---------------------------------------------------------------------------
@@ -306,22 +304,38 @@ class TestRegexSearchDispatch:
 
 
 class TestGetDefaultSkillMetadata:
-    def test_returns_exactly_two_defaults(self):
+    def test_returns_exactly_four_defaults(self):
         ids = {m.skill_id for m in get_default_skill_metadata()}
-        assert ids == DEFAULT_SKILL_IDS == {"file_read", "file_search"}
+        assert ids == set(DEFAULT_SKILL_IDS) == {"read", "grep", "glob", "bash"}
 
-    def test_file_read_requires_path(self):
-        meta = {m.skill_id: m for m in get_default_skill_metadata()}["file_read"]
+    def test_read_requires_file_path(self):
+        meta = {m.skill_id: m for m in get_default_skill_metadata()}["read"]
         required = {i.name for i in meta.inputs if i.required}
-        assert "path" in required
+        assert "file_path" in required
 
-    def test_file_search_requires_pattern_exposes_mode(self):
-        meta = {m.skill_id: m for m in get_default_skill_metadata()}["file_search"]
+    def test_grep_requires_pattern_exposes_output_mode_enum(self):
+        meta = {m.skill_id: m for m in get_default_skill_metadata()}["grep"]
         required = {i.name for i in meta.inputs if i.required}
-        all_inputs = {i.name for i in meta.inputs}
         assert "pattern" in required
-        # mode is optional but must appear in the schema for the LLM to use.
-        assert "mode" in all_inputs and "mode" not in required
+        # output_mode is optional and must carry an enum constraint in-schema.
+        schema = skill_to_tool_schema(meta)
+        props = schema["function"]["parameters"]["properties"]
+        assert "output_mode" in props
+        assert props["output_mode"].get("enum") == [
+            "content",
+            "files_with_matches",
+            "count",
+        ]
+
+    def test_glob_requires_pattern(self):
+        meta = {m.skill_id: m for m in get_default_skill_metadata()}["glob"]
+        required = {i.name for i in meta.inputs if i.required}
+        assert "pattern" in required
+
+    def test_bash_requires_command(self):
+        meta = {m.skill_id: m for m in get_default_skill_metadata()}["bash"]
+        required = {i.name for i in meta.inputs if i.required}
+        assert "command" in required
 
 
 # ---------------------------------------------------------------------------
@@ -340,9 +354,9 @@ class TestEnsureDefaultsRegistered:
         """Second call is a no-op and preserves the original executor_fn."""
         reg = SkillRegistry()
         ensure_defaults_registered(reg)
-        original_fn = reg.get("file_read").executor_fn
+        original_fn = reg.get("read").executor_fn
         ensure_defaults_registered(reg)  # would ValueError if not idempotent
-        assert reg.get("file_read").executor_fn is original_fn
+        assert reg.get("read").executor_fn is original_fn
 
 
 # ---------------------------------------------------------------------------
@@ -383,14 +397,14 @@ class TestAgentRunnerDefaults:
     def test_defaults_in_tools_on_empty_registry(self):
         runner = AgentRunner(_make_llm(), SkillRegistry())
         names = {t["function"]["name"] for t in runner.tools}
-        assert DEFAULT_SKILL_IDS.issubset(names)
+        assert set(DEFAULT_SKILL_IDS).issubset(names)
 
     def test_defaults_survive_exclude_skills(self):
         runner = AgentRunner(
             _make_llm(), SkillRegistry(), exclude_skills=set(DEFAULT_SKILL_IDS)
         )
         names = {t["function"]["name"] for t in runner.tools}
-        assert DEFAULT_SKILL_IDS.issubset(names)
+        assert set(DEFAULT_SKILL_IDS).issubset(names)
 
     def test_defaults_survive_allow_skills(self):
         """allow_skills with a disjoint set still surfaces the defaults."""
@@ -398,7 +412,7 @@ class TestAgentRunnerDefaults:
             _make_llm(), SkillRegistry(), allow_skills={"some_other_skill"}
         )
         names = {t["function"]["name"] for t in runner.tools}
-        assert DEFAULT_SKILL_IDS.issubset(names)
+        assert set(DEFAULT_SKILL_IDS).issubset(names)
 
     def test_non_default_skill_still_excluded(self):
         from codeminer.agent.skills.core import SkillMetadata, SkillType
@@ -414,19 +428,19 @@ class TestAgentRunnerDefaults:
         runner = AgentRunner(_make_llm(), reg, exclude_skills={"custom_tool"})
         names = {t["function"]["name"] for t in runner.tools}
         assert "custom_tool" not in names
-        assert DEFAULT_SKILL_IDS.issubset(names)
+        assert set(DEFAULT_SKILL_IDS).issubset(names)
 
-    def test_runner_executes_file_read(self, tmp_path):
-        """End-to-end: runner dispatches a file_read tool call."""
+    def test_runner_executes_read(self, tmp_path):
+        """End-to-end: runner dispatches a read tool call."""
         target = tmp_path / "hello.py"
         target.write_text("x = 1\ny = 2\n", encoding="utf-8")
 
         tc = SimpleNamespace(
-            id="tc_fr",
+            id="tc_read",
             type="function",
             function=SimpleNamespace(
-                name="file_read",
-                arguments=json.dumps({"path": str(target)}),
+                name="read",
+                arguments=json.dumps({"file_path": str(target)}),
             ),
         )
         llm = _make_llm()
@@ -438,16 +452,14 @@ class TestAgentRunnerDefaults:
         record = AgentRunner(llm, SkillRegistry()).run("Read it").tool_calls[0]
         assert record.error is None and "x = 1" in record.result
 
-    def test_runner_executes_file_search_shell_mode(self):
-        """End-to-end with the dispatcher: shell mode via mode argument."""
+    def test_runner_executes_bash(self):
+        """End-to-end: runner dispatches a bash tool call."""
         tc = SimpleNamespace(
-            id="tc_rs",
+            id="tc_bash",
             type="function",
             function=SimpleNamespace(
-                name="file_search",
-                arguments=json.dumps(
-                    {"pattern": "echo runner_dispatch", "mode": "shell"}
-                ),
+                name="bash",
+                arguments=json.dumps({"command": "echo runner_dispatch"}),
             ),
         )
         llm = _make_llm()
@@ -478,18 +490,18 @@ class TestSmokeRealFile:
         """
         return Path(sys.modules[AgentRunner.__module__].__file__)
 
-    def test_file_read_runner_py(self):
+    def test_read_runner_py(self):
         """Read the runner module itself, verify per-row line numbers appear."""
         source = self._runner_source_path()
         assert source.exists(), f"runner.py not found at {source}"
 
-        result = _file_read(str(source), start_line=1, end_line=10)
+        result = _read(str(source), offset=1, limit=10)
         lines = result.splitlines()
-        assert lines[0].lstrip().startswith("1 |") and len(lines) == 10
+        assert lines[0].lstrip().startswith("1 |") and len(lines) == 11
 
-    def test_file_search_for_agent_runner_in_runner_py(self):
-        """Default (content) mode regex-search for 'AgentRunner' in runner.py."""
+    def test_grep_for_agent_runner_in_runner_py(self):
+        """Content-mode regex-search for 'AgentRunner' in runner.py."""
         source = self._runner_source_path()
-        result = _file_search("AgentRunner", path=str(source))
+        result = _grep("AgentRunner", path=str(source))
         assert "AgentRunner" in result
         assert any(":" in line for line in result.splitlines())

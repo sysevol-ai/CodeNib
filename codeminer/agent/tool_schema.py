@@ -52,6 +52,8 @@ def skill_to_tool_schema(meta: SkillMetadata) -> Dict[str, Any]:
         prop: Dict[str, Any] = _schema_for_type(inp.type_hint)
         if inp.description:
             prop["description"] = inp.description
+        if getattr(inp, "enum", None):
+            prop["enum"] = list(inp.enum)
         if inp.default is not None:
             prop["default"] = inp.default
         properties[inp.name] = prop

@@ -43,12 +43,12 @@ A0_SUBSET = "A0"
 FULL_SUBSET = "A6"
 EASY_FILES_AT_5 = 0.5  # A0 mean-rep files@5 >= this => "easy" instance
 
-# Always-on default tool layer (file_read / file_search). These are unioned
+# Always-on default tool layer (read / grep / glob / bash). These are unioned
 # into every subset by AgentRunner, so they are NOT sweep variables: they must
 # never appear in a derived compile_table. They DO show in the invocation
 # histogram (tagged "always-on") so we can see how the agent uses them.
 # Kept as a literal to keep this script free of heavy agent imports.
-ALWAYS_ON_SKILLS = frozenset({"file_read", "file_search"})
+ALWAYS_ON_SKILLS = frozenset({"read", "grep", "glob", "bash"})
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +430,7 @@ def render_markdown(agg, table, rationale, front, ks) -> str:
     L.append("## Skill-invocation histogram")
     L.append("")
     L.append(
-        "`file_read` / `file_search` are the always-on default tool layer "
+        "`read` / `grep` / `glob` / `bash` are the always-on default tool layer "
         "(present in every subset, not swept)."
     )
     L.append("")

@@ -26,7 +26,7 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
             # default tool instead.
             raise RuntimeError(
                 "regex_search is unavailable (no regex node index is built). "
-                "Use file_search(mode='content', pattern=...) for grep-style "
+                "Use grep(pattern=...) for grep-style "
                 "regex over file contents — it is always available."
             )
 

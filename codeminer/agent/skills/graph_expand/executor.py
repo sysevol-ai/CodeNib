@@ -107,7 +107,7 @@ def create_executor(context: Any) -> Callable[..., List[Any]]:
                     "graph_expand: none of the seed_symbols resolve to graph "
                     f"nodes: {unresolved}. Copy the exact node_name from a "
                     "search result, or grep for the symbol with "
-                    "file_search(mode='content')."
+                    "grep(pattern=...)."
                 )
 
         roi = ROISubgraph(context.code_graph)

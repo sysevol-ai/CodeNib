@@ -7,10 +7,11 @@
 This package is deliberately separate from ``codeminer/agent/skills/``:
 
 - **``tools/`` (here)** — always-on primitives that scan the *raw
-  filesystem* (``file_read``, ``file_search``). They carry no
-  ``index_requirements``, are never loaded from ``config.yaml``/``executor.py``
-  packages, and are never dropped by the ``allow_skills`` / ``exclude_skills``
-  filters. Every ``Ax`` subset builds on top of them.
+  filesystem* (``read``, ``grep``, ``glob``, ``bash`` — the mainstream Claude
+  Code tool shapes). They carry no ``index_requirements``, are never loaded
+  from ``config.yaml``/``executor.py`` packages, and are never dropped by the
+  ``allow_skills`` / ``exclude_skills`` filters. Every ``Ax`` subset builds on
+  top of them.
 - **``skills/``** — index-backed retrieval skills (``bm25_search``,
   ``embedding_search``, ``graph_expand``, ...) declared as
   ``config.yaml`` + ``executor.py`` packages and gated by their declared

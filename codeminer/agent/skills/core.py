@@ -55,6 +55,11 @@ class SkillInputSpec:
     required: bool = True
     default: Any = None
     description: str = ""
+    # Optional closed set of allowed values. When set, emitted as a JSON-Schema
+    # ``enum`` constraint in the OpenAI tool schema so the model sees the valid
+    # choices in-band (e.g. ``output_mode`` on the ``grep`` default tool) rather
+    # than only in prose. Not part of the Python↔Rust ``to_dict`` contract.
+    enum: Optional[List[str]] = None
 
 
 @dataclass(slots=True)
