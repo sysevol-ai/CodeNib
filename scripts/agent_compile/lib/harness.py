@@ -197,4 +197,6 @@ def run_cell(
         "completion_tokens": token_usage.get("completion_tokens"),
         "total_tokens": token_usage.get("total_tokens"),
         "cost_usd": token_usage.get("cost_usd"),
+        "cache_read_input_tokens": token_usage.get("cache_read_input_tokens"),
+        "cache_creation_input_tokens": token_usage.get("cache_creation_input_tokens"),
     }

@@ -15,6 +15,7 @@ with a single thin wrapper that provides the same two-method interface:
 
 from __future__ import annotations
 
+import os
 import random
 import re
 import time
@@ -127,6 +128,60 @@ def _no_thinking_kwargs(model: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Anthropic prompt caching
+# ---------------------------------------------------------------------------
+
+
+def _is_anthropic(model: str) -> bool:
+    m = (model or "").lower()
+    return "claude" in m or "anthropic" in m
+
+
+def _mark_cacheable(message: Dict[str, Any]) -> Dict[str, Any]:
+    """Copy of *message* with an ephemeral cache breakpoint on its last block.
+
+    No-op if the content can't carry a block (e.g. an assistant message that is
+    only tool_calls with ``content=None``)."""
+    content = message.get("content")
+    cc = {"type": "ephemeral"}
+    if isinstance(content, str) and content:
+        return {
+            **message,
+            "content": [{"type": "text", "text": content, "cache_control": cc}],
+        }
+    if isinstance(content, list) and content and isinstance(content[-1], dict):
+        blocks = list(content)
+        blocks[-1] = {**blocks[-1], "cache_control": cc}
+        return {**message, "content": blocks}
+    return message
+
+
+def _with_prompt_caching(
+    messages: List[Dict[str, Any]], model: str
+) -> List[Dict[str, Any]]:
+    """Add Anthropic prompt-cache breakpoints for claude models.
+
+    Two ``cache_control`` breakpoints (Anthropic allows up to 4): one on the
+    system message — caching the stable tools+system prefix re-sent on every
+    turn — and one rolling breakpoint on the last message, so each turn reads
+    the prior conversation prefix from cache (~0.1x input price) instead of
+    re-billing it at full price. No-op for non-Anthropic models, empty message
+    lists, or when ``CODEMINER_DISABLE_PROMPT_CACHE`` is set (for A/B runs).
+    """
+    if not messages or not _is_anthropic(model):
+        return messages
+    if os.environ.get("CODEMINER_DISABLE_PROMPT_CACHE"):
+        return messages
+    out = [dict(m) for m in messages]
+    for i, m in enumerate(out):  # stable breakpoint: tools + system prefix
+        if m.get("role") == "system":
+            out[i] = _mark_cacheable(m)
+            break
+    out[-1] = _mark_cacheable(out[-1])  # rolling breakpoint: conversation prefix
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Message types (replaces langchain_core.messages.HumanMessage etc.)
 # ---------------------------------------------------------------------------
 
@@ -199,6 +254,10 @@ class LiteLLMChat:
         """
         usage_tracker = overrides.pop("usage_tracker", None)
         usage_turn = overrides.pop("usage_turn", None)
+
+        # Anthropic prompt caching: cache the stable system+tools prefix and the
+        # growing conversation so multi-turn agents stop re-billing the prefix.
+        messages = _with_prompt_caching(messages, self.model)
 
         kwargs: Dict[str, Any] = {
             "model": self.model,

@@ -238,6 +238,8 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     "completion_tokens": out["completion_tokens"],
                     "total_tokens": out["total_tokens"],
                     "cost_usd": out["cost_usd"],
+                    "cache_read_input_tokens": out["cache_read_input_tokens"],
+                    "cache_creation_input_tokens": out["cache_creation_input_tokens"],
                     "elapsed_seconds": time.time() - t,
                     "error": None,
                 }

@@ -29,12 +29,20 @@ logger = get_logger(__name__)
 
 @dataclass
 class TokenUsage:
-    """Cumulative token counts (plus optional USD cost)."""
+    """Cumulative token counts (plus optional USD cost).
+
+    ``cache_read_input_tokens`` / ``cache_creation_input_tokens`` are the
+    Anthropic prompt-cache breakdown of ``prompt_tokens`` (the cached prefix is
+    *included* in ``prompt_tokens``): reads are billed ~0.1x input, writes
+    ~1.25x. Both are 0 when prompt caching is off or unsupported.
+    """
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
     cost_usd: Optional[float] = None
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
 
     def add(self, other: "TokenUsage") -> "TokenUsage":
         """Return a new TokenUsage that is the sum of ``self`` and ``other``."""
@@ -48,6 +56,12 @@ class TokenUsage:
             completion_tokens=self.completion_tokens + other.completion_tokens,
             total_tokens=self.total_tokens + other.total_tokens,
             cost_usd=merged_cost,
+            cache_read_input_tokens=(
+                self.cache_read_input_tokens + other.cache_read_input_tokens
+            ),
+            cache_creation_input_tokens=(
+                self.cache_creation_input_tokens + other.cache_creation_input_tokens
+            ),
         )
 
     def to_dict(self) -> dict:
@@ -56,6 +70,8 @@ class TokenUsage:
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,
             "cost_usd": self.cost_usd,
+            "cache_read_input_tokens": self.cache_read_input_tokens,
+            "cache_creation_input_tokens": self.cache_creation_input_tokens,
         }
 
 
@@ -135,10 +151,23 @@ def _extract_token_usage(response: Any) -> TokenUsage:
         except (TypeError, ValueError):
             return 0
 
+    # OpenAI-style fallback for cached reads: usage.prompt_tokens_details.cached_tokens
+    cached_via_details = 0
+    details = getattr(usage_obj, "prompt_tokens_details", None)
+    if details is None and isinstance(usage_obj, dict):
+        details = usage_obj.get("prompt_tokens_details")
+    if details is not None:
+        if hasattr(details, "cached_tokens"):
+            cached_via_details = int(details.cached_tokens or 0)
+        elif isinstance(details, dict):
+            cached_via_details = int(details.get("cached_tokens") or 0)
+
     return TokenUsage(
         prompt_tokens=_read("prompt_tokens"),
         completion_tokens=_read("completion_tokens"),
         total_tokens=_read("total_tokens"),
+        cache_read_input_tokens=_read("cache_read_input_tokens") or cached_via_details,
+        cache_creation_input_tokens=_read("cache_creation_input_tokens"),
     )
 
 
