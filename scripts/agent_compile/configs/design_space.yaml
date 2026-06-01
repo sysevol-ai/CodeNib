@@ -35,10 +35,10 @@
 # -wide; run the config twice — with and without — to compare graph on/off).
 #
 # Run:
-#   python scripts/agent_compile/run_agent_sweep.py \
+#   python scripts/agent_compile/run_sweep.py \
 #       --config scripts/agent_compile/configs/design_space.yaml \
 #       --output-dir results/agent_compile/design_space
-#   python scripts/agent_compile/aggregate_phase2.py \
+#   python scripts/agent_compile/aggregate.py \
 #       --cells-dir results/agent_compile/design_space/cells \
 #       --output-dir results/agent_compile/design_space
 
@@ -65,15 +65,10 @@ include_default_tools: true    # read/grep/glob/bash on for every arm
 # system_prompt unset -> the runner's neutral default localization prompt, so
 # no arm is steered toward its skills; adoption is the model's choice.
 
-instances:
-  - redis__redis-10095
-  - tokio-rs__tokio-4898
-  - facebook__docusaurus-10130
-  - axios__axios-4731
-  - hashicorp__terraform-34814
-  - caddyserver__caddy-5870
-  - pydata__xarray-2905
-  - sympy__sympy-13031
+# instances omitted => the WHOLE codeminer-base test split (every instance with
+# prebuilt indexes; the runner skips + records any without). All arms run on the
+# same full corpus, so every arm stays directly co-plottable on one Pareto plot.
+instances: []
 
 subsets:
   defaults_only:

@@ -20,7 +20,7 @@ No LLM. Per instance: stage prebuilt indexes, reconstruct vectors from the flat
 index (same data for flat+ivf), embed the problem statement once, run all three.
 
 Usage:
-    python -m scripts.agent_compile.index_compare \
+    python -m scripts.retrieval_ablation.index_compare \
         --instances-json /tmp/have.json --out results/agent_compile/index_compare.json \
         --k 1 5 10 --nlist 64 --nprobe 8 --seeds 5
 """
@@ -67,13 +67,10 @@ def _files(docs: List[Any], idxs: List[int]) -> List[str]:
 def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
     from codeminer.eval.retrieval_eval import collect_targets
     from codeminer.graph.roi_subgraph import ROISubgraph
-    from scripts.agent_compile.prebuilt import stage_prebuilt_indexes
-    from scripts.agent_compile.run_agent_sweep import (
-        _load_dataset_rows,
-        _load_full_contexts,
-    )
+    from scripts.agent_compile.lib.harness import load_dataset_rows, load_full_contexts
+    from scripts.agent_compile.lib.prebuilt import stage_prebuilt_indexes
 
-    rows_by_id, eval_lookup = _load_dataset_rows(cfg)
+    rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[inst]
     query = row["problem_statement"]
     targets = [
@@ -81,7 +78,7 @@ def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
     ]
     cache_dir = os.path.join(cache_root, inst)
     repo = stage_prebuilt_indexes(prebuilt_dir, inst, cache_dir)
-    ctx = _load_full_contexts(cfg, repo, cache_dir)
+    ctx = load_full_contexts(cfg, repo, cache_dir)
     vs = ctx["retrieve"].vector_store
     graph = ctx["expand"].code_graph
     index, docs = vs._get_index_and_docs("l2")
@@ -142,7 +139,7 @@ def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from scripts.agent_compile.run_agent_sweep import SampleConfig
+    from scripts.agent_compile.lib.config import SweepConfig as SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)

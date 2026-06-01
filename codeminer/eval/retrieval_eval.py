@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..types import QueriedNode
 
@@ -188,3 +190,99 @@ def summarize_predictions(
             }
         )
     return summary
+
+
+# ---------------------------------------------------------------------------
+# Agent-localization scoring
+#
+# An *agent* localizes through more than retrieval-skill output: it names files
+# in its final answer and reads files directly. ``score_agent_localization``
+# scores files@k / symbols@k from the union of (1) the answer's ``Files:`` line
+# (or bare path tokens), (2) the paths the agent ``read``, and (3) the files
+# referenced by retrieval-skill nodes — reflecting how the agent actually
+# localized, not only what a retriever returned. Same output shape as
+# :func:`evaluate_predictions`. Shared by the sweep runner and the offline
+# ablations so files@k is defined once.
+# ---------------------------------------------------------------------------
+
+_FILES_LINE = re.compile(r"(?im)^\s*files?\s*[:=]\s*(.+)$")
+_SYMBOLS_LINE = re.compile(r"(?im)^\s*symbols?\s*[:=]\s*(.+)$")
+_PATH_TOKEN = re.compile(r"[\w./\\-]+\.[A-Za-z0-9_]+")
+
+
+def _rel_norm(path: str, repo_path: str) -> Optional[str]:
+    """Normalize a path to the repo-relative posix form used by the GT."""
+    p = (path or "").strip().strip("`'\"")
+    if not p:
+        return None
+    if repo_path and os.path.isabs(p):
+        try:
+            p = os.path.relpath(p, repo_path)
+        except ValueError:
+            # Path can't be made relative to repo_path (e.g. different drive on
+            # Windows, or an unrelated root): keep the original absolute path and
+            # let normalize_file_path handle it. Non-fatal — scoring tolerates it.
+            pass
+    return normalize_file_path(p)
+
+
+def _dedup(seq: Sequence[Optional[str]]) -> List[str]:
+    seen, out = set(), []
+    for x in seq:
+        if x and x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def _answer_files(answer: str) -> List[str]:
+    """Files named in the answer: explicit ``Files:`` line, else path tokens."""
+    explicit: List[str] = []
+    for m in _FILES_LINE.finditer(answer or ""):
+        explicit.extend(t for t in re.split(r"[,\s]+", m.group(1).strip()) if t)
+    if explicit:
+        return explicit
+    return _PATH_TOKEN.findall(answer or "")  # soft fallback
+
+
+def _answer_symbols(answer: str) -> List[str]:
+    syms: List[str] = []
+    for m in _SYMBOLS_LINE.finditer(answer or ""):
+        syms.extend(t for t in re.split(r"[,\s]+", m.group(1).strip()) if t)
+    return syms
+
+
+def score_agent_localization(
+    *,
+    answer: str,
+    file_read_paths: Sequence[str],
+    nodes: Sequence[Any],
+    target_files: Sequence[str],
+    target_symbols: Sequence[str],
+    ks: Sequence[int],
+    repo_path: str,
+) -> Dict[str, Dict[int, Dict[str, float]]]:
+    """files@k / symbols@k from the agent's answer + read paths + skill nodes.
+
+    Predicted files are an ordered union of (1) the answer's ``Files:`` line /
+    path tokens, (2) the paths the agent ``read``, and (3) retrieval-skill node
+    files. Predicted symbols come from the answer's ``Symbols:`` line plus skill
+    nodes. Returns the same ``{"files": {k: {...}}, "symbols": {...}}`` shape as
+    :func:`evaluate_predictions`.
+    """
+    node_files, node_symbols = extract_predictions(nodes)
+    answer = answer or ""
+    pred_files = _dedup(
+        [_rel_norm(f, repo_path) for f in _answer_files(answer)]
+        + [_rel_norm(p, repo_path) for p in (file_read_paths or [])]
+        + list(node_files)
+    )
+    pred_symbols = _dedup(
+        [normalize_symbol_identifier(s) for s in _answer_symbols(answer)]
+        + list(node_symbols)
+    )
+    metrics: Dict[str, Dict[int, Dict[str, float]]] = {"files": {}, "symbols": {}}
+    for k in ks:
+        metrics["files"][k] = compute_metrics(pred_files[:k], target_files)
+        metrics["symbols"][k] = compute_metrics(pred_symbols[:k], target_symbols)
+    return metrics

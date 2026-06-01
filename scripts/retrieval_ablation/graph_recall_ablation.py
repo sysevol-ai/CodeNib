@@ -23,7 +23,7 @@ overselling it: report the fraction of instances (per language) where graph
 adds a target deep search misses, and list them so we can confirm end-to-end.
 
 Usage:
-    python -m scripts.agent_compile.graph_recall_ablation \
+    python -m scripts.retrieval_ablation.graph_recall_ablation \
         --instances-json /tmp/have_instances.json \
         --out results/agent_compile/graph_recall.json --budget 30
 """
@@ -92,13 +92,10 @@ def _analyze_instance(
 ) -> Dict[str, Any]:
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.eval.retrieval_eval import collect_targets
-    from scripts.agent_compile.prebuilt import repo_path_for, stage_prebuilt_indexes
-    from scripts.agent_compile.run_agent_sweep import (
-        _load_dataset_rows,
-        _load_full_contexts,
-    )
+    from scripts.agent_compile.lib.harness import load_dataset_rows, load_full_contexts
+    from scripts.agent_compile.lib.prebuilt import repo_path_for, stage_prebuilt_indexes
 
-    rows_by_id, eval_lookup = _load_dataset_rows(cfg)
+    rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[instance_id]
     query = row["problem_statement"]
     meta = eval_lookup.get(instance_id, row)
@@ -108,7 +105,7 @@ def _analyze_instance(
     repo_path = repo_path_for(prebuilt_dir, instance_id)
     cache_dir = os.path.join(cache_root, instance_id)
     stage_prebuilt_indexes(prebuilt_dir, instance_id, cache_dir)
-    contexts = _load_full_contexts(cfg, repo_path, cache_dir)
+    contexts = load_full_contexts(cfg, repo_path, cache_dir)
     retrieve = contexts.get("retrieve")
 
     deep = _deep_search_files(retrieve, query, budget)
@@ -130,7 +127,7 @@ def _analyze_instance(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from scripts.agent_compile.run_agent_sweep import SampleConfig
+    from scripts.agent_compile.lib.config import SweepConfig as SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)

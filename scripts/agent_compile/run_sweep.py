@@ -4,28 +4,27 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Drive the agent-compile baseline sweep.
+"""Agent-compile cost-arm sweep on ``codeminer_base`` with prebuilt indexes.
 
-This is the Phase 0 / Phase 2 sweep harness from issue #133. It expands
-the cartesian product ``{subsets} × {models} × {reps}`` over a partition
-fitting pool (or held-out pool), invokes ``examples/skill_agent_eval.py``
-once per cell, and explodes each run's report into per-cell JSON records
-under ``<output_dir>/cells/`` so downstream aggregation has stable inputs.
+Sweeps ``{subsets} × {instances} × {reps}`` for one model, reusing the
+offline-built per-instance indexes under ``--prebuilt-dir`` (see
+``lib/prebuilt.py``) instead of cloning + reindexing.
 
-Resume granularity is per *run* (one (subset, model, rep) triple). A run
-is considered complete if its output JSON exists under
-``<output_dir>/runs/``. To force a re-run, delete that file.
+Per instance the *full* (union-of-subsets) index set is loaded once and all
+skills are registered; each subset cell then runs ``AgentRunner`` with
+``allow_skills=<subset>`` so the only thing that varies across subsets is the
+tool allowlist. The vector store is therefore loaded once per instance, not
+once per cell.
 
-The script is intentionally a thin wrapper. The eval driver still owns
-the per-instance loop, index building, agent execution, and metric
-computation; we only orchestrate above it.
+Each cell is written as ``<output-dir>/cells/<cell_id>.json`` in the schema
+``aggregate.py`` consumes, plus ``scenario`` / ``tool_calls`` fields for the
+invocation histogram and per-scenario reporting.
 
 Usage::
 
     python scripts/agent_compile/run_sweep.py \\
-        --config scripts/agent_compile/configs/phase0.yaml \\
-        --partition data/agent_compile/partition.json \\
-        --output-dir results/agent_compile/phase0
+        --config scripts/agent_compile/configs/harness_grep.yaml \\
+        --output-dir results/agent_compile/grep
 """
 
 from __future__ import annotations
@@ -33,307 +32,258 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
-import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
-
-import yaml
+from typing import Any, Dict, Optional, Sequence
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_EVAL_SCRIPT = _PROJECT_ROOT / "examples" / "skill_agent_eval.py"
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from scripts.agent_compile.lib.config import SweepConfig  # noqa: E402
+from scripts.agent_compile.lib.harness import (  # noqa: E402
+    LANG_GROUP_TO_KEY,
+    load_dataset_rows,
+    load_full_contexts,
+    run_cell,
+    scenario_for,
+    slug,
+)
+from scripts.agent_compile.lib.prebuilt import (  # noqa: E402
+    has_full_indexes,
+    repo_path_for,
+    stage_prebuilt_indexes,
+)
 
 
-# ---------------------------------------------------------------------------
-# Config schema
-# ---------------------------------------------------------------------------
+def _validate_harness(cfg: SweepConfig) -> None:
+    """Fail loudly on tool/skill ids that would be silently dropped.
 
+    ``default_tool_ids`` is intersected with the registered default tools, and
+    ``allow_skills`` with the registry — an unknown name (e.g. the legacy
+    ``file_read`` instead of ``read``) just vanishes, which once zeroed out a
+    whole arm's filesystem access. Catch it before paying for a sweep.
+    """
+    from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
 
-@dataclass
-class SweepConfig:
-    sweep_id: str
-    subsets: Dict[str, List[str]]  # subset_id -> [skill_id, ...]
-    models: List[str]  # litellm model names
-    instances_source: str  # "fit" | "heldout"
-    reps: int = 3
-    max_turns: int = 20
-    temperature: float = 0.0
-    max_tokens: int = 4096
-    dataset: str = "SWE-bench/SWE-bench_Multilingual"
-    split: str = "test"
-    languages: List[str] = field(default_factory=lambda: ["python"])
-    metrics_k: List[int] = field(default_factory=lambda: [1, 3, 5, 10])
-    embedding_model: str = "nomic-ai/CodeRankEmbed"
-    embedding_dimension: int = 768
-    index_cache_dir: Optional[str] = None
-    eval_instances_path: Optional[str] = None  # GT-locate JSON
-    extra_env: Dict[str, str] = field(default_factory=dict)
-    gt_symbols_mode: str = "simplified"
-    repo_cache_dir: Optional[str] = None
+    defaults = set(DEFAULT_TOOL_IDS)
+    skills_dir = _PROJECT_ROOT / "codeminer" / "agent" / "skills"
+    index_skills = {
+        p.name for p in skills_dir.iterdir() if (p / "config.yaml").exists()
+    }
+    known = defaults | index_skills
 
-    @classmethod
-    def from_yaml(cls, path: Path) -> "SweepConfig":
-        with path.open("r", encoding="utf-8") as f:
-            payload = yaml.safe_load(f) or {}
-        if "subsets" not in payload or not isinstance(payload["subsets"], dict):
+    if cfg.default_tool_ids:
+        bad = sorted(set(cfg.default_tool_ids) - defaults)
+        if bad:
             raise ValueError(
-                f"{path}: 'subsets' must be a mapping of subset_id -> [skills]"
+                f"{cfg.sweep_id}: default_tool_ids {bad} are not registered default "
+                f"tools {sorted(defaults)}; they would be silently dropped, leaving "
+                f"the arm with no default tools. Use the real ids (read/grep/glob/bash)."
             )
-        if "models" not in payload or not isinstance(payload["models"], list):
-            raise ValueError(f"{path}: 'models' must be a list of model names")
-        if "sweep_id" not in payload:
-            raise ValueError(f"{path}: 'sweep_id' is required")
-        return cls(**payload)
+    for arm, skills in cfg.subsets.items():
+        bad = [s for s in skills if s not in known]
+        if bad:
+            raise ValueError(
+                f"{cfg.sweep_id}/{arm}: unknown skills {bad} — not a default tool "
+                f"{sorted(defaults)} nor a package under codeminer/agent/skills/."
+            )
 
 
-# ---------------------------------------------------------------------------
-# Cell / run records
-# ---------------------------------------------------------------------------
+def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dict:
+    from codeminer.eval.retrieval_eval import collect_targets, score_agent_localization
+    from codeminer.llm.litellm_chat import LiteLLMChat
 
-
-@dataclass
-class RunSpec:
-    """One (subset, model, rep) invocation of the eval driver."""
-
-    subset_id: str
-    skills: List[str]
-    model: str
-    rep: int
-
-    @property
-    def run_id(self) -> str:
-        return f"{self.subset_id}__{_slug(self.model)}__rep{self.rep}"
-
-
-def _slug(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")
-
-
-# ---------------------------------------------------------------------------
-# Eval-driver invocation
-# ---------------------------------------------------------------------------
-
-
-def _instances_filter_regex(instance_ids: Sequence[str]) -> str:
-    """Build an exact-match regex over a list of instance IDs.
-
-    ``examples/skill_agent_eval.py --filter-instance`` is matched as a
-    regex against ``instance_id``. We anchor each ID with ``^...$`` so
-    accidental substring matches don't pick up extra instances.
-    """
-    return "^(" + "|".join(re.escape(iid) for iid in instance_ids) + ")$"
-
-
-def _build_eval_cmd(
-    cfg: SweepConfig,
-    spec: RunSpec,
-    instance_ids: Sequence[str],
-    result_path: Path,
-) -> List[str]:
-    cmd: List[str] = [
-        sys.executable,
-        str(_EVAL_SCRIPT),
-        "--dataset",
-        cfg.dataset,
-        "--split",
-        cfg.split,
-        "--model",
-        spec.model,
-        "--temperature",
-        str(cfg.temperature),
-        "--max-tokens",
-        str(cfg.max_tokens),
-        "--max-turns",
-        str(cfg.max_turns),
-        "--filter-instance",
-        _instances_filter_regex(instance_ids),
-        "--skills",
-        *spec.skills,
-        "--metrics-k",
-        *[str(k) for k in cfg.metrics_k],
-        "--languages",
-        *cfg.languages,
-        "--embedding-model",
-        cfg.embedding_model,
-        "--embedding-dimension",
-        str(cfg.embedding_dimension),
-        "--result-path",
-        str(result_path),
-        "--gt-symbols",
-        cfg.gt_symbols_mode,
-    ]
-    if cfg.index_cache_dir:
-        cmd.extend(["--index-cache-dir", cfg.index_cache_dir])
-    if cfg.eval_instances_path:
-        cmd.extend(["--eval-instances", cfg.eval_instances_path])
-    if cfg.repo_cache_dir:
-        cmd.extend(["--repo-cache-dir", cfg.repo_cache_dir])
-    return cmd
-
-
-def _explode_run_to_cells(
-    run_payload: Dict[str, Any],
-    spec: RunSpec,
-    cells_dir: Path,
-) -> int:
-    """Write one cell JSON per instance in the run's report.
-
-    Returns the count of cells written.
-    """
-    cells_dir.mkdir(parents=True, exist_ok=True)
-    written = 0
-    for inst in run_payload.get("results", []):
-        instance_id = inst.get("instance_id")
-        if not instance_id:
-            continue
-        cell_id = f"{_slug(instance_id)}__{spec.subset_id}__{_slug(spec.model)}__rep{spec.rep}"
-        cell_path = cells_dir / f"{cell_id}.json"
-        loc = inst.get("loc_result") or {}
-        usage = loc.get("usage") or {}
-        token_usage = usage.get("token_usage") or {}
-        record = {
-            "cell_id": cell_id,
-            "instance_id": instance_id,
-            "subset_id": spec.subset_id,
-            "skills": spec.skills,
-            "model": spec.model,
-            "rep": spec.rep,
-            "success": inst.get("success", False),
-            "metrics": inst.get("metrics", {}),
-            "metrics_meaningful": inst.get("metrics_meaningful", False),
-            "target_files": inst.get("target_files", []),
-            "target_symbols": inst.get("target_symbols", []),
-            "total_turns": usage.get("total_turns"),
-            "total_duration_ms": usage.get("total_duration_ms"),
-            "tool_call_count": usage.get("tool_call_count"),
-            "prompt_tokens": token_usage.get("prompt_tokens"),
-            "completion_tokens": token_usage.get("completion_tokens"),
-            "total_tokens": token_usage.get("total_tokens"),
-            "cost_usd": token_usage.get("cost_usd"),
-            "elapsed_seconds": inst.get("elapsed_seconds"),
-            "error": inst.get("error"),
-            # Preserved verbatim for Phase 2's invocation + success-rate
-            # histograms; Phase 0 ignores it.
-            "execution_log": loc.get("execution_log", []),
-        }
-        with cell_path.open("w", encoding="utf-8") as f:
-            json.dump(record, f, indent=2, ensure_ascii=False)
-        written += 1
-    return written
-
-
-# ---------------------------------------------------------------------------
-# Sweep loop
-# ---------------------------------------------------------------------------
-
-
-def _runspecs(cfg: SweepConfig) -> List[RunSpec]:
-    out: List[RunSpec] = []
-    for subset_id, skills in cfg.subsets.items():
-        for model in cfg.models:
-            for rep in range(1, cfg.reps + 1):
-                out.append(
-                    RunSpec(
-                        subset_id=subset_id,
-                        skills=list(skills),
-                        model=model,
-                        rep=rep,
-                    )
-                )
-    return out
-
-
-def _load_partition_instances(partition_path: Path, source: str) -> List[str]:
-    with partition_path.open("r", encoding="utf-8") as f:
-        partition = json.load(f)
-    if source not in ("fit", "heldout"):
-        raise ValueError(f"instances_source must be 'fit' or 'heldout', got {source!r}")
-    ids = partition.get(source) or []
-    if not ids:
-        raise RuntimeError(
-            f"{partition_path} has no {source!r} instances — re-run partition.py"
-        )
-    return list(ids)
-
-
-def run_sweep(
-    cfg: SweepConfig,
-    instance_ids: Sequence[str],
-    output_dir: Path,
-    *,
-    dry_run: bool = False,
-    resume: bool = True,
-) -> Dict[str, Any]:
-    runs_dir = output_dir / "runs"
+    _validate_harness(cfg)
     cells_dir = output_dir / "cells"
-    runs_dir.mkdir(parents=True, exist_ok=True)
     cells_dir.mkdir(parents=True, exist_ok=True)
 
-    specs = _runspecs(cfg)
+    vertex_extra: Dict[str, Any] = {}
+    if cfg.vertex_project:
+        vertex_extra["vertex_project"] = cfg.vertex_project
+    if cfg.vertex_location:
+        vertex_extra["vertex_location"] = cfg.vertex_location
+    # The default-tool agent makes many LLM calls (grep/read turns), so vertex
+    # rate limits are common; let litellm retry with exponential backoff.
+    vertex_extra["num_retries"] = cfg.num_retries
+    llm = LiteLLMChat(
+        model=cfg.model,
+        temperature=cfg.temperature,
+        max_tokens=cfg.max_tokens,
+        extra_kwargs=vertex_extra,
+    )
+
+    rows_by_id, eval_lookup = load_dataset_rows(cfg)
+    # Empty cfg.instances => the whole split (sorted for deterministic order).
+    instance_ids = cfg.instances or sorted(rows_by_id)
     summary: Dict[str, Any] = {
         "sweep_id": cfg.sweep_id,
+        "model": cfg.model,
         "instance_count": len(instance_ids),
-        "run_count": len(specs),
         "completed": [],
         "skipped": [],
         "failed": [],
     }
 
-    env = dict(os.environ)
-    env.update(cfg.extra_env)
-
-    for spec in specs:
-        run_path = runs_dir / f"{spec.run_id}.json"
-        if resume and run_path.exists():
-            summary["skipped"].append(spec.run_id)
-            print(f"sweep: skip {spec.run_id} (resume; run file exists)")
-            continue
-
-        cmd = _build_eval_cmd(cfg, spec, instance_ids, run_path)
-        print(f"sweep: launching {spec.run_id} " f"(n={len(instance_ids)} instances)")
-        if dry_run:
-            print("  cmd:", " ".join(cmd))
-            summary["skipped"].append(spec.run_id)
-            continue
-
-        start = time.time()
-        try:
-            subprocess.run(cmd, check=True, env=env)
-        except subprocess.CalledProcessError as exc:
-            elapsed = time.time() - start
-            print(
-                f"sweep: FAIL {spec.run_id} after {elapsed:.0f}s "
-                f"(returncode={exc.returncode})",
-                file=sys.stderr,
-            )
+    for instance_id in instance_ids:
+        row = rows_by_id.get(instance_id)
+        if row is None:
+            print(f"sweep: WARN {instance_id} not in dataset; skipping")
             summary["failed"].append(
-                {"run_id": spec.run_id, "returncode": exc.returncode}
+                {"instance_id": instance_id, "reason": "not-in-dataset"}
+            )
+            continue
+        if not has_full_indexes(cfg.prebuilt_dir, instance_id, cfg.embedding_model):
+            print(f"sweep: WARN {instance_id} missing prebuilt indexes; skipping")
+            summary["failed"].append(
+                {"instance_id": instance_id, "reason": "no-prebuilt"}
             )
             continue
 
-        elapsed = time.time() - start
-        if not run_path.exists():
-            print(
-                f"sweep: FAIL {spec.run_id} produced no output JSON at " f"{run_path}",
-                file=sys.stderr,
-            )
-            summary["failed"].append({"run_id": spec.run_id, "reason": "no-output"})
-            continue
+        language_key = LANG_GROUP_TO_KEY.get(row.get("language_group"), "python")
+        query = row["problem_statement"]
+        scenario = scenario_for(query, language_key)
+        repo_path = repo_path_for(cfg.prebuilt_dir, instance_id)
 
-        with run_path.open("r", encoding="utf-8") as f:
-            payload = json.load(f)
-        n_cells = _explode_run_to_cells(payload, spec, cells_dir)
-        summary["completed"].append(
-            {
-                "run_id": spec.run_id,
-                "elapsed_seconds": elapsed,
-                "cells_written": n_cells,
-            }
+        meta = eval_lookup.get(instance_id, row)
+        target_files, target_symbols = collect_targets(
+            meta, simplified_symbols=cfg.gt_simplified_symbols
         )
-        print(f"sweep: done {spec.run_id} in {elapsed:.0f}s, " f"wrote {n_cells} cells")
+        gt_meaningful = bool(target_files or target_symbols)
+
+        cache_dir = os.path.join(
+            os.environ.get("CLAUDE_JOB_DIR", str(output_dir)),
+            "cache",
+            instance_id,
+        )
+
+        # Decide which cells still need running before paying the load cost.
+        pending = []
+        for subset_id, skills in cfg.subsets.items():
+            for rep in range(1, cfg.reps + 1):
+                cell_id = f"{slug(instance_id)}__{subset_id}__rep{rep}"
+                cell_path = cells_dir / f"{cell_id}.json"
+                if resume and cell_path.exists():
+                    summary["skipped"].append(cell_id)
+                    continue
+                pending.append((subset_id, list(skills), rep, cell_id, cell_path))
+        if not pending:
+            print(f"sweep: {instance_id} fully cached; skipping load")
+            continue
+
+        print(
+            f"sweep: {instance_id} [{scenario}] staging + loading full contexts "
+            f"({len(pending)} cells pending)"
+        )
+        t0 = time.time()
+        try:
+            stage_prebuilt_indexes(cfg.prebuilt_dir, instance_id, cache_dir)
+            contexts = load_full_contexts(cfg, repo_path, cache_dir)
+        except Exception as exc:  # noqa: BLE001
+            print(f"sweep: FAIL load {instance_id}: {exc}", file=sys.stderr)
+            traceback.print_exc()
+            summary["failed"].append(
+                {"instance_id": instance_id, "reason": f"load:{exc}"}
+            )
+            continue
+        print(
+            f"sweep:   contexts ready in {time.time() - t0:.1f}s, keys={sorted(contexts)}"
+        )
+
+        for subset_id, skills, rep, cell_id, cell_path in pending:
+            t = time.time()
+            try:
+                out = run_cell(
+                    cfg,
+                    contexts=contexts,
+                    llm=llm,
+                    repo_path=repo_path,
+                    language_key=language_key,
+                    query=query,
+                    subset_id=subset_id,
+                    skills=skills,
+                )
+                metrics = score_agent_localization(
+                    answer=out["answer"],
+                    file_read_paths=out["file_read_paths"],
+                    nodes=out["nodes"],
+                    target_files=target_files,
+                    target_symbols=target_symbols,
+                    ks=cfg.metrics_k,
+                    repo_path=repo_path,
+                )
+                record = {
+                    "cell_id": cell_id,
+                    "instance_id": instance_id,
+                    "subset_id": subset_id,
+                    "skills": skills,
+                    "model": cfg.model,
+                    "rep": rep,
+                    "scenario": scenario,
+                    "language": language_key,
+                    "success": True,
+                    "metrics": metrics,
+                    "metrics_meaningful": gt_meaningful,
+                    "target_files": target_files,
+                    "target_symbols": target_symbols,
+                    "tool_calls": out["tool_calls"],
+                    "file_read_paths": out["file_read_paths"],
+                    "answer": out["answer"],
+                    "total_turns": out["total_turns"],
+                    "total_duration_ms": out["total_duration_ms"],
+                    "tool_call_count": out["tool_call_count"],
+                    "prompt_tokens": out["prompt_tokens"],
+                    "completion_tokens": out["completion_tokens"],
+                    "total_tokens": out["total_tokens"],
+                    "cost_usd": out["cost_usd"],
+                    "elapsed_seconds": time.time() - t,
+                    "error": None,
+                }
+                summary["completed"].append(cell_id)
+                print(
+                    f"sweep:   done {cell_id} in {time.time() - t:.1f}s "
+                    f"turns={out['total_turns']} tokens={out['total_tokens']} "
+                    f"files@5={metrics.get('files', {}).get(5, {}).get('accuracy')}"
+                )
+            except Exception as exc:  # noqa: BLE001
+                traceback.print_exc()
+                record = {
+                    "cell_id": cell_id,
+                    "instance_id": instance_id,
+                    "subset_id": subset_id,
+                    "skills": skills,
+                    "model": cfg.model,
+                    "rep": rep,
+                    "scenario": scenario,
+                    "language": language_key,
+                    "success": False,
+                    "metrics": {},
+                    "metrics_meaningful": gt_meaningful,
+                    "tool_calls": [],
+                    "error": str(exc),
+                    "elapsed_seconds": time.time() - t,
+                }
+                summary["failed"].append({"cell_id": cell_id, "reason": str(exc)})
+                print(f"sweep:   FAIL {cell_id}: {exc}", file=sys.stderr)
+                # Transient (rate-limit/quota) failures must not poison resume:
+                # skip persisting so a later run retries this cell.
+                if any(
+                    s in str(exc).lower()
+                    for s in (
+                        "ratelimit",
+                        "rate limit",
+                        "429",
+                        "quota",
+                        "resourceexhausted",
+                    )
+                ):
+                    print(f"sweep:   (transient; not persisting {cell_id})")
+                    continue
+
+            with cell_path.open("w", encoding="utf-8") as f:
+                json.dump(record, f, indent=2, ensure_ascii=False)
 
     summary_path = output_dir / "sweep_summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
@@ -341,59 +291,37 @@ def run_sweep(
     return summary
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Drive the agent-compile sweep over a fit / held-out pool.",
+        description="Agent-compile cost-arm sweep on codeminer_base (prebuilt indexes).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--reps", type=int, default=None, help="Override config reps.")
     parser.add_argument(
-        "--config",
-        required=True,
-        type=Path,
-        help="Path to sweep YAML (subsets, models, reps, ...).",
+        "--instances", nargs="+", default=None, help="Override config instance list."
     )
+    parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--model", default=None, help="Override config model.")
     parser.add_argument(
-        "--partition",
-        required=True,
-        type=Path,
-        help="Path to partition.json produced by partition.py.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        required=True,
-        type=Path,
-        help="Where to write run JSONs, cell JSONs, and sweep_summary.json.",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print planned commands without invoking the eval driver.",
-    )
-    parser.add_argument(
-        "--no-resume",
-        action="store_true",
-        help="Re-run every cell even if a run file already exists.",
+        "--vertex-location", default=None, help="Override config vertex_location."
     )
     args = parser.parse_args(argv)
 
     cfg = SweepConfig.from_yaml(args.config)
-    instances = _load_partition_instances(args.partition, cfg.instances_source)
+    if args.reps is not None:
+        cfg.reps = args.reps
+    if args.instances:
+        cfg.instances = args.instances
+    if args.model:
+        cfg.model = args.model
+    if args.vertex_location:
+        cfg.vertex_location = args.vertex_location
 
-    summary = run_sweep(
-        cfg,
-        instances,
-        args.output_dir,
-        dry_run=args.dry_run,
-        resume=not args.no_resume,
-    )
-
+    summary = run_sweep(cfg, args.output_dir, resume=not args.no_resume)
     print(
-        "sweep done: completed={c} skipped={s} failed={f} cells_dir={d}".format(
+        "sweep done: completed={c} skipped={s} failed={f} cells={d}".format(
             c=len(summary["completed"]),
             s=len(summary["skipped"]),
             f=len(summary["failed"]),

@@ -18,11 +18,11 @@ contribution, same as the agent-side CODEMINER_COMPOSER_NO_GRAPH ablation but
 with no LLM in the loop).
 
 Usage:
-    python -m scripts.agent_compile.graphrag_retrieve \
+    python -m scripts.retrieval_ablation.graphrag_retrieve \
         --instances-json /tmp/have_instances.json \
         --out results/agent_compile/graphrag_retrieval.json --k 1 5 10
     # search-only baseline:
-    python -m scripts.agent_compile.graphrag_retrieve ... --no-graph
+    python -m scripts.retrieval_ablation.graphrag_retrieve ... --no-graph
 """
 
 from __future__ import annotations
@@ -50,13 +50,10 @@ def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
     """Run the GraphRAG composer once; return (ranked_files, target_files)."""
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.eval.retrieval_eval import collect_targets
-    from scripts.agent_compile.prebuilt import stage_prebuilt_indexes
-    from scripts.agent_compile.run_agent_sweep import (
-        _load_dataset_rows,
-        _load_full_contexts,
-    )
+    from scripts.agent_compile.lib.harness import load_dataset_rows, load_full_contexts
+    from scripts.agent_compile.lib.prebuilt import stage_prebuilt_indexes
 
-    rows_by_id, eval_lookup = _load_dataset_rows(cfg)
+    rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[instance_id]
     query = row["problem_statement"]
     meta = eval_lookup.get(instance_id, row)
@@ -64,7 +61,7 @@ def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
 
     cache_dir = os.path.join(cache_root, instance_id)
     repo_path = stage_prebuilt_indexes(prebuilt_dir, instance_id, cache_dir)
-    _load_full_contexts(cfg, repo_path, cache_dir)
+    load_full_contexts(cfg, repo_path, cache_dir)
     compose = SkillRegistry().get("codeminer_context").executor_fn
     nodes = compose(query=query, seeds=5, max_results=30)
     ranked_files: List[str] = []
@@ -80,7 +77,7 @@ def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from scripts.agent_compile.run_agent_sweep import SampleConfig
+    from scripts.agent_compile.lib.config import SweepConfig as SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)

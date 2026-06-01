@@ -6,9 +6,23 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent compile (CAR) — design ADR
 
-Status: **Draft** (Phase 1 — issue #133)
+Status: **Partly superseded** (was Draft, Phase 1 — issue #133)
 Owners: see issue #133 thread
-Last revised: 2026-05-17
+Last revised: 2026-06-01
+
+> ## Status (2026-06)
+>
+> The live experiment is the **design-space cost study** —
+> `scripts/agent_compile/configs/design_space.yaml`, 9 arms isolating one
+> skill-axis each, on the full split (see
+> [`scripts/agent_compile/README.md`](../scripts/agent_compile/README.md)).
+> Relative to the roster/sweep tables below: `graph_expand` and several other
+> skills were pruned (#196); the A0–A6 subset sweep is retired in favour of the
+> design-space arms; the deterministic `(language, has_stacktrace)` scenario
+> classifier is kept (the runner records it per cell). The CAR router runtime
+> (`codeminer/agent/compile.py`, `compile_table`) and the frozen fit/held-out
+> partition (#190) still exist; no compile_table is fitted today. The rest of
+> this document is the historical router design.
 
 This document pins the design decisions agreed in the
 [issue #133 RFC](https://github.com/sysevol-ai/CodeMiner/issues/133) thread

@@ -5,6 +5,17 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent-compile subset sweep — sample run (issue #133, Phase 2 dry-run)
 
+> **⚠️ Tooling refactored + pre-design-space results (2026-06).** The scripts
+> referenced below were consolidated: `run_agent_sweep.py` → **`run_sweep.py`**,
+> `aggregate_phase2.py` → **`aggregate.py`**, shared code moved to
+> `scripts/agent_compile/lib/`, and the offline retrieval ablations moved to
+> `scripts/retrieval_ablation/`. The experiment space is now the single
+> **`configs/design_space.yaml`** (9 arms, full split, neutral prompt) — see
+> [`scripts/agent_compile/README.md`](../../scripts/agent_compile/README.md).
+> The A0–A6 / `compile_table` numbers below are the historical methodology
+> record; fresh full-split design-space results will be added once the re-run
+> completes.
+
 This is the **sample** instantiation of the #133 Phase-2 experiment: run the
 A0–A6 skill-subset matrix over a small multi-language slice of
 `codeminer_base`, record accuracy / cost / skill-usage per cell, and derive a

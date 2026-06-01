@@ -12,7 +12,11 @@ from pathlib import Path
 
 _SPEC = importlib.util.spec_from_file_location(
     "prebuilt",
-    Path(__file__).resolve().parents[2] / "scripts" / "agent_compile" / "prebuilt.py",
+    Path(__file__).resolve().parents[2]
+    / "scripts"
+    / "agent_compile"
+    / "lib"
+    / "prebuilt.py",
 )
 prebuilt = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(prebuilt)

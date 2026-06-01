@@ -4,28 +4,34 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Aggregate sweep cells into a Phase 0 kill-switch report.
+"""Aggregate an agent-compile cost-arm sweep into a comparison report.
 
-Reads ``cells/*.json`` written by ``run_sweep.py`` and produces:
+Reads the per-cell JSON written by ``run_sweep.py`` and folds it into a
+per-arm comparison answering the cost-study question: *which tool harness
+localizes as accurately as the grep/read baseline, at what token cost?*
 
-* ``phase0_report.md`` — markdown table per subset (tokens, turns,
-  files@k, cap-hit rate, cost) and the kill-switch verdict
-* ``phase0_metrics.json`` — same numbers, machine-readable
+It produces:
 
-Aggregation:
+1. **Per-arm metrics** — files@k / symbols@k (mean across reps then
+   instances), tokens / turns / cost (min across reps then mean across
+   instances — rep noise on cost is one-sided), cap-hit rate.
+2. **Skill-invocation histogram** — per arm, each tool's invocation rate
+   (fraction of cells that called it ≥ 1×), mean calls/cell, and conditional
+   files@5 (hit | tool invoked). Surfaces tools the agent was offered but
+   effectively ignored — the core "does it voluntarily use the graph?" signal.
+3. **Easy/hard split** — instances where the baseline arm already hits GT
+   files@5 ("easy") vs the rest ("hard"), with files@5 per slice, so an arm's
+   accuracy is attributed to where it actually helps.
+4. **Per-(arm × scenario)** files@5 / tokens, scenario = ``language:stacktrace``.
+5. **Pareto front** — arms non-dominated in (files@5 ↑, tokens ↓).
 
-* Per (subset, instance), cost-like quantities (tokens, wall time, cost)
-  are taken as the **min across reps** — this matches @MihirJagtap's
-  noise-handling ritual in #131 (provider hiccups / GC inflate, never
-  deflate, so the min is the closest estimate to the true lower bound).
-* Accuracy metrics (``files@k`` / ``symbols@k``) are taken as the **mean
-  across reps** — accuracy noise is two-sided, so the mean is the
-  natural estimator.
-* Per (subset), final numbers are the **mean across instances**.
+Outputs ``report.md`` and ``metrics.json``.
 
-This script is Phase-0-scoped. Phase 2's aggregator (bootstrap CIs,
-ANOVA, invocation/success-rate histograms, scenario slicing) lives in
-the same directory but is a separate entry point.
+Rep-folding rule (one canonical rule, applied everywhere): cost-like metrics
+(tokens, turns, duration, cost) take the **min** across reps — provider/GC
+noise only inflates them, so the minimum is the closest estimate to the true
+lower bound; accuracy metrics (files@k, symbols@k) take the **mean** across
+reps — that noise is two-sided; cap-hit is "any rep touched the turn ceiling".
 """
 
 from __future__ import annotations
@@ -34,180 +40,269 @@ import argparse
 import json
 import statistics
 import sys
-from collections import defaultdict
-from dataclasses import dataclass, field
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-# Kill-switch thresholds — also pinned in docs/agent_compile_design.md.
-# Keep these in sync with the ADR.
-KILL_TOKEN_CEILING = 30_000
-KILL_FILES_AT_5_FLOOR = 0.55
+EASY_FILES_AT_5 = 0.5  # baseline-arm mean-rep files@5 >= this => "easy" instance
+
+# Baseline arm: the grep/read agent everyone already has. The easy/hard split
+# is computed relative to it. Falls back to the first arm if absent.
+_DEFAULT_BASELINE_CANDIDATES = ("GREP", "grep", "A0")
+
+# Always-on default tool layer (read / grep / glob / bash). These are unioned
+# into every arm by AgentRunner, so they are not sweep variables. They DO show
+# in the invocation histogram (tagged "always-on") so we can see how the agent
+# leans on them vs the index-backed skills. Kept as a literal to keep this
+# offline JSON aggregator free of heavy agent imports.
+ALWAYS_ON_SKILLS = frozenset({"read", "grep", "glob", "bash"})
 
 
-@dataclass
-class SubsetMetrics:
-    subset_id: str
-    instance_count: int = 0
-    rep_count: int = 0
-    failed_instances: int = 0
-    mean_prompt_tokens: float = 0.0
-    mean_completion_tokens: float = 0.0
-    mean_total_tokens: float = 0.0
-    mean_total_duration_ms: float = 0.0
-    mean_total_turns: float = 0.0
-    cap_hit_rate: float = 0.0
-    mean_cost_usd: Optional[float] = None
-    files_at_k: Dict[int, float] = field(default_factory=dict)
-    symbols_at_k: Dict[int, float] = field(default_factory=dict)
+# ---------------------------------------------------------------------------
+# Loading / small helpers
+# ---------------------------------------------------------------------------
 
 
-def _load_cells(cells_dir: Path) -> List[Dict[str, Any]]:
+def load_cells(cells_dir: Path) -> List[Dict[str, Any]]:
     cells: List[Dict[str, Any]] = []
     for path in sorted(cells_dir.glob("*.json")):
         try:
             with path.open("r", encoding="utf-8") as f:
                 cells.append(json.load(f))
         except (OSError, json.JSONDecodeError) as exc:
-            print(
-                f"aggregate: WARN unreadable cell {path}: {exc}",
-                file=sys.stderr,
-            )
+            print(f"aggregate: WARN unreadable {path}: {exc}", file=sys.stderr)
     return cells
 
 
-def _group_by_subset_instance(
-    cells: Sequence[Dict[str, Any]],
-) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
-    """Group cells by ``subset_id`` then ``instance_id`` for rep aggregation."""
-    out: Dict[str, Dict[str, List[Dict[str, Any]]]] = defaultdict(
-        lambda: defaultdict(list)
-    )
-    for c in cells:
-        sid = c.get("subset_id")
-        iid = c.get("instance_id")
-        if not sid or not iid:
-            continue
-        out[sid][iid].append(c)
-    return out
-
-
-def _safe_min(values: Sequence[Optional[float]]) -> Optional[float]:
-    xs = [v for v in values if v is not None]
-    return min(xs) if xs else None
-
-
-def _safe_mean(values: Sequence[Optional[float]]) -> Optional[float]:
-    xs = [v for v in values if v is not None]
-    return statistics.fmean(xs) if xs else None
-
-
-def _mean_or_zero(value: Optional[float]) -> float:
-    return float(value) if value is not None else 0.0
-
-
-def _at_k_from_cell(cell: Dict[str, Any], scope: str, k: int) -> Optional[float]:
-    metrics = cell.get("metrics") or {}
-    bucket = metrics.get(scope) or {}
-    # The eval driver may use int or str keys depending on json roundtrip.
-    if k in bucket:
-        stats = bucket[k]
-    elif str(k) in bucket:
-        stats = bucket[str(k)]
-    else:
-        return None
+def _at_k(cell: Dict[str, Any], scope: str, k: int) -> Optional[float]:
+    bucket = (cell.get("metrics") or {}).get(scope) or {}
+    stats = bucket.get(k, bucket.get(str(k)))
     if isinstance(stats, dict):
         return stats.get("accuracy")
     return stats
 
 
+def _safe_mean(xs: Sequence[Optional[float]]) -> Optional[float]:
+    vals = [x for x in xs if x is not None]
+    return statistics.fmean(vals) if vals else None
+
+
+def _safe_min(xs: Sequence[Optional[float]]) -> Optional[float]:
+    vals = [x for x in xs if x is not None]
+    return min(vals) if vals else None
+
+
+def _fmt(v: Optional[float], nd: int) -> str:
+    if v is None:
+        return "n/a"
+    return f"{v:.{nd}f}"
+
+
+# ---------------------------------------------------------------------------
+# Core grouping: arm -> instance -> [reps]
+# ---------------------------------------------------------------------------
+
+
+def group(cells: Sequence[Dict[str, Any]]):
+    out: Dict[str, Dict[str, List[Dict[str, Any]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    for c in cells:
+        sid, iid = c.get("subset_id"), c.get("instance_id")
+        if sid and iid and c.get("success"):
+            out[sid][iid].append(c)
+    return out
+
+
+def instance_files_at_5(reps: Sequence[Dict[str, Any]]) -> Optional[float]:
+    return _safe_mean([_at_k(r, "files", 5) for r in reps])
+
+
+def _pick_baseline(arms: Sequence[str], baseline: Optional[str]) -> Optional[str]:
+    if baseline and baseline in arms:
+        return baseline
+    for cand in _DEFAULT_BASELINE_CANDIDATES:
+        if cand in arms:
+            return cand
+    return arms[0] if arms else None
+
+
+# ---------------------------------------------------------------------------
+# Aggregation
+# ---------------------------------------------------------------------------
+
+
 def aggregate(
     cells: Sequence[Dict[str, Any]],
+    ks: Sequence[int],
     max_turns: int,
-    metrics_k: Sequence[int] = (1, 3, 5, 10),
-) -> Dict[str, SubsetMetrics]:
-    """Roll up cells into per-subset metrics."""
-    grouped = _group_by_subset_instance(cells)
-    out: Dict[str, SubsetMetrics] = {}
+    baseline: Optional[str] = None,
+):
+    grouped = group(cells)
+    arms = sorted(grouped.keys())
 
-    for subset_id, by_inst in grouped.items():
-        sm = SubsetMetrics(subset_id=subset_id)
-
-        instance_tokens_prompt: List[float] = []
-        instance_tokens_completion: List[float] = []
-        instance_tokens_total: List[float] = []
-        instance_duration: List[float] = []
-        instance_turns: List[float] = []
-        instance_cost: List[Optional[float]] = []
-        instance_cap_hit: List[int] = []
-        instance_files_at_k: Dict[int, List[float]] = {k: [] for k in metrics_k}
-        instance_symbols_at_k: Dict[int, List[float]] = {k: [] for k in metrics_k}
-
-        for _instance_id, reps in by_inst.items():
-            failed = [r for r in reps if not r.get("success")]
-            if failed and len(failed) == len(reps):
-                sm.failed_instances += 1
-                continue
-
-            sm.rep_count += len(reps)
-
-            # Cost-like: min across reps.
-            instance_tokens_prompt.append(
-                _mean_or_zero(_safe_min([r.get("prompt_tokens") for r in reps]))
+    # --- easy/hard split from the baseline arm ---
+    base = _pick_baseline(arms, baseline)
+    easy_instances, hard_instances = set(), set()
+    if base:
+        for iid, reps in grouped[base].items():
+            f5 = instance_files_at_5(reps)
+            (easy_instances if (f5 or 0) >= EASY_FILES_AT_5 else hard_instances).add(
+                iid
             )
-            instance_tokens_completion.append(
-                _mean_or_zero(_safe_min([r.get("completion_tokens") for r in reps]))
-            )
-            instance_tokens_total.append(
-                _mean_or_zero(_safe_min([r.get("total_tokens") for r in reps]))
-            )
-            instance_duration.append(
-                _mean_or_zero(_safe_min([r.get("total_duration_ms") for r in reps]))
-            )
-            instance_turns.append(
-                _mean_or_zero(_safe_min([r.get("total_turns") for r in reps]))
-            )
-            instance_cost.append(_safe_min([r.get("cost_usd") for r in reps]))
 
-            # Cap hit: any rep that ran to the cap counts.
-            cap_hit_any = any((r.get("total_turns") or 0) >= max_turns for r in reps)
-            instance_cap_hit.append(1 if cap_hit_any else 0)
+    per_arm: Dict[str, Any] = {}
+    for sid in arms:
+        by_inst = grouped[sid]
+        n_inst = len(by_inst)
 
-            # Accuracy: mean across reps.
-            for k in metrics_k:
-                files_vals = [_at_k_from_cell(r, "files", k) for r in reps]
-                symbols_vals = [_at_k_from_cell(r, "symbols", k) for r in reps]
-                fmean = _safe_mean(files_vals)
-                smean = _safe_mean(symbols_vals)
-                if fmean is not None:
-                    instance_files_at_k[k].append(fmean)
-                if smean is not None:
-                    instance_symbols_at_k[k].append(smean)
+        files_k = {k: [] for k in ks}
+        symbols_k = {k: [] for k in ks}
+        tokens, turns, cost, cap_hit, durations = [], [], [], [], []
+        f5_easy, f5_hard = [], []
 
-        sm.instance_count = len(by_inst) - sm.failed_instances
-        if sm.instance_count == 0:
-            out[subset_id] = sm
-            continue
+        # invocation histogram accumulators
+        skill_invoked_cells: "Counter[str]" = Counter()
+        skill_total_calls: "Counter[str]" = Counter()
+        skill_hit_when_invoked: Dict[str, List[int]] = defaultdict(list)
+        total_cells = 0
 
-        sm.mean_prompt_tokens = statistics.fmean(instance_tokens_prompt)
-        sm.mean_completion_tokens = statistics.fmean(instance_tokens_completion)
-        sm.mean_total_tokens = statistics.fmean(instance_tokens_total)
-        sm.mean_total_duration_ms = statistics.fmean(instance_duration)
-        sm.mean_total_turns = statistics.fmean(instance_turns)
-        sm.cap_hit_rate = (
-            sum(instance_cap_hit) / len(instance_cap_hit) if instance_cap_hit else 0.0
+        for iid, reps in by_inst.items():
+            for k in ks:
+                fv = _safe_mean([_at_k(r, "files", k) for r in reps])
+                sv = _safe_mean([_at_k(r, "symbols", k) for r in reps])
+                if fv is not None:
+                    files_k[k].append(fv)
+                if sv is not None:
+                    symbols_k[k].append(sv)
+            tokens.append(_safe_min([r.get("total_tokens") for r in reps]))
+            turns.append(_safe_min([r.get("total_turns") for r in reps]))
+            durations.append(_safe_min([r.get("total_duration_ms") for r in reps]))
+            cost.append(_safe_min([r.get("cost_usd") for r in reps]))
+            cap_hit.append(
+                1 if any((r.get("total_turns") or 0) >= max_turns for r in reps) else 0
+            )
+            f5 = instance_files_at_5(reps)
+            if f5 is not None:
+                (f5_easy if iid in easy_instances else f5_hard).append(f5)
+
+            # invocation histogram per rep-cell
+            for r in reps:
+                total_cells += 1
+                called: "Counter[str]" = Counter()
+                for tc in r.get("tool_calls") or []:
+                    called[tc.get("skill_id")] += 1
+                hit = (_at_k(r, "files", 5) or 0) >= 1.0
+                for skill, n in called.items():
+                    skill_invoked_cells[skill] += 1
+                    skill_total_calls[skill] += n
+                    skill_hit_when_invoked[skill].append(1 if hit else 0)
+
+        histogram = {}
+        for skill in sorted(set(list(skill_invoked_cells) + list(skill_total_calls))):
+            inv_cells = skill_invoked_cells[skill]
+            histogram[skill] = {
+                "invocation_rate": (inv_cells / total_cells) if total_cells else 0.0,
+                "mean_calls_per_cell": (
+                    skill_total_calls[skill] / total_cells if total_cells else 0.0
+                ),
+                "conditional_files_at_5": (
+                    _safe_mean(skill_hit_when_invoked[skill])
+                    if skill_hit_when_invoked[skill]
+                    else None
+                ),
+            }
+        # offered-but-ignored: in the arm's skill list but rarely invoked
+        arm_skills = next(
+            (c.get("skills") for c in cells if c.get("subset_id") == sid), []
         )
-        cost_values = [c for c in instance_cost if c is not None]
-        sm.mean_cost_usd = statistics.fmean(cost_values) if cost_values else None
-        for k in metrics_k:
-            if instance_files_at_k[k]:
-                sm.files_at_k[k] = statistics.fmean(instance_files_at_k[k])
-            if instance_symbols_at_k[k]:
-                sm.symbols_at_k[k] = statistics.fmean(instance_symbols_at_k[k])
+        ignored = [
+            s
+            for s in (arm_skills or [])
+            if histogram.get(s, {}).get("invocation_rate", 0.0) < 0.05
+        ]
 
-        out[subset_id] = sm
+        per_arm[sid] = {
+            "instance_count": n_inst,
+            "files_at_k": {k: _safe_mean(files_k[k]) for k in ks},
+            "symbols_at_k": {k: _safe_mean(symbols_k[k]) for k in ks},
+            "mean_total_tokens": _safe_mean(tokens),
+            "mean_total_turns": _safe_mean(turns),
+            "mean_total_duration_ms": _safe_mean(durations),
+            "mean_cost_usd": _safe_mean(cost),
+            "cap_hit_rate": (sum(cap_hit) / len(cap_hit)) if cap_hit else 0.0,
+            "files_at_5_easy": _safe_mean(f5_easy),
+            "files_at_5_hard": _safe_mean(f5_hard),
+            "invocation_histogram": histogram,
+            "offered_but_ignored": ignored,
+        }
 
-    return out
+    # --- per (arm x scenario) ---
+    scen = defaultdict(lambda: defaultdict(list))  # scenario -> arm -> [cells]
+    for c in cells:
+        if c.get("success"):
+            scen[c.get("scenario", "unknown")][c.get("subset_id")].append(c)
+    per_scenario = {}
+    for scenario, by_sub in scen.items():
+        per_scenario[scenario] = {}
+        for sid, cs in by_sub.items():
+            by_inst = defaultdict(list)
+            for c in cs:
+                by_inst[c["instance_id"]].append(c)
+            files_at_k = {
+                k: _safe_mean(
+                    [
+                        _safe_mean([_at_k(r, "files", k) for r in reps])
+                        for reps in by_inst.values()
+                    ]
+                )
+                for k in ks
+            }
+            tok = _safe_mean(
+                [
+                    _safe_min([r.get("total_tokens") for r in reps])
+                    for reps in by_inst.values()
+                ]
+            )
+            per_scenario[scenario][sid] = {
+                "files_at_k": files_at_k,
+                "files_at_5": files_at_k.get(5),
+                "mean_total_tokens": tok,
+                "instance_count": len(by_inst),
+            }
+
+    return {
+        "baseline_arm": base,
+        "arms": per_arm,
+        "per_scenario": per_scenario,
+        "easy_instances": sorted(easy_instances),
+        "hard_instances": sorted(hard_instances),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pareto
+# ---------------------------------------------------------------------------
+
+
+def pareto_front(agg) -> List[str]:
+    """Arms non-dominated in (files@5 high, tokens low)."""
+    pts = []
+    for sid, m in agg["arms"].items():
+        f5 = (m.get("files_at_k") or {}).get(5)
+        tok = m.get("mean_total_tokens")
+        if f5 is not None and tok is not None:
+            pts.append((sid, f5, tok))
+    front = []
+    for sid, f5, tok in pts:
+        dominated = any(
+            (of5 >= f5 and otok <= tok and (of5 > f5 or otok < tok))
+            for osid, of5, otok in pts
+            if osid != sid
+        )
+        if not dominated:
+            front.append(sid)
+    return sorted(front)
 
 
 # ---------------------------------------------------------------------------
@@ -215,91 +310,84 @@ def aggregate(
 # ---------------------------------------------------------------------------
 
 
-def _kill_switch_verdict(metrics: Dict[str, SubsetMetrics]) -> Dict[str, Any]:
-    """Return a verdict object based on the A6 numbers, if present."""
-    a6 = metrics.get("A6")
-    if a6 is None:
-        return {
-            "verdict": "inconclusive",
-            "reason": "A6 missing from cells; cannot evaluate kill-switch",
-        }
-    tokens_ok = a6.mean_total_tokens < KILL_TOKEN_CEILING
-    files_ok = a6.files_at_k.get(5, 0.0) >= KILL_FILES_AT_5_FLOOR
-    closes = tokens_ok and files_ok
-    return {
-        "verdict": "close-rfc" if closes else "proceed",
-        "tokens_ok": tokens_ok,
-        "files_at_5_ok": files_ok,
-        "a6_tokens": a6.mean_total_tokens,
-        "a6_files_at_5": a6.files_at_k.get(5, 0.0),
-        "token_ceiling": KILL_TOKEN_CEILING,
-        "files_at_5_floor": KILL_FILES_AT_5_FLOOR,
-        "note": (
-            "Both A6 cost and A6 accuracy must clear the ADR thresholds "
-            "to close the RFC. Proceed otherwise."
-        ),
-    }
-
-
-def _render_markdown(
-    metrics: Dict[str, SubsetMetrics],
-    verdict: Dict[str, Any],
-    metrics_k: Sequence[int],
-) -> str:
-    lines: List[str] = []
-    lines.append("# Phase 0 kill-switch report")
-    lines.append("")
-    lines.append(f"Subsets observed: {', '.join(sorted(metrics.keys())) or '(none)'}")
-    lines.append("")
-    lines.append("## Per-subset metrics")
-    lines.append("")
-    header = (
-        [
-            "subset",
-            "instances",
-            "mean_total_tokens",
-            "mean_turns",
-            "cap_hit_rate",
-            "mean_cost_usd",
-        ]
-        + [f"files@{k}" for k in metrics_k]
-        + [f"symbols@{k}" for k in metrics_k]
+def render_markdown(agg, front, ks) -> str:
+    L: List[str] = ["# Agent-compile cost-arm report", ""]
+    L.append(f"Baseline arm (easy/hard split reference): `{agg.get('baseline_arm')}`")
+    L.append(
+        f"Easy instances (baseline files@5 ≥ {EASY_FILES_AT_5}): "
+        f"{agg['easy_instances'] or '(none)'}"
     )
-    lines.append("| " + " | ".join(header) + " |")
-    lines.append("| " + " | ".join("---" for _ in header) + " |")
-    for subset_id in sorted(metrics.keys()):
-        sm = metrics[subset_id]
+    L.append(f"Hard instances: {agg['hard_instances'] or '(none)'}")
+    L.append("")
+    L.append("## Per-arm metrics")
+    L.append("")
+    head = (
+        ["arm", "n", "tokens", "turns", "cost$", "cap%"]
+        + [f"files@{k}" for k in ks]
+        + ["f@5 easy", "f@5 hard"]
+    )
+    L.append("| " + " | ".join(head) + " |")
+    L.append("| " + " | ".join("---" for _ in head) + " |")
+    for sid in sorted(agg["arms"]):
+        m = agg["arms"][sid]
         row = [
-            subset_id,
-            str(sm.instance_count),
-            f"{sm.mean_total_tokens:.0f}",
-            f"{sm.mean_total_turns:.1f}",
-            f"{sm.cap_hit_rate:.2%}",
-            f"${sm.mean_cost_usd:.4f}" if sm.mean_cost_usd is not None else "n/a",
+            sid,
+            str(m["instance_count"]),
+            _fmt(m["mean_total_tokens"], 0),
+            _fmt(m["mean_total_turns"], 1),
+            _fmt(m["mean_cost_usd"], 4),
+            f"{m['cap_hit_rate']:.0%}",
         ]
-        for k in metrics_k:
-            row.append(f"{sm.files_at_k.get(k, 0.0):.3f}")
-        for k in metrics_k:
-            row.append(f"{sm.symbols_at_k.get(k, 0.0):.3f}")
-        lines.append("| " + " | ".join(row) + " |")
-    lines.append("")
-    lines.append("## Kill-switch verdict")
-    lines.append("")
-    lines.append(f"* Verdict: **{verdict['verdict']}**")
-    if "a6_tokens" in verdict:
-        lines.append(
-            f"* A6 mean total tokens: {verdict['a6_tokens']:.0f} "
-            f"(threshold < {verdict['token_ceiling']}, "
-            f"{'✓' if verdict['tokens_ok'] else '✗'})"
+        row += [_fmt((m["files_at_k"] or {}).get(k), 3) for k in ks]
+        row += [
+            _fmt(m["files_at_5_easy"], 3),
+            _fmt(m["files_at_5_hard"], 3),
+        ]
+        L.append("| " + " | ".join(row) + " |")
+    L.append("")
+    L.append(f"**Pareto front (files@5 ↑ / tokens ↓):** {', '.join(front) or '(none)'}")
+    L.append("")
+
+    L.append("## Skill-invocation histogram")
+    L.append("")
+    L.append(
+        "`read` / `grep` / `glob` / `bash` are the always-on default tool layer "
+        "(present in every arm that includes defaults, not swept)."
+    )
+    L.append("")
+    for sid in sorted(agg["arms"]):
+        h = agg["arms"][sid]["invocation_histogram"]
+        if not h:
+            continue
+        ignored = agg["arms"][sid]["offered_but_ignored"]
+        L.append(
+            f"### {sid}" + (f"  — offered-but-ignored: {ignored}" if ignored else "")
         )
-        lines.append(
-            f"* A6 files@5: {verdict['a6_files_at_5']:.3f} "
-            f"(threshold ≥ {verdict['files_at_5_floor']:.2f}, "
-            f"{'✓' if verdict['files_at_5_ok'] else '✗'})"
-        )
-    lines.append(f"* Note: {verdict.get('note', '')}")
-    lines.append("")
-    return "\n".join(lines)
+        L.append("")
+        L.append("| skill | invoke_rate | calls/cell | files@5 \\| invoked |")
+        L.append("| --- | --- | --- | --- |")
+        for skill, s in sorted(h.items(), key=lambda kv: -kv[1]["invocation_rate"]):
+            label = skill + (" *(always-on)*" if skill in ALWAYS_ON_SKILLS else "")
+            L.append(
+                f"| {label} | {s['invocation_rate']:.0%} | "
+                f"{s['mean_calls_per_cell']:.2f} | {_fmt(s['conditional_files_at_5'], 3)} |"
+            )
+        L.append("")
+
+    L.append("## Per-scenario files@5 / tokens")
+    L.append("")
+    for scenario in sorted(agg["per_scenario"]):
+        L.append(f"### {scenario}")
+        L.append("")
+        L.append("| arm | files@5 | tokens | n |")
+        L.append("| --- | --- | --- | --- |")
+        for sid in sorted(agg["per_scenario"][scenario]):
+            m = agg["per_scenario"][scenario][sid]
+            f5 = _fmt(m["files_at_5"], 3)
+            tok = _fmt(m["mean_total_tokens"], 0)
+            L.append(f"| {sid} | {f5} | {tok} | {m['instance_count']} |")
+        L.append("")
+    return "\n".join(L)
 
 
 # ---------------------------------------------------------------------------
@@ -308,74 +396,50 @@ def _render_markdown(
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Aggregate sweep cells into a Phase 0 kill-switch report.",
+    p = argparse.ArgumentParser(
+        description="Aggregate an agent-compile cost-arm sweep into a report.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument(
-        "--cells-dir",
-        required=True,
-        type=Path,
-        help="Directory of cell JSONs produced by run_sweep.py.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        required=True,
-        type=Path,
-        help="Where to write phase0_report.md and phase0_metrics.json.",
-    )
-    parser.add_argument(
+    p.add_argument("--cells-dir", required=True, type=Path)
+    p.add_argument("--output-dir", required=True, type=Path)
+    p.add_argument("--metrics-k", type=int, nargs="+", default=[1, 3, 5, 10])
+    p.add_argument(
         "--max-turns",
         type=int,
-        default=20,
-        help="Per-run turn cap (locked at 20 per the design ADR).",
+        default=16,
+        help="Turn ceiling the sweep ran with (for cap-hit-rate). Match the config.",
     )
-    parser.add_argument(
-        "--metrics-k",
-        type=int,
-        nargs="+",
-        default=[1, 3, 5, 10],
-        help="K values to report files@k / symbols@k against.",
+    p.add_argument(
+        "--baseline",
+        default=None,
+        help="Arm to use as the easy/hard split reference (default: GREP, else first).",
     )
-    args = parser.parse_args(argv)
+    args = p.parse_args(argv)
 
-    cells = _load_cells(args.cells_dir)
+    cells = load_cells(args.cells_dir)
     if not cells:
         print(f"aggregate: no cells under {args.cells_dir}", file=sys.stderr)
         return 2
 
-    metrics = aggregate(cells, max_turns=args.max_turns, metrics_k=args.metrics_k)
-    verdict = _kill_switch_verdict(metrics)
+    agg = aggregate(
+        cells, ks=args.metrics_k, max_turns=args.max_turns, baseline=args.baseline
+    )
+    front = pareto_front(agg)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    json_payload = {
-        "metrics": {
-            sid: {
-                "subset_id": sm.subset_id,
-                "instance_count": sm.instance_count,
-                "rep_count": sm.rep_count,
-                "failed_instances": sm.failed_instances,
-                "mean_prompt_tokens": sm.mean_prompt_tokens,
-                "mean_completion_tokens": sm.mean_completion_tokens,
-                "mean_total_tokens": sm.mean_total_tokens,
-                "mean_total_duration_ms": sm.mean_total_duration_ms,
-                "mean_total_turns": sm.mean_total_turns,
-                "cap_hit_rate": sm.cap_hit_rate,
-                "mean_cost_usd": sm.mean_cost_usd,
-                "files_at_k": {str(k): v for k, v in sm.files_at_k.items()},
-                "symbols_at_k": {str(k): v for k, v in sm.symbols_at_k.items()},
-            }
-            for sid, sm in metrics.items()
-        },
-        "verdict": verdict,
-        "cell_count": len(cells),
-    }
-    with (args.output_dir / "phase0_metrics.json").open("w", encoding="utf-8") as f:
-        json.dump(json_payload, f, indent=2, ensure_ascii=False)
-
-    md = _render_markdown(metrics, verdict, args.metrics_k)
-    (args.output_dir / "phase0_report.md").write_text(md, encoding="utf-8")
+    with (args.output_dir / "metrics.json").open("w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "aggregate": agg,
+                "pareto_front": front,
+                "cell_count": len(cells),
+            },
+            f,
+            indent=2,
+            ensure_ascii=False,
+        )
+    md = render_markdown(agg, front, args.metrics_k)
+    (args.output_dir / "report.md").write_text(md, encoding="utf-8")
     print(md)
     return 0
 
