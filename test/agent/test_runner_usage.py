@@ -118,6 +118,8 @@ class TestTokenUsage:
             "completion_tokens": 2,
             "total_tokens": 3,
             "cost_usd": 0.5,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
         }
 
 
