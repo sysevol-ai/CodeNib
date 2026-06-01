@@ -1,9 +1,3 @@
-<!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
-
-SPDX-License-Identifier: Apache-2.0
--->
-
 # CLAUDE.md
 
 CodeMiner is a code analysis agent with graph-enhanced search. It parses
@@ -12,13 +6,18 @@ and provides hybrid retrieval (BM25 + FAISS/Milvus embeddings + regex/trigram +
 LLM re-ranking) via litellm. Retrieval is exposed both as composable agent
 skills and over the Model Context Protocol (MCP). Python 3.10+.
 
+> **Layered rules.** This is the project-wide file (always loaded). Each major
+> subtree carries its own `CLAUDE.md` with deeper, domain-specific rules that
+> load on demand when you touch files in that directory. See
+> [Per-directory rules](#per-directory-rules) below.
+
 ## Package structure
 
 ```
 codeminer/
-  code_chunking/   # Tree-sitter chunkers: Python, Go, Rust, C++, JS/TS
-  graph/           # CodeGraph (igraph), ROI subgraph, range queries; graph/incremental/ LSP patchers
-  dataset/         # SWE-bench loading, ground-truth extraction, query synthesis
+  code_chunking/   # Tree-sitter chunkers: Python, Go, Rust, C++, JS/TS  (CLAUDE.md)
+  graph/           # CodeGraph (igraph), ROI subgraph, range queries; graph/incremental/ LSP patchers  (CLAUDE.md)
+  dataset/         # SWE-bench loading, ground-truth extraction, query synthesis  (CLAUDE.md)
   index/           # BM25 sparse, FAISS/embedding, regex node, trigram (Zoekt) indexes
   incremental/     # Incremental embedding pipeline (git-diff driven chunk/index updates)
   agent/           # Keyword extraction, re-ranking, resource guards, skills + runner
@@ -31,8 +30,9 @@ codeminer/
   ops/             # Graph operations (expand, traverse)
   eval/            # Evaluation utilities
 core/              # C++ decoder backend (libigraph) mirroring CodeGraph/SCIPGraphDecoder
-test/              # Mirrors package structure; uses pytest markers
+test/              # Mirrors package structure; uses pytest markers  (CLAUDE.md)
 scripts/           # CLI entry points: dataset collection, embedding, evaluation
+                   #   scripts/agent_compile/ — agent-compile RFC tooling  (CLAUDE.md)
 third_party/       # Git submodules (scip-python)
 ```
 
@@ -47,35 +47,17 @@ make install      # pip install -e .
 
 Pre-commit hooks: black (line-length 88), isort, flake8+bugbear, clang-format for C/C++.
 
-## Testing
+## Critical conventions
 
-Three pytest marker tiers:
+These bite across the whole codebase — full details live in the per-directory
+rules, but keep these in mind everywhere:
 
-| Marker | Scope | Duration |
-|--------|-------|----------|
-| _(none)_ | Unit — pure logic, mocks only | ~1 min |
-| `integration` | Repo cloning, SCIP indexing, chunkers | ~15 min |
-| `slow` | LLM API calls, GPU embeddings | ~15 min |
-
-```bash
-pytest -m "not slow and not integration" -x   # unit only
-pytest -m integration                          # integration only
-pytest -m slow                                 # slow only
-```
-
-- Test fixtures cache repos to `/tmp/codeminer-gt-test/`
-- HuggingFace dataset cache: `~/.codeminer/`
-
-## Key conventions
-
-- **Line numbering**: `CodeChunk.start_line`/`end_line` are **0-based** (tree-sitter).
-  `CodeLocation.start_line`/`end_line` are **1-based** (output/HuggingFace).
-  `_chunk_to_code_block()` in `dataset/gt_locate.py` does the +1 conversion.
+- **Line numbering**: `CodeChunk.start_line`/`end_line` are **0-based**
+  (tree-sitter); `CodeLocation.start_line`/`end_line` are **1-based**
+  (output/HuggingFace). `_chunk_to_code_block()` in `dataset/gt_locate.py` does
+  the +1 conversion. See [`codeminer/dataset/CLAUDE.md`](../codeminer/dataset/CLAUDE.md)
+  and [`codeminer/code_chunking/CLAUDE.md`](../codeminer/code_chunking/CLAUDE.md).
 - **`.c` files** use the `cpp` chunker (not a separate C chunker).
-- **Chunking granularity**: L0 = file, L1 = top-level symbols, L2 = nested/methods.
-- **Symbol chunk types**: `function`, `method`, `class`, `struct`, `type`,
-  `interface`, `object`, `enum`, `trait`, `impl`, `var`, `const`, `static`,
-  `declaration`, `macro`, `variable`.
 
 ## Git & PR conventions
 
@@ -83,8 +65,8 @@ Rules for any AI/code agent (Claude Code, etc.) committing or opening PRs here.
 
 - **No agent attribution.** Do **not** add `Co-Authored-By: Claude ...`,
   `🤖 Generated with Claude Code`, session links, or any "made by an AI"
-  footer to commit messages, PR bodies, or review comments. This is also
-  enforced by `includeCoAuthoredBy: false` in `.claude/settings.json`.
+  footer to commit messages, PR bodies, or review comments. This is enforced by
+  `attribution: { commit: "", pr: "" }` in `.claude/settings.json`.
 - **Commit messages**: Conventional Commits — `type(scope): summary`, where
   `type` is `feat`/`fix`/`docs`/`refactor`/`perf`/`test`/`chore`/`ci`.
   Imperative mood, ≤72-char subject; body explains *why* + how it was verified.
@@ -107,3 +89,20 @@ Skip mechanisms:
 - `[skip tests]` in commit message or PR title
 - `skip-tests` label on PR
 - `workflow_dispatch` with `skip_tests: true`
+
+Full pytest marker reference: [`test/CLAUDE.md`](../test/CLAUDE.md).
+
+## Per-directory rules
+
+Domain rules live next to the code they govern and load on demand:
+
+| Path | Covers |
+|------|--------|
+| [`codeminer/code_chunking/CLAUDE.md`](../codeminer/code_chunking/CLAUDE.md) | Chunk depth (L0/L1/L2), per-language chunk types, line-number origin |
+| [`codeminer/graph/CLAUDE.md`](../codeminer/graph/CLAUDE.md) | CodeGraph (igraph), node/edge types, pickle schema versioning, C++ decoder parity |
+| [`codeminer/dataset/CLAUDE.md`](../codeminer/dataset/CLAUDE.md) | SWE-bench loading, ground-truth extraction, line conversion, test repos |
+| [`test/CLAUDE.md`](../test/CLAUDE.md) | pytest marker tiers, fixture caches, package-shadow gotcha |
+| [`scripts/agent_compile/CLAUDE.md`](../scripts/agent_compile/CLAUDE.md) | Agent-compile RFC tooling, phase lineage, RepoManifest/IndexCompiler |
+
+When you edit code under one of these subtrees, follow its `CLAUDE.md` in
+addition to this file. If a rule changes, update the file nearest the code.
