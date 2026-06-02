@@ -51,6 +51,32 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
 - **Over SSH, forward both ports** — API calls run *in the browser*, not server-side:
   `ssh -L 3000:localhost:3000 -L 8000:localhost:8000 <host>`.
 
+## Performance & caching (why a page can feel slow)
+
+- **Wiki prose is LLM-generated and disk-cached** under `<data_dir>/wiki_cache/`
+  (i.e. `.codeminer_qa/wiki_cache/agentwiki_<sha1(instance@commit/suffix)[:16]>.json`)
+  — NOT under `/mnt/data/codeminer` (that holds the prebuilt graph + vectors).
+  The **first** visit to an un-narrated page runs the model (~8–20s); after that
+  it's ~2ms. The codemap / wiki-page subgraph is computed **dynamically** per
+  request but is fast (~50–115ms), so it isn't cached.
+- **Pre-warm the cache** so navigation is instant (run once per data_dir; ~minutes):
+  ```bash
+  B=http://127.0.0.1:8000; PY=<codeminer-conda-python>
+  ids(){ curl -s "$B/api/repos/$1/wiki" | $PY -c "import sys,json
+  def w(ps):
+   for p in ps:
+    print(p['id']); w(p.get('children',[]))
+  w(json.load(sys.stdin).get('pages',[]))"; }
+  for r in $(curl -s "$B/api/repos" | $PY -c "import sys,json;[print(x['id']) for x in json.load(sys.stdin)]"); do
+    for p in $(ids "$r"); do curl -s -o /dev/null --max-time 120 "$B/api/repos/$r/wiki/$p"; done
+  done
+  ```
+  To force re-narration after a prompt change, delete the matching
+  `agentwiki_*.json` (outline key = `sha1("<instance>@<commit_short>/outline")[:16]`).
+- **Frontend weight**: Mermaid (~1MB) and the Cytoscape graph are `next/dynamic`
+  lazy-loaded, so the narrative paints first. Remember `next dev` is unminified —
+  a production `next build && next start` is markedly faster than the dev server.
+
 ## Screenshot / visual verification (Playwright)
 
 Playwright (chromium) is a `web/` devDep. Two ready scripts; **run them from inside
