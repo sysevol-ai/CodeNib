@@ -422,11 +422,17 @@ pre {
   border-left: 1px solid var(--border);
 }
 .rail-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 12px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+  margin-bottom: 2px;
+  letter-spacing: -0.01em;
   word-break: break-word;
+}
+.rail-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 18px;
 }
 
 .toc-tree {
@@ -459,7 +465,8 @@ pre {
 .toc-link.active {
   background: var(--surface);
   color: var(--accent);
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: inset 2px 0 var(--accent);
 }
 
 .wiki-main {
@@ -845,6 +852,57 @@ pre {
   color: #7ee787;
 }
 
+/* Dark theme for the standalone code component (.hl-code) — used by the Ask
+   citations pane and the codemap call-site peek. Mirrors the .markdown palette
+   above; additive, so the light defaults and wiki rules are untouched. */
+[data-theme="dark"] .hl-code,
+[data-theme="dark"] .hl-pre {
+  background: #0d1117;
+}
+[data-theme="dark"] .hl-gutter {
+  background: #0b0f15;
+  color: #6e7681;
+}
+[data-theme="dark"] .hl-code .hljs {
+  color: #c9d1d9;
+}
+[data-theme="dark"] .hl-code .hljs-doctag,
+[data-theme="dark"] .hl-code .hljs-keyword,
+[data-theme="dark"] .hl-code .hljs-meta .hljs-keyword,
+[data-theme="dark"] .hl-code .hljs-template-tag,
+[data-theme="dark"] .hl-code .hljs-template-variable,
+[data-theme="dark"] .hl-code .hljs-type,
+[data-theme="dark"] .hl-code .hljs-built_in {
+  color: #ff7b72;
+}
+[data-theme="dark"] .hl-code .hljs-title,
+[data-theme="dark"] .hl-code .hljs-title.class_,
+[data-theme="dark"] .hl-code .hljs-title.function_,
+[data-theme="dark"] .hl-code .hljs-section {
+  color: #d2a8ff;
+}
+[data-theme="dark"] .hl-code .hljs-string,
+[data-theme="dark"] .hl-code .hljs-meta .hljs-string,
+[data-theme="dark"] .hl-code .hljs-regexp {
+  color: #a5d6ff;
+}
+[data-theme="dark"] .hl-code .hljs-number,
+[data-theme="dark"] .hl-code .hljs-literal,
+[data-theme="dark"] .hl-code .hljs-variable,
+[data-theme="dark"] .hl-code .hljs-attr,
+[data-theme="dark"] .hl-code .hljs-attribute {
+  color: #79c0ff;
+}
+[data-theme="dark"] .hl-code .hljs-comment,
+[data-theme="dark"] .hl-code .hljs-quote {
+  color: #8b949e;
+}
+[data-theme="dark"] .hl-code .hljs-name,
+[data-theme="dark"] .hl-code .hljs-symbol,
+[data-theme="dark"] .hl-code .hljs-bullet {
+  color: #7ee787;
+}
+
 /* Mobile TOC positioning — declared last so it wins over the base
    `.wiki-toc { position: sticky }` rule (media queries add no specificity). */
 @media (max-width: 820px) {
@@ -956,7 +1014,25 @@ pre {
 
 /* ===== Codemap mode (dependency / call graph) ===== */
 .codemap {
-  padding: 4px 0 8px;
+  /* bottom room so the last chips clear the fixed Ask bar */
+  padding: 4px 0 96px;
+}
+.rail-graphnote p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.rail-graphnote ul {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+}
+.rail-graphnote li {
+  margin: 3px 0;
+  line-height: 1.45;
+}
+.rail-graphnote b {
+  color: var(--text);
 }
 .codemap-controls {
   display: flex;
@@ -1021,15 +1097,180 @@ pre {
   color: #fff;
   border-color: var(--accent);
 }
-/* Render the dependency graph at natural size (legible labels) inside a
-   scrollable box rather than letting Mermaid shrink it to the column width. */
-.codemap .mermaid-diagram {
-  max-height: 72vh;
-  overflow: auto;
+/* Interactive dependency graph (Cytoscape + dagre). */
+.codegraph {
+  margin: 4px 0 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-2);
 }
-.codemap .mermaid-diagram svg {
-  max-width: none !important;
-  height: auto;
+.codegraph-canvas {
+  width: 100%;
+  height: 540px;
+}
+.codegraph-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--text);
+}
+.codegraph-bar > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.codegraph-bar b {
+  font-weight: 600;
+}
+.codegraph-kind {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+.codegraph-fit {
+  padding: 3px 13px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.codegraph-fit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Call-site peek: the exact reference line behind a clicked edge. */
+.callsite-peek {
+  margin: 10px 0 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.callsite-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+}
+.callsite-title {
+  color: var(--text);
+}
+.callsite-arrow {
+  color: var(--muted);
+}
+.callsite-loc {
+  color: var(--accent);
+  font-weight: 600;
+}
+.callsite-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+}
+.callsite-pager button {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+.callsite-pager button.on {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.callsite-kindtag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+.callsite-focus {
+  padding: 2px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+.callsite-focus:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Wiki page rendered as a view over the graph: its symbols' subsystem map. */
+.subsystem-map {
+  margin: 6px 0 22px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 6px 10px 10px;
+}
+.subsystem-map > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 5px 2px;
+  list-style: none;
+}
+.subsystem-map > summary::-webkit-details-marker {
+  display: none;
+}
+.subsystem-map > summary::before {
+  content: "▸ ";
+  color: var(--muted);
+}
+.subsystem-map[open] > summary::before {
+  content: "▾ ";
+}
+.subsystem-hint {
+  font-weight: 400;
+  color: var(--muted);
+}
+.callsite-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.callsite-close:hover {
+  color: var(--text);
+}
+.callsite-msg {
+  padding: 14px;
+  margin: 0;
 }
 
 /* ===== Ask "codemap": hierarchical explanation (left) + code pane (right) ===== */
@@ -1206,6 +1447,7 @@ pre {
   color: var(--text);
   font-size: 12px;
   cursor: pointer;
+  text-decoration: none;
 }
 .relevant-file:hover {
   border-color: var(--accent);
@@ -1380,6 +1622,20 @@ a.codepanel-name:hover {
   display: flex;
   overflow-x: auto;
   background: #fff;
+  position: relative;
+}
+.hl-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(45, 127, 249, 0.14);
+  border-left: 3px solid var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
+.hl-gutter-on {
+  color: var(--accent);
+  font-weight: 700;
 }
 .hl-gutter {
   flex: 0 0 auto;

@@ -82,10 +82,19 @@ class RepoDependencySearcher:
             if etype_filter and etype not in etype_filter:
                 continue
 
+            # Carry the LSP/SCIP reference-site anchor (caller file + line) in the
+            # edge meta so consumers can link an edge back to the exact call site.
+            # Additive: callers reading meta["type"] are unaffected.
+            attrs = edge.attributes()
+            meta = {
+                "type": etype,
+                "anchor_file": attrs.get("anchor_file"),
+                "anchor_line": attrs.get("anchor_line"),
+            }
             if edge_dir == "forward":
-                edges.append((nid, neighbor_nid, 0, {"type": etype}))
+                edges.append((nid, neighbor_nid, 0, meta))
             else:
-                edges.append((neighbor_nid, nid, 0, {"type": etype}))
+                edges.append((neighbor_nid, nid, 0, meta))
             nodes.append(neighbor_nid)
 
         return nodes, edges

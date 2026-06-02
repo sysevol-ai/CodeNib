@@ -6,12 +6,14 @@ import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
 import Codemap from "@/components/Codemap";
-import CitationItem from "@/components/CitationItem";
+import GraphView from "@/components/GraphView";
 import {
   fetchRepos,
+  fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
   repoRelative,
+  type CodemapResponse,
   type RepoInfo,
   type WikiPage,
   type WikiPageRef,
@@ -22,6 +24,22 @@ interface Heading {
   id: string;
   text: string;
   level: number;
+}
+
+// The wiki page now leads with an interactive subsystem graph, so the narrator's
+// generated mermaid diagrams (and any heading left empty once removed) are
+// redundant — strip them before rendering.
+function stripGeneratedDiagrams(md: string): string {
+  return md
+    .replace(/\n#{1,6}[^\n]*\n+```mermaid[\s\S]*?```/g, "") // a heading + its diagram
+    .replace(/```mermaid[\s\S]*?```/g, "") // any stray diagram
+    .trimEnd();
+}
+
+// Link a repo-relative source path to the exact blob on GitHub at the indexed commit.
+function ghFileUrl(repo: string | undefined, commit: string | undefined, file: string): string | null {
+  if (!repo) return null;
+  return `https://github.com/${repo}/blob/${commit || "HEAD"}/${file}`;
 }
 
 function TocTree({
@@ -61,6 +79,11 @@ export default function WikiPageView() {
   const [pages, setPages] = useState<WikiPageRef[]>([]);
   const [activeId, setActiveId] = useState<string>("overview");
   const [page, setPage] = useState<WikiPage | null>(null);
+  const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
+  // Seed passed to the codemap when "explore in graph" is used from a wiki page.
+  const [graphSeed, setGraphSeed] = useState<string | undefined>(undefined);
+  // Wiki-first: a repo opens on its narrative — which now leads with a subsystem
+  // graph — and the full Graph explorer is one tab away.
   const [mode, setMode] = useState<Mode>("wiki");
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [activeHeading, setActiveHeading] = useState<string>("");
@@ -70,11 +93,19 @@ export default function WikiPageView() {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Deep-link support: ?p=<pageId> selects a page directly.
+    // Deep-link support: ?p=<pageId> opens that wiki page directly.
     const p = new URLSearchParams(window.location.search).get("p");
-    if (p) setActiveId(p);
+    if (p) {
+      setActiveId(p);
+      setMode("wiki"); // a page deep-link wants the narrative, not the graph
+    }
     fetchRepos()
-      .then((rs) => setRepo(rs.find((r) => r.id === repoId) ?? null))
+      .then((rs) => {
+        const r = rs.find((x) => x.id === repoId) ?? null;
+        setRepo(r);
+        // Fall back to wiki if this repo has no symbol graph.
+        if (r && !r.capabilities?.codemap && !p) setMode("wiki");
+      })
       .catch(() => {});
     fetchWikiTree(repoId)
       .then((t) => setPages(t.pages))
@@ -85,9 +116,14 @@ export default function WikiPageView() {
     let cancelled = false;
     setPage(null);
     setPageError(null);
+    setPageGraph(null);
     fetchWikiPage(repoId, activeId)
       .then((p) => !cancelled && setPage(p))
       .catch((e) => !cancelled && setPageError(String(e)));
+    // The page's symbols as a view over the graph (rendered atop the narrative).
+    fetchWikiGraph(repoId, activeId)
+      .then((g) => !cancelled && setPageGraph(g))
+      .catch(() => !cancelled && setPageGraph(null));
     return () => {
       cancelled = true;
     };
@@ -164,6 +200,9 @@ export default function WikiPageView() {
         {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
         <aside className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
+          {repo?.commit_short && (
+            <div className="rail-sub mono">Last indexed {repo.commit_short}</div>
+          )}
           {error && <div className="muted">Failed to load wiki.</div>}
           <TocTree pages={pages} activeId={activeId} onPick={pick} />
         </aside>
@@ -185,9 +224,22 @@ export default function WikiPageView() {
 
           {mode === "wiki" && (
             <div className="wiki-content" ref={contentRef}>
-              <div className="wiki-meta mono">
-                {repo ? `Last indexed ${repo.commit_short}` : ""}
-              </div>
+              {pageGraph && pageGraph.available && pageGraph.nodes.length > 0 && (
+                <details className="subsystem-map" open>
+                  <summary>
+                    Subsystem map · {pageGraph.nodes.length} symbols
+                    <span className="subsystem-hint"> — this page as a view over the graph</span>
+                  </summary>
+                  <GraphView
+                    repoId={repoId}
+                    data={pageGraph}
+                    onFocus={(label) => {
+                      setGraphSeed(label);
+                      setMode("codemap");
+                    }}
+                  />
+                </details>
+              )}
               {page && page.citations.length > 0 && (
                 <details className="relevant-files-wiki">
                   {(() => {
@@ -200,11 +252,25 @@ export default function WikiPageView() {
                       <>
                         <summary>Relevant source files ({wikiFiles.length})</summary>
                         <div className="relevant-files-list">
-                          {wikiFiles.map((f) => (
-                            <span key={f} className="relevant-file mono">
-                              {f}
-                            </span>
-                          ))}
+                          {wikiFiles.map((f) => {
+                            const url = ghFileUrl(repo?.repo, repo?.base_commit, f);
+                            return url ? (
+                              <a
+                                key={f}
+                                className="relevant-file mono"
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={`Open ${f} on GitHub`}
+                              >
+                                {f} ↗
+                              </a>
+                            ) : (
+                              <span key={f} className="relevant-file mono">
+                                {f}
+                              </span>
+                            );
+                          })}
                         </div>
                       </>
                     );
@@ -212,28 +278,20 @@ export default function WikiPageView() {
                 </details>
               )}
               {page ? (
-                <Markdown>{page.markdown}</Markdown>
+                <Markdown>{stripGeneratedDiagrams(page.markdown)}</Markdown>
               ) : pageError ? (
                 <p className="muted">Couldn't load this page. It may not exist — pick a section from the sidebar.</p>
               ) : (
                 <p className="muted">Loading…</p>
               )}
-              {page && page.citations.length > 0 && (
-                <details className="citations" open>
-                  <summary>{page.citations.length} code references</summary>
-                  {page.citations.map((c, i) => (
-                    <CitationItem repoId={repoId} c={c} key={i} />
-                  ))}
-                </details>
-              )}
             </div>
           )}
 
-          {mode === "codemap" && <Codemap repoId={repoId} />}
+          {mode === "codemap" && <Codemap repoId={repoId} initialSymbol={graphSeed} />}
         </main>
 
         <aside className="wiki-onthispage" data-rail="right">
-          <div className="rail-title">On this page</div>
+          <div className="rail-title">{mode === "codemap" ? "About this graph" : "On this page"}</div>
           {mode === "wiki" && headings.length > 0 ? (
             <ul className="onthispage-list">
               {headings.map((h) => (
@@ -244,12 +302,25 @@ export default function WikiPageView() {
                 </li>
               ))}
             </ul>
-          ) : (
-            <div className="muted small">
-              {mode === "wiki" ? "—" : `${mode} view`}
+          ) : mode === "codemap" ? (
+            <div className="rail-graphnote small">
+              <p>
+                Every edge is a <b>real reference</b> from the LSP/SCIP index — not a guess.
+              </p>
+              <ul>
+                <li>
+                  Click an <b>edge</b> → the exact call site
+                </li>
+                <li>
+                  Click a <b>node</b> → refocus the map
+                </li>
+                <li>Colour = file · scroll to zoom · drag to pan</li>
+              </ul>
             </div>
+          ) : (
+            <div className="muted small">—</div>
           )}
-          {repo && (
+          {repo && mode === "wiki" && (
             <button
               className="refresh-wiki"
               title="Re-fetch this wiki page"

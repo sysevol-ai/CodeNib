@@ -33,10 +33,13 @@ export default function HighlightedCode({
   code,
   file,
   startLine = 1,
+  highlightLine,
 }: {
   code: string;
   file?: string | null;
   startLine?: number;
+  /** 1-based absolute line to spotlight (e.g. an exact call site). */
+  highlightLine?: number | null;
 }) {
   const ext = (file || "").split(".").pop()?.toLowerCase() || "";
   const lang = EXT_LANG[ext];
@@ -49,12 +52,26 @@ export default function HighlightedCode({
     html = code.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
   }
   const lineCount = code ? code.split("\n").length : 0;
+  const hlIdx =
+    highlightLine != null && highlightLine >= startLine && highlightLine < startLine + lineCount
+      ? highlightLine - startLine
+      : -1;
+  const LINE_H = 19.375; // 12.5px × 1.55 — matches the gutter & code line-height
 
   return (
     <div className="hl-code">
+      {hlIdx >= 0 && (
+        <div
+          className="hl-band"
+          style={{ top: `${10 + hlIdx * LINE_H}px`, height: `${LINE_H}px` }}
+          aria-hidden
+        />
+      )}
       <div className="hl-gutter" aria-hidden>
         {Array.from({ length: lineCount }, (_, i) => (
-          <div key={i}>{startLine + i}</div>
+          <div key={i} className={i === hlIdx ? "hl-gutter-on" : undefined}>
+            {startLine + i}
+          </div>
         ))}
       </div>
       <pre className="hl-pre">

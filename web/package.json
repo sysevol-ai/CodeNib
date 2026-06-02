@@ -9,6 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "cytoscape": "^3.33.4",
+    "cytoscape-dagre": "^2.5.0",
+    "dagre": "^0.8.5",
     "geist": "^1.7.1",
     "highlight.js": "^11.11.1",
     "mermaid": "^11.15.0",

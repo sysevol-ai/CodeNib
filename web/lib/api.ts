@@ -138,11 +138,20 @@ export interface CodemapNode {
   kind: string;
   depth: number;
   is_root: boolean;
+  external?: boolean; // no openable in-repo source (external dep / file node)
+}
+
+export interface CallSite {
+  file: string;
+  line: number | null;
 }
 
 export interface CodemapEdge {
   source: string;
   target: string;
+  // Exact LSP/SCIP reference (call) site(s) for this edge — the caller file +
+  // line where the call happens. Lets the UI jump an edge to its source.
+  anchors?: CallSite[];
 }
 
 export interface CodemapResponse {
@@ -172,5 +181,15 @@ export async function fetchCodemap(
     `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/codemap${qs ? `?${qs}` : ""}`
   );
   if (!res.ok) throw new Error(`Failed to load codemap (${res.status})`);
+  return res.json();
+}
+
+// Induced dependency subgraph over a wiki page's cited symbols — lets a wiki
+// page render as a view over the graph.
+export async function fetchWikiGraph(repoId: string, pageId: string): Promise<CodemapResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}/graph`
+  );
+  if (!res.ok) throw new Error(`Failed to load page graph (${res.status})`);
   return res.json();
 }

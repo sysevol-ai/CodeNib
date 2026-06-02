@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Mermaid from "@/components/Mermaid";
+import GraphView from "@/components/GraphView";
 import { fetchCodemap, type CodemapResponse } from "@/lib/api";
 
 type Direction = "both" | "callees" | "callers";
@@ -9,16 +9,30 @@ type Direction = "both" | "callees" | "callers";
 /**
  * Codemap mode: an interactive dependency (call-graph) map for the repo.
  * Walks reference edges out from a focus symbol (or the repo's busiest symbol
- * by default) and renders them with the shared Mermaid component. Clicking a
- * symbol chip refocuses the map on it.
+ * by default) and renders them via the shared GraphView (Cytoscape graph +
+ * source peek). A chip — or "Focus here" in a node's peek — re-roots the map.
  */
-export default function Codemap({ repoId }: { repoId: string }) {
-  const [symbol, setSymbol] = useState("");
-  const [query, setQuery] = useState(""); // last submitted focus symbol
+export default function Codemap({
+  repoId,
+  initialSymbol,
+}: {
+  repoId: string;
+  initialSymbol?: string;
+}) {
+  const [symbol, setSymbol] = useState(initialSymbol ?? "");
+  const [query, setQuery] = useState(initialSymbol ?? ""); // last submitted focus symbol
   const [direction, setDirection] = useState<Direction>("both");
   const [data, setData] = useState<CodemapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Re-seed when an external focus arrives (e.g. "explore in graph" from a wiki page).
+  useEffect(() => {
+    if (initialSymbol) {
+      setSymbol(initialSymbol);
+      setQuery(initialSymbol);
+    }
+  }, [initialSymbol]);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,10 +95,7 @@ export default function Codemap({ repoId }: { repoId: string }) {
             {data.truncated ? " · truncated" : ""}
           </div>
           {data.note && <p className="muted small">{data.note}</p>}
-          <Mermaid chart={data.mermaid} />
-          <p className="muted small">
-            Reference (call) edges. Click a symbol to refocus the map.
-          </p>
+          <GraphView repoId={repoId} data={data} onFocus={focus} />
           <div className="codemap-nodes">
             {data.nodes.map((n) => (
               <button

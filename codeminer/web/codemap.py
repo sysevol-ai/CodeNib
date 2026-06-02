@@ -106,6 +106,19 @@ def _default_seed(graph: CodeGraph) -> Optional[str]:
     return best
 
 
+def _is_external(a: Dict[str, Any]) -> bool:
+    """True if a node has no openable in-repo source.
+
+    External library symbols carry a dotted module path as their ``file``
+    (e.g. ``setuptools.extension``) with no line; pure file/dir nodes carry no
+    line either. A real repo source location is a path (contains ``/``) plus a
+    line — anything else can't be opened in the source pane.
+    """
+    f = a.get("file")
+    s = a.get("start_line")
+    return not (isinstance(s, int) and isinstance(f, str) and "/" in f)
+
+
 def build_codemap(
     graph: CodeGraph,
     symbol: Optional[str] = None,
@@ -152,6 +165,10 @@ def build_codemap(
     depth_of: Dict[str, int] = {root: 0}
     raw_edges: List[Tuple[str, str]] = []
     edge_seen: Set[Tuple[str, str]] = set()
+    # Aggregate the exact reference (call) site(s) per edge so the UI can jump
+    # to source. One displayed edge collects several call sites (a list) rather
+    # than multiplying edges, which keeps the graph readable.
+    edge_anchors: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     queue: deque[str] = deque([root])
     truncated = False
 
@@ -163,11 +180,21 @@ def build_codemap(
         neighbors, n_edges = searcher.get_neighbors(
             cur, direction=mode, etype_filter={"reference"}, ignore_test_file=True
         )
-        for src, tgt, _w, _meta in n_edges:
+        for src, tgt, _w, meta in n_edges:
+            if src == tgt:
+                continue  # drop self-loops (recursion) — visual noise
             key = (src, tgt)
             if key not in edge_seen:
                 edge_seen.add(key)
                 raw_edges.append(key)
+            af = meta.get("anchor_file") if isinstance(meta, dict) else None
+            al = meta.get("anchor_line") if isinstance(meta, dict) else None
+            if af:
+                anchors = edge_anchors.setdefault(key, [])
+                # anchor_line is 0-based (tree-sitter/LSP); expose 1-based.
+                entry = {"file": af, "line": (al + 1) if isinstance(al, int) else None}
+                if entry not in anchors:
+                    anchors.append(entry)
         for nb in neighbors:
             if nb in seen:
                 continue
@@ -197,14 +224,19 @@ def build_codemap(
                 "kind": a.get("type") or "symbol",
                 "depth": depth_of.get(name, 0),
                 "is_root": name == root,
+                "external": _is_external(a),
             }
         )
 
-    edges = [
-        {"source": id_of[s], "target": id_of[t]}
-        for s, t in raw_edges
-        if s in id_of and t in id_of
-    ]
+    edges: List[Dict[str, Any]] = []
+    for s, t in raw_edges:
+        if s not in id_of or t not in id_of:
+            continue
+        edge: Dict[str, Any] = {"source": id_of[s], "target": id_of[t]}
+        anchors = edge_anchors.get((s, t))
+        if anchors:
+            edge["anchors"] = anchors[:8]
+        edges.append(edge)
 
     return {
         "available": True,
@@ -240,3 +272,171 @@ def _to_mermaid(
     lines.append("  classDef root fill:#2d7ff9,stroke:#1b5fd0,color:#ffffff;")
     lines.append(f"  class {root_id} root;")
     return "\n".join(lines)
+
+
+def _resolve_citation(
+    graph: CodeGraph,
+    cit: Dict[str, Any],
+    by_loc: Dict[Tuple[str, int], str],
+    by_file: Dict[str, List[Tuple[int, str]]],
+) -> Optional[str]:
+    """Map a wiki citation (file + 1-based line, or node_name) to a graph identity.
+
+    Prefers an exact ``(file, 0-based start)`` hit, then the nearest symbol start
+    in that file (small tolerance), then a readable-name match.
+    """
+    f = cit.get("file")
+    sl = cit.get("start_line")
+    if f and isinstance(sl, int):
+        s0 = sl - 1  # citations are 1-based (CodeLocation); the graph is 0-based
+        if (f, s0) in by_loc:
+            return by_loc[(f, s0)]
+        best, best_d = None, 3
+        for s, name in by_file.get(f, []):
+            d = abs(s - s0)
+            if d < best_d:
+                best, best_d = name, d
+        if best:
+            return best
+    nm = cit.get("node_name")
+    return _resolve(graph, nm) if nm else None
+
+
+def build_page_subgraph(
+    graph: CodeGraph,
+    citations: List[Dict[str, Any]],
+    max_nodes: int = 40,
+) -> Dict[str, Any]:
+    """Induced reference subgraph over a wiki page's cited symbols.
+
+    Resolves each citation to a graph node, then returns those nodes plus the
+    reference (call) edges *between* them — anchored to their exact call sites —
+    in the same ``{nodes, edges}`` shape as :func:`build_codemap`. This makes a
+    wiki page a *view over the graph*: the subsystem's symbols and how they wire
+    together, every node/edge clickable to real source.
+    """
+    g = graph.get_graph()
+
+    # Location + name index for resolving citations precisely (built once).
+    by_loc: Dict[Tuple[str, int], str] = {}
+    by_file: Dict[str, List[Tuple[int, str]]] = {}
+    for v in g.vs:
+        a = v.attributes()
+        f = a.get("file")
+        s = a.get("start_line")
+        if not f or not isinstance(s, int) or not a.get("unified_name"):
+            continue
+        by_loc.setdefault((f, s), a["name"])
+        by_file.setdefault(f, []).append((s, a["name"]))
+
+    names: List[str] = []
+    chosen: Set[str] = set()
+    for cit in citations:
+        nm = _resolve_citation(graph, cit, by_loc, by_file)
+        if nm and nm not in chosen:
+            chosen.add(nm)
+            names.append(nm)
+        if len(names) >= max_nodes:
+            break
+
+    if not names:
+        return {
+            "available": False,
+            "root": "",
+            "root_label": "",
+            "direction": "both",
+            "nodes": [],
+            "edges": [],
+            "mermaid": "",
+            "note": "No graph symbols for this page.",
+        }
+
+    seeds = set(names)  # the page's own cited symbols (highlighted)
+    searcher = RepoDependencySearcher(graph)
+
+    # The page's symbols rarely call each other directly, so a pure induced
+    # subgraph is mostly disconnected dots. Expand one hop: pull in each seed's
+    # immediate neighbours so the subsystem's wiring is visible.
+    for nm in list(names):
+        if len(names) >= max_nodes:
+            break
+        nbrs, _ = searcher.get_neighbors(
+            nm, direction="all", etype_filter={"reference"}, ignore_test_file=True
+        )
+        for nb in nbrs:
+            if nb not in chosen:
+                chosen.add(nb)
+                names.append(nb)
+            if len(names) >= max_nodes:
+                break
+    nameset = set(names)
+
+    edge_order: List[Tuple[str, str]] = []
+    edge_seen: Set[Tuple[str, str]] = set()
+    edge_anchors: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    for nm in names:
+        _, n_edges = searcher.get_neighbors(
+            nm, direction="all", etype_filter={"reference"}, ignore_test_file=True
+        )
+        for src, tgt, _w, meta in n_edges:
+            if src == tgt or src not in nameset or tgt not in nameset:
+                continue  # induced subgraph; drop self-loops
+            key = (src, tgt)
+            if key not in edge_seen:
+                edge_seen.add(key)
+                edge_order.append(key)
+            af = meta.get("anchor_file") if isinstance(meta, dict) else None
+            al = meta.get("anchor_line") if isinstance(meta, dict) else None
+            if af:
+                anchors = edge_anchors.setdefault(key, [])
+                entry = {"file": af, "line": (al + 1) if isinstance(al, int) else None}
+                if entry not in anchors:
+                    anchors.append(entry)
+
+    # Order seeds first (they're the page's subject); neighbours follow.
+    ordered = [n for n in names if n in seeds] + [n for n in names if n not in seeds]
+    id_of: Dict[str, str] = {}
+    nodes: List[Dict[str, Any]] = []
+    for i, name in enumerate(ordered):
+        a = _attrs(graph, name)
+        label = _label(a, name)
+        start = a.get("start_line")
+        nid = f"n{i}"
+        id_of[name] = nid
+        nodes.append(
+            {
+                "id": nid,
+                "name": name,
+                "label": label,
+                "short": _short(label),
+                "file": a.get("file"),
+                "line": (start + 1) if isinstance(start, int) else None,
+                "kind": a.get("type") or "symbol",
+                "depth": 0 if name in seeds else 1,
+                "is_root": name in seeds,  # highlight the page's own symbols
+                "external": _is_external(a),
+            }
+        )
+
+    edges: List[Dict[str, Any]] = []
+    for s, t in edge_order:
+        if s not in id_of or t not in id_of:
+            continue
+        edge: Dict[str, Any] = {"source": id_of[s], "target": id_of[t]}
+        anchors = edge_anchors.get((s, t))
+        if anchors:
+            edge["anchors"] = anchors[:8]
+        edges.append(edge)
+
+    return {
+        "available": True,
+        "root": "",
+        "root_label": "",
+        "direction": "both",
+        "depth": 1,
+        "truncated": len(names) >= max_nodes,
+        "nodes": nodes,
+        "edges": edges,
+        "mermaid": "",
+        "note": "",
+    }
