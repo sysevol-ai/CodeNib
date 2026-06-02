@@ -16,8 +16,8 @@
   --accent: #2d7ff9;      /* links / primary */
   --accent-contrast: #ffffff;
   --top-h: 56px;
-  --rail-left: 288px;
-  --rail-right: 256px;
+  --rail-left: 320px;
+  --rail-right: 248px;
   --content-w: 768px;
 }
 
@@ -408,8 +408,8 @@ pre {
   max-height: calc(100vh - var(--top-h));
   overflow-y: auto;
   width: var(--rail-left);
-  padding: 20px 16px;
-  border-right: 1px dashed var(--border);
+  padding: 22px 20px;
+  border-right: 1px solid var(--border);
 }
 .wiki-onthispage {
   position: sticky;
@@ -422,7 +422,7 @@ pre {
   border-left: 1px solid var(--border);
 }
 .rail-title {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 650;
   color: var(--text);
   margin-bottom: 2px;
@@ -452,8 +452,9 @@ pre {
   background: transparent;
   border: none;
   border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 13px;
+  padding: 6px 10px;
+  font-size: 14px;
+  line-height: 1.45;
   color: var(--muted);
   cursor: pointer;
   word-break: break-word;
@@ -471,12 +472,12 @@ pre {
 
 .wiki-main {
   min-width: 0;
-  padding: 16px 32px 80px;
+  padding: 18px 28px 80px;
 }
 .wiki-content,
 .wiki-diagram,
 .ask-panel {
-  max-width: 720px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 .wiki-meta {
