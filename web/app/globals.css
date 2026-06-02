@@ -15,7 +15,7 @@
   --muted: #666666;       /* secondary text */
   --accent: #2d7ff9;      /* links / primary */
   --accent-contrast: #ffffff;
-  --top-h: 56px;
+  --top-h: 64px;
   --rail-left: 320px;
   --rail-right: 248px;
   --content-w: 768px;
@@ -68,6 +68,9 @@ pre {
 
 /* ----------------------------- site header ----------------------------- */
 .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   height: var(--top-h);
   display: flex;
   align-items: center;
@@ -80,13 +83,15 @@ pre {
 .site-header .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 16px;
+  gap: 9px;
+  font-weight: 650;
+  font-size: 18px;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
 .site-header .brand .brand-mark {
   color: var(--accent);
+  font-size: 17px;
 }
 .site-header .header-right {
   margin-left: auto;
@@ -608,6 +613,12 @@ pre {
   font-size: 15px;
   line-height: 1.65;
   color: var(--text);
+}
+/* Anchor jumps (the "On this page" rail) must clear the sticky header. */
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  scroll-margin-top: calc(var(--top-h) + 16px);
 }
 .markdown h1 {
   font-size: 22px;
