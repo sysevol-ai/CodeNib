@@ -143,7 +143,9 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
     if graph is None:
         return {"available": False, "nodes": [], "edges": [], "mermaid": ""}
     citations = page.get("citations", []) if isinstance(page, dict) else []
-    return await asyncio.to_thread(build_page_subgraph, graph, citations)
+    return await asyncio.to_thread(
+        build_page_subgraph, graph, citations, repo_dir=bundle.entry.repo_dir
+    )
 
 
 @app.get("/api/repos/{repo_id}/source")
@@ -180,7 +182,13 @@ async def codemap(
             "note": "This repo has no symbol graph.",
         }
     return await asyncio.to_thread(
-        build_codemap, graph, symbol, direction, depth, max_nodes
+        build_codemap,
+        graph,
+        symbol,
+        direction,
+        depth,
+        max_nodes,
+        repo_dir=bundle.entry.repo_dir,
     )
 
 

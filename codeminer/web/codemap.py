@@ -17,6 +17,7 @@ plugin, which postdates this branch) — it walks the graph through the
 
 from __future__ import annotations
 
+import os
 from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -25,6 +26,37 @@ from ..graph.traverse_graph import RepoDependencySearcher
 
 # Node types eligible as a focus / default seed (skip file/dir/import nodes).
 _SYMBOL_TYPES = frozenset({"function", "method", "class"})
+# Recognized source-file extensions (fallback when the repo root isn't known).
+_SOURCE_EXTS = frozenset(
+    {
+        ".py",
+        ".pyx",
+        ".pyi",
+        ".go",
+        ".rs",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".c",
+        ".h",
+        ".cc",
+        ".cpp",
+        ".hpp",
+        ".cxx",
+        ".java",
+        ".rb",
+        ".php",
+        ".cs",
+        ".kt",
+        ".swift",
+        ".scala",
+        ".m",
+        ".mm",
+    }
+)
 _MERMAID_MAX_LABEL = 42
 _DIR_TO_MODE = {"both": "all", "callees": "forward", "callers": "backward"}
 
@@ -106,17 +138,24 @@ def _default_seed(graph: CodeGraph) -> Optional[str]:
     return best
 
 
-def _is_external(a: Dict[str, Any]) -> bool:
+def _is_external(a: Dict[str, Any], repo_dir: Optional[str] = None) -> bool:
     """True if a node has no openable in-repo source.
 
-    External library symbols carry a dotted module path as their ``file``
-    (e.g. ``setuptools.extension``) with no line; pure file/dir nodes carry no
-    line either. A real repo source location is a path (contains ``/``) plus a
-    line — anything else can't be opened in the source pane.
+    External library symbols carry a dotted module path (e.g.
+    ``setuptools.extension``) and no line; file/dir nodes carry no line either.
+    When the repo root is known, "openable" means the file actually exists under
+    it — mirroring the ``/source`` endpoint — so repo-root files like
+    ``setup.py`` / ``main.go`` are NOT misflagged. Without a root, fall back to:
+    needs a line, and the file is a path or has a known source extension.
     """
     f = a.get("file")
     s = a.get("start_line")
-    return not (isinstance(s, int) and isinstance(f, str) and "/" in f)
+    if not isinstance(s, int) or not isinstance(f, str) or not f:
+        return True
+    if repo_dir:
+        safe = os.path.normpath(f).lstrip(os.sep).lstrip("/")
+        return not os.path.isfile(os.path.join(repo_dir, safe))
+    return ("/" not in f) and (os.path.splitext(f)[1].lower() not in _SOURCE_EXTS)
 
 
 def build_codemap(
@@ -125,6 +164,7 @@ def build_codemap(
     direction: str = "both",
     depth: int = 2,
     max_nodes: int = 40,
+    repo_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return a dependency subgraph + Mermaid rendering around *symbol*.
 
@@ -224,7 +264,7 @@ def build_codemap(
                 "kind": a.get("type") or "symbol",
                 "depth": depth_of.get(name, 0),
                 "is_root": name == root,
-                "external": _is_external(a),
+                "external": _is_external(a, repo_dir),
             }
         )
 
@@ -306,6 +346,7 @@ def build_page_subgraph(
     graph: CodeGraph,
     citations: List[Dict[str, Any]],
     max_nodes: int = 40,
+    repo_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Induced reference subgraph over a wiki page's cited symbols.
 
@@ -414,7 +455,7 @@ def build_page_subgraph(
                 "kind": a.get("type") or "symbol",
                 "depth": 0 if name in seeds else 1,
                 "is_root": name in seeds,  # highlight the page's own symbols
-                "external": _is_external(a),
+                "external": _is_external(a, repo_dir),
             }
         )
 

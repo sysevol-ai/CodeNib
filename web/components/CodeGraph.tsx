@@ -73,6 +73,16 @@ export default function CodeGraph({
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [edgeHover, setEdgeHover] = useState<{ count: number } | null>(null);
 
+  // Keep the click callbacks in refs so the cytoscape instance is built once
+  // per `data` and is NOT torn down/rebuilt when a parent re-render hands us new
+  // handler identities (e.g. opening the source peek) — that would reset zoom/pan.
+  const onNodeClickRef = useRef(onNodeClick);
+  const onEdgeClickRef = useRef(onEdgeClick);
+  useEffect(() => {
+    onNodeClickRef.current = onNodeClick;
+    onEdgeClickRef.current = onEdgeClick;
+  });
+
   useEffect(() => {
     ensureDagre();
     const box = boxRef.current;
@@ -241,7 +251,7 @@ export default function CodeGraph({
     // which also offers "Focus here" to re-root the map).
     cy.on("tap", "node", (evt) => {
       const d = evt.target.data();
-      onNodeClick?.({
+      onNodeClickRef.current?.({
         label: d.flabel,
         short: d.short,
         file: d.file ?? null,
@@ -269,8 +279,8 @@ export default function CodeGraph({
     // Click an edge → open its exact LSP/SCIP call site(s) in source.
     cy.on("tap", "edge", (evt) => {
       const d = evt.target.data();
-      if (d.anchors?.length && onEdgeClick) {
-        onEdgeClick({ anchors: d.anchors, srcLabel: d.srcShort, tgtLabel: d.tgtShort });
+      if (d.anchors?.length) {
+        onEdgeClickRef.current?.({ anchors: d.anchors, srcLabel: d.srcShort, tgtLabel: d.tgtShort });
       }
     });
 
@@ -278,7 +288,7 @@ export default function CodeGraph({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [data, onNodeClick, onEdgeClick]);
+  }, [data]); // build once per graph; callbacks come through refs (see above)
 
   return (
     <div className="codegraph">
