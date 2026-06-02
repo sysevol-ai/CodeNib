@@ -13,6 +13,7 @@ from typing import List, Optional, Union
 
 from ..log_utils import get_logger
 from ..profiler import Profiler
+from .rust_analyzer import rust_analyzer_command, rust_toolchain
 from .scip_indexer_base import SCIPIndexerBase
 
 logger = get_logger("scip_rust_indexer")
@@ -63,10 +64,10 @@ class SCIPRustIndexer(SCIPIndexerBase):
         import os
 
         env = os.environ.copy()
-        env["RUSTUP_TOOLCHAIN"] = "nightly"
+        env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
         try:
             result = subprocess.run(
-                ["rust-analyzer", "--version"],
+                rust_analyzer_command("--version"),
                 check=True,
                 capture_output=True,
                 text=True,
@@ -81,7 +82,7 @@ class SCIPRustIndexer(SCIPIndexerBase):
             logger.error(
                 "rust-analyzer not found. Please install it with: "
                 "rustup component add rust-analyzer "
-                "--toolchain nightly"
+                f"--toolchain {rust_toolchain()}"
             )
             return False
 
@@ -102,7 +103,7 @@ class SCIPRustIndexer(SCIPIndexerBase):
         Returns:
             List[str]: Command as list of strings
         """
-        cmd = ["rust-analyzer", "scip", str(self.project_root)]
+        cmd = rust_analyzer_command("scip", str(self.project_root))
 
         # Output path
         cmd.extend(["--output", str(self.index_file)])

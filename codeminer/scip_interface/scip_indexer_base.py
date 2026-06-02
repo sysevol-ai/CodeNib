@@ -282,15 +282,16 @@ class SCIPIndexerBase(ABC):
         # Run the command
         with self.profiler.section("generate_index") as section:
             try:
-                # For Rust projects, override toolchain to use nightly rust-analyzer.
-                # Nightly includes the fix for the "file emitted multiple times"
-                # panic in SCIP generation (rust-analyzer#21269).
+                # For Rust projects, override the repository toolchain so SCIP
+                # generation uses CodeMiner's selected rust-analyzer version.
                 env = None
                 if self.language == "rust":
                     import os
 
+                    from .rust_analyzer import rust_toolchain
+
                     env = os.environ.copy()
-                    env["RUSTUP_TOOLCHAIN"] = "nightly"
+                    env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
 
                 subprocess.run(
                     cmd,

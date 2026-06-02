@@ -14,6 +14,10 @@ inputs:
     description: "Install Rust toolchain + rust-analyzer"
     required: false
     default: "true"
+  rust-toolchain:
+    description: "Rust toolchain used by rust-analyzer SCIP/LSP tests"
+    required: false
+    default: "nightly-2026-02-22"
   install-clangd:
     description: "Install clangd"
     required: false
@@ -73,6 +77,8 @@ runs:
       if: inputs.install-rust == 'true'
       shell: bash -l {0}
       run: |
+        RUST_TOOLCHAIN="${{ inputs.rust-toolchain }}"
+        echo "CODEMINER_RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> "$GITHUB_ENV"
         if ! command -v rustup >/dev/null 2>&1; then
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         fi
@@ -80,8 +86,9 @@ runs:
           . "$HOME/.cargo/env"
         fi
         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-        rustup toolchain install stable nightly
-        rustup component add rust-analyzer --toolchain nightly
+        rustup toolchain install --profile minimal stable "$RUST_TOOLCHAIN"
+        rustup component add rust-analyzer --toolchain "$RUST_TOOLCHAIN"
+        CODEMINER_RUST_TOOLCHAIN="$RUST_TOOLCHAIN" rustup run "$RUST_TOOLCHAIN" rust-analyzer --version
 
     - name: Install clangd
       if: inputs.install-clangd == 'true'

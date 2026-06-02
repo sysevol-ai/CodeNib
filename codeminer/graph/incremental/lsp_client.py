@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ...log_utils import get_logger
+from ...scip_interface.rust_analyzer import rust_analyzer_command, rust_toolchain
 
 logger = get_logger(__name__)
 
@@ -245,10 +246,10 @@ class LSPClient:
         """
         logger.info(f"Starting LSP server: {' '.join(self.command)}")
         env = os.environ.copy()
-        # Bypass rustup toolchain override so our installed rust-analyzer
-        # is used instead of the project's pinned toolchain version.
+        # Bypass a repository-pinned Rust toolchain so rust-analyzer uses the
+        # CodeMiner-selected toolchain instead.
         if self.language == "rust":
-            env["RUSTUP_TOOLCHAIN"] = "nightly"
+            env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
         self.process = subprocess.Popen(
             self.command,
             stdin=subprocess.PIPE,
@@ -1202,6 +1203,8 @@ class LSPClient:
     @staticmethod
     def get_lsp_command(language: str) -> Optional[list[str]]:
         """Get the default LSP server command for a language."""
+        if language == "rust":
+            return rust_analyzer_command()
         cmd = LSP_COMMANDS.get(language)
         if not cmd:
             return None
@@ -1219,6 +1222,22 @@ class LSPClient:
     @staticmethod
     def check_lsp_available(language: str) -> bool:
         """Check if the LSP server binary is available."""
+        if language == "rust":
+            try:
+                subprocess.run(
+                    rust_analyzer_command("--version"),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                return True
+            except (
+                subprocess.CalledProcessError,
+                FileNotFoundError,
+                subprocess.TimeoutExpired,
+            ):
+                return False
         cmd = LSP_COMMANDS.get(language)
         if not cmd:
             return False
