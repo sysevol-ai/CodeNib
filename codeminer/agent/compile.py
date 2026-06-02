@@ -103,8 +103,7 @@ class Scenario:
     """A (query, repo) bucket used as a compile-table lookup key.
 
     Two-dimensional per RFC v2 — ``query_length`` and ``query_concreteness``
-    from v1 were dropped to keep cells statistically meaningful at the
-    30-instance fitting-pool size.
+    from v1 were dropped to keep the eval cells statistically meaningful.
     """
 
     language: Optional[str]

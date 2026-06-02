@@ -96,8 +96,8 @@ class TestDetectStacktrace:
         """User prose mentioning trace-like words must not flip the flag.
 
         The has_stacktrace dimension is only meaningful if it picks up
-        *structural* trace markers; otherwise the Scenario partition is
-        polluted with false positives.
+        *structural* trace markers; otherwise the Scenario classifier output
+        is polluted with false positives.
         """
         assert detect_stacktrace(query) is False
 
