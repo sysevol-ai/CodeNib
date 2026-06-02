@@ -19,7 +19,6 @@
   --rail-left: 320px;
   --rail-right: 248px;
   --content-w: 768px;
-  --page-max: 1400px;
 }
 
 [data-theme="dark"] {
@@ -73,8 +72,8 @@ pre {
   display: flex;
   align-items: center;
   gap: 16px;
-  /* Align header content with the centred page container below. */
-  padding: 0 max(24px, calc((100% - var(--page-max)) / 2));
+  /* Match the page gutter below so the brand aligns with the left rail. */
+  padding: 0 clamp(24px, 4vw, 80px);
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
@@ -117,6 +116,45 @@ pre {
 .btn-primary:hover {
   filter: brightness(0.96);
   text-decoration: none;
+}
+
+/* ---- modern interaction polish: smooth transitions, focus rings, hover glow ---- */
+.btn-primary,
+.repo-card,
+.toc-link,
+.mode-tab,
+.relevant-file,
+.codemap-chip,
+.codemap-controls button,
+.codegraph-fit,
+.callsite-focus,
+.askbar-send,
+.askbar-inner,
+.onthispage-list a {
+  transition:
+    background-color 0.13s ease,
+    border-color 0.13s ease,
+    box-shadow 0.13s ease,
+    color 0.13s ease,
+    filter 0.13s ease;
+}
+.btn-primary:hover,
+.codemap-controls button:hover,
+.askbar-send:not(:disabled):hover {
+  box-shadow: 0 2px 12px -3px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+/* Accent focus ring on the text inputs / the ask bar. */
+.codemap-symbol:focus,
+.repo-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.askbar-inner:focus-within {
+  border-color: var(--accent);
+  box-shadow:
+    0 8px 28px -8px rgba(0, 0, 0, 0.18),
+    0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 .icon-btn {
   display: inline-flex;
@@ -292,10 +330,10 @@ pre {
   gap: 4px;
 }
 
-/* language pill */
+/* language tag */
 .lang {
-  border-radius: 999px;
-  padding: 1px 9px;
+  border-radius: 6px;
+  padding: 2px 8px;
   font-size: 11px;
   border: 1px solid var(--border-2);
   color: var(--muted);
@@ -333,10 +371,9 @@ pre {
   grid-template-columns: var(--rail-left) minmax(0, 1fr) var(--rail-right);
   align-items: start;
   gap: 0;
-  /* Inset the whole layout on wide screens so the rails aren't flush to the
-     viewport edges — a centred document reads as cohesive, not spread out. */
-  max-width: var(--page-max);
-  margin: 0 auto;
+  /* A consistent, modest gutter at every width: never flush to the edges, but
+     not the cavernous margins a fixed centred cap leaves on wide screens. */
+  padding-inline: clamp(24px, 4vw, 80px);
 }
 @media (max-width: 1180px) {
   .wiki-grid {
@@ -710,7 +747,7 @@ pre {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 7px 14px;
   font-size: 13px;
   cursor: pointer;
@@ -952,11 +989,11 @@ pre {
   align-items: center;
   gap: 10px;
   width: min(720px, 100%);
-  padding: 7px 7px 7px 16px;
+  padding: 8px 8px 8px 16px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 8px 28px -8px rgba(0, 0, 0, 0.18), 0 2px 6px -2px rgba(0, 0, 0, 0.08);
 }
 .askbar-icon {
   color: var(--accent);
@@ -974,7 +1011,7 @@ pre {
   border: none;
   background: var(--accent);
   color: #fff;
-  border-radius: 999px;
+  border-radius: 9px;
   padding: 9px 18px;
   font-size: 14px;
   cursor: pointer;
@@ -1095,7 +1132,7 @@ pre {
 .codemap-chip {
   padding: 4px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 7px;
   background: var(--surface);
   color: var(--text);
   font-size: 12px;
@@ -1146,7 +1183,7 @@ pre {
 .codegraph-kind {
   margin-left: 8px;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--muted);
@@ -1218,7 +1255,7 @@ pre {
 }
 .callsite-kindtag {
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--muted);
