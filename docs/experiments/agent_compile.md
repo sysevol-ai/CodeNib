@@ -21,7 +21,7 @@ A0–A6 skill-subset matrix over a small multi-language slice of
 `codeminer_base`, record accuracy / cost / skill-usage per cell, and derive a
 v1 `compile_table`. It is a *dry run on 5 instances* to validate the harness,
 the metrics, and the analysis methodology end-to-end — **not** the full
-30-instance fit-pool result (open question §1 below).
+instance-corpus result (open question §1 below).
 
 Reproduce:
 
@@ -107,7 +107,7 @@ The same table results when the floor is applied at `files@1` (`--target-k 1`).
    at equal-or-higher token cost (and up to 233 k tokens on one rep). It was
    invoked in only 20–50 % of cells and never produced an accuracy lift. The
    hypothesis that graph expansion improves token efficiency is **not**
-   supported here — flagged for re-test at the full fit-pool scale.
+   supported here — flagged for re-test at the full-corpus scale.
 
 4. **The agent ignores most of the full registry.** In A6, five of nine skills
    (`hybrid_search`, `embedding_rerank`, `llm_rerank`, `query_transform`,
@@ -127,7 +127,7 @@ The same table results when the floor is applied at `files@1` (`--target-k 1`).
 
 7. **Rust (`ruff`) is unsolved by every subset** (files@5 = 0 everywhere). The
    table entry is an honest cheapest-fallback, not a recommendation. A real
-   fit pool needs more than one instance per non-Python scenario.
+   evaluation needs more than one instance per non-Python scenario.
 
 8. **Rep variance is large** (e.g. A4 on `caddy`: 124 k vs 171 k tokens; A0:
    475 k vs 193 k). The min-across-reps cost estimator (#131) is doing real
@@ -145,7 +145,7 @@ harder at symbol granularity.
 
 - **N = 5, one instance per non-Python scenario.** The per-scenario
   `compile_table` cells are illustrative, not statistically grounded. Open
-  question §1 of #133 (run on the 30-instance fit pool) is unchanged.
+  question §1 of #133 (run on the full instance corpus) is unchanged.
 - **files@5 is saturated on the easy (py/ts) instances**, so the discriminating
   signal lives at files@1 and in tokens. The aggregator's `--target-k 1` view
   is provided for that reason.

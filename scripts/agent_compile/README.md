@@ -53,7 +53,6 @@ ablation.
 | `lib/config.py` | `SweepConfig` (base + per-arm overlay; **empty `instances` = the full split**). |
 | `lib/harness.py` | dataset loading, prebuilt-index staging into agent `contexts`, scenario classification, the one `run_cell` agent call. |
 | `lib/prebuilt.py` | stage offline-built per-instance indexes into the `cache_dir/<type>` layout. |
-| `partition.py`, `build_codeminer_base_partition.py` | the frozen 30/70 fit/held-out split + scenario labels (#151/#190). A separate CAR artifact — **not** used by the full-split design-space sweep above. |
 
 The agent-localization scorer (answer + `read` paths + retrieval nodes →
 files@k / symbols@k) lives in

@@ -43,6 +43,3 @@ web/*.tsbuildinfo
 !web/package-lock.json
 # Keep committed experiment-run evidence (relocated out of results/).
 !docs/experiments/agent_compile_runs/**/*.json
-# Frozen 30/70 fitting/held-out partition (issue #151) — committed artifact
-# consumed by the eval harness + CAR runtime (run_sweep.py).
-!data/agent_compile/partition.json

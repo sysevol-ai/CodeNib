@@ -20,9 +20,10 @@ Last revised: 2026-06-01
 > skills were pruned (#196); the A0–A6 subset sweep is retired in favour of the
 > design-space arms; the deterministic `(language, has_stacktrace)` scenario
 > classifier is kept (the runner records it per cell). The CAR router runtime
-> (`codeminer/agent/compile.py`, `compile_table`) and the frozen fit/held-out
-> partition (#190) still exist; no compile_table is fitted today. The rest of
-> this document is the historical router design.
+> (`codeminer/agent/compile.py`, `compile_table`) still exists; no compile_table
+> is fitted today. The fit/held-out **partition** scaffolding (#151/#190) has
+> been **removed** — this work is test-only, with no fit/validate split. The
+> rest of this document is the historical router design.
 
 This document pins the design decisions agreed in the
 [issue #133 RFC](https://github.com/sysevol-ai/CodeMiner/issues/133) thread
@@ -58,7 +59,7 @@ a follow-up to reframe as a caching layer (see "Kill switch" below).
 ## Skill roster (read-only through Phase 2)
 
 The current registry has 9 skills. Phase 2 measures subset utility on the
-fitting pool; through Phase 2 the registry is frozen.
+test corpus; through Phase 2 the registry is frozen.
 
 | Skill ID            | Type       | Cost   | Role             |
 |---------------------|------------|--------|------------------|
@@ -121,28 +122,22 @@ mentioning "traceback" or "panic" does **not** flip the flag (tested in
 Deterministic rules per RFC open question 3. LLM-driven classification
 is explicitly **out of scope for v1** — revisit after Phase 2 data.
 
-## Partition
+## Partition (removed)
 
-* **Fitting pool:** 30 instances on SWE-bench Multilingual.
-* **Held-out pool:** 70 instances (validation in Phase 4).
-* **Split level:** **repo, not instance**, to avoid intra-repo leakage
-  (per RFC v2 partition algorithm and fishmingyu's "Smaller things"-f).
-* **Per-language quota:** `fit_size / num_languages`, rounded with the
-  first languages getting the remainder.
-* **Coverage check:** every reachable `(language, has_stacktrace)` cell
-  must carry ≥ 2 fitting instances. Reseed up to 3× on under-fill, then
-  accept + warn. Cells the corpus cannot fill (e.g. a language with no
-  stacktrace instances) bypass reseed and emit a "corpus too thin"
-  warning that the ADR's reviewer must accept.
-* **Frozen seed:** `20260515` (today's date as an integer, kept readable).
-  Frozen partition lives at `data/agent_compile/partition.json`.
+The RFC originally split the ~100-instance corpus into a 30-instance
+**fitting** pool and a 70-instance **held-out** pool (repo-level, with
+per-language + per-scenario quotas) to *derive* the `compile_table` on fit
+and *validate* it on held-out.
 
-The algorithm + tests live in `scripts/agent_compile/partition.py` and
-`test/agent/test_partition.py`.
+**This scaffolding was removed.** The work is pure test/eval — there is no
+training or fit/validate exercise, so every instance is simply test. The
+`partition.py` splitter, its frozen `data/agent_compile/partition.json`,
+`build_codeminer_base_partition.py`, and their tests no longer exist; Phase 4
+(held-out validation) is dropped with them.
 
 ## Phase 0 — kill switch
 
-**Goal:** measure A6 cost ceiling on the fitting pool. Decide whether
+**Goal:** measure A6 cost ceiling on the test corpus. Decide whether
 the agent-compile layer is worth building before any classifier or
 table work.
 
@@ -190,11 +185,13 @@ data motivates it.
 
 | Phase | What | #109 prereqs |
 |-------|------|---------------|
-| 0 — kill switch | A0/A6 on fit pool, kill-threshold check | none (Phase 1 of #109 already shipped: `allow_skills` + token tracking) |
+| 0 — kill switch | A0/A6 on the test corpus, kill-threshold check | none (Phase 1 of #109 already shipped: `allow_skills` + token tracking) |
 | 1 — ADR + `classify()` | this document + `codeminer/agent/compile.py` + tests | none |
 | 2 — sweep | A0..A6 × model_matrix × harnesses | #109 Phase 3 (retry) + Phase 4 (`TokenBudgetedChatHistory`) |
 | 3 — wire runtime | `AgentRunner` reads `compile_table` at entry | Phase 2 output |
-| 4 — held-out validation | run derived table on 70 held-out | Phase 2 output |
+
+(Phase 4 — held-out validation — is dropped: the fit/held-out partition was
+removed, see [Partition (removed)](#partition-removed).)
 
 ## Out of scope
 
