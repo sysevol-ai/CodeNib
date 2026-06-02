@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import dagre from "cytoscape-dagre";
+import fcose from "cytoscape-fcose";
 import type { CallSite, CodemapResponse } from "@/lib/api";
 
 export interface EdgeClickInfo {
@@ -20,12 +21,13 @@ export interface GraphNodeInfo {
   external: boolean; // defined outside this repo — no source to open
 }
 
-// Register the dagre layout once (module scope; guard for HMR / double-import).
-let dagreRegistered = false;
-function ensureDagre() {
-  if (!dagreRegistered) {
+// Register the layout extensions once (module scope; guard for HMR / double-import).
+let layoutsRegistered = false;
+function ensureLayouts() {
+  if (!layoutsRegistered) {
     cytoscape.use(dagre);
-    dagreRegistered = true;
+    cytoscape.use(fcose);
+    layoutsRegistered = true;
   }
 }
 
@@ -72,6 +74,9 @@ export default function CodeGraph({
   const cyRef = useRef<Core | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [edgeHover, setEdgeHover] = useState<{ count: number } | null>(null);
+  // "flow" = directional dagre call-flow; "clusters" = fcose force-directed,
+  // which spatially groups the detected communities (best for dense/large maps).
+  const [layoutMode, setLayoutMode] = useState<"flow" | "clusters">("flow");
 
   // Keep the click callbacks in refs so the cytoscape instance is built once
   // per `data` and is NOT torn down/rebuilt when a parent re-render hands us new
@@ -84,7 +89,7 @@ export default function CodeGraph({
   });
 
   useEffect(() => {
-    ensureDagre();
+    ensureLayouts();
     const box = boxRef.current;
     if (!box) return;
 
@@ -92,20 +97,29 @@ export default function CodeGraph({
     const colorCache = new Map<string, string>();
 
     const shortById = new Map(data.nodes.map((n) => [n.id, n.short]));
+    // Colour by detected community when the graph splits into clusters; otherwise
+    // fall back to per-file colour so a single-cluster graph isn't monochrome.
+    const multiComm = new Set(data.nodes.map((n) => n.community ?? 0)).size > 1;
     const elements: ElementDefinition[] = [
-      ...data.nodes.map((n) => ({
-        data: {
-          id: n.id,
-          short: n.short,
-          flabel: n.label, // full unified_name, used to refocus
-          file: n.file,
-          line: n.line,
-          kind: n.kind,
-          accent: colorFor(n.file, colorCache),
-          root: n.is_root ? 1 : 0,
-          external: n.external ? 1 : 0,
-        },
-      })),
+      ...data.nodes.map((n) => {
+        const hidden = n.hidden_callees || 0;
+        const colorKey = multiComm ? `community-${n.community ?? 0}` : n.file;
+        return {
+          data: {
+            id: n.id,
+            short: n.short, // clean name (used by the source peek)
+            glabel: hidden ? `${n.short}  +${hidden}` : n.short, // node label, with hub badge
+            flabel: n.label, // full unified_name, used to refocus
+            file: n.file,
+            line: n.line,
+            kind: n.kind,
+            accent: colorFor(colorKey, colorCache),
+            importance: n.importance ?? 0,
+            root: n.is_root ? 1 : 0,
+            external: n.external ? 1 : 0,
+          },
+        };
+      }),
       ...data.edges
         .filter((e) => e.source && e.target)
         .map((e, i) => {
@@ -142,9 +156,10 @@ export default function CodeGraph({
             "background-color": nodeBg,
             "border-width": 2,
             "border-color": "data(accent)",
-            label: "data(short)",
+            label: "data(glabel)",
             color: nodeText,
-            "font-size": 12,
+            // Size by importance (PageRank percentile): core symbols read bigger.
+            "font-size": "mapData(importance, 0, 1, 11, 15)",
             "font-family": "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
             "text-valign": "center",
             "text-halign": "center",
@@ -152,7 +167,7 @@ export default function CodeGraph({
             "text-max-width": "180px",
             width: "label",
             height: "label",
-            padding: "8px",
+            padding: "mapData(importance, 0, 1, 7, 20)",
             "transition-property": "border-width, background-color",
             "transition-duration": 120,
           },
@@ -212,24 +227,8 @@ export default function CodeGraph({
       (box as unknown as { __cy?: Core }).__cy = cy;
     }
 
-    cy.layout({
-      name: "dagre",
-      rankDir: "LR",
-      nodeSep: 24,
-      rankSep: 58,
-      edgeSep: 10,
-      fit: true,
-      padding: 26,
-      stop: () => {
-        // A wide left→right call graph fitted to the box shrinks nodes to
-        // illegibility. Clamp the zoom to a readable band and re-centre; the
-        // user pans/zooms from there.
-        const z = cy.zoom();
-        if (z < 0.62) cy.zoom(0.62);
-        else if (z > 1.3) cy.zoom(1.3);
-        cy.center();
-      },
-    } as any).run();
+    // Layout runs in a dedicated effect below (so toggling Flow/Clusters re-lays
+    // out without rebuilding the graph and losing zoom/pan).
 
     // Hover: highlight the node + its incident edges/neighbours, show file:line.
     cy.on("mouseover", "node", (evt) => {
@@ -290,6 +289,46 @@ export default function CodeGraph({
     };
   }, [data]); // build once per graph; callbacks come through refs (see above)
 
+  // Run/re-run the layout when the graph or the view mode changes. Separate from
+  // the build effect so a Flow/Clusters toggle re-lays-out the SAME instance.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const cfg =
+      layoutMode === "clusters"
+        ? {
+            name: "fcose",
+            quality: "default",
+            animate: false,
+            randomize: true,
+            nodeSeparation: 80,
+            idealEdgeLength: 95,
+            nodeRepulsion: 6500,
+            packComponents: true,
+            fit: true,
+            padding: 26,
+          }
+        : {
+            name: "dagre",
+            rankDir: "LR",
+            nodeSep: 24,
+            rankSep: 58,
+            edgeSep: 10,
+            fit: true,
+            padding: 26,
+          };
+    cy.layout({
+      ...cfg,
+      stop: () => {
+        // Keep nodes legible: clamp the fitted zoom to a readable band.
+        const z = cy.zoom();
+        if (z < 0.55) cy.zoom(0.55);
+        else if (z > 1.3) cy.zoom(1.3);
+        cy.center();
+      },
+    } as any).run();
+  }, [data, layoutMode]);
+
   return (
     <div className="codegraph">
       <div className="codegraph-canvas" ref={boxRef} aria-label="dependency graph" />
@@ -309,9 +348,28 @@ export default function CodeGraph({
           </span>
         ) : (
           <span className="muted">
-            Click an edge → its call site · click a node → its definition · scroll to zoom · drag to pan
+            <b className="legend-key">size</b> = importance · <b className="legend-key">colour</b> = cluster ·
+            click a node → definition, an edge → call site · scroll to zoom
           </span>
         )}
+        <div className="codegraph-modes" role="tablist" aria-label="Graph layout">
+          <button
+            type="button"
+            className={layoutMode === "flow" ? "on" : ""}
+            onClick={() => setLayoutMode("flow")}
+            title="Directional call-flow (dagre)"
+          >
+            Flow
+          </button>
+          <button
+            type="button"
+            className={layoutMode === "clusters" ? "on" : ""}
+            onClick={() => setLayoutMode("clusters")}
+            title="Group by detected cluster (force-directed)"
+          >
+            Clusters
+          </button>
+        </div>
         <button type="button" className="codegraph-fit" onClick={() => cyRef.current?.fit(undefined, 24)}>
           Fit
         </button>

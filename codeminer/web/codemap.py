@@ -158,6 +158,96 @@ def _is_external(a: Dict[str, Any], repo_dir: Optional[str] = None) -> bool:
     return ("/" not in f) and (os.path.splitext(f)[1].lower() not in _SOURCE_EXTS)
 
 
+def _score(
+    graph: CodeGraph, names: List[str]
+) -> Tuple[Dict[str, float], Dict[str, int]]:
+    """PageRank importance (rank-percentile in [0,1]) + community id per node.
+
+    Computed on the induced REFERENCE subgraph of *names* (cheap, <=120 nodes).
+    PageRank surfaces "core" symbols (referenced by other important code);
+    community is Leiden/modularity on the undirected projection (igraph 0.11.9
+    has no directed Leiden), guarded so tiny/loose graphs collapse to one
+    cluster. Never raises — returns neutral scores (0.0 / 0) on any failure.
+    """
+    imp: Dict[str, float] = {n: 0.0 for n in names}
+    comm: Dict[str, int] = {n: 0 for n in names}
+    try:
+        g = graph.get_graph()
+        n2v = graph.name_to_vertex
+        vids = [n2v[n] for n in names if n in n2v]
+        if len(vids) < 3:
+            return imp, comm
+        sub = g.subgraph(vids)
+        ref_eids = [
+            e.index for e in sub.es if e.attributes().get("type") == "reference"
+        ]
+        subref = sub.subgraph_edges(ref_eids, delete_vertices=False)
+        sub_names = list(subref.vs["name"])
+        pr = subref.pagerank(directed=True, damping=0.85)
+        order = sorted(range(len(pr)), key=lambda i: pr[i])
+        denom = max(1, len(pr) - 1)
+        for rank, i in enumerate(order):
+            imp[sub_names[i]] = round(rank / denom, 4)
+        membership = [0] * subref.vcount()
+        if subref.vcount() >= 12:
+            try:
+                gu = subref.as_undirected(mode="collapse")
+                cl = gu.community_leiden(
+                    objective_function="modularity", n_iterations=-1
+                )
+                if cl.modularity is not None and cl.modularity >= 0.2:
+                    membership = list(cl.membership)
+            except Exception:  # noqa: BLE001 - community is optional polish
+                pass
+        for i, nm in enumerate(sub_names):
+            comm[nm] = int(membership[i])
+    except Exception:  # noqa: BLE001 - scoring is best-effort, never 500 the map
+        pass
+    return imp, comm
+
+
+def _enrich(
+    graph: CodeGraph,
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    hub_cap: int = 8,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Tag nodes with importance/community and prune high-out-degree hubs.
+
+    A node with more than *hub_cap* outgoing edges keeps only the edges to its
+    highest-importance targets; the rest are folded away and counted in
+    ``hidden_callees`` so the UI can badge "+N". Nodes left fully disconnected by
+    that fold (the low-value leaf tail) are dropped unless they're a seed/root.
+    This keeps dense, high-fan-out maps from becoming hairballs.
+    """
+    imp, comm = _score(graph, [n["name"] for n in nodes])
+    for n in nodes:
+        n["importance"] = imp.get(n["name"], 0.0)
+        n["community"] = comm.get(n["name"], 0)
+
+    imp_by_id = {n["id"]: n.get("importance", 0.0) for n in nodes}
+    by_src: Dict[str, List[Dict[str, Any]]] = {}
+    for e in edges:
+        by_src.setdefault(e["source"], []).append(e)
+    kept: List[Dict[str, Any]] = []
+    hidden: Dict[str, int] = {}
+    for src, es in by_src.items():
+        if len(es) <= hub_cap:
+            kept.extend(es)
+            continue
+        es_sorted = sorted(
+            es, key=lambda e: imp_by_id.get(e["target"], 0.0), reverse=True
+        )
+        kept.extend(es_sorted[:hub_cap])
+        hidden[src] = len(es) - hub_cap
+    for n in nodes:
+        if n["id"] in hidden:
+            n["hidden_callees"] = hidden[n["id"]]
+    connected = {e["source"] for e in kept} | {e["target"] for e in kept}
+    nodes = [n for n in nodes if n["id"] in connected or n.get("is_root")]
+    return nodes, kept
+
+
 def build_codemap(
     graph: CodeGraph,
     symbol: Optional[str] = None,
@@ -278,6 +368,7 @@ def build_codemap(
             edge["anchors"] = anchors[:8]
         edges.append(edge)
 
+    nodes, edges = _enrich(graph, nodes, edges)
     return {
         "available": True,
         "root": root,
@@ -469,6 +560,7 @@ def build_page_subgraph(
             edge["anchors"] = anchors[:8]
         edges.append(edge)
 
+    nodes, edges = _enrich(graph, nodes, edges)
     return {
         "available": True,
         "root": "",

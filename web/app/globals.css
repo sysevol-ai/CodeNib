@@ -478,9 +478,11 @@ pre {
   word-break: break-word;
 }
 .rail-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
-  margin-bottom: 18px;
+  padding-bottom: 14px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .toc-tree {
@@ -488,10 +490,14 @@ pre {
   margin: 0;
   padding: 0;
 }
+/* Nest with whitespace, not guide-lines (cleaner, docs-style). */
 .toc-tree .toc-tree {
-  margin-left: 10px;
-  border-left: 1px solid var(--border);
-  padding-left: 6px;
+  margin-left: 0;
+  padding-left: 14px;
+}
+.toc-tree .toc-tree .toc-link {
+  color: var(--muted);
+  font-size: 13.5px;
 }
 .toc-link {
   display: block;
@@ -512,7 +518,7 @@ pre {
   color: var(--text);
 }
 .toc-link.active {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
   color: var(--accent);
   font-weight: 600;
   box-shadow: inset 2px 0 var(--accent);
@@ -1177,6 +1183,10 @@ pre {
   color: var(--muted);
   font-size: 13px;
 }
+.legend-key {
+  color: var(--text);
+  font-weight: 600;
+}
 .codegraph-bar {
   display: flex;
   align-items: center;
@@ -1219,6 +1229,29 @@ pre {
 .codegraph-fit:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+.codegraph-modes {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.codegraph-modes button {
+  border: none;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 3px 12px;
+}
+.codegraph-modes button.on {
+  background: var(--accent);
+  color: #fff;
+}
+.codegraph-modes button:not(.on):hover {
+  color: var(--text);
 }
 
 /* Call-site peek: the exact reference line behind a clicked edge. */

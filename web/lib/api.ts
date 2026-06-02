@@ -139,6 +139,9 @@ export interface CodemapNode {
   depth: number;
   is_root: boolean;
   external?: boolean; // no openable in-repo source (external dep / file node)
+  importance?: number; // PageRank rank-percentile in [0,1] — drives node size
+  community?: number; // detected cluster id — drives node colour
+  hidden_callees?: number; // out-edges folded away when this hub exceeded the cap
 }
 
 export interface CallSite {
