@@ -59,6 +59,18 @@ rules, but keep these in mind everywhere:
   and [`codeminer/code_chunking/CLAUDE.md`](../codeminer/code_chunking/CLAUDE.md).
 - **`.c` files** use the `cpp` chunker (not a separate C chunker).
 
+## Frontend / web demo
+
+The DeepWiki-style web demo (FastAPI backend `codeminer/web/` + Next.js frontend
+`web/` + `codeminer/wiki/`) is on `main` (merged via PR #166/#167). To run,
+screenshot, or iterate the UI:
+
+- **How to run, screenshot (Playwright), and self-critique** the demo:
+  [`.claude/guides/frontend-loop.md`](guides/frontend-loop.md).
+- **Where the graph UI is headed** (Cytoscape overhaul, the compiler-precise
+  edge-provenance differentiator, wiki reframe):
+  [`.claude/design/graph-frontend-direction.md`](design/graph-frontend-direction.md).
+
 ## Git & PR conventions
 
 Rules for any AI/code agent (Claude Code, etc.) committing or opening PRs here.
