@@ -19,6 +19,7 @@
   --rail-left: 320px;
   --rail-right: 248px;
   --content-w: 768px;
+  --page-max: 1400px;
 }
 
 [data-theme="dark"] {
@@ -72,7 +73,8 @@ pre {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 0 24px;
+  /* Align header content with the centred page container below. */
+  padding: 0 max(24px, calc((100% - var(--page-max)) / 2));
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
@@ -331,6 +333,10 @@ pre {
   grid-template-columns: var(--rail-left) minmax(0, 1fr) var(--rail-right);
   align-items: start;
   gap: 0;
+  /* Inset the whole layout on wide screens so the rails aren't flush to the
+     viewport edges — a centred document reads as cohesive, not spread out. */
+  max-width: var(--page-max);
+  margin: 0 auto;
 }
 @media (max-width: 1180px) {
   .wiki-grid {
@@ -516,23 +522,30 @@ pre {
   list-style: none;
   margin: 0;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .onthispage-list li {
-  margin: 4px 0;
+  margin: 1px 0;
 }
-.onthispage-list li.lvl-3 {
-  padding-left: 12px;
+.onthispage-list li.lvl-3 a {
+  padding-left: 20px;
 }
 .onthispage-list a {
+  display: block;
+  padding: 4px 8px;
+  border-radius: 6px;
   color: var(--muted);
+  line-height: 1.4;
+  text-decoration: none;
 }
 .onthispage-list a:hover {
-  color: var(--accent);
+  color: var(--text);
+  background: var(--surface);
 }
 .onthispage-list a.active {
   color: var(--accent);
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: inset 2px 0 var(--accent);
 }
 .refresh-wiki {
   margin-top: 18px;
