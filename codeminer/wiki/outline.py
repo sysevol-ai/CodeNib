@@ -67,16 +67,25 @@ Salient files:
 Top symbols (name — file — kind):
 {symbols}
 
-Return ONLY JSON, no prose, of exactly this shape (6-9 top-level pages; each \
-may have 0-3 children). Start with an "Overview" page.
+Return ONLY JSON, no prose, of exactly this shape. Aim for 8-14 top-level pages \
+that together cover the WHOLE system, and give the major subsystems 1-3 children \
+so the tree is genuinely TWO LEVELS deep — not a flat list. Start with "Overview".
 {{"pages":[{{"id":"kebab-case-id","title":"Concept Title","summary":"1-2 \
 sentences on what this page explains","keywords":["specific","symbol or \
-feature","search","terms"],"files":["likely/relevant/path.ext"],"children":[]}}]}}
+feature","search","terms"],"files":["likely/relevant/path.ext"],"children":[\
+{{"id":"child-id","title":"Sub-topic","summary":"...","keywords":["..."],\
+"files":["..."],"children":[]}}]}}]}}
 
 Rules:
+- Structure it like a senior engineer's onboarding docs: top-level = major areas; \
+children = specific capabilities or flows inside them (e.g. an "I/O" page with \
+"FITS", "ASCII", "Registry" children; a "Table System" page with "Operations").
+- Cover not only domain subsystems but the cross-cutting pages a new contributor \
+needs, WHEN APPLICABLE: Getting Started / Installation, Project Structure, \
+Configuration, Testing, Extensibility / Plugins.
 - Titles are CONCEPTS, not paths (no "lib/core", no file names as titles).
 - keywords drive a code search, so make them specific symbol/feature terms.
-- Together the pages should cover the whole system, not just a few files.
+- Cover the whole system, not just a few files; prefer depth over a flat list.
 """
 
 
@@ -84,7 +93,7 @@ def _format_symbols(symbols: List[Symbol]) -> str:
     return "\n".join(f"- {s.name} — {s.file} — {s.type}" for s in symbols)
 
 
-def generate_outline(bundle: Any, model: str, max_tokens: int = 3200) -> Dict[str, Any]:
+def generate_outline(bundle: Any, model: str, max_tokens: int = 4096) -> Dict[str, Any]:
     """Produce a conceptual wiki page tree for *bundle* using *model*.
 
     Returns ``{"pages": [...]}``. On a model/parse failure returns
