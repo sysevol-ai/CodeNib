@@ -1160,6 +1160,12 @@ pre {
   width: 100%;
   height: 540px;
 }
+.codegraph-loading {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
 .codegraph-bar {
   display: flex;
   align-items: center;

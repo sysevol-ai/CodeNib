@@ -1,9 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import CodeGraph, { type EdgeClickInfo, type GraphNodeInfo } from "@/components/CodeGraph";
+import dynamic from "next/dynamic";
+import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
 import HighlightedCode from "@/components/HighlightedCode";
 import { fetchSource, repoRelative, type CallSite, type CodemapResponse } from "@/lib/api";
+
+// Cytoscape + dagre (~3MB) load only when a graph is shown, so the wiki
+// narrative paints first and the graph fills in a beat later.
+const CodeGraph = dynamic(() => import("@/components/CodeGraph"), {
+  ssr: false,
+  loading: () => (
+    <div className="codegraph">
+      <div className="codegraph-canvas codegraph-loading">Loading graph…</div>
+    </div>
+  ),
+});
 
 // What a source peek is showing: an edge's exact call site(s), or a node's
 // definition. Both resolve to a (file, line) the /source endpoint can open.
