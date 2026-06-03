@@ -351,6 +351,11 @@ def build_codemap(
                 "short": _short(label),
                 "file": a.get("file"),
                 "line": (start + 1) if isinstance(start, int) else None,
+                "end_line": (
+                    (a.get("end_line") + 1)
+                    if isinstance(a.get("end_line"), int)
+                    else None
+                ),
                 "kind": a.get("type") or "symbol",
                 "depth": depth_of.get(name, 0),
                 "is_root": name == root,
@@ -543,6 +548,11 @@ def build_page_subgraph(
                 "short": _short(label),
                 "file": a.get("file"),
                 "line": (start + 1) if isinstance(start, int) else None,
+                "end_line": (
+                    (a.get("end_line") + 1)
+                    if isinstance(a.get("end_line"), int)
+                    else None
+                ),
                 "kind": a.get("type") or "symbol",
                 "depth": 0 if name in seeds else 1,
                 "is_root": name in seeds,  # highlight the page's own symbols

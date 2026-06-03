@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
+import cytoscape, { type Core, type ElementDefinition, type NodeSingular } from "cytoscape";
 import dagre from "cytoscape-dagre";
 import fcose from "cytoscape-fcose";
 import type { CallSite, CodemapResponse } from "@/lib/api";
@@ -49,6 +49,106 @@ function colorFor(file: string | null, cache: Map<string, string>): string {
   return c;
 }
 
+// Fixed, semantic colour per symbol kind — used in the Files layout where
+// position already encodes file+line, so colour is freed up for "what kind".
+const KIND_COLORS: Record<string, string> = {
+  function: "#2d7ff9",
+  method: "#1098ad",
+  class: "#ae3ec9",
+  interface: "#0ca678",
+  trait: "#3b5bdb",
+  struct: "#e8590c",
+  enum: "#9c36b5",
+  type: "#0ca678",
+  field: "#f08c00",
+  var: "#f08c00",
+  const: "#e8590c",
+  module: "#868e96",
+  file: "#868e96",
+};
+function colorForKind(kind: string): string {
+  return KIND_COLORS[kind] || "#868e96";
+}
+
+// Files layout: a compound box per file, symbols stacked top→bottom by line
+// inside it, boxes packed into balanced columns. Here POSITION encodes the
+// symbol's code location (file + line) — the core "graph aligns with code" fix.
+function runFilesLayout(cy: Core): void {
+  const ROW_H = 46;
+  const COL_W = 250;
+  const BOX_GAP = 40;
+  const TITLE_PAD = 26;
+  const MAX_COL_H = 1500;
+
+  const byFile = new Map<string, NodeSingular[]>();
+  cy.nodes().forEach((n) => {
+    if (n.data("isFileBox")) return;
+    // External / locationless symbols share one "external" box instead of a box
+    // per library module.
+    const f = n.data("external") ? "· external" : (n.data("file") as string) || "· external";
+    if (!byFile.has(f)) byFile.set(f, []);
+    byFile.get(f)!.push(n);
+  });
+
+  // A compound box per file; reparent its symbols into it.
+  cy.batch(() => {
+    for (const file of byFile.keys()) {
+      cy.add({
+        group: "nodes",
+        data: { id: `filebox::${file}`, isFileBox: 1, fileLabel: file.split("/").pop() || file },
+      });
+      byFile.get(file)!.forEach((n) => n.move({ parent: `filebox::${file}` }));
+    }
+  });
+
+  // Pack boxes into balanced columns (shortest-column-first); stack by line.
+  const files = [...byFile.keys()].sort((a, b) => byFile.get(b)!.length - byFile.get(a)!.length);
+  const colY: number[] = [];
+  cy.batch(() => {
+    for (const file of files) {
+      const nodes = byFile
+        .get(file)!
+        .slice()
+        .sort((a, b) => ((a.data("line") as number) || 0) - ((b.data("line") as number) || 0));
+      const boxH = nodes.length * ROW_H + TITLE_PAD;
+      let col = -1;
+      let bestY = Infinity;
+      colY.forEach((y, i) => {
+        if (y + boxH <= MAX_COL_H && y < bestY) {
+          col = i;
+          bestY = y;
+        }
+      });
+      if (col === -1) {
+        col = colY.length;
+        colY.push(0);
+      }
+      const x = col * COL_W;
+      const y0 = colY[col];
+      nodes.forEach((n, i) => n.position({ x, y: y0 + TITLE_PAD + i * ROW_H }));
+      colY[col] = y0 + boxH + BOX_GAP;
+    }
+  });
+
+  cy.layout({ name: "preset", fit: true, padding: 28 } as any).run();
+  if (cy.zoom() > 1.2) {
+    cy.zoom(1.2);
+    cy.center();
+  }
+}
+
+// Remove any file-box compound structure (used when leaving Files mode).
+function clearFileBoxes(cy: Core): void {
+  const boxes = cy.nodes("[isFileBox = 1]");
+  if (!boxes.length) return;
+  cy.batch(() => {
+    cy.nodes().forEach((n) => {
+      if (!n.data("isFileBox") && n.isChild()) n.move({ parent: null });
+    });
+    cy.remove(boxes);
+  });
+}
+
 interface HoverInfo {
   short: string;
   file: string | null;
@@ -74,9 +174,9 @@ export default function CodeGraph({
   const cyRef = useRef<Core | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [edgeHover, setEdgeHover] = useState<{ count: number } | null>(null);
-  // "flow" = directional dagre call-flow; "clusters" = fcose force-directed,
-  // which spatially groups the detected communities (best for dense/large maps).
-  const [layoutMode, setLayoutMode] = useState<"flow" | "clusters">("flow");
+  // "files" = position by code location (file boxes, symbols by line) — default;
+  // "flow" = dagre call-flow; "clusters" = fcose force-directed by community.
+  const [layoutMode, setLayoutMode] = useState<"files" | "flow" | "clusters">("files");
 
   // Keep the click callbacks in refs so the cytoscape instance is built once
   // per `data` and is NOT torn down/rebuilt when a parent re-render hands us new
@@ -103,7 +203,8 @@ export default function CodeGraph({
     const elements: ElementDefinition[] = [
       ...data.nodes.map((n) => {
         const hidden = n.hidden_callees || 0;
-        const colorKey = multiComm ? `community-${n.community ?? 0}` : n.file;
+        const commColor = colorFor(multiComm ? `community-${n.community ?? 0}` : n.file, colorCache);
+        const kindColor = colorForKind(n.kind);
         return {
           data: {
             id: n.id,
@@ -112,8 +213,11 @@ export default function CodeGraph({
             flabel: n.label, // full unified_name, used to refocus
             file: n.file,
             line: n.line,
+            endLine: n.end_line ?? null,
             kind: n.kind,
-            accent: colorFor(colorKey, colorCache),
+            kindColor, // colour in Files mode (position already encodes file)
+            commColor, // colour in Flow/Clusters mode (by community)
+            accent: kindColor, // Files is the default; the layout effect re-keys per mode
             importance: n.importance ?? 0,
             root: n.is_root ? 1 : 0,
             external: n.external ? 1 : 0,
@@ -191,6 +295,27 @@ export default function CodeGraph({
           },
         },
         {
+          // File container (Files layout): a titled box wrapping its symbols.
+          selector: "node[isFileBox = 1]",
+          style: {
+            shape: "round-rectangle",
+            "background-color": dark ? "#13161b" : "#faf9f7",
+            "background-opacity": 1,
+            "border-width": 1,
+            "border-color": dark ? "#2a3038" : "#e3e1dc",
+            label: "data(fileLabel)",
+            color: dark ? "#9198a1" : "#8a8880",
+            "font-size": 11,
+            "font-weight": 600,
+            "font-style": "normal",
+            "text-valign": "top",
+            "text-halign": "center",
+            "text-margin-y": 4,
+            padding: "12px",
+            "z-index": 0,
+          },
+        },
+        {
           selector: "node.hl",
           style: { "border-width": 4 },
         },
@@ -237,6 +362,7 @@ export default function CodeGraph({
     // Hover: highlight the node + its incident edges/neighbours, show file:line.
     cy.on("mouseover", "node", (evt) => {
       const n = evt.target;
+      if (n.data("isFileBox")) return; // file containers aren't interactive
       box.style.cursor = "pointer";
       const nbr = n.closedNeighborhood();
       cy.elements().not(nbr).addClass("faded");
@@ -254,6 +380,7 @@ export default function CodeGraph({
     // which also offers "Focus here" to re-root the map).
     cy.on("tap", "node", (evt) => {
       const d = evt.target.data();
+      if (d.isFileBox) return; // file containers aren't clickable
       onNodeClickRef.current?.({
         label: d.flabel,
         short: d.short,
@@ -294,10 +421,23 @@ export default function CodeGraph({
   }, [data]); // build once per graph; callbacks come through refs (see above)
 
   // Run/re-run the layout when the graph or the view mode changes. Separate from
-  // the build effect so a Flow/Clusters toggle re-lays-out the SAME instance.
+  // the build effect so toggling the view re-lays-out the SAME instance.
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
+    clearFileBoxes(cy); // drop any Files-mode compound boxes before re-laying out
+    // Files mode colours by kind (position already encodes file); the call-flow
+    // and cluster views colour by community.
+    cy.batch(() =>
+      cy.nodes().forEach((n) => {
+        if (n.data("isFileBox")) return;
+        n.data("accent", layoutMode === "files" ? n.data("kindColor") : n.data("commColor"));
+      })
+    );
+    if (layoutMode === "files") {
+      runFilesLayout(cy);
+      return;
+    }
     const cfg =
       layoutMode === "clusters"
         ? {
@@ -358,7 +498,7 @@ export default function CodeGraph({
             </span>
             <span>
               <span className="lk-swatch" />
-              colour = cluster
+              colour = {layoutMode === "files" ? "kind" : "cluster"}
             </span>
             <span>
               <span className="lk-ext" />
@@ -367,6 +507,14 @@ export default function CodeGraph({
           </span>
         )}
         <div className="codegraph-modes" role="tablist" aria-label="Graph layout">
+          <button
+            type="button"
+            className={layoutMode === "files" ? "on" : ""}
+            onClick={() => setLayoutMode("files")}
+            title="Group by file, symbols ordered by line (position = code location)"
+          >
+            Files
+          </button>
           <button
             type="button"
             className={layoutMode === "flow" ? "on" : ""}

@@ -135,6 +135,7 @@ export interface CodemapNode {
   short: string;
   file: string | null;
   line: number | null;
+  end_line?: number | null; // 1-based end of the symbol's definition (for the code drawer)
   kind: string;
   depth: number;
   is_root: boolean;
