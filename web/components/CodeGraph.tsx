@@ -206,8 +206,12 @@ export default function CodeGraph({
             "target-arrow-color": edgeColor,
             "target-arrow-shape": "triangle",
             "arrow-scale": 0.9,
-            "curve-style": "bezier",
-            opacity: 0.8,
+            // Gentle arcs (not straight) so the many edges around a hub fan out
+            // and stop overlapping/clashing.
+            "curve-style": "unbundled-bezier",
+            "control-point-distances": [30],
+            "control-point-weights": [0.5],
+            opacity: 0.72,
           },
         },
         {
@@ -311,9 +315,9 @@ export default function CodeGraph({
         : {
             name: "dagre",
             rankDir: "LR",
-            nodeSep: 24,
-            rankSep: 58,
-            edgeSep: 10,
+            nodeSep: 38,
+            rankSep: 90,
+            edgeSep: 14,
             fit: true,
             padding: 26,
           };
@@ -334,22 +338,32 @@ export default function CodeGraph({
       <div className="codegraph-canvas" ref={boxRef} aria-label="dependency graph" />
       <div className="codegraph-bar mono">
         {edgeHover ? (
-          <span>
+          <span className="cg-info">
             <b>
               {edgeHover.count} call site{edgeHover.count === 1 ? "" : "s"}
             </b>
             <span className="muted"> — click the edge to open the exact reference line</span>
           </span>
         ) : hover ? (
-          <span>
+          <span className="cg-info">
             <b>{hover.short}</b>
             {hover.file ? ` — ${hover.file}${hover.line ? `:${hover.line}` : ""}` : ""}
             <span className="codegraph-kind">{hover.kind}</span>
           </span>
         ) : (
-          <span className="muted">
-            <b className="legend-key">size</b> = importance · <b className="legend-key">colour</b> = cluster ·
-            click a node → definition, an edge → call site · scroll to zoom
+          <span className="codegraph-legend">
+            <span>
+              <span className="lk-grow" />
+              bigger = more referenced
+            </span>
+            <span>
+              <span className="lk-swatch" />
+              colour = cluster
+            </span>
+            <span>
+              <span className="lk-ext" />
+              external
+            </span>
           </span>
         )}
         <div className="codegraph-modes" role="tablist" aria-label="Graph layout">

@@ -457,7 +457,6 @@ pre {
   overflow-y: auto;
   width: var(--rail-left);
   padding: 22px 20px;
-  border-right: 1px solid var(--border);
 }
 .wiki-onthispage {
   position: sticky;
@@ -1190,19 +1189,57 @@ pre {
 .codegraph-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px 12px;
+  flex-wrap: wrap;
   padding: 7px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
   font-size: 12px;
   color: var(--text);
 }
-.codegraph-bar > span:first-child {
+/* transient hover/edge info — can be a long path, so truncate */
+.cg-info {
   flex: 1;
-  min-width: 0;
+  min-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* always-on legend — a compact visual key, never truncated */
+.codegraph-legend {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 14px;
+  color: var(--muted);
+}
+.codegraph-legend > span {
+  display: inline-flex;
+  align-items: center;
+}
+.lk-swatch,
+.lk-ext,
+.lk-grow {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 5px;
+}
+.lk-swatch {
+  background: var(--accent);
+}
+.lk-ext {
+  border: 1.5px dashed var(--muted);
+}
+.lk-grow {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.5;
 }
 .codegraph-bar b {
   font-weight: 600;
@@ -1261,6 +1298,11 @@ pre {
   border-radius: 10px;
   overflow: hidden;
   background: var(--surface-2);
+}
+/* Long definitions/files scroll inside the peek instead of being clipped. */
+.callsite-peek .hl-code {
+  max-height: 340px;
+  overflow: auto;
 }
 .callsite-head {
   display: flex;
