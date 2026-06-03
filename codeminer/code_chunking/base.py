@@ -16,8 +16,8 @@ from collections import namedtuple
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-# Import the tree-sitter-language-pack
-from tree_sitter_language_pack import get_language, get_parser
+from tree_sitter import Parser
+from tree_sitter_language_pack import get_language
 
 from ..log_utils import get_logger
 
@@ -81,8 +81,8 @@ class BaseCodeChunker(ABC):
         self.skeleton_mode = skeleton_mode
         self.include_l2_in_file_skeleton = include_l2_in_file_skeleton
         try:
-            self.parser = get_parser(language)
             self.tree_sitter_language = get_language(language)
+            self.parser = self._create_parser(self.tree_sitter_language)
             logger.info(
                 "Successfully loaded %s language parser from tree-sitter-language-pack",
                 language,
@@ -90,6 +90,19 @@ class BaseCodeChunker(ABC):
         except Exception as e:
             logger.error("Error loading %s parser: %s", language, e)
             sys.exit(1)
+
+    @staticmethod
+    def _create_parser(language):
+        """Create a standard tree_sitter.Parser across tree-sitter versions."""
+        try:
+            return Parser(language)
+        except TypeError:
+            parser = Parser()
+            if hasattr(parser, "set_language"):
+                parser.set_language(language)
+            else:
+                parser.language = language
+            return parser
 
     def chunk_file(
         self,
