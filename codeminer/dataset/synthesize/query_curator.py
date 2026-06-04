@@ -386,23 +386,29 @@ class QueryCurator:
             )
 
         if ground_truth and self.query_type in (
+            QueryType.MODULE_HINT,
             QueryType.FILE_HINT,
             QueryType.SYMBOL_HINT,
             QueryType.REASONING,
         ):
-            gt_info = []
-            if ground_truth.get("target_files"):
-                gt_info.append(
-                    f"Target files: {', '.join(ground_truth['target_files'])}"
-                )
-            if ground_truth.get("symbols_modified"):
-                gt_info.append(
-                    f"Modified symbols: {', '.join(ground_truth['symbols_modified'][:5])}"
-                )
-            if gt_info:
-                context_parts.append(
-                    "Ground truth info (use as appropriate):\n" + "\n".join(gt_info)
-                )
+            anchor_block = self._build_anchor_block(ground_truth)
+            if anchor_block:
+                context_parts.append(anchor_block)
+            else:
+                gt_info = []
+                if ground_truth.get("target_files"):
+                    gt_info.append(
+                        f"Target files: {', '.join(ground_truth['target_files'])}"
+                    )
+                if ground_truth.get("symbols_modified"):
+                    gt_info.append(
+                        "Modified symbols: "
+                        + ", ".join(ground_truth["symbols_modified"][:5])
+                    )
+                if gt_info:
+                    context_parts.append(
+                        "Ground truth info (use as appropriate):\n" + "\n".join(gt_info)
+                    )
         elif discovered_targets and self.query_type in (
             QueryType.FILE_HINT,
             QueryType.SYMBOL_HINT,
@@ -458,6 +464,80 @@ class QueryCurator:
             question = question.rstrip(".") + "?"
 
         return {"question": question, "focus": focus, "hints": hints}
+
+    # ------------------------------------------------------------------
+    # Private: anchor block (non-behavioral grounding)
+    # ------------------------------------------------------------------
+
+    def _build_anchor_block(self, ground_truth: Dict[str, Any]) -> Optional[str]:
+        # Returns None when ground_truth has no anchor_content — callers fall
+        # back to the weak "Ground truth info" hint in that case.
+        content = ground_truth.get("anchor_content")
+        if not content:
+            return None
+
+        anchor_file = ground_truth.get("anchor_file") or (
+            (ground_truth.get("target_files") or [""])[0]
+        )
+        anchor_symbol = ground_truth.get("anchor_symbol") or (
+            (ground_truth.get("symbols_modified") or [""])[0]
+        )
+
+        max_chars = self.max_block_chars_in_prompt
+        snippet = content if len(content) <= max_chars else content[:max_chars] + "..."
+
+        dotted_module = self._derive_dotted_module(anchor_file)
+        module_rule = (
+            f"Your question MUST explicitly name the module in dotted form "
+            f"`{dotted_module}` (or a clearly-recognizable sub-module of it)."
+            if dotted_module
+            else "Your question MUST explicitly name the module or package in "
+            "dotted form (e.g. `astropy.stats`, `numpy.linalg`)."
+        )
+
+        type_rules = {
+            QueryType.MODULE_HINT: (
+                f"{module_rule} It MUST NOT mention the file path or any "
+                "specific function/class names."
+            ),
+            QueryType.FILE_HINT: (
+                "Your question SHOULD mention the file path shown above, but MUST "
+                "NOT mention specific function or class names."
+            ),
+            QueryType.SYMBOL_HINT: (
+                "Your question SHOULD mention the specific function/class/method "
+                "name shown above and describe its behavior."
+            ),
+            QueryType.REASONING: (
+                "Your question SHOULD mention the symbol shown above and frame "
+                "the problem in terms of call chains, inheritance, or control "
+                "flow that involve it."
+            ),
+        }
+        rule = type_rules.get(self.query_type, "Describe the behavior of this code.")
+
+        header_lines = ["=== ANCHOR CODE (your query MUST describe this) ==="]
+        if anchor_file:
+            header_lines.append(f"File: {anchor_file}")
+        if anchor_symbol:
+            header_lines.append(f"Symbol: {anchor_symbol}")
+        header = "\n".join(header_lines)
+
+        return (
+            f"{header}\n\n```\n{snippet}\n```\n\n"
+            f"BINDING RULE: {rule} Do not invent unrelated bugs about other "
+            "parts of the repository."
+        )
+
+    @staticmethod
+    def _derive_dotted_module(anchor_file: str) -> str:
+        """Convert ``astropy/stats/funcs.py`` -> ``astropy.stats``."""
+        if not anchor_file:
+            return ""
+        parts = anchor_file.replace("\\", "/").split("/")
+        if len(parts) < 2:
+            return ""
+        return ".".join(p for p in parts[:-1] if p)
 
     # ------------------------------------------------------------------
     # Private: constraint clause
