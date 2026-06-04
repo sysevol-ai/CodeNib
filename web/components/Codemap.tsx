@@ -95,7 +95,7 @@ export default function Codemap({
             {data.truncated ? " · truncated" : ""}
           </div>
           {data.note && <p className="muted small">{data.note}</p>}
-          <GraphView repoId={repoId} data={data} onFocus={focus} />
+          <GraphView repoId={repoId} data={data} variant="explore" onFocus={focus} />
           <div className="codemap-nodes">
             {data.nodes.map((n) => (
               <button

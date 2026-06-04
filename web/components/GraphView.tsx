@@ -140,10 +140,13 @@ function SourcePeek({
 export default function GraphView({
   repoId,
   data,
+  variant = "explore",
   onFocus,
 }: {
   repoId: string;
   data: CodemapResponse;
+  // "wiki" = focused top-down dependency map; "explore" = standalone Graph view.
+  variant?: "wiki" | "explore";
   onFocus?: (label: string) => void;
 }) {
   const [peek, setPeek] = useState<PeekSource | null>(null);
@@ -153,6 +156,7 @@ export default function GraphView({
     <>
       <CodeGraph
         data={data}
+        variant={variant}
         onNodeClick={(node) => setPeek({ kind: "node", node })}
         onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
       />

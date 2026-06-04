@@ -160,23 +160,28 @@ def _is_external(a: Dict[str, Any], repo_dir: Optional[str] = None) -> bool:
 
 def _score(
     graph: CodeGraph, names: List[str]
-) -> Tuple[Dict[str, float], Dict[str, int]]:
-    """PageRank importance (rank-percentile in [0,1]) + community id per node.
+) -> Tuple[Dict[str, float], Dict[str, int], Dict[str, int], Dict[str, float]]:
+    """PageRank importance + community + reference count + entry score per node.
 
-    Computed on the induced REFERENCE subgraph of *names* (cheap, <=120 nodes).
-    PageRank surfaces "core" symbols (referenced by other important code);
-    community is Leiden/modularity on the undirected projection (igraph 0.11.9
-    has no directed Leiden), guarded so tiny/loose graphs collapse to one
-    cluster. Never raises — returns neutral scores (0.0 / 0) on any failure.
+    All computed on the induced REFERENCE subgraph of *names* (cheap, <=120
+    nodes). PageRank (rank-percentile in [0,1]) surfaces "core" symbols
+    (referenced by other important code); community is Leiden/modularity on the
+    undirected projection (igraph 0.11.9 has no directed Leiden), guarded so
+    tiny/loose graphs collapse to one cluster; ``ref_count`` = in-degree (how
+    many symbols reference this one); ``entry_score`` = out/(in+out) in [0,1] —
+    high for drivers/entry points that call much but are called little. Never
+    raises — returns neutral scores (0.0 / 0) on any failure.
     """
     imp: Dict[str, float] = {n: 0.0 for n in names}
     comm: Dict[str, int] = {n: 0 for n in names}
+    refcnt: Dict[str, int] = {n: 0 for n in names}
+    entry: Dict[str, float] = {n: 0.0 for n in names}
     try:
         g = graph.get_graph()
         n2v = graph.name_to_vertex
         vids = [n2v[n] for n in names if n in n2v]
         if len(vids) < 3:
-            return imp, comm
+            return imp, comm, refcnt, entry
         sub = g.subgraph(vids)
         ref_eids = [
             e.index for e in sub.es if e.attributes().get("type") == "reference"
@@ -188,6 +193,12 @@ def _score(
         denom = max(1, len(pr) - 1)
         for rank, i in enumerate(order):
             imp[sub_names[i]] = round(rank / denom, 4)
+        indeg = subref.indegree()
+        outdeg = subref.outdegree()
+        for i, nm in enumerate(sub_names):
+            refcnt[nm] = int(indeg[i])
+            tot = indeg[i] + outdeg[i]
+            entry[nm] = round(outdeg[i] / tot, 4) if tot else 0.0
         membership = [0] * subref.vcount()
         if subref.vcount() >= 12:
             try:
@@ -203,7 +214,7 @@ def _score(
             comm[nm] = int(membership[i])
     except Exception:  # noqa: BLE001 - scoring is best-effort, never 500 the map
         pass
-    return imp, comm
+    return imp, comm, refcnt, entry
 
 
 def _enrich(
@@ -220,10 +231,17 @@ def _enrich(
     that fold (the low-value leaf tail) are dropped unless they're a seed/root.
     This keeps dense, high-fan-out maps from becoming hairballs.
     """
-    imp, comm = _score(graph, [n["name"] for n in nodes])
+    imp, comm, refcnt, entry = _score(graph, [n["name"] for n in nodes])
     for n in nodes:
         n["importance"] = imp.get(n["name"], 0.0)
         n["community"] = comm.get(n["name"], 0)
+        n["ref_count"] = refcnt.get(n["name"], 0)
+        n["entry_score"] = entry.get(n["name"], 0.0)
+    # Edge weight = number of distinct SCIP/LSP-exact call sites (anchors); drives
+    # edge width in the UI. Set on all edges (both codemap paths call _enrich), so
+    # the kept subset below carries it too.
+    for e in edges:
+        e["weight"] = len(e.get("anchors") or [])
 
     imp_by_id = {n["id"]: n.get("importance", 0.0) for n in nodes}
     by_src: Dict[str, List[Dict[str, Any]]] = {}

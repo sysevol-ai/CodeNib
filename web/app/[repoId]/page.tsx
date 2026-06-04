@@ -19,7 +19,6 @@ import {
   type WikiPageRef,
 } from "@/lib/api";
 
-type Mode = "wiki" | "codemap";
 interface Heading {
   id: string;
   text: string;
@@ -80,11 +79,10 @@ export default function WikiPageView() {
   const [activeId, setActiveId] = useState<string>("overview");
   const [page, setPage] = useState<WikiPage | null>(null);
   const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
-  // Seed passed to the codemap when "explore in graph" is used from a wiki page.
+  // The graph explorer opens as a full-screen modal, optionally seeded on a
+  // symbol when launched via "Focus here" from a wiki subsystem map.
   const [graphSeed, setGraphSeed] = useState<string | undefined>(undefined);
-  // Wiki-first: a repo opens on its narrative — which now leads with a subsystem
-  // graph — and the full Graph explorer is one tab away.
-  const [mode, setMode] = useState<Mode>("wiki");
+  const [graphOpen, setGraphOpen] = useState(false);
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [activeHeading, setActiveHeading] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -95,16 +93,10 @@ export default function WikiPageView() {
   useEffect(() => {
     // Deep-link support: ?p=<pageId> opens that wiki page directly.
     const p = new URLSearchParams(window.location.search).get("p");
-    if (p) {
-      setActiveId(p);
-      setMode("wiki"); // a page deep-link wants the narrative, not the graph
-    }
+    if (p) setActiveId(p);
     fetchRepos()
       .then((rs) => {
-        const r = rs.find((x) => x.id === repoId) ?? null;
-        setRepo(r);
-        // Fall back to wiki if this repo has no symbol graph.
-        if (r && !r.capabilities?.codemap && !p) setMode("wiki");
+        setRepo(rs.find((x) => x.id === repoId) ?? null);
       })
       .catch(() => {});
     fetchWikiTree(repoId)
@@ -140,14 +132,13 @@ export default function WikiPageView() {
   }, []);
 
   useEffect(() => {
-    if (mode !== "wiki") return;
     const t = setTimeout(rescanHeadings, 80);
     return () => clearTimeout(t);
-  }, [page, mode, rescanHeadings]);
+  }, [page, rescanHeadings]);
 
   // Scroll-spy: highlight the heading currently in view in the right rail.
   useEffect(() => {
-    if (mode !== "wiki" || headings.length === 0) return;
+    if (headings.length === 0) return;
     const els = headings
       .map((h) => document.getElementById(h.id))
       .filter((e): e is HTMLElement => !!e);
@@ -164,18 +155,31 @@ export default function WikiPageView() {
     els.forEach((e) => obs.observe(e));
     setActiveHeading((cur) => cur || headings[0].id);
     return () => obs.disconnect();
-  }, [headings, mode]);
+  }, [headings]);
 
   function pick(id: string) {
     setActiveId(id);
-    setMode("wiki");
     setTocOpen(false);
     const url = `${window.location.pathname}?p=${encodeURIComponent(id)}`;
     window.history.replaceState(null, "", url);
     window.scrollTo({ top: 0 });
   }
 
-  const modes: Mode[] = repo?.capabilities?.codemap ? ["wiki", "codemap"] : ["wiki"];
+  // Esc closes the graph explorer modal.
+  useEffect(() => {
+    if (!graphOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setGraphOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [graphOpen]);
+
+  const hasGraph = !!repo?.capabilities?.codemap;
+  const openGraph = (seed?: string) => {
+    setGraphSeed(seed);
+    setGraphOpen(true);
+  };
 
   return (
     <div className="wiki">
@@ -190,6 +194,15 @@ export default function WikiPageView() {
               ☰
             </button>
             <span className="mono">{repo ? repo.repo : repoId}</span>
+            {hasGraph && (
+              <button
+                className="codegraph-launch"
+                onClick={() => openGraph()}
+                title="Open the interactive code dependency graph"
+              >
+                ⌗ CodeGraph
+              </button>
+            )}
             {page && <span className="crumb-sep">/</span>}
             {page && <span className="crumb-page">{page.title}</span>}
           </nav>
@@ -208,22 +221,7 @@ export default function WikiPageView() {
         </aside>
 
         <main className="wiki-main">
-          <div className="wiki-modeswitch" role="tablist">
-            {modes.map((m) => (
-              <button
-                key={m}
-                role="tab"
-                aria-selected={mode === m}
-                className={`mode-tab ${mode === m ? "active" : ""}`}
-                onClick={() => setMode(m)}
-              >
-                {m === "wiki" ? "Wiki" : "Graph"}
-              </button>
-            ))}
-          </div>
-
-          {mode === "wiki" && (
-            <div className="wiki-content" ref={contentRef}>
+          <div className="wiki-content" ref={contentRef}>
               {pageGraph && pageGraph.available && pageGraph.nodes.length > 0 && (
                 <details className="subsystem-map" open>
                   <summary>
@@ -233,10 +231,8 @@ export default function WikiPageView() {
                   <GraphView
                     repoId={repoId}
                     data={pageGraph}
-                    onFocus={(label) => {
-                      setGraphSeed(label);
-                      setMode("codemap");
-                    }}
+                    variant="wiki"
+                    onFocus={(label) => openGraph(label)}
                   />
                 </details>
               )}
@@ -284,15 +280,12 @@ export default function WikiPageView() {
               ) : (
                 <p className="muted">Loading…</p>
               )}
-            </div>
-          )}
-
-          {mode === "codemap" && <Codemap repoId={repoId} initialSymbol={graphSeed} />}
+          </div>
         </main>
 
         <aside className="wiki-onthispage" data-rail="right">
-          <div className="rail-title">{mode === "codemap" ? "About this graph" : "On this page"}</div>
-          {mode === "wiki" && headings.length > 0 ? (
+          <div className="rail-title">On this page</div>
+          {headings.length > 0 ? (
             <ul className="onthispage-list">
               {headings.map((h) => (
                 <li key={h.id} className={`lvl-${h.level}`}>
@@ -302,25 +295,10 @@ export default function WikiPageView() {
                 </li>
               ))}
             </ul>
-          ) : mode === "codemap" ? (
-            <div className="rail-graphnote small">
-              <p>
-                Every edge is a <b>real reference</b> from the LSP/SCIP index — not a guess.
-              </p>
-              <ul>
-                <li>
-                  Click an <b>edge</b> → the exact call site
-                </li>
-                <li>
-                  Click a <b>node</b> → refocus the map
-                </li>
-                <li>Colour = file · scroll to zoom · drag to pan</li>
-              </ul>
-            </div>
           ) : (
             <div className="muted small">—</div>
           )}
-          {repo && mode === "wiki" && (
+          {repo && (
             <button
               className="refresh-wiki"
               title="Re-fetch this wiki page"
@@ -334,6 +312,37 @@ export default function WikiPageView() {
           )}
         </aside>
       </div>
+
+      {graphOpen && (
+        <div
+          className="graph-modal-scrim"
+          onClick={() => setGraphOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Code dependency graph"
+        >
+          <div className="graph-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="graph-modal-head">
+              <span className="mono">
+                <b>CodeGraph</b> · {repo ? repo.repo : repoId}
+              </span>
+              <span className="graph-modal-hint muted small">
+                top-down dependency graph — every edge is a real LSP/SCIP reference. Esc to close.
+              </span>
+              <button
+                className="graph-modal-close"
+                onClick={() => setGraphOpen(false)}
+                aria-label="Close graph"
+              >
+                ×
+              </button>
+            </div>
+            <div className="graph-modal-body">
+              <Codemap repoId={repoId} initialSymbol={graphSeed} />
+            </div>
+          </div>
+        </div>
+      )}
 
       <AskBar repoId={repoId} repo={repo ? repo.repo : repoId} />
     </div>
