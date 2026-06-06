@@ -21,7 +21,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from .config import SweepConfig
 
@@ -82,13 +82,31 @@ def scenario_for(query: str, language_key: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+# Pre-load recipes name retrievers ("embedding"/"bm25"), not skills; map them to
+# the skill that backs each index so the contexts get built even when no ARM
+# offers that retriever as a tool (pre-load arms only carry default tools).
+_PRELOAD_RETRIEVER_SKILL = {
+    "embedding": "embedding_search",
+    "bm25": "bm25_search",
+}
+
+
 def all_index_skill_ids(cfg: SweepConfig) -> List[str]:
-    """Union of skills across all subsets — used to load the full context once."""
+    """Union of skills across all subsets — used to load the full context once.
+
+    Also includes the skills implied by any ``preload`` recipe, so a pre-load
+    arm whose subset is just default tools still gets its retrieval index built.
+    """
     seen: List[str] = []
     for skills in cfg.subsets.values():
         for s in skills:
             if s not in seen:
                 seen.append(s)
+    for recipe in (cfg.preload or {}).values():
+        for retriever in recipe.get("retrievers") or []:
+            sk = _PRELOAD_RETRIEVER_SKILL.get(retriever)
+            if sk and sk not in seen:
+                seen.append(sk)
     return seen
 
 
@@ -123,6 +141,47 @@ def load_full_contexts(cfg: SweepConfig, repo_path: str, cache_dir: str):
     return contexts
 
 
+def build_symbol_span_index(prebuilt_dir: str, instance_id: str) -> Dict[Any, Any]:
+    """``{(norm_file, leaf_name): (start_1based, end_1based)}`` from the prebuilt
+    graph, so committed scoring can resolve a named symbol to its line span.
+
+    Graph vertices are 0-based (tree-sitter); shifted +1 here to match the
+    1-based ground-truth blocks. Returns an empty dict when no graph is present.
+    """
+    import pickle
+
+    from codeminer.eval.retrieval_eval import normalize_file_path
+
+    path = os.path.join(prebuilt_dir, instance_id, "graph.pkl")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "rb") as f:
+            graph = pickle.load(f)
+    except Exception:  # noqa: BLE001 — a missing/corrupt graph just disables this
+        return {}
+    g = graph.get("graph") if isinstance(graph, dict) else None
+    if g is None:
+        return {}
+    index: Dict[Any, Any] = {}
+    for v in g.vs:
+        attrs = v.attributes()
+        file, start, end = (
+            attrs.get("file"),
+            attrs.get("start_line"),
+            attrs.get("end_line"),
+        )
+        name = attrs.get("name")
+        if file is None or start is None or end is None or not name:
+            continue
+        nf = normalize_file_path(file)
+        leaf = str(name).split("/")[-1].split(".")[-1]
+        key = (nf, leaf)
+        if key not in index:  # first definition wins
+            index[key] = (int(start) + 1, int(end) + 1)
+    return index
+
+
 def run_cell(
     cfg: SweepConfig,
     *,
@@ -133,11 +192,28 @@ def run_cell(
     query: str,
     subset_id: str,
     skills: Sequence[str],
+    preload_spec: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Run one (subset) agent cell against already-loaded contexts."""
+    """Run one (subset) agent cell against already-loaded contexts.
+
+    When ``preload_spec`` is given, retrieval candidates are computed up front
+    and injected into the agent's opening prompt (the pre-load architecture);
+    the returned ``preload_candidates`` lists the injected ``(file, span)``s for
+    contribution attribution.
+    """
     from codeminer.agent.runner import AgentRunner
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.compiler.params import SessionContext
+    from scripts.agent_compile.lib.preload import assemble_preload
+
+    preload_candidates: List[Dict[str, Any]] = []
+    effective_query = query
+    if preload_spec:
+        preamble, preload_candidates = assemble_preload(
+            contexts, query, recipe=preload_spec
+        )
+        if preamble:
+            effective_query = f"{query}\n\n{preamble}"
 
     sctx = SessionContext(
         repo_path=repo_path, repo_size=1000, primary_language=language_key
@@ -160,13 +236,14 @@ def run_cell(
     prev_cwd = os.getcwd()
     try:
         os.chdir(repo_path)
-        result = runner.run(query)
+        result = runner.run(effective_query)
     finally:
         os.chdir(prev_cwd)
 
     nodes: List[Any] = []
     tool_calls: List[Dict[str, Any]] = []
     file_read_paths: List[str] = []
+    file_reads: List[Dict[str, Any]] = []
     for tc in result.tool_calls:
         n = len(tc.result) if isinstance(tc.result, list) else 0
         tool_calls.append(
@@ -179,9 +256,19 @@ def run_cell(
         if isinstance(tc.result, list):
             nodes.extend(tc.result)
         if tc.skill_id == "read" and not tc.error:
-            p = (tc.arguments or {}).get("file_path")
+            args = tc.arguments or {}
+            p = args.get("file_path")
             if p:
                 file_read_paths.append(str(p))
+                # Capture the read window (1-based offset/limit) for audit (which
+                # line range the agent inspected); not scored.
+                file_reads.append(
+                    {
+                        "file_path": str(p),
+                        "offset": args.get("offset"),
+                        "limit": args.get("limit"),
+                    }
+                )
 
     usage = result.usage.to_dict() if result.usage else {}
     token_usage = usage.get("token_usage") or usage or {}
@@ -189,6 +276,8 @@ def run_cell(
         "nodes": nodes,
         "tool_calls": tool_calls,
         "file_read_paths": file_read_paths,
+        "file_reads": file_reads,
+        "preload_candidates": preload_candidates,
         "answer": result.answer or "",
         "total_turns": result.total_turns,
         "total_duration_ms": result.total_duration_ms,

@@ -45,6 +45,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from scripts.agent_compile.lib.config import SweepConfig  # noqa: E402
 from scripts.agent_compile.lib.harness import (  # noqa: E402
     LANG_GROUP_TO_KEY,
+    build_symbol_span_index,
     load_dataset_rows,
     load_full_contexts,
     run_cell,
@@ -93,7 +94,17 @@ def _validate_harness(cfg: SweepConfig) -> None:
 
 
 def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dict:
-    from codeminer.eval.retrieval_eval import collect_targets, score_agent_localization
+    from codeminer.eval.retrieval_eval import (
+        collect_target_blocks,
+        collect_targets,
+        dedup_spans,
+        nodes_to_spans,
+        parse_answer_spans,
+        resolve_symbol_spans,
+        score_agent_localization,
+        score_localization_spans,
+        spans_overlap,
+    )
     from codeminer.llm.litellm_chat import LiteLLMChat
 
     _validate_harness(cfg)
@@ -151,6 +162,12 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
         target_files, target_symbols = collect_targets(
             meta, simplified_symbols=cfg.gt_simplified_symbols
         )
+        # 1-based ground-truth line spans for overlap-based localization scoring
+        # (read from the raw row, which carries ``gt_code_blocks``).
+        gt_blocks = collect_target_blocks(row)
+        # {(file, leaf): (start, end)} so committed scoring can resolve a named
+        # symbol to its span when the agent didn't emit an explicit range.
+        symbol_span_index = build_symbol_span_index(cfg.prebuilt_dir, instance_id)
         gt_meaningful = bool(target_files or target_symbols)
 
         cache_dir = os.path.join(
@@ -204,6 +221,7 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     query=query,
                     subset_id=subset_id,
                     skills=skills,
+                    preload_spec=(cfg.preload or {}).get(subset_id),
                 )
                 metrics = score_agent_localization(
                     answer=out["answer"],
@@ -213,6 +231,38 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     target_symbols=target_symbols,
                     ks=cfg.metrics_k,
                     repo_path=repo_path,
+                )
+                # Line-span localization (overlap-based) — robust to the
+                # symbol-name string-match artifact. ``answer`` = the agent's
+                # deliverable (its ``Locations:`` ranges + ``Symbols:`` resolved
+                # via the graph); ``retrieval`` = the retriever's ranked spans
+                # (the RAG-comparable alignment axis). Neither bounds the other.
+                answer_spans = parse_answer_spans(
+                    out["answer"], repo_path
+                ) + resolve_symbol_spans(out["answer"], symbol_span_index, repo_path)
+                retrieval_spans = nodes_to_spans(out["nodes"])
+                metrics.update(
+                    score_localization_spans(
+                        answer_spans=answer_spans,
+                        retrieval_spans=retrieval_spans,
+                        gt_blocks=gt_blocks,
+                        ks=cfg.metrics_k,
+                    )
+                )
+                # Pre-load contribution: fraction of the agent's committed answer
+                # spans that overlap an injected candidate (vs found by grep).
+                # Distinguishes "pre-load helped" from "ignored, grep did it".
+                preload_candidates = out.get("preload_candidates") or []
+                ans_dedup = dedup_spans(answer_spans)
+                preload_contribution = (
+                    sum(
+                        1
+                        for a in ans_dedup
+                        if any(spans_overlap(a, c) for c in preload_candidates)
+                    )
+                    / len(ans_dedup)
+                    if (ans_dedup and preload_candidates)
+                    else None
                 )
                 record = {
                     "cell_id": cell_id,
@@ -228,8 +278,14 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     "metrics_meaningful": gt_meaningful,
                     "target_files": target_files,
                     "target_symbols": target_symbols,
+                    "gt_code_blocks": gt_blocks,
+                    "answer_spans": answer_spans,
+                    "retrieval_spans": retrieval_spans,
+                    "preload_candidates": preload_candidates,
+                    "preload_contribution": preload_contribution,
                     "tool_calls": out["tool_calls"],
                     "file_read_paths": out["file_read_paths"],
+                    "file_reads": out.get("file_reads", []),
                     "answer": out["answer"],
                     "total_turns": out["total_turns"],
                     "total_duration_ms": out["total_duration_ms"],

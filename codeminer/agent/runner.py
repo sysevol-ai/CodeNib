@@ -12,6 +12,7 @@ produces a final answer.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,7 +46,20 @@ _DEFAULT_SKILLS_DIR: Path = Path(__file__).parent / "skills"
 
 CompileTableInput = Union[str, Path, Mapping[str, Any]]
 
-_DEFAULT_SYSTEM_PROMPT = """\
+# Single source of truth for the answer contract. The system prompt below and
+# the forced final-answer turn (on budget exhaustion) both reference this, and
+# the eval harness parses exactly these lines — so prompt and parser never drift.
+LOCALIZATION_SCHEMA = (
+    "Files: path/one.ext, path/two.ext\n"
+    "Symbols: path/one.ext:symbol_name, ...\n"
+    "Locations: path/one.ext:START-END, path/two.ext:START-END"
+)
+
+# Detects whether an answer already carries the contract (markdown-tolerant, to
+# match the eval parser): ``Files:``, ``**Files:**``, ``- files =`` all count.
+_HAS_FILES_CONTRACT = re.compile(r"(?im)^[\s>#*_`\-]*files?[\s*_`]*[:=]")
+
+_DEFAULT_SYSTEM_PROMPT = f"""\
 You are a code localization agent. Find the code locations (files and \
 symbols) relevant to the request, then give a concise answer naming them.
 
@@ -80,9 +94,9 @@ the symbol across the repo (grep pattern=...). A base-class method \
 often has the real change in a SUBCLASS OVERRIDE — grep the method name to find \
 all definitions, then read them. Loop back to READ.
 4. ANSWER — only once you have READ a file and confirmed it contains the code \
-to change. End with two lines, repo-relative:
-   Files: path/one.ext, path/two.ext
-   Symbols: path/one.ext:symbol_name, ...
+to change. End with these three lines, repo-relative. The line numbers come \
+straight from what `read` showed you — cite the exact range of the code to change:
+{LOCALIZATION_SCHEMA}
 
 Guidelines:
 - The graph map is a hint, not the answer — always confirm by reading.
@@ -370,8 +384,15 @@ class AgentRunner:
             # Check for tool calls
             tool_calls = getattr(assistant_msg, "tool_calls", None)
             if not tool_calls:
-                # Terminal: LLM produced a final answer
+                # Terminal: LLM stopped calling tools. If it answered in prose
+                # without the contract (it explored but didn't format), force one
+                # schema turn so a genuine localization isn't lost to formatting.
                 answer = getattr(assistant_msg, "content", None) or ""
+                if all_tool_calls and not _HAS_FILES_CONTRACT.search(answer):
+                    answer = (
+                        self._force_schema_answer(history, usage_tracker, turn + 2)
+                        or answer
+                    )
                 elapsed = (time.monotonic() - start) * 1000
                 return AgentResult(
                     answer=answer,
@@ -406,33 +427,14 @@ class AgentRunner:
                 last_content = msg["content"]
                 break
 
-        # If the model spent every turn calling tools and never wrote prose,
-        # force one final tool-free turn so the agent still returns its best
-        # answer instead of an empty string — a budget-bound run that did real
-        # work should not report nothing. Best-effort: never crash on the
-        # summary call.
-        if not last_content and all_tool_calls:
-            history.add_message(
-                {
-                    "role": "user",
-                    "content": (
-                        "You have reached the tool-call budget. Do not call any "
-                        "more tools. Based on what you have found so far, give "
-                        "your final answer now."
-                    ),
-                }
+        # Budget exhausted. A capped agent usually left mid-exploration chatter
+        # ("Let me check…"), so force a schema-conforming final answer unless it
+        # already emitted the contract.
+        if all_tool_calls and not _HAS_FILES_CONTRACT.search(last_content):
+            last_content = (
+                self._force_schema_answer(history, usage_tracker, max_turns + 1)
+                or last_content
             )
-            try:
-                final = self.llm._call_raw(
-                    history.get_messages(),
-                    usage_tracker=usage_tracker,
-                    usage_turn=max_turns + 1,
-                )
-                forced_msg = final.choices[0].message
-                history.add_message(_message_to_dict(forced_msg))
-                last_content = getattr(forced_msg, "content", None) or ""
-            except Exception as exc:  # best-effort summary; keep the partial run
-                logger.warning("forced final-answer turn failed: %s", exc)
 
         elapsed = (time.monotonic() - start) * 1000
         return AgentResult(
@@ -448,6 +450,43 @@ class AgentRunner:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _force_schema_answer(self, history, usage_tracker, usage_turn: int) -> str:
+        """One tool-free turn that extracts a contract-conforming final answer.
+
+        Used when the agent stopped (budget hit, or terminated in prose) without
+        emitting the ``Files:/Symbols:/Locations:`` contract — so a genuine
+        localization is not lost to formatting / an unfinished answer. This is an
+        extra turn; it does NOT consume the exploration budget. Anthropic rejects
+        a tool-history conversation unless ``tools=`` is passed, so we pass it
+        with ``tool_choice="none"`` to forbid further calls. Best-effort.
+        """
+        history.add_message(
+            {
+                "role": "user",
+                "content": (
+                    "Stop. Do not call any more tools. Based on everything you "
+                    "have found, give your final answer NOW in exactly this "
+                    "format (repo-relative paths; line numbers as shown by "
+                    f"`read`):\n{LOCALIZATION_SCHEMA}"
+                ),
+            }
+        )
+        try:
+            overrides: Dict[str, Any] = {
+                "usage_tracker": usage_tracker,
+                "usage_turn": usage_turn,
+            }
+            if self.tools:
+                overrides["tools"] = self.tools
+                overrides["tool_choice"] = "none"
+            final = self.llm._call_raw(history.get_messages(), **overrides)
+            forced_msg = final.choices[0].message
+            history.add_message(_message_to_dict(forced_msg))
+            return getattr(forced_msg, "content", None) or ""
+        except Exception as exc:  # best-effort; keep the partial run
+            logger.warning("forced final-answer turn failed: %s", exc)
+            return ""
 
     def _new_history(self):
         """Build the chat-history container for one ``run()``.

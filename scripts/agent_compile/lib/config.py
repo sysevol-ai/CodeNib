@@ -61,6 +61,14 @@ class SweepConfig:
     # LocAgent-style harness: restrict the always-on defaults to this subset
     # (e.g. ["file_read"] → no grep). None = all of read + grep + glob + bash.
     default_tool_ids: Optional[List[str]] = None
+    # Pre-load (context-assembly) recipes, keyed by arm label. An arm listed here
+    # gets retrieval candidates computed UP FRONT and injected into its opening
+    # prompt (retrieve-only — NO rerank; the agent reasons over them itself), so
+    # retrieval value no longer depends on the agent choosing to call a tool.
+    # Recipe: {retrievers: [embedding|bm25], top_k: int, level: l0|l2}. Arms NOT
+    # listed run plain (no pre-injection). See
+    # .claude/design/preload-vs-skill-architecture.md.
+    preload: Dict[str, Any] = field(default_factory=dict)
     # Override the agent system prompt (e.g. a graph-primary prompt with no grep
     # guidance). None = runner's default localization prompt.
     system_prompt: Optional[str] = None

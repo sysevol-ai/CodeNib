@@ -82,6 +82,15 @@ def _at_k(cell: Dict[str, Any], scope: str, k: int) -> Optional[float]:
     return stats
 
 
+def _field_at_k(
+    cell: Dict[str, Any], scope: str, k: int, field: str
+) -> Optional[float]:
+    """Read an arbitrary metric field (precision/recall/...) at cutoff k."""
+    bucket = (cell.get("metrics") or {}).get(scope) or {}
+    stats = bucket.get(k, bucket.get(str(k)))
+    return stats.get(field) if isinstance(stats, dict) else None
+
+
 def _safe_mean(xs: Sequence[Optional[float]]) -> Optional[float]:
     vals = [x for x in xs if x is not None]
     return statistics.fmean(vals) if vals else None
@@ -158,6 +167,17 @@ def aggregate(
 
         files_k = {k: [] for k in ks}
         symbols_k = {k: [] for k in ks}
+        # Line-span localization (overlap-based, replaces the brittle string
+        # symbols@k). ``answer`` = the agent's committed final answer (its
+        # deliverable); ``retrieval`` = the retriever's ranked spans (the
+        # RAG-comparable alignment axis). Both scopes report BOTH acc (hit@k,
+        # all GT blocks covered) and recall (fraction covered) — mirroring the
+        # original RAG/rerank baselines, which logged acc+recall symmetrically;
+        # acc==recall for single-block instances (the majority).
+        answer_acc_k = {k: [] for k in ks}
+        answer_recall_k = {k: [] for k in ks}
+        retrieval_acc_k = {k: [] for k in ks}
+        retrieval_recall_k = {k: [] for k in ks}
         tokens, turns, cost, cap_hit, durations = [], [], [], [], []
         f5_easy, f5_hard = [], []
 
@@ -175,6 +195,22 @@ def aggregate(
                     files_k[k].append(fv)
                 if sv is not None:
                     symbols_k[k].append(sv)
+                aa = _safe_mean([_at_k(r, "answer_blocks", k) for r in reps])
+                ar = _safe_mean(
+                    [_field_at_k(r, "answer_blocks", k, "recall") for r in reps]
+                )
+                ra = _safe_mean([_at_k(r, "retrieval_blocks", k) for r in reps])
+                rr = _safe_mean(
+                    [_field_at_k(r, "retrieval_blocks", k, "recall") for r in reps]
+                )
+                if aa is not None:
+                    answer_acc_k[k].append(aa)
+                if ar is not None:
+                    answer_recall_k[k].append(ar)
+                if ra is not None:
+                    retrieval_acc_k[k].append(ra)
+                if rr is not None:
+                    retrieval_recall_k[k].append(rr)
             tokens.append(_safe_min([r.get("total_tokens") for r in reps]))
             turns.append(_safe_min([r.get("total_turns") for r in reps]))
             durations.append(_safe_min([r.get("total_duration_ms") for r in reps]))
@@ -226,6 +262,10 @@ def aggregate(
             "instance_count": n_inst,
             "files_at_k": {k: _safe_mean(files_k[k]) for k in ks},
             "symbols_at_k": {k: _safe_mean(symbols_k[k]) for k in ks},
+            "answer_acc_at_k": {k: _safe_mean(answer_acc_k[k]) for k in ks},
+            "answer_recall_at_k": {k: _safe_mean(answer_recall_k[k]) for k in ks},
+            "retrieval_acc_at_k": {k: _safe_mean(retrieval_acc_k[k]) for k in ks},
+            "retrieval_recall_at_k": {k: _safe_mean(retrieval_recall_k[k]) for k in ks},
             "mean_total_tokens": _safe_mean(tokens),
             "mean_total_turns": _safe_mean(turns),
             "mean_total_duration_ms": _safe_mean(durations),
@@ -346,6 +386,44 @@ def render_markdown(agg, front, ks) -> str:
         L.append("| " + " | ".join(row) + " |")
     L.append("")
     L.append(f"**Pareto front (files@5 ↑ / tokens ↓):** {', '.join(front) or '(none)'}")
+    L.append("")
+
+    L.append("## Symbol-level localization (span recall@k — replaces symbols@k*)")
+    L.append("")
+    L.append(
+        "Overlap-based, so it is robust to the symbol-name string-match artifact "
+        "(`symbols@k*` in the per-arm table above scores agent prose ≈0 and is "
+        "kept only for back-reference). Two scopes, scored from different sources "
+        "— neither bounds the other:\n\n"
+        "- **`answer_rec@k`** — recall over the agent's committed final answer "
+        "(`Locations:` + graph-resolved `Symbols:`). The agent's deliverable / "
+        "headline. `answer_acc@k` is the strict variant (ALL gt blocks hit).\n"
+        "- **`retr_rec@k`** — recall over the retriever's ranked spans (nodes "
+        "only). The cross-system ALIGNMENT axis: identical to a plain RAG "
+        "pipeline's recall@k (node_id match == span overlap), so RAG / "
+        "pure-retrieval / agent are directly comparable on it.\n\n"
+        "`answer_rec > retr_rec` means the agent localized via grep/reasoning "
+        "beyond what retrieval returned; `answer_rec < retr_rec` means it failed "
+        "to use what retrieval surfaced."
+    )
+    L.append("")
+    head2 = (
+        ["arm"]
+        + [f"answer_acc@{k}" for k in ks]
+        + [f"answer_rec@{k}" for k in ks]
+        + [f"retr_acc@{k}" for k in ks]
+        + [f"retr_rec@{k}" for k in ks]
+    )
+    L.append("| " + " | ".join(head2) + " |")
+    L.append("| " + " | ".join("---" for _ in head2) + " |")
+    for sid in sorted(agg["arms"]):
+        m = agg["arms"][sid]
+        row2 = [sid]
+        row2 += [_fmt((m.get("answer_acc_at_k") or {}).get(k), 3) for k in ks]
+        row2 += [_fmt((m.get("answer_recall_at_k") or {}).get(k), 3) for k in ks]
+        row2 += [_fmt((m.get("retrieval_acc_at_k") or {}).get(k), 3) for k in ks]
+        row2 += [_fmt((m.get("retrieval_recall_at_k") or {}).get(k), 3) for k in ks]
+        L.append("| " + " | ".join(row2) + " |")
     L.append("")
 
     L.append("## Skill-invocation histogram")

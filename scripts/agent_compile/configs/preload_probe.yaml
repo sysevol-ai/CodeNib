@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# ===========================================================================
+# Pre-load probe — does pre-injecting retrieval beat plain grep/read?
+# ===========================================================================
+# The decisive test from .claude/design/preload-vs-skill-architecture.md.
+# Same model / dataset / scorer as the canonical sweep (inherited via base:),
+# only the harness differs:
+#
+#   grep_only     — defaults only (read/grep/glob/bash). The fallback itself /
+#                   baseline: what the agent achieves with no retrieval.
+#   preinj_embed  — same default tools, BUT embedding retrieval candidates are
+#                   computed up front and injected into the opening prompt
+#                   (retrieve-only, NO rerank). The agent reads/greps to confirm.
+#
+# Judge on answer_rec@k (the agent's committed-answer span recall). If
+# preinj_embed >> grep_only, the pre-load architecture is validated AND the
+# `preload_contribution` field shows how much of the win came from the injected
+# candidates vs grep finding it anyway.
+base: design_space.yaml
+
+sweep_id: preload_probe
+reps: 1
+
+# Small, language-diverse slice for fast iteration on answer_rec.
+instances:
+  - astral-sh__ruff-15309      # rust
+  - axios__axios-4738          # js/ts
+  - caddyserver__caddy-5761    # go
+  - astropy__astropy-13236     # python
+  - redis__redis-10095         # c
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_embed:
+    - read
+    - grep
+    - glob
+    - bash
+
+preload:
+  preinj_embed:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
