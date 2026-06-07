@@ -360,25 +360,34 @@ def _make_span(
 
 
 def collect_target_blocks(instance: Mapping[str, Any]) -> List[Dict[str, Any]]:
-    """Normalized 1-based ground-truth code blocks from ``gt_code_blocks``.
+    """Normalized 1-based ground-truth code blocks.
 
-    Accepts either the ``gt_code_blocks`` (raw dataset row) or ``code_blocks``
-    key. Each block keeps ``symbol``/``change_type`` for downstream inspection.
+    Two sources, with DIFFERENT line origins (the project's line-origin gotcha):
+      * ``gt_code_blocks`` / ``code_blocks`` (SWE-bench patch hunks) are 1-based.
+      * ``gt_symbol_nodes`` (codeminer-synthesis) are copied straight from the
+        0-based tree-sitter graph attrs by the synthesis context_loader, so they
+        are 0-based and must be shifted +1.
+    Each block keeps ``symbol``/``change_type`` for downstream inspection.
     """
     raw = instance.get("gt_code_blocks")
     if raw is None:
-        raw = instance.get("code_blocks") or []
+        raw = instance.get("code_blocks")
+    if raw is not None:
+        base, symbol_key = 1, "symbol"
+    else:  # synthesis rows expose 0-based symbol nodes instead
+        raw = instance.get("gt_symbol_nodes") or []
+        base, symbol_key = 0, "node_name"
     blocks: List[Dict[str, Any]] = []
     for blk in raw:
         sp = _make_span(
             blk.get("file_path") or blk.get("file"),
             blk.get("start_line"),
             blk.get("end_line"),
-            base=1,
+            base=base,
             source="gt",
         )
         if sp:
-            sp["symbol"] = blk.get("symbol")
+            sp["symbol"] = blk.get("symbol") or blk.get(symbol_key)
             sp["change_type"] = blk.get("change_type")
             blocks.append(sp)
     return blocks

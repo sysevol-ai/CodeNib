@@ -74,6 +74,36 @@ def test_collect_target_blocks_empty():
     assert collect_target_blocks({}) == []
 
 
+def test_collect_target_blocks_from_synthesis_symbol_nodes():
+    """codeminer-synthesis exposes 0-based gt_symbol_nodes (graph attrs) -> +1."""
+    inst = {
+        "gt_symbol_nodes": [
+            {
+                "file": "astropy/stats/funcs.py",
+                "start_line": 89,  # 0-based (graph) -> 90 expected
+                "end_line": 313,
+                "node_name": "astropy/stats/funcs.py:binom_conf_interval()",
+                "type": "function",
+            }
+        ]
+    }
+    blocks = collect_target_blocks(inst)
+    assert len(blocks) == 1
+    assert (blocks[0]["start"], blocks[0]["end"]) == (90, 314)
+    assert blocks[0]["symbol"] == "astropy/stats/funcs.py:binom_conf_interval()"
+
+
+def test_gt_code_blocks_take_priority_over_symbol_nodes():
+    inst = {
+        "gt_code_blocks": [
+            {"file_path": "a.py", "start_line": 10, "end_line": 20}  # 1-based
+        ],
+        "gt_symbol_nodes": [{"file": "b.py", "start_line": 1, "end_line": 5}],
+    }
+    blocks = collect_target_blocks(inst)
+    assert [(b["file"], b["start"], b["end"]) for b in blocks] == [("a.py", 10, 20)]
+
+
 # --- overlap + origin skew --------------------------------------------------
 
 
