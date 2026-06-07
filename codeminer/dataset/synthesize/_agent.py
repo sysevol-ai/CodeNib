@@ -62,7 +62,9 @@ class AgentRunner:
             cwd=cwd,
         )
         text_chunks: List[str] = []
+        final_text: Optional[str] = None
         query_gen = query(prompt=prompt, options=options)
+        completed = False
 
         try:
             async for message in query_gen:
@@ -71,9 +73,12 @@ class AgentRunner:
 
                 if msg_type == "ResultMessage":
                     result = getattr(message, "result", None)
+                    completed = True
                     if result and isinstance(result, str):
-                        return result.strip()
-                    return "\n".join(text_chunks).strip()
+                        final_text = result.strip()
+                    else:
+                        final_text = "\n".join(text_chunks).strip()
+                    continue
 
                 if msg_type == "ErrorMessage":
                     error_msg = getattr(message, "error", "Unknown error")
@@ -92,9 +97,10 @@ class AgentRunner:
                     if block_texts:
                         text_chunks.append("\n".join(block_texts))
         finally:
-            await query_gen.aclose()
+            if not completed:
+                await query_gen.aclose()
 
-        return "\n".join(text_chunks).strip()
+        return final_text if final_text is not None else "\n".join(text_chunks).strip()
 
     @staticmethod
     def extract_json(text: str) -> str:
