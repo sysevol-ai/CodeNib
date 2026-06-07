@@ -241,6 +241,8 @@ class ContextLoader:
             return "rust"
         if "javascript" in language_group or "typescript" in language_group:
             return "ts"
+        if "go" in language_group:
+            return "go"
         if "c++" in language_group or language_group == "c":
             return "cpp"
         return "python"

@@ -276,18 +276,29 @@ def main() -> None:
             filter_pattern,
         )
 
-        dataset_cls = (
-            SwebenchMultilingualDataset
-            if args.dataset in ("swebench_multilingual", "codeminer_base")
-            else SwebenchDataset
-        )
-        dataset_obj = dataset_cls(
-            dataset=dataset_name,
-            split=args.split,
-            filter_instance=filter_pattern,
-            root=str(cache_dir),
-            repo_root=args.repo_cache_dir or str(cache_dir),
-        )
+        if args.dataset == "codeminer_base":
+            from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+
+            dataset_obj = CodeMinerBaseDataset(
+                dataset=dataset_name,
+                split=args.split,
+                filter_instance=filter_pattern,
+                root=str(cache_dir),
+                repo_root=args.repo_cache_dir or str(cache_dir),
+            )
+        else:
+            dataset_cls = (
+                SwebenchMultilingualDataset
+                if args.dataset == "swebench_multilingual"
+                else SwebenchDataset
+            )
+            dataset_obj = dataset_cls(
+                dataset=dataset_name,
+                split=args.split,
+                filter_instance=filter_pattern,
+                root=str(cache_dir),
+                repo_root=args.repo_cache_dir or str(cache_dir),
+            )
         dataset_instances = dataset_obj.load()
 
         # Convert to list of dicts
