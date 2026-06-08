@@ -103,7 +103,8 @@ export default function CodePanel({
   repo,
   commit,
   active: activeProp,
-  onActiveChange,
+  onSelect,
+  scrollSignal,
 }: {
   repoId: string;
   citations: Citation[];
@@ -111,30 +112,39 @@ export default function CodePanel({
   commit?: string;
   /** Controlled active fragment, so prose chips can drive the pane. */
   active?: number;
-  onActiveChange?: (i: number) => void;
+  onSelect?: (i: number) => void;
+  /** Bumped by the parent on every selection; each bump re-scrolls to active. */
+  scrollSignal?: number;
 }) {
   const refs = citations.filter((c) => repoRelative(c.file)).slice(0, 12);
   const [internal, setInternal] = useState(0);
   const active = activeProp ?? internal;
-  const setActive = onActiveChange ?? setInternal;
   const fragEls = useRef<(HTMLDivElement | null)[]>([]);
-  const didMount = useRef(false);
+  const firstScroll = useRef(true);
 
   useEffect(() => {
     fragEls.current = [];
   }, [citations]);
 
-  // Scroll the active fragment into view on change (skip the first render).
+  const scrollToFrag = (i: number) =>
+    fragEls.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // Scroll on every selection, even re-selecting the same fragment after the
+  // user scrolled away. Keyed on scrollSignal (not active) so it always fires.
   useEffect(() => {
-    if (!didMount.current) {
-      didMount.current = true;
+    if (firstScroll.current) {
+      firstScroll.current = false;
       return;
     }
-    fragEls.current[active]?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [active]);
+    scrollToFrag(active);
+  }, [scrollSignal]);
 
-  function jump(i: number) {
-    setActive(i);
+  function select(i: number) {
+    if (onSelect) onSelect(i);
+    else {
+      setInternal(i);
+      scrollToFrag(i);
+    }
   }
 
   if (refs.length === 0) {
@@ -155,7 +165,7 @@ export default function CodePanel({
             aria-selected={i === active}
             className={`codepane-tab ${i === active ? "active" : ""}`}
             title={`${c.node_name || ""} ${repoRelative(c.file)}`}
-            onClick={() => jump(i)}
+            onClick={() => select(i)}
           >
             {(c.node_name || repoRelative(c.file).split("/").pop() || "").split(":").pop()}
           </button>
@@ -168,7 +178,6 @@ export default function CodePanel({
             ref={(el) => {
               fragEls.current[i] = el;
             }}
-            onMouseEnter={() => setActive(i)}
           >
             <Fragment repoId={repoId} c={c} repo={repo} commit={commit} active={i === active} />
           </div>

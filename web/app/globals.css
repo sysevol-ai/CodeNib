@@ -1840,8 +1840,16 @@ a.codepanel-name:hover {
 .frag {
   border-bottom: 1px solid var(--border);
 }
+/* Selected fragment: a blue band across the whole cited range (DeepWiki-style).
+   The code's own backgrounds are made transparent so the tint shows through. */
 .frag.active {
-  background: #f6f8fa;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.frag.active .hl-code,
+.frag.active .hl-pre,
+.frag.active .hl-gutter {
+  background: transparent;
 }
 .frag-head {
   position: sticky;

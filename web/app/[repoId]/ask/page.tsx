@@ -49,7 +49,13 @@ function AskAnswer() {
   // Shared list so a chip's index lines up with the code pane's fragments.
   const refs = useMemo(() => codeRefs(resp?.citations ?? []), [resp]);
   const [active, setActive] = useState(0);
+  const [scrollSignal, setScrollSignal] = useState(0);
   useEffect(() => setActive(0), [resp]);
+  // Select a citation: highlight it and (re-)scroll the code pane to it.
+  const selectCitation = (i: number) => {
+    setActive(i);
+    setScrollSignal((s) => s + 1);
+  };
 
   return (
     <div className="wiki ask-page">
@@ -84,7 +90,7 @@ function AskAnswer() {
           {resp && (
             <>
               <article className="ask-a">
-                <Markdown citations={refs} onCite={setActive}>
+                <Markdown citations={refs} onCite={selectCitation}>
                   {resp.answer || "(no answer)"}
                 </Markdown>
               </article>
@@ -103,7 +109,8 @@ function AskAnswer() {
             repo={repo?.repo}
             commit={repo?.base_commit}
             active={active}
-            onActiveChange={setActive}
+            onSelect={selectCitation}
+            scrollSignal={scrollSignal}
           />
         </aside>
       </div>
