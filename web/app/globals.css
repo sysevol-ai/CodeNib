@@ -725,12 +725,16 @@ pre {
 
 .mermaid-diagram {
   margin: 16px 0;
-  padding: 12px;
-  background: var(--surface);
+  padding: 16px;
+  /* Grey canvas so the white DeepWiki-style nodes stand out. */
+  background: #ececec;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow-x: auto;
   text-align: center;
+}
+[data-theme="dark"] .mermaid-diagram {
+  background: var(--surface);
 }
 .mermaid-diagram svg {
   max-width: 100%;
