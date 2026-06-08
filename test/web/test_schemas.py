@@ -29,7 +29,7 @@ def test_maps_tool_calls_and_citations():
                 tool_call_id="1",
                 skill_id="bm25_search",
                 arguments={"query": "auth", "top_k": 5},
-                result=[_node("a.py", 1, 10), _node("b.py", 20, 30)],
+                result=[_node("a.py", 0, 9), _node("b.py", 19, 29)],
                 duration_ms=12.5,
             )
         ],
@@ -47,15 +47,16 @@ def test_maps_tool_calls_and_citations():
     assert len(resp.citations) == 2
     assert resp.citations[0].file == "a.py"
     assert resp.citations[0].start_line == 1
+    assert resp.citations[0].end_line == 10
 
 
 def test_citations_are_deduplicated_across_tool_calls():
-    same = _node("a.py", 1, 10)
+    same = _node("a.py", 0, 9)
     result = AgentResult(
         answer="ans",
         tool_calls=[
             ToolCallRecord("1", "bm25_search", {}, result=[same]),
-            ToolCallRecord("2", "embedding_search", {}, result=[_node("a.py", 1, 10)]),
+            ToolCallRecord("2", "embedding_search", {}, result=[_node("a.py", 0, 9)]),
         ],
     )
     resp = agent_result_to_response(result)
@@ -90,3 +91,5 @@ def test_handles_dict_results():
     assert len(resp.citations) == 1
     assert resp.citations[0].file == "c.py"
     assert resp.citations[0].node_name == "g"
+    assert resp.citations[0].start_line == 6
+    assert resp.citations[0].end_line == 10

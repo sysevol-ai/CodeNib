@@ -15,6 +15,8 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
+from codeminer.agent.boundary import to_agent_repr
+
 
 class RepoInfo(BaseModel):
     """A repository the demo can answer questions about.
@@ -42,7 +44,11 @@ class ChatRequest(BaseModel):
 
 
 class Citation(BaseModel):
-    """A code reference backing the answer, rendered as a card in the UI."""
+    """A code reference backing the answer, rendered as a card in the UI.
+
+    Line numbers are 1-based at this API boundary, matching the agent-facing
+    representation and the ``/source`` endpoint.
+    """
 
     file: Optional[str] = None
     start_line: Optional[int] = None
@@ -99,12 +105,16 @@ def _repo_relative(path: Optional[str], repo_path: str = "") -> Optional[str]:
 
 def _node_to_citation(node: Any, repo_path: str = "") -> Optional[Citation]:
     """Coerce a single retrieval result (QueriedNode / dict) into a Citation."""
-    if hasattr(node, "model_dump"):
-        data = node.model_dump()
-    elif isinstance(node, dict):
-        data = node
-    else:
+    if not (
+        hasattr(node, "model_dump")
+        or isinstance(node, dict)
+        or hasattr(node, "__dict__")
+    ):
         return None
+
+    # Retrieval/tool results keep internal 0-based lines; API responses are an
+    # agent-facing boundary and expose 1-based locations.
+    data = to_agent_repr(node)
     if not (data.get("file") or data.get("node_name")):
         return None
     content = data.get("content")

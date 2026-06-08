@@ -26,6 +26,7 @@ export interface RepoInfo {
 
 export interface Citation {
   file: string | null;
+  /** 1-based inclusive source range, matching the /source endpoint. */
   start_line: number | null;
   end_line: number | null;
   node_name: string;

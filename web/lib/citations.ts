@@ -1,16 +1,9 @@
 import { repoRelative, type Citation } from "./api";
 
-/** Filtered, index-stable citation list both panes share. Backend line numbers
- *  are 0-based; convert to 1-based here for display + the /source endpoint. */
+/** Filtered, index-stable citation list both panes share.
+ *  Backend API citations are already 1-based for display + /source lookup. */
 export function codeRefs(citations: Citation[]): Citation[] {
-  return citations
-    .filter((c) => repoRelative(c.file))
-    .slice(0, 12)
-    .map((c) => ({
-      ...c,
-      start_line: c.start_line != null ? c.start_line + 1 : null,
-      end_line: c.end_line != null ? c.end_line + 1 : null,
-    }));
+  return citations.filter((c) => repoRelative(c.file)).slice(0, 12);
 }
 
 function norm(s: string): string {
