@@ -10,6 +10,9 @@ import CodePanel from "@/components/CodePanel";
 import { askQuestion, fetchRepos, type ChatResponse, type RepoInfo } from "@/lib/api";
 import { codeRefs } from "@/lib/citations";
 
+// DeepWiki clamps the question to ~200 chars before "Show full text".
+const Q_TRUNCATE = 200;
+
 function AskAnswer() {
   const params = useParams<{ repoId: string }>();
   const repoId = decodeURIComponent(params.repoId);
@@ -57,6 +60,12 @@ function AskAnswer() {
     setScrollSignal((s) => s + 1);
   };
 
+  // Truncate a long question to a fixed length with a "Show full text" toggle.
+  const [qExpanded, setQExpanded] = useState(false);
+  useEffect(() => setQExpanded(false), [q]);
+  const qLong = q.length > Q_TRUNCATE;
+  const qShown = !qLong || qExpanded ? q : q.slice(0, Q_TRUNCATE).trimEnd() + "…";
+
   return (
     <div className="wiki ask-page">
       <Header
@@ -77,7 +86,12 @@ function AskAnswer() {
           <Link className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
             ← Back to wiki
           </Link>
-          <h1 className="ask-q">{q || "Ask a question"}</h1>
+          <h1 className="ask-q">{qShown || "Ask a question"}</h1>
+          {qLong && (
+            <button className="ask-q-toggle" onClick={() => setQExpanded((e) => !e)}>
+              {qExpanded ? "Show less" : "Show full text"}
+            </button>
+          )}
 
           {!q && <p className="muted">Type a question in the bar below.</p>}
           {loading && <p className="muted ask-thinking">Searching {repoName}…</p>}

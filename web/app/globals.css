@@ -1092,6 +1092,22 @@ pre {
   line-height: 1.35;
   margin: 0 0 20px;
 }
+/* "Show full text" toggle under a truncated question. */
+.ask-q-toggle {
+  display: inline-block;
+  margin: -12px 0 18px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ask-q-toggle:hover {
+  color: var(--accent);
+}
 .ask-thinking {
   animation: ask-pulse 1.4s ease-in-out infinite;
 }
