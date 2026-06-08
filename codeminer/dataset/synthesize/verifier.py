@@ -8,17 +8,19 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from codeminer.log_utils import get_logger
 
-from ._agent import AgentRunner
 from ._types import BehavioralContext, SampledCodeBlock, format_prompt_block
 from .vocab_guard import (
     DEFAULT_OVERLAP_THRESHOLD,
     VocabOverlapResult,
     VocabularyOverlapGuard,
 )
+
+if TYPE_CHECKING:
+    from ._agent import AgentRunner
 
 logger = get_logger(__name__)
 
@@ -52,7 +54,7 @@ class Verifier:
     def __init__(
         self,
         *,
-        agent: AgentRunner,
+        agent: "AgentRunner",
         verification_mode: str = "lenient",
         max_block_chars_in_prompt: int = 1800,
         vocab_overlap_threshold: float = DEFAULT_OVERLAP_THRESHOLD,
