@@ -37,6 +37,11 @@ subsets:
     - grep
     - glob
     - bash
+  preinj_graph2:
+    - read
+    - grep
+    - glob
+    - bash
 
 preload:
   preinj_embed:
@@ -47,3 +52,11 @@ preload:
     retrievers: [graph]
     top_k: 10
     level: l2
+  # 2-hop + more seeds: give the graph its best shot at multi-hop chains before
+  # concluding it has no agent-level value.
+  preinj_graph2:
+    retrievers: [graph]
+    top_k: 20
+    level: l2
+    seeds: 8
+    hops: 2

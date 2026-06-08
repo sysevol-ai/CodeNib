@@ -31,10 +31,17 @@ _DEFAULT_TOP_K = 10
 _DEFAULT_LEVEL = "l2"
 
 
-def _graph_compose(contexts: Dict[str, Any], query: str, top_k: int) -> List[Any]:
+def _graph_compose(
+    contexts: Dict[str, Any], query: str, top_k: int, *, seeds: int = 5, hops: int = 1
+) -> List[Any]:
     """Graph-aware candidates via the codeminer_context composer (search seeds
-    then call-graph expansion). Needs both the retrieve and expand contexts."""
+    then call-graph expansion). Needs both the retrieve and expand contexts.
+
+    ``hops=2`` adds a second expansion pass over the 1-hop neighbors, so a 2-hop
+    chain (anchor -> A -> B) can surface B — the composer alone is 1-hop.
+    """
     try:
+        from codeminer.agent.skills._graphnav import neighbors
         from codeminer.agent.skills.codeminer_context.executor import create_executor
         from codeminer.agent.skills.context import ComposerContexts
 
@@ -43,17 +50,39 @@ def _graph_compose(contexts: Dict[str, Any], query: str, top_k: int) -> List[Any
         )
         if cc.retrieve is None or cc.expand is None:
             return []
-        return list(create_executor(cc)(query, max_results=top_k, seeds=5))
+        base = list(create_executor(cc)(query, max_results=top_k, seeds=seeds))
+        if hops <= 1:
+            return base
+        graph = getattr(cc.expand, "code_graph", None)
+        if graph is None:
+            return base
+        extra: List[Any] = []
+        for node in base:
+            name = getattr(node, "node_name", None)
+            if not name:
+                continue
+            try:
+                extra += neighbors(graph, name, "both", top_k=4)
+            except Exception:  # noqa: BLE001 — unresolved node, skip
+                continue
+        return base + extra
     except Exception:  # noqa: BLE001 — a failing retriever just contributes nothing
         return []
 
 
 def _retrieve(
-    contexts: Dict[str, Any], retriever: str, query: str, top_k: int, level: str
+    contexts: Dict[str, Any],
+    retriever: str,
+    query: str,
+    top_k: int,
+    level: str,
+    *,
+    seeds: int = 5,
+    hops: int = 1,
 ) -> List[Any]:
     """Run a single retriever, returning its ranked nodes (best-effort)."""
     if retriever == "graph":
-        return _graph_compose(contexts, query, top_k)
+        return _graph_compose(contexts, query, top_k, seeds=seeds, hops=hops)
     rc = contexts.get("retrieve")
     try:
         if retriever == "embedding" and getattr(rc, "vector_store", None) is not None:
@@ -104,7 +133,12 @@ def assemble_preload(
     if contexts.get("retrieve") is None:
         return "", []
 
-    per_retriever = [_retrieve(contexts, r, query, top_k, level) for r in retrievers]
+    seeds = int(recipe.get("seeds", 5))
+    hops = int(recipe.get("hops", 1))
+    per_retriever = [
+        _retrieve(contexts, r, query, top_k, level, seeds=seeds, hops=hops)
+        for r in retrievers
+    ]
     nodes = _interleave(per_retriever)
     # Map nodes -> spans (1-based, repo-relative via node_id), dedup overlapping
     # regions, cap to top_k. nodes_to_spans re-sorts by score, so derive spans
