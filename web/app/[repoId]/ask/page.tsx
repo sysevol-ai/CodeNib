@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
@@ -47,6 +47,17 @@ function AskAnswer() {
   const repoName = repo ? repo.repo : repoId;
   const citations = resp?.citations ?? [];
 
+  // Long questions are clamped to a few lines with a "Show full text" toggle
+  // (matches DeepWiki). Measure while clamped to decide whether to show it.
+  const [qExpanded, setQExpanded] = useState(false);
+  const [qOverflows, setQOverflows] = useState(false);
+  const qRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    setQExpanded(false);
+    const el = qRef.current;
+    if (el) setQOverflows(el.scrollHeight > el.clientHeight + 2);
+  }, [q]);
+
   return (
     <div className="wiki ask-page">
       <Header
@@ -67,7 +78,14 @@ function AskAnswer() {
           <Link className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
             ← Back to wiki
           </Link>
-          <h1 className="ask-q">{q || "Ask a question"}</h1>
+          <h1 ref={qRef} className={`ask-q ${qExpanded ? "" : "clamped"}`}>
+            {q || "Ask a question"}
+          </h1>
+          {q && qOverflows && (
+            <button className="ask-q-toggle" onClick={() => setQExpanded((e) => !e)}>
+              {qExpanded ? "Show less" : "Show full text"}
+            </button>
+          )}
 
           {!q && <p className="muted">Type a question in the bar below.</p>}
           {loading && <p className="muted ask-thinking">Searching {repoName}…</p>}

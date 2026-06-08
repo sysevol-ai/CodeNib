@@ -1063,6 +1063,28 @@ pre {
   line-height: 1.35;
   margin: 0 0 20px;
 }
+/* Clamp a long question to a fixed height; a "Show full text" toggle expands it. */
+.ask-q.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ask-q-toggle {
+  display: inline-block;
+  margin: -12px 0 18px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ask-q-toggle:hover {
+  color: var(--accent);
+}
 .ask-thinking {
   animation: ask-pulse 1.4s ease-in-out infinite;
 }
