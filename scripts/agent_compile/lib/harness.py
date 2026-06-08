@@ -88,6 +88,9 @@ def scenario_for(query: str, language_key: str) -> str:
 _PRELOAD_RETRIEVER_SKILL = {
     "embedding": "embedding_search",
     "bm25": "bm25_search",
+    # graph = the codeminer_context composer (search seeds + call-graph expand);
+    # pulling it into the union builds the "expand" (symbol_graph) context.
+    "graph": "codeminer_context",
 }
 
 

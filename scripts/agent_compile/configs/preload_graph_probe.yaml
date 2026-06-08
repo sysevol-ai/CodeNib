@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# ===========================================================================
+# Graph pre-load probe — does call-graph pre-injection beat embedding (and grep)
+# on the traversal category?
+# ===========================================================================
+# The Python per-category run showed embedding pre-injection REGRESSES on
+# `traversal` (multi-hop: file-level files@5 1.0 -> 0.8) because semantic
+# candidates anchor on the wrong hop. Traversal needs STRUCTURE, so this probe
+# adds a graph recipe (codeminer_context composer: search seeds + call-graph
+# expansion) and compares on the traversal queries (which carry real GT spans,
+# so symbol-level answer_rec is valid — no dataset regen needed).
+#
+#   grep_only     — defaults only (baseline)
+#   preinj_embed  — embedding candidates pre-injected
+#   preinj_graph  — call-graph-expanded candidates pre-injected
+base: design_space.yaml
+
+sweep_id: preload_graph_probe
+reps: 1
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_embed:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_graph:
+    - read
+    - grep
+    - glob
+    - bash
+
+preload:
+  preinj_embed:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+  preinj_graph:
+    retrievers: [graph]
+    top_k: 10
+    level: l2

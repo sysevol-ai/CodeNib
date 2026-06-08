@@ -31,8 +31,30 @@ _DEFAULT_TOP_K = 10
 _DEFAULT_LEVEL = "l2"
 
 
-def _retrieve(rc: Any, retriever: str, query: str, top_k: int, level: str) -> List[Any]:
+def _graph_compose(contexts: Dict[str, Any], query: str, top_k: int) -> List[Any]:
+    """Graph-aware candidates via the codeminer_context composer (search seeds
+    then call-graph expansion). Needs both the retrieve and expand contexts."""
+    try:
+        from codeminer.agent.skills.codeminer_context.executor import create_executor
+        from codeminer.agent.skills.context import ComposerContexts
+
+        cc = ComposerContexts(
+            retrieve=contexts.get("retrieve"), expand=contexts.get("expand")
+        )
+        if cc.retrieve is None or cc.expand is None:
+            return []
+        return list(create_executor(cc)(query, max_results=top_k, seeds=5))
+    except Exception:  # noqa: BLE001 — a failing retriever just contributes nothing
+        return []
+
+
+def _retrieve(
+    contexts: Dict[str, Any], retriever: str, query: str, top_k: int, level: str
+) -> List[Any]:
     """Run a single retriever, returning its ranked nodes (best-effort)."""
+    if retriever == "graph":
+        return _graph_compose(contexts, query, top_k)
+    rc = contexts.get("retrieve")
     try:
         if retriever == "embedding" and getattr(rc, "vector_store", None) is not None:
             return list(
@@ -79,11 +101,10 @@ def assemble_preload(
     retrievers = recipe.get("retrievers") or ["embedding"]
     top_k = int(recipe.get("top_k", _DEFAULT_TOP_K))
     level = recipe.get("level", _DEFAULT_LEVEL)
-    rc = contexts.get("retrieve")
-    if rc is None:
+    if contexts.get("retrieve") is None:
         return "", []
 
-    per_retriever = [_retrieve(rc, r, query, top_k, level) for r in retrievers]
+    per_retriever = [_retrieve(contexts, r, query, top_k, level) for r in retrievers]
     nodes = _interleave(per_retriever)
     # Map nodes -> spans (1-based, repo-relative via node_id), dedup overlapping
     # regions, cap to top_k. nodes_to_spans re-sorts by score, so derive spans
