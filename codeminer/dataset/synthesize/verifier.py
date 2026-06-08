@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from codeminer.log_utils import get_logger
 
@@ -18,9 +18,6 @@ from .vocab_guard import (
     VocabOverlapResult,
     VocabularyOverlapGuard,
 )
-
-if TYPE_CHECKING:
-    from ._agent import AgentRunner
 
 logger = get_logger(__name__)
 
