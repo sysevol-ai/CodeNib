@@ -7,6 +7,8 @@ import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github.css";
+import { matchCitation, lineLabel } from "@/lib/citations";
+import type { Citation } from "@/lib/api";
 
 // Mermaid (~1MB) is only needed when a diagram actually appears; load it on
 // demand so it never weighs down pages that have none (wiki strips diagrams).
@@ -47,7 +49,47 @@ function CodeBlock({ text, lang, children }: { text: string; lang: string; child
   );
 }
 
-export default function Markdown({ children }: { children: string }) {
+/** Inline `code` span that names a cited symbol/file: click to jump the code pane. */
+function CiteChip({
+  text,
+  c,
+  showLoc,
+  onClick,
+}: {
+  text: string;
+  c: Citation;
+  /** Only symbol matches carry a meaningful range; a file has many symbols. */
+  showLoc: boolean;
+  onClick: () => void;
+}) {
+  const loc = showLoc ? lineLabel(c) : "";
+  return (
+    <button
+      type="button"
+      className="cite-chip"
+      onClick={onClick}
+      title={
+        loc
+          ? `Jump to ${c.node_name || text} (lines ${loc})`
+          : `Jump to ${text} in the code panel`
+      }
+    >
+      <code>{text}</code>
+      {loc && <span className="cite-chip-loc">:{loc}</span>}
+    </button>
+  );
+}
+
+export default function Markdown({
+  children,
+  citations,
+  onCite,
+}: {
+  children: string;
+  /** When provided (with onCite), inline code naming a citation becomes a clickable chip. */
+  citations?: Citation[];
+  onCite?: (index: number) => void;
+}) {
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -65,6 +107,25 @@ export default function Markdown({ children }: { children: string }) {
             }
             const lang = (className.match(/language-(\w+)/) || [])[1] || "";
             return <CodeBlock text={text} lang={lang}>{children}</CodeBlock>;
+          },
+          code({ className, children }) {
+            // Inline code only; block code has a language-* class or newlines.
+            const text = nodeText(children);
+            const inline = !/language-/.test(className || "") && !text.includes("\n");
+            if (inline && citations && onCite) {
+              const m = matchCitation(text, citations);
+              if (m != null) {
+                return (
+                  <CiteChip
+                    text={text}
+                    c={citations[m.index]}
+                    showLoc={m.kind === "symbol"}
+                    onClick={() => onCite(m.index)}
+                  />
+                );
+              }
+            }
+            return <code className={className}>{children}</code>;
           },
         }}
       >

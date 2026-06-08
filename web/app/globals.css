@@ -663,6 +663,35 @@ pre {
   font-size: 0.85em;
   color: var(--text);
 }
+/* Inline citation chip: a cited symbol/file in prose; click scrolls the code pane. */
+.cite-chip {
+  display: inline;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-radius: 5px;
+  padding: 1px 4px;
+  margin: 0 1px;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+.cite-chip:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--accent);
+}
+.cite-chip > code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+  color: var(--accent);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+.cite-chip-loc {
+  font-size: 0.72em;
+  color: var(--muted);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
 .markdown table {
   border-collapse: collapse;
   margin: 12px 0;

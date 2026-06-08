@@ -43,3 +43,6 @@ web/*.tsbuildinfo
 !web/package-lock.json
 # Keep committed experiment-run evidence (relocated out of results/).
 !docs/experiments/agent_compile_runs/**/*.json
+.env.local
+web_before
+qa_config.local.yaml

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
@@ -8,6 +8,7 @@ import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
 import CodePanel from "@/components/CodePanel";
 import { askQuestion, fetchRepos, type ChatResponse, type RepoInfo } from "@/lib/api";
+import { codeRefs } from "@/lib/citations";
 
 function AskAnswer() {
   const params = useParams<{ repoId: string }>();
@@ -45,7 +46,10 @@ function AskAnswer() {
   }, [repoId, q]);
 
   const repoName = repo ? repo.repo : repoId;
-  const citations = resp?.citations ?? [];
+  // Shared list so a chip's index lines up with the code pane's fragments.
+  const refs = useMemo(() => codeRefs(resp?.citations ?? []), [resp]);
+  const [active, setActive] = useState(0);
+  useEffect(() => setActive(0), [resp]);
 
   return (
     <div className="wiki ask-page">
@@ -80,11 +84,13 @@ function AskAnswer() {
           {resp && (
             <>
               <article className="ask-a">
-                <Markdown>{resp.answer || "(no answer)"}</Markdown>
+                <Markdown citations={refs} onCite={setActive}>
+                  {resp.answer || "(no answer)"}
+                </Markdown>
               </article>
               <div className="ask-tools muted small">
                 {resp.tool_calls.length} tool calls · {resp.total_turns} turns ·{" "}
-                {Math.round(resp.total_duration_ms)} ms · {citations.length} references
+                {Math.round(resp.total_duration_ms)} ms · {refs.length} references
               </div>
             </>
           )}
@@ -93,9 +99,11 @@ function AskAnswer() {
         <aside className="ask-code">
           <CodePanel
             repoId={repoId}
-            citations={citations}
+            citations={refs}
             repo={repo?.repo}
             commit={repo?.base_commit}
+            active={active}
+            onActiveChange={setActive}
           />
         </aside>
       </div>
