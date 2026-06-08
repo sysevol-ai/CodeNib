@@ -6,14 +6,11 @@ import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
 import Codemap from "@/components/Codemap";
-import GraphView from "@/components/GraphView";
 import {
   fetchRepos,
-  fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
   repoRelative,
-  type CodemapResponse,
   type RepoInfo,
   type WikiPage,
   type WikiPageRef,
@@ -23,16 +20,6 @@ interface Heading {
   id: string;
   text: string;
   level: number;
-}
-
-// The wiki page now leads with an interactive subsystem graph, so the narrator's
-// generated mermaid diagrams (and any heading left empty once removed) are
-// redundant — strip them before rendering.
-function stripGeneratedDiagrams(md: string): string {
-  return md
-    .replace(/\n#{1,6}[^\n]*\n+```mermaid[\s\S]*?```/g, "") // a heading + its diagram
-    .replace(/```mermaid[\s\S]*?```/g, "") // any stray diagram
-    .trimEnd();
 }
 
 // Link a repo-relative source path to the exact blob on GitHub at the indexed commit.
@@ -78,7 +65,6 @@ export default function WikiPageView() {
   const [pages, setPages] = useState<WikiPageRef[]>([]);
   const [activeId, setActiveId] = useState<string>("overview");
   const [page, setPage] = useState<WikiPage | null>(null);
-  const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
   // The graph explorer opens as a full-screen modal, optionally seeded on a
   // symbol when launched via "Focus here" from a wiki subsystem map.
   const [graphSeed, setGraphSeed] = useState<string | undefined>(undefined);
@@ -108,14 +94,9 @@ export default function WikiPageView() {
     let cancelled = false;
     setPage(null);
     setPageError(null);
-    setPageGraph(null);
     fetchWikiPage(repoId, activeId)
       .then((p) => !cancelled && setPage(p))
       .catch((e) => !cancelled && setPageError(String(e)));
-    // The page's symbols as a view over the graph (rendered atop the narrative).
-    fetchWikiGraph(repoId, activeId)
-      .then((g) => !cancelled && setPageGraph(g))
-      .catch(() => !cancelled && setPageGraph(null));
     return () => {
       cancelled = true;
     };
@@ -222,20 +203,6 @@ export default function WikiPageView() {
 
         <main className="wiki-main">
           <div className="wiki-content" ref={contentRef}>
-              {pageGraph && pageGraph.available && pageGraph.nodes.length > 0 && (
-                <details className="subsystem-map" open>
-                  <summary>
-                    Subsystem map · {pageGraph.nodes.length} symbols
-                    <span className="subsystem-hint"> — this page as a view over the graph</span>
-                  </summary>
-                  <GraphView
-                    repoId={repoId}
-                    data={pageGraph}
-                    variant="wiki"
-                    onFocus={(label) => openGraph(label)}
-                  />
-                </details>
-              )}
               {page && page.citations.length > 0 && (
                 <details className="relevant-files-wiki">
                   {(() => {
@@ -274,7 +241,7 @@ export default function WikiPageView() {
                 </details>
               )}
               {page ? (
-                <Markdown>{stripGeneratedDiagrams(page.markdown)}</Markdown>
+                <Markdown>{page.markdown}</Markdown>
               ) : pageError ? (
                 <p className="muted">Couldn't load this page. It may not exist — pick a section from the sidebar.</p>
               ) : (
