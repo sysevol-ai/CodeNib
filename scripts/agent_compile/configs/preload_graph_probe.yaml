@@ -42,6 +42,14 @@ subsets:
     - grep
     - glob
     - bash
+  # Clean hops ablation: SAME top_k/seeds as preinj_graph, only hops differs,
+  # so preinj_graph(1-hop) vs preinj_graph_h2(2-hop) isolates the pure hop
+  # effect from the candidate-count confound that preinj_graph2 also changes.
+  preinj_graph_h2:
+    - read
+    - grep
+    - glob
+    - bash
 
 preload:
   preinj_embed:
@@ -59,4 +67,11 @@ preload:
     top_k: 20
     level: l2
     seeds: 8
+    hops: 2
+  # identical to preinj_graph except hops=2 (top_k=10, seeds=5) -> isolates hops
+  preinj_graph_h2:
+    retrievers: [graph]
+    top_k: 10
+    level: l2
+    seeds: 5
     hops: 2
