@@ -197,7 +197,38 @@ class ContextLoader:
             core_block=core_block,
             candidate_blocks=candidates,
             neighborhood_blocks=neighborhood,
+            symbol_spans=self.build_symbol_span_index(graph),
         )
+
+    @staticmethod
+    def build_symbol_span_index(code_graph) -> Dict[Tuple[str, str], Tuple[int, int]]:
+        """``{(file, leaf_symbol): (start_line, end_line)}`` over ALL graph symbol
+        nodes (0-based graph attrs, uncapped).
+
+        ``candidate_blocks`` is randomly downsampled to ``max_candidate_blocks``,
+        so it cannot resolve an arbitrary ground-truth symbol; this scans every
+        symbol vertex so the hint/reasoning path can recover real line spans.
+        """
+        index: Dict[Tuple[str, str], Tuple[int, int]] = {}
+        graph = code_graph.get_graph()
+        for node in graph.vs:
+            attrs = node.attributes()
+            if not is_symbol_node(attrs.get("type", "")):
+                continue
+            file_path = attrs.get("file")
+            start_line = attrs.get("start_line")
+            end_line = attrs.get("end_line")
+            name = attrs.get("name")
+            if (
+                not file_path
+                or not name
+                or not isinstance(start_line, int)
+                or not isinstance(end_line, int)
+            ):
+                continue
+            leaf = str(name).split(":")[-1].split("/")[-1].split(".")[-1].rstrip("()")
+            index.setdefault((file_path, leaf), (start_line, end_line))
+        return index
 
     def load_code_graph(
         self,

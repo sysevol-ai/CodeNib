@@ -27,7 +27,12 @@ from codeminer.log_utils import get_logger
 from codeminer.types import NodeInfo
 
 from ._agent import AgentRunner
-from ._types import RepoSnapshot, SampledCodeBlock, TargetDiscoveryResult
+from ._types import (
+    BehavioralContext,
+    RepoSnapshot,
+    SampledCodeBlock,
+    TargetDiscoveryResult,
+)
 from .context_loader import ContextLoader
 from .query_curator import QueryCurator
 from .verifier import Verifier
@@ -177,7 +182,9 @@ class ClaudeQuerySynthesizer:
                 ground_truth,
                 discovered_targets=discovered,
             )
-            target_symbol_nodes = self._build_symbol_nodes_from_ground_truth(gt)
+            target_symbol_nodes = self._build_symbol_nodes_from_ground_truth(
+                gt, behavioral_context
+            )
 
         return self._build_output(
             instance=instance,
@@ -237,7 +244,9 @@ class ClaudeQuerySynthesizer:
                 ground_truth,
                 discovered_targets=discovered,
             )
-            target_symbol_nodes = self._build_symbol_nodes_from_ground_truth(gt)
+            target_symbol_nodes = self._build_symbol_nodes_from_ground_truth(
+                gt, behavioral_context
+            )
 
         return self._build_output(
             instance=instance,
@@ -428,18 +437,43 @@ class ClaudeQuerySynthesizer:
     @staticmethod
     def _build_symbol_nodes_from_ground_truth(
         gt: Optional[GroundTruth],
+        behavioral_context: Optional["BehavioralContext"] = None,
     ) -> List[NodeInfo]:
+        """Build target symbol nodes for the non-behavioral (hint) path.
+
+        ``_build_ground_truth`` derives primary_locations from ``file:symbol``
+        strings only, so they carry NO line ranges (start/end_line default to 0).
+        That produced the (0,0) ``gt_symbol_nodes`` for the file_hint /
+        module_hint / symbol_hint / reasoning categories on HuggingFace, which
+        makes span-overlap eval impossible for them. Resolve each symbol's real
+        span from the sampled graph blocks (``behavioral_context.candidate_blocks``
+        is built for every query, behavioral or not, and carries true graph
+        spans); fall back to the location's own (possibly 0) span when unmatched.
+        """
         if gt is None:
             return []
+
+        def _leaf(name: Any) -> str:
+            # Robust to "file.py:Class.method()", "pkg/path/leaf", "Class.method".
+            s = str(name or "")
+            if ":" in s:
+                s = s.split(":")[-1]
+            return s.split("/")[-1].split(".")[-1].rstrip("()")
+
+        # Resolve real spans from the FULL graph index (candidate_blocks is
+        # downsampled and can't be relied on to contain the GT symbol).
+        span_index = behavioral_context.symbol_spans if behavioral_context else {}
         nodes: List[NodeInfo] = []
         for loc in gt.primary_locations:
+            span = span_index.get((loc.file_path, _leaf(loc.symbol or loc.node_id)))
+            start, end = span if span else (loc.start_line, loc.end_line)
             nodes.append(
                 NodeInfo(
                     node_name=loc.node_id,
                     type=loc.symbol_type or "",
                     file=loc.file_path,
-                    start_line=loc.start_line,
-                    end_line=loc.end_line,
+                    start_line=start,
+                    end_line=end,
                 )
             )
         return nodes

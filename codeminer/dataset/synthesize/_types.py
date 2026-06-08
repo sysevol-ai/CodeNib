@@ -6,9 +6,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -118,6 +118,11 @@ class BehavioralContext:
     core_block: SampledCodeBlock
     candidate_blocks: List[SampledCodeBlock]
     neighborhood_blocks: List[SampledCodeBlock]
+    # {(file_path, leaf_symbol): (start_line, end_line)} over ALL graph symbol
+    # nodes (0-based, graph attrs) — used to resolve real line spans for the
+    # hint/reasoning path, whose ground truth carries only file:symbol strings.
+    # NOT candidate_blocks: those are randomly downsampled to max_candidate_blocks.
+    symbol_spans: Dict[Tuple[str, str], Tuple[int, int]] = field(default_factory=dict)
 
 
 def format_prompt_block(
