@@ -125,6 +125,30 @@ class TestAgentRunner:
         assert record.result == "echo: hello"
         assert record.error is None
 
+    def test_partial_contract_answer_forces_schema_turn(self, echo_registry):
+        """A Files-only answer is not enough for span scoring; force schema."""
+        llm = _make_llm()
+        tc = _make_tool_call("call_1", "echo", '{"text": "hello"}')
+        llm._call_raw.side_effect = [
+            _make_response(tool_calls=[tc]),
+            _make_response(content="Files: src/a.py"),
+            _make_response(
+                content=(
+                    "Files: src/a.py\n"
+                    "Symbols: src/a.py:foo\n"
+                    "Locations: src/a.py:10-20"
+                )
+            ),
+        ]
+
+        runner = AgentRunner(llm, echo_registry)
+        result = runner.run("Echo hello")
+
+        assert result.total_turns == 2
+        assert result.answer.endswith("Locations: src/a.py:10-20")
+        assert llm._call_raw.call_count == 3
+        assert llm._call_raw.call_args.kwargs.get("tool_choice") == "none"
+
     def test_multiple_tool_calls_in_one_response(self, echo_registry):
         """LLM returns multiple tool calls in a single response."""
         llm = _make_llm()

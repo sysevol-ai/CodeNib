@@ -420,8 +420,9 @@ def nodes_to_spans(nodes: Sequence[QueriedNode]) -> List[Dict[str, Any]]:
       * ``node.file`` is the absolute *build-time* path baked into the index
         (``/.../.codeminer/...``), which matches neither the GT nor the current
         repo. The ``node_id`` file part IS repo-relative, so prefer it.
-      * lines are already ~1-based (start = graph-0-based + 1), so ``base=1`` —
-        NO further shift (unlike the 0-based graph in ``build_symbol_span_index``).
+      * raw ``NodeInfo`` / ``QueriedNode`` line spans are internal 0-based
+        (the agent boundary shifts only the JSON shown to the LLM), so shift
+        them +1 here to score against 1-based GT / answer spans.
     """
     out: List[Dict[str, Any]] = []
     for node in nodes:
@@ -433,7 +434,7 @@ def nodes_to_spans(nodes: Sequence[QueriedNode]) -> List[Dict[str, Any]]:
             file,
             getattr(node, "start_line", None),
             getattr(node, "end_line", None),
-            base=1,
+            base=0,
             score=getattr(node, "score", 0.0) or 0.0,
             source="node",
         )

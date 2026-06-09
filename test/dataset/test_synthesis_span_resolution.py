@@ -13,6 +13,7 @@ re-generated dataset has usable spans for span-overlap eval.
 """
 
 from codeminer.dataset.synthesize._types import BehavioralContext, SampledCodeBlock
+from codeminer.dataset.synthesize.context_loader import _leaf_symbol
 from codeminer.dataset.synthesize.query_synthesizer import ClaudeQuerySynthesizer
 from codeminer.dataset.utils import CodeLocation, GroundTruth
 
@@ -33,10 +34,7 @@ def _block(file: str, node_name: str, start: int, end: int) -> SampledCodeBlock:
 
 
 def _leaf(name: str) -> str:
-    s = str(name)
-    if ":" in s:
-        s = s.split(":")[-1]
-    return s.split("/")[-1].split(".")[-1].rstrip("()")
+    return _leaf_symbol(name)
 
 
 def _ctx(*blocks: SampledCodeBlock) -> BehavioralContext:
@@ -88,6 +86,13 @@ def test_resolves_span_from_graph_style_nodename():
     blk = _block("src/m.rs", "crate/m/do_it", 10, 40)
     nodes = ClaudeQuerySynthesizer._build_symbol_nodes_from_ground_truth(gt, _ctx(blk))
     assert (nodes[0].start_line, nodes[0].end_line) == (10, 40)
+
+
+def test_resolves_span_from_hash_member_nodename():
+    gt = _gt("pkg/calc.go", "Add")
+    blk = _block("pkg/calc.go", "pkg/Calculator#Add", 3, 8)
+    nodes = ClaudeQuerySynthesizer._build_symbol_nodes_from_ground_truth(gt, _ctx(blk))
+    assert (nodes[0].start_line, nodes[0].end_line) == (3, 8)
 
 
 def test_falls_back_to_zero_when_unmatched_or_no_context():

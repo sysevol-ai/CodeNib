@@ -144,6 +144,18 @@ def load_full_contexts(cfg: SweepConfig, repo_path: str, cache_dir: str):
     return contexts
 
 
+def _leaf_symbol(name: Any) -> str:
+    """Return the final answer/GT leaf from graph or display symbol names."""
+    s = str(name or "").strip()
+    if not s:
+        return ""
+    if ":" in s:
+        s = s.rsplit(":", 1)[1]
+    s = s.replace("#", ".")
+    s = s.split("(", 1)[0]
+    return s.split("/")[-1].split(".")[-1].strip()
+
+
 def build_symbol_span_index(prebuilt_dir: str, instance_id: str) -> Dict[Any, Any]:
     """``{(norm_file, leaf_name): (start_1based, end_1based)}`` from the prebuilt
     graph, so committed scoring can resolve a named symbol to its line span.
@@ -175,13 +187,17 @@ def build_symbol_span_index(prebuilt_dir: str, instance_id: str) -> Dict[Any, An
             attrs.get("end_line"),
         )
         name = attrs.get("name")
-        if file is None or start is None or end is None or not name:
+        unified_name = attrs.get("unified_name")
+        if file is None or start is None or end is None or not (name or unified_name):
             continue
         nf = normalize_file_path(file)
-        leaf = str(name).split("/")[-1].split(".")[-1]
-        key = (nf, leaf)
-        if key not in index:  # first definition wins
-            index[key] = (int(start) + 1, int(end) + 1)
+        for label in (name, unified_name):
+            leaf = _leaf_symbol(label)
+            if not leaf:
+                continue
+            key = (nf, leaf)
+            if key not in index:  # first definition wins
+                index[key] = (int(start) + 1, int(end) + 1)
     return index
 
 

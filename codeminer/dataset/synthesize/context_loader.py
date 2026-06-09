@@ -11,7 +11,7 @@ import math
 import random
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
 
@@ -28,7 +28,6 @@ from codeminer.types import (
 )
 from codeminer.utils import is_test_file
 
-from ._agent import AgentRunner
 from ._types import (
     BehavioralContext,
     RepoSnapshot,
@@ -36,7 +35,27 @@ from ._types import (
     TargetDiscoveryResult,
 )
 
+if TYPE_CHECKING:
+    from ._agent import AgentRunner
+
 logger = get_logger(__name__)
+
+
+def _leaf_symbol(name: Any) -> str:
+    """Return the answer/GT leaf symbol from graph or display names.
+
+    Graph vertex names vary by language (``file.py:foo()``,
+    ``pkg/Type#method``, ``Class.method``), while answer/GT matching uses the
+    final human-readable leaf. Normalize both sides through one helper.
+    """
+    s = str(name or "").strip()
+    if not s:
+        return ""
+    if ":" in s:
+        s = s.rsplit(":", 1)[1]
+    s = s.replace("#", ".")
+    s = s.split("(", 1)[0]
+    return s.split("/")[-1].split(".")[-1].strip()
 
 
 class ContextLoader:
@@ -219,15 +238,18 @@ class ContextLoader:
             start_line = attrs.get("start_line")
             end_line = attrs.get("end_line")
             name = attrs.get("name")
+            unified_name = attrs.get("unified_name")
             if (
                 not file_path
-                or not name
                 or not isinstance(start_line, int)
                 or not isinstance(end_line, int)
+                or not (name or unified_name)
             ):
                 continue
-            leaf = str(name).split(":")[-1].split("/")[-1].split(".")[-1].rstrip("()")
-            index.setdefault((file_path, leaf), (start_line, end_line))
+            for label in (name, unified_name):
+                leaf = _leaf_symbol(label)
+                if leaf:
+                    index.setdefault((file_path, leaf), (start_line, end_line))
         return index
 
     def load_code_graph(

@@ -55,9 +55,24 @@ LOCALIZATION_SCHEMA = (
     "Locations: path/one.ext:START-END, path/two.ext:START-END"
 )
 
-# Detects whether an answer already carries the contract (markdown-tolerant, to
-# match the eval parser): ``Files:``, ``**Files:**``, ``- files =`` all count.
-_HAS_FILES_CONTRACT = re.compile(r"(?im)^[\s>#*_`\-]*files?[\s*_`]*[:=]")
+# Detect whether an answer already carries the full contract (markdown-tolerant,
+# to match the eval parser): ``Files:``, ``**Files:**``, ``- files =`` all count.
+_LABEL_PREFIX = r"(?im)^[\s>#*_`\-]*"
+_HAS_FILES_CONTRACT = re.compile(rf"{_LABEL_PREFIX}files?[\s*_`]*[:=]")
+_HAS_SYMBOLS_CONTRACT = re.compile(rf"{_LABEL_PREFIX}symbols?[\s*_`]*[:=]")
+_HAS_LOCATIONS_CONTRACT = re.compile(rf"{_LABEL_PREFIX}locations?[\s*_`]*[:=]")
+
+
+def _has_localization_contract(answer: str) -> bool:
+    return all(
+        pattern.search(answer or "")
+        for pattern in (
+            _HAS_FILES_CONTRACT,
+            _HAS_SYMBOLS_CONTRACT,
+            _HAS_LOCATIONS_CONTRACT,
+        )
+    )
+
 
 _DEFAULT_SYSTEM_PROMPT = f"""\
 You are a code localization agent. Find the code locations (files and \
@@ -388,7 +403,7 @@ class AgentRunner:
                 # without the contract (it explored but didn't format), force one
                 # schema turn so a genuine localization isn't lost to formatting.
                 answer = getattr(assistant_msg, "content", None) or ""
-                if all_tool_calls and not _HAS_FILES_CONTRACT.search(answer):
+                if all_tool_calls and not _has_localization_contract(answer):
                     answer = (
                         self._force_schema_answer(history, usage_tracker, turn + 2)
                         or answer
@@ -430,7 +445,7 @@ class AgentRunner:
         # Budget exhausted. A capped agent usually left mid-exploration chatter
         # ("Let me check…"), so force a schema-conforming final answer unless it
         # already emitted the contract.
-        if all_tool_calls and not _HAS_FILES_CONTRACT.search(last_content):
+        if all_tool_calls and not _has_localization_contract(last_content):
             last_content = (
                 self._force_schema_answer(history, usage_tracker, max_turns + 1)
                 or last_content

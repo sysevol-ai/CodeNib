@@ -26,14 +26,13 @@ from codeminer.dataset.utils import CodeLocation, GroundTruth, QueryType
 from codeminer.log_utils import get_logger
 from codeminer.types import NodeInfo
 
-from ._agent import AgentRunner
 from ._types import (
     BehavioralContext,
     RepoSnapshot,
     SampledCodeBlock,
     TargetDiscoveryResult,
 )
-from .context_loader import ContextLoader
+from .context_loader import ContextLoader, _leaf_symbol
 from .query_curator import QueryCurator
 from .verifier import Verifier
 from .vocab_guard import DEFAULT_OVERLAP_THRESHOLD
@@ -85,6 +84,8 @@ class ClaudeQuerySynthesizer:
         self.num_queries = max(1, num_queries)
 
         # --- Agent runners with per-stage tool configs ---
+        from ._agent import AgentRunner
+
         context_agent = AgentRunner(
             model=model,
             max_turns=max_turns,
@@ -453,19 +454,14 @@ class ClaudeQuerySynthesizer:
         if gt is None:
             return []
 
-        def _leaf(name: Any) -> str:
-            # Robust to "file.py:Class.method()", "pkg/path/leaf", "Class.method".
-            s = str(name or "")
-            if ":" in s:
-                s = s.split(":")[-1]
-            return s.split("/")[-1].split(".")[-1].rstrip("()")
-
         # Resolve real spans from the FULL graph index (candidate_blocks is
         # downsampled and can't be relied on to contain the GT symbol).
         span_index = behavioral_context.symbol_spans if behavioral_context else {}
         nodes: List[NodeInfo] = []
         for loc in gt.primary_locations:
-            span = span_index.get((loc.file_path, _leaf(loc.symbol or loc.node_id)))
+            span = span_index.get(
+                (loc.file_path, _leaf_symbol(loc.symbol or loc.node_id))
+            )
             start, end = span if span else (loc.start_line, loc.end_line)
             nodes.append(
                 NodeInfo(

@@ -10,14 +10,13 @@ import hashlib
 import math
 import random
 import re
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from pydantic import ValidationError
 
 from codeminer.dataset.utils import QueryType, get_prompt_for_query_type
 from codeminer.log_utils import get_logger
 
-from ._agent import AgentRunner
 from ._types import (
     BehavioralContext,
     BehavioralSelectionResult,
@@ -26,6 +25,9 @@ from ._types import (
     TargetDiscoveryResult,
     format_prompt_block,
 )
+
+if TYPE_CHECKING:
+    from ._agent import AgentRunner
 
 logger = get_logger(__name__)
 

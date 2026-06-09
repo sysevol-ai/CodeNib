@@ -10,7 +10,10 @@ must credit it, must survive the 0-based-node vs 1-based-GT origin skew, and mus
 not let a verbose agent inflate its score by dumping context.
 """
 
+import pickle
 from types import SimpleNamespace
+
+import igraph as ig
 
 from codeminer.eval.retrieval_eval import (
     collect_target_blocks,
@@ -22,6 +25,7 @@ from codeminer.eval.retrieval_eval import (
     score_localization_spans,
     spans_overlap,
 )
+from scripts.agent_compile.lib.harness import build_symbol_span_index
 
 
 def _node(file, start, end, score=0.0, node_id=None):
@@ -114,8 +118,8 @@ def test_spans_overlap_same_file():
     assert not spans_overlap(_span("a.py", 10, 20), _span("b.py", 10, 20))
 
 
-def test_retrieval_node_1based_no_shift_and_overlap():
-    """Retrieval nodes are ~1-based already: no shift, and they overlap GT."""
+def test_retrieval_node_0based_shift_and_overlap():
+    """Raw retrieval nodes are internal 0-based; scoring shifts them +1."""
     gt = collect_target_blocks(
         {
             "gt_code_blocks": [
@@ -123,10 +127,20 @@ def test_retrieval_node_1based_no_shift_and_overlap():
             ]
         }
     )
-    spans = nodes_to_spans([_node("src/fixes.rs", 80, 100)])
-    assert spans[0]["start"] == 80 and spans[0]["end"] == 100  # unshifted
+    spans = nodes_to_spans([_node("src/fixes.rs", 66, 104)])
+    assert spans[0]["start"] == 67 and spans[0]["end"] == 105
     m = compute_block_metrics(spans, gt)
     assert m["accuracy"] == 1.0 and m["recall"] == 1.0
+
+
+def test_retrieval_node_single_line_off_by_one_hits():
+    """A one-line node at internal line 9 must hit 1-based GT line 10."""
+    gt = collect_target_blocks(
+        {"gt_code_blocks": [{"start_line": 10, "end_line": 10, "file_path": "a.py"}]}
+    )
+    spans = nodes_to_spans([_node("a.py", 9, 9)])
+    assert (spans[0]["start"], spans[0]["end"]) == (10, 10)
+    assert compute_block_metrics(spans, gt)["recall"] == 1.0
 
 
 def test_nodes_to_spans_uses_relative_node_id_not_absolute_file():
@@ -226,6 +240,28 @@ def test_resolve_symbol_spans_strips_parens_and_qualifier():
 
 def test_resolve_symbol_spans_unknown_symbol_is_dropped():
     assert resolve_symbol_spans("Symbols: a.py:does_not_exist", {}) == []
+
+
+def test_prebuilt_symbol_span_index_normalizes_graph_names(tmp_path):
+    inst = tmp_path / "iid"
+    inst.mkdir()
+    graph = ig.Graph()
+    graph.add_vertices(2)
+    graph.vs[0]["file"] = "src/foo.py"
+    graph.vs[0]["start_line"] = 9
+    graph.vs[0]["end_line"] = 19
+    graph.vs[0]["name"] = "src/foo.py:bar()"
+    graph.vs[0]["unified_name"] = "src/foo.py:Foo.bar()"
+    graph.vs[1]["file"] = "pkg/calc.go"
+    graph.vs[1]["start_line"] = 3
+    graph.vs[1]["end_line"] = 7
+    graph.vs[1]["name"] = "pkg/Calculator#Add"
+    with (inst / "graph.pkl").open("wb") as f:
+        pickle.dump({"graph": graph}, f)
+
+    index = build_symbol_span_index(str(tmp_path), "iid")
+    assert index[("src/foo.py", "bar")] == (10, 20)
+    assert index[("pkg/calc.go", "Add")] == (4, 8)
 
 
 # --- ranking, dedup, anti-flooding ------------------------------------------
