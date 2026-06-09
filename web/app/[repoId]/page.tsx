@@ -88,8 +88,6 @@ export default function WikiPageView() {
   const [error, setError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
-  // Optional LLM "architecture overview" diagram, shown on demand behind a button.
-  const [showOverview, setShowOverview] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -111,7 +109,6 @@ export default function WikiPageView() {
     setPage(null);
     setPageError(null);
     setPageGraph(null);
-    setShowOverview(false);
     fetchWikiPage(repoId, activeId)
       .then((p) => !cancelled && setPage(p))
       .catch((e) => !cancelled && setPageError(String(e)));
@@ -225,19 +222,6 @@ export default function WikiPageView() {
 
         <main className="wiki-main">
           <div className="wiki-content" ref={contentRef}>
-              {page?.diagram && (
-                <div className="overview-diagram">
-                  <button
-                    className="overview-toggle"
-                    aria-expanded={showOverview}
-                    onClick={() => setShowOverview((v) => !v)}
-                    title="LLM-generated high-level architecture sketch"
-                  >
-                    {showOverview ? "▾" : "▸"} Architecture overview
-                  </button>
-                  {showOverview && <Markdown>{page.diagram}</Markdown>}
-                </div>
-              )}
               {pageGraph && pageGraph.available && pageGraph.nodes.length > 0 && (
                 <details className="subsystem-map" open>
                   <summary>

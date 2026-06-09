@@ -13,20 +13,8 @@ export default function Mermaid({ chart }: { chart: string }) {
       const dark = document.documentElement.dataset.theme === "dark";
       mermaid.initialize({
         startOnLoad: false,
+        theme: dark ? "dark" : "neutral",
         securityLevel: "loose",
-        // DeepWiki-style: white nodes, thin grey borders, system sans-serif.
-        theme: dark ? "dark" : "base",
-        fontFamily:
-          '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
-        themeVariables: dark
-          ? {}
-          : {
-              primaryColor: "#ffffff",
-              primaryBorderColor: "#d9d9d9",
-              primaryTextColor: "#1f2328",
-              lineColor: "#9aa0a6",
-              fontSize: "15px",
-            },
       });
       // Validate first: a failed mermaid.render() appends an error graphic to
       // the DOM as a side effect, so on invalid charts we fall back instead.

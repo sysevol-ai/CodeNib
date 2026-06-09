@@ -72,32 +72,8 @@ Write the page as GitHub-flavored Markdown:
 - Explain how this subsystem works at a high level, then the key pieces, in
   clear prose with `inline code` for symbol names. Use ## / ### subheadings.
 - Be concrete and reference the real file/symbol names shown above.
-- Do NOT draw any diagram — an architecture diagram is added automatically.
+- Do NOT draw any diagram — a dependency diagram is added automatically.
 Return only the Markdown (no JSON, no commentary)."""
-
-
-# LLM-written Mermaid, mirroring deepwiki-open's wiki-generation prompt
-# (src/app/[owner]/[repo]/page.tsx): top-down `graph TD`, short node labels.
-_DIAGRAM_PROMPT = """\
-You are drawing a high-level architecture diagram for one page of a developer
-wiki for the {repo} codebase.
-
-Page: {title} — {summary}
-
-These are the real files and symbols retrieved for this page. Ground the diagram
-in them; do not invent components.
-
-{context}
-
-Return a single Mermaid `graph TD` showing how this part of the system is
-organized at a HIGH LEVEL:
-- Use `graph TD` (top-down) — never `graph LR`.
-- 4-10 nodes, each a human-readable component or concept (e.g. "FITS Reader",
-  "Header Parser", "Unit Registry") — NOT individual functions or
-  `file.py:symbol()` names.
-- Edges show how the components depend on or flow into each other.
-- Short node labels (2-4 words); simple ids (A, B, C...).
-Return ONLY one fenced ```mermaid code block — no prose, no commentary."""
 
 
 class AgentWiki:
@@ -335,45 +311,40 @@ class AgentWiki:
             logger.warning("wiki page narration failed: %s", exc)
             return f"_{meta.get('summary', '')}_\n\n(Generation unavailable.)"
 
-    def _concept_diagram(self, meta: Dict[str, Any], context: str) -> str:
-        """Ask the LLM for a clean, high-level Mermaid architecture diagram of
-        the page's concepts (DeepWiki-style), grounded in the retrieved code.
-        The frontend renders it and falls back to text if a chart is invalid."""
-        if not context:
-            return ""
-        prompt = _DIAGRAM_PROMPT.format(
-            repo=getattr(self._bundle.entry, "repo", "this repository"),
-            title=meta.get("title", ""),
-            summary=meta.get("summary", ""),
-            context=context,
-        )
+    def _architecture_diagram(self, nodes: List[Any]) -> str:
+        """A deterministic, guaranteed-valid Mermaid diagram from the symbol
+        graph, centered on the page's most relevant resolvable symbol (reuses
+        the codemap builder rather than trusting LLM-written Mermaid)."""
         try:
-            import litellm
-
-            resp = litellm.completion(
-                model=self._model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=700,
-                temperature=0.2,
-                **_no_thinking_kwargs(self._model),
-            )
-            text = (resp.choices[0].message.content or "").strip()
-        except Exception as exc:  # noqa: BLE001 - diagram is optional
-            logger.warning("wiki diagram generation failed: %s", exc)
+            graph = self._bundle.code_graph()
+        except Exception:  # noqa: BLE001
+            graph = None
+        if graph is None or not nodes:
             return ""
-        m = re.search(r"```mermaid\s+(.*?)```", text, re.S)
-        body = (m.group(1) if m else text).strip().strip("`").strip()
-        if not re.match(r"(?i)^(graph|flowchart)\b", body):
+        try:
+            from ..web.codemap import build_codemap
+        except Exception:  # noqa: BLE001
             return ""
-        return "```mermaid\n" + body + "\n```"
+        for n in nodes:
+            name = self._node_attr(n, "node_name") or self._node_attr(n, "name")
+            if not name:
+                continue
+            try:
+                res = build_codemap(
+                    graph, symbol=name, direction="both", depth=1, max_nodes=12
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            if res.get("available") and res.get("edges"):
+                return "## Architecture\n\n```mermaid\n" + res["mermaid"] + "\n```"
+        return ""
 
     def _generate_page(self, meta: Dict[str, Any]) -> dict:
         nodes = self._retrieve(meta)
-        context = self._context(nodes)
-        markdown = self._narrate(meta, context)
-        # Optional, on-demand LLM concept diagram (shown behind a button); the
-        # precise symbol graph stays the page's default view.
-        diagram = self._concept_diagram(meta, context)
+        markdown = self._narrate(meta, self._context(nodes))
+        diagram = self._architecture_diagram(nodes)
+        if diagram:
+            markdown = f"{markdown}\n\n{diagram}"
         # Dedup citations by (file, start, end).
         citations: List[dict] = []
         seen = set()
@@ -388,7 +359,7 @@ class AgentWiki:
             "title": meta.get("title", meta["id"]),
             "markdown": f"# {meta.get('title', '')}\n\n{markdown}",
             "citations": citations,
-            "diagram": diagram,
+            "diagram": "",
         }
 
     # -- passthrough -------------------------------------------------------
