@@ -157,7 +157,7 @@ function buildElements(data: CodemapResponse, expanded: Set<string>): ElementDef
         id: `e${i++}`,
         source,
         target,
-        anchors: a.symbolEdge ? a.anchors.slice(0, 8) : [],
+        anchors: a.symbolEdge ? a.anchors : [],
         weight: a.weight || 1, // # call sites -> drives edge width
         hasAnchor: a.symbolEdge && a.anchors.length ? 1 : 0,
         meta: a.symbolEdge ? 0 : 1, // file-level aggregate (dashed) vs exact reference
