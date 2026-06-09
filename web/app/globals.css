@@ -736,6 +736,23 @@ pre {
 [data-theme="dark"] .mermaid-diagram {
   background: var(--surface);
 }
+/* On-demand "Architecture overview" (LLM concept diagram) toggle. */
+.overview-diagram {
+  margin: 4px 0 12px;
+}
+.overview-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.overview-toggle:hover {
+  color: var(--text);
+  border-color: var(--border-2);
+}
 .mermaid-diagram svg {
   max-width: 100%;
   height: auto;

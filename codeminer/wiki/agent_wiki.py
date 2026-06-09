@@ -365,16 +365,15 @@ class AgentWiki:
         body = (m.group(1) if m else text).strip().strip("`").strip()
         if not re.match(r"(?i)^(graph|flowchart)\b", body):
             return ""
-        return "## Architecture\n\n```mermaid\n" + body + "\n```"
+        return "```mermaid\n" + body + "\n```"
 
     def _generate_page(self, meta: Dict[str, Any]) -> dict:
         nodes = self._retrieve(meta)
         context = self._context(nodes)
         markdown = self._narrate(meta, context)
+        # Optional, on-demand LLM concept diagram (shown behind a button); the
+        # precise symbol graph stays the page's default view.
         diagram = self._concept_diagram(meta, context)
-        # Lead with the architecture diagram (DeepWiki-style), then the prose.
-        if diagram:
-            markdown = f"{diagram}\n\n{markdown}"
         # Dedup citations by (file, start, end).
         citations: List[dict] = []
         seen = set()
@@ -389,7 +388,7 @@ class AgentWiki:
             "title": meta.get("title", meta["id"]),
             "markdown": f"# {meta.get('title', '')}\n\n{markdown}",
             "citations": citations,
-            "diagram": "",
+            "diagram": diagram,
         }
 
     # -- passthrough -------------------------------------------------------
