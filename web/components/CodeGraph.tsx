@@ -2,8 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type Core, type ElementDefinition, type NodeSingular } from "cytoscape";
+import fcose from "cytoscape-fcose";
 import type { CallSite, CodemapResponse } from "@/lib/api";
-import { computeFilesPositions, type FilesLayoutItem } from "@/lib/filesLayout";
+
+// Register the compound-aware force layout once (idempotent across HMR reloads).
+const _g = globalThis as unknown as { __cmFcose?: boolean };
+if (!_g.__cmFcose) {
+  cytoscape.use(fcose);
+  _g.__cmFcose = true;
+}
 
 export interface EdgeClickInfo {
   anchors: CallSite[];
@@ -20,8 +27,10 @@ export interface GraphNodeInfo {
   external: boolean; // defined outside this repo — no source to open
 }
 
-// Fixed, semantic colour per symbol kind — used in the Files layout where
-// position already encodes file+line, so colour is freed up for "what kind".
+type CMNode = CodemapResponse["nodes"][number];
+
+// Fixed, semantic colour per symbol kind — used in the expanded symbol view where
+// the file box already groups by file, so colour is freed up for "what kind".
 const KIND_COLORS: Record<string, string> = {
   function: "#2d7ff9",
   method: "#1098ad",
@@ -41,121 +50,149 @@ function colorForKind(kind: string): string {
   return KIND_COLORS[kind] || "#868e96";
 }
 
-// Pure adapter: typed codemap payload -> Cytoscape elements. All visual encoding
-// is driven by these node/edge `data` fields plus the stylesheet (mapData mappers
-// + selectors) — never by imperative per-node styling. Deterministic (no DOM /
-// theme access), so it is unit-testable and the render effect stays a thin shell.
-function adaptGraphView(data: CodemapResponse): ElementDefinition[] {
-  const shortById = new Map(data.nodes.map((n) => [n.id, n.short]));
-  return [
-    ...data.nodes.map((n) => {
-      const hidden = n.hidden_callees || 0;
-      const kindColor = colorForKind(n.kind);
-      return {
-        data: {
-          id: n.id,
-          short: n.short, // clean name (used by the source peek)
-          glabel: hidden ? `${n.short}  +${hidden}` : n.short, // node label, with hub badge
-          flabel: n.label, // full unified_name, used to refocus
-          file: n.file,
-          line: n.line,
-          endLine: n.end_line ?? null,
-          kind: n.kind,
-          accent: kindColor, // border colour by symbol kind (position encodes file+dependency)
-          importance: n.importance ?? 0,
-          refCount: n.ref_count ?? 0, // referenced-by count (Phase 3/4 weighting)
-          entryScore: n.entry_score ?? 0, // entry-point-ness in [0,1]
-          root: n.is_root ? 1 : 0,
-          external: n.external ? 1 : 0,
-        },
-      };
-    }),
-    ...data.edges
-      .filter((e) => e.source && e.target)
-      .map((e, i) => {
-        const anchors = e.anchors || [];
-        return {
+// Files-overview model: the map opens with one "pill" per file (a readable
+// overview), and a file expands into its real symbols on click. Ids are namespaced
+// so a pill, its compound box, and its symbols never collide.
+const META = "filemeta::"; // collapsed file pill
+const BOX = "filebox::"; //   expanded file compound box
+const fileKey = (n: CMNode) => (n.external ? "· external" : n.file || "· external");
+const baseName = (f: string) => (f.startsWith("·") ? f : f.split("/").pop() || f);
+
+// Build Cytoscape elements for the current expand state. A collapsed file is a
+// single pill meta-node; an expanded file is a compound box holding its symbols.
+// Symbol→symbol edges are aggregated onto whichever endpoints are visible (a
+// symbol when its file is expanded, else the file pill); edges inside one
+// collapsed file collapse away. Solid edges are exact references; dashed edges
+// (`meta = 1`) are file-level aggregates that you drill into by expanding.
+function buildElements(data: CodemapResponse, expanded: Set<string>): ElementDefinition[] {
+  const byFile = new Map<string, CMNode[]>();
+  const fileOfNode = new Map<string, string>();
+  for (const n of data.nodes) {
+    const f = fileKey(n);
+    fileOfNode.set(n.id, f);
+    let arr = byFile.get(f);
+    if (!arr) byFile.set(f, (arr = []));
+    arr.push(n);
+  }
+
+  const els: ElementDefinition[] = [];
+  for (const [f, nodes] of byFile) {
+    if (expanded.has(f)) {
+      els.push({ data: { id: BOX + f, isFileBox: 1, file: f, fileLabel: `${baseName(f)}  ▾` } });
+      for (const n of nodes) {
+        const hidden = n.hidden_callees || 0;
+        els.push({
           data: {
-            id: `e${i}`,
-            source: e.source,
-            target: e.target,
-            anchors,
-            weight: e.weight ?? anchors.length, // # call sites -> drives edge width
-            hasAnchor: anchors.length ? 1 : 0,
-            srcShort: shortById.get(e.source) || "",
-            tgtShort: shortById.get(e.target) || "",
+            id: n.id,
+            parent: BOX + f,
+            short: n.short,
+            glabel: hidden ? `${n.short}  +${hidden}` : n.short, // node label, with hub badge
+            flabel: n.label, // full unified_name, used to refocus
+            file: n.file,
+            line: n.line,
+            endLine: n.end_line ?? null,
+            kind: n.kind,
+            accent: colorForKind(n.kind),
+            importance: n.importance ?? 0,
+            refCount: n.ref_count ?? 0,
+            entryScore: n.entry_score ?? 0,
+            root: n.is_root ? 1 : 0,
+            external: n.external ? 1 : 0,
           },
-        };
-      }),
-  ];
-}
-
-// Files layout: a compound box per file, symbols stacked top→bottom by line
-// inside it, boxes packed into balanced columns. Here POSITION encodes the
-// symbol's code location (file + line) — the core "graph aligns with code" fix.
-// The packing math lives in computeFilesPositions() (pure, unit-tested); this
-// just creates the compound boxes and applies the computed positions to `cy`.
-function runFilesLayout(cy: Core): void {
-  const items: FilesLayoutItem[] = [];
-  cy.nodes().forEach((n) => {
-    if (n.data("isFileBox")) return;
-    items.push({
-      id: n.id(),
-      file: (n.data("file") as string) || null,
-      line: (n.data("line") as number) ?? null,
-      external: !!n.data("external"),
-      // measured label box → non-overlapping lanes (w) and rows/bands (h)
-      width: n.outerWidth() || undefined,
-      height: n.outerHeight() || undefined,
-    });
-  });
-
-  // Symbol→symbol edges drive the dependency layering (caller file above callee
-  // file). Read them off cy before the file boxes are added (boxes have none).
-  const edges = cy
-    .edges()
-    .map((e) => ({ source: e.source().id(), target: e.target().id() }));
-  const { boxes, positions, parentOf } = computeFilesPositions(items, edges);
-
-  // Create one compound box per file and reparent its symbols into it.
-  cy.batch(() => {
-    for (const b of boxes) {
-      cy.add({
-        group: "nodes",
-        data: { id: b.id, isFileBox: 1, fileLabel: b.file.split("/").pop() || b.file },
+        });
+      }
+    } else {
+      let imp = 0;
+      for (const n of nodes) imp = Math.max(imp, n.importance ?? 0);
+      els.push({
+        data: {
+          id: META + f,
+          isFileMeta: 1,
+          file: f,
+          short: baseName(f),
+          glabel: `${baseName(f)}  ·${nodes.length}`,
+          kind: "file",
+          accent: colorForKind("file"),
+          importance: imp,
+          count: nodes.length,
+          pill: Math.min(1, nodes.length / 20), // clamped size cue: bigger file = bigger pill
+          root: nodes.some((n) => n.is_root) ? 1 : 0,
+          external: f === "· external" ? 1 : 0,
+        },
       });
     }
-    cy.nodes().forEach((n) => {
-      const parent = parentOf[n.id()];
-      if (parent) n.move({ parent });
-    });
-  });
+  }
 
-  // Apply the computed grid positions (position = file + line).
-  cy.batch(() => {
-    cy.nodes().forEach((n) => {
-      const pos = positions[n.id()];
-      if (pos) n.position(pos);
-    });
-  });
+  // Map a symbol id to its currently-visible node id (itself, or its file pill).
+  const visId = (id: string): string => {
+    const f = fileOfNode.get(id);
+    if (f === undefined) return id;
+    return expanded.has(f) ? id : META + f;
+  };
+  const shortById = new Map(data.nodes.map((n) => [n.id, n.short]));
 
-  cy.layout({ name: "preset", fit: true, padding: 28 } as any).run();
+  type Agg = { weight: number; anchors: CallSite[]; symbolEdge: boolean; srcShort: string; tgtShort: string };
+  const agg = new Map<string, Agg>();
+  for (const e of data.edges) {
+    if (!e.source || !e.target) continue;
+    const vs = visId(e.source);
+    const vt = visId(e.target);
+    if (vs === vt) continue; // self-loop, or both inside one collapsed file
+    const symbolEdge = !vs.startsWith(META) && !vt.startsWith(META);
+    const key = `${vs}\u0000${vt}`;
+    let a = agg.get(key);
+    if (!a) agg.set(key, (a = { weight: 0, anchors: [], symbolEdge, srcShort: "", tgtShort: "" }));
+    a.weight += e.weight ?? e.anchors?.length ?? 0;
+    if (symbolEdge && e.anchors) a.anchors.push(...e.anchors);
+    if (symbolEdge) {
+      a.srcShort = shortById.get(e.source) || "";
+      a.tgtShort = shortById.get(e.target) || "";
+    }
+  }
+  let i = 0;
+  for (const [key, a] of agg) {
+    const [source, target] = key.split("\u0000");
+    els.push({
+      data: {
+        id: `e${i++}`,
+        source,
+        target,
+        anchors: a.symbolEdge ? a.anchors.slice(0, 8) : [],
+        weight: a.weight || 1, // # call sites -> drives edge width
+        hasAnchor: a.symbolEdge && a.anchors.length ? 1 : 0,
+        meta: a.symbolEdge ? 0 : 1, // file-level aggregate (dashed) vs exact reference
+        srcShort: a.srcShort,
+        tgtShort: a.tgtShort,
+      },
+    });
+  }
+  return els;
+}
+
+// Lay out the current elements with fcose (compound-aware spring embedder), then
+// fit. packComponents keeps disconnected pieces from sprawling across the canvas.
+function runLayout(cy: Core): void {
+  if (cy.nodes().length === 0) return;
+  cy.layout({
+    name: "fcose",
+    quality: "proof",
+    randomize: true,
+    animate: false,
+    fit: true,
+    padding: 28,
+    packComponents: true,
+    nodeSeparation: 78,
+    idealEdgeLength: 95,
+    nodeRepulsion: 6500,
+    nestingFactor: 0.1,
+    gravity: 0.3,
+    gravityCompound: 1.2,
+    tile: true,
+  } as any).run();
   if (cy.zoom() > 1.2) {
     cy.zoom(1.2);
     cy.center();
   }
-}
-
-// Remove any file-box compound structure (used when leaving Files mode).
-function clearFileBoxes(cy: Core): void {
-  const boxes = cy.nodes("[isFileBox = 1]");
-  if (!boxes.length) return;
-  cy.batch(() => {
-    cy.nodes().forEach((n) => {
-      if (!n.data("isFileBox") && n.isChild()) n.move({ parent: null });
-    });
-    cy.remove(boxes);
-  });
 }
 
 interface HoverInfo {
@@ -166,10 +203,10 @@ interface HoverInfo {
 }
 
 /**
- * Interactive top-down dependency graph (Cytoscape). A single view: file boxes
- * laid out by dependency depth (callers/entry on top → leaves below), symbols by
- * line within each box. Click a node to focus its neighbourhood (no grey-out),
- * hover for file:line, click an edge to open the exact call site.
+ * Interactive dependency graph (Cytoscape). Opens as a files overview — one pill
+ * per file — and a file expands into its real symbols on click; click again (or
+ * the file box) to collapse. Click a symbol to focus + open its source; click an
+ * edge to open the exact SCIP/LSP call site.
  */
 export default function CodeGraph({
   data,
@@ -178,20 +215,24 @@ export default function CodeGraph({
   onEdgeClick,
 }: {
   data: CodemapResponse;
-  // "wiki" = the focused top-down dependency map embedded in a wiki page: a
-  // single dependency layout, no mode toggle, tuned for reading. "explore" =
-  // the standalone Graph view: layout toggles + richer interaction.
+  // "wiki" = the focused map embedded in a wiki page, tuned for reading.
+  // "explore" = the standalone Graph view with richer interaction.
   variant?: "wiki" | "explore";
   onNodeClick?: (node: GraphNodeInfo) => void;
   onEdgeClick?: (info: EdgeClickInfo) => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  // Which files are expanded to their symbols (default: all collapsed = overview).
+  const expandedRef = useRef<Set<string>>(new Set());
   // Id of the node held in persistent focus (click-to-focus). While set, hover
   // previews don't clobber the focus highlight; Esc / background-tap clears it.
   const focusedRef = useRef<string | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
-  const [edgeHover, setEdgeHover] = useState<{ count: number } | null>(null);
+  const [edgeHover, setEdgeHover] = useState<{ count: number; openable: boolean } | null>(null);
+  // View mode: "files" = collapsed files overview (expand on click); "symbols"
+  // = every symbol shown at once (every file expanded), same fcose layout.
+  const [mode, setMode] = useState<"files" | "symbols">("files");
 
   // Keep the click callbacks in refs so the cytoscape instance is built once
   // per `data` and is NOT torn down/rebuilt when a parent re-render hands us new
@@ -209,8 +250,10 @@ export default function CodeGraph({
 
     const dark = document.documentElement.dataset.theme === "dark";
 
-    // Build Cytoscape elements from the typed codemap payload (pure adapter).
-    const elements = adaptGraphView(data);
+    // "files" opens as the collapsed overview; "symbols" expands every file.
+    const initExpanded = new Set<string>();
+    if (mode === "symbols") for (const n of data.nodes) initExpanded.add(fileKey(n));
+    expandedRef.current = initExpanded;
 
     const nodeText = dark ? "#e6e6e6" : "#1f2937";
     const nodeBg = dark ? "#1b1d21" : "#ffffff";
@@ -218,7 +261,7 @@ export default function CodeGraph({
 
     const cy = cytoscape({
       container: box,
-      elements,
+      elements: buildElements(data, expandedRef.current),
       wheelSensitivity: 0.2,
       minZoom: 0.2,
       maxZoom: 2.5,
@@ -265,7 +308,7 @@ export default function CodeGraph({
           },
         },
         {
-          // File container (Files layout): a titled box wrapping its symbols.
+          // Expanded file container: a titled box wrapping its symbols.
           selector: "node[isFileBox = 1]",
           style: {
             shape: "round-rectangle",
@@ -285,13 +328,41 @@ export default function CodeGraph({
             "z-index": 0,
           },
         },
+        {
+          // Collapsed file pill (the overview): a soft card standing in for a
+          // file. Sized a touch by symbol count (a light "weight" cue).
+          selector: "node[isFileMeta = 1]",
+          style: {
+            shape: "round-rectangle",
+            "corner-radius": "11px",
+            "background-color": dark ? "#262b33" : "#f1f5fa",
+            "background-opacity": 1,
+            "background-fill": "linear-gradient",
+            "background-gradient-stop-colors": dark ? ["#2a313a", "#20242b"] : ["#f7fafd", "#e8eef5"],
+            "background-gradient-direction": "to-bottom",
+            "border-width": 1.5,
+            "border-style": "solid",
+            "border-color": dark ? "#3d4654" : "#c3cedd",
+            label: "data(glabel)",
+            color: dark ? "#dfe4ea" : "#2c3540",
+            "font-size": 13,
+            "font-weight": 600,
+            "font-style": "normal",
+            "text-valign": "center",
+            "text-halign": "center",
+            "text-wrap": "wrap",
+            "text-max-width": "210px",
+            width: "label",
+            height: "label",
+            padding: "mapData(pill, 0, 1, 13, 23)",
+          },
+        },
         // Neighbours of the focused node — kept fully legible (no dim).
         {
           selector: "node.hl",
           style: { "border-width": 3, opacity: 1 },
         },
-        // The focused node itself: a filled accent so it POPS out of context,
-        // instead of the old effect where focusing just greyed everything out.
+        // The focused node itself: a filled accent so it POPS out of context.
         {
           selector: "node.focus",
           style: {
@@ -307,19 +378,22 @@ export default function CodeGraph({
           selector: "edge",
           style: {
             // Width by call-site count (weight): a heavily-used call reads thicker.
-            // weight 0 (no resolved anchors) clamps to the thinnest width.
             width: "mapData(weight, 1, 12, 1.2, 4.5)",
             "line-color": edgeColor,
             "target-arrow-color": edgeColor,
             "target-arrow-shape": "triangle",
             "arrow-scale": 0.9,
-            // Gentle arcs (not straight) so the many edges around a hub fan out
-            // and stop overlapping/clashing.
+            // Gentle arcs (not straight) so edges around a hub fan out cleanly.
             "curve-style": "unbundled-bezier",
             "control-point-distances": [30],
             "control-point-weights": [0.5],
             opacity: 0.72,
           },
+        },
+        {
+          // File-level aggregate edge (an expand reveals the exact references).
+          selector: "edge[meta = 1]",
+          style: { "line-style": "dashed", opacity: 0.55 },
         },
         {
           selector: "edge.hl",
@@ -344,10 +418,6 @@ export default function CodeGraph({
       (box as unknown as { __cy?: Core }).__cy = cy;
     }
 
-    // Layout runs in a dedicated effect below (so toggling Flow/Clusters re-lays
-    // out without rebuilding the graph and losing zoom/pan).
-
-    // A fresh graph build invalidates any prior focus.
     focusedRef.current = null;
 
     // Focus = the clicked node + its neighbourhood POP via accent. We never dim
@@ -368,13 +438,33 @@ export default function CodeGraph({
       cy.elements().removeClass("focus hl faded");
     };
 
+    // Expand/collapse a file: rebuild the element set for the new state and re-lay
+    // it out. Cheap (<=120 nodes) and keeps meta-edge aggregation correct.
+    const toggleFile = (file: string) => {
+      const s = expandedRef.current;
+      if (s.has(file)) s.delete(file);
+      else s.add(file);
+      focusedRef.current = null;
+      setHover(null);
+      cy.batch(() => {
+        cy.elements().remove();
+        cy.add(buildElements(data, s));
+      });
+      runLayout(cy);
+    };
+
     // Hover: a transient preview of the node + its neighbours. Suppressed while a
     // node is in persistent focus so it doesn't fight the focus highlight.
     cy.on("mouseover", "node", (evt) => {
       const n = evt.target;
-      if (n.data("isFileBox")) return; // file containers aren't interactive
+      const d = n.data();
+      if (d.isFileBox) return; // the box title is for collapsing, handled on tap
       box.style.cursor = "pointer";
-      setHover({ short: n.data("short"), file: n.data("file"), line: n.data("line"), kind: n.data("kind") });
+      if (d.isFileMeta) {
+        setHover({ short: d.short, file: d.file, line: null, kind: `${d.count} symbols · click to open` });
+      } else {
+        setHover({ short: d.short, file: d.file, line: d.line, kind: d.kind });
+      }
       if (focusedRef.current) return;
       const nbr = n.closedNeighborhood();
       cy.edges().not(nbr.edges()).addClass("faded"); // dim only unrelated edges
@@ -388,14 +478,16 @@ export default function CodeGraph({
       if (focusedRef.current) return;
       cy.elements().removeClass("faded hl");
     });
-    // Click a node → focus it (persistent degree-of-interest) AND open its source
-    // peek. Esc or a background click clears the focus.
+    // Click a file pill / box → expand or collapse it. Click a symbol → focus it
+    // (persistent degree-of-interest) AND open its source peek.
     cy.on("tap", "node", (evt) => {
-      const n = evt.target;
-      const d = n.data();
-      if (d.isFileBox) return; // file containers aren't clickable
+      const d = evt.target.data();
+      if (d.isFileMeta || d.isFileBox) {
+        toggleFile(d.file);
+        return;
+      }
       focusedRef.current = d.id;
-      focusNode(n);
+      focusNode(evt.target);
       onNodeClickRef.current?.({
         label: d.flabel,
         short: d.short,
@@ -406,11 +498,11 @@ export default function CodeGraph({
       });
     });
 
-    // Edge hover: spotlight the call relationship + show its call-site count.
+    // Edge hover: spotlight the relationship + show its call-site count.
     cy.on("mouseover", "edge", (evt) => {
       const e = evt.target;
       box.style.cursor = e.data("hasAnchor") ? "pointer" : "default";
-      setEdgeHover({ count: (e.data("anchors") || []).length });
+      setEdgeHover({ count: e.data("weight") || 0, openable: !!e.data("hasAnchor") });
       if (focusedRef.current) return;
       cy.edges().not(e).addClass("faded"); // dim other edges; leave all nodes legible
       e.addClass("hl");
@@ -422,7 +514,8 @@ export default function CodeGraph({
       if (focusedRef.current) return;
       cy.elements().removeClass("faded hl");
     });
-    // Click an edge → open its exact LSP/SCIP call site(s) in source.
+    // Click an exact edge → open its LSP/SCIP call site(s). Aggregate (dashed)
+    // edges carry no single site — expand the files to reach them.
     cy.on("tap", "edge", (evt) => {
       const d = evt.target.data();
       if (d.anchors?.length) {
@@ -439,22 +532,14 @@ export default function CodeGraph({
     };
     document.addEventListener("keydown", onKey);
 
+    runLayout(cy); // initial layout
+
     return () => {
       document.removeEventListener("keydown", onKey);
       cy.destroy();
       cyRef.current = null;
     };
-  }, [data]); // build once per graph; callbacks come through refs (see above)
-
-  // Lay out the single top-down dependency view. (The redundant Flow/Clusters
-  // modes were removed — one view, one meaning.) Re-runs when the graph changes;
-  // clearFileBoxes keeps it idempotent across dev/HMR double-invokes.
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy) return;
-    clearFileBoxes(cy);
-    runFilesLayout(cy);
-  }, [data]);
+  }, [data, mode]); // rebuild on a new graph or a view-mode switch; refs carry callbacks
 
   return (
     <div className="codegraph" data-variant={variant}>
@@ -465,7 +550,11 @@ export default function CodeGraph({
             <b>
               {edgeHover.count} call site{edgeHover.count === 1 ? "" : "s"}
             </b>
-            <span className="muted"> — click the edge to open the exact reference line</span>
+            {edgeHover.openable ? (
+              <span className="muted"> — click the edge to open the exact reference line</span>
+            ) : (
+              <span className="muted"> — expand the files to reach the call sites</span>
+            )}
           </span>
         ) : hover ? (
           <span className="cg-info">
@@ -476,12 +565,12 @@ export default function CodeGraph({
         ) : (
           <span className="codegraph-legend">
             <span>
-              <span className="lk-grow" />
-              bigger = more referenced
+              <span className="lk-swatch" />
+              each pill = a file
             </span>
             <span>
-              <span className="lk-swatch" />
-              colour = kind
+              <span className="lk-grow" />
+              bigger = more referenced
             </span>
             <span>
               <span className="lk-ext" />
@@ -489,11 +578,29 @@ export default function CodeGraph({
             </span>
           </span>
         )}
+        <div className="codegraph-modes" role="group" aria-label="View mode">
+          <button
+            type="button"
+            className={mode === "files" ? "on" : ""}
+            onClick={() => setMode("files")}
+            title="Files: one box per file, click to expand its symbols"
+          >
+            Files
+          </button>
+          <button
+            type="button"
+            className={mode === "symbols" ? "on" : ""}
+            onClick={() => setMode("symbols")}
+            title="Symbols: every symbol shown at once"
+          >
+            Symbols
+          </button>
+        </div>
         <span
           className="codegraph-depnote"
-          title="Files ordered top→bottom by dependency: callers/entry points on top, their dependencies below"
+          title="Solid edges are exact SCIP/LSP references; dashed edges are file-level aggregates you expand to reach."
         >
-          ↓ top-down dependencies
+          {mode === "files" ? "▸ click a file to expand" : "click a file box to collapse"}
         </span>
         <button type="button" className="codegraph-fit" onClick={() => cyRef.current?.fit(undefined, 24)}>
           Fit
