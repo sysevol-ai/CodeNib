@@ -388,7 +388,7 @@ def build_codemap(
         edge: Dict[str, Any] = {"source": id_of[s], "target": id_of[t]}
         anchors = edge_anchors.get((s, t))
         if anchors:
-            edge["anchors"] = anchors[:8]
+            edge["anchors"] = anchors
         edges.append(edge)
 
     nodes, edges = _enrich(graph, nodes, edges)
@@ -585,7 +585,7 @@ def build_page_subgraph(
         edge: Dict[str, Any] = {"source": id_of[s], "target": id_of[t]}
         anchors = edge_anchors.get((s, t))
         if anchors:
-            edge["anchors"] = anchors[:8]
+            edge["anchors"] = anchors
         edges.append(edge)
 
     nodes, edges = _enrich(graph, nodes, edges)

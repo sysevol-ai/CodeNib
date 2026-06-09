@@ -46,7 +46,7 @@ EXPECTED_CATEGORY_COUNTS_WITH_TRAVERSAL = {**EXPECTED_BASE_CATEGORY_COUNTS, "tra
 ### What makes traversal queries special
 
 Behavioral and generic-multiply queries are anchored on a single code block.
-**Traversal queries** instead walk 2–3 call/reference edges in the code graph and
+**Traversal queries** instead walk a 2–3 symbol chain in the code graph and
 deliberately contain *no direct lexical hook* to the chain symbols — so a
 keyword/grep agent has nothing to land on, while a graph agent can follow edges
 from one anchor to the next. The full chain is recorded as ground truth.
@@ -160,6 +160,17 @@ and `stance`.
 
 ## Scripts reference
 
+The generation scripts use the Claude Agent SDK. Install and authenticate it
+before running the multipliers:
+
+```bash
+pip install claude-agent-sdk
+# then choose one auth path:
+claude login
+# or:
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
 All multiplier scripts read a **seed file** — a JSON whose first row provides
 `repo`, `instance_id`, and `base_commit` (and optionally `language_group`) — and
 write `synthesized_queries_<instance_id>.json` into `--output-dir`. They share a
@@ -221,9 +232,10 @@ comma-separated `<type>=<count>`; valid types `behavioral`, `module_hint`,
 
 ### `multiply_traversal_queries.py` — traversal queries
 
-Synthesizes traversal queries whose answer requires walking 2–3 call/reference
-edges and whose text has no direct lexical hook to the chain symbols. GT carries
-the full chain plus `chain_metadata`.
+Synthesizes traversal queries whose answer requires walking a 2–3 symbol chain
+(1-hop `trace_back` / `trace_down`, 2-hop `bridge`) and whose text has no direct
+lexical hook to the chain symbols. GT carries the full chain plus
+`chain_metadata`.
 
 ```bash
 python scripts/multiply_traversal_queries.py \

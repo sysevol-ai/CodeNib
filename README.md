@@ -39,7 +39,13 @@ IndexCompiler(
 
 ```bash
 codeminer-mcp /path/to/repo/.codeminer_cache/repo_manifest.json   # stdio MCP server
-codeminer-web                                                      # DeepWiki-style demo UI
+codeminer-web                                                      # DeepWiki backend API
+```
+
+For the browser UI, start the Next.js frontend separately:
+
+```bash
+cd web && npm run dev
 ```
 
 > **Optional — full code intelligence.** `make scip` installs the SCIP/LSP toolchain
