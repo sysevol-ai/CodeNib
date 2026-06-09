@@ -15,7 +15,7 @@ Last revised: 2026-06-01
 > The live experiment is the **design-space cost study** —
 > `scripts/agent_compile/configs/design_space.yaml`, 9 arms isolating one
 > skill-axis each, on the full split (see
-> [`scripts/agent_compile/README.md`](../scripts/agent_compile/README.md)).
+> [`scripts/agent_compile/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/scripts/agent_compile/README.md)).
 > Relative to the roster/sweep tables below: `graph_expand` and several other
 > skills were pruned (#196); the A0–A6 subset sweep is retired in favour of the
 > design-space arms; the deterministic `(language, has_stacktrace)` scenario

@@ -1,20 +1,20 @@
 <!--
 SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+
 SPDX-License-Identifier: Apache-2.0
 -->
 
 # Agent-compile subset sweep — sample run (issue #133, Phase 2 dry-run)
 
-> **⚠️ Tooling refactored + pre-design-space results (2026-06).** The scripts
-> referenced below were consolidated: `run_agent_sweep.py` → **`run_sweep.py`**,
-> `aggregate_phase2.py` → **`aggregate.py`**, shared code moved to
-> `scripts/agent_compile/lib/`, and the offline retrieval ablations moved to
-> `scripts/retrieval_ablation/`. The experiment space is now the single
-> **`configs/design_space.yaml`** (9 arms, full split, neutral prompt) — see
-> [`scripts/agent_compile/README.md`](../../scripts/agent_compile/README.md).
-> The A0–A6 / `compile_table` numbers below are the historical methodology
-> record; fresh full-split design-space results will be added once the re-run
-> completes.
+> **⚠️ Pre-design-space results (2026-06).** The A0–A6 / `compile_table`
+> numbers below are the historical methodology record from the original
+> per-subset sweep. The experiment space is now the single canonical
+> **`scripts/agent_compile/configs/design_space.yaml`** (9 arms, full split,
+> neutral prompt), driven by the consolidated `run_sweep.py` +
+> `aggregate.py` (shared code lives under `scripts/agent_compile/lib/`; the
+> offline retrieval ablations moved to `scripts/retrieval_ablation/`). See
+> [`scripts/agent_compile/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/scripts/agent_compile/README.md).
+> Fresh full-split design-space results will be added once the re-run completes.
 
 This is the **sample** instantiation of the #133 Phase-2 experiment: run the
 A0–A6 skill-subset matrix over a small multi-language slice of
@@ -23,19 +23,25 @@ v1 `compile_table`. It is a *dry run on 5 instances* to validate the harness,
 the metrics, and the analysis methodology end-to-end — **not** the full
 instance-corpus result (open question §1 below).
 
-Reproduce:
+Reproduce (canonical design-space sweep):
 
 ```bash
-python scripts/agent_compile/run_agent_sweep.py \
-    --config scripts/agent_compile/configs/sample.yaml \
-    --output-dir results/agent_compile/sample
-python scripts/agent_compile/aggregate_phase2.py \
-    --cells-dir results/agent_compile/sample/cells \
-    --output-dir results/agent_compile/sample          # files@5 (RFC standard)
-python scripts/agent_compile/aggregate_phase2.py \
-    --cells-dir results/agent_compile/sample/cells \
-    --output-dir results/agent_compile/sample_at1 --target-k 1   # discriminating view
+python scripts/agent_compile/run_sweep.py \
+    --config scripts/agent_compile/configs/design_space.yaml \
+    --output-dir results/agent_compile/design_space
+python scripts/agent_compile/aggregate.py \
+    --cells-dir results/agent_compile/design_space/cells \
+    --output-dir results/agent_compile/design_space          # files@{1,3,5,10}
+python scripts/agent_compile/aggregate.py \
+    --cells-dir results/agent_compile/design_space/cells \
+    --output-dir results/agent_compile/design_space_at1 \
+    --metrics-k 1                                            # discriminating @1 view
 ```
+
+`run_sweep.py` writes one JSON per cell under `<output-dir>/cells`, which is
+exactly the directory `aggregate.py --cells-dir` consumes. `--metrics-k`
+selects which `files@k` / `symbols@k` cutoffs the report folds (default
+`1 3 5 10`); narrowing it to `1` gives the discriminating top-1 view used below.
 
 ## Setup
 
@@ -45,7 +51,7 @@ python scripts/agent_compile/aggregate_phase2.py \
 | Sample | 5 instances, 4 languages, both Python scenarios (see below) |
 | Agent model | `vertex_ai/claude-haiku-4-5` @ `us-east5`, temp 0.0, max_turns 20 |
 | Embeddings | `Qwen/Qwen3-Embedding-0.6B` (dim 1024), L2 chunks |
-| Indexes | pre-built per-instance under `/mnt/data/codeminer` — vector + symbol graph reused; BM25 built fresh from the prebuilt graph (see `scripts/agent_compile/prebuilt.py`) |
+| Indexes | pre-built per-instance under `/mnt/data/codeminer` — vector + symbol graph reused; BM25 built fresh from the prebuilt graph (see `scripts/agent_compile/lib/prebuilt.py`) |
 | Reps | 2 — cost = min across reps, accuracy = mean across reps (per #131) |
 | Metric | `files@k` (LocAgent / PR #128 column set); `symbols@k` also recorded |
 
@@ -59,8 +65,8 @@ Sample instances (one per scenario cell that has prebuilt indexes):
 | `axios__axios-4731` | TS/JS | no | `typescript:no_stacktrace` |
 | `astral-sh__ruff-15309` | Rust | no | `rust:no_stacktrace` |
 
-The skill subsets A0–A6 are the #133 RFC table (`scripts/agent_compile/configs/sample.yaml`).
-`file_read` is always-on infrastructure and not a sweep variable.
+The skill subsets A0–A6 are the #133 RFC table (the historical per-subset
+config). `file_read` is always-on infrastructure and not a sweep variable.
 
 ## Per-subset results (mean over 5 instances)
 
@@ -87,7 +93,8 @@ the full registry A6 — strictly cheaper **and** strictly more accurate.
 | `typescript:no_stacktrace` | A1 | 1.00 | embedding_search |
 | `rust:no_stacktrace` | A0 | 0.00 | bm25_search (fallback — see §rust) |
 
-The same table results when the floor is applied at `files@1` (`--target-k 1`).
+The same table results when the floor is applied at `files@1`
+(`aggregate.py --metrics-k 1`).
 
 ## Findings (read these critically — small N)
 
@@ -147,7 +154,7 @@ harder at symbol granularity.
   `compile_table` cells are illustrative, not statistically grounded. Open
   question §1 of #133 (run on the full instance corpus) is unchanged.
 - **files@5 is saturated on the easy (py/ts) instances**, so the discriminating
-  signal lives at files@1 and in tokens. The aggregator's `--target-k 1` view
+  signal lives at files@1 and in tokens. The aggregator's `--metrics-k 1` view
   is provided for that reason.
 - **One embedding model, one agent model.** Cross-model variance (ADR
   model-matrix) is out of scope for this sample.

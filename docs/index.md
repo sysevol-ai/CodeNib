@@ -16,9 +16,9 @@ CodeMiner provides tools for structural code analysis, symbol-level change detec
 
 | Component | Description |
 |-----------|-------------|
-| [Web Demo](web_demo.md) | DeepWiki-style wiki + Ask site over a pool of indexed repos |
-| [MCP Server](mcp.md) | Serve semantic/BM25/regex/Zoekt search to LLM agents over MCP |
-| [Agent Skills](agent_skills.md) | Composable retrieval/rerank/expand skills with index-aware gating |
+| [Web Demo](web_demo.md) | DeepWiki-style wiki + Ask site with an interactive code-dependency graph over indexed repos |
+| [MCP Server](mcp.md) | Serve semantic/BM25/regex/Zoekt search and dependency subgraphs to LLM agents over MCP |
+| [Agent Skills](agent_skills.md) | Composable retrieval/rerank/trace skills with index-aware gating |
 | [GT Locator](gt_locator.md) | Extract symbol-level ground truth from SWE-bench patches |
 | [Incremental Graph](incremental_graph/index.md) | Update CodeGraph in-place without full re-indexing |
 | [Graph Range Query](graph_query.md) | LSP-aligned line-range / symbol queries with typed results |
@@ -30,6 +30,7 @@ CodeMiner provides tools for structural code analysis, symbol-level change detec
 ### Guides
 
 - [Collecting SWE-bench Instances](collect_swebench.md) — sample representative instances across languages
+- [Synthesis Pipeline](synthesis_pipeline.md) — synthesize traversal/behavior/multiply queries and build the CodeMiner dataset
 - [Uploading to HuggingFace](upload_dataset_to_huggingface.md) — build and publish the dataset
 - [CI/CD](ci_cd.md) — pipeline setup and test tiers
 - [Diagnose Query Leak](diagnose_query_leak.md) — detect lexical/semantic leakage in synthesized queries

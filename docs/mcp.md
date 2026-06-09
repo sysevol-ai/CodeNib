@@ -53,6 +53,7 @@ Transport is stdio; logs go to stderr (`--log-level` to adjust).
 | `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
 | `search_regex` | `symbol_graph` | symbol | structural pattern matching |
 | `search_zoekt` | `zoekt` | file | fast substring/regex across raw file contents |
+| `dependency_subgraph` | `symbol_graph` | call graph | structural "who calls X / what does X reach" — `impact` (transitive callers / blast radius), `dependencies` (transitive callees), or `both` (1-hop neighborhood); returns nodes+edges JSON |
 | `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
 
 A `codeminer-guide` prompt returns guidance on choosing between these tools.
