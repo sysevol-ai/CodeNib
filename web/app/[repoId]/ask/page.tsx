@@ -1,17 +1,30 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
 import CodePanel from "@/components/CodePanel";
-import { askQuestion, fetchRepos, type ChatResponse, type RepoInfo } from "@/lib/api";
+import {
+  askQuestion,
+  fetchRepos,
+  type ChatMessage,
+  type ChatResponse,
+  type RepoInfo,
+} from "@/lib/api";
 import { codeRefs } from "@/lib/citations";
 
 // DeepWiki clamps the question to ~200 chars before "Show full text".
 const Q_TRUNCATE = 200;
+
+// One question + its (eventual) answer in the conversation thread.
+interface Turn {
+  q: string;
+  resp: ChatResponse | null;
+  err: string | null;
+}
 
 function AskAnswer() {
   const params = useParams<{ repoId: string }>();
@@ -19,9 +32,11 @@ function AskAnswer() {
   const q = (useSearchParams().get("q") ?? "").trim();
 
   const [repo, setRepo] = useState<RepoInfo | null>(null);
-  const [resp, setResp] = useState<ChatResponse | null>(null);
+  const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  // Bumped whenever the thread resets so in-flight answers from a previous
+  // conversation can't land in the new one.
+  const genRef = useRef(0);
 
   useEffect(() => {
     fetchRepos()
@@ -29,42 +44,103 @@ function AskAnswer() {
       .catch(() => {});
   }, [repoId]);
 
-  // Re-fetch whenever the question changes — every submit is its own answer.
+  // Append a turn and fetch its answer. The request carries the prior turns
+  // plus this question as the final user message (DeepWiki-style) so the agent
+  // can resolve follow-ups ("what calls it?", "show me where").
+  const runAsk = useCallback(
+    (query: string, history: ChatMessage[]) => {
+      const gen = genRef.current;
+      setTurns((ts) => [...ts, { q: query, resp: null, err: null }]);
+      setLoading(true);
+      askQuestion(repoId, [...history, { role: "user", content: query }])
+        .then((r) => {
+          if (gen !== genRef.current) return;
+          setTurns((ts) => {
+            const next = [...ts];
+            next[next.length - 1] = { ...next[next.length - 1], resp: r };
+            return next;
+          });
+        })
+        .catch((e) => {
+          if (gen !== genRef.current) return;
+          setTurns((ts) => {
+            const next = [...ts];
+            next[next.length - 1] = { ...next[next.length - 1], err: String(e) };
+            return next;
+          });
+        })
+        .finally(() => {
+          if (gen === genRef.current) setLoading(false);
+        });
+    },
+    [repoId]
+  );
+
+  // A new URL question (arriving from a wiki page's ask bar) starts a fresh
+  // conversation; follow-ups submitted on this page append in place instead.
   useEffect(() => {
-    if (!q) {
-      setResp(null);
-      return;
+    genRef.current += 1;
+    setTurns([]);
+    setLoading(false);
+    setQExpanded(new Set());
+    if (q) runAsk(q, []);
+  }, [repoId, q, runAsk]);
+
+  function followUp(query: string) {
+    if (loading) return;
+    const history: ChatMessage[] = [];
+    for (const t of turns) {
+      if (!t.resp) continue; // skip errored / unanswered turns
+      history.push({ role: "user", content: t.q });
+      history.push({ role: "assistant", content: t.resp.answer });
     }
-    let cancelled = false;
-    setLoading(true);
-    setResp(null);
-    setErr(null);
-    askQuestion(repoId, q)
-      .then((r) => !cancelled && setResp(r))
-      .catch((e) => !cancelled && setErr(String(e)))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [repoId, q]);
+    runAsk(query, history);
+  }
 
   const repoName = repo ? repo.repo : repoId;
-  // Shared list so a chip's index lines up with the code pane's fragments.
-  const refs = useMemo(() => codeRefs(resp?.citations ?? []), [resp]);
+  // Per-turn citation lists so a chip's index lines up with the code pane.
+  const turnRefs = useMemo(
+    () => turns.map((t) => codeRefs(t.resp?.citations ?? [])),
+    [turns]
+  );
+  // Which turn's citations the code pane shows + the highlighted one.
+  const [activeTurn, setActiveTurn] = useState(0);
   const [active, setActive] = useState(0);
   const [scrollSignal, setScrollSignal] = useState(0);
-  useEffect(() => setActive(0), [resp]);
+  // Focus the newest answered turn's citations whenever the thread changes.
+  useEffect(() => {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].resp) {
+        setActiveTurn(i);
+        setActive(0);
+        return;
+      }
+    }
+    setActiveTurn(0);
+    setActive(0);
+  }, [turns]);
   // Select a citation: highlight it and (re-)scroll the code pane to it.
-  const selectCitation = (i: number) => {
+  const selectCitation = (turn: number, i: number) => {
+    setActiveTurn(turn);
     setActive(i);
     setScrollSignal((s) => s + 1);
   };
 
-  // Truncate a long question to a fixed length with a "Show full text" toggle.
-  const [qExpanded, setQExpanded] = useState(false);
-  useEffect(() => setQExpanded(false), [q]);
-  const qLong = q.length > Q_TRUNCATE;
-  const qShown = !qLong || qExpanded ? q : q.slice(0, Q_TRUNCATE).trimEnd() + "…";
+  // Scroll the latest question into view as the thread grows.
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (turns.length > 1) endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [turns.length]);
+
+  // Truncate long questions with a per-turn "Show full text" toggle.
+  const [qExpanded, setQExpanded] = useState<Set<number>>(new Set());
+  const toggleQ = (i: number) =>
+    setQExpanded((s) => {
+      const next = new Set(s);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
 
   return (
     <div className="wiki ask-page">
@@ -86,50 +162,76 @@ function AskAnswer() {
           <Link className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
             ← Back to wiki
           </Link>
-          <h1 className="ask-q">{qShown || "Ask a question"}</h1>
-          {qLong && (
-            <button className="ask-q-toggle" onClick={() => setQExpanded((e) => !e)}>
-              {qExpanded ? "Show less" : "Show full text"}
-            </button>
-          )}
 
-          {!q && <p className="muted">Type a question in the bar below.</p>}
-          {loading && <p className="muted ask-thinking">Searching {repoName}…</p>}
-          {err && (
-            <p className="muted">
-              Couldn&apos;t reach the retrieval backend. Is the API running?
-            </p>
-          )}
-
-          {resp && (
+          {turns.length === 0 && (
             <>
-              <article className="ask-a">
-                <Markdown citations={refs} onCite={selectCitation}>
-                  {resp.answer || "(no answer)"}
-                </Markdown>
-              </article>
-              <div className="ask-tools muted small">
-                {resp.tool_calls.length} tool calls · {resp.total_turns} turns ·{" "}
-                {Math.round(resp.total_duration_ms)} ms · {refs.length} references
-              </div>
+              <h1 className="ask-q">Ask a question</h1>
+              <p className="muted">Type a question in the bar below.</p>
             </>
           )}
+
+          {turns.map((t, i) => {
+            const long = t.q.length > Q_TRUNCATE;
+            const shown =
+              !long || qExpanded.has(i) ? t.q : t.q.slice(0, Q_TRUNCATE).trimEnd() + "…";
+            return (
+              <div className={`ask-turn ${i > 0 ? "followup" : ""}`} key={i}>
+                {i === 0 ? (
+                  <h1 className="ask-q">{shown}</h1>
+                ) : (
+                  <h2 className="ask-q">{shown}</h2>
+                )}
+                {long && (
+                  <button className="ask-q-toggle" onClick={() => toggleQ(i)}>
+                    {qExpanded.has(i) ? "Show less" : "Show full text"}
+                  </button>
+                )}
+
+                {!t.resp && !t.err && (
+                  <p className="muted ask-thinking">Searching {repoName}…</p>
+                )}
+                {t.err && (
+                  <p className="muted">
+                    Couldn&apos;t reach the retrieval backend. Is the API running?
+                  </p>
+                )}
+                {t.resp && (
+                  <>
+                    <article className="ask-a">
+                      <Markdown
+                        citations={turnRefs[i]}
+                        onCite={(j) => selectCitation(i, j)}
+                      >
+                        {t.resp.answer || "(no answer)"}
+                      </Markdown>
+                    </article>
+                    <div className="ask-tools muted small">
+                      {t.resp.tool_calls.length} tool calls · {t.resp.total_turns}{" "}
+                      turns · {Math.round(t.resp.total_duration_ms)} ms ·{" "}
+                      {turnRefs[i].length} references
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          <div ref={endRef} />
         </section>
 
         <aside className="ask-code">
           <CodePanel
             repoId={repoId}
-            citations={refs}
+            citations={turnRefs[activeTurn] ?? []}
             repo={repo?.repo}
             commit={repo?.base_commit}
             active={active}
-            onSelect={selectCitation}
+            onSelect={(i) => selectCitation(activeTurn, i)}
             scrollSignal={scrollSignal}
           />
         </aside>
       </div>
 
-      <AskBar repoId={repoId} repo={repoName} defaultValue={q} />
+      <AskBar repoId={repoId} repo={repoName} onSubmit={followUp} disabled={loading} />
     </div>
   );
 }

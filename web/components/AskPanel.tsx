@@ -47,7 +47,7 @@ export default function AskPanel({ repoId, repo }: { repoId: string; repo: strin
     setMessages((m) => [...m, { role: "user", text: query }]);
     setLoading(true);
     try {
-      const resp = await askQuestion(repoId, query);
+      const resp = await askQuestion(repoId, [{ role: "user", content: query }]);
       setMessages((m) => [
         ...m,
         { role: "assistant", text: resp.answer || "(no answer)", citations: resp.citations },

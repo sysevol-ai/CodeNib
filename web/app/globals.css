@@ -1108,6 +1108,15 @@ pre {
 .ask-q-toggle:hover {
   color: var(--accent);
 }
+/* Follow-up turns in the ask conversation thread. */
+.ask-turn.followup {
+  margin-top: 30px;
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
+}
+.ask-turn.followup .ask-q {
+  font-size: 18px;
+}
 .ask-thinking {
   animation: ask-pulse 1.4s ease-in-out infinite;
 }

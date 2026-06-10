@@ -336,8 +336,15 @@ class AgentRunner:
         query: str,
         *,
         max_turns: Optional[int] = None,
+        chat_history: Optional[List[Dict[str, str]]] = None,
     ) -> AgentResult:
-        """Execute the agent loop and return the result."""
+        """Execute the agent loop and return the result.
+
+        ``chat_history`` seeds prior conversation turns (text-only
+        ``{"role": "user"|"assistant", "content": ...}`` dicts, no tool
+        messages) between the system prompt and *query*, so follow-up
+        questions can reference earlier answers.
+        """
         max_turns = max_turns or self.max_turns
 
         # CAR / agent_compile: when a compile_table is set, classify the
@@ -373,6 +380,8 @@ class AgentRunner:
 
         history = self._new_history()
         history.add_message({"role": "system", "content": self.system_prompt})
+        for msg in chat_history or []:
+            history.add_message({"role": msg["role"], "content": msg["content"]})
         history.add_message({"role": "user", "content": query})
         all_tool_calls: List[ToolCallRecord] = []
         usage_tracker = UsageTracker()

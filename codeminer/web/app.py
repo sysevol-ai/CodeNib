@@ -194,7 +194,11 @@ async def codemap(
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
-    query = req.query.strip()
+    if not req.messages or req.messages[-1].role != "user":
+        raise HTTPException(
+            status_code=400, detail="last message must be from the user"
+        )
+    query = req.messages[-1].content.strip()
     if not query:
         raise HTTPException(status_code=400, detail="query must not be empty")
 
@@ -202,8 +206,14 @@ async def chat(req: ChatRequest) -> ChatResponse:
     if bundle is None:
         raise HTTPException(status_code=404, detail=f"Unknown repo: {req.repo_id!r}")
 
+    # Earlier messages give the agent context so it can resolve follow-ups
+    # like "what calls it?".
+    chat_history = [{"role": m.role, "content": m.content} for m in req.messages[:-1]]
+
     try:
-        result = await asyncio.to_thread(bundle.runner.run, query)
+        result = await asyncio.to_thread(
+            bundle.runner.run, query, chat_history=chat_history
+        )
     except Exception as exc:  # noqa: BLE001 - surface a clean 500 to the client
         logger.error("agent run failed for %r: %s", req.repo_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="agent run failed") from exc

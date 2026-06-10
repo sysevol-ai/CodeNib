@@ -113,14 +113,20 @@ export async function fetchSource(
   return res.json();
 }
 
+/** One conversation message. The last one sent is the current question. */
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export async function askQuestion(
   repoId: string,
-  query: string
+  messages: ChatMessage[]
 ): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repo_id: repoId, query }),
+    body: JSON.stringify({ repo_id: repoId, messages }),
   });
   if (!res.ok) {
     const detail = await res.text();

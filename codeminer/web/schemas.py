@@ -11,7 +11,7 @@ flat, UI-friendly ``ChatResponse`` the Next.js frontend renders.
 from __future__ import annotations
 
 import os
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -38,9 +38,19 @@ class RepoInfo(BaseModel):
     capabilities: dict[str, bool] = Field(default_factory=dict)
 
 
+class ChatMessage(BaseModel):
+    """One conversation message (text only — citations stay client-side)."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ChatRequest(BaseModel):
     repo_id: str
-    query: str
+    # Full conversation, oldest first; the last message is the current question
+    # and must be from the user (OpenAI/DeepWiki-style). Earlier messages give
+    # the agent context for follow-ups.
+    messages: List[ChatMessage]
 
 
 class Citation(BaseModel):

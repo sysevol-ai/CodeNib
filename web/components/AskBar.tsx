@@ -4,18 +4,23 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * DeepWiki-style ask bar pinned to the bottom of the page. Submitting routes
- * to the dedicated answer page (`/[repoId]/ask?q=...`) — every question opens
- * its own page rather than appending to an in-place chat.
+ * DeepWiki-style ask bar pinned to the bottom of the page. By default,
+ * submitting routes to the dedicated answer page (`/[repoId]/ask?q=...`).
+ * When `onSubmit` is given (the ask page's conversation thread), the question
+ * is handed to it in place instead and the input clears for the next one.
  */
 export default function AskBar({
   repoId,
   repo,
   defaultValue = "",
+  onSubmit,
+  disabled = false,
 }: {
   repoId: string;
   repo: string;
   defaultValue?: string;
+  onSubmit?: (query: string) => void;
+  disabled?: boolean;
 }) {
   const router = useRouter();
   const [q, setQ] = useState(defaultValue);
@@ -23,7 +28,12 @@ export default function AskBar({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const query = q.trim();
-    if (!query) return;
+    if (!query || disabled) return;
+    if (onSubmit) {
+      onSubmit(query);
+      setQ("");
+      return;
+    }
     router.push(`/${encodeURIComponent(repoId)}/ask?q=${encodeURIComponent(query)}`);
   }
 
@@ -37,10 +47,12 @@ export default function AskBar({
           className="askbar-input"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder={`Ask anything about ${repo}…`}
+          placeholder={
+            onSubmit ? `Ask a follow-up about ${repo}…` : `Ask anything about ${repo}…`
+          }
           aria-label={`Ask a question about ${repo}`}
         />
-        <button className="askbar-send" type="submit" disabled={!q.trim()}>
+        <button className="askbar-send" type="submit" disabled={disabled || !q.trim()}>
           Ask <span className="askbar-kbd">↵</span>
         </button>
       </div>
