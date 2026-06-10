@@ -158,6 +158,7 @@ class AgentRunner:
         include_default_tools: bool = True,
         default_tool_ids: Optional[Set[str]] = None,
         retry: Optional[RetryConfig] = None,
+        force_localization_contract: bool = True,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -214,6 +215,10 @@ class AgentRunner:
             )
         self.max_turns = max_turns
         self.session_ctx = session_ctx
+        # The localization eval needs answers to end in the Files:/Symbols:/
+        # Locations: contract; QA callers (web demo) keep prose, so they turn
+        # this off and skip the schema-forcing final turn entirely.
+        self._force_contract = force_localization_contract
 
         # Resource guard: filter unavailable skills and collect warnings.
         # The "base" allow / exclude are stored so we can recompute the
@@ -403,7 +408,11 @@ class AgentRunner:
                 # without the contract (it explored but didn't format), force one
                 # schema turn so a genuine localization isn't lost to formatting.
                 answer = getattr(assistant_msg, "content", None) or ""
-                if all_tool_calls and not _has_localization_contract(answer):
+                if (
+                    self._force_contract
+                    and all_tool_calls
+                    and not _has_localization_contract(answer)
+                ):
                     answer = (
                         self._force_schema_answer(history, usage_tracker, turn + 2)
                         or answer
@@ -445,7 +454,11 @@ class AgentRunner:
         # Budget exhausted. A capped agent usually left mid-exploration chatter
         # ("Let me check…"), so force a schema-conforming final answer unless it
         # already emitted the contract.
-        if all_tool_calls and not _has_localization_contract(last_content):
+        if (
+            self._force_contract
+            and all_tool_calls
+            and not _has_localization_contract(last_content)
+        ):
             last_content = (
                 self._force_schema_answer(history, usage_tracker, max_turns + 1)
                 or last_content

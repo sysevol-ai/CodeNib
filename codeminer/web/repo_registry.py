@@ -305,6 +305,9 @@ class RepoRegistry:
             # default read/grep/glob/bash tools return plain text (no
             # citations) and let the model grep-and-give-up, so withhold them.
             include_default_tools=False,
+            # Keep prose answers: the Files:/Symbols:/Locations: schema turn is
+            # for the localization eval and would replace the explanation.
+            force_localization_contract=False,
         )
         return RepoBundle(
             entry=entry,
