@@ -114,8 +114,6 @@ def _common_multiplier_args(args: argparse.Namespace) -> List[str]:
         str(args.behavioral_consensus_runs),
         "--post-fix-max-retries",
         str(args.post_fix_max_retries),
-        "--judge-retries",
-        str(args.traversal_judge_retries),
     ]
     if args.cache_dir:
         cmd.extend(["--cache-dir", args.cache_dir])

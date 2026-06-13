@@ -30,6 +30,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -40,6 +41,29 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from scripts.build_synthesis_v2_plan import build_plan  # noqa: E402
+
+
+def _gen_env() -> dict:
+    """Env with the SCIP indexer dirs on PATH.
+
+    The graph build shells out to per-language SCIP indexers (scip-go,
+    scip-clang, scip-typescript, scip-python, rust-analyzer). ``scip-go`` lives
+    in ``~/go/bin``, which is NOT on the default conda PATH — without it the Go
+    graph build fails ("scip-go not found") and every span comes out (0,0).
+    Prepend the common toolchain dirs so all 5 languages resolve.
+    """
+    env = dict(os.environ)
+    extra = [
+        os.path.expanduser("~/go/bin"),
+        os.path.expanduser("~/.local/bin"),
+        os.path.expanduser("~/.cargo/bin"),
+        "/usr/local/bin",
+    ]
+    have = env.get("PATH", "").split(os.pathsep)
+    env["PATH"] = os.pathsep.join(
+        [d for d in extra if os.path.isdir(d) and d not in have] + have
+    )
+    return env
 
 
 def _counts_arg(counts: dict) -> str:
@@ -98,7 +122,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.dry_run:
             continue
         try:
-            subprocess.run(cmd, cwd=str(_PROJECT_ROOT), check=True)
+            subprocess.run(cmd, cwd=str(_PROJECT_ROOT), check=True, env=_gen_env())
         except subprocess.CalledProcessError as exc:
             print(f"  FAIL {iid}: {exc}", file=sys.stderr)
             failures.append(iid)
