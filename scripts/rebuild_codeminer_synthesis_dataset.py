@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -67,9 +68,19 @@ def _read_json_records(path: Path) -> List[Mapping[str, Any]]:
 def _load_replacement(path: Path, config_name: str) -> List[Dict[str, Any]]:
     paths: List[Path]
     if path.is_dir():
-        paths = sorted(
-            p for p in path.rglob("*") if p.suffix.lower() in {".json", ".jsonl"}
-        )
+        # The per-instance generation tree holds the canonical, complete record
+        # set in ``<iid>/<config>_combined.json`` PLUS its per-category sources
+        # (behavioral_x20/, mixed_x30/, traversal_x10/) and seed/quality files.
+        # Reading everything double-counts every query (duplicate_query_id) and
+        # mixes in non-record files — so prefer the combined files, which each
+        # already union behavioral + mixed + traversal for one repo.
+        combined = sorted(path.rglob("*_combined.json"))
+        if combined:
+            paths = combined
+        else:
+            paths = sorted(
+                p for p in path.rglob("*") if p.suffix.lower() in {".json", ".jsonl"}
+            )
     else:
         paths = [path]
     if not paths:
@@ -110,6 +121,27 @@ def _parse_replacements(values: Iterable[str]) -> Dict[str, Path]:
             raise ValueError(f"Only one --replacement is allowed for {config_name}.")
         replacements[config_name] = paths[0]
     return replacements
+
+
+# Build artifacts / type stubs are not valid localization targets: the real
+# logic lives in the source copy (lib/), not the bundle (dist/) or the .d.ts
+# declaration. Rows whose ground truth is ENTIRELY such files are dropped so the
+# benchmark never asks a retriever to land on generated code.
+_NON_SOURCE_GT_RE = re.compile(
+    r"(^|/)(dist|build|out|node_modules|vendor)/|(\.min\.js|\.d\.[cm]?ts|\.map)$",
+    re.I,
+)
+
+
+def _has_source_gt(row: Dict[str, Any]) -> bool:
+    files = row.get("gt_files") or row.get("target_files") or []
+    if not files:
+        return True  # no file constraint to judge; keep (handled elsewhere)
+    return any(not _NON_SOURCE_GT_RE.search(str(f)) for f in files)
+
+
+def _drop_non_source_gt(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [row for row in records if _has_source_gt(row)]
 
 
 def _filter_base_distribution(
@@ -239,6 +271,11 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
             records,
             keep_extra_categories=args.keep_extra_categories,
         )
+        before = len(records)
+        records = _drop_non_source_gt(records)
+        dropped = before - len(records)
+        if dropped:
+            print(f"  {config_name}: dropped {dropped} row(s) with non-source GT")
         for append_path in appends.get(config_name, []):
             appended = _load_replacement(append_path, config_name)
             records.extend(appended)
