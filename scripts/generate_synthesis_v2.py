@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -80,6 +81,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--cache-dir", default="")
     p.add_argument("--repo-cache-dir", default="")
     p.add_argument("--dry-run", action="store_true", help="print commands, run nothing")
+    p.add_argument(
+        "--regen-mixed",
+        action="store_true",
+        help=(
+            "Re-generate ONLY the mixed categories (file/module/symbol/reasoning) "
+            "in place: delete each repo's mixed_x30 + combined files and re-run "
+            "with --skip-existing so the already-good behavioral_x20 and "
+            "traversal_x10 are reused. Use after a curator/post-fix quality fix to "
+            "refresh the weak categories without paying for behavioral again."
+        ),
+    )
     args = p.parse_args(argv)
 
     plan = build_plan(args.prebuilt_dir, args.repos_per_lang)
@@ -94,7 +106,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         iid = e["instance_id"]
         gen_dir = args.output_dir / config / iid
         seed_marker = gen_dir / "behavioral_x20" / f"synthesized_queries_{iid}.json"
-        if seed_marker.exists():
+        if args.regen_mixed:
+            # Drop the weak categories so they regenerate; keep behavioral +
+            # traversal (already good) for --skip-existing to reuse.
+            mixed_dir = gen_dir / "mixed_x30"
+            if mixed_dir.exists() and not args.dry_run:
+                shutil.rmtree(mixed_dir)
+            for stale in gen_dir.glob(f"{config}_combined*.json"):
+                if not args.dry_run:
+                    stale.unlink()
+        elif seed_marker.exists():
             print(f"skip {config}/{iid} (already generated)")
             continue
         cmd = [
@@ -113,6 +134,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             "--judge-model",
             args.judge_model,
         ]
+        if args.regen_mixed:
+            cmd.append("--skip-existing")
         if args.cache_dir:
             cmd += ["--cache-dir", args.cache_dir]
         if args.repo_cache_dir:

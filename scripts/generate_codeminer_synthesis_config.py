@@ -136,6 +136,10 @@ def _common_traversal_args(args: argparse.Namespace) -> List[str]:
         str(args.traversal_judge_retries),
         "--post-fix-max-retries",
         str(args.post_fix_max_retries),
+        # Tolerate a short traversal yield (repos whose graph can't build a 2-hop
+        # bridge chain) instead of RuntimeError-ing the WHOLE instance — that
+        # lost behavioral+hint for scikit-learn / coreutils / axios in v2.
+        "--allow-partial",
     ]
     if args.cache_dir:
         cmd.extend(["--cache-dir", args.cache_dir])

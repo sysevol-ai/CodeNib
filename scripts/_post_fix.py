@@ -138,6 +138,7 @@ def _symbol_basename(symbol_id: str) -> str:
 
 def _build_anchor_content_lookups(
     rows: List[Dict[str, Any]],
+    anchors: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[Dict[str, str], Dict[Tuple[str, str], str]]:
     # Behavioral rows have content in ``gt_symbol_nodes[*].content``;
     # non-behavioral rows often have ``content=null``. The file+basename
@@ -154,6 +155,22 @@ def _build_anchor_content_lookups(
             file = n.get("file") or gt_file
             if not (sym and content):
                 continue
+            by_node_name.setdefault(sym, content)
+            base = _symbol_basename(sym)
+            if file and base:
+                by_file_basename.setdefault((file, base), content)
+    # Mixed rows (module/file/symbol/reasoning) store target_symbol_nodes with
+    # content=null, so the loop above recovers nothing for them — every flagged
+    # mixed row then hits "no anchor content" and is skipped instead of
+    # regenerated. The anchors (behavioral output) DO carry the real code, so
+    # index them too: this is what unblocks regeneration for the mixed types.
+    for a in anchors or []:
+        content = a.get("anchor_content")
+        if not content:
+            continue
+        sym = a.get("anchor_symbol") or ""
+        file = a.get("anchor_file") or (a.get("target_files") or [""])[0]
+        if sym:
             by_node_name.setdefault(sym, content)
             base = _symbol_basename(sym)
             if file and base:
@@ -334,14 +351,20 @@ async def post_fix_flagged(
     model: str,
     judge_model: str,
     max_retries: int = 3,
+    anchors: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """Triage flagged rows, then loop fix/regenerate up to ``max_retries`` times.
+
+    ``anchors`` (the behavioral-output anchor dicts, each with ``anchor_content``)
+    let the mixed callers recover code that their own rows store as
+    ``content=null`` — without it every flagged mixed row is skipped instead of
+    regenerated.
 
     Returns the mutated rows plus a stats dict
     (``flagged`` / ``promoted_at_triage`` / ``fixed_via_fix`` /
     ``fixed_via_regenerate`` / ``still_flagged``).
     """
-    by_node_name, by_file_basename = _build_anchor_content_lookups(rows)
+    by_node_name, by_file_basename = _build_anchor_content_lookups(rows, anchors)
 
     def is_flagged(r: Dict[str, Any]) -> bool:
         # 'unknown' is included because a truncated judge-batch JSON leaves

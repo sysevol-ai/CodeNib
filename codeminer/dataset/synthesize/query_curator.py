@@ -393,10 +393,13 @@ class QueryCurator:
             QueryType.REASONING,
         ):
             gt_info = []
-            if ground_truth.get("target_files"):
-                gt_info.append(
-                    f"Target files: {', '.join(ground_truth['target_files'])}"
-                )
+            src_files = [
+                f
+                for f in (ground_truth.get("target_files") or [])
+                if self._is_source_path(str(f))
+            ]
+            if src_files:
+                gt_info.append(f"Target files: {', '.join(src_files)}")
             if ground_truth.get("symbols_modified"):
                 gt_info.append(
                     f"Modified symbols: {', '.join(ground_truth['symbols_modified'][:5])}"
@@ -426,7 +429,29 @@ class QueryCurator:
                     "Repository exploration targets:\n" + "\n".join(discovered_info)
                 )
 
+        # Ground the curator to the REAL anchor code. Without this the model only
+        # sees the repo summary + a one-line constraint and free-associates a
+        # plausible-but-wrong topic (module_hint drifted off-target 100% of the
+        # time). Showing the actual target code forces the query to be about it.
+        anchor_code = (ground_truth or {}).get("anchor_content")
+        if anchor_code:
+            snippet = str(anchor_code)[: self.max_block_chars_in_prompt]
+            context_parts.append(
+                "Target code — the query MUST be about the behavior in THIS exact "
+                "code (it is the ground-truth answer a searcher has to land on). Do "
+                "NOT write a query about some other part of the repo:\n"
+                f"```\n{snippet}\n```"
+            )
+
         context_parts.append(f"Constraints:\n{constraint_clause}")
+        context_parts.append(
+            "Phrasing: write `question` as ONE concise, realistic search query — "
+            "what a developer would actually type to find this code (a single "
+            "sentence, aim for under 30 words). Do NOT narrate your reasoning (no "
+            "'Now I…', 'Let me…', 'Looking at…'), and do NOT pack in step-by-step "
+            "analysis, speculative implementation details, or a multi-sentence "
+            "problem report — the judge rejects verbose, narrated queries."
+        )
         context_parts.append(
             "Output JSON with keys: question (string), focus (string or null), "
             "hints (array of strings or null). Return only JSON."
@@ -453,11 +478,19 @@ class QueryCurator:
 
         if self.query_type == QueryType.BEHAVIORAL:
             question = self._sanitize_question(question)
+        elif question:
+            # Agent-thinking the model prepends to the query ("Now let me look at
+            # X. <query>") leaks through the JSON path too, not just prose
+            # fallback — strip it here so it is caught regardless of source.
+            question = self._strip_leading_narration(question)
 
         if not question:
             question = self._fallback_question(discovered_targets)
-        if not question.endswith("?"):
-            question = question.rstrip(".") + "?"
+        # Normalize trailing punctuation to exactly one '?' so salvaged prose
+        # ending in ':' never becomes the malformed ':?' the judge flags.
+        question = question.rstrip().rstrip("?").rstrip(" .:;,-—")
+        if question:
+            question = question + "?"
 
         return {"question": question, "focus": focus, "hints": hints}
 
@@ -485,9 +518,23 @@ class QueryCurator:
             )
 
         elif level == QueryType.MODULE_HINT:
+            modules = self._modules_from_ground_truth(ground_truth)
+            if modules:
+                # Bind to the ACTUAL target module (like file_hint/symbol_hint do)
+                # — the old generic prompt gave the curator no anchor, so it drifted
+                # off-target (query about X, target an unrelated module) and leaked
+                # file paths. That collapsed module_hint to ~9% judge-valid.
+                return (
+                    "Name ONLY the module/package, in dotted form, drawn from: "
+                    f"{', '.join(modules)}. Describe the behavior implemented THERE so "
+                    "the query is bound to that module. You MUST NOT mention any file "
+                    "path (no '/', no '.py'/'.go'/'.ts'/'.rs'/'.c'/'.h' suffix) and MUST "
+                    "NOT mention any function, class, or method name."
+                )
             return (
-                "You MAY mention module or package names (e.g., 'the caching module') "
-                "but AVOID specific file paths or function/class names."
+                "Name the relevant module/package in dotted form (e.g. 'the "
+                "pkg.subpkg module'). You MUST NOT mention file paths (no '/', no file "
+                "extension) or any function/class/method name."
             )
 
         elif level == QueryType.FILE_HINT:
@@ -535,6 +582,59 @@ class QueryCurator:
     # Private: text helpers
     # ------------------------------------------------------------------
 
+    # Non-source targets that poison MODULE_HINT/anchor binding: in-tree build
+    # output, bundles, type-definition stubs, sourcemaps, lockfiles. Binding a
+    # query to ``dist.esm.axios`` or ``index.d`` produces a target the judge
+    # correctly rejects as "not the source implementation".
+    _NON_SOURCE_DIR_RE = re.compile(
+        r"(^|/)(dist|build|out|node_modules|vendor|third_party|\.git|__pycache__)/",
+        re.I,
+    )
+    _NON_SOURCE_FILE_RE = re.compile(
+        r"(\.min\.js|\.d\.[cm]?ts|\.map|\.lock|\.snap)$", re.I
+    )
+
+    @classmethod
+    def _is_source_path(cls, path: str) -> bool:
+        return not (
+            cls._NON_SOURCE_DIR_RE.search(path) or cls._NON_SOURCE_FILE_RE.search(path)
+        )
+
+    @classmethod
+    def _modules_from_ground_truth(
+        cls, ground_truth: Optional[Dict[str, Any]]
+    ) -> List[str]:
+        """Dotted module paths derived from the target files (for MODULE_HINT).
+
+        ``astropy/units/core.py`` -> ``astropy.units.core``. Gives the curator the
+        real module to name (and to bind the described behavior to), instead of an
+        unanchored "the X module". Skips non-source targets (bundles, type-def
+        stubs) so we never bind to ``dist.esm.axios`` / ``index.d``.
+        """
+        files = (ground_truth or {}).get("target_files") or []
+        mods: List[str] = []
+        for f in files:
+            f = str(f)
+            if not cls._is_source_path(f):
+                continue
+            base = re.sub(r"\.[A-Za-z0-9]+$", "", f)  # drop extension
+            dotted = base.replace("/", ".").strip(".")
+            if dotted:
+                mods.append(dotted)
+        return list(dict.fromkeys(mods))[:3]
+
+    @classmethod
+    def _strip_leading_narration(cls, q: str) -> str:
+        """Drop leading agent-thinking sentences the model prepends to a query
+        ("Now let me look at X. <real query>"). Returns "" when the whole string
+        is narration so the caller falls back to a clean question."""
+        if not q:
+            return q
+        parts = re.split(r"(?<=[.:])\s+", q.strip())
+        while parts and cls._NARRATION_RE.match(parts[0].strip()):
+            parts.pop(0)
+        return " ".join(parts).strip()
+
     @staticmethod
     def _extract_avoid_terms(text: str) -> List[str]:
         if not text:
@@ -558,6 +658,16 @@ class QueryCurator:
         text = re.sub(r"\s{2,}", " ", text).strip()
         return text
 
+    # Agent chain-of-thought preambles that leak into the query field when the
+    # model returns prose instead of JSON ("Now I understand the code...",
+    # "Let me look at..."). Skip these lines so we fall back to a clean question
+    # rather than salvaging reasoning narration as the query.
+    _NARRATION_RE = re.compile(
+        r"^(now\b|let me\b|let's\b|i'?ll\b|i now\b|i understand\b|i can see\b|"
+        r"i need to\b|i'?ve\b|looking at\b|first,|okay\b|ok\b|so,|here'?s what)",
+        re.I,
+    )
+
     @staticmethod
     def _coerce_question_text(text: str) -> str:
         if not text:
@@ -570,6 +680,8 @@ class QueryCurator:
             if not candidate:
                 continue
             candidate = re.sub(r"^(question|query)\s*:\s*", "", candidate, flags=re.I)
+            if QueryCurator._NARRATION_RE.match(candidate):
+                continue
             if len(candidate) >= 12:
                 if "?" in candidate:
                     return candidate.split("?", 1)[0].strip() + "?"

@@ -454,6 +454,10 @@ async def _run_pipeline(args: argparse.Namespace) -> None:
         model=args.model,
         judge_model=args.judge_model,
         max_retries=args.post_fix_max_retries,
+        # The mixed rows carry content=null; pass the anchors (which hold the
+        # real code) so flagged module/file/symbol/reasoning rows can actually
+        # be regenerated instead of skipped for "no anchor content".
+        anchors=anchors,
     )
     with output_path.open("w", encoding="utf-8") as fh:
         json.dump(compact, fh, indent=2, ensure_ascii=False)
