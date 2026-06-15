@@ -58,12 +58,14 @@ function SourcePeek({
     if (isExternal) return; // external dep — no in-repo source to fetch
     let cancelled = false;
     setState("loading");
-    // A node renders its exact definition span [line, endLine]; a call site (a
-    // point, not a span) gets ±6 lines of context. Long spans scroll inside the
-    // pane (CSS max-height), so there's no arbitrary line cap. Fall back to a
-    // small window only when a node has no recorded end line.
-    const before = isNode ? 0 : 6;
-    const end = isNode ? (nodeEnd && nodeEnd >= line ? nodeEnd : line + 12) : line + 6;
+    // A node shows its definition span [line, endLine] plus a few lines of
+    // context on each side, so even a one-line field isn't shown bare (its
+    // own lines are highlighted). A call site (a point, not a span) gets ±6
+    // lines of context. Long spans scroll in the pane (CSS max-height).
+    const PAD = 3;
+    const symEnd = nodeEnd && nodeEnd >= line ? nodeEnd : line;
+    const before = isNode ? PAD : 6;
+    const end = isNode ? symEnd + PAD : line + 6;
     fetchSource(repoId, rel, Math.max(1, line - before), end)
       .then((s) => {
         if (cancelled) return;
@@ -130,7 +132,13 @@ function SourcePeek({
       ) : state === "err" ? (
         <p className="muted callsite-msg">Source not available.</p>
       ) : (
-        <HighlightedCode code={code} file={rel} startLine={start} highlightLine={line} />
+        <HighlightedCode
+          code={code}
+          file={rel}
+          startLine={start}
+          highlightLine={line}
+          highlightEnd={isNode ? nodeEnd ?? line : undefined}
+        />
       )}
     </div>
   );

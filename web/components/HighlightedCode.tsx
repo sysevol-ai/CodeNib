@@ -34,12 +34,15 @@ export default function HighlightedCode({
   file,
   startLine = 1,
   highlightLine,
+  highlightEnd,
 }: {
   code: string;
   file?: string | null;
   startLine?: number;
-  /** 1-based absolute line to spotlight (e.g. an exact call site). */
+  /** 1-based absolute line to spotlight (e.g. an exact call site, or a span start). */
   highlightLine?: number | null;
+  /** 1-based end of the spotlight; defaults to highlightLine (a single line). */
+  highlightEnd?: number | null;
 }) {
   const ext = (file || "").split(".").pop()?.toLowerCase() || "";
   const lang = EXT_LANG[ext];
@@ -52,24 +55,29 @@ export default function HighlightedCode({
     html = code.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
   }
   const lineCount = code ? code.split("\n").length : 0;
-  const hlIdx =
-    highlightLine != null && highlightLine >= startLine && highlightLine < startLine + lineCount
-      ? highlightLine - startLine
-      : -1;
+  // Spotlight band over [highlightLine, highlightEnd], clamped to what's shown.
+  const hlA = highlightLine ?? null;
+  const hlB = highlightEnd ?? highlightLine ?? null;
+  const bandFrom = hlA != null ? Math.max(0, hlA - startLine) : -1;
+  const bandTo = hlB != null ? Math.min(lineCount - 1, hlB - startLine) : -1;
+  const hasBand = hlA != null && bandTo >= 0 && bandFrom <= bandTo;
   const LINE_H = 19.375; // 12.5px × 1.55 — matches the gutter & code line-height
 
   return (
     <div className="hl-code">
-      {hlIdx >= 0 && (
+      {hasBand && (
         <div
           className="hl-band"
-          style={{ top: `${10 + hlIdx * LINE_H}px`, height: `${LINE_H}px` }}
+          style={{
+            top: `${10 + bandFrom * LINE_H}px`,
+            height: `${(bandTo - bandFrom + 1) * LINE_H}px`,
+          }}
           aria-hidden
         />
       )}
       <div className="hl-gutter" aria-hidden>
         {Array.from({ length: lineCount }, (_, i) => (
-          <div key={i} className={i === hlIdx ? "hl-gutter-on" : undefined}>
+          <div key={i} className={hasBand && i >= bandFrom && i <= bandTo ? "hl-gutter-on" : undefined}>
             {startLine + i}
           </div>
         ))}
