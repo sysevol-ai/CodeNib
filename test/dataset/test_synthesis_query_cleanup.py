@@ -17,6 +17,7 @@ These lock in the pure-function behaviours behind the v2 dataset quality pass:
 """
 
 from codeminer.dataset.synthesize.query_curator import QueryCurator
+from codeminer.utils import is_non_source_file
 from scripts._post_fix import _build_anchor_content_lookups, _get_anchor
 
 # ---------------------------------------------------------------------------
@@ -85,6 +86,19 @@ def test_is_source_path_rejects_build_artifacts():
     assert not QueryCurator._is_source_path("node_modules/dep/index.js")
     assert QueryCurator._is_source_path("src/core/dispatchRequest.js")
     assert QueryCurator._is_source_path("astropy/units/core.py")
+
+
+def test_is_non_source_file_blocks_synthesis_anchors():
+    # Used by behavioral candidate sampling + traversal seed selection so
+    # bundles / type-def stubs never become ground truth.
+    assert is_non_source_file("dist/esm/axios.js")
+    assert is_non_source_file("index.d.cts")
+    assert is_non_source_file("src/jsx.d.ts")
+    assert is_non_source_file("a/b.min.js")
+    assert is_non_source_file("dist/bundle.js:Foo")  # node-id form (file:symbol)
+    assert not is_non_source_file("lib/core/AxiosHeaders.js")
+    assert not is_non_source_file("src/cat/main.rs")
+    assert not is_non_source_file("astropy/time/core.py:TimeBase.insert()")
 
 
 # ---------------------------------------------------------------------------

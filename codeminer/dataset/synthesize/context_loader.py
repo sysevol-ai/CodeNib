@@ -26,7 +26,7 @@ from codeminer.types import (
     NODE_TYPE_METHOD,
     is_symbol_node,
 )
-from codeminer.utils import is_test_file
+from codeminer.utils import is_non_source_file, is_test_file
 
 from ._types import (
     BehavioralContext,
@@ -317,6 +317,11 @@ class ContextLoader:
 
             file_path = attrs.get("file")
             if not file_path or is_test_file(file_path):
+                continue
+            # Build artifacts / type-def stubs (dist/, .d.ts) are generated
+            # copies — never anchor a behavioral query (and its mixed children)
+            # on them, or the GT points at the wrong file.
+            if is_non_source_file(file_path):
                 continue
 
             start_line = attrs.get("start_line")

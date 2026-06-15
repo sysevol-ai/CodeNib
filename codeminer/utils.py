@@ -36,6 +36,41 @@ def is_test_file(nid):
     return False
 
 
+_NON_SOURCE_DIR_PARTS = {"dist", "build", "out", "node_modules", "vendor"}
+_NON_SOURCE_SUFFIXES = (
+    ".min.js",
+    ".d.ts",
+    ".d.cts",
+    ".d.mts",
+    ".map",
+    ".snap",
+)
+
+
+def is_non_source_file(nid):
+    """Check whether a node ID / path is a build artifact or type-def stub.
+
+    Bundles (``dist/``), minified output, sourcemaps, and TypeScript declaration
+    stubs (``.d.ts`` / ``.d.cts``) are generated copies of the real source — they
+    make poor localization ground truth, so synthesis should not anchor queries
+    on them. Mirrors the assembly-time guard in
+    ``rebuild_codeminer_synthesis_dataset.py``.
+    """
+    if ":" in nid:
+        file_path = nid.split(":")[0]
+    else:
+        file_path = nid
+
+    normalized = file_path.replace("\\", "/").lower()
+    path_parts = [part for part in normalized.split("/") if part]
+    if not path_parts:
+        return False
+
+    if any(part in _NON_SOURCE_DIR_PARTS for part in path_parts[:-1]):
+        return True
+    return path_parts[-1].endswith(_NON_SOURCE_SUFFIXES)
+
+
 def wrap_code_snippet(code_snippet, start_line, end_line):
     """Wrap code snippet with line numbers"""
     lines = code_snippet.split("\n")

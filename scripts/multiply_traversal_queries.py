@@ -31,6 +31,7 @@ from codeminer.dataset.synthesize._agent import AgentRunner
 from codeminer.dataset.synthesize.context_loader import ContextLoader
 from codeminer.log_utils import get_logger
 from codeminer.types import NODE_TYPE_CLASS, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
+from codeminer.utils import is_non_source_file
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _post_fix import post_fix_flagged  # noqa: E402
@@ -214,6 +215,10 @@ def _vertex_to_member(code_graph: Any, vid: int) -> Optional[ChainMember]:
     end = attrs.get("end_line")
     name = attrs.get("name")
     if not (file and name and isinstance(start, int) and isinstance(end, int)):
+        return None
+    # Skip build artifacts / type-def stubs (dist/, .d.ts) — generated copies
+    # make poor traversal-chain ground truth.
+    if is_non_source_file(file):
         return None
     line_count = max(0, end - start + 1)
     if line_count < _MIN_CHAIN_MEMBER_LINES or line_count > _MAX_CHAIN_MEMBER_LINES:
