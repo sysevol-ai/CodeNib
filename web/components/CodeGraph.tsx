@@ -23,6 +23,7 @@ export interface GraphNodeInfo {
   short: string;
   file: string | null;
   line: number | null;
+  endLine: number | null; // 1-based end of the definition, so the peek shows just this symbol
   kind: string;
   external: boolean; // defined outside this repo — no source to open
 }
@@ -169,16 +170,54 @@ function buildElements(data: CodemapResponse, expanded: Set<string>): ElementDef
   return els;
 }
 
+// The subsystem "spine": the few highest-importance files that actually take part
+// in a cross-file edge. We auto-expand these on load so the default view shows real
+// symbol-level calls through the core, while the long tail of singletons stays as
+// pills — a level-of-detail middle ground between Files and Symbols.
+function spineFiles(data: CodemapResponse, maxFiles = 4, maxSymbols = 16): Set<string> {
+  const fileOf = new Map<string, string>();
+  const score = new Map<string, number>();
+  const size = new Map<string, number>();
+  for (const n of data.nodes) {
+    const f = fileKey(n);
+    if (f === "· external") continue;
+    fileOf.set(n.id, f);
+    score.set(f, Math.max(score.get(f) ?? 0, n.is_root ? 1 : n.importance ?? 0));
+    size.set(f, (size.get(f) ?? 0) + 1);
+  }
+  // Only files with a cross-file edge — expanding an isolated singleton reveals nothing.
+  const connected = new Set<string>();
+  for (const e of data.edges) {
+    const sf = fileOf.get(e.source);
+    const tf = fileOf.get(e.target);
+    if (sf && tf && sf !== tf) {
+      connected.add(sf);
+      connected.add(tf);
+    }
+  }
+  const ranked = [...connected].sort((a, b) => (score.get(b) ?? 0) - (score.get(a) ?? 0));
+  const out = new Set<string>();
+  let symbols = 0;
+  for (const f of ranked) {
+    if (out.size >= maxFiles || symbols >= maxSymbols) break;
+    out.add(f);
+    symbols += size.get(f) ?? 0;
+  }
+  return out;
+}
+
 // Lay out the current elements with fcose (compound-aware spring embedder), then
 // fit. packComponents keeps disconnected pieces from sprawling across the canvas.
-function runLayout(cy: Core): void {
+// `stable` warm-starts from current positions and skips the refit so expand/
+// collapse stays anchored.
+function runLayout(cy: Core, opts: { stable?: boolean } = {}): void {
   if (cy.nodes().length === 0) return;
   cy.layout({
     name: "fcose",
     quality: "proof",
-    randomize: true,
+    randomize: !opts.stable,
     animate: false,
-    fit: true,
+    fit: !opts.stable,
     padding: 28,
     packComponents: true,
     nodeSeparation: 78,
@@ -189,7 +228,7 @@ function runLayout(cy: Core): void {
     gravityCompound: 1.2,
     tile: true,
   } as any).run();
-  if (cy.zoom() > 1.2) {
+  if (!opts.stable && cy.zoom() > 1.2) {
     cy.zoom(1.2);
     cy.center();
   }
@@ -250,9 +289,11 @@ export default function CodeGraph({
 
     const dark = document.documentElement.dataset.theme === "dark";
 
-    // "files" opens as the collapsed overview; "symbols" expands every file.
+    // "files" opens as the hybrid spine (key files expanded, tail as pills);
+    // "symbols" expands every file.
     const initExpanded = new Set<string>();
     if (mode === "symbols") for (const n of data.nodes) initExpanded.add(fileKey(n));
+    else for (const f of spineFiles(data)) initExpanded.add(f);
     expandedRef.current = initExpanded;
 
     const nodeText = dark ? "#e6e6e6" : "#1f2937";
@@ -442,15 +483,47 @@ export default function CodeGraph({
     // it out. Cheap (<=120 nodes) and keeps meta-edge aggregation correct.
     const toggleFile = (file: string) => {
       const s = expandedRef.current;
-      if (s.has(file)) s.delete(file);
-      else s.add(file);
+      const willExpand = !s.has(file);
+
+      // Anchor on the clicked node (pill when expanding, box when collapsing).
+      const anchor = cy.getElementById(willExpand ? META + file : BOX + file);
+      const anchorScreen = anchor.nonempty() ? { ...anchor.renderedPosition() } : null;
+      const anchorModel = anchor.nonempty() ? { ...anchor.position() } : null;
+
+      if (willExpand) s.add(file);
+      else s.delete(file);
       focusedRef.current = null;
       setHover(null);
+
+      // Keep surviving nodes where they are; seed the new box + symbols at the
+      // clicked file so they grow out from there instead of the origin.
+      const prev = new Map<string, { x: number; y: number }>();
+      cy.nodes().forEach((n) => {
+        prev.set(n.id(), { ...n.position() });
+      });
       cy.batch(() => {
         cy.elements().remove();
         cy.add(buildElements(data, s));
+        cy.nodes().forEach((n) => {
+          const p = prev.get(n.id());
+          if (p) n.position(p);
+          else if (anchorModel)
+            n.position({
+              x: anchorModel.x + (Math.random() - 0.5) * 40,
+              y: anchorModel.y + (Math.random() - 0.5) * 40,
+            });
+        });
       });
-      runLayout(cy);
+      runLayout(cy, { stable: true });
+
+      // Pin the clicked file back where it was clicked so it expands in place.
+      if (anchorScreen) {
+        const after = cy.getElementById(willExpand ? BOX + file : META + file);
+        if (after.nonempty()) {
+          const now = after.renderedPosition();
+          cy.panBy({ x: anchorScreen.x - now.x, y: anchorScreen.y - now.y });
+        }
+      }
     };
 
     // Hover: a transient preview of the node + its neighbours. Suppressed while a
@@ -493,6 +566,7 @@ export default function CodeGraph({
         short: d.short,
         file: d.file ?? null,
         line: d.line ?? null,
+        endLine: d.endLine ?? null,
         kind: d.kind,
         external: d.external === 1,
       });
@@ -583,24 +657,24 @@ export default function CodeGraph({
             type="button"
             className={mode === "files" ? "on" : ""}
             onClick={() => setMode("files")}
-            title="Files: one box per file, click to expand its symbols"
+            title="Overview: key files expanded to symbols, the rest as pills you can expand"
           >
-            Files
+            Overview
           </button>
           <button
             type="button"
             className={mode === "symbols" ? "on" : ""}
             onClick={() => setMode("symbols")}
-            title="Symbols: every symbol shown at once"
+            title="All symbols: every file expanded at once"
           >
-            Symbols
+            All symbols
           </button>
         </div>
         <span
           className="codegraph-depnote"
           title="Solid edges are exact SCIP/LSP references; dashed edges are file-level aggregates you expand to reach."
         >
-          {mode === "files" ? "▸ click a file to expand" : "click a file box to collapse"}
+          click a file to expand · its box to collapse
         </span>
         <button type="button" className="codegraph-fit" onClick={() => cyRef.current?.fit(undefined, 24)}>
           Fit

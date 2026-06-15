@@ -39,6 +39,7 @@ function SourcePeek({
   onFocus?: (label: string) => void;
 }) {
   const isNode = source.kind === "node";
+  const nodeEnd = source.kind === "node" ? source.node.endLine : null;
   const sites: CallSite[] = isNode
     ? [{ file: source.node.file || "", line: source.node.line }]
     : source.anchors;
@@ -57,10 +58,13 @@ function SourcePeek({
     if (isExternal) return; // external dep — no in-repo source to fetch
     let cancelled = false;
     setState("loading");
-    // Nodes show their definition from its first line; call sites get context above.
+    // A node renders its exact definition span [line, endLine]; a call site (a
+    // point, not a span) gets ±6 lines of context. Long spans scroll inside the
+    // pane (CSS max-height), so there's no arbitrary line cap. Fall back to a
+    // small window only when a node has no recorded end line.
     const before = isNode ? 0 : 6;
-    const after = isNode ? 16 : 6;
-    fetchSource(repoId, rel, Math.max(1, line - before), line + after)
+    const end = isNode ? (nodeEnd && nodeEnd >= line ? nodeEnd : line + 12) : line + 6;
+    fetchSource(repoId, rel, Math.max(1, line - before), end)
       .then((s) => {
         if (cancelled) return;
         setCode(s.content || "");
@@ -71,7 +75,7 @@ function SourcePeek({
     return () => {
       cancelled = true;
     };
-  }, [repoId, rel, line, isNode, isExternal]);
+  }, [repoId, rel, line, isNode, nodeEnd, isExternal]);
 
   return (
     <div className="callsite-peek">
