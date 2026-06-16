@@ -197,25 +197,124 @@ class AgentWiki:
         return page
 
     def _retrieve(self, meta: Dict[str, Any], top_k: int = 8) -> List[Any]:
+        ensure_runtime = getattr(self._bundle, "ensure_runtime", None)
+        if callable(ensure_runtime):
+            ensure_runtime()
+        files = [f for f in meta.get("files") or [] if isinstance(f, str)]
         query = " ".join(
             [meta.get("title", ""), meta.get("summary", "")]
             + (meta.get("keywords") or [])
+            + files
         ).strip()
+        pool_k = max(top_k, top_k * 4)
         store = self._bundle.vector_store
+        nodes: List[Any] = []
         try:
             if store is not None and hasattr(store, "search_with_content"):
-                return store.search_with_content(query, top_k=top_k)
+                nodes = store.search_with_content(query, top_k=pool_k)
+                return self._rerank_for_page(meta, nodes)[:top_k]
             if store is not None:
-                return store.search(query, top_k=top_k)
+                nodes = store.search(query, top_k=pool_k)
+                return self._rerank_for_page(meta, nodes)[:top_k]
         except Exception as exc:  # noqa: BLE001 - fall back to BM25 below
             logger.warning("wiki retrieve (vector) failed: %s", exc)
         bm25 = self._bundle.bm25
         if bm25 is not None:
             try:
-                return bm25.search(query, top_k)
+                nodes = bm25.search(query, pool_k)
+                return self._rerank_for_page(meta, nodes)[:top_k]
             except Exception:  # noqa: BLE001
                 return []
         return []
+
+    @staticmethod
+    def _norm_hint_path(path: str) -> str:
+        return path.replace("\\", "/").strip().strip("/")
+
+    @staticmethod
+    def _path_matches_hint(file: str, hint: str) -> bool:
+        if not file or not hint:
+            return False
+        hint = hint.rstrip("/")
+        return (
+            file == hint
+            or file.endswith("/" + hint)
+            or file.startswith(hint + "/")
+            or ("/" + hint + "/") in ("/" + file)
+        )
+
+    @staticmethod
+    def _keyword_terms(keywords: List[str]) -> List[str]:
+        terms: List[str] = []
+        seen = set()
+        for keyword in keywords:
+            for term in re.findall(r"[a-zA-Z0-9_]{3,}", keyword.lower()):
+                if term not in seen:
+                    seen.add(term)
+                    terms.append(term)
+        return terms
+
+    def _candidate_hint_score(
+        self, meta: Dict[str, Any], node: Any, file_hints: List[str], terms: List[str]
+    ) -> float:
+        file = self._norm_hint_path(self._rel(self._node_attr(node, "file")) or "")
+        name = self._node_attr(node, "node_name") or self._node_attr(node, "name") or ""
+        content = (self._node_attr(node, "content") or "")[:1200]
+        haystack = f"{file} {name} {content}".lower()
+        score = 0.0
+
+        for hint in file_hints:
+            if self._path_matches_hint(file, hint):
+                score += 5.0
+            else:
+                base = hint.rsplit("/", 1)[-1]
+                if base and base in file:
+                    score += 1.0
+
+        phrase_hits = 0
+        for keyword in meta.get("keywords") or []:
+            phrase = str(keyword).strip().lower()
+            if len(phrase) >= 3 and phrase in haystack:
+                phrase_hits += 1
+        score += min(4.0, phrase_hits * 2.0)
+
+        term_hits = sum(1 for term in terms if term in haystack)
+        score += min(3.0, term_hits * 0.5)
+        return score
+
+    def _rerank_for_page(self, meta: Dict[str, Any], nodes: List[Any]) -> List[Any]:
+        file_hints = [
+            self._norm_hint_path(f)
+            for f in meta.get("files") or []
+            if isinstance(f, str) and f.strip()
+        ]
+        terms = self._keyword_terms(
+            [str(k) for k in meta.get("keywords") or [] if str(k).strip()]
+        )
+        if not file_hints and not terms:
+            return nodes
+
+        scored: List[tuple[float, int, Any]] = []
+        seen = set()
+        for i, node in enumerate(nodes):
+            file = self._norm_hint_path(self._rel(self._node_attr(node, "file")) or "")
+            key = (
+                file,
+                self._node_attr(node, "start_line"),
+                self._node_attr(node, "end_line"),
+                self._node_attr(node, "node_name")
+                or self._node_attr(node, "name")
+                or "",
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            scored.append(
+                (self._candidate_hint_score(meta, node, file_hints, terms), i, node)
+            )
+        if any(score > 0 for score, _, _ in scored):
+            scored.sort(key=lambda item: (-item[0], item[1]))
+        return [node for _, _, node in scored]
 
     def _node_attr(self, node: Any, key: str, default: Any = None) -> Any:
         if isinstance(node, dict):

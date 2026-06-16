@@ -149,7 +149,13 @@ def test_overview_links_modules(repo_dir):
 
 # -- Critique #8: LLM-authored content layer ---------------------------------
 
-from codeminer.wiki.narrator import Narrator  # noqa: E402
+from codeminer.wiki.narrator import Narrator, _no_thinking_kwargs  # noqa: E402
+
+
+def test_narrator_gemini_25_uses_litellm_thinking_zero_budget():
+    assert _no_thinking_kwargs("vertex_ai/gemini-2.5-flash") == {
+        "thinking": {"type": "disabled", "budget_tokens": 0}
+    }
 
 
 def test_narrator_disabled_returns_none():

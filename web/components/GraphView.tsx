@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
 import HighlightedCode from "@/components/HighlightedCode";
+import SystemMap from "@/components/SystemMap";
 import { fetchSource, repoRelative, type CallSite, type CodemapResponse } from "@/lib/api";
 
-// Cytoscape + dagre (~3MB) load only when a graph is shown, so the wiki
+// Cytoscape loads only when a graph is shown, so the wiki
 // narrative paints first and the graph fills in a beat later.
 const CodeGraph = dynamic(() => import("@/components/CodeGraph"), {
   ssr: false,
@@ -21,6 +22,15 @@ const CodeGraph = dynamic(() => import("@/components/CodeGraph"), {
 // definition. Both resolve to a (file, line) the /source endpoint can open.
 type PeekSource = ({ kind: "edge" } & EdgeClickInfo) | { kind: "node"; node: GraphNodeInfo };
 
+function githubFileUrl(repoFullName: string | undefined, commit: string | undefined, file: string): string | null {
+  if (!repoFullName || !file) return null;
+  return `https://github.com/${repoFullName}/blob/${commit || "HEAD"}/${file}`;
+}
+
+function compactSymbol(label: string): string {
+  return label.split(":").pop() || label;
+}
+
 /**
  * Source peek grounded in the LSP/SCIP index — the payoff of the graph:
  *  - edge → the exact line(s) where the call happens (pager for multiple sites);
@@ -32,12 +42,17 @@ function SourcePeek({
   source,
   onClose,
   onFocus,
+  repoFullName,
+  commit,
 }: {
   repoId: string;
   source: PeekSource;
   onClose: () => void;
   onFocus?: (label: string) => void;
+  repoFullName?: string;
+  commit?: string;
 }) {
+  const peekRef = useRef<HTMLDivElement>(null);
   const isNode = source.kind === "node";
   const nodeEnd = source.kind === "node" ? source.node.endLine : null;
   const sites: CallSite[] = isNode
@@ -53,15 +68,27 @@ function SourcePeek({
   const rel = repoRelative(site.file);
   const line = site.line ?? 1;
   const isExternal = source.kind === "node" && !!source.node.external;
+  const fileName = rel.split("/").pop() || rel;
+  const sourceTitle =
+    source.kind === "edge"
+      ? `${compactSymbol(source.srcLabel)} -> ${compactSymbol(source.tgtLabel)}`
+      : compactSymbol(source.node.short);
+  const sourceMeta = source.kind === "edge" ? "Exact reference" : source.node.kind;
+  const fileUrl = isExternal ? null : githubFileUrl(repoFullName, commit, rel);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      peekRef.current?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [source]);
 
   useEffect(() => {
     if (isExternal) return; // external dep — no in-repo source to fetch
     let cancelled = false;
     setState("loading");
-    // A node shows its definition span [line, endLine] plus a few lines of
-    // context on each side, so even a one-line field isn't shown bare (its
-    // own lines are highlighted). A call site (a point, not a span) gets ±6
-    // lines of context. Long spans scroll in the pane (CSS max-height).
+    // Node peeks use the indexed symbol span, plus a little context around it.
+    // Edge peeks remain point locations with context above and below.
     const PAD = 3;
     const symEnd = nodeEnd && nodeEnd >= line ? nodeEnd : line;
     const before = isNode ? PAD : 6;
@@ -80,47 +107,62 @@ function SourcePeek({
   }, [repoId, rel, line, isNode, nodeEnd, isExternal]);
 
   return (
-    <div className="callsite-peek">
-      <div className="callsite-head mono">
-        {source.kind === "edge" ? (
-          <span className="callsite-title">
-            <b>{source.srcLabel}</b> <span className="callsite-arrow">→</span> <b>{source.tgtLabel}</b>
+    <div className="callsite-peek" ref={peekRef}>
+      <div className="callsite-head">
+        <div className="callsite-heading">
+          <span className="callsite-eyebrow">Code Preview</span>
+          <span className="callsite-title mono">
+            <b>{fileName || "external"}</b>
+            <span className="callsite-dot"> · </span>
+            <span>{sourceTitle}</span>
           </span>
-        ) : (
-          <span className="callsite-title">
-            <span className="callsite-kindtag">{source.node.kind}</span> <b>{source.node.short}</b>
+          <span className="callsite-loc mono">
+            {isExternal ? "external dependency" : `${rel}:${line}`}
           </span>
-        )}
-        <span className="callsite-loc">{isExternal ? "external dependency" : `${rel}:${line}`}</span>
-        {source.kind === "edge" && sites.length > 1 && (
-          <span className="callsite-pager">
-            {sites.length} call sites:
-            {sites.map((a, i) => (
-              <button
-                key={i}
-                type="button"
-                className={i === idx ? "on" : ""}
-                onClick={() => setIdx(i)}
-                title={`${repoRelative(a.file)}:${a.line}`}
-              >
-                {a.line}
-              </button>
-            ))}
-          </span>
-        )}
-        {source.kind === "node" && onFocus && (
-          <button
-            type="button"
-            className="callsite-focus"
-            onClick={() => onFocus(source.node.label)}
-            title="Re-root the graph on this symbol"
-          >
-            ⟳ Focus here
+        </div>
+        <div className="callsite-actions">
+          <span className="callsite-kindtag">{sourceMeta}</span>
+          {source.kind === "edge" && sites.length > 1 && (
+            <span className="callsite-pager">
+              {sites.length} call sites:
+              {sites.map((a, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={i === idx ? "on" : ""}
+                  onClick={() => setIdx(i)}
+                  title={`${repoRelative(a.file)}:${a.line}`}
+                >
+                  {a.line}
+                </button>
+              ))}
+            </span>
+          )}
+          {source.kind === "node" && onFocus && (
+            <button
+              type="button"
+              className="callsite-focus"
+              onClick={() => onFocus(source.node.label)}
+              title="Re-root the graph on this symbol"
+            >
+              Focus in graph
+            </button>
+          )}
+          {fileUrl && (
+            <a
+              className="callsite-open"
+              href={fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={`Open ${rel} on GitHub`}
+            >
+              Open file
+            </a>
+          )}
+          <button type="button" className="callsite-close" onClick={onClose} aria-label="Close">
+            ×
           </button>
-        )}
-        <button type="button" className="callsite-close" onClick={onClose} aria-label="Close">
-          ×
-        </button>
+        </div>
       </div>
       {isExternal ? (
         <p className="muted callsite-msg">
@@ -154,24 +196,36 @@ export default function GraphView({
   data,
   variant = "explore",
   onFocus,
+  repoFullName,
+  commit,
 }: {
   repoId: string;
   data: CodemapResponse;
   // "wiki" = focused top-down dependency map; "explore" = standalone Graph view.
   variant?: "wiki" | "explore";
   onFocus?: (label: string) => void;
+  repoFullName?: string;
+  commit?: string;
 }) {
   const [peek, setPeek] = useState<PeekSource | null>(null);
   useEffect(() => setPeek(null), [data]); // a fresh graph invalidates the open peek
 
   return (
     <>
-      <CodeGraph
-        data={data}
-        variant={variant}
-        onNodeClick={(node) => setPeek({ kind: "node", node })}
-        onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
-      />
+      {variant === "wiki" ? (
+        <SystemMap
+          data={data}
+          onNodeClick={(node) => setPeek({ kind: "node", node })}
+          onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
+        />
+      ) : (
+        <CodeGraph
+          data={data}
+          variant={variant}
+          onNodeClick={(node) => setPeek({ kind: "node", node })}
+          onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
+        />
+      )}
       {peek && (
         <SourcePeek
           key={peek.kind === "node" ? `node:${peek.node.label}` : `${peek.srcLabel}->${peek.tgtLabel}`}
@@ -179,6 +233,8 @@ export default function GraphView({
           source={peek}
           onClose={() => setPeek(null)}
           onFocus={onFocus}
+          repoFullName={repoFullName}
+          commit={commit}
         />
       )}
     </>

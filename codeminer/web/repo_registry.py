@@ -16,7 +16,8 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from threading import Lock
+from typing import Callable, Dict, List, Optional
 
 from ..agent.runner import AgentRunner
 from ..agent.skills.loader import SkillLoader
@@ -100,10 +101,27 @@ class RepoBundle:
 
     entry: RepoEntry
     manifest: RepoManifest
-    runner: AgentRunner
+    runner: Optional[AgentRunner] = None
     # Read-only handles reused by the wiki builder (index-derived docs).
     vector_store: Optional[CodeVectorStore] = None
     bm25: Optional[BM25CodeIndexer] = None
+    runtime_loader: Optional[Callable[["RepoBundle"], None]] = None
+
+    def __post_init__(self) -> None:
+        self._runtime_lock = Lock()
+        self._runtime_loaded = self.runner is not None
+
+    def ensure_runtime(self) -> None:
+        """Load heavy retrieval indexes and the QA runner on first real use."""
+        if self._runtime_loaded:
+            return
+        with self._runtime_lock:
+            if self._runtime_loaded:
+                return
+            if self.runtime_loader is None:
+                raise RuntimeError("repo runtime loader is not configured")
+            self.runtime_loader(self)
+            self._runtime_loaded = True
 
     def info(self) -> RepoInfo:
         capabilities = dict(self.manifest.capabilities)
@@ -168,6 +186,38 @@ class RepoBundle:
             self._code_graph = None
         return self._code_graph
 
+    def hierarchical_graph(self):
+        """Lazily build + cache the repo-level compound graph for CodeGraph UI."""
+        if getattr(self, "_hierarchical_graph_loaded", False):
+            return self._hierarchical_graph
+        self._hierarchical_graph_loaded = True
+        self._hierarchical_graph = None
+        graph = self.code_graph()
+        if graph is None:
+            return None
+        try:
+            from ..graph.hierarchy import build_hierarchical_code_graph
+
+            self._hierarchical_graph = build_hierarchical_code_graph(
+                graph, repo_dir=self.entry.repo_dir
+            )
+            logger.info(
+                "codemap: built hierarchical graph for %r "
+                "(%d containment nodes, %d dependencies)",
+                self.entry.instance_id,
+                len(self._hierarchical_graph.containment),
+                len(self._hierarchical_graph.dependencies),
+            )
+        except Exception as exc:  # noqa: BLE001 - hierarchy is a UI enhancement
+            logger.warning(
+                "codemap: failed to build hierarchy for %r: %s",
+                self.entry.instance_id,
+                exc,
+                exc_info=True,
+            )
+            self._hierarchical_graph = None
+        return self._hierarchical_graph
+
     def _file_count(self) -> int:
         cached = getattr(self, "_file_count_cache", None)
         if cached is not None:
@@ -229,15 +279,24 @@ class RepoRegistry:
                 )
                 continue
             try:
-                self._bundles[entry.instance_id] = self._load_repo(entry)
-                logger.info("Loaded %r (%s)", entry.instance_id, entry.repo)
+                self._bundles[entry.instance_id] = self._load_repo_metadata(entry)
+                logger.info("Registered %r (%s)", entry.instance_id, entry.repo)
             except Exception as exc:  # noqa: BLE001 - keep other repos alive
                 logger.error(
                     "Failed to load %r: %s", entry.instance_id, exc, exc_info=True
                 )
 
-    def _load_repo(self, entry: RepoEntry) -> RepoBundle:
+    def _load_repo_metadata(self, entry: RepoEntry) -> RepoBundle:
         manifest = RepoManifest.load(entry.manifest_path)
+        return RepoBundle(
+            entry=entry,
+            manifest=manifest,
+            runtime_loader=self._load_repo_runtime,
+        )
+
+    def _load_repo_runtime(self, bundle: RepoBundle) -> None:
+        entry = bundle.entry
+        manifest = bundle.manifest
 
         bm25_index: Optional[BM25CodeIndexer] = None
         vector_store: Optional[CodeVectorStore] = None
@@ -309,13 +368,9 @@ class RepoRegistry:
             # for the localization eval and would replace the explanation.
             force_localization_contract=False,
         )
-        return RepoBundle(
-            entry=entry,
-            manifest=manifest,
-            runner=runner,
-            vector_store=vector_store,
-            bm25=bm25_index,
-        )
+        bundle.runner = runner
+        bundle.vector_store = vector_store
+        bundle.bm25 = bm25_index
 
     # -- queries --
 

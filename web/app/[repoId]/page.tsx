@@ -193,7 +193,8 @@ export default function WikiPageView() {
             >
               ☰
             </button>
-            <span className="mono">{repo ? repo.repo : repoId}</span>
+            <span className="crumb-sep">/</span>
+            <span className="crumb-repo mono">{repo ? repo.repo : repoId}</span>
             {hasGraph && (
               <button
                 className="codegraph-launch"
@@ -224,15 +225,20 @@ export default function WikiPageView() {
           <div className="wiki-content" ref={contentRef}>
               {pageGraph && pageGraph.available && pageGraph.nodes.length > 0 && (
                 <details className="subsystem-map" open>
-                  <summary>
-                    Subsystem map · {pageGraph.nodes.length} symbols
-                    <span className="subsystem-hint"> — this page as a view over the graph</span>
+                  <summary className="subsystem-summary">
+                    <span className="subsystem-title">Subsystem map</span>
+                    <span className="subsystem-count">{pageGraph.nodes.length} symbols</span>
+                    {repo?.commit_short && (
+                      <span className="subsystem-index mono">Last indexed {repo.commit_short}</span>
+                    )}
                   </summary>
                   <GraphView
                     repoId={repoId}
                     data={pageGraph}
                     variant="wiki"
                     onFocus={(label) => openGraph(label)}
+                    repoFullName={repo?.repo}
+                    commit={repo?.base_commit}
                   />
                 </details>
               )}

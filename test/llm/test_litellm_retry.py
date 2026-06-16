@@ -19,7 +19,12 @@ from unittest.mock import patch
 import litellm
 import pytest
 
-from codeminer.llm.litellm_chat import LiteLLMChat, RetryConfig, is_transient_error
+from codeminer.llm.litellm_chat import (
+    LiteLLMChat,
+    RetryConfig,
+    _no_thinking_kwargs,
+    is_transient_error,
+)
 
 
 def _make_response(content="ok"):
@@ -30,6 +35,21 @@ def _make_response(content="ok"):
 def _no_sleep():
     """Patch out the backoff sleep so tests don't actually wait."""
     return patch("codeminer.llm.litellm_chat.time.sleep", return_value=None)
+
+
+# ---------------------------------------------------------------------------
+# Gemini thinking parameter normalization
+# ---------------------------------------------------------------------------
+
+
+class TestNoThinkingKwargs:
+    def test_gemini_25_uses_litellm_thinking_zero_budget(self):
+        assert _no_thinking_kwargs("vertex_ai/gemini-2.5-pro") == {
+            "thinking": {"type": "disabled", "budget_tokens": 0}
+        }
+
+    def test_non_thinking_model_has_no_extra_kwargs(self):
+        assert _no_thinking_kwargs("openai/gpt-4o-mini") == {}
 
 
 # ---------------------------------------------------------------------------

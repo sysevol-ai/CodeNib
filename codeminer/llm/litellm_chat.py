@@ -118,12 +118,13 @@ def _no_thinking_kwargs(model: str) -> Dict[str, Any]:
 
     Gemini 2.5 models spend the ``max_tokens`` budget on hidden reasoning
     tokens before emitting any answer; a tight budget leaves ``content`` empty
-    (``finish_reason="length"``). ``reasoning_effort="disable"`` turns thinking
-    off so the budget goes to the answer. No-op for non-thinking providers.
+    (``finish_reason="length"``). LiteLLM maps Anthropic-style ``thinking`` to
+    Gemini's ``thinkingConfig``; a zero budget turns thinking off so the budget
+    goes to the answer. No-op for non-thinking providers.
     """
     m = (model or "").lower()
     if "gemini-2.5" in m or "gemini-2-5" in m:
-        return {"reasoning_effort": "disable"}
+        return {"thinking": {"type": "disabled", "budget_tokens": 0}}
     return {}
 
 

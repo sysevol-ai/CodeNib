@@ -85,6 +85,30 @@ Config lives in `qa_config.yaml` (override path with `CODEMINER_DEMO_CONFIG`).
 Key env overrides: `CODEMINER_DEMO_MODEL`, `CODEMINER_DEMO_DATA_DIR`,
 `CODEMINER_DEMO_PREBUILT_DIR`.
 
+### Managed local dev servers
+
+For day-to-day development, prefer the repo-local manager instead of launching
+long-lived `uvicorn` and `next dev` processes by hand:
+
+```bash
+make web-start      # start backend :8000 and frontend :3000
+make web-status     # show PIDs, cwd, port owners, health, and log paths
+make web-logs       # print recent backend/frontend logs
+make web-stop       # stop managed processes
+make web-restart    # restart managed processes
+make web-reclaim    # reclaim current-user listeners on :3000/:8000, then restart
+```
+
+PID files and logs live under `.codeminer_demo/server/`:
+
+- `.codeminer_demo/server/backend.log`
+- `.codeminer_demo/server/frontend.log`
+
+If `localhost:3000` returns `Internal Server Error` after switching branches or
+deleting a worktree, run `make web-status`. A stale Next.js process from an old
+cwd is usually visible there. Use `make web-reclaim` to stop current-user
+listeners on the demo ports and restart both services from the current checkout.
+
 The backend exposes (all under `/api`):
 
 | Endpoint | Purpose |

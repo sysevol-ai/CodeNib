@@ -1,5 +1,17 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE ?? "";
+
+function browserApiBase(): string {
+  if (typeof window === "undefined") return configuredApiBase;
+  try {
+    const url = new URL(configuredApiBase);
+    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return "";
+  } catch {
+    // Empty or relative base already means same-origin.
+  }
+  return configuredApiBase;
+}
+
+export const API_BASE = browserApiBase();
 
 /** Strip an absolute index prefix (e.g. /home/.../repo/) to a repo-relative path. */
 export function repoRelative(path: string | null | undefined): string {
@@ -51,8 +63,8 @@ export interface ChatResponse {
   total_duration_ms: number;
 }
 
-export async function fetchRepos(): Promise<RepoInfo[]> {
-  const res = await fetch(`${API_BASE}/api/repos`);
+export async function fetchRepos(opts: { signal?: AbortSignal } = {}): Promise<RepoInfo[]> {
+  const res = await fetch(`${API_BASE}/api/repos`, { signal: opts.signal });
   if (!res.ok) throw new Error(`Failed to load repos (${res.status})`);
   return res.json();
 }
@@ -166,6 +178,38 @@ export interface CodemapEdge {
   // line where the call happens. Lets the UI jump an edge to its source.
   anchors?: CallSite[];
   weight?: number; // count of distinct call sites (= anchors.length) — drives edge width
+  source_hierarchy?: string;
+  target_hierarchy?: string;
+  bundle_path?: string[]; // containment route used for hierarchical edge bundling
+  bundle_lca?: string;
+  bundle_lca_kind?: string;
+  cross_file?: boolean;
+}
+
+export interface CodemapHierarchyNode {
+  id: string;
+  parent: string | null;
+  kind: "root" | "directory" | "file" | "symbol";
+  label: string;
+  path?: string;
+  file?: string;
+  node_id?: string;
+  line?: number;
+  end_line?: number;
+  depth: number;
+  child_count: number;
+  symbol_count: number;
+  doi: number;
+  importance?: number;
+  open_by_default?: boolean;
+  external?: boolean;
+}
+
+export interface CodemapHierarchy {
+  root: string;
+  nodes: CodemapHierarchyNode[];
+  open_files?: string[];
+  source_root?: string;
 }
 
 export interface CodemapResponse {
@@ -177,6 +221,7 @@ export interface CodemapResponse {
   truncated?: boolean;
   nodes: CodemapNode[];
   edges: CodemapEdge[];
+  hierarchy?: CodemapHierarchy;
   mermaid: string;
   note?: string;
 }

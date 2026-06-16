@@ -142,9 +142,14 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
     graph = await asyncio.to_thread(bundle.code_graph)
     if graph is None:
         return {"available": False, "nodes": [], "edges": [], "mermaid": ""}
+    hierarchy_graph = await asyncio.to_thread(bundle.hierarchical_graph)
     citations = page.get("citations", []) if isinstance(page, dict) else []
     return await asyncio.to_thread(
-        build_page_subgraph, graph, citations, repo_dir=bundle.entry.repo_dir
+        build_page_subgraph,
+        graph,
+        citations,
+        repo_dir=bundle.entry.repo_dir,
+        hierarchy_graph=hierarchy_graph,
     )
 
 
@@ -178,6 +183,7 @@ async def codemap(
             "available": False,
             "nodes": [],
             "edges": [],
+            "hierarchy": {"root": "hier::root", "nodes": [], "open_files": []},
             "mermaid": "",
             "note": "This repo has no symbol graph.",
         }
@@ -189,6 +195,7 @@ async def codemap(
         depth,
         max_nodes,
         repo_dir=bundle.entry.repo_dir,
+        hierarchy_graph=await asyncio.to_thread(bundle.hierarchical_graph),
     )
 
 
@@ -205,6 +212,9 @@ async def chat(req: ChatRequest) -> ChatResponse:
     bundle = _registry().get(req.repo_id)
     if bundle is None:
         raise HTTPException(status_code=404, detail=f"Unknown repo: {req.repo_id!r}")
+    await asyncio.to_thread(bundle.ensure_runtime)
+    if bundle.runner is None:
+        raise HTTPException(status_code=503, detail="repo runtime is unavailable")
 
     # Earlier messages give the agent context so it can resolve follow-ups
     # like "what calls it?".

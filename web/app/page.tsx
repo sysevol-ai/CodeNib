@@ -40,16 +40,56 @@ function RepoCard({ r }: { r: RepoInfo }) {
   );
 }
 
+const repoRetryDelays = [0, 1000, 2000, 4000, 8000];
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
 export default function Landing() {
   const router = useRouter();
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
 
+  const loadRepos = () => {
+    setError(null);
+    setLoading(true);
+    let active = true;
+
+    const run = async () => {
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < repoRetryDelays.length; attempt += 1) {
+        const delay = repoRetryDelays[attempt];
+        if (delay > 0) {
+          if (active) setError("Connecting to backend; retrying repository list...");
+          await sleep(delay);
+        }
+        if (!active) return;
+        try {
+          const rs = await fetchRepos();
+          if (!active) return;
+          setRepos(rs);
+          setError(null);
+          return;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      if (!active) return;
+      setError(lastError instanceof Error ? lastError.message : String(lastError));
+    };
+
+    run()
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  };
+
   useEffect(() => {
-    fetchRepos()
-      .then(setRepos)
-      .catch((e) => setError(String(e)));
+    return loadRepos();
   }, []);
 
   const filtered = useMemo(() => {
@@ -101,10 +141,17 @@ export default function Landing() {
 
         {error && (
           <div className="empty">
-            Backend unavailable — start it with <code>codeminer-web</code> after building an index.
+            <p>
+              Backend unavailable — start it with <code>codeminer-web</code> after building an index.
+            </p>
+            <p className="small muted">Request failed: {error}</p>
+            <button type="button" className="codegraph-fit" onClick={loadRepos}>
+              Retry
+            </button>
           </div>
         )}
-        {!error && repos.length === 0 && <div className="empty">Loading repositories…</div>}
+        {!error && loading && repos.length === 0 && <div className="empty">Loading repositories…</div>}
+        {!error && !loading && repos.length === 0 && <div className="empty">No repositories found.</div>}
         {filtered.map((r) => (
           <RepoCard key={r.id} r={r} />
         ))}

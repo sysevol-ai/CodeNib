@@ -22,6 +22,13 @@ from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..graph.code_graph import CodeGraph
+from ..graph.hierarchy import (
+    HierarchicalCodeGraph,
+    attach_edge_routes,
+    empty_hierarchy,
+    hierarchy_for_view,
+    hierarchy_from_view_nodes,
+)
 from ..graph.traverse_graph import RepoDependencySearcher
 
 # Node types eligible as a focus / default seed (skip file/dir/import nodes).
@@ -273,6 +280,7 @@ def build_codemap(
     depth: int = 2,
     max_nodes: int = 40,
     repo_dir: Optional[str] = None,
+    hierarchy_graph: Optional[HierarchicalCodeGraph] = None,
 ) -> Dict[str, Any]:
     """Return a dependency subgraph + Mermaid rendering around *symbol*.
 
@@ -302,6 +310,7 @@ def build_codemap(
             "direction": direction,
             "nodes": [],
             "edges": [],
+            "hierarchy": empty_hierarchy(),
             "mermaid": "",
             "note": "This repo has no symbol graph.",
         }
@@ -392,6 +401,12 @@ def build_codemap(
         edges.append(edge)
 
     nodes, edges = _enrich(graph, nodes, edges)
+    hierarchy = (
+        hierarchy_for_view(hierarchy_graph, nodes)
+        if hierarchy_graph is not None
+        else hierarchy_from_view_nodes(nodes)
+    )
+    edges = attach_edge_routes(edges, hierarchy)
     return {
         "available": True,
         "root": root,
@@ -401,6 +416,7 @@ def build_codemap(
         "truncated": truncated,
         "nodes": nodes,
         "edges": edges,
+        "hierarchy": hierarchy,
         "mermaid": _to_mermaid(nodes, edges, id_of[root]),
         "note": note,
     }
@@ -459,17 +475,20 @@ def _resolve_citation(
 def build_page_subgraph(
     graph: CodeGraph,
     citations: List[Dict[str, Any]],
-    max_nodes: int = 40,
+    max_nodes: int = 18,
     repo_dir: Optional[str] = None,
+    hierarchy_graph: Optional[HierarchicalCodeGraph] = None,
 ) -> Dict[str, Any]:
-    """Induced reference subgraph over a wiki page's cited symbols.
+    """Page-evidence-first reference subgraph over a wiki page's cited symbols.
 
-    Resolves each citation to a graph node, then returns those nodes plus the
-    reference (call) edges *between* them — anchored to their exact call sites —
-    in the same ``{nodes, edges}`` shape as :func:`build_codemap`. This makes a
-    wiki page a *view over the graph*: the subsystem's symbols and how they wire
-    together, every node/edge clickable to real source.
+    Resolves each citation to a graph node, then returns the cited nodes plus
+    direct reference edges between them. It admits only a tiny number of
+    non-cited bridge symbols, and only when a bridge touches multiple cited
+    symbols. That keeps the wiki map grounded in the page's evidence instead of
+    dragging in a one-hop neighbourhood that may be true code but not relevant
+    to the page.
     """
+    max_nodes = max(2, min(int(max_nodes), 40))
     g = graph.get_graph()
 
     # Location + name index for resolving citations precisely (built once).
@@ -502,6 +521,7 @@ def build_page_subgraph(
             "direction": "both",
             "nodes": [],
             "edges": [],
+            "hierarchy": empty_hierarchy(),
             "mermaid": "",
             "note": "No graph symbols for this page.",
         }
@@ -509,44 +529,103 @@ def build_page_subgraph(
     seeds = set(names)  # the page's own cited symbols (highlighted)
     searcher = RepoDependencySearcher(graph)
 
-    # The page's symbols rarely call each other directly, so a pure induced
-    # subgraph is mostly disconnected dots. Expand one hop: pull in each seed's
-    # immediate neighbours so the subsystem's wiring is visible.
-    for nm in list(names):
-        if len(names) >= max_nodes:
-            break
-        nbrs, _ = searcher.get_neighbors(
-            nm, direction="all", etype_filter={"reference"}, ignore_test_file=True
+    direct_edges: List[Tuple[str, str]] = []
+    direct_seen: Set[Tuple[str, str]] = set()
+    bridge_edges: Dict[str, Set[Tuple[str, str]]] = {}
+    bridge_touches: Dict[str, Set[str]] = {}
+    bridge_weight: Dict[str, int] = {}
+    candidate_order: Dict[str, int] = {}
+    edge_anchors: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+
+    def add_anchor(key: Tuple[str, str], meta: Any) -> None:
+        af = meta.get("anchor_file") if isinstance(meta, dict) else None
+        al = meta.get("anchor_line") if isinstance(meta, dict) else None
+        if not af:
+            return
+        anchors = edge_anchors.setdefault(key, [])
+        entry = {"file": af, "line": (al + 1) if isinstance(al, int) else None}
+        if entry not in anchors:
+            anchors.append(entry)
+
+    for seed in names:
+        _, n_edges = searcher.get_neighbors(
+            seed, direction="all", etype_filter={"reference"}, ignore_test_file=True
         )
-        for nb in nbrs:
-            if nb not in chosen:
-                chosen.add(nb)
-                names.append(nb)
-            if len(names) >= max_nodes:
-                break
+        for src, tgt, _w, meta in n_edges:
+            if src == tgt:
+                continue
+            key = (src, tgt)
+            add_anchor(key, meta)
+            if src in seeds and tgt in seeds:
+                if key not in direct_seen:
+                    direct_seen.add(key)
+                    direct_edges.append(key)
+                continue
+
+            other = tgt if src == seed else src if tgt == seed else None
+            if other is None or other in seeds:
+                continue
+            other_attrs = _attrs(graph, other)
+            if _is_external(other_attrs, repo_dir):
+                continue
+            candidate_order.setdefault(other, len(candidate_order))
+            bridge_edges.setdefault(other, set()).add(key)
+            bridge_touches.setdefault(other, set()).add(seed)
+            bridge_weight[other] = bridge_weight.get(other, 0) + max(
+                1, len(edge_anchors.get(key) or [])
+            )
+
+    # A bridge has to explain relationships among page evidence, not merely be a
+    # random one-hop neighbour of one citation. Rank by exact call-site evidence
+    # first so broad generic types like Context do not crowd out stronger domain
+    # connectors.
+    bridge_candidates = [
+        name for name, touches in bridge_touches.items() if len(touches) >= 2
+    ]
+    bridge_candidates.sort(
+        key=lambda name: (
+            -bridge_weight.get(name, 0),
+            -len(bridge_touches.get(name, set())),
+            candidate_order.get(name, 0),
+            name,
+        )
+    )
+    bridge_budget = min(2, max(0, max_nodes - len(names)))
+    bridges = bridge_candidates[:bridge_budget]
+    names = names[:max_nodes] + [b for b in bridges if b not in chosen]
+    names = names[:max_nodes]
     nameset = set(names)
 
     edge_order: List[Tuple[str, str]] = []
     edge_seen: Set[Tuple[str, str]] = set()
-    edge_anchors: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
-    for nm in names:
+    for key in direct_edges:
+        if key[0] in nameset and key[1] in nameset and key not in edge_seen:
+            edge_seen.add(key)
+            edge_order.append(key)
+    for bridge in bridges:
+        for key in sorted(bridge_edges.get(bridge, set())):
+            if key[0] in nameset and key[1] in nameset and key not in edge_seen:
+                edge_seen.add(key)
+                edge_order.append(key)
+
+    # Collect anchors for any direct seed-seed edges that were not observed from
+    # the first seed's neighbour walk due traversal direction/order.
+    for nm in nameset:
         _, n_edges = searcher.get_neighbors(
             nm, direction="all", etype_filter={"reference"}, ignore_test_file=True
         )
         for src, tgt, _w, meta in n_edges:
             if src == tgt or src not in nameset or tgt not in nameset:
-                continue  # induced subgraph; drop self-loops
+                continue
             key = (src, tgt)
-            if key not in edge_seen:
+            touches_seed = src in seeds or tgt in seeds
+            if not touches_seed:
+                continue
+            if key not in edge_seen and src in seeds and tgt in seeds:
                 edge_seen.add(key)
                 edge_order.append(key)
-            af = meta.get("anchor_file") if isinstance(meta, dict) else None
-            al = meta.get("anchor_line") if isinstance(meta, dict) else None
-            if af:
-                anchors = edge_anchors.setdefault(key, [])
-                entry = {"file": af, "line": (al + 1) if isinstance(al, int) else None}
-                if entry not in anchors:
-                    anchors.append(entry)
+            if key in edge_seen:
+                add_anchor(key, meta)
 
     # Order seeds first (they're the page's subject); neighbours follow.
     ordered = [n for n in names if n in seeds] + [n for n in names if n not in seeds]
@@ -589,6 +668,12 @@ def build_page_subgraph(
         edges.append(edge)
 
     nodes, edges = _enrich(graph, nodes, edges)
+    hierarchy = (
+        hierarchy_for_view(hierarchy_graph, nodes)
+        if hierarchy_graph is not None
+        else hierarchy_from_view_nodes(nodes)
+    )
+    edges = attach_edge_routes(edges, hierarchy)
     return {
         "available": True,
         "root": "",
@@ -598,6 +683,7 @@ def build_page_subgraph(
         "truncated": len(names) >= max_nodes,
         "nodes": nodes,
         "edges": edges,
+        "hierarchy": hierarchy,
         "mermaid": "",
         "note": "",
     }

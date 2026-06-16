@@ -5,6 +5,7 @@ import GraphView from "@/components/GraphView";
 import { fetchCodemap, type CodemapResponse } from "@/lib/api";
 
 type Direction = "both" | "callees" | "callers";
+type Depth = 1 | 2;
 
 /**
  * Codemap mode: an interactive dependency (call-graph) map for the repo.
@@ -22,6 +23,7 @@ export default function Codemap({
   const [symbol, setSymbol] = useState(initialSymbol ?? "");
   const [query, setQuery] = useState(initialSymbol ?? ""); // last submitted focus symbol
   const [direction, setDirection] = useState<Direction>("both");
+  const [depth, setDepth] = useState<Depth>(1);
   const [data, setData] = useState<CodemapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -41,8 +43,8 @@ export default function Codemap({
     fetchCodemap(repoId, {
       symbol: query || undefined,
       direction,
-      depth: 2,
-      maxNodes: 18,
+      depth,
+      maxNodes: depth === 1 ? 28 : 40,
     })
       .then((d) => !cancelled && setData(d))
       .catch((e) => !cancelled && setErr(String(e)))
@@ -50,7 +52,7 @@ export default function Codemap({
     return () => {
       cancelled = true;
     };
-  }, [repoId, query, direction]);
+  }, [repoId, query, direction, depth]);
 
   function focus(label: string) {
     setSymbol(label);
@@ -81,6 +83,14 @@ export default function Codemap({
           <option value="both">callers + callees</option>
           <option value="callees">callees (what it calls)</option>
           <option value="callers">callers (what calls it)</option>
+        </select>
+        <select
+          value={depth}
+          onChange={(e) => setDepth(Number(e.target.value) as Depth)}
+          aria-label="Traversal depth"
+        >
+          <option value={1}>1 hop</option>
+          <option value={2}>2 hops</option>
         </select>
         <button type="submit">Map</button>
       </form>

@@ -55,7 +55,6 @@ export default function HighlightedCode({
     html = code.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
   }
   const lineCount = code ? code.split("\n").length : 0;
-  // Spotlight band over [highlightLine, highlightEnd], clamped to what's shown.
   const hlA = highlightLine ?? null;
   const hlB = highlightEnd ?? highlightLine ?? null;
   const bandFrom = hlA != null ? Math.max(0, hlA - startLine) : -1;
