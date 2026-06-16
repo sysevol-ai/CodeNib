@@ -10,7 +10,9 @@
 # `model` is a litellm model string; override with CODEMINER_DEMO_MODEL.
 # Provider API keys come from the environment (e.g. OPENAI_API_KEY).
 
-model: vertex_ai/gemini-2.5-flash   # uses gcloud ADC; override via CODEMINER_DEMO_MODEL
+# model: vertex_ai/gemini-2.5-flash   # uses gcloud ADC; override via CODEMINER_DEMO_MODEL
+model: openai/qwen2.5-coder #replace it to use local qwen model for testing using ollama
+
 mode: hybrid              # "sparse" (BM25 only) or "hybrid" (BM25 + embeddings)
 data_dir: .codeminer_qa
 # Reuse pre-built per-instance indexes (source @ base_commit + L0/L2 vectors)
