@@ -16,38 +16,102 @@ import re
 import subprocess
 import sys
 
-logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(levelname)-8s %(message)s")
+logging.basicConfig(
+    level=logging.INFO, stream=sys.stdout, format="%(levelname)-8s %(message)s"
+)
 
 from codeminer.compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.index_builders import IndexBuilderRegistry, register_default_builders
+from codeminer.compiler.index_builders import (
+    IndexBuilderRegistry,
+    register_default_builders,
+)
+
+_LANGUAGE_ALIASES = {
+    "python": ["python"],
+    "py": ["python"],
+    "go": ["go"],
+    "golang": ["go"],
+    "rust": ["rust"],
+    "rs": ["rust"],
+    "javascript": ["javascript"],
+    "js": ["javascript"],
+    "typescript": ["typescript"],
+    "ts": ["typescript"],
+    "cpp": ["cpp"],
+    "c++": ["cpp"],
+    "cxx": ["cpp"],
+    "cc": ["cpp"],
+    "c": ["cpp"],
+}
+
+_EXT_LANGS = {
+    ".py": ["python"],
+    ".pyi": ["python"],
+    ".pyx": ["python"],
+    ".go": ["go"],
+    ".rs": ["rust"],
+    ".js": ["javascript"],
+    ".jsx": ["javascript"],
+    ".mjs": ["javascript"],
+    ".ts": ["typescript"],
+    ".tsx": ["typescript"],
+    ".mts": ["typescript"],
+    ".cts": ["typescript"],
+    ".cpp": ["cpp"],
+    ".cc": ["cpp"],
+    ".cxx": ["cpp"],
+    ".c": ["cpp"],
+    ".h": ["cpp"],
+    ".hpp": ["cpp"],
+    ".hxx": ["cpp"],
+}
 
 
 def get_base_commit(repo_dir: str) -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=repo_dir, capture_output=True, text=True, check=True,
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return result.stdout.strip()
     except Exception:
         return ""
 
 
-def detect_language(repo_dir: str) -> str:
-    counts: dict = {}
-    ext_map = {
-        ".py": "python", ".go": "go", ".rs": "rust",
-        ".ts": "javascript", ".tsx": "javascript", ".js": "javascript",
-        ".cpp": "cpp", ".cc": "cpp", ".c": "cpp",
-    }
+def _dedupe(languages: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for language in languages:
+        if language not in seen:
+            seen.add(language)
+            result.append(language)
+    return result
+
+
+def normalize_languages(value: str) -> list[str]:
+    languages: list[str] = []
+    for token in re.split(r"[,/]", value or ""):
+        token = token.strip().lower()
+        if not token:
+            continue
+        languages.extend(_LANGUAGE_ALIASES.get(token, [token]))
+    return _dedupe(languages) or ["python"]
+
+
+def detect_languages(repo_dir: str) -> list[str]:
+    counts: dict[str, int] = {}
     for root, _, files in os.walk(repo_dir):
         if "/.git" in root or "/.codeminer" in root:
             continue
         for f in files:
-            lang = ext_map.get(os.path.splitext(f)[1].lower())
-            if lang:
+            for lang in _EXT_LANGS.get(os.path.splitext(f)[1].lower(), []):
                 counts[lang] = counts.get(lang, 0) + 1
-    return max(counts, key=counts.get) if counts else "python"
+    if not counts:
+        return ["python"]
+    return sorted(counts, key=lambda lang: (-counts[lang], lang))
 
 
 def update_registry(registry_path: str, entry: dict) -> None:
@@ -65,7 +129,13 @@ def update_registry(registry_path: str, entry: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Index a repo for CodeMiner web demo")
     parser.add_argument("repo_dir", help="Absolute path to the repo to index")
-    parser.add_argument("--language", help="Language override (auto-detected if omitted)")
+    parser.add_argument(
+        "--language",
+        help=(
+            "Language override (auto-detected if omitted); accepts comma- or "
+            "slash-separated values such as javascript/typescript"
+        ),
+    )
     parser.add_argument(
         "--registry",
         default=".codeminer_qa/qa_registry.json",
@@ -78,13 +148,21 @@ def main() -> None:
         print(f"ERROR: Directory not found: {repo_dir}")
         sys.exit(1)
 
-    language = args.language or detect_language(repo_dir)
-    print(f"Detected language: {language}")
+    languages = (
+        normalize_languages(args.language)
+        if args.language
+        else detect_languages(repo_dir)
+    )
+    language = "/".join(languages)
+    print(f"Target languages: {', '.join(languages)}")
 
     # Build BM25 index
     reg = IndexBuilderRegistry()
-    register_default_builders(reg, languages=[language])
-    manifest = IndexCompiler(reg, IndexCompilerConfig(index_types=["bm25"])).compile_repo(repo_dir)
+    register_default_builders(reg, languages=languages)
+    manifest = IndexCompiler(
+        reg,
+        IndexCompilerConfig(index_types=["bm25"], languages=languages),
+    ).compile_repo(repo_dir)
 
     print("\nIndexes built:")
     for name, idx in manifest.indexes.items():
@@ -94,10 +172,14 @@ def main() -> None:
     try:
         remote = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            cwd=repo_dir, capture_output=True, text=True,
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
-        m = re.search(r"[:/]([^/]+)/([^/.]+?)(?:\.git)?$", remote)
-        owner, repo = (m.group(1), m.group(2)) if m else ("local", os.path.basename(repo_dir))
+        m = re.search(r"[:/]([^/]+)/([^/]+?)(?:\.git)?$", remote)
+        owner, repo = (
+            (m.group(1), m.group(2)) if m else ("local", os.path.basename(repo_dir))
+        )
     except Exception:
         owner, repo = "local", os.path.basename(repo_dir)
 
@@ -117,7 +199,7 @@ def main() -> None:
     }
 
     update_registry(args.registry, entry)
-    print(f"\nRegistered '{instance_id}' in {args.registry}")
+    print(f"\nRegistered {instance_id!r} in {args.registry}")
     print(f"  repo:    {github_repo}")
     print(f"  commit:  {base_commit[:12] if base_commit else '(unknown)'}")
     print(f"\nDone! Restart the backend to pick up the new repo.")

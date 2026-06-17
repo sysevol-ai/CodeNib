@@ -48,6 +48,9 @@ For the browser UI, start the Next.js frontend separately:
 cd web && npm run dev
 ```
 
+For a no-cloud local GPU LLM setup, copy `qa_config.local.yaml.example` to the
+ignored `qa_config.local.yaml` and follow [Running Locally](docs/running-locally.md).
+
 > **Optional — full code intelligence.** `make scip` installs the SCIP/LSP toolchain
 > (rust-analyzer, scip-clang, scip-typescript, scip-python) for cross-file call graphs.
 

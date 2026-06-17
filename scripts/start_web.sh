@@ -12,6 +12,16 @@ CONDA_ENV="${CONDA_ENV:-codeminer}"
 BACKEND_PORT="${CODEMINER_DEMO_PORT:-8000}"
 LLM_PORT="${LLM_PORT:-8080}"
 DEFAULT_GPU_HOST="vscode-dsmlp-l40s"
+LOCAL_MODEL="${CODEMINER_DEMO_MODEL:-openai/qwen2.5-coder}"
+CONFIG_PATH="${CODEMINER_DEMO_CONFIG:-}"
+
+if [ -z "$CONFIG_PATH" ]; then
+    if [ -f "qa_config.local.yaml" ]; then
+        CONFIG_PATH="qa_config.local.yaml"
+    else
+        CONFIG_PATH="qa_config.yaml"
+    fi
+fi
 
 # ── Prerequisites ────────────────────────────────────────────────────────────
 
@@ -19,11 +29,13 @@ echo "=== CodeMiner Backend ==="
 echo ""
 
 # Must run from repo root
-if [ ! -f "qa_config.yaml" ]; then
-    echo "ERROR: qa_config.yaml not found."
+if [ ! -f "$CONFIG_PATH" ]; then
+    echo "ERROR: config not found: $CONFIG_PATH"
     echo "Run this script from the CodeMiner repo root:"
     echo "  cd ~/projects/CodeMiner/CodeMiner"
     echo "  bash scripts/start_web.sh"
+    echo ""
+    echo "For local overrides, copy qa_config.local.yaml.example to qa_config.local.yaml."
     exit 1
 fi
 
@@ -35,7 +47,14 @@ if ! conda run -n "$CONDA_ENV" python -c "import codeminer" &>/dev/null; then
 fi
 
 # Check qa_registry.json
-REGISTRY=".codeminer_qa/qa_registry.json"
+REGISTRY=$(CODEMINER_DEMO_CONFIG="$CONFIG_PATH" python3 -c "
+import os, yaml
+path = os.environ['CODEMINER_DEMO_CONFIG']
+with open(path) as f:
+    data = yaml.safe_load(f) or {}
+data_dir = os.environ.get('CODEMINER_DEMO_DATA_DIR') or data.get('data_dir', '.codeminer_qa')
+print(os.path.join(os.path.abspath(data_dir), 'qa_registry.json'))
+" 2>/dev/null || echo ".codeminer_qa/qa_registry.json")
 if [ ! -f "$REGISTRY" ]; then
     echo "ERROR: No repo registry found at $REGISTRY"
     echo ""
@@ -80,25 +99,12 @@ else
     [[ "$CONT" =~ ^[Yy]$ ]] || exit 1
 fi
 
-# ── Check qa_config.yaml model ───────────────────────────────────────────────
+# ── Local model override ─────────────────────────────────────────────────────
 
-CURRENT_MODEL=$(python3 -c "import yaml; c=yaml.safe_load(open('qa_config.yaml')); print(c.get('model',''))" 2>/dev/null || echo "")
-if [[ "$CURRENT_MODEL" != openai/* ]]; then
-    echo ""
-    echo "WARNING: qa_config.yaml has model: $CURRENT_MODEL"
-    echo "         For local LLM, it should be: openai/qwen2.5-coder"
-    echo ""
-    read -rp "Update qa_config.yaml automatically? [Y/n]: " FIX
-    if [[ ! "$FIX" =~ ^[Nn]$ ]]; then
-        python3 -c "
-import re, sys
-with open('qa_config.yaml') as f: content = f.read()
-content = re.sub(r'^model:.*$', 'model: openai/qwen2.5-coder', content, flags=re.MULTILINE)
-with open('qa_config.yaml', 'w') as f: f.write(content)
-print('  Updated qa_config.yaml: model: openai/qwen2.5-coder')
-"
-    fi
-fi
+echo ""
+echo "Using local LLM model: $LOCAL_MODEL"
+echo "  Config: $CONFIG_PATH"
+echo "  Override with CODEMINER_DEMO_MODEL or CODEMINER_DEMO_CONFIG if needed."
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 
@@ -106,6 +112,8 @@ echo ""
 echo "Starting CodeMiner backend..."
 echo "  Backend:  http://localhost:$BACKEND_PORT"
 echo "  LLM:      $LLM_BASE"
+echo "  Model:    $LOCAL_MODEL"
+echo "  Config:   $CONFIG_PATH"
 echo ""
 echo "─────────────────────────────────────────────"
 echo "Once backend is up, start the frontend in"
@@ -119,8 +127,12 @@ echo ""
 
 export OPENAI_API_KEY="fake"
 export OPENAI_API_BASE="$LLM_BASE"
+export CODEMINER_DEMO_CONFIG="$CONFIG_PATH"
+export CODEMINER_DEMO_MODEL="$LOCAL_MODEL"
 export CODEMINER_DEMO_PORT="$BACKEND_PORT"
 
 conda run -n "$CONDA_ENV" --no-capture-output \
     env OPENAI_API_KEY=fake OPENAI_API_BASE="$LLM_BASE" \
+    CODEMINER_DEMO_CONFIG="$CONFIG_PATH" \
+    CODEMINER_DEMO_MODEL="$LOCAL_MODEL" \
     python -m codeminer.web.app

@@ -101,14 +101,24 @@ git -C /path/to/repo rev-parse HEAD
 
 ## Step 2 — Configure the LLM
 
-Edit `qa_config.yaml` in the repo root and set:
+No tracked config edit is required. `scripts/start_web.sh` points the backend at
+the local OpenAI-compatible endpoint by exporting:
 
-```yaml
-model: openai/qwen2.5-coder
+```bash
+CODEMINER_DEMO_MODEL=openai/qwen2.5-coder
+OPENAI_API_BASE=http://<gpu-node>:8080/v1
 ```
 
-This tells litellm to use an OpenAI-compatible endpoint. The actual URL is
-passed at runtime via `OPENAI_API_BASE` (set by `start_web.sh`).
+For local-only config changes, copy the template and edit the ignored file:
+
+```bash
+cp qa_config.local.yaml.example qa_config.local.yaml
+```
+
+When present, `scripts/start_web.sh` automatically uses `qa_config.local.yaml`.
+Override `CODEMINER_DEMO_CONFIG` or `CODEMINER_DEMO_MODEL` before running
+`start_web.sh` if your local server exposes a different model name or config
+path.
 
 ---
 

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Copy this file to qa_config.local.yaml for local GPU LLM runs.
+# qa_config.local.yaml is ignored by git.
+
+model: openai/qwen2.5-coder
+mode: hybrid
+data_dir: .codeminer_qa
+
+embedding_model: Qwen/Qwen3-Embedding-0.6B
+embedding_dimension: 1024
+max_turns: 8
+max_tokens: 4096
+
+cors_origins:
+  - http://localhost:3000
+  - http://127.0.0.1:3000
+  - http://localhost:3001
+  - http://127.0.0.1:3001
