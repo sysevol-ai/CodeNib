@@ -121,6 +121,7 @@ class TestNormalizeLanguage:
             ("C++", "cpp"),
             ("cxx", "cpp"),
             ("C", "c"),
+            ("Java", "java"),
             ("TypeScript", "typescript"),
             ("ts", "typescript"),
             ("JavaScript", "javascript"),

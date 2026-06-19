@@ -65,6 +65,16 @@ Controlled by the `chunk_depth` parameter in `BaseCodeChunker`:
 | `macro` | L1 | `preproc_def`, `preproc_function_def` | `#define MAX 100` |
 | `method` | L2 | method inside class body | `void start() {}` |
 
+### Java (`java_chunker.py`)
+
+| chunk_type | Level | AST node | Example |
+|------------|-------|----------|---------|
+| `class` | L1 | `class_declaration` | `class App {}` |
+| `interface` | L1 | `interface_declaration` | `interface Runner {}` |
+| `enum` | L1 | `enum_declaration` | `enum Mode { FAST }` |
+| `record` | L1 | `record_declaration` | `record Point(int x, int y) {}` |
+| `method` | L2 | `method_declaration`, `constructor_declaration` | `void run() {}`, `App() {}` |
+
 ### JavaScript / TypeScript (`js_chunker.py`)
 
 | chunk_type | Level | AST node | Example |
@@ -113,5 +123,6 @@ Used by `gt_locate.py` to select the correct chunker:
 | `.go` | `go` |
 | `.rs` | `rust` |
 | `.c`, `.cpp`, `.cc`, `.cxx`, `.h`, `.hpp` | `cpp` |
+| `.java` | `java` |
 | `.js`, `.jsx` | `javascript` |
 | `.ts`, `.tsx` | `typescript` |

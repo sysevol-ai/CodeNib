@@ -20,6 +20,7 @@ from codeminer.code_chunking import create_chunker
         ("rust", "RustCodeChunker"),
         ("cpp", "CppCodeChunker"),
         ("c++", "CppCodeChunker"),
+        ("java", "JavaCodeChunker"),
         ("javascript", "JsTsCodeChunker"),
         ("js", "JsTsCodeChunker"),
         ("typescript", "JsTsCodeChunker"),

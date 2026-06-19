@@ -54,6 +54,7 @@ def test_gt_extensions_preserve_current_supported_set():
     ext_map = extension_to_language_map("gt")
     assert ext_map[".py"] == "python"
     assert ext_map[".c"] == "cpp"
+    assert ext_map[".java"] == "java"
     assert ext_map[".tsx"] == "typescript"
     assert ext_map[".jsx"] == "javascript"
 
@@ -69,6 +70,7 @@ def test_agent_supported_languages_match_existing_scenarios():
         "rust",
         "cpp",
         "c",
+        "java",
         "typescript",
         "javascript",
     }
@@ -91,6 +93,7 @@ def test_chunker_languages_are_current_supported_repo_chunkers():
         "go",
         "rust",
         "cpp",
+        "java",
         "javascript",
         "typescript",
     )
@@ -105,6 +108,7 @@ def test_chunker_class_paths_follow_chunker_language_aliases():
     assert paths["rust"].endswith("rust_chunker:RustCodeChunker")
     assert paths["cpp"].endswith("cpp_chunker:CppCodeChunker")
     assert paths["c++"] == paths["cpp"]
+    assert paths["java"].endswith("java_chunker:JavaCodeChunker")
     assert paths["javascript"].endswith("js_chunker:JsTsCodeChunker")
     assert paths["js"] == paths["javascript"]
     assert paths["typescript"].endswith("js_chunker:JsTsCodeChunker")
@@ -112,7 +116,7 @@ def test_chunker_class_paths_follow_chunker_language_aliases():
 
     assert chunker_class_path("py") is None
     assert chunker_class_path("js") == paths["javascript"]
-    assert chunker_class_path("java") is None
+    assert chunker_class_path("java") == paths["java"]
 
     js_spec = get_chunker_spec("javascript")
     ts_spec = get_chunker_spec("typescript")
