@@ -79,6 +79,23 @@ and agent compile keeps `c` as its own scenario key.
 Update or add tests in `test/test_languages.py` whenever a new alias,
 extension, backend, or parity status is added.
 
+You can start from generated TODO stubs:
+
+```bash
+python scripts/scaffold_language.py java \
+  --display-name Java \
+  --extension .java \
+  --alias jvm \
+  --graph-backend lsp \
+  --incremental-backend lsp
+```
+
+The scaffold is dry-run by default. Add `--write` after reviewing the
+`LanguageSpec` snippet and planned files. Generated files are intentionally not
+registered in routers yet; fill in the implementation and tests before wiring
+the language into `create_chunker()`, `LSIndexer`, `GraphPatcher`, or core
+bindings.
+
 ## Step 2: Add Tree-Sitter Chunking
 
 Add a chunker when the language should support retrieval or GT extraction.
