@@ -10,9 +10,10 @@ Maintains backward-compatible API.
 
 from __future__ import annotations
 
-from typing import Optional
+from importlib import import_module
+from typing import Optional, Type
 
-from ...languages import graph_extensions_by_language, normalize_graph_language
+from ...languages import graph_extensions_by_language, incremental_patcher_path
 from ...log_utils import get_logger
 from ..code_graph import CodeGraph
 from . import change_mgr
@@ -24,6 +25,19 @@ logger = get_logger(__name__)
 LANGUAGE_EXTENSIONS = graph_extensions_by_language()
 
 
+def _load_patcher_class(path: str) -> Type[PatcherBase]:
+    """Import a patcher class from a ``module:Class`` registry path."""
+
+    module_name, separator, class_name = path.partition(":")
+    if not separator or not module_name or not class_name:
+        raise ValueError(f"Invalid patcher path: {path!r}")
+    module = import_module(module_name)
+    cls = getattr(module, class_name)
+    if not issubclass(cls, PatcherBase):
+        raise TypeError(f"Registered patcher is not a PatcherBase subclass: {path}")
+    return cls
+
+
 def _create_patcher(
     language: str,
     project_root: str,
@@ -31,27 +45,10 @@ def _create_patcher(
     mode: str = "symbol",
 ) -> PatcherBase:
     """Factory: create language-specific patcher."""
-    from .patcher_cpp import PatcherCpp
-    from .patcher_go import PatcherGo
-    from .patcher_python import PatcherPython
-    from .patcher_rust import PatcherRust
-    from .patcher_ts import PatcherTS
-
-    language = normalize_graph_language(language) or language
-
-    PATCHER_MAP = {
-        "rust": PatcherRust,
-        "python": PatcherPython,
-        "typescript": PatcherTS,
-        "ts": PatcherTS,
-        "go": PatcherGo,
-        "cpp": PatcherCpp,
-        "c": PatcherCpp,
-    }
-
-    cls = PATCHER_MAP.get(language)
-    if cls is None:
+    patcher_path = incremental_patcher_path(language)
+    if patcher_path is None:
         raise ValueError(f"Unsupported language: {language}")
+    cls = _load_patcher_class(patcher_path)
     return cls(project_root, code_graph or CodeGraph(project_root), mode=mode)
 
 

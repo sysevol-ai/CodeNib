@@ -39,6 +39,7 @@ class LanguageSpec:
     agent_aliases: Tuple[Tuple[str, str], ...] = ()
     cold_start_backend: Optional[str] = None
     incremental_backend: Optional[str] = None
+    incremental_patcher: Optional[str] = None
     core_decoder: bool = False
     core_decoder_aliases: Tuple[str, ...] = ()
 
@@ -60,6 +61,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_aliases=(("python", "python"), ("py", "python"), ("python3", "python")),
         cold_start_backend="scip",
         incremental_backend="lsp",
+        incremental_patcher="codeminer.graph.incremental.patcher_python:PatcherPython",
         core_decoder=True,
     ),
     LanguageSpec(
@@ -78,6 +80,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_aliases=(("go", "go"), ("golang", "go")),
         cold_start_backend="scip",
         incremental_backend="lsp",
+        incremental_patcher="codeminer.graph.incremental.patcher_go:PatcherGo",
         core_decoder=True,
     ),
     LanguageSpec(
@@ -96,6 +99,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_aliases=(("rust", "rust"), ("rs", "rust")),
         cold_start_backend="scip",
         incremental_backend="lsp",
+        incremental_patcher="codeminer.graph.incremental.patcher_rust:PatcherRust",
         core_decoder=True,
     ),
     LanguageSpec(
@@ -114,6 +118,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_aliases=(("cpp", "cpp"), ("c++", "cpp"), ("cxx", "cpp"), ("c", "c")),
         cold_start_backend="clangd",
         incremental_backend="clangd",
+        incremental_patcher="codeminer.graph.incremental.patcher_cpp:PatcherCpp",
     ),
     LanguageSpec(
         key="javascript",
@@ -135,6 +140,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         ),
         cold_start_backend="scip",
         incremental_backend="lsp",
+        incremental_patcher="codeminer.graph.incremental.patcher_ts:PatcherTS",
     ),
     LanguageSpec(
         key="typescript",
@@ -156,6 +162,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         ),
         cold_start_backend="scip",
         incremental_backend="lsp",
+        incremental_patcher="codeminer.graph.incremental.patcher_ts:PatcherTS",
         core_decoder=True,
         core_decoder_aliases=("ts", "js"),
     ),
@@ -329,6 +336,34 @@ def graph_extensions_by_language(include_aliases: bool = True) -> Dict[str, set[
     return result
 
 
+def incremental_patcher_paths(include_aliases: bool = True) -> Dict[str, str]:
+    """Return graph backend language keys mapped to incremental patcher paths."""
+
+    by_backend: Dict[str, str] = {}
+    for spec in LANGUAGE_SPECS:
+        if spec.graph_language and spec.incremental_patcher:
+            by_backend[spec.graph_language] = spec.incremental_patcher
+
+    if not include_aliases:
+        return dict(by_backend)
+
+    result = dict(by_backend)
+    aliases = graph_language_aliases()
+    for alias, graph_language in aliases.items():
+        if graph_language in by_backend:
+            result[alias] = by_backend[graph_language]
+    return result
+
+
+def incremental_patcher_path(language: str) -> Optional[str]:
+    """Return the incremental patcher class path for a raw graph language."""
+
+    graph_language = normalize_graph_language(language)
+    if graph_language is None:
+        return None
+    return incremental_patcher_paths(include_aliases=False).get(graph_language)
+
+
 def core_decoder_languages(include_aliases: bool = True) -> Tuple[str, ...]:
     """Return languages accepted by the optional C++ core decoder."""
 
@@ -355,6 +390,8 @@ __all__ = [
     "get_language_spec",
     "graph_extensions_by_language",
     "graph_language_aliases",
+    "incremental_patcher_path",
+    "incremental_patcher_paths",
     "normalize_agent_language",
     "normalize_chunker_language",
     "normalize_graph_language",

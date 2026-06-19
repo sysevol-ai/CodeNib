@@ -9,6 +9,8 @@ from codeminer.languages import (
     core_decoder_languages,
     extension_to_language_map,
     graph_extensions_by_language,
+    incremental_patcher_path,
+    incremental_patcher_paths,
     normalize_agent_language,
     normalize_chunker_language,
     normalize_graph_language,
@@ -82,3 +84,23 @@ def test_chunker_languages_are_current_supported_repo_chunkers():
         "javascript",
         "typescript",
     )
+
+
+def test_incremental_patcher_paths_follow_graph_language_aliases():
+    paths = incremental_patcher_paths()
+
+    assert paths["python"].endswith("patcher_python:PatcherPython")
+    assert paths["py"] == paths["python"]
+    assert paths["go"].endswith("patcher_go:PatcherGo")
+    assert paths["golang"] == paths["go"]
+    assert paths["rust"].endswith("patcher_rust:PatcherRust")
+    assert paths["rs"] == paths["rust"]
+    assert paths["cpp"].endswith("patcher_cpp:PatcherCpp")
+    assert paths["c"] == paths["cpp"]
+    assert paths["ts"].endswith("patcher_ts:PatcherTS")
+    assert paths["javascript"] == paths["ts"]
+    assert paths["typescript"] == paths["ts"]
+
+    assert incremental_patcher_path("js") == paths["ts"]
+    assert incremental_patcher_path("jsx") is None
+    assert incremental_patcher_path("java") is None
