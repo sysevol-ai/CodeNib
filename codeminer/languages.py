@@ -32,6 +32,8 @@ class LanguageSpec:
     aliases: Tuple[str, ...] = ()
     chunker_language: Optional[str] = None
     chunker_aliases: Tuple[str, ...] = ()
+    chunker_class: Optional[str] = None
+    chunker_pass_language: bool = False
     chunk_extensions: Tuple[str, ...] = ()
     gt_language: Optional[str] = None
     gt_extensions: Tuple[str, ...] = ()
@@ -60,6 +62,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         aliases=("py", "python3"),
         chunker_language="python",
         chunker_aliases=("python",),
+        chunker_class="codeminer.code_chunking.python_chunker:PythonCodeChunker",
         chunk_extensions=(".py", ".pyx", ".pyi"),
         gt_language="python",
         gt_extensions=(".py",),
@@ -84,6 +87,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         aliases=("golang",),
         chunker_language="go",
         chunker_aliases=("go", "golang"),
+        chunker_class="codeminer.code_chunking.go_chunker:GoCodeChunker",
         chunk_extensions=(".go",),
         gt_language="go",
         gt_extensions=(".go",),
@@ -107,6 +111,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         aliases=("rs",),
         chunker_language="rust",
         chunker_aliases=("rust",),
+        chunker_class="codeminer.code_chunking.rust_chunker:RustCodeChunker",
         chunk_extensions=(".rs",),
         gt_language="rust",
         gt_extensions=(".rs",),
@@ -130,6 +135,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         aliases=("c", "c++", "cxx"),
         chunker_language="cpp",
         chunker_aliases=("cpp", "c++", "cxx"),
+        chunker_class="codeminer.code_chunking.cpp_chunker:CppCodeChunker",
         chunk_extensions=(".cpp", ".cxx", ".cc", ".c", ".hpp", ".h", ".hxx"),
         gt_language="cpp",
         gt_extensions=(".c", ".cpp", ".cc", ".cxx", ".h", ".hpp"),
@@ -152,6 +158,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         aliases=("js", "jsx"),
         chunker_language="javascript",
         chunker_aliases=("javascript", "js"),
+        chunker_class="codeminer.code_chunking.js_chunker:JsTsCodeChunker",
+        chunker_pass_language=True,
         chunk_extensions=(".js", ".jsx", ".mjs"),
         gt_language="javascript",
         gt_extensions=(".js", ".jsx"),
@@ -178,6 +186,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         aliases=("ts", "tsx"),
         chunker_language="typescript",
         chunker_aliases=("typescript", "ts"),
+        chunker_class="codeminer.code_chunking.js_chunker:JsTsCodeChunker",
+        chunker_pass_language=True,
         chunk_extensions=(".ts", ".tsx", ".mts", ".cts"),
         gt_language="typescript",
         gt_extensions=(".ts", ".tsx"),
@@ -267,6 +277,18 @@ def normalize_chunker_language(language: str) -> Optional[str]:
     return _CHUNKER_ALIASES.get(_norm(language))
 
 
+def get_chunker_spec(language: str) -> Optional[LanguageSpec]:
+    """Return the LanguageSpec used by the chunker factory."""
+
+    chunker_language = normalize_chunker_language(language)
+    if chunker_language is None:
+        return None
+    for spec in LANGUAGE_SPECS:
+        if spec.chunker_language == chunker_language:
+            return spec
+    return None
+
+
 def normalize_graph_language(language: str) -> Optional[str]:
     """Normalize a raw language string to the graph/LS backend key."""
 
@@ -298,6 +320,33 @@ def chunker_languages() -> Tuple[str, ...]:
     return _unique(
         spec.chunker_language for spec in LANGUAGE_SPECS if spec.chunker_language
     )
+
+
+def chunker_class_paths(include_aliases: bool = True) -> Dict[str, str]:
+    """Return chunker language keys mapped to chunker class paths."""
+
+    by_language: Dict[str, str] = {}
+    for spec in LANGUAGE_SPECS:
+        if spec.chunker_language and spec.chunker_class:
+            by_language[spec.chunker_language] = spec.chunker_class
+
+    if not include_aliases:
+        return dict(by_language)
+
+    result = dict(by_language)
+    for alias, language in chunker_language_aliases().items():
+        if language in by_language:
+            result[alias] = by_language[language]
+    return result
+
+
+def chunker_class_path(language: str) -> Optional[str]:
+    """Return the chunker class path for a raw chunker language."""
+
+    spec = get_chunker_spec(language)
+    if spec is None:
+        return None
+    return spec.chunker_class
 
 
 def graph_language_aliases() -> Dict[str, str]:
@@ -515,9 +564,12 @@ __all__ = [
     "agent_language_aliases",
     "chunker_language_aliases",
     "chunker_languages",
+    "chunker_class_path",
+    "chunker_class_paths",
     "core_decoder_languages",
     "extension_to_language_map",
     "extensions_for_language",
+    "get_chunker_spec",
     "get_language_spec",
     "graph_cold_start_backend",
     "graph_cold_start_backends",
