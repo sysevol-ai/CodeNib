@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# ===========================================================================
+# Runtime probe — does graph pre-load beat embedding pre-load beat plain grep,
+# on the codeminer-synthesis per-category Pareto?  (see .claude/design/agent-runtime.md)
+# ===========================================================================
+# Extends preload_probe.yaml with a GRAPH pre-load arm. Same model / scorer /
+# prebuilt indexes as the canonical sweep (inherited via base:). Run through
+# run_synthesis_sweep.py so each cell carries `category` and the aggregator can
+# break answer_rec@k AND cost down per category.
+#
+#   grep_only     — read/grep/glob/bash only (baseline; honest ceiling on the
+#                   grep-able / hint-rich half).
+#   preinj_embed  — + embedding candidates injected into the opening prompt
+#                   (retrieve-only, NO rerank). The confirmed pre-load win.
+#   preinj_graph  — + embedding SEEDS graph-expanded (call-graph) and injected;
+#                   isolates the marginal value of graph orientation on the
+#                   exploration-heavy / resolution-needing categories.
+#
+# Decision (per category): the pre-load arm wins iff Δanswer_rec@5 ≈ 0 (CI over
+# 0) AND Δcost_usd < 0. Expect ties on symbol_hint/file_hint, down-and-left on
+# behavioral/reasoning/traversal.
+#
+# Derisk (≈100 cells, fast):
+#   python scripts/agent_compile/run_synthesis_sweep.py \
+#       --config scripts/agent_compile/configs/runtime_probe.yaml \
+#       --output-dir results/agent_compile/runtime_probe \
+#       --synthesis-configs Python,Go,Rust,TypeScript_JavaScript,C++_C \
+#       --max-queries 4
+#   python scripts/agent_compile/aggregate_synthesis.py \
+#       --cells-dir results/agent_compile/runtime_probe/cells \
+#       --output-dir results/agent_compile/runtime_probe
+base: design_space.yaml
+
+sweep_id: runtime_probe
+reps: 1
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_embed:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_graph:
+    - read
+    - grep
+    - glob
+    - bash
+
+preload:
+  preinj_embed:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+  preinj_graph:
+    retrievers: [embedding, graph]
+    top_k: 10
+    level: l2

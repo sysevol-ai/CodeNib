@@ -156,17 +156,70 @@ def render(agg: Dict[str, Any]) -> str:
                 + " |"
             )
     L.append("")
-    # grep vs preinj delta on answer_rec@5 per category
-    L.append("## answer_rec@5: preinj − grep, per category")
-    L.append("")
-    L.append("| category | grep_only | preinj_embed | Δ |")
-    L.append("| --- | --- | --- | --- |")
-    for cat in cats:
-        g = rows.get((cat, "grep_only"), {}).get("answer_rec@5")
-        p = rows.get((cat, "preinj_embed"), {}).get("answer_rec@5")
-        d = (p - g) if (g is not None and p is not None) else None
-        L.append(f"| {cat} | {_fmt(g)} | {_fmt(p)} | {_fmt(d)} |")
-    L.append("")
+    # Pareto delta vs the grep_only baseline, per arm, per category. The decisive
+    # "等精度省 token" view: accuracy delta AND cost delta side by side. An arm
+    # "saves" on a category iff accuracy holds (Δrec ≳ 0) AND cost drops (Δ$ < 0).
+    baseline = "grep_only"
+    EPS = 0.02  # rec within ±EPS counts as "equal accuracy"
+    for arm in arms:
+        if arm == baseline:
+            continue
+        L.append(f"## {arm} vs {baseline} — Pareto delta per category")
+        L.append("")
+        head2 = [
+            "category",
+            "rec@5 base",
+            "rec@5 arm",
+            "Δrec@5",
+            "cost$ base",
+            "cost$ arm",
+            "Δcost%",
+            "Δturns",
+            "verdict",
+        ]
+        L.append("| " + " | ".join(head2) + " |")
+        L.append("| " + " | ".join("---" for _ in head2) + " |")
+        for cat in cats:
+            b = rows.get((cat, baseline))
+            a = rows.get((cat, arm))
+            if not b or not a:
+                continue
+            gr, ar = b.get("answer_rec@5"), a.get("answer_rec@5")
+            gc, ac = b.get("cost"), a.get("cost")
+            gt_, at_ = b.get("turns"), a.get("turns")
+            drec = (ar - gr) if (gr is not None and ar is not None) else None
+            dcostp = (
+                100 * (ac - gc) / gc
+                if (gc not in (None, 0) and ac is not None)
+                else None
+            )
+            dturns = (at_ - gt_) if (gt_ is not None and at_ is not None) else None
+            if drec is None or dcostp is None:
+                verdict = "n/a"
+            elif drec < -EPS:
+                verdict = "REGRESS (acc)"
+            elif dcostp < 0:
+                verdict = "SAVE"  # equal/up accuracy AND cheaper
+            else:
+                verdict = "costlier"
+            L.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(cat),
+                        _fmt(gr),
+                        _fmt(ar),
+                        _fmt(drec),
+                        _fmt(gc, 4),
+                        _fmt(ac, 4),
+                        _fmt(dcostp, 1),
+                        _fmt(dturns, 1),
+                        verdict,
+                    ]
+                )
+                + " |"
+            )
+        L.append("")
     return "\n".join(L)
 
 
