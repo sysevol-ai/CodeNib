@@ -167,6 +167,7 @@ _EXT_TO_LANG_ID = {
     ".cxx": "cpp",
     ".hpp": "cpp",
     ".hxx": "cpp",
+    ".java": "java",
 }
 
 
@@ -811,6 +812,7 @@ class LSPClient:
             "cpp": [".cpp", ".cc", ".c", ".h"],
             "c": [".c", ".h"],
             "c++": [".cpp", ".cc", ".h"],
+            "java": [".java"],
         }
         probe_file = None
         probe_exts = _LANG_PROBE_EXTS.get(self.language, [])

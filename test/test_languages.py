@@ -116,7 +116,13 @@ def test_language_capability_rows_track_parity_applicability():
     assert rows["javascript"].core_decoder is True
     assert rows["javascript"].core_parity == "covered"
 
-    for language in ("csharp", "java", "ruby", "php", "kotlin"):
+    assert rows["java"].graph_backend == "lsp"
+    assert rows["java"].incremental_backend is None
+    assert rows["java"].lsp is True
+    assert rows["java"].core_decoder is False
+    assert rows["java"].core_parity == "n/a-no-core-decoder"
+
+    for language in ("csharp", "ruby", "php", "kotlin"):
         assert rows[language].chunker is True
         assert rows[language].ground_truth is True
         assert rows[language].agent is True
@@ -227,12 +233,16 @@ def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
     assert graph_indexer_path("javascript") == indexers["ts"]
     assert graph_decoder_path("typescript") == decoders["ts"]
 
+    assert indexers["java"].endswith("lsp_indexer:GenericLSPIndexer")
+    assert decoders["java"].endswith("lsp_graph_decode:GenericLSPGraphDecoder")
+    assert graph_indexer_path("java") == indexers["java"]
+    assert graph_decoder_path("java") == decoders["java"]
+
     assert graph_cold_start_backend("cpp") == "clangd"
     assert graph_cold_start_backend("python") == "scip"
+    assert graph_cold_start_backend("java") == "lsp"
     assert graph_indexer_path("csharp") is None
     assert graph_decoder_path("csharp") is None
-    assert graph_indexer_path("java") is None
-    assert graph_decoder_path("java") is None
     assert graph_indexer_path("ruby") is None
     assert graph_decoder_path("ruby") is None
     assert graph_indexer_path("php") is None
@@ -257,10 +267,13 @@ def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
     assert lsp_language_id_for_language("javascript") == "typescript"
     assert lsp_command_for_language("ts") == ["typescript-language-server", "--stdio"]
 
+    assert lsp_language_id_for_language("java") == "java"
+    assert lsp_command_for_language("java") == ["jdtls"]
+    monkeypatch.setenv("CODEMINER_JAVA_LSP_CMD", "jdtls --stdio")
+    assert lsp_command_for_language("java") == ["jdtls", "--stdio"]
+
     assert lsp_language_id_for_language("csharp") is None
     assert lsp_command_for_language("csharp") is None
-    assert lsp_language_id_for_language("java") is None
-    assert lsp_command_for_language("java") is None
     assert lsp_language_id_for_language("ruby") is None
     assert lsp_command_for_language("ruby") is None
     assert lsp_language_id_for_language("php") is None

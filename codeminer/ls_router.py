@@ -123,6 +123,8 @@ class LSIndexer:
         }
         if backend == "scip":
             kwargs["decoder_backend"] = self.decoder_backend
+        elif backend == "lsp":
+            kwargs["language"] = self.language
         elif self.decoder_backend is not None:
             logger.warning(
                 "decoder_backend=%r ignored for %s (%s has no SCIP decoder)",

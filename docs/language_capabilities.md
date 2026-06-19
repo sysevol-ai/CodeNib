@@ -26,7 +26,7 @@ python scripts/language_capability_matrix.py --check docs/language_capabilities.
 | Rust | yes | yes | yes | scip | lsp | yes | yes | covered |
 | C/C++ | yes | yes | yes | clangd | clangd | yes | no | n/a-no-core-decoder |
 | C# | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
-| Java | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
+| Java | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
 | Ruby | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
 | PHP | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
 | Kotlin | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |

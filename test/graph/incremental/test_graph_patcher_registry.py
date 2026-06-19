@@ -101,4 +101,4 @@ def test_lsp_client_command_lookup_uses_language_registry(monkeypatch):
 
     assert lsp_client.LSPClient.get_lsp_command("python") == ["ty", "server"]
     assert lsp_client.LSPClient.get_lsp_command("go") == ["gopls", "serve"]
-    assert lsp_client.LSPClient.get_lsp_command("java") is None
+    assert lsp_client.LSPClient.get_lsp_command("java") == ["jdtls"]
