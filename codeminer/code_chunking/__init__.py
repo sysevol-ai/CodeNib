@@ -12,6 +12,7 @@ from typing import Type
 from ..languages import chunker_language_aliases, get_chunker_spec
 from .base import BaseCodeChunker, CodeChunk
 from .cpp_chunker import CppCodeChunker
+from .csharp_chunker import CSharpCodeChunker
 from .go_chunker import GoCodeChunker
 from .java_chunker import JavaCodeChunker
 from .js_chunker import JsTsCodeChunker
@@ -92,6 +93,7 @@ __all__ = [
     "BaseCodeChunker",
     "PythonCodeChunker",
     "CppCodeChunker",
+    "CSharpCodeChunker",
     "RustCodeChunker",
     "GoCodeChunker",
     "JavaCodeChunker",

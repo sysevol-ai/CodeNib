@@ -65,6 +65,19 @@ Controlled by the `chunk_depth` parameter in `BaseCodeChunker`:
 | `macro` | L1 | `preproc_def`, `preproc_function_def` | `#define MAX 100` |
 | `method` | L2 | method inside class body | `void start() {}` |
 
+### C# (`csharp_chunker.py`)
+
+| chunk_type | Level | AST node | Example |
+|------------|-------|----------|---------|
+| `class` | L1 | `class_declaration` | `class Invoice {}` |
+| `interface` | L1 | `interface_declaration` | `interface IInvoice {}` |
+| `enum` | L1 | `enum_declaration` | `enum Status { Draft }` |
+| `record` | L1 | `record_declaration` | `record Money(decimal Amount);` |
+| `struct` | L1 | `struct_declaration` | `struct Point {}` |
+| `function` | L1 | top-level `local_function_statement` | `static void Main() {}` |
+| `method` | L2 | `method_declaration`, `constructor_declaration` | `void AddLine() {}`, `Invoice() {}` |
+| `property` | L2 | `property_declaration` | `decimal Total => total;` |
+
 ### Java (`java_chunker.py`)
 
 | chunk_type | Level | AST node | Example |
@@ -132,6 +145,7 @@ Used by `gt_locate.py` to select the correct chunker:
 | `.go` | `go` |
 | `.rs` | `rust` |
 | `.c`, `.cpp`, `.cc`, `.cxx`, `.h`, `.hpp` | `cpp` |
+| `.cs` | `csharp` |
 | `.java` | `java` |
 | `.rb` | `ruby` |
 | `.js`, `.jsx` | `javascript` |

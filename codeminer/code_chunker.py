@@ -35,6 +35,7 @@ class RepoChunkingConfig:
     # File type configurations
     python_extensions: Optional[Set[str]] = None
     cpp_extensions: Optional[Set[str]] = None
+    csharp_extensions: Optional[Set[str]] = None
     rust_extensions: Optional[Set[str]] = None
     go_extensions: Optional[Set[str]] = None
     java_extensions: Optional[Set[str]] = None
@@ -63,6 +64,9 @@ class RepoChunkingConfig:
 
         if self.cpp_extensions is None:
             self.cpp_extensions = extensions_for_language("cpp", "chunker")
+
+        if self.csharp_extensions is None:
+            self.csharp_extensions = extensions_for_language("csharp", "chunker")
 
         if self.rust_extensions is None:
             self.rust_extensions = extensions_for_language("rust", "chunker")

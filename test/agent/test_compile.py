@@ -74,6 +74,14 @@ class TestDetectStacktrace:
         )
         assert detect_stacktrace(query) is True
 
+    def test_dotnet_stack_frame(self):
+        query = (
+            "System.NullReferenceException: Object reference not set\n"
+            "   at Billing.Invoice.Total() in /repo/src/Invoice.cs:line 42\n"
+            "   at Billing.Program.Main() in /repo/src/Program.cs:line 8\n"
+        )
+        assert detect_stacktrace(query) is True
+
     def test_ruby_stack_frame(self):
         query = (
             "NoMethodError: undefined method `name' for nil:NilClass\n"
@@ -129,6 +137,8 @@ class TestNormalizeLanguage:
             ("C++", "cpp"),
             ("cxx", "cpp"),
             ("C", "c"),
+            ("C#", "csharp"),
+            ("cs", "csharp"),
             ("Java", "java"),
             ("Ruby", "ruby"),
             ("rb", "ruby"),

@@ -36,6 +36,7 @@ class TestLanguageForFile:
             ("lib/parser.rs", "rust"),
             ("src/engine.cpp", "cpp"),
             ("include/engine.h", "cpp"),
+            ("src/Billing/Invoice.cs", "csharp"),
             ("src/main/java/App.java", "java"),
             ("lib/billing/invoice.rb", "ruby"),
             ("src/app.ts", "typescript"),
@@ -274,6 +275,39 @@ class TestExtractSymbolsJava:
         assert "src/main/java/Point.java:Point.sum()" in symbols
         assert "src/main/java/Point.java:App.run()" in symbols
         assert "record" in SYMBOL_CHUNK_TYPES
+
+
+class TestExtractSymbolsCSharp:
+    @pytest.fixture()
+    def locator(self, tmp_path):
+        return GTLocator(work_dir=str(tmp_path))
+
+    def test_csharp_methods_and_properties(self, locator, tmp_path):
+        csharp_file = tmp_path / "src" / "Billing" / "Invoice.cs"
+        csharp_file.parent.mkdir(parents=True, exist_ok=True)
+        csharp_file.write_text(
+            "\n".join(
+                [
+                    "namespace Billing.Core;",
+                    "",
+                    "class Invoice {",
+                    "    public decimal Total => 42;",
+                    "",
+                    "    public void AddLine(decimal amount) {",
+                    "    }",
+                    "}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        symbols = locator.extract_symbols_from_file(
+            str(csharp_file), relative_path="src/Billing/Invoice.cs"
+        )
+
+        assert "src/Billing/Invoice.cs:Invoice.Total" in symbols
+        assert "src/Billing/Invoice.cs:Invoice.AddLine()" in symbols
+        assert "property" in SYMBOL_CHUNK_TYPES
 
 
 class TestExtractSymbolsRuby:

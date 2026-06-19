@@ -96,6 +96,7 @@ SYMBOL_CHUNK_TYPES = frozenset(
         "declaration",
         "macro",  # C/C++
         "variable",  # JS/TS
+        "property",  # C#
     }
 )
 

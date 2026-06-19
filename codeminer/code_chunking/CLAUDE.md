@@ -1,6 +1,6 @@
 # code_chunking/ — rules
 
-Tree-sitter chunkers, one per language (`python`, `go`, `cpp`, `rust`, `java`, `ruby`, `js`).
+Tree-sitter chunkers, one per language (`python`, `go`, `cpp`, `csharp`, `rust`, `java`, `ruby`, `js`).
 The authoritative reference for chunk depths and the full per-language
 `chunk_type` tables is [`README.md`](./README.md) — read it before adding or
 changing a chunker. This file is the short list of rules that bite.
@@ -14,19 +14,20 @@ changing a chunker. This file is the short list of rules that bite.
 - **`.c` files use the `cpp` chunker.** There is no separate C chunker; the
   language→chunker map sends `.c` to `cpp`. Forgetting this produces empty
   `code_blocks` (the bug that silently broke redis/jqlang instances).
-- **Java and Ruby are chunker/GT/agent-only for now.** The `.java` and `.rb`
-  chunkers are registered for tree-sitter chunking and ground-truth extraction,
-  but graph/LSP/core backend support is still intentionally unset in the
-  language registry.
+- **C#, Java, and Ruby are chunker/GT/agent-only for now.** The `.cs`, `.java`,
+  and `.rb` chunkers are registered for tree-sitter chunking and ground-truth
+  extraction, but graph/LSP/core backend support is still intentionally unset
+  in the language registry.
 - **Chunk depth** (`chunk_depth` on `BaseCodeChunker`): L0 = whole file
   (skeleton when `skeleton_mode`), L1 = top-level symbols, L2 = nested
   methods/members (default; with `l2_level_exclusive=True` the L1 containers are
   dropped, keeping only their L2 members).
 - **Symbol chunk types** (`SYMBOL_CHUNK_TYPES`): `function`, `method`, `class`,
   `module`, `struct`, `type`, `interface`, `object`, `enum`, `trait`, `impl`, `var`,
-  `const`, `static`, `declaration`, `macro`, `variable`, `record`. Per-language L1
+  `const`, `static`, `declaration`, `macro`, `variable`, `record`, `property`. Per-language L1
   var/const kinds: Go `var`/`const`; Rust `const`/`static`/`type`; C++
-  `declaration`/`macro`; Java `record`; Ruby `module`; JS/TS `variable`.
+  `declaration`/`macro`; C# `property`; Java `record`; Ruby `module`;
+  JS/TS `variable`.
 
 ## When adding a language / chunk type
 

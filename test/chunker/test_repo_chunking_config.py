@@ -15,6 +15,7 @@ def test_repo_chunking_config_defaults_come_from_language_registry():
 
     assert cfg.python_extensions == extensions_for_language("python", "chunker")
     assert cfg.cpp_extensions == extensions_for_language("cpp", "chunker")
+    assert cfg.csharp_extensions == extensions_for_language("csharp", "chunker")
     assert cfg.rust_extensions == extensions_for_language("rust", "chunker")
     assert cfg.go_extensions == extensions_for_language("go", "chunker")
     assert cfg.java_extensions == extensions_for_language("java", "chunker")
@@ -63,12 +64,14 @@ def test_repo_language_detection_uses_registered_chunk_extensions(tmp_path: Path
     (tmp_path / "app.jsx").write_text("export const x = () => 1;\n")
     (tmp_path / "types.cts").write_text("export const y: number = 1;\n")
     (tmp_path / "main.go").write_text("package main\n")
+    (tmp_path / "Program.cs").write_text("class Program {}\n")
     (tmp_path / "App.java").write_text("class App {}\n")
     (tmp_path / "app.rb").write_text("class App\nend\n")
 
     chunker = CodeChunker(language="python")
 
     assert sorted(chunker._detect_repo_language(tmp_path)) == [
+        "csharp",
         "go",
         "java",
         "javascript",

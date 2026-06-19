@@ -31,10 +31,15 @@ from codeminer.languages import (
 def test_c_family_surface_normalization_is_explicit():
     assert normalize_chunker_language("c") is None
     assert normalize_chunker_language("c++") == "cpp"
+    assert normalize_chunker_language("c#") == "csharp"
+    assert normalize_chunker_language("cs") == "csharp"
     assert normalize_graph_language("c") == "cpp"
     assert normalize_graph_language("c++") == "cpp"
+    assert normalize_graph_language("c#") is None
     assert normalize_agent_language("c") == "c"
     assert normalize_agent_language("c++") == "cpp"
+    assert normalize_agent_language("c#") == "csharp"
+    assert normalize_agent_language("cs") == "csharp"
 
 
 def test_javascript_typescript_share_graph_backend_but_keep_agent_keys():
@@ -54,6 +59,7 @@ def test_gt_extensions_preserve_current_supported_set():
     ext_map = extension_to_language_map("gt")
     assert ext_map[".py"] == "python"
     assert ext_map[".c"] == "cpp"
+    assert ext_map[".cs"] == "csharp"
     assert ext_map[".java"] == "java"
     assert ext_map[".rb"] == "ruby"
     assert ext_map[".tsx"] == "typescript"
@@ -71,6 +77,7 @@ def test_agent_supported_languages_match_existing_scenarios():
         "rust",
         "cpp",
         "c",
+        "csharp",
         "java",
         "ruby",
         "typescript",
@@ -95,6 +102,7 @@ def test_chunker_languages_are_current_supported_repo_chunkers():
         "go",
         "rust",
         "cpp",
+        "csharp",
         "java",
         "ruby",
         "javascript",
@@ -111,6 +119,9 @@ def test_chunker_class_paths_follow_chunker_language_aliases():
     assert paths["rust"].endswith("rust_chunker:RustCodeChunker")
     assert paths["cpp"].endswith("cpp_chunker:CppCodeChunker")
     assert paths["c++"] == paths["cpp"]
+    assert paths["csharp"].endswith("csharp_chunker:CSharpCodeChunker")
+    assert paths["c#"] == paths["csharp"]
+    assert paths["cs"] == paths["csharp"]
     assert paths["java"].endswith("java_chunker:JavaCodeChunker")
     assert paths["ruby"].endswith("ruby_chunker:RubyCodeChunker")
     assert paths["rb"] == paths["ruby"]
@@ -121,6 +132,7 @@ def test_chunker_class_paths_follow_chunker_language_aliases():
 
     assert chunker_class_path("py") is None
     assert chunker_class_path("js") == paths["javascript"]
+    assert chunker_class_path("c#") == paths["csharp"]
     assert chunker_class_path("java") == paths["java"]
     assert chunker_class_path("rb") == paths["ruby"]
 
@@ -147,6 +159,7 @@ def test_incremental_patcher_paths_follow_graph_language_aliases():
 
     assert incremental_patcher_path("js") == paths["ts"]
     assert incremental_patcher_path("jsx") is None
+    assert incremental_patcher_path("csharp") is None
     assert incremental_patcher_path("java") is None
     assert incremental_patcher_path("ruby") is None
 
@@ -177,6 +190,8 @@ def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
 
     assert graph_cold_start_backend("cpp") == "clangd"
     assert graph_cold_start_backend("python") == "scip"
+    assert graph_indexer_path("csharp") is None
+    assert graph_decoder_path("csharp") is None
     assert graph_indexer_path("java") is None
     assert graph_decoder_path("java") is None
     assert graph_indexer_path("ruby") is None
@@ -199,6 +214,8 @@ def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
     assert lsp_language_id_for_language("javascript") == "typescript"
     assert lsp_command_for_language("ts") == ["typescript-language-server", "--stdio"]
 
+    assert lsp_language_id_for_language("csharp") is None
+    assert lsp_command_for_language("csharp") is None
     assert lsp_language_id_for_language("java") is None
     assert lsp_command_for_language("java") is None
     assert lsp_language_id_for_language("ruby") is None
