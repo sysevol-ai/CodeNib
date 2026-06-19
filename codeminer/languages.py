@@ -14,7 +14,10 @@ hand.
 
 from __future__ import annotations
 
+import os
+import shlex
 from dataclasses import dataclass
+from importlib import import_module
 from typing import Dict, FrozenSet, Iterable, Literal, Optional, Tuple
 
 ExtensionKind = Literal["chunker", "gt", "graph"]
@@ -42,6 +45,10 @@ class LanguageSpec:
     graph_decoder: Optional[str] = None
     incremental_backend: Optional[str] = None
     incremental_patcher: Optional[str] = None
+    lsp_language_id: Optional[str] = None
+    lsp_command: Tuple[str, ...] = ()
+    lsp_command_env: Optional[str] = None
+    lsp_command_factory: Optional[str] = None
     core_decoder: bool = False
     core_decoder_aliases: Tuple[str, ...] = ()
 
@@ -66,6 +73,9 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_decoder="codeminer.scip_interface.scip_decode_python:SCIPPythonGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_python:PatcherPython",
+        lsp_language_id="python",
+        lsp_command=("basedpyright-langserver", "--stdio"),
+        lsp_command_env="CODEMINER_PYTHON_LSP_CMD",
         core_decoder=True,
     ),
     LanguageSpec(
@@ -87,6 +97,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_decoder="codeminer.scip_interface.scip_decode_go:SCIPGoGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_go:PatcherGo",
+        lsp_language_id="go",
+        lsp_command=("gopls", "serve"),
         core_decoder=True,
     ),
     LanguageSpec(
@@ -108,6 +120,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_decoder="codeminer.scip_interface.scip_decode_rust:SCIPRustGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_rust:PatcherRust",
+        lsp_language_id="rust",
+        lsp_command_factory="codeminer.scip_interface.rust_analyzer:rust_analyzer_command",
         core_decoder=True,
     ),
     LanguageSpec(
@@ -129,6 +143,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_decoder="codeminer.ls_index.clangd_decode:ClangdGraphDecoder",
         incremental_backend="clangd",
         incremental_patcher="codeminer.graph.incremental.patcher_cpp:PatcherCpp",
+        lsp_language_id="cpp",
+        lsp_command=("clangd",),
     ),
     LanguageSpec(
         key="javascript",
@@ -153,6 +169,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_decoder="codeminer.scip_interface.scip_decode_ts:SCIPTypeScriptGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_ts:PatcherTS",
+        lsp_language_id="typescript",
+        lsp_command=("typescript-language-server", "--stdio"),
     ),
     LanguageSpec(
         key="typescript",
@@ -177,6 +195,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_decoder="codeminer.scip_interface.scip_decode_ts:SCIPTypeScriptGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_ts:PatcherTS",
+        lsp_language_id="typescript",
+        lsp_command=("typescript-language-server", "--stdio"),
         core_decoder=True,
         core_decoder_aliases=("ts", "js"),
     ),
@@ -414,6 +434,52 @@ def graph_cold_start_backend(language: str) -> Optional[str]:
     return graph_cold_start_backends(include_aliases=False).get(graph_language)
 
 
+def lsp_language_id_for_language(language: str) -> Optional[str]:
+    """Return the LSP language id for a raw graph language."""
+
+    graph_language = normalize_graph_language(language)
+    if graph_language is None:
+        return None
+    return _graph_surface_values("lsp_language_id", include_aliases=False).get(
+        graph_language
+    )
+
+
+def _call_no_arg_factory(path: str) -> list[str]:
+    module_name, separator, func_name = path.partition(":")
+    if not separator or not module_name or not func_name:
+        raise ValueError(f"Invalid factory path: {path!r}")
+    module = import_module(module_name)
+    func = getattr(module, func_name)
+    result = func()
+    return list(result)
+
+
+def lsp_command_for_language(language: str) -> Optional[list[str]]:
+    """Return the configured LSP command for a raw graph language."""
+
+    graph_language = normalize_graph_language(language)
+    if graph_language is None:
+        return None
+
+    spec = next(
+        (spec for spec in LANGUAGE_SPECS if spec.graph_language == graph_language),
+        None,
+    )
+    if spec is None:
+        return None
+
+    if spec.lsp_command_env:
+        override = os.environ.get(spec.lsp_command_env)
+        if override:
+            return shlex.split(override)
+    if spec.lsp_command_factory:
+        return _call_no_arg_factory(spec.lsp_command_factory)
+    if spec.lsp_command:
+        return list(spec.lsp_command)
+    return None
+
+
 def incremental_patcher_paths(include_aliases: bool = True) -> Dict[str, str]:
     """Return graph backend language keys mapped to incremental patcher paths."""
 
@@ -463,6 +529,8 @@ __all__ = [
     "graph_language_aliases",
     "incremental_patcher_path",
     "incremental_patcher_paths",
+    "lsp_command_for_language",
+    "lsp_language_id_for_language",
     "normalize_agent_language",
     "normalize_chunker_language",
     "normalize_graph_language",

@@ -24,8 +24,9 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from ...languages import lsp_command_for_language, normalize_graph_language
 from ...log_utils import get_logger
-from ...scip_interface.rust_analyzer import rust_analyzer_command, rust_toolchain
+from ...scip_interface.rust_analyzer import rust_toolchain
 
 logger = get_logger(__name__)
 
@@ -118,23 +119,6 @@ SYMBOL_KIND_NAMES = {
     24: "Event",
     25: "Operator",
     26: "TypeParameter",
-}
-
-# Default LSP server commands per language
-LSP_COMMANDS = {
-    "python": ["basedpyright-langserver", "--stdio"],
-    "rust": ["rust-analyzer"],
-    "typescript": ["typescript-language-server", "--stdio"],
-    "ts": ["typescript-language-server", "--stdio"],
-    "go": ["gopls", "serve"],
-    "cpp": ["clangd"],
-    "c": ["clangd"],
-    "c++": ["clangd"],
-}
-
-# Alternative LSP servers (e.g. pylsp supports semanticTokens, pyright does not)
-LSP_COMMANDS_ALT = {
-    "python": ["pylsp"],
 }
 
 # Common locations to search for LSP binaries not on PATH
@@ -1203,18 +1187,11 @@ class LSPClient:
     @staticmethod
     def get_lsp_command(language: str) -> Optional[list[str]]:
         """Get the default LSP server command for a language."""
-        if language == "rust":
-            return rust_analyzer_command()
-        cmd = LSP_COMMANDS.get(language)
+        cmd = lsp_command_for_language(language)
         if not cmd:
             return None
         binary = cmd[0]
-        resolved = shutil.which(binary)
-        if not resolved:
-            # Check inside the running Python environment's bin dir
-            env_bin = Path(sys.executable).parent / binary
-            if env_bin.exists():
-                resolved = str(env_bin)
+        resolved = resolve_lsp_binary(binary)
         if resolved:
             return [resolved] + cmd[1:]
         return cmd
@@ -1222,10 +1199,13 @@ class LSPClient:
     @staticmethod
     def check_lsp_available(language: str) -> bool:
         """Check if the LSP server binary is available."""
-        if language == "rust":
+        cmd = LSPClient.get_lsp_command(language)
+        if not cmd:
+            return False
+        if normalize_graph_language(language) == "rust":
             try:
                 subprocess.run(
-                    rust_analyzer_command("--version"),
+                    cmd + ["--version"],
                     check=True,
                     capture_output=True,
                     text=True,
@@ -1238,10 +1218,7 @@ class LSPClient:
                 subprocess.TimeoutExpired,
             ):
                 return False
-        cmd = LSP_COMMANDS.get(language)
-        if not cmd:
-            return False
-        return resolve_lsp_binary(cmd[0]) is not None
+        return Path(cmd[0]).exists() or resolve_lsp_binary(cmd[0]) is not None
 
 
 def uri_to_relpath(uri: str, project_root: str) -> Optional[str]:

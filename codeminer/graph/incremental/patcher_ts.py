@@ -13,11 +13,7 @@ from .patcher_base import PatcherBase
 class PatcherTS(PatcherBase):
     """TS/JS incremental patcher. Matches SCIPTypeScriptGraphDecoder naming."""
 
-    def get_lsp_command(self):
-        return ["typescript-language-server", "--stdio"]
-
-    def _language_id(self):
-        return "typescript"
+    REGISTRY_LANGUAGE = "ts"
 
     def _get_crossfile_token_types(self):
         return {

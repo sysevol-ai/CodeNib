@@ -32,11 +32,7 @@ logger = get_logger(__name__)
 class PatcherCpp(PatcherBase):
     """C/C++ incremental patcher using clangd .idx files."""
 
-    def get_lsp_command(self):
-        return ["clangd"]
-
-    def _language_id(self):
-        return "cpp"
+    REGISTRY_LANGUAGE = "cpp"
 
     def _get_crossfile_token_types(self):
         return {

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 
-from ...scip_interface.rust_analyzer import rust_analyzer_command
 from ...types import NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
 from .patcher_base import PatcherBase
 
@@ -16,11 +15,7 @@ from .patcher_base import PatcherBase
 class PatcherRust(PatcherBase):
     """Rust incremental patcher. Matches SCIPRustGraphDecoder naming."""
 
-    def get_lsp_command(self):
-        return rust_analyzer_command()
-
-    def _language_id(self):
-        return "rust"
+    REGISTRY_LANGUAGE = "rust"
 
     def _get_crossfile_token_types(self):
         return {
