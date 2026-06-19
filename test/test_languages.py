@@ -19,6 +19,7 @@ from codeminer.languages import (
     graph_indexer_paths,
     incremental_patcher_path,
     incremental_patcher_paths,
+    language_capability_rows,
     lsp_command_for_language,
     lsp_language_id_for_language,
     normalize_agent_language,
@@ -98,6 +99,31 @@ def test_core_decoder_languages_only_include_supported_core_aliases():
         "ts",
         "js",
     )
+
+
+def test_language_capability_rows_track_parity_applicability():
+    rows = {row.key: row for row in language_capability_rows()}
+
+    assert rows["python"].graph_backend == "scip"
+    assert rows["python"].core_decoder is True
+    assert rows["python"].core_parity == "covered"
+
+    assert rows["cpp"].graph_backend == "clangd"
+    assert rows["cpp"].core_decoder is False
+    assert rows["cpp"].core_parity == "n/a-no-core-decoder"
+
+    assert rows["javascript"].graph_backend == "scip"
+    assert rows["javascript"].core_decoder is True
+    assert rows["javascript"].core_parity == "covered"
+
+    for language in ("csharp", "java", "ruby", "php", "kotlin"):
+        assert rows[language].chunker is True
+        assert rows[language].ground_truth is True
+        assert rows[language].agent is True
+        assert rows[language].graph_backend is None
+        assert rows[language].incremental_backend is None
+        assert rows[language].core_decoder is False
+        assert rows[language].core_parity == "n/a-tree-sitter-only"
 
 
 def test_chunker_languages_are_current_supported_repo_chunkers():

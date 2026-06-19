@@ -69,6 +69,7 @@ nav:
       - MCP Server: mcp.md
       - Agent Skills: agent_skills.md
       - Agent Compile (Design): agent_compile_design.md
+      - Language Capabilities: language_capabilities.md
       - GT Locator: gt_locator.md
       - Incremental Graph:
           - Overview: incremental_graph/index.md

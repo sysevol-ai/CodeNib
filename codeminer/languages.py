@@ -55,6 +55,22 @@ class LanguageSpec:
     core_decoder_aliases: Tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class LanguageCapability:
+    """Derived support matrix row for one registered language."""
+
+    key: str
+    display_name: str
+    chunker: bool
+    ground_truth: bool
+    agent: bool
+    graph_backend: Optional[str]
+    incremental_backend: Optional[str]
+    lsp: bool
+    core_decoder: bool
+    core_parity: str
+
+
 LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
     LanguageSpec(
         key="python",
@@ -619,8 +635,64 @@ def core_decoder_languages(include_aliases: bool = True) -> Tuple[str, ...]:
     return _unique(languages)
 
 
+def language_capability_rows() -> Tuple[LanguageCapability, ...]:
+    """Return a registry-derived language support matrix.
+
+    The matrix intentionally distinguishes tree-sitter-only languages from
+    graph-capable languages with no core decoder.  This makes serial-only/core
+    parity coverage explicit instead of relying on skipped tests as a signal.
+    """
+
+    core_graph_languages = {
+        spec.graph_language
+        for spec in LANGUAGE_SPECS
+        if spec.core_decoder and spec.graph_language
+    }
+    rows: list[LanguageCapability] = []
+    for spec in LANGUAGE_SPECS:
+        has_graph = bool(
+            spec.graph_language and spec.graph_indexer and spec.graph_decoder
+        )
+        has_core = bool(
+            spec.core_decoder
+            or (spec.graph_language and spec.graph_language in core_graph_languages)
+        )
+        if has_core:
+            core_parity = "covered"
+        elif has_graph:
+            core_parity = "n/a-no-core-decoder"
+        else:
+            core_parity = "n/a-tree-sitter-only"
+
+        rows.append(
+            LanguageCapability(
+                key=spec.key,
+                display_name=spec.display_name,
+                chunker=bool(spec.chunker_language and spec.chunker_class),
+                ground_truth=bool(spec.gt_language and spec.gt_extensions),
+                agent=bool(spec.agent_languages),
+                graph_backend=spec.cold_start_backend if has_graph else None,
+                incremental_backend=(
+                    spec.incremental_backend if spec.incremental_patcher else None
+                ),
+                lsp=bool(
+                    spec.lsp_language_id
+                    and (
+                        spec.lsp_command
+                        or spec.lsp_command_env
+                        or spec.lsp_command_factory
+                    )
+                ),
+                core_decoder=has_core,
+                core_parity=core_parity,
+            )
+        )
+    return tuple(rows)
+
+
 __all__ = [
     "ExtensionKind",
+    "LanguageCapability",
     "LanguageSpec",
     "LANGUAGE_SPECS",
     "SPECS_BY_KEY",
@@ -644,6 +716,7 @@ __all__ = [
     "graph_language_aliases",
     "incremental_patcher_path",
     "incremental_patcher_paths",
+    "language_capability_rows",
     "lsp_command_for_language",
     "lsp_language_id_for_language",
     "normalize_agent_language",
