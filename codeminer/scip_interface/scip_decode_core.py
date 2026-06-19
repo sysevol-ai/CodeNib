@@ -19,6 +19,7 @@ import time
 from typing import Dict, List, Optional
 
 from ..graph.code_graph import CodeGraph
+from ..languages import core_decoder_languages
 from ..log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -38,8 +39,10 @@ else:
     _IMPORT_ERR = None
 
 
-# Languages accepted by the C++ backend (also accepts "ts"/"js" aliases).
-SUPPORTED_LANGUAGES = ("python", "go", "rust", "typescript")
+# Canonical languages accepted by the C++ backend. Aliases such as "ts" and
+# "js" are configured in LanguageSpec.core_decoder_aliases.
+SUPPORTED_LANGUAGES = core_decoder_languages(include_aliases=False)
+ACCEPTED_LANGUAGES = core_decoder_languages(include_aliases=True)
 
 
 def _ensure_available() -> None:
@@ -131,7 +134,7 @@ class SCIPDecoderCore:
     Args:
         index_file_path: path to index.decoded
         project_root: project root (for Go/Rust config file parsing)
-        language: one of {"python", "go", "rust", "typescript"}.
+        language: one of the registry languages with core decoder support.
     """
 
     def __init__(
@@ -140,14 +143,14 @@ class SCIPDecoderCore:
         project_root: Optional[str] = None,
         language: str = "python",
     ):
-        _ensure_available()
         self.index_file_path = index_file_path
         self.project_root = str(project_root) if project_root else None
         self.language = language.lower()
-        if self.language not in SUPPORTED_LANGUAGES + ("ts", "js"):
+        if self.language not in ACCEPTED_LANGUAGES:
             raise ValueError(
                 f"Unknown language {language!r}. " f"Supported: {SUPPORTED_LANGUAGES}."
             )
+        _ensure_available()
         self.timings: Dict[str, float] = {}
         self.code_graph: Optional[CodeGraph] = None
 
