@@ -53,6 +53,11 @@ subsets:
     - grep
     - glob
     - bash
+  preinj_graph_verify:
+    - read
+    - grep
+    - glob
+    - bash
 
 preload:
   preinj_embed:
@@ -63,3 +68,12 @@ preload:
     retrievers: [embedding, graph]
     top_k: 10
     level: l2
+  # Layer 4: same graph pre-load + the deterministic verify-expand closed loop —
+  # if the committed answer doesn't resolve to a real graph symbol, inject 1-hop
+  # neighbours and answer once more. Isolates the loop's marginal value (the
+  # "grep can't do this at any cost" half).
+  preinj_graph_verify:
+    retrievers: [embedding, graph]
+    top_k: 10
+    level: l2
+    verify: true

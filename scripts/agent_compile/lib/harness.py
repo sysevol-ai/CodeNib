@@ -212,6 +212,8 @@ def run_cell(
     subset_id: str,
     skills: Sequence[str],
     preload_spec: Optional[Dict[str, Any]] = None,
+    verify: bool = False,
+    nav: Any = None,
 ) -> Dict[str, Any]:
     """Run one (subset) agent cell against already-loaded contexts.
 
@@ -219,6 +221,12 @@ def run_cell(
     and injected into the agent's opening prompt (the pre-load architecture);
     the returned ``preload_candidates`` lists the injected ``(file, span)``s for
     contribution attribution.
+
+    When ``verify`` and a ``nav`` (GraphNav) are given, the committed answer is
+    checked against the graph (deterministic); if it does not resolve to a real
+    symbol, the 1-hop neighbours of the best seeds are injected and the agent
+    answers once more. Token/turn costs of BOTH runs are summed so the verify
+    arm is charged for the closed loop.
     """
     from codeminer.agent.runner import AgentRunner
     from codeminer.agent.skills.registry import SkillRegistry
@@ -253,11 +261,42 @@ def run_cell(
     # paths against the process cwd, so run the agent from the instance repo.
     # The sweep is sequential, so chdir is safe here.
     prev_cwd = os.getcwd()
-    try:
-        os.chdir(repo_path)
-        result = runner.run(effective_query)
-    finally:
-        os.chdir(prev_cwd)
+    runs_usage: List[Dict[str, Any]] = []
+    runs_turns: List[int] = []
+
+    def _do_run(q: str):
+        try:
+            os.chdir(repo_path)
+            r = runner.run(q)
+        finally:
+            os.chdir(prev_cwd)
+        u = r.usage.to_dict() if r.usage else {}
+        runs_usage.append(u.get("token_usage") or u or {})
+        if r.total_turns is not None:
+            runs_turns.append(r.total_turns)
+        return r
+
+    result = _do_run(effective_query)
+
+    # Verify-expand (Layer 4): if the committed answer is not anchored to a real
+    # graph symbol, inject 1-hop neighbours of the best seeds and answer once more.
+    verify_triggered = False
+    verify_resolved: Optional[int] = None
+    if verify and nav is not None:
+        from scripts.agent_compile.lib.verify_expand import (
+            expansion_seeds_from_candidates,
+            graph_verify,
+            render_expansion,
+        )
+
+        verdict = graph_verify(result.answer or "", nav)
+        verify_resolved = verdict.n_resolved
+        if not verdict.ok:
+            seeds = verdict.seeds or expansion_seeds_from_candidates(preload_candidates)
+            extra = render_expansion(nav.neighbors(seeds, max_nodes=10))
+            if extra:
+                verify_triggered = True
+                result = _do_run(f"{effective_query}\n\n{extra}")
 
     nodes: List[Any] = []
     tool_calls: List[Dict[str, Any]] = []
@@ -289,8 +328,12 @@ def run_cell(
                     }
                 )
 
-    usage = result.usage.to_dict() if result.usage else {}
-    token_usage = usage.get("token_usage") or usage or {}
+    # Sum token usage across the (1 or 2) runs so the verify arm is charged for
+    # the closed loop, not just its final turn.
+    def _sum(key: str) -> Optional[float]:
+        vals = [u.get(key) for u in runs_usage if u.get(key) is not None]
+        return sum(vals) if vals else None
+
     return {
         "nodes": nodes,
         "tool_calls": tool_calls,
@@ -298,13 +341,15 @@ def run_cell(
         "file_reads": file_reads,
         "preload_candidates": preload_candidates,
         "answer": result.answer or "",
-        "total_turns": result.total_turns,
+        "total_turns": sum(runs_turns) if runs_turns else result.total_turns,
         "total_duration_ms": result.total_duration_ms,
         "tool_call_count": len(result.tool_calls),
-        "prompt_tokens": token_usage.get("prompt_tokens"),
-        "completion_tokens": token_usage.get("completion_tokens"),
-        "total_tokens": token_usage.get("total_tokens"),
-        "cost_usd": token_usage.get("cost_usd"),
-        "cache_read_input_tokens": token_usage.get("cache_read_input_tokens"),
-        "cache_creation_input_tokens": token_usage.get("cache_creation_input_tokens"),
+        "verify_triggered": verify_triggered,
+        "verify_resolved": verify_resolved,
+        "prompt_tokens": _sum("prompt_tokens"),
+        "completion_tokens": _sum("completion_tokens"),
+        "total_tokens": _sum("total_tokens"),
+        "cost_usd": _sum("cost_usd"),
+        "cache_read_input_tokens": _sum("cache_read_input_tokens"),
+        "cache_creation_input_tokens": _sum("cache_creation_input_tokens"),
     }

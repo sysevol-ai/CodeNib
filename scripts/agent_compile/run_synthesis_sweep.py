@@ -112,7 +112,9 @@ def run(
         spans_overlap,
     )
     from codeminer.llm.litellm_chat import LiteLLMChat
+    from scripts.agent_compile.lib.verify_expand import load_graph_nav
 
+    needs_verify = any((r or {}).get("verify") for r in (cfg.preload or {}).values())
     cells_dir = output_dir / "cells"
     cells_dir.mkdir(parents=True, exist_ok=True)
     vertex_extra: Dict[str, Any] = {}
@@ -178,6 +180,9 @@ def run(
                 )
                 continue
             symbol_span_index = build_symbol_span_index(cfg.prebuilt_dir, instance_id)
+            nav = (
+                load_graph_nav(cfg.prebuilt_dir, instance_id) if needs_verify else None
+            )
             print(f"synth:   contexts ready in {time.time() - t0:.1f}s")
 
             for row, subset_id, skills, rep, cid, cpath in plan:
@@ -195,6 +200,10 @@ def run(
                         subset_id=subset_id,
                         skills=skills,
                         preload_spec=(cfg.preload or {}).get(subset_id),
+                        verify=bool(
+                            ((cfg.preload or {}).get(subset_id) or {}).get("verify")
+                        ),
+                        nav=nav,
                     )
                     metrics = score_agent_localization(
                         answer=out["answer"],
@@ -254,6 +263,8 @@ def run(
                         "retrieval_spans": retrieval_spans,
                         "preload_candidates": preload_candidates,
                         "preload_contribution": preload_contribution,
+                        "verify_triggered": out.get("verify_triggered"),
+                        "verify_resolved": out.get("verify_resolved"),
                         "tool_calls": out["tool_calls"],
                         "file_read_paths": out["file_read_paths"],
                         "answer": out["answer"],
