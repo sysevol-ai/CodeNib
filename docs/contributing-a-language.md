@@ -133,6 +133,20 @@ the current CodeGraph contract:
 - line bases handled deliberately (`CodeChunk` uses 0-based lines, graph query
   APIs use the CodeGraph conventions documented in `docs/graph_query.md`).
 
+When two backends exist for the same language, compare them before trusting the
+new backend's graph surface:
+
+```bash
+python scripts/check_backend_alignment.py \
+  --reference /path/to/scip-or-clangd/graph.pkl \
+  --candidate /path/to/lsp/graph.pkl
+```
+
+The alignment harness compares definition symbols by `unified_name` and the
+symbol containment hierarchy. It reports reference-edge counts but does not
+require reference parity by default; server-specific reference/call edges need
+explicit tolerances before they are treated as a blocking signal.
+
 ## Step 4: Add Incremental Graph Patching
 
 Add `codeminer/graph/incremental/patcher_{lang}.py` only after graph support
