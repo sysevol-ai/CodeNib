@@ -8,7 +8,12 @@ from codeminer.languages import (
     chunker_languages,
     core_decoder_languages,
     extension_to_language_map,
+    graph_cold_start_backend,
+    graph_decoder_path,
+    graph_decoder_paths,
     graph_extensions_by_language,
+    graph_indexer_path,
+    graph_indexer_paths,
     incremental_patcher_path,
     incremental_patcher_paths,
     normalize_agent_language,
@@ -104,3 +109,33 @@ def test_incremental_patcher_paths_follow_graph_language_aliases():
     assert incremental_patcher_path("js") == paths["ts"]
     assert incremental_patcher_path("jsx") is None
     assert incremental_patcher_path("java") is None
+
+
+def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
+    indexers = graph_indexer_paths()
+    decoders = graph_decoder_paths()
+
+    assert indexers["python"].endswith("scip_indexer_python:SCIPPythonIndexer")
+    assert decoders["python"].endswith("scip_decode_python:SCIPPythonGraphDecoder")
+    assert indexers["py"] == indexers["python"]
+    assert decoders["py"] == decoders["python"]
+
+    assert indexers["go"].endswith("scip_indexer_go:SCIPGoIndexer")
+    assert decoders["go"].endswith("scip_decode_go:SCIPGoGraphDecoder")
+    assert indexers["golang"] == indexers["go"]
+    assert decoders["golang"] == decoders["go"]
+
+    assert indexers["cpp"].endswith("clangd_indexer:ClangdIndexer")
+    assert decoders["cpp"].endswith("clangd_decode:ClangdGraphDecoder")
+    assert indexers["c"] == indexers["cpp"]
+    assert decoders["c"] == decoders["cpp"]
+
+    assert indexers["ts"].endswith("scip_indexer_ts:SCIPTypeScriptIndexer")
+    assert decoders["ts"].endswith("scip_decode_ts:SCIPTypeScriptGraphDecoder")
+    assert graph_indexer_path("javascript") == indexers["ts"]
+    assert graph_decoder_path("typescript") == decoders["ts"]
+
+    assert graph_cold_start_backend("cpp") == "clangd"
+    assert graph_cold_start_backend("python") == "scip"
+    assert graph_indexer_path("java") is None
+    assert graph_decoder_path("java") is None

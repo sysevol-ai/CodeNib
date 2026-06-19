@@ -23,11 +23,18 @@ Example:
     decoder = LSGraphDecoder(index_file_path="/path/to/index.decoded", language="rust")
     graph = decoder.decode()
 """
+from importlib import import_module
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Type, Union
 
 from .graph.code_graph import CodeGraph
-from .languages import graph_language_aliases, normalize_graph_language
+from .languages import (
+    graph_cold_start_backend,
+    graph_decoder_path,
+    graph_indexer_path,
+    graph_language_aliases,
+    normalize_graph_language,
+)
 from .log_utils import get_logger
 from .profiler import Profiler
 
@@ -45,6 +52,19 @@ def _normalize_language(language: Optional[str]) -> str:
         supported = ", ".join(sorted(set(LANGUAGE_ALIASES.keys())))
         raise ValueError(f"Unsupported language: {language!r}. Supported: {supported}")
     return key
+
+
+def _load_class(path: str) -> Type:
+    """Import a class from a ``module:Class`` registry path."""
+
+    module_name, separator, class_name = path.partition(":")
+    if not separator or not module_name or not class_name:
+        raise ValueError(f"Invalid class path: {path!r}")
+    module = import_module(module_name)
+    cls = getattr(module, class_name)
+    if not isinstance(cls, type):
+        raise TypeError(f"Registered object is not a class: {path}")
+    return cls
 
 
 # ── LSIndexer ─────────────────────────────────────────────────────────
@@ -89,63 +109,28 @@ class LSIndexer:
         exclude_patterns,
         profiler,
     ):
-        if self.language == "cpp":
-            from .ls_index.clangd_indexer import ClangdIndexer
-
-            # clangd uses its own .idx format, no SCIP decoder backend choice.
-            if self.decoder_backend is not None:
-                logger.warning(
-                    "decoder_backend=%r ignored for cpp (clangd has no SCIP decoder)",
-                    self.decoder_backend,
-                )
-            return ClangdIndexer(
-                project_root=project_root,
-                output_dir=output_dir,
-                exclude_patterns=exclude_patterns,
-                profiler=profiler,
-            )
-        elif self.language == "rust":
-            from .scip_interface.scip_indexer_rust import SCIPRustIndexer
-
-            return SCIPRustIndexer(
-                project_root=project_root,
-                output_dir=output_dir,
-                exclude_patterns=exclude_patterns,
-                profiler=profiler,
-                decoder_backend=self.decoder_backend,
-            )
-        elif self.language == "ts":
-            from .scip_interface.scip_indexer_ts import SCIPTypeScriptIndexer
-
-            return SCIPTypeScriptIndexer(
-                project_root=project_root,
-                output_dir=output_dir,
-                exclude_patterns=exclude_patterns,
-                profiler=profiler,
-                decoder_backend=self.decoder_backend,
-            )
-        elif self.language == "python":
-            from .scip_interface.scip_indexer_python import SCIPPythonIndexer
-
-            return SCIPPythonIndexer(
-                project_root=project_root,
-                output_dir=output_dir,
-                exclude_patterns=exclude_patterns,
-                profiler=profiler,
-                decoder_backend=self.decoder_backend,
-            )
-        elif self.language == "go":
-            from .scip_interface.scip_indexer_go import SCIPGoIndexer
-
-            return SCIPGoIndexer(
-                project_root=project_root,
-                output_dir=output_dir,
-                exclude_patterns=exclude_patterns,
-                profiler=profiler,
-                decoder_backend=self.decoder_backend,
-            )
-        else:
+        indexer_path = graph_indexer_path(self.language)
+        if indexer_path is None:
             raise ValueError(f"No indexer for language: {self.language}")
+
+        backend = graph_cold_start_backend(self.language)
+        cls = _load_class(indexer_path)
+        kwargs = {
+            "project_root": project_root,
+            "output_dir": output_dir,
+            "exclude_patterns": exclude_patterns,
+            "profiler": profiler,
+        }
+        if backend == "scip":
+            kwargs["decoder_backend"] = self.decoder_backend
+        elif self.decoder_backend is not None:
+            logger.warning(
+                "decoder_backend=%r ignored for %s (%s has no SCIP decoder)",
+                self.decoder_backend,
+                self.language,
+                backend,
+            )
+        return cls(**kwargs)
 
     # ── Delegated methods ─────────────────────────────────────────────
 
@@ -202,7 +187,6 @@ class LSIndexer:
             project_root=str(self.project_root),
             code_graph=graph,
             language=self.language,
-            profiler=self.profiler,
         )
 
         changed = patcher.detect_changed_files(
@@ -238,38 +222,20 @@ class LSGraphDecoder:
         self.code_graph = self._delegate.code_graph
 
     def _create_decoder(self, index_file_path, project_root):
-        if self.language == "cpp":
-            from .ls_index.clangd_decode import ClangdGraphDecoder
+        decoder_path = graph_decoder_path(self.language)
+        if decoder_path is None:
+            raise ValueError(f"No decoder for language: {self.language}")
 
-            return ClangdGraphDecoder(
+        cls = _load_class(decoder_path)
+        backend = graph_cold_start_backend(self.language)
+        if backend == "clangd":
+            return cls(
                 # clangd expects a directory of .idx files, not a single file.
                 # Default: <project_root>/.cache/clangd/index/
                 idx_directory=index_file_path,
                 project_root=project_root,
             )
-        elif self.language == "rust":
-            from .scip_interface.scip_decode_rust import SCIPRustGraphDecoder
-
-            return SCIPRustGraphDecoder(
-                index_file_path=index_file_path,
-                project_root=project_root,
-            )
-        elif self.language == "ts":
-            from .scip_interface.scip_decode_ts import SCIPTypeScriptGraphDecoder
-
-            return SCIPTypeScriptGraphDecoder(
-                index_file_path=index_file_path,
-                project_root=project_root,
-            )
-        elif self.language == "python":
-            from .scip_interface.scip_decode_python import SCIPPythonGraphDecoder
-
-            return SCIPPythonGraphDecoder(
-                index_file_path=index_file_path,
-                project_root=project_root,
-            )
-        else:
-            raise ValueError(f"No decoder for language: {self.language}")
+        return cls(index_file_path=index_file_path, project_root=project_root)
 
     # ── Delegated methods ─────────────────────────────────────────────
 
