@@ -16,6 +16,7 @@ import pytest
 
 from codeminer.code_chunking.base import CodeChunk
 from codeminer.dataset.gt_locate import (
+    SYMBOL_CHUNK_TYPES,
     GTLocator,
     _chunk_to_code_block,
     language_for_file,
@@ -35,6 +36,7 @@ class TestLanguageForFile:
             ("lib/parser.rs", "rust"),
             ("src/engine.cpp", "cpp"),
             ("include/engine.h", "cpp"),
+            ("src/main/java/App.java", "java"),
             ("src/app.ts", "typescript"),
             ("src/index.js", "javascript"),
             ("src/component.tsx", "typescript"),
@@ -237,6 +239,40 @@ class TestExtractSymbolsJsTs:
         assert "src/expression.js:fromExport()" in symbols
         assert "src/expression.js:fromVar()" in symbols
         assert "src/expression.js:fromAssign()" in symbols
+
+
+class TestExtractSymbolsJava:
+    @pytest.fixture()
+    def locator(self, tmp_path):
+        return GTLocator(work_dir=str(tmp_path))
+
+    def test_java_methods_and_records(self, locator, tmp_path):
+        java_file = tmp_path / "src" / "main" / "java" / "Point.java"
+        java_file.parent.mkdir(parents=True, exist_ok=True)
+        java_file.write_text(
+            "\n".join(
+                [
+                    "record Point(int x, int y) {",
+                    "    public int sum() {",
+                    "        return x + y;",
+                    "    }",
+                    "}",
+                    "",
+                    "class App {",
+                    "    void run() {}",
+                    "}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        symbols = locator.extract_symbols_from_file(
+            str(java_file), relative_path="src/main/java/Point.java"
+        )
+
+        assert "src/main/java/Point.java:Point.sum()" in symbols
+        assert "src/main/java/Point.java:App.run()" in symbols
+        assert "record" in SYMBOL_CHUNK_TYPES
 
 
 # ===================================================================

@@ -153,6 +153,18 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         lsp_command=("clangd",),
     ),
     LanguageSpec(
+        key="java",
+        display_name="Java",
+        chunker_language="java",
+        chunker_aliases=("java",),
+        chunker_class="codeminer.code_chunking.java_chunker:JavaCodeChunker",
+        chunk_extensions=(".java",),
+        gt_language="java",
+        gt_extensions=(".java",),
+        agent_languages=("java",),
+        agent_aliases=(("java", "java"),),
+    ),
+    LanguageSpec(
         key="javascript",
         display_name="JavaScript",
         aliases=("js", "jsx"),

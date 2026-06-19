@@ -13,6 +13,7 @@ from ..languages import chunker_language_aliases, get_chunker_spec
 from .base import BaseCodeChunker, CodeChunk
 from .cpp_chunker import CppCodeChunker
 from .go_chunker import GoCodeChunker
+from .java_chunker import JavaCodeChunker
 from .js_chunker import JsTsCodeChunker
 from .python_chunker import PythonCodeChunker
 from .rust_chunker import RustCodeChunker
@@ -92,6 +93,7 @@ __all__ = [
     "CppCodeChunker",
     "RustCodeChunker",
     "GoCodeChunker",
+    "JavaCodeChunker",
     "JsTsCodeChunker",
     "create_chunker",
 ]

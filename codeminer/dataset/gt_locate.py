@@ -86,6 +86,7 @@ SYMBOL_CHUNK_TYPES = frozenset(
         "interface",
         "object",
         "enum",
+        "record",
         "trait",
         "impl",  # Rust (pre-existing, now registered)
         "var",
