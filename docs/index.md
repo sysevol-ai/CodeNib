@@ -22,6 +22,7 @@ CodeMiner provides tools for structural code analysis, symbol-level change detec
 | [Language Capabilities](language_capabilities.md) | Registry-derived support matrix across chunking, graph, incremental, and core parity surfaces |
 | [GT Locator](gt_locator.md) | Extract symbol-level ground truth from SWE-bench patches |
 | [Incremental Graph](incremental_graph/index.md) | Update CodeGraph in-place without full re-indexing |
+| [Graph Backend Alignment](graph_backend_alignment.md) | Shared graph signature contract for serial/core parity and future backend comparisons |
 | [Graph Range Query](graph_query.md) | LSP-aligned line-range / symbol queries with typed results |
 | [Regex Index](regex_index.md) | Fast regex search across CodeGraph nodes |
 | [SCIP Index](scip_index.md) | Code intelligence via the SCIP protocol |

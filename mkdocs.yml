@@ -74,6 +74,7 @@ nav:
       - Incremental Graph:
           - Overview: incremental_graph/index.md
           - Interactive Demo: incremental_graph/interactive.md
+      - Graph Backend Alignment: graph_backend_alignment.md
       - Graph Range Query: graph_query.md
       - Regex Index: regex_index.md
       - SCIP Index: scip_index.md

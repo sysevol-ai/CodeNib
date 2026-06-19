@@ -54,15 +54,6 @@ if importlib.util.find_spec("codeminer_core") is None:
 # naturally; in unit-test runs we have to enforce it explicitly here.
 import codeminer_core  # noqa: E402, F401
 
-_COMPARED_ATTRS = ("type", "file", "start_line", "end_line", "unified_name")
-
-# Edge attributes compared for parity. `anchor_file` / `anchor_line` were
-# added in schema v3 to support LSP-aligned line-range queries; both serial
-# and core decoders thread the SCIP `occurrence.range` start line through
-# reference edges.
-_EDGE_COMPARED_ATTRS = ("type", "anchor_file", "anchor_line")
-
-
 _MULTILINGUAL_KEYWORDS = {
     "go": ["caddyserver/", "gin-gonic/", "gohugoio/", "hashicorp/", "prometheus/"],
     "rust": ["astral-sh/ruff", "pola-rs/polars", "tokio-rs/", "rust-lang/"],
@@ -113,98 +104,6 @@ def _pick_instance(language: str) -> Tuple[object, dict]:
         if any(k in row["repo"] for k in _MULTILINGUAL_KEYWORDS[language]):
             return dataset_obj, dict(row)
     raise RuntimeError(f"No SWE-bench_Multilingual instance for {language}")
-
-
-def _graph_signature(graph):
-    """Return (names, edge_multiset, vertex_attrs).
-
-    ``edge_multiset`` is a sorted list of
-    ``(src_name, tgt_name, type, anchor_file, anchor_line)`` so multi-edges
-    between the same `(src, tgt)` pair (one per call site) are preserved
-    and order-independent comparison still works.
-    """
-    names = set(graph.vs["name"])
-    i2n = {v.index: v["name"] for v in graph.vs}
-    edges_list = []
-    for e in graph.es:
-        attrs = e.attributes()
-        edges_list.append(
-            (
-                i2n[e.source],
-                i2n[e.target],
-                attrs.get("type"),
-                attrs.get("anchor_file"),
-                attrs.get("anchor_line"),
-            )
-        )
-    edges_list.sort(key=lambda t: (t[0], t[1], t[2] or "", t[3] or "", t[4] or -1))
-    vertex_attrs = {
-        v["name"]: {k: v.attributes().get(k) for k in _COMPARED_ATTRS} for v in graph.vs
-    }
-    return names, edges_list, vertex_attrs
-
-
-def _assert_graph_parity(ref, cand, tag: str) -> None:
-    ref_names, ref_edges, ref_attrs = _graph_signature(ref.graph)
-    cand_names, cand_edges, cand_attrs = _graph_signature(cand.graph)
-
-    assert ref_names == cand_names, (
-        f"[{tag}] name sets differ: "
-        f"ref-only={len(ref_names - cand_names)}, "
-        f"cand-only={len(cand_names - ref_names)}, "
-        f"missing={sorted(ref_names - cand_names)[:3]}, "
-        f"extra={sorted(cand_names - ref_names)[:3]}"
-    )
-
-    if ref_edges != cand_edges:
-        # Build category breakdown for a useful failure message.
-        from collections import Counter
-
-        ref_set = set(ref_edges)
-        cand_set = set(cand_edges)
-        ref_only = ref_set - cand_set
-        cand_only = cand_set - ref_set
-        per_field = {field: 0 for field in _EDGE_COMPARED_ATTRS}
-        # Count mismatches grouped by which field disagrees, on a sample.
-        for e in list(ref_only)[:200]:
-            for c in list(cand_only)[:200]:
-                if e[0] == c[0] and e[1] == c[1]:
-                    if e[2] != c[2]:
-                        per_field["type"] += 1
-                    if e[3] != c[3]:
-                        per_field["anchor_file"] += 1
-                    if e[4] != c[4]:
-                        per_field["anchor_line"] += 1
-                    break
-
-        # Multi-edge multiplicity diff: same edge tuple appearing more / fewer
-        # times. Surfaces dedup mismatches between serial and core.
-        ref_counts = Counter(ref_edges)
-        cand_counts = Counter(cand_edges)
-        mult_diff = []
-        for e in set(ref_counts) | set(cand_counts):
-            r = ref_counts.get(e, 0)
-            c = cand_counts.get(e, 0)
-            if r != c:
-                mult_diff.append((e, r, c))
-
-        sample = mult_diff[:5]
-        raise AssertionError(
-            f"[{tag}] edge sets differ "
-            f"(ref={len(ref_edges)} cand={len(cand_edges)}): "
-            f"ref-only={len(ref_only)}, cand-only={len(cand_only)}, "
-            f"multiplicity-mismatches={len(mult_diff)}, "
-            f"sample-field-mismatches={per_field}, "
-            f"sample-multi-diff={sample}"
-        )
-
-    per_attr = {
-        a: sum(1 for n in ref_names if ref_attrs[n].get(a) != cand_attrs[n].get(a))
-        for a in _COMPARED_ATTRS
-    }
-    assert all(
-        c == 0 for c in per_attr.values()
-    ), f"[{tag}] vertex attributes differ: {per_attr}"
 
 
 def _run_parity(language: str) -> None:
@@ -260,6 +159,7 @@ def _run_parity(language: str) -> None:
         serial_graph = CodeGraph.load_graph(str(graph_pkl))
 
     # Core decoder: reuse index.decoded, don't clobber graph.pkl (serial's).
+    from codeminer.graph.signature import assert_graph_signatures_equal
     from codeminer.ls_router import LSIndexer
 
     core_indexer = LSIndexer(
@@ -271,7 +171,7 @@ def _run_parity(language: str) -> None:
     core_graph = core_indexer.process_index(output_file=None)
     assert core_graph is not None, f"[{language}] core process_index returned None"
 
-    _assert_graph_parity(serial_graph, core_graph, language)
+    assert_graph_signatures_equal(serial_graph, core_graph, language)
 
 
 # --------------------------------------------------------------------------
