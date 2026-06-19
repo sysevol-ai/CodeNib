@@ -82,6 +82,14 @@ class TestDetectStacktrace:
         )
         assert detect_stacktrace(query) is True
 
+    def test_php_stack_frame(self):
+        query = (
+            "Fatal error: Uncaught Error: Call to a member function run() on null\n"
+            "#0 /app/src/Invoice.php(42): Billing\\Invoice->total()\n"
+            "#1 /app/index.php(8): main()\n"
+        )
+        assert detect_stacktrace(query) is True
+
     def test_ruby_stack_frame(self):
         query = (
             "NoMethodError: undefined method `name' for nil:NilClass\n"
@@ -142,6 +150,7 @@ class TestNormalizeLanguage:
             ("Java", "java"),
             ("Ruby", "ruby"),
             ("rb", "ruby"),
+            ("PHP", "php"),
             ("TypeScript", "typescript"),
             ("ts", "typescript"),
             ("JavaScript", "javascript"),

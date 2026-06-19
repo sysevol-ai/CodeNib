@@ -72,6 +72,8 @@ _STACKTRACE_PATTERNS = (
         r"^\s+at\s+\S+\.\S+\([^()\n]*\)\s+in\s+[^:\n]+\.cs:line\s+\d+\s*$",
         re.MULTILINE,
     ),
+    # PHP — "#0 /app/src/Foo.php(42): Class->method(...)"
+    re.compile(r"^#\d+\s+[^()\n]+\.php\(\d+\):\s+\S+", re.MULTILINE),
     # C/C++ — addr2line / backtrace lines look like "#0 0x... in fn at file:42"
     re.compile(r"^#\d+\s+0x[0-9a-fA-F]+\s+in\s+\S+", re.MULTILINE),
 )

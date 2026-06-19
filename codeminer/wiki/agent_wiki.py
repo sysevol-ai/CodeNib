@@ -44,6 +44,7 @@ _EXT_LANG = {
     "cs": "csharp",
     "java": "java",
     "rb": "ruby",
+    "php": "php",
 }
 _MAX_CONTEXT_CHARS = 9000
 
