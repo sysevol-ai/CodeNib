@@ -34,6 +34,7 @@ CodeMiner provides tools for structural code analysis, symbol-level change detec
 - [Uploading to HuggingFace](upload_dataset_to_huggingface.md) — build and publish the dataset
 - [CI/CD](ci_cd.md) — pipeline setup and test tiers
 - [Diagnose Query Leak](diagnose_query_leak.md) — detect lexical/semantic leakage in synthesized queries
+- [Contributing a Language](contributing-a-language.md) — add language support through the registry, chunker, graph, and parity layers
 
 ## Quick Start
 

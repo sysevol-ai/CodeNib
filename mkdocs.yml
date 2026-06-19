@@ -64,6 +64,7 @@ nav:
       - Upload to HuggingFace: upload_dataset_to_huggingface.md
       - CI/CD: ci_cd.md
       - Diagnose Query Leak: diagnose_query_leak.md
+      - Contributing a Language: contributing-a-language.md
   - Components:
       - Web Demo: web_demo.md
       - MCP Server: mcp.md
