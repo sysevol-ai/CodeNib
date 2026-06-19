@@ -11,10 +11,24 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from codeminer.dataset.synthesize._agent import AgentRunner
 from codeminer.log_utils import get_logger
 
 logger = get_logger(__name__)
+
+
+def _make_agent(*, model: str, system_prompt: str):
+    # ``claude_agent_sdk`` is an optional synthesis-time dependency. Import the
+    # runner only when the post-fix loop actually needs an LLM call so tests can
+    # import the pure helpers in this module without that SDK installed.
+    from codeminer.dataset.synthesize._agent import AgentRunner
+
+    return AgentRunner(
+        model=model,
+        max_turns=1,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        system_prompt=system_prompt,
+    )
 
 
 JUDGE_SYSTEM_PROMPT = (
@@ -231,13 +245,7 @@ async def _fix_one(
     original_query = row.get("query") or ""
     judge_reason = row.get("judge_reason") or ""
 
-    agent = AgentRunner(
-        model=model,
-        max_turns=1,
-        allowed_tools=[],
-        permission_mode="bypassPermissions",
-        system_prompt=FIX_SYSTEM_PROMPT,
-    )
+    agent = _make_agent(model=model, system_prompt=FIX_SYSTEM_PROMPT)
     snippet = (
         anchor_content if len(anchor_content) <= 1800 else anchor_content[:1800] + "..."
     )
@@ -270,13 +278,7 @@ async def _regenerate_one(
     category = row.get("category") or "behavioral"
     length_variant = row.get("length_variant") or "detailed"
 
-    agent = AgentRunner(
-        model=model,
-        max_turns=1,
-        allowed_tools=[],
-        permission_mode="bypassPermissions",
-        system_prompt=REGENERATE_SYSTEM_PROMPT,
-    )
+    agent = _make_agent(model=model, system_prompt=REGENERATE_SYSTEM_PROMPT)
     snippet = (
         anchor_content if len(anchor_content) <= 1800 else anchor_content[:1800] + "..."
     )
@@ -312,13 +314,7 @@ async def _judge_one(
             "target_code_excerpt": (anchor_content or "")[:2000],
         }
     ]
-    agent = AgentRunner(
-        model=model,
-        max_turns=1,
-        allowed_tools=[],
-        permission_mode="bypassPermissions",
-        system_prompt=JUDGE_SYSTEM_PROMPT,
-    )
+    agent = _make_agent(model=model, system_prompt=JUDGE_SYSTEM_PROMPT)
     prompt = (
         "Evaluate the following synthesized query. Reply with a JSON array of "
         "one object: "
