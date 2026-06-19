@@ -5,9 +5,12 @@
 """Tests for the central language metadata registry."""
 
 from codeminer.languages import (
+    chunker_class_path,
+    chunker_class_paths,
     chunker_languages,
     core_decoder_languages,
     extension_to_language_map,
+    get_chunker_spec,
     graph_cold_start_backend,
     graph_decoder_path,
     graph_decoder_paths,
@@ -91,6 +94,30 @@ def test_chunker_languages_are_current_supported_repo_chunkers():
         "javascript",
         "typescript",
     )
+
+
+def test_chunker_class_paths_follow_chunker_language_aliases():
+    paths = chunker_class_paths()
+
+    assert paths["python"].endswith("python_chunker:PythonCodeChunker")
+    assert paths["go"].endswith("go_chunker:GoCodeChunker")
+    assert paths["golang"] == paths["go"]
+    assert paths["rust"].endswith("rust_chunker:RustCodeChunker")
+    assert paths["cpp"].endswith("cpp_chunker:CppCodeChunker")
+    assert paths["c++"] == paths["cpp"]
+    assert paths["javascript"].endswith("js_chunker:JsTsCodeChunker")
+    assert paths["js"] == paths["javascript"]
+    assert paths["typescript"].endswith("js_chunker:JsTsCodeChunker")
+    assert paths["ts"] == paths["typescript"]
+
+    assert chunker_class_path("py") is None
+    assert chunker_class_path("js") == paths["javascript"]
+    assert chunker_class_path("java") is None
+
+    js_spec = get_chunker_spec("javascript")
+    ts_spec = get_chunker_spec("typescript")
+    assert js_spec is not None and js_spec.chunker_pass_language is True
+    assert ts_spec is not None and ts_spec.chunker_pass_language is True
 
 
 def test_incremental_patcher_paths_follow_graph_language_aliases():
