@@ -68,6 +68,9 @@ _LANG_MAP: Dict[str, List[str]] = {
     "go": ["go"],
     "rust": ["rust"],
     "c": ["cpp"],  # the cpp chunker handles .c too (CLAUDE.md)
+    "c#": ["csharp"],
+    "csharp": ["csharp"],
+    "cs": ["csharp"],
     "cpp": ["cpp"],
     "c++": ["cpp"],
     "java": ["java"],

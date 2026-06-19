@@ -41,6 +41,7 @@ _EXT_LANG = {
     "c": "c",
     "h": "cpp",
     "cpp": "cpp",
+    "cs": "csharp",
     "java": "java",
     "rb": "ruby",
 }

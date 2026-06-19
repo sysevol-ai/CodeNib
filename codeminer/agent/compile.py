@@ -67,6 +67,11 @@ _STACKTRACE_PATTERNS = (
         r"^\s*(?:from\s+)?[^:\n]+\.rb:\d+:in\s+[`'][^`'\n]+[`']",
         re.MULTILINE,
     ),
+    # .NET — "   at Namespace.Type.Method(...) in File.cs:line 42"
+    re.compile(
+        r"^\s+at\s+\S+\.\S+\([^()\n]*\)\s+in\s+[^:\n]+\.cs:line\s+\d+\s*$",
+        re.MULTILINE,
+    ),
     # C/C++ — addr2line / backtrace lines look like "#0 0x... in fn at file:42"
     re.compile(r"^#\d+\s+0x[0-9a-fA-F]+\s+in\s+\S+", re.MULTILINE),
 )
