@@ -191,6 +191,18 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_aliases=(("ruby", "ruby"), ("rb", "ruby")),
     ),
     LanguageSpec(
+        key="php",
+        display_name="PHP",
+        chunker_language="php",
+        chunker_aliases=("php",),
+        chunker_class="codeminer.code_chunking.php_chunker:PhpCodeChunker",
+        chunk_extensions=(".php", ".phtml"),
+        gt_language="php",
+        gt_extensions=(".php", ".phtml"),
+        agent_languages=("php",),
+        agent_aliases=(("php", "php"),),
+    ),
+    LanguageSpec(
         key="javascript",
         display_name="JavaScript",
         aliases=("js", "jsx"),

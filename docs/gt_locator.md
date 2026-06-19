@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 
 Extract symbol-level ground truth changes (functions, classes, methods) from SWE-bench unified diff patches. Identifies which symbols were modified, added, or deleted.
 
-Supports Python, Go, Rust, C/C++, C#, Java, Ruby, JavaScript, and TypeScript.
+Supports Python, Go, Rust, C/C++, C#, Java, Ruby, PHP, JavaScript, and TypeScript.
 
 ## How It Works
 

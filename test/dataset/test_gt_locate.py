@@ -39,6 +39,7 @@ class TestLanguageForFile:
             ("src/Billing/Invoice.cs", "csharp"),
             ("src/main/java/App.java", "java"),
             ("lib/billing/invoice.rb", "ruby"),
+            ("src/Billing/Invoice.php", "php"),
             ("src/app.ts", "typescript"),
             ("src/index.js", "javascript"),
             ("src/component.tsx", "typescript"),
@@ -344,6 +345,39 @@ class TestExtractSymbolsRuby:
         assert "lib/billing/invoice.rb:Billing.Invoice.total()" in symbols
         assert "lib/billing/invoice.rb:Billing.normalize()" in symbols
         assert "module" in SYMBOL_CHUNK_TYPES
+
+
+class TestExtractSymbolsPhp:
+    @pytest.fixture()
+    def locator(self, tmp_path):
+        return GTLocator(work_dir=str(tmp_path))
+
+    def test_php_methods_and_properties(self, locator, tmp_path):
+        php_file = tmp_path / "src" / "Billing" / "Invoice.php"
+        php_file.parent.mkdir(parents=True, exist_ok=True)
+        php_file.write_text(
+            "\n".join(
+                [
+                    "<?php",
+                    "class Invoice {",
+                    "    public int $total = 0;",
+                    "",
+                    "    public function total(): int {",
+                    "        return $this->total;",
+                    "    }",
+                    "}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        symbols = locator.extract_symbols_from_file(
+            str(php_file), relative_path="src/Billing/Invoice.php"
+        )
+
+        assert "src/Billing/Invoice.php:Invoice.total" in symbols
+        assert "src/Billing/Invoice.php:Invoice.total()" in symbols
+        assert "property" in SYMBOL_CHUNK_TYPES
 
 
 # ===================================================================

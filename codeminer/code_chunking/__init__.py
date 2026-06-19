@@ -16,6 +16,7 @@ from .csharp_chunker import CSharpCodeChunker
 from .go_chunker import GoCodeChunker
 from .java_chunker import JavaCodeChunker
 from .js_chunker import JsTsCodeChunker
+from .php_chunker import PhpCodeChunker
 from .python_chunker import PythonCodeChunker
 from .ruby_chunker import RubyCodeChunker
 from .rust_chunker import RustCodeChunker
@@ -98,6 +99,7 @@ __all__ = [
     "GoCodeChunker",
     "JavaCodeChunker",
     "RubyCodeChunker",
+    "PhpCodeChunker",
     "JsTsCodeChunker",
     "create_chunker",
 ]

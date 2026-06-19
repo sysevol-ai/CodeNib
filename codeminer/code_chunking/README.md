@@ -97,6 +97,18 @@ Controlled by the `chunk_depth` parameter in `BaseCodeChunker`:
 | `function` | L1 | top-level `method` / `singleton_method` | `def top_level` |
 | `method` | L2 | nested `method` / `singleton_method` | `def total`, `def self.build` |
 
+### PHP (`php_chunker.py`)
+
+| chunk_type | Level | AST node | Example |
+|------------|-------|----------|---------|
+| `class` | L1 | `class_declaration` | `class Invoice {}` |
+| `interface` | L1 | `interface_declaration` | `interface Printable {}` |
+| `trait` | L1 | `trait_declaration` | `trait Timestamped {}` |
+| `enum` | L1 | `enum_declaration` | `enum Status {}` |
+| `function` | L1 | `function_definition` | `function normalize() {}` |
+| `method` | L2 | `method_declaration` | `public function total() {}` |
+| `property` | L2 | `property_declaration` | `public int $total = 0;` |
+
 ### JavaScript / TypeScript (`js_chunker.py`)
 
 | chunk_type | Level | AST node | Example |
@@ -148,5 +160,6 @@ Used by `gt_locate.py` to select the correct chunker:
 | `.cs` | `csharp` |
 | `.java` | `java` |
 | `.rb` | `ruby` |
+| `.php`, `.phtml` | `php` |
 | `.js`, `.jsx` | `javascript` |
 | `.ts`, `.tsx` | `typescript` |
