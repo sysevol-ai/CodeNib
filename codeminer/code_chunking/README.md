@@ -109,6 +109,18 @@ Controlled by the `chunk_depth` parameter in `BaseCodeChunker`:
 | `method` | L2 | `method_declaration` | `public function total() {}` |
 | `property` | L2 | `property_declaration` | `public int $total = 0;` |
 
+### Kotlin (`kotlin_chunker.py`)
+
+| chunk_type | Level | AST node | Example |
+|------------|-------|----------|---------|
+| `class` | L1 | `class_declaration` | `class Invoice {}` |
+| `interface` | L1 | `class_declaration` | `interface Runner {}` |
+| `enum` | L1 | `class_declaration` | `enum class Status { Active }` |
+| `object` | L1 | `object_declaration` | `object Config {}` |
+| `function` | L1 | `function_declaration` | `fun normalize() {}` |
+| `property` | L1/L2 | `property_declaration` | `val total: Int = 0` |
+| `method` | L2 | `function_declaration`, `secondary_constructor` | `fun total() {}`, `constructor(...)` |
+
 ### JavaScript / TypeScript (`js_chunker.py`)
 
 | chunk_type | Level | AST node | Example |
@@ -161,5 +173,6 @@ Used by `gt_locate.py` to select the correct chunker:
 | `.java` | `java` |
 | `.rb` | `ruby` |
 | `.php`, `.phtml` | `php` |
+| `.kt`, `.kts` | `kotlin` |
 | `.js`, `.jsx` | `javascript` |
 | `.ts`, `.tsx` | `typescript` |

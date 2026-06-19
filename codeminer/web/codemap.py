@@ -58,6 +58,7 @@ _SOURCE_EXTS = frozenset(
         ".php",
         ".cs",
         ".kt",
+        ".kts",
         ".swift",
         ".scala",
         ".m",

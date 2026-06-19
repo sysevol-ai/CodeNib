@@ -74,6 +74,14 @@ class TestDetectStacktrace:
         )
         assert detect_stacktrace(query) is True
 
+    def test_kotlin_jvm_stack_frame(self):
+        query = (
+            'Exception in thread "main" java.lang.IllegalStateException\n'
+            "\tat com.example.Point.move(Point.kt:42)\n"
+            "\tat com.example.MainKt.main(Main.kt:8)\n"
+        )
+        assert detect_stacktrace(query) is True
+
     def test_dotnet_stack_frame(self):
         query = (
             "System.NullReferenceException: Object reference not set\n"
@@ -151,6 +159,8 @@ class TestNormalizeLanguage:
             ("Ruby", "ruby"),
             ("rb", "ruby"),
             ("PHP", "php"),
+            ("Kotlin", "kotlin"),
+            ("kt", "kotlin"),
             ("TypeScript", "typescript"),
             ("ts", "typescript"),
             ("JavaScript", "javascript"),
