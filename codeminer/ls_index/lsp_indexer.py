@@ -23,7 +23,7 @@ from ..graph.incremental.lsp_client import LSPClient
 from ..languages import extensions_for_language, lsp_command_for_language
 from ..log_utils import get_logger
 from ..profiler import Profiler
-from .lsp_graph_decode import GenericLSPGraphDecoder
+from .lsp_graph_decode import GenericLSPGraphDecoder, iter_lsp_symbol_definitions
 
 logger = get_logger("generic_lsp_indexer")
 
@@ -72,6 +72,7 @@ class GenericLSPIndexer:
         logger.info(
             "Collecting document symbols for %d %s files", len(files), self.language
         )
+        include_references = bool(kwargs.get("include_references", False))
         try:
             with self.profiler.section("generate_index.lsp_document_symbols"):
                 with LSPClient(
@@ -82,9 +83,14 @@ class GenericLSPIndexer:
                         symbols = client.document_symbol(
                             str(self.project_root / rel_path)
                         )
-                        records.append(
-                            {"path": rel_path.as_posix(), "symbols": symbols}
-                        )
+                        record = {"path": rel_path.as_posix(), "symbols": symbols}
+                        if include_references:
+                            record["references"] = self._collect_references(
+                                client,
+                                rel_path,
+                                symbols,
+                            )
+                        records.append(record)
         except Exception as exc:
             logger.error("LSP index generation failed for %s: %s", self.language, exc)
             return False
@@ -185,6 +191,32 @@ class GenericLSPIndexer:
             if self._is_excluded(rel_path):
                 continue
             yield rel_path
+
+    def _collect_references(
+        self,
+        client: LSPClient,
+        rel_path: Path,
+        symbols: list[dict],
+    ) -> list[dict]:
+        references = []
+        for definition in iter_lsp_symbol_definitions(rel_path.as_posix(), symbols):
+            locations = client.references(
+                str(self.project_root / rel_path),
+                definition["selection_line"],
+                definition["selection_character"],
+                include_declaration=False,
+            )
+            if not locations:
+                continue
+            references.append(
+                {
+                    "target_unified_name": definition["unified_name"],
+                    "target_start_line": definition["start_line"],
+                    "target_file": rel_path.as_posix(),
+                    "locations": locations,
+                }
+            )
+        return references
 
     def _is_excluded(self, rel_path: Path) -> bool:
         text = rel_path.as_posix()

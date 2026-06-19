@@ -4,10 +4,10 @@
 
 """Generic LSP documentSymbol decoder.
 
-This decoder intentionally builds the conservative part of an LSP graph:
-file nodes, definition symbols, and CONTAIN edges.  Cross-file REFERENCE edges
-are server-specific enough that they belong behind a backend-alignment harness
-rather than being inferred in this first generic path.
+This decoder always builds the conservative part of an LSP graph: file nodes,
+definition symbols, and CONTAIN edges.  Cross-file REFERENCE edges are decoded
+only when the index payload explicitly carries LSP reference locations; callers
+can keep the backend symbol-only until a language has alignment tolerances.
 """
 
 from __future__ import annotations
@@ -15,10 +15,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
+from urllib.parse import unquote, urlparse
 
 from ..graph.code_graph import CodeGraph
 from ..types import (
     EDGE_TYPE_CONTAIN,
+    EDGE_TYPE_REFERENCE,
     NODE_TYPE_CLASS,
     NODE_TYPE_DIRECTORY,
     NODE_TYPE_FIELD,
@@ -92,6 +94,13 @@ class GenericLSPGraphDecoder:
                     parent_unified_part="",
                 )
 
+        graph.build_range_indexes()
+        with graph.batch_edges():
+            _add_reference_edges(
+                graph,
+                payload.get("files", []),
+                project_root=self.project_root,
+            )
         graph.build_range_indexes()
         self.code_graph = graph
         return graph
@@ -200,10 +209,143 @@ def _process_symbol_tree(
             )
 
 
+def iter_lsp_symbol_definitions(
+    file_path: str,
+    symbols: list[dict],
+    parent_unified_part: str = "",
+) -> Iterable[dict]:
+    """Yield definition metadata using the generic decoder naming rules."""
+
+    for symbol in symbols or []:
+        name = symbol.get("name") or ""
+        kind = int(symbol.get("kind") or 0)
+        range_data = symbol.get("range") or {}
+        sel_range = symbol.get("selectionRange") or range_data
+        start_line = _line(range_data, "start", default=0)
+        end_line = _line(range_data, "end", default=start_line)
+
+        if _is_local_symbol(kind, parent_unified_part):
+            child_parent = parent_unified_part
+        elif kind in _GRAPH_SYMBOL_KINDS:
+            unified_name = _build_unified_name(
+                file_path=file_path,
+                name=name,
+                parent_unified_part=parent_unified_part,
+                kind=kind,
+            )
+            yield {
+                "vertex_name": f"{unified_name}:{start_line}",
+                "unified_name": unified_name,
+                "kind": kind,
+                "start_line": start_line,
+                "end_line": end_line,
+                "selection_line": _line(sel_range, "start", default=start_line),
+                "selection_character": _character(sel_range, "start", default=0),
+            }
+            child_parent = (
+                parent_unified_part if kind == 2 else unified_name.split(":", 1)[1]
+            )
+        else:
+            child_parent = parent_unified_part
+
+        yield from iter_lsp_symbol_definitions(
+            file_path,
+            symbol.get("children") or [],
+            parent_unified_part=child_parent,
+        )
+
+
+def _add_reference_edges(
+    graph: CodeGraph,
+    file_entries: list[dict],
+    *,
+    project_root: Optional[Path],
+) -> None:
+    for entry in file_entries:
+        for refs in entry.get("references") or []:
+            target = _target_vertex_name(refs)
+            if target not in graph.name_to_vertex:
+                continue
+            target_file = refs.get("target_file")
+            target_start = refs.get("target_start_line")
+            for location in refs.get("locations") or []:
+                rel_path, anchor_line = _location_anchor(location, project_root)
+                if rel_path is None or anchor_line is None:
+                    continue
+                if rel_path == target_file and anchor_line == target_start:
+                    continue
+                source = _scope_at_line(graph, rel_path, anchor_line)
+                if source is None:
+                    continue
+                graph._add_edge(
+                    source,
+                    target,
+                    EDGE_TYPE_REFERENCE,
+                    anchor_file=rel_path,
+                    anchor_line=anchor_line,
+                )
+
+
+def _target_vertex_name(refs: dict) -> str:
+    return f"{refs.get('target_unified_name')}:{refs.get('target_start_line')}"
+
+
+def _location_anchor(
+    location: dict,
+    project_root: Optional[Path],
+) -> tuple[Optional[str], Optional[int]]:
+    uri = location.get("uri") or location.get("targetUri")
+    range_data = location.get("range") or location.get("targetSelectionRange") or {}
+    if not uri:
+        return None, None
+    rel_path = _uri_to_relpath(uri, project_root)
+    if rel_path is None:
+        return None, None
+    return rel_path, _line(range_data, "start", default=-1)
+
+
+def _uri_to_relpath(uri: str, project_root: Optional[Path]) -> Optional[str]:
+    parsed = urlparse(uri)
+    if parsed.scheme != "file":
+        return None
+    path = Path(unquote(parsed.path))
+    if project_root is not None:
+        try:
+            return path.resolve().relative_to(project_root).as_posix()
+        except ValueError:
+            return None
+    return path.as_posix()
+
+
+def _scope_at_line(graph: CodeGraph, file_path: str, line: int) -> Optional[str]:
+    if line < 0:
+        return None
+    candidates = []
+    for start, end, vid in graph._file_nodes.get(file_path, []):
+        if start <= line <= end:
+            vertex = graph.graph.vs[vid]
+            attrs = vertex.attributes()
+            if attrs.get("type") == NODE_TYPE_FILE:
+                continue
+            candidates.append((end - start, start, vertex["name"]))
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], -item[1]))
+        return candidates[0][2]
+    if file_path in graph.name_to_vertex:
+        return file_path
+    return None
+
+
 def _line(range_data: dict, key: str, *, default: int) -> int:
     point = range_data.get(key) or {}
     line = point.get("line")
     return int(line) if isinstance(line, int) else default
+
+
+def _character(range_data: dict, key: str, *, default: int) -> int:
+    point = range_data.get(key) or {}
+    character = point.get("character")
+    return int(character) if isinstance(character, int) else default
 
 
 def _node_type(kind: int) -> str:
@@ -231,4 +373,4 @@ def _build_unified_name(
     return f"{file_path}:{display}"
 
 
-__all__ = ["GenericLSPGraphDecoder"]
+__all__ = ["GenericLSPGraphDecoder", "iter_lsp_symbol_definitions"]
