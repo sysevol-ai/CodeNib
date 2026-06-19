@@ -81,6 +81,7 @@ SYMBOL_CHUNK_TYPES = frozenset(
         "function",
         "method",
         "class",
+        "module",
         "struct",
         "type",
         "interface",

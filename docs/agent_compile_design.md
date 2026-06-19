@@ -98,7 +98,7 @@ keep cells statistically meaningful at N=30):
 
 | Dimension | Values | Source |
 |-----------|--------|--------|
-| `language` | python / go / rust / cpp / c / java / typescript / javascript / unknown | `SessionContext.primary_language` → `normalize_language()` |
+| `language` | python / go / rust / cpp / c / java / ruby / typescript / javascript / unknown | `SessionContext.primary_language` → `normalize_language()` |
 | `has_stacktrace` | True / False | `detect_stacktrace(query)` — regex sweep over the query |
 
 Dropped vs v1: `query_length_bucket`, `query_concreteness` (latter was

@@ -71,6 +71,7 @@ _LANG_MAP: Dict[str, List[str]] = {
     "cpp": ["cpp"],
     "c++": ["cpp"],
     "java": ["java"],
+    "ruby": ["ruby"],
 }
 
 

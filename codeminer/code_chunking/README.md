@@ -75,6 +75,15 @@ Controlled by the `chunk_depth` parameter in `BaseCodeChunker`:
 | `record` | L1 | `record_declaration` | `record Point(int x, int y) {}` |
 | `method` | L2 | `method_declaration`, `constructor_declaration` | `void run() {}`, `App() {}` |
 
+### Ruby (`ruby_chunker.py`)
+
+| chunk_type | Level | AST node | Example |
+|------------|-------|----------|---------|
+| `module` | L1 | `module` | `module Billing` |
+| `class` | L1 | `class` | `class Invoice` |
+| `function` | L1 | top-level `method` / `singleton_method` | `def top_level` |
+| `method` | L2 | nested `method` / `singleton_method` | `def total`, `def self.build` |
+
 ### JavaScript / TypeScript (`js_chunker.py`)
 
 | chunk_type | Level | AST node | Example |
@@ -124,5 +133,6 @@ Used by `gt_locate.py` to select the correct chunker:
 | `.rs` | `rust` |
 | `.c`, `.cpp`, `.cc`, `.cxx`, `.h`, `.hpp` | `cpp` |
 | `.java` | `java` |
+| `.rb` | `ruby` |
 | `.js`, `.jsx` | `javascript` |
 | `.ts`, `.tsx` | `typescript` |
