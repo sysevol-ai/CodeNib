@@ -45,6 +45,8 @@ _EXT_LANG = {
     "java": "java",
     "rb": "ruby",
     "php": "php",
+    "kt": "kotlin",
+    "kts": "kotlin",
 }
 _MAX_CONTEXT_CHARS = 9000
 

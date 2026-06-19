@@ -40,6 +40,8 @@ class TestLanguageForFile:
             ("src/main/java/App.java", "java"),
             ("lib/billing/invoice.rb", "ruby"),
             ("src/Billing/Invoice.php", "php"),
+            ("src/main/kotlin/App.kt", "kotlin"),
+            ("build.gradle.kts", "kotlin"),
             ("src/app.ts", "typescript"),
             ("src/index.js", "javascript"),
             ("src/component.tsx", "typescript"),
@@ -377,6 +379,41 @@ class TestExtractSymbolsPhp:
 
         assert "src/Billing/Invoice.php:Invoice.total" in symbols
         assert "src/Billing/Invoice.php:Invoice.total()" in symbols
+        assert "property" in SYMBOL_CHUNK_TYPES
+
+
+class TestExtractSymbolsKotlin:
+    @pytest.fixture()
+    def locator(self, tmp_path):
+        return GTLocator(work_dir=str(tmp_path))
+
+    def test_kotlin_methods_and_properties(self, locator, tmp_path):
+        kotlin_file = tmp_path / "src" / "main" / "kotlin" / "Invoice.kt"
+        kotlin_file.parent.mkdir(parents=True, exist_ok=True)
+        kotlin_file.write_text(
+            "\n".join(
+                [
+                    "class Invoice {",
+                    "    val total: Int = 0",
+                    "",
+                    "    fun total(): Int {",
+                    "        return total",
+                    "    }",
+                    "}",
+                    "",
+                    "fun normalize(value: String): String = value.trim()",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        symbols = locator.extract_symbols_from_file(
+            str(kotlin_file), relative_path="src/main/kotlin/Invoice.kt"
+        )
+
+        assert "src/main/kotlin/Invoice.kt:Invoice.total" in symbols
+        assert "src/main/kotlin/Invoice.kt:Invoice.total()" in symbols
+        assert "src/main/kotlin/Invoice.kt:normalize()" in symbols
         assert "property" in SYMBOL_CHUNK_TYPES
 
 

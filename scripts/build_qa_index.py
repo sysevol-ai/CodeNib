@@ -76,6 +76,8 @@ _LANG_MAP: Dict[str, List[str]] = {
     "java": ["java"],
     "ruby": ["ruby"],
     "php": ["php"],
+    "kotlin": ["kotlin"],
+    "kt": ["kotlin"],
 }
 
 
