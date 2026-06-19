@@ -25,15 +25,15 @@ import pytest
 
 from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
 from codeminer.code_chunking.base import CodeChunk
-from codeminer.incremental import (
+from codeminer.index.embedding.vector_store import CodeVectorStore
+from codeminer.index.incremental import (
     EmbeddingsCache,
     GitDiffDetector,
     IncrementalChunkStore,
     IncrementalIndexUpdater,
 )
-from codeminer.incremental.chunk_store import _hash_content
-from codeminer.incremental.index_updater import UpdateResult
-from codeminer.index.embedding.vector_store import CodeVectorStore
+from codeminer.index.incremental.chunk_store import _hash_content
+from codeminer.index.incremental.index_updater import UpdateResult
 
 # ---------------------------------------------------------------------------
 # Helpers

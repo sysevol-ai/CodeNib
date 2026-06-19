@@ -23,8 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..code_chunking.base import CodeChunk
-from ..log_utils import get_logger
+from ...code_chunking.base import CodeChunk
+from ...log_utils import get_logger
 
 logger = get_logger(__name__)
 

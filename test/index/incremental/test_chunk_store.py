@@ -7,7 +7,7 @@ Unit tests for IncrementalChunkStore.
 """
 
 from codeminer.code_chunking.base import CodeChunk
-from codeminer.incremental.chunk_store import IncrementalChunkStore, _hash_content
+from codeminer.index.incremental.chunk_store import IncrementalChunkStore, _hash_content
 
 # ---------------------------------------------------------------------------
 # Helpers

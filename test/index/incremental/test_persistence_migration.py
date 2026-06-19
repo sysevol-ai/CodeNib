@@ -20,8 +20,8 @@ from pathlib import Path
 import numpy as np
 
 from codeminer.code_chunking.base import CodeChunk
-from codeminer.incremental.chunk_store import IncrementalChunkStore
-from codeminer.incremental.embeddings_cache import EmbeddingsCache
+from codeminer.index.incremental.chunk_store import IncrementalChunkStore
+from codeminer.index.incremental.embeddings_cache import EmbeddingsCache
 
 # ---------------------------------------------------------------------------
 # Helpers

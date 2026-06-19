@@ -148,7 +148,7 @@ class TestCacheSeeding:
 
     def test_seeded_cache_gives_full_hit_rate(self, populated_store):
         """Simulate the cache seeding workflow from build()."""
-        from codeminer.incremental import EmbeddingsCache
+        from codeminer.index.incremental import EmbeddingsCache
 
         store, expected_hashes = populated_store
         hash_to_vec = store.get_embeddings_by_content_hash(level="l2")

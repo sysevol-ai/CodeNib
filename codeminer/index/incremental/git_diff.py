@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Set
 
-from ..log_utils import get_logger
+from ...log_utils import get_logger
 
 logger = get_logger(__name__)
 

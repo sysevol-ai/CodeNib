@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Incremental indexing layer for CodeMiner.
+Incremental vector-indexing layer for CodeMiner.
 
 Provides patch-level change detection and selective re-embedding so that
 only changed code chunks are re-embedded when the repository is updated.

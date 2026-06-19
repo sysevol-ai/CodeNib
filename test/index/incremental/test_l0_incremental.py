@@ -12,7 +12,7 @@ L0 and L2 chunks as separate layers for the same files.
 from __future__ import annotations
 
 from codeminer.code_chunking.base import CodeChunk
-from codeminer.incremental.chunk_store import IncrementalChunkStore
+from codeminer.index.incremental.chunk_store import IncrementalChunkStore
 
 # ---------------------------------------------------------------------------
 # Helpers

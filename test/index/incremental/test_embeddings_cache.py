@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from codeminer.incremental.embeddings_cache import EmbeddingsCache
+from codeminer.index.incremental.embeddings_cache import EmbeddingsCache
 
 
 def make_vec(val: float = 1.0, dim: int = 4) -> np.ndarray:

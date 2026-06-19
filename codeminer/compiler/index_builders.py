@@ -123,12 +123,12 @@ class VectorIndexBuilder:
 
         from pathlib import Path
 
-        from ..incremental import (
+        from ..index.embedding.builders import build_hierarchical_vector_store
+        from ..index.incremental import (
             EmbeddingsCache,
             IncrementalChunkStore,
             IncrementalState,
         )
-        from ..index.embedding.builders import build_hierarchical_vector_store
 
         os.makedirs(output_dir, exist_ok=True)
         vs = build_hierarchical_vector_store(
@@ -265,14 +265,14 @@ class VectorIndexBuilder:
         from pathlib import Path
 
         from ..code_chunker import CodeChunker, RepoChunkingConfig
-        from ..incremental import (
+        from ..index.embedding.vector_store import CodeVectorStore
+        from ..index.incremental import (
             EmbeddingsCache,
             GitDiffDetector,
             IncrementalChunkStore,
             IncrementalIndexUpdater,
             IncrementalState,
         )
-        from ..index.embedding.vector_store import CodeVectorStore
 
         repo_path: str = kwargs["repo_path"]
         output_dir: str = kwargs["output_dir"]

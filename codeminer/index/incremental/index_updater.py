@@ -36,15 +36,15 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
 
-from ..index.embedding.vector_store import _Document
-from ..log_utils import get_logger
+from ...log_utils import get_logger
+from ..embedding.vector_store import _Document
 from .chunk_store import IncrementalChunkStore, VersionedChunk
 from .embeddings_cache import EmbeddingsCache
 from .git_diff import GitDiffDetector, RepoChanges
 
 if TYPE_CHECKING:
-    from ..code_chunker import CodeChunker
-    from ..index.embedding.vector_store import CodeVectorStore
+    from ...code_chunker import CodeChunker
+    from ..embedding.vector_store import CodeVectorStore
 
 logger = get_logger(__name__)
 

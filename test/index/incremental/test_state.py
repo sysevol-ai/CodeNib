@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from codeminer.incremental.state import IncrementalState
+from codeminer.index.incremental.state import IncrementalState
 
 
 class TestIncrementalState:

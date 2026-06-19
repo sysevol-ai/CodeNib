@@ -75,6 +75,7 @@ exclude = ["eval*"]  # exclude packages matching these glob patterns
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+pythonpath = ["."]
 norecursedirs = [
     "third_party",
     ".git",

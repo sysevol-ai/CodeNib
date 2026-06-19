@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from ..log_utils import get_logger
+from ...log_utils import get_logger
 
 logger = get_logger(__name__)
 

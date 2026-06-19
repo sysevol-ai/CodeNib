@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.incremental.git_diff import GitDiffDetector
+from codeminer.index.incremental.git_diff import GitDiffDetector
 
 # ---------------------------------------------------------------------------
 # Fixtures

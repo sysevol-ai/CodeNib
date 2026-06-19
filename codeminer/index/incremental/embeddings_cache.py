@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Set
 
 import numpy as np
 
-from ..log_utils import get_logger
+from ...log_utils import get_logger
 
 logger = get_logger(__name__)
 
