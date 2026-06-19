@@ -38,6 +38,8 @@ class LanguageSpec:
     agent_languages: Tuple[str, ...] = ()
     agent_aliases: Tuple[Tuple[str, str], ...] = ()
     cold_start_backend: Optional[str] = None
+    graph_indexer: Optional[str] = None
+    graph_decoder: Optional[str] = None
     incremental_backend: Optional[str] = None
     incremental_patcher: Optional[str] = None
     core_decoder: bool = False
@@ -60,6 +62,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_languages=("python",),
         agent_aliases=(("python", "python"), ("py", "python"), ("python3", "python")),
         cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_python:SCIPPythonIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_python:SCIPPythonGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_python:PatcherPython",
         core_decoder=True,
@@ -79,6 +83,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_languages=("go",),
         agent_aliases=(("go", "go"), ("golang", "go")),
         cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_go:SCIPGoIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_go:SCIPGoGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_go:PatcherGo",
         core_decoder=True,
@@ -98,6 +104,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_languages=("rust",),
         agent_aliases=(("rust", "rust"), ("rs", "rust")),
         cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_rust:SCIPRustIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_rust:SCIPRustGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_rust:PatcherRust",
         core_decoder=True,
@@ -117,6 +125,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         agent_languages=("cpp", "c"),
         agent_aliases=(("cpp", "cpp"), ("c++", "cpp"), ("cxx", "cpp"), ("c", "c")),
         cold_start_backend="clangd",
+        graph_indexer="codeminer.ls_index.clangd_indexer:ClangdIndexer",
+        graph_decoder="codeminer.ls_index.clangd_decode:ClangdGraphDecoder",
         incremental_backend="clangd",
         incremental_patcher="codeminer.graph.incremental.patcher_cpp:PatcherCpp",
     ),
@@ -139,6 +149,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
             ("jsx", "javascript"),
         ),
         cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_ts:SCIPTypeScriptIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_ts:SCIPTypeScriptGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_ts:PatcherTS",
     ),
@@ -161,6 +173,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
             ("tsx", "typescript"),
         ),
         cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_ts:SCIPTypeScriptIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_ts:SCIPTypeScriptGraphDecoder",
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_ts:PatcherTS",
         core_decoder=True,
@@ -336,13 +350,13 @@ def graph_extensions_by_language(include_aliases: bool = True) -> Dict[str, set[
     return result
 
 
-def incremental_patcher_paths(include_aliases: bool = True) -> Dict[str, str]:
-    """Return graph backend language keys mapped to incremental patcher paths."""
-
+def _graph_surface_values(attr: str, include_aliases: bool = True) -> Dict[str, str]:
     by_backend: Dict[str, str] = {}
     for spec in LANGUAGE_SPECS:
-        if spec.graph_language and spec.incremental_patcher:
-            by_backend[spec.graph_language] = spec.incremental_patcher
+        if spec.graph_language:
+            value = getattr(spec, attr)
+            if value:
+                by_backend[spec.graph_language] = value
 
     if not include_aliases:
         return dict(by_backend)
@@ -353,6 +367,57 @@ def incremental_patcher_paths(include_aliases: bool = True) -> Dict[str, str]:
         if graph_language in by_backend:
             result[alias] = by_backend[graph_language]
     return result
+
+
+def graph_indexer_paths(include_aliases: bool = True) -> Dict[str, str]:
+    """Return graph backend language keys mapped to cold-start indexer paths."""
+
+    return _graph_surface_values("graph_indexer", include_aliases=include_aliases)
+
+
+def graph_decoder_paths(include_aliases: bool = True) -> Dict[str, str]:
+    """Return graph backend language keys mapped to graph decoder paths."""
+
+    return _graph_surface_values("graph_decoder", include_aliases=include_aliases)
+
+
+def graph_cold_start_backends(include_aliases: bool = True) -> Dict[str, str]:
+    """Return graph backend language keys mapped to cold-start backend names."""
+
+    return _graph_surface_values("cold_start_backend", include_aliases=include_aliases)
+
+
+def graph_indexer_path(language: str) -> Optional[str]:
+    """Return the cold-start indexer class path for a raw graph language."""
+
+    graph_language = normalize_graph_language(language)
+    if graph_language is None:
+        return None
+    return graph_indexer_paths(include_aliases=False).get(graph_language)
+
+
+def graph_decoder_path(language: str) -> Optional[str]:
+    """Return the graph decoder class path for a raw graph language."""
+
+    graph_language = normalize_graph_language(language)
+    if graph_language is None:
+        return None
+    return graph_decoder_paths(include_aliases=False).get(graph_language)
+
+
+def graph_cold_start_backend(language: str) -> Optional[str]:
+    """Return the cold-start backend name for a raw graph language."""
+
+    graph_language = normalize_graph_language(language)
+    if graph_language is None:
+        return None
+    return graph_cold_start_backends(include_aliases=False).get(graph_language)
+
+
+def incremental_patcher_paths(include_aliases: bool = True) -> Dict[str, str]:
+    """Return graph backend language keys mapped to incremental patcher paths."""
+
+    return _graph_surface_values("incremental_patcher", include_aliases=include_aliases)
 
 
 def incremental_patcher_path(language: str) -> Optional[str]:
@@ -388,7 +453,13 @@ __all__ = [
     "extension_to_language_map",
     "extensions_for_language",
     "get_language_spec",
+    "graph_cold_start_backend",
+    "graph_cold_start_backends",
+    "graph_decoder_path",
+    "graph_decoder_paths",
     "graph_extensions_by_language",
+    "graph_indexer_path",
+    "graph_indexer_paths",
     "graph_language_aliases",
     "incremental_patcher_path",
     "incremental_patcher_paths",
