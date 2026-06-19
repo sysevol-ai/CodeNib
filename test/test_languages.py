@@ -5,6 +5,7 @@
 """Tests for the central language metadata registry."""
 
 from codeminer.languages import (
+    chunker_languages,
     core_decoder_languages,
     extension_to_language_map,
     graph_extensions_by_language,
@@ -69,4 +70,15 @@ def test_core_decoder_languages_only_include_supported_core_aliases():
         "typescript",
         "ts",
         "js",
+    )
+
+
+def test_chunker_languages_are_current_supported_repo_chunkers():
+    assert chunker_languages() == (
+        "python",
+        "go",
+        "rust",
+        "cpp",
+        "javascript",
+        "typescript",
     )

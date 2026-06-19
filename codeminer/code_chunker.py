@@ -16,6 +16,11 @@ from typing import Any, Dict, List, Optional, Set
 
 # Import from the new modular code chunking system
 from .code_chunking import CodeChunk, create_chunker
+from .languages import (
+    chunker_languages,
+    extensions_for_language,
+    normalize_chunker_language,
+)
 from .log_utils import get_logger
 from .utils import is_test_file
 
@@ -28,12 +33,12 @@ class RepoChunkingConfig:
 
     languages: List[str] = field(default_factory=list)
     # File type configurations
-    python_extensions: Set[str] = None
-    cpp_extensions: Set[str] = None
-    rust_extensions: Set[str] = None
-    go_extensions: Set[str] = None
-    javascript_extensions: Set[str] = None
-    typescript_extensions: Set[str] = None
+    python_extensions: Optional[Set[str]] = None
+    cpp_extensions: Optional[Set[str]] = None
+    rust_extensions: Optional[Set[str]] = None
+    go_extensions: Optional[Set[str]] = None
+    javascript_extensions: Optional[Set[str]] = None
+    typescript_extensions: Optional[Set[str]] = None
 
     # Directory filtering
     ignore_dirs: Set[str] = None
@@ -52,22 +57,26 @@ class RepoChunkingConfig:
             self.languages = []
 
         if self.python_extensions is None:
-            self.python_extensions = {".py", ".pyx", ".pyi"}
+            self.python_extensions = extensions_for_language("python", "chunker")
 
         if self.cpp_extensions is None:
-            self.cpp_extensions = {".cpp", ".cxx", ".cc", ".c", ".hpp", ".h", ".hxx"}
+            self.cpp_extensions = extensions_for_language("cpp", "chunker")
 
         if self.rust_extensions is None:
-            self.rust_extensions = {".rs"}
+            self.rust_extensions = extensions_for_language("rust", "chunker")
 
         if self.go_extensions is None:
-            self.go_extensions = {".go"}
+            self.go_extensions = extensions_for_language("go", "chunker")
 
         if self.javascript_extensions is None:
-            self.javascript_extensions = {".js", ".jsx", ".mjs"}
+            self.javascript_extensions = extensions_for_language(
+                "javascript", "chunker"
+            )
 
         if self.typescript_extensions is None:
-            self.typescript_extensions = {".ts", ".tsx", ".mts", ".cts"}
+            self.typescript_extensions = extensions_for_language(
+                "typescript", "chunker"
+            )
 
         if self.ignore_dirs is None:
             self.ignore_dirs = {
@@ -146,7 +155,7 @@ class CodeChunker:
             include_l2_in_file_skeleton: When chunk_depth is 0, include member
                 signatures in file-level skeletons. Default: True.
         """
-        self.language = language
+        self.language = normalize_chunker_language(language) or language
         self.max_lines_per_chunk = max_lines_per_chunk
         self.chunk_depth = chunk_depth
         self.include_header_epilogue = include_header_epilogue
@@ -165,9 +174,9 @@ class CodeChunker:
         if repo_config is None:
             repo_config = RepoChunkingConfig()
         if not repo_config.languages:
-            repo_config.languages = [language]
+            repo_config.languages = [self.language]
         self.repo_config = repo_config
-        self._chunkers = {language: self._chunker}  # Cache chunkers by language
+        self._chunkers = {self.language: self._chunker}  # Cache chunkers by language
         self.nodes = (
             []
         )  # List of node IDs in code graph format (dir/file.py:A.b(), dir/file.py:A)
@@ -355,29 +364,15 @@ class CodeChunker:
         """
         files_to_process = []
 
-        # Get extension mappings for requested languages
-        extension_to_language = {}
+        extension_to_language: Dict[str, str] = {}
         for language in languages:
-            if language.lower() == "python":
-                for ext in self.repo_config.python_extensions:
-                    extension_to_language[ext] = "python"
-            elif language.lower() in ("cpp", "c++", "cxx"):
-                for ext in self.repo_config.cpp_extensions:
-                    extension_to_language[ext] = "cpp"
-            elif language.lower() == "rust":
-                for ext in self.repo_config.rust_extensions:
-                    extension_to_language[ext] = "rust"
-            elif language.lower() in ("go", "golang"):
-                for ext in self.repo_config.go_extensions:
-                    extension_to_language[ext] = "go"
-            elif language.lower() in ("javascript", "js"):
-                for ext in self.repo_config.javascript_extensions:
-                    extension_to_language[ext] = "javascript"
-            elif language.lower() in ("typescript", "ts"):
-                for ext in self.repo_config.typescript_extensions:
-                    extension_to_language[ext] = "typescript"
-            else:
+            normalized = normalize_chunker_language(language)
+            if normalized is None:
                 logger.warning("Language %r not supported yet", language)
+                continue
+            extensions = self._extensions_for_chunker_language(normalized)
+            for ext in extensions:
+                extension_to_language[ext] = normalized
 
         # Walk through repository
         for root, dirs, files in os.walk(repo_path):
@@ -517,6 +512,16 @@ class CodeChunker:
         else:
             return chunker.chunk_file(str(file_path), skeleton_mode=self.skeleton_mode)
 
+    def _extensions_for_chunker_language(self, language: str) -> Set[str]:
+        """Return configured repository extensions for a chunker language."""
+
+        normalized = normalize_chunker_language(language)
+        if normalized is None:
+            return set()
+        attr_name = f"{normalized}_extensions"
+        extensions = getattr(self.repo_config, attr_name, None)
+        return set(extensions or ())
+
     def chunk_swebench_instance(
         self,
         instance: Dict[str, Any],
@@ -589,12 +594,8 @@ class CodeChunker:
             List of detected languages
         """
         language_extensions = {
-            "python": {".py", ".pyx", ".pyi"},
-            "cpp": {".cpp", ".cxx", ".cc", ".c", ".hpp", ".h", ".hxx"},
-            "java": {".java"},
-            "javascript": {".js", ".jsx", ".ts", ".tsx"},
-            "rust": {".rs"},
-            "go": {".go"},
+            language: self._extensions_for_chunker_language(language)
+            for language in chunker_languages()
         }
 
         detected_languages = set()

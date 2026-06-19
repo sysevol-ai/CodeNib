@@ -176,6 +176,14 @@ def _unique(values: Iterable[str]) -> Tuple[str, ...]:
     return tuple(result)
 
 
+def _language_attr(kind: ExtensionKind) -> str:
+    return "chunker_language" if kind == "chunker" else f"{kind}_language"
+
+
+def _extensions_attr(kind: ExtensionKind) -> str:
+    return "chunk_extensions" if kind == "chunker" else f"{kind}_extensions"
+
+
 SPECS_BY_KEY: Dict[str, LanguageSpec] = {spec.key: spec for spec in LANGUAGE_SPECS}
 
 _GENERAL_ALIASES: Dict[str, str] = {}
@@ -243,6 +251,14 @@ def chunker_language_aliases() -> Dict[str, str]:
     return dict(_CHUNKER_ALIASES)
 
 
+def chunker_languages() -> Tuple[str, ...]:
+    """Return canonical language keys accepted by repository chunking."""
+
+    return _unique(
+        spec.chunker_language for spec in LANGUAGE_SPECS if spec.chunker_language
+    )
+
+
 def graph_language_aliases() -> Dict[str, str]:
     """Return raw LS/graph aliases mapped to backend language keys."""
 
@@ -267,8 +283,8 @@ def extension_to_language_map(kind: ExtensionKind) -> Dict[str, str]:
 
     result: Dict[str, str] = {}
     for spec in LANGUAGE_SPECS:
-        language = getattr(spec, f"{kind}_language")
-        extensions = getattr(spec, f"{kind}_extensions")
+        language = getattr(spec, _language_attr(kind))
+        extensions = getattr(spec, _extensions_attr(kind))
         if not language:
             continue
         for ext in extensions:
@@ -288,7 +304,7 @@ def extensions_for_language(language: str, kind: ExtensionKind) -> set[str]:
     spec = get_language_spec(language)
     if spec is None:
         return set()
-    return set(getattr(spec, f"{kind}_extensions"))
+    return set(getattr(spec, _extensions_attr(kind)))
 
 
 def graph_extensions_by_language(include_aliases: bool = True) -> Dict[str, set[str]]:
@@ -332,6 +348,7 @@ __all__ = [
     "SPECS_BY_KEY",
     "agent_language_aliases",
     "chunker_language_aliases",
+    "chunker_languages",
     "core_decoder_languages",
     "extension_to_language_map",
     "extensions_for_language",
