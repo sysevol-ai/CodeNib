@@ -15,11 +15,7 @@ from .patcher_base import PatcherBase
 class PatcherGo(PatcherBase):
     """Go incremental patcher. Matches SCIPGoGraphDecoder naming."""
 
-    def get_lsp_command(self):
-        return ["gopls", "serve"]
-
-    def _language_id(self):
-        return "go"
+    REGISTRY_LANGUAGE = "go"
 
     def _should_skip_path(self, path: str) -> bool:
         """SCIP-go skips ``*_test.go`` files (see scip_decode_go.py:92).

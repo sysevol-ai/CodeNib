@@ -14,6 +14,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Optional
 
+from ...languages import lsp_command_for_language, lsp_language_id_for_language
 from ...log_utils import get_logger
 from ...profiler import Profiler
 from ...types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
@@ -37,9 +38,10 @@ class PatcherBase(SubgraphMgr):
     Subclasses must implement:
     - _build_unified_name: construct unified_name from LSP symbol info
     - _get_crossfile_token_types: which semanticToken types to query
-    - get_lsp_command: LSP server command
 
     Subclasses may override:
+    - get_lsp_command: custom LSP server command
+    - _language_id: custom LSP language id
     - flatten_symbols: convert LSP documentSymbol to flat dict (default provided)
     - get_old_symbols: extract old symbols from graph (default provided)
     - GRAPH_SYMBOL_KINDS: which SymbolKinds to process (default provided)
@@ -64,6 +66,7 @@ class PatcherBase(SubgraphMgr):
             25,  # Operator
         }
     )
+    REGISTRY_LANGUAGE: str | None = None
 
     def __init__(
         self,
@@ -93,9 +96,19 @@ class PatcherBase(SubgraphMgr):
     # Abstract methods — language-specific
     # ═══════════════════════════════════════════════════════════
 
-    @abstractmethod
     def get_lsp_command(self) -> list[str]:
         """Return the LSP server command for this language."""
+        if not self.REGISTRY_LANGUAGE:
+            raise NotImplementedError(
+                f"{self.__class__.__name__} must define REGISTRY_LANGUAGE "
+                "or override get_lsp_command()."
+            )
+        command = lsp_command_for_language(self.REGISTRY_LANGUAGE)
+        if command is None:
+            raise ValueError(
+                f"No LSP command registered for {self.REGISTRY_LANGUAGE!r}"
+            )
+        return command
 
     @abstractmethod
     def flatten_symbols(
@@ -238,7 +251,9 @@ class PatcherBase(SubgraphMgr):
 
     def _language_id(self) -> str:
         """Return the LSP language ID. Override if needed."""
-        return "unknown"
+        if not self.REGISTRY_LANGUAGE:
+            return "unknown"
+        return lsp_language_id_for_language(self.REGISTRY_LANGUAGE) or "unknown"
 
     # ═══════════════════════════════════════════════════════════
     # Top-level patch entry point

@@ -16,6 +16,8 @@ from codeminer.languages import (
     graph_indexer_paths,
     incremental_patcher_path,
     incremental_patcher_paths,
+    lsp_command_for_language,
+    lsp_language_id_for_language,
     normalize_agent_language,
     normalize_chunker_language,
     normalize_graph_language,
@@ -139,3 +141,23 @@ def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
     assert graph_cold_start_backend("python") == "scip"
     assert graph_indexer_path("java") is None
     assert graph_decoder_path("java") is None
+
+
+def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
+    assert lsp_language_id_for_language("python") == "python"
+    assert lsp_command_for_language("python") == ["basedpyright-langserver", "--stdio"]
+
+    monkeypatch.setenv("CODEMINER_PYTHON_LSP_CMD", "ty server")
+    assert lsp_command_for_language("py") == ["ty", "server"]
+
+    assert lsp_language_id_for_language("go") == "go"
+    assert lsp_command_for_language("golang") == ["gopls", "serve"]
+
+    assert lsp_language_id_for_language("cpp") == "cpp"
+    assert lsp_command_for_language("c++") == ["clangd"]
+
+    assert lsp_language_id_for_language("javascript") == "typescript"
+    assert lsp_command_for_language("ts") == ["typescript-language-server", "--stdio"]
+
+    assert lsp_language_id_for_language("java") is None
+    assert lsp_command_for_language("java") is None
