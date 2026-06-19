@@ -1,10 +1,45 @@
 # CodeMiner Agent Runtime — coherent design
 
-Status: **proposed** (2026-06-19). Extends — does not contradict —
-`.claude/design/preload-vs-skill-architecture.md` (confirmed 2026-06-05). That
-memo settled the *context* layer (pre-load beats offer-a-skill). This memo adds
-the layer that makes it a *runtime* (a closed loop), states what is and isn't
-novel, and gives the experiment that must earn each layer's place.
+Status: **decided by experiment** (2026-06-19). Extends
+`.claude/design/preload-vs-skill-architecture.md` (confirmed 2026-06-05). §1–§8
+below are the design as proposed; §0 is what the runtime-probe data actually
+decided — read §0 first, it overrides the speculative parts of §5/§7.
+
+## 0. Results — what the data decided (runtime_probe, 4 langs, 1328 cells)
+
+Per-query paired-bootstrap on codeminer-synthesis (Go/Rust/TS/C++; Python
+excluded — its sweep hung under 5-way concurrency; reps=1). Headline answer to
+"does our pre-load save tokens at equal accuracy?": **yes, significantly.**
+
+| arm (vs grep_only) | Δrec@5 [95% CI] | Δcost% [95% CI] | verdict |
+|---|---|---|---|
+| **preinj_embed** | **+0.018 [−0.014,+0.050]** | **−17.0% [−20.4,−13.6]** | **SAVE** |
+| preinj_graph | +0.016 [−0.019,+0.051] | −11.7% [−14.7,−8.6] | **SAVE** |
+| preinj_graph_verify | −0.006 [−0.068,+0.058] | −8.1% | no-op |
+
+**Three decisions the data forces:**
+1. **SHIP: flat embedding pre-load.** Equal accuracy (CI straddles 0, point
+   +0.018), **−17% cost**, significant at n≈400. Prior-minimal: one recipe, no
+   per-category routing. This is the runtime's real, defensible edge.
+2. **CUT: graph in the pre-load.** Dominated by embedding — saves less (−12% vs
+   −17%), net-flat accuracy that *helps* reasoning (+0.075) / file_hint (+0.082)
+   but *hurts* symbol_hint (−0.05) and even **traversal** (−0.025, 11/32/16
+   win/tie/loss — graph loses on its supposed home turf). Reserve the graph for
+   on-demand navigation, do not blanket-inject it.
+3. **CUT: verify-expand (Layer 4).** A **no-op**: 0 / 309 verify cells triggered
+   the re-run. The resolution check never fires because the agent always cites a
+   *real* graph symbol — its failure mode is the *wrong real* symbol, which a
+   GT-free check cannot catch. `preinj_graph_verify ≈ preinj_graph`. The
+   "grep-can't-do via verify" thesis does not materialise in any prior-free form.
+
+**Product (decided):** a flat **embedding pre-load context-engine** — compiled
+index retrieval injected into the opening prompt + the standard grep/read loop.
+Equal accuracy, ~17% cheaper. NOT a graph-orchestration runtime and NOT a
+verify-runtime; both were implemented, measured, and cut. The novelty is
+compiler-precise *pre-load*, not the loop.
+
+Caveats: Python missing (rerun solo); reps=1; verify no-op is mechanism-proven
+(0% trigger) not just CI. §5/§7 below are superseded by this section.
 
 ## 1. Thesis: split deterministic from stochastic
 
