@@ -66,27 +66,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..code_chunking import create_chunker
 from ..code_chunking.base import CodeChunk
+from ..languages import extension_to_language_map
 from ..log_utils import get_logger
 from .swebench import SwebenchDataset
 
 logger = get_logger(__name__)
 
 # Map file extensions to chunker language identifiers.
-EXTENSION_TO_LANGUAGE: Dict[str, str] = {
-    ".py": "python",
-    ".go": "go",
-    ".rs": "rust",
-    ".c": "cpp",
-    ".cpp": "cpp",
-    ".cc": "cpp",
-    ".cxx": "cpp",
-    ".h": "cpp",
-    ".hpp": "cpp",
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-}
+EXTENSION_TO_LANGUAGE: Dict[str, str] = extension_to_language_map("gt")
 
 # Symbol chunk_types that represent meaningful code blocks.
 SYMBOL_CHUNK_TYPES = frozenset(

@@ -29,13 +29,16 @@ from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, Mapping, Optional, Union
 
 from ..compiler.params import SessionContext
+from ..languages import (
+    agent_language_aliases,
+    normalize_agent_language,
+    supported_agent_languages,
+)
 
 logger = logging.getLogger(__name__)
 
 
-SUPPORTED_LANGUAGES: FrozenSet[str] = frozenset(
-    {"python", "go", "rust", "cpp", "c", "typescript", "javascript"}
-)
+SUPPORTED_LANGUAGES: FrozenSet[str] = supported_agent_languages()
 
 
 # Stack-trace regexes. Each pattern matches a *structural* marker that only
@@ -71,18 +74,7 @@ def detect_stacktrace(query: str) -> bool:
     return any(p.search(query) for p in _STACKTRACE_PATTERNS)
 
 
-_LANGUAGE_ALIASES: Dict[str, str] = {
-    "py": "python",
-    "python3": "python",
-    "golang": "go",
-    "rs": "rust",
-    "c++": "cpp",
-    "cxx": "cpp",
-    "ts": "typescript",
-    "tsx": "typescript",
-    "js": "javascript",
-    "jsx": "javascript",
-}
+_LANGUAGE_ALIASES: Dict[str, str] = agent_language_aliases()
 
 
 def normalize_language(raw: Optional[str]) -> Optional[str]:
@@ -93,9 +85,7 @@ def normalize_language(raw: Optional[str]) -> Optional[str]:
     """
     if not raw:
         return None
-    key = raw.strip().lower()
-    key = _LANGUAGE_ALIASES.get(key, key)
-    return key if key in SUPPORTED_LANGUAGES else None
+    return normalize_agent_language(raw)
 
 
 @dataclass(frozen=True, slots=True)

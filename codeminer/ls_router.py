@@ -27,37 +27,24 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from .graph.code_graph import CodeGraph
+from .languages import graph_language_aliases, normalize_graph_language
 from .log_utils import get_logger
 from .profiler import Profiler
 
 logger = get_logger("ls_router")
 
-LANGUAGE_ALIASES = {
-    "cpp": "cpp",
-    "c++": "cpp",
-    "c": "cpp",
-    "rust": "rust",
-    "rs": "rust",
-    "typescript": "ts",
-    "ts": "ts",
-    "javascript": "ts",
-    "js": "ts",
-    "python": "python",
-    "py": "python",
-    "go": "go",
-    "golang": "go",
-}
+LANGUAGE_ALIASES = graph_language_aliases()
 
 
 def _normalize_language(language: Optional[str]) -> str:
     """Normalize language string. Defaults to 'python'."""
     if language is None:
         return "python"
-    key = language.lower()
-    if key not in LANGUAGE_ALIASES:
+    key = normalize_graph_language(language)
+    if key is None:
         supported = ", ".join(sorted(set(LANGUAGE_ALIASES.keys())))
         raise ValueError(f"Unsupported language: {language!r}. Supported: {supported}")
-    return LANGUAGE_ALIASES[key]
+    return key
 
 
 # ── LSIndexer ─────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@
 Code chunking module for splitting source code files into semantic chunks.
 """
 
+from ..languages import chunker_language_aliases, normalize_chunker_language
 from .base import BaseCodeChunker, CodeChunk
 from .cpp_chunker import CppCodeChunker
 from .go_chunker import GoCodeChunker
@@ -49,7 +50,13 @@ def create_chunker(
     Raises:
         ValueError: If the language is not supported
     """
-    language = language.lower()
+    raw_language = language
+    language = normalize_chunker_language(language)
+    if language is None:
+        supported = ", ".join(sorted(chunker_language_aliases()))
+        raise ValueError(
+            f"Unsupported language: {raw_language}. Supported: {supported}"
+        )
 
     if language == "python":
         return PythonCodeChunker(
@@ -60,7 +67,7 @@ def create_chunker(
             skeleton_mode=skeleton_mode,
             include_l2_in_file_skeleton=include_l2_in_file_skeleton,
         )
-    elif language in ("cpp", "c++", "cxx"):
+    elif language == "cpp":
         return CppCodeChunker(
             max_lines_per_chunk=max_lines_per_chunk,
             chunk_depth=chunk_depth,
@@ -78,7 +85,7 @@ def create_chunker(
             skeleton_mode=skeleton_mode,
             include_l2_in_file_skeleton=include_l2_in_file_skeleton,
         )
-    elif language in ("go", "golang"):
+    elif language == "go":
         return GoCodeChunker(
             max_lines_per_chunk=max_lines_per_chunk,
             chunk_depth=chunk_depth,
@@ -87,7 +94,7 @@ def create_chunker(
             skeleton_mode=skeleton_mode,
             include_l2_in_file_skeleton=include_l2_in_file_skeleton,
         )
-    elif language in ("javascript", "js", "typescript", "ts"):
+    elif language in ("javascript", "typescript"):
         return JsTsCodeChunker(
             language=language,
             max_lines_per_chunk=max_lines_per_chunk,

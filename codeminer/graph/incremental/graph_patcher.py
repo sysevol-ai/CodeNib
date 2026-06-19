@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from ...languages import graph_extensions_by_language, normalize_graph_language
 from ...log_utils import get_logger
 from ..code_graph import CodeGraph
 from . import change_mgr
@@ -20,14 +21,7 @@ from .patcher_base import PatcherBase
 logger = get_logger(__name__)
 
 # Language → file extensions
-LANGUAGE_EXTENSIONS = {
-    "rust": {".rs"},
-    "python": {".py"},
-    "typescript": {".ts", ".tsx", ".js", ".jsx"},
-    "ts": {".ts", ".tsx", ".js", ".jsx"},
-    "go": {".go"},
-    "cpp": {".cpp", ".cc", ".cxx", ".c", ".h", ".hpp", ".hxx"},
-}
+LANGUAGE_EXTENSIONS = graph_extensions_by_language()
 
 
 def _create_patcher(
@@ -42,6 +36,8 @@ def _create_patcher(
     from .patcher_python import PatcherPython
     from .patcher_rust import PatcherRust
     from .patcher_ts import PatcherTS
+
+    language = normalize_graph_language(language) or language
 
     PATCHER_MAP = {
         "rust": PatcherRust,
