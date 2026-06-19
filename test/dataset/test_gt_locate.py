@@ -37,6 +37,7 @@ class TestLanguageForFile:
             ("src/engine.cpp", "cpp"),
             ("include/engine.h", "cpp"),
             ("src/main/java/App.java", "java"),
+            ("lib/billing/invoice.rb", "ruby"),
             ("src/app.ts", "typescript"),
             ("src/index.js", "javascript"),
             ("src/component.tsx", "typescript"),
@@ -273,6 +274,42 @@ class TestExtractSymbolsJava:
         assert "src/main/java/Point.java:Point.sum()" in symbols
         assert "src/main/java/Point.java:App.run()" in symbols
         assert "record" in SYMBOL_CHUNK_TYPES
+
+
+class TestExtractSymbolsRuby:
+    @pytest.fixture()
+    def locator(self, tmp_path):
+        return GTLocator(work_dir=str(tmp_path))
+
+    def test_ruby_methods_and_modules(self, locator, tmp_path):
+        ruby_file = tmp_path / "lib" / "billing" / "invoice.rb"
+        ruby_file.parent.mkdir(parents=True, exist_ok=True)
+        ruby_file.write_text(
+            "\n".join(
+                [
+                    "module Billing",
+                    "  class Invoice",
+                    "    def total",
+                    "      42",
+                    "    end",
+                    "  end",
+                    "",
+                    "  def self.normalize(value)",
+                    "    value.to_s",
+                    "  end",
+                    "end",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        symbols = locator.extract_symbols_from_file(
+            str(ruby_file), relative_path="lib/billing/invoice.rb"
+        )
+
+        assert "lib/billing/invoice.rb:Billing.Invoice.total()" in symbols
+        assert "lib/billing/invoice.rb:Billing.normalize()" in symbols
+        assert "module" in SYMBOL_CHUNK_TYPES
 
 
 # ===================================================================

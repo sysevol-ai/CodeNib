@@ -62,6 +62,11 @@ _STACKTRACE_PATTERNS = (
     ),
     # JVM — "\tat com.example.Class.method(File.java:42)"
     re.compile(r"^\s+at\s+\S+\.\S+\([^()\n]+:\d+\)\s*$", re.MULTILINE),
+    # Ruby — "/app/lib/foo.rb:42:in `bar'" or "\tfrom ...rb:8:in '<main>'"
+    re.compile(
+        r"^\s*(?:from\s+)?[^:\n]+\.rb:\d+:in\s+[`'][^`'\n]+[`']",
+        re.MULTILINE,
+    ),
     # C/C++ — addr2line / backtrace lines look like "#0 0x... in fn at file:42"
     re.compile(r"^#\d+\s+0x[0-9a-fA-F]+\s+in\s+\S+", re.MULTILINE),
 )

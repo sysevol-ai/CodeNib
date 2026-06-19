@@ -74,6 +74,14 @@ class TestDetectStacktrace:
         )
         assert detect_stacktrace(query) is True
 
+    def test_ruby_stack_frame(self):
+        query = (
+            "NoMethodError: undefined method `name' for nil:NilClass\n"
+            "/app/lib/billing/invoice.rb:42:in `total'\n"
+            "\tfrom /app/bin/app.rb:8:in '<main>'\n"
+        )
+        assert detect_stacktrace(query) is True
+
     def test_c_backtrace(self):
         query = (
             "Program received signal SIGSEGV\n"
@@ -122,6 +130,8 @@ class TestNormalizeLanguage:
             ("cxx", "cpp"),
             ("C", "c"),
             ("Java", "java"),
+            ("Ruby", "ruby"),
+            ("rb", "ruby"),
             ("TypeScript", "typescript"),
             ("ts", "typescript"),
             ("JavaScript", "javascript"),

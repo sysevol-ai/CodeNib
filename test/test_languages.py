@@ -55,6 +55,7 @@ def test_gt_extensions_preserve_current_supported_set():
     assert ext_map[".py"] == "python"
     assert ext_map[".c"] == "cpp"
     assert ext_map[".java"] == "java"
+    assert ext_map[".rb"] == "ruby"
     assert ext_map[".tsx"] == "typescript"
     assert ext_map[".jsx"] == "javascript"
 
@@ -71,6 +72,7 @@ def test_agent_supported_languages_match_existing_scenarios():
         "cpp",
         "c",
         "java",
+        "ruby",
         "typescript",
         "javascript",
     }
@@ -94,6 +96,7 @@ def test_chunker_languages_are_current_supported_repo_chunkers():
         "rust",
         "cpp",
         "java",
+        "ruby",
         "javascript",
         "typescript",
     )
@@ -109,6 +112,8 @@ def test_chunker_class_paths_follow_chunker_language_aliases():
     assert paths["cpp"].endswith("cpp_chunker:CppCodeChunker")
     assert paths["c++"] == paths["cpp"]
     assert paths["java"].endswith("java_chunker:JavaCodeChunker")
+    assert paths["ruby"].endswith("ruby_chunker:RubyCodeChunker")
+    assert paths["rb"] == paths["ruby"]
     assert paths["javascript"].endswith("js_chunker:JsTsCodeChunker")
     assert paths["js"] == paths["javascript"]
     assert paths["typescript"].endswith("js_chunker:JsTsCodeChunker")
@@ -117,6 +122,7 @@ def test_chunker_class_paths_follow_chunker_language_aliases():
     assert chunker_class_path("py") is None
     assert chunker_class_path("js") == paths["javascript"]
     assert chunker_class_path("java") == paths["java"]
+    assert chunker_class_path("rb") == paths["ruby"]
 
     js_spec = get_chunker_spec("javascript")
     ts_spec = get_chunker_spec("typescript")
@@ -142,6 +148,7 @@ def test_incremental_patcher_paths_follow_graph_language_aliases():
     assert incremental_patcher_path("js") == paths["ts"]
     assert incremental_patcher_path("jsx") is None
     assert incremental_patcher_path("java") is None
+    assert incremental_patcher_path("ruby") is None
 
 
 def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
@@ -172,6 +179,8 @@ def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
     assert graph_cold_start_backend("python") == "scip"
     assert graph_indexer_path("java") is None
     assert graph_decoder_path("java") is None
+    assert graph_indexer_path("ruby") is None
+    assert graph_decoder_path("ruby") is None
 
 
 def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
@@ -192,3 +201,5 @@ def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
 
     assert lsp_language_id_for_language("java") is None
     assert lsp_command_for_language("java") is None
+    assert lsp_language_id_for_language("ruby") is None
+    assert lsp_command_for_language("ruby") is None

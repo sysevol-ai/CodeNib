@@ -21,6 +21,8 @@ from codeminer.code_chunking import create_chunker
         ("cpp", "CppCodeChunker"),
         ("c++", "CppCodeChunker"),
         ("java", "JavaCodeChunker"),
+        ("ruby", "RubyCodeChunker"),
+        ("rb", "RubyCodeChunker"),
         ("javascript", "JsTsCodeChunker"),
         ("js", "JsTsCodeChunker"),
         ("typescript", "JsTsCodeChunker"),
