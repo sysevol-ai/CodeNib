@@ -11,10 +11,11 @@ Base code chunker class with common functionality.
 import json
 import os
 import sys
+import threading
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import ClassVar, List, Optional, Tuple
 
 from tree_sitter import Parser
 from tree_sitter_language_pack import get_language
@@ -32,6 +33,9 @@ CodeChunk = namedtuple(
 
 class BaseCodeChunker(ABC):
     """Base class for language-specific code chunkers."""
+
+    _language_cache: ClassVar[dict[str, object]] = {}
+    _language_cache_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(
         self,
@@ -81,7 +85,7 @@ class BaseCodeChunker(ABC):
         self.skeleton_mode = skeleton_mode
         self.include_l2_in_file_skeleton = include_l2_in_file_skeleton
         try:
-            self.tree_sitter_language = get_language(language)
+            self.tree_sitter_language = self._get_tree_sitter_language(language)
             self.parser = self._create_parser(self.tree_sitter_language)
             logger.info(
                 "Successfully loaded %s language parser from tree-sitter-language-pack",
@@ -90,6 +94,14 @@ class BaseCodeChunker(ABC):
         except Exception as e:
             logger.error("Error loading %s parser: %s", language, e)
             sys.exit(1)
+
+    @classmethod
+    def _get_tree_sitter_language(cls, language: str):
+        """Load each tree-sitter language once per process."""
+        with cls._language_cache_lock:
+            if language not in cls._language_cache:
+                cls._language_cache[language] = get_language(language)
+            return cls._language_cache[language]
 
     @staticmethod
     def _create_parser(language):
