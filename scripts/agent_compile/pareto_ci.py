@@ -122,18 +122,12 @@ def analyze(
         for arm in arms:
             drec, dcost, dturn = [], [], []
             w = t = ls = 0
-            qids = {
-                q
+            pair_keys = {
+                (c, q)
                 for (c, a, q) in folded
                 if a == baseline and (c == cat or cat == "ALL")
             }
-            for q in qids:
-                ckey = None
-                # find this query's category (for ALL we still pair within same q)
-                for c, a, qq in folded:
-                    if qq == q and a == baseline and (c == cat or cat == "ALL"):
-                        ckey = c
-                        break
+            for ckey, q in pair_keys:
                 b = folded.get((ckey, baseline, q))
                 a_ = folded.get((ckey, arm, q))
                 if not b or not a_:
