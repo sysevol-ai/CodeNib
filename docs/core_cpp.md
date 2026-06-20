@@ -16,11 +16,14 @@ for higher throughput on large `.decoded` SCIP index files.
 
 - `code_graph.h` / `code_graph.cpp` — graph container (vertices, edges, metadata)
   compatible with the Python implementation.
+- `graph_layers.h` / `graph_layers.cpp` — language-agnostic default layer
+  classification for CodeGraph edge types. This is shared by SCIP, clangd, and
+  generic-LSP graphs after they have normalized into the common schema.
 - `scip_decode.h` / `scip_decode.cpp` — translates a `.decoded` SCIP index into the C++
   `CodeGraph`.
 - `bindings/pybind_module.cpp` — exposes `decode_scip(...)` and the optional
-  `classify_edge_layers(...)` helper used by Python multi-graph layer indexing
-  when the extension is built.
+  `classify_edge_layers(...)` binding. The binding delegates to the core
+  `graph_layers` module; it should not own graph algorithms.
 - `CMakeLists.txt` — builds the static library `codeminer_core`, suitable for wrapping
   with pybind11 or another binding layer.
 
@@ -48,11 +51,11 @@ Latest local sample:
 
 ```json
 {
-  "core_seconds_min": 0.10373123199678957,
+  "core_seconds_min": 0.1028488609008491,
   "edges": 1000000,
   "parity": true,
-  "python_seconds_min": 0.35562897310592234,
-  "speedup_vs_python": 3.42836931809437
+  "python_seconds_min": 0.3491414119489491,
+  "speedup_vs_python": 3.3947037321641997
 }
 ```
 

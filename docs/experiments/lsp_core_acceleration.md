@@ -19,7 +19,9 @@ language-server latency.
 Current C++ acceleration for layered graph work is intentionally narrower:
 `codeminer_core.classify_edge_layers(...)` classifies default graph layers for
 the Python `MultiGraphIndex` when the pybind extension is present. This is a
-query/index helper, not a generic LSP graph decoder.
+query/index helper, not a generic LSP graph decoder. The implementation lives
+in `core/graph_layers.{h,cpp}` so it is a real core API rather than binding
+glue embedded in `bindings/pybind_module.cpp`.
 
 Profile the shared graph-layer helper separately:
 
@@ -32,11 +34,11 @@ Latest graph-layer sample:
 
 ```json
 {
-  "core_seconds_min": 0.10373123199678957,
+  "core_seconds_min": 0.1028488609008491,
   "edges": 1000000,
   "parity": true,
-  "python_seconds_min": 0.35562897310592234,
-  "speedup_vs_python": 3.42836931809437
+  "python_seconds_min": 0.3491414119489491,
+  "speedup_vs_python": 3.3947037321641997
 }
 ```
 

@@ -48,6 +48,7 @@ pkg_check_modules(RE2 REQUIRED re2)
 
 add_library(codeminer_core STATIC
     code_graph.cpp
+    graph_layers.cpp
     scip_decode_common.cpp
     scip_decode_base.cpp
     scip_decode_python.cpp
@@ -77,6 +78,12 @@ add_executable(scip_decode_test
 
 target_link_libraries(scip_decode_test PRIVATE codeminer_core)
 
+add_executable(graph_layers_test
+    tests/graph_layers_test.cpp
+)
+
+target_link_libraries(graph_layers_test PRIVATE codeminer_core)
+
 add_executable(scip_decode_repo
     tests/scip_decode_repo.cpp
 )
@@ -90,6 +97,9 @@ if(CODEMINER_ENABLE_O3)
     endif()
     if(TARGET scip_decode_repo)
         target_compile_options(scip_decode_repo PRIVATE -O3)
+    endif()
+    if(TARGET graph_layers_test)
+        target_compile_options(graph_layers_test PRIVATE -O3)
     endif()
 endif()
 
@@ -156,5 +166,10 @@ if(CODEMINER_ENABLE_DEBUG)
     if(TARGET scip_decode_repo)
         target_compile_definitions(scip_decode_repo PRIVATE CODEMINER_DEBUG=1)
         target_compile_options(scip_decode_repo PRIVATE ${_codeminer_debug_flags})
+    endif()
+
+    if(TARGET graph_layers_test)
+        target_compile_definitions(graph_layers_test PRIVATE CODEMINER_DEBUG=1)
+        target_compile_options(graph_layers_test PRIVATE ${_codeminer_debug_flags})
     endif()
 endif()
