@@ -46,6 +46,8 @@ The resulting static library and pybind module are placed in `build/core`.
 `graph_layers`, registry-driven Python and C++ core language metadata, and
 serial/core parity for the active accelerated SCIP backends: Python, Go, Rust,
 Ruby, TypeScript, and the JavaScript/TypeScript aliases.
+The pybind module also exposes the C++ decoder registry so tests can compare it
+directly with `codeminer.languages.core_decoder_languages(...)`.
 
 Ruby has a dedicated C++ decoder because real `ruby/rake` profiling showed the
 serial local decode path was the bottleneck after `scip-ruby` produced a large

@@ -126,6 +126,18 @@ Returns:
       - "project_root": the effective project_root used.
 )pbdoc");
 
+  m.def("canonical_scip_decoder_languages",
+        &codeminer::core::canonical_scip_decoder_languages,
+        R"pbdoc(
+Return the canonical language names implemented by the C++ SCIP decoder.
+)pbdoc");
+
+  m.def("accepted_scip_decoder_languages",
+        &codeminer::core::accepted_scip_decoder_languages,
+        R"pbdoc(
+Return canonical language names plus aliases accepted by the C++ SCIP decoder.
+)pbdoc");
+
   m.def("classify_edge_layers", &classify_edge_layers_py, py::arg("edge_types"),
         R"pbdoc(
 Classify edge-type strings into overlapping CodeGraph layer id buckets.
