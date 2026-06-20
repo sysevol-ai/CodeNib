@@ -79,6 +79,50 @@ CODEMINER_TOOL_PATH = $(CODEMINER_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)/bin:$
 CODEMINER_TOOL_ENV = CODEMINER_SCIP_TOOLS_DIR="$(CODEMINER_SCIP_TOOLS_DIR)" DOTNET_ROOT="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet" GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" GOBIN="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin" GOPATH="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools" CODEMINER_PHP_COMPOSER_IMAGE="$(COMPOSER_DOCKER_IMAGE)" PATH="$(CODEMINER_TOOL_PATH):$$PATH"
 SCIP_COLD_START_SYSTEM_PACKAGES = $(sort $(SCIP_JDK_PACKAGE) $(SCIP_CANDIDATE_SYSTEM_PACKAGES) $(SCIP_PHP_SYSTEM_PACKAGES))
 MULTILANG_SYSTEM_PACKAGES = $(sort $(ACTIVE_SCIP_SYSTEM_PACKAGES) $(CORE_SYSTEM_PACKAGES) $(SCIP_JDK_PACKAGE) $(SCIP_CANDIDATE_SYSTEM_PACKAGES) $(SCIP_PHP_SYSTEM_PACKAGES) $(LSP_SMOKE_SYSTEM_PACKAGES))
+
+define write-ruby-bundle-wrapper
+	@ruby_cmd="$$(GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" "$(RUBY_GEM)" environment | sed -n 's/^  - RUBY EXECUTABLE: //p')"; \
+	ruby_bindir="$$(dirname "$$ruby_cmd")"; \
+	bundle_exe="$$ruby_bindir/bundle"; \
+	if [ ! -f "$$bundle_exe" ]; then bundle_exe="$(CODEMINER_SCIP_TOOLS_DIR)/gems/gems/bundler-$(BUNDLER_VERSION)/exe/bundle"; fi; \
+	test -n "$$ruby_cmd" || { echo "Could not resolve Ruby executable from $(RUBY_GEM)" >&2; exit 1; }; \
+	test -x "$$ruby_cmd" || { echo "Resolved Ruby is not executable: $$ruby_cmd" >&2; exit 1; }; \
+	test -f "$$bundle_exe" || { echo "Missing Bundler executable: $$bundle_exe" >&2; exit 1; }; \
+	{ \
+		printf '%s\n' '#!/usr/bin/env sh'; \
+		printf '%s\n' 'set -eu'; \
+		printf '%s\n' "ruby_cmd='$$ruby_cmd'"; \
+		printf '%s\n' "ruby_bindir='$$ruby_bindir'"; \
+		printf '%s\n' "bundle_exe='$$bundle_exe'"; \
+		printf '%s\n' 'export GEM_HOME="$${GEM_HOME:-$(CODEMINER_SCIP_TOOLS_DIR)/gems}"'; \
+		printf '%s\n' 'export GEM_PATH="$${GEM_PATH:-$(CODEMINER_SCIP_TOOLS_DIR)/gems}"'; \
+		printf '%s\n' 'export PATH="$$ruby_bindir:$$PATH"'; \
+		printf '%s\n' 'exec "$$ruby_cmd" "$$bundle_exe" "$$@"'; \
+	} > "$(CODEMINER_SCIP_TOOLS_DIR)/bundle"; \
+	chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/bundle"
+endef
+
+define write-ruby-lsp-wrapper
+	@ruby_cmd="$$(GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" "$(RUBY_GEM)" environment | sed -n 's/^  - RUBY EXECUTABLE: //p')"; \
+	ruby_bindir="$$(dirname "$$ruby_cmd")"; \
+	ruby_lsp_exe="$(CODEMINER_SCIP_TOOLS_DIR)/gems/gems/ruby-lsp-$(RUBY_LSP_VERSION)/exe/ruby-lsp"; \
+	test -n "$$ruby_cmd" || { echo "Could not resolve Ruby executable from $(RUBY_GEM)" >&2; exit 1; }; \
+	test -x "$$ruby_cmd" || { echo "Resolved Ruby is not executable: $$ruby_cmd" >&2; exit 1; }; \
+	test -f "$$ruby_lsp_exe" || { echo "Missing ruby-lsp executable: $$ruby_lsp_exe" >&2; exit 1; }; \
+	{ \
+		printf '%s\n' '#!/usr/bin/env sh'; \
+		printf '%s\n' 'set -eu'; \
+		printf '%s\n' "ruby_cmd='$$ruby_cmd'"; \
+		printf '%s\n' "ruby_bindir='$$ruby_bindir'"; \
+		printf '%s\n' "ruby_lsp_exe='$$ruby_lsp_exe'"; \
+		printf '%s\n' 'export GEM_HOME="$${GEM_HOME:-$(CODEMINER_SCIP_TOOLS_DIR)/gems}"'; \
+		printf '%s\n' 'export GEM_PATH="$${GEM_PATH:-$(CODEMINER_SCIP_TOOLS_DIR)/gems}"'; \
+		printf '%s\n' 'export PATH="$$ruby_bindir:$$PATH"'; \
+		printf '%s\n' 'exec "$$ruby_cmd" "$$ruby_lsp_exe" "$$@"'; \
+	} > "$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp-bin"; \
+	chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp-bin"
+endef
+
 GRAPH_ALIGNMENT_TOOL_TARGETS :=
 SCIP_PROJECT_TOOL_TARGETS :=
 ifneq ($(filter python py,$(PROJECT_LANGUAGE)),)
@@ -504,6 +548,7 @@ scip-ruby-tool:
 	GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
 	GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
 		"$(RUBY_GEM)" install scip-ruby -v "$(SCIP_RUBY_VERSION)" --no-document
+	$(write-ruby-bundle-wrapper)
 
 ruby-project-bundle: ruby-lsp-tool scip-ruby-tool
 	@test -n "$(PROJECT_ROOT)" || { echo "Set PROJECT_ROOT=/path/to/ruby/project" >&2; exit 1; }
@@ -697,10 +742,8 @@ ruby-lsp-tool:
 	GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
 		"$(RUBY_GEM)" install ruby-lsp -v "$(RUBY_LSP_VERSION)" --no-document
 	@rm -f "$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/gems/bin/ruby-lsp" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp-bin"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/gems/bin/bundle" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/bundle"
+	$(write-ruby-bundle-wrapper)
+	$(write-ruby-lsp-wrapper)
 	{ \
 		printf '%s\n' '#!/usr/bin/env sh'; \
 		printf '%s\n' 'set -eu'; \
