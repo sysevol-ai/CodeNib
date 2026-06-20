@@ -25,6 +25,9 @@ from codeminer.languages import (
     normalize_agent_language,
     normalize_chunker_language,
     normalize_graph_language,
+    scip_cold_start_command_for_language,
+    scip_cold_start_option,
+    scip_cold_start_options,
     supported_agent_languages,
 )
 
@@ -113,18 +116,22 @@ def test_language_capability_rows_track_parity_applicability():
     rows = {row.key: row for row in language_capability_rows()}
 
     assert rows["python"].graph_backend == "scip"
+    assert rows["python"].scip_cold_start == "active"
     assert rows["python"].core_decoder is True
     assert rows["python"].core_parity == "covered"
 
     assert rows["cpp"].graph_backend == "clangd"
+    assert rows["cpp"].scip_cold_start == "none"
     assert rows["cpp"].core_decoder is False
     assert rows["cpp"].core_parity == "n/a-no-core-decoder"
 
     assert rows["javascript"].graph_backend == "scip"
+    assert rows["javascript"].scip_cold_start == "active"
     assert rows["javascript"].core_decoder is True
     assert rows["javascript"].core_parity == "covered"
 
     assert rows["java"].graph_backend == "lsp"
+    assert rows["java"].scip_cold_start == "candidate"
     assert rows["java"].incremental_backend is None
     assert rows["java"].lsp is True
     assert rows["java"].core_decoder is False
@@ -135,18 +142,56 @@ def test_language_capability_rows_track_parity_applicability():
         assert rows[language].ground_truth is True
         assert rows[language].agent is True
         assert rows[language].graph_backend == "lsp"
+        assert rows[language].scip_cold_start == "candidate"
         assert rows[language].incremental_backend is None
         assert rows[language].core_decoder is False
         assert rows[language].core_parity == "n/a-no-core-decoder"
 
-    for language in ("swift", "scala", "lua"):
+    for language in ("swift", "lua"):
         assert rows[language].chunker is True
         assert rows[language].ground_truth is True
         assert rows[language].agent is True
         assert rows[language].graph_backend is None
+        assert rows[language].scip_cold_start == "none"
         assert rows[language].incremental_backend is None
         assert rows[language].core_decoder is False
         assert rows[language].core_parity == "n/a-tree-sitter-only"
+
+    assert rows["scala"].graph_backend is None
+    assert rows["scala"].scip_cold_start == "candidate"
+    assert rows["scala"].core_parity == "n/a-tree-sitter-only"
+
+
+def test_scip_cold_start_options_track_active_and_candidate_paths(monkeypatch):
+    options = scip_cold_start_options()
+
+    assert options["python"].status == "active"
+    assert options["python"].tool == "scip-python"
+    assert options["typescript"].status == "active"
+    assert options["ts"].tool == "scip-typescript"
+
+    assert options["java"].status == "candidate"
+    assert options["java"].tool == "scip-java"
+    assert options["kotlin"].tool == "scip-java"
+    assert options["scala"].tool == "scip-java"
+    assert options["csharp"].tool == "scip-dotnet"
+    assert options["c#"].tool == "scip-dotnet"
+    assert options["ruby"].tool == "scip-ruby"
+    assert options["php"].tool == "scip-php"
+
+    assert scip_cold_start_option("kt").command_env == "CODEMINER_KOTLIN_SCIP_CMD"
+    assert scip_cold_start_command_for_language("java") == ["scip-java", "index"]
+    assert scip_cold_start_command_for_language("c#") == ["scip-dotnet"]
+    monkeypatch.setenv("CODEMINER_CSHARP_SCIP_CMD", "dotnet tool run scip-dotnet")
+    assert scip_cold_start_command_for_language("csharp") == [
+        "dotnet",
+        "tool",
+        "run",
+        "scip-dotnet",
+    ]
+    assert scip_cold_start_option("swift") is None
+    assert scip_cold_start_command_for_language("swift") is None
+    assert scip_cold_start_option("lua") is None
 
 
 def test_chunker_languages_are_current_supported_repo_chunkers():

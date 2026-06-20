@@ -35,6 +35,10 @@ Choose backends per language, not globally.
 - `cold_start_backend`: the source for a fresh full-repo graph. Use SCIP where
   the indexer is mature, clangd for C/C++, and generic LSP only when it is the
   best available cold-start source.
+- `scip_cold_start`: records active or candidate SCIP cold-start tools even
+  when the language currently uses LSP or tree-sitter-only graph support. A
+  `candidate` is planning metadata; it is not routed by `LSIndexer` until SCIP
+  smoke, backend alignment, decoder support, and parity gates are green.
 - `incremental_backend`: the source for patching or filling gaps after a repo
   changes. LSP is often a better fit here because servers already maintain
   workspace state.
@@ -67,6 +71,13 @@ LanguageSpec(
     agent_languages=("example",),
     agent_aliases=(("example", "example"), ("ex", "example")),
     cold_start_backend="lsp",
+    scip_cold_start=ScipColdStartOption(
+        tool="example-scip",
+        status="candidate",
+        command=("example-scip", "index"),
+        command_env="CODEMINER_EXAMPLE_SCIP_CMD",
+        note="Promote only after SCIP smoke, backend alignment, and parity gates pass.",
+    ),
     incremental_backend="lsp",
     lsp_language_id="example",
     lsp_command=("example-language-server", "--stdio"),
@@ -132,6 +143,24 @@ Pick one cold-start backend:
   `codeminer.ls_index.lsp_indexer:GenericLSPIndexer`, `graph_decoder` to
   `codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder`, and register
   `lsp_language_id`, `lsp_command`, and an optional `lsp_command_env` override.
+
+Do not drop a known SCIP cold-start path just because the first implementation
+uses LSP. Record it as `scip_cold_start=ScipColdStartOption(...,
+status="candidate")` until it is proven.
+Use `codeminer.languages.scip_cold_start_command_for_language()` to consume the
+registered command and any `CODEMINER_*_SCIP_CMD` override in smoke scripts.
+
+Current SCIP cold-start candidates that should be evaluated before treating LSP
+as final:
+
+| Language | Candidate | Current active graph | Promotion gate |
+| --- | --- | --- | --- |
+| Java | `scip-java index` | generic LSP / JDT LS | Maven/Gradle/sbt smoke, LSP alignment, serial decoder, optional core parity |
+| Kotlin | `scip-java index` | generic LSP / Kotlin LS | JVM smoke, LSP alignment, Kotlin symbol normalization |
+| Scala | `scip-java index` | tree-sitter-only | JVM smoke, graph decoder, LSP/Metals alignment decision |
+| C# | `scip-dotnet` | generic LSP / csharp-ls | `.sln`/`.csproj` restore smoke, LSP alignment, decoder support |
+| Ruby | `scip-ruby` | generic LSP / ruby-lsp | real-repo graph quality measurement, Sorbet setup guidance |
+| PHP | `scip-php` | generic LSP / Intelephense | community indexer smoke, schema alignment, reference quality threshold |
 
 Current generic LSP cold-start graph commands are:
 

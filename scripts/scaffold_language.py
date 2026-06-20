@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import shlex
 import sys
 import textwrap
 from dataclasses import dataclass
@@ -45,6 +46,9 @@ class ScaffoldConfig:
     aliases: tuple[str, ...] = ()
     chunker: bool = True
     graph_backend: str = "none"
+    scip_cold_start_candidate: str | None = None
+    scip_cold_start_command: tuple[str, ...] = ()
+    scip_cold_start_env: str | None = None
     incremental_backend: str = "none"
     core_decoder: bool = False
     root: Path = PROJECT_ROOT
@@ -113,6 +117,10 @@ def _pair_tuple_literal(values: Sequence[tuple[str, str]]) -> str:
     return f"({rendered})"
 
 
+def _default_scip_env(key: str) -> str:
+    return f"CODEMINER_{key.upper()}_SCIP_CMD"
+
+
 def render_language_spec(config: ScaffoldConfig) -> str:
     """Return the LanguageSpec block to paste into codeminer/languages.py."""
 
@@ -179,6 +187,25 @@ def render_language_spec(config: ScaffoldConfig) -> str:
             f"    agent_languages={_tuple_literal((config.key,))},",
             f"    agent_aliases={_pair_tuple_literal(agent_aliases)},",
             f"    cold_start_backend={cold_start_backend!r},",
+        ]
+    )
+    if config.scip_cold_start_candidate:
+        command = config.scip_cold_start_command or (config.scip_cold_start_candidate,)
+        lines.extend(
+            [
+                "    scip_cold_start=ScipColdStartOption(",
+                f"        tool={config.scip_cold_start_candidate!r},",
+                "        status='candidate',",
+                f"        command={_tuple_literal(command)},",
+                "        command_env="
+                f"{(config.scip_cold_start_env or _default_scip_env(config.key))!r},",
+                "        note='Candidate cold-start backend; promote only after "
+                "smoke, backend alignment, and parity gates pass.',",
+                "    ),",
+            ]
+        )
+    lines.extend(
+        [
             f"    incremental_backend={incremental_backend!r},",
             f"    core_decoder={config.core_decoder!r},",
             "),",
@@ -728,6 +755,11 @@ def _manual_wiring(config: ScaffoldConfig) -> list[str]:
             "Use GenericLSPIndexer/GenericLSPGraphDecoder in LanguageSpec; "
             "add a custom indexer/decoder only for server-specific behavior."
         )
+        if config.scip_cold_start_candidate:
+            items.append(
+                "Keep the SCIP cold-start candidate disabled until its SCIP "
+                "smoke, LSP/backend alignment, and serial/core parity gates land."
+            )
     elif config.graph_backend != "none":
         items.append("Route the graph backend through codeminer/ls_router.py.")
     if config.incremental_backend != "none":
@@ -820,6 +852,19 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="cold-start graph backend to scaffold",
     )
     parser.add_argument(
+        "--scip-cold-start-candidate",
+        metavar="TOOL",
+        help="record a SCIP cold-start candidate tool without enabling it",
+    )
+    parser.add_argument(
+        "--scip-cold-start-command",
+        help="candidate SCIP command, shell-split before rendering",
+    )
+    parser.add_argument(
+        "--scip-cold-start-env",
+        help="environment variable that can override the candidate command",
+    )
+    parser.add_argument(
         "--incremental-backend",
         choices=INCREMENTAL_BACKENDS,
         default="none",
@@ -879,6 +924,10 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
     if args.core_decoder and args.graph_backend != "scip":
         parser.error("--core-decoder currently requires --graph-backend scip")
+    if args.scip_cold_start_command and not args.scip_cold_start_candidate:
+        parser.error("--scip-cold-start-command requires --scip-cold-start-candidate")
+    if args.scip_cold_start_env and not args.scip_cold_start_candidate:
+        parser.error("--scip-cold-start-env requires --scip-cold-start-candidate")
     if args.incremental_backend != "none" and args.graph_backend == "none":
         parser.error("--incremental-backend requires a non-none --graph-backend")
     if _language_exists(args.language, args.root) and not args.allow_existing:
@@ -899,6 +948,13 @@ def config_from_args(args: argparse.Namespace) -> ScaffoldConfig:
         aliases=_unique(args.aliases),
         chunker=not args.no_chunker,
         graph_backend=args.graph_backend,
+        scip_cold_start_candidate=args.scip_cold_start_candidate,
+        scip_cold_start_command=(
+            tuple(shlex.split(args.scip_cold_start_command))
+            if args.scip_cold_start_command
+            else ()
+        ),
+        scip_cold_start_env=args.scip_cold_start_env,
         incremental_backend=args.incremental_backend,
         core_decoder=args.core_decoder,
         root=args.root,

@@ -19,23 +19,31 @@ python scripts/language_capability_matrix.py --check docs/language_capabilities.
 ```
 
 <!-- BEGIN CODEMINER_LANGUAGE_CAPABILITIES -->
-| Language | Chunker | GT | Agent | Graph backend | Incremental | LSP command | Core decoder | Core parity |
-|----------|---------|----|-------|---------------|-------------|-------------|--------------|-------------|
-| Python | yes | yes | yes | scip | lsp | yes | yes | covered |
-| Go | yes | yes | yes | scip | lsp | yes | yes | covered |
-| Rust | yes | yes | yes | scip | lsp | yes | yes | covered |
-| C/C++ | yes | yes | yes | clangd | clangd | yes | no | n/a-no-core-decoder |
-| C# | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
-| Java | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
-| Ruby | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
-| PHP | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
-| Kotlin | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
-| Swift | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
-| Scala | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
-| Lua | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
-| JavaScript | yes | yes | yes | scip | lsp | yes | yes | covered |
-| TypeScript | yes | yes | yes | scip | lsp | yes | yes | covered |
+| Language | Chunker | GT | Agent | Graph backend | SCIP cold-start | Incremental | LSP command | Core decoder | Core parity |
+|----------|---------|----|-------|---------------|-----------------|-------------|-------------|--------------|-------------|
+| Python | yes | yes | yes | scip | active | lsp | yes | yes | covered |
+| Go | yes | yes | yes | scip | active | lsp | yes | yes | covered |
+| Rust | yes | yes | yes | scip | active | lsp | yes | yes | covered |
+| C/C++ | yes | yes | yes | clangd | none | clangd | yes | no | n/a-no-core-decoder |
+| C# | yes | yes | yes | lsp | candidate | none | yes | no | n/a-no-core-decoder |
+| Java | yes | yes | yes | lsp | candidate | none | yes | no | n/a-no-core-decoder |
+| Ruby | yes | yes | yes | lsp | candidate | none | yes | no | n/a-no-core-decoder |
+| PHP | yes | yes | yes | lsp | candidate | none | yes | no | n/a-no-core-decoder |
+| Kotlin | yes | yes | yes | lsp | candidate | none | yes | no | n/a-no-core-decoder |
+| Swift | yes | yes | yes | none | none | none | no | no | n/a-tree-sitter-only |
+| Scala | yes | yes | yes | none | candidate | none | no | no | n/a-tree-sitter-only |
+| Lua | yes | yes | yes | none | none | none | no | no | n/a-tree-sitter-only |
+| JavaScript | yes | yes | yes | scip | active | lsp | yes | yes | covered |
+| TypeScript | yes | yes | yes | scip | active | lsp | yes | yes | covered |
 <!-- END CODEMINER_LANGUAGE_CAPABILITIES -->
+
+## SCIP Cold-Start States
+
+| State | Meaning |
+|-------|---------|
+| `active` | The active cold-start graph backend is SCIP and the language is routed through a SCIP indexer/decoder today. |
+| `candidate` | A known SCIP indexer should be evaluated before treating the current LSP or tree-sitter-only path as final. It is not routed until smoke, backend alignment, decoder support, and parity gates pass. |
+| `none` | No SCIP cold-start option is currently tracked for the language. |
 
 ## Parity States
 

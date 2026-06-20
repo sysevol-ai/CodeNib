@@ -41,9 +41,9 @@ def render_matrix() -> str:
     """Return the Markdown table for the current language registry."""
 
     lines = [
-        "| Language | Chunker | GT | Agent | Graph backend | Incremental "
+        "| Language | Chunker | GT | Agent | Graph backend | SCIP cold-start | Incremental "
         "| LSP command | Core decoder | Core parity |",
-        "|----------|---------|----|-------|---------------|-------------|-------------|--------------|-------------|",
+        "|----------|---------|----|-------|---------------|-----------------|-------------|-------------|--------------|-------------|",
     ]
     for row in _language_capability_rows():
         lines.append(
@@ -55,6 +55,7 @@ def render_matrix() -> str:
                     _yes_no(row.ground_truth),
                     _yes_no(row.agent),
                     row.graph_backend or "none",
+                    row.scip_cold_start,
                     row.incremental_backend or "none",
                     _yes_no(row.lsp),
                     _yes_no(row.core_decoder),

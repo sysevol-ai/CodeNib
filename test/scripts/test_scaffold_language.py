@@ -81,6 +81,26 @@ def test_lsp_plan_uses_generic_lsp_registry_paths():
     assert "CODEMINER_ZIG_LSP_CMD" in rendered
 
 
+def test_lsp_plan_can_record_scip_cold_start_candidate():
+    cfg = _config(
+        graph_backend="lsp",
+        scip_cold_start_candidate="scip-zig",
+        scip_cold_start_command=("scip-zig", "index"),
+    )
+
+    paths = {str(file.path) for file in scaffold.build_plan(cfg)}
+    rendered = scaffold.render_language_spec(cfg)
+    plan = scaffold.render_plan(cfg, scaffold.build_plan(cfg))
+
+    assert "codeminer/scip_interface/scip_indexer_zig.py" not in paths
+    assert "ScipColdStartOption(" in rendered
+    assert "tool='scip-zig'" in rendered
+    assert "status='candidate'" in rendered
+    assert "command=('scip-zig', 'index')" in rendered
+    assert "CODEMINER_ZIG_SCIP_CMD" in rendered
+    assert "candidate disabled" in plan
+
+
 def test_main_dry_run_prints_without_writing(tmp_path, capsys):
     rc = scaffold.main(
         [
@@ -129,6 +149,26 @@ def test_main_validates_core_backend(capsys):
 
     assert (
         "--core-decoder currently requires --graph-backend scip"
+        in capsys.readouterr().err
+    )
+
+
+def test_main_validates_scip_candidate_command(capsys):
+    with pytest.raises(SystemExit):
+        scaffold.main(
+            [
+                "zig",
+                "--extension",
+                ".zig",
+                "--graph-backend",
+                "lsp",
+                "--scip-cold-start-command",
+                "scip-zig index",
+            ]
+        )
+
+    assert (
+        "--scip-cold-start-command requires --scip-cold-start-candidate"
         in capsys.readouterr().err
     )
 

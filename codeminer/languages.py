@@ -21,6 +21,24 @@ from importlib import import_module
 from typing import Dict, FrozenSet, Iterable, Literal, Optional, Tuple
 
 ExtensionKind = Literal["chunker", "gt", "graph"]
+ScipColdStartStatus = Literal["active", "candidate", "deferred"]
+
+
+@dataclass(frozen=True, slots=True)
+class ScipColdStartOption:
+    """SCIP cold-start backend status for one language.
+
+    ``active`` means the language's current cold-start graph backend is SCIP.
+    ``candidate`` means a known SCIP indexer exists, but CodeMiner has not yet
+    promoted it to the primary backend because smoke, backend-alignment, decoder,
+    and parity gates are still open.
+    """
+
+    tool: str
+    status: ScipColdStartStatus
+    command: Tuple[str, ...] = ()
+    command_env: Optional[str] = None
+    note: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +63,7 @@ class LanguageSpec:
     cold_start_backend: Optional[str] = None
     graph_indexer: Optional[str] = None
     graph_decoder: Optional[str] = None
+    scip_cold_start: Optional[ScipColdStartOption] = None
     incremental_backend: Optional[str] = None
     incremental_patcher: Optional[str] = None
     lsp_language_id: Optional[str] = None
@@ -65,6 +84,7 @@ class LanguageCapability:
     ground_truth: bool
     agent: bool
     graph_backend: Optional[str]
+    scip_cold_start: str
     incremental_backend: Optional[str]
     lsp: bool
     core_decoder: bool
@@ -90,6 +110,12 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="scip",
         graph_indexer="codeminer.scip_interface.scip_indexer_python:SCIPPythonIndexer",
         graph_decoder="codeminer.scip_interface.scip_decode_python:SCIPPythonGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-python",
+            status="active",
+            command=("scip-python", "index"),
+            note="Primary cold-start backend with serial/core parity coverage.",
+        ),
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_python:PatcherPython",
         lsp_language_id="python",
@@ -115,6 +141,12 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="scip",
         graph_indexer="codeminer.scip_interface.scip_indexer_go:SCIPGoIndexer",
         graph_decoder="codeminer.scip_interface.scip_decode_go:SCIPGoGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-go",
+            status="active",
+            command=("scip-go",),
+            note="Primary cold-start backend with serial/core parity coverage.",
+        ),
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_go:PatcherGo",
         lsp_language_id="go",
@@ -139,6 +171,12 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="scip",
         graph_indexer="codeminer.scip_interface.scip_indexer_rust:SCIPRustIndexer",
         graph_decoder="codeminer.scip_interface.scip_decode_rust:SCIPRustGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="rust-analyzer scip",
+            status="active",
+            command=("rust-analyzer", "scip"),
+            note="Primary cold-start backend with serial/core parity coverage.",
+        ),
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_rust:PatcherRust",
         lsp_language_id="rust",
@@ -186,6 +224,16 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="lsp",
         graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
         graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-dotnet",
+            status="candidate",
+            command=("scip-dotnet",),
+            command_env="CODEMINER_CSHARP_SCIP_CMD",
+            note=(
+                "Evaluate as C#/VB cold-start after .sln/.csproj restore "
+                "smoke and LSP alignment."
+            ),
+        ),
         lsp_language_id="csharp",
         lsp_command=("csharp-ls",),
         lsp_command_env="CODEMINER_CSHARP_LSP_CMD",
@@ -207,6 +255,16 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="lsp",
         graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
         graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-java",
+            status="candidate",
+            command=("scip-java", "index"),
+            command_env="CODEMINER_JAVA_SCIP_CMD",
+            note=(
+                "Evaluate as JVM cold-start for Maven/Gradle/sbt before "
+                "promoting over JDT LS."
+            ),
+        ),
         lsp_language_id="java",
         lsp_command=("jdtls",),
         lsp_command_env="CODEMINER_JAVA_LSP_CMD",
@@ -229,6 +287,16 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="lsp",
         graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
         graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-ruby",
+            status="candidate",
+            command=("scip-ruby",),
+            command_env="CODEMINER_RUBY_SCIP_CMD",
+            note=(
+                "Experimental Ruby cold-start candidate; graph quality must "
+                "be measured on real repos."
+            ),
+        ),
         lsp_language_id="ruby",
         lsp_command=("ruby-lsp",),
         lsp_command_env="CODEMINER_RUBY_LSP_CMD",
@@ -250,6 +318,16 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="lsp",
         graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
         graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-php",
+            status="candidate",
+            command=("scip-php",),
+            command_env="CODEMINER_PHP_SCIP_CMD",
+            note=(
+                "Community PHP cold-start candidate; require smoke and "
+                "alignment before enabling."
+            ),
+        ),
         lsp_language_id="php",
         lsp_command=("intelephense", "--stdio"),
         lsp_command_env="CODEMINER_PHP_LSP_CMD",
@@ -272,6 +350,13 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="lsp",
         graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
         graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-java",
+            status="candidate",
+            command=("scip-java", "index"),
+            command_env="CODEMINER_KOTLIN_SCIP_CMD",
+            note="Evaluate through the JVM scip-java path before promoting over Kotlin LSP.",
+        ),
         lsp_language_id="kotlin",
         lsp_command=("kotlin-language-server", "--stdio"),
         lsp_command_env="CODEMINER_KOTLIN_LSP_CMD",
@@ -299,6 +384,13 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         gt_extensions=(".scala", ".sc"),
         agent_languages=("scala",),
         agent_aliases=(("scala", "scala"),),
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-java",
+            status="candidate",
+            command=("scip-java", "index"),
+            command_env="CODEMINER_SCALA_SCIP_CMD",
+            note="Evaluate through the JVM scip-java path before enabling graph support.",
+        ),
     ),
     LanguageSpec(
         key="lua",
@@ -336,6 +428,15 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="scip",
         graph_indexer="codeminer.scip_interface.scip_indexer_ts:SCIPTypeScriptIndexer",
         graph_decoder="codeminer.scip_interface.scip_decode_ts:SCIPTypeScriptGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-typescript",
+            status="active",
+            command=("scip-typescript", "index"),
+            note=(
+                "Shared JavaScript/TypeScript cold-start backend with parity "
+                "via TypeScript core decoder."
+            ),
+        ),
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_ts:PatcherTS",
         lsp_language_id="typescript",
@@ -364,6 +465,12 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         cold_start_backend="scip",
         graph_indexer="codeminer.scip_interface.scip_indexer_ts:SCIPTypeScriptIndexer",
         graph_decoder="codeminer.scip_interface.scip_decode_ts:SCIPTypeScriptGraphDecoder",
+        scip_cold_start=ScipColdStartOption(
+            tool="scip-typescript",
+            status="active",
+            command=("scip-typescript", "index"),
+            note="Primary cold-start backend with serial/core parity coverage.",
+        ),
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_ts:PatcherTS",
         lsp_language_id="typescript",
@@ -644,6 +751,54 @@ def graph_cold_start_backend(language: str) -> Optional[str]:
     return graph_cold_start_backends(include_aliases=False).get(graph_language)
 
 
+def scip_cold_start_options(
+    include_aliases: bool = True,
+) -> Dict[str, ScipColdStartOption]:
+    """Return languages mapped to configured SCIP cold-start options.
+
+    Candidate entries are intentionally returned even when a language's active
+    graph backend is still LSP or tree-sitter-only. They are planning metadata,
+    not an enabled router path.
+    """
+
+    result: Dict[str, ScipColdStartOption] = {}
+    for spec in LANGUAGE_SPECS:
+        option = spec.scip_cold_start
+        if option is None:
+            continue
+        result[spec.key] = option
+        if include_aliases:
+            for alias in spec.aliases:
+                result[alias] = option
+            if spec.graph_language:
+                result[spec.graph_language] = option
+                for alias in spec.graph_aliases:
+                    result[alias] = option
+    return result
+
+
+def scip_cold_start_option(language: str) -> Optional[ScipColdStartOption]:
+    """Return SCIP cold-start metadata for a language key or alias."""
+
+    return scip_cold_start_options(include_aliases=True).get(_norm(language))
+
+
+def scip_cold_start_command_for_language(language: str) -> Optional[list[str]]:
+    """Return the configured SCIP cold-start command for a language or alias."""
+
+    option = scip_cold_start_option(language)
+    if option is None:
+        return None
+
+    if option.command_env:
+        override = os.environ.get(option.command_env)
+        if override:
+            return shlex.split(override)
+    if option.command:
+        return list(option.command)
+    return [option.tool] if option.tool else None
+
+
 def lsp_language_id_for_language(language: str) -> Optional[str]:
     """Return the LSP language id for a raw graph language."""
 
@@ -754,6 +909,9 @@ def language_capability_rows() -> Tuple[LanguageCapability, ...]:
                 ground_truth=bool(spec.gt_language and spec.gt_extensions),
                 agent=bool(spec.agent_languages),
                 graph_backend=spec.cold_start_backend if has_graph else None,
+                scip_cold_start=(
+                    spec.scip_cold_start.status if spec.scip_cold_start else "none"
+                ),
                 incremental_backend=(
                     spec.incremental_backend if spec.incremental_patcher else None
                 ),
@@ -778,6 +936,8 @@ __all__ = [
     "LanguageSpec",
     "LANGUAGE_SPECS",
     "SPECS_BY_KEY",
+    "ScipColdStartOption",
+    "ScipColdStartStatus",
     "agent_language_aliases",
     "chunker_language_aliases",
     "chunker_languages",
@@ -805,5 +965,8 @@ __all__ = [
     "normalize_chunker_language",
     "normalize_graph_language",
     "normalize_language",
+    "scip_cold_start_option",
+    "scip_cold_start_command_for_language",
+    "scip_cold_start_options",
     "supported_agent_languages",
 ]
