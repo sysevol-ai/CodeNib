@@ -54,6 +54,7 @@ add_library(codeminer_core STATIC
     scip_decode_python.cpp
     scip_decode_go.cpp
     scip_decode_rust.cpp
+    scip_decode_ruby.cpp
     scip_decode_ts.cpp
 )
 

@@ -108,6 +108,8 @@ def test_core_decoder_languages_only_include_supported_core_aliases():
         "python",
         "go",
         "rust",
+        "ruby",
+        "rb",
         "typescript",
         "ts",
         "js",
@@ -167,8 +169,8 @@ def test_language_capability_rows_track_parity_applicability():
     assert rows["ruby"].scip_cold_start == "active"
     assert rows["ruby"].incremental_backend is None
     assert rows["ruby"].lsp is True
-    assert rows["ruby"].core_decoder is False
-    assert rows["ruby"].core_parity == "n/a-no-core-decoder"
+    assert rows["ruby"].core_decoder is True
+    assert rows["ruby"].core_parity == "covered"
 
     assert rows["kotlin"].chunker is True
     assert rows["kotlin"].ground_truth is True

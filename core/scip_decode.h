@@ -7,12 +7,13 @@
 #pragma once
 
 // Umbrella header for the core SCIP decoders. Individual language decoders
-// live in `scip_decode_{python,go,rust,ts}.h`.
+// live in `scip_decode_{python,go,rust,ruby,ts}.h`.
 
 #include "scip_decode_base.h"
 #include "scip_decode_common.h"
 #include "scip_decode_go.h"
 #include "scip_decode_python.h"
+#include "scip_decode_ruby.h"
 #include "scip_decode_rust.h"
 #include "scip_decode_ts.h"
 

@@ -40,8 +40,9 @@ end:
    matrix.
 2. Promote candidate SCIP cold-start backends only after gated smoke, decode,
    backend-alignment, and documentation work.
-3. Keep active SCIP backends for Python, Go, Rust, C#, Java, JavaScript,
-   TypeScript, and PHP fast and parity-tested where a C++ core decoder exists.
+3. Keep active SCIP backends for Python, Go, Rust, C#, Java, Ruby,
+   JavaScript, TypeScript, and PHP fast and parity-tested where a C++ core
+   decoder exists.
 4. Add C++ acceleration only where profiling shows local decode or graph
    processing is a meaningful bottleneck.
 5. Keep PRs, commits, and issues synchronized with this roadmap so multi-step
@@ -420,6 +421,15 @@ because all other source definitions and containment align, source references
 are materially richer in the SCIP graph, and loose Ruby projects still fall back
 to ruby-lsp.
 
+Ruby C++ acceleration status: the same `ruby/rake` decoded index now has
+serial/core parity through `SCIPRubyGraphDecoder` and `SCIPDecoderCore` with
+`language="ruby"`/`"rb"`. After filtering to `lib/`, both decoders produce 815
+nodes and 3,466 edges with no missing/extra names, no edge-multiset difference,
+and no vertex-attribute difference. Local `process_index` time went from 7.58s
+serial to 1.04s through the C++ backend, so Ruby is covered by the accelerated
+core decoder gate while the active hybrid route still falls back to ruby-lsp
+when a Bundler SCIP setup is not available.
+
 Current PHP active hybrid status: the registry routes PHP through
 `PHPHybridIndexer`. Composer projects prefer `SCIPPHPIndexer`, which runs
 project-local `vendor/bin/scip-php` from the validated
@@ -509,8 +519,8 @@ containment `ref=8 cand=8 missing=0 extra=0`, and references `ref=1 cand=0`.
 
 ### Phase 5: Acceleration And Parity
 
-- [x] Keep existing Python/Go/Rust/JS/TS SCIP C++ parity tests green.
-- [ ] Profile each newly promoted route before adding C++ decoder code.
+- [x] Keep existing Python/Go/Rust/Ruby/JS/TS SCIP C++ parity tests green.
+- [x] Profile each newly promoted route before adding C++ decoder code.
 - [ ] Prefer shared normalization helpers when symbol shapes are language-family
   compatible.
 - [x] Keep C++ files small and purpose-specific: parser/decoder logic,
@@ -522,19 +532,21 @@ numbers, and `core/` remains maintainable.
 
 Current acceleration status: `make core-test` builds the pybind module and
 passes C++ smoke tests, graph-layer tests, registry metadata tests, and
-serial/core parity for the active accelerated SCIP backends. Java, C#, PHP, and
-Scala are active SCIP routes but remain serial-only because profiling shows
-external tooling dominates cold-start time: on `jitpack/maven-simple`,
+serial/core parity for the active accelerated SCIP backends. Ruby now has a
+C++ decoder because `ruby/rake` made local decode the hot path: serial
+`process_index` took 7.58s, the C++ backend took 1.04s, and the filtered
+`lib/` graph matched exactly with 815 nodes, 3,466 edges, zero missing/extra
+names, zero edge-multiset differences, and zero vertex-attribute differences.
+Java, C#, PHP, and Scala are active SCIP routes but remain serial-only because
+profiling shows external tooling dominates cold-start time: on
+`jitpack/maven-simple`,
 `scip-java` indexing took about 5.98s while protoc decode took 0.01s, Python
 graph decode 0.007s, and range-index construction 0.001s; on the recorded C#
 fixture, `scip-dotnet` indexing took about 4.3-4.8s while Python decode/build
 was about 0.01s; on the small PHP Composer gate, LSP document-symbol collection
 took about 16.245s, SCIP indexing took about 0.551s, protoc decode took about
-0.008s, and Python graph decode took about 0.007s; on the `ruby/rake` Ruby gate,
-`scip-ruby` produced richer source references while the active hybrid route kept
-loose-project LSP fallback, and serial `process_index.decode` took about
-7.5-7.9s. Ruby therefore needs a dedicated C++ decoder/parity follow-up before
-it can be called accelerated. On the `sbt/io` Scala gate, `scip-java` indexing
+0.008s, and Python graph decode took about 0.007s. On the `sbt/io` Scala gate,
+`scip-java` indexing
 took about 74.527s while protoc decode took about 0.099s, Python graph decode
 took about 2.156s, and range-index construction took about 0.069s. Kotlin
 remains serial-only until its promotion gate is green and profiling shows local

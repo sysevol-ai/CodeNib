@@ -16,6 +16,7 @@ using codeminer::core::CodeGraph;
 using codeminer::core::SCIPDecoderBase;
 using codeminer::core::SCIPGoDecoder;
 using codeminer::core::SCIPPythonDecoder;
+using codeminer::core::SCIPRubyDecoder;
 using codeminer::core::SCIPRustDecoder;
 using codeminer::core::SCIPTSDecoder;
 namespace fs = std::filesystem;
@@ -40,7 +41,8 @@ void print_usage(std::string_view prog_name) {
       << "  index.decoded  - Path to decoded SCIP index file\n"
       << "  project_root   - Project root directory (or 'null' for none)\n"
       << "  output.json    - Output JSON file path\n"
-      << "  language       - One of: python (default), go, rust, typescript\n";
+      << "  language       - One of: python (default), go, rust, ruby, "
+         "typescript\n";
 }
 
 bool path_exists(const fs::path &path, std::string_view description) {
@@ -82,8 +84,8 @@ std::optional<ProgramOptions> parse_arguments(int argc, char **argv) {
   }
 
   const auto &lang = options.language;
-  if (lang != "python" && lang != "go" && lang != "rust" &&
-      lang != "typescript" && lang != "ts" && lang != "js") {
+  if (lang != "python" && lang != "go" && lang != "rust" && lang != "ruby" &&
+      lang != "rb" && lang != "typescript" && lang != "ts" && lang != "js") {
     std::cerr << "Error: unknown language '" << lang << "'\n";
     print_usage(argv[0]);
     return std::nullopt;
@@ -107,6 +109,8 @@ make_decoder(const std::string &lang, const std::string &index,
     return std::make_unique<SCIPGoDecoder>(index, root_str);
   if (lang == "rust")
     return std::make_unique<SCIPRustDecoder>(index, root_str);
+  if (lang == "ruby" || lang == "rb")
+    return std::make_unique<SCIPRubyDecoder>(index, root_str);
   if (lang == "typescript")
     return std::make_unique<SCIPTSDecoder>(index, root_str);
   return nullptr;

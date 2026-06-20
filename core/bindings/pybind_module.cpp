@@ -34,6 +34,7 @@ using codeminer::core::CodeGraph;
 using codeminer::core::SCIPDecoderBase;
 using codeminer::core::SCIPGoDecoder;
 using codeminer::core::SCIPPythonDecoder;
+using codeminer::core::SCIPRubyDecoder;
 using codeminer::core::SCIPRustDecoder;
 using codeminer::core::SCIPTSDecoder;
 
@@ -51,11 +52,15 @@ make_decoder(const std::string &language, const std::string &index_file,
   if (language == "rust") {
     return std::make_unique<SCIPRustDecoder>(index_file, project_root);
   }
+  if (language == "ruby" || language == "rb") {
+    return std::make_unique<SCIPRubyDecoder>(index_file, project_root);
+  }
   if (language == "typescript" || language == "ts" || language == "js") {
     return std::make_unique<SCIPTSDecoder>(index_file, project_root);
   }
   throw std::invalid_argument("Unknown language: " + language +
-                              " (expected: python | go | rust | typescript)");
+                              " (expected: python | go | rust | ruby | "
+                              "typescript)");
 }
 
 py::dict vertex_to_dict(const CodeGraph::VertexData &v) {
@@ -123,7 +128,8 @@ classify_edge_layers_py(const std::vector<std::string> &edge_types) {
 } // namespace
 
 PYBIND11_MODULE(codeminer_core, m) {
-  m.doc() = "codeminer::core SCIP decoders (Python / Go / Rust / TypeScript).";
+  m.doc() =
+      "codeminer::core SCIP decoders (Python / Go / Rust / Ruby / TypeScript).";
 
   m.def("decode_scip", &decode_scip, py::arg("index_file"),
         py::arg("project_root") = std::optional<std::string>(std::nullopt),
@@ -135,7 +141,7 @@ Args:
     index_file: path to the decoded SCIP index file.
     project_root: project root directory (for language-specific config:
         go.mod / Cargo.toml). May be None.
-    language: one of "python", "go", "rust", "typescript".
+    language: one of "python", "go", "rust", "ruby", "typescript".
 
 Returns:
     dict with:

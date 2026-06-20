@@ -4,6 +4,7 @@
 
 #include "scip_decode_common.h"
 
+#include <filesystem>
 #include <utility>
 
 namespace codeminer::core {
@@ -66,6 +67,29 @@ void SubgraphBuilder::add_file_node(const std::string &file_path) {
   reset_scope_to_file(file_path);
 }
 
+void SubgraphBuilder::add_file_hierarchy(const std::string &file_path) {
+  std::filesystem::path file_fs(file_path);
+  auto dir = file_fs.parent_path();
+  while (!dir.empty() && dir != dir.parent_path()) {
+    std::string dir_str = dir.generic_string();
+    if (add_directory_if_needed(dir_str)) {
+      std::string parent = dir.parent_path().generic_string();
+      if (parent.empty()) {
+        parent = ROOT_NODE;
+      }
+      add_edge(parent, dir_str, EDGE_TYPE_CONTAIN);
+    }
+    dir = dir.parent_path();
+  }
+
+  add_file_node(file_path);
+  std::string parent = file_fs.parent_path().generic_string();
+  if (parent.empty()) {
+    parent = ROOT_NODE;
+  }
+  add_edge(parent, file_path, EDGE_TYPE_CONTAIN);
+}
+
 void SubgraphBuilder::add_symbol_node(const std::string &symbol, int line,
                                       std::optional<int> scope_start_line,
                                       std::optional<int> scope_end_line,
@@ -87,6 +111,15 @@ void SubgraphBuilder::add_symbol_reference(
     const std::string &symbol, const std::optional<std::string> &module_path,
     const std::string &symbol_type, std::optional<std::string> anchor_file,
     std::optional<int> anchor_line) {
+  add_symbol_reference_from(current_scope_, symbol, module_path, symbol_type,
+                            std::move(anchor_file), anchor_line);
+}
+
+void SubgraphBuilder::add_symbol_reference_from(
+    const std::string &source, const std::string &symbol,
+    const std::optional<std::string> &module_path,
+    const std::string &symbol_type, std::optional<std::string> anchor_file,
+    std::optional<int> anchor_line) {
   // Serial CodeGraph.add_symbol_reference: only populates attrs on FIRST
   // add. Subsequent refs leave the node alone (defs still overwrite via
   // add_symbol_node).
@@ -105,8 +138,7 @@ void SubgraphBuilder::add_symbol_reference(
   if (!anchor_file.has_value() && !current_file_.empty()) {
     anchor_file = current_file_;
   }
-  add_edge(current_scope_, symbol, EDGE_TYPE_REFERENCE, anchor_file,
-           anchor_line);
+  add_edge(source, symbol, EDGE_TYPE_REFERENCE, anchor_file, anchor_line);
 }
 
 void SubgraphBuilder::add_containment_edge(const std::string &target_symbol) {
@@ -132,6 +164,9 @@ void SubgraphBuilder::set_unified_name(const std::string &symbol,
     return;
   }
   node.data.unified_name = value;
+  if (!only_if_missing) {
+    node.updates_unified_name = true;
+  }
 }
 
 void SubgraphBuilder::update_current_scope(const std::string &symbol,
@@ -163,6 +198,17 @@ void SubgraphBuilder::exit_scopes_by_line(int current_line) {
   } else if (!current_file_.empty()) {
     reset_scope_to_file(current_file_);
   }
+}
+
+bool SubgraphBuilder::has_node(const std::string &name) const {
+  return subgraph_.nodes.find(name) != subgraph_.nodes.end();
+}
+
+const Subgraph::Node *SubgraphBuilder::node(const std::string &name) const {
+  auto it = subgraph_.nodes.find(name);
+  if (it == subgraph_.nodes.end())
+    return nullptr;
+  return &it->second;
 }
 
 void SubgraphBuilder::reset_scope_to_file(const std::string &file_symbol) {

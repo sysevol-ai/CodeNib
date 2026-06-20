@@ -23,6 +23,8 @@ def test_core_decoder_supported_languages_come_from_registry():
         "python",
         "go",
         "rust",
+        "ruby",
+        "rb",
         "typescript",
         "ts",
         "js",
