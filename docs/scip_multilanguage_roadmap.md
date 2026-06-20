@@ -273,15 +273,17 @@ missing=0 extra=89`, references `ref=0 cand=4725`.
 
 The final Kotlin promotion gate filters metadata-confirmed synthetic property
 accessors such as `getANY()` and `setOut()` while preserving the source
-property nodes they wrap. Reprocessing the same saved KotlinPoet 2.2.0 decoded
-artifact with the real source checkout now produces 1,477 vertices and 5,636
+property nodes they wrap. A fresh KotlinPoet 2.2.0 profile on the same
+`kotlinpoet/src/jvmMain/kotlin` target now produces 1,483 vertices and 5,680
 edges. Against the matching Kotlin LS graph, alignment has no missing
 definition symbols and no missing containment: symbols `ref=849 cand=860
 missing=0 extra=11`, containment `ref=849 cand=861 missing=0 extra=12`,
-references `ref=0 cand=4524`. The accepted extra surface is limited to
-source-valid definitions or compiler helpers that Kotlin LS omits from
-document symbols: a `CodeBlock.Builder` constructor, the `Dynamic` object and
-its explicit override methods, and `MemberName` data-class `copy()` /
+references `ref=0 cand=4568`. The same saved decoded artifact reprocesses to
+1,477 vertices, 5,636 edges, and references `ref=0 cand=4524`; both gates have
+the same 0-missing/11-extra definition surface. The accepted extra surface is
+limited to source-valid definitions or compiler helpers that Kotlin LS omits
+from document symbols: a `CodeBlock.Builder` constructor, the `Dynamic` object
+and its explicit override methods, and `MemberName` data-class `copy()` /
 `componentN()` helpers. A broad "generate getters for every field" rule was
 rejected because it cuts missing symbols at the cost of a much larger
 extra-symbol surface. Filtering top-level constants is also not accepted
@@ -584,14 +586,14 @@ fixture, `scip-dotnet` indexing took about 4.3-4.8s while Python decode/build
 was about 0.01s; on the small PHP Composer gate, LSP document-symbol collection
 took about 16.245s, SCIP indexing took about 0.551s, protoc decode took about
 0.008s, and Python graph decode took about 0.007s. On the `sbt/io` Scala gate,
-`scip-java` indexing
-took about 74.527s while protoc decode took about 0.099s, Python graph decode
-took about 2.156s, and range-index construction took about 0.069s. The Kotlin
-promotion reprocessed a saved decoded KotlinPoet artifact in about 4.7s for
-Python graph decode/build, but a fresh end-to-end Kotlin profile is still
-needed before adding a C++ decoder because the saved-artifact run excludes
-`scip-java` indexing time. Kotlin, PHP, and Scala should get C++ acceleration
-only after larger real-repo profiles show local decode/build is a material
+`scip-java` indexing took about 74.527s while protoc decode took about 0.099s,
+Python graph decode took about 2.156s, and range-index construction took about
+0.069s. On the KotlinPoet 2.2.0 Kotlin promotion profile, `scip-java` indexing
+took 61.914s, protoc decode took 0.150s, Python graph decode took 6.931s, and
+range-index construction took 0.008s. Local decode/build is about 10% of the
+end-to-end Kotlin cold-start graph time, so Kotlin does not cross the 20% C++
+acceleration gate yet. Kotlin, PHP, and Scala should get C++ acceleration only
+after larger real-repo profiles show local decode/build is a material
 bottleneck.
 
 ### Phase 6: Multi-Graph Python Surface
