@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 
+from codeminer.graph.code_graph import CodeGraph
 from codeminer.scip_interface import scip_indexer_java
 from codeminer.scip_interface.scip_decode_java import SCIPJavaGraphDecoder
 from codeminer.scip_interface.scip_indexer_java import (
@@ -239,6 +240,144 @@ def test_scip_kotlin_indexer_uses_kotlin_registry_command(tmp_path, monkeypatch)
         str(tmp_path / "out/index.scip"),
     ]
     assert indexer._get_decoder_class() is SCIPJavaGraphDecoder
+
+
+def test_scip_kotlin_indexer_filters_target_dir_after_decode(tmp_path):
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    (output_dir / "index.decoded").write_text(
+        """
+documents {
+  relative_path: "src/main/kotlin/app/Invoice.kt"
+  occurrences {
+    range: 0
+    range: 6
+    range: 13
+    symbol: "semanticdb maven . . app/Invoice#"
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#"
+    kind: Class
+    display_name: "Invoice"
+    signature_documentation {
+      relative_path: "src/main/kotlin/app/Invoice.kt"
+      language: "kotlin"
+      text: "class Invoice"
+    }
+  }
+}
+documents {
+  relative_path: "src/test/kotlin/app/InvoiceTest.kt"
+  occurrences {
+    range: 0
+    range: 6
+    range: 17
+    symbol: "semanticdb maven . . app/InvoiceTest#"
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/InvoiceTest#"
+    kind: Class
+    display_name: "InvoiceTest"
+    signature_documentation {
+      relative_path: "src/test/kotlin/app/InvoiceTest.kt"
+      language: "kotlin"
+      text: "class InvoiceTest"
+    }
+  }
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    graph = SCIPKotlinIndexer(tmp_path, output_dir=output_dir).run_pipeline(
+        skip_level="decode",
+        target_dir="src/main/kotlin",
+        reset_profiler=False,
+        report_profile=False,
+    )
+
+    assert graph is not None
+    assert "app/Invoice" in graph.name_to_vertex
+    assert "src/main/kotlin/app/Invoice.kt" in graph.name_to_vertex
+    assert "app/InvoiceTest" not in graph.name_to_vertex
+    assert "src/test/kotlin/app/InvoiceTest.kt" not in graph.name_to_vertex
+
+    saved = CodeGraph.load_graph(str(output_dir / "graph.pkl"))
+    assert "app/Invoice" in saved.name_to_vertex
+    assert "app/InvoiceTest" not in saved.name_to_vertex
+
+
+def test_scip_kotlin_indexer_filters_cached_graph_target_dir(tmp_path):
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    (output_dir / "index.decoded").write_text(
+        """
+documents {
+  relative_path: "src/main/kotlin/app/Invoice.kt"
+  occurrences {
+    range: 0
+    range: 6
+    range: 13
+    symbol: "semanticdb maven . . app/Invoice#"
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#"
+    kind: Class
+    display_name: "Invoice"
+    signature_documentation {
+      relative_path: "src/main/kotlin/app/Invoice.kt"
+      language: "kotlin"
+      text: "class Invoice"
+    }
+  }
+}
+documents {
+  relative_path: "src/test/kotlin/app/InvoiceTest.kt"
+  occurrences {
+    range: 0
+    range: 6
+    range: 17
+    symbol: "semanticdb maven . . app/InvoiceTest#"
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/InvoiceTest#"
+    kind: Class
+    display_name: "InvoiceTest"
+    signature_documentation {
+      relative_path: "src/test/kotlin/app/InvoiceTest.kt"
+      language: "kotlin"
+      text: "class InvoiceTest"
+    }
+  }
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    indexer = SCIPKotlinIndexer(tmp_path, output_dir=output_dir)
+    unfiltered = indexer.run_pipeline(
+        skip_level="decode",
+        reset_profiler=False,
+        report_profile=False,
+    )
+    assert unfiltered is not None
+    assert "app/InvoiceTest" in unfiltered.name_to_vertex
+
+    filtered = indexer.run_pipeline(
+        skip_level="graph",
+        target_dir="src/main/kotlin",
+        reset_profiler=False,
+        report_profile=False,
+    )
+
+    assert filtered is not None
+    assert "app/Invoice" in filtered.name_to_vertex
+    assert "app/InvoiceTest" not in filtered.name_to_vertex
+    saved = CodeGraph.load_graph(str(output_dir / "graph.pkl"))
+    assert "app/InvoiceTest" not in saved.name_to_vertex
 
 
 def test_scip_scala_indexer_uses_scala_registry_command(tmp_path, monkeypatch):

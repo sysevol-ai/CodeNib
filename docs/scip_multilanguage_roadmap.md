@@ -103,6 +103,9 @@ C++ acceleration for a newly promoted language is a separate gate:
   `make graph-route-alignment` installs the pinned toolchain, builds isolated
   reference/candidate route outputs, and compares them with the shared
   backend-alignment harness.
+- [x] Keep SCIP route-level path filtering centralized after decode so
+  `target_dir` and `exclude_patterns` compare the same source surface across
+  Java/Kotlin/Scala, C#, Ruby, and PHP candidate or active SCIP routes.
 
 Exit condition: future Codex or agent sessions can recover the long-term
 objective from versioned files without relying on chat history.
@@ -232,9 +235,20 @@ edges, and 31,613 reference edges; the generated candidate found `TypeSpec` and
 containment edges. After nested-owner normalization, backend alignment is still
 not promotion-green: symbols `ref=3050 cand=4507 missing=486 extra=1943`,
 containment `ref=3050 cand=4716 missing=486 extra=2152`, and references
-`ref=0 cand=31613`. The remaining gap is dominated by Kotlin object/companion
-property modeling, generated getter/property symbols, and source-set coverage
-differences; Kotlin therefore remains `candidate`.
+`ref=0 cand=31613`.
+
+The next Kotlin gate fixed a route-level comparison flaw rather than promoting
+the backend: SCIP decoded graphs now honor `target_dir` after decode, so
+KotlinPoet's candidate route can be compared against the same
+`kotlinpoet/src/jvmMain/kotlin` surface as the LSP route. Reprocessing the saved
+KotlinPoet 2.2.0 decoded SCIP artifact with that target reduced the candidate
+graph to 2,749 vertices, 9,835 edges, and 7,499 reference edges. Against the
+matching LSP graph, alignment is still not promotion-green but is now scoped to
+real modeling differences: symbols `ref=877 cand=1638 missing=179 extra=940`,
+containment `ref=877 cand=1708 missing=179 extra=1010`, references
+`ref=0 cand=7499`. The remaining gap is dominated by Kotlin object/companion
+property modeling, generated getter/property symbols, and symbol display
+normalization; Kotlin therefore remains `candidate`.
 
 Current Scala active status: the generated Gradle Scala 2.13 smoke runs
 through `scip-java index`, decodes `index.scip`, and builds a CodeGraph via the
@@ -365,11 +379,11 @@ from singleton methods, normalizes Ruby constructors to `initialize()`, lifts
 methods, drops `class << self` as a graph scope, and normalizes `::` display
 names. Generated SCIP-vs-ruby-lsp alignment is strict-green on the definition
 surface: `symbols ref=4 cand=4 missing=0 extra=0` and `contain ref=4 cand=4
-missing=0 extra=0`. The Ruby SCIP route also filters the generated project graph
-back to `target_dir=lib` and `exclude_patterns=vendor/**` after `scip-ruby`
-writes dependency symbols, preventing `vendor/bundle` from polluting source-route
-alignment. Reference counts remain informational in this gate (`scip-ruby`: 2,
-ruby-lsp: 0).
+missing=0 extra=0`. The shared SCIP route filter trims the generated project
+graph back to `target_dir=lib` and `exclude_patterns=vendor/**` after
+`scip-ruby` writes dependency symbols, preventing `vendor/bundle` from polluting
+source-route alignment. Reference counts remain informational in this gate
+(`scip-ruby`: 2, ruby-lsp: 0).
 
 Real-repo Ruby gate status: `ruby/rake` at commit
 `2dce6007988b302e07049f36d8528459ecf7ff01` was validated with a non-invasive

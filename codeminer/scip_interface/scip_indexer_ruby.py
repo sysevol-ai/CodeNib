@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import fnmatch
 import os
 import shutil
 import subprocess
@@ -18,7 +17,6 @@ from typing import TYPE_CHECKING, List, Optional, Union
 from ..languages import scip_cold_start_command_for_language
 from ..log_utils import get_logger
 from ..profiler import Profiler
-from ..types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, ROOT_NODE, is_symbol_node
 from .scip_indexer_base import SCIPIndexerBase
 
 if TYPE_CHECKING:
@@ -177,7 +175,6 @@ class SCIPRubyIndexer(SCIPIndexerBase):
             language="ruby",
             decoder_backend=decoder_backend,
         )
-        self._target_dir: str | None = None
 
     def _check_indexer_available(self) -> bool:
         command = scip_cold_start_command_for_language("ruby")
@@ -263,7 +260,6 @@ class SCIPRubyIndexer(SCIPIndexerBase):
         **kwargs,
     ):
         kwargs.pop("project_name", None)
-        self._target_dir = _normalize_rel_path(kwargs.pop("target_dir", None))
         return super().run_pipeline(
             output_file=output_file,
             skip_level=skip_level,
@@ -271,16 +267,6 @@ class SCIPRubyIndexer(SCIPIndexerBase):
             report_profile=report_profile,
             **kwargs,
         )
-
-    def process_index(self, output_file: Optional[str] = None):
-        graph = super().process_index(output_file=None)
-        if graph is None:
-            return None
-
-        graph = self._filter_project_graph(graph)
-        if output_file:
-            graph.save_graph(output_file)
-        return graph
 
     def _prepare_bundle(self, command: list[str], *, timeout: Optional[int]) -> bool:
         bundle_prefix = _bundle_prefix(command)
@@ -333,60 +319,6 @@ class SCIPRubyIndexer(SCIPIndexerBase):
     def _gem_metadata(self) -> str:
         return f"{self.project_root.name}@workspace"
 
-    def _filter_project_graph(self, graph):
-        if not self._target_dir and not self.exclude_patterns:
-            return graph
-
-        keep = [
-            vertex.index
-            for vertex in graph.graph.vs
-            if self._keep_vertex(vertex.attributes())
-        ]
-        if len(keep) == graph.graph.vcount():
-            return graph
-
-        graph.graph = graph.graph.subgraph(keep)
-        graph.name_to_vertex = {
-            vertex["name"]: vertex.index
-            for vertex in graph.graph.vs
-            if "name" in vertex.attributes()
-        }
-        graph.symbol_ranges = {
-            name: value
-            for name, value in graph.symbol_ranges.items()
-            if name in graph.name_to_vertex
-        }
-        graph._invalidate_edge_index()
-        graph.build_range_indexes()
-        return graph
-
-    def _keep_vertex(self, attrs: dict) -> bool:
-        node_type = attrs.get("type")
-        name = attrs.get("name")
-        if node_type == "root" or name == ROOT_NODE:
-            return True
-        if node_type in {NODE_TYPE_DIRECTORY, NODE_TYPE_FILE}:
-            return self._path_allowed(str(name), allow_target_ancestor=True)
-        if is_symbol_node(node_type):
-            path = _definition_path(attrs) or attrs.get("file")
-            return bool(path and self._path_allowed(str(path)))
-        return True
-
-    def _path_allowed(self, path: str, *, allow_target_ancestor: bool = False) -> bool:
-        rel_path = _normalize_rel_path(path)
-        if not rel_path:
-            return False
-        if self._target_dir:
-            in_target = rel_path == self._target_dir or rel_path.startswith(
-                f"{self._target_dir}/"
-            )
-            is_target_ancestor = allow_target_ancestor and self._target_dir.startswith(
-                f"{rel_path}/"
-            )
-            if not in_target and not is_target_ancestor:
-                return False
-        return not _matches_any(rel_path, self.exclude_patterns)
-
 
 def _bundle_prefix(command: list[str]) -> list[str]:
     if not command or Path(command[0]).name != "bundle":
@@ -427,36 +359,6 @@ def _gemfile_mentions_scip_ruby(gemfile: Path) -> bool:
         return "scip-ruby" in gemfile.read_text(encoding="utf-8")
     except OSError:
         return False
-
-
-def _definition_path(attrs: dict) -> str | None:
-    unified_name = attrs.get("unified_name")
-    if not unified_name or ":" not in unified_name:
-        return None
-    return _normalize_rel_path(unified_name.split(":", 1)[0])
-
-
-def _normalize_rel_path(path: str | None) -> str | None:
-    if path is None:
-        return None
-    normalized = str(path).strip().replace("\\", "/").strip("/")
-    return normalized or None
-
-
-def _matches_any(path: str, patterns: list[str]) -> bool:
-    return any(_matches_pattern(path, pattern) for pattern in patterns)
-
-
-def _matches_pattern(path: str, pattern: str) -> bool:
-    normalized = _normalize_rel_path(pattern)
-    if not normalized:
-        return False
-    if fnmatch.fnmatch(path, normalized):
-        return True
-    if normalized.endswith("/**"):
-        prefix = normalized[:-3]
-        return path == prefix or path.startswith(f"{prefix}/")
-    return False
 
 
 def _combine_command_output(stdout: str | None, stderr: str | None) -> str:

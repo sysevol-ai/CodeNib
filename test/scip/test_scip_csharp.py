@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from codeminer.graph.code_graph import CodeGraph
 from codeminer.scip_interface.scip_decode_csharp import SCIPCSharpGraphDecoder
 from codeminer.scip_interface.scip_indexer_csharp import SCIPCSharpIndexer
 from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
@@ -238,3 +239,58 @@ def test_scip_csharp_indexer_builds_registered_command(tmp_path, monkeypatch):
         str(tmp_path),
     ]
     assert indexer._get_decoder_class() is SCIPCSharpGraphDecoder
+
+
+def test_scip_csharp_indexer_filters_target_dir_after_decode(tmp_path):
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    (output_dir / "index.decoded").write_text(
+        """
+documents {
+  relative_path: "src/Program.cs"
+  occurrences {
+    range: 0
+    range: 6
+    range: 13
+    symbol: "scip-dotnet nuget . . Smoke/Program#"
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "scip-dotnet nuget . . Smoke/Program#"
+    documentation: "```cs\\nclass Program\\n```"
+  }
+}
+documents {
+  relative_path: "test/ProgramTests.cs"
+  occurrences {
+    range: 0
+    range: 6
+    range: 18
+    symbol: "scip-dotnet nuget . . Smoke.Tests/ProgramTests#"
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "scip-dotnet nuget . . Smoke.Tests/ProgramTests#"
+    documentation: "```cs\\nclass ProgramTests\\n```"
+  }
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    graph = SCIPCSharpIndexer(tmp_path, output_dir=output_dir).run_pipeline(
+        skip_level="decode",
+        target_dir="src",
+        reset_profiler=False,
+        report_profile=False,
+    )
+
+    assert graph is not None
+    assert "Smoke/Program" in graph.name_to_vertex
+    assert "src/Program.cs" in graph.name_to_vertex
+    assert "Smoke.Tests/ProgramTests" not in graph.name_to_vertex
+    assert "test/ProgramTests.cs" not in graph.name_to_vertex
+
+    saved = CodeGraph.load_graph(str(output_dir / "graph.pkl"))
+    assert "Smoke/Program" in saved.name_to_vertex
+    assert "Smoke.Tests/ProgramTests" not in saved.name_to_vertex

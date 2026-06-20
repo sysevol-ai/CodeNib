@@ -301,7 +301,6 @@ class SCIPPHPIndexer(SCIPIndexerBase):
         **kwargs,
     ):
         kwargs.pop("project_name", None)
-        kwargs.pop("target_dir", None)
         return super().run_pipeline(
             output_file=output_file,
             skip_level=skip_level,

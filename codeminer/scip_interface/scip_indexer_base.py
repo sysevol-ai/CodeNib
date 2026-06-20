@@ -7,6 +7,7 @@
 """
 Base class for SCIP indexers across different languages.
 """
+import fnmatch
 import os
 import subprocess
 from abc import ABC, abstractmethod
@@ -16,6 +17,7 @@ from typing import List, Optional, Union
 from ..graph.code_graph import CodeGraph
 from ..log_utils import get_logger
 from ..profiler import Profiler
+from ..types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, ROOT_NODE, is_symbol_node
 
 logger = get_logger("scip_indexer_base")
 
@@ -81,6 +83,34 @@ def extract_symbol(text: str) -> Optional[str]:
             i += 1
         return None
     return None
+
+
+def _normalize_rel_path(path: str | Path | None) -> str | None:
+    if path is None:
+        return None
+    normalized = Path(str(path).strip().replace("\\", "/")).as_posix().strip("/")
+    return normalized or None
+
+
+def _definition_path(attrs: dict) -> str | None:
+    unified_name = attrs.get("unified_name")
+    if isinstance(unified_name, str) and ":" in unified_name:
+        return unified_name.split(":", 1)[0]
+    return None
+
+
+def _matches_any(path: str, patterns: list[str]) -> bool:
+    for pattern in patterns:
+        normalized = _normalize_rel_path(pattern)
+        if normalized is None:
+            continue
+        if fnmatch.fnmatch(path, normalized):
+            return True
+        if normalized.endswith("/**"):
+            prefix = normalized[:-3]
+            if path == prefix or path.startswith(f"{prefix}/"):
+                return True
+    return False
 
 
 def extract_scip_blocks(text: str, keyword: str) -> List[str]:
@@ -195,6 +225,7 @@ class SCIPIndexerBase(ABC):
         self.decoded_file = self.output_dir / "index.decoded"
         self.graph_file = self.output_dir / "graph.pkl"
         self.exclude_patterns = exclude_patterns if exclude_patterns else []
+        self._target_dir: str | None = None
         self.profiler = profiler or Profiler(f"scip_{language}_indexer")
 
         # Path to the scip.proto file (shared across all indexers)
@@ -383,6 +414,7 @@ class SCIPIndexerBase(ABC):
                 )
                 graph: CodeGraph = decoder.decode()
             duration = section.duration
+            graph = self._filter_project_graph(graph)
 
             # Build line-range indexes once the graph is fully assembled.
             # Must happen before save_graph so the indexes are persisted.
@@ -392,7 +424,7 @@ class SCIPIndexerBase(ABC):
             if output_file:
                 with self.profiler.section("process_index.save_graph") as save_section:
                     output_path = Path(output_file)
-                    decoder.save_graph(str(output_path))
+                    graph.save_graph(str(output_path))
                 save_duration = save_section.duration
                 logger.info(f"Saved processed SCIP index to {output_path}")
                 logger.info(f"⏱️  Graph saving took: {save_duration:.2f} seconds")
@@ -443,12 +475,18 @@ class SCIPIndexerBase(ABC):
         # Use default graph file if output_file not specified
         if output_file is None:
             output_file = str(self.graph_file)
+        self._target_dir = _normalize_rel_path(kwargs.pop("target_dir", None))
 
         # Check graph cache if skip_level is 'graph'
         if skip_level == "graph" and self.graph_file.exists():
             logger.info(f"Loading cached graph from {self.graph_file}")
             try:
                 graph = CodeGraph.load_graph(str(self.graph_file))
+                if self._target_dir or self.exclude_patterns:
+                    graph = self._filter_project_graph(graph)
+                    graph.build_range_indexes()
+                    if output_file:
+                        graph.save_graph(output_file)
                 logger.info(
                     "✅ Successfully loaded cached graph "
                     f"({len(graph.graph.vs)} nodes, "
@@ -573,3 +611,63 @@ class SCIPIndexerBase(ABC):
         except Exception as e:
             logger.error(f"Error clearing cache: {e}")
             return False
+
+    def _filter_project_graph(self, graph: CodeGraph) -> CodeGraph:
+        """Apply route-level path filters after SCIP decode.
+
+        SCIP indexers often index more source sets than a route-level LSP
+        baseline. Filtering here keeps backend-alignment gates comparing the
+        same source surface and makes `target_dir` behave consistently across
+        SCIP-backed languages.
+        """
+        if not self._target_dir and not self.exclude_patterns:
+            return graph
+
+        keep = [
+            vertex.index
+            for vertex in graph.graph.vs
+            if self._keep_vertex(vertex.attributes())
+        ]
+        if len(keep) == graph.graph.vcount():
+            return graph
+
+        graph.graph = graph.graph.subgraph(keep)
+        graph.name_to_vertex = {
+            vertex["name"]: vertex.index
+            for vertex in graph.graph.vs
+            if "name" in vertex.attributes()
+        }
+        graph.symbol_ranges = {
+            name: value
+            for name, value in graph.symbol_ranges.items()
+            if name in graph.name_to_vertex
+        }
+        graph._invalidate_edge_index()
+        return graph
+
+    def _keep_vertex(self, attrs: dict) -> bool:
+        node_type = attrs.get("type")
+        name = attrs.get("name")
+        if node_type == "root" or name == ROOT_NODE:
+            return True
+        if node_type in {NODE_TYPE_DIRECTORY, NODE_TYPE_FILE}:
+            return self._path_allowed(str(name), allow_target_ancestor=True)
+        if is_symbol_node(node_type):
+            path = _definition_path(attrs) or attrs.get("file")
+            return bool(path and self._path_allowed(str(path)))
+        return True
+
+    def _path_allowed(self, path: str, *, allow_target_ancestor: bool = False) -> bool:
+        rel_path = _normalize_rel_path(path)
+        if not rel_path:
+            return False
+        if self._target_dir:
+            in_target = rel_path == self._target_dir or rel_path.startswith(
+                f"{self._target_dir}/"
+            )
+            is_target_ancestor = allow_target_ancestor and self._target_dir.startswith(
+                f"{rel_path}/"
+            )
+            if not in_target and not is_target_ancestor:
+                return False
+        return not _matches_any(rel_path, self.exclude_patterns)
