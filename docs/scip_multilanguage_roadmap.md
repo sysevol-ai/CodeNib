@@ -670,17 +670,13 @@ Issue triage rules:
 
 Current issue triage notes from June 20, 2026:
 
-- PR #248 is not ready to merge. It is non-draft and mergeable, but the latest
-  `unit` check failed because the self-hosted runner's login profile activated a
-  global Anaconda Python where `tree_sitter_language_pack` could not load the
-  `python` grammar. The local fix sets `remove-profiles: true` for the unit job
-  and shared setup action; merge only after the PR or its base includes that CI
-  environment fix and the unit check is rerun green.
-- #198 is not ready to close. One concrete blocker is fixed locally: BM25 and
-  graph retrieve pipelines now build graphs through `LSIndexer` instead of
-  instantiating abstract SCIP base classes, and regression tests cover language
-  routing. The broader baseline-evaluation issue still has remaining acceptance
-  criteria.
+- PR #248 remains open and is outside this SCIP roadmap. It is an
+  agent-compile/Qwen backend PR with green CodeQL checks; its `unit` job is
+  still queued on the offline self-hosted runner, so it should be evaluated as
+  agent-compile work rather than merged as part of this roadmap.
+- #198 is closed. It no longer has open roadmap action for the multi-language
+  SCIP cold-start and acceleration program.
+- #252 is a Repository Guardian RFC and remains open.
 - #199 is an enterprise index-storage RFC and remains open.
 - #133 is an agent-compile RFC and remains open because the query-time
   skill-selection mechanism is still tracked as follow-up work.
