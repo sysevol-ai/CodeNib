@@ -412,7 +412,7 @@ scip-candidates-all: scip-cold-start-tools-all
 
 scip-cold-start-env:
 	@echo "SCIP cold-start tools installed under: $(CODEMINER_SCIP_TOOLS_DIR)"
-	@echo "Use this environment for active Java/C#/Scala/PHP and candidate Kotlin/Ruby smoke runs:"
+	@echo "Use this environment for active Java/Kotlin/Scala/C#/Ruby/PHP smoke runs:"
 	@echo "  export CODEMINER_SCIP_TOOLS_DIR=$(CODEMINER_SCIP_TOOLS_DIR)"
 	@echo "  export DOTNET_ROOT=$(CODEMINER_SCIP_TOOLS_DIR)/dotnet"
 	@echo "  export GEM_HOME=$(CODEMINER_SCIP_TOOLS_DIR)/gems"
