@@ -249,7 +249,7 @@ real modeling differences: symbols `ref=849 cand=1638 missing=146 extra=935`,
 containment `ref=849 cand=1708 missing=146 extra=1005`, references
 `ref=0 cand=7499`. The remaining gap is dominated by Kotlin object/companion
 property modeling, generated getter/property symbols, and symbol display
-normalization; Kotlin therefore remains `candidate`.
+normalization; Kotlin therefore remained `candidate` at this intermediate gate.
 
 A Kotlin-specific decoder follow-up now removes the largest non-source
 definition noise from that same target-dir gate: parameter descriptors including
