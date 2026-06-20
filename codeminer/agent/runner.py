@@ -160,6 +160,7 @@ class AgentRunner:
         retry: Optional[RetryConfig] = None,
         force_localization_contract: bool = True,
         first_turn_tool_choice: Optional[str] = None,
+        force_first_turn_only: bool = False,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -221,6 +222,9 @@ class AgentRunner:
         # this off and skip the schema-forcing final turn entirely.
         self._force_contract = force_localization_contract
         self.first_turn_tool_choice = first_turn_tool_choice
+        # When True, only turn 0 is forced (legacy single-turn behaviour);
+        # default False = force until the agent reads a file.
+        self._force_first_turn_only = force_first_turn_only
 
         # Resource guard: filter unavailable skills and collect warnings.
         # The "base" allow / exclude are stored so we can recompute the
@@ -393,6 +397,7 @@ class AgentRunner:
         all_tool_calls: List[ToolCallRecord] = []
         usage_tracker = UsageTracker()
         start = time.monotonic()
+        has_read = False  # has the agent read a file yet (gates forced tools)
 
         for turn in range(max_turns):
             logger.debug("agent turn %d/%d", turn + 1, max_turns)
@@ -403,14 +408,18 @@ class AgentRunner:
             }
             if tools:
                 call_kwargs["tools"] = tools
-                # Force at least one tool call on the FIRST turn. Claude calls
-                # tools eagerly under the default tool_choice="auto", but weaker
-                # open models (e.g. Qwen2.5-Coder) answer in one shot without
-                # exploring — turning the agent loop into a no-op. Requiring a
-                # tool call on turn 0 makes them actually grep/read; subsequent
-                # turns stay "auto" so the model is free to commit its answer.
-                if turn == 0 and self.first_turn_tool_choice:
-                    call_kwargs["tool_choice"] = self.first_turn_tool_choice
+                # Force tool calls until the agent has actually READ a file.
+                # Claude calls tools eagerly under "auto", but weaker open models
+                # (Qwen2.5-Coder) answer one-shot — and 32B in particular would
+                # fire ONE grep, get 0 hits, then commit a blind answer from the
+                # pre-load candidates without ever reading code (4% read rate vs
+                # 86% for 14B). The localization contract requires reading the
+                # file you cite, so keep tool_choice forced until a read happens;
+                # then drop to "auto" so the model is free to commit. Bounded by
+                # first_turn_only for the old single-turn behaviour.
+                if self.first_turn_tool_choice and not has_read:
+                    if not (self._force_first_turn_only and turn > 0):
+                        call_kwargs["tool_choice"] = self.first_turn_tool_choice
 
             response = self.llm._call_raw(history.get_messages(), **call_kwargs)
             choice = response.choices[0]
@@ -451,6 +460,10 @@ class AgentRunner:
             for tc in tool_calls:
                 record = self._execute_tool_call(tc)
                 all_tool_calls.append(record)
+                # A successful read satisfies the "read before answering"
+                # contract; once it happens, stop forcing tool calls.
+                if record.skill_id == "read" and record.error is None:
+                    has_read = True
 
                 # Append tool response message
                 history.add_message(
