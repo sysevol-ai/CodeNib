@@ -510,12 +510,18 @@ class SCIPKotlinGraphDecoder(SCIPJavaGraphDecoder):
     _KOTLIN_PARAMETER_DESCRIPTOR_RE = re.compile(r"(?:\(\)|\(\+\d+\))\.\([^)]+\)$")
     _KOTLIN_TYPE_PARAMETER_DESCRIPTOR_RE = re.compile(r"(?:#|\.)\[[^\]]+\]$")
     _KOTLIN_SYNTHETIC_GETTER_DESCRIPTOR_RE = re.compile(r"#get[A-Z][^/#.]*\(\)\.$")
+    _KOTLIN_PROPERTY_ACCESSOR_DESCRIPTOR_RE = re.compile(
+        r"(?:^|[#/])(?:get|set)[A-Z_][^/#.]*\(\)\.$"
+    )
     _KOTLIN_OVERLOAD_DESCRIPTOR_RE = re.compile(r"\(\+\d+\)\.$")
     _kotlin_parser = None
 
     def _collect_symbol_info(self, documents: list[str]) -> None:
         self._kotlin_generated_enum_helper_descriptors = (
             self._collect_generated_enum_helper_descriptors(documents)
+        )
+        self._kotlin_generated_property_accessor_descriptors = (
+            self._collect_generated_property_accessor_descriptors(documents)
         )
         super()._collect_symbol_info(documents)
 
@@ -605,7 +611,18 @@ class SCIPKotlinGraphDecoder(SCIPJavaGraphDecoder):
             or self._KOTLIN_SYNTHETIC_GETTER_DESCRIPTOR_RE.search(descriptor)
             or descriptor
             in getattr(self, "_kotlin_generated_enum_helper_descriptors", set())
+            or descriptor
+            in getattr(
+                self,
+                "_kotlin_generated_property_accessor_descriptors",
+                set(),
+            )
         )
+
+    def _symbol_type_from_block(self, block: str, original_symbol: str) -> str:
+        if "```kotlin\\nfield:" in block:
+            return NODE_TYPE_FIELD
+        return super()._symbol_type_from_block(block, original_symbol)
 
     def _collect_generated_enum_helper_descriptors(
         self, documents: list[str]
@@ -633,6 +650,61 @@ class SCIPKotlinGraphDecoder(SCIPJavaGraphDecoder):
         if descriptor.endswith("#valueOf()."):
             return "static fun valueOf(value: String):" in block
         return False
+
+    def _collect_generated_property_accessor_descriptors(
+        self, documents: list[str]
+    ) -> set[str]:
+        descriptors: set[str] = set()
+        for document in documents:
+            file_path = self._document_file_path(document)
+            if not file_path or not self._is_source_file(file_path):
+                continue
+            for block in extract_scip_blocks(document, "symbols"):
+                symbol = extract_symbol(block)
+                descriptor = self._symbol_descriptor(symbol)
+                if descriptor and self._is_generated_property_accessor_block(
+                    descriptor,
+                    block,
+                ):
+                    descriptors.add(descriptor)
+        return descriptors
+
+    def _is_generated_property_accessor_block(
+        self,
+        descriptor: str,
+        block: str,
+    ) -> bool:
+        if not self._KOTLIN_PROPERTY_ACCESSOR_DESCRIPTOR_RE.search(descriptor):
+            return False
+        display_name = self._display_name_from_block(block)
+        if not display_name:
+            return False
+
+        accessor_name = descriptor.rstrip(".").rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+        accessor_name = accessor_name.removesuffix("()")
+        if accessor_name.startswith("get"):
+            stem = accessor_name[3:]
+            signature_re = r'documentation:\s*"```kotlin\\n[^"]*\bget\(\):'
+        elif accessor_name.startswith("set"):
+            stem = accessor_name[3:]
+            signature_re = r'documentation:\s*"```kotlin\\n[^"]*\bset\(value\b'
+        else:
+            return False
+
+        if not self._accessor_stem_matches_display_name(stem, display_name):
+            return False
+        return bool(re.search(signature_re, block))
+
+    def _accessor_stem_matches_display_name(
+        self,
+        stem: str,
+        display_name: str,
+    ) -> bool:
+        if stem == display_name:
+            return True
+        if not stem:
+            return False
+        return stem[:1].lower() + stem[1:] == display_name
 
     def _is_constructor_key(self, key: str) -> bool:
         return False

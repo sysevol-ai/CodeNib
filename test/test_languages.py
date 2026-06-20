@@ -175,8 +175,8 @@ def test_language_capability_rows_track_parity_applicability():
     assert rows["kotlin"].chunker is True
     assert rows["kotlin"].ground_truth is True
     assert rows["kotlin"].agent is True
-    assert rows["kotlin"].graph_backend == "lsp"
-    assert rows["kotlin"].scip_cold_start == "candidate"
+    assert rows["kotlin"].graph_backend == "scip"
+    assert rows["kotlin"].scip_cold_start == "active"
     assert rows["kotlin"].incremental_backend is None
     assert rows["kotlin"].core_decoder is False
     assert rows["kotlin"].core_parity == "n/a-no-core-decoder"
@@ -202,6 +202,7 @@ def test_scip_cold_start_options_track_active_and_candidate_paths(monkeypatch):
 
     assert options["java"].status == "active"
     assert options["java"].tool == "scip-java"
+    assert options["kotlin"].status == "active"
     assert options["kotlin"].tool == "scip-java"
     assert options["scala"].status == "active"
     assert options["scala"].tool == "scip-java"
@@ -384,12 +385,11 @@ def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
     assert graph_decoder_path("ruby").endswith("scip_decode_ruby:SCIPRubyGraphDecoder")
     assert graph_cold_start_backend("ruby") == "scip"
 
-    for language in ("kotlin",):
-        assert graph_indexer_path(language).endswith("lsp_indexer:GenericLSPIndexer")
-        assert graph_decoder_path(language).endswith(
-            "lsp_graph_decode:GenericLSPGraphDecoder"
-        )
-        assert graph_cold_start_backend(language) == "lsp"
+    assert graph_indexer_path("kotlin").endswith("scip_indexer_java:SCIPKotlinIndexer")
+    assert graph_decoder_path("kotlin").endswith(
+        "scip_decode_java:SCIPKotlinGraphDecoder"
+    )
+    assert graph_cold_start_backend("kotlin") == "scip"
 
     for language in ("swift", "lua"):
         assert graph_indexer_path(language) is None

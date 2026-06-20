@@ -31,7 +31,7 @@ from codeminer.ls_router import LSGraphDecoder, LSIndexer, build_graph_for_langu
         ("scala", "SCIPScalaIndexer"),
         ("ruby", "RubyHybridIndexer"),
         ("php", "PHPHybridIndexer"),
-        ("kotlin", "GenericLSPIndexer"),
+        ("kotlin", "SCIPKotlinIndexer"),
     ],
 )
 def test_ls_indexer_uses_registry_delegate(tmp_path, language, delegate_class):
@@ -80,6 +80,19 @@ def test_ls_indexer_lsp_route_preserves_java_lsp_backend_after_promotion(tmp_pat
     assert lsp._delegate.__class__.__name__ == "GenericLSPIndexer"
 
 
+def test_ls_indexer_lsp_route_preserves_kotlin_lsp_backend_after_promotion(tmp_path):
+    active = LSIndexer(tmp_path, language="kotlin", output_dir=tmp_path / "active")
+    lsp = LSIndexer(
+        tmp_path,
+        language="kotlin",
+        output_dir=tmp_path / "lsp",
+        graph_route="lsp",
+    )
+
+    assert active._delegate.__class__.__name__ == "SCIPKotlinIndexer"
+    assert lsp._delegate.__class__.__name__ == "GenericLSPIndexer"
+
+
 @pytest.mark.parametrize(
     "language",
     [
@@ -89,6 +102,7 @@ def test_ls_indexer_lsp_route_preserves_java_lsp_backend_after_promotion(tmp_pat
         "typescript",
         "javascript",
         "java",
+        "kotlin",
         "csharp",
         "ruby",
         "php",
@@ -149,7 +163,7 @@ def test_ls_indexer_passes_decoder_backend_only_to_scip(tmp_path):
         ("scala", "SCIPJavaGraphDecoder"),
         ("ruby", "SCIPRubyGraphDecoder"),
         ("php", "SCIPPHPGraphDecoder"),
-        ("kotlin", "GenericLSPGraphDecoder"),
+        ("kotlin", "SCIPKotlinGraphDecoder"),
     ],
 )
 def test_ls_graph_decoder_uses_registry_delegate(tmp_path, language, delegate_class):

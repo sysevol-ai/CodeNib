@@ -356,15 +356,19 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_extensions=(".kt", ".kts"),
         agent_languages=("kotlin",),
         agent_aliases=(("kotlin", "kotlin"), ("kt", "kotlin")),
-        cold_start_backend="lsp",
-        graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
-        graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_java:SCIPKotlinIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_java:SCIPKotlinGraphDecoder",
         scip_cold_start=ScipColdStartOption(
             tool="scip-java",
-            status="candidate",
+            status="active",
             command=("scip-java", "index"),
             command_env="CODEMINER_KOTLIN_SCIP_CMD",
-            note="Evaluate through the JVM scip-java path before promoting over Kotlin LSP.",
+            note=(
+                "Primary Kotlin cold-start backend after generated and "
+                "KotlinPoet 2.2.0 LSP alignment gates; use graph_route='lsp' "
+                "for Kotlin LSP regression checks."
+            ),
         ),
         scip_candidate_indexer="codeminer.scip_interface.scip_indexer_java:SCIPKotlinIndexer",
         lsp_language_id="kotlin",

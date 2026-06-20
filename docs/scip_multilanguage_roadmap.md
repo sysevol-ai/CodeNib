@@ -21,15 +21,14 @@ The language registry records SCIP cold-start state explicitly:
 
 | State | Languages | Meaning |
 | --- | --- | --- |
-| `active` | Python, Go, Rust, C#, Java, Ruby, Scala, JavaScript, TypeScript, PHP | Routed through existing SCIP cold-start paths. Ruby and PHP use hybrid active routes: prepared Bundler/Composer projects prefer SCIP and loose or unprepared projects fall back to LSP. Scala is active through `scip-java` for Scala 2.x Gradle/SBT projects without a registered LSP baseline. |
-| `candidate` | Kotlin | Known SCIP indexer exists, but CodeMiner must still prove smoke, decoder, alignment, and parity gates before routing it. |
+| `active` | Python, Go, Rust, C#, Java, Kotlin, Ruby, Scala, JavaScript, TypeScript, PHP | Routed through existing SCIP cold-start paths. Ruby and PHP use hybrid active routes: prepared Bundler/Composer projects prefer SCIP and loose or unprepared projects fall back to LSP. Kotlin and Scala are active through `scip-java`; Scala is limited to Scala 2.x Gradle/SBT projects without a registered LSP baseline. |
+| `candidate` | none | No candidate SCIP backend is currently waiting on promotion gates. |
 | `none` | C++, Swift, Lua | No accepted SCIP cold-start plan in CodeMiner today. C++ uses clangd-style graph indexing. |
 
-Generic LSP graph support for Java, C#, Ruby, and PHP remains available through
-`graph_route="lsp"` for regression checks and for loose-file fallback. Generic
-LSP graph support for Kotlin must remain usable while its SCIP candidate is
-evaluated. Scala has no registered LSP graph route today; its active graph
-support is the `scip-java` route only.
+Generic LSP graph support for Java, C#, Kotlin, Ruby, and PHP remains available
+through `graph_route="lsp"` for regression checks and for loose-file fallback.
+Scala has no registered LSP graph route today; its active graph support is the
+`scip-java` route only.
 
 ## Layered Goal
 
@@ -184,14 +183,14 @@ allows it.
 - [x] Decide whether Kotlin needs language-specific symbol normalization.
 - [x] Run Scala smoke and decide whether Metals alignment is required before
   graph support is enabled.
-- [ ] Promote Kotlin only after real-repo LSP-vs-SCIP alignment is acceptable.
+- [x] Promote Kotlin only after real-repo LSP-vs-SCIP alignment is acceptable.
 - [x] Promote Scala independently from Java after generated Scala 2.13 smoke,
   real SBT project smoke, and the no-LSP-baseline decision are recorded.
 
 Exit condition: each JVM language has an explicit graph backend decision and no
 registry row implies unsupported behavior.
 
-Current Kotlin candidate status: the generated Gradle smoke project runs
+Current Kotlin active status: the generated Gradle smoke project runs
 through `scip-java index`, decodes `index.scip`, and builds a CodeGraph via the
 shared JVM decoder. Kotlin needs two normalization rules beyond Java:
 `.kt` documents are accepted by the decoder, and member containment falls back
@@ -206,9 +205,10 @@ Generated Kotlin alignment status: the same Gradle smoke root runs through the
 current Kotlin LS route and aligns strict-green against the SCIP candidate for
 definition symbols and containment: `missing_symbols=[]`, `extra_symbols=[]`,
 `missing_containment=[]`, `extra_containment=[]`. Reference counts differ
-(`scip-java`: 6, Kotlin LS: 0) and remain informational. Kotlin remains
-`candidate` until a real-repo Kotlin sample or CI gate proves the same behavior;
-the active `LSIndexer(language="kt")` route remains the generic Kotlin LSP path.
+(`scip-java`: 6, Kotlin LS: 0) and remain informational. The active
+`LSIndexer(language="kt")` route now uses `SCIPKotlinIndexer`; the generic
+Kotlin LSP path remains available through `graph_route="lsp"` for regression
+checks.
 
 Kotlin tooling note: in local probes, a Maven-shaped Kotlin project did not emit
 `index.scip` or `.semanticdb` artifacts through `scip-java`; the generated smoke
@@ -266,21 +266,28 @@ top-level functions, explicit property getter nodes, and top-level `object`
 override function aliases from `.kt` source when scip-java omits the LSP-facing
 definition surface, using file-scoped keys when an external/reference vertex
 already owns the raw SCIP key. Reprocessing the saved KotlinPoet 2.2.0 decoded
-artifact with the real source checkout still produces 1,562 vertices and 5,923
-edges, but containment alignment is now strict-green for the shared definition
-surface: symbols `ref=849 cand=936 missing=0 extra=87`, containment
-`ref=849 cand=938 missing=0 extra=89`, references `ref=0 cand=4725`. The
-remaining candidate work is now dominated by extra synthetic/public members,
-not missing definition symbols or missing containment. The current extra-symbol
-surface includes data-class/object generated members such as `copy()` and
-`componentN()`, top-level constants, and implementation-detail methods that
-Kotlin LS omits from its document-symbol surface. A broad "generate getters for
-every field" rule was rejected because it cuts missing symbols at the cost of a
-much larger extra-symbol surface. Filtering top-level constants is also not
-accepted yet because those are often useful retrieval symbols even when the LSP
-baseline does not report them. Filtering data-class helpers needs stronger
-metadata than name shape alone because explicit `copy()`/`componentN()` methods
-are valid Kotlin source. Kotlin therefore remains `candidate`.
+artifact with the real source checkout produced 1,562 vertices and 5,923
+edges, with strict-green containment for the shared definition surface:
+symbols `ref=849 cand=936 missing=0 extra=87`, containment `ref=849 cand=938
+missing=0 extra=89`, references `ref=0 cand=4725`.
+
+The final Kotlin promotion gate filters metadata-confirmed synthetic property
+accessors such as `getANY()` and `setOut()` while preserving the source
+property nodes they wrap. Reprocessing the same saved KotlinPoet 2.2.0 decoded
+artifact with the real source checkout now produces 1,477 vertices and 5,636
+edges. Against the matching Kotlin LS graph, alignment has no missing
+definition symbols and no missing containment: symbols `ref=849 cand=860
+missing=0 extra=11`, containment `ref=849 cand=861 missing=0 extra=12`,
+references `ref=0 cand=4524`. The accepted extra surface is limited to
+source-valid definitions or compiler helpers that Kotlin LS omits from
+document symbols: a `CodeBlock.Builder` constructor, the `Dynamic` object and
+its explicit override methods, and `MemberName` data-class `copy()` /
+`componentN()` helpers. A broad "generate getters for every field" rule was
+rejected because it cuts missing symbols at the cost of a much larger
+extra-symbol surface. Filtering top-level constants is also not accepted
+because those are useful retrieval symbols even when a given LSP baseline does
+not report them. Kotlin is now `active` in the registry, while
+`graph_route="lsp"` remains available for Kotlin LSP regression checks.
 
 Current Scala active status: the generated Gradle Scala 2.13 smoke runs
 through `scip-java index`, decodes `index.scip`, and builds a CodeGraph via the
@@ -568,7 +575,7 @@ C++ decoder because `ruby/rake` made local decode the hot path: serial
 `process_index` took 7.58s, the C++ backend took 1.04s, and the filtered
 `lib/` graph matched exactly with 815 nodes, 3,466 edges, zero missing/extra
 names, zero edge-multiset differences, and zero vertex-attribute differences.
-Java, C#, PHP, and Scala are active SCIP routes but remain serial-only because
+Java, C#, Kotlin, PHP, and Scala are active SCIP routes but remain serial-only because
 profiling shows external tooling dominates cold-start time: on
 `jitpack/maven-simple`,
 `scip-java` indexing took about 5.98s while protoc decode took 0.01s, Python
@@ -579,11 +586,13 @@ took about 16.245s, SCIP indexing took about 0.551s, protoc decode took about
 0.008s, and Python graph decode took about 0.007s. On the `sbt/io` Scala gate,
 `scip-java` indexing
 took about 74.527s while protoc decode took about 0.099s, Python graph decode
-took about 2.156s, and range-index construction took about 0.069s. Kotlin
-remains serial-only until its promotion gate is green and profiling shows local
-decode/build time crosses the C++ gate. PHP and Scala should get C++
-acceleration only after larger real-repo profiles show local decode/build is a
-material bottleneck.
+took about 2.156s, and range-index construction took about 0.069s. The Kotlin
+promotion reprocessed a saved decoded KotlinPoet artifact in about 4.7s for
+Python graph decode/build, but a fresh end-to-end Kotlin profile is still
+needed before adding a C++ decoder because the saved-artifact run excludes
+`scip-java` indexing time. Kotlin, PHP, and Scala should get C++ acceleration
+only after larger real-repo profiles show local decode/build is a material
+bottleneck.
 
 ### Phase 6: Multi-Graph Python Surface
 

@@ -19,7 +19,7 @@ from codeminer.scip_interface.scip_indexer_java import (
     SCIPKotlinIndexer,
     SCIPScalaIndexer,
 )
-from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
+from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE, NODE_TYPE_FIELD
 
 JAVA_INDEX = """
 metadata {
@@ -930,6 +930,91 @@ documents {
         _target=graph.name_to_vertex["app/Factory#Companion#create"],
     )
     assert contain["type"] == EDGE_TYPE_CONTAIN
+
+
+def test_scip_kotlin_decoder_filters_metadata_property_accessors(tmp_path):
+    index = tmp_path / "index.decoded"
+    index.write_text(
+        """
+documents {
+  relative_path: "src/main/kotlin/app/Config.kt"
+  occurrences {
+    range: 0
+    range: 12
+    range: 17
+    symbol: "semanticdb maven . . app/VALUE."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 12
+    range: 17
+    symbol: "semanticdb maven . . app/getVALUE()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 6
+    range: 9
+    symbol: "semanticdb maven . . app/Box#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 3
+    range: 14
+    range: 18
+    symbol: "semanticdb maven . . app/Box#name."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 3
+    range: 14
+    range: 18
+    symbol: "semanticdb maven . . app/Box#setName()."
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/VALUE."
+    documentation: "```kotlin\\nfield:public final val VALUE: String\\n```"
+    display_name: "VALUE"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/getVALUE()."
+    documentation: "```kotlin\\npublic get(): String\\n```"
+    display_name: "VALUE"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Box#"
+    kind: Class
+    display_name: "Box"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Box#name."
+    documentation: "```kotlin\\nprivate final var name: String\\n```"
+    display_name: "name"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Box#setName()."
+    documentation: "```kotlin\\nprivate set(value: String): Unit\\n```"
+    display_name: "name"
+  }
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    graph = SCIPKotlinGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+
+    assert "app/getVALUE" not in graph.name_to_vertex
+    assert "app/Box#setName" not in graph.name_to_vertex
+
+    value = graph.graph.vs[graph.name_to_vertex["app/VALUE"]]
+    assert value["type"] == NODE_TYPE_FIELD
+    assert value["unified_name"] == "src/main/kotlin/app/Config.kt:VALUE"
+
+    name = graph.graph.vs[graph.name_to_vertex["app/Box#name"]]
+    assert name["type"] == NODE_TYPE_FIELD
+    assert name["unified_name"] == "src/main/kotlin/app/Config.kt:Box.name"
 
 
 def test_scip_java_decoder_normalizes_nested_kotlin_owner_and_overload_suffix(

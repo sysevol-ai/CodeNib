@@ -29,7 +29,7 @@ python scripts/language_capability_matrix.py --check docs/language_capabilities.
 | Java | yes | yes | yes | scip | active | none | yes | no | n/a-no-core-decoder |
 | Ruby | yes | yes | yes | scip | active | none | yes | yes | covered |
 | PHP | yes | yes | yes | scip | active | none | yes | no | n/a-no-core-decoder |
-| Kotlin | yes | yes | yes | lsp | candidate | none | yes | no | n/a-no-core-decoder |
+| Kotlin | yes | yes | yes | scip | active | none | yes | no | n/a-no-core-decoder |
 | Swift | yes | yes | yes | none | none | none | no | no | n/a-tree-sitter-only |
 | Scala | yes | yes | yes | scip | active | none | no | no | n/a-no-core-decoder |
 | Lua | yes | yes | yes | none | none | none | no | no | n/a-tree-sitter-only |
