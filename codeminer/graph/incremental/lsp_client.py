@@ -152,12 +152,24 @@ def resolve_lsp_binary(binary: str) -> Optional[str]:
     return None
 
 
-def _lsp_process_env(language: str) -> dict[str, str]:
+def _lsp_process_env(
+    language: str,
+    project_root: str | Path | None = None,
+) -> dict[str, str]:
     env = os.environ.copy()
     # Bypass a repository-pinned Rust toolchain so rust-analyzer uses the
     # CodeMiner-selected toolchain instead.
     if language == "rust":
         env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
+
+    if language == "ruby":
+        env.pop("GEM_PATH", None)
+        gemfile = env.get("CODEMINER_RUBY_BUNDLE_GEMFILE") or env.get("BUNDLE_GEMFILE")
+        if gemfile:
+            gemfile_path = Path(gemfile).expanduser()
+            if not gemfile_path.is_absolute() and project_root is not None:
+                gemfile_path = Path(project_root) / gemfile_path
+            env["BUNDLE_GEMFILE"] = str(gemfile_path)
 
     dotnet_root = Path.home() / ".dotnet"
     if "DOTNET_ROOT" not in env and (dotnet_root / "dotnet").exists():
@@ -255,7 +267,7 @@ class LSPClient:
                 will analyze the project in the background.
         """
         logger.info(f"Starting LSP server: {' '.join(self.command)}")
-        env = _lsp_process_env(self.language)
+        env = _lsp_process_env(self.language, self.project_root)
         self.process = subprocess.Popen(
             self.command,
             stdin=subprocess.PIPE,

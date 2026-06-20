@@ -141,3 +141,15 @@ def test_lsp_process_env_exposes_user_dotnet_install(tmp_path, monkeypatch):
         str(dotnet_root),
         str(dotnet_root / "tools"),
     ]
+
+
+def test_lsp_process_env_uses_ruby_overlay_bundle_gemfile(tmp_path, monkeypatch):
+    from codeminer.graph.incremental import lsp_client
+
+    monkeypatch.setenv("CODEMINER_RUBY_BUNDLE_GEMFILE", ".codeminer/Gemfile")
+    monkeypatch.setenv("GEM_PATH", "/tmp/global-gems")
+
+    env = lsp_client._lsp_process_env("ruby", tmp_path)
+
+    assert env["BUNDLE_GEMFILE"] == str(tmp_path / ".codeminer/Gemfile")
+    assert "GEM_PATH" not in env

@@ -200,7 +200,17 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
         return key
 
     def _definition_display_name(self, info, file_path: str, line: int) -> str:
+        nested_display = self._nested_method_display_name(info, file_path)
+        if nested_display:
+            return nested_display
+
         display_name = info.display_name
+        display_name = self._top_level_singleton_display_name(
+            info,
+            file_path=file_path,
+            line=line,
+            display_name=display_name,
+        )
         if not display_name.endswith("=()"):
             return display_name
         if info.symbol_type not in {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}:
@@ -210,6 +220,54 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
         ):
             return display_name
         return f"{display_name[:-3]}()"
+
+    def _nested_method_display_name(self, info, file_path: str) -> str | None:
+        if info.symbol_type not in {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}:
+            return None
+        parent_display = self._current_method_scope_display(file_path)
+        if not parent_display:
+            return None
+        _, member = self._split_owner_member(info.key)
+        if not member:
+            return None
+        return f"{parent_display}.{member}()"
+
+    def _current_method_scope_display(self, file_path: str) -> str | None:
+        scope = self.code_graph.current_scope
+        if not scope or scope == self.code_graph.current_file:
+            return None
+        vid = self.code_graph.name_to_vertex.get(scope)
+        if vid is None:
+            return None
+        vertex = self.code_graph.graph.vs[vid]
+        attrs = vertex.attributes()
+        if attrs.get("type") not in {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}:
+            return None
+        unified_name = attrs.get("unified_name")
+        prefix = f"{file_path}:"
+        if not unified_name or not unified_name.startswith(prefix):
+            return None
+        return unified_name[len(prefix) :]
+
+    def _top_level_singleton_display_name(
+        self,
+        info,
+        *,
+        file_path: str,
+        line: int,
+        display_name: str,
+    ) -> str:
+        owner, member = self._split_owner_member(info.key)
+        if (
+            owner != "Object"
+            or not member
+            or info.symbol_type not in {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
+        ):
+            return display_name
+        source_line = self._source_line(file_path, line)
+        if re.search(rf"\bdef\s+[A-Za-z_]\w*\.{re.escape(member)}\b", source_line):
+            return f"{member}()"
+        return display_name
 
     def _source_line(self, file_path: str, line: int) -> str:
         if not self.project_root:
@@ -247,13 +305,20 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
         )
 
     def _containment_parent_in_file(self, key: str, file_path: str) -> str:
+        method_scope = self._current_method_scope_vertex(file_path)
+        if method_scope is not None:
+            return method_scope
+
         owner, member = self._split_owner_member(key)
         if member:
             file_owner = self._file_definition_keys.get((file_path, owner))
             if file_owner in self.code_graph.name_to_vertex:
                 return file_owner
-            if owner in self.code_graph.name_to_vertex:
-                return owner
+        return self.code_graph.current_scope
+
+    def _current_method_scope_vertex(self, file_path: str) -> str | None:
+        if self._current_method_scope_display(file_path) is None:
+            return None
         return self.code_graph.current_scope
 
 

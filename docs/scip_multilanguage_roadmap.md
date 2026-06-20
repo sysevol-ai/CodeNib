@@ -369,23 +369,27 @@ Real-repo Ruby gate status: `ruby/rake` at commit
 `2dce6007988b302e07049f36d8528459ecf7ff01` was validated with a non-invasive
 `.codeminer/Gemfile` overlay selected through `CODEMINER_RUBY_BUNDLE_GEMFILE`;
 the overlay uses `gemspec path: ".."` and adds pinned `ruby-lsp` 0.26.9 plus
-`scip-ruby` 0.4.7. Route alignment on `lib/` with `vendor/**` and `.codeminer/**`
-excluded now runs end-to-end but is not promotion-green: `symbols ref=598
-cand=594 missing=6 extra=2`, `contain ref=632 cand=592 missing=131 extra=91`,
-and references differ (`ruby-lsp`: 0, `scip-ruby`: 2770). This pass fixed the
-largest mismatch classes by keeping top-level Ruby class/module reopen
-definitions file-scoped in the SCIP decoder, so repeated definitions such as
-per-file `module Rake` no longer collapse into whichever file was decoded last,
-and by normalizing only source-declared `attr_writer`/`attr_accessor` generated
-writer definitions to the ruby-lsp method display while preserving explicit
-`def foo=` setters. The remaining symbol differences are ruby-lsp-only dynamic
-definitions (`load_debug_at_stop_feature().execute()`, delegated `FileList`
-methods, top-level `timestamp()`, `Task.prereqs()`, and
-`TaskArguments.key?()`) plus scip-ruby's two alternate singleton/receiver
-definitions (`Rake.Application.execute()` and `Object.timestamp()`). Ruby
-therefore remains `candidate`; promote only after the real-repo gate either
-becomes strict-green or the roadmap accepts explicit Ruby tolerances for dynamic
-alias/singleton definitions and containment differences on instance variables.
+`scip-ruby` 0.4.7. The generic LSP client now maps that overlay variable into
+`BUNDLE_GEMFILE` for Ruby and removes `GEM_PATH`, matching the Ruby SCIP
+indexer environment so ruby-lsp does not accidentally resolve the target
+project's own Gemfile. Route alignment on `lib/` with `vendor/**` and
+`.codeminer/**` excluded now runs end-to-end but is not promotion-green:
+`symbols ref=598 cand=594 missing=5 extra=1`, `contain ref=598 cand=594
+missing=5 extra=1`, and references differ (`ruby-lsp`: 0, `scip-ruby`: 2770).
+This pass fixed the largest mismatch classes by lifting Ruby LSP `@ivar`
+definitions to class containment, keeping top-level Ruby class/module reopen
+definitions file-scoped in the SCIP decoder, and normalizing `def
+task.timestamp` from scip-ruby's `Object.timestamp()` display to ruby-lsp's
+file-level `timestamp()`. It also keeps source-declared
+`attr_writer`/`attr_accessor` generated writer definitions aligned with the
+ruby-lsp method display while preserving explicit `def foo=` setters. The
+remaining symbol differences are ruby-lsp-only dynamic or alias definitions
+(`load_debug_at_stop_feature().execute()`, `FileList.add()`,
+`FileList.kind_of?()`, `Task.prereqs()`, and `TaskArguments.key?()`) plus
+scip-ruby's alternate anonymous-module receiver definition
+(`Rake.Application.execute()`). Ruby therefore remains `candidate`; promote only
+after the real-repo gate either becomes strict-green or the roadmap accepts
+explicit Ruby tolerances for alias and dynamic singleton definitions.
 
 Current PHP active hybrid status: the registry routes PHP through
 `PHPHybridIndexer`. Composer projects prefer `SCIPPHPIndexer`, which runs

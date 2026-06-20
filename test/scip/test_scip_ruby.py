@@ -170,6 +170,16 @@ documents {
     symbol_roles: 1
   }
 }
+documents {
+  relative_path: "lib/c.rb"
+  occurrences {
+    range: 0
+    range: 6
+    range: 15
+    symbol: "scip-ruby gem smoke 0.1 Rake#NameSpace#"
+    symbol_roles: 1
+  }
+}
 """.strip(),
         encoding="utf-8",
     )
@@ -194,6 +204,117 @@ documents {
         _target=graph.name_to_vertex["Rake#Task"],
     )
     assert contain_task["type"] == EDGE_TYPE_CONTAIN
+
+    contain_namespace = graph.graph.es.find(
+        _source=graph.name_to_vertex["lib/c.rb"],
+        _target=graph.name_to_vertex["Rake#NameSpace"],
+    )
+    assert contain_namespace["type"] == EDGE_TYPE_CONTAIN
+
+
+def test_scip_ruby_decoder_normalizes_nested_and_local_singleton_methods(
+    tmp_path,
+):
+    (tmp_path / "lib/rake").mkdir(parents=True)
+    (tmp_path / "lib/rake/application.rb").write_text(
+        "\n".join(
+            [
+                "class Application",
+                "  def load_debug_at_stop_feature",
+                "    Module.new do",
+                "      def execute(*)",
+                "      end",
+                "    end",
+                "  end",
+                "end",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "lib/rake/phony.rb").write_text(
+        "task = Object.new\n" "def task.timestamp\n" "end\n",
+        encoding="utf-8",
+    )
+    index = tmp_path / "index.decoded"
+    index.write_text(
+        """
+metadata {
+  tool_info {
+    name: "scip-ruby"
+    version: "0.4.7"
+  }
+}
+documents {
+  relative_path: "lib/rake/application.rb"
+  occurrences {
+    range: 0
+    range: 6
+    range: 17
+    symbol: "scip-ruby gem smoke 0.1 Rake#Application#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 6
+    range: 32
+    symbol: "scip-ruby gem smoke 0.1 Rake#Application#load_debug_at_stop_feature()."
+    symbol_roles: 1
+    enclosing_range: 1
+    enclosing_range: 2
+    enclosing_range: 6
+    enclosing_range: 0
+  }
+  occurrences {
+    range: 3
+    range: 10
+    range: 17
+    symbol: "scip-ruby gem smoke 0.1 Rake#Application#execute()."
+    symbol_roles: 1
+  }
+}
+documents {
+  relative_path: "lib/rake/phony.rb"
+  occurrences {
+    range: 1
+    range: 4
+    range: 18
+    symbol: "scip-ruby gem smoke 0.1 `<Class:Object>`#timestamp()."
+    symbol_roles: 1
+  }
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    graph = SCIPRubyGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+
+    execute = graph.graph.vs[graph.name_to_vertex["Rake#Application#execute"]]
+    timestamp = graph.graph.vs[graph.name_to_vertex["Object#timestamp"]]
+    assert execute["unified_name"] == (
+        "lib/rake/application.rb:"
+        "Rake.Application.load_debug_at_stop_feature().execute()"
+    )
+    assert timestamp["unified_name"] == "lib/rake/phony.rb:timestamp()"
+
+    contain_edges = {
+        (
+            graph.graph.vs[edge.source].attributes().get("unified_name")
+            or graph.graph.vs[edge.source]["name"],
+            graph.graph.vs[edge.target].attributes().get("unified_name")
+            or graph.graph.vs[edge.target]["name"],
+        )
+        for edge in graph.graph.es
+        if edge["type"] == EDGE_TYPE_CONTAIN
+    }
+    assert (
+        "lib/rake/application.rb:Rake.Application.load_debug_at_stop_feature()",
+        "lib/rake/application.rb:"
+        "Rake.Application.load_debug_at_stop_feature().execute()",
+    ) in contain_edges
+    assert (
+        "lib/rake/phony.rb",
+        "lib/rake/phony.rb:timestamp()",
+    ) in contain_edges
 
 
 def test_scip_ruby_decoder_normalizes_attr_generated_writers_only(tmp_path):

@@ -159,10 +159,13 @@ def _process_symbol_tree(
     parent_vertex_name: str,
     parent_unified_part: str,
     language: str = "",
+    ruby_scope_vertices: Optional[Mapping[str, str]] = None,
 ) -> None:
+    scope_vertices = ruby_scope_vertices or {}
     for symbol in symbols or []:
         name = symbol.get("name") or ""
         kind = int(symbol.get("kind") or 0)
+        child_scope_vertices = scope_vertices
 
         range_data = symbol.get("range") or {}
         start_line = _line(range_data, "start", default=0)
@@ -195,12 +198,23 @@ def _process_symbol_tree(
                 },
             )
             graph.symbol_ranges[vertex_name] = (start_line, end_line)
-            graph._add_edge(parent_vertex_name, vertex_name, EDGE_TYPE_CONTAIN)
+            contain_parent = _contain_parent_vertex_name(
+                name=name,
+                kind=kind,
+                language=language,
+                parent_vertex_name=parent_vertex_name,
+                parent_unified_part=parent_unified_part,
+                ruby_scope_vertices=scope_vertices,
+            )
+            graph._add_edge(contain_parent, vertex_name, EDGE_TYPE_CONTAIN)
 
             if kind == 2 and language != "ruby":
                 child_parent = parent_unified_part
             else:
                 child_parent = unified_name.split(":", 1)[1]
+            if language == "ruby":
+                child_scope_vertices = dict(scope_vertices)
+                child_scope_vertices[child_parent] = vertex_name
             child_parent_vertex = vertex_name
         else:
             child_parent = parent_unified_part
@@ -215,6 +229,7 @@ def _process_symbol_tree(
                 parent_vertex_name=child_parent_vertex,
                 parent_unified_part=child_parent,
                 language=language,
+                ruby_scope_vertices=child_scope_vertices,
             )
 
 
@@ -401,6 +416,21 @@ def _build_unified_name(
         if not display.endswith("()"):
             display = f"{display}()"
     return f"{file_path}:{display}"
+
+
+def _contain_parent_vertex_name(
+    *,
+    name: str,
+    kind: int,
+    language: str,
+    parent_vertex_name: str,
+    parent_unified_part: str,
+    ruby_scope_vertices: Mapping[str, str],
+) -> str:
+    if language != "ruby" or kind != 8 or not name.startswith("@"):
+        return parent_vertex_name
+    field_parent = _ruby_instance_field_parent(parent_unified_part)
+    return ruby_scope_vertices.get(field_parent, parent_vertex_name)
 
 
 def _is_callable_display_symbol(kind: int, name: str, language: str) -> bool:

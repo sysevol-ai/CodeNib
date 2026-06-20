@@ -205,12 +205,25 @@ def test_generic_lsp_decoder_normalizes_ruby_constructor_and_instance_fields(
         "lib/rake/application.rb:Rake.Application.initialize():3"
         in graph.name_to_vertex
     )
-    assert "lib/rake/application.rb:Rake.Application.name():2" in graph.name_to_vertex
-    assert "lib/rake/application.rb:Rake.Application.@name:4" in graph.name_to_vertex
-    assert (
-        "lib/rake/application.rb:Rake.Application.@top_level_tasks:12"
-        in graph.name_to_vertex
+    class_name = "lib/rake/application.rb:Rake.Application:1"
+    init_name = "lib/rake/application.rb:Rake.Application.initialize():3"
+    collect_name = (
+        "lib/rake/application.rb:Rake.Application.collect_command_line_tasks():10"
     )
+    name_field = "lib/rake/application.rb:Rake.Application.@name:4"
+    task_field = "lib/rake/application.rb:Rake.Application.@top_level_tasks:12"
+    assert "lib/rake/application.rb:Rake.Application.name():2" in graph.name_to_vertex
+    assert name_field in graph.name_to_vertex
+    assert task_field in graph.name_to_vertex
+    contain_edges = {
+        (graph.graph.vs[edge.source]["name"], graph.graph.vs[edge.target]["name"])
+        for edge in graph.graph.es
+        if edge["type"] == EDGE_TYPE_CONTAIN
+    }
+    assert (class_name, name_field) in contain_edges
+    assert (class_name, task_field) in contain_edges
+    assert (init_name, name_field) not in contain_edges
+    assert (collect_name, task_field) not in contain_edges
     assert {
         item["unified_name"]
         for item in definitions
