@@ -21,7 +21,7 @@ from .scip_indexer_csharp import SCIPCSharpIndexer
 from .scip_indexer_java import SCIPJavaIndexer, SCIPKotlinIndexer, SCIPScalaIndexer
 from .scip_indexer_php import PHPHybridIndexer, SCIPPHPIndexer
 from .scip_indexer_python import SCIPPythonIndexer
-from .scip_indexer_ruby import SCIPRubyIndexer
+from .scip_indexer_ruby import RubyHybridIndexer, SCIPRubyIndexer
 from .scip_indexer_rust import SCIPRustIndexer
 from .scip_indexer_ts import SCIPTypeScriptIndexer
 
@@ -34,6 +34,7 @@ __all__ = [
     "SCIPJavaIndexer",
     "SCIPKotlinIndexer",
     "SCIPScalaIndexer",
+    "RubyHybridIndexer",
     "SCIPRubyIndexer",
     "SCIPPHPIndexer",
     "PHPHybridIndexer",

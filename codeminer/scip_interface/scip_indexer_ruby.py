@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Candidate SCIP indexer for Ruby projects using scip-ruby."""
+"""SCIP-backed Ruby graph routes using scip-ruby."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ..languages import scip_cold_start_command_for_language
 from ..log_utils import get_logger
@@ -21,11 +21,145 @@ from ..profiler import Profiler
 from ..types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, ROOT_NODE, is_symbol_node
 from .scip_indexer_base import SCIPIndexerBase
 
+if TYPE_CHECKING:
+    from ..ls_index.lsp_indexer import GenericLSPIndexer
+
 logger = get_logger("scip_ruby_indexer")
 
 
+class RubyHybridIndexer:
+    """Active Ruby graph route: prepared scip-ruby bundles, LSP fallback otherwise."""
+
+    def __init__(
+        self,
+        project_root: Union[str, Path],
+        output_dir: Optional[Union[str, Path]] = None,
+        exclude_patterns: Optional[List] = None,
+        profiler: Optional[Profiler] = None,
+        decoder_backend: Optional[str] = None,
+    ):
+        self.project_root = Path(project_root).absolute()
+        self.output_dir = (
+            Path(output_dir).absolute()
+            if output_dir
+            else Path("/tmp") / self.project_root.name
+        )
+        self.exclude_patterns = exclude_patterns or []
+        self.profiler = profiler
+        self.decoder_backend = decoder_backend
+        self._delegate = self._preferred_delegate()
+        self._sync_delegate_attrs()
+
+    def _preferred_delegate(self):
+        if self._scip_bundle_ready():
+            return self._scip_delegate()
+        return self._lsp_delegate()
+
+    def _scip_delegate(self) -> "SCIPRubyIndexer":
+        return SCIPRubyIndexer(
+            self.project_root,
+            output_dir=self.output_dir,
+            exclude_patterns=self.exclude_patterns,
+            profiler=self.profiler,
+            decoder_backend=self.decoder_backend,
+        )
+
+    def _lsp_delegate(self) -> "GenericLSPIndexer":
+        from ..ls_index.lsp_indexer import GenericLSPIndexer
+
+        return GenericLSPIndexer(
+            self.project_root,
+            output_dir=self.output_dir,
+            exclude_patterns=self.exclude_patterns,
+            profiler=self.profiler,
+            language="ruby",
+        )
+
+    def _sync_delegate_attrs(self) -> None:
+        self.output_dir = self._delegate.output_dir
+        self.index_file = self._delegate.index_file
+        self.decoded_file = self._delegate.decoded_file
+        self.graph_file = self._delegate.graph_file
+        self.profiler = self._delegate.profiler
+
+    def _switch_to_lsp(self) -> None:
+        logger.warning("Falling back to Ruby LSP graph route for %s", self.project_root)
+        self._delegate = self._lsp_delegate()
+        self._sync_delegate_attrs()
+
+    def _scip_bundle_ready(self) -> bool:
+        gemfile = _ruby_bundle_gemfile(self.project_root)
+        if gemfile is None or not gemfile.exists():
+            return False
+        if _has_explicit_bundle_gemfile():
+            return True
+        return _gemfile_mentions_scip_ruby(gemfile)
+
+    def generate_index(self, **kwargs) -> bool:
+        try:
+            if self._delegate.generate_index(**kwargs):
+                return True
+        except Exception as exc:
+            if not isinstance(self._delegate, SCIPRubyIndexer):
+                raise
+            logger.warning(
+                "Ruby SCIP index generation failed for %s: %s",
+                self.project_root,
+                exc,
+            )
+        if isinstance(self._delegate, SCIPRubyIndexer):
+            self._switch_to_lsp()
+            return self._delegate.generate_index(**kwargs)
+        return False
+
+    def decode_index(self) -> bool:
+        return self._delegate.decode_index()
+
+    def process_index(self, output_file: Optional[str] = None):
+        return self._delegate.process_index(output_file=output_file)
+
+    def run_pipeline(
+        self,
+        output_file: Optional[str] = None,
+        skip_level: Optional[str] = None,
+        *,
+        reset_profiler: bool = True,
+        report_profile: bool = True,
+        **kwargs,
+    ):
+        try:
+            graph = self._delegate.run_pipeline(
+                output_file=output_file,
+                skip_level=skip_level,
+                reset_profiler=reset_profiler,
+                report_profile=report_profile,
+                **kwargs,
+            )
+        except Exception as exc:
+            if not isinstance(self._delegate, SCIPRubyIndexer):
+                raise
+            logger.warning(
+                "Ruby SCIP graph route failed for %s: %s", self.project_root, exc
+            )
+            graph = None
+        if graph is not None or not isinstance(self._delegate, SCIPRubyIndexer):
+            return graph
+
+        self._switch_to_lsp()
+        return self._delegate.run_pipeline(
+            output_file=output_file,
+            skip_level=skip_level,
+            reset_profiler=reset_profiler,
+            report_profile=report_profile,
+            **kwargs,
+        )
+
+    def clear_cache(self, level: str = "all") -> bool:
+        return self._delegate.clear_cache(level=level)
+
+
 class SCIPRubyIndexer(SCIPIndexerBase):
-    """Run scip-ruby without making it the active graph backend."""
+    """Pure scip-ruby route used by candidate gates and active hybrid routing."""
 
     def __init__(
         self,
@@ -194,17 +328,7 @@ class SCIPRubyIndexer(SCIPIndexerBase):
         return env
 
     def _bundle_gemfile(self, env: dict[str, str] | None = None) -> Path | None:
-        values = env if env is not None else os.environ
-        override = values.get("CODEMINER_RUBY_BUNDLE_GEMFILE") or values.get(
-            "BUNDLE_GEMFILE"
-        )
-        if override:
-            path = Path(override).expanduser()
-            if not path.is_absolute():
-                path = self.project_root / path
-            return path.resolve()
-        gemfile = self.project_root / "Gemfile"
-        return gemfile if gemfile.exists() else None
+        return _ruby_bundle_gemfile(self.project_root, env=env)
 
     def _gem_metadata(self) -> str:
         return f"{self.project_root.name}@workspace"
@@ -272,6 +396,37 @@ def _bundle_prefix(command: list[str]) -> list[str]:
     except ValueError:
         return [command[0]]
     return command[:exec_index]
+
+
+def _has_explicit_bundle_gemfile(env: dict[str, str] | None = None) -> bool:
+    values = env if env is not None else os.environ
+    return bool(
+        values.get("CODEMINER_RUBY_BUNDLE_GEMFILE") or values.get("BUNDLE_GEMFILE")
+    )
+
+
+def _ruby_bundle_gemfile(
+    project_root: Path,
+    env: dict[str, str] | None = None,
+) -> Path | None:
+    values = env if env is not None else os.environ
+    override = values.get("CODEMINER_RUBY_BUNDLE_GEMFILE") or values.get(
+        "BUNDLE_GEMFILE"
+    )
+    if override:
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            path = project_root / path
+        return path.resolve()
+    gemfile = project_root / "Gemfile"
+    return gemfile if gemfile.exists() else None
+
+
+def _gemfile_mentions_scip_ruby(gemfile: Path) -> bool:
+    try:
+        return "scip-ruby" in gemfile.read_text(encoding="utf-8")
+    except OSError:
+        return False
 
 
 def _definition_path(attrs: dict) -> str | None:

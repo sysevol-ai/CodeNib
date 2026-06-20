@@ -29,7 +29,7 @@ from codeminer.ls_router import LSGraphDecoder, LSIndexer, build_graph_for_langu
         ("java", "SCIPJavaIndexer"),
         ("csharp", "SCIPCSharpIndexer"),
         ("scala", "SCIPScalaIndexer"),
-        ("ruby", "GenericLSPIndexer"),
+        ("ruby", "RubyHybridIndexer"),
         ("php", "PHPHybridIndexer"),
         ("kotlin", "GenericLSPIndexer"),
     ],
@@ -82,7 +82,17 @@ def test_ls_indexer_lsp_route_preserves_java_lsp_backend_after_promotion(tmp_pat
 
 @pytest.mark.parametrize(
     "language",
-    ["python", "go", "rust", "typescript", "javascript", "java", "csharp", "php"],
+    [
+        "python",
+        "go",
+        "rust",
+        "typescript",
+        "javascript",
+        "java",
+        "csharp",
+        "ruby",
+        "php",
+    ],
 )
 def test_ls_indexer_can_force_generic_lsp_route(tmp_path, language):
     indexer = LSIndexer(
@@ -137,7 +147,7 @@ def test_ls_indexer_passes_decoder_backend_only_to_scip(tmp_path):
         ("java", "SCIPJavaGraphDecoder"),
         ("csharp", "SCIPCSharpGraphDecoder"),
         ("scala", "SCIPJavaGraphDecoder"),
-        ("ruby", "GenericLSPGraphDecoder"),
+        ("ruby", "SCIPRubyGraphDecoder"),
         ("php", "SCIPPHPGraphDecoder"),
         ("kotlin", "GenericLSPGraphDecoder"),
     ],

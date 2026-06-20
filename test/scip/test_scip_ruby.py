@@ -2,13 +2,16 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit coverage for the scip-ruby candidate decoder."""
+"""Unit coverage for the scip-ruby decoder and Ruby hybrid route."""
 
 from __future__ import annotations
 
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
-from codeminer.scip_interface.scip_indexer_ruby import SCIPRubyIndexer
+from codeminer.scip_interface.scip_indexer_ruby import (
+    RubyHybridIndexer,
+    SCIPRubyIndexer,
+)
 from codeminer.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
@@ -489,6 +492,84 @@ def test_scip_ruby_indexer_builds_registered_command(tmp_path, monkeypatch):
         "--suppress-non-critical",
     ]
     assert indexer._get_decoder_class() is SCIPRubyGraphDecoder
+
+
+def test_ruby_hybrid_indexer_uses_lsp_without_prepared_scip_bundle(tmp_path):
+    (tmp_path / "Gemfile").write_text(
+        'source "https://rubygems.org"\ngem "rake"\n',
+        encoding="utf-8",
+    )
+
+    indexer = RubyHybridIndexer(tmp_path, output_dir=tmp_path / "out")
+
+    assert indexer._delegate.__class__.__name__ == "GenericLSPIndexer"
+
+
+def test_ruby_hybrid_indexer_prefers_scip_for_overlay_bundle(
+    tmp_path,
+    monkeypatch,
+):
+    overlay = tmp_path / ".codeminer/Gemfile"
+    overlay.parent.mkdir()
+    overlay.write_text(
+        'source "https://rubygems.org"\ngem "scip-ruby"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEMINER_RUBY_BUNDLE_GEMFILE", ".codeminer/Gemfile")
+
+    indexer = RubyHybridIndexer(tmp_path, output_dir=tmp_path / "out")
+
+    assert indexer._delegate.__class__ is SCIPRubyIndexer
+
+
+def test_ruby_hybrid_indexer_prefers_scip_for_project_scip_gemfile(tmp_path):
+    (tmp_path / "Gemfile").write_text(
+        'source "https://rubygems.org"\ngem "scip-ruby"\n',
+        encoding="utf-8",
+    )
+
+    indexer = RubyHybridIndexer(tmp_path, output_dir=tmp_path / "out")
+
+    assert indexer._delegate.__class__ is SCIPRubyIndexer
+
+
+def test_ruby_hybrid_indexer_falls_back_to_lsp_when_scip_fails(
+    tmp_path,
+    monkeypatch,
+):
+    overlay = tmp_path / ".codeminer/Gemfile"
+    overlay.parent.mkdir()
+    overlay.write_text(
+        'source "https://rubygems.org"\ngem "scip-ruby"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEMINER_RUBY_BUNDLE_GEMFILE", ".codeminer/Gemfile")
+    calls = []
+
+    def fake_scip_run_pipeline(self, **kwargs):
+        calls.append(("scip", kwargs))
+        return None
+
+    def fake_lsp_run_pipeline(self, **kwargs):
+        calls.append(("lsp", kwargs))
+        graph = CodeGraph(str(tmp_path))
+        graph.add_file_node("lib/fallback.rb")
+        return graph
+
+    monkeypatch.setattr(SCIPRubyIndexer, "run_pipeline", fake_scip_run_pipeline)
+    monkeypatch.setattr(
+        "codeminer.ls_index.lsp_indexer.GenericLSPIndexer.run_pipeline",
+        fake_lsp_run_pipeline,
+    )
+
+    graph = RubyHybridIndexer(tmp_path, output_dir=tmp_path / "out").run_pipeline(
+        skip_level="graph",
+        target_dir="lib",
+    )
+
+    assert graph is not None
+    assert [call[0] for call in calls] == ["scip", "lsp"]
+    assert calls[1][1]["target_dir"] == "lib"
 
 
 def test_scip_ruby_indexer_unsets_gem_path_for_project_bundle(tmp_path, monkeypatch):

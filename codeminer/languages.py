@@ -287,17 +287,18 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_extensions=(".rb",),
         agent_languages=("ruby",),
         agent_aliases=(("ruby", "ruby"), ("rb", "ruby")),
-        cold_start_backend="lsp",
-        graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
-        graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_ruby:RubyHybridIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_ruby:SCIPRubyGraphDecoder",
         scip_cold_start=ScipColdStartOption(
             tool="scip-ruby",
-            status="candidate",
+            status="active",
             command=("bundle", "exec", "scip-ruby"),
             command_env="CODEMINER_RUBY_SCIP_CMD",
             note=(
-                "Experimental Ruby cold-start candidate; graph quality must "
-                "be measured on real repos."
+                "Primary Ruby cold-start route for prepared Bundler projects; "
+                "active route falls back to ruby-lsp for loose or unprepared "
+                "Ruby projects."
             ),
         ),
         scip_candidate_indexer="codeminer.scip_interface.scip_indexer_ruby:SCIPRubyIndexer",

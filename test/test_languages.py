@@ -160,15 +160,24 @@ def test_language_capability_rows_track_parity_applicability():
     assert rows["scala"].core_decoder is False
     assert rows["scala"].core_parity == "n/a-no-core-decoder"
 
-    for language in ("ruby", "kotlin"):
-        assert rows[language].chunker is True
-        assert rows[language].ground_truth is True
-        assert rows[language].agent is True
-        assert rows[language].graph_backend == "lsp"
-        assert rows[language].scip_cold_start == "candidate"
-        assert rows[language].incremental_backend is None
-        assert rows[language].core_decoder is False
-        assert rows[language].core_parity == "n/a-no-core-decoder"
+    assert rows["ruby"].chunker is True
+    assert rows["ruby"].ground_truth is True
+    assert rows["ruby"].agent is True
+    assert rows["ruby"].graph_backend == "scip"
+    assert rows["ruby"].scip_cold_start == "active"
+    assert rows["ruby"].incremental_backend is None
+    assert rows["ruby"].lsp is True
+    assert rows["ruby"].core_decoder is False
+    assert rows["ruby"].core_parity == "n/a-no-core-decoder"
+
+    assert rows["kotlin"].chunker is True
+    assert rows["kotlin"].ground_truth is True
+    assert rows["kotlin"].agent is True
+    assert rows["kotlin"].graph_backend == "lsp"
+    assert rows["kotlin"].scip_cold_start == "candidate"
+    assert rows["kotlin"].incremental_backend is None
+    assert rows["kotlin"].core_decoder is False
+    assert rows["kotlin"].core_parity == "n/a-no-core-decoder"
 
     for language in ("swift", "lua"):
         assert rows[language].chunker is True
@@ -196,6 +205,7 @@ def test_scip_cold_start_options_track_active_and_candidate_paths(monkeypatch):
     assert options["scala"].tool == "scip-java"
     assert options["csharp"].tool == "scip-dotnet"
     assert options["c#"].tool == "scip-dotnet"
+    assert options["ruby"].status == "active"
     assert options["ruby"].tool == "scip-ruby"
     assert options["php"].status == "active"
     assert options["php"].tool == "scip-php"
@@ -368,8 +378,11 @@ def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
     assert graph_indexer_path("scala").endswith("scip_indexer_java:SCIPScalaIndexer")
     assert graph_decoder_path("scala").endswith("scip_decode_java:SCIPJavaGraphDecoder")
     assert graph_cold_start_backend("scala") == "scip"
+    assert graph_indexer_path("ruby").endswith("scip_indexer_ruby:RubyHybridIndexer")
+    assert graph_decoder_path("ruby").endswith("scip_decode_ruby:SCIPRubyGraphDecoder")
+    assert graph_cold_start_backend("ruby") == "scip"
 
-    for language in ("ruby", "kotlin"):
+    for language in ("kotlin",):
         assert graph_indexer_path(language).endswith("lsp_indexer:GenericLSPIndexer")
         assert graph_decoder_path(language).endswith(
             "lsp_graph_decode:GenericLSPGraphDecoder"

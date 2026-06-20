@@ -21,15 +21,15 @@ The language registry records SCIP cold-start state explicitly:
 
 | State | Languages | Meaning |
 | --- | --- | --- |
-| `active` | Python, Go, Rust, C#, Java, Scala, JavaScript, TypeScript, PHP | Routed through existing SCIP cold-start paths. PHP uses a hybrid active route: Composer projects prefer SCIP and loose/non-Composer projects fall back to LSP. Scala is active through `scip-java` for Scala 2.x Gradle/SBT projects without a registered LSP baseline. |
-| `candidate` | Kotlin, Ruby | Known SCIP indexer exists, but CodeMiner must still prove smoke, decoder, alignment, and parity gates before routing it. |
+| `active` | Python, Go, Rust, C#, Java, Ruby, Scala, JavaScript, TypeScript, PHP | Routed through existing SCIP cold-start paths. Ruby and PHP use hybrid active routes: prepared Bundler/Composer projects prefer SCIP and loose or unprepared projects fall back to LSP. Scala is active through `scip-java` for Scala 2.x Gradle/SBT projects without a registered LSP baseline. |
+| `candidate` | Kotlin | Known SCIP indexer exists, but CodeMiner must still prove smoke, decoder, alignment, and parity gates before routing it. |
 | `none` | C++, Swift, Lua | No accepted SCIP cold-start plan in CodeMiner today. C++ uses clangd-style graph indexing. |
 
-Generic LSP graph support for Java, C#, and PHP remains available through
-`graph_route="lsp"` for regression checks and for PHP loose-file fallback.
-Generic LSP graph support for Ruby and Kotlin must remain usable while their
-SCIP candidates are evaluated. Scala has no registered LSP graph route today;
-its active graph support is the `scip-java` route only.
+Generic LSP graph support for Java, C#, Ruby, and PHP remains available through
+`graph_route="lsp"` for regression checks and for loose-file fallback. Generic
+LSP graph support for Kotlin must remain usable while its SCIP candidate is
+evaluated. Scala has no registered LSP graph route today; its active graph
+support is the `scip-java` route only.
 
 ## Layered Goal
 
@@ -317,12 +317,11 @@ serial-only in Python for now: the real-repo profile spends about 4.3-4.8s in
 `scip-dotnet` indexing and about 0.01s in Python decode/build, so a C++ decoder
 does not satisfy the acceleration gate.
 
-### Phase 4: Ruby Candidate And PHP Active Hybrid
+### Phase 4: Ruby And PHP Active Hybrid
 
-Ruby remains a candidate because the real-repo gate still shows graph-surface
-differences. PHP has passed generated and real-repo source-only gates and now
-uses an active hybrid route: Composer projects prefer SCIP through `scip-php`,
-while loose or non-Composer PHP projects retain the generic Intelephense route.
+Ruby and PHP use active hybrid routes. Prepared Bundler/Composer projects prefer
+SCIP through `scip-ruby` or `scip-php`, while loose or unprepared projects retain
+the generic Ruby LSP or Intelephense route.
 
 - [x] Run Ruby smoke with `scip-ruby`, including Sorbet/setup requirements.
 - [x] Compare Ruby SCIP graph quality against ruby-lsp output.
@@ -331,23 +330,30 @@ while loose or non-Composer PHP projects retain the generic Intelephense route.
 - [x] Promote PHP with an explicit active-route policy that preserves
   `graph_route="lsp"` and keeps `graph_route="scip-candidate"` as a pure SCIP
   gate.
-- [ ] Promote Ruby only if symbol/reference coverage is better than or equal
+- [x] Promote Ruby only if symbol/reference coverage is better than or equal
   to the current LSP path for CodeMiner use cases, or if accepted tolerances are
   documented.
 
-Exit condition: Ruby candidate and PHP active hybrid states reflect measured
+Exit condition: Ruby and PHP active hybrid states reflect measured
 graph quality, not tool existence alone.
 
-Current Ruby candidate status: the generated Bundler gem smoke runs through
-`bundle exec scip-ruby`, decodes `index.scip`, and builds a CodeGraph through
-the Ruby serial decoder. `scip-ruby` rejects direct binary invocation, so the
-registry command is `bundle exec scip-ruby` and the smoke prepares
+Current Ruby active hybrid status: the registry routes Ruby through
+`RubyHybridIndexer`. Explicit overlay bundles selected with
+`CODEMINER_RUBY_BUNDLE_GEMFILE` or `BUNDLE_GEMFILE`, and project Gemfiles that
+declare `scip-ruby`, prefer `SCIPRubyIndexer`. Loose Ruby projects and ordinary
+Gemfiles without `scip-ruby` keep the generic ruby-lsp route, and active SCIP
+failures fall back to ruby-lsp. The explicit `graph_route="lsp"` path remains
+the ruby-lsp regression route, while `graph_route="scip-candidate"` remains the
+pure scip-ruby gate.
+
+The generated Bundler gem smoke runs through `bundle exec scip-ruby`, decodes
+`index.scip`, and builds a CodeGraph through the Ruby serial decoder.
+`scip-ruby` rejects direct binary invocation, so the registry command is
+`bundle exec scip-ruby` and the smoke prepares
 `vendor/bundle` before indexing. The decoder accepts `.rb` documents, normalizes
 symbols such as `Smoke#Invoice#total().`, and maps singleton class descriptors
 for `<Class:Smoke>#normalize()` to `Smoke.normalize()`. The generated smoke found
 `Smoke`, `Smoke.Invoice`, `Smoke.Invoice.total()`, and `Smoke.normalize()`.
-Ruby remains `candidate` until real-repo graph quality checks prove the
-candidate is better than or equal to the current LSP path.
 
 Ruby LSP alignment status: the generic LSP smoke now writes a Bundler-shaped
 Ruby project, prepares the bundle, starts ruby-lsp through `bundle exec
@@ -373,9 +379,14 @@ the overlay uses `gemspec path: ".."` and adds pinned `ruby-lsp` 0.26.9 plus
 `BUNDLE_GEMFILE` for Ruby and removes `GEM_PATH`, matching the Ruby SCIP
 indexer environment so ruby-lsp does not accidentally resolve the target
 project's own Gemfile. Route alignment on `lib/` with `vendor/**` and
-`.codeminer/**` excluded now runs end-to-end but is not promotion-green:
+`.codeminer/**` excluded now runs end-to-end with one accepted source-modeling
+difference:
 `symbols ref=598 cand=598 missing=1 extra=1`, `contain ref=598 cand=598
 missing=1 extra=1`, and references differ (`ruby-lsp`: 0, `scip-ruby`: 2770).
+The active route was rechecked with `--candidate-route active` and the explicit
+Ruby tolerance gate `--max-missing-symbols 1 --max-extra-symbols 1
+--max-missing-containment 1 --max-extra-containment 1`; that gate is green and
+confirms the active hybrid route selects SCIP when the overlay bundle is present.
 This pass fixed the largest mismatch classes by lifting Ruby LSP `@ivar`
 definitions to class containment, keeping top-level Ruby class/module reopen
 definitions file-scoped in the SCIP decoder, and normalizing `def
@@ -389,10 +400,11 @@ source-declared
 ruby-lsp method display while preserving explicit `def foo=` setters. The only
 remaining symbol/containment difference is ruby-lsp's nested anonymous-module
 definition `Rake.Application.load_debug_at_stop_feature().execute()` versus
-scip-ruby's alternate receiver display `Rake.Application.execute()`. Ruby
-therefore remains `candidate`; promote only after the real-repo gate either
-becomes strict-green or the roadmap accepts an explicit tolerance for this
-anonymous-module receiver modeling difference.
+scip-ruby's alternate receiver display `Rake.Application.execute()`. The active
+hybrid promotion accepts this anonymous-module receiver modeling tolerance
+because all other source definitions and containment align, source references
+are materially richer in the SCIP graph, and loose Ruby projects still fall back
+to ruby-lsp.
 
 Current PHP active hybrid status: the registry routes PHP through
 `PHPHybridIndexer`. Composer projects prefer `SCIPPHPIndexer`, which runs
@@ -504,13 +516,17 @@ graph decode 0.007s, and range-index construction 0.001s; on the recorded C#
 fixture, `scip-dotnet` indexing took about 4.3-4.8s while Python decode/build
 was about 0.01s; on the small PHP Composer gate, LSP document-symbol collection
 took about 16.245s, SCIP indexing took about 0.551s, protoc decode took about
-0.008s, and Python graph decode took about 0.007s; on the `sbt/io` Scala gate,
-`scip-java` indexing took about 74.527s while protoc decode took about 0.099s,
-Python graph decode took about 2.156s, and range-index construction took about
-0.069s. Kotlin and Ruby remain serial-only until their promotion gates are
-green and profiling shows local decode/build time crosses the C++ gate. PHP and
-Scala should get C++ acceleration only after larger real-repo profiles show
-local decode/build is a material bottleneck.
+0.008s, and Python graph decode took about 0.007s; on the `ruby/rake` Ruby gate,
+`scip-ruby` produced richer source references while the active hybrid route kept
+loose-project LSP fallback, and serial `process_index.decode` took about
+7.5-7.9s. Ruby therefore needs a dedicated C++ decoder/parity follow-up before
+it can be called accelerated. On the `sbt/io` Scala gate, `scip-java` indexing
+took about 74.527s while protoc decode took about 0.099s, Python graph decode
+took about 2.156s, and range-index construction took about 0.069s. Kotlin
+remains serial-only until its promotion gate is green and profiling shows local
+decode/build time crosses the C++ gate. PHP and Scala should get C++
+acceleration only after larger real-repo profiles show local decode/build is a
+material bottleneck.
 
 ### Phase 6: Multi-Graph Python Surface
 
