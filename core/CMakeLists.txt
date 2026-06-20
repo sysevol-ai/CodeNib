@@ -49,6 +49,7 @@ pkg_check_modules(RE2 REQUIRED re2)
 add_library(codeminer_core STATIC
     code_graph.cpp
     graph_layers.cpp
+    scip_decoder_registry.cpp
     scip_decode_common.cpp
     scip_decode_base.cpp
     scip_decode_python.cpp

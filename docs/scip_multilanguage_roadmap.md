@@ -565,6 +565,9 @@ containment `ref=8 cand=8 missing=0 extra=0`, and references `ref=1 cand=0`.
   compatible.
 - [x] Keep C++ files small and purpose-specific: parser/decoder logic,
   graph-layer helpers, pybind exposure, and tests should remain separated.
+- [x] Keep C++ decoder registration and language aliases centralized so pybind
+  bindings, smoke CLIs, and future language decoders do not duplicate dispatch
+  logic.
 - [x] Record speedup and parity in `docs/core_cpp.md` or an experiment doc.
 
 Exit condition: acceleration claims are backed by parity tests and profile

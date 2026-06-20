@@ -9,8 +9,10 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 using codeminer::core::CodeGraph;
 using codeminer::core::NODE_TYPE_CLASS;
@@ -127,9 +129,40 @@ write_test_index(const std::filesystem::path &project_root) {
   return index_path;
 }
 
+void assert_decoder_registry() {
+  auto rb = codeminer::core::canonical_scip_decoder_language("rb");
+  assert(rb.has_value());
+  assert(*rb == "ruby");
+
+  auto js = codeminer::core::canonical_scip_decoder_language("js");
+  assert(js.has_value());
+  assert(*js == "typescript");
+
+  assert(codeminer::core::is_scip_decoder_language_supported("python"));
+  assert(!codeminer::core::is_scip_decoder_language_supported("java"));
+
+  const std::vector<std::string> accepted =
+      codeminer::core::accepted_scip_decoder_languages();
+  assert(accepted.size() == 8);
+  assert(accepted.front() == "python");
+  assert(accepted.back() == "js");
+
+  try {
+    (void)codeminer::core::make_scip_decoder("java", "index.decoded",
+                                             std::nullopt);
+    assert(false && "unknown languages must throw");
+  } catch (const std::invalid_argument &error) {
+    const std::string message = error.what();
+    assert(message.find("python") != std::string::npos);
+    assert(message.find("typescript") != std::string::npos);
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+  assert_decoder_registry();
+
   if (argc > 1) {
     std::filesystem::path external_index = argv[1];
     assert(std::filesystem::exists(external_index));

@@ -31,37 +31,8 @@
 
 namespace py = pybind11;
 using codeminer::core::CodeGraph;
-using codeminer::core::SCIPDecoderBase;
-using codeminer::core::SCIPGoDecoder;
-using codeminer::core::SCIPPythonDecoder;
-using codeminer::core::SCIPRubyDecoder;
-using codeminer::core::SCIPRustDecoder;
-using codeminer::core::SCIPTSDecoder;
 
 namespace {
-
-std::unique_ptr<SCIPDecoderBase>
-make_decoder(const std::string &language, const std::string &index_file,
-             const std::optional<std::string> &project_root) {
-  if (language == "python") {
-    return std::make_unique<SCIPPythonDecoder>(index_file, project_root);
-  }
-  if (language == "go") {
-    return std::make_unique<SCIPGoDecoder>(index_file, project_root);
-  }
-  if (language == "rust") {
-    return std::make_unique<SCIPRustDecoder>(index_file, project_root);
-  }
-  if (language == "ruby" || language == "rb") {
-    return std::make_unique<SCIPRubyDecoder>(index_file, project_root);
-  }
-  if (language == "typescript" || language == "ts" || language == "js") {
-    return std::make_unique<SCIPTSDecoder>(index_file, project_root);
-  }
-  throw std::invalid_argument("Unknown language: " + language +
-                              " (expected: python | go | rust | ruby | "
-                              "typescript)");
-}
 
 py::dict vertex_to_dict(const CodeGraph::VertexData &v) {
   py::dict d;
@@ -79,7 +50,8 @@ py::dict vertex_to_dict(const CodeGraph::VertexData &v) {
 py::dict decode_scip(const std::string &index_file,
                      std::optional<std::string> project_root,
                      const std::string &language) {
-  auto decoder = make_decoder(language, index_file, project_root);
+  auto decoder =
+      codeminer::core::make_scip_decoder(language, index_file, project_root);
 
   // Release the GIL while the C++ decoder runs (it does its own
   // std::thread-based parallelism; we don't call back into Python).
@@ -141,7 +113,8 @@ Args:
     index_file: path to the decoded SCIP index file.
     project_root: project root directory (for language-specific config:
         go.mod / Cargo.toml). May be None.
-    language: one of "python", "go", "rust", "ruby", "typescript".
+    language: one of "python", "go", "rust", "ruby", "typescript"; aliases
+        "rb", "ts", and "js" are accepted.
 
 Returns:
     dict with:

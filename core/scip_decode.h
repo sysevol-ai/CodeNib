@@ -16,6 +16,7 @@
 #include "scip_decode_ruby.h"
 #include "scip_decode_rust.h"
 #include "scip_decode_ts.h"
+#include "scip_decoder_registry.h"
 
 namespace codeminer::core {
 // Backward-compat alias (old tests may still reference this name).

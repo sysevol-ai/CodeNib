@@ -17,8 +17,9 @@ files.
 - `code_graph.h` / `code_graph.cpp` – graph container that stores vertices, edges, and metadata compatible with the Python implementation.
 - `graph_layers.h` / `graph_layers.cpp` – shared graph-layer classification
   used by Python graph indexing when the pybind module is available.
-- `scip_decode.h` and the language-specific `scip_decode_*.{h,cpp}` files –
-  translate `.decoded` SCIP indexes into the C++ `CodeGraph`.
+- `scip_decode.h`, `scip_decoder_registry.{h,cpp}`, and the language-specific
+  `scip_decode_*.{h,cpp}` files – translate `.decoded` SCIP indexes into the
+  C++ `CodeGraph` and keep core decoder aliases/factory wiring centralized.
 - `bindings/pybind_module.cpp` – exposes `decode_scip(...)` and
   `classify_edge_layers(...)`; binding code should delegate algorithms to core
   modules.

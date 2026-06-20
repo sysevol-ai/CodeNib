@@ -7,18 +7,11 @@
 #include <array>
 #include <filesystem>
 #include <iostream>
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 
 using codeminer::core::CodeGraph;
-using codeminer::core::SCIPDecoderBase;
-using codeminer::core::SCIPGoDecoder;
-using codeminer::core::SCIPPythonDecoder;
-using codeminer::core::SCIPRubyDecoder;
-using codeminer::core::SCIPRustDecoder;
-using codeminer::core::SCIPTSDecoder;
 namespace fs = std::filesystem;
 
 namespace {
@@ -41,8 +34,9 @@ void print_usage(std::string_view prog_name) {
       << "  index.decoded  - Path to decoded SCIP index file\n"
       << "  project_root   - Project root directory (or 'null' for none)\n"
       << "  output.json    - Output JSON file path\n"
-      << "  language       - One of: python (default), go, rust, ruby, "
-         "typescript\n";
+      << "  language       - One of: "
+      << codeminer::core::accepted_scip_decoder_languages_help()
+      << " (default: python)\n";
 }
 
 bool path_exists(const fs::path &path, std::string_view description) {
@@ -83,37 +77,16 @@ std::optional<ProgramOptions> parse_arguments(int argc, char **argv) {
       return std::nullopt;
   }
 
-  const auto &lang = options.language;
-  if (lang != "python" && lang != "go" && lang != "rust" && lang != "ruby" &&
-      lang != "rb" && lang != "typescript" && lang != "ts" && lang != "js") {
-    std::cerr << "Error: unknown language '" << lang << "'\n";
+  auto canonical =
+      codeminer::core::canonical_scip_decoder_language(options.language);
+  if (!canonical) {
+    std::cerr << "Error: unknown language '" << options.language << "'\n";
     print_usage(argv[0]);
     return std::nullopt;
   }
-  if (lang == "ts" || lang == "js")
-    options.language = "typescript";
+  options.language = *canonical;
 
   return options;
-}
-
-std::unique_ptr<SCIPDecoderBase>
-make_decoder(const std::string &lang, const std::string &index,
-             const std::optional<fs::path> &root) {
-  std::optional<std::string> root_str;
-  if (root.has_value())
-    root_str = root->string();
-
-  if (lang == "python")
-    return std::make_unique<SCIPPythonDecoder>(index, root_str);
-  if (lang == "go")
-    return std::make_unique<SCIPGoDecoder>(index, root_str);
-  if (lang == "rust")
-    return std::make_unique<SCIPRustDecoder>(index, root_str);
-  if (lang == "ruby" || lang == "rb")
-    return std::make_unique<SCIPRubyDecoder>(index, root_str);
-  if (lang == "typescript")
-    return std::make_unique<SCIPTSDecoder>(index, root_str);
-  return nullptr;
 }
 
 } // namespace
@@ -134,10 +107,11 @@ int main(int argc, char **argv) {
             << "Output file:  " << options->output << "\n\n";
 
   try {
-    auto decoder = make_decoder(options->language, options->index.string(),
-                                options->project_root);
-    if (!decoder)
-      throw std::runtime_error("unknown language: " + options->language);
+    std::optional<std::string> root_str;
+    if (options->project_root.has_value())
+      root_str = options->project_root->string();
+    auto decoder = codeminer::core::make_scip_decoder(
+        options->language, options->index.string(), root_str);
 
     std::cout << "Decoding SCIP index...\n";
     CodeGraph graph = decoder->decode();

@@ -19,8 +19,10 @@ files.
 - `graph_layers.h` / `graph_layers.cpp` — language-agnostic default layer
   classification for CodeGraph edge types. This is shared by SCIP, clangd, and
   generic-LSP graphs after they have normalized into the common schema.
-- `scip_decode.h` / `scip_decode.cpp` — translates a `.decoded` SCIP index into the C++
-  `CodeGraph`.
+- `scip_decode.h`, `scip_decoder_registry.{h,cpp}`, and the
+  language-specific `scip_decode_*.{h,cpp}` files — translate `.decoded` SCIP
+  indexes into the C++ `CodeGraph` and keep decoder aliases/factory wiring out
+  of bindings and smoke-test CLIs.
 - `bindings/pybind_module.cpp` — exposes `decode_scip(...)` and the optional
   `classify_edge_layers(...)` binding. The binding delegates to the core
   `graph_layers` module; it should not own graph algorithms.
@@ -41,9 +43,9 @@ make core-test                # C++ smoke + Python/core parity checks
 
 The resulting static library and pybind module are placed in `build/core`.
 `make core-test` currently validates the C++ executable smoke tests,
-`graph_layers`, registry-driven core language metadata, and serial/core parity
-for the active accelerated SCIP backends: Python, Go, Rust, Ruby, TypeScript,
-and the JavaScript/TypeScript aliases.
+`graph_layers`, registry-driven Python and C++ core language metadata, and
+serial/core parity for the active accelerated SCIP backends: Python, Go, Rust,
+Ruby, TypeScript, and the JavaScript/TypeScript aliases.
 
 Ruby has a dedicated C++ decoder because real `ruby/rake` profiling showed the
 serial local decode path was the bottleneck after `scip-ruby` produced a large
