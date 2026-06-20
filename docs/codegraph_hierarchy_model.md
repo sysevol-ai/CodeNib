@@ -121,7 +121,11 @@ The Cytoscape layer also applies semantic zoom classes:
 ## Current backend model
 
 The backend model now separates containment and dependency edges before any
-view-specific filtering:
+view-specific filtering. The separation is backed by the reusable graph-layer
+API in `codeminer.graph.layers`, so callers can query the same indexed
+`CodeGraph` as overlapping relation graphs (`all`, `containment`, `dependency`,
+`reference`, `import`, and `type-use`) without changing the persisted graph
+schema:
 
 ```ts
 interface ContainmentNode {
@@ -192,8 +196,9 @@ The UI also applies semantic zoom:
 
 - Promote the current in-memory expansion overrides into a route-level graph
   session state if we need them to survive modal close/reopen or page navigation.
-- Add per-edge-kind filters if we start indexing imports/type-use/read-write in
-  addition to SCIP/LSP references.
+- Add decoders for import/type-use/read-write edges; the layer API already has
+  empty buckets for import and type-use so new decoders do not need a separate
+  graph-view contract.
 
 ## References
 

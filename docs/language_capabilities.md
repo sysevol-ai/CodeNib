@@ -25,11 +25,14 @@ python scripts/language_capability_matrix.py --check docs/language_capabilities.
 | Go | yes | yes | yes | scip | lsp | yes | yes | covered |
 | Rust | yes | yes | yes | scip | lsp | yes | yes | covered |
 | C/C++ | yes | yes | yes | clangd | clangd | yes | no | n/a-no-core-decoder |
-| C# | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
+| C# | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
 | Java | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
-| Ruby | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
-| PHP | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
-| Kotlin | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
+| Ruby | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
+| PHP | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
+| Kotlin | yes | yes | yes | lsp | none | yes | no | n/a-no-core-decoder |
+| Swift | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
+| Scala | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
+| Lua | yes | yes | yes | none | none | no | no | n/a-tree-sitter-only |
 | JavaScript | yes | yes | yes | scip | lsp | yes | yes | covered |
 | TypeScript | yes | yes | yes | scip | lsp | yes | yes | covered |
 <!-- END CODEMINER_LANGUAGE_CAPABILITIES -->

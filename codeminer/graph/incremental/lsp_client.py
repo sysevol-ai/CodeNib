@@ -127,6 +127,7 @@ _EXTRA_BIN_DIRS = [
     lambda: Path.home() / "go" / "bin",  # Go binaries
     lambda: Path.home() / ".cargo" / "bin",  # Rust binaries
     lambda: Path.home() / ".npm-global" / "bin",  # npm global
+    lambda: Path.home() / ".dotnet" / "tools",  # dotnet global tools
     lambda: Path.home() / ".local" / "bin",  # pip --user
 ]
 
@@ -151,6 +152,24 @@ def resolve_lsp_binary(binary: str) -> Optional[str]:
     return None
 
 
+def _lsp_process_env(language: str) -> dict[str, str]:
+    env = os.environ.copy()
+    # Bypass a repository-pinned Rust toolchain so rust-analyzer uses the
+    # CodeMiner-selected toolchain instead.
+    if language == "rust":
+        env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
+
+    dotnet_root = Path.home() / ".dotnet"
+    if "DOTNET_ROOT" not in env and (dotnet_root / "dotnet").exists():
+        env["DOTNET_ROOT"] = str(dotnet_root)
+        env["DOTNET_ROOT_X64"] = str(dotnet_root)
+        env["PATH"] = (
+            f"{dotnet_root}{os.pathsep}{dotnet_root / 'tools'}"
+            f"{os.pathsep}{env.get('PATH', '')}"
+        )
+    return env
+
+
 # File extension → LSP languageId
 _EXT_TO_LANG_ID = {
     ".py": "python",
@@ -168,6 +187,12 @@ _EXT_TO_LANG_ID = {
     ".hpp": "cpp",
     ".hxx": "cpp",
     ".java": "java",
+    ".cs": "csharp",
+    ".rb": "ruby",
+    ".php": "php",
+    ".phtml": "php",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
 }
 
 
@@ -230,11 +255,7 @@ class LSPClient:
                 will analyze the project in the background.
         """
         logger.info(f"Starting LSP server: {' '.join(self.command)}")
-        env = os.environ.copy()
-        # Bypass a repository-pinned Rust toolchain so rust-analyzer uses the
-        # CodeMiner-selected toolchain instead.
-        if self.language == "rust":
-            env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
+        env = _lsp_process_env(self.language)
         self.process = subprocess.Popen(
             self.command,
             stdin=subprocess.PIPE,
@@ -813,6 +834,10 @@ class LSPClient:
             "c": [".c", ".h"],
             "c++": [".cpp", ".cc", ".h"],
             "java": [".java"],
+            "csharp": [".cs"],
+            "ruby": [".rb"],
+            "php": [".php", ".phtml"],
+            "kotlin": [".kt", ".kts"],
         }
         probe_file = None
         probe_exts = _LANG_PROBE_EXTS.get(self.language, [])

@@ -118,6 +118,7 @@ def render_language_spec(config: ScaffoldConfig) -> str:
 
     aliases = _unique((config.key, *config.aliases))
     agent_aliases = tuple((alias, config.key) for alias in aliases)
+    cls = _class_prefix(config.key)
     graph_language = config.key if config.graph_backend != "none" else None
     cold_start_backend = (
         config.graph_backend if config.graph_backend != "none" else None
@@ -150,6 +151,29 @@ def render_language_spec(config: ScaffoldConfig) -> str:
                 f"    graph_extensions={_tuple_literal(config.extensions)},",
             ]
         )
+        if config.graph_backend == "lsp":
+            lines.extend(
+                [
+                    "    graph_indexer="
+                    "'codeminer.ls_index.lsp_indexer:GenericLSPIndexer',",
+                    "    graph_decoder="
+                    "'codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder',",
+                    f"    lsp_language_id={config.key!r},",
+                    "    lsp_command=('TODO-language-server', '--stdio'),",
+                    f"    lsp_command_env='CODEMINER_{config.key.upper()}_LSP_CMD',",
+                ]
+            )
+        elif config.graph_backend == "scip":
+            lines.extend(
+                [
+                    "    graph_indexer="
+                    f"'codeminer.scip_interface.scip_indexer_{config.key}:"
+                    f"SCIP{cls}Indexer',",
+                    "    graph_decoder="
+                    f"'codeminer.scip_interface.scip_decode_{config.key}:"
+                    f"SCIP{cls}GraphDecoder',",
+                ]
+            )
     lines.extend(
         [
             f"    agent_languages={_tuple_literal((config.key,))},",
@@ -630,7 +654,14 @@ def build_plan(config: ScaffoldConfig) -> list[PlannedFile]:
                 ),
             ]
         )
-    elif config.graph_backend in {"lsp", "clangd"}:
+    elif config.graph_backend == "lsp":
+        files.append(
+            PlannedFile(
+                Path("test") / "ls_index" / f"test_{key}_lsp.py",
+                _graph_test_template(config),
+            )
+        )
+    elif config.graph_backend == "clangd":
         files.extend(
             [
                 PlannedFile(
@@ -692,7 +723,12 @@ def _manual_wiring(config: ScaffoldConfig) -> list[str]:
         items.append(
             "Export and route the chunker in codeminer/code_chunking/__init__.py."
         )
-    if config.graph_backend != "none":
+    if config.graph_backend == "lsp":
+        items.append(
+            "Use GenericLSPIndexer/GenericLSPGraphDecoder in LanguageSpec; "
+            "add a custom indexer/decoder only for server-specific behavior."
+        )
+    elif config.graph_backend != "none":
         items.append("Route the graph backend through codeminer/ls_router.py.")
     if config.incremental_backend != "none":
         items.append(

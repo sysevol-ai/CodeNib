@@ -47,6 +47,16 @@ symbol is unknown or has no associated range.
 By default only `EDGE_TYPE_REFERENCE` edges are returned; `CONTAIN` edges have no
 meaningful anchor and are excluded. Pass an explicit `kinds` set to opt in.
 
+Named graph layers can be used instead of raw edge-type sets:
+
+```python
+result = graph.query_range("src/auth.py", 10, 42, layer="dependency")
+containment = graph.layer("containment")
+```
+
+Today `dependency` includes `reference` edges; the same API is ready for import
+and type-use edges once decoders emit them separately.
+
 ## Typed results
 
 `NodeRef`: `vid`, `name` (identity), `unified_name` (display, may collide), `file`,

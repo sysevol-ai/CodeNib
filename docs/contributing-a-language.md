@@ -68,6 +68,9 @@ LanguageSpec(
     agent_aliases=(("example", "example"), ("ex", "example")),
     cold_start_backend="lsp",
     incremental_backend="lsp",
+    lsp_language_id="example",
+    lsp_command=("example-language-server", "--stdio"),
+    lsp_command_env="CODEMINER_EXAMPLE_LSP_CMD",
     core_decoder=False,
 )
 ```
@@ -94,7 +97,9 @@ The scaffold is dry-run by default. Add `--write` after reviewing the
 `LanguageSpec` snippet and planned files. Generated files are intentionally not
 registered in routers yet; fill in the implementation and tests before wiring
 the language into `create_chunker()`, `LSIndexer`, `GraphPatcher`, or core
-bindings.
+bindings. For `--graph-backend lsp`, the scaffold points the registry at the
+shared `GenericLSPIndexer` / `GenericLSPGraphDecoder` and does not generate
+per-language indexer/decoder files unless a server-specific backend is needed.
 
 ## Step 2: Add Tree-Sitter Chunking
 
@@ -123,6 +128,25 @@ Pick one cold-start backend:
 - Generic LSP backend: use a shared LSP driver once it exists, with
   per-language server command, root markers, capabilities, and normalization
   rules coming from the language registry.
+- Generic LSP graph backend: set `graph_indexer` to
+  `codeminer.ls_index.lsp_indexer:GenericLSPIndexer`, `graph_decoder` to
+  `codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder`, and register
+  `lsp_language_id`, `lsp_command`, and an optional `lsp_command_env` override.
+
+Current generic LSP cold-start graph commands are:
+
+| Language | Command | Notes |
+| --- | --- | --- |
+| Java | `jdtls` | Eclipse JDT LS; Maven/Gradle-shaped projects provide better reference coverage than loose files. |
+| C# | `csharp-ls` | Requires a .NET SDK. User-level installs under `~/.dotnet/tools` are auto-resolved. |
+| Ruby | `ruby-lsp` | Requires Ruby headers/native extension support for the `prism` dependency. A user-level `mise` Ruby plus libyaml works without system Ruby headers. |
+| PHP | `intelephense --stdio` | Install with npm; CodeMiner uses stdio mode. |
+| Kotlin | `kotlin-language-server --stdio` | The JetBrains standalone archive exposes `bin/intellij-server`; symlink or wrap it as `kotlin-language-server`. |
+
+Swift, Scala, and Lua currently ship as tree-sitter-only languages in the
+capability matrix. Their graph backends should stay disabled until a real
+`sourcekit-lsp`, Metals, or LuaLS smoke test plus backend-alignment tolerance is
+landed for the target server.
 
 Then update `LSIndexer` / `LSGraphDecoder` routing. The graph must conform to
 the current CodeGraph contract:
@@ -146,6 +170,22 @@ The alignment harness compares definition symbols by `unified_name` and the
 symbol containment hierarchy. It reports reference-edge counts but does not
 require reference parity by default; server-specific reference/call edges need
 explicit tolerances before they are treated as a blocking signal.
+
+For generic LSP graph smoke on tiny generated projects, run:
+
+```bash
+python scripts/smoke_lsp_graph.py \
+  --languages java csharp ruby php kotlin \
+  --reference-languages java \
+  --min-references java=1 \
+  --json
+```
+
+Use `--skip-unavailable` for developer machines where a server cannot be
+installed without system packages. Drop it in CI or release validation when the
+toolchain image is expected to contain every listed language server. Add
+`--output-dir /tmp/codeminer-lsp-smoke` when you need to keep generated projects
+and `graph.pkl` files for `scripts/check_backend_alignment.py`.
 
 ## Step 4: Add Incremental Graph Patching
 

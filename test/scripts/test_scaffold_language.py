@@ -66,15 +66,19 @@ def test_scip_incremental_core_plan_covers_graph_patcher_and_parity_stubs():
     assert "test/scip/test_core_zig.py" in paths
 
 
-def test_lsp_plan_uses_ls_index_paths():
+def test_lsp_plan_uses_generic_lsp_registry_paths():
     cfg = _config(graph_backend="lsp")
 
     paths = {str(file.path) for file in scaffold.build_plan(cfg)}
+    rendered = scaffold.render_language_spec(cfg)
 
-    assert "codeminer/ls_index/zig_indexer.py" in paths
-    assert "codeminer/ls_index/zig_decode.py" in paths
-    assert "test/ls_index/test_zig_indexer.py" in paths
+    assert "codeminer/ls_index/zig_indexer.py" not in paths
+    assert "codeminer/ls_index/zig_decode.py" not in paths
+    assert "test/ls_index/test_zig_lsp.py" in paths
     assert all("scip_interface" not in path for path in paths)
+    assert "lsp_indexer:GenericLSPIndexer" in rendered
+    assert "lsp_graph_decode:GenericLSPGraphDecoder" in rendered
+    assert "CODEMINER_ZIG_LSP_CMD" in rendered
 
 
 def test_main_dry_run_prints_without_writing(tmp_path, capsys):

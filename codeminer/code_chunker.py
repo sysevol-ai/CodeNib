@@ -42,6 +42,9 @@ class RepoChunkingConfig:
     ruby_extensions: Optional[Set[str]] = None
     php_extensions: Optional[Set[str]] = None
     kotlin_extensions: Optional[Set[str]] = None
+    swift_extensions: Optional[Set[str]] = None
+    scala_extensions: Optional[Set[str]] = None
+    lua_extensions: Optional[Set[str]] = None
     javascript_extensions: Optional[Set[str]] = None
     typescript_extensions: Optional[Set[str]] = None
 
@@ -87,6 +90,15 @@ class RepoChunkingConfig:
 
         if self.kotlin_extensions is None:
             self.kotlin_extensions = extensions_for_language("kotlin", "chunker")
+
+        if self.swift_extensions is None:
+            self.swift_extensions = extensions_for_language("swift", "chunker")
+
+        if self.scala_extensions is None:
+            self.scala_extensions = extensions_for_language("scala", "chunker")
+
+        if self.lua_extensions is None:
+            self.lua_extensions = extensions_for_language("lua", "chunker")
 
         if self.javascript_extensions is None:
             self.javascript_extensions = extensions_for_language(

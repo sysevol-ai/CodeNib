@@ -40,7 +40,8 @@ The patcher queries three LSP methods to rebuild the graph:
 2. **`textDocument/references`** — find all call-sites of a symbol across the project (used in Round 2 to reconnect incoming edges)
 3. **`textDocument/semanticTokens`** + **`textDocument/definition`** — scan tokens in changed line ranges, then resolve each cross-file token to its definition (used in Round 2 to reconnect outgoing edges)
 
-`LSPClient` auto-resolves server binaries from PATH / conda / venv / npm-global.
+`LSPClient` auto-resolves server binaries from PATH / conda / venv / Go,
+Cargo, npm-global, .NET global tools, and local user bin directories.
 
 **C/C++ special case**: clangd's background indexer is natively incremental — it only re-indexes changed translation units, producing updated `.idx` files. So `patcher_cpp.py` simply triggers a clangd background-index run on the changed files and rebuilds the graph from the new `.idx` data, without the LSP query flow above.
 

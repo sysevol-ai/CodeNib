@@ -24,6 +24,14 @@ constexpr const char *NODE_TYPE_METHOD = "method";
 constexpr const char *NODE_TYPE_FIELD = "field";
 constexpr const char *EDGE_TYPE_CONTAIN = "contain";
 constexpr const char *EDGE_TYPE_REFERENCE = "reference";
+constexpr const char *EDGE_TYPE_IMPORT = "import";
+constexpr const char *EDGE_TYPE_TYPE_USE = "type-use";
+constexpr const char *GRAPH_LAYER_ALL = "all";
+constexpr const char *GRAPH_LAYER_CONTAINMENT = "containment";
+constexpr const char *GRAPH_LAYER_DEPENDENCY = "dependency";
+constexpr const char *GRAPH_LAYER_REFERENCE = "reference";
+constexpr const char *GRAPH_LAYER_IMPORT = "import";
+constexpr const char *GRAPH_LAYER_TYPE_USE = "type-use";
 constexpr const char *ROOT_NODE = ".";
 
 class CodeGraph {

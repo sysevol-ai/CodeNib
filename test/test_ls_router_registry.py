@@ -25,6 +25,11 @@ from codeminer.ls_router import LSGraphDecoder, LSIndexer
         ("javascript", "SCIPTypeScriptIndexer"),
         ("cpp", "ClangdIndexer"),
         ("c", "ClangdIndexer"),
+        ("java", "GenericLSPIndexer"),
+        ("csharp", "GenericLSPIndexer"),
+        ("ruby", "GenericLSPIndexer"),
+        ("php", "GenericLSPIndexer"),
+        ("kotlin", "GenericLSPIndexer"),
     ],
 )
 def test_ls_indexer_uses_registry_delegate(tmp_path, language, delegate_class):
@@ -62,6 +67,11 @@ def test_ls_indexer_passes_decoder_backend_only_to_scip(tmp_path):
         ("typescript", "SCIPTypeScriptGraphDecoder"),
         ("javascript", "SCIPTypeScriptGraphDecoder"),
         ("cpp", "ClangdGraphDecoder"),
+        ("java", "GenericLSPGraphDecoder"),
+        ("csharp", "GenericLSPGraphDecoder"),
+        ("ruby", "GenericLSPGraphDecoder"),
+        ("php", "GenericLSPGraphDecoder"),
+        ("kotlin", "GenericLSPGraphDecoder"),
     ],
 )
 def test_ls_graph_decoder_uses_registry_delegate(tmp_path, language, delegate_class):

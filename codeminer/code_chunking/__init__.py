@@ -17,10 +17,13 @@ from .go_chunker import GoCodeChunker
 from .java_chunker import JavaCodeChunker
 from .js_chunker import JsTsCodeChunker
 from .kotlin_chunker import KotlinCodeChunker
+from .lua_chunker import LuaCodeChunker
 from .php_chunker import PhpCodeChunker
 from .python_chunker import PythonCodeChunker
 from .ruby_chunker import RubyCodeChunker
 from .rust_chunker import RustCodeChunker
+from .scala_chunker import ScalaCodeChunker
+from .swift_chunker import SwiftCodeChunker
 
 
 def _load_chunker_class(path: str) -> Type[BaseCodeChunker]:
@@ -100,6 +103,9 @@ __all__ = [
     "GoCodeChunker",
     "JavaCodeChunker",
     "KotlinCodeChunker",
+    "SwiftCodeChunker",
+    "ScalaCodeChunker",
+    "LuaCodeChunker",
     "RubyCodeChunker",
     "PhpCodeChunker",
     "JsTsCodeChunker",

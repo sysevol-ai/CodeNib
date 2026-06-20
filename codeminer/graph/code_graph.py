@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from ..types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
+    GRAPH_LAYER_REFERENCE,
     NODE_TYPE_CLASS,
     NODE_TYPE_DIRECTORY,
     NODE_TYPE_FIELD,
@@ -22,6 +23,7 @@ from ..types import (
     NODE_TYPE_FUNCTION,
     NODE_TYPE_METHOD,
     NODE_TYPE_SYMBOL,
+    edge_types_for_graph_layer,
     is_symbol_node,
 )
 
@@ -539,6 +541,8 @@ class CodeGraph:
         end_line: int,
         kinds: Optional[set] = None,
         depth: int = 1,
+        *,
+        layer: Optional[str] = None,
     ) -> RangeQueryResult:
         """Query the graph by source-file line range (LSP-aligned).
 
@@ -552,6 +556,8 @@ class CodeGraph:
                 to opt in.
             depth: reserved for future multi-hop expansion. Only `depth=1`
                 is supported in v1; raises NotImplementedError otherwise.
+            layer: optional named graph layer (`reference`, `dependency`,
+                `containment`, `all`, ...). Mutually exclusive with ``kinds``.
 
         Returns: RangeQueryResult with typed `NodeRef`/`EdgeRef` records.
 
@@ -567,6 +573,14 @@ class CodeGraph:
             raise NotImplementedError(
                 f"query_range supports only depth=1 in v1; got depth={depth}"
             )
+        if layer is not None:
+            if kinds is not None:
+                raise ValueError("query_range accepts either kinds or layer, not both")
+            layer_kinds = edge_types_for_graph_layer(layer)
+            if layer_kinds is None:
+                kinds = {edge.attributes().get("type") for edge in self.graph.es}
+            else:
+                kinds = set(layer_kinds)
         if kinds is None:
             kinds = {EDGE_TYPE_REFERENCE}
 
@@ -633,6 +647,8 @@ class CodeGraph:
         name: str,
         kinds: Optional[set] = None,
         depth: int = 1,
+        *,
+        layer: Optional[str] = None,
     ) -> RangeQueryResult:
         """Range-query by symbol identity (`name`).
 
@@ -652,7 +668,17 @@ class CodeGraph:
         e = attrs.get("end_line")
         if f is None or s is None or e is None:
             return RangeQueryResult()
-        return self.query_range(f, s, e, kinds=kinds, depth=depth)
+        return self.query_range(f, s, e, kinds=kinds, depth=depth, layer=layer)
+
+    def layers(self, *, use_core: bool = True):
+        """Build a multi-graph layer index over this graph."""
+        from .layers import build_graph_layers
+
+        return build_graph_layers(self, use_core=use_core)
+
+    def layer(self, name: str = GRAPH_LAYER_REFERENCE, *, use_core: bool = True):
+        """Return one named graph layer view."""
+        return self.layers(use_core=use_core).get(name)
 
     # ------------------------------------------------------------------
 

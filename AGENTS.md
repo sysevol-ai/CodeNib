@@ -19,6 +19,13 @@ Work in this order unless the user gives a narrower task:
 5. Codify repeated feedback here or in the nearest directory-specific rules
    file so future agents do not repeat the same mistake.
 
+For broad multi-step work, keep an explicit layered goal active until the
+requested surface is implemented, locally verified, documented, and reconciled
+with relevant PRs/issues. Do not mark a broad goal complete just because a
+single subgoal landed. Prefer local targeted verification and continued
+implementation over waiting on slow remote CI; run the remote/slow tier after
+the merge queue or feature batch is otherwise coherent.
+
 ## Dev Commands
 
 ```bash
@@ -54,6 +61,8 @@ clang-format for C/C++.
 - Unit tier: `pytest -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short`
 - Integration tier: `pytest -m integration --tb=short`
 - Serial integration tier: `pytest -m integration_serial -v --tb=short`
+- Generic LSP graph smoke:
+  `python scripts/smoke_lsp_graph.py --languages java csharp ruby php kotlin --reference-languages java --min-references java=1 --json`
 - Slow tier needs LLM credentials and GPU resources; inspect whether a red slow
   job is an infra/config failure before treating it as a code regression.
 - New tests default to unit scope. Add heavier markers only when the test really

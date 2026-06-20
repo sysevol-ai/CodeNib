@@ -20,7 +20,7 @@ from typing import Iterable, Optional, Union
 
 from ..graph.code_graph import CodeGraph
 from ..graph.incremental.lsp_client import LSPClient
-from ..languages import extensions_for_language, lsp_command_for_language
+from ..languages import extensions_for_language, normalize_graph_language
 from ..log_utils import get_logger
 from ..profiler import Profiler
 from .lsp_graph_decode import GenericLSPGraphDecoder, iter_lsp_symbol_definitions
@@ -42,7 +42,7 @@ class GenericLSPIndexer:
         language: str = "java",
     ):
         self.project_root = Path(project_root).absolute()
-        self.language = language
+        self.language = normalize_graph_language(language) or language
         self.output_dir = (
             Path(output_dir).absolute()
             if output_dir
@@ -64,7 +64,7 @@ class GenericLSPIndexer:
             )
             return False
 
-        command = lsp_command_for_language(self.language)
+        command = LSPClient.get_lsp_command(self.language)
         if not command:
             logger.error("No LSP command registered for %s", self.language)
             return False

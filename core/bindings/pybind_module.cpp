@@ -26,6 +26,8 @@
 #include <pybind11/stl.h>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace py = pybind11;
 using codeminer::core::CodeGraph;
@@ -112,6 +114,46 @@ py::dict decode_scip(const std::string &index_file,
   return result;
 }
 
+std::unordered_map<std::string, std::vector<std::size_t>>
+classify_edge_layers(const std::vector<std::string> &edge_types) {
+  std::unordered_map<std::string, std::vector<std::size_t>> result;
+  result[codeminer::core::GRAPH_LAYER_ALL].reserve(edge_types.size());
+  result[codeminer::core::GRAPH_LAYER_CONTAINMENT];
+  result[codeminer::core::GRAPH_LAYER_DEPENDENCY];
+  result[codeminer::core::GRAPH_LAYER_REFERENCE];
+  result[codeminer::core::GRAPH_LAYER_IMPORT];
+  result[codeminer::core::GRAPH_LAYER_TYPE_USE];
+
+  auto &all = result[codeminer::core::GRAPH_LAYER_ALL];
+  auto &containment = result[codeminer::core::GRAPH_LAYER_CONTAINMENT];
+  auto &dependency = result[codeminer::core::GRAPH_LAYER_DEPENDENCY];
+  auto &reference = result[codeminer::core::GRAPH_LAYER_REFERENCE];
+  auto &import_layer = result[codeminer::core::GRAPH_LAYER_IMPORT];
+  auto &type_use = result[codeminer::core::GRAPH_LAYER_TYPE_USE];
+
+  py::gil_scoped_release release;
+
+  for (std::size_t i = 0; i < edge_types.size(); ++i) {
+    const auto &type = edge_types[i];
+    all.push_back(i);
+    if (type == codeminer::core::EDGE_TYPE_CONTAIN) {
+      containment.push_back(i);
+    }
+    if (type == codeminer::core::EDGE_TYPE_REFERENCE) {
+      reference.push_back(i);
+      dependency.push_back(i);
+    } else if (type == codeminer::core::EDGE_TYPE_IMPORT) {
+      import_layer.push_back(i);
+      dependency.push_back(i);
+    } else if (type == codeminer::core::EDGE_TYPE_TYPE_USE) {
+      type_use.push_back(i);
+      dependency.push_back(i);
+    }
+  }
+
+  return result;
+}
+
 } // namespace
 
 PYBIND11_MODULE(codeminer_core, m) {
@@ -137,5 +179,13 @@ Returns:
           (source_name, target_name, edge_type,
            anchor_file_or_None, anchor_line_or_None)
       - "project_root": the effective project_root used.
+)pbdoc");
+
+  m.def("classify_edge_layers", &classify_edge_layers, py::arg("edge_types"),
+        R"pbdoc(
+Classify edge-type strings into overlapping CodeGraph layer id buckets.
+
+Returns a dict with keys:
+  all, containment, dependency, reference, import, type-use
 )pbdoc");
 }

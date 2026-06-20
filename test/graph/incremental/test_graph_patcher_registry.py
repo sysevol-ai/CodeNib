@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from codeminer.graph.code_graph import CodeGraph
@@ -102,3 +104,40 @@ def test_lsp_client_command_lookup_uses_language_registry(monkeypatch):
     assert lsp_client.LSPClient.get_lsp_command("python") == ["ty", "server"]
     assert lsp_client.LSPClient.get_lsp_command("go") == ["gopls", "serve"]
     assert lsp_client.LSPClient.get_lsp_command("java") == ["jdtls"]
+    assert lsp_client.LSPClient.get_lsp_command("csharp") == ["csharp-ls"]
+    assert lsp_client.LSPClient.get_lsp_command("ruby") == ["ruby-lsp"]
+    assert lsp_client.LSPClient.get_lsp_command("php") == ["intelephense", "--stdio"]
+    assert lsp_client.LSPClient.get_lsp_command("kotlin") == [
+        "kotlin-language-server",
+        "--stdio",
+    ]
+
+
+def test_lsp_binary_resolver_searches_dotnet_global_tools():
+    from codeminer.graph.incremental import lsp_client
+
+    extra_dirs = {str(dir_fn()) for dir_fn in lsp_client._EXTRA_BIN_DIRS}
+
+    assert str(lsp_client.Path.home() / ".dotnet" / "tools") in extra_dirs
+
+
+def test_lsp_process_env_exposes_user_dotnet_install(tmp_path, monkeypatch):
+    from codeminer.graph.incremental import lsp_client
+
+    dotnet_root = tmp_path / ".dotnet"
+    dotnet_root.mkdir()
+    (dotnet_root / "tools").mkdir()
+    (dotnet_root / "dotnet").write_text("", encoding="utf-8")
+
+    monkeypatch.delenv("DOTNET_ROOT", raising=False)
+    monkeypatch.delenv("DOTNET_ROOT_X64", raising=False)
+    monkeypatch.setattr(lsp_client.Path, "home", classmethod(lambda cls: tmp_path))
+
+    env = lsp_client._lsp_process_env("csharp")
+
+    assert env["DOTNET_ROOT"] == str(dotnet_root)
+    assert env["DOTNET_ROOT_X64"] == str(dotnet_root)
+    assert env["PATH"].split(os.pathsep)[:2] == [
+        str(dotnet_root),
+        str(dotnet_root / "tools"),
+    ]

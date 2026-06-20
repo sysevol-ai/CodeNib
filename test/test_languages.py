@@ -36,7 +36,7 @@ def test_c_family_surface_normalization_is_explicit():
     assert normalize_chunker_language("cs") == "csharp"
     assert normalize_graph_language("c") == "cpp"
     assert normalize_graph_language("c++") == "cpp"
-    assert normalize_graph_language("c#") is None
+    assert normalize_graph_language("c#") == "csharp"
     assert normalize_agent_language("c") == "c"
     assert normalize_agent_language("c++") == "cpp"
     assert normalize_agent_language("c#") == "csharp"
@@ -65,6 +65,11 @@ def test_gt_extensions_preserve_current_supported_set():
     assert ext_map[".rb"] == "ruby"
     assert ext_map[".php"] == "php"
     assert ext_map[".kt"] == "kotlin"
+    assert ext_map[".swift"] == "swift"
+    assert ext_map[".scala"] == "scala"
+    assert ext_map[".sc"] == "scala"
+    assert ext_map[".lua"] == "lua"
+    assert ext_map[".luau"] == "lua"
     assert ext_map[".tsx"] == "typescript"
     assert ext_map[".jsx"] == "javascript"
 
@@ -85,6 +90,9 @@ def test_agent_supported_languages_match_existing_scenarios():
         "ruby",
         "php",
         "kotlin",
+        "swift",
+        "scala",
+        "lua",
         "typescript",
         "javascript",
     }
@@ -126,6 +134,15 @@ def test_language_capability_rows_track_parity_applicability():
         assert rows[language].chunker is True
         assert rows[language].ground_truth is True
         assert rows[language].agent is True
+        assert rows[language].graph_backend == "lsp"
+        assert rows[language].incremental_backend is None
+        assert rows[language].core_decoder is False
+        assert rows[language].core_parity == "n/a-no-core-decoder"
+
+    for language in ("swift", "scala", "lua"):
+        assert rows[language].chunker is True
+        assert rows[language].ground_truth is True
+        assert rows[language].agent is True
         assert rows[language].graph_backend is None
         assert rows[language].incremental_backend is None
         assert rows[language].core_decoder is False
@@ -143,6 +160,9 @@ def test_chunker_languages_are_current_supported_repo_chunkers():
         "ruby",
         "php",
         "kotlin",
+        "swift",
+        "scala",
+        "lua",
         "javascript",
         "typescript",
     )
@@ -166,6 +186,10 @@ def test_chunker_class_paths_follow_chunker_language_aliases():
     assert paths["php"].endswith("php_chunker:PhpCodeChunker")
     assert paths["kotlin"].endswith("kotlin_chunker:KotlinCodeChunker")
     assert paths["kt"] == paths["kotlin"]
+    assert paths["swift"].endswith("swift_chunker:SwiftCodeChunker")
+    assert paths["scala"].endswith("scala_chunker:ScalaCodeChunker")
+    assert paths["lua"].endswith("lua_chunker:LuaCodeChunker")
+    assert paths["luau"] == paths["lua"]
     assert paths["javascript"].endswith("js_chunker:JsTsCodeChunker")
     assert paths["js"] == paths["javascript"]
     assert paths["typescript"].endswith("js_chunker:JsTsCodeChunker")
@@ -178,6 +202,9 @@ def test_chunker_class_paths_follow_chunker_language_aliases():
     assert chunker_class_path("rb") == paths["ruby"]
     assert chunker_class_path("php") == paths["php"]
     assert chunker_class_path("kt") == paths["kotlin"]
+    assert chunker_class_path("swift") == paths["swift"]
+    assert chunker_class_path("scala") == paths["scala"]
+    assert chunker_class_path("luau") == paths["lua"]
 
     js_spec = get_chunker_spec("javascript")
     ts_spec = get_chunker_spec("typescript")
@@ -207,6 +234,9 @@ def test_incremental_patcher_paths_follow_graph_language_aliases():
     assert incremental_patcher_path("ruby") is None
     assert incremental_patcher_path("php") is None
     assert incremental_patcher_path("kotlin") is None
+    assert incremental_patcher_path("swift") is None
+    assert incremental_patcher_path("scala") is None
+    assert incremental_patcher_path("lua") is None
 
 
 def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
@@ -241,22 +271,36 @@ def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
     assert graph_cold_start_backend("cpp") == "clangd"
     assert graph_cold_start_backend("python") == "scip"
     assert graph_cold_start_backend("java") == "lsp"
-    assert graph_indexer_path("csharp") is None
-    assert graph_decoder_path("csharp") is None
-    assert graph_indexer_path("ruby") is None
-    assert graph_decoder_path("ruby") is None
-    assert graph_indexer_path("php") is None
-    assert graph_decoder_path("php") is None
-    assert graph_indexer_path("kotlin") is None
-    assert graph_decoder_path("kotlin") is None
+    for language in ("csharp", "ruby", "php", "kotlin"):
+        assert graph_indexer_path(language).endswith("lsp_indexer:GenericLSPIndexer")
+        assert graph_decoder_path(language).endswith(
+            "lsp_graph_decode:GenericLSPGraphDecoder"
+        )
+        assert graph_cold_start_backend(language) == "lsp"
+
+    for language in ("swift", "scala", "lua"):
+        assert graph_indexer_path(language) is None
+        assert graph_decoder_path(language) is None
+        assert graph_cold_start_backend(language) is None
 
 
 def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
     assert lsp_language_id_for_language("python") == "python"
     assert lsp_command_for_language("python") == ["basedpyright-langserver", "--stdio"]
+    assert lsp_language_id_for_language("c#") == "csharp"
+    assert lsp_command_for_language("c#") == ["csharp-ls"]
+    assert lsp_language_id_for_language("rb") == "ruby"
+    assert lsp_command_for_language("rb") == ["ruby-lsp"]
+    assert lsp_language_id_for_language("php") == "php"
+    assert lsp_command_for_language("php") == ["intelephense", "--stdio"]
+    assert lsp_language_id_for_language("kt") == "kotlin"
+    assert lsp_command_for_language("kt") == ["kotlin-language-server", "--stdio"]
 
     monkeypatch.setenv("CODEMINER_PYTHON_LSP_CMD", "ty server")
     assert lsp_command_for_language("py") == ["ty", "server"]
+
+    monkeypatch.setenv("CODEMINER_RUBY_LSP_CMD", "bundle exec ruby-lsp")
+    assert lsp_command_for_language("ruby") == ["bundle", "exec", "ruby-lsp"]
 
     assert lsp_language_id_for_language("go") == "go"
     assert lsp_command_for_language("golang") == ["gopls", "serve"]
@@ -271,12 +315,3 @@ def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
     assert lsp_command_for_language("java") == ["jdtls"]
     monkeypatch.setenv("CODEMINER_JAVA_LSP_CMD", "jdtls --stdio")
     assert lsp_command_for_language("java") == ["jdtls", "--stdio"]
-
-    assert lsp_language_id_for_language("csharp") is None
-    assert lsp_command_for_language("csharp") is None
-    assert lsp_language_id_for_language("ruby") is None
-    assert lsp_command_for_language("ruby") is None
-    assert lsp_language_id_for_language("php") is None
-    assert lsp_command_for_language("php") is None
-    assert lsp_language_id_for_language("kotlin") is None
-    assert lsp_command_for_language("kotlin") is None

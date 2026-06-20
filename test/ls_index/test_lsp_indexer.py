@@ -93,6 +93,43 @@ def test_lsindexer_routes_java_to_generic_lsp_backend(tmp_path):
     assert indexer._delegate.index_file.name == "index.lsp.json"
 
 
+def test_generic_lsp_indexer_uses_resolved_lsp_command(tmp_path, monkeypatch):
+    source = tmp_path / "Example.java"
+    source.write_text("class Example {}\n", encoding="utf-8")
+    calls = []
+
+    class FakeLSPClient:
+        @staticmethod
+        def get_lsp_command(language):
+            assert language == "java"
+            return ["/tmp/resolved-jdtls", "--stdio"]
+
+        def __init__(self, command, project_root, language):
+            calls.append((command, project_root, language))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def document_symbol(self, file_path):
+            return []
+
+    monkeypatch.setattr("codeminer.ls_index.lsp_indexer.LSPClient", FakeLSPClient)
+
+    indexer = GenericLSPIndexer(tmp_path, language="java")
+
+    assert indexer.generate_index()
+    assert calls == [(["/tmp/resolved-jdtls", "--stdio"], str(tmp_path), "java")]
+
+
+def test_generic_lsp_indexer_normalizes_language_alias(tmp_path):
+    indexer = GenericLSPIndexer(tmp_path, language="rb")
+
+    assert indexer.language == "ruby"
+
+
 def test_generic_lsp_decoder_adds_reference_edges(tmp_path):
     foo = tmp_path / "src/main/java/app/Foo.java"
     bar = tmp_path / "src/main/java/app/Bar.java"
