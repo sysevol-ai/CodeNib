@@ -174,6 +174,11 @@ class SCIPKotlinIndexer(SCIPJavaIndexer):
             scip_language="kotlin",
         )
 
+    def _get_decoder_class(self):
+        from .scip_decode_java import SCIPKotlinGraphDecoder
+
+        return SCIPKotlinGraphDecoder
+
 
 class SCIPScalaIndexer(SCIPJavaIndexer):
     """Candidate scip-java indexer for Scala projects."""

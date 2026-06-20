@@ -10,7 +10,10 @@ import sys
 
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.scip_interface import scip_indexer_java
-from codeminer.scip_interface.scip_decode_java import SCIPJavaGraphDecoder
+from codeminer.scip_interface.scip_decode_java import (
+    SCIPJavaGraphDecoder,
+    SCIPKotlinGraphDecoder,
+)
 from codeminer.scip_interface.scip_indexer_java import (
     SCIPJavaIndexer,
     SCIPKotlinIndexer,
@@ -239,7 +242,7 @@ def test_scip_kotlin_indexer_uses_kotlin_registry_command(tmp_path, monkeypatch)
         "--output",
         str(tmp_path / "out/index.scip"),
     ]
-    assert indexer._get_decoder_class() is SCIPJavaGraphDecoder
+    assert indexer._get_decoder_class() is SCIPKotlinGraphDecoder
 
 
 def test_scip_kotlin_indexer_filters_target_dir_after_decode(tmp_path):
@@ -463,6 +466,407 @@ documents {
         _target=graph.name_to_vertex["app/Invoice#total"],
     )
     assert contain["type"] == EDGE_TYPE_CONTAIN
+
+
+def test_scip_kotlin_decoder_normalizes_companion_constructor_and_locals(
+    tmp_path,
+):
+    source_file = tmp_path / "src/main/kotlin/app/Invoice.kt"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text(
+        """
+class Invoice {
+  val code: String get() = "paid"
+
+  enum class Kind {
+    STANDARD,
+    SPECIAL,
+  }
+}
+
+fun normalize(): String = "ok"
+
+val String.invoiceId: Boolean
+  get() = startsWith("INV")
+
+object Dynamic {
+  override fun copy(): String = "copy"
+  override fun emit(): String = "emit"
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    index = tmp_path / "index.decoded"
+    index.write_text(
+        """
+documents {
+  relative_path: "src/main/kotlin/app/Invoice.kt"
+  occurrences {
+    range: 0
+    range: 6
+    range: 13
+    symbol: "semanticdb maven . . app/Invoice#"
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 8
+    enclosing_range: 1
+  }
+  occurrences {
+    range: 1
+    range: 14
+    range: 21
+    symbol: "semanticdb maven . . app/Invoice#`<init>`()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 12
+    range: 21
+    symbol: "semanticdb maven . . app/Invoice#Companion#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 13
+    range: 17
+    symbol: "semanticdb maven . . app/Invoice#Kind#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 4
+    range: 12
+    symbol: "semanticdb maven . . app/Invoice#Kind#STANDARD."
+  }
+  occurrences {
+    range: 2
+    range: 4
+    range: 12
+    symbol: "semanticdb maven . . app/Invoice#Kind#values()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 4
+    range: 12
+    symbol: "semanticdb maven . . app/Invoice#Kind#valueOf()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 4
+    range: 12
+    symbol: "semanticdb maven . . app/Invoice#Kind#entries."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 3
+    range: 8
+    range: 15
+    symbol: "semanticdb maven . . app/Invoice#Companion#builder()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 4
+    range: 8
+    range: 13
+    symbol: "semanticdb maven . . app/Invoice#Companion#EMPTY."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 4
+    range: 8
+    range: 16
+    symbol: "semanticdb maven . . app/Invoice#Companion#getEMPTY()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 5
+    range: 8
+    range: 11
+    symbol: "semanticdb maven . . app/Invoice#Companion#get(+1)."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 3
+    range: 16
+    range: 20
+    symbol: "semanticdb maven . . app/Invoice#Companion#builder().(name)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 5
+    range: 16
+    range: 23
+    symbol: "semanticdb maven . . app/Invoice#Companion#builder(+1).(altName)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 14
+    range: 15
+    symbol: "semanticdb maven . . app/Invoice#[T]"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 12
+    range: 7
+    range: 14
+    symbol: "semanticdb maven . . app/Dynamic#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 13
+    range: 15
+    range: 19
+    symbol: "semanticdb maven . . app/Dynamic#copy()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 14
+    range: 15
+    range: 19
+    symbol: "semanticdb maven . . app/Dynamic#emit()."
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#"
+    kind: Class
+    display_name: "Invoice"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#`<init>`()."
+    kind: Method
+    display_name: "<init>"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Companion#"
+    kind: Object
+    display_name: "Companion"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Kind#"
+    kind: Enum
+    display_name: "Kind"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Kind#values()."
+    documentation: "static fun values(): Array<Invoice.Kind>"
+    display_name: "values"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Kind#valueOf()."
+    documentation: "static fun valueOf(value: String): Invoice.Kind"
+    display_name: "valueOf"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Kind#entries."
+    documentation: "static val entries: EnumEntries<Invoice.Kind>"
+    display_name: "entries"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Companion#builder()."
+    kind: Method
+    display_name: "builder"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Companion#EMPTY."
+    display_name: "EMPTY"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Companion#getEMPTY()."
+    kind: Method
+    display_name: "getEMPTY"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Companion#get(+1)."
+    display_name: "get"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Companion#builder().(name)"
+    display_name: "name"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#Companion#builder(+1).(altName)"
+    display_name: "altName"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Invoice#[T]"
+    display_name: "FirTypeParameterSymbol T"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Dynamic#"
+    kind: Object
+    display_name: "Dynamic"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Dynamic#copy()."
+    kind: Method
+    display_name: "copy"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Dynamic#emit()."
+    kind: Method
+    display_name: "emit"
+  }
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    graph = SCIPKotlinGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+
+    constructor = graph.graph.vs[graph.name_to_vertex["app/Invoice#<init>"]]
+    kind = graph.graph.vs[graph.name_to_vertex["app/Invoice#Kind"]]
+    builder = graph.graph.vs[graph.name_to_vertex["app/Invoice#Companion#builder"]]
+    empty = graph.graph.vs[graph.name_to_vertex["app/Invoice#Companion#EMPTY"]]
+    overload = graph.graph.vs[graph.name_to_vertex["app/Invoice#Companion#get(+1)"]]
+    assert constructor["unified_name"] == (
+        "src/main/kotlin/app/Invoice.kt:Invoice.constructor()"
+    )
+    assert kind["unified_name"] == "src/main/kotlin/app/Invoice.kt:Invoice.Kind"
+    assert builder["unified_name"] == "src/main/kotlin/app/Invoice.kt:Invoice.builder()"
+    assert empty["unified_name"] == "src/main/kotlin/app/Invoice.kt:Invoice.EMPTY"
+    assert overload["unified_name"] == "src/main/kotlin/app/Invoice.kt:Invoice.get()"
+    standard_defs = [
+        vertex
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("unified_name")
+        == "src/main/kotlin/app/Invoice.kt:Invoice.Kind.STANDARD"
+        and vertex.attributes().get("start_line") is not None
+    ]
+    assert len(standard_defs) == 1
+    standard_name = standard_defs[0]["name"]
+    assert standard_name != "app/Invoice#Kind#STANDARD"
+    assert (
+        graph.graph.vs[graph.name_to_vertex["app/Invoice#Kind#SPECIAL"]]["unified_name"]
+        == "src/main/kotlin/app/Invoice.kt:Invoice.Kind.SPECIAL"
+    )
+    normalize_defs = [
+        vertex
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("unified_name")
+        == "src/main/kotlin/app/Invoice.kt:normalize()"
+        and vertex.attributes().get("start_line") is not None
+    ]
+    assert len(normalize_defs) == 1
+    assert "app/Invoice#Companion" not in graph.name_to_vertex
+    assert "app/Invoice#Companion#getEMPTY" not in graph.name_to_vertex
+    assert "app/Invoice#Companion#builder().(name)" not in graph.name_to_vertex
+    assert "app/Invoice#Companion#builder(+1).(altName)" not in graph.name_to_vertex
+    assert "app/Invoice#[T]" not in graph.name_to_vertex
+    assert "app/Invoice#Kind#values" not in graph.name_to_vertex
+    assert "app/Invoice#Kind#valueOf" not in graph.name_to_vertex
+    assert "app/Invoice#Kind#entries" not in graph.name_to_vertex
+    assert (
+        graph.graph.vs[graph.name_to_vertex["app/Dynamic#copy"]]["unified_name"]
+        == "src/main/kotlin/app/Invoice.kt:Dynamic.copy()"
+    )
+    assert (
+        graph.graph.vs[graph.name_to_vertex["app/Dynamic#emit"]]["unified_name"]
+        == "src/main/kotlin/app/Invoice.kt:Dynamic.emit()"
+    )
+
+    contain = graph.graph.es.find(
+        _source=graph.name_to_vertex["app/Invoice"],
+        _target=graph.name_to_vertex["app/Invoice#Companion#builder"],
+    )
+    assert contain["type"] == EDGE_TYPE_CONTAIN
+
+    enum_contain = graph.graph.es.find(
+        _source=graph.name_to_vertex["app/Invoice#Kind"],
+        _target=graph.name_to_vertex[standard_name],
+    )
+    assert enum_contain["type"] == EDGE_TYPE_CONTAIN
+
+    function_contain = graph.graph.es.find(
+        _source=graph.name_to_vertex["src/main/kotlin/app/Invoice.kt"],
+        _target=normalize_defs[0].index,
+    )
+    assert function_contain["type"] == EDGE_TYPE_CONTAIN
+
+    property_defs = [
+        vertex
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("unified_name")
+        == "src/main/kotlin/app/Invoice.kt:Invoice.code"
+        and vertex.attributes().get("start_line") is not None
+    ]
+    assert len(property_defs) == 1
+    property_contain = graph.graph.es.find(
+        _source=graph.name_to_vertex["app/Invoice"],
+        _target=property_defs[0].index,
+    )
+    assert property_contain["type"] == EDGE_TYPE_CONTAIN
+    getter_defs = [
+        vertex
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("unified_name")
+        == "src/main/kotlin/app/Invoice.kt:Invoice.code.get()"
+        and vertex.attributes().get("start_line") is not None
+    ]
+    assert len(getter_defs) == 1
+    getter_contain = graph.graph.es.find(
+        _source=property_defs[0].index,
+        _target=getter_defs[0].index,
+    )
+    assert getter_contain["type"] == EDGE_TYPE_CONTAIN
+
+    extension_property_defs = [
+        vertex
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("unified_name")
+        == "src/main/kotlin/app/Invoice.kt:invoiceId"
+        and vertex.attributes().get("start_line") is not None
+    ]
+    assert len(extension_property_defs) == 1
+    extension_property_contain = graph.graph.es.find(
+        _source=graph.name_to_vertex["src/main/kotlin/app/Invoice.kt"],
+        _target=extension_property_defs[0].index,
+    )
+    assert extension_property_contain["type"] == EDGE_TYPE_CONTAIN
+    extension_getter_defs = [
+        vertex
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("unified_name")
+        == "src/main/kotlin/app/Invoice.kt:invoiceId.get()"
+        and vertex.attributes().get("start_line") is not None
+    ]
+    assert len(extension_getter_defs) == 1
+    extension_getter_contain = graph.graph.es.find(
+        _source=extension_property_defs[0].index,
+        _target=extension_getter_defs[0].index,
+    )
+    assert extension_getter_contain["type"] == EDGE_TYPE_CONTAIN
+
+    copy_alias_defs = [
+        vertex
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("unified_name")
+        == "src/main/kotlin/app/Invoice.kt:copy()"
+        and vertex.attributes().get("start_line") is not None
+    ]
+    assert len(copy_alias_defs) == 1
+    copy_alias_contain = graph.graph.es.find(
+        _source=graph.name_to_vertex["src/main/kotlin/app/Invoice.kt"],
+        _target=copy_alias_defs[0].index,
+    )
+    assert copy_alias_contain["type"] == EDGE_TYPE_CONTAIN
+    emit_alias_defs = [
+        vertex
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("unified_name")
+        == "src/main/kotlin/app/Invoice.kt:emit()"
+        and vertex.attributes().get("start_line") is not None
+    ]
+    assert len(emit_alias_defs) == 1
+    emit_alias_contain = graph.graph.es.find(
+        _source=graph.name_to_vertex["src/main/kotlin/app/Invoice.kt"],
+        _target=emit_alias_defs[0].index,
+    )
+    assert emit_alias_contain["type"] == EDGE_TYPE_CONTAIN
 
 
 def test_scip_java_decoder_normalizes_nested_kotlin_owner_and_overload_suffix(

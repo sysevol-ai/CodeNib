@@ -244,11 +244,40 @@ KotlinPoet's candidate route can be compared against the same
 KotlinPoet 2.2.0 decoded SCIP artifact with that target reduced the candidate
 graph to 2,749 vertices, 9,835 edges, and 7,499 reference edges. Against the
 matching LSP graph, alignment is still not promotion-green but is now scoped to
-real modeling differences: symbols `ref=877 cand=1638 missing=179 extra=940`,
-containment `ref=877 cand=1708 missing=179 extra=1010`, references
+real modeling differences: symbols `ref=849 cand=1638 missing=146 extra=935`,
+containment `ref=849 cand=1708 missing=146 extra=1005`, references
 `ref=0 cand=7499`. The remaining gap is dominated by Kotlin object/companion
 property modeling, generated getter/property symbols, and symbol display
 normalization; Kotlin therefore remains `candidate`.
+
+A Kotlin-specific decoder follow-up now removes the largest non-source
+definition noise from that same target-dir gate: parameter descriptors including
+overloaded `(+n)` parameters, type-parameter descriptors, companion object
+classes/constructors, synthetic companion getters such as `getEMPTY()`, and
+JVM overload descriptors that scip-java encodes without normal method syntax,
+and metadata-confirmed enum helpers such as `entries`, `valueOf()`, and
+`values()`. It also flattens companion members to the containing Kotlin type and
+keeps Kotlin `<init>` constructors as `constructor()` definitions instead of
+applying Java's default-constructor skip. A subsequent source supplement adds
+enum entries, top-level functions, explicit property getter nodes, and
+top-level `object` override function aliases from `.kt` source when scip-java
+omits the LSP-facing definition surface, using file-scoped keys when an
+external/reference vertex already owns the raw SCIP key. Reprocessing the saved
+KotlinPoet 2.2.0 decoded artifact with the real source checkout reduced the
+filtered candidate graph to 1,562 vertices and 5,923 edges. Alignment is
+improved but still not promotion-green because containment and extra-symbol
+tolerances remain open: symbols `ref=849 cand=936 missing=0 extra=87`,
+containment `ref=849 cand=941 missing=66 extra=158`, references
+`ref=0 cand=4725`. The remaining candidate work is now dominated by extra
+synthetic/public members and containment differences, not missing definition
+symbols. The current extra-symbol surface includes data-class/object generated
+members such as `copy()` and `componentN()`, top-level constants, and
+implementation-detail methods that Kotlin LS omits from its document-symbol
+surface. A broad "generate getters for every field" rule was rejected because
+it cuts missing symbols at the cost of a much larger extra-symbol surface.
+Filtering top-level constants is also not accepted yet because those are often
+useful retrieval symbols even when the LSP baseline does not report them.
+Kotlin therefore remains `candidate`.
 
 Current Scala active status: the generated Gradle Scala 2.13 smoke runs
 through `scip-java index`, decodes `index.scip`, and builds a CodeGraph via the
