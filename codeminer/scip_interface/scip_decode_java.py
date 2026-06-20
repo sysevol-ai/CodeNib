@@ -572,6 +572,23 @@ class SCIPKotlinGraphDecoder(SCIPJavaGraphDecoder):
         ]
         return ".".join(parts)
 
+    def _containment_parent(self, key: str) -> str:
+        owner, member = self._split_owner_member(key)
+        if member:
+            companion_owner = self._companion_containing_owner(owner)
+            if companion_owner and companion_owner in self.code_graph.name_to_vertex:
+                return companion_owner
+        return super()._containment_parent(key)
+
+    def _companion_containing_owner(self, owner: str) -> str | None:
+        parts = owner.split("#")
+        original_len = len(parts)
+        while parts and parts[-1] == "Companion":
+            parts.pop()
+        if len(parts) == original_len:
+            return None
+        return "#".join(parts) or None
+
     def _symbol_descriptor(self, symbol: str | None) -> str:
         if not symbol:
             return ""

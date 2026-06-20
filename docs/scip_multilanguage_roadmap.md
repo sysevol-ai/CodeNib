@@ -259,26 +259,28 @@ JVM overload descriptors that scip-java encodes without normal method syntax,
 and metadata-confirmed enum helpers such as `entries`, `valueOf()`, and
 `values()`. It also flattens companion members to the containing Kotlin type and
 keeps Kotlin `<init>` constructors as `constructor()` definitions instead of
-applying Java's default-constructor skip. A subsequent source supplement adds
-enum entries, top-level functions, explicit property getter nodes, and
-top-level `object` override function aliases from `.kt` source when scip-java
-omits the LSP-facing definition surface, using file-scoped keys when an
-external/reference vertex already owns the raw SCIP key. Reprocessing the saved
-KotlinPoet 2.2.0 decoded artifact with the real source checkout reduced the
-filtered candidate graph to 1,562 vertices and 5,923 edges. Alignment is
-improved but still not promotion-green because containment and extra-symbol
-tolerances remain open: symbols `ref=849 cand=936 missing=0 extra=87`,
-containment `ref=849 cand=941 missing=66 extra=158`, references
-`ref=0 cand=4725`. The remaining candidate work is now dominated by extra
-synthetic/public members and containment differences, not missing definition
-symbols. The current extra-symbol surface includes data-class/object generated
-members such as `copy()` and `componentN()`, top-level constants, and
-implementation-detail methods that Kotlin LS omits from its document-symbol
-surface. A broad "generate getters for every field" rule was rejected because
-it cuts missing symbols at the cost of a much larger extra-symbol surface.
-Filtering top-level constants is also not accepted yet because those are often
-useful retrieval symbols even when the LSP baseline does not report them.
-Kotlin therefore remains `candidate`.
+applying Java's default-constructor skip. Companion member containment is also
+mapped back to the containing Kotlin type when scip-java omits usable
+`enclosing_range` data. A subsequent source supplement adds enum entries,
+top-level functions, explicit property getter nodes, and top-level `object`
+override function aliases from `.kt` source when scip-java omits the LSP-facing
+definition surface, using file-scoped keys when an external/reference vertex
+already owns the raw SCIP key. Reprocessing the saved KotlinPoet 2.2.0 decoded
+artifact with the real source checkout still produces 1,562 vertices and 5,923
+edges, but containment alignment is now strict-green for the shared definition
+surface: symbols `ref=849 cand=936 missing=0 extra=87`, containment
+`ref=849 cand=938 missing=0 extra=89`, references `ref=0 cand=4725`. The
+remaining candidate work is now dominated by extra synthetic/public members,
+not missing definition symbols or missing containment. The current extra-symbol
+surface includes data-class/object generated members such as `copy()` and
+`componentN()`, top-level constants, and implementation-detail methods that
+Kotlin LS omits from its document-symbol surface. A broad "generate getters for
+every field" rule was rejected because it cuts missing symbols at the cost of a
+much larger extra-symbol surface. Filtering top-level constants is also not
+accepted yet because those are often useful retrieval symbols even when the LSP
+baseline does not report them. Filtering data-class helpers needs stronger
+metadata than name shape alone because explicit `copy()`/`componentN()` methods
+are valid Kotlin source. Kotlin therefore remains `candidate`.
 
 Current Scala active status: the generated Gradle Scala 2.13 smoke runs
 through `scip-java index`, decodes `index.scip`, and builds a CodeGraph via the

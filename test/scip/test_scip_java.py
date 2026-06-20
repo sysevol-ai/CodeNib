@@ -869,6 +869,69 @@ documents {
     assert emit_alias_contain["type"] == EDGE_TYPE_CONTAIN
 
 
+def test_scip_kotlin_decoder_contains_companion_members_without_ranges(tmp_path):
+    index = tmp_path / "index.decoded"
+    index.write_text(
+        """
+documents {
+  relative_path: "src/main/kotlin/app/Factory.kt"
+  occurrences {
+    range: 0
+    range: 6
+    range: 13
+    symbol: "semanticdb maven . . app/Factory#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 13
+    range: 22
+    symbol: "semanticdb maven . . app/Factory#Companion#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 16
+    range: 22
+    symbol: "semanticdb maven . . app/Factory#Companion#create()."
+    symbol_roles: 1
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Factory#"
+    kind: Class
+    display_name: "Factory"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Factory#Companion#"
+    kind: Object
+    display_name: "Companion"
+  }
+  symbols {
+    symbol: "semanticdb maven . . app/Factory#Companion#create()."
+    kind: Method
+    display_name: "create"
+  }
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    graph = SCIPKotlinGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+
+    assert "app/Factory#Companion" not in graph.name_to_vertex
+    assert (
+        graph.graph.vs[graph.name_to_vertex["app/Factory#Companion#create"]][
+            "unified_name"
+        ]
+        == "src/main/kotlin/app/Factory.kt:Factory.create()"
+    )
+    contain = graph.graph.es.find(
+        _source=graph.name_to_vertex["app/Factory"],
+        _target=graph.name_to_vertex["app/Factory#Companion#create"],
+    )
+    assert contain["type"] == EDGE_TYPE_CONTAIN
+
+
 def test_scip_java_decoder_normalizes_nested_kotlin_owner_and_overload_suffix(
     tmp_path,
 ):
