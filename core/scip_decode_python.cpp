@@ -5,7 +5,6 @@
 #include "scip_decode_python.h"
 
 #include <algorithm>
-#include <filesystem>
 #include <re2/re2.h>
 
 namespace codeminer::core {
@@ -53,26 +52,8 @@ SCIPPythonDecoder::process_document(const std::string &document_block) const {
     return Subgraph{};
   }
 
-  std::filesystem::path file_fs_path(file_path);
   SubgraphBuilder builder;
-
-  std::filesystem::path dir_path = file_fs_path.parent_path();
-  while (!dir_path.empty() && dir_path != dir_path.parent_path()) {
-    std::string dir_str = dir_path.generic_string();
-    if (builder.add_directory_if_needed(dir_str)) {
-      std::string parent = dir_path.parent_path().generic_string();
-      if (parent.empty())
-        parent = ROOT_NODE;
-      builder.add_edge(parent, dir_str, EDGE_TYPE_CONTAIN);
-    }
-    dir_path = dir_path.parent_path();
-  }
-
-  builder.add_file_node(file_path);
-  std::string parent = file_fs_path.parent_path().generic_string();
-  if (parent.empty())
-    parent = ROOT_NODE;
-  builder.add_edge(parent, file_path, EDGE_TYPE_CONTAIN);
+  builder.add_file_hierarchy(file_path);
 
   auto occurrences = extract_blocks(document_block, "occurrences");
   for (const auto &occ : occurrences)

@@ -305,6 +305,8 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         lsp_language_id="ruby",
         lsp_command=("ruby-lsp",),
         lsp_command_env="CODEMINER_RUBY_LSP_CMD",
+        core_decoder=True,
+        core_decoder_aliases=("rb",),
     ),
     LanguageSpec(
         key="php",

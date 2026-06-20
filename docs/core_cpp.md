@@ -42,8 +42,14 @@ make core-test                # C++ smoke + Python/core parity checks
 The resulting static library and pybind module are placed in `build/core`.
 `make core-test` currently validates the C++ executable smoke tests,
 `graph_layers`, registry-driven core language metadata, and serial/core parity
-for the active accelerated SCIP backends: Python, Go, Rust, TypeScript, and the
-JavaScript/TypeScript aliases.
+for the active accelerated SCIP backends: Python, Go, Rust, Ruby, TypeScript,
+and the JavaScript/TypeScript aliases.
+
+Ruby has a dedicated C++ decoder because real `ruby/rake` profiling showed the
+serial local decode path was the bottleneck after `scip-ruby` produced a large
+text index. On the `ruby/rake` gate, serial `process_index` took 7.58s while the
+C++ backend took 1.04s after filtering to `lib/`; both routes produced 815
+vertices, 3,466 edges, and no vertex-attribute or edge-multiset differences.
 
 Java, C#, PHP, and Scala are active SCIP cold-start routes but intentionally
 remain serial-only in Python. Local profiles show their external indexers

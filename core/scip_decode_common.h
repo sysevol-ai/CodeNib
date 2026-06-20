@@ -36,6 +36,7 @@ struct Subgraph {
   struct Node {
     CodeGraph::VertexData data; // includes unified_name
     bool is_definition{true};
+    bool updates_unified_name{false};
   };
 
   std::unordered_map<std::string, Node> nodes;
@@ -53,6 +54,7 @@ public:
   void add_directory_node(const std::string &dir_path);
   bool add_directory_if_needed(const std::string &dir_path);
   void add_file_node(const std::string &file_path);
+  void add_file_hierarchy(const std::string &file_path);
 
   // Definition — always sets type/file/start/end/is_definition.
   void add_symbol_node(const std::string &symbol, int line,
@@ -71,6 +73,12 @@ public:
                        const std::string &symbol_type,
                        std::optional<std::string> anchor_file = std::nullopt,
                        std::optional<int> anchor_line = std::nullopt);
+  void add_symbol_reference_from(
+      const std::string &source, const std::string &symbol,
+      const std::optional<std::string> &module_path,
+      const std::string &symbol_type,
+      std::optional<std::string> anchor_file = std::nullopt,
+      std::optional<int> anchor_line = std::nullopt);
 
   // CONTAIN edges carry no anchor — see CodeGraph::add_containment_edge.
   void add_containment_edge(const std::string &target_symbol);
@@ -92,6 +100,8 @@ public:
 
   const std::string &current_scope() const { return current_scope_; }
   const std::string &current_file() const { return current_file_; }
+  bool has_node(const std::string &name) const;
+  const Subgraph::Node *node(const std::string &name) const;
 
   Subgraph build() { return std::move(subgraph_); }
 

@@ -169,7 +169,6 @@ LSP or tree-sitter-only as final:
 | Language | Candidate | Current active graph | Promotion gate |
 | --- | --- | --- | --- |
 | Kotlin | `scip-java index` | generic LSP / Kotlin LS | JVM smoke, LSP alignment, Kotlin symbol normalization |
-| Ruby | `scip-ruby` | generic LSP / ruby-lsp | real-repo graph quality measurement, Sorbet setup guidance |
 
 Promoted SCIP cold-start routes are still expected to keep their LSP baseline
 reachable through `graph_route="lsp"`:
@@ -246,8 +245,8 @@ The bootstrap targets install tools under `CODEMINER_SCIP_TOOLS_DIR`, defaulting
 to `/tmp/codeminer-scip-tools`, instead of relying on global npm/go/gem/dotnet
 state. `make multilang-tools` is the no-sudo toolchain subset used by the smoke
 targets. It installs active SCIP/LSP tools for Python, Go, Rust, Java, C#,
-Scala, PHP, JavaScript, TypeScript, and C/C++ plus candidate SCIP/LSP tools for
-Kotlin and Ruby, plus Zoekt binaries used by MCP/search integration. The
+Ruby, Scala, PHP, JavaScript, TypeScript, and C/C++ plus candidate SCIP/LSP
+tools for Kotlin, plus Zoekt binaries used by MCP/search integration. The
 TypeScript path also installs local `yarn` and `pnpm` wrappers for workspace
 repositories. Use `make active-scip-env` to print the exact PATH, `GOBIN`,
 `GOPATH`, `DOTNET_ROOT`, and gem environment needed by manual commands.
@@ -335,7 +334,7 @@ Use `make scip-jvm-compat-system-deps-ubuntu` when a compatibility probe needs
 an older JDK such as OpenJDK 11 for legacy Gradle projects.
 
 `make scip-cold-start-tools` installs reproducible local copies of active
-Java/C#/Scala SCIP tools and the Kotlin/Ruby candidate toolchains under
+Java/C#/Ruby/Scala SCIP tools and the Kotlin candidate toolchain under
 `CODEMINER_SCIP_TOOLS_DIR`, defaulting to `/tmp/codeminer-scip-tools`. It
 installs `scip-java`, Gradle, SBT, .NET SDK channels 8.0 and 10.0,
 `scip-dotnet`, `csharp-ls`, Bundler, and `scip-ruby`. Ruby gem installation uses
@@ -428,30 +427,33 @@ display names to match csharp-ls. Local csharp-ls alignment may require a newer
 serial-only until profiling shows Python decode/build time is a material
 fraction of cold-start time.
 
-The Ruby candidate path uses `bundle exec scip-ruby` because the native
-`scip-ruby` binary rejects direct invocation outside Bundler. Its decoder accepts
-`.rb` documents, normalizes Ruby descriptors such as `Smoke#Invoice#total().`,
-and maps singleton class descriptors for `<Class:Smoke>#normalize()` to
-`Smoke.normalize()`. It keeps top-level Ruby class/module reopen definitions
-file-scoped internally so repeated declarations such as per-file `module Rake`
-do not collapse into one graph vertex, and it normalizes source-declared
-`attr_writer`/`attr_accessor` generated writer definitions to the ruby-lsp method
-display without changing explicit `def foo=` setters. Generated ruby-lsp
-alignment now runs on a matching Bundler-shaped project, preserves Ruby module
-parents in the generic LSP decoder, normalizes constructors, instance variables,
-attr-style methods, `class << self`, and `::` names, and is strict-green against
-the SCIP candidate for symbols and containment (`4/4`, no missing or extra
-definitions). The Ruby SCIP route unsets
+The Ruby active hybrid SCIP path uses `bundle exec scip-ruby` because the native
+`scip-ruby` binary rejects direct invocation outside Bundler. Its decoder
+accepts `.rb` documents, normalizes Ruby descriptors such as
+`Smoke#Invoice#total().`, and maps singleton class descriptors for
+`<Class:Smoke>#normalize()` to `Smoke.normalize()`. It keeps top-level Ruby
+class/module reopen definitions file-scoped internally so repeated declarations
+such as per-file `module Rake` do not collapse into one graph vertex, and it
+normalizes source-declared `attr_writer`/`attr_accessor` generated writer
+definitions to the ruby-lsp method display without changing explicit `def foo=`
+setters. Generated ruby-lsp alignment now runs on a matching Bundler-shaped
+project, preserves Ruby module parents in the generic LSP decoder, normalizes
+constructors, instance variables, attr-style methods, `class << self`, and `::`
+names, and is strict-green against the SCIP route for symbols and containment
+(`4/4`, no missing or extra definitions). The Ruby SCIP route unsets
 `GEM_PATH` for Bundler commands and filters generated graphs by `target_dir` and
 `exclude_patterns`, so dependency gems under `vendor/bundle` do not pollute
 source-route alignment. For real repositories that should not have their Gemfile
 mutated, create an overlay such as `.codeminer/Gemfile` with `gemspec path: ".."`
 plus pinned `ruby-lsp` and `scip-ruby`, then export
 `CODEMINER_RUBY_BUNDLE_GEMFILE=/path/to/repo/.codeminer/Gemfile` before running
-LSP or SCIP route gates. Ruby remains candidate until real-repo graph quality
-measurement is green enough for promotion; the current `ruby/rake` gate runs
-end-to-end with only dynamic alias/singleton symbol differences remaining on
-the definition surface.
+LSP or SCIP route gates. The current `ruby/rake` gate promotes Ruby as an active
+hybrid route with one accepted anonymous-module receiver modeling tolerance; all
+other source definitions and containment align, and scip-ruby contributes
+material source references. Ruby is also covered by the C++ core decoder: on the
+same `ruby/rake` decoded index, serial/core parity after `lib/` filtering is
+exact with 815 nodes and 3,466 edges, and local `process_index` time drops from
+7.58s serial to 1.04s through the C++ backend.
 Use `make ruby-project-bundle PROJECT_ROOT=/path/to/ruby/repo` for this overlay
 setup. It creates `.codeminer/Gemfile` only when absent, installs the bundle
 under `.codeminer/vendor/bundle`, and prints the

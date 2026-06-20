@@ -4,7 +4,7 @@
 
 """C++ ``core/`` decoder parity test (pybind11).
 
-For each language with a C++ decoder (python, go, rust, ts):
+For each cached integration language with a C++ decoder (python, go, rust, ts):
 
   1. Locate the serial reference graph at ``~/.codeminer/<instance_id>/graph.pkl``
      and the decoded SCIP index at ``~/.codeminer/<instance_id>/index.decoded``.
@@ -21,7 +21,9 @@ populated ``graph.pkl``. If the cache is missing, the test fails under CI
 (``$CI`` set) since that indicates an ``integration-serial`` regression, and
 skips locally with a pointer to what should have produced it. Running core's
 ``process_index`` with ``output_file=None`` avoids clobbering the serial
-``graph.pkl``.
+``graph.pkl``. Ruby also has a C++ decoder; its CI-stable parity coverage uses a
+synthetic decoded index in this file because the real Bundler/rake fixture is a
+local promotion gate rather than an integration-serial cache.
 """
 
 from __future__ import annotations
@@ -76,6 +78,206 @@ _MULTILINGUAL_KEYWORDS = {
 }
 
 _PYTHON_INSTANCE_FILTER = "^(sympy__sympy-21847)$"
+
+_RUBY_CORE_PARITY_INDEX = """
+metadata {
+  tool_info {
+    name: "scip-ruby"
+    version: "0.4.7"
+  }
+}
+documents {
+  relative_path: "lib/invoice.rb"
+  occurrences {
+    range: 0
+    range: 7
+    range: 12
+    symbol: "scip-ruby gem smoke 0.1 Smoke#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 8
+    range: 15
+    symbol: "scip-ruby gem smoke 0.1 Smoke#Invoice#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 8
+    range: 13
+    symbol: "scip-ruby gem smoke 0.1 Smoke#Invoice#total()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 7
+    range: 11
+    range: 20
+    symbol: "scip-ruby gem smoke 0.1 `<Class:Smoke>`#normalize()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 8
+    range: 16
+    range: 21
+    symbol: "scip-ruby gem smoke 0.1 Smoke#Invoice#total()."
+  }
+  symbols {
+    symbol: "scip-ruby gem smoke 0.1 Smoke#"
+    documentation: "```ruby\\nmodule Smoke\\n```"
+  }
+  symbols {
+    symbol: "scip-ruby gem smoke 0.1 Smoke#Invoice#"
+    documentation: "```ruby\\nclass Smoke::Invoice\\n```"
+  }
+  symbols {
+    symbol: "scip-ruby gem smoke 0.1 Smoke#Invoice#total()."
+    documentation: "```ruby\\ndef total\\n```"
+  }
+  symbols {
+    symbol: "scip-ruby gem smoke 0.1 `<Class:Smoke>`#normalize()."
+    documentation: "```ruby\\ndef self.normalize\\n```"
+  }
+}
+documents {
+  relative_path: "lib/rake/file_list.rb"
+  occurrences {
+    range: 0
+    range: 7
+    range: 11
+    symbol: "scip-ruby gem smoke 0.1 Rake#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 8
+    range: 16
+    symbol: "scip-ruby gem smoke 0.1 Rake#FileList#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 8
+    range: 15
+    symbol: "scip-ruby gem smoke 0.1 Rake#FileList#include()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 6
+    range: 8
+    range: 13
+    symbol: "scip-ruby gem smoke 0.1 Rake#FileList#is_a?()."
+    symbol_roles: 1
+  }
+}
+documents {
+  relative_path: "lib/rake/application.rb"
+  occurrences {
+    range: 0
+    range: 6
+    range: 17
+    symbol: "scip-ruby gem smoke 0.1 Rake#Application#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 6
+    range: 32
+    symbol: "scip-ruby gem smoke 0.1 Rake#Application#load_debug_at_stop_feature()."
+    symbol_roles: 1
+    enclosing_range: 1
+    enclosing_range: 2
+    enclosing_range: 6
+    enclosing_range: 0
+  }
+  occurrences {
+    range: 3
+    range: 10
+    range: 17
+    symbol: "scip-ruby gem smoke 0.1 Rake#Application#execute()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 8
+    range: 12
+    range: 22
+    symbol: "scip-ruby gem rake 13.3 Rake#Application#`tty_output=`()."
+    symbol_roles: 1
+  }
+}
+documents {
+  relative_path: "lib/rake/phony.rb"
+  occurrences {
+    range: 1
+    range: 4
+    range: 18
+    symbol: "scip-ruby gem smoke 0.1 `<Class:Object>`#timestamp()."
+    symbol_roles: 1
+  }
+}
+""".strip()
+
+
+def _write_ruby_core_parity_project(project_root: Path) -> Path:
+    (project_root / "lib/rake").mkdir(parents=True)
+    (project_root / "lib/invoice.rb").write_text(
+        "\n".join(
+            [
+                "module Smoke",
+                "  class Invoice",
+                "    def total",
+                "      1",
+                "    end",
+                "  end",
+                "",
+                "  def self.normalize(value)",
+                "    Invoice.new.total",
+                "  end",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (project_root / "lib/rake/file_list.rb").write_text(
+        "\n".join(
+            [
+                "module Rake",
+                "  class FileList",
+                "    def include(*filenames)",
+                "    end",
+                "    alias :add :include",
+                "",
+                "    def is_a?(klass)",
+                "    end",
+                "    alias kind_of? is_a?",
+                "  end",
+                "end",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (project_root / "lib/rake/application.rb").write_text(
+        "\n".join(
+            [
+                "class Application",
+                "  def load_debug_at_stop_feature",
+                "    Module.new do",
+                "      def execute(*)",
+                "      end",
+                "    end",
+                "  end",
+                "  attr_writer :tty_output",
+                "end",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (project_root / "lib/rake/phony.rb").write_text(
+        "task = Object.new\n" "def task.timestamp\n" "end\n",
+        encoding="utf-8",
+    )
+    index = project_root / "index.decoded"
+    index.write_text(_RUBY_CORE_PARITY_INDEX, encoding="utf-8")
+    return index
 
 
 def _pick_instance(language: str) -> Tuple[object, dict]:
@@ -269,6 +471,22 @@ def _run_parity(language: str) -> None:
     assert core_graph is not None, f"[{language}] core process_index returned None"
 
     _assert_graph_parity(serial_graph, core_graph, language)
+
+
+def test_core_ruby_synthetic_parity(tmp_path):
+    index = _write_ruby_core_parity_project(tmp_path)
+
+    from codeminer.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codeminer.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
+
+    serial_graph = SCIPRubyGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+    core_graph = SCIPDecoderCore(
+        str(index),
+        project_root=str(tmp_path),
+        language="ruby",
+    ).decode()
+
+    _assert_graph_parity(serial_graph, core_graph, "ruby-synthetic")
 
 
 # --------------------------------------------------------------------------
