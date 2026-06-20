@@ -340,11 +340,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     p.add_argument("--reps", type=int, default=None)
     p.add_argument("--no-resume", action="store_true")
+    p.add_argument(
+        "--model",
+        default=None,
+        help="Override config model (e.g. a local openai/ vLLM model).",
+    )
     args = p.parse_args(argv)
 
     cfg = SweepConfig.from_yaml(args.config)
     if args.reps is not None:
         cfg.reps = args.reps
+    if args.model:
+        cfg.model = args.model
     configs = [c.strip() for c in args.synthesis_configs.split(",") if c.strip()]
     categories = (
         {c.strip() for c in args.categories.split(",")} if args.categories else None
