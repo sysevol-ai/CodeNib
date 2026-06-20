@@ -35,6 +35,12 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
         self._display_names_by_graph_key: dict[str, str] = {}
         self._source_lines_by_file: dict[str, tuple[str, ...] | None] = {}
 
+    def _process_document(self, document_text: str) -> None:
+        file_path = self._document_file_path(document_text)
+        super()._process_document(document_text)
+        if file_path and self._is_source_file(file_path):
+            self._add_alias_definitions(file_path)
+
     def _process_occurrence(self, occurrence_text: str, file_path: str) -> None:
         ranges = [
             int(value) for value in re.findall(r"range:\s*(\d+)", occurrence_text)
@@ -269,9 +275,57 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
             return f"{member}()"
         return display_name
 
-    def _source_line(self, file_path: str, line: int) -> str:
+    def _add_alias_definitions(self, file_path: str) -> None:
+        lines = self._source_lines(file_path)
+        if not lines:
+            return
+
+        alias_lines = [
+            (line_index, alias_pair)
+            for line_index, line in enumerate(lines)
+            if (alias_pair := _parse_ruby_alias(line)) is not None
+        ]
+        if not alias_lines:
+            return
+
+        method_definitions = self._method_definitions_by_member(file_path)
+        for line_index, alias_pair in alias_lines:
+            alias_member, original_member = alias_pair
+            original = self._nearest_definition_before(
+                method_definitions.get(original_member, ()),
+                line_index,
+            )
+            if original is None:
+                continue
+
+            original_key, original_type = original
+            owner, _ = self._split_owner_member(original_key)
+            if not owner:
+                continue
+            parent = self._file_definition_keys.get((file_path, owner))
+            if parent not in self.code_graph.name_to_vertex:
+                continue
+
+            alias_key = f"{owner}#{alias_member}"
+            if alias_key in self.code_graph.name_to_vertex:
+                continue
+            display_name = self._symbol_display(alias_key, original_type)
+            self.code_graph._add_vertex(
+                alias_key,
+                {
+                    "type": original_type,
+                    "file": file_path,
+                    "start_line": line_index,
+                    "end_line": line_index,
+                    "unified_name": f"{file_path}:{display_name}",
+                },
+            )
+            self.code_graph.symbol_ranges[alias_key] = (line_index, line_index)
+            self.code_graph._add_edge(parent, alias_key, EDGE_TYPE_CONTAIN)
+
+    def _source_lines(self, file_path: str) -> tuple[str, ...] | None:
         if not self.project_root:
-            return ""
+            return None
         if file_path not in self._source_lines_by_file:
             try:
                 source_path = self.project_root / file_path
@@ -280,11 +334,52 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
                 )
             except OSError:
                 self._source_lines_by_file[file_path] = None
+        return self._source_lines_by_file[file_path]
 
-        lines = self._source_lines_by_file[file_path]
+    def _source_line(self, file_path: str, line: int) -> str:
+        lines = self._source_lines(file_path)
         if lines is None or line < 0 or line >= len(lines):
             return ""
         return lines[line]
+
+    def _method_definitions_by_member(
+        self,
+        file_path: str,
+    ) -> dict[str, list[tuple[int, str, str]]]:
+        definitions: dict[str, list[tuple[int, str, str]]] = {}
+        for vertex in self.code_graph.graph.vs:
+            attrs = vertex.attributes()
+            if attrs.get("file") != file_path:
+                continue
+            symbol_type = attrs.get("type")
+            if symbol_type not in {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}:
+                continue
+            start_line = attrs.get("start_line")
+            if not isinstance(start_line, int):
+                continue
+            owner, member = self._split_owner_member(vertex["name"])
+            if not owner or not member:
+                continue
+            definitions.setdefault(member, []).append(
+                (start_line, vertex["name"], symbol_type)
+            )
+        for values in definitions.values():
+            values.sort(key=lambda item: item[0])
+        return definitions
+
+    def _nearest_definition_before(
+        self,
+        definitions: tuple[tuple[int, str, str], ...] | list[tuple[int, str, str]],
+        line: int,
+    ) -> tuple[str, str] | None:
+        best: tuple[int, str, str] | None = None
+        for definition in definitions:
+            if definition[0] >= line:
+                break
+            best = definition
+        if best is None:
+            return None
+        return best[1], best[2]
 
     def _set_unified_name_for_key(
         self,
@@ -333,3 +428,26 @@ def _normalize_singleton_class_descriptor(descriptor: str) -> str:
         descriptor = f"{prefix}#{owner}#{suffix}"
 
     return descriptor
+
+
+def _parse_ruby_alias(line: str) -> tuple[str, str] | None:
+    text = line.split("#", 1)[0].strip()
+    if not text.startswith("alias "):
+        return None
+    parts = text.split()
+    if len(parts) != 3:
+        return None
+    alias_member = _clean_alias_token(parts[1])
+    original_member = _clean_alias_token(parts[2])
+    if not alias_member or not original_member:
+        return None
+    return alias_member, original_member
+
+
+def _clean_alias_token(token: str) -> str:
+    token = token.strip()
+    if token.startswith(":"):
+        token = token[1:]
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in {"'", '"'}:
+        token = token[1:-1]
+    return token

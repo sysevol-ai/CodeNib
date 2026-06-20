@@ -317,6 +317,99 @@ documents {
     ) in contain_edges
 
 
+def test_scip_ruby_decoder_synthesizes_source_alias_methods(tmp_path):
+    (tmp_path / "lib/rake").mkdir(parents=True)
+    (tmp_path / "lib/rake/file_list.rb").write_text(
+        "\n".join(
+            [
+                "module Rake",
+                "  class FileList",
+                "    def include(*filenames)",
+                "    end",
+                "    alias :add :include",
+                "",
+                "    def is_a?(klass)",
+                "    end",
+                "    alias kind_of? is_a?",
+                "  end",
+                "end",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    index = tmp_path / "index.decoded"
+    index.write_text(
+        """
+metadata {
+  tool_info {
+    name: "scip-ruby"
+    version: "0.4.7"
+  }
+}
+documents {
+  relative_path: "lib/rake/file_list.rb"
+  occurrences {
+    range: 0
+    range: 7
+    range: 11
+    symbol: "scip-ruby gem smoke 0.1 Rake#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 8
+    range: 16
+    symbol: "scip-ruby gem smoke 0.1 Rake#FileList#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 8
+    range: 15
+    symbol: "scip-ruby gem smoke 0.1 Rake#FileList#include()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 6
+    range: 8
+    range: 13
+    symbol: "scip-ruby gem smoke 0.1 Rake#FileList#is_a?()."
+    symbol_roles: 1
+  }
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    graph = SCIPRubyGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+
+    add = graph.graph.vs[graph.name_to_vertex["Rake#FileList#add"]]
+    kind_of = graph.graph.vs[graph.name_to_vertex["Rake#FileList#kind_of?"]]
+    assert add["unified_name"] == "lib/rake/file_list.rb:Rake.FileList.add()"
+    assert add["start_line"] == 4
+    assert kind_of["unified_name"] == ("lib/rake/file_list.rb:Rake.FileList.kind_of?()")
+    assert kind_of["start_line"] == 8
+
+    contain_edges = {
+        (
+            graph.graph.vs[edge.source].attributes().get("unified_name")
+            or graph.graph.vs[edge.source]["name"],
+            graph.graph.vs[edge.target].attributes().get("unified_name")
+            or graph.graph.vs[edge.target]["name"],
+        )
+        for edge in graph.graph.es
+        if edge["type"] == EDGE_TYPE_CONTAIN
+    }
+    assert (
+        "lib/rake/file_list.rb:Rake.FileList",
+        "lib/rake/file_list.rb:Rake.FileList.add()",
+    ) in contain_edges
+    assert (
+        "lib/rake/file_list.rb:Rake.FileList",
+        "lib/rake/file_list.rb:Rake.FileList.kind_of?()",
+    ) in contain_edges
+
+
 def test_scip_ruby_decoder_normalizes_attr_generated_writers_only(tmp_path):
     (tmp_path / "lib").mkdir()
     (tmp_path / "lib/application.rb").write_text(

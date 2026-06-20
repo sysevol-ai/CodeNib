@@ -374,22 +374,25 @@ the overlay uses `gemspec path: ".."` and adds pinned `ruby-lsp` 0.26.9 plus
 indexer environment so ruby-lsp does not accidentally resolve the target
 project's own Gemfile. Route alignment on `lib/` with `vendor/**` and
 `.codeminer/**` excluded now runs end-to-end but is not promotion-green:
-`symbols ref=598 cand=594 missing=5 extra=1`, `contain ref=598 cand=594
-missing=5 extra=1`, and references differ (`ruby-lsp`: 0, `scip-ruby`: 2770).
+`symbols ref=598 cand=598 missing=1 extra=1`, `contain ref=598 cand=598
+missing=1 extra=1`, and references differ (`ruby-lsp`: 0, `scip-ruby`: 2770).
 This pass fixed the largest mismatch classes by lifting Ruby LSP `@ivar`
 definitions to class containment, keeping top-level Ruby class/module reopen
 definitions file-scoped in the SCIP decoder, and normalizing `def
 task.timestamp` from scip-ruby's `Object.timestamp()` display to ruby-lsp's
-file-level `timestamp()`. It also keeps source-declared
+file-level `timestamp()`. It also synthesizes source-declared Ruby `alias`
+methods when the original method exists in the same file and owner, bringing
+`FileList.add()`, `FileList.kind_of?()`, `Task.prereqs()`, and
+`TaskArguments.key?()` into parity without guessing across classes. It keeps
+source-declared
 `attr_writer`/`attr_accessor` generated writer definitions aligned with the
-ruby-lsp method display while preserving explicit `def foo=` setters. The
-remaining symbol differences are ruby-lsp-only dynamic or alias definitions
-(`load_debug_at_stop_feature().execute()`, `FileList.add()`,
-`FileList.kind_of?()`, `Task.prereqs()`, and `TaskArguments.key?()`) plus
-scip-ruby's alternate anonymous-module receiver definition
-(`Rake.Application.execute()`). Ruby therefore remains `candidate`; promote only
-after the real-repo gate either becomes strict-green or the roadmap accepts
-explicit Ruby tolerances for alias and dynamic singleton definitions.
+ruby-lsp method display while preserving explicit `def foo=` setters. The only
+remaining symbol/containment difference is ruby-lsp's nested anonymous-module
+definition `Rake.Application.load_debug_at_stop_feature().execute()` versus
+scip-ruby's alternate receiver display `Rake.Application.execute()`. Ruby
+therefore remains `candidate`; promote only after the real-repo gate either
+becomes strict-green or the roadmap accepts an explicit tolerance for this
+anonymous-module receiver modeling difference.
 
 Current PHP active hybrid status: the registry routes PHP through
 `PHPHybridIndexer`. Composer projects prefer `SCIPPHPIndexer`, which runs
