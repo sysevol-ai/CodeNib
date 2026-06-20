@@ -561,7 +561,7 @@ containment `ref=8 cand=8 missing=0 extra=0`, and references `ref=1 cand=0`.
 
 - [x] Keep existing Python/Go/Rust/Ruby/JS/TS SCIP C++ parity tests green.
 - [x] Profile each newly promoted route before adding C++ decoder code.
-- [ ] Prefer shared normalization helpers when symbol shapes are language-family
+- [x] Prefer shared normalization helpers when symbol shapes are language-family
   compatible.
 - [x] Keep C++ files small and purpose-specific: parser/decoder logic,
   graph-layer helpers, pybind exposure, and tests should remain separated.
@@ -598,6 +598,12 @@ end-to-end Kotlin cold-start graph time, so Kotlin does not cross the 20% C++
 acceleration gate yet. Kotlin, PHP, and Scala should get C++ acceleration only
 after larger real-repo profiles show local decode/build is a material
 bottleneck.
+
+Python SCIP decoders now share descriptor extraction, descriptor suffix
+normalization, and `unified_name` formatting helpers in
+`codeminer.scip_interface.scip_decode_utils` where symbol shapes are compatible.
+Language-specific handling, such as Ruby singleton-class descriptors and Kotlin
+synthetic symbol filters, stays in the owning decoder.
 
 ### Phase 6: Multi-Graph Python Surface
 

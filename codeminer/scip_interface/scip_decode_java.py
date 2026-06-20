@@ -27,6 +27,11 @@ from ..types import (
     NODE_TYPE_SYMBOL,
     ROOT_NODE,
 )
+from .scip_decode_utils import (
+    format_unified_name,
+    normalize_scip_descriptor,
+    scip_symbol_descriptor,
+)
 from .scip_indexer_base import extract_scip_blocks, extract_symbol
 
 
@@ -290,10 +295,10 @@ class SCIPJavaGraphDecoder:
         if info.key not in self.code_graph.name_to_vertex:
             return
         vid = self.code_graph.name_to_vertex[info.key]
-        self.code_graph.graph.vs[vid]["unified_name"] = (
-            f"{info.file_path}:{info.display_name}"
-            if info.file_path and info.display_name
-            else info.display_name or info.key
+        self.code_graph.graph.vs[vid]["unified_name"] = format_unified_name(
+            info.file_path,
+            info.display_name,
+            info.key,
         )
 
     def _fallback_symbol_info(
@@ -314,20 +319,15 @@ class SCIPJavaGraphDecoder:
     def _make_symbol_key(self, symbol: str | None) -> str | None:
         if not symbol or symbol.startswith("local "):
             return None
-        parts = symbol.split(" ")
-        if len(parts) < 5 or parts[0] not in self._SCIP_SYMBOL_PREFIXES:
+        descriptor = scip_symbol_descriptor(symbol, self._SCIP_SYMBOL_PREFIXES)
+        if not descriptor:
             return None
-        descriptor = parts[-1].replace("`", "")
         if descriptor.endswith("/"):
             namespace = descriptor[:-1]
             return namespace if self._KEEP_NAMESPACE_SYMBOLS and namespace else None
         if "/" not in descriptor:
             return None
-        descriptor = descriptor.rstrip(".")
-        if descriptor.endswith("()"):
-            descriptor = descriptor[:-2]
-        if descriptor.endswith("#"):
-            descriptor = descriptor[:-1]
+        descriptor = normalize_scip_descriptor(descriptor)
         if not descriptor:
             return None
         return descriptor
@@ -596,12 +596,7 @@ class SCIPKotlinGraphDecoder(SCIPJavaGraphDecoder):
         return "#".join(parts) or None
 
     def _symbol_descriptor(self, symbol: str | None) -> str:
-        if not symbol:
-            return ""
-        parts = symbol.split(" ")
-        if len(parts) < 5 or parts[0] not in self._SCIP_SYMBOL_PREFIXES:
-            return ""
-        return parts[-1].replace("`", "")
+        return scip_symbol_descriptor(symbol, self._SCIP_SYMBOL_PREFIXES)
 
     def _is_kotlin_non_graph_descriptor(self, descriptor: str) -> bool:
         normalized = descriptor.rstrip(".")

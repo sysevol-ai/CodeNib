@@ -16,6 +16,7 @@ from tree_sitter_language_pack import get_language
 
 from ..types import EDGE_TYPE_CONTAIN, NODE_TYPE_CLASS, NODE_TYPE_FUNCTION
 from .scip_decode_java import SCIPJavaGraphDecoder, _SymbolInfo
+from .scip_decode_utils import format_unified_name
 from .scip_indexer_base import extract_scip_blocks
 
 
@@ -68,9 +69,11 @@ class SCIPPHPGraphDecoder(SCIPJavaGraphDecoder):
         )
         vid = self.code_graph.name_to_vertex[namespace_key]
         namespace_display = namespace.replace("/", "\\")
-        self.code_graph.graph.vs[vid][
-            "unified_name"
-        ] = f"{info.file_path}:{namespace_display}"
+        self.code_graph.graph.vs[vid]["unified_name"] = format_unified_name(
+            info.file_path,
+            namespace_display,
+            namespace_key,
+        )
         self.code_graph._add_edge(info.file_path, namespace_key, EDGE_TYPE_CONTAIN)
 
     def _namespace_key(self, file_path: str, namespace: str) -> str:

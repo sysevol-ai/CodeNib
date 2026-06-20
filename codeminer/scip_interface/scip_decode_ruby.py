@@ -18,6 +18,11 @@ from ..types import (
     NODE_TYPE_METHOD,
 )
 from .scip_decode_java import SCIPJavaGraphDecoder
+from .scip_decode_utils import (
+    format_unified_name,
+    normalize_scip_descriptor,
+    scip_symbol_descriptor,
+)
 from .scip_indexer_base import extract_symbol
 
 
@@ -136,18 +141,22 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
         return None
 
     def _make_symbol_key(self, symbol: str | None) -> str | None:
-        if not symbol or symbol.startswith("local "):
+        if symbol and symbol.startswith("local "):
             return None
-        parts = symbol.split(" ")
-        if len(parts) < 5 or parts[0] not in self._SCIP_SYMBOL_PREFIXES:
+        descriptor = scip_symbol_descriptor(symbol, self._SCIP_SYMBOL_PREFIXES)
+        if not descriptor:
             return None
 
-        descriptor = parts[-1].replace("`", "").rstrip(".")
+        descriptor = normalize_scip_descriptor(
+            descriptor,
+            strip_empty_call=False,
+            strip_trailing_hash=False,
+        )
         descriptor = _normalize_singleton_class_descriptor(descriptor)
-        if descriptor.endswith("()"):
-            descriptor = descriptor[:-2]
-        if descriptor.endswith("#"):
-            descriptor = descriptor[:-1]
+        descriptor = normalize_scip_descriptor(
+            descriptor,
+            strip_trailing_dot=False,
+        )
         return descriptor or None
 
     def _set_unified_name(self, info) -> None:
@@ -394,10 +403,10 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
             return
         vid = self.code_graph.name_to_vertex[graph_key]
         display_name = display_name or info.display_name
-        self.code_graph.graph.vs[vid]["unified_name"] = (
-            f"{file_path}:{display_name}"
-            if file_path and display_name
-            else display_name or info.key
+        self.code_graph.graph.vs[vid]["unified_name"] = format_unified_name(
+            file_path,
+            display_name,
+            info.key,
         )
 
     def _containment_parent_in_file(self, key: str, file_path: str) -> str:
