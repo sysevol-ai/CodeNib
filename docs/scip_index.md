@@ -16,27 +16,23 @@ Besides `scip-python`, multilingual indexing requires extra tooling:
 - TypeScript/JavaScript (`scip-typescript`):
   - Node.js 18 or 20
   - `npm`
-  - `yarn` for repos using Yarn workspaces (optional but commonly needed)
-  - `pnpm` for pnpm workspaces (optional)
+  - `make scip-typescript-tool node-workspace-tools` for local `scip-typescript`,
+    `yarn`, and `pnpm` wrappers
 - C/C++ (`clangd`):
-  - `clangd` (`apt install clangd`)
+  - `make active-system-deps-ubuntu clangd-tool` on Ubuntu
   - `cmake` for CMake-based projects
   - `bear` for Make/Autotools projects (e.g., repositories without CMake compile DB)
   - Requires `compile_commands.json` (auto-generated from CMake or `bear -- make` if missing)
 - Rust (`rust-analyzer`):
-  - nightly toolchain with `rust-analyzer` component (auto-set via `RUSTUP_TOOLCHAIN=nightly`)
+  - `make rust-tool`
 - Go (`scip-go`):
-  - `go install github.com/sourcegraph/scip-go/cmd/scip-go@latest`
+  - `make scip-go-tool`
   - Project must contain `go.mod`
 
 Example installs:
 ```bash
-# TypeScript workspace tooling
-npm install -g @sourcegraph/scip-typescript yarn
-
-# C/C++ Make-based compilation database helper
-# Ubuntu/Debian:
-sudo apt-get update && sudo apt-get install -y bear
+make bootstrap-ubuntu
+make active-scip-env
 ```
 
 ### Setup scip-python (Custom Fork)

@@ -64,6 +64,7 @@ class LanguageSpec:
     graph_indexer: Optional[str] = None
     graph_decoder: Optional[str] = None
     scip_cold_start: Optional[ScipColdStartOption] = None
+    scip_candidate_indexer: Optional[str] = None
     incremental_backend: Optional[str] = None
     incremental_patcher: Optional[str] = None
     lsp_language_id: Optional[str] = None
@@ -221,19 +222,20 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_extensions=(".cs",),
         agent_languages=("csharp",),
         agent_aliases=(("csharp", "csharp"), ("c#", "csharp"), ("cs", "csharp")),
-        cold_start_backend="lsp",
-        graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
-        graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_csharp:SCIPCSharpIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_csharp:SCIPCSharpGraphDecoder",
         scip_cold_start=ScipColdStartOption(
             tool="scip-dotnet",
-            status="candidate",
+            status="active",
             command=("scip-dotnet",),
             command_env="CODEMINER_CSHARP_SCIP_CMD",
             note=(
-                "Evaluate as C#/VB cold-start after .sln/.csproj restore "
-                "smoke and LSP alignment."
+                "Primary C# cold-start backend after generated and real-repo "
+                "csharp-ls alignment gates; use graph_route='lsp' for csharp-ls."
             ),
         ),
+        scip_candidate_indexer="codeminer.scip_interface.scip_indexer_csharp:SCIPCSharpIndexer",
         lsp_language_id="csharp",
         lsp_command=("csharp-ls",),
         lsp_command_env="CODEMINER_CSHARP_LSP_CMD",
@@ -252,19 +254,20 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_extensions=(".java",),
         agent_languages=("java",),
         agent_aliases=(("java", "java"),),
-        cold_start_backend="lsp",
-        graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
-        graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_java:SCIPJavaIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_java:SCIPJavaGraphDecoder",
         scip_cold_start=ScipColdStartOption(
             tool="scip-java",
-            status="candidate",
+            status="active",
             command=("scip-java", "index"),
             command_env="CODEMINER_JAVA_SCIP_CMD",
             note=(
-                "Evaluate as JVM cold-start for Maven/Gradle/sbt before "
-                "promoting over JDT LS."
+                "Primary Java cold-start backend after generated and real-repo "
+                "JDT LS alignment gates; use graph_route='lsp' for JDT LS."
             ),
         ),
+        scip_candidate_indexer="codeminer.scip_interface.scip_indexer_java:SCIPJavaIndexer",
         lsp_language_id="java",
         lsp_command=("jdtls",),
         lsp_command_env="CODEMINER_JAVA_LSP_CMD",
@@ -290,13 +293,14 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         scip_cold_start=ScipColdStartOption(
             tool="scip-ruby",
             status="candidate",
-            command=("scip-ruby",),
+            command=("bundle", "exec", "scip-ruby"),
             command_env="CODEMINER_RUBY_SCIP_CMD",
             note=(
                 "Experimental Ruby cold-start candidate; graph quality must "
                 "be measured on real repos."
             ),
         ),
+        scip_candidate_indexer="codeminer.scip_interface.scip_indexer_ruby:SCIPRubyIndexer",
         lsp_language_id="ruby",
         lsp_command=("ruby-lsp",),
         lsp_command_env="CODEMINER_RUBY_LSP_CMD",
@@ -315,19 +319,21 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         graph_extensions=(".php", ".phtml"),
         agent_languages=("php",),
         agent_aliases=(("php", "php"),),
-        cold_start_backend="lsp",
-        graph_indexer="codeminer.ls_index.lsp_indexer:GenericLSPIndexer",
-        graph_decoder="codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder",
+        cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_php:PHPHybridIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_php:SCIPPHPGraphDecoder",
         scip_cold_start=ScipColdStartOption(
             tool="scip-php",
-            status="candidate",
-            command=("scip-php",),
+            status="active",
+            command=("vendor/bin/scip-php",),
             command_env="CODEMINER_PHP_SCIP_CMD",
             note=(
-                "Community PHP cold-start candidate; require smoke and "
-                "alignment before enabling."
+                "Primary PHP cold-start backend for Composer projects after "
+                "generated and real-repo Intelephense alignment gates; active "
+                "route falls back to LSP for loose/non-Composer PHP."
             ),
         ),
+        scip_candidate_indexer="codeminer.scip_interface.scip_indexer_php:SCIPPHPIndexer",
         lsp_language_id="php",
         lsp_command=("intelephense", "--stdio"),
         lsp_command_env="CODEMINER_PHP_LSP_CMD",
@@ -357,6 +363,7 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
             command_env="CODEMINER_KOTLIN_SCIP_CMD",
             note="Evaluate through the JVM scip-java path before promoting over Kotlin LSP.",
         ),
+        scip_candidate_indexer="codeminer.scip_interface.scip_indexer_java:SCIPKotlinIndexer",
         lsp_language_id="kotlin",
         lsp_command=("kotlin-language-server", "--stdio"),
         lsp_command_env="CODEMINER_KOTLIN_LSP_CMD",
@@ -382,15 +389,26 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         chunk_extensions=(".scala", ".sc"),
         gt_language="scala",
         gt_extensions=(".scala", ".sc"),
+        graph_language="scala",
+        graph_aliases=("scala",),
+        graph_extensions=(".scala", ".sc"),
         agent_languages=("scala",),
         agent_aliases=(("scala", "scala"),),
+        cold_start_backend="scip",
+        graph_indexer="codeminer.scip_interface.scip_indexer_java:SCIPScalaIndexer",
+        graph_decoder="codeminer.scip_interface.scip_decode_java:SCIPJavaGraphDecoder",
         scip_cold_start=ScipColdStartOption(
             tool="scip-java",
-            status="candidate",
+            status="active",
             command=("scip-java", "index"),
             command_env="CODEMINER_SCALA_SCIP_CMD",
-            note="Evaluate through the JVM scip-java path before enabling graph support.",
+            note=(
+                "Primary Scala 2.x cold-start backend after generated Gradle "
+                "and real SBT scip-java smoke gates; no LSP baseline is "
+                "registered for Scala."
+            ),
         ),
+        scip_candidate_indexer="codeminer.scip_interface.scip_indexer_java:SCIPScalaIndexer",
     ),
     LanguageSpec(
         key="lua",
@@ -783,6 +801,36 @@ def scip_cold_start_option(language: str) -> Optional[ScipColdStartOption]:
     return scip_cold_start_options(include_aliases=True).get(_norm(language))
 
 
+def scip_candidate_indexer_paths(include_aliases: bool = True) -> Dict[str, str]:
+    """Return languages mapped to explicit candidate SCIP indexer class paths.
+
+    These paths are opt-in only. They do not change a language's active graph
+    backend and are used by smoke/profiling flows that intentionally evaluate a
+    candidate SCIP cold-start route.
+    """
+
+    result: Dict[str, str] = {}
+    for spec in LANGUAGE_SPECS:
+        path = spec.scip_candidate_indexer
+        if not path:
+            continue
+        result[spec.key] = path
+        if include_aliases:
+            for alias in spec.aliases:
+                result[alias] = path
+            if spec.graph_language:
+                result[spec.graph_language] = path
+                for alias in spec.graph_aliases:
+                    result[alias] = path
+    return result
+
+
+def scip_candidate_indexer_path(language: str) -> Optional[str]:
+    """Return an opt-in candidate SCIP indexer path for a language or alias."""
+
+    return scip_candidate_indexer_paths(include_aliases=True).get(_norm(language))
+
+
 def scip_cold_start_command_for_language(language: str) -> Optional[list[str]]:
     """Return the configured SCIP cold-start command for a language or alias."""
 
@@ -965,6 +1013,8 @@ __all__ = [
     "normalize_chunker_language",
     "normalize_graph_language",
     "normalize_language",
+    "scip_candidate_indexer_path",
+    "scip_candidate_indexer_paths",
     "scip_cold_start_option",
     "scip_cold_start_command_for_language",
     "scip_cold_start_options",

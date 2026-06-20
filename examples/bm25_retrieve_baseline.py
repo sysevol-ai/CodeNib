@@ -51,6 +51,33 @@ def parse_args():
     )
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--filter-instance", type=str, default=".*")
+    parser.add_argument(
+        "--language",
+        type=str,
+        default="python",
+        help="Graph-indexing language routed through the LSIndexer registry.",
+    )
+    parser.add_argument(
+        "--languages",
+        type=str,
+        nargs="+",
+        default=None,
+        help=(
+            "Graph-indexing languages for merged multi-language graph builds. "
+            "Overrides --language when provided."
+        ),
+    )
+    parser.add_argument(
+        "--graph-route",
+        type=str,
+        choices=["active", "lsp", "scip-candidate"],
+        default="active",
+        help=(
+            "Graph indexing route. Use lsp for backend comparison and "
+            "scip-candidate only for explicit candidate SCIP cold-start "
+            "evaluation."
+        ),
+    )
     parser.add_argument("--topk", type=int, default=50)
 
     # Evaluation
@@ -145,6 +172,9 @@ def run_bm25_pipeline(args):
                 index_path=index_path,
                 top_k=args.topk,
                 project_name=instance_id.replace("/", "__"),
+                language=args.language,
+                languages=args.languages,
+                graph_route=args.graph_route,
             )
             results = pipeline.query(instance["problem_statement"])
             elapsed = time.time() - t0

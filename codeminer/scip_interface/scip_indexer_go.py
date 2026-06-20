@@ -23,7 +23,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
     SCIP indexer for Go projects.
 
     Uses the scip-go tool to generate SCIP indices for Go codebases.
-    Install: go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
+    Install: make scip-go-tool
     """
 
     def __init__(
@@ -60,8 +60,8 @@ class SCIPGoIndexer(SCIPIndexerBase):
             return True
         except FileNotFoundError:
             logger.error(
-                "scip-go not found. Install with: "
-                "go install github.com/sourcegraph/scip-go/cmd/scip-go@latest"
+                "scip-go not found. Run make scip-go-tool and use "
+                "make active-scip-env for PATH."
             )
             return False
 

@@ -45,13 +45,10 @@ if importlib.util.find_spec("codeminer_core") is None:
         allow_module_level=True,
     )
 
-# Library load-order ritual: codeminer_core links system libigraph while
-# Python's `igraph` package bundles its own; whichever is loaded first wins
-# the dynamic-linker race for shared symbols. We have to load codeminer_core
-# BEFORE anything that transitively imports `igraph` (CodeGraph, ROISubgraph,
-# the patcher tree, …) or `decode_scip` segfaults inside libigraph. The
-# integration-serial CI job sequences fixtures so this order falls out
-# naturally; in unit-test runs we have to enforce it explicitly here.
+# Library load-order ritual: codeminer_core vendors c-igraph and hides its
+# archive symbols so it does not fight Python's `igraph` wheel. Load it before
+# any transitive `igraph` import anyway; older local builds may not have the
+# same symbol isolation, and this keeps the optional-extension contract stable.
 import codeminer_core  # noqa: E402, F401
 
 _COMPARED_ATTRS = ("type", "file", "start_line", "end_line", "unified_name")

@@ -23,7 +23,7 @@ inputs:
     required: false
     default: "false"
   install-scip-typescript:
-    description: "Install scip-typescript and yarn"
+    description: "Install scip-typescript, yarn, and pnpm through Makefile"
     required: false
     default: "true"
   install-scip-go:
@@ -44,7 +44,7 @@ runs:
         activate-environment: codeminer-test
         python-version: ${{ inputs.python-version }}
         auto-activate-base: false
-        remove-profiles: false
+        remove-profiles: true
 
     - name: Create scip env
       shell: bash -l {0}
@@ -113,37 +113,29 @@ runs:
       if: inputs.install-scip-typescript == 'true'
       shell: bash -l {0}
       run: |
-        npm config set prefix "$HOME/.npm-global"
-        export PATH="$HOME/.npm-global/bin:$PATH"
-        npm install -g @sourcegraph/scip-typescript yarn
-        echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+        make scip-typescript-tool node-workspace-tools
+        eval "$(make --no-print-directory active-scip-env | sed -n 's/^  export /export /p')"
+        echo "$CODEMINER_SCIP_TOOLS_DIR/node-tools/node_modules/.bin" >> "$GITHUB_PATH"
+        echo "$CODEMINER_SCIP_TOOLS_DIR" >> "$GITHUB_PATH"
+        scip-typescript --version
+        yarn --version
+        pnpm --version
 
     - name: Install scip-go
       if: inputs.install-scip-go == 'true'
       shell: bash -l {0}
-      # Installs scip-go via `go install`, which needs a Go toolchain.
-      # We pin it inside scip-env (conda-forge) so the host doesn't need
-      # apt/sudo. Upstream: github.com/scip-code/scip-go (moved from
-      # sourcegraph/scip-go in 2024). scip-go ends up in $HOME/go/bin
-      # (the default GOBIN) and we export that onto $GITHUB_PATH.
       run: |
         if command -v scip-go >/dev/null 2>&1; then
           scip-go --version || true
           echo "[scip-go] already on PATH — skipping install"
           exit 0
         fi
-        if ! conda run -n scip-env bash -lc "command -v go" >/dev/null 2>&1; then
-          conda install -n scip-env -c conda-forge -y 'go>=1.22'
-        fi
-        export GOBIN="$HOME/go/bin"
-        mkdir -p "$GOBIN"
-        conda run -n scip-env bash -lc "
-          set -euo pipefail
-          export GOBIN='$GOBIN'
-          go install github.com/scip-code/scip-go/cmd/scip-go@latest
-        "
-        echo "$GOBIN" >> "$GITHUB_PATH"
-        "$GOBIN/scip-go" --version || true
+        make scip-go-tool
+        eval "$(make --no-print-directory active-scip-env | sed -n 's/^  export /export /p')"
+        echo "$CODEMINER_SCIP_TOOLS_DIR/go-tools/bin" >> "$GITHUB_PATH"
+        echo "$CODEMINER_SCIP_TOOLS_DIR/go/bin" >> "$GITHUB_PATH"
+        echo "$CODEMINER_SCIP_TOOLS_DIR" >> "$GITHUB_PATH"
+        scip-go --version || true
 
     - name: Install bear (best effort)
       if: inputs.install-bear == 'true'

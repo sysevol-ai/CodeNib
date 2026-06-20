@@ -439,7 +439,7 @@ def parse_args():
             "those instances. Takes precedence over --filter-instance."
         ),
     )
-    # Chunker languages for Stage 3 embedding rerank when rebuilding an index.
+    # Graph/chunker languages when rebuilding an index.
     # codeminer_base auto-detects per instance from its language_group column;
     # SWE-bench / Loc-Bench fall back to this value (default python).
     parser.add_argument(
@@ -448,8 +448,19 @@ def parse_args():
         nargs="+",
         default=["python"],
         help=(
-            "Chunker languages for Stage 3 embedding rerank. Ignored for "
-            "codeminer_base instances (read from the language_group column)."
+            "Primary graph language plus Stage 3 chunker languages. Ignored "
+            "for codeminer_base instances (read from the language_group column)."
+        ),
+    )
+    parser.add_argument(
+        "--graph-route",
+        type=str,
+        choices=["active", "lsp", "scip-candidate"],
+        default="active",
+        help=(
+            "Graph indexing route. Use lsp for backend comparison and "
+            "scip-candidate only for explicit candidate SCIP cold-start "
+            "evaluation."
         ),
     )
 
@@ -750,6 +761,7 @@ def run_graph_pipeline(args):
                 embedding_provider=args.embedding_provider,
                 embedding_dimension=args.embedding_dimension,
                 languages=instance_languages,
+                graph_route=args.graph_route,
                 project_name=instance_id.replace("/", "__"),
                 profiler=index_profiler,
             )
@@ -891,6 +903,7 @@ def run_graph_pipeline(args):
             "filter_instance": args.filter_instance,
             "filter_csv": args.filter_csv,
             "languages": args.languages,
+            "graph_route": args.graph_route,
             "expansion": "ppr" if args.ppr else "bfs",
             "stage1_topk": args.stage1_topk,
             "stage2_topk": args.stage2_topk,

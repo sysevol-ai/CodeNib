@@ -28,11 +28,11 @@ Each language uses a specific language server, started via stdio by `LSPClient`:
 
 | Language | Server | Install |
 |----------|--------|---------|
-| Python | `basedpyright-langserver` | `pip install basedpyright` |
-| Rust | `rust-analyzer` | `rustup component add rust-analyzer` |
-| TypeScript/JS | `typescript-language-server` | `npm install -g typescript-language-server` |
-| Go | `gopls` | `go install golang.org/x/tools/gopls@latest` |
-| C/C++ | `clangd` | `apt install clangd` |
+| Python | `basedpyright-langserver` | `make python-lsp-tool` |
+| Rust | `rust-analyzer` | `make rust-tool` |
+| TypeScript/JS | `typescript-language-server` | `make typescript-lsp-tool` |
+| Go | `gopls` | `make gopls-tool` |
+| C/C++ | `clangd` | `make active-system-deps-ubuntu clangd-tool` |
 
 The patcher queries three LSP methods to rebuild the graph:
 

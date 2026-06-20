@@ -25,6 +25,8 @@ from codeminer.languages import (
     normalize_agent_language,
     normalize_chunker_language,
     normalize_graph_language,
+    scip_candidate_indexer_path,
+    scip_candidate_indexer_paths,
     scip_cold_start_command_for_language,
     scip_cold_start_option,
     scip_cold_start_options,
@@ -130,14 +132,35 @@ def test_language_capability_rows_track_parity_applicability():
     assert rows["javascript"].core_decoder is True
     assert rows["javascript"].core_parity == "covered"
 
-    assert rows["java"].graph_backend == "lsp"
-    assert rows["java"].scip_cold_start == "candidate"
+    assert rows["java"].graph_backend == "scip"
+    assert rows["java"].scip_cold_start == "active"
     assert rows["java"].incremental_backend is None
     assert rows["java"].lsp is True
     assert rows["java"].core_decoder is False
     assert rows["java"].core_parity == "n/a-no-core-decoder"
 
-    for language in ("csharp", "ruby", "php", "kotlin"):
+    assert rows["csharp"].graph_backend == "scip"
+    assert rows["csharp"].scip_cold_start == "active"
+    assert rows["csharp"].incremental_backend is None
+    assert rows["csharp"].lsp is True
+    assert rows["csharp"].core_decoder is False
+    assert rows["csharp"].core_parity == "n/a-no-core-decoder"
+
+    assert rows["php"].graph_backend == "scip"
+    assert rows["php"].scip_cold_start == "active"
+    assert rows["php"].incremental_backend is None
+    assert rows["php"].lsp is True
+    assert rows["php"].core_decoder is False
+    assert rows["php"].core_parity == "n/a-no-core-decoder"
+
+    assert rows["scala"].graph_backend == "scip"
+    assert rows["scala"].scip_cold_start == "active"
+    assert rows["scala"].incremental_backend is None
+    assert rows["scala"].lsp is False
+    assert rows["scala"].core_decoder is False
+    assert rows["scala"].core_parity == "n/a-no-core-decoder"
+
+    for language in ("ruby", "kotlin"):
         assert rows[language].chunker is True
         assert rows[language].ground_truth is True
         assert rows[language].agent is True
@@ -157,10 +180,6 @@ def test_language_capability_rows_track_parity_applicability():
         assert rows[language].core_decoder is False
         assert rows[language].core_parity == "n/a-tree-sitter-only"
 
-    assert rows["scala"].graph_backend is None
-    assert rows["scala"].scip_cold_start == "candidate"
-    assert rows["scala"].core_parity == "n/a-tree-sitter-only"
-
 
 def test_scip_cold_start_options_track_active_and_candidate_paths(monkeypatch):
     options = scip_cold_start_options()
@@ -170,13 +189,15 @@ def test_scip_cold_start_options_track_active_and_candidate_paths(monkeypatch):
     assert options["typescript"].status == "active"
     assert options["ts"].tool == "scip-typescript"
 
-    assert options["java"].status == "candidate"
+    assert options["java"].status == "active"
     assert options["java"].tool == "scip-java"
     assert options["kotlin"].tool == "scip-java"
+    assert options["scala"].status == "active"
     assert options["scala"].tool == "scip-java"
     assert options["csharp"].tool == "scip-dotnet"
     assert options["c#"].tool == "scip-dotnet"
     assert options["ruby"].tool == "scip-ruby"
+    assert options["php"].status == "active"
     assert options["php"].tool == "scip-php"
 
     assert scip_cold_start_option("kt").command_env == "CODEMINER_KOTLIN_SCIP_CMD"
@@ -192,6 +213,24 @@ def test_scip_cold_start_options_track_active_and_candidate_paths(monkeypatch):
     assert scip_cold_start_option("swift") is None
     assert scip_cold_start_command_for_language("swift") is None
     assert scip_cold_start_option("lua") is None
+
+
+def test_scip_candidate_indexer_paths_are_opt_in_routes():
+    paths = scip_candidate_indexer_paths()
+
+    assert paths["java"].endswith("scip_indexer_java:SCIPJavaIndexer")
+    assert paths["kotlin"].endswith("scip_indexer_java:SCIPKotlinIndexer")
+    assert paths["kt"] == paths["kotlin"]
+    assert paths["scala"].endswith("scip_indexer_java:SCIPScalaIndexer")
+    assert paths["csharp"].endswith("scip_indexer_csharp:SCIPCSharpIndexer")
+    assert paths["c#"] == paths["csharp"]
+    assert paths["ruby"].endswith("scip_indexer_ruby:SCIPRubyIndexer")
+    assert paths["rb"] == paths["ruby"]
+    assert paths["php"].endswith("scip_indexer_php:SCIPPHPIndexer")
+
+    assert scip_candidate_indexer_path("java") == paths["java"]
+    assert scip_candidate_indexer_path("scala") == paths["scala"]
+    assert scip_candidate_indexer_path("python") is None
 
 
 def test_chunker_languages_are_current_supported_repo_chunkers():
@@ -308,22 +347,36 @@ def test_graph_indexer_and_decoder_paths_follow_graph_language_aliases():
     assert graph_indexer_path("javascript") == indexers["ts"]
     assert graph_decoder_path("typescript") == decoders["ts"]
 
-    assert indexers["java"].endswith("lsp_indexer:GenericLSPIndexer")
-    assert decoders["java"].endswith("lsp_graph_decode:GenericLSPGraphDecoder")
+    assert indexers["java"].endswith("scip_indexer_java:SCIPJavaIndexer")
+    assert decoders["java"].endswith("scip_decode_java:SCIPJavaGraphDecoder")
     assert graph_indexer_path("java") == indexers["java"]
     assert graph_decoder_path("java") == decoders["java"]
 
     assert graph_cold_start_backend("cpp") == "clangd"
     assert graph_cold_start_backend("python") == "scip"
-    assert graph_cold_start_backend("java") == "lsp"
-    for language in ("csharp", "ruby", "php", "kotlin"):
+    assert graph_cold_start_backend("java") == "scip"
+    assert graph_indexer_path("csharp").endswith(
+        "scip_indexer_csharp:SCIPCSharpIndexer"
+    )
+    assert graph_decoder_path("csharp").endswith(
+        "scip_decode_csharp:SCIPCSharpGraphDecoder"
+    )
+    assert graph_cold_start_backend("csharp") == "scip"
+    assert graph_indexer_path("php").endswith("scip_indexer_php:PHPHybridIndexer")
+    assert graph_decoder_path("php").endswith("scip_decode_php:SCIPPHPGraphDecoder")
+    assert graph_cold_start_backend("php") == "scip"
+    assert graph_indexer_path("scala").endswith("scip_indexer_java:SCIPScalaIndexer")
+    assert graph_decoder_path("scala").endswith("scip_decode_java:SCIPJavaGraphDecoder")
+    assert graph_cold_start_backend("scala") == "scip"
+
+    for language in ("ruby", "kotlin"):
         assert graph_indexer_path(language).endswith("lsp_indexer:GenericLSPIndexer")
         assert graph_decoder_path(language).endswith(
             "lsp_graph_decode:GenericLSPGraphDecoder"
         )
         assert graph_cold_start_backend(language) == "lsp"
 
-    for language in ("swift", "scala", "lua"):
+    for language in ("swift", "lua"):
         assert graph_indexer_path(language) is None
         assert graph_decoder_path(language) is None
         assert graph_cold_start_backend(language) is None

@@ -281,11 +281,11 @@ start_frontend() {
     return 1
   }
   [[ -f "$WEB_DIR/node_modules/next/dist/bin/next" ]] || {
-    printf 'Missing Next.js CLI. Run: cd web && npm install\n' >&2
+    printf 'Missing Next.js CLI. Run: make web-deps\n' >&2
     return 1
   }
   [[ -d "$WEB_DIR/node_modules" ]] || {
-    printf 'Missing %s. Run: cd web && npm install\n' "$WEB_DIR/node_modules" >&2
+    printf 'Missing %s. Run: make web-deps\n' "$WEB_DIR/node_modules" >&2
     return 1
   }
   require_port_available "$FRONTEND_PORT" frontend

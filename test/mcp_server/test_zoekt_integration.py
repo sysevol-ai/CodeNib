@@ -11,8 +11,7 @@ subprocess.
 
 These tests require the Zoekt Go binaries on ``$PATH``::
 
-    go install github.com/sourcegraph/zoekt/cmd/zoekt-git-index@latest
-    go install github.com/sourcegraph/zoekt/cmd/zoekt-webserver@latest
+    make zoekt-tool
 
 If either binary is missing, all tests in this module are skipped.  The
 unit tests in ``test_zoekt_searcher.py`` and ``test_tools_search.py`` cover
@@ -38,7 +37,7 @@ pytestmark = pytest.mark.skipif(
     shutil.which("zoekt-git-index") is None or shutil.which("zoekt-webserver") is None,
     reason=(
         "Zoekt binaries (zoekt-git-index, zoekt-webserver) not on $PATH. "
-        "Install with: go install github.com/sourcegraph/zoekt/cmd/...@latest"
+        "Install with: make zoekt-tool"
     ),
 )
 

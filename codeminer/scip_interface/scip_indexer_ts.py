@@ -74,8 +74,8 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.error(
-                "scip-typescript not found. Please install it with: "
-                "npm install -g @sourcegraph/scip-typescript"
+                "scip-typescript not found. Run make scip-typescript-tool and "
+                "use make active-scip-env for PATH."
             )
             return False
 

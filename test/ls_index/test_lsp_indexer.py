@@ -85,8 +85,184 @@ def test_generic_lsp_decoder_builds_java_symbol_graph(tmp_path):
     assert [node.name for node in class_query.defined] == [class_name, method_name]
 
 
-def test_lsindexer_routes_java_to_generic_lsp_backend(tmp_path):
-    indexer = LSIndexer(tmp_path, language="java")
+def test_generic_lsp_decoder_keeps_ruby_module_parent_names(tmp_path):
+    index = tmp_path / "index.lsp.json"
+    index.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "language": "ruby",
+                "files": [
+                    {
+                        "path": "lib/invoice.rb",
+                        "symbols": [
+                            _sym(
+                                "Smoke",
+                                2,
+                                0,
+                                10,
+                                children=[
+                                    _sym(
+                                        "Invoice",
+                                        5,
+                                        1,
+                                        5,
+                                        children=[_sym("total", 6, 2, 4)],
+                                    ),
+                                    _sym("self.normalize", 12, 7, 9),
+                                ],
+                            )
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    graph = GenericLSPGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+
+    assert "lib/invoice.rb:Smoke.Invoice:1" in graph.name_to_vertex
+    assert "lib/invoice.rb:Smoke.Invoice.total():2" in graph.name_to_vertex
+    assert "lib/invoice.rb:Smoke.normalize():7" in graph.name_to_vertex
+
+    definitions = list(
+        iter_lsp_symbol_definitions(
+            "lib/invoice.rb",
+            [
+                _sym(
+                    "Smoke",
+                    2,
+                    0,
+                    10,
+                    children=[_sym("self.normalize", 12, 7, 9)],
+                )
+            ],
+            language="ruby",
+        )
+    )
+    assert definitions[-1]["unified_name"] == "lib/invoice.rb:Smoke.normalize()"
+
+
+def test_generic_lsp_decoder_normalizes_ruby_constructor_and_instance_fields(
+    tmp_path,
+):
+    symbols = [
+        _sym(
+            "Rake",
+            2,
+            0,
+            20,
+            children=[
+                _sym(
+                    "Application",
+                    5,
+                    1,
+                    19,
+                    children=[
+                        _sym("name", 8, 2, 2),
+                        _sym(
+                            "initialize",
+                            9,
+                            3,
+                            8,
+                            children=[_sym("@name", 8, 4, 4)],
+                        ),
+                        _sym(
+                            "collect_command_line_tasks",
+                            6,
+                            10,
+                            18,
+                            children=[_sym("@top_level_tasks", 8, 12, 12)],
+                        ),
+                    ],
+                )
+            ],
+        )
+    ]
+    index = tmp_path / "index.lsp.json"
+    index.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "language": "ruby",
+                "files": [{"path": "lib/rake/application.rb", "symbols": symbols}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    graph = GenericLSPGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+    definitions = list(
+        iter_lsp_symbol_definitions(
+            "lib/rake/application.rb",
+            symbols,
+            language="ruby",
+        )
+    )
+
+    assert (
+        "lib/rake/application.rb:Rake.Application.initialize():3"
+        in graph.name_to_vertex
+    )
+    assert "lib/rake/application.rb:Rake.Application.name():2" in graph.name_to_vertex
+    assert "lib/rake/application.rb:Rake.Application.@name:4" in graph.name_to_vertex
+    assert (
+        "lib/rake/application.rb:Rake.Application.@top_level_tasks:12"
+        in graph.name_to_vertex
+    )
+    assert {
+        item["unified_name"]
+        for item in definitions
+        if item["unified_name"].endswith((".@name", ".@top_level_tasks"))
+    } == {
+        "lib/rake/application.rb:Rake.Application.@name",
+        "lib/rake/application.rb:Rake.Application.@top_level_tasks",
+    }
+
+
+def test_generic_lsp_decoder_normalizes_ruby_singleton_scope_and_colons(tmp_path):
+    symbols = [
+        _sym(
+            "Rake::NameSpace",
+            5,
+            0,
+            5,
+            children=[
+                _sym(
+                    "<< self",
+                    5,
+                    1,
+                    4,
+                    children=[_sym("record_task_metadata", 6, 2, 3)],
+                )
+            ],
+        )
+    ]
+    index = tmp_path / "index.lsp.json"
+    index.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "language": "ruby",
+                "files": [{"path": "lib/rake/name_space.rb", "symbols": symbols}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    graph = GenericLSPGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+
+    assert "lib/rake/name_space.rb:Rake.NameSpace:0" in graph.name_to_vertex
+    assert (
+        "lib/rake/name_space.rb:Rake.NameSpace.record_task_metadata():2"
+        in graph.name_to_vertex
+    )
+    assert all("<< self" not in name for name in graph.name_to_vertex)
+
+
+def test_lsindexer_can_force_java_generic_lsp_backend(tmp_path):
+    indexer = LSIndexer(tmp_path, language="java", graph_route="lsp")
 
     assert indexer.language == "java"
     assert indexer._delegate.__class__.__name__ == "GenericLSPIndexer"

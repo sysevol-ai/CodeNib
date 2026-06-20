@@ -199,7 +199,11 @@ class GenericLSPIndexer:
         symbols: list[dict],
     ) -> list[dict]:
         references = []
-        for definition in iter_lsp_symbol_definitions(rel_path.as_posix(), symbols):
+        for definition in iter_lsp_symbol_definitions(
+            rel_path.as_posix(),
+            symbols,
+            language=self.language,
+        ):
             locations = client.references(
                 str(self.project_root / rel_path),
                 definition["selection_line"],

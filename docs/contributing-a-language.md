@@ -39,6 +39,9 @@ Choose backends per language, not globally.
   when the language currently uses LSP or tree-sitter-only graph support. A
   `candidate` is planning metadata; it is not routed by `LSIndexer` until SCIP
   smoke, backend alignment, decoder support, and parity gates are green.
+- `scip_candidate_indexer`: an explicit opt-in candidate SCIP indexer path.
+  Use it from smoke/profiling flows through `graph_route="scip-candidate"`;
+  do not replace the active graph route until promotion gates are satisfied.
 - `incremental_backend`: the source for patching or filling gaps after a repo
   changes. LSP is often a better fit here because servers already maintain
   workspace state.
@@ -77,6 +80,9 @@ LanguageSpec(
         command=("example-scip", "index"),
         command_env="CODEMINER_EXAMPLE_SCIP_CMD",
         note="Promote only after SCIP smoke, backend alignment, and parity gates pass.",
+    ),
+    scip_candidate_indexer=(
+        "codeminer.scip_interface.scip_indexer_example:SCIPExampleIndexer"
     ),
     incremental_backend="lsp",
     lsp_language_id="example",
@@ -146,21 +152,34 @@ Pick one cold-start backend:
 
 Do not drop a known SCIP cold-start path just because the first implementation
 uses LSP. Record it as `scip_cold_start=ScipColdStartOption(...,
-status="candidate")` until it is proven.
+status="candidate")` and `scip_candidate_indexer="module:Class"` until it is
+proven.
 Use `codeminer.languages.scip_cold_start_command_for_language()` to consume the
 registered command and any `CODEMINER_*_SCIP_CMD` override in smoke scripts.
+Use `LSIndexer(..., graph_route="scip-candidate")` or
+`build_graph_for_languages(..., graph_route="scip-candidate")` only in explicit
+candidate evaluation flows; the default route must remain the active LSP/SCIP
+backend. Use `graph_route="lsp"` for backend comparison and regression checks
+when a language has an LSP command, especially before promoting a SCIP
+candidate over an existing LSP graph route.
 
-Current SCIP cold-start candidates that should be evaluated before treating LSP
-as final:
+Remaining SCIP cold-start candidates that should be evaluated before treating
+LSP or tree-sitter-only as final:
 
 | Language | Candidate | Current active graph | Promotion gate |
 | --- | --- | --- | --- |
-| Java | `scip-java index` | generic LSP / JDT LS | Maven/Gradle/sbt smoke, LSP alignment, serial decoder, optional core parity |
 | Kotlin | `scip-java index` | generic LSP / Kotlin LS | JVM smoke, LSP alignment, Kotlin symbol normalization |
-| Scala | `scip-java index` | tree-sitter-only | JVM smoke, graph decoder, LSP/Metals alignment decision |
-| C# | `scip-dotnet` | generic LSP / csharp-ls | `.sln`/`.csproj` restore smoke, LSP alignment, decoder support |
 | Ruby | `scip-ruby` | generic LSP / ruby-lsp | real-repo graph quality measurement, Sorbet setup guidance |
-| PHP | `scip-php` | generic LSP / Intelephense | community indexer smoke, schema alignment, reference quality threshold |
+
+Promoted SCIP cold-start routes are still expected to keep their LSP baseline
+reachable through `graph_route="lsp"`:
+
+| Language | Active SCIP route | LSP regression route |
+| --- | --- | --- |
+| Java | `scip-java index` | generic LSP / JDT LS |
+| C# | `scip-dotnet` | generic LSP / csharp-ls |
+| Scala | `scip-java index` | none registered |
+| PHP | `PHPHybridIndexer` prefers `scip-php` for Composer projects | generic LSP / Intelephense |
 
 Current generic LSP cold-start graph commands are:
 
@@ -172,10 +191,11 @@ Current generic LSP cold-start graph commands are:
 | PHP | `intelephense --stdio` | Install with npm; CodeMiner uses stdio mode. |
 | Kotlin | `kotlin-language-server --stdio` | The JetBrains standalone archive exposes `bin/intellij-server`; symlink or wrap it as `kotlin-language-server`. |
 
-Swift, Scala, and Lua currently ship as tree-sitter-only languages in the
-capability matrix. Their graph backends should stay disabled until a real
-`sourcekit-lsp`, Metals, or LuaLS smoke test plus backend-alignment tolerance is
-landed for the target server.
+Swift and Lua currently ship as tree-sitter-only languages in the capability
+matrix. Their graph backends should stay disabled until a real `sourcekit-lsp`
+or LuaLS smoke test plus backend-alignment tolerance is landed for the target
+server. Scala graph support is active through `scip-java`; no Metals/LSP route
+is registered today.
 
 Then update `LSIndexer` / `LSGraphDecoder` routing. The graph must conform to
 the current CodeGraph contract:
@@ -187,22 +207,60 @@ the current CodeGraph contract:
   APIs use the CodeGraph conventions documented in `docs/graph_query.md`).
 
 When two backends exist for the same language, compare them before trusting the
-new backend's graph surface:
+new backend's graph surface. Prefer the route-level helper so both graphs are
+built from the same registry and Makefile-pinned tool environment:
 
 ```bash
-python scripts/check_backend_alignment.py \
-  --reference /path/to/scip-or-clangd/graph.pkl \
-  --candidate /path/to/lsp/graph.pkl
+make graph-route-alignment \
+  PROJECT_LANGUAGE=java \
+  PROJECT_ROOT=/path/to/project
 ```
+
+The target runs `scripts/check_graph_route_alignment.py` through
+`CODEMINER_TOOL_ENV`, defaulting to `graph_route="lsp"` as reference and
+`graph_route="scip-candidate"` as candidate. Use
+`GRAPH_ALIGNMENT_REFERENCE_ROUTE`, `GRAPH_ALIGNMENT_CANDIDATE_ROUTE`,
+`GRAPH_ALIGNMENT_SKIP_LEVEL`, `GRAPH_ALIGNMENT_TARGET_DIR`,
+`GRAPH_ALIGNMENT_EXCLUDE_PATTERNS`, and `GRAPH_ALIGNMENT_EXTRA_ARGS` to adjust a
+real-repo gate. Pass
+`GRAPH_ALIGNMENT_EXTRA_ARGS=--reference-include-references` when the reference
+route is an LSP backend and the promotion gate should record reference-edge
+counts in the same report. The lower-level `scripts/check_backend_alignment.py`
+remains available when you already have two `graph.pkl` files.
 
 The alignment harness compares definition symbols by `unified_name` and the
 symbol containment hierarchy. It reports reference-edge counts but does not
 require reference parity by default; server-specific reference/call edges need
 explicit tolerances before they are treated as a blocking signal.
 
+For a reproducible local toolchain, start with:
+
+```bash
+make bootstrap-ubuntu  # Ubuntu: system deps + Python dev deps + local toolchains
+# or, when system packages are already present:
+make bootstrap
+make toolchain-doctor
+```
+
+The bootstrap targets install tools under `CODEMINER_SCIP_TOOLS_DIR`, defaulting
+to `/tmp/codeminer-scip-tools`, instead of relying on global npm/go/gem/dotnet
+state. `make multilang-tools` is the no-sudo toolchain subset used by the smoke
+targets. It installs active SCIP/LSP tools for Python, Go, Rust, Java, C#,
+Scala, PHP, JavaScript, TypeScript, and C/C++ plus candidate SCIP/LSP tools for
+Kotlin and Ruby, plus Zoekt binaries used by MCP/search integration. The
+TypeScript path also installs local `yarn` and `pnpm` wrappers for workspace
+repositories. Use `make active-scip-env` to print the exact PATH, `GOBIN`,
+`GOPATH`, `DOTNET_ROOT`, and gem environment needed by manual commands.
+
 For generic LSP graph smoke on tiny generated projects, run:
 
 ```bash
+make lsp-smoke-system-deps-ubuntu  # optional Ubuntu base packages
+make lsp-smoke-tools
+eval "$(
+  make --no-print-directory lsp-smoke-env \
+    | sed -n 's/^  export /export /p'
+)"
 python scripts/smoke_lsp_graph.py \
   --languages java csharp ruby php kotlin \
   --reference-languages java \
@@ -215,6 +273,230 @@ installed without system packages. Drop it in CI or release validation when the
 toolchain image is expected to contain every listed language server. Add
 `--output-dir /tmp/codeminer-lsp-smoke` when you need to keep generated projects
 and `graph.pkl` files for `scripts/check_backend_alignment.py`.
+
+For real-repository LSP baselines, run the same script with `--project-root`.
+This path does not generate toy source files; it indexes the existing checkout
+and can be paired with `scripts/smoke_scip_cold_start.py --project-root` for
+candidate promotion gates or active-route regression checks:
+
+```bash
+make lsp-project-smoke \
+  PROJECT_LANGUAGE=java \
+  PROJECT_ROOT=/tmp/codeminer-real-java/maven-simple \
+  LSP_PROJECT_OUTPUT_DIR=/tmp/codeminer-java-real-lsp \
+  LSP_PROJECT_EXTRA_ARGS="--expected-symbol App --expected-symbol 'App.greet(String)()' --expected-symbol 'App.main(String[])()' --reference-languages java --min-references java=1"
+```
+
+Use `--target-dir` and repeated `--exclude-pattern` values when a real project
+needs a source-only LSP baseline, for example PHP or Ruby projects with large
+`vendor/` trees.
+
+For a one-command real-repo promotion or regression gate, compare the LSP and
+SCIP routes directly:
+
+```bash
+make graph-route-alignment \
+  PROJECT_LANGUAGE=php \
+  PROJECT_ROOT=/tmp/php-project \
+  GRAPH_ALIGNMENT_TARGET_DIR=src \
+  GRAPH_ALIGNMENT_EXCLUDE_PATTERNS="vendor/**"
+```
+
+`make lsp-smoke-tools` installs the LSP binaries used by the current alignment
+surface under `CODEMINER_SCIP_TOOLS_DIR`: Eclipse JDT LS as `jdtls`, csharp-ls,
+ruby-lsp, Intelephense, and a Kotlin LSP wrapper named
+`kotlin-language-server`. The Makefile pins the downloaded package versions and
+prints a PATH export through `make lsp-smoke-env`. Kotlin's official standalone
+LSP distribution currently has a higher JDK requirement than the JDT LS path, so
+Kotlin LSP smoke can still require a newer local JDK even after the wrapper is
+installed. Use `CODEMINER_KOTLIN_LSP_CMD` if a CI image supplies Kotlin LSP
+through a different launcher. Ruby LSP is run through a generated Bundler-shaped
+project and the smoke temporarily starts it as `bundle exec ruby-lsp`; a bare
+loose-file Ruby smoke is not a reliable alignment target. The Makefile installs
+Ruby LSP as a wrapper before the raw gem bin on PATH so Bundler projects use
+their local Gemfile while loose projects can still fall back to the tool-dir gem.
+
+For SCIP cold-start smoke and candidate promotion gates, start with:
+
+```bash
+make scip-cold-start-system-deps-ubuntu  # optional Ubuntu base packages
+make scip-cold-start-tools
+eval "$(
+  make --no-print-directory scip-cold-start-env \
+    | sed -n 's/^  export /export /p'
+)"
+```
+
+`make scip-cold-start-system-deps-ubuntu` installs the Ubuntu base packages for
+the cold-start toolchain path, including a JDK package, Ruby headers, PHP/Composer
+packages, `curl`, `git`, `gzip`, and `unzip`. Override `SCIP_JDK_PACKAGE` or
+`SCIP_PHP_SYSTEM_PACKAGES` when the distribution uses different package names.
+Use `make scip-jvm-compat-system-deps-ubuntu` when a compatibility probe needs
+an older JDK such as OpenJDK 11 for legacy Gradle projects.
+
+`make scip-cold-start-tools` installs reproducible local copies of active
+Java/C#/Scala SCIP tools and the Kotlin/Ruby candidate toolchains under
+`CODEMINER_SCIP_TOOLS_DIR`, defaulting to `/tmp/codeminer-scip-tools`. It
+installs `scip-java`, Gradle, SBT, .NET SDK channels 8.0 and 10.0,
+`scip-dotnet`, `csharp-ls`, Bundler, and `scip-ruby`. Ruby gem installation uses
+`RUBY_GEM ?= gem`; if the default `/usr/bin/gem` lacks Ruby headers for native
+extensions, first run `make scip-ruby-system-deps-ubuntu` or invoke
+`make scip-cold-start-tools RUBY_GEM=/path/to/gem` with a mise/asdf/rbenv Ruby.
+PHP is
+intentionally handled separately because `scip-php` is a Composer dev dependency
+in the target PHP repository: run `make scip-php-system-deps-ubuntu` for Ubuntu
+PHP/Composer packages when sudo is available, then `make scip-php-tool` to verify
+PHP >= 8.2 and print the project-local Composer commands. On machines without
+sudo PHP packages, `make scip-php-docker-tool` verifies the `composer:2` Docker
+image used by generated PHP smoke; override it with
+`CODEMINER_PHP_COMPOSER_IMAGE`. The PHP active hybrid route prepares a
+throwaway Composer worktree under its output directory before running
+`vendor/bin/scip-php`, so normal route-alignment gates do not need to mutate the
+target repository. Explicit `graph_route="scip-candidate"` keeps the same pure
+SCIP behavior for smoke and profiling gates. If you intentionally want to
+prewarm a disposable checkout, run
+`make php-project-scip-tool PROJECT_ROOT=/path/to/php/repo`; this prepares
+project-local `vendor/bin/scip-php` with local PHP/Composer when available, or
+with the same Docker image otherwise. The older `make scip-candidates` and
+`make scip-candidate-env` targets remain compatibility aliases.
+
+For active SCIP/LSP backends, the Makefile also pins and installs `scip-python`,
+`scip-typescript`, `scip-go`, `scip-clang`, `scip-java`, `scip-dotnet`,
+rust-analyzer, `gopls`, `basedpyright-langserver`, `ty`,
+`typescript-language-server`, and a clangd wrapper/symlink under the same tools
+directory. Go-side tools use a pinned local Go SDK because current `scip-go` and
+`gopls` require a newer Go toolchain than some Ubuntu images provide.
+
+```bash
+python scripts/smoke_scip_cold_start.py \
+  --languages java kotlin scala csharp ruby php \
+  --skip-unavailable \
+  --output-dir /tmp/codeminer-scip-smoke \
+  --json
+```
+
+The SCIP smoke runner uses the registry command from
+`scip_cold_start_command_for_language()`, including `CODEMINER_*_SCIP_CMD`
+overrides. For Java, it writes a small Maven project. For Kotlin, it writes a
+small Gradle Kotlin/JVM project because a Maven-shaped Kotlin probe did not
+produce `index.scip` or `.semanticdb` artifacts locally. For Scala, it writes a
+small Gradle Scala 2.13 project; Scala 3 is not implied by that smoke. For C#,
+it writes a small SDK-style `.csproj` and runs `scip-dotnet index <project>
+--output <index.scip> --working-directory <root>`. For Ruby, it writes a small
+Bundler gem project and runs `bundle exec scip-ruby --dir . --index-file
+<index.scip> --gem-metadata smoke@0.1.0`. For PHP, it writes a small Composer
+project, creates a git commit so `scip-php` can derive root package metadata,
+installs the project-local `vendor/bin/scip-php`, and uses Docker `composer:2`
+when local PHP/Composer are unavailable. These smokes expect `index.scip`, decode
+`index.decoded`, and build `graph.pkl` through the registered SCIP decoder. A
+skipped result means the command is not installed; it does not promote a
+candidate or replace the active graph route.
+
+`make scip-project-smoke PROJECT_LANGUAGE=<lang> PROJECT_ROOT=<repo>` installs
+only the tool targets needed for that language before running the project smoke.
+For example, Scala project smoke prepares `scip-java`, Gradle, and SBT without
+installing unrelated .NET, Ruby, or PHP tooling.
+
+The Java SCIP decoder intentionally skips scip-java `<init>` constructor
+symbols until real-repo alignment decides how explicit constructors should map
+against JDT LS. On the tiny Maven smoke, this keeps symbol and containment
+alignment strict while leaving constructor reference-count differences as an
+informational metric.
+
+The Kotlin candidate path uses the same scip-java command but requires Gradle
+or another build path that emits SemanticDB. Its decoder accepts `.kt`
+documents, uses owner descriptors for member containment when scip-java omits
+`enclosing_range`, and keeps top-level function display names stable. Kotlin
+generated-smoke alignment against Kotlin LS should stay strict-green for symbols
+and containment; real-repo alignment is still required before promotion.
+
+The Scala active SCIP path also uses scip-java. Generated smoke proves a Gradle
+Scala 2.13 project, and the real `sbt/io` gate proves an SBT Scala 2.x project
+after `make scip-cold-start-tools` installs a pinned SBT launcher under
+`CODEMINER_SCIP_TOOLS_DIR`. The shared JVM decoder accepts `.scala` documents
+and treats Scala object members as contained by their object symbol. No
+Metals/LSP route is registered for Scala today, so use generated smoke plus
+real-project SCIP smoke as the active-route gate. Scala 3 remains unproven until
+a dedicated Scala 3 smoke passes.
+
+The C# active SCIP path uses `scip-dotnet` and requires a .NET SDK that can restore
+the target `.csproj` or `.sln`. Its decoder accepts `.cs` documents, skips
+generated `bin/` and `obj/` files, preserves namespace symbols, and normalizes
+display names to match csharp-ls. Local csharp-ls alignment may require a newer
+.NET runtime than `scip-dotnet` itself; in the current validation,
+`scip-dotnet` worked with .NET 8 while csharp-ls required .NET 10. C# remains
+serial-only until profiling shows Python decode/build time is a material
+fraction of cold-start time.
+
+The Ruby candidate path uses `bundle exec scip-ruby` because the native
+`scip-ruby` binary rejects direct invocation outside Bundler. Its decoder accepts
+`.rb` documents, normalizes Ruby descriptors such as `Smoke#Invoice#total().`,
+and maps singleton class descriptors for `<Class:Smoke>#normalize()` to
+`Smoke.normalize()`. It keeps top-level Ruby class/module reopen definitions
+file-scoped internally so repeated declarations such as per-file `module Rake`
+do not collapse into one graph vertex, and it normalizes source-declared
+`attr_writer`/`attr_accessor` generated writer definitions to the ruby-lsp method
+display without changing explicit `def foo=` setters. Generated ruby-lsp
+alignment now runs on a matching Bundler-shaped project, preserves Ruby module
+parents in the generic LSP decoder, normalizes constructors, instance variables,
+attr-style methods, `class << self`, and `::` names, and is strict-green against
+the SCIP candidate for symbols and containment (`4/4`, no missing or extra
+definitions). The Ruby SCIP route unsets
+`GEM_PATH` for Bundler commands and filters generated graphs by `target_dir` and
+`exclude_patterns`, so dependency gems under `vendor/bundle` do not pollute
+source-route alignment. For real repositories that should not have their Gemfile
+mutated, create an overlay such as `.codeminer/Gemfile` with `gemspec path: ".."`
+plus pinned `ruby-lsp` and `scip-ruby`, then export
+`CODEMINER_RUBY_BUNDLE_GEMFILE=/path/to/repo/.codeminer/Gemfile` before running
+LSP or SCIP route gates. Ruby remains candidate until real-repo graph quality
+measurement is green enough for promotion; the current `ruby/rake` gate runs
+end-to-end with only dynamic alias/singleton symbol differences remaining on
+the definition surface.
+Use `make ruby-project-bundle PROJECT_ROOT=/path/to/ruby/repo` for this overlay
+setup. It creates `.codeminer/Gemfile` only when absent, installs the bundle
+under `.codeminer/vendor/bundle`, and prints the
+`CODEMINER_RUBY_BUNDLE_GEMFILE` export consumed by the Ruby LSP and SCIP routes.
+
+The PHP active hybrid path uses project-local `vendor/bin/scip-php` pinned to
+the validated `davidrjenni/scip-php:0.0.2` package for Composer projects and
+generated smoke. Loose files and non-Composer projects use the generic
+Intelephense LSP route, and the active route falls back to LSP if SCIP setup or
+indexing fails. Explicit `graph_route="scip-candidate"` still runs the pure
+SCIP route for smoke, route alignment, and profiling.
+
+The community indexer currently has stricter setup assumptions than the other
+promoted routes: Composer security blocking must be disabled for the generated
+smoke dependency set, the target root needs a git reference, and the packaged
+`scip-php` copy expects its own vendor directory. The generated smoke and pure
+SCIP route handle those constraints by preparing Composer state in a generated
+project or an output-local worktree; source checkouts are used as the
+decode/source mapping root and should not receive `index.scip` artifacts from
+route-level alignment. Source-only Intelephense alignment on the tiny smoke is
+strict-green for namespace, class, method, and top-level function
+symbols/containment after namespace synthesis and source-AST function
+supplementation. A source-only `php-fig/container` real-repo gate is also
+strict-green after per-file namespace synthesis, filtering `scip-php` parameter
+pseudo-symbols such as `ContainerInterface#get().($id)`, and running the SCIP
+route in a throwaway worktree. PHP remains serial-only until a larger real-repo
+profile shows local Python decode/build time is a material bottleneck.
+
+For a real existing Java project, use `--project-root` and keep SCIP artifacts
+outside the target repository:
+
+```bash
+python scripts/smoke_scip_cold_start.py \
+  --languages java \
+  --project-root /tmp/codeminer-real-java/maven-simple \
+  --output-dir /tmp/codeminer-java-real-scip \
+  --expected-symbol App \
+  --expected-symbol 'App.greet(String)()' \
+  --expected-symbol 'App.main(String[])()' \
+  --json
+```
+
+Java method names should include JDT-LS-compatible parameter displays when
+signature documentation provides them, for example `App.greet(String)()` rather
+than only `App.greet()`.
 
 ## Step 4: Add Incremental Graph Patching
 

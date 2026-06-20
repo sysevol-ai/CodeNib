@@ -92,9 +92,8 @@ class ClangdIndexer:
         clangd_path = self._find_clangd()
         if not clangd_path:
             logger.error(
-                "clangd not found. Please install clangd:\n"
-                "  apt install clangd  (Debian/Ubuntu)\n"
-                "  brew install llvm   (macOS)"
+                "clangd not found. On Ubuntu run make active-system-deps-ubuntu "
+                "then make clangd-tool; on macOS install llvm and run make clangd-tool."
             )
             return False
 

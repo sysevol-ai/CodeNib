@@ -135,6 +135,23 @@ def test_parse_args_rejects_cross_encoder_at_parse_time(runner, monkeypatch, cap
     assert "PR #128" in err, f"expected error mentioning PR #128, got: {err!r}"
 
 
+def test_parse_args_accepts_graph_route(runner, monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "graph_retrieve_baseline.py",
+            "--dataset",
+            "swebench_lite",
+            "--graph-route",
+            "lsp",
+        ],
+    )
+
+    args = runner.parse_args()
+
+    assert args.graph_route == "lsp"
+
+
 # ---------------------------------------------------------------------------
 # _aggregate_section_stats
 # ---------------------------------------------------------------------------

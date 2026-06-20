@@ -6,11 +6,11 @@ SPDX-License-Identifier: Apache-2.0
 
 # Core C++ Backend
 
-The `core/` directory contains a C++ implementation of the high-traffic pieces of the
-Python graph pipeline. It mirrors the behaviour of
-`codeminer.graph.code_graph.CodeGraph` and
-`codeminer.scip_interface.scip_decode.SCIPGraphDecoder` while using the libigraph C API
-for higher throughput on large `.decoded` SCIP index files.
+The `core/` directory contains a C++ implementation of the high-traffic pieces
+of the Python graph pipeline. It mirrors the behaviour of
+`codeminer.graph.code_graph.CodeGraph` and the active serial SCIP decoders while
+using the libigraph C API for higher throughput on large `.decoded` SCIP index
+files.
 
 ## Components
 
@@ -29,14 +29,34 @@ for higher throughput on large `.decoded` SCIP index files.
 
 ## Building
 
-Requirements: CMake ≥ 3.15, a C++17 compiler, and libigraph + pkg-config installed.
+Requirements: CMake >= 3.15, a C++17 compiler, pkg-config, RE2 headers, and
+pybind11. The build vendors c-igraph through CMake FetchContent to avoid symbol
+clashes with the Python `igraph` wheel.
 
 ```bash
-cmake -S core -B build/core
-cmake --build build/core
+make core-system-deps-ubuntu  # Ubuntu system packages
+make core-build               # pybind11 + CMake configure/build
+make core-test                # C++ smoke + Python/core parity checks
 ```
 
-The resulting library (`libcodeminer_core.a`) is placed in `build/core`.
+The resulting static library and pybind module are placed in `build/core`.
+`make core-test` currently validates the C++ executable smoke tests,
+`graph_layers`, registry-driven core language metadata, and serial/core parity
+for the active accelerated SCIP backends: Python, Go, Rust, TypeScript, and the
+JavaScript/TypeScript aliases.
+
+Java, C#, PHP, and Scala are active SCIP cold-start routes but intentionally
+remain serial-only in Python. Local profiles show their external indexers
+dominate cold-start time: `scip-java` on `jitpack/maven-simple` took about 5.98s
+to index while protoc decode took 0.01s, Python graph decode 0.007s, and
+range-index construction 0.001s; `scip-dotnet` on the recorded C# fixture took
+about 4.3-4.8s while Python decode/build was about 0.01s; the small PHP Composer
+gate spent about 0.551s in SCIP indexing, 0.008s in protoc decode, and 0.007s in
+Python graph decode; the `sbt/io` Scala gate spent about 74.527s in `scip-java`
+indexing, 0.099s in protoc decode, 2.156s in Python graph decode, and 0.069s in
+range-index construction. Adding C++ decoder files for those languages is not
+justified until a larger profile shows local decode/build time crossing the 20%
+acceleration gate.
 
 ## Profiling Shared Helpers
 

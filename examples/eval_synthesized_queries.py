@@ -241,6 +241,17 @@ def parse_args() -> argparse.Namespace:
     )
 
     p.add_argument("--topk", type=int, default=50)
+    p.add_argument(
+        "--graph-route",
+        type=str,
+        choices=["active", "lsp", "scip-candidate"],
+        default="active",
+        help=(
+            "Graph indexing route for graph-backed pipelines. Use lsp for "
+            "backend comparison and scip-candidate only for explicit "
+            "candidate SCIP evaluation."
+        ),
+    )
     p.add_argument("--filter-instance", type=str, default=".*")
     p.add_argument("--metrics-k", type=int, nargs="+", default=[1, 3, 5, 10, 15, 20])
     p.add_argument("--index-cache-dir", type=str, default="/mnt/data/codeminer")
@@ -321,6 +332,7 @@ def _make_bm25(
         top_k=args.topk,
         project_name=Path(index_path).name,
         language=language,
+        graph_route=args.graph_route,
     )
     return pipe, pipe.query, pipe.close
 

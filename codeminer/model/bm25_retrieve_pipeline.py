@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..log_utils import get_logger
-from ..scip_interface import SCIPIndexerBase as SCIPIndexer
+from ..ls_router import build_graph_for_languages
 from ..types import QueriedNode
 
 logger = get_logger(__name__)
@@ -28,6 +28,12 @@ class BM25RetrievePipeline:
         index_path: Directory used for SCIP index caches.
         top_k: Number of results to retrieve (default: 50).
         project_name: Project name for SCIP indexing; defaults to index_path basename.
+        language: Backward-compatible single graph-indexing language.
+        languages: Graph-indexing languages. When provided, overrides
+            ``language`` and builds a merged multi-language graph.
+        graph_route: ``"active"`` for public graph routes, ``"lsp"`` for
+            backend comparison, or ``"scip-candidate"`` to explicitly evaluate
+            candidate SCIP routes.
     """
 
     def __init__(
@@ -37,15 +43,23 @@ class BM25RetrievePipeline:
         *,
         top_k: int = 50,
         project_name: Optional[str] = None,
+        language: str = "python",
+        languages: Optional[List[str]] = None,
+        graph_route: str = "active",
     ) -> None:
         self.top_k = top_k
 
         pname = project_name or Path(index_path).name
+        index_languages = languages or [language]
 
-        # Build CodeGraph via SCIP indexing
-        repo_indexer = SCIPIndexer(repo_path, output_dir=index_path)
-        self.code_graph = repo_indexer.run_pipeline(
-            project_name=pname, skip_level="graph"
+        # Build CodeGraph via the registry-backed graph indexer.
+        self.code_graph = build_graph_for_languages(
+            repo_path,
+            index_path,
+            languages=index_languages,
+            project_name=pname,
+            skip_level="graph",
+            graph_route=graph_route,
         )
         if self.code_graph is None:
             raise RuntimeError(f"Failed to build code graph for {repo_path!r}")

@@ -2,4 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-npm install -g @sourcegraph/scip-python
+set -eu
+
+cd "$(dirname "$0")/../.."
+exec make scip-python-tool

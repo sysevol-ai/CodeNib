@@ -14,14 +14,14 @@ usage-guidance prompt, and a status helper. Transport is stdio.
 ## Installation
 
 ```bash
-pip install -e ".[dev]"
-pip install 'mcp[server]'
+make dev
 ```
 
 Zoekt search additionally requires the Go-based Zoekt binaries on `PATH`:
 
 ```bash
-go install github.com/sourcegraph/zoekt/cmd/...@latest
+make zoekt-tool
+eval "$(make --no-print-directory active-scip-env | sed -n 's/^  export /export /p')"
 ```
 
 ## Usage

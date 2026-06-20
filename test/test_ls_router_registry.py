@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import pytest
 
+from codeminer import ls_router
 from codeminer.graph.code_graph import CodeGraph
-from codeminer.ls_router import LSGraphDecoder, LSIndexer
+from codeminer.ls_router import LSGraphDecoder, LSIndexer, build_graph_for_languages
 
 
 @pytest.mark.parametrize(
@@ -25,10 +26,11 @@ from codeminer.ls_router import LSGraphDecoder, LSIndexer
         ("javascript", "SCIPTypeScriptIndexer"),
         ("cpp", "ClangdIndexer"),
         ("c", "ClangdIndexer"),
-        ("java", "GenericLSPIndexer"),
-        ("csharp", "GenericLSPIndexer"),
+        ("java", "SCIPJavaIndexer"),
+        ("csharp", "SCIPCSharpIndexer"),
+        ("scala", "SCIPScalaIndexer"),
         ("ruby", "GenericLSPIndexer"),
-        ("php", "GenericLSPIndexer"),
+        ("php", "PHPHybridIndexer"),
         ("kotlin", "GenericLSPIndexer"),
     ],
 )
@@ -36,6 +38,71 @@ def test_ls_indexer_uses_registry_delegate(tmp_path, language, delegate_class):
     indexer = LSIndexer(tmp_path, language=language, output_dir=tmp_path / "out")
 
     assert indexer._delegate.__class__.__name__ == delegate_class
+
+
+@pytest.mark.parametrize(
+    ("language", "delegate_class"),
+    [
+        ("java", "SCIPJavaIndexer"),
+        ("kotlin", "SCIPKotlinIndexer"),
+        ("kt", "SCIPKotlinIndexer"),
+        ("scala", "SCIPScalaIndexer"),
+        ("csharp", "SCIPCSharpIndexer"),
+        ("c#", "SCIPCSharpIndexer"),
+        ("ruby", "SCIPRubyIndexer"),
+        ("rb", "SCIPRubyIndexer"),
+        ("php", "SCIPPHPIndexer"),
+    ],
+)
+def test_ls_indexer_can_opt_into_scip_candidate_route(
+    tmp_path, language, delegate_class
+):
+    indexer = LSIndexer(
+        tmp_path,
+        language=language,
+        output_dir=tmp_path / "out",
+        graph_route="scip-candidate",
+    )
+
+    assert indexer._delegate.__class__.__name__ == delegate_class
+
+
+def test_ls_indexer_lsp_route_preserves_java_lsp_backend_after_promotion(tmp_path):
+    active = LSIndexer(tmp_path, language="java", output_dir=tmp_path / "active")
+    lsp = LSIndexer(
+        tmp_path,
+        language="java",
+        output_dir=tmp_path / "lsp",
+        graph_route="lsp",
+    )
+
+    assert active._delegate.__class__.__name__ == "SCIPJavaIndexer"
+    assert lsp._delegate.__class__.__name__ == "GenericLSPIndexer"
+
+
+@pytest.mark.parametrize(
+    "language",
+    ["python", "go", "rust", "typescript", "javascript", "java", "csharp", "php"],
+)
+def test_ls_indexer_can_force_generic_lsp_route(tmp_path, language):
+    indexer = LSIndexer(
+        tmp_path,
+        language=language,
+        output_dir=tmp_path / "out",
+        graph_route="lsp",
+    )
+
+    assert indexer._delegate.__class__.__name__ == "GenericLSPIndexer"
+
+
+def test_ls_indexer_lsp_route_rejects_language_without_lsp_command(tmp_path):
+    with pytest.raises(ValueError, match="Unsupported LSP graph language"):
+        LSIndexer(
+            tmp_path,
+            language="scala",
+            output_dir=tmp_path / "out",
+            graph_route="lsp",
+        )
 
 
 def test_ls_indexer_passes_decoder_backend_only_to_scip(tmp_path):
@@ -67,10 +134,11 @@ def test_ls_indexer_passes_decoder_backend_only_to_scip(tmp_path):
         ("typescript", "SCIPTypeScriptGraphDecoder"),
         ("javascript", "SCIPTypeScriptGraphDecoder"),
         ("cpp", "ClangdGraphDecoder"),
-        ("java", "GenericLSPGraphDecoder"),
-        ("csharp", "GenericLSPGraphDecoder"),
+        ("java", "SCIPJavaGraphDecoder"),
+        ("csharp", "SCIPCSharpGraphDecoder"),
+        ("scala", "SCIPJavaGraphDecoder"),
         ("ruby", "GenericLSPGraphDecoder"),
-        ("php", "GenericLSPGraphDecoder"),
+        ("php", "SCIPPHPGraphDecoder"),
         ("kotlin", "GenericLSPGraphDecoder"),
     ],
 )
@@ -112,3 +180,261 @@ def test_ls_indexer_graph_patch_constructs_graph_patcher_without_profiler_kwarg(
     assert result == {"ok": True}
     assert calls["detect"][1:] == ("base", "HEAD", {".py"})
     assert calls["patch"] == {"modified": [], "added": [], "deleted": [], "renamed": []}
+
+
+def test_build_graph_for_languages_preserves_single_language_layout(
+    tmp_path, monkeypatch
+):
+    calls = []
+
+    class FakeIndexer:
+        def __init__(
+            self,
+            project_root,
+            *,
+            output_dir=None,
+            profiler=None,
+            language=None,
+            decoder_backend=None,
+            graph_route="active",
+        ):
+            self.project_root = project_root
+            self.output_dir = output_dir
+            self.language = language
+            self.graph_route = graph_route
+            calls.append(self)
+
+        def run_pipeline(self, *, project_name=None, skip_level=None):
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node(f"{self.language}.txt")
+            graph.build_range_indexes()
+            self.project_name = project_name
+            self.skip_level = skip_level
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    graph = build_graph_for_languages(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["py"],
+        project_name="repo",
+        skip_level="graph",
+    )
+
+    assert graph is not None
+    [call] = calls
+    assert call.language == "python"
+    assert call.graph_route == "active"
+    assert call.output_dir == tmp_path / "out"
+    assert call.project_name == "repo"
+    assert call.skip_level == "graph"
+
+
+def test_build_graph_for_languages_merges_alias_deduped_graphs(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeIndexer:
+        def __init__(
+            self,
+            project_root,
+            *,
+            output_dir=None,
+            profiler=None,
+            language=None,
+            decoder_backend=None,
+            graph_route="active",
+        ):
+            self.project_root = project_root
+            self.output_dir = output_dir
+            self.language = language
+            self.graph_route = graph_route
+            calls.append(self)
+
+        def run_pipeline(self, *, project_name=None, skip_level=None):
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node(f"{self.language}.txt")
+            graph.add_symbol_node(
+                f"{self.language}.txt:{self.language}()",
+                line=0,
+                scope_start_line=0,
+                scope_end_line=1,
+            )
+            graph.add_containment_edge(f"{self.language}.txt:{self.language}()")
+            graph.build_range_indexes()
+            self.project_name = project_name
+            self.skip_level = skip_level
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    graph = build_graph_for_languages(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["py", "python", "go"],
+        project_name="repo",
+        skip_level="graph",
+    )
+
+    assert graph is not None
+    assert [call.language for call in calls] == ["python", "go"]
+    assert [call.graph_route for call in calls] == ["active", "active"]
+    assert [call.output_dir for call in calls] == [
+        tmp_path / "out" / "graphs" / "python",
+        tmp_path / "out" / "graphs" / "go",
+    ]
+    assert [call.project_name for call in calls] == ["repo-python", "repo-go"]
+    assert graph.graph.vcount() == 4
+    assert graph.graph.ecount() == 2
+
+    saved = CodeGraph.load_graph(tmp_path / "out" / "graph.pkl")
+    assert saved.graph.vcount() == 4
+    assert saved.graph.ecount() == 2
+
+
+def test_build_graph_for_languages_can_use_scip_candidate_route(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeIndexer:
+        def __init__(
+            self,
+            project_root,
+            *,
+            output_dir=None,
+            profiler=None,
+            language=None,
+            decoder_backend=None,
+            graph_route="active",
+        ):
+            self.project_root = project_root
+            self.output_dir = output_dir
+            self.language = language
+            self.graph_route = graph_route
+            calls.append(self)
+
+        def run_pipeline(self, *, project_name=None, skip_level=None):
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node(f"{self.language}.txt")
+            graph.build_range_indexes()
+            self.project_name = project_name
+            self.skip_level = skip_level
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    graph = build_graph_for_languages(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["kt", "scala"],
+        project_name="repo",
+        skip_level="graph",
+        graph_route="scip-candidate",
+    )
+
+    assert graph is not None
+    assert [call.language for call in calls] == ["kotlin", "scala"]
+    assert [call.graph_route for call in calls] == [
+        "scip-candidate",
+        "scip-candidate",
+    ]
+    assert [call.output_dir for call in calls] == [
+        tmp_path / "out" / "graphs" / "kotlin",
+        tmp_path / "out" / "graphs" / "scala",
+    ]
+
+
+def test_build_graph_for_languages_can_force_lsp_route(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeIndexer:
+        def __init__(
+            self,
+            project_root,
+            *,
+            output_dir=None,
+            profiler=None,
+            language=None,
+            decoder_backend=None,
+            graph_route="active",
+        ):
+            self.project_root = project_root
+            self.output_dir = output_dir
+            self.language = language
+            self.graph_route = graph_route
+            calls.append(self)
+
+        def run_pipeline(self, *, project_name=None, skip_level=None):
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node(f"{self.language}.txt")
+            graph.build_range_indexes()
+            self.project_name = project_name
+            self.skip_level = skip_level
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    graph = build_graph_for_languages(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["python", "java"],
+        project_name="repo",
+        skip_level="graph",
+        graph_route="lsp",
+    )
+
+    assert graph is not None
+    assert [call.language for call in calls] == ["python", "java"]
+    assert [call.graph_route for call in calls] == ["lsp", "lsp"]
+
+
+def test_build_graph_for_languages_passes_route_filter_options(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeIndexer:
+        def __init__(
+            self,
+            project_root,
+            *,
+            output_dir=None,
+            exclude_patterns=None,
+            profiler=None,
+            language=None,
+            decoder_backend=None,
+            graph_route="active",
+        ):
+            self.project_root = project_root
+            self.output_dir = output_dir
+            self.exclude_patterns = exclude_patterns
+            self.language = language
+            self.graph_route = graph_route
+            calls.append(self)
+
+        def run_pipeline(self, *, project_name=None, skip_level=None, **kwargs):
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node(f"{self.language}.txt")
+            graph.build_range_indexes()
+            self.project_name = project_name
+            self.skip_level = skip_level
+            self.pipeline_kwargs = kwargs
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    graph = build_graph_for_languages(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["ruby"],
+        project_name="repo",
+        skip_level=None,
+        target_dir="lib",
+        include_references=True,
+        exclude_patterns=["vendor/**"],
+        graph_route="lsp",
+    )
+
+    assert graph is not None
+    [call] = calls
+    assert call.language == "ruby"
+    assert call.graph_route == "lsp"
+    assert call.exclude_patterns == ["vendor/**"]
+    assert call.pipeline_kwargs == {"target_dir": "lib", "include_references": True}

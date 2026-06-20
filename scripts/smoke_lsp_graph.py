@@ -4,18 +4,21 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Smoke-test generic LSP graph backends on tiny generated projects."""
+"""Smoke-test generic LSP graph backends on generated or existing projects."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
@@ -27,6 +30,8 @@ from codeminer.ls_router import LSIndexer
 from codeminer.types import EDGE_TYPE_REFERENCE
 
 SMOKE_LANGUAGES = ("java", "csharp", "ruby", "php", "kotlin")
+_RUBY_LSP_VERSION = "0.26.9"
+_SCIP_RUBY_VERSION = "0.4.7"
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,17 +107,67 @@ def write_smoke_project(root: Path, language: str) -> tuple[str, ...]:
         )
         _write(
             root / "Program.cs",
-            "namespace Smoke; class Invoice { public int Total() => 1; } "
-            "class Program { static void Main() { } }\n",
+            """
+namespace Smoke;
+
+public class Invoice
+{
+    public int Total() => 1;
+}
+
+public static class Helpers
+{
+    public static string Normalize() => new Invoice().Total().ToString();
+}
+""".lstrip(),
         )
-        return ("Invoice",)
+        return ("Invoice", "Helpers", "Normalize")
 
     if language == "ruby":
         _write(
-            root / "invoice.rb",
-            "class Invoice\n  def total\n    1\n  end\nend\n\ndef normalize\nend\n",
+            root / "Gemfile",
+            """
+source "https://rubygems.org"
+
+gem "ruby-lsp", "{ruby_lsp_version}"
+gem "scip-ruby", "{scip_ruby_version}"
+""".format(
+                ruby_lsp_version=_RUBY_LSP_VERSION,
+                scip_ruby_version=_SCIP_RUBY_VERSION,
+            ).strip()
+            + "\n",
         )
-        return ("Invoice", "normalize")
+        _write(
+            root / "smoke.gemspec",
+            """
+Gem::Specification.new do |spec|
+  spec.name = "smoke"
+  spec.version = "0.1.0"
+  spec.summary = "CodeMiner ruby-lsp smoke project"
+  spec.authors = ["CodeMiner"]
+  spec.files = ["lib/invoice.rb"]
+end
+""".strip()
+            + "\n",
+        )
+        _write(
+            root / "lib/invoice.rb",
+            """
+module Smoke
+  class Invoice
+    def total
+      1
+    end
+  end
+
+  def self.normalize
+    Invoice.new.total.to_s
+  end
+end
+""".strip()
+            + "\n",
+        )
+        return ("Smoke", "Smoke.Invoice", "Smoke.normalize()")
 
     if language == "php":
         _write(
@@ -185,6 +240,86 @@ def run_smoke(
         )
 
 
+def run_project_smoke(
+    language: str,
+    project_root: Path,
+    *,
+    include_references: bool = False,
+    min_references: int = 0,
+    skip_unavailable: bool = False,
+    output_root: Path | None = None,
+    expected_symbols: Sequence[str] = (),
+    target_dir: str | None = None,
+    exclude_patterns: Sequence[str] = (),
+) -> SmokeResult:
+    graph_language = normalize_graph_language(language)
+    if graph_language not in SMOKE_LANGUAGES:
+        return SmokeResult(
+            language=language,
+            status="failed",
+            command=None,
+            min_references=min_references,
+            expected_symbols=tuple(expected_symbols),
+            error=f"unsupported smoke language: {language}",
+        )
+
+    language = graph_language
+    command = LSPClient.get_lsp_command(language)
+    if not LSPClient.check_lsp_available(language):
+        status = "skipped" if skip_unavailable else "failed"
+        return SmokeResult(
+            language=language,
+            status=status,
+            command=command,
+            min_references=min_references,
+            expected_symbols=tuple(expected_symbols),
+            error="LSP command is not available",
+        )
+
+    project_root = project_root.resolve()
+    if not project_root.exists():
+        return SmokeResult(
+            language=language,
+            status="failed",
+            command=command,
+            min_references=min_references,
+            expected_symbols=tuple(expected_symbols),
+            error=f"project root does not exist: {project_root}",
+        )
+
+    if output_root is not None:
+        output_dir = output_root / f"{project_root.name}-{language}"
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True)
+        return _run_lsp_indexer_smoke(
+            language,
+            command=command,
+            root=project_root,
+            output_dir=output_dir,
+            include_references=include_references,
+            min_references=min_references,
+            expected_symbols=tuple(expected_symbols),
+            target_dir=target_dir,
+            exclude_patterns=tuple(exclude_patterns),
+        )
+
+    with tempfile.TemporaryDirectory(
+        prefix=f"codeminer-{language}-lsp-project-"
+    ) as tmp:
+        return _run_lsp_indexer_smoke(
+            language,
+            command=command,
+            root=project_root,
+            output_dir=Path(tmp),
+            include_references=include_references,
+            min_references=min_references,
+            expected_symbols=tuple(expected_symbols),
+            target_dir=target_dir,
+            exclude_patterns=tuple(exclude_patterns),
+        )
+
+
 def _run_smoke_in_root(
     language: str,
     *,
@@ -194,23 +329,64 @@ def _run_smoke_in_root(
     min_references: int,
 ) -> SmokeResult:
     expected = write_smoke_project(root, language)
-    graph_path = root / "out" / "graph.pkl"
-    try:
-        graph = LSIndexer(
-            root,
-            language=language,
-            output_dir=root / "out",
-        ).run_pipeline(
-            report_profile=False,
-            include_references=include_references,
-        )
-    except Exception as exc:
+    prepare_error = _prepare_smoke_project(language, root, command)
+    if prepare_error:
         return SmokeResult(
             language=language,
             status="failed",
             command=command,
             min_references=min_references,
             expected_symbols=expected,
+            error=prepare_error,
+        )
+
+    return _run_lsp_indexer_smoke(
+        language,
+        command=command,
+        root=root,
+        output_dir=root / "out",
+        include_references=include_references,
+        min_references=min_references,
+        expected_symbols=expected,
+        target_dir=_target_dir(language),
+        exclude_patterns=tuple(_exclude_patterns(language)),
+    )
+
+
+def _run_lsp_indexer_smoke(
+    language: str,
+    *,
+    command: list[str] | None,
+    root: Path,
+    output_dir: Path,
+    include_references: bool,
+    min_references: int,
+    expected_symbols: tuple[str, ...],
+    target_dir: str | None,
+    exclude_patterns: Sequence[str],
+) -> SmokeResult:
+    effective_command = _effective_lsp_command(language, command)
+    graph_path = output_dir / "graph.pkl"
+    try:
+        with _temporary_lsp_command(language, effective_command):
+            graph = LSIndexer(
+                root,
+                language=language,
+                output_dir=output_dir,
+                exclude_patterns=list(exclude_patterns),
+                graph_route="lsp",
+            ).run_pipeline(
+                report_profile=False,
+                include_references=include_references,
+                target_dir=target_dir,
+            )
+    except Exception as exc:
+        return SmokeResult(
+            language=language,
+            status="failed",
+            command=effective_command,
+            min_references=min_references,
+            expected_symbols=expected_symbols,
             error=str(exc),
         )
 
@@ -218,15 +394,17 @@ def _run_smoke_in_root(
         return SmokeResult(
             language=language,
             status="failed",
-            command=command,
+            command=effective_command,
             min_references=min_references,
-            expected_symbols=expected,
+            expected_symbols=expected_symbols,
             error="LSIndexer returned no graph",
         )
 
-    names = tuple(vertex["name"] for vertex in graph.graph.vs)
+    names = _graph_names(graph)
     missing = tuple(
-        fragment for fragment in expected if not any(fragment in name for name in names)
+        fragment
+        for fragment in expected_symbols
+        if not any(fragment in name for name in names)
     )
     references = _reference_count(graph)
     reference_gap = references < min_references
@@ -239,16 +417,30 @@ def _run_smoke_in_root(
     return SmokeResult(
         language=language,
         status=status,
-        command=command,
+        command=effective_command,
         vertices=graph.graph.vcount(),
         edges=graph.graph.ecount(),
         references=references,
         min_references=min_references,
-        expected_symbols=expected,
+        expected_symbols=expected_symbols,
         missing_symbols=missing,
         graph_path=str(graph_path) if graph_path.exists() else None,
         error=error,
     )
+
+
+def _graph_names(graph) -> tuple[str, ...]:
+    names = []
+    for vertex in graph.graph.vs:
+        if hasattr(vertex, "attributes"):
+            attrs = vertex.attributes()
+        else:
+            attrs = vertex
+        for key in ("name", "unified_name"):
+            value = attrs.get(key)
+            if value:
+                names.append(value)
+    return tuple(names)
 
 
 def _reference_count(graph) -> int:
@@ -257,6 +449,123 @@ def _reference_count(graph) -> int:
         for edge in graph.graph.es
         if edge.attributes().get("type") == EDGE_TYPE_REFERENCE
     )
+
+
+def _prepare_smoke_project(
+    language: str,
+    root: Path,
+    command: list[str] | None,
+) -> str | None:
+    if language != "ruby":
+        return None
+
+    bundle = _ruby_bundle_command(command)
+    if bundle is None:
+        return (
+            "Ruby LSP smoke requires Bundler. Run make lsp-smoke-tools "
+            "or set CODEMINER_RUBY_LSP_CMD to a Ruby installation with bundle."
+        )
+
+    for args in (
+        [*bundle, "config", "set", "path", "vendor/bundle"],
+        [*bundle, "install"],
+    ):
+        try:
+            subprocess.run(
+                args,
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return f"Ruby bundle preparation timed out after 180s: {exc}"
+        except subprocess.CalledProcessError as exc:
+            detail = _combine_output(exc.stdout, exc.stderr)
+            return f"Ruby bundle preparation failed: {detail or exc}"
+    return None
+
+
+def _effective_lsp_command(
+    language: str,
+    command: list[str] | None,
+) -> list[str] | None:
+    if language != "ruby" or not command:
+        return command
+    if Path(command[0]).name == "bundle":
+        return command
+    bundle = _ruby_bundle_command(command)
+    if bundle is None:
+        return command
+    return [*bundle, "exec", "ruby-lsp"]
+
+
+class _temporary_lsp_command:
+    def __init__(self, language: str, command: list[str] | None):
+        self._env_name = f"CODEMINER_{language.upper()}_LSP_CMD" if command else None
+        self._command = command
+        self._previous: str | None = None
+
+    def __enter__(self):
+        if self._env_name is None or self._command is None:
+            return
+        self._previous = os.environ.get(self._env_name)
+        os.environ[self._env_name] = shlex.join(self._command)
+
+    def __exit__(self, *exc):
+        if self._env_name is None:
+            return
+        if self._previous is None:
+            os.environ.pop(self._env_name, None)
+        else:
+            os.environ[self._env_name] = self._previous
+
+
+def _ruby_bundle_command(command: list[str] | None) -> list[str] | None:
+    if command and Path(command[0]).name == "bundle":
+        return [command[0]]
+
+    if not command:
+        return None
+    ruby_lsp = shutil.which(command[0]) or command[0]
+    path = Path(ruby_lsp)
+    try:
+        resolved = path.resolve(strict=True)
+        lines = resolved.read_text(encoding="utf-8", errors="replace").splitlines()
+        first_line = lines[0]
+    except (OSError, IndexError):
+        first_line = ""
+    if first_line.startswith("#!"):
+        sibling = Path(first_line[2:].strip()).parent / "bundle"
+        if sibling.exists():
+            return [str(sibling)]
+
+    bundle = shutil.which("bundle")
+    if bundle:
+        return [bundle]
+    return None
+
+
+def _combine_output(stdout: str | None, stderr: str | None) -> str:
+    parts = []
+    if stdout and stdout.strip():
+        parts.append(stdout.strip())
+    if stderr and stderr.strip():
+        parts.append(stderr.strip())
+    return "\n".join(parts)
+
+
+def _exclude_patterns(language: str) -> list[str]:
+    if language == "ruby":
+        return ["vendor/**"]
+    return []
+
+
+def _target_dir(language: str) -> str | None:
+    if language == "ruby":
+        return "lib"
+    return None
 
 
 def _write(path: Path, text: str) -> None:
@@ -295,6 +604,27 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         type=Path,
         help="persist generated smoke projects and graph.pkl files under this directory",
     )
+    parser.add_argument(
+        "--project-root",
+        type=Path,
+        help="run smoke against an existing project root instead of generating one",
+    )
+    parser.add_argument(
+        "--expected-symbol",
+        action="append",
+        default=[],
+        help="symbol fragment expected in the decoded graph; may be repeated",
+    )
+    parser.add_argument(
+        "--target-dir",
+        help="relative source directory to index when running with --project-root",
+    )
+    parser.add_argument(
+        "--exclude-pattern",
+        action="append",
+        default=[],
+        help="fnmatch pattern to exclude from --project-root indexing; may be repeated",
+    )
     parser.add_argument("--json", action="store_true", help="emit JSON report")
     return parser.parse_args(argv)
 
@@ -303,16 +633,34 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     reference_languages = set(args.reference_languages)
     min_references = _parse_min_references(args.min_references)
-    results = [
-        run_smoke(
-            language,
-            include_references=language in reference_languages,
-            min_references=min_references.get(language, 0),
-            skip_unavailable=args.skip_unavailable,
-            output_root=args.output_dir,
-        )
-        for language in args.languages
-    ]
+    if args.project_root is not None:
+        if len(args.languages) != 1:
+            raise SystemExit("--project-root supports exactly one language")
+        language = args.languages[0]
+        results = [
+            run_project_smoke(
+                language,
+                args.project_root,
+                include_references=language in reference_languages,
+                min_references=min_references.get(language, 0),
+                skip_unavailable=args.skip_unavailable,
+                output_root=args.output_dir,
+                expected_symbols=tuple(args.expected_symbol),
+                target_dir=args.target_dir,
+                exclude_patterns=tuple(args.exclude_pattern),
+            )
+        ]
+    else:
+        results = [
+            run_smoke(
+                language,
+                include_references=language in reference_languages,
+                min_references=min_references.get(language, 0),
+                skip_unavailable=args.skip_unavailable,
+                output_root=args.output_dir,
+            )
+            for language in args.languages
+        ]
     _print_results(results, json_output=args.json)
     return 0 if all(result.ok for result in results) else 1
 

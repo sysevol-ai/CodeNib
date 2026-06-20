@@ -23,7 +23,7 @@ The setup has three services running in separate terminals:
 
 ### Main machine
 - CodeMiner installed: `make dev` or `pip install -e ".[dev]"`
-- Node.js + npm: `cd web && npm install` (once)
+- Node.js + npm: `make web-deps` (once)
 - Conda env `codeminer` active
 
 ### GPU node

@@ -11,8 +11,7 @@ when ``ResourcePlan`` indicates they are missing or stale.
 Concrete builders wrap existing index infrastructure:
   - ``BM25IndexBuilder``   → ``BM25CodeIndexer``
   - ``VectorIndexBuilder`` → ``build_hierarchical_vector_store``
-  - ``SymbolGraphBuilder`` → ``SCIPPythonIndexer``
-  / ``SCIPRustIndexer`` / ``SCIPTypeScriptIndexer``
+  - ``SymbolGraphBuilder`` → ``LSIndexer`` graph registry
 """
 
 from __future__ import annotations
@@ -423,7 +422,7 @@ class ZoektIndexBuilder:
         if binary_path is None:
             raise RuntimeError(
                 f"Zoekt binary not found: {self.binary!r}. "
-                "Install via 'go install github.com/sourcegraph/zoekt/cmd/...@latest' "
+                "Run 'make zoekt-tool' and use 'make active-scip-env' for PATH, "
                 "or use the official Docker image. "
                 "Skipping zoekt index build."
             )
@@ -467,39 +466,27 @@ class ZoektIndexBuilder:
 
 @dataclass
 class SymbolGraphBuilder:
-    """Build a SCIP-based symbol graph."""
+    """Build a registry-backed symbol graph."""
 
     language: str = "python"
+    languages: Optional[List[str]] = None
+    graph_route: str = "active"
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
         output_dir: str = kwargs["output_dir"]
 
-        from ..scip_interface import (
-            SCIPPythonIndexer,
-            SCIPRustIndexer,
-            SCIPTypeScriptIndexer,
-        )
-
-        _INDEXER_MAP = {
-            "python": SCIPPythonIndexer,
-            "rust": SCIPRustIndexer,
-            "typescript": SCIPTypeScriptIndexer,
-            "javascript": SCIPTypeScriptIndexer,
-        }
-
-        indexer_cls = _INDEXER_MAP.get(self.language)
-        if indexer_cls is None:
-            raise ValueError(f"Unsupported language for symbol graph: {self.language}")
+        from ..ls_router import build_graph_for_languages
 
         os.makedirs(output_dir, exist_ok=True)
-        indexer = indexer_cls(
-            project_root=repo_path,
-            output_dir=output_dir,
-        )
-        graph = indexer.run_pipeline(
-            output_file=os.path.join(output_dir, "graph.pkl"),
+        graph_languages = self.languages or [self.language]
+        graph = build_graph_for_languages(
+            repo_path,
+            output_dir,
+            languages=graph_languages,
+            project_name=os.path.basename(os.path.abspath(repo_path)),
             skip_level=None,
+            graph_route=self.graph_route,
         )
 
         node_count = 0
@@ -515,7 +502,9 @@ class SymbolGraphBuilder:
             path=output_dir,
             metadata={
                 "node_count": node_count,
-                "language": self.language,
+                "language": graph_languages[0],
+                "languages": list(graph_languages),
+                "graph_route": self.graph_route,
             },
         )
 
@@ -532,6 +521,7 @@ def register_default_builders(
     registry: IndexBuilderRegistry,
     *,
     languages: Optional[List[str]] = None,
+    graph_route: str = "active",
     embedding_model: str = "nomic-ai/CodeRankEmbed",
     embedding_dimension: int = 768,
     trust_remote_code: bool = False,
@@ -554,7 +544,14 @@ def register_default_builders(
             embedding_kwargs=embedding_kwargs,
         ),
     )
-    registry.register("symbol_graph", SymbolGraphBuilder(language=langs[0]))
+    registry.register(
+        "symbol_graph",
+        SymbolGraphBuilder(
+            language=langs[0],
+            languages=list(langs),
+            graph_route=graph_route,
+        ),
+    )
     # Zoekt is registered unconditionally; build() raises a clear error at
     # invocation time if the binary is unavailable so the IndexCompiler can
     # mark the entry as failed without aborting other index builds.

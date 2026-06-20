@@ -205,7 +205,7 @@ def search_zoekt_impl(
                 "zoekt",
                 "No 'zoekt' entry in manifest, status != fresh, or "
                 "zoekt-webserver could not be started. "
-                "Install via 'go install github.com/sourcegraph/zoekt/cmd/...@latest'.",
+                "Run 'make zoekt-tool' and use 'make active-scip-env' for PATH.",
             )
         )
 

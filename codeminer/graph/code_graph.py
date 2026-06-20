@@ -533,6 +533,43 @@ class CodeGraph:
             if uname:
                 unified[uname].append(v["name"])
         self._unified_to_names = dict(unified)
+        self._unified_index_cache = None
+
+    def merge_from(self, other: "CodeGraph") -> None:
+        """Merge another ``CodeGraph`` into this one.
+
+        Vertices are keyed by their canonical ``name`` attribute. Existing
+        vertices receive any attributes from ``other``; missing vertices are
+        inserted. Edges are copied through ``_add_edge`` so structural edge
+        deduplication and anchored reference multi-edges keep the same
+        semantics as decoder-built graphs.
+        """
+        for vertex in other.graph.vs:
+            attrs = vertex.attributes()
+            name = attrs.get("name")
+            if not name:
+                continue
+            copied = {key: value for key, value in attrs.items() if key != "name"}
+            self._add_vertex(name, copied)
+
+        with self.batch_edges():
+            for edge in other.graph.es:
+                attrs = edge.attributes()
+                edge_type = attrs.get("type")
+                if edge_type is None:
+                    continue
+                source_name = other.graph.vs[edge.source]["name"]
+                target_name = other.graph.vs[edge.target]["name"]
+                self._add_edge(
+                    source_name,
+                    target_name,
+                    edge_type,
+                    anchor_file=attrs.get("anchor_file"),
+                    anchor_line=attrs.get("anchor_line"),
+                )
+
+        self.symbol_ranges.update(other.symbol_ranges)
+        self.build_range_indexes()
 
     def query_range(
         self,

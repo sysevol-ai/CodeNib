@@ -65,6 +65,7 @@ nav:
       - CI/CD: ci_cd.md
       - Diagnose Query Leak: diagnose_query_leak.md
       - Contributing a Language: contributing-a-language.md
+      - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md
   - Components:
       - Web Demo: web_demo.md
       - MCP Server: mcp.md

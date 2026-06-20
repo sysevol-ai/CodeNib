@@ -122,7 +122,7 @@ class ZoektSearcher:
         if shutil.which(self.binary) is None and not os.path.isfile(self.binary):
             raise ZoektUnavailableError(
                 f"Zoekt binary not found: {self.binary!r}. "
-                "Install via 'go install github.com/sourcegraph/zoekt/cmd/...@latest' "
+                "Run 'make zoekt-tool' and use 'make active-scip-env' for PATH, "
                 "or use the official Docker image."
             )
         if not os.path.isdir(self.index_dir):

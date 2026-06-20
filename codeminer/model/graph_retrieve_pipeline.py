@@ -12,8 +12,8 @@ from ..graph.roi_subgraph import ROISubgraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..log_utils import get_logger
+from ..ls_router import build_graph_for_languages
 from ..profiler import Profiler
-from ..scip_interface import SCIPIndexerBase as SCIPIndexer
 from ..types import QueriedNode
 
 logger = get_logger(__name__)
@@ -47,7 +47,12 @@ class GraphRetrievePipeline:
         embedding_model: Embedding model for Stage 3.
         embedding_provider: Embedding provider for Stage 3.
         embedding_dimension: Embedding vector dimension for Stage 3.
-        languages: Languages to index (default: ["python"]).
+        languages: Languages to index. Multiple entries build per-language
+            graphs and merge them before BM25/graph expansion. The full list is
+            also used for Stage 3 chunking.
+        graph_route: ``"active"`` for public graph routes, ``"lsp"`` for
+            backend comparison, or ``"scip-candidate"`` to explicitly evaluate
+            candidate SCIP routes.
         max_lines_per_chunk: Maximum lines per chunk.
         project_name: Project name for SCIP indexing; defaults to index_path basename.
     """
@@ -67,6 +72,7 @@ class GraphRetrievePipeline:
         embedding_provider: str = "huggingface",
         embedding_dimension: int = 768,
         languages: Optional[List[str]] = None,
+        graph_route: str = "active",
         max_lines_per_chunk: int = 300,
         project_name: Optional[str] = None,
         profiler: Optional[Profiler] = None,
@@ -83,12 +89,18 @@ class GraphRetrievePipeline:
         self.last_bm25_seeds: List[Any] = []
 
         pname = project_name or Path(index_path).name
+        index_languages = languages or ["python"]
 
-        # Build CodeGraph via SCIP indexing
+        # Build CodeGraph via the registry-backed graph indexer.
         with _section(profiler, "index.graph_build", {"repo": pname}):
-            repo_indexer = SCIPIndexer(repo_path, output_dir=index_path)
-            self.code_graph = repo_indexer.run_pipeline(
-                project_name=pname, skip_level="graph"
+            self.code_graph = build_graph_for_languages(
+                repo_path,
+                index_path,
+                languages=index_languages,
+                project_name=pname,
+                skip_level="graph",
+                profiler=profiler,
+                graph_route=graph_route,
             )
             if self.code_graph is None:
                 raise RuntimeError(f"Failed to build code graph for {repo_path!r}")
@@ -110,7 +122,7 @@ class GraphRetrievePipeline:
                     repo_path=repo_path,
                     index_path=index_path,
                     plan_name=None,
-                    languages=languages or ["python"],
+                    languages=index_languages,
                     max_lines_per_chunk=max_lines_per_chunk,
                     build_levels=["l2"],
                     embedding_model=embedding_model,

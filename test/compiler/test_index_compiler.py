@@ -159,13 +159,22 @@ class TestVectorIndexBuilder:
 
 
 class TestSymbolGraphBuilder:
-    @patch("codeminer.scip_interface.SCIPPythonIndexer")
-    def test_build_returns_status(self, MockSCIP, tmp_path):
+    def test_build_returns_status(self, monkeypatch, tmp_path):
+        from codeminer import ls_router
+
         mock_graph = MagicMock()
         mock_graph.graph.vs = list(range(50))  # 50 nodes
-        mock_indexer = MagicMock()
-        mock_indexer.run_pipeline.return_value = mock_graph
-        MockSCIP.return_value = mock_indexer
+        calls = []
+
+        def fake_build_graph_for_languages(*args, **kwargs):
+            calls.append((args, kwargs))
+            return mock_graph
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages",
+            fake_build_graph_for_languages,
+        )
 
         builder = SymbolGraphBuilder(language="python")
         output = str(tmp_path / "graph")
@@ -179,12 +188,27 @@ class TestSymbolGraphBuilder:
         assert status.state == IndexState.FRESH
         assert status.metadata["node_count"] == 50
         assert status.metadata["language"] == "python"
+        assert status.metadata["languages"] == ["python"]
+        assert calls == [
+            (
+                ("/fake/repo", output),
+                {
+                    "languages": ["python"],
+                    "project_name": "repo",
+                    "skip_level": None,
+                    "graph_route": "active",
+                },
+            )
+        ]
 
-    @patch("codeminer.scip_interface.SCIPPythonIndexer")
-    def test_build_handles_none_graph(self, MockSCIP, tmp_path):
-        mock_indexer = MagicMock()
-        mock_indexer.run_pipeline.return_value = None
-        MockSCIP.return_value = mock_indexer
+    def test_build_handles_none_graph(self, monkeypatch, tmp_path):
+        from codeminer import ls_router
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages",
+            lambda *args, **kwargs: None,
+        )
 
         builder = SymbolGraphBuilder()
         output = str(tmp_path / "graph")
@@ -195,6 +219,64 @@ class TestSymbolGraphBuilder:
         )
 
         assert status.metadata["node_count"] == 0
+
+    def test_build_forwards_multiple_languages(self, monkeypatch, tmp_path):
+        from codeminer import ls_router
+
+        mock_graph = MagicMock()
+        mock_graph.graph.vs = []
+        calls = []
+
+        def fake_build_graph_for_languages(*args, **kwargs):
+            calls.append((args, kwargs))
+            return mock_graph
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages",
+            fake_build_graph_for_languages,
+        )
+
+        builder = SymbolGraphBuilder(language="python", languages=["python", "go"])
+        output = str(tmp_path / "graph")
+        status = builder.build(
+            scope="current_repo",
+            repo_path="/fake/repo",
+            output_dir=output,
+        )
+
+        assert status.metadata["language"] == "python"
+        assert status.metadata["languages"] == ["python", "go"]
+        assert status.metadata["graph_route"] == "active"
+        assert calls[0][1]["languages"] == ["python", "go"]
+
+    def test_build_forwards_graph_route(self, monkeypatch, tmp_path):
+        from codeminer import ls_router
+
+        mock_graph = MagicMock()
+        mock_graph.graph.vs = []
+        calls = []
+
+        def fake_build_graph_for_languages(*args, **kwargs):
+            calls.append((args, kwargs))
+            return mock_graph
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages",
+            fake_build_graph_for_languages,
+        )
+
+        builder = SymbolGraphBuilder(language="java", graph_route="scip-candidate")
+        output = str(tmp_path / "graph")
+        status = builder.build(
+            scope="current_repo",
+            repo_path="/fake/repo",
+            output_dir=output,
+        )
+
+        assert status.metadata["graph_route"] == "scip-candidate"
+        assert calls[0][1]["graph_route"] == "scip-candidate"
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +299,7 @@ class TestRegisterDefaultBuilders:
         register_default_builders(
             registry,
             languages=["rust", "python"],
+            graph_route="scip-candidate",
             embedding_model="custom-model",
             embedding_dimension=512,
         )
@@ -229,6 +312,12 @@ class TestRegisterDefaultBuilders:
         assert isinstance(vector, VectorIndexBuilder)
         assert vector.embedding_model == "custom-model"
         assert vector.embedding_dimension == 512
+
+        symbol_graph = registry.get("symbol_graph")
+        assert isinstance(symbol_graph, SymbolGraphBuilder)
+        assert symbol_graph.language == "rust"
+        assert symbol_graph.languages == ["rust", "python"]
+        assert symbol_graph.graph_route == "scip-candidate"
 
 
 # ---------------------------------------------------------------------------

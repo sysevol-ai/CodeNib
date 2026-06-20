@@ -76,6 +76,7 @@ class GenericLSPGraphDecoder:
                 f"{self.index_file_path} has schema_version={version!r}, "
                 f"expected {_INDEX_SCHEMA_VERSION}"
             )
+        language = str(payload.get("language") or "")
 
         graph = CodeGraph(str(self.project_root) if self.project_root else None)
         graph.add_root_node(ROOT_NODE)
@@ -92,6 +93,7 @@ class GenericLSPGraphDecoder:
                     symbols=entry.get("symbols") or [],
                     parent_vertex_name=file_path,
                     parent_unified_part="",
+                    language=language,
                 )
 
         graph.build_range_indexes()
@@ -122,6 +124,7 @@ class GenericLSPGraphDecoder:
                     symbols=list(symbols),
                     parent_vertex_name=file_path,
                     parent_unified_part="",
+                    language="",
                 )
         graph.build_range_indexes()
         self.code_graph = graph
@@ -155,6 +158,7 @@ def _process_symbol_tree(
     symbols: list[dict],
     parent_vertex_name: str,
     parent_unified_part: str,
+    language: str = "",
 ) -> None:
     for symbol in symbols or []:
         name = symbol.get("name") or ""
@@ -165,7 +169,10 @@ def _process_symbol_tree(
         end_line = _line(range_data, "end", default=start_line)
 
         node_type = _node_type(kind)
-        if _is_local_symbol(kind, parent_unified_part):
+        if _is_local_symbol(kind, parent_unified_part) or _is_non_graph_scope(
+            name,
+            language,
+        ):
             child_parent = parent_unified_part
             child_parent_vertex = parent_vertex_name
         elif kind in _GRAPH_SYMBOL_KINDS:
@@ -174,6 +181,7 @@ def _process_symbol_tree(
                 name=name,
                 parent_unified_part=parent_unified_part,
                 kind=kind,
+                language=language,
             )
             vertex_name = f"{unified_name}:{start_line}"
             graph._add_vertex(
@@ -189,7 +197,7 @@ def _process_symbol_tree(
             graph.symbol_ranges[vertex_name] = (start_line, end_line)
             graph._add_edge(parent_vertex_name, vertex_name, EDGE_TYPE_CONTAIN)
 
-            if kind == 2:
+            if kind == 2 and language != "ruby":
                 child_parent = parent_unified_part
             else:
                 child_parent = unified_name.split(":", 1)[1]
@@ -206,6 +214,7 @@ def _process_symbol_tree(
                 symbols=children,
                 parent_vertex_name=child_parent_vertex,
                 parent_unified_part=child_parent,
+                language=language,
             )
 
 
@@ -213,6 +222,7 @@ def iter_lsp_symbol_definitions(
     file_path: str,
     symbols: list[dict],
     parent_unified_part: str = "",
+    language: str = "",
 ) -> Iterable[dict]:
     """Yield definition metadata using the generic decoder naming rules."""
 
@@ -224,7 +234,10 @@ def iter_lsp_symbol_definitions(
         start_line = _line(range_data, "start", default=0)
         end_line = _line(range_data, "end", default=start_line)
 
-        if _is_local_symbol(kind, parent_unified_part):
+        if _is_local_symbol(kind, parent_unified_part) or _is_non_graph_scope(
+            name,
+            language,
+        ):
             child_parent = parent_unified_part
         elif kind in _GRAPH_SYMBOL_KINDS:
             unified_name = _build_unified_name(
@@ -232,6 +245,7 @@ def iter_lsp_symbol_definitions(
                 name=name,
                 parent_unified_part=parent_unified_part,
                 kind=kind,
+                language=language,
             )
             yield {
                 "vertex_name": f"{unified_name}:{start_line}",
@@ -243,7 +257,9 @@ def iter_lsp_symbol_definitions(
                 "selection_character": _character(sel_range, "start", default=0),
             }
             child_parent = (
-                parent_unified_part if kind == 2 else unified_name.split(":", 1)[1]
+                parent_unified_part
+                if kind == 2 and language != "ruby"
+                else unified_name.split(":", 1)[1]
             )
         else:
             child_parent = parent_unified_part
@@ -252,6 +268,7 @@ def iter_lsp_symbol_definitions(
             file_path,
             symbol.get("children") or [],
             parent_unified_part=child_parent,
+            language=language,
         )
 
 
@@ -356,21 +373,47 @@ def _is_local_symbol(kind: int, parent_unified_part: str) -> bool:
     return kind in (13, 14) and bool(parent_unified_part.endswith("()"))
 
 
+def _is_non_graph_scope(name: str, language: str) -> bool:
+    return language == "ruby" and name == "<< self"
+
+
 def _build_unified_name(
     *,
     file_path: str,
     name: str,
     parent_unified_part: str,
     kind: int,
+    language: str = "",
 ) -> str:
-    if kind == 9 or name in ("<constructor>", "constructor"):
+    if language == "ruby":
+        name = name.replace("::", ".")
+        if kind == 9 or name in ("<constructor>", "constructor"):
+            name = "initialize"
+        if kind == 8 and name.startswith("@"):
+            parent_unified_part = _ruby_instance_field_parent(parent_unified_part)
+    elif kind == 9 or name in ("<constructor>", "constructor"):
         name = "constructor"
+    if language == "ruby" and parent_unified_part and name.startswith("self."):
+        name = name.removeprefix("self.")
 
     display = f"{parent_unified_part}.{name}" if parent_unified_part else name
-    if _node_type(kind) in (NODE_TYPE_FUNCTION, NODE_TYPE_METHOD):
+    if _is_callable_display_symbol(kind, name, language):
         if not display.endswith("()"):
             display = f"{display}()"
     return f"{file_path}:{display}"
+
+
+def _is_callable_display_symbol(kind: int, name: str, language: str) -> bool:
+    if _node_type(kind) in (NODE_TYPE_FUNCTION, NODE_TYPE_METHOD):
+        return True
+    return language == "ruby" and kind == 8 and not name.startswith("@")
+
+
+def _ruby_instance_field_parent(parent_unified_part: str) -> str:
+    parts = parent_unified_part.split(".") if parent_unified_part else []
+    while parts and parts[-1].endswith("()"):
+        parts.pop()
+    return ".".join(parts)
 
 
 __all__ = ["GenericLSPGraphDecoder", "iter_lsp_symbol_definitions"]
