@@ -256,6 +256,7 @@ def run_cell(
             set(cfg.default_tool_ids) if cfg.default_tool_ids is not None else None
         ),
         system_prompt=cfg.system_prompt,
+        first_turn_tool_choice=getattr(cfg, "first_turn_tool_choice", None) or None,
     )
     # The always-on default tools (file_read / file_search) resolve relative
     # paths against the process cwd, so run the agent from the instance repo.

@@ -72,6 +72,11 @@ class SweepConfig:
     # Override the agent system prompt (e.g. a graph-primary prompt with no grep
     # guidance). None = runner's default localization prompt.
     system_prompt: Optional[str] = None
+    # Force a tool call on the FIRST agent turn (e.g. "required"). Weak open
+    # models (Qwen2.5-Coder) answer one-shot under the default "auto" and never
+    # exercise the loop; this makes them actually grep/read. None = leave "auto"
+    # (correct for Claude, which calls tools eagerly).
+    first_turn_tool_choice: Optional[str] = None
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SweepConfig":

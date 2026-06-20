@@ -24,6 +24,10 @@ vertex_project: null
 reps: 1
 max_turns: 16
 
+# Qwen2.5-Coder answers one-shot under tool_choice="auto" (turns=1, no grep/read)
+# — force a tool call on the first turn so the agent loop is actually exercised.
+first_turn_tool_choice: required
+
 instances: []  # whole codeminer-base test split (~100 instances)
 
 subsets:

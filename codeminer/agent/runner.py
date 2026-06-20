@@ -159,6 +159,7 @@ class AgentRunner:
         default_tool_ids: Optional[Set[str]] = None,
         retry: Optional[RetryConfig] = None,
         force_localization_contract: bool = True,
+        first_turn_tool_choice: Optional[str] = None,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -219,6 +220,7 @@ class AgentRunner:
         # Locations: contract; QA callers (web demo) keep prose, so they turn
         # this off and skip the schema-forcing final turn entirely.
         self._force_contract = force_localization_contract
+        self.first_turn_tool_choice = first_turn_tool_choice
 
         # Resource guard: filter unavailable skills and collect warnings.
         # The "base" allow / exclude are stored so we can recompute the
@@ -401,6 +403,14 @@ class AgentRunner:
             }
             if tools:
                 call_kwargs["tools"] = tools
+                # Force at least one tool call on the FIRST turn. Claude calls
+                # tools eagerly under the default tool_choice="auto", but weaker
+                # open models (e.g. Qwen2.5-Coder) answer in one shot without
+                # exploring — turning the agent loop into a no-op. Requiring a
+                # tool call on turn 0 makes them actually grep/read; subsequent
+                # turns stay "auto" so the model is free to commit its answer.
+                if turn == 0 and self.first_turn_tool_choice:
+                    call_kwargs["tool_choice"] = self.first_turn_tool_choice
 
             response = self.llm._call_raw(history.get_messages(), **call_kwargs)
             choice = response.choices[0]
