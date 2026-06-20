@@ -153,7 +153,8 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
     def _set_unified_name(self, info) -> None:
         display_name = self._display_names_by_graph_key.get(info.key)
         if display_name is None:
-            return super()._set_unified_name(info)
+            super()._set_unified_name(info)
+            return
         self._set_unified_name_for_key(
             info.key,
             info,
