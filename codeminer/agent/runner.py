@@ -406,7 +406,33 @@ class AgentRunner:
                 "usage_tracker": usage_tracker,
                 "usage_turn": turn + 1,
             }
-            if tools:
+            # Last-turn salvage: if this is the final allowed turn and the agent
+            # still hasn't emitted the Files:/Symbols:/Locations: contract, spend
+            # it producing a formatted answer instead of one more (truncated)
+            # tool call. Weak models (Qwen3.5-4B) routinely burn all 16 turns
+            # still narrating / mid-grep and never commit a parseable answer
+            # (~55% of cells), which scores 0 even when they found the file. Force
+            # a tool-free schema turn here so the localization isn't lost.
+            is_last_turn = self._force_contract and turn == max_turns - 1
+            last_assistant = ""
+            for _m in reversed(history.get_messages()):
+                if _m.get("role") == "assistant" and _m.get("content"):
+                    last_assistant = _m["content"]
+                    break
+            if is_last_turn and not _has_localization_contract(last_assistant):
+                history.add_message(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Stop exploring. Give your final answer NOW in exactly "
+                            f"this format:\n{LOCALIZATION_SCHEMA}"
+                        ),
+                    }
+                )
+                if tools:
+                    call_kwargs["tools"] = tools
+                    call_kwargs["tool_choice"] = "none"
+            elif tools:
                 call_kwargs["tools"] = tools
                 # Force tool calls until the agent has actually READ a file.
                 # Claude calls tools eagerly under "auto", but weaker open models
