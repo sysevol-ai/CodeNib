@@ -264,6 +264,20 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     if (ans_dedup and preload_candidates)
                     else None
                 )
+                # Honesty flag: the agent ran fine but never produced a parseable
+                # localization (no Files:/Symbols:/Locations: contract AND no
+                # resolvable span), even after the force-schema retries. Such a
+                # cell scores 0 NOT because the localization was wrong but because
+                # the answer was unformattable — a known LLM weakness, worst on
+                # small models. Flag it so the aggregator can report localization
+                # accuracy separately from format-failure rate instead of
+                # silently burying these as misses.
+                from codeminer.agent.runner import _has_localization_contract
+
+                format_failed = (
+                    not _has_localization_contract(out["answer"] or "")
+                    and not answer_spans
+                )
                 record = {
                     "cell_id": cell_id,
                     "instance_id": instance_id,
@@ -274,6 +288,7 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     "scenario": scenario,
                     "language": language_key,
                     "success": True,
+                    "format_failed": format_failed,
                     "metrics": metrics,
                     "metrics_meaningful": gt_meaningful,
                     "target_files": target_files,
