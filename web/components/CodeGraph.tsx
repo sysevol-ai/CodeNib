@@ -1036,6 +1036,7 @@ export default function CodeGraph({
   variant = "explore",
   onNodeClick,
   onEdgeClick,
+  focusRequest,
 }: {
   data: CodemapResponse;
   // "wiki" = the focused map embedded in a wiki page, tuned for reading.
@@ -1043,6 +1044,9 @@ export default function CodeGraph({
   variant?: "wiki" | "explore";
   onNodeClick?: (node: GraphNodeInfo) => void;
   onEdgeClick?: (info: EdgeClickInfo) => void;
+  // Bumped (new nonce) when the source peek's "Focus in graph" is clicked:
+  // center + expand that node in place, keeping the whole graph (no re-root).
+  focusRequest?: { label: string; nonce: number } | null;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -1063,6 +1067,10 @@ export default function CodeGraph({
   // handler identities (e.g. opening the source peek) — that would reset zoom/pan.
   const onNodeClickRef = useRef(onNodeClick);
   const onEdgeClickRef = useRef(onEdgeClick);
+  // Imperative "focus a node in place" set inside the cytoscape effect; backs
+  // the peek's "Focus in graph" so it highlights/expands within the current
+  // graph instead of re-rooting (refetching) and discarding everything else.
+  const focusApiRef = useRef<((label: string) => void) | null>(null);
   useEffect(() => {
     onNodeClickRef.current = onNodeClick;
     onEdgeClickRef.current = onEdgeClick;
@@ -1446,6 +1454,75 @@ export default function CodeGraph({
       cy.elements().removeClass("focus hl faded reveal-label");
     };
 
+    // Click a file pill → expand it inline to its symbols (or collapse it back).
+    // The graph is rebuilt for the new expand state; surviving nodes keep their
+    // position and the clicked file is pinned in place so it grows out from under
+    // the cursor instead of the whole view jumping.
+    const toggleFile = (file: string) => {
+      const s = expandedRef.current;
+      const willExpand = !s.has(file);
+      const anchor = cy.getElementById((willExpand ? META : BOX) + file);
+      const anchorScreen = anchor.nonempty() ? { ...anchor.renderedPosition() } : null;
+      const anchorModel = anchor.nonempty() ? { ...anchor.position() } : null;
+      if (willExpand) s.add(file);
+      else s.delete(file);
+      focusedRef.current = null;
+      setSelectedFile(null);
+      setHover(null);
+
+      const prev = new Map<string, { x: number; y: number }>();
+      cy.nodes().forEach((n) => {
+        prev.set(n.id(), { ...n.position() });
+      });
+      cy.batch(() => {
+        cy.elements().remove();
+        cy.add(buildElements(data, s, compactGraph, mode));
+        cy.nodes().forEach((n) => {
+          const p = prev.get(n.id());
+          if (p) n.position(p);
+          else if (anchorModel)
+            n.position({
+              x: anchorModel.x + (Math.random() - 0.5) * 40,
+              y: anchorModel.y + (Math.random() - 0.5) * 40,
+            });
+        });
+      });
+      runLayout(cy, { stable: true });
+      applySemanticZoom(cy);
+
+      if (anchorScreen) {
+        const after = cy.getElementById((willExpand ? BOX : META) + file);
+        if (after.nonempty()) {
+          const now = after.renderedPosition();
+          cy.panBy({ x: anchorScreen.x - now.x, y: anchorScreen.y - now.y });
+        }
+      }
+    };
+
+    // Focus a node by its full label *within the current graph*: expand its file
+    // if it's still collapsed, then center + highlight it. Keeps the whole graph
+    // (no refetch / re-root) — this is what the peek's "Focus in graph" calls.
+    const focusByLabel = (label: string) => {
+      let target = cy.nodes().filter((n) => n.data("flabel") === label);
+      if (target.empty()) {
+        const dn = data.nodes.find((n) => n.label === label);
+        if (dn) {
+          const f = fileKey(dn);
+          if (!expandedRef.current.has(f)) toggleFile(f);
+          target = cy.nodes().filter((n) => n.data("flabel") === label);
+        }
+      }
+      if (target.empty()) return;
+      const node = target.first() as NodeSingular;
+      focusedRef.current = node.id();
+      focusNode(node);
+      cy.animate(
+        { center: { eles: node }, zoom: Math.min(1.2, Math.max(cy.zoom(), 0.8)) },
+        { duration: 240 }
+      );
+    };
+    focusApiRef.current = focusByLabel;
+
     // Hover: a transient preview of the node + its neighbours. Suppressed while a
     // node is in persistent focus so it doesn't fight the focus highlight.
     cy.on("mouseover", "node", (evt) => {
@@ -1497,9 +1574,7 @@ export default function CodeGraph({
       const d = evt.target.data();
       if (d.isDirBox || d.isSymbolBox) return;
       if (d.isFileMeta || d.isFileBox) {
-        focusedRef.current = d.id;
-        setSelectedFile(d.file);
-        focusNode(evt.target);
+        toggleFile(d.file);
         return;
       }
       focusedRef.current = d.id;
@@ -1575,6 +1650,12 @@ export default function CodeGraph({
       cyRef.current = null;
     };
   }, [data, mode]); // rebuild on a new graph; refs carry callbacks
+
+  // "Focus in graph" from the peek: center + expand the node in place. Separate
+  // effect so a focus request never re-inits the cytoscape instance.
+  useEffect(() => {
+    if (focusRequest) focusApiRef.current?.(focusRequest.label);
+  }, [focusRequest]);
 
   const closeSelectedFile = () => {
     focusedRef.current = null;

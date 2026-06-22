@@ -33,6 +33,7 @@
   --muted: var(--text-secondary);
   --accent-contrast: #ffffff;
   --top-h: 64px;
+  --askbar-h: 100px; /* reserved space so the fixed Ask bar never covers content */
   --rail-left: 320px;
   --rail-right: 248px;
   --content-w: 768px;
@@ -500,7 +501,7 @@ pre {
   position: sticky;
   top: var(--top-h);
   align-self: start;
-  max-height: calc(100vh - var(--top-h));
+  max-height: calc(100vh - var(--top-h) - var(--askbar-h));
   overflow-y: auto;
   width: var(--rail-left);
   padding: 22px 18px 22px 0;
@@ -509,7 +510,7 @@ pre {
   position: sticky;
   top: var(--top-h);
   align-self: start;
-  max-height: calc(100vh - var(--top-h));
+  max-height: calc(100vh - var(--top-h) - var(--askbar-h));
   overflow-y: auto;
   width: var(--rail-right);
   padding: 20px 0 20px 18px;
@@ -557,17 +558,58 @@ pre {
   line-height: 1.45;
   color: var(--muted);
   cursor: pointer;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
 }
 .toc-link:hover {
   background: var(--bg-subtle);
   color: var(--text);
 }
-.toc-link.active {
-  background: color-mix(in srgb, var(--bg-subtle) 76%, var(--bg-surface));
-  color: var(--text);
+.wiki-toc .toc-link.active {
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 600;
-  box-shadow: inset 2px 0 #64748b;
+}
+
+/* Sidebar loading placeholder — shimmer rows instead of an empty flash. */
+.toc-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 6px 0;
+}
+.toc-skeleton-row {
+  height: 16px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-subtle) 25%,
+    color-mix(in srgb, var(--bg-subtle) 55%, var(--bg-surface)) 50%,
+    var(--bg-subtle) 75%
+  );
+  background-size: 200% 100%;
+  animation: toc-shimmer 1.3s ease-in-out infinite;
+}
+.toc-skeleton-row:nth-child(2n) {
+  width: 80%;
+}
+.toc-skeleton-row:nth-child(3n) {
+  width: 62%;
+}
+@keyframes toc-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toc-skeleton-row {
+    animation: none;
+  }
 }
 
 .wiki-main {
@@ -709,11 +751,13 @@ pre {
   line-height: 1.65;
   color: var(--text);
 }
-/* Anchor jumps (the "On this page" rail) must clear the sticky header. */
+/* Anchor jumps (the "On this page" rail) must clear the sticky header and,
+   for near-bottom sections, the fixed Ask bar. */
 .markdown h1,
 .markdown h2,
 .markdown h3 {
   scroll-margin-top: calc(var(--top-h) + 16px);
+  scroll-margin-bottom: var(--askbar-h);
 }
 .markdown h1 {
   font-size: 22px;
@@ -1104,7 +1148,8 @@ pre {
 
 /* ===== Bottom Ask bar (DeepWiki-style persistent ask) ===== */
 .wiki {
-  padding-bottom: 88px; /* clear the fixed ask bar */
+  padding-bottom: var(--askbar-h); /* clear the fixed ask bar */
+  scroll-padding-bottom: var(--askbar-h);
 }
 .askbar {
   position: fixed;

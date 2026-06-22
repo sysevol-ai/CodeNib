@@ -208,7 +208,20 @@ export default function GraphView({
   commit?: string;
 }) {
   const [peek, setPeek] = useState<PeekSource | null>(null);
-  useEffect(() => setPeek(null), [data]); // a fresh graph invalidates the open peek
+  // In the explore graph, "Focus in graph" centers + expands the node in place
+  // (no re-root). The nonce makes repeat clicks on the same node re-fire.
+  const [focusReq, setFocusReq] = useState<{ label: string; nonce: number } | null>(null);
+  useEffect(() => {
+    setPeek(null); // a fresh graph invalidates the open peek
+    setFocusReq(null);
+  }, [data]);
+
+  // Wiki: focusing re-roots into the standalone explore graph (how you get in).
+  // Explore: focus stays inside the current graph so it isn't thrown away.
+  const peekFocus =
+    variant === "wiki"
+      ? onFocus
+      : (label: string) => setFocusReq((p) => ({ label, nonce: (p?.nonce ?? 0) + 1 }));
 
   return (
     <>
@@ -222,6 +235,7 @@ export default function GraphView({
         <CodeGraph
           data={data}
           variant={variant}
+          focusRequest={focusReq}
           onNodeClick={(node) => setPeek({ kind: "node", node })}
           onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
         />
@@ -232,7 +246,7 @@ export default function GraphView({
           repoId={repoId}
           source={peek}
           onClose={() => setPeek(null)}
-          onFocus={onFocus}
+          onFocus={peekFocus}
           repoFullName={repoFullName}
           commit={commit}
         />

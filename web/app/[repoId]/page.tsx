@@ -57,6 +57,7 @@ function TocTree({
           <button
             className={`toc-link ${p.id === activeId ? "active" : ""}`}
             aria-current={p.id === activeId ? "page" : undefined}
+            title={p.title}
             onClick={() => onPick(p.id)}
           >
             {p.title}
@@ -218,7 +219,15 @@ export default function WikiPageView() {
             <div className="rail-sub mono">Last indexed {repo.commit_short}</div>
           )}
           {error && <div className="muted">Failed to load wiki.</div>}
-          <TocTree pages={pages} activeId={activeId} onPick={pick} />
+          {!error && pages.length === 0 ? (
+            <div className="toc-skeleton" aria-hidden>
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="toc-skeleton-row" />
+              ))}
+            </div>
+          ) : (
+            <TocTree pages={pages} activeId={activeId} onPick={pick} />
+          )}
         </aside>
 
         <main className="wiki-main">

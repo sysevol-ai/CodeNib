@@ -349,9 +349,6 @@ export default function SystemMap({
                       <h3>{group.title}</h3>
                       <p>{group.subtitle}</p>
                     </div>
-                    <span className="system-node-flow">
-                      {group.outbound} out / {group.inbound} in
-                    </span>
                   </div>
 
                   <div className="system-source-row">
