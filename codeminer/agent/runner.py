@@ -398,6 +398,7 @@ class AgentRunner:
         usage_tracker = UsageTracker()
         start = time.monotonic()
         has_read = False  # has the agent read a file yet (gates forced tools)
+        read_paths: List[str] = []  # files the agent read (for schema salvage)
 
         for turn in range(max_turns):
             logger.debug("agent turn %d/%d", turn + 1, max_turns)
@@ -468,7 +469,9 @@ class AgentRunner:
                     and not _has_localization_contract(answer)
                 ):
                     answer = (
-                        self._force_schema_answer(history, usage_tracker, turn + 2)
+                        self._force_schema_answer(
+                            history, usage_tracker, turn + 2, read_paths
+                        )
                         or answer
                     )
                 elapsed = (time.monotonic() - start) * 1000
@@ -490,6 +493,9 @@ class AgentRunner:
                 # contract; once it happens, stop forcing tool calls.
                 if record.skill_id == "read" and record.error is None:
                     has_read = True
+                    _rp = (record.arguments or {}).get("file_path")
+                    if _rp:
+                        read_paths.append(str(_rp))
 
                 # Append tool response message
                 history.add_message(
@@ -518,7 +524,9 @@ class AgentRunner:
             and not _has_localization_contract(last_content)
         ):
             last_content = (
-                self._force_schema_answer(history, usage_tracker, max_turns + 1)
+                self._force_schema_answer(
+                    history, usage_tracker, max_turns + 1, read_paths
+                )
                 or last_content
             )
 
@@ -537,42 +545,71 @@ class AgentRunner:
     # Internals
     # ------------------------------------------------------------------
 
-    def _force_schema_answer(self, history, usage_tracker, usage_turn: int) -> str:
-        """One tool-free turn that extracts a contract-conforming final answer.
+    def _force_schema_answer(
+        self, history, usage_tracker, usage_turn: int, read_paths=None
+    ) -> str:
+        """Tool-free turn(s) that extract a contract-conforming final answer.
 
         Used when the agent stopped (budget hit, or terminated in prose) without
         emitting the ``Files:/Symbols:/Locations:`` contract — so a genuine
-        localization is not lost to formatting / an unfinished answer. This is an
-        extra turn; it does NOT consume the exploration budget. Anthropic rejects
+        localization is not lost to formatting / an unfinished answer. These are
+        extra turns; they do NOT consume the exploration budget. Anthropic rejects
         a tool-history conversation unless ``tools=`` is passed, so we pass it
-        with ``tool_choice="none"`` to forbid further calls. Best-effort.
+        with ``tool_choice="none"`` to forbid further calls.
+
+        Weak/over-confident open models (Qwen3.5) often answer in prose or emit a
+        partial contract (e.g. ``Files:`` but no ``Locations:``) even when asked,
+        which scores 0 under span overlap. So we (a) remind them which files they
+        actually read — the answer must come from those — and (b) RETRY until the
+        full 3-line contract is present, up to a small bound.
         """
-        history.add_message(
-            {
-                "role": "user",
-                "content": (
-                    "Stop. Do not call any more tools. Based on everything you "
-                    "have found, give your final answer NOW in exactly this "
-                    "format (repo-relative paths; line numbers as shown by "
-                    f"`read`):\n{LOCALIZATION_SCHEMA}"
-                ),
-            }
-        )
-        try:
-            overrides: Dict[str, Any] = {
-                "usage_tracker": usage_tracker,
-                "usage_turn": usage_turn,
-            }
-            if self.tools:
-                overrides["tools"] = self.tools
-                overrides["tool_choice"] = "none"
-            final = self.llm._call_raw(history.get_messages(), **overrides)
-            forced_msg = final.choices[0].message
-            history.add_message(_message_to_dict(forced_msg))
-            return getattr(forced_msg, "content", None) or ""
-        except Exception as exc:  # best-effort; keep the partial run
-            logger.warning("forced final-answer turn failed: %s", exc)
-            return ""
+        files_hint = ""
+        uniq = list(dict.fromkeys(read_paths or []))
+        if uniq:
+            files_hint = (
+                "\nYou read these files — your answer MUST cite line ranges from "
+                "them:\n" + "\n".join(f"- {p}" for p in uniq[:10])
+            )
+        out = ""
+        for attempt in range(2):
+            nudge = (
+                ""
+                if attempt == 0
+                else (
+                    "\nYour previous answer was missing the Locations: line with "
+                    "explicit start-end line numbers. Add ALL three lines now."
+                )
+            )
+            history.add_message(
+                {
+                    "role": "user",
+                    "content": (
+                        "Stop. Do not call any more tools. Give your final answer "
+                        "NOW in EXACTLY this format — all three lines, "
+                        "repo-relative paths, Locations with start-end line "
+                        f"numbers as shown by `read`:\n{LOCALIZATION_SCHEMA}"
+                        f"{files_hint}{nudge}"
+                    ),
+                }
+            )
+            try:
+                overrides: Dict[str, Any] = {
+                    "usage_tracker": usage_tracker,
+                    "usage_turn": usage_turn + attempt,
+                }
+                if self.tools:
+                    overrides["tools"] = self.tools
+                    overrides["tool_choice"] = "none"
+                final = self.llm._call_raw(history.get_messages(), **overrides)
+                forced_msg = final.choices[0].message
+                history.add_message(_message_to_dict(forced_msg))
+                out = getattr(forced_msg, "content", None) or out
+            except Exception as exc:  # best-effort; keep the partial run
+                logger.warning("forced final-answer turn failed: %s", exc)
+                break
+            if _has_localization_contract(out):
+                break
+        return out
 
     def _new_history(self):
         """Build the chat-history container for one ``run()``.
