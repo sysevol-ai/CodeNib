@@ -33,39 +33,40 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from codeminer.agent.agent_types import AgentResult
 
-# Query-specificity gate (one cheap LLM call). Candidate-spread signals
-# (distinct files / top-file dominance) were measured too weak to separate vague
-# behavioral queries from specific ones (behavioral 4.2 files vs symbol_hint 3.2
-# — not clean). Judging the QUERY directly is far more reliable: a query naming a
-# function/file/identifier/error has a concrete handle (use eager pre-load); a
-# bare behavioral description does not (fall back to blank-slate grep, which wins
-# on behavioral). This is the adaptive gate: eager when confident, grep when
-# ambiguous — best of both on the Pareto front.
+# Adaptive routing gate (one cheap LLM call). The discriminator is NOT
+# "has an identifier" — that sends traversal queries (no identifier, but
+# candidates ON THE CALL CHAIN are useful) wrongly to grep. The right axis,
+# from the measured per-category candidate-value (behavioral: grep>preload;
+# traversal/symbol/file: preload>=grep), is: route to GREP only a SINGLE-FEATURE
+# behavioral symptom (edit site is one non-obvious spot retrieval can't pinpoint);
+# route to EAGER anything that names an identifier OR traces a cross-component
+# flow. Verified on n=400 multilingual: behavioral 73% GREP, traversal 88% EAGER,
+# symbol/file/reasoning ~100% EAGER.
 GATE_SYSTEM = (
-    "You judge a code-localization query. Reply with EXACTLY one word.\n"
-    "SPECIFIC = it names a concrete code identifier you could grep verbatim: a "
-    "function/method/class name (e.g. FastBasic.read, "
-    "_Spline._intercept_optional_inputs), a file path (e.g. lexer.go), or a "
-    "literal error string.\n"
-    "VAGUE = it only describes a behavior or symptom in plain English with NO "
-    "code identifier to search for (e.g. 'curve fitting model fails when passing "
-    "only coefficients', 'parser rejects multi-character delimiters').\n"
-    "Answer SPECIFIC or VAGUE."
+    "Route a code-localization query. Reply with EXACTLY one word: EAGER or "
+    "GREP.\n"
+    "GREP = the query only describes ONE feature's buggy behavior/symptom in "
+    "plain English, with no code identifier AND no cross-component flow to follow "
+    "(the edit site is a single non-obvious spot).\n"
+    "EAGER = the query EITHER names a concrete code identifier "
+    "(function/method/class/file), OR traces a flow across multiple "
+    "components/steps (chains, merges, consolidates, 'X before Y', a call path) "
+    "— cases where ranked retrieval candidates help.\n"
+    "Answer EAGER or GREP."
 )
 
 
 def query_is_specific(call_llm, query: str) -> bool:
-    """One cheap LLM call: does the query have a concrete localization handle?
+    """One cheap LLM call: should this query use eager pre-load (vs blank grep)?
 
-    ``call_llm(messages) -> content``. True (SPECIFIC) -> use eager pre-load;
-    False (VAGUE) -> blank-slate grep. Defaults to True (eager, the cheaper path)
-    on any failure.
+    ``call_llm(messages) -> content``. True (EAGER) -> use eager pre-load;
+    False (GREP) -> blank-slate grep (wins on single-feature behavioral queries).
+    Defaults to True (eager, the cheaper path) on failure / ambiguity.
     """
     # NOTE: the caller's ``call_llm`` MUST disable Qwen3.5 chain-of-thought
     # (extra_body chat_template_kwargs enable_thinking=False); otherwise the
     # one-word verdict is buried under a truncated "Thinking Process…" and every
-    # query reads as SPECIFIC. Parse the LAST verdict token; SPECIFIC wins ties /
-    # absence (eager is the cheaper default).
+    # query reads as EAGER. Parse the LAST verdict token; EAGER wins ties/absence.
     msgs = [
         {"role": "system", "content": GATE_SYSTEM},
         {"role": "user", "content": (query or "")[:2000]},
@@ -74,7 +75,7 @@ def query_is_specific(call_llm, query: str) -> bool:
         out = (call_llm(msgs) or "").upper()
     except Exception:  # noqa: BLE001 — gate is best-effort; default to eager
         return True
-    return out.rfind("SPECIFIC") >= out.rfind("VAGUE")
+    return out.rfind("GREP") <= out.rfind("EAGER")
 
 
 # A verify-subagent judges ONE candidate in an isolated context. It is

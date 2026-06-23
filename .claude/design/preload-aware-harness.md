@@ -18,14 +18,23 @@ re-explorations (measured 23 turns vs 4 for a single agent) — it violates the
   fall back to grep only if none fits. Result (Qwen3.5-27B, synthesis, 36 paired):
   **token −43 % vs grep, 5/6 categories equal accuracy**; only `behavioral`
   regresses (candidates hurt explore-only queries with no concrete handle).
-- **eager_gated** (`mode: eager_gated`): a one-call LLM gate
-  (`query_is_specific`) routes **VAGUE** queries (no code identifier) to
-  blank-slate grep and **SPECIFIC** ones to eager. Gate classification verified
-  on Python: behavioral **0 %** / symbol_hint **100 %** SPECIFIC — the adaptive
-  "eager when confident, grep when ambiguous" Pareto play. (Gotcha: Qwen3.5 is a
-  thinking model — disable CoT via `extra_body chat_template_kwargs
-  enable_thinking=False`, else the verdict is truncated and everything reads
-  SPECIFIC.) Full per-category Pareto pending.
+- **eager_gated** (`mode: eager_gated`): a one-call LLM gate routes each query to
+  eager or blank-slate grep. The discriminator is NOT "has an identifier" — that
+  v1 mistake sent traversal queries (no identifier, but candidates on the call
+  chain ARE useful) to grep and lost 0.20. The right axis (from per-category
+  candidate value: behavioral grep>preload; traversal/symbol preload>=grep) is
+  **route to GREP only single-feature behavioral symptoms; EAGER anything that
+  names an identifier OR traces a cross-component flow**. Gate verified on n=400
+  multilingual: behavioral 73 % GREP, traversal 88 % EAGER, symbol/file ~100 %.
+  (Gotcha: Qwen3.5 is a thinking model — disable CoT via `extra_body
+  chat_template_kwargs enable_thinking=False`, else the one-word verdict is
+  truncated and everything routes EAGER.)
+  **Result (Qwen3.5-27B synthesis, 36 paired) — gated v2 is Pareto-dominant:**
+  ALL span **0.73** (vs grep/embed 0.70, eager 0.66) at **55k tokens**
+  (= the cheapest arm; −43 % vs grep, −27 % vs embed). Per category: behavioral
+  0.91 (=grep, rescued), traversal 0.83 (=embed, vs v1's 0.63), specific
+  categories equal-accuracy at a fraction of the tokens. Adaptive routing beats
+  every single fixed strategy on BOTH axes at once.
 
 The scatter design below is retained as **explored-and-rejected**: the converge
 idea is sound, but per-candidate full subagents are the cost mistake.
