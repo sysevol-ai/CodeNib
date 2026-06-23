@@ -252,12 +252,16 @@ def run_cell(
         if mode == "eager_gated":
 
             def _gate_call(msgs):
-                # Disable Qwen3.5 chain-of-thought so the one-word verdict isn't
-                # truncated mid-"Thinking Process"; harmless for non-thinking models.
-                resp = llm._call_raw(
-                    msgs,
-                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-                )
+                # Disable chain-of-thought ONLY for Qwen3.5 (else the one-word
+                # verdict is truncated mid-"Thinking Process"). The chat_template
+                # kwarg is Qwen-specific — passing it to vertex/Anthropic errors,
+                # so gate it on the model name.
+                extra = {}
+                if "qwen3" in (cfg.model or "").lower():
+                    extra["extra_body"] = {
+                        "chat_template_kwargs": {"enable_thinking": False}
+                    }
+                resp = llm._call_raw(msgs, **extra)
                 u = getattr(resp, "usage", None)
                 if u is not None:
                     runs_usage.append(
