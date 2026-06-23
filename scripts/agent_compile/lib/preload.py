@@ -155,19 +155,37 @@ def assemble_preload(
     if not ordered:
         return "", []
 
-    lines = [
-        "# Candidate locations (UNVERIFIED retrieval hints — often wrong/incomplete)",
-        "A retriever guessed these; the code you must change may be in NONE of "
-        "them (it could be a caller, a subclass override, or elsewhere entirely). "
-        "They are unordered starting points, not answers. RULES:",
-        "- Do NOT anchor on the first candidate. Check each against the actual "
-        "problem.",
-        "- Never put a location in your final answer unless you have READ it and "
-        "confirmed it contains the behavior to change.",
-        "- If, after reading, none of these is the real edit site, IGNORE this "
-        "list entirely and locate the code with grep / your own search.",
-        "",
-    ]
+    if (recipe or {}).get("mode") in ("eager", "eager_gated"):
+        # Token-saving preamble: trust the ranked hits, confirm cheaply, STOP.
+        # The default preamble below tells the agent candidates are "often wrong /
+        # verify with grep" — good for accuracy but it keeps exploring (turns
+        # barely drop vs grep_only, so pre-load saves little). Eager flips that:
+        # read the top 1-2, answer immediately if one fits, fall back only if none
+        # does. Accuracy is protected by the fallback, not by blanket distrust.
+        lines = [
+            "# Candidate locations (ranked retrieval hits — the edit site is "
+            "usually among the top ones)",
+            "Read the most relevant 1-2 candidates FIRST. If one contains the code "
+            "the task describes, give your final answer IMMEDIATELY and stop — do "
+            "NOT keep grepping or exploring further. Fall back to your own search "
+            "ONLY if none of the candidates fits after you read them.",
+            "",
+        ]
+    else:
+        lines = [
+            "# Candidate locations (UNVERIFIED retrieval hints — often wrong/"
+            "incomplete)",
+            "A retriever guessed these; the code you must change may be in NONE of "
+            "them (it could be a caller, a subclass override, or elsewhere "
+            "entirely). They are unordered starting points, not answers. RULES:",
+            "- Do NOT anchor on the first candidate. Check each against the actual "
+            "problem.",
+            "- Never put a location in your final answer unless you have READ it "
+            "and confirmed it contains the behavior to change.",
+            "- If, after reading, none of these is the real edit site, IGNORE this "
+            "list entirely and locate the code with grep / your own search.",
+            "",
+        ]
     for i, sp in enumerate(ordered, 1):
         lines.append(f"{i}. {sp['file']}:{sp['start']}-{sp['end']}")
         node = span_by_key.get((sp["file"], sp["start"], sp["end"]))

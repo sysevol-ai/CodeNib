@@ -231,16 +231,58 @@ def run_cell(
     from codeminer.agent.runner import AgentRunner
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.compiler.params import SessionContext
+    from scripts.agent_compile.lib.orchestrator import (
+        query_is_specific,
+        scatter_gather_localize,
+    )
     from scripts.agent_compile.lib.preload import assemble_preload
 
+    runs_usage: List[Dict[str, Any]] = []
+    runs_turns: List[int] = []
     preload_candidates: List[Dict[str, Any]] = []
     effective_query = query
+    scatter_mode = False
     if preload_spec:
-        preamble, preload_candidates = assemble_preload(
-            contexts, query, recipe=preload_spec
-        )
-        if preamble:
-            effective_query = f"{query}\n\n{preamble}"
+        mode = preload_spec.get("mode")
+        # Adaptive gate: a VAGUE query (no concrete handle) gets NO candidates —
+        # fall back to blank-slate grep, which beats pre-load on behavioral.
+        # A SPECIFIC query gets the eager pre-load (cheap, accurate). One short
+        # LLM call; usage is charged to the cell via runs_usage below.
+        gated_skip = False
+        if mode == "eager_gated":
+
+            def _gate_call(msgs):
+                # Disable Qwen3.5 chain-of-thought so the one-word verdict isn't
+                # truncated mid-"Thinking Process"; harmless for non-thinking models.
+                resp = llm._call_raw(
+                    msgs,
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+                )
+                u = getattr(resp, "usage", None)
+                if u is not None:
+                    runs_usage.append(
+                        {
+                            "prompt_tokens": getattr(u, "prompt_tokens", 0),
+                            "completion_tokens": getattr(u, "completion_tokens", 0),
+                            "total_tokens": getattr(u, "total_tokens", 0),
+                        }
+                    )
+                return resp.choices[0].message.content
+
+            gated_skip = not query_is_specific(_gate_call, query)
+
+        if gated_skip:
+            preload_candidates = []  # vague -> blank-slate grep
+        else:
+            preamble, preload_candidates = assemble_preload(
+                contexts, query, recipe=preload_spec
+            )
+            # mode=scatter routes candidates to isolated verify-subagents instead
+            # of injecting them into one context (see lib/orchestrator.py).
+            if mode == "scatter":
+                scatter_mode = True
+            elif preamble:
+                effective_query = f"{query}\n\n{preamble}"
 
     sctx = SessionContext(
         repo_path=repo_path, repo_size=1000, primary_language=language_key
@@ -262,8 +304,6 @@ def run_cell(
     # paths against the process cwd, so run the agent from the instance repo.
     # The sweep is sequential, so chdir is safe here.
     prev_cwd = os.getcwd()
-    runs_usage: List[Dict[str, Any]] = []
-    runs_turns: List[int] = []
 
     def _do_run(q: str):
         try:
@@ -277,7 +317,41 @@ def run_cell(
             runs_turns.append(r.total_turns)
         return r
 
-    result = _do_run(effective_query)
+    if scatter_mode:
+
+        def _run_subagent(sys_prompt, q, mt):
+            sub = AgentRunner(
+                llm=llm,
+                registry=SkillRegistry(),
+                max_turns=mt,
+                allow_skills=set(skills),
+                session_ctx=sctx,
+                include_default_tools=cfg.include_default_tools,
+                default_tool_ids=(
+                    set(cfg.default_tool_ids)
+                    if cfg.default_tool_ids is not None
+                    else None
+                ),
+                system_prompt=sys_prompt or cfg.system_prompt,
+                first_turn_tool_choice=getattr(cfg, "first_turn_tool_choice", None)
+                or None,
+            )
+            try:
+                os.chdir(repo_path)
+                r = sub.run(q)
+            finally:
+                os.chdir(prev_cwd)
+            u = r.usage.to_dict() if r.usage else {}
+            runs_usage.append(u.get("token_usage") or u or {})
+            if r.total_turns is not None:
+                runs_turns.append(r.total_turns)
+            return r
+
+        result = scatter_gather_localize(
+            query, preload_candidates, _run_subagent, explore_turns=cfg.max_turns
+        )
+    else:
+        result = _do_run(effective_query)
 
     # Verify-expand (Layer 4): if the committed answer is not anchored to a real
     # graph symbol, inject 1-hop neighbours of the best seeds and answer once more.

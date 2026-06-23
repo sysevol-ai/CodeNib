@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+base: design_space.yaml
+sweep_id: qwen35_eager_only
+model: openai/qwen3.5-27b
+vertex_location: null
+vertex_project: null
+reps: 1
+max_turns: 16
+first_turn_tool_choice: null
+instances: []
+subsets:
+  preinj_eager: [read, grep, glob, bash]
+preload:
+  preinj_eager:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager

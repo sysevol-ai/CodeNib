@@ -3,73 +3,127 @@ SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Pre-load-aware agent harness (DRAFT / research direction)
+# Pre-load-aware agent runtime: scatter → isolate → converge (DRAFT)
 
-> Status: draft for discussion. Sits after PR #248 (Qwen backend + honest
-> eval infra). Motivated by the Qwen3.5 findings below.
+> Status: draft for discussion. Sits after PR #248 (Qwen backend + honest eval
+> infra). This is the runtime that finally consumes pre-load correctly.
 
-## Motivation — what the data showed
+## Update — scatter superseded by eager + LLM gate
 
-Pre-load today = inject retrieval candidates into the opening prompt, then run
-the **generic** grep/read/answer loop over them. Two failure modes, both
-measured on Qwen3.5:
+Scatter works but is **too expensive**: one verify-subagent PER candidate = N
+re-explorations (measured 23 turns vs 4 for a single agent) — it violates the
+"save tokens" goal. Replaced by two cheaper ideas, both implemented:
 
-- **Candidates good (symbol_hint, base):** the agent still explores from scratch
-  instead of confirming the candidate — reuse value is small.
-- **Candidates bad (behavioral, synthesis):** the agent **over-trusts** the
-  candidates — fewer turns (−2.9) but answers wrong (Δrec@5 −0.167, a significant
-  REGRESS). It picks the "most plausible" candidate instead of falling back to
-  exploration.
+- **eager** (`mode: eager`): trust the ranked hits — read 1–2, answer, STOP;
+  fall back to grep only if none fits. Result (Qwen3.5-27B, synthesis, 36 paired):
+  **token −43 % vs grep, 5/6 categories equal accuracy**; only `behavioral`
+  regresses (candidates hurt explore-only queries with no concrete handle).
+- **eager_gated** (`mode: eager_gated`): a one-call LLM gate
+  (`query_is_specific`) routes **VAGUE** queries (no code identifier) to
+  blank-slate grep and **SPECIFIC** ones to eager. Gate classification verified
+  on Python: behavioral **0 %** / symbol_hint **100 %** SPECIFIC — the adaptive
+  "eager when confident, grep when ambiguous" Pareto play. (Gotcha: Qwen3.5 is a
+  thinking model — disable CoT via `extra_body chat_template_kwargs
+  enable_thinking=False`, else the verdict is truncated and everything reads
+  SPECIFIC.) Full per-category Pareto pending.
 
-Net (27B, span answer_rec): pre-load is a **trade, not a free win** — it saves
-turns/tokens (−1.7 turns, −7.6 % tokens on synthesis) but costs accuracy on
-explore-heavy queries. The candidates and the loop are two separate things that
-were never fused. "We found nails, but the agent still swings a generic hammer
-from scratch."
+The scatter design below is retained as **explored-and-rejected**: the converge
+idea is sound, but per-candidate full subagents are the cost mistake.
 
-## Core idea — candidate triage, not linear consumption
+## Motivation — diagnosed, not guessed
 
-Replace "candidates in the prompt + generic loop" with a loop whose first-class
-job is to *process the candidate set*:
+On codeminer-synthesis (Qwen3.5-27B, span answer_rec), pre-load is a *trade*:
+it saves cost (−1.7 turns, −7.6 % tokens) at equal pooled accuracy but
+**REGRESSES `behavioral`** (Δrec −0.167). We diagnosed the 4 losing queries:
 
-1. **Rule-out (cheap):** one pass scoring each candidate plausible/implausible
-   from its signature (symbol + 1 line of context) — batch-eliminate most
-   without deep reads.
-2. **Verify (focused):** read-confirm only the 1–3 survivors → converge early.
-3. **Fallback (the REGRESS fix):** if *all* candidates look implausible
-   (common on behavioral), explicitly switch back to autonomous grep instead of
-   committing the least-bad candidate.
+| query | preinj behaviour | GT in candidates? | grep→preinj |
+|---|---|---|---|
+| astropy-13579 | **7 searches, 9 reads, turns=16** | **yes** | 1.0 → 0.0 |
+| xarray-6992 q6 | 5 searches, 10 reads, turns=16 | yes | 1.0 → 0.0 |
+| xarray-6992 q7 | 6 searches, 11 reads, turns=16 | no | 1.0 → 0.0 |
+| xarray-6992 q2 | 0 searches, 5 reads, turns=5 | no | 1.0 → 0.0 |
 
-The novelty is an **explicit "trust-candidates vs explore" branch**, decided by
-the agent's own assessment of candidate quality — not blind consumption.
+**The regress is NOT under-exploration** — the agent searched a lot (7/9,
+turns=16) and the GT was even in the candidate set, yet it still answered wrong;
+grep_only with no candidates answered cleanly (1.0). Root cause: **a noisy
+candidate set injected into a single context pollutes a strong agent's
+exploration line** — it diverges across 16 turns toward the wrong place, worse
+than a blank-slate grep.
 
-### Possible primitives (make candidates first-class actions)
+## Why single-context triage can't fix it
 
-- `rule_out(ids, reason)` — drop candidates
-- `verify(id)` — read + confirm a survivor
-- `fallback_search(query)` — autonomous exploration when candidates fail
+The pre-load preamble is *already* triage-aware ("candidates often wrong / may be
+in NONE / do not anchor on the first / if none right, IGNORE and grep"), and the
+agent still regresses. The agent explored *enough*; the problem is **context
+pollution**, not loop logic. You can't un-see the noisy candidates once they're
+in the window. The fix must isolate the noise, not re-word the prompt.
+
+## Architecture
+
+Input: `query` + K pre-load candidates.
+
+1. **Scatter.** Dispatch one *minimal verify-subagent* per candidate (or per
+   small group). Each gets an isolated context and a narrow brief: "Is THIS
+   location the code to change for `<query>`? Read it + directly-related code.
+   Return VERDICT yes/no, and if yes the exact Files/Symbols/Locations + a short
+   evidence note." Bounded (small `max_turns`, read+grep only).
+2. **Isolate.** Each subagent's noisy reading stays in *its* context. The
+   orchestrator never sees the dead-end code, only the structured verdict.
+3. **Converge.** The orchestrator collects N verdicts:
+   - ≥1 `yes` → synthesize the final answer from the confirmed location(s).
+   - all `no` → dispatch one *explore-subagent* with a **blank slate** (no
+     candidates) — i.e. the clean grep_only path that wins on behavioral.
+
+## Why this is the right pre-load runtime
+
+- **Context amortization** — K candidates' exploration is spread over N isolated
+  contexts instead of piling 9 reads + 7 greps into one 16-turn window.
+- **Fewer turns (orchestrator)** — the main agent only converges verdicts (~1–2
+  turns); exploration turns move into the subagents.
+- **Parallel wall-clock** — N subagents run concurrently; faster than one agent
+  grinding 16 sequential turns.
+- **Noise isolation → kills the REGRESS** — a wrong candidate's dead-end reading
+  never reaches the deciding context.
+- **Clean fallback** — all-`no` routes to a blank-slate explorer, which is
+  exactly the grep_only path that beat preload on behavioral.
+
+This is pre-load consumed correctly: candidates become **seeds for isolated
+exploration units**, not prompt filler one agent must digest.
 
 ## Why this can work where verify-expand didn't
 
-`verify-expand` (the prior harness customization) was a **no-op (0/400)** because
-it was a *GT-free deterministic* check (does the cited symbol resolve in the
-graph?) — the agent always cites a real-but-possibly-wrong symbol, which a
-deterministic check can't catch. Triage is **LLM semantic judgement**
-(plausible/implausible distinguishes right-file from wrong-file), so it has
-signal where resolution checking had none.
+`verify-expand` was a no-op (0/400): a GT-free *deterministic* resolve check the
+agent always passed (it cites real-but-wrong symbols). Here each subagent makes
+an **LLM semantic** judgement on a single candidate in a clean context — real
+signal, and the noise that fooled the monolithic agent is partitioned away.
 
-## How to evaluate
+## Implementation plan
 
-- **Dataset:** codeminer-synthesis (many-query; where reuse value is real).
-- **Arms:** `grep_only` vs `preinj_embed` (current) vs `preinj_triage` (new).
-- **Metric:** span answer_rec@k (symbol@k is unusable for agents — string match
-  vs free-form output scores ≈0; see `docs/experiments/qwen_backend.md`), plus
-  turns/tokens. Paired bootstrap CI (`pareto_ci.py`).
-- **Key question:** does triage keep the token/turn savings while removing the
-  behavioral REGRESS? Target verdict = SAVE on behavioral, not just symbol_hint.
+- New module `scripts/agent_compile/lib/orchestrator.py`:
+  `scatter_gather_localize(llm, query, candidates, contexts, repo_path, ...) -> answer`.
+  Reuses `AgentRunner` — each subagent is one `runner.run()` with a verify prompt,
+  fresh history, small `max_turns`.
+- New arm `preinj_scatter` in the config; `run_cell` routes to the orchestrator
+  instead of the single runner when the arm requests it.
+- **v1 (prove accuracy, serial):** run subagents serially, validate the
+  behavioral REGRESS disappears. Ignore latency.
+- **v2 (optimize):** run subagents concurrently for wall-clock.
+
+Prove the accuracy claim before paying for concurrency.
+
+## Evaluation
+
+- Dataset: codeminer-synthesis (many-query; reuse is real).
+- Arms: `grep_only` vs `preinj_embed` (current single-context) vs
+  `preinj_scatter` (new).
+- Metrics: span answer_rec@k (paired bootstrap, `pareto_ci.py`) + turns + tokens.
+- **Success = behavioral no longer REGRESSES** (Δrec CI_lo ≥ −EPS) while keeping
+  the token/turn saving. Watch total tokens: N subagents must not cost more than
+  the single agent's polluted 16-turn run.
 
 ## Open questions
 
-- Cost of the rule-out pass vs the turns it saves (must net positive).
-- Does triage help weak models (Qwen2.5) too, or only strong agents?
-- Is rule-out better as one LLM pass or N cheap parallel checks?
+- Total token cost of N subagents vs one monolithic run (the key trade to verify).
+- Converge strategy when multiple subagents say `yes` (merge vs pick-most-confident).
+- Group candidates (fewer, cheaper subagents) vs one-per-candidate (max isolation)?
+- Does it help weak models (Qwen2.5) too, or mainly strong agents?
