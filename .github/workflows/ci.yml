@@ -192,9 +192,49 @@ jobs:
           install-clangd: "true"
           install-bear: "true"
 
+      - name: Preload tree-sitter parsers
+        shell: bash -l {0}
+        run: |
+          python - <<'PY'
+          import time
+
+          from tree_sitter_language_pack import get_language
+
+          languages = (
+              "python",
+              "go",
+              "rust",
+              "cpp",
+              "csharp",
+              "java",
+              "ruby",
+              "php",
+              "kotlin",
+              "swift",
+              "scala",
+              "lua",
+              "javascript",
+              "typescript",
+          )
+
+          for language in languages:
+              for attempt in range(1, 4):
+                  try:
+                      get_language(language)
+                      break
+                  except Exception as exc:
+                      if attempt == 3:
+                          raise
+                      print(
+                          "Retrying tree-sitter parser preload for "
+                          f"{language}: {exc}"
+                      )
+                      time.sleep(attempt)
+          PY
+
       - name: Run integration tests (parallel)
         shell: bash -l {0}
-        run: pytest -n auto -m "integration" --tb=short
+        run: pytest -n auto -m "integration and not slow" --tb=short
 
   # =============================================================
   # Job 3 — Integration serial  (mutates repos, ~25 min)

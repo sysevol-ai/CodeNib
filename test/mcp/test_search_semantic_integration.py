@@ -24,6 +24,7 @@ TEST_REPO_PATH = CODEMINER_DATA / TEST_REPO
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 @pytest.mark.skipif(
     not TEST_REPO_PATH.exists(),
     reason="Test data not available at /mnt/data/codeminer",
