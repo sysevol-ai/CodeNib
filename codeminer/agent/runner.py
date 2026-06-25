@@ -609,6 +609,15 @@ class AgentRunner:
                 break
             if _has_localization_contract(out):
                 break
+            # Only retry to COMPLETE a partial contract (e.g. Files: present but
+            # Locations: missing). If the model emitted no contract line at all
+            # (pure prose), retrying won't help — stop and avoid a wasted call.
+            if not (
+                _HAS_FILES_CONTRACT.search(out)
+                or _HAS_SYMBOLS_CONTRACT.search(out)
+                or _HAS_LOCATIONS_CONTRACT.search(out)
+            ):
+                break
         return out
 
     def _new_history(self):
