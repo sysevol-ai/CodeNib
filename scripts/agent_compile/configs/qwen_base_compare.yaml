@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 # SPDX-License-Identifier: Apache-2.0
+# codeminer-base, unified current runner: grep / embed / eager. --model swaps size.
 base: design_space.yaml
-sweep_id: qwen35_scatter
-model: openai/qwen3.5-27b
+sweep_id: qwen_base_compare
 vertex_location: null
 vertex_project: null
 reps: 1
@@ -12,14 +12,14 @@ instances: []
 subsets:
   grep_only: [read, grep, glob, bash]
   preinj_embed: [read, grep, glob, bash]
-  preinj_scatter: [read, grep, glob, bash]
+  preinj_eager: [read, grep, glob, bash]
 preload:
   preinj_embed:
     retrievers: [embedding]
     top_k: 10
     level: l2
-  preinj_scatter:
+  preinj_eager:
     retrievers: [embedding]
     top_k: 10
     level: l2
-    mode: scatter
+    mode: eager
