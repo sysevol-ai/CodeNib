@@ -1160,17 +1160,8 @@ pre {
   display: flex;
   justify-content: center;
   padding: 16px;
-  background: transparent;
-  pointer-events: none;
-}
-.askbar::before {
-  content: "";
-  position: absolute;
-  inset-block: 0;
-  left: 50%;
-  width: min(760px, calc(100% - 32px));
-  transform: translateX(-50%);
-  background: linear-gradient(to top, var(--bg) 72%, transparent);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
   pointer-events: none;
 }
 .askbar-inner {
@@ -1184,7 +1175,6 @@ pre {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 8px 28px -8px rgba(0, 0, 0, 0.18), 0 2px 6px -2px rgba(0, 0, 0, 0.08);
 }
 .askbar-icon {
   color: var(--accent);
