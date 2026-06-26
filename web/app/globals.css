@@ -37,6 +37,7 @@
   --rail-left: 320px;
   --rail-right: 248px;
   --content-w: 768px;
+  --wiki-gutter: clamp(24px, 4vw, 80px);
 }
 
 [data-theme="dark"] {
@@ -426,7 +427,7 @@ pre {
   gap: 0;
   /* A consistent, modest gutter at every width: never flush to the edges, but
      not the cavernous margins a fixed centred cap leaves on wide screens. */
-  padding-inline: clamp(24px, 4vw, 80px);
+  padding-inline: var(--wiki-gutter);
 }
 @media (max-width: 1180px) {
   .wiki-grid {
@@ -1153,16 +1154,27 @@ pre {
 }
 .askbar {
   position: fixed;
-  left: 0;
-  right: 0;
+  /* Span only the center content column so the side rails stay uncovered. */
+  left: calc(var(--wiki-gutter) + var(--rail-left));
+  right: calc(var(--wiki-gutter) + var(--rail-right));
   bottom: 0;
   z-index: 50;
   display: flex;
   justify-content: center;
-  padding: 16px;
+  padding: 16px 0;
   background: var(--bg);
   border-top: 1px solid var(--border);
   pointer-events: none;
+}
+@media (max-width: 1180px) {
+  .askbar {
+    right: var(--wiki-gutter); /* right rail is hidden at this width */
+  }
+}
+@media (max-width: 820px) {
+  .askbar {
+    left: var(--wiki-gutter); /* left rail collapses to an overlay */
+  }
 }
 .askbar-inner {
   position: relative;
@@ -1170,7 +1182,7 @@ pre {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: min(720px, 100%);
+  width: min(1100px, 100%);
   padding: 8px 8px 8px 16px;
   background: var(--surface-2);
   border: 1px solid var(--border);
