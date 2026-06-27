@@ -67,6 +67,14 @@ class QAConfig:
     # Use the conceptual agent wiki pipeline (outline + per-page generation)
     # instead of the directory-based WikiBuilder.
     wiki_agent: bool = True
+
+    # --- rerank strategy -------------------------------------------------------
+    # "embedding"    — dot-product against pre-indexed vectors (default, no extra GPU)
+    # "crossencoder" — neural pair scoring (Qwen3-Reranker or mxbai-rerank-*);
+    #                  requires crossencoder_model to be on disk under HF_HOME
+    rerank_strategy: str = "embedding"
+    crossencoder_model: str = "Qwen/Qwen3-Reranker-0.6B"
+    crossencoder_batch_size: int = 8
     cors_origins: List[str] = field(
         default_factory=lambda: [
             "http://localhost:3000",
@@ -127,6 +135,9 @@ def load_config(path: Optional[str] = None) -> QAConfig:
             ["python", "javascript", "typescript", "go", "rust"],
         ),
         per_language=data.get("per_language", QAConfig.per_language),
+        rerank_strategy=data.get("rerank_strategy", QAConfig.rerank_strategy),
+        crossencoder_model=data.get("crossencoder_model", QAConfig.crossencoder_model),
+        crossencoder_batch_size=data.get("crossencoder_batch_size", QAConfig.crossencoder_batch_size),
     )
 
     if os.environ.get("CODEMINER_DEMO_MODEL"):

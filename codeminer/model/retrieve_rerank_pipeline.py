@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Set, Tuple, cast
 
 import numpy as np
 
@@ -16,6 +16,7 @@ from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
+from ..index.rerank.cross_encoder import build_reranker
 from ..ops.rerank import RerankContext
 from ..ops.retrieve import RetrieveContext
 from ..types import NodeInfo, QueriedNode
@@ -110,6 +111,8 @@ class RetrieveRerankPipeline:
         rerank_embedding_dimension: Optional[int] = None,
         rerank_embedding_model_kwargs: Optional[dict] = None,
         rerank_index_metric: str = "ip",
+        crossencoder_model: str = "Qwen/Qwen3-Reranker-0.6B",
+        crossencoder_batch_size: int = 8,
         languages: Optional[List[str]] = None,
         max_lines_per_chunk: int = 100,
         sparse_max_k: int = 128,
@@ -172,16 +175,26 @@ class RetrieveRerankPipeline:
             self.bm25_index = self._initialize_bm25_index(max_k=sparse_cap)
 
         strategy = (rerank_strategy or "llm").strip().lower()
-        if strategy not in ("llm", "embedding"):
-            raise ValueError("rerank_strategy must be 'llm' or 'embedding'.")
+        if strategy not in ("llm", "embedding", "crossencoder"):
+            raise ValueError("rerank_strategy must be 'llm', 'embedding', or 'crossencoder'.")
         self.rerank_strategy = strategy
 
         rerank_llm = None
+        self.cross_encoder = None
         if strategy == "llm":
             rerank_llm = LiteLLMChat(
                 model=rerank_model,
                 max_tokens=rerank_max_tokens,
                 temperature=rerank_temperature,
+            )
+        elif strategy == "crossencoder":
+            self.cross_encoder = build_reranker(
+                crossencoder_model,
+                batch_size=crossencoder_batch_size,
+            )
+            logger.info(
+                "Cross-encoder reranker loaded",
+                extra={"model": crossencoder_model},
             )
         else:
             rerank_model_kwargs = self._prepare_embedding_kwargs(
@@ -227,7 +240,7 @@ class RetrieveRerankPipeline:
                 candidate_top_k=self.rerank_candidate_top_k,
                 window_size=rerank_window_size,
                 window_step=rerank_window_step,
-                listwise_format=rerank_listwise_format,
+                listwise_format=cast(Literal["structured", "rankgpt"], rerank_listwise_format),
             )
         else:
             self.rerank_context = None
@@ -263,6 +276,13 @@ class RetrieveRerankPipeline:
         self.vector_store = None
         self.rerank_vector_store = None
         self._chunks = None
+
+        if self.cross_encoder is not None:
+            try:
+                self.cross_encoder.close()
+            except Exception:
+                pass
+            self.cross_encoder = None
 
         try:
             import gc
@@ -328,7 +348,7 @@ class RetrieveRerankPipeline:
         results = store.search_with_content(
             query=query,
             top_k=top_k,
-            level=self.retrieval_level,
+            level=cast(Literal["l0", "l2"], self.retrieval_level),
         )
         return _to_queried_nodes(results)
 
@@ -373,13 +393,13 @@ class RetrieveRerankPipeline:
                     accumulator[key] = _with_score(item, weighted)
                 else:
                     existing = accumulator[key]
-                    new_score = existing.score + weighted
+                    new_score = (existing.score or 0.0) + weighted
                     content = existing.content or item.content
                     accumulator[key] = _with_score(existing, new_score, content)
 
         merged = sorted(
             accumulator.values(),
-            key=lambda node: node.score,
+            key=lambda node: node.score or 0.0,
             reverse=True,
         )
         return merged[:top_k]
@@ -398,14 +418,57 @@ class RetrieveRerankPipeline:
         if self.rerank_candidate_top_k is not None:
             candidates = candidates[: self.rerank_candidate_top_k]
 
+        if self.rerank_strategy == "crossencoder":
+            return self._rerank_crossencoder(query, candidates, top_k)
         if self.rerank_strategy == "embedding":
             return self._rerank_embedding(query, candidates, top_k)
         return self._rerank_llm(query, candidates, top_k)
+
+    def _rerank_crossencoder(
+        self, query: str, candidates: List[QueriedNode], top_k: int
+    ) -> List[QueriedNode]:
+        """Rerank using cross-encoder (STCrossEncoderWrapper or QwenRerankerWrapper)."""
+        if self.cross_encoder is None:
+            raise RuntimeError("Cross-encoder rerank requested but no wrapper was built.")
+
+        candidates_with_content = [c for c in candidates if c.content]
+        if not candidates_with_content:
+            return candidates[:top_k]
+
+        logger.info(
+            "Running cross-encoder rerank.",
+            extra={"candidate_count": len(candidates_with_content), "top_k": top_k},
+        )
+
+        docs = [c.content for c in candidates_with_content if c.content]
+        scores = self.cross_encoder.score(query, docs)
+
+        ranked = sorted(
+            zip(scores, candidates_with_content),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+
+        return [
+            QueriedNode(
+                node_name=c.node_name,
+                type=c.type,
+                file=c.file,
+                node_id=c.node_id,
+                start_line=c.start_line,
+                end_line=c.end_line,
+                score=float(score),
+                content=c.content,
+            )
+            for score, c in ranked[:top_k]
+        ]
 
     def _rerank_llm(
         self, query: str, candidates: List[QueriedNode], top_k: int
     ) -> List[QueriedNode]:
         """Rerank using LLM listwise reranker."""
+        if self.rerank_context is None:
+            raise RuntimeError("LLM rerank requested but no RerankContext was built.")
         agent = self.rerank_context.ensure_agent()
         logger.info(
             "Running LLM rerank.",
@@ -439,6 +502,8 @@ class RetrieveRerankPipeline:
         self, query: str, candidates: List[QueriedNode], top_k: int
     ) -> List[QueriedNode]:
         """Rerank using embedding similarity."""
+        if self.rerank_context is None:
+            raise RuntimeError("Embedding rerank requested but no RerankContext was built.")
         store = self.rerank_context.embedding_store
         if store is None:
             raise RuntimeError("Embedding rerank requested but no embedding store.")
@@ -447,10 +512,12 @@ class RetrieveRerankPipeline:
         if not candidates_with_content:
             return []
 
+        if store.embedding is None:
+            raise RuntimeError("Embedding rerank requested but vector store has no embedding model.")
         query_vec = np.array(store.embedding.embed_query(query), dtype=np.float32)
         doc_vectors = np.array(
             store.embedding.embed_documents(
-                [c.content for c in candidates_with_content]
+                [c.content for c in candidates_with_content if c.content]
             ),
             dtype=np.float32,
         )

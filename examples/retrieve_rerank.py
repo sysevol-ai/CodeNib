@@ -138,8 +138,20 @@ def parse_args():
         "--rerank-strategy",
         type=str,
         default="llm",
-        choices=["llm", "embedding"],
-        help="Rerank method to apply after retrieval.",
+        choices=["llm", "embedding", "crossencoder"],
+        help="Rerank method: 'llm' (listwise LLM), 'embedding' (dot-product), 'crossencoder' (neural pair scorer).",
+    )
+    parser.add_argument(
+        "--crossencoder-model",
+        type=str,
+        default="Qwen/Qwen3-Reranker-0.6B",
+        help="Model for crossencoder rerank. Qwen3-Reranker-* uses yes/no logit trick; others use sentence-transformers CrossEncoder.",
+    )
+    parser.add_argument(
+        "--crossencoder-batch-size",
+        type=int,
+        default=8,
+        help="Batch size for cross-encoder scoring (default: 8).",
     )
     parser.add_argument(
         "--rerank-model",
@@ -565,6 +577,8 @@ def run_pipeline(args):
                         embedding_model_kwargs=embedding_model_kwargs,
                         rerank_model=args.rerank_model,
                         rerank_strategy=args.rerank_strategy,
+                        crossencoder_model=args.crossencoder_model,
+                        crossencoder_batch_size=args.crossencoder_batch_size,
                         rerank_embedding_model=args.rerank_embedding_model,
                         rerank_embedding_provider=args.rerank_embedding_provider,
                         rerank_embedding_dimension=args.rerank_embedding_dimension,
