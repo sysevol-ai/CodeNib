@@ -6,8 +6,6 @@
 
 import subprocess
 
-import pytest
-
 from codeminer.guardian.signals import Hotspot, churn_hotspots
 
 

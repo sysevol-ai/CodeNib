@@ -4,15 +4,13 @@
 
 """Unit tests for codeminer.guardian.investigate (fake retriever, no embeddings)."""
 
-from codeminer.guardian.investigate import (
-    Evidence,
-    hotspot_query,
-    investigate_hotspot,
-)
+from codeminer.guardian.investigate import Evidence, hotspot_query, investigate_hotspot
 from codeminer.guardian.signals import Hotspot
 
 
 class _Node:
+    __slots__ = ("file", "node_name", "type", "start_line", "end_line", "score")
+
     def __init__(self, file, node_name, type, start_line, end_line, score):
         self.file = file
         self.node_name = node_name

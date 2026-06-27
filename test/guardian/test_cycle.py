@@ -8,8 +8,10 @@ The orchestration test injects a fake manifest + investigator (unit tier). The
 end-to-end test drives the real IndexCompiler with BM25 only (integration tier).
 """
 
+import json
 import os
 import subprocess
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -61,9 +63,7 @@ def test_run_cycle_with_injected_manifest_and_investigator(tmp_path):
         return [Evidence("mod.py", "f", "function", 1, 2, 0.5)]
 
     config = GuardianConfig(repo_path=str(repo), since="10 years ago", investigate=True)
-    report = run_cycle(
-        config, investigator=fake_investigator, manifest=_FakeManifest()
-    )
+    report = run_cycle(config, investigator=fake_investigator, manifest=_FakeManifest())
 
     assert report.commit == "deadbeefcafebabe"  # from injected manifest
     assert report.file_count == 7
@@ -84,6 +84,79 @@ def test_run_cycle_no_investigate_skips_evidence(tmp_path):
     report = run_cycle(config, manifest=_FakeManifest())
     assert report.findings  # still surfaces churn
     assert all(not f.evidence for f in report.findings)
+
+
+def test_run_cycle_injected_reporter_narrative_flows_through(tmp_path):
+    """Injected reporter's narrative appears in Finding and rendered Markdown."""
+    repo = _make_repo(tmp_path)
+
+    def fake_investigator(hotspot):
+        return [Evidence("mod.py", "f", "function", 1, 2, 0.5)]
+
+    def fake_reporter(hotspot, evidence):
+        return f"LLM says {hotspot.path} is risky."
+
+    config = GuardianConfig(repo_path=str(repo), since="10 years ago")
+    report = run_cycle(
+        config,
+        investigator=fake_investigator,
+        reporter=fake_reporter,
+        manifest=_FakeManifest(),
+    )
+
+    assert report.findings[0].narrative == "LLM says mod.py is risky."
+    md = render_markdown(report)
+    assert "LLM Analysis" in md
+    assert "LLM says mod.py is risky." in md
+
+
+@pytest.mark.slow
+def test_run_cycle_use_llm_flag_calls_litellm(tmp_path):
+    """use_llm=True wires up the LLM reporter; narrative ends up in the report."""
+    repo = _make_repo(tmp_path)
+
+    def _make_tool_call(call_id, query):
+        tc = MagicMock()
+        tc.id = call_id
+        tc.function.name = "search_code"
+        tc.function.arguments = json.dumps({"query": query})
+        return tc
+
+    def _resp(content, tool_calls=None):
+        msg = MagicMock()
+        msg.content = content
+        msg.tool_calls = tool_calls or []
+        choice = MagicMock()
+        choice.message = msg
+        r = MagicMock()
+        r.choices = [choice]
+        return r
+
+    tc = _make_tool_call("c1", "mod f function")
+    side_effects = [
+        _resp("", tool_calls=[tc]),  # first call: one tool round
+        _resp("mod.py changes frequently and risks instability."),  # final answer
+    ]
+
+    config = GuardianConfig(
+        repo_path=str(repo),
+        since="10 years ago",
+        investigate=False,
+        use_llm=True,
+        llm_max_tool_rounds=1,
+    )
+
+    with patch(
+        "codeminer.guardian.llm_investigator._read_hotspot_file",
+        return_value="def f():\n    return 0\n",
+    ), patch("litellm.completion", side_effect=side_effects):
+        report = run_cycle(config, manifest=_FakeManifest())
+
+    assert report.findings
+    assert "instability" in report.findings[0].narrative
+    md = render_markdown(report)
+    assert "LLM Analysis" in md
+    assert "instability" in md
 
 
 @pytest.mark.integration

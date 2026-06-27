@@ -22,12 +22,14 @@ class Finding:
     """One signal plus the evidence Guardian gathered around it.
 
     kind: ``"churn"`` or ``"test_failure"``.
+    narrative: Plain-text LLM analysis; empty string when LLM step is skipped.
     """
 
     kind: str
     title: str
     detail: str = ""
     evidence: List[Evidence] = field(default_factory=list)
+    narrative: str = ""
 
 
 @dataclass
@@ -110,6 +112,11 @@ def render_markdown(report: GuardianReport) -> str:
         L.append("")
         if finding.detail:
             L.append(finding.detail)
+            L.append("")
+        if finding.narrative:
+            L.append("**LLM Analysis:**")
+            L.append("")
+            L.append(finding.narrative)
             L.append("")
         if finding.evidence:
             L.append("**Evidence (ranked code locations):**")

@@ -3,14 +3,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """Run one Repository Guardian cycle over a repo and emit a dated report.
 
-Phase 1 skeleton: sync -> index -> observe (churn [+ tests]) -> investigate ->
-report. Non-modifying: writes only the report, never the target repo.
+Phase 1 skeleton: sync -> index -> observe (churn) -> investigate -> report.
+Non-modifying: writes only the report, never the target repo.
+
+By default uses BM25-only retrieval (no GPU / embedding model required).
+Add --with-embeddings to also build a vector index and use HybridRetrievePipeline.
 
 Usage:
     python scripts/guardian_cycle.py .
     python scripts/guardian_cycle.py /path/to/repo --output-dir ./guardian_out
-    python scripts/guardian_cycle.py . --run-tests --top-n 5 --since "30 days ago"
-    python scripts/guardian_cycle.py . --no-investigate   # churn-only, no retrieval
+    python scripts/guardian_cycle.py . --top-n 5 --since "30 days ago"
+    python scripts/guardian_cycle.py . --use-llm              # LLM narratives (Vertex AI)
+    python scripts/guardian_cycle.py . --with-embeddings      # BM25 + vector retrieval
 """
 
 import argparse
@@ -68,10 +72,29 @@ def main() -> None:
         help="Also run the target's pytest suite and report failures",
     )
     parser.add_argument(
-        "--no-investigate",
-        dest="investigate",
-        action="store_false",
-        help="Skip retrieval evidence (churn-only, no embeddings)",
+        "--with-embeddings",
+        action="store_true",
+        help=(
+            "Also build a vector index and use HybridRetrievePipeline "
+            "(requires a GPU / embedding model)"
+        ),
+    )
+    parser.add_argument(
+        "--use-llm",
+        action="store_true",
+        help="Run LLM investigation step via litellm (Vertex AI by default; see --llm-model)",
+    )
+    parser.add_argument(
+        "--llm-model",
+        default="vertex_ai/gemini-2.5-flash",
+        help="LiteLLM model string for the investigation step "
+        "(default: vertex_ai/gemini-2.5-flash)",
+    )
+    parser.add_argument(
+        "--llm-max-tool-rounds",
+        type=int,
+        default=3,
+        help="Max search rounds per hotspot (default: 3)",
     )
     parser.add_argument(
         "--index-cache-dir",
@@ -86,8 +109,7 @@ def main() -> None:
         sys.exit(1)
 
     languages = _normalize_languages(args.language)
-    # Investigation needs the embedding index; build it only when investigating.
-    index_types = ("bm25", "vector") if args.investigate else ("bm25",)
+    index_types = ("bm25", "vector") if args.with_embeddings else ("bm25",)
 
     config = GuardianConfig(
         repo_path=repo_dir,
@@ -97,8 +119,10 @@ def main() -> None:
         top_n=args.top_n,
         since=args.since,
         run_tests=args.run_tests,
-        investigate=args.investigate,
         retrieval_top_k=args.retrieval_top_k,
+        use_llm=args.use_llm,
+        llm_model=args.llm_model,
+        llm_max_tool_rounds=args.llm_max_tool_rounds,
     )
 
     print(f"Running Guardian cycle on {repo_dir} (languages: {', '.join(languages)})")
