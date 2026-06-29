@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Profiling sweep for the graph-RAG retrieval pipeline (issue #131, Phase 3).
+# Profiling sweep for the sparse-seeded graph retrieval baseline.
 #
 # Runs examples/graph_retrieve_baseline.py with profiling enabled across the
 # three headline configurations, each over the same fixed corpus
@@ -17,11 +17,11 @@
 #   3. BFS expansion + embedding rerank (Qwen3-Embedding-0.6B, dim 1024)
 #
 # Each run writes one JSON to $PROFILE_DIR:
-#   graph_rag_<dataset>_<expansion>_<rerank>__<tag>.json
+#   sparse_seed_graph_<expansion>[_plus_<rerank>_rerank]_<dataset>__<tag>.json
 #
 # Usage:
 #   scripts/profiling/profile_graph_rag.sh
-#   PROFILE_DIR=/tmp/graphrag CSV=examples/selected_instance.csv \
+#   PROFILE_DIR=/tmp/sparse_seed_graph CSV=examples/selected_instance.csv \
 #       scripts/profiling/profile_graph_rag.sh
 #
 # Optional Phase 4 (LLM rerank) is intentionally NOT run here: LLM listwise
@@ -38,7 +38,7 @@ cd "${REPO_ROOT}"
 DATASET="${DATASET:-swebench_lite}"
 SPLIT="${SPLIT:-test}"
 CSV="${CSV:-examples/selected_instance.csv}"
-PROFILE_DIR="${PROFILE_DIR:-${REPO_ROOT}/profile_log/graph_rag}"
+PROFILE_DIR="${PROFILE_DIR:-${REPO_ROOT}/profile_log/sparse_seed_graph}"
 PROFILE_TAG="${PROFILE_TAG:-sweep}"
 
 # Stage parameters (issue #131: stage1 top-K=5, 2-hop, up to 50 nodes).
@@ -73,7 +73,7 @@ COMMON_ARGS=(
 )
 
 echo "=================================================================="
-echo "graph-RAG profiling sweep"
+echo "sparse-seeded graph profiling sweep"
 echo "  dataset    : ${DATASET} (${SPLIT})"
 echo "  corpus     : ${CSV}"
 echo "  profile dir: ${PROFILE_DIR}"
@@ -99,5 +99,5 @@ echo "[3/3] BFS expansion + embedding rerank (${EMBED_MODEL}, dim ${EMBED_DIM})"
 echo
 echo "=================================================================="
 echo "Done. Profiler JSONs written to ${PROFILE_DIR}:"
-ls -1 "${PROFILE_DIR}"/graph_rag_*"${PROFILE_TAG}".json 2>/dev/null || true
+ls -1 "${PROFILE_DIR}"/sparse_seed_graph_*"${PROFILE_TAG}".json 2>/dev/null || true
 echo "=================================================================="

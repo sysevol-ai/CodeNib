@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..index.embedding.vector_store import CodeVectorStore
 from ..index.regex_idx.regex_idx import RegexNodeIndex
@@ -104,6 +104,47 @@ def merge_hybrid(
     if top_k:
         merged = merged[:top_k]
     return merged
+
+
+def queried_node_key(item: QueriedNode) -> Tuple[Any, ...]:
+    """Stable identity for deduping candidate nodes across pipeline stages."""
+    node_id = (item.node_id or "").strip()
+    if node_id:
+        return ("node_id", node_id)
+    return (
+        "span",
+        item.file,
+        item.node_name,
+        item.start_line,
+        item.end_line,
+    )
+
+
+def dedup_queried_nodes(nodes: Sequence[QueriedNode]) -> List[QueriedNode]:
+    """Deduplicate nodes while preserving first-seen rank order.
+
+    Retrieval pipelines often concatenate dense hits with graph-expanded
+    neighbors. The dense order is the ranking signal; duplicates should not
+    consume multiple top-k slots. If a later duplicate carries code content and
+    the first copy does not, keep the first rank but attach the content.
+    """
+    by_key: Dict[Tuple[Any, ...], int] = {}
+    out: List[QueriedNode] = []
+    for node in nodes:
+        key = queried_node_key(node)
+        existing_idx = by_key.get(key)
+        if existing_idx is None:
+            by_key[key] = len(out)
+            out.append(node)
+            continue
+        existing = out[existing_idx]
+        if not existing.content and node.content:
+            out[existing_idx] = _with_score(
+                existing,
+                existing.score or 0.0,
+                content_override=node.content,
+            )
+    return out
 
 
 def _with_score(

@@ -18,7 +18,6 @@ agent turns and only when verification fails. See .claude/design/agent-runtime.m
 from __future__ import annotations
 
 import os
-import pickle
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -114,11 +113,12 @@ def load_graph_nav(prebuilt_dir: str, instance_id: str) -> Optional[GraphNav]:
     if not os.path.exists(path):
         return None
     try:
-        with open(path, "rb") as f:
-            bundle = pickle.load(f)
+        from scripts.agent_compile.lib.prebuilt import load_prebuilt_code_graph
+
+        graph = load_prebuilt_code_graph(prebuilt_dir, instance_id)
     except Exception:  # noqa: BLE001 — missing/corrupt graph just disables verify
         return None
-    g = bundle.get("graph") if isinstance(bundle, dict) else None
+    g = getattr(graph, "graph", None)
     return GraphNav(g) if g is not None else None
 
 

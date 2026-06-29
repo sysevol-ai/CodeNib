@@ -274,6 +274,14 @@ def test_nodes_to_spans_ranked_by_score_desc():
     assert [s["file"] for s in spans] == ["b.py", "a.py"]
 
 
+def test_nodes_to_spans_can_preserve_retrieval_order():
+    spans = nodes_to_spans(
+        [_node("a.py", 1, 2, score=0.1), _node("b.py", 3, 4, score=0.9)],
+        sort_by_score=False,
+    )
+    assert [s["file"] for s in spans] == ["a.py", "b.py"]
+
+
 def test_dedup_collapses_overlapping_region():
     spans = [_span("a.py", 10, 20), _span("a.py", 12, 18), _span("b.py", 1, 2)]
     kept = dedup_spans(spans)

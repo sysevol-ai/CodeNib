@@ -247,8 +247,18 @@ def parse_args():
         "--retrieval-mode",
         type=str,
         default="dense",
-        choices=["dense", "sparse", "hybrid"],
-        help="Retrieval plan to run (dense-only, BM25-only, or hybrid).",
+        choices=["auto", "dense", "sparse", "hybrid"],
+        help=(
+            "Retrieval plan to run. 'auto' enables query/budget-aware planning; "
+            "the other modes use fixed dense, BM25, or hybrid presets."
+        ),
+    )
+    parser.add_argument(
+        "--planning-budget",
+        type=str,
+        default="balanced",
+        choices=["fast", "balanced", "thorough"],
+        help="Planner budget used when --retrieval-mode=auto.",
     )
     parser.add_argument(
         "--retrieval-level",
@@ -365,9 +375,12 @@ def _resolve_instance_languages(instance, cli_languages):
 
 
 def _build_method_tag(args) -> str:
+    mode = args.retrieval_mode
+    if mode == "auto":
+        mode = f"auto_{args.planning_budget}"
     if args.retrieval_only:
-        return f"{args.retrieval_mode}_retrieval_only"
-    return f"{args.retrieval_mode}_retrieve_plus_{args.rerank_strategy}_rerank"
+        return f"{mode}_retrieval_only"
+    return f"{mode}_retrieve_plus_{args.rerank_strategy}_rerank"
 
 
 def _sanitize_filename_part(value: str) -> str:
@@ -481,6 +494,7 @@ def run_pipeline(args):
 
     eval_metadata = dataset_obj.load_eval_metadata(args.eval_instances)
     retrieve_plan = build_retrieve_plan(args.retrieval_mode)
+    fixed_retrieve_plan = None if args.retrieval_mode == "auto" else retrieve_plan
     retrieve_top_k = max((stage.top_k or RETRIEVAL_TOP_K) for stage in retrieve_plan)
     aggregate = {}
     metrics_k = sorted(set(args.metrics_k))
@@ -571,8 +585,10 @@ def run_pipeline(args):
                         rerank_embedding_model_kwargs=rerank_embedding_kwargs,
                         languages=instance_languages,
                         max_lines_per_chunk=args.max_lines_per_chunk,
-                        retrieval_plan=retrieve_plan,
+                        retrieval_plan=fixed_retrieve_plan,
+                        retrieval_mode=args.retrieval_mode,
                         retrieval_level=args.retrieval_level,
+                        planning_budget=args.planning_budget,
                         rerank_window_size=args.rerank_window_size,
                         rerank_window_step=args.rerank_window_step,
                         rerank_listwise_format=args.rerank_listwise_format,
@@ -584,6 +600,7 @@ def run_pipeline(args):
                 query = instance["problem_statement"]
                 with instance_profiler.section("pipeline.query"):
                     results = pipeline.query(query=query, top_k=query_top_k)
+                    selected_plan = getattr(pipeline, "last_selected_plan", None)
 
                 with instance_profiler.section("evaluate_predictions"):
                     metrics = evaluate_predictions(
@@ -637,6 +654,16 @@ def run_pipeline(args):
                             else []
                         ),
                         "metrics": metrics,
+                        "retrieval_plan": (
+                            {
+                                "name": selected_plan.name,
+                                "intent": selected_plan.intent,
+                                "fusion": selected_plan.fusion,
+                                "rerank_strategy": selected_plan.rerank_strategy,
+                            }
+                            if selected_plan is not None
+                            else args.retrieval_mode
+                        ),
                     }
                     all_results.append(result_entry)
         finally:
@@ -705,6 +732,7 @@ def run_pipeline(args):
             "split": args.split,
             "filter_instance": args.filter_instance,
             "retrieval_mode": args.retrieval_mode,
+            "planning_budget": args.planning_budget,
             "retrieval_level": args.retrieval_level,
             "retrieval_only": args.retrieval_only,
             "rerank_strategy": None if args.retrieval_only else args.rerank_strategy,
@@ -730,6 +758,8 @@ def main():
     logger.info("Dataset type: %s", args.dataset)
     logger.info("Embedding model: %s", args.embedding_model)
     logger.info("Retrieval mode: %s", args.retrieval_mode)
+    if args.retrieval_mode == "auto":
+        logger.info("Planning budget: %s", args.planning_budget)
     logger.info("Retrieval level: %s", args.retrieval_level)
     if args.retrieval_only:
         logger.info("Mode: Retrieval-only (reranking disabled)")

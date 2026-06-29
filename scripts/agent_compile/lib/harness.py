@@ -163,19 +163,17 @@ def build_symbol_span_index(prebuilt_dir: str, instance_id: str) -> Dict[Any, An
     Graph vertices are 0-based (tree-sitter); shifted +1 here to match the
     1-based ground-truth blocks. Returns an empty dict when no graph is present.
     """
-    import pickle
-
     from codeminer.eval.retrieval_eval import normalize_file_path
+    from scripts.agent_compile.lib.prebuilt import load_prebuilt_code_graph
 
     path = os.path.join(prebuilt_dir, instance_id, "graph.pkl")
     if not os.path.exists(path):
         return {}
     try:
-        with open(path, "rb") as f:
-            graph = pickle.load(f)
+        graph = load_prebuilt_code_graph(prebuilt_dir, instance_id)
     except Exception:  # noqa: BLE001 — a missing/corrupt graph just disables this
         return {}
-    g = graph.get("graph") if isinstance(graph, dict) else None
+    g = getattr(graph, "graph", None)
     if g is None:
         return {}
     index: Dict[Any, Any] = {}

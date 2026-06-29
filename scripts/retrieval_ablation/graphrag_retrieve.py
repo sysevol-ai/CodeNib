@@ -4,15 +4,15 @@
 
 """GraphRAG retrieval pipeline — run as a SCRIPT, not an agent tool (#133).
 
-The ``codeminer_context`` composer (bm25 ⊕ embedding seeds → call-graph
+The ``codeminer_context`` composer (bm25 + embedding seeds -> call-graph
 expansion → assembled context) is GraphRAG over a code call-graph. The agent
 ablation showed it does not earn its keep as an in-loop agent tool (additive
 overhead). Its honest home is here: a deterministic RETRIEVAL method, evaluated
-as a retriever (files@k recall) alongside the other retrieval baselines — not in
+as a retriever (files/symbols/blocks@k) alongside the other retrieval baselines — not in
 the agent baseline.
 
 This runner loads an instance's prebuilt indexes, runs the pipeline once, and
-reports the ranked candidate files + files@k recall vs ground truth. Use
+reports ranked retrieval metrics vs ground truth. Use
 ``--no-graph`` to compare against search-only (isolates the graph's recall
 contribution, same as the agent-side CODEMINER_COMPOSER_NO_GRAPH ablation but
 with no LLM in the loop).
@@ -46,21 +46,58 @@ def _covers(cands: List[str], target: str) -> bool:
     return any(c == t or c.endswith("/" + t) or t.endswith("/" + c) for c in cands)
 
 
+def _score_ranked(nodes: List[Any]) -> List[Any]:
+    """Score-desc retrieval order, matching the span scorer."""
+    return sorted(nodes, key=lambda n: getattr(n, "score", 0.0) or 0.0, reverse=True)
+
+
+def _actionable_nodes(nodes: List[Any]) -> List[Any]:
+    """Nodes with concrete line spans, matching what block metrics can score."""
+    out: List[Any] = []
+    for node in nodes:
+        if getattr(node, "start_line", None) is None:
+            continue
+        if getattr(node, "end_line", None) is None:
+            continue
+        out.append(node)
+    return out
+
+
+def _node_payload(nodes: List[Any], limit: int = 30) -> List[Dict[str, Any]]:
+    payload: List[Dict[str, Any]] = []
+    for rank, node in enumerate(nodes[:limit], 1):
+        payload.append(
+            {
+                "rank": rank,
+                "node_id": getattr(node, "node_id", None),
+                "node_name": getattr(node, "node_name", None),
+                "type": getattr(node, "type", None),
+                "file": getattr(node, "file", None),
+                "start_line": getattr(node, "start_line", None),
+                "end_line": getattr(node, "end_line", None),
+                "score": getattr(node, "score", None),
+            }
+        )
+    return payload
+
+
 def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
-    """Run the GraphRAG composer once; return (ranked_files, target_files)."""
+    """Run the GraphRAG composer once; return nodes + target metadata."""
     from codeminer.agent.skills.registry import SkillRegistry
-    from codeminer.eval.retrieval_eval import collect_targets
+    from codeminer.eval.retrieval_eval import collect_target_blocks, collect_targets
     from scripts.agent_compile.lib.harness import load_dataset_rows, load_full_contexts
-    from scripts.agent_compile.lib.prebuilt import stage_prebuilt_indexes
+    from scripts.agent_compile.lib.prebuilt import repo_path_for, stage_prebuilt_indexes
 
     rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[instance_id]
     query = row["problem_statement"]
     meta = eval_lookup.get(instance_id, row)
-    target_files, _ = collect_targets(meta, simplified_symbols=True)
+    target_files, target_symbols = collect_targets(meta, simplified_symbols=True)
+    target_blocks = collect_target_blocks(meta)
 
     cache_dir = os.path.join(cache_root, instance_id)
-    repo_path = stage_prebuilt_indexes(prebuilt_dir, instance_id, cache_dir)
+    repo_path = repo_path_for(prebuilt_dir, instance_id)
+    stage_prebuilt_indexes(prebuilt_dir, instance_id, cache_dir)
     load_full_contexts(cfg, repo_path, cache_dir)
     compose = SkillRegistry().get("codeminer_context").executor_fn
     nodes = compose(query=query, seeds=5, max_results=30)
@@ -70,8 +107,11 @@ def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
         if f and f not in ranked_files:
             ranked_files.append(f)
     return (
+        nodes,
         ranked_files,
         [_norm(t) for t in target_files if t],
+        [_norm(t) for t in target_symbols if t],
+        target_blocks,
         row.get("language_group"),
     )
 
@@ -108,28 +148,100 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     results: List[Dict[str, Any]] = []
     hit_at: Counter = Counter()
+    symbol_hit_at: Counter = Counter()
+    block_hit_at: Counter = Counter()
+    score_symbol_hit_at: Counter = Counter()
+    score_block_hit_at: Counter = Counter()
     scored = 0
     for i, inst in enumerate(instances, 1):
         t0 = time.time()
         try:
-            ranked, targets, lang = _retrieve(inst, cfg, args.prebuilt_dir, cache_root)
+            from codeminer.eval.retrieval_eval import (
+                evaluate_predictions,
+                nodes_to_spans,
+                score_localization_spans,
+            )
+
+            nodes, ranked, targets, target_symbols, target_blocks, lang = _retrieve(
+                inst, cfg, args.prebuilt_dir, cache_root
+            )
+            score_ranked_nodes = _score_ranked(nodes)
+            actionable_nodes = _actionable_nodes(nodes)
+            score_actionable_nodes = _score_ranked(actionable_nodes)
             rec = {
                 f"files@{k}": (
                     bool(targets) and all(_covers(ranked[:k], t) for t in targets)
                 )
                 for k in args.k
             }
+            metrics = evaluate_predictions(nodes, targets, target_symbols, args.k)
+            score_metrics = evaluate_predictions(
+                score_ranked_nodes, targets, target_symbols, args.k
+            )
+            actionable_metrics = evaluate_predictions(
+                actionable_nodes, targets, target_symbols, args.k
+            )
+            score_actionable_metrics = evaluate_predictions(
+                score_actionable_nodes, targets, target_symbols, args.k
+            )
+            block_metrics = score_localization_spans(
+                answer_spans=[],
+                retrieval_spans=nodes_to_spans(nodes, sort_by_score=False),
+                gt_blocks=target_blocks,
+                ks=args.k,
+            )
+            score_block_metrics = score_localization_spans(
+                answer_spans=[],
+                retrieval_spans=nodes_to_spans(score_ranked_nodes),
+                gt_blocks=target_blocks,
+                ks=args.k,
+            )
             r = {
                 "instance_id": inst,
                 "language": lang,
                 "n_targets": len(targets),
+                "n_target_symbols": len(target_symbols),
+                "n_target_blocks": len(target_blocks),
+                "target_files": targets,
+                "target_symbols": target_symbols,
+                "target_blocks": target_blocks,
                 "recall": rec,
+                "metrics": metrics,
+                "score_metrics": score_metrics,
+                "actionable_metrics": actionable_metrics,
+                "score_actionable_metrics": score_actionable_metrics,
+                "block_metrics": block_metrics,
+                "score_block_metrics": score_block_metrics,
                 "n_ranked": len(ranked),
+                "n_ranked_nodes": len(nodes),
+                "n_actionable_nodes": len(actionable_nodes),
+                "ordered_nodes": _node_payload(nodes),
+                "ranked_nodes": _node_payload(score_ranked_nodes),
             }
             if targets:
                 scored += 1
                 for k in args.k:
                     hit_at[k] += int(rec[f"files@{k}"])
+                    symbol_hit_at[k] += int(
+                        actionable_metrics["symbols"][k]["accuracy"]
+                        if target_symbols
+                        else 0
+                    )
+                    block_hit_at[k] += int(
+                        block_metrics["retrieval_blocks"][k]["accuracy"]
+                        if target_blocks
+                        else 0
+                    )
+                    score_symbol_hit_at[k] += int(
+                        score_actionable_metrics["symbols"][k]["accuracy"]
+                        if target_symbols
+                        else 0
+                    )
+                    score_block_hit_at[k] += int(
+                        score_block_metrics["retrieval_blocks"][k]["accuracy"]
+                        if target_blocks
+                        else 0
+                    )
         except Exception as e:  # noqa: BLE001 — keep scanning
             r = {"instance_id": inst, "error": repr(e)}
             traceback.print_exc()
@@ -142,10 +254,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         args.out.write_text(json.dumps(results, indent=2))
 
     mode = "search-only" if args.no_graph else "GraphRAG (search+graph)"
-    print(f"\n=== {mode} retrieval recall over {scored} scored instances ===")
+    print(f"\n=== {mode} retrieval over {scored} scored instances ===")
     for k in args.k:
         pct = 100.0 * hit_at[k] / scored if scored else 0.0
         print(f"  files@{k}: {hit_at[k]}/{scored} = {pct:.0f}%")
+    for k in args.k:
+        pct = 100.0 * symbol_hit_at[k] / scored if scored else 0.0
+        print(f"  actionable_symbols@{k}: {symbol_hit_at[k]}/{scored} = {pct:.0f}%")
+    for k in args.k:
+        pct = 100.0 * block_hit_at[k] / scored if scored else 0.0
+        print(f"  retrieval_blocks@{k}: {block_hit_at[k]}/{scored} = {pct:.0f}%")
+    for k in args.k:
+        pct = 100.0 * score_symbol_hit_at[k] / scored if scored else 0.0
+        print(
+            f"  score_actionable_symbols@{k}: "
+            f"{score_symbol_hit_at[k]}/{scored} = {pct:.0f}%"
+        )
+    for k in args.k:
+        pct = 100.0 * score_block_hit_at[k] / scored if scored else 0.0
+        print(
+            f"  score_retrieval_blocks@{k}: {score_block_hit_at[k]}/{scored} = {pct:.0f}%"
+        )
     return 0
 
 

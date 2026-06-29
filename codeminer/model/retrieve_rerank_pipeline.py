@@ -9,16 +9,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-import numpy as np
-
 from ..code_chunker import CodeChunker, RepoChunkingConfig
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
-from ..ops.rerank import RerankContext
+from ..ops.rerank import RerankContext, rerank_by_embedding
 from ..ops.retrieve import RetrieveContext
 from ..types import NodeInfo, QueriedNode
+from .retrieval_planner import (
+    BudgetInput,
+    RetrievalCapabilities,
+    RetrievalPathPlan,
+    RetrievalPlanner,
+    RetrievalStagePlan,
+    build_planner_preload_stages,
+)
 
 logger = get_logger(__name__)
 
@@ -46,20 +52,29 @@ class RetrieveStageConfig:
 
 
 def build_retrieve_plan(mode: str = "dense") -> List[RetrieveStageConfig]:
-    """Convenience helper for common retrieval plan presets."""
+    """Convenience helper for common retrieval plan presets.
+
+    ``auto`` returns the dense+sparse preload set used by
+    :class:`RetrievalPlanner`; the per-query path is selected at query time.
+    """
 
     normalized = (mode or "dense").strip().lower()
     if normalized == "dense":
         return [RetrieveStageConfig(engine="dense", top_k=RETRIEVAL_TOP_K)]
     if normalized == "sparse":
         return [RetrieveStageConfig(engine="sparse", top_k=RETRIEVAL_TOP_K)]
+    if normalized == "auto":
+        return [
+            _stage_config_from_planner(stage)
+            for stage in build_planner_preload_stages(top_k=128)
+        ]
     if normalized == "hybrid":
         return [
             RetrieveStageConfig(engine="dense", weight=0.6, top_k=RETRIEVAL_TOP_K),
             RetrieveStageConfig(engine="sparse", weight=0.4, top_k=RETRIEVAL_TOP_K),
         ]
     raise ValueError(
-        f"Unknown retrieval mode {mode!r}. Choose from: dense, sparse, hybrid."
+        f"Unknown retrieval mode {mode!r}. Choose from: auto, dense, sparse, hybrid."
     )
 
 
@@ -97,6 +112,11 @@ class RetrieveRerankPipeline:
         retrieval_plan: Optional[Sequence[RetrieveStageConfig]] = None,
         retrieval_mode: str = "dense",
         retrieval_level: str = "l2",
+        planning_budget: BudgetInput = "balanced",
+        retrieval_planner: Optional[RetrievalPlanner] = None,
+        planner_capabilities: Optional[RetrievalCapabilities] = None,
+        fusion_strategy: str = "weighted",
+        rrf_k: int = 60,
         embedding_model: str = "nomic-ai/CodeRankEmbed",
         embedding_provider: str = "huggingface",
         embedding_dimension: int = 768,
@@ -129,17 +149,38 @@ class RetrieveRerankPipeline:
         self.enable_rerank = enable_rerank
         self.index_metric = "ip"
         self.profiler = None
+        self.retrieval_mode = (retrieval_mode or "dense").strip().lower()
+        self.retrieval_planner = retrieval_planner
+        if self.retrieval_planner is None and self.retrieval_mode == "auto":
+            self.retrieval_planner = RetrievalPlanner()
+        self.planning_budget = planning_budget
+        self.fusion_strategy = _normalize_fusion_strategy(fusion_strategy)
+        if rrf_k <= 0:
+            raise ValueError("rrf_k must be positive.")
+        self.rrf_k = rrf_k
+        self.last_selected_plan: Optional[RetrievalPathPlan] = None
+        self._planner_capabilities_override = planner_capabilities
         if retrieval_level not in ("l0", "l2"):
             raise ValueError(
                 f"Invalid retrieval_level {retrieval_level!r}. Must be 'l0' or 'l2'."
             )
         self.retrieval_level = retrieval_level
 
-        plan = (
-            list(retrieval_plan)
-            if retrieval_plan
-            else build_retrieve_plan(retrieval_mode)
-        )
+        if retrieval_plan:
+            plan = list(retrieval_plan)
+        elif self.retrieval_mode == "auto" and self.retrieval_planner is not None:
+            preload_top_k = max(
+                128,
+                self.retrieval_planner.normalize_budget(
+                    self.planning_budget
+                ).retrieve_top_k,
+            )
+            plan = [
+                _stage_config_from_planner(stage)
+                for stage in build_planner_preload_stages(top_k=preload_top_k)
+            ]
+        else:
+            plan = build_retrieve_plan(self.retrieval_mode)
         if not plan:
             raise ValueError("Retrieval plan must contain at least one stage.")
         self.retrieve_plan: List[RetrieveStageConfig] = plan
@@ -232,15 +273,29 @@ class RetrieveRerankPipeline:
         else:
             self.rerank_context = None
 
+        self.planner_capabilities = (
+            self._planner_capabilities_override
+            if self._planner_capabilities_override is not None
+            else RetrievalCapabilities(
+                has_dense=bool(self.vector_store),
+                has_sparse=bool(self.bm25_index),
+                has_graph=False,
+                has_embedding_rerank=bool(self.vector_store),
+                has_llm_rerank=strategy == "llm",
+            )
+        )
+
         logger.info(
             "RetrieveRerankPipeline initialized",
             extra={
                 "repo": self.repo_path,
                 "index_path": str(self.index_path),
+                "retrieval_mode": self.retrieval_mode,
                 "retrieval_plan": [stage.engine for stage in self.retrieve_plan],
                 "retrieval_level": self.retrieval_level,
                 "dense_index": bool(self.vector_store),
                 "sparse_index": bool(self.bm25_index),
+                "planner": bool(self.retrieval_planner),
                 "rerank_strategy": (
                     self.rerank_strategy if self.enable_rerank else "disabled"
                 ),
@@ -275,7 +330,13 @@ class RetrieveRerankPipeline:
         except Exception:
             pass
 
-    def query(self, query: str, top_k: int = 10) -> List[QueriedNode]:
+    def query(
+        self,
+        query: str,
+        top_k: int = 10,
+        *,
+        budget: Optional[BudgetInput] = None,
+    ) -> List[QueriedNode]:
         """Execute retrieve + rerank plan for the provided query.
 
         Args:
@@ -283,10 +344,25 @@ class RetrieveRerankPipeline:
             top_k: Number of results to return. If rerank is enabled, this controls
                 the rerank output. Retrieval always fetches RETRIEVAL_TOP_K
                 candidates internally.
+            budget: Optional per-query planner budget. Only used when a
+                retrieval planner is configured, including ``retrieval_mode=auto``.
         """
+        selected_plan = self._select_query_plan(query, budget)
+        active_plan = (
+            [_stage_config_from_planner(stage) for stage in selected_plan.stages]
+            if selected_plan is not None
+            else self.retrieve_plan
+        )
+        fusion = selected_plan.fusion if selected_plan is not None else None
+        merge_top_k = (
+            selected_plan.retrieval_top_k
+            if selected_plan is not None
+            else RETRIEVAL_TOP_K
+        )
+
         # Step 1: Run each retrieval branch
         branch_results: List[List[QueriedNode]] = []
-        for stage in self.retrieve_plan:
+        for stage in active_plan:
             results = self._run_retrieval_stage(query, stage)
             branch_results.append(results)
 
@@ -294,14 +370,65 @@ class RetrieveRerankPipeline:
         if len(branch_results) == 1:
             candidates = branch_results[0]
         else:
-            weights = [stage.weight for stage in self.retrieve_plan]
-            candidates = self._merge_hybrid(branch_results, weights, RETRIEVAL_TOP_K)
+            weights = [stage.weight for stage in active_plan]
+            candidates = self._merge_hybrid(
+                branch_results,
+                weights,
+                merge_top_k,
+                fusion=fusion or self.fusion_strategy,
+                rrf_k=self.rrf_k,
+            )
 
         # Step 3: Rerank if enabled
-        if self.enable_rerank and self.rerank_context is not None:
-            candidates = self._run_rerank(query, candidates, top_k)
+        plan_allows_rerank = (
+            selected_plan.enable_rerank if selected_plan is not None else True
+        )
+        if (
+            self.enable_rerank
+            and plan_allows_rerank
+            and self.rerank_context is not None
+        ):
+            candidates = self._run_rerank(
+                query,
+                candidates,
+                top_k,
+                strategy=(
+                    selected_plan.rerank_strategy
+                    if selected_plan is not None
+                    else self.rerank_strategy
+                ),
+                candidate_top_k=(
+                    selected_plan.rerank_candidate_top_k
+                    if selected_plan is not None
+                    else self.rerank_candidate_top_k
+                ),
+            )
 
         return candidates[:top_k]
+
+    def _select_query_plan(
+        self, query: str, budget: Optional[BudgetInput]
+    ) -> Optional[RetrievalPathPlan]:
+        if self.retrieval_planner is None:
+            self.last_selected_plan = None
+            return None
+        selected = self.retrieval_planner.select(
+            query=query,
+            budget=budget or self.planning_budget,
+            capabilities=self.planner_capabilities,
+        )
+        self.last_selected_plan = selected
+        logger.debug(
+            "Planner selected retrieval path",
+            extra={
+                "plan": selected.name,
+                "intent": selected.intent,
+                "fusion": selected.fusion,
+                "rerank": selected.rerank_strategy if selected.enable_rerank else None,
+                "rationale": selected.rationale,
+            },
+        )
+        return selected
 
     # --------------------------------------------------------------------- #
     # Retrieval
@@ -351,8 +478,17 @@ class RetrieveRerankPipeline:
         branches: List[List[QueriedNode]],
         weights: List[float],
         top_k: int,
+        *,
+        fusion: str = "weighted",
+        rrf_k: int = 60,
     ) -> List[QueriedNode]:
-        """Merge multiple retrieval branches with weighted scoring."""
+        """Merge multiple retrieval branches with weighted or RRF scoring."""
+        normalized_fusion = _normalize_fusion_strategy(fusion)
+        if normalized_fusion == "rrf":
+            return RetrieveRerankPipeline._merge_rrf(
+                branches, weights, top_k, rrf_k=rrf_k
+            )
+
         if not weights or len(weights) != len(branches):
             weights = [1.0] * len(branches)
 
@@ -384,22 +520,69 @@ class RetrieveRerankPipeline:
         )
         return merged[:top_k]
 
+    @staticmethod
+    def _merge_rrf(
+        branches: List[List[QueriedNode]],
+        weights: List[float],
+        top_k: int,
+        *,
+        rrf_k: int = 60,
+    ) -> List[QueriedNode]:
+        """Merge branches with weighted reciprocal-rank fusion."""
+        if not weights or len(weights) != len(branches):
+            weights = [1.0] * len(branches)
+
+        accumulator: Dict[
+            Tuple[Optional[str], str, Optional[int], Optional[int]], QueriedNode
+        ] = {}
+
+        for weight, results in zip(weights, branches, strict=True):
+            for rank, item in enumerate(results, start=1):
+                key = (item.file, item.node_name, item.start_line, item.end_line)
+                rrf_score = weight / float(rrf_k + rank)
+                if key not in accumulator:
+                    accumulator[key] = _with_score(item, rrf_score)
+                    continue
+                existing = accumulator[key]
+                content = existing.content or item.content
+                accumulator[key] = _with_score(
+                    existing,
+                    existing.score + rrf_score,
+                    content,
+                )
+
+        merged = sorted(
+            accumulator.values(),
+            key=lambda node: node.score,
+            reverse=True,
+        )
+        return merged[:top_k]
+
     # --------------------------------------------------------------------- #
     # Reranking
     # --------------------------------------------------------------------- #
 
     def _run_rerank(
-        self, query: str, candidates: List[QueriedNode], top_k: int
+        self,
+        query: str,
+        candidates: List[QueriedNode],
+        top_k: int,
+        *,
+        strategy: Optional[str] = None,
+        candidate_top_k: Optional[int] = None,
     ) -> List[QueriedNode]:
         """Rerank candidates using the configured strategy."""
         if not candidates:
             return []
 
-        if self.rerank_candidate_top_k is not None:
-            candidates = candidates[: self.rerank_candidate_top_k]
+        if candidate_top_k is not None:
+            candidates = candidates[:candidate_top_k]
 
-        if self.rerank_strategy == "embedding":
+        active_strategy = strategy or self.rerank_strategy
+        if active_strategy == "embedding":
             return self._rerank_embedding(query, candidates, top_k)
+        if active_strategy != "llm":
+            raise ValueError("rerank strategy must be 'llm' or 'embedding'.")
         return self._rerank_llm(query, candidates, top_k)
 
     def _rerank_llm(
@@ -442,46 +625,7 @@ class RetrieveRerankPipeline:
         store = self.rerank_context.embedding_store
         if store is None:
             raise RuntimeError("Embedding rerank requested but no embedding store.")
-
-        candidates_with_content = [c for c in candidates if c.content]
-        if not candidates_with_content:
-            return []
-
-        query_vec = np.array(store.embedding.embed_query(query), dtype=np.float32)
-        doc_vectors = np.array(
-            store.embedding.embed_documents(
-                [c.content for c in candidates_with_content]
-            ),
-            dtype=np.float32,
-        )
-
-        metric = store.index_metric
-        if metric == "ip":
-            scores = np.dot(doc_vectors, query_vec).tolist()
-        elif metric == "l2":
-            scores = (-np.linalg.norm(doc_vectors - query_vec, axis=1)).tolist()
-        else:
-            raise ValueError(f"Unsupported index metric: {metric!r}")
-
-        ranked = sorted(
-            zip(scores, candidates_with_content, strict=True),
-            key=lambda pair: pair[0],
-            reverse=True,
-        )
-
-        return [
-            QueriedNode(
-                node_name=c.node_name,
-                type=c.type,
-                file=c.file,
-                node_id=c.node_id,
-                start_line=c.start_line,
-                end_line=c.end_line,
-                score=float(score),
-                content=c.content,
-            )
-            for score, c in ranked[:top_k]
-        ]
+        return rerank_by_embedding(query, candidates, store, top_k=top_k)
 
     # --------------------------------------------------------------------- #
     # Internal helpers
@@ -631,6 +775,29 @@ class RetrieveRerankPipeline:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _stage_config_from_planner(stage: RetrievalStagePlan) -> RetrieveStageConfig:
+    return RetrieveStageConfig(
+        engine=stage.engine,
+        weight=stage.weight,
+        top_k=stage.top_k,
+        params=dict(stage.params),
+    )
+
+
+def _normalize_fusion_strategy(value: Optional[str]) -> str:
+    normalized = (value or "weighted").strip().lower().replace("-", "_")
+    aliases = {
+        "linear": "weighted",
+        "linear_combination": "weighted",
+        "weighted_sum": "weighted",
+        "none": "weighted",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"weighted", "rrf"}:
+        raise ValueError("fusion_strategy must be 'weighted' or 'rrf'.")
+    return normalized
 
 
 def _to_queried_nodes(results: Sequence[object]) -> List[QueriedNode]:
