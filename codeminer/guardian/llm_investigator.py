@@ -4,11 +4,15 @@
 
 """LLM-driven investigation step for Repository Guardian.
 
-Runs a manual tool-use loop so the model can search the codebase before
-writing a narrative.  The initial context includes the **actual file content**
-of the hotspot (up to ``FILE_CONTENT_MAX_LINES`` lines) so the LLM reasons
-about real code, not just symbol names.  The ``search_code`` tool is then used
-to find callers, related modules, or tests in other files.
+Two public entry points:
+
+* :func:`investigate_with_llm` — churn signal: reads the hotspot file directly
+  and runs the agentic loop.
+* :func:`investigate_signal` — generic entry point for any signal type; caller
+  supplies a pre-built context string (see :func:`build_test_failure_context`).
+
+Both share the same ``_agentic_loop`` core: the LLM may call ``search_code``
+repeatedly before producing a final plain-text narrative.
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ logger = get_logger(__name__)
 FILE_CONTENT_MAX_LINES = 150
 
 # ---------------------------------------------------------------------------
-# Tool schema (OpenAI/litellm format — litellm translates to Anthropic wire)
+# Tool schema (OpenAI/litellm format)
 # ---------------------------------------------------------------------------
 
 _SEARCH_TOOL = {
@@ -58,10 +62,10 @@ _SEARCH_TOOL = {
 }
 
 # ---------------------------------------------------------------------------
-# Prompts
+# System prompts
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = (
+_CHURN_SYSTEM_PROMPT = (
     "You are Repository Guardian, a proactive code-health monitor. "
     "You receive the full source of a high-churn file — one modified in many "
     "commits recently, which often signals instability, unclear ownership, or "
@@ -75,34 +79,44 @@ _SYSTEM_PROMPT = (
     "Do NOT wrap the final answer in JSON or Markdown — plain text only."
 )
 
+_TEST_FAILURE_SYSTEM_PROMPT = (
+    "You are Repository Guardian, a proactive code-health monitor. "
+    "You receive details about a failing test — the test source, error message, "
+    "and optionally the source file it exercises. "
+    "Use search_code to look up related implementation code if needed. "
+    "Your final response must be a concise (<200 words) plain-text analysis "
+    "that: (1) explains the root cause of the failure, "
+    "(2) cites the specific failing assertion or symbol, and "
+    "(3) recommends a concrete fix. "
+    "Do NOT wrap the final answer in JSON or Markdown — plain text only."
+)
 
 # ---------------------------------------------------------------------------
-# File reader
+# File reader (shared utility)
 # ---------------------------------------------------------------------------
+
+
+def read_file(path: str, max_lines: int = FILE_CONTENT_MAX_LINES) -> str:
+    """Read a file and return its content, truncated to ``max_lines``."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        logger.warning("llm_investigator: cannot read %s: %s", path, exc)
+        return ""
+    if len(lines) <= max_lines:
+        return "".join(lines)
+    kept = "".join(lines[:max_lines])
+    return kept + f"\n... ({len(lines) - max_lines} more lines truncated)"
 
 
 def _read_hotspot_file(hotspot: Hotspot, repo_path: str) -> str:
-    """Read the hotspot file and return its content, truncated if necessary."""
-    full_path = (
-        os.path.join(repo_path, hotspot.path) if repo_path else hotspot.path
-    )
-    try:
-        with open(full_path, encoding="utf-8", errors="replace") as fh:
-            lines = fh.readlines()
-    except OSError as exc:
-        logger.warning("llm_investigator: cannot read %s: %s", full_path, exc)
-        return ""
-
-    if len(lines) <= FILE_CONTENT_MAX_LINES:
-        return "".join(lines)
-
-    kept = "".join(lines[:FILE_CONTENT_MAX_LINES])
-    remaining = len(lines) - FILE_CONTENT_MAX_LINES
-    return kept + f"\n... ({remaining} more lines truncated)"
+    full_path = os.path.join(repo_path, hotspot.path) if repo_path else hotspot.path
+    return read_file(full_path)
 
 
 # ---------------------------------------------------------------------------
-# Observation builder
+# Observation builders
 # ---------------------------------------------------------------------------
 
 
@@ -117,17 +131,9 @@ def _observation_text(
         f"Churn: {hotspot.commit_count} commits over {since}",
         "",
     ]
-
     if file_content:
-        lines += [
-            f"Source ({hotspot.path}):",
-            "```",
-            file_content.rstrip(),
-            "```",
-            "",
-        ]
+        lines += [f"Source ({hotspot.path}):", "```", file_content.rstrip(), "```", ""]
     else:
-        # Fallback: symbol list from BM25 when file cannot be read
         lines.append("Symbol index (file could not be read directly):")
         if initial_evidence:
             for e in initial_evidence:
@@ -136,10 +142,50 @@ def _observation_text(
         else:
             lines.append("  (no evidence available)")
         lines.append("")
-
     lines.append(
         "Use search_code to find callers or related code in other files, "
         "then write your analysis."
+    )
+    return "\n".join(lines)
+
+
+def build_test_failure_context(
+    nodeid: str,
+    error: str,
+    *,
+    test_content: str = "",
+    source_content: str = "",
+    source_path: str = "",
+) -> str:
+    """Build the LLM user-message for a failing test.
+
+    Args:
+        nodeid: Pytest node id, e.g. ``"test/guardian/test_cycle.py::test_foo"``.
+        error: Failure message / short traceback from pytest output.
+        test_content: Full source of the test file (truncated by caller).
+        source_content: Full source of the inferred source file (optional).
+        source_path: Relative path of the source file (for display).
+
+    Returns:
+        Plain-text context string ready to be placed in the ``user`` role.
+    """
+    lines = [f"Failing test: {nodeid}", ""]
+    if error:
+        lines += ["Error:", "```", error[:1200].rstrip(), "```", ""]
+    if test_content:
+        test_file = nodeid.split("::")[0]
+        lines += [f"Test source ({test_file}):", "```python", test_content.rstrip(), "```", ""]
+    if source_content and source_path:
+        lines += [
+            f"Source under test ({source_path}):",
+            "```python",
+            source_content.rstrip(),
+            "```",
+            "",
+        ]
+    lines.append(
+        "Investigate why this test is failing. Use search_code to find related "
+        "implementation code if needed. Explain the root cause and recommend a fix."
     )
     return "\n".join(lines)
 
@@ -150,7 +196,6 @@ def _observation_text(
 
 
 def _run_search(query: str, retriever: object, top_k: int) -> str:
-    """Execute a search_code tool call and return a text result for the model."""
     try:
         nodes = retriever.query(query, top_k=top_k)  # type: ignore[union-attr]
     except Exception as exc:  # noqa: BLE001
@@ -167,63 +212,23 @@ def _run_search(query: str, retriever: object, top_k: int) -> str:
         loc = f"{file}:{line}" if line is not None else file
         score_str = f"{score:.3f}" if isinstance(score, float) else "—"
         rows.append(f"{loc} | {name} ({typ}) | score={score_str}")
-
     return "\n".join(rows) if rows else "(no results)"
 
 
 # ---------------------------------------------------------------------------
-# Agentic loop
+# Core agentic loop (shared)
 # ---------------------------------------------------------------------------
 
 
-def investigate_with_llm(
-    hotspot: Hotspot,
+def _agentic_loop(
+    messages: List[dict],
     retriever: object,
     *,
-    repo_path: str = "",
-    since: str = "90 days ago",
-    initial_evidence: Optional[Sequence[Evidence]] = None,
     llm: "LiteLLMChat",
-    max_tool_rounds: int = 3,
-    top_k: int = 5,
+    max_tool_rounds: int,
+    top_k: int,
 ) -> str:
-    """Run an LLM agentic loop to investigate a hotspot.
-
-    Args:
-        hotspot: The high-churn file to investigate.
-        retriever: Any object with ``.query(str, top_k=int) -> list`` (duck-typed).
-        repo_path: Root of the repository; used to resolve ``hotspot.path`` for
-            direct file reading.  Pass ``""`` if the path is already absolute.
-        since: Human-readable churn window used in the observation prompt.
-        initial_evidence: Evidence from BM25 retrieval; used as fallback context
-            when the file cannot be read directly.
-        llm: A :class:`~codeminer.llm.litellm_chat.LiteLLMChat` instance.
-        max_tool_rounds: Maximum number of search rounds before forcing a final answer.
-        top_k: Results per search query.
-
-    Returns:
-        Plain-text narrative from the LLM.
-    """
-    file_content = _read_hotspot_file(hotspot, repo_path)
-    if file_content:
-        logger.debug(
-            "llm_investigator: read %d chars from %s", len(file_content), hotspot.path
-        )
-    else:
-        logger.warning(
-            "llm_investigator: could not read %s; falling back to symbol list",
-            hotspot.path,
-        )
-
-    evidence = initial_evidence or []
-    messages: List[dict] = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": _observation_text(hotspot, since, file_content, evidence),
-        },
-    ]
-
+    """Run the tool-use loop until the model produces a final answer."""
     for round_idx in range(max_tool_rounds + 1):
         use_tools = round_idx < max_tool_rounds
         kwargs: dict = {}
@@ -239,8 +244,7 @@ def investigate_with_llm(
             )
             return f"(LLM investigation unavailable: {exc})"
 
-        choice = response.choices[0]
-        msg = choice.message
+        msg = response.choices[0].message
         tool_calls = getattr(msg, "tool_calls", None) or []
 
         if not tool_calls:
@@ -263,7 +267,6 @@ def investigate_with_llm(
                 ],
             }
         )
-
         for tc in tool_calls:
             try:
                 args = json.loads(tc.function.arguments)
@@ -274,13 +277,7 @@ def investigate_with_llm(
             logger.debug(
                 "llm_investigator: search_code(%r) → %d chars", query, len(result)
             )
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
-                }
-            )
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
     try:
         response = llm._call_raw(messages)
@@ -288,3 +285,83 @@ def investigate_with_llm(
     except Exception as exc:  # noqa: BLE001
         logger.warning("llm_investigator: final call failed: %s", exc)
         return f"(LLM investigation unavailable: {exc})"
+
+
+# ---------------------------------------------------------------------------
+# Public entry points
+# ---------------------------------------------------------------------------
+
+
+def investigate_with_llm(
+    hotspot: Hotspot,
+    retriever: object,
+    *,
+    repo_path: str = "",
+    since: str = "90 days ago",
+    initial_evidence: Optional[Sequence[Evidence]] = None,
+    llm: "LiteLLMChat",
+    max_tool_rounds: int = 3,
+    top_k: int = 5,
+) -> str:
+    """Run the LLM agentic loop to investigate a churn hotspot.
+
+    Reads the hotspot file directly and passes its source to the model.
+    Falls back to BM25 symbol names if the file cannot be read.
+    """
+    file_content = _read_hotspot_file(hotspot, repo_path)
+    if file_content:
+        logger.debug(
+            "llm_investigator: read %d chars from %s", len(file_content), hotspot.path
+        )
+    else:
+        logger.warning(
+            "llm_investigator: could not read %s; falling back to symbol list",
+            hotspot.path,
+        )
+
+    messages: List[dict] = [
+        {"role": "system", "content": _CHURN_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": _observation_text(
+                hotspot, since, file_content, initial_evidence or []
+            ),
+        },
+    ]
+    return _agentic_loop(
+        messages, retriever, llm=llm, max_tool_rounds=max_tool_rounds, top_k=top_k
+    )
+
+
+def investigate_signal(
+    context: str,
+    retriever: object,
+    *,
+    system_prompt: str = _TEST_FAILURE_SYSTEM_PROMPT,
+    llm: "LiteLLMChat",
+    max_tool_rounds: int = 3,
+    top_k: int = 5,
+) -> str:
+    """Run the LLM agentic loop with a caller-supplied context string.
+
+    Use :func:`build_test_failure_context` (or a custom builder) to construct
+    ``context``.  The same ``search_code`` tool is available to the model.
+
+    Args:
+        context: Full user-message describing the signal to investigate.
+        retriever: Duck-typed retriever with ``.query(str, top_k=int) -> list``.
+        system_prompt: Override the default test-failure system prompt.
+        llm: A :class:`~codeminer.llm.litellm_chat.LiteLLMChat` instance.
+        max_tool_rounds: Max search rounds before forcing a final answer.
+        top_k: Results per search query.
+
+    Returns:
+        Plain-text narrative from the LLM.
+    """
+    messages: List[dict] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": context},
+    ]
+    return _agentic_loop(
+        messages, retriever, llm=llm, max_tool_rounds=max_tool_rounds, top_k=top_k
+    )

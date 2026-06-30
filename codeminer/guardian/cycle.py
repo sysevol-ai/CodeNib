@@ -11,6 +11,7 @@ retrieval; this module only glues them into a single non-modifying pass.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -19,7 +20,7 @@ from typing import Callable, List, Optional, Sequence
 from ..log_utils import get_logger
 from .investigate import Evidence, investigate_hotspot
 from .report import Finding, GuardianReport
-from .signals import Hotspot, churn_hotspots, run_test_suite
+from .signals import Hotspot, TestFailure, churn_hotspots, run_test_suite
 
 logger = get_logger(__name__)
 
@@ -140,17 +141,16 @@ def _load_bm25_from_manifest(manifest: object) -> Optional[object]:
         return None
 
 
-def _llm_reporter(config: GuardianConfig, retriever: object) -> Reporter:
-    """Return a Reporter that runs the LLM agentic loop for each hotspot.
-
-    ``retriever`` is any object with ``.query(str, top_k=int)`` — the same duck
-    type accepted by :func:`~.investigate.investigate_hotspot`. It is captured
-    once and reused across hotspots.
-    """
+def _make_llm(config: GuardianConfig) -> object:
+    """Instantiate a LiteLLMChat for the cycle."""
     from ..llm.litellm_chat import LiteLLMChat
-    from .llm_investigator import investigate_with_llm
 
-    llm = LiteLLMChat(model=config.llm_model, temperature=0.0, max_tokens=1024)
+    return LiteLLMChat(model=config.llm_model, temperature=0.0, max_tokens=1024)
+
+
+def _llm_reporter(config: GuardianConfig, retriever: object, llm: object) -> Reporter:
+    """Return a Reporter that runs the LLM agentic loop for each churn hotspot."""
+    from .llm_investigator import investigate_with_llm
 
     def _report(hotspot: Hotspot, evidence: List[Evidence]) -> str:
         try:
@@ -160,7 +160,7 @@ def _llm_reporter(config: GuardianConfig, retriever: object) -> Reporter:
                 repo_path=config.repo_path,
                 since=config.since,
                 initial_evidence=evidence,
-                llm=llm,
+                llm=llm,  # type: ignore[arg-type]
                 max_tool_rounds=config.llm_max_tool_rounds,
                 top_k=config.retrieval_top_k,
             )
@@ -171,6 +171,64 @@ def _llm_reporter(config: GuardianConfig, retriever: object) -> Reporter:
             return ""
 
     return _report
+
+
+def _infer_source_from_nodeid(nodeid: str, repo_path: str) -> str:
+    """Heuristic: map test/pkg/test_module.py::test_foo → codeminer/pkg/module.py."""
+    import re
+
+    test_file = nodeid.split("::")[0]
+    rel = re.sub(r"^test/", "", test_file)
+    parts = rel.rsplit("/", 1)
+    basename = re.sub(r"^test_", "", parts[-1])
+    candidates = []
+    if len(parts) > 1:
+        pkg = parts[0]
+        candidates = [
+            os.path.join("codeminer", pkg, basename),
+            os.path.join(pkg, basename),
+        ]
+    else:
+        candidates = [os.path.join("codeminer", basename), basename]
+    for c in candidates:
+        if os.path.isfile(os.path.join(repo_path, c)):
+            return c
+    return ""
+
+
+def _investigate_test_failure(
+    failure: TestFailure,
+    retriever: object,
+    llm: object,
+    config: "GuardianConfig",
+) -> str:
+    """Run the LLM agentic loop for a single failing test."""
+    from .llm_investigator import build_test_failure_context, investigate_signal, read_file
+
+    repo_path = config.repo_path
+    test_file = failure.nodeid.split("::")[0]
+    test_content = read_file(os.path.join(repo_path, test_file))
+    source_path = _infer_source_from_nodeid(failure.nodeid, repo_path)
+    source_content = read_file(os.path.join(repo_path, source_path)) if source_path else ""
+
+    ctx = build_test_failure_context(
+        failure.nodeid,
+        failure.message,
+        test_content=test_content,
+        source_content=source_content,
+        source_path=source_path,
+    )
+    try:
+        return investigate_signal(
+            ctx,
+            retriever,
+            llm=llm,  # type: ignore[arg-type]
+            max_tool_rounds=config.llm_max_tool_rounds,
+            top_k=config.retrieval_top_k,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Guardian: LLM reporter failed for %s: %s", failure.nodeid, exc)
+        return ""
 
 
 def run_cycle(
@@ -262,10 +320,14 @@ def run_cycle(
             investigator = lambda _h: []  # noqa: E731
 
     # 5. Report — optionally run the LLM investigation step.
-    #    The LLM always gets the same retriever used for evidence, so search_code
-    #    calls return real results (never _NullRetriever when investigate=True).
-    if reporter is None and config.use_llm:
-        reporter = _llm_reporter(config, _retriever)
+    #    A single LLM instance is shared across all signal types so we don't
+    #    pay the connection-setup cost multiple times per cycle.
+    _llm: Optional[object] = None
+    if config.use_llm:
+        _llm = _make_llm(config)
+
+    if reporter is None and _llm is not None:
+        reporter = _llm_reporter(config, _retriever, _llm)
 
     findings: List[Finding] = []
     for hotspot in hotspots:
@@ -286,11 +348,17 @@ def run_cycle(
 
     if test_result is not None and test_result.ran:
         for failure in test_result.failures:
+            narrative = (
+                _investigate_test_failure(failure, _retriever, _llm, config)
+                if _llm is not None
+                else ""
+            )
             findings.append(
                 Finding(
                     kind="test_failure",
                     title=f"Failing test: {failure.nodeid}",
                     detail=failure.message,
+                    narrative=narrative,
                 )
             )
 

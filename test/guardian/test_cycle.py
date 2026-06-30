@@ -159,6 +159,60 @@ def test_run_cycle_use_llm_flag_calls_litellm(tmp_path):
     assert "instability" in md
 
 
+@pytest.mark.slow
+def test_run_cycle_test_failure_llm_narrative(tmp_path):
+    """When use_llm=True and a test fails, the Finding gets an LLM narrative."""
+    repo = _make_repo(tmp_path)
+
+    def _resp(content, tool_calls=None):
+        msg = MagicMock()
+        msg.content = content
+        msg.tool_calls = tool_calls or []
+        choice = MagicMock()
+        choice.message = msg
+        r = MagicMock()
+        r.choices = [choice]
+        return r
+
+    side_effects = [_resp("The test fails because run() returns the wrong value.")]
+
+    config = GuardianConfig(
+        repo_path=str(repo),
+        since="10 years ago",
+        investigate=False,
+        run_tests=True,
+        use_llm=True,
+        llm_max_tool_rounds=0,
+    )
+
+    # Inject a fake test result with one failure so we don't shell out to pytest.
+    from codeminer.guardian.signals import TestFailure, TestResult
+
+    fake_result = TestResult(
+        ran=True,
+        passed=0,
+        failed=1,
+        failures=[TestFailure(nodeid="test/mod.py::test_run", message="AssertionError")],
+        summary="1 failed",
+    )
+
+    with patch(
+        "codeminer.guardian.llm_investigator._read_hotspot_file", return_value=""
+    ), patch(
+        "codeminer.guardian.llm_investigator.read_file", return_value="def test_run(): pass\n"
+    ), patch(
+        "codeminer.guardian.cycle.run_test_suite", return_value=fake_result
+    ), patch(
+        "litellm.completion", side_effect=side_effects
+    ):
+        report = run_cycle(config, manifest=_FakeManifest())
+
+    test_findings = [f for f in report.findings if f.kind == "test_failure"]
+    assert test_findings
+    assert "wrong value" in test_findings[0].narrative
+    assert "LLM Analysis" in render_markdown(report)
+
+
 @pytest.mark.integration
 def test_run_cycle_end_to_end_bm25_only(tmp_path):
     """One real cycle: compile a BM25 index (no embeddings) and render a report."""

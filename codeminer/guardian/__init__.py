@@ -11,9 +11,14 @@ yet (RFC Phases 2-5). See ``Repository_Guardian/repository_guardian_issue.md``.
 
 from .cycle import GuardianConfig, Reporter, run_cycle
 from .investigate import Evidence, investigate_hotspot
-from .llm_investigator import investigate_with_llm
+from .llm_investigator import (
+    build_test_failure_context,
+    investigate_signal,
+    investigate_with_llm,
+    read_file,
+)
 from .report import Finding, GuardianReport, render_markdown
-from .signals import Hotspot, TestResult, churn_hotspots, run_test_suite
+from .signals import Hotspot, TestFailure, TestResult, churn_hotspots, run_test_suite
 
 __all__ = [
     "GuardianConfig",
@@ -22,10 +27,14 @@ __all__ = [
     "Evidence",
     "investigate_hotspot",
     "investigate_with_llm",
+    "investigate_signal",
+    "build_test_failure_context",
+    "read_file",
     "Finding",
     "GuardianReport",
     "render_markdown",
     "Hotspot",
+    "TestFailure",
     "TestResult",
     "churn_hotspots",
     "run_test_suite",
