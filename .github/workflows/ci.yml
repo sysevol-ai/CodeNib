@@ -233,7 +233,7 @@ jobs:
 
       - name: Run integration tests (parallel)
         shell: bash -l {0}
-        run: pytest -n auto -m "integration" --tb=short
+        run: pytest -n 4 -m "integration" --tb=short --timeout=600 --durations=20
 
   # =============================================================
   # Job 3 — Integration serial  (mutates repos, ~25 min)
