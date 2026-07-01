@@ -177,6 +177,7 @@ jobs:
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      XDG_CACHE_HOME: ${{ github.workspace }}/../.cache/xdg
     steps:
       - name: Prepare temp HOME
         run: |
@@ -199,6 +200,33 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[test]"
+
+      - name: Prewarm tree-sitter parsers
+        shell: bash -l {0}
+        run: |
+          python - <<'PY'
+          from tree_sitter_language_pack import get_language
+
+          languages = [
+              "python",
+              "go",
+              "rust",
+              "cpp",
+              "csharp",
+              "java",
+              "ruby",
+              "php",
+              "kotlin",
+              "typescript",
+              "swift",
+              "scala",
+              "lua",
+          ]
+          for language in languages:
+              print(f"prewarming {language}", flush=True)
+              get_language(language)
+          print(f"prewarmed {len(languages)} tree-sitter parsers")
+          PY
 
       - name: Run unit tests
         shell: bash -l {0}
