@@ -233,11 +233,12 @@ class AgentRunner:
         # prompt-token cost (prompt is ~97% of spend and grows every turn).
         # Loss-safe for localization (answers need path/symbol/line, not source).
         self._compact_after_read = compact_after_read
-        # Seed richness for eager_compact: how many of the most-recently-read
-        # tool outputs to keep VERBATIM in the collapse seed. 0 = terse seed
-        # (strong models answer from path+assessment alone); higher = inline the
-        # read content so weaker models don't re-read after the collapse (the
-        # "re-read tax" observed on 4B). Set by a model-strength router upstream.
+        # Seed richness for eager_compact: how many successful read outputs to
+        # keep VERBATIM in the collapse seed. 0 still carries the latest read
+        # transcript so the model can see the file it just requested; higher
+        # values inline additional recent reads so weaker models don't re-read
+        # after the collapse (the "re-read tax" observed on 4B). Set by a
+        # model-strength router upstream.
         self._compact_keep_reads = compact_keep_reads
 
         # Resource guard: filter unavailable skills and collect warnings.
@@ -413,6 +414,7 @@ class AgentRunner:
         start = time.monotonic()
         has_read = False  # has the agent read a file yet (gates forced tools)
         read_paths: List[str] = []  # files the agent read (for schema salvage)
+        read_outputs: List[Dict[str, str]] = []  # successful read transcripts
         compacted = False  # eager_compact: collapsed to direction seed yet?
 
         for turn in range(max_turns):
@@ -504,22 +506,30 @@ class AgentRunner:
             for tc in tool_calls:
                 record = self._execute_tool_call(tc)
                 all_tool_calls.append(record)
+                tool_content = _serialize_result(
+                    record.result if record.error is None else record.error
+                )
                 # A successful read satisfies the "read before answering"
                 # contract; once it happens, stop forcing tool calls.
-                if record.skill_id == "read" and record.error is None:
+                if (
+                    record.skill_id == "read"
+                    and record.error is None
+                    and not tool_content.lstrip().startswith("Error")
+                ):
                     has_read = True
                     _rp = (record.arguments or {}).get("file_path")
                     if _rp:
                         read_paths.append(str(_rp))
+                    read_outputs.append(
+                        {"path": str(_rp or "(unknown)"), "content": tool_content}
+                    )
 
                 # Append tool response message
                 history.add_message(
                     {
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": _serialize_result(
-                            record.result if record.error is None else record.error
-                        ),
+                        "content": tool_content,
                     }
                 )
 
@@ -533,7 +543,12 @@ class AgentRunner:
             # Once only — this is the explore→commit boundary, not a rolling trim.
             if self._compact_after_read and has_read and not compacted:
                 compacted = True
-                if self._compact_history(history, read_paths, self._compact_keep_reads):
+                if self._compact_history(
+                    history,
+                    read_paths,
+                    self._compact_keep_reads,
+                    read_outputs=read_outputs,
+                ):
                     logger.debug("eager_compact: collapsed to distilled direction seed")
 
         # Max turns exhausted. Prefer the last textual assistant message.
@@ -574,6 +589,7 @@ class AgentRunner:
         history: Any,
         read_paths: Optional[List[str]] = None,
         keep_reads: int = 0,
+        read_outputs: Optional[List[Dict[str, str]]] = None,
     ) -> int:
         """Collapse eager-phase exploration to a distilled direction seed.
 
@@ -584,11 +600,14 @@ class AgentRunner:
         of the run (re-sending them every turn is the dominant prompt cost, ~97%
         of spend). The continuation works the "correct path" from a small seed.
 
-        ``keep_reads`` is the seed-richness dial set by a model-strength router:
-        0 keeps only path+assessment (terse — strong models answer from it);
-        N>0 also inlines the last N tool outputs verbatim so a WEAK model does
-        not re-read them after the collapse (the "re-read tax" seen on 4B). It
-        trades some token saving for fewer re-read turns.
+        ``keep_reads`` is the seed-richness dial set by a model-strength router.
+        The latest successful read is always inlined because this collapse runs
+        immediately after the read result enters history; without that transcript
+        the next model turn would never see the file it just asked to inspect.
+        N>0 inlines up to the last N successful read outputs (not grep/glob/bash
+        output) so a WEAK model does not re-read them after the collapse (the
+        "re-read tax" seen on 4B). It trades some token saving for fewer re-read
+        turns.
 
         Loss-safe for localization: the seed names the files judged relevant plus
         the agent's own assessment; answers need path/symbol/line, not source.
@@ -610,20 +629,19 @@ class AgentRunner:
                 last_assistant = m["content"]
                 break
         reads = ", ".join(dict.fromkeys(read_paths or [])) or "(none)"
-        # Seed-richness: optionally inline the last ``keep_reads`` tool outputs so
-        # a weak model can answer without re-reading.
+        # Seed-richness: inline recent successful read outputs, never incidental
+        # tool output from grep/glob/bash that happened to run later in the turn.
         kept = ""
-        if keep_reads > 0:
-            tool_contents = [
-                m.get("content", "")
-                for m in msgs
-                if m.get("role") == "tool" and isinstance(m.get("content"), str)
-            ]
-            recent = [c for c in tool_contents[-keep_reads:] if c]
-            if recent:
+        if read_outputs:
+            n_keep = max(1, int(keep_reads or 0))
+            kept_reads = [r for r in read_outputs[-n_keep:] if r.get("content")]
+            if kept_reads:
                 kept = (
                     "\n# Content you already read (do NOT re-read these):\n"
-                    + "\n---\n".join(recent)
+                    + "\n---\n".join(
+                        f"# read {r.get('path') or '(unknown)'}\n{r['content']}"
+                        for r in kept_reads
+                    )
                     + "\n"
                 )
         seed = (

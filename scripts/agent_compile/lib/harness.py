@@ -291,15 +291,16 @@ def run_cell(
     sctx = SessionContext(
         repo_path=repo_path, repo_size=1000, primary_language=language_key
     )
-    # Seed-richness router for eager_compact: weak models re-read from a terse
-    # collapse seed (the 4B "re-read tax"), so inline more read content for them;
-    # strong models answer from path+assessment alone. Recipe key
+    # Seed-richness router for eager_compact: weak models can re-read from a
+    # minimal collapse seed (the 4B "re-read tax"), so inline more read content
+    # for them; strong models usually answer from the latest read plus
+    # assessment. Recipe key
     # ``compact_keep_reads`` overrides the model-size heuristic.
     _keep_reads = (preload_spec or {}).get("compact_keep_reads")
     if _keep_reads is None:
         import re as _re
 
-        # Dial measured on 4B (n=99): keep0 terse seed HURTS weak models
+        # Dial measured on 4B (n=99): keep0 minimal seed HURTS weak models
         # (files@5 0.667 < grep 0.737); keep1 recovers to grep level (0.741) at
         # -18% cost; keep2 over-stuffs (worse than keep1). Mid/strong (>=9B,
         # Haiku) are fine with keep0 (already >= grep). So: weak -> 1, else 0.

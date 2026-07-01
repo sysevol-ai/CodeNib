@@ -25,25 +25,89 @@ from __future__ import annotations
 import glob
 import json
 import random
+import re
 import statistics as st
 import sys
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 RESULTS = "/mnt/data/codeminer/results"
 random.seed(0)
 
 
+def _load_json(p: str) -> Optional[Any]:
+    try:
+        with open(p, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _cells(d: str) -> List[Dict[str, Any]]:
     out = []
     for p in glob.glob(f"{RESULTS}/{d}/cells/*.json"):
-        try:
-            c = json.loads(open(p).read())
-        except (OSError, json.JSONDecodeError):
+        c = _load_json(p)
+        if not isinstance(c, dict):
             continue
         if c.get("success") and c.get("metrics_meaningful"):
             out.append(c)
     return out
+
+
+def _idxcmp_name(p: str) -> str:
+    return Path(p).stem.removeprefix("idxcmp_")
+
+
+def _idxcmp_runs() -> List[Tuple[str, List[Dict[str, Any]]]]:
+    runs: List[Tuple[str, List[Dict[str, Any]]]] = []
+    for p in sorted(glob.glob(f"{RESULTS}/idxcmp_*.json")):
+        rs = _load_json(p)
+        if not isinstance(rs, list):
+            continue
+        ok = [
+            r
+            for r in rs
+            if isinstance(r, dict) and "recall" in r and r.get("n_targets")
+        ]
+        if ok:
+            runs.append((_idxcmp_name(p), ok))
+    return runs
+
+
+def _idxcmp_recall(rows: List[Dict[str, Any]], method: str, k: int) -> Optional[float]:
+    vals: List[bool] = []
+    key = f"files@{k}"
+    for r in rows:
+        method_recalls = (r.get("recall") or {}).get(method) or {}
+        if key in method_recalls:
+            vals.append(bool(method_recalls[key]))
+    return (100 * sum(vals) / len(vals)) if vals else None
+
+
+def _idxcmp_latency(rows: List[Dict[str, Any]], method: str) -> Optional[float]:
+    vals = [
+        r["latency_ms"][method]
+        for r in rows
+        if isinstance(r.get("latency_ms"), dict) and method in r["latency_ms"]
+    ]
+    return sorted(vals)[len(vals) // 2] if vals else None
+
+
+def _pct(v: Optional[float]) -> str:
+    return "n/a" if v is None else f"{v:.0f}%"
+
+
+def _norm_name(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", s.lower())
+
+
+def _idxcmp_recall_for_embedding(name: str, k: int) -> Optional[float]:
+    needle = _norm_name(name)
+    for run_name, rows in _idxcmp_runs():
+        if needle in _norm_name(run_name):
+            return _idxcmp_recall(rows, "flat", k)
+    return None
 
 
 def _recall(c: Dict[str, Any], scope: str, k: int) -> Optional[float]:
@@ -151,18 +215,20 @@ def table2_embedding():
         "end result.\n"
     )
     rows = [
-        ("Qwen3-Embedding-0.6B", "haiku_base_compact", 56),
-        ("jina-code-embeddings-1.5b", "haiku_base_compact_jina", 63),
-        ("Qwen3-Embedding-4B", "haiku_base_compact_4b", 64),
+        ("Qwen3-Embedding-0.6B", "haiku_base_compact"),
+        ("jina-code-embeddings-1.5b", "haiku_base_compact_jina"),
+        ("Qwen3-Embedding-4B", "haiku_base_compact_4b"),
     ]
     print(
         "| embedding | retrieval recall@10 | compact files@5 | compact blk@5 | token |"
     )
     print("|---|---|---|---|---|")
-    for name, d, rec in rows:
+    for name, d in rows:
+        rec = _idxcmp_recall_for_embedding(name, 10)
         cp = [c for c in _cells(d) if c.get("subset_id") == "preinj_eager_compact"]
         print(
-            f"| {name} | {rec}% | {_mean([_recall(c,'files',5) for c in cp]):.3f} "
+            f"| {name} | {_pct(rec)} "
+            f"| {_mean([_recall(c,'files',5) for c in cp]):.3f} "
             f"| {_mean([_recall(c,'answer_blocks',5) for c in cp]):.3f} "
             f"| {_mean([c.get('total_tokens') for c in cp]):.0f} |"
         )
@@ -174,7 +240,7 @@ def table2_embedding():
 
 def table3_dial():
     print("\n\n## 3. Seed-richness dial on the weak 4B (the router)\n")
-    cells = _cells("qwen35_4b_keepreads")
+    cells = _cells("qwen_4b_keepreads")
     by = defaultdict(list)
     for c in cells:
         by[c.get("subset_id")].append(c)
@@ -189,7 +255,7 @@ def table3_dial():
         if by.get(arm):
             print(_arm_row(by[arm], lab))
     print(
-        "\n→ keep0 (terse seed) hurts the weak model (files@5 below grep); keep1 "
+        "\n→ keep0 (minimal seed) hurts the weak model (files@5 below grep); keep1 "
         "recovers to grep level; keep2 over-stuffs. Router: weak≤7B→keep1, else keep0."
     )
 
@@ -250,23 +316,12 @@ def table5_recall():
     )
     print("| embedding | method | @1 | @5 | @10 | @50 | med latency |")
     print("|---|---|---|---|---|---|---|")
-    for f in sorted(glob.glob(f"{RESULTS}/idxcmp_*.json")):
-        try:
-            rs = json.loads(open(f).read())
-        except (OSError, json.JSONDecodeError):
-            continue
-        ok = [r for r in rs if "recall" in r and r.get("n_targets")]
-        if not ok:
-            continue
-        name = f.split("idxcmp_")[-1].replace(".json", "")
+    for name, ok in _idxcmp_runs():
         for method in ("flat", "scoped"):
-            cells_k = [
-                f"{100*sum(r['recall'][method][f'files@{k}'] for r in ok)/len(ok):.0f}%"
-                for k in (1, 5, 10, 50)
-            ]
-            lats = [r["latency_ms"][method] for r in ok if "latency_ms" in r]
-            med = sorted(lats)[len(lats) // 2] if lats else 0.0
-            print(f"| {name} | {method} | {' | '.join(cells_k)} | {med:.1f}ms |")
+            cells_k = [_pct(_idxcmp_recall(ok, method, k)) for k in (1, 5, 10, 50)]
+            med = _idxcmp_latency(ok, method)
+            med_s = "n/a" if med is None else f"{med:.1f}ms"
+            print(f"| {name} | {method} | {' | '.join(cells_k)} | {med_s} |")
     print("\n→ graph-scoped is dominated by flat: lower recall AND higher latency.")
 
 

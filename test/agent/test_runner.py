@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -262,6 +263,115 @@ class TestAgentRunner:
         assert len(tool_msgs) == 1
         assert tool_msgs[0]["tool_call_id"] == "call_1"
         assert "echo: hi" in tool_msgs[0]["content"]
+
+    def test_compact_seed_includes_latest_read_for_keep0(self, tmp_path):
+        """Immediate compaction must not hide the read result from the model."""
+        target = tmp_path / "target.py"
+        target.write_text("secret_value = 7\n", encoding="utf-8")
+        tc = _make_tool_call(
+            "call_read",
+            "read",
+            json.dumps({"file_path": str(target)}),
+        )
+        llm = _make_llm()
+        seen_messages = []
+
+        def _call_raw(messages, **kwargs):
+            seen_messages.append([dict(m) for m in messages])
+            if len(seen_messages) == 1:
+                return _make_response(tool_calls=[tc])
+            seed = "\n".join(str(m.get("content") or "") for m in messages)
+            assert "secret_value = 7" in seed
+            assert str(target) in seed
+            return _make_response(content="Done.")
+
+        llm._call_raw.side_effect = _call_raw
+        runner = AgentRunner(
+            llm,
+            SkillRegistry(),
+            compact_after_read=True,
+            compact_keep_reads=0,
+            force_localization_contract=False,
+        )
+
+        result = runner.run("Locate the value")
+
+        assert result.answer == "Done."
+        assert all(m.get("role") != "tool" for m in seen_messages[1])
+
+    def test_compact_keep_reads_keeps_read_output_not_later_grep(self, tmp_path):
+        """Seed-richness should retain successful read results, not any tool."""
+        target = tmp_path / "target.py"
+        target.write_text("read_marker = 1\n", encoding="utf-8")
+        other = tmp_path / "other.py"
+        other.write_text("grep_marker = 1\n", encoding="utf-8")
+        read_tc = _make_tool_call(
+            "call_read",
+            "read",
+            json.dumps({"file_path": str(target)}),
+        )
+        grep_tc = _make_tool_call(
+            "call_grep",
+            "grep",
+            json.dumps({"pattern": "grep_marker", "path": str(tmp_path)}),
+        )
+        llm = _make_llm()
+        seen_messages = []
+
+        def _call_raw(messages, **kwargs):
+            seen_messages.append([dict(m) for m in messages])
+            if len(seen_messages) == 1:
+                return _make_response(tool_calls=[read_tc, grep_tc])
+            seed = "\n".join(str(m.get("content") or "") for m in messages)
+            assert "read_marker = 1" in seed
+            assert "grep_marker = 1" not in seed
+            return _make_response(content="Done.")
+
+        llm._call_raw.side_effect = _call_raw
+        runner = AgentRunner(
+            llm,
+            SkillRegistry(),
+            compact_after_read=True,
+            compact_keep_reads=1,
+            force_localization_contract=False,
+        )
+
+        result = runner.run("Locate the value")
+
+        assert result.answer == "Done."
+
+    def test_failed_read_does_not_trigger_compact(self, tmp_path):
+        """A default-tool Error string is not a successful read anchor."""
+        missing = tmp_path / "missing.py"
+        tc = _make_tool_call(
+            "call_read",
+            "read",
+            json.dumps({"file_path": str(missing)}),
+        )
+        llm = _make_llm()
+        seen_messages = []
+
+        def _call_raw(messages, **kwargs):
+            seen_messages.append([dict(m) for m in messages])
+            if len(seen_messages) == 1:
+                return _make_response(tool_calls=[tc])
+            assert any(m.get("role") == "tool" for m in messages)
+            seed = "\n".join(str(m.get("content") or "") for m in messages)
+            assert "Triage complete" not in seed
+            assert "file not found" in seed
+            return _make_response(content="Done.")
+
+        llm._call_raw.side_effect = _call_raw
+        runner = AgentRunner(
+            llm,
+            SkillRegistry(),
+            compact_after_read=True,
+            force_localization_contract=False,
+        )
+
+        result = runner.run("Locate the value")
+
+        assert result.answer == "Done."
 
     def test_exclude_skills(self, echo_registry):
         """Excluded sweep-variable skills should not appear in tool schemas.
