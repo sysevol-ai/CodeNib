@@ -966,6 +966,23 @@ class SubgraphMgr(ABC):
     # Location matching
     # ═══════════════════════════════════════════════════════════
 
+    def _vertex_line_range(self, vid: int) -> tuple[int, int] | None:
+        """Return a vertex's source line range from indexes or attributes."""
+        g = self.code_graph
+        v = g.graph.vs[vid]
+        sr = g.symbol_ranges.get(v["name"])
+        if sr is not None:
+            return sr
+
+        attrs = v.attributes()
+        start_line = attrs.get("start_line")
+        if start_line is None:
+            return None
+        end_line = attrs.get("end_line", start_line)
+        if end_line is None:
+            end_line = start_line
+        return start_line, end_line
+
     def match_location_to_vertex(self, file_path: str, line: int) -> Optional[str]:
         """Match an LSP location to an existing graph vertex.
 
@@ -981,7 +998,7 @@ class SubgraphMgr(ABC):
         candidates = []
         for vid in vids:
             vname = g.graph.vs[vid]["name"]
-            sr = g.symbol_ranges.get(vname)
+            sr = self._vertex_line_range(vid)
             if sr and sr[0] == line:
                 candidates.append(vname)
         if len(candidates) == 1:
@@ -995,7 +1012,7 @@ class SubgraphMgr(ABC):
         candidates = []
         for vid in vids:
             vname = g.graph.vs[vid]["name"]
-            sr = g.symbol_ranges.get(vname)
+            sr = self._vertex_line_range(vid)
             if sr and sr[0] <= line <= sr[1]:
                 candidates.append((vname, sr[1] - sr[0]))
 
