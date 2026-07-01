@@ -19,10 +19,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING, List, Optional, Sequence
+from typing import TYPE_CHECKING, List
 
 from ..log_utils import get_logger
-from .investigate import Evidence
 from .signals import Hotspot
 
 if TYPE_CHECKING:
@@ -120,12 +119,7 @@ def _read_hotspot_file(hotspot: Hotspot, repo_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _observation_text(
-    hotspot: Hotspot,
-    since: str,
-    file_content: str,
-    initial_evidence: Sequence[Evidence],
-) -> str:
+def _observation_text(hotspot: Hotspot, since: str, file_content: str) -> str:
     lines = [
         f"File: {hotspot.path}",
         f"Churn: {hotspot.commit_count} commits over {since}",
@@ -134,14 +128,7 @@ def _observation_text(
     if file_content:
         lines += [f"Source ({hotspot.path}):", "```", file_content.rstrip(), "```", ""]
     else:
-        lines.append("Symbol index (file could not be read directly):")
-        if initial_evidence:
-            for e in initial_evidence:
-                loc = f"{e.file}:{e.start_line}" if e.start_line is not None else e.file
-                lines.append(f"  {loc} | {e.node_name or '?'} ({e.type or '?'})")
-        else:
-            lines.append("  (no evidence available)")
-        lines.append("")
+        lines += ["(file could not be read)", ""]
     lines.append(
         "Use search_code to find callers or related code in other files, "
         "then write your analysis."
@@ -229,6 +216,12 @@ def _agentic_loop(
     top_k: int,
 ) -> str:
     """Run the tool-use loop until the model produces a final answer."""
+    logger.debug(
+        "agentic_loop: start max_rounds=%d\ninitial_messages:\n%s",
+        max_tool_rounds,
+        json.dumps(messages, indent=2, ensure_ascii=False),
+    )
+
     for round_idx in range(max_tool_rounds + 1):
         use_tools = round_idx < max_tool_rounds
         kwargs: dict = {}
@@ -248,8 +241,28 @@ def _agentic_loop(
         tool_calls = getattr(msg, "tool_calls", None) or []
 
         if not tool_calls:
+            logger.debug(
+                "agentic_loop: round=%d final_answer:\n%s",
+                round_idx,
+                msg.content or "",
+            )
             return (msg.content or "").strip()
 
+        logger.debug(
+            "agentic_loop: round=%d tool_calls:\n%s",
+            round_idx,
+            json.dumps(
+                [
+                    {
+                        "id": tc.id,
+                        "function": tc.function.name,
+                        "args": tc.function.arguments,
+                    }
+                    for tc in tool_calls
+                ],
+                indent=2,
+            ),
+        )
         messages.append(
             {
                 "role": "assistant",
@@ -275,7 +288,7 @@ def _agentic_loop(
             query = args.get("query", "")
             result = _run_search(query, retriever, top_k)
             logger.debug(
-                "llm_investigator: search_code(%r) → %d chars", query, len(result)
+                "agentic_loop: tool_result query=%r:\n%s", query, result
             )
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
@@ -298,7 +311,6 @@ def investigate_with_llm(
     *,
     repo_path: str = "",
     since: str = "90 days ago",
-    initial_evidence: Optional[Sequence[Evidence]] = None,
     llm: "LiteLLMChat",
     max_tool_rounds: int = 3,
     top_k: int = 5,
@@ -306,7 +318,6 @@ def investigate_with_llm(
     """Run the LLM agentic loop to investigate a churn hotspot.
 
     Reads the hotspot file directly and passes its source to the model.
-    Falls back to BM25 symbol names if the file cannot be read.
     """
     file_content = _read_hotspot_file(hotspot, repo_path)
     if file_content:
@@ -314,18 +325,13 @@ def investigate_with_llm(
             "llm_investigator: read %d chars from %s", len(file_content), hotspot.path
         )
     else:
-        logger.warning(
-            "llm_investigator: could not read %s; falling back to symbol list",
-            hotspot.path,
-        )
+        logger.warning("llm_investigator: could not read %s", hotspot.path)
 
     messages: List[dict] = [
         {"role": "system", "content": _CHURN_SYSTEM_PROMPT},
         {
             "role": "user",
-            "content": _observation_text(
-                hotspot, since, file_content, initial_evidence or []
-            ),
+            "content": _observation_text(hotspot, since, file_content),
         },
     ]
     return _agentic_loop(

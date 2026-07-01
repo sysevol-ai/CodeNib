@@ -27,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging as _logging
 import sys
 from pathlib import Path
 
@@ -35,7 +36,6 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-from codeminer.guardian.investigate import investigate_hotspot
 from codeminer.guardian.llm_investigator import investigate_with_llm
 from codeminer.guardian.report import Finding, GuardianReport, render_markdown
 from codeminer.guardian.signals import churn_hotspots
@@ -107,20 +107,49 @@ def parse_args() -> argparse.Namespace:
         default="python",
         help="Primary language to index (comma-separated for multiple)",
     )
+    p.add_argument(
+        "--output-dir",
+        default="guardian_output",
+        help="Parent directory for episode output (default: guardian_output)",
+    )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     import os
+    from datetime import datetime
 
     repo_path = os.path.abspath(args.repo)
     languages = [lang.strip() for lang in args.language.split(",") if lang.strip()]
+
+    # Create a timestamped episode directory and attach a debug log handler.
+    stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    episode_dir = os.path.join(os.path.abspath(args.output_dir), stamp)
+    os.makedirs(episode_dir, exist_ok=True)
+
+    log_path = os.path.join(episode_dir, "guardian.log")
+    _fh = _logging.FileHandler(log_path, encoding="utf-8")
+    _fh.setLevel(_logging.DEBUG)
+    _fh.setFormatter(
+        _logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s")
+    )
+    # get_logger sets propagate=False on each logger, so we must attach to each
+    # guardian logger individually rather than relying on the parent.
+    _guardian_loggers = [
+        obj
+        for name, obj in _logging.Logger.manager.loggerDict.items()
+        if name.startswith("codeminer.guardian")
+        and isinstance(obj, _logging.Logger)
+    ]
+    for _lg in _guardian_loggers:
+        _lg.addHandler(_fh)
 
     print(f"Repository : {repo_path}")
     print(f"Languages  : {', '.join(languages)}")
     print(f"Churn since: {args.since}")
     print(f"Model      : {args.model}")
+    print(f"Episode    : {episode_dir}")
     print()
 
     # ------------------------------------------------------------------
@@ -153,7 +182,7 @@ def main() -> None:
     print()
 
     # ------------------------------------------------------------------
-    # 3. Gather initial BM25 evidence for each hotspot
+    # 3. LLM setup
     # ------------------------------------------------------------------
     vertex_extra = {}
     if args.vertex_project:
@@ -172,11 +201,6 @@ def main() -> None:
     for i, hotspot in enumerate(hotspots, start=1):
         print(f"── Hotspot {i}/{len(hotspots)}: {hotspot.path} ──")
 
-        initial_evidence = investigate_hotspot(
-            hotspot, retriever, top_k=args.retrieval_top_k
-        )
-        print(f"  Initial BM25 evidence: {len(initial_evidence)} location(s)")
-
         # ------------------------------------------------------------------
         # 4. LLM investigation
         # ------------------------------------------------------------------
@@ -186,7 +210,6 @@ def main() -> None:
             retriever,
             repo_path=repo_path,
             since=args.since,
-            initial_evidence=initial_evidence,
             llm=llm,
             max_tool_rounds=args.max_tool_rounds,
             top_k=args.retrieval_top_k,
@@ -199,7 +222,6 @@ def main() -> None:
                 detail=(
                     f"Changed in **{hotspot.commit_count}** commits over {args.since}."
                 ),
-                evidence=initial_evidence,
                 narrative=narrative,
             )
         )
@@ -239,6 +261,20 @@ def main() -> None:
     print("FULL MARKDOWN REPORT")
     print("=" * 60)
     print(md)
+
+    md_path = Path(episode_dir) / "report.md"
+    json_path = Path(episode_dir) / "report.json"
+    import json as _json
+
+    md_path.write_text(md, encoding="utf-8")
+    json_path.write_text(
+        _json.dumps(report.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    for _lg in _guardian_loggers:
+        _lg.removeHandler(_fh)
+    _fh.close()
+    print(f"\nReport: {md_path}")
+    print(f"Log:    {log_path}")
 
 
 if __name__ == "__main__":

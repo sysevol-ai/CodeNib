@@ -16,7 +16,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from codeminer.guardian.cycle import GuardianConfig, run_cycle
-from codeminer.guardian.investigate import Evidence
 from codeminer.guardian.report import render_markdown
 
 
@@ -54,55 +53,31 @@ def _make_repo(tmp_path):
     return repo
 
 
-def test_run_cycle_with_injected_manifest_and_investigator(tmp_path):
+def test_run_cycle_with_injected_manifest(tmp_path):
     repo = _make_repo(tmp_path)
-    captured = []
 
-    def fake_investigator(hotspot):
-        captured.append(hotspot.path)
-        return [Evidence("mod.py", "f", "function", 1, 2, 0.5)]
-
-    config = GuardianConfig(repo_path=str(repo), since="10 years ago", investigate=True)
-    report = run_cycle(config, investigator=fake_investigator, manifest=_FakeManifest())
+    config = GuardianConfig(repo_path=str(repo), since="10 years ago")
+    report = run_cycle(config, manifest=_FakeManifest())
 
     assert report.commit == "deadbeefcafebabe"  # from injected manifest
     assert report.file_count == 7
-    assert captured == ["mod.py"]  # investigator was called per hotspot
     assert len(report.findings) == 1
     assert report.findings[0].kind == "churn"
-    assert report.findings[0].evidence[0].node_name == "f"
+    assert not report.findings[0].evidence  # pre-LLM evidence step is dropped
 
     md = render_markdown(report)
     assert "mod.py" in md and "non-modifying" in md.lower()
-
-
-def test_run_cycle_no_investigate_skips_evidence(tmp_path):
-    repo = _make_repo(tmp_path)
-    config = GuardianConfig(
-        repo_path=str(repo), since="10 years ago", investigate=False
-    )
-    report = run_cycle(config, manifest=_FakeManifest())
-    assert report.findings  # still surfaces churn
-    assert all(not f.evidence for f in report.findings)
 
 
 def test_run_cycle_injected_reporter_narrative_flows_through(tmp_path):
     """Injected reporter's narrative appears in Finding and rendered Markdown."""
     repo = _make_repo(tmp_path)
 
-    def fake_investigator(hotspot):
-        return [Evidence("mod.py", "f", "function", 1, 2, 0.5)]
-
-    def fake_reporter(hotspot, evidence):
+    def fake_reporter(hotspot):
         return f"LLM says {hotspot.path} is risky."
 
     config = GuardianConfig(repo_path=str(repo), since="10 years ago")
-    report = run_cycle(
-        config,
-        investigator=fake_investigator,
-        reporter=fake_reporter,
-        manifest=_FakeManifest(),
-    )
+    report = run_cycle(config, reporter=fake_reporter, manifest=_FakeManifest())
 
     assert report.findings[0].narrative == "LLM says mod.py is risky."
     md = render_markdown(report)
@@ -141,7 +116,6 @@ def test_run_cycle_use_llm_flag_calls_litellm(tmp_path):
     config = GuardianConfig(
         repo_path=str(repo),
         since="10 years ago",
-        investigate=False,
         use_llm=True,
         llm_max_tool_rounds=1,
     )
@@ -179,7 +153,6 @@ def test_run_cycle_test_failure_llm_narrative(tmp_path):
     config = GuardianConfig(
         repo_path=str(repo),
         since="10 years ago",
-        investigate=False,
         run_tests=True,
         use_llm=True,
         llm_max_tool_rounds=0,
@@ -221,7 +194,6 @@ def test_run_cycle_end_to_end_bm25_only(tmp_path):
         repo_path=str(repo),
         since="10 years ago",
         index_types=("bm25",),
-        investigate=False,  # avoid embedding-model download in CI
     )
     report = run_cycle(config)
 

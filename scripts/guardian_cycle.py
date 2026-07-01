@@ -22,7 +22,7 @@ import json
 import logging
 import os
 import sys
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 logging.basicConfig(
@@ -44,8 +44,8 @@ def main() -> None:
     parser.add_argument("repo_dir", help="Absolute or relative path to the repo")
     parser.add_argument(
         "--output-dir",
-        default="guardian_out",
-        help="Directory for the report (default: guardian_out)",
+        default="guardian_output",
+        help="Parent directory for episode output (default: guardian_output)",
     )
     parser.add_argument(
         "--language",
@@ -111,6 +111,10 @@ def main() -> None:
     languages = _normalize_languages(args.language)
     index_types = ("bm25", "vector") if args.with_embeddings else ("bm25",)
 
+    stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    episode_dir = os.path.join(os.path.abspath(args.output_dir), stamp)
+    os.makedirs(episode_dir, exist_ok=True)
+
     config = GuardianConfig(
         repo_path=repo_dir,
         languages=languages,
@@ -123,16 +127,15 @@ def main() -> None:
         use_llm=args.use_llm,
         llm_model=args.llm_model,
         llm_max_tool_rounds=args.llm_max_tool_rounds,
+        episode_dir=episode_dir,
     )
 
     print(f"Running Guardian cycle on {repo_dir} (languages: {', '.join(languages)})")
+    print(f"Episode:  {episode_dir}")
     report = run_cycle(config)
 
-    out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = date.today().isoformat()
-    md_path = out_dir / f"guardian_report_{stamp}.md"
-    json_path = out_dir / f"guardian_report_{stamp}.json"
+    md_path = Path(episode_dir) / "report.md"
+    json_path = Path(episode_dir) / "report.json"
 
     md_path.write_text(render_markdown(report), encoding="utf-8")
     json_path.write_text(
@@ -142,6 +145,7 @@ def main() -> None:
     print(f"\n{len(report.findings)} finding(s).")
     print(f"Report:  {md_path}")
     print(f"JSON:    {json_path}")
+    print(f"Log:     {Path(episode_dir) / 'guardian.log'}")
 
 
 if __name__ == "__main__":

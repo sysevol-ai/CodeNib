@@ -11,25 +11,23 @@ retrieval; this module only glues them into a single non-modifying pass.
 
 from __future__ import annotations
 
+import contextlib
+import logging as _logging
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, Generator, List, Optional, Sequence
 
 from ..log_utils import get_logger
-from .investigate import Evidence, investigate_hotspot
 from .report import Finding, GuardianReport
 from .signals import Hotspot, TestFailure, churn_hotspots, run_test_suite
 
 logger = get_logger(__name__)
 
-# Callable that gathers evidence for one hotspot. Injectable for testing.
-Investigator = Callable[[Hotspot], List[Evidence]]
-
-# Callable that produces an LLM narrative for a hotspot + its evidence.
+# Callable that produces an LLM narrative for a hotspot.
 # Returns an empty string to signal "no narrative" (e.g. LLM disabled/unavailable).
-Reporter = Callable[[Hotspot, List[Evidence]], str]
+Reporter = Callable[[Hotspot], str]
 
 
 @dataclass
@@ -37,19 +35,19 @@ class GuardianConfig:
     """Configuration for a single Guardian cycle."""
 
     repo_path: str
-    languages: Sequence[str] = ("python",)
+    languages: Sequence[str] = field(default_factory=lambda: ("python",))
     index_cache_dir: Optional[str] = None
-    index_types: Sequence[str] = ("bm25",)
+    index_types: Sequence[str] = field(default_factory=lambda: ("bm25",))
     top_n: int = 10
     since: str = "90 days ago"
     run_tests: bool = False
-    investigate: bool = True
     retrieval_top_k: int = 5
     embedding_model: str = "nomic-ai/CodeRankEmbed"
     embedding_dimension: int = 768
     use_llm: bool = False
     llm_model: str = "vertex_ai/gemini-2.5-flash"
     llm_max_tool_rounds: int = 3
+    episode_dir: Optional[str] = None
 
 
 def _current_commit(repo_path: str) -> str:
@@ -64,6 +62,54 @@ def _current_commit(repo_path: str) -> str:
         ).stdout.strip()
     except Exception:  # noqa: BLE001
         return ""
+
+
+def _guardian_loggers() -> List[_logging.Logger]:
+    """Return all live Logger instances under the ``codeminer.guardian`` namespace.
+
+    ``get_logger`` sets ``propagate=False`` on every logger it creates, so we
+    cannot rely on the parent logger to fan-out to a FileHandler.  Instead we
+    enumerate the standard logging manager's dict and attach directly to each
+    guardian logger.
+    """
+    return [
+        obj
+        for name, obj in _logging.Logger.manager.loggerDict.items()
+        if name.startswith("codeminer.guardian")
+        and isinstance(obj, _logging.Logger)
+    ]
+
+
+@contextlib.contextmanager
+def _episode_log_handler(
+    episode_dir: Optional[str],
+) -> Generator[None, None, None]:
+    """Attach a DEBUG FileHandler to every guardian logger for one cycle.
+
+    All ``logger.debug/info/warning`` calls inside ``codeminer.guardian.*``
+    are written to ``{episode_dir}/guardian.log`` for the duration of the
+    ``with`` block.
+    """
+    if not episode_dir:
+        yield
+        return
+
+    os.makedirs(episode_dir, exist_ok=True)
+    log_path = os.path.join(episode_dir, "guardian.log")
+    handler = _logging.FileHandler(log_path, encoding="utf-8")
+    handler.setLevel(_logging.DEBUG)
+    handler.setFormatter(
+        _logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s")
+    )
+    loggers = _guardian_loggers()
+    for lg in loggers:
+        lg.addHandler(handler)
+    try:
+        yield
+    finally:
+        for lg in loggers:
+            lg.removeHandler(handler)
+        handler.close()
 
 
 def _compile_index(config: GuardianConfig):
@@ -152,14 +198,13 @@ def _llm_reporter(config: GuardianConfig, retriever: object, llm: object) -> Rep
     """Return a Reporter that runs the LLM agentic loop for each churn hotspot."""
     from .llm_investigator import investigate_with_llm
 
-    def _report(hotspot: Hotspot, evidence: List[Evidence]) -> str:
+    def _report(hotspot: Hotspot) -> str:
         try:
             return investigate_with_llm(
                 hotspot,
                 retriever,
                 repo_path=config.repo_path,
                 since=config.since,
-                initial_evidence=evidence,
                 llm=llm,  # type: ignore[arg-type]
                 max_tool_rounds=config.llm_max_tool_rounds,
                 top_k=config.retrieval_top_k,
@@ -234,7 +279,6 @@ def _investigate_test_failure(
 def run_cycle(
     config: GuardianConfig,
     *,
-    investigator: Optional[Investigator] = None,
     reporter: Optional[Reporter] = None,
     manifest: object = None,
 ) -> GuardianReport:
@@ -242,9 +286,6 @@ def run_cycle(
 
     Args:
         config: Cycle configuration.
-        investigator: Override the evidence-gathering callable (for tests). When
-            omitted, a HybridRetrievePipeline-backed investigator is built iff
-            ``config.investigate`` is True.
         reporter: Override the LLM narrative callable (for tests). When omitted,
             a LiteLLM-backed reporter is built iff ``config.use_llm`` is True.
         manifest: Pre-built RepoManifest to reuse instead of compiling (tests).
@@ -252,6 +293,16 @@ def run_cycle(
     Returns:
         A :class:`GuardianReport` ready to render.
     """
+    with _episode_log_handler(config.episode_dir):
+        return _run_cycle_inner(config, reporter=reporter, manifest=manifest)
+
+
+def _run_cycle_inner(
+    config: GuardianConfig,
+    *,
+    reporter: Optional[Reporter] = None,
+    manifest: object = None,
+) -> GuardianReport:
     repo_path = config.repo_path
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -275,49 +326,35 @@ def run_cycle(
         logger.info("Guardian: running test suite (gated by --run-tests)")
         test_result = run_test_suite(repo_path)
 
-    # 4. Investigate — build a retriever, then attach evidence to each hotspot.
+    # 4. Build retriever — used by the LLM's search_code tool calls.
     #
     # Retriever selection driven by index_types:
     #   - "vector" present  → HybridRetrievePipeline (BM25 + embeddings; needs GPU)
     #   - BM25 only         → BM25CodeIndexer loaded directly from the manifest (no GPU)
-    #
-    # The retriever is shared with the LLM reporter so the model can issue additional
-    # search_code calls without a separate index load.
     _retriever: object = _NullRetriever()
-    if investigator is None:
-        if config.investigate:
-            use_hybrid = "vector" in config.index_types
-            if use_hybrid:
-                try:
-                    from ..model.hybrid_retrieve_pipeline import HybridRetrievePipeline
+    use_hybrid = "vector" in config.index_types
+    if use_hybrid:
+        try:
+            from ..model.hybrid_retrieve_pipeline import HybridRetrievePipeline
 
-                    _retriever = HybridRetrievePipeline(
-                        repo_path=config.repo_path,
-                        index_cache_dir=config.index_cache_dir,
-                        languages=tuple(config.languages),
-                        embedding_model=config.embedding_model,
-                        embedding_dimension=config.embedding_dimension,
-                    )
-                    logger.info(
-                        "Guardian: using HybridRetrievePipeline (BM25 + vector)"
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "Guardian: HybridRetrievePipeline unavailable (%s); "
-                        "falling back to BM25-only",
-                        exc,
-                    )
-                    _retriever = _load_bm25_from_manifest(manifest) or _NullRetriever()
-            else:
-                logger.info("Guardian: using BM25-only retriever (no GPU required)")
-                _retriever = _load_bm25_from_manifest(manifest) or _NullRetriever()
-
-            investigator = lambda h: investigate_hotspot(  # noqa: E731
-                h, _retriever, top_k=config.retrieval_top_k
+            _retriever = HybridRetrievePipeline(
+                repo_path=config.repo_path,
+                index_cache_dir=config.index_cache_dir,
+                languages=tuple(config.languages),
+                embedding_model=config.embedding_model,
+                embedding_dimension=config.embedding_dimension,
             )
-        else:
-            # investigate=False: skip retrieval entirely (programmatic / test use).
-            investigator = lambda _h: []  # noqa: E731
+            logger.info("Guardian: using HybridRetrievePipeline (BM25 + vector)")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Guardian: HybridRetrievePipeline unavailable (%s); "
+                "falling back to BM25-only",
+                exc,
+            )
+            _retriever = _load_bm25_from_manifest(manifest) or _NullRetriever()
+    else:
+        logger.info("Guardian: using BM25-only retriever (no GPU required)")
+        _retriever = _load_bm25_from_manifest(manifest) or _NullRetriever()
 
     # 5. Report — optionally run the LLM investigation step.
     #    A single LLM instance is shared across all signal types so we don't
@@ -331,8 +368,7 @@ def run_cycle(
 
     findings: List[Finding] = []
     for hotspot in hotspots:
-        evidence = investigator(hotspot)
-        narrative = reporter(hotspot, evidence) if reporter is not None else ""
+        narrative = reporter(hotspot) if reporter is not None else ""
         findings.append(
             Finding(
                 kind="churn",
@@ -341,7 +377,7 @@ def run_cycle(
                     f"Changed in **{hotspot.commit_count}** commits over "
                     f"{config.since}."
                 ),
-                evidence=evidence,
+                evidence=[],
                 narrative=narrative,
             )
         )

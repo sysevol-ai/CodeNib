@@ -10,7 +10,7 @@ yet (RFC Phases 2-5). See ``Repository_Guardian/repository_guardian_issue.md``.
 """
 
 from .cycle import GuardianConfig, Reporter, run_cycle
-from .investigate import Evidence, investigate_hotspot
+from .investigate import Evidence
 from .llm_investigator import (
     build_test_failure_context,
     investigate_signal,
@@ -25,7 +25,6 @@ __all__ = [
     "Reporter",
     "run_cycle",
     "Evidence",
-    "investigate_hotspot",
     "investigate_with_llm",
     "investigate_signal",
     "build_test_failure_context",

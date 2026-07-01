@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.guardian.investigate import Evidence
 from codeminer.guardian.llm_investigator import (
     build_test_failure_context,
     investigate_signal,
@@ -77,7 +76,6 @@ def test_investigate_with_llm_no_tool_calls():
     llm = LiteLLMChat(model="claude-opus-4-8")
     retriever = _FakeRetriever()
     hotspot = Hotspot(path="codeminer/agent/runner.py", commit_count=42)
-    evidence = [Evidence("runner.py", "run", "function", 1, 50, 0.95)]
 
     final_response = _make_response(
         "This file is risky because it is the central dispatch hub."
@@ -90,7 +88,6 @@ def test_investigate_with_llm_no_tool_calls():
             hotspot,
             retriever,
             since="90 days ago",
-            initial_evidence=evidence,
             llm=llm,
             max_tool_rounds=3,
         )
@@ -120,7 +117,6 @@ def test_investigate_with_llm_one_tool_round():
             hotspot,
             retriever,
             since="30 days ago",
-            initial_evidence=[],
             llm=llm,
             max_tool_rounds=3,
         )
@@ -155,7 +151,6 @@ def test_investigate_with_llm_exhausts_rounds():
             hotspot,
             retriever,
             since="60 days ago",
-            initial_evidence=[],
             llm=llm,
             max_tool_rounds=1,
         )
@@ -184,7 +179,6 @@ def test_investigate_with_llm_retriever_error_does_not_crash():
             hotspot,
             _Boom(),
             since="7 days ago",
-            initial_evidence=[],
             llm=llm,
             max_tool_rounds=3,
         )
@@ -206,7 +200,6 @@ def test_investigate_with_llm_llm_error_returns_message():
             hotspot,
             retriever,
             since="7 days ago",
-            initial_evidence=[],
             llm=llm,
         )
 

@@ -127,8 +127,6 @@ def render_markdown(report: GuardianReport) -> str:
                     _evidence_rows(finding.evidence),
                 )
             )
-        else:
-            L.append("_No retrieval evidence attached._")
-        L.append("")
+            L.append("")
 
     return "\n".join(L).rstrip() + "\n"
