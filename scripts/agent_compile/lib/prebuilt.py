@@ -18,7 +18,8 @@ layout::
 layout (``bm25/``, ``vector/``, ``symbol_graph/``). This module bridges the
 two by staging a per-instance cache directory:
 
-* ``symbol_graph/graph.pkl`` — symlink to the prebuilt ``graph.pkl``
+* ``symbol_graph/graph.pkl`` — current-schema graph file staged from the
+  prebuilt ``graph.pkl`` (legacy prebuilt bundles are normalized here)
 * ``vector`` — symlink to the instance dir (``CodeVectorStore.load`` reads
   its top-level ``config_<model>.json`` plus ``l0/`` and ``l2/``)
 * ``bm25/`` — built fresh from the prebuilt graph (pure-Python, no model,
@@ -33,7 +34,8 @@ requires the vector index.
 from __future__ import annotations
 
 import os
-from typing import Optional
+import pickle
+from typing import Any, Optional
 
 
 def model_suffix(embedding_model: str) -> str:
@@ -72,6 +74,85 @@ def _symlink(target: str, link: str) -> None:
     os.symlink(target, link)
 
 
+def load_prebuilt_code_graph(prebuilt_root: str, instance_id: str):
+    """Load ``<prebuilt_root>/<instance_id>/graph.pkl`` as a ``CodeGraph``.
+
+    The prebuilt corpus is older than the current on-disk graph cache schema for
+    many instances: those pickles contain the historical flat bundle
+    ``{"graph", "name_to_vertex", "symbol_ranges", "project_root"}`` with no
+    ``schema_version``. Keep ``CodeGraph.load_graph`` strict for ordinary
+    caches, but accept that legacy bundle here because this module's contract is
+    explicitly to consume the external prebuilt tree.
+    """
+    from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
+
+    path = os.path.join(instance_dir(prebuilt_root, instance_id), "graph.pkl")
+    try:
+        return CodeGraph.load_graph(path)
+    except (AttributeError, ValueError):
+        pass
+
+    with open(path, "rb") as f:
+        data = pickle.load(f)
+
+    if isinstance(data, CodeGraph):
+        graph = data
+    elif isinstance(data, dict) and data.get("graph") is not None:
+        schema_version = data.get("schema_version")
+        if schema_version not in (None, _SCHEMA_VERSION):
+            raise ValueError(
+                f"prebuilt graph.pkl at {path} has unsupported "
+                f"schema_version={schema_version!r}"
+            )
+        graph = CodeGraph(project_root=data.get("project_root"))
+        graph.graph = data["graph"]
+        graph.symbol_ranges = data.get("symbol_ranges", {})
+        graph.name_to_vertex = data.get("name_to_vertex") or _name_to_vertex(
+            graph.graph
+        )
+        graph._file_nodes = data.get("file_nodes", {})
+        graph._file_edge_anchors = data.get("file_edge_anchors", {})
+        graph._unified_to_names = data.get("unified_to_names", {})
+    else:
+        raise ValueError(f"prebuilt graph.pkl at {path} is not a CodeGraph bundle")
+
+    if not graph.name_to_vertex:
+        graph.name_to_vertex = _name_to_vertex(graph.graph)
+    if not graph._file_nodes or not graph._unified_to_names:
+        graph.build_range_indexes()
+    return graph
+
+
+def _name_to_vertex(igraph_obj: Any) -> dict:
+    out = {}
+    for v in igraph_obj.vs:
+        name = v.attributes().get("name")
+        if name:
+            out[name] = v.index
+    return out
+
+
+def _stage_symbol_graph(src: str, dst: str, code_graph: Optional[object]) -> object:
+    """Ensure ``dst`` is loadable by the current strict ``CodeGraph`` loader."""
+    from codeminer.graph.code_graph import CodeGraph
+
+    if os.path.exists(dst) or os.path.islink(dst):
+        try:
+            return CodeGraph.load_graph(dst)
+        except Exception:
+            os.unlink(dst)
+
+    graph = code_graph
+    if graph is None:
+        instance_id = os.path.basename(os.path.dirname(src))
+        prebuilt_root = os.path.dirname(os.path.dirname(src))
+        graph = load_prebuilt_code_graph(prebuilt_root, instance_id)
+
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    graph.save_graph(dst)
+    return graph
+
+
 def stage_prebuilt_indexes(
     prebuilt_root: str,
     instance_id: str,
@@ -91,11 +172,14 @@ def stage_prebuilt_indexes(
 
     os.makedirs(cache_dir, exist_ok=True)
 
-    # symbol_graph/graph.pkl -> prebuilt graph.pkl
-    _symlink(
-        os.path.join(inst, "graph.pkl"),
-        os.path.join(cache_dir, "symbol_graph", "graph.pkl"),
-    )
+    graph_src = os.path.join(inst, "graph.pkl")
+    graph_dst = os.path.join(cache_dir, "symbol_graph", "graph.pkl")
+    graph = None
+    if build_bm25:
+        graph = _stage_symbol_graph(graph_src, graph_dst, code_graph)
+    else:
+        # Lightweight staging for tests / callers that only need the path shape.
+        _symlink(graph_src, graph_dst)
 
     # vector -> the instance dir itself (CodeVectorStore.load scans l0/l2)
     _symlink(inst, os.path.join(cache_dir, "vector"))
@@ -103,10 +187,11 @@ def stage_prebuilt_indexes(
     # bm25/ — build fresh from the prebuilt graph (no embedding model needed)
     bm25_dir = os.path.join(cache_dir, "bm25")
     if build_bm25 and not (os.path.isdir(bm25_dir) and os.listdir(bm25_dir)):
-        from codeminer.graph.code_graph import CodeGraph
         from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
 
-        graph = code_graph or CodeGraph.load_graph(os.path.join(inst, "graph.pkl"))
+        graph = (
+            graph or code_graph or load_prebuilt_code_graph(prebuilt_root, instance_id)
+        )
         os.makedirs(bm25_dir, exist_ok=True)
         BM25CodeIndexer(code_graph=graph).save_index(bm25_dir)
 

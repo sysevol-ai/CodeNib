@@ -17,6 +17,7 @@ on:
   pull_request:
     branches:
       - "*"
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -33,6 +34,14 @@ on:
         required: false
         default: false
         type: boolean
+      test_tier:
+        description: "Test tier to run"
+        required: false
+        default: "full"
+        type: choice
+        options:
+          - light
+          - full
 
 permissions:
   contents: read
@@ -62,6 +71,7 @@ jobs:
     outputs:
       should-run: ${{ steps.check.outputs.should-run }}
       run-serial: ${{ steps.serial.outputs.run-serial }}
+      serial-reason: ${{ steps.serial.outputs.serial-reason }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -90,42 +100,71 @@ jobs:
             echo "should-run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Detect whether any changed file lies OUTSIDE the "light" set (docs,
-      # scripts, examples). Expressed as a catch-all '**' plus '!light'
-      # negations under predicate-quantifier 'every': a file matches `heavy`
-      # only if it matches '**' AND none of the negations exclude it — i.e. it
-      # is outside the light set. Output `heavy` is true iff >=1 heavy file.
-      - name: Detect heavy (serial-chain) source changes
+      # Detect changes that can affect the expensive serial-chain jobs:
+      # repo mutation, SCIP/LSP indexing, graph patching, dataset location, or
+      # C++ decoder parity. Agent/runtime/model/retrieval changes use the
+      # faster unit + integration tier unless a maintainer requests full CI.
+      - name: Detect serial-chain source changes
         id: filter
         uses: dorny/paths-filter@v3
         with:
           base: ${{ github.event_name == 'push' && github.ref || '' }}
-          predicate-quantifier: "every"
           filters: |
-            heavy:
-              - "**"
-              - "!scripts/**"
-              - "!examples/**"
-              - "!docs/**"
-              - "!**/*.md"
-              - "!LICENSE"
-              - "!.gitignore"
+            serial:
+              - ".github/actions/setup-env/**"
+              - "pyproject.toml"
+              - "third_party/**"
+              - "core/**"
+              - "codeminer/code_chunking/**"
+              - "codeminer/dataset/**"
+              - "codeminer/graph/**"
+              - "codeminer/index/**"
+              - "codeminer/ls_index/**"
+              - "codeminer/ls_router.py"
+              - "codeminer/types.py"
+              - "scripts/check_graph_route_alignment.py"
+              - "scripts/smoke_lsp_graph.py"
+              - "scripts/smoke_scip_cold_start.py"
+              - "scripts/swebench_graph_index.py"
+              - "test/chunker/**"
+              - "test/dataset/**"
+              - "test/graph/**"
+              - "test/index/**"
+              - "test/ls_index/**"
+              - "test/scip/**"
 
       - name: Compute run-serial
         id: serial
         run: |
-          # Fail closed: run the serial chain unless we are sure it isn't needed.
-          RUN_SERIAL=true
+          RUN_SERIAL=false
+          REASON="not requested and no serial-chain paths changed"
           case "${{ github.event_name }}" in
-            schedule|workflow_dispatch)
-              RUN_SERIAL=true ;;          # forced full run
-            push|pull_request)
-              # Only skip when the filter ran cleanly and found no heavy files.
-              if [[ "${{ steps.filter.outputs.heavy }}" == "false" ]]; then
-                RUN_SERIAL=false
+            schedule)
+              RUN_SERIAL=true
+              REASON="scheduled full run" ;;
+            workflow_dispatch)
+              if [[ "${{ github.event.inputs.test_tier }}" == "full" ]]; then
+                RUN_SERIAL=true
+                REASON="manual full tier"
+              else
+                REASON="manual light tier"
+              fi ;;
+            push)
+              RUN_SERIAL=true
+              REASON="main/master push" ;;
+            pull_request)
+              if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]] || \
+                 [[ "${{ contains(github.event.pull_request.labels.*.name, 'serial-ci') }}" == "true" ]]; then
+                RUN_SERIAL=true
+                REASON="PR label requested serial/full CI"
+              elif [[ "${{ steps.filter.outputs.serial }}" == "true" ]]; then
+                RUN_SERIAL=true
+                REASON="serial-chain path changed"
               fi ;;
           esac
           echo "run-serial=$RUN_SERIAL" >> "$GITHUB_OUTPUT"
+          echo "serial-reason=$REASON" >> "$GITHUB_OUTPUT"
+          echo "run-serial=$RUN_SERIAL ($REASON)"
 
   # =============================================================
   # Job 1 — Unit tests  (pure logic, mocks only, ~1 min)
@@ -163,7 +202,7 @@ jobs:
 
       - name: Run unit tests
         shell: bash -l {0}
-        run: pytest -n auto -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short
+        run: pytest -n auto -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short --timeout=180 --durations=20
 
   # =============================================================
   # Job 2 — Integration tests  (read-only, parallel-safe, ~2 min)
@@ -194,7 +233,7 @@ jobs:
 
       - name: Run integration tests (parallel)
         shell: bash -l {0}
-        run: pytest -n auto -m "integration" --tb=short
+        run: pytest -n 4 -m "integration" --tb=short --timeout=600 --durations=20
 
   # =============================================================
   # Job 3 — Integration serial  (mutates repos, ~25 min)
@@ -236,6 +275,16 @@ jobs:
             touch "$MARKER"
           fi
 
+      - name: Inspect codeminer cache
+        run: |
+          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          echo "[cache] dir=$CACHE_DIR"
+          du -sh "$CACHE_DIR" 2>/dev/null || true
+          echo "[cache] graph.pkl count=$(find "$CACHE_DIR" -name graph.pkl 2>/dev/null | wc -l)"
+          echo "[cache] index.scip count=$(find "$CACHE_DIR" -name index.scip 2>/dev/null | wc -l)"
+          echo "[cache] index.decoded count=$(find "$CACHE_DIR" -name index.decoded 2>/dev/null | wc -l)"
+          find "$CACHE_DIR" -maxdepth 2 -mindepth 1 -type d 2>/dev/null | head -40 || true
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -256,7 +305,7 @@ jobs:
         # (e.g. scip-python indexing of sympy, observed hanging ~27 min) fast
         # instead of letting it run out the 45-min job cap and hog the single
         # self-hosted runner. Default (signal) method fails just the hung test.
-        run: pytest -m "integration_serial" -v --tb=short --timeout=900
+        run: pytest -m "integration_serial" -x -v --tb=short --timeout=900 --durations=20
 
   # =============================================================
   # Job 3b — SCIP core  (builds core/ pybind + parity-checks the C++

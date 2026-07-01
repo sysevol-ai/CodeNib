@@ -41,8 +41,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import numpy as np
-
 from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
 from codeminer.eval.retrieval_eval import (
     aggregate_metrics,
@@ -54,6 +52,7 @@ from codeminer.eval.retrieval_eval import (
 from codeminer.index.embedding import CodeVectorStore
 from codeminer.log_utils import get_logger
 from codeminer.model.embedding_retrieve_pipeline import EmbeddingRetrievePipeline
+from codeminer.ops.rerank import rerank_by_embedding
 from codeminer.profiler import Profiler
 from codeminer.types import QueriedNode
 
@@ -316,31 +315,7 @@ def _rerank_with_large(
 
     Mirrors ``RetrieveRerankPipeline._rerank_embedding``.
     """
-    candidates_with_content = [c for c in candidates if c.content]
-    if not candidates_with_content:
-        return []
-
-    q_vec = np.array(large_store.embedding.embed_query(query), dtype=np.float32)
-    d_vecs = np.array(
-        large_store.embedding.embed_documents(
-            [c.content for c in candidates_with_content]
-        ),
-        dtype=np.float32,
-    )
-    metric = large_store.index_metric
-    if metric == "ip":
-        scores = np.dot(d_vecs, q_vec).tolist()
-    elif metric == "l2":
-        scores = (-np.linalg.norm(d_vecs - q_vec, axis=1)).tolist()
-    else:
-        raise ValueError(f"Unsupported index metric: {metric!r}")
-
-    ranked = sorted(
-        zip(scores, candidates_with_content, strict=True),
-        key=lambda pair: pair[0],
-        reverse=True,
-    )
-    return [c.model_copy(update={"score": float(score)}) for score, c in ranked[:top_k]]
+    return rerank_by_embedding(query, candidates, large_store, top_k=top_k)
 
 
 def _rerank_with_cross_encoder(

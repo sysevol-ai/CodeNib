@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import pickle
 from pathlib import Path
 
 _SPEC = importlib.util.spec_from_file_location(
@@ -41,6 +42,33 @@ def _make_prebuilt(root: Path, iid: str, model: str, *, full=True):
     if full:
         (l2 / f"documents_{suffix}.pkl").write_text("x")
     return d
+
+
+def _write_legacy_graph(path: Path):
+    from codeminer.graph.code_graph import CodeGraph
+
+    graph = CodeGraph(project_root="repo")
+    graph.add_file_node("pkg/mod.py")
+    graph.add_symbol_node(
+        "pkg.mod.foo",
+        line=0,
+        scope_start_line=0,
+        scope_end_line=2,
+        symbol_type="function",
+    )
+    graph.graph.vs[graph.name_to_vertex["pkg.mod.foo"]][
+        "unified_name"
+    ] = "pkg/mod.py:foo()"
+    with path.open("wb") as f:
+        pickle.dump(
+            {
+                "project_root": graph.project_root,
+                "graph": graph.graph,
+                "symbol_ranges": graph.symbol_ranges,
+                "name_to_vertex": graph.name_to_vertex,
+            },
+            f,
+        )
 
 
 def test_has_full_indexes_true_false(tmp_path):
@@ -97,3 +125,50 @@ def test_stage_missing_instance_raises(tmp_path):
         prebuilt.stage_prebuilt_indexes(
             str(tmp_path), "nope", str(tmp_path / "c"), build_bm25=False
         )
+
+
+def test_load_prebuilt_code_graph_accepts_legacy_bundle(tmp_path):
+    model = "Qwen/Qwen3-Embedding-0.6B"
+    src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
+    _write_legacy_graph(src / "graph.pkl")
+
+    graph = prebuilt.load_prebuilt_code_graph(str(tmp_path / "prebuilt"), "inst")
+
+    assert graph.graph.vcount() == 2
+    assert graph.name_to_vertex["pkg.mod.foo"] == 1
+    assert graph._file_nodes["pkg/mod.py"]
+    assert graph._unified_to_names["pkg/mod.py:foo()"] == ["pkg.mod.foo"]
+
+
+def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):
+    from codeminer.graph.code_graph import CodeGraph
+
+    model = "Qwen/Qwen3-Embedding-0.6B"
+    src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
+    graph = CodeGraph(project_root="repo")
+    graph.add_file_node("pkg/direct.py")
+    with (src / "graph.pkl").open("wb") as f:
+        pickle.dump(graph, f)
+
+    loaded = prebuilt.load_prebuilt_code_graph(str(tmp_path / "prebuilt"), "inst")
+
+    assert loaded.graph.vcount() == 1
+    assert loaded.name_to_vertex["pkg/direct.py"] == 0
+
+
+def test_stage_normalizes_legacy_graph_for_strict_loader(tmp_path):
+    from codeminer.graph.code_graph import CodeGraph
+
+    model = "Qwen/Qwen3-Embedding-0.6B"
+    src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
+    _write_legacy_graph(src / "graph.pkl")
+    cache = tmp_path / "cache" / "inst"
+
+    prebuilt.stage_prebuilt_indexes(str(tmp_path / "prebuilt"), "inst", str(cache))
+
+    staged = cache / "symbol_graph" / "graph.pkl"
+    assert staged.exists()
+    assert not staged.is_symlink()
+    loaded = CodeGraph.load_graph(staged)
+    assert loaded.graph.vcount() == 2
+    assert (cache / "bm25").is_dir()

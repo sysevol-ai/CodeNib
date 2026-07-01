@@ -161,6 +161,8 @@ class AgentRunner:
         force_localization_contract: bool = True,
         first_turn_tool_choice: Optional[str] = None,
         force_first_turn_only: bool = False,
+        compact_after_read: bool = False,
+        compact_keep_reads: int = 0,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -225,6 +227,19 @@ class AgentRunner:
         # When True, only turn 0 is forced (legacy single-turn behaviour);
         # default False = force until the agent reads a file.
         self._force_first_turn_only = force_first_turn_only
+        # eager_compact: after the first successful read anchors the agent, stub
+        # the bulky tool outputs already in history (full file/grep text) down to
+        # short references so later turns stop re-carrying them — the dominant
+        # prompt-token cost (prompt is ~97% of spend and grows every turn).
+        # Loss-safe for localization (answers need path/symbol/line, not source).
+        self._compact_after_read = compact_after_read
+        # Seed richness for eager_compact: how many successful read outputs to
+        # keep VERBATIM in the collapse seed. 0 still carries the latest read
+        # transcript so the model can see the file it just requested; higher
+        # values inline additional recent reads so weaker models don't re-read
+        # after the collapse (the "re-read tax" observed on 4B). Set by a
+        # model-strength router upstream.
+        self._compact_keep_reads = compact_keep_reads
 
         # Resource guard: filter unavailable skills and collect warnings.
         # The "base" allow / exclude are stored so we can recompute the
@@ -399,6 +414,8 @@ class AgentRunner:
         start = time.monotonic()
         has_read = False  # has the agent read a file yet (gates forced tools)
         read_paths: List[str] = []  # files the agent read (for schema salvage)
+        read_outputs: List[Dict[str, str]] = []  # successful read transcripts
+        compacted = False  # eager_compact: collapsed to direction seed yet?
 
         for turn in range(max_turns):
             logger.debug("agent turn %d/%d", turn + 1, max_turns)
@@ -489,24 +506,50 @@ class AgentRunner:
             for tc in tool_calls:
                 record = self._execute_tool_call(tc)
                 all_tool_calls.append(record)
+                tool_content = _serialize_result(
+                    record.result if record.error is None else record.error
+                )
                 # A successful read satisfies the "read before answering"
                 # contract; once it happens, stop forcing tool calls.
-                if record.skill_id == "read" and record.error is None:
+                if (
+                    record.skill_id == "read"
+                    and record.error is None
+                    and not tool_content.lstrip().startswith("Error")
+                ):
                     has_read = True
                     _rp = (record.arguments or {}).get("file_path")
                     if _rp:
                         read_paths.append(str(_rp))
+                    read_outputs.append(
+                        {"path": str(_rp or "(unknown)"), "content": tool_content}
+                    )
 
                 # Append tool response message
                 history.add_message(
                     {
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": _serialize_result(
-                            record.result if record.error is None else record.error
-                        ),
+                        "content": tool_content,
                     }
                 )
+
+            # eager_compact: once the eager phase has read a candidate and judged
+            # the direction, COLLAPSE the bulky preload dump + the whole
+            # exploration trace to a small distilled seed
+            # ([system, clean_query + judged direction]) and let the
+            # "correct-path" continuation finish from there. We do NOT carry the
+            # preload candidate snippets or the exploration history into every
+            # later turn (re-sending them is the dominant prompt-token cost).
+            # Once only — this is the explore→commit boundary, not a rolling trim.
+            if self._compact_after_read and has_read and not compacted:
+                compacted = True
+                if self._compact_history(
+                    history,
+                    read_paths,
+                    self._compact_keep_reads,
+                    read_outputs=read_outputs,
+                ):
+                    logger.debug("eager_compact: collapsed to distilled direction seed")
 
         # Max turns exhausted. Prefer the last textual assistant message.
         last_content = ""
@@ -540,6 +583,82 @@ class AgentRunner:
             usage=usage_tracker.totals(),
             usage_records=list(usage_tracker.records),
         )
+
+    def _compact_history(
+        self,
+        history: Any,
+        read_paths: Optional[List[str]] = None,
+        keep_reads: int = 0,
+        read_outputs: Optional[List[Dict[str, str]]] = None,
+    ) -> int:
+        """Collapse eager-phase exploration to a distilled direction seed.
+
+        The eager phase looks at the preload candidates and reads 1-2 to JUDGE
+        the correct direction. Once anchored we reset the context to
+        ``[system, clean_query + judged direction]`` — we do NOT carry the bulky
+        preload candidate snippets or the whole exploration trace into the rest
+        of the run (re-sending them every turn is the dominant prompt cost, ~97%
+        of spend). The continuation works the "correct path" from a small seed.
+
+        ``keep_reads`` is the seed-richness dial set by a model-strength router.
+        The latest successful read is always inlined because this collapse runs
+        immediately after the read result enters history; without that transcript
+        the next model turn would never see the file it just asked to inspect.
+        N>0 inlines up to the last N successful read outputs (not grep/glob/bash
+        output) so a WEAK model does not re-read them after the collapse (the
+        "re-read tax" seen on 4B). It trades some token saving for fewer re-read
+        turns.
+
+        Loss-safe for localization: the seed names the files judged relevant plus
+        the agent's own assessment; answers need path/symbol/line, not source.
+        Returns 1 if it collapsed, else 0.
+        """
+        msgs = history.get_messages()
+        system = next((m for m in msgs if m.get("role") == "system"), None)
+        # Recover the clean task query: the first user message minus the appended
+        # preload preamble (which begins at the "# Candidate locations" marker).
+        first_user = next((m for m in msgs if m.get("role") == "user"), None)
+        clean_q = (first_user or {}).get("content", "") or ""
+        cut = clean_q.find("# Candidate locations")
+        if cut > 0:
+            clean_q = clean_q[:cut].rstrip()
+        # The judged direction: the agent's latest reasoning + the files it read.
+        last_assistant = ""
+        for m in reversed(msgs):
+            if m.get("role") == "assistant" and m.get("content"):
+                last_assistant = m["content"]
+                break
+        reads = ", ".join(dict.fromkeys(read_paths or [])) or "(none)"
+        # Seed-richness: inline recent successful read outputs, never incidental
+        # tool output from grep/glob/bash that happened to run later in the turn.
+        kept = ""
+        if read_outputs:
+            n_keep = max(1, int(keep_reads or 0))
+            kept_reads = [r for r in read_outputs[-n_keep:] if r.get("content")]
+            if kept_reads:
+                kept = (
+                    "\n# Content you already read (do NOT re-read these):\n"
+                    + "\n---\n".join(
+                        f"# read {r.get('path') or '(unknown)'}\n{r['content']}"
+                        for r in kept_reads
+                    )
+                    + "\n"
+                )
+        seed = (
+            f"{clean_q}\n\n"
+            "# Triage complete — focus, do not re-explore from scratch\n"
+            f"Files you already read and judged relevant: {reads}\n"
+            f"{kept}"
+            f"Your assessment so far:\n{last_assistant[:600]}\n\n"
+            "Now give the final Files:/Symbols:/Locations: answer. Only read again "
+            "if a needed location is genuinely missing above; do not reopen the "
+            "other candidates."
+        )
+        history.clear()
+        if system:
+            history.add_message(system)
+        history.add_message({"role": "user", "content": seed})
+        return 1
 
     # ------------------------------------------------------------------
     # Internals

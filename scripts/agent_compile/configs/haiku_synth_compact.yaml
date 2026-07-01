@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+# Backfill the WINNING harness onto Haiku synth: eager_compact (the existing
+# synth sweep has grep/embed/eager/eager_gated but NOT eager_compact). Join with
+# the existing grep/eager cells (haiku_compare_py + _multilang) by instance_id
+# for a paired compact-vs-eager-vs-grep read on synth. Haiku is strong -> keep0.
+# Run via run_synthesis_sweep.py --synthesis-configs Python,Go,Rust,TypeScript_JavaScript
+base: design_space.yaml
+sweep_id: haiku_synth_compact
+reps: 1
+max_turns: 16
+instances: []
+subsets:
+  preinj_eager_compact: [read, grep, glob, bash]
+preload:
+  preinj_eager_compact:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0

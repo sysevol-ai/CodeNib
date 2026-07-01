@@ -149,6 +149,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--nprobe", type=int, default=8)
     ap.add_argument("--seeds", type=int, default=5)
     ap.add_argument("--prebuilt-dir", default="/mnt/data/codeminer")
+    ap.add_argument("--embedding-model", default="Qwen/Qwen3-Embedding-0.6B")
+    ap.add_argument("--embedding-dim", type=int, default=1024)
     args = ap.parse_args(argv)
 
     instances = json.loads(args.instances_json.read_text())
@@ -157,8 +159,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         sweep_id="idxcmp",
         subsets={"CTX": ["codeminer_context"]},
         instances=instances,
-        embedding_model="Qwen/Qwen3-Embedding-0.6B",
-        embedding_dimension=1024,
+        embedding_model=args.embedding_model,
+        embedding_dimension=args.embedding_dim,
     )
 
     results: List[Dict[str, Any]] = []

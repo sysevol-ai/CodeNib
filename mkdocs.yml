@@ -83,3 +83,4 @@ nav:
       - Core C++ Backend: core_cpp.md
   - Experiments:
       - Agent Compile Sweep: experiments/agent_compile.md
+      - Compact Pre-load: experiments/compact_preload.md

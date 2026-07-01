@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+# Seed-richness dial on the WEAK model (4B): eager_compact with
+# compact_keep_reads 0/1/2. k0 had a re-read tax (turns up, tokens up vs eager);
+# does keeping 1-2 read contents in the collapse seed kill it while staying
+# cheaper than grep? grep_only is the accuracy anchor. --model openai/qwen3.5-4b.
+base: design_space.yaml
+sweep_id: qwen_4b_keepreads
+vertex_location: null
+vertex_project: null
+reps: 1
+max_turns: 16
+first_turn_tool_choice: null
+instances: []
+subsets:
+  grep_only: [read, grep, glob, bash]
+  preinj_eager_compact_k0: [read, grep, glob, bash]
+  preinj_eager_compact_k1: [read, grep, glob, bash]
+  preinj_eager_compact_k2: [read, grep, glob, bash]
+preload:
+  preinj_eager_compact_k0:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0
+  preinj_eager_compact_k1:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 1
+  preinj_eager_compact_k2:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 2
