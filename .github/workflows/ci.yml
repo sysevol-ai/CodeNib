@@ -111,14 +111,12 @@ jobs:
           base: ${{ github.event_name == 'push' && github.ref || '' }}
           filters: |
             serial:
-              - ".github/workflows/ci.yml"
               - ".github/actions/setup-env/**"
               - "pyproject.toml"
               - "third_party/**"
               - "core/**"
               - "codeminer/code_chunking/**"
               - "codeminer/dataset/**"
-              - "codeminer/eval/**"
               - "codeminer/graph/**"
               - "codeminer/index/**"
               - "codeminer/ls_index/**"
@@ -128,7 +126,6 @@ jobs:
               - "scripts/smoke_lsp_graph.py"
               - "scripts/smoke_scip_cold_start.py"
               - "scripts/swebench_graph_index.py"
-              - "scripts/agent_compile/lib/prebuilt.py"
               - "test/chunker/**"
               - "test/dataset/**"
               - "test/graph/**"
