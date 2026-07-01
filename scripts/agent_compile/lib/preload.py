@@ -155,7 +155,7 @@ def assemble_preload(
     if not ordered:
         return "", []
 
-    if (recipe or {}).get("mode") in ("eager", "eager_gated"):
+    if (recipe or {}).get("mode") in ("eager", "eager_gated", "eager_compact"):
         # Token-saving preamble: trust the ranked hits, confirm cheaply, STOP.
         # The default preamble below tells the agent candidates are "often wrong /
         # verify with grep" — good for accuracy but it keeps exploring (turns

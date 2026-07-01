@@ -242,8 +242,8 @@ def run_cell(
     preload_candidates: List[Dict[str, Any]] = []
     effective_query = query
     scatter_mode = False
+    mode = (preload_spec or {}).get("mode")
     if preload_spec:
-        mode = preload_spec.get("mode")
         # Adaptive gate: a VAGUE query (no concrete handle) gets NO candidates —
         # fall back to blank-slate grep, which beats pre-load on behavioral.
         # A SPECIFIC query gets the eager pre-load (cheap, accurate). One short
@@ -291,6 +291,21 @@ def run_cell(
     sctx = SessionContext(
         repo_path=repo_path, repo_size=1000, primary_language=language_key
     )
+    # Seed-richness router for eager_compact: weak models re-read from a terse
+    # collapse seed (the 4B "re-read tax"), so inline more read content for them;
+    # strong models answer from path+assessment alone. Recipe key
+    # ``compact_keep_reads`` overrides the model-size heuristic.
+    _keep_reads = (preload_spec or {}).get("compact_keep_reads")
+    if _keep_reads is None:
+        import re as _re
+
+        # Dial measured on 4B (n=99): keep0 terse seed HURTS weak models
+        # (files@5 0.667 < grep 0.737); keep1 recovers to grep level (0.741) at
+        # -18% cost; keep2 over-stuffs (worse than keep1). Mid/strong (>=9B,
+        # Haiku) are fine with keep0 (already >= grep). So: weak -> 1, else 0.
+        _mt = _re.search(r"(\d+(?:\.\d+)?)\s*b\b", (cfg.model or "").lower())
+        _sz = float(_mt.group(1)) if _mt else 999.0
+        _keep_reads = 1 if _sz <= 7 else 0
     runner = AgentRunner(
         llm=llm,
         registry=SkillRegistry(),
@@ -303,6 +318,8 @@ def run_cell(
         ),
         system_prompt=cfg.system_prompt,
         first_turn_tool_choice=getattr(cfg, "first_turn_tool_choice", None) or None,
+        compact_after_read=(mode == "eager_compact"),
+        compact_keep_reads=(int(_keep_reads) if mode == "eager_compact" else 0),
     )
     # The always-on default tools (file_read / file_search) resolve relative
     # paths against the process cwd, so run the agent from the instance repo.
