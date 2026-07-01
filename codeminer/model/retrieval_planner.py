@@ -229,6 +229,7 @@ class RetrievalPlanner:
             signals.structural
             and resolved_budget.allow_graph
             and resolved_caps.has_graph
+            and resolved_caps.has_sparse
         ):
             return self._structural_graph_plan(resolved_budget, resolved_caps)
 
@@ -356,8 +357,6 @@ class RetrievalPlanner:
             return "llm"
         if capabilities.has_embedding_rerank:
             return "embedding"
-        if capabilities.has_llm_rerank:
-            return "llm"
         return None
 
 

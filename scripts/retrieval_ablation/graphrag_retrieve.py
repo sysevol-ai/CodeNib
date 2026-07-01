@@ -153,6 +153,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     score_symbol_hit_at: Counter = Counter()
     score_block_hit_at: Counter = Counter()
     scored = 0
+    symbol_scored = 0
+    block_scored = 0
     for i, inst in enumerate(instances, 1):
         t0 = time.time()
         try:
@@ -220,6 +222,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             }
             if targets:
                 scored += 1
+                if target_symbols:
+                    symbol_scored += 1
+                if target_blocks:
+                    block_scored += 1
                 for k in args.k:
                     hit_at[k] += int(rec[f"files@{k}"])
                     symbol_hit_at[k] += int(
@@ -259,21 +265,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         pct = 100.0 * hit_at[k] / scored if scored else 0.0
         print(f"  files@{k}: {hit_at[k]}/{scored} = {pct:.0f}%")
     for k in args.k:
-        pct = 100.0 * symbol_hit_at[k] / scored if scored else 0.0
-        print(f"  actionable_symbols@{k}: {symbol_hit_at[k]}/{scored} = {pct:.0f}%")
-    for k in args.k:
-        pct = 100.0 * block_hit_at[k] / scored if scored else 0.0
-        print(f"  retrieval_blocks@{k}: {block_hit_at[k]}/{scored} = {pct:.0f}%")
-    for k in args.k:
-        pct = 100.0 * score_symbol_hit_at[k] / scored if scored else 0.0
+        pct = 100.0 * symbol_hit_at[k] / symbol_scored if symbol_scored else 0.0
         print(
-            f"  score_actionable_symbols@{k}: "
-            f"{score_symbol_hit_at[k]}/{scored} = {pct:.0f}%"
+            f"  actionable_symbols@{k}: "
+            f"{symbol_hit_at[k]}/{symbol_scored} = {pct:.0f}%"
         )
     for k in args.k:
-        pct = 100.0 * score_block_hit_at[k] / scored if scored else 0.0
+        pct = 100.0 * block_hit_at[k] / block_scored if block_scored else 0.0
         print(
-            f"  score_retrieval_blocks@{k}: {score_block_hit_at[k]}/{scored} = {pct:.0f}%"
+            f"  retrieval_blocks@{k}: " f"{block_hit_at[k]}/{block_scored} = {pct:.0f}%"
+        )
+    for k in args.k:
+        pct = 100.0 * score_symbol_hit_at[k] / symbol_scored if symbol_scored else 0.0
+        print(
+            f"  score_actionable_symbols@{k}: "
+            f"{score_symbol_hit_at[k]}/{symbol_scored} = {pct:.0f}%"
+        )
+    for k in args.k:
+        pct = 100.0 * score_block_hit_at[k] / block_scored if block_scored else 0.0
+        print(
+            f"  score_retrieval_blocks@{k}: "
+            f"{score_block_hit_at[k]}/{block_scored} = {pct:.0f}%"
         )
     return 0
 

@@ -66,26 +66,33 @@ def merge_hybrid(
     branches: List[List[QueriedNode]],
     weights: Optional[List[float]] = None,
     top_k: Optional[int] = None,
+    *,
+    fusion: str = "weighted",
+    rrf_k: int = 60,
 ) -> List[QueriedNode]:
-    """Merge multiple retrieval branches with weighted scoring."""
+    """Merge multiple retrieval branches with weighted scoring or RRF."""
     if not branches:
         return []
 
     if not weights or len(weights) != len(branches):
         weights = [1.0] * len(branches)
+    if rrf_k <= 0:
+        raise ValueError("rrf_k must be positive.")
 
-    accumulator: Dict[
-        Tuple[Optional[str], str, Optional[int], Optional[int]], QueriedNode
-    ] = {}
+    normalized_fusion = _normalize_fusion(fusion)
+
+    accumulator: Dict[Tuple[Any, ...], QueriedNode] = {}
 
     for weight, results in zip(weights, branches, strict=True):
-        for rank, item in enumerate(results):
-            base_score = item.score or 0.0
-            if base_score == 0.0:
-                base_score = 1.0 / (rank + 1)
-
-            key = (item.file, item.node_name, item.start_line, item.end_line)
-            weighted = weight * base_score
+        for rank, item in enumerate(results, start=1):
+            key = queried_node_key(item)
+            weighted = _fusion_score(
+                item,
+                rank=rank,
+                weight=weight,
+                fusion=normalized_fusion,
+                rrf_k=rrf_k,
+            )
 
             if key not in accumulator:
                 accumulator[key] = _with_score(item, weighted)
@@ -101,7 +108,7 @@ def merge_hybrid(
         reverse=True,
     )
 
-    if top_k:
+    if top_k is not None:
         merged = merged[:top_k]
     return merged
 
@@ -160,6 +167,37 @@ def _with_score(
     data = _dump_model(item)
     data.update(update)
     return QueriedNode(**data)
+
+
+def _fusion_score(
+    item: QueriedNode,
+    *,
+    rank: int,
+    weight: float,
+    fusion: str,
+    rrf_k: int,
+) -> float:
+    if fusion == "rrf":
+        return weight / float(rrf_k + rank)
+
+    base_score = item.score or 0.0
+    if base_score == 0.0:
+        base_score = 1.0 / rank
+    return weight * base_score
+
+
+def _normalize_fusion(value: str) -> str:
+    normalized = (value or "weighted").strip().lower().replace("-", "_")
+    aliases = {
+        "linear": "weighted",
+        "linear_combination": "weighted",
+        "weighted_sum": "weighted",
+        "none": "weighted",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"weighted", "rrf"}:
+        raise ValueError("fusion must be 'weighted' or 'rrf'.")
+    return normalized
 
 
 def _dump_model(model: object) -> Dict[str, object]:

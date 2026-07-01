@@ -7,18 +7,27 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set
 
 from ..code_chunker import CodeChunker, RepoChunkingConfig
+from ..graph.code_graph import CodeGraph
+from ..graph.roi_subgraph import ROISubgraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
+from ..ops.expand import ExpandContext, expand_graph_neighbors, nodeinfo_to_queried
 from ..ops.rerank import RerankContext, rerank_by_embedding
-from ..ops.retrieve import RetrieveContext
+from ..ops.retrieve import (
+    RetrieveContext,
+    dedup_queried_nodes,
+    merge_hybrid,
+    to_queried_nodes,
+)
 from ..types import NodeInfo, QueriedNode
 from .retrieval_planner import (
     BudgetInput,
+    RetrievalBudget,
     RetrievalCapabilities,
     RetrievalPathPlan,
     RetrievalPlanner,
@@ -115,6 +124,7 @@ class RetrieveRerankPipeline:
         planning_budget: BudgetInput = "balanced",
         retrieval_planner: Optional[RetrievalPlanner] = None,
         planner_capabilities: Optional[RetrievalCapabilities] = None,
+        code_graph: Optional[CodeGraph] = None,
         fusion_strategy: str = "weighted",
         rrf_k: int = 60,
         embedding_model: str = "nomic-ai/CodeRankEmbed",
@@ -159,7 +169,12 @@ class RetrieveRerankPipeline:
             raise ValueError("rrf_k must be positive.")
         self.rrf_k = rrf_k
         self.last_selected_plan: Optional[RetrievalPathPlan] = None
+        self.last_query_signals = None
+        self.last_planning_budget: Optional[RetrievalBudget] = None
+        self.last_planner_capabilities: Optional[RetrievalCapabilities] = None
+        self.last_planner_trace: Dict[str, object] = {}
         self._planner_capabilities_override = planner_capabilities
+        self.expand_context = ExpandContext(code_graph=code_graph)
         if retrieval_level not in ("l0", "l2"):
             raise ValueError(
                 f"Invalid retrieval_level {retrieval_level!r}. Must be 'l0' or 'l2'."
@@ -279,7 +294,7 @@ class RetrieveRerankPipeline:
             else RetrievalCapabilities(
                 has_dense=bool(self.vector_store),
                 has_sparse=bool(self.bm25_index),
-                has_graph=False,
+                has_graph=bool(self.expand_context.code_graph),
                 has_embedding_rerank=bool(self.vector_store),
                 has_llm_rerank=strategy == "llm",
             )
@@ -295,6 +310,7 @@ class RetrieveRerankPipeline:
                 "retrieval_level": self.retrieval_level,
                 "dense_index": bool(self.vector_store),
                 "sparse_index": bool(self.bm25_index),
+                "graph_index": bool(self.expand_context.code_graph),
                 "planner": bool(self.retrieval_planner),
                 "rerank_strategy": (
                     self.rerank_strategy if self.enable_rerank else "disabled"
@@ -379,6 +395,9 @@ class RetrieveRerankPipeline:
                 rrf_k=self.rrf_k,
             )
 
+        if selected_plan is not None and selected_plan.graph is not None:
+            candidates = self._run_graph_expansion_plan(selected_plan, candidates)
+
         # Step 3: Rerank if enabled
         plan_allows_rerank = (
             selected_plan.enable_rerank if selected_plan is not None else True
@@ -397,27 +416,49 @@ class RetrieveRerankPipeline:
                     if selected_plan is not None
                     else self.rerank_strategy
                 ),
-                candidate_top_k=(
-                    selected_plan.rerank_candidate_top_k
-                    if selected_plan is not None
-                    else self.rerank_candidate_top_k
-                ),
+                candidate_top_k=self._effective_rerank_candidate_top_k(selected_plan),
             )
 
         return candidates[:top_k]
+
+    def _effective_rerank_candidate_top_k(
+        self, selected_plan: Optional[RetrievalPathPlan]
+    ) -> Optional[int]:
+        if self.rerank_candidate_top_k is not None:
+            return self.rerank_candidate_top_k
+        if selected_plan is not None:
+            return selected_plan.rerank_candidate_top_k
+        return None
 
     def _select_query_plan(
         self, query: str, budget: Optional[BudgetInput]
     ) -> Optional[RetrievalPathPlan]:
         if self.retrieval_planner is None:
             self.last_selected_plan = None
+            self.last_query_signals = None
+            self.last_planning_budget = None
+            self.last_planner_capabilities = None
+            self.last_planner_trace = {}
             return None
+        active_budget = self.retrieval_planner.normalize_budget(
+            budget or self.planning_budget
+        )
+        signals = self.retrieval_planner.classify_query(query)
         selected = self.retrieval_planner.select(
             query=query,
-            budget=budget or self.planning_budget,
+            budget=active_budget,
             capabilities=self.planner_capabilities,
         )
         self.last_selected_plan = selected
+        self.last_query_signals = signals
+        self.last_planning_budget = active_budget
+        self.last_planner_capabilities = self.planner_capabilities
+        self.last_planner_trace = _planner_trace(
+            signals=signals,
+            budget=active_budget,
+            capabilities=self.planner_capabilities,
+            plan=selected,
+        )
         logger.debug(
             "Planner selected retrieval path",
             extra={
@@ -425,6 +466,9 @@ class RetrieveRerankPipeline:
                 "intent": selected.intent,
                 "fusion": selected.fusion,
                 "rerank": selected.rerank_strategy if selected.enable_rerank else None,
+                "signals": self.last_planner_trace["signals"],
+                "budget": self.last_planner_trace["budget"],
+                "capabilities": self.last_planner_trace["capabilities"],
                 "rationale": selected.rationale,
             },
         )
@@ -473,6 +517,80 @@ class RetrieveRerankPipeline:
         )
         return _to_queried_nodes(raw_results)
 
+    def _run_graph_expansion_plan(
+        self,
+        selected_plan: RetrievalPathPlan,
+        seeds: List[QueriedNode],
+    ) -> List[QueriedNode]:
+        """Execute the planner's graph expansion plan over retrieved seeds."""
+        graph_plan = selected_plan.graph
+        if graph_plan is None:
+            return seeds
+        if self.expand_context.code_graph is None:
+            raise RuntimeError("Graph expansion requested but no code graph is loaded.")
+
+        seed_cap = graph_plan.seed_top_k or len(seeds)
+        graph_seeds = list(seeds[:seed_cap])
+        if not graph_seeds:
+            return []
+
+        if graph_plan.use_ppr or graph_plan.hops > 1:
+            expanded = self._expand_graph_roi(graph_seeds, graph_plan)
+        else:
+            expanded = []
+
+        if not expanded:
+            expanded = self._expand_graph_neighbors(graph_seeds, graph_plan)
+
+        candidates = dedup_queried_nodes([*graph_seeds, *expanded])
+        return candidates[: graph_plan.expand_top_k]
+
+    def _expand_graph_roi(
+        self, seeds: List[QueriedNode], graph_plan
+    ) -> List[QueriedNode]:
+        graph = self.expand_context.code_graph
+        if graph is None or not hasattr(graph, "name_to_vertex"):
+            return []
+
+        seed_names = _resolve_graph_seed_names(graph, seeds)
+        if not seed_names:
+            return []
+
+        roi = ROISubgraph(graph)
+        if graph_plan.use_ppr:
+            nodes = roi.expand_ppr(
+                seed_names,
+                top_k=graph_plan.expand_top_k,
+                damping=self.expand_context.default_damping,
+                filter_tests=self.expand_context.filter_tests,
+            )
+        else:
+            subgraph = roi.extract_subgraph(
+                seed_names,
+                k_hop=graph_plan.hops,
+                direction=_roi_direction(graph_plan.direction),
+            )
+            nodes = roi.get_filtered_subgraph_nodes(
+                subgraph,
+                filter_tests=self.expand_context.filter_tests,
+            )[: graph_plan.expand_top_k]
+        return nodeinfo_to_queried(nodes)
+
+    def _expand_graph_neighbors(
+        self, seeds: List[QueriedNode], graph_plan
+    ) -> List[QueriedNode]:
+        per_seed = max(1, graph_plan.expand_top_k // max(1, len(seeds)))
+        return expand_graph_neighbors(
+            self.expand_context,
+            seeds,
+            per_seed=per_seed,
+            direction=_neighbor_direction(graph_plan.direction),
+            repo_path=self.repo_path,
+            include_content=True,
+            symbol_only=True,
+            require_span=True,
+        )
+
     @staticmethod
     def _merge_hybrid(
         branches: List[List[QueriedNode]],
@@ -483,42 +601,13 @@ class RetrieveRerankPipeline:
         rrf_k: int = 60,
     ) -> List[QueriedNode]:
         """Merge multiple retrieval branches with weighted or RRF scoring."""
-        normalized_fusion = _normalize_fusion_strategy(fusion)
-        if normalized_fusion == "rrf":
-            return RetrieveRerankPipeline._merge_rrf(
-                branches, weights, top_k, rrf_k=rrf_k
-            )
-
-        if not weights or len(weights) != len(branches):
-            weights = [1.0] * len(branches)
-
-        accumulator: Dict[
-            Tuple[Optional[str], str, Optional[int], Optional[int]], QueriedNode
-        ] = {}
-
-        for weight, results in zip(weights, branches, strict=True):
-            for rank, item in enumerate(results):
-                base_score = item.score or 0.0
-                if base_score == 0.0:
-                    base_score = 1.0 / (rank + 1)
-
-                key = (item.file, item.node_name, item.start_line, item.end_line)
-                weighted = weight * base_score
-
-                if key not in accumulator:
-                    accumulator[key] = _with_score(item, weighted)
-                else:
-                    existing = accumulator[key]
-                    new_score = existing.score + weighted
-                    content = existing.content or item.content
-                    accumulator[key] = _with_score(existing, new_score, content)
-
-        merged = sorted(
-            accumulator.values(),
-            key=lambda node: node.score,
-            reverse=True,
+        return merge_hybrid(
+            branches,
+            weights,
+            top_k=top_k,
+            fusion=fusion,
+            rrf_k=rrf_k,
         )
-        return merged[:top_k]
 
     @staticmethod
     def _merge_rrf(
@@ -529,34 +618,13 @@ class RetrieveRerankPipeline:
         rrf_k: int = 60,
     ) -> List[QueriedNode]:
         """Merge branches with weighted reciprocal-rank fusion."""
-        if not weights or len(weights) != len(branches):
-            weights = [1.0] * len(branches)
-
-        accumulator: Dict[
-            Tuple[Optional[str], str, Optional[int], Optional[int]], QueriedNode
-        ] = {}
-
-        for weight, results in zip(weights, branches, strict=True):
-            for rank, item in enumerate(results, start=1):
-                key = (item.file, item.node_name, item.start_line, item.end_line)
-                rrf_score = weight / float(rrf_k + rank)
-                if key not in accumulator:
-                    accumulator[key] = _with_score(item, rrf_score)
-                    continue
-                existing = accumulator[key]
-                content = existing.content or item.content
-                accumulator[key] = _with_score(
-                    existing,
-                    existing.score + rrf_score,
-                    content,
-                )
-
-        merged = sorted(
-            accumulator.values(),
-            key=lambda node: node.score,
-            reverse=True,
+        return merge_hybrid(
+            branches,
+            weights,
+            top_k=top_k,
+            fusion="rrf",
+            rrf_k=rrf_k,
         )
-        return merged[:top_k]
 
     # --------------------------------------------------------------------- #
     # Reranking
@@ -802,52 +870,84 @@ def _normalize_fusion_strategy(value: Optional[str]) -> str:
 
 def _to_queried_nodes(results: Sequence[object]) -> List[QueriedNode]:
     """Normalize retrieval results to QueriedNode."""
-    converted: List[QueriedNode] = []
-    for rank, item in enumerate(results):
-        if isinstance(item, QueriedNode):
-            converted.append(item)
-            continue
-        if isinstance(item, NodeInfo):
-            data = _dump_model(item)
-            score = data.get("score") or 0.0
-            if not score:
-                score = 1.0 / (rank + 1)
-            data["score"] = score
-            converted.append(QueriedNode(**data))
-            continue
-        if isinstance(item, dict):
-            data = dict(item)
-            score = data.get("score") or 0.0
-            if not score:
-                score = 1.0 / (rank + 1)
-            data["score"] = score
-            data.setdefault("node_name", data.get("name", ""))
-            data.setdefault("content", data.get("content"))
-            converted.append(QueriedNode(**data))
-            continue
-        raise TypeError(f"Unsupported result type: {type(item)}")
-    return converted
+    return to_queried_nodes(results)
 
 
-def _with_score(
-    item: QueriedNode, score: float, content_override: Optional[str] = None
-) -> QueriedNode:
-    """Create a copy of a QueriedNode with an updated score."""
-    update = {"score": score}
-    if content_override is not None:
-        update["content"] = content_override
-    if hasattr(item, "model_copy"):
-        return item.model_copy(update=update)
-    if hasattr(item, "copy"):
-        return item.copy(update=update)
-    data = _dump_model(item)
-    data.update(update)
-    return QueriedNode(**data)
+def _planner_trace(
+    *,
+    signals,
+    budget: RetrievalBudget,
+    capabilities: RetrievalCapabilities,
+    plan: RetrievalPathPlan,
+) -> Dict[str, object]:
+    return {
+        "signals": {
+            "lexical": signals.lexical,
+            "semantic": signals.semantic,
+            "structural": signals.structural,
+            "mixed": signals.mixed,
+        },
+        "budget": {
+            "tier": budget.tier,
+            "retrieve_top_k": budget.retrieve_top_k,
+            "rerank_candidate_top_k": budget.rerank_candidate_top_k,
+            "allow_graph": budget.allow_graph,
+            "allow_rerank": budget.allow_rerank,
+            "allow_llm_rerank": budget.allow_llm_rerank,
+            "prefer_rrf": budget.prefer_rrf,
+        },
+        "capabilities": {
+            "has_dense": capabilities.has_dense,
+            "has_sparse": capabilities.has_sparse,
+            "has_graph": capabilities.has_graph,
+            "has_embedding_rerank": capabilities.has_embedding_rerank,
+            "has_llm_rerank": capabilities.has_llm_rerank,
+        },
+        "plan": {
+            "name": plan.name,
+            "intent": plan.intent,
+            "fusion": plan.fusion,
+            "enable_rerank": plan.enable_rerank,
+            "rerank_strategy": plan.rerank_strategy,
+            "uses_graph": plan.uses_graph,
+            "rationale": plan.rationale,
+        },
+    }
 
 
-def _dump_model(model: object) -> Dict[str, object]:
-    if hasattr(model, "model_dump"):
-        return dict(model.model_dump())
-    if hasattr(model, "dict"):
-        return dict(model.dict())
-    raise TypeError(f"Object {model} does not support model dumping.")
+def _resolve_graph_seed_names(
+    graph: CodeGraph, seeds: Sequence[QueriedNode]
+) -> List[str]:
+    name_to_vertex = getattr(graph, "name_to_vertex", {})
+    out: List[str] = []
+    seen: Set[str] = set()
+    for seed in seeds:
+        candidates = [seed.node_id, seed.node_name]
+        if seed.file and seed.node_name:
+            candidates.append(f"{seed.file}:{seed.node_name}")
+        for candidate in candidates:
+            if candidate and candidate in name_to_vertex and candidate not in seen:
+                seen.add(candidate)
+                out.append(candidate)
+                break
+    return out
+
+
+def _roi_direction(direction: str) -> str:
+    normalized = (direction or "both").strip().lower()
+    if normalized in {"callees", "successors", "forward", "out"}:
+        return "forward"
+    if normalized in {"callers", "predecessors", "backward", "in"}:
+        return "backward"
+    return "both"
+
+
+def _neighbor_direction(direction: str) -> str:
+    normalized = (direction or "both").strip().lower()
+    if normalized in {"forward", "out"}:
+        return "successors"
+    if normalized in {"backward", "in"}:
+        return "predecessors"
+    if normalized in {"callees", "successors", "callers", "predecessors", "both"}:
+        return normalized
+    return "both"

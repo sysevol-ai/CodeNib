@@ -43,6 +43,7 @@ def nodeinfo_to_queried(nodes: List[NodeInfo]) -> List[QueriedNode]:
                 node_name=ni.node_name,
                 type=ni.type,
                 file=ni.file,
+                node_id=ni.node_id or ni.node_name,
                 start_line=ni.start_line,
                 end_line=ni.end_line,
                 score=score,

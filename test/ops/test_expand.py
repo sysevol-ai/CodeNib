@@ -45,6 +45,7 @@ class TestNodeInfoToQueried:
             node_name="mod.func",
             type="function",
             file="src/mod.py",
+            node_id="src/mod.py:mod.func",
             start_line=10,
             end_line=20,
             content="def func(): pass",
@@ -52,6 +53,7 @@ class TestNodeInfoToQueried:
         result = nodeinfo_to_queried([info])
         node = result[0]
         assert node.node_name == "mod.func"
+        assert node.node_id == "src/mod.py:mod.func"
         assert node.type == "function"
         assert node.file == "src/mod.py"
         assert node.start_line == 10
