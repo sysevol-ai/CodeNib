@@ -12,6 +12,7 @@ yet (RFC Phases 2-5). See ``Repository_Guardian/repository_guardian_issue.md``.
 from .cycle import GuardianConfig, Reporter, run_cycle
 from .investigate import Evidence
 from .llm_investigator import (
+    LLMUsage,
     build_test_failure_context,
     investigate_signal,
     investigate_with_llm,
@@ -25,6 +26,7 @@ __all__ = [
     "Reporter",
     "run_cycle",
     "Evidence",
+    "LLMUsage",
     "investigate_with_llm",
     "investigate_signal",
     "build_test_failure_context",

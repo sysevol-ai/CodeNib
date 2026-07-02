@@ -194,7 +194,12 @@ def _make_llm(config: GuardianConfig) -> object:
     return LiteLLMChat(model=config.llm_model, temperature=0.0, max_tokens=1024)
 
 
-def _llm_reporter(config: GuardianConfig, retriever: object, llm: object) -> Reporter:
+def _llm_reporter(
+    config: GuardianConfig,
+    retriever: object,
+    llm: object,
+    usage_acc: object,
+) -> Reporter:
     """Return a Reporter that runs the LLM agentic loop for each churn hotspot."""
     from .llm_investigator import investigate_with_llm
 
@@ -208,6 +213,7 @@ def _llm_reporter(config: GuardianConfig, retriever: object, llm: object) -> Rep
                 llm=llm,  # type: ignore[arg-type]
                 max_tool_rounds=config.llm_max_tool_rounds,
                 top_k=config.retrieval_top_k,
+                usage_acc=usage_acc,  # type: ignore[arg-type]
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
@@ -246,6 +252,7 @@ def _investigate_test_failure(
     retriever: object,
     llm: object,
     config: "GuardianConfig",
+    usage_acc: object = None,
 ) -> str:
     """Run the LLM agentic loop for a single failing test."""
     from .llm_investigator import build_test_failure_context, investigate_signal, read_file
@@ -270,6 +277,7 @@ def _investigate_test_failure(
             llm=llm,  # type: ignore[arg-type]
             max_tool_rounds=config.llm_max_tool_rounds,
             top_k=config.retrieval_top_k,
+            usage_acc=usage_acc,  # type: ignore[arg-type]
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Guardian: LLM reporter failed for %s: %s", failure.nodeid, exc)
@@ -360,11 +368,15 @@ def _run_cycle_inner(
     #    A single LLM instance is shared across all signal types so we don't
     #    pay the connection-setup cost multiple times per cycle.
     _llm: Optional[object] = None
+    _usage_acc: Optional[object] = None
     if config.use_llm:
+        from .llm_investigator import LLMUsage
+
         _llm = _make_llm(config)
+        _usage_acc = LLMUsage()
 
     if reporter is None and _llm is not None:
-        reporter = _llm_reporter(config, _retriever, _llm)
+        reporter = _llm_reporter(config, _retriever, _llm, _usage_acc)
 
     findings: List[Finding] = []
     for hotspot in hotspots:
@@ -385,7 +397,7 @@ def _run_cycle_inner(
     if test_result is not None and test_result.ran:
         for failure in test_result.failures:
             narrative = (
-                _investigate_test_failure(failure, _retriever, _llm, config)
+                _investigate_test_failure(failure, _retriever, _llm, config, _usage_acc)
                 if _llm is not None
                 else ""
             )
@@ -408,4 +420,5 @@ def _run_cycle_inner(
         findings=findings,
         tests_ran=bool(test_result and test_result.ran),
         tests_summary=(test_result.summary if test_result else ""),
+        llm_usage=_usage_acc,  # type: ignore[arg-type]
     )

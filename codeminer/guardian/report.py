@@ -12,9 +12,10 @@ pipe-table style from ``scripts/agent_compile/aggregate.py``.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .investigate import Evidence
+from .llm_investigator import LLMUsage
 
 
 @dataclass
@@ -45,6 +46,7 @@ class GuardianReport:
     findings: List[Finding] = field(default_factory=list)
     tests_ran: bool = False
     tests_summary: str = ""
+    llm_usage: Optional[LLMUsage] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -92,6 +94,12 @@ def render_markdown(report: GuardianReport) -> str:
         L.append(f"- **Index capabilities:** {caps}")
     if report.tests_ran:
         L.append(f"- **Tests:** {report.tests_summary or 'ran'}")
+    if report.llm_usage and report.llm_usage.total_tokens:
+        u = report.llm_usage
+        L.append(
+            f"- **LLM tokens:** {u.total_tokens:,} total"
+            f" (prompt: {u.prompt_tokens:,} / completion: {u.completion_tokens:,})"
+        )
     L.append("")
     L.append(
         "_Non-modifying report: findings and evidence only — no changes were "

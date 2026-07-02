@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING, List
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, List, Optional
 
 from ..log_utils import get_logger
 from .signals import Hotspot
@@ -30,6 +31,28 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 FILE_CONTENT_MAX_LINES = 150
+
+
+# ---------------------------------------------------------------------------
+# Token usage accumulator
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LLMUsage:
+    """Token counts accumulated across all LLM calls in one Guardian cycle."""
+
+    prompt_tokens: int = field(default=0)
+    completion_tokens: int = field(default=0)
+    total_tokens: int = field(default=0)
+
+    def add(self, response: object) -> None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        self.prompt_tokens += getattr(usage, "prompt_tokens", 0) or 0
+        self.completion_tokens += getattr(usage, "completion_tokens", 0) or 0
+        self.total_tokens += getattr(usage, "total_tokens", 0) or 0
 
 # ---------------------------------------------------------------------------
 # Tool schema (OpenAI/litellm format)
@@ -207,6 +230,19 @@ def _run_search(query: str, retriever: object, top_k: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _log_usage(response: object, label: str) -> None:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    logger.debug(
+        "agentic_loop: %s usage: prompt=%d completion=%d total=%d",
+        label,
+        getattr(usage, "prompt_tokens", 0) or 0,
+        getattr(usage, "completion_tokens", 0) or 0,
+        getattr(usage, "total_tokens", 0) or 0,
+    )
+
+
 def _agentic_loop(
     messages: List[dict],
     retriever: object,
@@ -214,6 +250,7 @@ def _agentic_loop(
     llm: "LiteLLMChat",
     max_tool_rounds: int,
     top_k: int,
+    usage_acc: Optional[LLMUsage] = None,
 ) -> str:
     """Run the tool-use loop until the model produces a final answer."""
     logger.debug(
@@ -236,6 +273,10 @@ def _agentic_loop(
                 "llm_investigator: LLM call failed (round %d): %s", round_idx, exc
             )
             return f"(LLM investigation unavailable: {exc})"
+
+        _log_usage(response, f"round={round_idx}")
+        if usage_acc is not None:
+            usage_acc.add(response)
 
         msg = response.choices[0].message
         tool_calls = getattr(msg, "tool_calls", None) or []
@@ -294,6 +335,9 @@ def _agentic_loop(
 
     try:
         response = llm._call_raw(messages)
+        _log_usage(response, "round=final(forced)")
+        if usage_acc is not None:
+            usage_acc.add(response)
         return (response.choices[0].message.content or "").strip()
     except Exception as exc:  # noqa: BLE001
         logger.warning("llm_investigator: final call failed: %s", exc)
@@ -314,6 +358,7 @@ def investigate_with_llm(
     llm: "LiteLLMChat",
     max_tool_rounds: int = 3,
     top_k: int = 5,
+    usage_acc: Optional[LLMUsage] = None,
 ) -> str:
     """Run the LLM agentic loop to investigate a churn hotspot.
 
@@ -335,7 +380,12 @@ def investigate_with_llm(
         },
     ]
     return _agentic_loop(
-        messages, retriever, llm=llm, max_tool_rounds=max_tool_rounds, top_k=top_k
+        messages,
+        retriever,
+        llm=llm,
+        max_tool_rounds=max_tool_rounds,
+        top_k=top_k,
+        usage_acc=usage_acc,
     )
 
 
@@ -347,6 +397,7 @@ def investigate_signal(
     llm: "LiteLLMChat",
     max_tool_rounds: int = 3,
     top_k: int = 5,
+    usage_acc: Optional[LLMUsage] = None,
 ) -> str:
     """Run the LLM agentic loop with a caller-supplied context string.
 
@@ -369,5 +420,10 @@ def investigate_signal(
         {"role": "user", "content": context},
     ]
     return _agentic_loop(
-        messages, retriever, llm=llm, max_tool_rounds=max_tool_rounds, top_k=top_k
+        messages,
+        retriever,
+        llm=llm,
+        max_tool_rounds=max_tool_rounds,
+        top_k=top_k,
+        usage_acc=usage_acc,
     )
