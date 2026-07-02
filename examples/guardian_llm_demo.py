@@ -36,7 +36,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-from codeminer.guardian.llm_investigator import investigate_with_llm
+from codeminer.guardian.llm_investigator import LLMUsage, investigate_with_llm
 from codeminer.guardian.report import Finding, GuardianReport, render_markdown
 from codeminer.guardian.signals import churn_hotspots
 from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
@@ -197,6 +197,7 @@ def main() -> None:
         extra_kwargs=vertex_extra,
     )
 
+    usage_acc = LLMUsage()
     findings = []
     for i, hotspot in enumerate(hotspots, start=1):
         print(f"── Hotspot {i}/{len(hotspots)}: {hotspot.path} ──")
@@ -213,6 +214,7 @@ def main() -> None:
             llm=llm,
             max_tool_rounds=args.max_tool_rounds,
             top_k=args.retrieval_top_k,
+            usage_acc=usage_acc,
         )
 
         findings.append(
@@ -254,6 +256,7 @@ def main() -> None:
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         churn_window=args.since,
         findings=findings,
+        llm_usage=usage_acc,
     )
 
     md = render_markdown(report)
