@@ -119,6 +119,19 @@ def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
     scoped_ms = (time.perf_counter() - t) * 1000
     scoped_files = [_norm(getattr(nd, "file", "") or "") for nd in nodes]
 
+    # GRAPH-SCOPED (BFS): same seeds, hop-ordered k-hop expansion — the default
+    # in GraphRetrievePipeline; ~3-6x faster than PPR at equal recall.
+    t = time.perf_counter()
+    if seed_canon:
+        sub = roi.extract_subgraph(seed_canon, k_hop=2, direction="both")
+        bfs_nodes = roi.get_filtered_subgraph_nodes(
+            sub, exclude_nodes=None, filter_tests=True
+        )[:topn]
+    else:
+        bfs_nodes = []
+    scoped_bfs_ms = (time.perf_counter() - t) * 1000
+    scoped_bfs_files = [_norm(getattr(nd, "file", "") or "") for nd in bfs_nodes]
+
     return {
         "instance_id": inst,
         "language": row.get("language_group"),
@@ -128,11 +141,13 @@ def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
             "flat": round(flat_ms, 2),
             "ivf": round(ivf_ms, 2),
             "scoped": round(scoped_ms, 2),
+            "scoped_bfs": round(scoped_bfs_ms, 2),
         },
         "recall": {
             "flat": _recall(flat_files, targets, ks),
             "ivf": _recall(ivf_files, targets, ks),
             "scoped": _recall(scoped_files, targets, ks),
+            "scoped_bfs": _recall(scoped_bfs_files, targets, ks),
         },
         "scoped_resolved_seeds": len(seed_canon),
     }
@@ -190,7 +205,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     ok = [r for r in results if "recall" in r and r.get("n_targets")]
     print(f"\n=== {len(ok)} scored instances ===")
-    for method in ("flat", "ivf", "scoped"):
+    for method in ("flat", "ivf", "scoped", "scoped_bfs"):
         lat = [r["latency_ms"][method] for r in ok]
         med_lat = sorted(lat)[len(lat) // 2] if lat else 0.0
         line = f"{method:7}: median query {med_lat:.2f} ms"

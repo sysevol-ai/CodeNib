@@ -100,20 +100,39 @@ more — the compact/eager trade-off flips with task difficulty).
 
 | embedding | method | @1 | @5 | @10 | @50 | med latency |
 |---|---|---|---|---|---|---|
-| Qwen3-0.6B | flat | 34 % | 49 % | 56 % | 74 % | 1.2 ms |
-| Qwen3-0.6B | scoped | 26 % | 33 % | 36 % | 43 % | 9.4 ms |
+| Qwen3-0.6B | flat | 34 % | 49 % | 56 % | 74 % | 1.3 ms |
+| Qwen3-0.6B | scoped (PPR) | 26 % | 33 % | 36 % | 43 % | 10.7 ms |
+| Qwen3-0.6B | scoped (BFS) | 9 % | 16 % | 18 % | 32 % | 6.8 ms |
 | Qwen3-4B | flat | 37 % | 54 % | 64 % | 83 % | 2.6 ms |
-| Qwen3-4B | scoped | 28 % | 37 % | 40 % | 46 % | 8.5 ms |
+| Qwen3-4B | scoped (PPR) | 28 % | 37 % | 40 % | 46 % | 8.5 ms |
 | SweRankEmbed-Large | flat | 42 % | 55 % | 65 % | 83 % | 3.5 ms |
-| SweRankEmbed-Large | scoped | 28 % | 43 % | 46 % | 59 % | 8.4 ms |
+| SweRankEmbed-Large | scoped (PPR) | 28 % | 43 % | 46 % | 59 % | 8.4 ms |
 | jina-code-1.5b | flat | 36 % | 53 % | 63 % | 84 % | 1.8 ms |
-| jina-code-1.5b | scoped | 30 % | 34 % | 38 % | 43 % | 8.4 ms |
+| jina-code-1.5b | scoped (PPR) | 30 % | 34 % | 38 % | 43 % | 8.4 ms |
 
-`flat` = dense embedding, `scoped` = BM25-seed → graph (PPR) expansion (GraphRAG).
-**Graph-scoped is dominated by flat** — lower recall *and* higher latency.
-jina-code-1.5b is the retrieval cost/performance sweet spot (1.5B matches 4B's
-recall). *Caveat*: scoped uses PPR expansion; the hop-ordered BFS variant is
-~3–6× faster at equal recall but is not measured here.
+`flat` = dense embedding; `scoped` = BM25-seed → graph expansion (GraphRAG), with
+PPR (pagerank-ranked) or BFS (`extract_subgraph`, the pipeline default). **Both
+graph variants are dominated by flat** — lower recall *and* higher latency. BFS
+is faster than PPR (6.8 vs 10.7 ms) but recovers even less (18 % vs 36 % @10):
+its k-hop-then-truncate ordering lacks PPR's ranking. jina-code-1.5b is the
+retrieval cost/performance sweet spot (1.5B matches 4B's flat recall).
+
+### 6. Graph's value — GraphRAG (search+graph) vs search-only (base n=100)
+
+The `codeminer_context` composer (bm25 ⊕ embedding seeds → call-graph expansion)
+run as a retriever, with `--no-graph` isolating the graph's contribution:
+
+| k | search-only | search + graph | Δ(graph) |
+|---|---|---|---|
+| 10 | 49 % | 52 % | +3 % |
+| 50 | 49 % | 52 % | +3 % |
+
+Of the 51 search-only misses @10, graph **recovers 3 (6 %), loses 0** (net +3).
+So graph adds **marginal, strictly-positive complementary recall** — it recovers
+a few structurally-reachable GT (callers / subclasses / elsewhere) that semantic
+search misses, and never regresses. But it is small, and (per §2) even an 8-pt
+recall gain does not move agent accuracy — so graph is **not an agent lever**.
+Its honest home is relational queries (call-graph traversal), not localization.
 
 ## Key findings
 
@@ -131,6 +150,11 @@ recall). *Caveat*: scoped uses PPR expansion; the hop-ordered BFS variant is
    compact agent's span unchanged — the grep fallback compensates, so the ceiling
    is the agent, not retrieval. This subsumes graph / skill-subset / embedding
    scale into one "retrieval sophistication doesn't move agent accuracy" result.
+
+5. **Graph is a dominated / marginal RAG op**: graph-scoped retrieval is
+   dominated by flat (lower recall + higher latency, PPR and BFS alike); graph as
+   a *complement* (§6) adds only +3 % recall (recovers 6 % of misses, 0
+   regressions). Graph's realizable home is relational queries, not localization.
 
 ## Reproduce
 

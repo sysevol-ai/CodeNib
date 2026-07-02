@@ -312,17 +312,74 @@ def table5_recall():
     print("\n\n## 5. Retrieval recall@k + latency (flat vs graph-scoped), base n=100\n")
     print(
         "`flat` = dense embedding; `scoped` = BM25-seed → graph (PPR) expansion "
-        "(GraphRAG). Latency is single-query median (CPU).\n"
+        "(GraphRAG, PPR); `scoped_bfs` = BFS extract_subgraph (pipeline default; "
+        "faster than PPR but lower recall). Latency is single-query median (CPU).\n"
     )
     print("| embedding | method | @1 | @5 | @10 | @50 | med latency |")
     print("|---|---|---|---|---|---|---|")
     for name, ok in _idxcmp_runs():
-        for method in ("flat", "scoped"):
+        for method in ("flat", "scoped", "scoped_bfs"):
             cells_k = [_pct(_idxcmp_recall(ok, method, k)) for k in (1, 5, 10, 50)]
             med = _idxcmp_latency(ok, method)
             med_s = "n/a" if med is None else f"{med:.1f}ms"
             print(f"| {name} | {method} | {' | '.join(cells_k)} | {med_s} |")
     print("\n→ graph-scoped is dominated by flat: lower recall AND higher latency.")
+
+
+def table6_graph_value():
+    print("\n\n## 6. Graph's value: GraphRAG (search+graph) vs search-only, base\n")
+    print(
+        "`codeminer_context` composer (bm25 \u2295 embedding seeds \u2192 "
+        "call-graph). \u0394 = files the call-graph expansion recovers that "
+        "search alone misses.\n"
+    )
+
+    def _load(f):
+        try:
+            return json.loads(open(f).read())
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    def _rget(r, k):
+        v = (r.get("recall") or {}).get(f"files@{k}")
+        return bool(v) if v is not None else None
+
+    g = {
+        r["instance_id"]: r
+        for r in _load(f"{RESULTS}/graphrag_base_graph.json")
+        if r.get("recall")
+    }
+    n = {
+        r["instance_id"]: r
+        for r in _load(f"{RESULTS}/graphrag_base_nograph.json")
+        if r.get("recall")
+    }
+    common = [i for i in g if i in n]
+    if not common:
+        print("(no graphrag results)")
+        return
+    print(f"paired n={len(common)}\n")
+    print("| k | search-only | search+graph | \u0394(graph) |")
+    print("|---|---|---|---|")
+    for k in (1, 5, 10, 20, 50):
+        ng = sum(1 for i in common if _rget(n[i], k))
+        gg = sum(1 for i in common if _rget(g[i], k))
+        d = 100 * (gg - ng) / len(common)
+        print(
+            f"| {k} | {100*ng/len(common):.0f}% | {100*gg/len(common):.0f}% | {d:+.0f}% |"
+        )
+    miss = [i for i in common if not _rget(n[i], 10)]
+    rec = [i for i in miss if _rget(g[i], 10)]
+    lost = [i for i in common if _rget(n[i], 10) and not _rget(g[i], 10)]
+    pct = 100 * len(rec) / max(len(miss), 1)
+    print(
+        f"\nsearch-only misses@10: {len(miss)}; graph recovers {len(rec)} "
+        f"({pct:.0f}% of misses), loses {len(lost)}; net +{len(rec)-len(lost)}."
+    )
+    print(
+        "\n\u2192 graph adds marginal, strictly-positive complementary recall "
+        "(recovers structural misses) but small \u2014 not an agent lever."
+    )
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -341,6 +398,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     table3_dial()
     table4_synth()
     table5_recall()
+    table6_graph_value()
     return 0
 
 
