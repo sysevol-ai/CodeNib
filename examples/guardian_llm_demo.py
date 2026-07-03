@@ -13,9 +13,14 @@ Authentication follows the litellm convention — no API key needed for Vertex A
 (uses gcloud application default credentials); pass --api-key for other providers.
 
 Usage:
-    # Vertex AI (default — uses gcloud ADC, no API key needed):
+    # BM25 retriever (default — no GPU needed):
     python examples/guardian_llm_demo.py .
     python examples/guardian_llm_demo.py /path/to/repo --top-n 3 --since "30 days ago"
+
+    # Embedding retriever (GPU recommended; indexes actual code content):
+    python examples/guardian_llm_demo.py . --retriever embedding
+    python examples/guardian_llm_demo.py . --retriever embedding \
+        --embedding-model nomic-ai/CodeRankEmbed --embedding-dimension 768
 
     # Anthropic (requires ANTHROPIC_API_KEY or --api-key):
     python examples/guardian_llm_demo.py . --model claude-opus-4-8 --api-key $ANTHROPIC_API_KEY
@@ -43,7 +48,7 @@ from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
 from codeminer.llm.litellm_chat import LiteLLMChat
 
 # ---------------------------------------------------------------------------
-# BM25 retriever wrapper (duck-typed to _Retriever protocol)
+# Retriever wrappers (duck-typed to _Retriever .query() protocol)
 # ---------------------------------------------------------------------------
 
 
@@ -108,6 +113,28 @@ def parse_args() -> argparse.Namespace:
         help="Primary language to index (comma-separated for multiple)",
     )
     p.add_argument(
+        "--retriever",
+        default="bm25",
+        choices=["bm25", "embedding"],
+        help="Retriever backend for search_code tool (default: bm25)",
+    )
+    p.add_argument(
+        "--embedding-model",
+        default="nomic-ai/CodeRankEmbed",
+        help="Embedding model (used when --retriever=embedding)",
+    )
+    p.add_argument(
+        "--embedding-dimension",
+        type=int,
+        default=768,
+        help="Embedding vector dimension (used when --retriever=embedding)",
+    )
+    p.add_argument(
+        "--index-cache-dir",
+        default=None,
+        help="Cache dir for embedding index (default: <episode_dir>/embed_index)",
+    )
+    p.add_argument(
         "--output-dir",
         default="guardian_output",
         help="Parent directory for episode output (default: guardian_output)",
@@ -153,21 +180,37 @@ def main() -> None:
     print()
 
     # ------------------------------------------------------------------
-    # 1. Build BM25 index (no GPU / embedding model needed)
+    # 1. Build retriever index
     # ------------------------------------------------------------------
-    print("Building BM25 index...")
-    chunker = CodeChunker(
-        language=languages[0],
-        repo_config=RepoChunkingConfig(languages=languages),
-        max_lines_per_chunk=300,
-    )
-    chunks = chunker.chunk_repository(repo_path=repo_path)
-    if not chunks:
-        print(f"ERROR: No code chunks from {repo_path}", file=sys.stderr)
-        sys.exit(1)
-    bm25 = BM25CodeIndexer(chunks=chunks, max_k=128)
-    retriever = _BM25Retriever(bm25)
-    print(f"  Indexed {len(chunks)} chunks.\n")
+    _embed_pipeline = None  # kept for cleanup
+    if args.retriever == "embedding":
+        from codeminer.model.embedding_retrieve_pipeline import EmbeddingRetrievePipeline
+
+        index_cache = args.index_cache_dir or os.path.join(episode_dir, "embed_index")
+        print(f"Building embedding index (model={args.embedding_model}) ...")
+        _embed_pipeline = EmbeddingRetrievePipeline(
+            repo_path=repo_path,
+            index_path=index_cache,
+            embedding_model=args.embedding_model,
+            embedding_dimension=args.embedding_dimension,
+            languages=languages,
+        )
+        retriever = _embed_pipeline
+        print(f"  Embedding index ready.\n")
+    else:
+        print("Building BM25 index...")
+        chunker = CodeChunker(
+            language=languages[0],
+            repo_config=RepoChunkingConfig(languages=languages),
+            max_lines_per_chunk=300,
+        )
+        chunks = chunker.chunk_repository(repo_path=repo_path)
+        if not chunks:
+            print(f"ERROR: No code chunks from {repo_path}", file=sys.stderr)
+            sys.exit(1)
+        bm25 = BM25CodeIndexer(chunks=chunks, max_k=128)
+        retriever = _BM25Retriever(bm25)
+        print(f"  Indexed {len(chunks)} chunks.\n")
 
     # ------------------------------------------------------------------
     # 2. Churn hotspots
@@ -276,6 +319,8 @@ def main() -> None:
     for _lg in _guardian_loggers:
         _lg.removeHandler(_fh)
     _fh.close()
+    if _embed_pipeline is not None:
+        _embed_pipeline.close()
     print(f"\nReport: {md_path}")
     print(f"Log:    {log_path}")
 
