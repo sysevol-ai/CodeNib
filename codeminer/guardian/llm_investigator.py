@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
@@ -137,17 +138,48 @@ def _read_hotspot_file(hotspot: Hotspot, repo_path: str) -> str:
     return read_file(full_path)
 
 
+def _git_log_for_file(
+    path: str, repo_path: str, since: str, max_commits: int = 20
+) -> str:
+    """Return one-line git log for *path* within *repo_path* since *since*."""
+    try:
+        result = subprocess.run(
+            [
+                "git", "log", "--follow", "--oneline",
+                f"--since={since}",
+                "--", path,
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        lines = result.stdout.strip().splitlines()
+        if not lines:
+            return ""
+        if len(lines) > max_commits:
+            lines = lines[:max_commits] + [f"... ({len(lines) - max_commits} more)"]
+        return "\n".join(lines)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("llm_investigator: git log failed for %s: %s", path, exc)
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Observation builders
 # ---------------------------------------------------------------------------
 
 
-def _observation_text(hotspot: Hotspot, since: str, file_content: str) -> str:
+def _observation_text(
+    hotspot: Hotspot, since: str, file_content: str, commit_log: str = ""
+) -> str:
     lines = [
         f"File: {hotspot.path}",
         f"Churn: {hotspot.commit_count} commits over {since}",
         "",
     ]
+    if commit_log:
+        lines += ["Recent commits:", commit_log, ""]
     if file_content:
         lines += [f"Source ({hotspot.path}):", "```", file_content.rstrip(), "```", ""]
     else:
@@ -372,11 +404,19 @@ def investigate_with_llm(
     else:
         logger.warning("llm_investigator: could not read %s", hotspot.path)
 
+    commit_log = _git_log_for_file(hotspot.path, repo_path, since) if repo_path else ""
+    if commit_log:
+        logger.debug(
+            "llm_investigator: %d commit log lines for %s",
+            len(commit_log.splitlines()),
+            hotspot.path,
+        )
+
     messages: List[dict] = [
         {"role": "system", "content": _CHURN_SYSTEM_PROMPT},
         {
             "role": "user",
-            "content": _observation_text(hotspot, since, file_content),
+            "content": _observation_text(hotspot, since, file_content, commit_log),
         },
     ]
     return _agentic_loop(
