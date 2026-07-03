@@ -47,6 +47,7 @@ class GuardianReport:
     tests_ran: bool = False
     tests_summary: str = ""
     llm_usage: Optional[LLMUsage] = None
+    retriever: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -89,6 +90,8 @@ def render_markdown(report: GuardianReport) -> str:
     L.append(f"- **Generated:** {report.generated_at}")
     L.append(f"- **Churn window:** {report.churn_window}")
     L.append(f"- **Indexed files:** {report.file_count}")
+    if report.retriever:
+        L.append(f"- **Retriever:** {report.retriever}")
     if report.capabilities:
         caps = ", ".join(k for k, v in sorted(report.capabilities.items()) if v) or "—"
         L.append(f"- **Index capabilities:** {caps}")

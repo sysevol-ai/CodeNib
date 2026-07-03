@@ -115,8 +115,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--retriever",
         default="bm25",
-        choices=["bm25", "embedding"],
-        help="Retriever backend for search_code tool (default: bm25)",
+        choices=["bm25", "bm25-pipeline", "embedding"],
+        help=(
+            "Retriever backend for search_code tool (default: bm25). "
+            "bm25: lightweight, indexes chunk node_id strings only. "
+            "bm25-pipeline: builds a SCIP graph first, indexes unified symbol names — "
+            "much better recall for concept queries, requires SCIP toolchain. "
+            "embedding: indexes full code content via FAISS, best recall, GPU recommended."
+        ),
     )
     p.add_argument(
         "--embedding-model",
@@ -132,7 +138,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--index-cache-dir",
         default=None,
-        help="Cache dir for embedding index (default: <episode_dir>/embed_index)",
+        help=(
+            "Cache dir for the retriever index "
+            "(embedding FAISS store or bm25-pipeline SCIP graph; "
+            "default: <episode_dir>/retriever_index)"
+        ),
     )
     p.add_argument(
         "--output-dir",
@@ -171,33 +181,55 @@ def main() -> None:
     ]
     for _lg in _guardian_loggers:
         _lg.addHandler(_fh)
+    _fh.stream.write(
+        f"# guardian_llm_demo session\n"
+        f"# repo={repo_path}\n"
+        f"# retriever={args.retriever}\n"
+        f"# model={args.model}\n"
+        f"# since={args.since}\n\n"
+    )
 
     print(f"Repository : {repo_path}")
     print(f"Languages  : {', '.join(languages)}")
     print(f"Churn since: {args.since}")
     print(f"Model      : {args.model}")
+    print(f"Retriever  : {args.retriever}")
     print(f"Episode    : {episode_dir}")
     print()
 
     # ------------------------------------------------------------------
     # 1. Build retriever index
     # ------------------------------------------------------------------
-    _embed_pipeline = None  # kept for cleanup
+    _closeable_pipeline = None  # kept for cleanup
+    index_cache = args.index_cache_dir or os.path.join(episode_dir, "retriever_index")
+
     if args.retriever == "embedding":
         from codeminer.model.embedding_retrieve_pipeline import EmbeddingRetrievePipeline
 
-        index_cache = args.index_cache_dir or os.path.join(episode_dir, "embed_index")
         print(f"Building embedding index (model={args.embedding_model}) ...")
-        _embed_pipeline = EmbeddingRetrievePipeline(
+        _closeable_pipeline = EmbeddingRetrievePipeline(
             repo_path=repo_path,
             index_path=index_cache,
             embedding_model=args.embedding_model,
             embedding_dimension=args.embedding_dimension,
             languages=languages,
         )
-        retriever = _embed_pipeline
+        retriever = _closeable_pipeline
         print(f"  Embedding index ready.\n")
-    else:
+
+    elif args.retriever == "bm25-pipeline":
+        from codeminer.model.bm25_retrieve_pipeline import BM25RetrievePipeline
+
+        print("Building BM25-pipeline index (SCIP graph + BM25 on unified symbol names) ...")
+        _closeable_pipeline = BM25RetrievePipeline(
+            repo_path=repo_path,
+            index_path=index_cache,
+            languages=languages,
+        )
+        retriever = _closeable_pipeline
+        print(f"  BM25-pipeline index ready.\n")
+
+    else:  # bm25 (default)
         print("Building BM25 index...")
         chunker = CodeChunker(
             language=languages[0],
@@ -300,6 +332,7 @@ def main() -> None:
         churn_window=args.since,
         findings=findings,
         llm_usage=usage_acc,
+        retriever=args.retriever,
     )
 
     md = render_markdown(report)
@@ -319,8 +352,8 @@ def main() -> None:
     for _lg in _guardian_loggers:
         _lg.removeHandler(_fh)
     _fh.close()
-    if _embed_pipeline is not None:
-        _embed_pipeline.close()
+    if _closeable_pipeline is not None:
+        _closeable_pipeline.close()
     print(f"\nReport: {md_path}")
     print(f"Log:    {log_path}")
 
