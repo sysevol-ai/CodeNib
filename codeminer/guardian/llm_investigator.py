@@ -262,6 +262,28 @@ def _run_search(query: str, retriever: object, top_k: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _format_messages(messages: List[dict]) -> str:
+    """Render a messages list as readable plain text for debug logging."""
+    parts: List[str] = []
+    for msg in messages:
+        role = msg.get("role", "?")
+        content = msg.get("content") or ""
+        tool_calls = msg.get("tool_calls")
+        tool_call_id = msg.get("tool_call_id")
+
+        if role == "tool":
+            parts.append(f"[tool_result: {tool_call_id}]\n{content}")
+        elif tool_calls:
+            tc_lines = []
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                tc_lines.append(f"  {fn.get('name')}  {fn.get('arguments')}")
+            parts.append(f"[{role} → tool_calls]\n" + "\n".join(tc_lines))
+        else:
+            parts.append(f"[{role}]\n{content}")
+    return "\n\n".join(parts)
+
+
 def _log_usage(response: object, label: str) -> None:
     usage = getattr(response, "usage", None)
     if usage is None:
@@ -288,7 +310,7 @@ def _agentic_loop(
     logger.debug(
         "agentic_loop: start max_rounds=%d\ninitial_messages:\n%s",
         max_tool_rounds,
-        json.dumps(messages, indent=2, ensure_ascii=False),
+        _format_messages(messages),
     )
 
     for round_idx in range(max_tool_rounds + 1):
