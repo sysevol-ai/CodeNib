@@ -136,7 +136,7 @@ Pre-load on a strong agent is a *trade* (saves cost, regresses behavioral)
 because candidates and the generic grep/read loop were never fused. The
 direction is a **pre-load-aware harness** that triages candidates (rule-out /
 verify / fallback-to-explore) instead of consuming them linearly. Design:
-[`.claude/design/preload-aware-harness.md`](../../.claude/design/preload-aware-harness.md).
+`.claude/design/preload-aware-harness.md`.
 
 ## Caveats / gotchas
 

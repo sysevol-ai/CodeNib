@@ -19,6 +19,7 @@ CodeMiner provides tools for structural code analysis, symbol-level change detec
 | [Web Demo](web_demo.md) | DeepWiki-style wiki + Ask site with an interactive code-dependency graph over indexed repos |
 | [MCP Server](mcp.md) | Serve semantic/BM25/regex/Zoekt search and dependency subgraphs to LLM agents over MCP |
 | [Agent Skills](agent_skills.md) | Composable retrieval/rerank/trace skills with index-aware gating |
+| [Agent Runner Harness](agent_runner_harness.md) | Roadmap for durable traces, context ledgers, compaction, routing, and verification |
 | [Language Capabilities](language_capabilities.md) | Registry-derived support matrix across chunking, graph, incremental, and core parity surfaces |
 | [SCIP Multi-Language Roadmap](scip_multilanguage_roadmap.md) | Long-running goal and gates for SCIP cold-start promotion and C++ acceleration |
 | [GT Locator](gt_locator.md) | Extract symbol-level ground truth from SWE-bench patches |

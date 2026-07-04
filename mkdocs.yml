@@ -70,6 +70,7 @@ nav:
       - Web Demo: web_demo.md
       - MCP Server: mcp.md
       - Agent Skills: agent_skills.md
+      - Agent Runner Harness: agent_runner_harness.md
       - Agent Compile (Design): agent_compile_design.md
       - Language Capabilities: language_capabilities.md
       - GT Locator: gt_locator.md
