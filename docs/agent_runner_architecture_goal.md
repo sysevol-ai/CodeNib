@@ -122,12 +122,17 @@ benchmark cell is currently easiest to improve.
    envelope and JSONL record builder.
 
 4. **M9b: Graph-backed LSP route baseline.**
-   Add a reusable eval-layer adapter that routes explicit symbol seeds through
-   the static graph LSP API and emits the shared baseline result envelope. This
-   should measure graph/LSP harness value without adding scorer repairs or
-   external-agent-specific scripts.
+   Landed in #294. Static graph LSP-route runs now emit the shared baseline
+   result envelope without adding scorer repairs or external-agent-specific
+   scripts.
 
-5. **M10a: Legacy script shim cleanup.**
+5. **M9c: Generic baseline batch runner.**
+   Move reusable task iteration, resume, exception capture, JSONL writing, and
+   aggregate metric accounting into `codeminer.eval.agent_runner`, so LSP,
+   Codex, Claude Code, and OpenCode-style clients can share the same feedback
+   loop.
+
+6. **M10a: Legacy script shim cleanup.**
    Keep `scripts/agent_compile/lib` only as long as needed for old notebooks.
    Internal scripts and reusable tests should continue importing package APIs
    directly, and the compatibility layer should be removed once the migration

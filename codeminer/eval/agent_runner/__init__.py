@@ -13,6 +13,12 @@ from .baseline import (
     score_baseline_predictions,
     unique_location_files,
 )
+from .batch import (
+    BaselineBatchSummary,
+    BaselineTaskRunner,
+    baseline_done_ids,
+    run_baseline_batch,
+)
 from .contexts import (
     AgentSkillContextSpec,
     default_agent_skills_dir,
@@ -90,6 +96,8 @@ __all__ = [
     "AgentTraceSummary",
     "BaselineLocation",
     "BaselineRunResult",
+    "BaselineBatchSummary",
+    "BaselineTaskRunner",
     "BaselineTask",
     "FormatArmSummary",
     "FormatDiagnostics",
@@ -109,6 +117,7 @@ __all__ = [
     "assemble_preload",
     "all_index_skill_ids",
     "analyze_pareto",
+    "baseline_done_ids",
     "build_prebuilt_symbol_span_index",
     "build_symbol_span_index",
     "build_feedback_plan",
@@ -139,6 +148,7 @@ __all__ = [
     "query_is_specific",
     "render_expansion",
     "retrieve_candidates",
+    "run_baseline_batch",
     "run_cell",
     "run_lsp_route_baseline",
     "run_verify_expand",

@@ -36,6 +36,7 @@ from codeminer.eval.agent_runner.baseline import (
     score_baseline_predictions,
     unique_location_files,
 )
+from codeminer.eval.agent_runner.batch import baseline_done_ids
 from codeminer.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
@@ -78,22 +79,7 @@ def build_dataset(args):
 
 def already_done_ids(result_path: Path) -> Set[str]:
     """Return instance_ids already present in an existing JSONL result file."""
-    if not result_path.exists():
-        return set()
-    done: Set[str] = set()
-    with result_path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            iid = obj.get("instance_id")
-            if iid:
-                done.add(iid)
-    return done
+    return baseline_done_ids(result_path)
 
 
 def _unique_files(locations) -> List[str]:
