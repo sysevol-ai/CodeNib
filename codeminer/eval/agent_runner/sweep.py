@@ -216,6 +216,7 @@ def run_cell(
         ),
         system_prompt=cfg.system_prompt,
         first_turn_tool_choice=getattr(cfg, "first_turn_tool_choice", None) or None,
+        force_localization_contract=cfg.force_localization_contract,
         compact_after_read=(mode == "eager_compact"),
         compact_keep_reads=(_keep_reads if mode == "eager_compact" else 0),
     )

@@ -103,6 +103,18 @@ Current operating order:
 
 Any proposed optimization that cannot pass this order stays experiment-only.
 
+### Current Boundary Decisions
+
+- Localization answer-contract forcing is an opt-in harness policy, not a core
+  runtime default. `AgentRunner` and `AgentHarnessSpec` default to no forced
+  schema turn; `SweepConfig` opts in explicitly so localization evaluations stay
+  comparable while non-benchmark agent use is not shaped by scorer formatting.
+- Sweep cell scoring lives in `codeminer.eval.agent_runner.scoring`. Scripts
+  may write the resulting fields to JSON, but they should not reimplement
+  format failure, span metrics, or pre-load contribution logic.
+- Small feedback slices must be selected by deterministic smoke plus rotated
+  holdout plans, not by hand-picking named project instances.
+
 ### M0: Freeze And Audit #271
 
 Objective: preserve #271 as a spike and classify its contents before extracting

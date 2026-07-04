@@ -111,7 +111,7 @@ class AgentHarnessSpec:
     system_prompt: Optional[str] = None
     first_turn_tool_choice: Optional[str] = None
     force_first_turn_only: bool = False
-    force_localization_contract: bool = True
+    force_localization_contract: bool = False
     compact_after_read: bool = False
     compact_keep_reads: int = 0
 

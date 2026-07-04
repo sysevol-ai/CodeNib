@@ -76,6 +76,11 @@ class SweepConfig:
     # answer one-shot under the default "auto" and never exercise the loop; this
     # makes them actually grep/read. None = leave "auto".
     first_turn_tool_choice: Optional[str] = None
+    # AgentRunner does not force localization formatting by default. This eval
+    # config explicitly opts into the localization answer contract so historical
+    # sweep cells stay comparable while production/default runners remain
+    # benchmark-agnostic.
+    force_localization_contract: bool = True
     # Provider-specific raw-call body for the lightweight eager_gated classifier.
     # Keep quirks in config files instead of branching on model names in code.
     gate_llm_extra_body: Optional[Dict[str, Any]] = None

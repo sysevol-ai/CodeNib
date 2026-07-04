@@ -50,6 +50,13 @@ def test_harness_spec_preserves_empty_allow_set_for_runner_warning():
     assert spec.to_runner_kwargs()["allow_skills"] == set()
 
 
+def test_harness_spec_does_not_force_localization_contract_by_default():
+    spec = AgentHarnessSpec()
+
+    assert not spec.force_localization_contract
+    assert not spec.to_runner_kwargs()["force_localization_contract"]
+
+
 def test_runner_kwargs_are_copied_from_immutable_spec():
     spec = AgentHarnessSpec(
         allow_skills=["bm25_search"],

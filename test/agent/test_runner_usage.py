@@ -371,7 +371,12 @@ class TestAgentRunnerUsage:
 
         llm._call_raw.side_effect = _call_raw
 
-        runner = AgentRunner(llm, echo_registry, max_turns=2)
+        runner = AgentRunner(
+            llm,
+            echo_registry,
+            max_turns=2,
+            force_localization_contract=True,
+        )
         result = runner.run("loop forever")
 
         # Budget exhausted with no prose → the runner makes one forced

@@ -164,7 +164,7 @@ class AgentRunner:
         include_default_tools: bool = True,
         default_tool_ids: Optional[Set[str]] = None,
         retry: Optional[RetryConfig] = None,
-        force_localization_contract: bool = True,
+        force_localization_contract: bool = False,
         first_turn_tool_choice: Optional[str] = None,
         force_first_turn_only: bool = False,
         compact_after_read: bool = False,

@@ -36,6 +36,26 @@ gate_llm_extra_body:
     assert cfg.gate_llm_extra_body == {
         "chat_template_kwargs": {"enable_thinking": False}
     }
+    assert cfg.force_localization_contract
+
+
+def test_sweep_config_can_disable_localization_contract_for_ablation(tmp_path):
+    config = tmp_path / "cfg.yaml"
+    config.write_text(
+        """
+sweep_id: no_contract
+model: test/model
+embedding_model: test/embedding
+subsets:
+  defaults_only: [read, grep]
+force_localization_contract: false
+""",
+        encoding="utf-8",
+    )
+
+    cfg = SweepConfig.from_yaml(config)
+
+    assert not cfg.force_localization_contract
 
 
 def test_eager_compact_recipes_pin_compact_keep_reads():
