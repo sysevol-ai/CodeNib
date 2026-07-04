@@ -364,7 +364,7 @@ def run_cell(
     verify_triggered = False
     verify_resolved: Optional[int] = None
     if verify and nav is not None:
-        from scripts.agent_compile.lib.verify_expand import (
+        from codeminer.eval.agent_runner.verify_expand import (
             expansion_seeds_from_candidates,
             graph_verify,
             render_expansion,
