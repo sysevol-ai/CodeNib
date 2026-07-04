@@ -287,25 +287,17 @@ def run_cell(
     else:
         result = _do_run(effective_query)
 
-    # Verify-expand (Layer 4): if the committed answer is not anchored to a real
-    # graph symbol, inject 1-hop neighbours of the best seeds and answer once more.
-    verify_triggered = False
-    verify_resolved: Optional[int] = None
-    if verify and nav is not None:
-        from codeminer.eval.agent_runner.verify_expand import (
-            expansion_seeds_from_candidates,
-            graph_verify,
-            render_expansion,
-        )
+    from codeminer.eval.agent_runner.verify_expand import run_verify_expand
 
-        verdict = graph_verify(result.answer or "", nav)
-        verify_resolved = verdict.n_resolved
-        if not verdict.ok:
-            seeds = verdict.seeds or expansion_seeds_from_candidates(preload_candidates)
-            extra = render_expansion(nav.neighbors(seeds, max_nodes=10))
-            if extra:
-                verify_triggered = True
-                result = _do_run(f"{effective_query}\n\n{extra}")
+    verify_run = run_verify_expand(
+        result,
+        query=effective_query,
+        nav=nav,
+        preload_candidates=preload_candidates,
+        rerun=_do_run,
+        enabled=verify,
+    )
+    result = verify_run.result
 
     from codeminer.eval.agent_runner.results import summarize_agent_result
 
@@ -325,8 +317,8 @@ def run_cell(
         "total_turns": accounting.total_turns(fallback=observations["total_turns"]),
         "total_duration_ms": observations["total_duration_ms"],
         "tool_call_count": observations["tool_call_count"],
-        "verify_triggered": verify_triggered,
-        "verify_resolved": verify_resolved,
+        "verify_triggered": verify_run.triggered,
+        "verify_resolved": verify_run.resolved,
         "prompt_tokens": usage_totals["prompt_tokens"],
         "completion_tokens": usage_totals["completion_tokens"],
         "total_tokens": usage_totals["total_tokens"],

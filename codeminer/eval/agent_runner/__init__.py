@@ -18,15 +18,18 @@ from .symbols import (
 from .verify_expand import (
     GraphNav,
     Verdict,
+    VerifyExpandRun,
     expansion_seeds_from_candidates,
     graph_verify,
     render_expansion,
+    run_verify_expand,
 )
 
 __all__ = [
     "AgentSkillContextSpec",
     "GraphNav",
     "Verdict",
+    "VerifyExpandRun",
     "build_prebuilt_symbol_span_index",
     "build_symbol_span_index",
     "default_agent_skills_dir",
@@ -34,6 +37,7 @@ __all__ = [
     "graph_verify",
     "load_agent_skill_contexts",
     "render_expansion",
+    "run_verify_expand",
     "summarize_agent_result",
     "symbol_leaf",
 ]

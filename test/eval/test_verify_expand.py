@@ -6,11 +6,13 @@
 
 import igraph
 
+from codeminer.agent.agent_types import AgentResult
 from codeminer.eval.agent_runner.verify_expand import (
     GraphNav,
     expansion_seeds_from_candidates,
     graph_verify,
     render_expansion,
+    run_verify_expand,
 )
 
 
@@ -79,3 +81,64 @@ def test_expansion_seeds_and_render():
     text = render_expansion(nav.neighbors(seeds))
     assert "pkg/mod.go:20-25" in text
     assert "neighbour" in text
+
+
+def test_run_verify_expand_skips_when_answer_resolves():
+    calls = []
+    result = AgentResult(answer="Symbols: pkg/mod.go:foo()")
+
+    out = run_verify_expand(
+        result,
+        query="Where is foo?",
+        nav=_nav(),
+        preload_candidates=[],
+        rerun=lambda q: calls.append(q),
+    )
+
+    assert out.result is result
+    assert out.triggered is False
+    assert out.resolved == 1
+    assert calls == []
+
+
+def test_run_verify_expand_reruns_with_candidate_seed_expansion():
+    calls = []
+    retry_result = AgentResult(answer="Locations: pkg/mod.go:20-25")
+
+    def rerun(prompt: str):
+        calls.append(prompt)
+        return retry_result
+
+    out = run_verify_expand(
+        AgentResult(answer="Symbols: ghost/missing.go:phantom()"),
+        query="Where should this change go?",
+        nav=_nav(),
+        preload_candidates=[{"file": "pkg/mod.go", "name": "pkg/mod.go:foo"}],
+        rerun=rerun,
+    )
+
+    assert out.result is retry_result
+    assert out.triggered is True
+    assert out.resolved == 0
+    assert len(calls) == 1
+    assert calls[0].startswith("Where should this change go?")
+    assert "pkg/mod.go:20-25" in calls[0]
+
+
+def test_run_verify_expand_skips_when_disabled():
+    calls = []
+    result = AgentResult(answer="Symbols: ghost/missing.go:phantom()")
+
+    out = run_verify_expand(
+        result,
+        query="Where should this change go?",
+        nav=_nav(),
+        preload_candidates=[{"file": "pkg/mod.go", "name": "pkg/mod.go:foo"}],
+        rerun=lambda q: calls.append(q),
+        enabled=False,
+    )
+
+    assert out.result is result
+    assert out.triggered is False
+    assert out.resolved is None
+    assert calls == []

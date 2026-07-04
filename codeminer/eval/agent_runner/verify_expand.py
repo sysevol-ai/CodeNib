@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from codeminer.eval.agent_runner.symbols import symbol_leaf
 from codeminer.eval.retrieval_eval import normalize_file_path, parse_answer_spans
@@ -102,6 +102,15 @@ class Verdict:
     seeds: List[Tuple[str, str]] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class VerifyExpandRun:
+    """Result of an optional verify-expand retry."""
+
+    result: Any
+    triggered: bool = False
+    resolved: Optional[int] = None
+
+
 def graph_verify(answer: str, nav: GraphNav) -> Verdict:
     """Check whether an answer is anchored to graph-resolvable code.
 
@@ -157,3 +166,38 @@ def expansion_seeds_from_candidates(
         if file_path and leaf:
             seeds.append((file_path, leaf))
     return seeds
+
+
+def run_verify_expand(
+    result: Any,
+    *,
+    query: str,
+    nav: Optional[GraphNav],
+    preload_candidates: List[Dict[str, Any]],
+    rerun: Callable[[str], Any],
+    enabled: bool = True,
+    max_nodes: int = 10,
+) -> VerifyExpandRun:
+    """Optionally verify an answer and rerun with graph-neighbour context.
+
+    This is evaluation-harness feedback, not a runtime default. It does not
+    rewrite answers or score outputs; it only decides whether to make one
+    bounded retry and returns both the final result and audit flags.
+    """
+    if not enabled or nav is None:
+        return VerifyExpandRun(result=result)
+
+    verdict = graph_verify(getattr(result, "answer", None) or "", nav)
+    if verdict.ok:
+        return VerifyExpandRun(result=result, resolved=verdict.n_resolved)
+
+    seeds = verdict.seeds or expansion_seeds_from_candidates(preload_candidates)
+    extra = render_expansion(nav.neighbors(seeds, max_nodes=max_nodes))
+    if not extra:
+        return VerifyExpandRun(result=result, resolved=verdict.n_resolved)
+
+    return VerifyExpandRun(
+        result=rerun(f"{query}\n\n{extra}"),
+        triggered=True,
+        resolved=verdict.n_resolved,
+    )
