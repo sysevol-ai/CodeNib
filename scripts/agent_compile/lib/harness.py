@@ -226,7 +226,7 @@ def run_cell(
     answers once more. Token/turn costs of BOTH runs are summed so the verify
     arm is charged for the closed loop.
     """
-    from codeminer.agent.harness import AgentHarnessSpec
+    from codeminer.agent.harness import AgentHarnessSpec, AgentRunAccumulator
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.compiler.params import SessionContext
     from scripts.agent_compile.lib.orchestrator import (
@@ -235,8 +235,7 @@ def run_cell(
     )
     from scripts.agent_compile.lib.preload import assemble_preload
 
-    runs_usage: List[Dict[str, Any]] = []
-    runs_turns: List[int] = []
+    accounting = AgentRunAccumulator()
     preload_candidates: List[Dict[str, Any]] = []
     effective_query = query
     scatter_mode = False
@@ -262,7 +261,7 @@ def run_cell(
                 resp = llm._call_raw(msgs, **extra)
                 u = getattr(resp, "usage", None)
                 if u is not None:
-                    runs_usage.append(
+                    accounting.add_usage(
                         {
                             "prompt_tokens": getattr(u, "prompt_tokens", 0),
                             "completion_tokens": getattr(u, "completion_tokens", 0),
@@ -333,10 +332,7 @@ def run_cell(
             r = runner.run(q)
         finally:
             os.chdir(prev_cwd)
-        u = r.usage.to_dict() if r.usage else {}
-        runs_usage.append(u.get("token_usage") or u or {})
-        if r.total_turns is not None:
-            runs_turns.append(r.total_turns)
+        accounting.add_result(r)
         return r
 
     if scatter_mode:
@@ -354,10 +350,7 @@ def run_cell(
                 r = sub.run(q)
             finally:
                 os.chdir(prev_cwd)
-            u = r.usage.to_dict() if r.usage else {}
-            runs_usage.append(u.get("token_usage") or u or {})
-            if r.total_turns is not None:
-                runs_turns.append(r.total_turns)
+            accounting.add_result(r)
             return r
 
         result = scatter_gather_localize(
@@ -416,11 +409,9 @@ def run_cell(
                     }
                 )
 
-    # Sum token usage across the (1 or 2) runs so the verify arm is charged for
-    # the closed loop, not just its final turn.
-    def _sum(key: str) -> Optional[float]:
-        vals = [u.get(key) for u in runs_usage if u.get(key) is not None]
-        return sum(vals) if vals else None
+    # Sum token usage across every run so verify/scatter arms are charged for
+    # the closed loop, not just their final turn.
+    usage_totals = accounting.usage_totals()
 
     return {
         "nodes": nodes,
@@ -429,15 +420,15 @@ def run_cell(
         "file_reads": file_reads,
         "preload_candidates": preload_candidates,
         "answer": result.answer or "",
-        "total_turns": sum(runs_turns) if runs_turns else result.total_turns,
+        "total_turns": accounting.total_turns(fallback=result.total_turns),
         "total_duration_ms": result.total_duration_ms,
         "tool_call_count": len(result.tool_calls),
         "verify_triggered": verify_triggered,
         "verify_resolved": verify_resolved,
-        "prompt_tokens": _sum("prompt_tokens"),
-        "completion_tokens": _sum("completion_tokens"),
-        "total_tokens": _sum("total_tokens"),
-        "cost_usd": _sum("cost_usd"),
-        "cache_read_input_tokens": _sum("cache_read_input_tokens"),
-        "cache_creation_input_tokens": _sum("cache_creation_input_tokens"),
+        "prompt_tokens": usage_totals["prompt_tokens"],
+        "completion_tokens": usage_totals["completion_tokens"],
+        "total_tokens": usage_totals["total_tokens"],
+        "cost_usd": usage_totals["cost_usd"],
+        "cache_read_input_tokens": usage_totals["cache_read_input_tokens"],
+        "cache_creation_input_tokens": usage_totals["cache_creation_input_tokens"],
     }

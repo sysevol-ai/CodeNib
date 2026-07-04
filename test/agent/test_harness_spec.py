@@ -11,10 +11,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.harness import AgentHarnessSpec
+from codeminer.agent.agent_types import AgentResult
+from codeminer.agent.harness import AgentHarnessSpec, AgentRunAccumulator
 from codeminer.agent.runner import AgentRunner
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.llm.litellm_chat import LiteLLMChat
+from codeminer.llm.usage import TokenUsage
 
 
 @pytest.fixture(autouse=True)
@@ -96,3 +98,77 @@ def test_create_runner_uses_spec_without_mutating_it():
     assert runner._compact_keep_reads == 1
     assert runner.system_prompt.startswith("Subagent prompt")
     assert spec.max_turns == 6
+
+
+def test_run_accumulator_sums_usage_mappings_and_turns():
+    acc = AgentRunAccumulator()
+
+    acc.add_usage(
+        {
+            "prompt_tokens": 10,
+            "completion_tokens": 4,
+            "total_tokens": 14,
+            "cache_read_input_tokens": 3,
+        }
+    )
+    acc.add_usage(
+        {
+            "token_usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 1,
+                "total_tokens": 6,
+                "cost_usd": 0.02,
+            }
+        }
+    )
+    acc.add_turns(2)
+    acc.add_turns(3)
+
+    assert acc.usage_totals() == {
+        "prompt_tokens": 15,
+        "completion_tokens": 5,
+        "total_tokens": 20,
+        "cost_usd": 0.02,
+        "cache_read_input_tokens": 3,
+        "cache_creation_input_tokens": None,
+    }
+    assert acc.total_turns(fallback=99) == 5
+
+
+def test_run_accumulator_adds_agent_result_usage():
+    acc = AgentRunAccumulator()
+    result = AgentResult(
+        answer="done",
+        total_turns=4,
+        usage=TokenUsage(
+            prompt_tokens=12,
+            completion_tokens=8,
+            total_tokens=20,
+            cost_usd=0.05,
+            cache_creation_input_tokens=2,
+        ),
+    )
+
+    acc.add_result(result)
+
+    totals = acc.usage_totals()
+    assert totals["prompt_tokens"] == 12
+    assert totals["completion_tokens"] == 8
+    assert totals["total_tokens"] == 20
+    assert totals["cost_usd"] == 0.05
+    assert totals["cache_creation_input_tokens"] == 2
+    assert acc.total_turns() == 4
+
+
+def test_empty_run_accumulator_reports_missing_usage():
+    acc = AgentRunAccumulator()
+
+    assert acc.usage_totals() == {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "cost_usd": None,
+        "cache_read_input_tokens": None,
+        "cache_creation_input_tokens": None,
+    }
+    assert acc.total_turns(fallback=7) == 7

@@ -10,7 +10,7 @@ from .extract_agent import (
     KeywordExtractor,
     extract_keywords_from_statement,
 )
-from .harness import AgentHarnessSpec
+from .harness import AgentHarnessSpec, AgentRunAccumulator
 from .history import PlainChatHistory, TokenBudgetedChatHistory, count_message_tokens
 from .rerank_agent import RerankAgent, RerankResult, rerank_nodes_with_query
 from .runner import AgentRunner, CodeMinerAgentOptions, compile_repo, query
@@ -25,6 +25,7 @@ from .tool_schema import registry_to_tools, skill_to_tool_schema
 __all__ = [
     "AgentResult",
     "AgentRunTrace",
+    "AgentRunAccumulator",
     "AgentTraceEvent",
     "AgentRunner",
     "AGENT_TRACE_SCHEMA_VERSION",

@@ -12,8 +12,19 @@ this module.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
-from typing import Any, Collection, Dict, FrozenSet, Iterable, Mapping, Optional
+from dataclasses import dataclass, field, fields
+from typing import Any, Collection, Dict, FrozenSet, Iterable, List, Mapping, Optional
+
+from ..llm.usage import TokenUsage
+
+USAGE_TOTAL_KEYS = (
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "cost_usd",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+)
 
 
 def _normalize_names(
@@ -173,3 +184,77 @@ class AgentHarnessSpec:
             extra=overrides,
         )
         return AgentRunner(llm=llm, model=model, registry=registry, **kwargs)
+
+
+@dataclass
+class AgentRunAccumulator:
+    """Accumulate usage and turn counts across related agent runs.
+
+    A harness may charge one logical cell for several LLM interactions: routing
+    gates, isolated subagents, verify retries, or a final convergence run. This
+    helper keeps that accounting generic so experiment scripts do not each
+    reimplement token/turn summation.
+    """
+
+    _usage_values: Dict[str, List[float]] = field(
+        default_factory=lambda: {key: [] for key in USAGE_TOTAL_KEYS}
+    )
+    _turns: List[int] = field(default_factory=list)
+
+    def add_usage(self, usage: Optional[Any]) -> None:
+        """Add a ``TokenUsage`` or mapping with flat/nested token fields."""
+        if usage is None:
+            return
+        if isinstance(usage, TokenUsage):
+            payload: Mapping[str, Any] = usage.to_dict()
+        elif isinstance(usage, Mapping):
+            nested = usage.get("token_usage")
+            payload = nested if isinstance(nested, Mapping) else usage
+        else:
+            payload = {
+                key: getattr(usage, key, None)
+                for key in USAGE_TOTAL_KEYS
+                if getattr(usage, key, None) is not None
+            }
+
+        for key in USAGE_TOTAL_KEYS:
+            value = payload.get(key)
+            if value is None:
+                continue
+            try:
+                self._usage_values[key].append(float(value))
+            except (TypeError, ValueError):
+                continue
+
+    def add_turns(self, turns: Optional[int]) -> None:
+        """Add one run's turn count when it is known."""
+        if turns is None:
+            return
+        self._turns.append(int(turns))
+
+    def add_result(self, result: Any) -> None:
+        """Add accounting fields from an ``AgentResult``-like object."""
+        self.add_usage(getattr(result, "usage", None))
+        self.add_turns(getattr(result, "total_turns", None))
+
+    def usage_sum(self, key: str) -> Optional[float]:
+        """Return the sum for one usage field, or ``None`` if never recorded."""
+        if key not in self._usage_values:
+            raise KeyError(f"Unknown usage field: {key}")
+        values = self._usage_values[key]
+        if not values:
+            return None
+        total = sum(values)
+        if key != "cost_usd" and total.is_integer():
+            return int(total)
+        return total
+
+    def usage_totals(self) -> Dict[str, Optional[float]]:
+        """Return flat totals with ``None`` for fields never observed."""
+        return {key: self.usage_sum(key) for key in USAGE_TOTAL_KEYS}
+
+    def total_turns(self, *, fallback: Optional[int] = None) -> Optional[int]:
+        """Return summed turns, or ``fallback`` when no turn count was added."""
+        if not self._turns:
+            return fallback
+        return sum(self._turns)
