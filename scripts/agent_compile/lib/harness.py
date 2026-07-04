@@ -226,7 +226,7 @@ def run_cell(
     answers once more. Token/turn costs of BOTH runs are summed so the verify
     arm is charged for the closed loop.
     """
-    from codeminer.agent.runner import AgentRunner
+    from codeminer.agent.harness import AgentHarnessSpec
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.compiler.params import SessionContext
     from scripts.agent_compile.lib.orchestrator import (
@@ -305,12 +305,9 @@ def run_cell(
         _mt = _re.search(r"(\d+(?:\.\d+)?)\s*b\b", (cfg.model or "").lower())
         _sz = float(_mt.group(1)) if _mt else 999.0
         _keep_reads = 1 if _sz <= 7 else 0
-    runner = AgentRunner(
-        llm=llm,
-        registry=SkillRegistry(),
+    harness_spec = AgentHarnessSpec(
         max_turns=cfg.max_turns,
         allow_skills=set(skills),
-        session_ctx=sctx,
         include_default_tools=cfg.include_default_tools,
         default_tool_ids=(
             set(cfg.default_tool_ids) if cfg.default_tool_ids is not None else None
@@ -319,6 +316,11 @@ def run_cell(
         first_turn_tool_choice=getattr(cfg, "first_turn_tool_choice", None) or None,
         compact_after_read=(mode == "eager_compact"),
         compact_keep_reads=(int(_keep_reads) if mode == "eager_compact" else 0),
+    )
+    runner = harness_spec.create_runner(
+        llm=llm,
+        registry=SkillRegistry(),
+        session_ctx=sctx,
     )
     # The always-on default tools (file_read / file_search) resolve relative
     # paths against the process cwd, so run the agent from the instance repo.
@@ -340,21 +342,12 @@ def run_cell(
     if scatter_mode:
 
         def _run_subagent(sys_prompt, q, mt):
-            sub = AgentRunner(
+            sub = harness_spec.create_runner(
                 llm=llm,
                 registry=SkillRegistry(),
                 max_turns=mt,
-                allow_skills=set(skills),
                 session_ctx=sctx,
-                include_default_tools=cfg.include_default_tools,
-                default_tool_ids=(
-                    set(cfg.default_tool_ids)
-                    if cfg.default_tool_ids is not None
-                    else None
-                ),
                 system_prompt=sys_prompt or cfg.system_prompt,
-                first_turn_tool_choice=getattr(cfg, "first_turn_tool_choice", None)
-                or None,
             )
             try:
                 os.chdir(repo_path)
