@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping
 
+from .trace_summary import summarize_agent_trace
+
 
 def summarize_agent_result(result: Any) -> Dict[str, Any]:
     """Return evaluation-friendly observations from an ``AgentResult``.
@@ -59,6 +61,7 @@ def summarize_agent_result(result: Any) -> Dict[str, Any]:
         "tool_calls": tool_calls,
         "file_read_paths": file_read_paths,
         "file_reads": file_reads,
+        "trace_summary": summarize_agent_trace(result).to_dict(),
         "answer": getattr(result, "answer", None) or "",
         "total_turns": getattr(result, "total_turns", None),
         "total_duration_ms": getattr(result, "total_duration_ms", None),

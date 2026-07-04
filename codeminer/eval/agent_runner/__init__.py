@@ -55,6 +55,7 @@ from .symbols import (
     build_symbol_span_index,
     symbol_leaf,
 )
+from .trace_summary import AgentTraceSummary, summarize_agent_trace
 from .verify_expand import (
     GraphNav,
     Verdict,
@@ -69,6 +70,7 @@ from .verify_expand import (
 __all__ = [
     "AgentLocalizationEvaluation",
     "AgentSkillContextSpec",
+    "AgentTraceSummary",
     "FormatArmSummary",
     "FormatDiagnostics",
     "FeedbackGroup",
@@ -119,6 +121,7 @@ __all__ = [
     "snippet_for_node",
     "slug",
     "summarize_agent_result",
+    "summarize_agent_trace",
     "summarize_format_cells",
     "symbol_leaf",
     "usable_cells",

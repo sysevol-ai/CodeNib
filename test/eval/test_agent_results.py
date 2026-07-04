@@ -55,6 +55,7 @@ def test_summarize_agent_result_collects_tool_and_read_observations():
     assert summary["total_turns"] == 3
     assert summary["total_duration_ms"] == 42.5
     assert summary["tool_call_count"] == 3
+    assert summary["trace_summary"]["event_count"] == 0
 
 
 def test_summarize_agent_result_handles_empty_or_partial_result_shape():
@@ -70,3 +71,4 @@ def test_summarize_agent_result_handles_empty_or_partial_result_shape():
     assert summary["file_read_paths"] == []
     assert summary["file_reads"] == []
     assert summary["tool_call_count"] == 0
+    assert summary["trace_summary"]["schema_version"] is None
