@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 542" font-family="'Helvetica Neue', Arial, sans-serif" role="img" aria-label="CodeMiner motivation figure: incremental and heterogeneous indexing times an agent-native interface yields fresh, complete, composable code retrieval.">
+  <style>
+    :root{
+      --paper:#F6F7F9; --ink:#1B2230; --muted:#5B6473; --line:#E2E5EA;
+      --card:#FFFFFF; --card-line:#E7EAF0;
+      --teal:#12897A; --teal-soft:#E4F1EE;
+      --indigo:#4759C4; --indigo-soft:#E8EAF9;
+      --amber:#C77D22; --amber-soft:#F7ECDC;
+      --gold:#9A7B12; --result:#141A26;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --paper:#11141B; --ink:#EEF1F6; --muted:#9AA3B2; --line:#262C38;
+        --card:#181C25; --card-line:#2A3240;
+        --teal:#3FB9A6; --teal-soft:#123029;
+        --indigo:#8A97ED; --indigo-soft:#1B2148;
+        --amber:#E4A251; --amber-soft:#3A2A14;
+        --gold:#D8B54A; --result:#E9ECF3;
+      }
+    }
+    :root[data-theme="light"]{
+      --paper:#F6F7F9; --ink:#1B2230; --muted:#5B6473; --line:#E2E5EA;
+      --card:#FFFFFF; --card-line:#E7EAF0;
+      --teal:#12897A; --teal-soft:#E4F1EE; --indigo:#4759C4; --indigo-soft:#E8EAF9;
+      --amber:#C77D22; --amber-soft:#F7ECDC; --gold:#9A7B12; --result:#141A26;
+    }
+    :root[data-theme="dark"]{
+      --paper:#11141B; --ink:#EEF1F6; --muted:#9AA3B2; --line:#262C38;
+      --card:#181C25; --card-line:#2A3240;
+      --teal:#3FB9A6; --teal-soft:#123029; --indigo:#8A97ED; --indigo-soft:#1B2148;
+      --amber:#E4A251; --amber-soft:#3A2A14; --gold:#D8B54A; --result:#E9ECF3;
+    }
+    .eyebrow{font-size:12px; letter-spacing:.24em; font-weight:700;}
+    .h1{font-size:25px; font-weight:750; fill:var(--ink);}
+    .thesis{font-size:14.5px; fill:var(--muted);}
+    .grp{font-size:11.5px; letter-spacing:.16em; font-weight:700;}
+    .tag{font-size:10.5px; letter-spacing:.14em; font-weight:700;}
+    .ctitle{font-size:17px; font-weight:750; fill:var(--ink);}
+    .body{font-size:12.5px; fill:var(--muted);}
+    .chip{font-size:10.5px; font-family:'SF Mono','Menlo','Consolas',monospace; fill:var(--ink);}
+    .num{font-size:13px; font-weight:800; fill:#fff;}
+    .vlab{font-size:10px; font-family:'SF Mono','Menlo','Consolas',monospace; fill:var(--muted);}
+    .op{font-size:34px; font-weight:300; fill:var(--muted);}
+    .rlab{font-size:14.5px; fill:#fff; font-weight:600;}
+  </style>
+
+  <rect x="0" y="0" width="1180" height="542" fill="var(--paper)"/>
+
+  <!-- Title block -->
+  <text x="40" y="46" class="eyebrow" fill="var(--gold)">MOTIVATION</text>
+  <text x="40" y="78" class="h1">A living, heterogeneous code graph that agents can actually use</text>
+  <text x="40" y="104" class="thesis"><tspan>Real repositories are </tspan><tspan fill="var(--ink)" font-weight="700">polyglot</tspan><tspan>, change </tspan><tspan fill="var(--ink)" font-weight="700">every commit</tspan><tspan>, and get queried many different ways. CodeMiner answers each with one design property —</tspan></text>
+  <text x="40" y="124" class="thesis"><tspan fill="var(--teal)" font-weight="700">incremental</tspan><tspan> + </tspan><tspan fill="var(--indigo)" font-weight="700">heterogeneous</tspan><tspan> indexing </tspan><tspan class="op" font-size="15" dy="1">×</tspan><tspan dy="-1"> an </tspan><tspan fill="var(--amber)" font-weight="700">agent-native</tspan><tspan> interface — and together they compound.</tspan></text>
+
+  <!-- Group brackets -->
+  <g stroke="var(--line)" stroke-width="1.5" fill="none">
+    <path d="M40 172 v-8 h700 v8"/>
+    <path d="M804 172 v-8 h336 v8"/>
+  </g>
+  <text x="390" y="160" text-anchor="middle" class="grp" fill="var(--muted)">INDEX &#183; ONE LIVING CODE GRAPH</text>
+  <text x="972" y="160" text-anchor="middle" class="grp" fill="var(--muted)">AGENT &#183; THE INTERFACE</text>
+  <text x="772" y="317" text-anchor="middle" class="op">&#215;</text>
+
+  <!-- ============ CARD 1: INCREMENTAL ============ -->
+  <g>
+    <rect x="40" y="182" width="336" height="246" rx="12" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="40" y="182" width="336" height="4" rx="2" fill="var(--teal)"/>
+    <circle cx="66" cy="216" r="13" fill="var(--teal)"/>
+    <text x="66" y="221" text-anchor="middle" class="num">1</text>
+    <text x="90" y="209" class="tag" fill="var(--teal)">STAYS FRESH</text>
+    <text x="90" y="228" class="ctitle">Incremental</text>
+
+    <!-- motif: commit timeline, only latest patched -->
+    <g transform="translate(64,252)">
+      <line x1="0" y1="14" x2="256" y2="14" stroke="var(--line)" stroke-width="2"/>
+      <circle cx="0" cy="14" r="6" fill="var(--card)" stroke="var(--muted)" stroke-width="2"/>
+      <circle cx="64" cy="14" r="6" fill="var(--card)" stroke="var(--muted)" stroke-width="2"/>
+      <circle cx="128" cy="14" r="6" fill="var(--card)" stroke="var(--muted)" stroke-width="2"/>
+      <circle cx="192" cy="14" r="6" fill="var(--card)" stroke="var(--muted)" stroke-width="2"/>
+      <circle cx="256" cy="14" r="8.5" fill="var(--teal-soft)" stroke="var(--teal)" stroke-width="2.5"/>
+      <circle cx="256" cy="14" r="3" fill="var(--teal)"/>
+      <text x="128" y="42" text-anchor="middle" class="vlab" fill="var(--teal)">git diff &#8594; patch changed &#916; only</text>
+    </g>
+
+    <text x="64" y="326" class="body">Git diff drives updates: only changed chunks</text>
+    <text x="64" y="344" class="body">re-embed and only touched edges re-wire.</text>
+
+    <line x1="64" y1="366" x2="352" y2="366" stroke="var(--card-line)"/>
+    <g font-family="monospace">
+      <rect x="64" y="382" width="9" height="9" rx="2" fill="var(--teal)"/>
+      <text x="82" y="390" class="chip">content-hash embedding cache</text>
+      <rect x="64" y="406" width="9" height="9" rx="2" fill="var(--teal)"/>
+      <text x="82" y="414" class="chip">per-language LSP graph patchers</text>
+    </g>
+  </g>
+
+  <!-- ============ CARD 2: HETEROGENEOUS ============ -->
+  <g>
+    <rect x="404" y="182" width="336" height="246" rx="12" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="404" y="182" width="336" height="4" rx="2" fill="var(--indigo)"/>
+    <circle cx="430" cy="216" r="13" fill="var(--indigo)"/>
+    <text x="430" y="221" text-anchor="middle" class="num">2</text>
+    <text x="454" y="209" class="tag" fill="var(--indigo)">COVERS EVERY QUERY</text>
+    <text x="454" y="228" class="ctitle">Heterogeneous</text>
+
+    <!-- motif: stacked indexes + tiny typed graph -->
+    <g transform="translate(428,246)">
+      <g font-family="monospace">
+        <rect x="0" y="0"  width="150" height="16" rx="3" fill="var(--indigo-soft)"/>
+        <text x="8" y="12" class="chip" fill="var(--indigo)">BM25 &#183; sparse</text>
+        <rect x="0" y="21" width="150" height="16" rx="3" fill="var(--indigo-soft)"/>
+        <text x="8" y="33" class="chip" fill="var(--indigo)">dense &#183; FAISS</text>
+        <rect x="0" y="42" width="150" height="16" rx="3" fill="var(--indigo-soft)"/>
+        <text x="8" y="54" class="chip" fill="var(--indigo)">trigram &#183; Zoekt</text>
+      </g>
+      <!-- tiny typed graph -->
+      <g transform="translate(190,4)" stroke="var(--indigo)" stroke-width="1.6">
+        <line x1="16" y1="10" x2="52" y2="4"/>
+        <line x1="16" y1="10" x2="46" y2="44"/>
+        <line x1="52" y1="4" x2="70" y2="40"/>
+        <circle cx="16" cy="10" r="7" fill="var(--indigo-soft)"/>
+        <circle cx="52" cy="4"  r="7" fill="var(--indigo-soft)"/>
+        <circle cx="46" cy="44" r="7" fill="var(--indigo)" stroke="none"/>
+        <circle cx="70" cy="40" r="7" fill="var(--indigo-soft)"/>
+      </g>
+      <text x="228" y="66" text-anchor="middle" class="vlab" fill="var(--indigo)">typed graph</text>
+    </g>
+
+    <text x="428" y="326" class="body">One typed graph + complementary indexes over</text>
+    <text x="428" y="344" class="body">6+ languages — a modality for every query.</text>
+
+    <line x1="428" y1="366" x2="716" y2="366" stroke="var(--card-line)"/>
+    <g font-family="monospace">
+      <rect x="428" y="382" width="9" height="9" rx="2" fill="var(--indigo)"/>
+      <text x="446" y="390" class="chip">Py &#183; Go &#183; Rust &#183; C/C++ &#183; JS &#183; TS</text>
+      <rect x="428" y="406" width="9" height="9" rx="2" fill="var(--indigo)"/>
+      <text x="446" y="414" class="chip">edges: contain/ref/import/type-use</text>
+    </g>
+  </g>
+
+  <!-- ============ CARD 3: AGENT-NATIVE ============ -->
+  <g>
+    <rect x="804" y="182" width="336" height="246" rx="12" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="804" y="182" width="336" height="4" rx="2" fill="var(--amber)"/>
+    <circle cx="830" cy="216" r="13" fill="var(--amber)"/>
+    <text x="830" y="221" text-anchor="middle" class="num">3</text>
+    <text x="854" y="209" class="tag" fill="var(--amber)">COMPOSES IN THE LOOP</text>
+    <text x="854" y="228" class="ctitle">Agent-native</text>
+
+    <!-- motif: think -> act -> observe loop -->
+    <g transform="translate(972,278)">
+      <circle r="28" fill="none" stroke="var(--amber)" stroke-width="2" stroke-dasharray="4 4"/>
+      <path d="M26 -9 A28 28 0 0 1 18 21" fill="none" stroke="var(--amber)" stroke-width="2.4"/>
+      <path d="M18 21 l-2 -9 l9 3 z" fill="var(--amber)"/>
+      <circle cx="0" cy="-28" r="4.5" fill="var(--amber)"/>
+      <circle cx="24" cy="14" r="4.5" fill="var(--amber)"/>
+      <circle cx="-24" cy="14" r="4.5" fill="var(--amber)"/>
+      <text x="0" y="-37" text-anchor="middle" class="vlab" fill="var(--amber)">think</text>
+      <text x="50" y="19" text-anchor="middle" class="vlab" fill="var(--amber)">act</text>
+      <text x="-52" y="19" text-anchor="middle" class="vlab" fill="var(--amber)">observe</text>
+    </g>
+
+    <text x="828" y="326" class="body">Gated, composable skills — also served over MCP —</text>
+    <text x="828" y="344" class="body">chained retrieve &#8594; expand &#8594; rerank &#8594; read.</text>
+
+    <line x1="828" y1="366" x2="1116" y2="366" stroke="var(--card-line)"/>
+    <g font-family="monospace">
+      <rect x="828" y="382" width="9" height="9" rx="2" fill="var(--amber)"/>
+      <text x="846" y="390" class="chip">skills + MCP tools</text>
+      <rect x="828" y="406" width="9" height="9" rx="2" fill="var(--amber)"/>
+      <text x="846" y="414" class="chip">index-aware gating &amp; routing</text>
+    </g>
+  </g>
+
+  <!-- Result bar -->
+  <g>
+    <rect x="40" y="456" width="1100" height="62" rx="12" fill="var(--result)"/>
+    <text x="70" y="494" class="op" fill="#6E7688">=</text>
+    <text x="104" y="483" class="rlab"><tspan font-weight="800">Fresh, complete, composable retrieval</tspan><tspan> that stays current as code moves and</tspan></text>
+    <text x="104" y="505" class="rlab"><tspan>spans every query type and language — retrieval an agent can actually act on.</tspan></text>
+  </g>
+</svg>
