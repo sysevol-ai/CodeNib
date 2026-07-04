@@ -515,7 +515,8 @@ def _gap_category(external: Dict[str, Any], reference: Dict[str, Any]) -> str:
             if float(ext_turns) > float(ref_turns):
                 return "route_timing_gap"
         except (TypeError, ValueError):
-            pass
+            # Non-numeric turn counts provide no route-timing signal.
+            ref_turns = ext_turns = None
     ref_tools = reference.get("tool_count")
     ext_tools = external.get("tool_count")
     if ref_tools is not None and ext_tools is not None:
@@ -523,7 +524,8 @@ def _gap_category(external: Dict[str, Any], reference: Dict[str, Any]) -> str:
             if float(ext_tools) > float(ref_tools):
                 return "route_timing_gap"
         except (TypeError, ValueError):
-            pass
+            # Non-numeric tool counts provide no route-timing signal.
+            ref_tools = ext_tools = None
     if (
         not external.get("native_lsp_available")
         and external.get("lsp_route_tool_index") is None

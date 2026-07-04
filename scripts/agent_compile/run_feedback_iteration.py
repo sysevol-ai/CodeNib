@@ -297,12 +297,12 @@ _ACTION_STEPS: Dict[str, Dict[str, Any]] = {
         ],
         "commands": [
             "python scripts/agent_compile/plan_feedback_suite.py "
-            "--suite-file "
-            "scripts/agent_compile/feedback_suites/haiku_static_lsp_route_q2.yaml "
-            "--output-dir <output-dir> --write-plan",
+            + "--suite-file "
+            + "scripts/agent_compile/feedback_suites/haiku_static_lsp_route_q2.yaml "
+            + "--output-dir <output-dir> --write-plan",
             "python scripts/agent_compile/aggregate_feedback_probe.py "
-            "--cells-dir <cells-dir> --output-dir <output-dir> "
-            "--promotion-profile route_lifecycle",
+            + "--cells-dir <cells-dir> --output-dir <output-dir> "
+            + "--promotion-profile route_lifecycle",
         ],
     },
     "repair_tool_envelopes": {
