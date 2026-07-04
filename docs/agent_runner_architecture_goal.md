@@ -47,6 +47,26 @@ The implementation must keep three layers separate:
 
 ## Milestones
 
+### Active Iteration Sequence
+
+The milestone labels above describe the long-term architecture. The current
+implementation sequence should stay smaller and reviewable:
+
+| Step | Scope | Review Boundary | Promotion Signal |
+| --- | --- | --- | --- |
+| M3b | Context ledger runtime contract | `codeminer/agent/runtime` only; no scorer logic | Unit tests explain provenance and consumption state |
+| M4a | Declarative harness spec | Runner construction knobs only; no dataset/model policy | Scripts instantiate a core spec instead of open-coding runner kwargs |
+| M4b | Shared harness plumbing | Usage accounting, repo cwd scoping, skill context loading, prebuilt graph helpers | `scripts.agent_compile.lib` shrinks while eval tests target package APIs |
+| M4c | Eval diagnostics package | Trace summaries, answer diagnostics, edit audit, external-agent baselines | Scripts become CLI wrappers over `codeminer/eval/agent_runner` |
+| M5a | Feedback loop surface | Small fixed smoke set plus rotating holdout, raw vs normalized metrics | Iterations report content/rank/path/format/runtime gaps separately |
+| M6a | Quarantine overfit-risk logic | Scorer repair, required-anchor correction, route promotion gates | Runtime defaults can be justified without naming benchmark instances |
+
+Do not skip from M4b to a broad "agent improvement" PR. Each PR should either
+move reusable plumbing into a package, add a boundary test, or improve the
+feedback signal. Experiment recipes may use model-specific heuristics, but
+runtime and reusable eval APIs must not encode the current scorer, answer
+format, or a tiny fixed dataset slice.
+
 ### M0: Freeze And Audit #271
 
 Objective: preserve #271 as a spike and classify its contents before extracting
