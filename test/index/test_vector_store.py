@@ -13,8 +13,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from codeminer.code_chunking import create_chunker
 from codeminer.index import create_code_vector_store
+
+pytestmark = pytest.mark.slow
 
 HTTPIE_REPO_URL = "https://github.com/httpie/cli.git"
 HTTPIE_REPO_PATH = Path("/tmp/httpie-cli")

@@ -88,7 +88,8 @@ So a PR that touches only docs, scripts, examples, Markdown, `LICENSE`, or
 ### unit
 
 Pure logic with mocks only (~1 min). Sets up a Python 3.12 conda env
-(`codeminer-test`), installs `pip install -e ".[test]"`, then runs (verbatim):
+(`codeminer-test`), preinstalls the configured CPU-only `torch` wheel, installs
+`pip install -e ".[test]"`, then runs (verbatim):
 
 ```bash
 pytest -n auto -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short
@@ -97,6 +98,11 @@ pytest -n auto -m "not slow and not integration and not integration_serial and n
 This is the canonical definition of a **unit** test: anything not carrying one
 of the four non-unit markers. Parallelized with `pytest-xdist` (`-n auto`) and
 fails fast (`-x`).
+
+The CPU `torch` preinstall keeps the non-GPU unit tier from resolving PyPI's
+default CUDA wheels through `sentence-transformers`. Tests that require real
+HuggingFace downloads, CUDA, or LLM credentials must be marked `slow` instead of
+running in this tier.
 
 ### integration
 
@@ -174,6 +180,11 @@ LLM API calls and GPU embeddings (~15 min). Depends on `preflight` and `unit`
 pytest -m "slow" --tb=short
 ```
 
+CUDA-specific tests should declare an explicit skip when the active `torch`
+install is not CUDA-capable. This keeps slow LLM coverage available on CPU-only
+runners while making GPU coverage opt-in to a runner/toolchain that actually
+provides CUDA.
+
 ## Pytest markers
 
 Defined in `pyproject.toml` under `[tool.pytest.ini_options].markers`:
@@ -244,6 +255,10 @@ use the `./.github/actions/setup-env` composite action, which provisions:
 
 - **conda** env `codeminer-test` (Python 3.12 by default) plus a separate
   `scip-env` from `codeminer/scip_interface/scip-environment.yml`.
+- **CPU torch preinstall** — enabled by default through
+  `preinstall-cpu-torch`, `torch-version`, and `torch-index-url`, so non-GPU
+  jobs do not accidentally download CUDA wheels through transitive embedding
+  dependencies.
 - **SCIP Python** — built from the `third_party/scip-python` submodule.
 - **Rust** — stable + a pinned nightly toolchain with the `rust-analyzer`
   component (toggle `install-rust`).

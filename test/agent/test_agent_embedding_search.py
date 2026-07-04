@@ -20,6 +20,8 @@ from codeminer.agent.runner import AgentRunner
 from codeminer.agent.skills.loader import SkillLoader
 from codeminer.agent.skills.registry import SkillRegistry
 
+pytestmark = pytest.mark.slow
+
 EMBEDDING_INDEX_PATH = "/tmp/embedding_e2e_index"
 
 
