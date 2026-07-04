@@ -127,12 +127,16 @@ benchmark cell is currently easiest to improve.
    scripts.
 
 5. **M9c: Generic baseline batch runner.**
-   Move reusable task iteration, resume, exception capture, JSONL writing, and
-   aggregate metric accounting into `codeminer.eval.agent_runner`, so LSP,
-   Codex, Claude Code, and OpenCode-style clients can share the same feedback
-   loop.
+   Landed in #295. Reusable task iteration, resume, exception capture, JSONL
+   writing, and aggregate metric accounting now live in
+   `codeminer.eval.agent_runner`.
 
-6. **M10a: Legacy script shim cleanup.**
+6. **M9d: External loc baseline driver migration.**
+   Route the existing Codex/Claude localization baseline driver through the
+   shared batch runner while keeping dataset selection and CLI flags in the
+   driver layer.
+
+7. **M10a: Legacy script shim cleanup.**
    Keep `scripts/agent_compile/lib` only as long as needed for old notebooks.
    Internal scripts and reusable tests should continue importing package APIs
    directly, and the compatibility layer should be removed once the migration

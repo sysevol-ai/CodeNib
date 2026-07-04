@@ -13,14 +13,13 @@ Holds:
 - ``build_result_entry(...)`` — per-instance record with ``metric_k_files`` /
   ``metric_k_node_ids`` and per-scope/per-k ``metrics``, so it joins cleanly
   against the internal harness (see retrieve_rerank.py)
-- ``run_agent_baseline(args, agent_factory, agent_name)`` — async driver
-  that iterates the dataset, calls the agent, scores against GT, and
-  appends JSONL incrementally; logs aggregate file/symbol@k at the end
+- ``run_agent_baseline(args, agent_factory, agent_name)`` — dataset-specific
+  driver that prepares :class:`BaselineTask` inputs and delegates the reusable
+  execution / JSONL / metrics loop to ``codeminer.eval.agent_runner.batch``.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set
@@ -36,12 +35,8 @@ from codeminer.eval.agent_runner.baseline import (
     score_baseline_predictions,
     unique_location_files,
 )
-from codeminer.eval.agent_runner.batch import baseline_done_ids
-from codeminer.eval.retrieval_eval import (
-    aggregate_metrics,
-    average_metrics,
-    collect_targets,
-)
+from codeminer.eval.agent_runner.batch import baseline_done_ids, run_baseline_batch
+from codeminer.eval.retrieval_eval import collect_targets
 from codeminer.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -156,17 +151,6 @@ def build_result_entry(
     )
 
 
-def _empty_aggregate(ks: Sequence[int]) -> Dict[str, Dict[int, Dict[str, float]]]:
-    """Pre-seed the running aggregate so `aggregate_metrics` accumulates in place."""
-    return {
-        scope: {
-            k: {"accuracy": 0.0, "precision": 0.0, "recall": 0.0, "hits": 0.0}
-            for k in ks
-        }
-        for scope in ("files", "symbols")
-    }
-
-
 def _log_aggregate_table(
     averaged: Mapping[str, Mapping[int, Mapping[str, float]]],
     eval_count: int,
@@ -194,6 +178,32 @@ def _log_aggregate_table(
             )
 
 
+def _task_from_instance(
+    inst: Mapping[str, Any],
+    *,
+    eval_metadata: Mapping[str, Any],
+    simplified_symbols: bool,
+) -> BaselineTask:
+    instance_id = str(inst["instance_id"])
+    metadata = eval_metadata.get(instance_id)
+    if metadata is None:
+        target_files: List[str] = []
+        target_symbols: List[str] = []
+    else:
+        target_files, target_symbols = collect_targets(
+            metadata,
+            simplified_symbols=simplified_symbols,
+        )
+    return BaselineTask(
+        instance_id=instance_id,
+        query=str(inst.get("problem_statement") or ""),
+        repo_path="",
+        target_files=tuple(target_files),
+        target_symbols=tuple(target_symbols),
+        repo_name=str(inst.get("repo") or "") or None,
+    )
+
+
 async def run_agent_baseline(
     args,
     *,
@@ -217,16 +227,27 @@ async def run_agent_baseline(
         )
     if getattr(args, "limit", None):
         instances = instances.select(range(min(args.limit, len(instances))))
-    logger.info("Loaded %d instance(s) from %s", len(instances), args.dataset)
+    instance_rows = list(instances)
+    logger.info("Loaded %d instance(s) from %s", len(instance_rows), args.dataset)
 
     eval_metadata = dataset_obj.load_eval_metadata(args.eval_instances or "")
     simplified_symbols = getattr(dataset_obj, "simplified_symbols", True)
     metrics_k = list(args.metrics_k)
 
-    result_path = Path(args.result_path).expanduser().resolve()
-    result_path.parent.mkdir(parents=True, exist_ok=True)
+    tasks = [
+        _task_from_instance(
+            inst,
+            eval_metadata=eval_metadata,
+            simplified_symbols=simplified_symbols,
+        )
+        for inst in instance_rows
+    ]
+    instances_by_id = {
+        task.instance_id: inst for task, inst in zip(tasks, instance_rows, strict=True)
+    }
 
-    done = already_done_ids(result_path) if args.resume else set()
+    result_path = Path(args.result_path).expanduser().resolve()
+    done = baseline_done_ids(result_path) if args.resume else set()
     if done:
         logger.info(
             "Resuming — %d instance(s) already in %s, will skip",
@@ -236,107 +257,40 @@ async def run_agent_baseline(
 
     agent = agent_factory()
 
-    aggregate = _empty_aggregate(metrics_k)
-    scored_count = 0
-    n_success = 0
-    n_failed = 0
-    n_skipped = 0
+    async def locate(task: BaselineTask):
+        inst = instances_by_id[task.instance_id]
+        dataset_obj.process_instance(inst)
+        repo = dataset_obj.get_repo_path(inst)
+        call_task = BaselineTask.from_dataset_instance(
+            inst,
+            repo_path=repo,
+            target_files=task.target_files,
+            target_symbols=task.target_symbols,
+        )
+        return await agent.locate_code(**call_task.to_agent_call())
 
-    with result_path.open("a", encoding="utf-8") as out:
-        for i, inst in enumerate(instances):
-            instance_id = inst["instance_id"]
-            if instance_id in done:
-                n_skipped += 1
-                logger.info(
-                    "[%d/%d] %s — skipped (resume)",
-                    i + 1,
-                    len(instances),
-                    instance_id,
-                )
-                continue
+    summary = await run_baseline_batch(
+        tasks,
+        runner=locate,
+        agent_name=agent_name,
+        model=model_label,
+        metrics_k=metrics_k,
+        result_path=result_path,
+        resume=args.resume,
+    )
 
-            metadata = eval_metadata.get(instance_id)
-            if metadata is None:
-                target_files: List[str] = []
-                target_symbols: List[str] = []
-            else:
-                target_files, target_symbols = collect_targets(
-                    metadata, simplified_symbols=simplified_symbols
-                )
-
-            logger.info("[%d/%d] %s", i + 1, len(instances), instance_id)
-            task = BaselineTask(
-                instance_id=instance_id,
-                query=str(inst.get("problem_statement") or ""),
-                repo_path="",
-                target_files=tuple(target_files),
-                target_symbols=tuple(target_symbols),
-                repo_name=str(inst.get("repo") or "") or None,
-            )
-            try:
-                dataset_obj.process_instance(inst)
-                repo = dataset_obj.get_repo_path(inst)
-                task = BaselineTask.from_dataset_instance(
-                    inst,
-                    repo_path=repo,
-                    target_files=target_files,
-                    target_symbols=target_symbols,
-                )
-                result = await agent.locate_code(**task.to_agent_call())
-                entry = build_baseline_result_entry(
-                    task=task,
-                    agent_name=agent_name,
-                    model=model_label,
-                    result=result,
-                    metrics_k=metrics_k,
-                )
-                if entry["success"]:
-                    n_success += 1
-                else:
-                    n_failed += 1
-            except Exception as e:  # noqa: BLE001 — record + continue
-                logger.exception("[%s] failed", instance_id)
-                entry = build_baseline_result_entry(
-                    task=task,
-                    agent_name=agent_name,
-                    model=model_label,
-                    result=None,
-                    metrics_k=metrics_k,
-                    error=str(e),
-                )
-                n_failed += 1
-
-            if entry["success"] and entry["metrics"] is not None:
-                aggregate_metrics(aggregate, entry["metrics"])
-                scored_count += 1
-                fk = entry["metrics"]["files"][metrics_k[0]]
-                sk = entry["metrics"]["symbols"][metrics_k[0]]
-                logger.info(
-                    "  files@%d acc=%.2f rec=%.2f | symbols@%d acc=%.2f rec=%.2f",
-                    metrics_k[0],
-                    fk["accuracy"],
-                    fk["recall"],
-                    metrics_k[0],
-                    sk["accuracy"],
-                    sk["recall"],
-                )
-
-            out.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            out.flush()
-
-    averaged = average_metrics(aggregate, scored_count)
-    _log_aggregate_table(averaged, scored_count)
+    _log_aggregate_table(summary.metrics, summary.scored)
 
     logger.info(
         "Done. success=%d failed=%d skipped=%d scored=%d total=%d result=%s",
-        n_success,
-        n_failed,
-        n_skipped,
-        scored_count,
-        len(instances),
-        result_path,
+        summary.succeeded,
+        summary.failed,
+        summary.skipped,
+        summary.scored,
+        summary.total,
+        summary.result_path,
     )
-    return 0 if n_failed == 0 else 1
+    return 0 if summary.failed == 0 else 1
 
 
 def add_common_args(parser) -> None:

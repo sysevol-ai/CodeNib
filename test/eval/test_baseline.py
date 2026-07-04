@@ -269,3 +269,111 @@ def test_run_agent_baseline_uses_baseline_task_envelope(monkeypatch, tmp_path):
     assert rows[0]["instance_id"] == "demo__repo-1"
     assert rows[0]["agent"] == "fake"
     assert rows[0]["success"] is True
+
+
+def test_run_agent_baseline_resume_skips_processing_done_instances(
+    monkeypatch, tmp_path
+):
+    calls = []
+    instances = [
+        {
+            "instance_id": "demo__repo-1",
+            "repo": "demo/repo",
+            "problem_statement": "Already done",
+        },
+        {
+            "instance_id": "demo__repo-2",
+            "repo": "demo/repo",
+            "problem_statement": "Fix parser edge case",
+        },
+    ]
+
+    class FakeDataset:
+        simplified_symbols = True
+
+        def __init__(self):
+            self.processed = []
+
+        def load(self):
+            return list(instances)
+
+        def load_eval_metadata(self, _path):
+            return {
+                "demo__repo-1": {
+                    "target_files": ["pkg/old.py"],
+                    "symbols_modified": ["pkg/old.py:old()"],
+                    "symbols_deleted": [],
+                },
+                "demo__repo-2": {
+                    "target_files": ["pkg/parser.py"],
+                    "symbols_modified": ["pkg/parser.py:Parser.parse()"],
+                    "symbols_deleted": [],
+                },
+            }
+
+        def process_instance(self, instance):
+            self.processed.append(instance["instance_id"])
+
+        def get_repo_path(self, instance):
+            return f"/repos/{instance['instance_id']}"
+
+    dataset = FakeDataset()
+
+    class FakeAgent:
+        async def locate_code(self, query_text, repo_path, context):
+            calls.append(
+                {
+                    "query_text": query_text,
+                    "repo_path": repo_path,
+                    "context": context,
+                }
+            )
+            return _success_result()
+
+    monkeypatch.setattr(
+        "codeminer.eval.loc_agent_runner.build_dataset",
+        lambda _args: dataset,
+    )
+    result_path = tmp_path / "baseline.jsonl"
+    result_path.write_text(
+        json.dumps({"instance_id": "demo__repo-1", "success": True}) + "\n",
+        encoding="utf-8",
+    )
+    args = SimpleNamespace(
+        dataset="codeminer_base",
+        split="test",
+        filter_instance=".*",
+        repo_cache_dir="",
+        result_path=str(result_path),
+        resume=True,
+        limit=None,
+        eval_instances="",
+        metrics_k=[1],
+    )
+
+    rc = asyncio.run(
+        run_agent_baseline(
+            args,
+            agent_factory=FakeAgent,
+            agent_name="fake",
+            model_label="model-a",
+        )
+    )
+
+    assert rc == 0
+    assert dataset.processed == ["demo__repo-2"]
+    assert calls == [
+        {
+            "query_text": "Fix parser edge case",
+            "repo_path": "/repos/demo__repo-2",
+            "context": {
+                "issue_title": "[demo__repo-2] demo/repo",
+                "issue_body": "Fix parser edge case",
+            },
+        }
+    ]
+    rows = [json.loads(line) for line in result_path.read_text().splitlines()]
+    assert [row["instance_id"] for row in rows] == [
+        "demo__repo-1",
+        "demo__repo-2",
+    ]
