@@ -170,6 +170,12 @@ benchmark cell is currently easiest to improve.
     scripts no longer expose a core-looking library namespace. Reusable
     agent-runner code must be imported from `codeminer.eval.agent_runner`.
 
+13. **M10f: Sweep execution ownership.**
+    Move reusable sweep execution semantics — harness validation, resume,
+    prebuilt index loading, per-cell scoring, JSON record construction, and
+    transient failure persistence — into `codeminer.eval.agent_runner.sweep`.
+    `scripts/agent_compile/run_sweep.py` should remain CLI/config override glue.
+
 ## Current Boundary Decisions
 
 - Localization answer-contract forcing is an opt-in harness policy, not a core
@@ -191,6 +197,9 @@ benchmark cell is currently easiest to improve.
   defaults should not be promoted when either dependency set is non-empty.
 - `scripts/agent_compile` owns experiment CLIs, configs, and report glue only;
   it must not grow a reusable `lib` namespace again.
+- Sweep execution semantics live in `codeminer.eval.agent_runner.sweep`;
+  experiment scripts may parse arguments and select configs, but should not own
+  reusable cell lifecycle, scoring, or resume behavior.
 - External-agent and LSP baseline task/result envelopes live in
   `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
   SDK-specific inputs to that envelope, but they should not own reusable scoring

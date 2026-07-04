@@ -76,8 +76,10 @@ from .sweep import (
     load_dataset_rows,
     load_full_contexts,
     run_cell,
+    run_sweep,
     scenario_for,
     slug,
+    validate_sweep_harness,
 )
 from .sweep_config import SampleConfig, SweepConfig
 from .symbols import (
@@ -162,6 +164,7 @@ __all__ = [
     "retrieve_candidates",
     "run_baseline_batch",
     "run_cell",
+    "run_sweep",
     "run_lsp_route_baseline",
     "run_verify_expand",
     "scatter_gather_localize",
@@ -177,6 +180,7 @@ __all__ = [
     "symbol_leaf",
     "unique_location_files",
     "usable_cells",
+    "validate_sweep_harness",
     "verdict_is_yes",
     "verify_query",
 ]

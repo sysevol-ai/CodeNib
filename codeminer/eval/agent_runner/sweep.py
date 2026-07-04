@@ -15,7 +15,13 @@ can provide thin CLIs without owning reusable runner semantics.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import sys
+import time
+import traceback
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from .sweep_config import SweepConfig
@@ -102,6 +108,41 @@ def all_index_skill_ids(cfg: SweepConfig) -> List[str]:
             if sk and sk not in seen:
                 seen.append(sk)
     return seen
+
+
+def validate_sweep_harness(cfg: SweepConfig) -> None:
+    """Fail loudly on tool/skill ids that would be silently dropped.
+
+    ``default_tool_ids`` is intersected with the registered default tools, and
+    ``allow_skills`` with the registry. An unknown name (for example the legacy
+    ``file_read`` instead of ``read``) otherwise vanishes before an expensive
+    sweep starts.
+    """
+    from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
+    from codeminer.eval.agent_runner.contexts import default_agent_skills_dir
+
+    defaults = set(DEFAULT_TOOL_IDS)
+    skills_dir = default_agent_skills_dir()
+    index_skills = {
+        path.name for path in skills_dir.iterdir() if (path / "config.yaml").exists()
+    }
+    known = defaults | index_skills
+
+    if cfg.default_tool_ids:
+        bad = sorted(set(cfg.default_tool_ids) - defaults)
+        if bad:
+            raise ValueError(
+                f"{cfg.sweep_id}: default_tool_ids {bad} are not registered default "
+                f"tools {sorted(defaults)}; they would be silently dropped, leaving "
+                f"the arm with no default tools. Use the real ids (read/grep/glob/bash)."
+            )
+    for arm, skills in cfg.subsets.items():
+        bad = [skill_id for skill_id in skills if skill_id not in known]
+        if bad:
+            raise ValueError(
+                f"{cfg.sweep_id}/{arm}: unknown skills {bad} — not a default tool "
+                f"{sorted(defaults)} nor a package under codeminer/agent/skills/."
+            )
 
 
 def load_full_contexts(cfg: SweepConfig, repo_path: str, cache_dir: str):
@@ -290,3 +331,231 @@ def run_cell(
         "cache_read_input_tokens": usage_totals["cache_read_input_tokens"],
         "cache_creation_input_tokens": usage_totals["cache_creation_input_tokens"],
     }
+
+
+def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dict:
+    """Run an agent-runner sweep and write per-cell JSON records.
+
+    The CLI in ``scripts/agent_compile`` owns argument parsing and experiment
+    config files; the reusable execution semantics live here so other
+    experiments do not need to copy resume, prebuilt index loading, scoring, or
+    transient failure handling.
+    """
+    from codeminer.eval.agent_runner.prebuilt import (
+        has_full_indexes,
+        repo_path_for,
+        stage_prebuilt_indexes,
+    )
+    from codeminer.eval.agent_runner.scoring import evaluate_agent_localization
+    from codeminer.eval.agent_runner.symbols import build_prebuilt_symbol_span_index
+    from codeminer.eval.retrieval_eval import collect_target_blocks, collect_targets
+    from codeminer.llm.litellm_chat import LiteLLMChat
+
+    validate_sweep_harness(cfg)
+    cells_dir = output_dir / "cells"
+    cells_dir.mkdir(parents=True, exist_ok=True)
+
+    vertex_extra: Dict[str, Any] = {}
+    if cfg.vertex_project:
+        vertex_extra["vertex_project"] = cfg.vertex_project
+    if cfg.vertex_location:
+        vertex_extra["vertex_location"] = cfg.vertex_location
+    # The default-tool agent makes many LLM calls (grep/read turns), so vertex
+    # rate limits are common; let litellm retry with exponential backoff.
+    vertex_extra["num_retries"] = cfg.num_retries
+    llm = LiteLLMChat(
+        model=cfg.model,
+        temperature=cfg.temperature,
+        max_tokens=cfg.max_tokens,
+        extra_kwargs=vertex_extra,
+    )
+
+    rows_by_id, eval_lookup = load_dataset_rows(cfg)
+    # Empty cfg.instances => the whole split (sorted for deterministic order).
+    instance_ids = cfg.instances or sorted(rows_by_id)
+    summary: Dict[str, Any] = {
+        "sweep_id": cfg.sweep_id,
+        "model": cfg.model,
+        "instance_count": len(instance_ids),
+        "completed": [],
+        "skipped": [],
+        "failed": [],
+    }
+
+    for instance_id in instance_ids:
+        row = rows_by_id.get(instance_id)
+        if row is None:
+            print(f"sweep: WARN {instance_id} not in dataset; skipping")
+            summary["failed"].append(
+                {"instance_id": instance_id, "reason": "not-in-dataset"}
+            )
+            continue
+        if not has_full_indexes(cfg.prebuilt_dir, instance_id, cfg.embedding_model):
+            print(f"sweep: WARN {instance_id} missing prebuilt indexes; skipping")
+            summary["failed"].append(
+                {"instance_id": instance_id, "reason": "no-prebuilt"}
+            )
+            continue
+
+        language_key = LANG_GROUP_TO_KEY.get(row.get("language_group"), "python")
+        query = row["problem_statement"]
+        scenario = scenario_for(query, language_key)
+        repo_path = repo_path_for(cfg.prebuilt_dir, instance_id)
+
+        meta = eval_lookup.get(instance_id, row)
+        target_files, target_symbols = collect_targets(
+            meta, simplified_symbols=cfg.gt_simplified_symbols
+        )
+        # 1-based ground-truth line spans for overlap-based localization scoring
+        # (read from the raw row, which carries ``gt_code_blocks``).
+        gt_blocks = collect_target_blocks(row)
+        # {(file, leaf): (start, end)} so committed scoring can resolve a named
+        # symbol to its span when the agent didn't emit an explicit range.
+        symbol_span_index = build_prebuilt_symbol_span_index(
+            cfg.prebuilt_dir, instance_id
+        )
+        gt_meaningful = bool(target_files or target_symbols)
+
+        cache_dir = os.path.join(
+            os.environ.get("CLAUDE_JOB_DIR", str(output_dir)),
+            "cache",
+            instance_id,
+        )
+
+        # Decide which cells still need running before paying the load cost.
+        pending = []
+        for subset_id, skills in cfg.subsets.items():
+            for rep in range(1, cfg.reps + 1):
+                cell_id = f"{slug(instance_id)}__{subset_id}__rep{rep}"
+                cell_path = cells_dir / f"{cell_id}.json"
+                if resume and cell_path.exists():
+                    summary["skipped"].append(cell_id)
+                    continue
+                pending.append((subset_id, list(skills), rep, cell_id, cell_path))
+        if not pending:
+            print(f"sweep: {instance_id} fully cached; skipping load")
+            continue
+
+        print(
+            f"sweep: {instance_id} [{scenario}] staging + loading full contexts "
+            f"({len(pending)} cells pending)"
+        )
+        t0 = time.time()
+        try:
+            stage_prebuilt_indexes(cfg.prebuilt_dir, instance_id, cache_dir)
+            contexts = load_full_contexts(cfg, repo_path, cache_dir)
+        except Exception as exc:  # noqa: BLE001
+            print(f"sweep: FAIL load {instance_id}: {exc}", file=sys.stderr)
+            traceback.print_exc()
+            summary["failed"].append(
+                {"instance_id": instance_id, "reason": f"load:{exc}"}
+            )
+            continue
+        print(
+            f"sweep:   contexts ready in {time.time() - t0:.1f}s, keys={sorted(contexts)}"
+        )
+
+        for subset_id, skills, rep, cell_id, cell_path in pending:
+            t = time.time()
+            try:
+                out = run_cell(
+                    cfg,
+                    contexts=contexts,
+                    llm=llm,
+                    repo_path=repo_path,
+                    language_key=language_key,
+                    query=query,
+                    subset_id=subset_id,
+                    skills=skills,
+                    preload_spec=(cfg.preload or {}).get(subset_id),
+                )
+                evaluation = evaluate_agent_localization(
+                    answer=out["answer"],
+                    file_read_paths=out["file_read_paths"],
+                    nodes=out["nodes"],
+                    target_files=target_files,
+                    target_symbols=target_symbols,
+                    gt_blocks=gt_blocks,
+                    metrics_k=cfg.metrics_k,
+                    repo_path=repo_path,
+                    symbol_span_index=symbol_span_index,
+                    preload_candidates=out.get("preload_candidates") or [],
+                    metrics_meaningful=gt_meaningful,
+                )
+                record = {
+                    "cell_id": cell_id,
+                    "instance_id": instance_id,
+                    "subset_id": subset_id,
+                    "skills": skills,
+                    "model": cfg.model,
+                    "rep": rep,
+                    "scenario": scenario,
+                    "language": language_key,
+                    "success": True,
+                    **evaluation.to_record_fields(),
+                    "preload_candidates": out.get("preload_candidates") or [],
+                    "tool_calls": out["tool_calls"],
+                    "file_read_paths": out["file_read_paths"],
+                    "file_reads": out.get("file_reads", []),
+                    "answer": out["answer"],
+                    "total_turns": out["total_turns"],
+                    "total_duration_ms": out["total_duration_ms"],
+                    "tool_call_count": out["tool_call_count"],
+                    "prompt_tokens": out["prompt_tokens"],
+                    "completion_tokens": out["completion_tokens"],
+                    "total_tokens": out["total_tokens"],
+                    "cost_usd": out["cost_usd"],
+                    "cache_read_input_tokens": out["cache_read_input_tokens"],
+                    "cache_creation_input_tokens": out["cache_creation_input_tokens"],
+                    "elapsed_seconds": time.time() - t,
+                    "error": None,
+                }
+                summary["completed"].append(cell_id)
+                print(
+                    f"sweep:   done {cell_id} in {time.time() - t:.1f}s "
+                    f"turns={out['total_turns']} tokens={out['total_tokens']} "
+                    "file_accuracy_at_5="
+                    f"{evaluation.metrics.get('files', {}).get(5, {}).get('accuracy')}"
+                )
+            except Exception as exc:  # noqa: BLE001
+                traceback.print_exc()
+                record = {
+                    "cell_id": cell_id,
+                    "instance_id": instance_id,
+                    "subset_id": subset_id,
+                    "skills": skills,
+                    "model": cfg.model,
+                    "rep": rep,
+                    "scenario": scenario,
+                    "language": language_key,
+                    "success": False,
+                    "metrics": {},
+                    "metrics_meaningful": gt_meaningful,
+                    "tool_calls": [],
+                    "error": str(exc),
+                    "elapsed_seconds": time.time() - t,
+                }
+                summary["failed"].append({"cell_id": cell_id, "reason": str(exc)})
+                print(f"sweep:   FAIL {cell_id}: {exc}", file=sys.stderr)
+                # Transient (rate-limit/quota) failures must not poison resume:
+                # skip persisting so a later run retries this cell.
+                if any(
+                    fragment in str(exc).lower()
+                    for fragment in (
+                        "ratelimit",
+                        "rate limit",
+                        "429",
+                        "quota",
+                        "resourceexhausted",
+                    )
+                ):
+                    print(f"sweep:   (transient; not persisting {cell_id})")
+                    continue
+
+            with cell_path.open("w", encoding="utf-8") as handle:
+                json.dump(record, handle, indent=2, ensure_ascii=False)
+
+    summary_path = output_dir / "sweep_summary.json"
+    with summary_path.open("w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2, ensure_ascii=False)
+    return summary
