@@ -6,330 +6,167 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent Runner Architecture Goal
 
-Status: Active architecture goal
+Status: Active architecture program
 Last revised: 2026-07-04
 
-This page is the durable target for the post-#271 agent runner work. PR #271 is
-kept as a spike and evidence bundle, not as a merge candidate. The goal is to
-extract the useful findings into reviewable core changes while preventing the
-runner from overfitting to a narrow scorer, dataset slice, or answer format.
+This page is the durable plan for the post-#271 agent runner work. PR #271 stays
+as a spike and evidence bundle, not as a merge candidate. The useful pieces must
+be extracted through small reviewable PRs that improve CodeMiner's reusable
+runner, graph tooling, or evaluation harness without baking benchmark-specific
+behavior into production defaults.
 
-## Program Goal
+## Operating Thesis
 
-Build an agent harness that turns CodeMiner's graph, chunking, and repository
-analysis into durable agent context, not benchmark-shaped prompt tricks. The
-runner should make context selection, tool use, and finalization observable and
-repeatable across models and repositories. Experiments should prove which
-capabilities help, but the implementation should promote only reusable runtime
-or evaluation APIs.
+CodeMiner should give agents a repository-context advantage over a plain LLM
+shell. The core harness should expose graph, chunk, symbol, search, and LSP
+context as first-class tools with provenance, cost, freshness, and consumption
+state. Experiments should measure which capabilities help, but only reusable
+runtime or evaluation contracts should be promoted.
 
-The program is successful when:
+The architecture work is successful when:
 
 - Core agent modules expose stable contracts for runtime state, tool calls,
-  context accounting, and graph-backed navigation.
-- Evaluation modules can replay and diagnose runs without depending on
+  context accounting, graph-backed navigation, and final-answer handling.
+- Evaluation modules can replay, compare, and diagnose runs without depending on
   experiment scripts.
-- Scripts contain configuration, dataset selection, and CLI/report glue only.
-- Every promoted behavior has evidence from raw and normalized metrics across a
-  fixed smoke set and at least one rotating holdout surface.
-- Overfit-risk logic is isolated in evaluation normalization or experiment
-  recipes, never in runtime defaults.
+- `scripts/agent_compile` contains CLI, configuration, dataset selection, and
+  report glue only.
+- Feedback loops report raw and normalized behavior across a fixed smoke set
+  and a rotating holdout surface.
+- Runtime defaults can be justified without naming a benchmark instance, scorer
+  field, or current promotion threshold.
 
-## North Star
+## Non-Goals
 
-CodeMiner's agent runner should use repository structure better than a plain
-LLM shell by exposing graph/LSP context as first-class, provenance-rich tools.
-The runtime should help an agent spend context deliberately: every injected
-context item should have source, freshness, cost, and consumption state, and the
-agent should be able to explain why it read, skipped, or finalized.
+These are explicitly out of scope for core runtime promotion:
 
-The implementation must keep three layers separate:
+- Dataset-instance conditionals such as behavior shaped around Caddy, Ruff,
+  Astropy, or any other named benchmark case.
+- Scorer-specific answer mutation in runtime paths, including `Locations:`
+  reordering, required-anchor correction, or format salvage that changes the
+  scored output.
+- Model-specific prompt tricks promoted as core behavior before they pass a
+  cross-model or external-agent comparison.
+- Moving experiment policy from `scripts/agent_compile` into `codeminer/agent`.
+  Experiment policy belongs in `codeminer/eval/agent_runner` or stays in the
+  experiment configuration.
+
+## Layer Ownership
 
 | Layer | Owns | Must not own |
 | --- | --- | --- |
-| Core runtime | Tool execution, trace events, context ledger, resource guards, graph/LSP tool contracts | SWE-bench scoring rules, `Locations:` top-k correction, experiment promotion gates |
-| Evaluation harness | Trace replay, metrics, baselines, failure diagnosis, promotion gates | Default agent behavior or production tool scheduling |
-| Scripts | Thin CLI entrypoints, experiment configs, report generation | Reusable libraries or policy logic |
+| Core runtime | Tool execution, trace events, context ledger, resource guards, graph/LSP tool contracts, final-answer contract primitives | SWE-bench scoring rules, `Locations:` top-k correction, dataset/model policy, promotion gates |
+| Evaluation harness | Trace replay, metrics, baselines, failure diagnosis, normalization, promotion gates | Default runtime behavior or production tool scheduling |
+| Scripts | CLI entrypoints, YAML configs, dataset slices, report generation | Reusable libraries, scorer repair logic, runner policy |
 
-## Guardrails
+Allowed import direction:
 
-- No dataset-instance conditionals in core runtime. Repo or language behavior
-  must be derived from capabilities, manifests, or tool results.
-- No scorer-specific mutation in core runtime. Answer schema repair, top-k
-  reordering, and format salvage are evaluation-layer normalizations only.
-- Runtime prompts may describe output contracts, but they must not mention
-  current benchmark metrics, promotion gates, or hidden scoring priorities.
-- Evaluation gates must include at least one held-out or rotating surface before
-  a runtime default is promoted.
-- Every heuristic promoted to runtime must be explainable without naming a
-  specific benchmark instance such as Caddy, Ruff, or Astropy.
-- `scripts/agent_compile` may import core/eval packages, but core packages must
-  not import `scripts.agent_compile`.
+```text
+scripts/agent_compile -> codeminer.eval.agent_runner -> codeminer.agent
+```
 
-## Milestones
+`codeminer/*` must not import `scripts.agent_compile`.
 
-### Active Iteration Sequence
+## Feedback Contract
 
-The milestone labels above describe the long-term architecture. The current
-implementation sequence should stay smaller and reviewable. A milestone is only
-done when it improves one of the layer boundaries above and has a test or report
-that would catch regression independent of a single scorer result:
+Fast iteration needs a feedback loop, but the loop must not reward narrow scorer
+overfitting.
 
-| Step | Scope | Review Boundary | Promotion Signal |
+- Every agent-runner iteration should have a deterministic smoke slice and a
+  seed-rotated holdout slice.
+- Reports must keep raw answer behavior separate from evaluation normalization.
+- Failure categories should be reported separately: content gap, rank gap, path
+  alias gap, format gap, context/runtime failure, and infrastructure failure.
+- A runtime default cannot be promoted from a single fixed slice or a single
+  model. A model-specific recipe may remain experiment-only.
+- External baselines should compare CodeMiner's harness against general coding
+  agents with similar task inputs, not against hidden scorer details.
+
+## Milestone Backlog
+
+Each milestone is intentionally larger than a single patch but should be landed
+through small PRs. A milestone is done only when it has tests or reports that
+would catch regressions independent of a single scorer result.
+
+| Milestone | State | Scope | Exit Signal |
 | --- | --- | --- | --- |
-| M3b | Context ledger runtime contract | `codeminer/agent/runtime` only; no scorer logic | Unit tests explain provenance and consumption state |
-| M4a | Declarative harness spec | Runner construction knobs only; no dataset/model policy | Scripts instantiate a core spec instead of open-coding runner kwargs |
-| M4b | Shared harness plumbing | Usage accounting, repo cwd scoping, skill context loading, prebuilt graph helpers | `scripts.agent_compile.lib` shrinks while eval tests target package APIs |
-| M4c | Eval diagnostics package | Trace summaries, answer diagnostics, edit audit, external-agent baselines | Scripts become CLI wrappers over `codeminer/eval/agent_runner` |
-| M5a | Feedback loop surface | Small fixed smoke set plus rotating holdout, raw vs normalized metrics | Iterations report content/rank/path/format/runtime gaps separately |
-| M6a | Quarantine overfit-risk logic | Scorer repair, required-anchor correction, route promotion gates | Runtime defaults can be justified without naming benchmark instances |
+| M0: CI fast-feedback ordering | Landed in #284 | Slow CI waits for fast lanes; cancelled checks are treated as incomplete | Fast lanes fail before expensive slow jobs start |
+| M1: Core/eval/script boundary | Landed before this plan and guarded by tests | Import boundaries and `codeminer.eval.agent_runner` package skeleton | Boundary tests fail if reusable packages import scripts |
+| M2: Sweep harness package extraction | Landed in #285 | Sweep config, cell execution, prebuilt staging, preload helpers move out of scripts | Scripts call package APIs; config defaults are not hard-coded model lore |
+| M3: Graph/LSP line-boundary contract | Landed in #286 | LSP-facing routes share agent line-boundary conversion | MCP and agent tests cover the shared contract |
+| M4: Deterministic feedback slices | Landed in #287 | Smoke plus seed-rotated holdout planning | A small run can be selected without hand-picking project names |
+| M5: Shared localization scoring | Landed in #288 | Answer/retrieval/preload scoring glue lives in eval package | Sweep scripts no longer duplicate scoring logic |
+| M6: Quarantine scorer-shaped runtime defaults | Landed in #289 | Localization schema forcing becomes opt-in harness policy | Production/default runners are not shaped by localization scorer formatting |
+| M7: Context ledger runtime contract | Next | First-class context items with provenance, token/cost accounting, freshness, and consumption state | Unit tests can explain why context was injected, used, skipped, or expired |
+| M8: Trace replay and diagnostics | Next | Eval package reconstructs tool use, context consumption, answer spans, and failure category from trace records | Reports diagnose behavior without provider logs or script-specific parsing |
+| M9: External-agent and LSP baseline harness | Planned | Comparable task runner for CodeMiner, Codex, Claude Code, and OpenCode-style LSP workflows | Baseline reports separate harness advantage from answer-format compliance |
+| M10: Promotion gates and cleanup | Planned | Raw/normalized metrics, held-out gates, and deprecation/removal of legacy script shims | Runtime defaults require smoke plus holdout evidence; scripts stay thin |
 
-Do not skip from M4b to a broad "agent improvement" PR. Each PR should either
-move reusable plumbing into a package, add a boundary test, or improve the
-feedback signal. Experiment recipes may use model-specific heuristics, but
-runtime and reusable eval APIs must not encode the current scorer, answer
-format, or a tiny fixed dataset slice.
+## Immediate PR Queue
 
-Current operating order:
+The next work should be ordered by architecture leverage, not by whichever
+benchmark cell is currently easiest to improve.
 
-1. Land the small core/runtime foundations already under review.
-2. Publish one M4b PR that removes reusable harness plumbing from
-   `scripts/agent_compile/lib` without changing benchmark policy.
-3. Publish one M4c PR that moves diagnostics and external-run analysis into
-   `codeminer/eval/agent_runner`.
-4. Build the M5 feedback loop on a small smoke set plus rotating holdout before
-   promoting any runtime default.
-5. Delete or quarantine M6 overfit-risk logic before treating #271 as closed.
+1. **M7a: Context ledger primitives.**
+   Add a small `codeminer/agent/runtime` contract for context entries,
+   provenance, token/cost estimates, freshness, and consumption status. This PR
+   should not change model prompts or scorer behavior.
 
-Any proposed optimization that cannot pass this order stays experiment-only.
+2. **M8a: Trace replay summary.**
+   Move run-diagnosis logic into `codeminer.eval.agent_runner` so reports can
+   explain tool calls, skipped reads, repeated searches, injected context, and
+   final answer spans from structured records.
 
-### Current Boundary Decisions
+3. **M9a: Baseline task adapter.**
+   Define a task input/output envelope for external agents and LSP workflows.
+   The goal is to compare harness capability, not to force every agent into
+   CodeMiner's localization answer schema.
+
+4. **M10a: Legacy script shim cleanup.**
+   Keep `scripts/agent_compile/lib` only as long as needed for old notebooks.
+   Internal scripts and reusable tests should continue importing package APIs
+   directly, and the compatibility layer should be removed once the migration
+   window closes.
+
+## Current Boundary Decisions
 
 - Localization answer-contract forcing is an opt-in harness policy, not a core
   runtime default. `AgentRunner` and `AgentHarnessSpec` default to no forced
   schema turn; `SweepConfig` opts in explicitly so localization evaluations stay
   comparable while non-benchmark agent use is not shaped by scorer formatting.
-- Sweep cell scoring lives in `codeminer.eval.agent_runner.scoring`. Scripts
-  may write the resulting fields to JSON, but they should not reimplement
-  format failure, span metrics, or pre-load contribution logic.
-- Small feedback slices must be selected by deterministic smoke plus rotated
+- Sweep cell scoring lives in `codeminer.eval.agent_runner.scoring`. Scripts may
+  write the resulting fields to JSON, but they should not reimplement format
+  failure, span metrics, or preload contribution logic.
+- Small feedback slices are selected by deterministic smoke plus rotated
   holdout plans, not by hand-picking named project instances.
-
-### M0: Freeze And Audit #271
-
-Objective: preserve #271 as a spike and classify its contents before extracting
-anything.
-
-Deliverables:
-
-- PR title/body mark #271 as draft, spike, and do-not-merge.
-- Inventory changed files into keep, move, rewrite, and drop buckets.
-- Identify scorer-coupled logic and instance-specific heuristics.
-- Record which local/remote tests are meaningful evidence and which are only
-  spike validation.
-
-Exit criteria:
-
-- No one can reasonably mistake #271 for a ready feature PR.
-- The next PR can be scoped without rereading the whole spike.
-
-### M1: Define Package Boundaries
-
-Objective: create the target module layout before moving code.
-
-Proposed layout:
-
-- `codeminer/agent/runtime/`: trace events, tool call records, context ledger,
-  duplicate-call guard, final-answer contract helpers.
-- `codeminer/agent/tools/`: graph-backed LSP route/definition/reference tool
-  contracts and shared tool result schemas.
-- `codeminer/eval/agent_runner/`: trace replay, answer diagnostics, external
-  baseline parsing, promotion gates, edit-run audit.
-- `scripts/agent_compile/`: CLI wrappers and experiment configs only.
-
-Exit criteria:
-
-- A short ADR or this page defines allowed import directions.
-- Tests enforce that `codeminer/*` does not import `scripts.agent_compile`.
-
-### M2: Extract Minimal Graph/LSP Route Core
-
-Objective: ship the smallest generally useful product feature from #271.
-
-Deliverables:
-
-- Core graph/LSP route services and result schemas.
-- MCP tools for `lsp_definition`, `lsp_references`, and `lsp_route`.
-- Focused tests over small synthetic graphs and existing graph fixtures.
-- No route lifecycle gates, answer rewrites, or scorer-facing feedback logic.
-
-Exit criteria:
-
-- A user can call graph-backed LSP tools independently of the experiment
-  harness.
-- Unit and MCP tests pass without `scripts/agent_compile` imports.
-
-### M3: Extract Runtime Observability
-
-Objective: make agent runs inspectable without embedding experiment policy in
-the runner.
-
-Deliverables:
-
-- Stable trace event schema for tool calls, reads, errors, skips, context
-  injections, and final answers.
-- Context ledger API with provenance and consumption state.
-- Duplicate-tool/read guard that records events but does not optimize for a
-  benchmark-specific final answer.
-
-Exit criteria:
-
-- Trace replay can explain a run without reading provider logs.
-- Existing agent tests cover the event contract and failure paths.
-
-### M4: Rebuild Evaluation Harness As Eval Package
-
-Objective: move reusable experiment logic out of scripts while keeping it out of
-runtime.
-
-Deliverables:
-
-- Trace summary, answer diagnosis, feedback aggregation, external-agent
-  baseline parsing, and edit audit live under `codeminer/eval/agent_runner/`.
-- Scripts become thin argument parsers that call eval package APIs.
-- Tests target eval APIs directly, with a small number of CLI smoke tests.
-
-Exit criteria:
-
-- `scripts/agent_compile/lib` is empty or removed.
-- No test imports reusable logic from `scripts.agent_compile.lib`.
-
-### M5: Generalization Gates
-
-Objective: make feedback iteration useful without rewarding narrow metric hacks.
-
-Deliverables:
-
-- Frozen regression surface plus a rotating holdout surface.
-- Reports separate content gaps, format gaps, rank gaps, path alias gaps, and
-  runtime/tooling failures.
-- Promotion profiles require evidence on more than one language and more than
-  one query family.
-
-Exit criteria:
-
-- A runtime default cannot be promoted based only on a small fixed set of
-  Caddy/Ruff/Astropy cells.
-- Evaluation normalization is reported separately from raw answer behavior.
-
-### M6: Retire Or Rewrite Scorer-Coupled Spike Logic
-
-Objective: remove the parts of #271 that made the runner look like it was
-optimizing the benchmark harness instead of helping agents reason.
-
-Deliverables:
-
-- Delete or quarantine answer `Locations:` reordering and required-anchor
-  correction from runtime paths.
-- Keep schema parsing and normalization only in eval, with before/after metrics.
-- Replace instance-specific route ranking with capability-derived routing
-  policies or leave it as experiment-only.
-
-Exit criteria:
-
-- Runtime behavior can be explained without mentioning `rec@5`, answer-block
-  scoring, or a named benchmark instance.
-
-### M7: CI And Test Tier Cleanup
-
-Objective: keep iteration fast without hiding real failures.
-
-Deliverables:
-
-- Unit tier contains pure logic and mocks only.
-- GPU/embedding e2e tests are marked slow and excluded from unit.
-- CI dependency setup avoids accidental CUDA downloads in non-GPU jobs.
-- Slow/integration failures identify infra/config issues separately from code
-  regressions.
-
-Exit criteria:
-
-- Unit CI is a reliable feedback loop for core changes.
-- Heavy jobs are still available for promotion gates but do not block every
-  architecture edit.
-
-## First Extraction Rule
-
-The first non-spike PR should be intentionally small: graph/LSP route tools plus
-their MCP surface, or runtime trace contracts, but not both if that makes review
-hard. The purpose is to re-establish clean ownership before optimizing the
-agent.
-
-## Initial #271 Inventory
-
-This is the first-pass split of the spike branch. It is intentionally coarse:
-the point is to choose review boundaries before moving code.
-
-### Keep And Extract First
-
-These look like product-facing core capabilities if they can stand alone:
-
-- `codeminer/agent/skills/lsp_definition/`
-- `codeminer/agent/skills/lsp_references/`
-- `codeminer/agent/skills/lsp_route/`
-- `codeminer/mcp/tools/lsp.py`
-- the minimal MCP server and docs wiring needed for those tools
-- focused tests in `test/mcp/` and `test/agent/test_graph_nav.py`
-
-Extraction rule: no dependency on `scripts/agent_compile`, no feedback gates,
-no answer rewriting.
-
-### Extract Later After Boundary Review
-
-These are useful but need a cleaner runtime API first:
-
-- trace/tool-result envelope changes in `codeminer/agent/runner.py`
-- context-ledger and duplicate-call guard behavior
-- shared types now mixed into `codeminer/agent/agent_types.py`
-- runner tests that assert stable event contracts rather than exact benchmark
-  trajectories
-
-Extraction rule: runtime events should describe what happened; they should not
-encode benchmark promotion logic.
-
-### Move To Evaluation Package
-
-These are reusable evaluation or analysis libraries, not scripts:
-
-- `scripts/agent_compile/lib/trace_summary.py`
-- `scripts/agent_compile/lib/answer_diagnostics.py`
-- `scripts/agent_compile/lib/edit_audit.py`
-- external-agent baseline parsing and rerun helpers
-- feedback aggregation and replay-readiness reports
-
-Target: `codeminer/eval/agent_runner/`, with scripts reduced to CLI wrappers.
-
-### Rewrite Or Quarantine
-
-These are the highest overfit-risk areas and should not move to runtime as-is:
-
-- `Locations:` top-k reordering
-- required-anchor correction prompts
-- answer schema salvage that changes scored output
-- route lifecycle promotion gates tied to a tiny fixed query surface
-- instance- or project-shaped heuristics such as Caddy/Ruff/Astropy-specific
-  route behavior
-
-Allowed destination: evaluation-only normalization or experiment-only configs,
-with raw and normalized metrics reported separately.
-
-### CI/Test Tier Follow-Up
-
-These changes are real but should be split from agent architecture:
-
-- CPU PyTorch install setup for non-GPU jobs
-- marker cleanup for GPU embedding e2e tests
-- documentation of unit/slow boundaries
-
-Target: a small CI PR, because it improves iteration independent of runner
-architecture.
+- Compatibility shims under `scripts/agent_compile/lib` are not core ownership.
+  New code should not import them.
+
+## Promotion Checklist
+
+Before promoting a behavior from experiment to runtime default, answer these
+questions in the PR body:
+
+- What reusable runtime or tool contract changed?
+- What raw behavior improved before evaluation normalization?
+- Which smoke and holdout slices were used?
+- Which models or external agents were compared, if any?
+- What failure category is reduced: content, rank, path alias, format,
+  context/runtime, or infrastructure?
+- Why is the behavior not tied to a named dataset instance or scorer field?
+
+If those questions cannot be answered, the behavior stays experiment-only.
+
+## Archived Spike Inventory
+
+The #271 spike initially mixed product features, runtime observability,
+evaluation diagnostics, and overfit-risk logic. The extraction rule remains:
+
+- Product-facing graph/LSP tools can move to core only when they stand alone
+  from experiment harness code.
+- Runtime events should describe what happened, not encode benchmark promotion
+  logic.
+- Evaluation-only normalization belongs under `codeminer/eval/agent_runner`.
+- Answer reordering, required-anchor correction, and route lifecycle gates tied
+  to a tiny fixed query surface must be deleted, quarantined, or rewritten as
+  explicit experiment policy.
