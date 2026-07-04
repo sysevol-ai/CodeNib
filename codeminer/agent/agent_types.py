@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from ..llm.usage import TokenUsage, UsageRecord
+from .runtime.trace import AgentRunTrace
 
 
 @dataclass
@@ -35,3 +36,4 @@ class AgentResult:
     total_duration_ms: float = 0.0
     usage: Optional[TokenUsage] = None
     usage_records: List[UsageRecord] = field(default_factory=list)
+    trace: Optional[AgentRunTrace] = None

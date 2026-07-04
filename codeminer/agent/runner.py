@@ -25,6 +25,7 @@ from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .history import PlainChatHistory, TokenBudgetedChatHistory
+from .runtime.trace import AgentRunTrace
 from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
 from .skills.typecheck import coerce_args
@@ -416,6 +417,46 @@ class AgentRunner:
         read_paths: List[str] = []  # files the agent read (for schema salvage)
         read_outputs: List[Dict[str, str]] = []  # successful read transcripts
         compacted = False  # eager_compact: collapsed to direction seed yet?
+        trace = AgentRunTrace()
+        trace.add(
+            "run_start",
+            0,
+            query_chars=len(query or ""),
+            max_turns=max_turns,
+            tool_count=len(tools or []),
+        )
+
+        def _finish_result(
+            answer: str,
+            *,
+            total_turns: int,
+            answer_source: str,
+        ) -> AgentResult:
+            elapsed = (time.monotonic() - start) * 1000
+            trace.add(
+                "final_answer",
+                total_turns,
+                source=answer_source,
+                answer_chars=len(answer or ""),
+                has_contract=_has_localization_contract(answer or ""),
+            )
+            trace.add(
+                "run_end",
+                total_turns,
+                duration_ms=elapsed,
+                tool_calls=len(all_tool_calls),
+                usage_records=len(usage_tracker.records),
+            )
+            return AgentResult(
+                answer=answer,
+                tool_calls=all_tool_calls,
+                messages=history.get_messages(),
+                total_turns=total_turns,
+                total_duration_ms=elapsed,
+                usage=usage_tracker.totals(),
+                usage_records=list(usage_tracker.records),
+                trace=trace,
+            )
 
         for turn in range(max_turns):
             logger.debug("agent turn %d/%d", turn + 1, max_turns)
@@ -465,6 +506,13 @@ class AgentRunner:
                     if not (self._force_first_turn_only and turn > 0):
                         call_kwargs["tool_choice"] = self.first_turn_tool_choice
 
+            trace.add(
+                "llm_call",
+                turn + 1,
+                message_count=len(history.get_messages()),
+                tool_count=len(call_kwargs.get("tools") or []),
+                tool_choice=call_kwargs.get("tool_choice", "auto"),
+            )
             response = self.llm._call_raw(history.get_messages(), **call_kwargs)
             choice = response.choices[0]
             assistant_msg = choice.message
@@ -475,31 +523,40 @@ class AgentRunner:
 
             # Check for tool calls
             tool_calls = getattr(assistant_msg, "tool_calls", None)
+            trace.add(
+                "llm_response",
+                turn + 1,
+                content_chars=len(getattr(assistant_msg, "content", None) or ""),
+                tool_call_count=len(tool_calls or []),
+            )
             if not tool_calls:
                 # Terminal: LLM stopped calling tools. If it answered in prose
                 # without the contract (it explored but didn't format), force one
                 # schema turn so a genuine localization isn't lost to formatting.
                 answer = getattr(assistant_msg, "content", None) or ""
+                answer_source = "assistant"
                 if (
                     self._force_contract
                     and all_tool_calls
                     and not _has_localization_contract(answer)
                 ):
+                    trace.add(
+                        "final_answer_forced",
+                        turn + 1,
+                        reason="missing_contract",
+                        read_paths=list(dict.fromkeys(read_paths)),
+                    )
                     answer = (
                         self._force_schema_answer(
                             history, usage_tracker, turn + 2, read_paths
                         )
                         or answer
                     )
-                elapsed = (time.monotonic() - start) * 1000
-                return AgentResult(
+                    answer_source = "forced_schema"
+                return _finish_result(
                     answer=answer,
-                    tool_calls=all_tool_calls,
-                    messages=history.get_messages(),
                     total_turns=turn + 1,
-                    total_duration_ms=elapsed,
-                    usage=usage_tracker.totals(),
-                    usage_records=list(usage_tracker.records),
+                    answer_source=answer_source,
                 )
 
             # Execute each tool call
@@ -509,13 +566,29 @@ class AgentRunner:
                 tool_content = _serialize_result(
                     record.result if record.error is None else record.error
                 )
+                trace.add(
+                    "tool_call",
+                    turn + 1,
+                    **_trace_tool_call_data(record, tool_content),
+                )
                 # A successful read satisfies the "read before answering"
                 # contract; once it happens, stop forcing tool calls.
-                if (
+                successful_read = (
                     record.skill_id == "read"
                     and record.error is None
                     and not tool_content.lstrip().startswith("Error")
-                ):
+                )
+                if record.skill_id == "read":
+                    trace.add(
+                        "read",
+                        turn + 1,
+                        tool_call_id=record.tool_call_id,
+                        path=str((record.arguments or {}).get("file_path") or ""),
+                        offset=(record.arguments or {}).get("offset"),
+                        limit=(record.arguments or {}).get("limit"),
+                        status="ok" if successful_read else "error",
+                    )
+                if successful_read:
                     has_read = True
                     _rp = (record.arguments or {}).get("file_path")
                     if _rp:
@@ -549,9 +622,21 @@ class AgentRunner:
                     self._compact_keep_reads,
                     read_outputs=read_outputs,
                 ):
+                    trace.add(
+                        "context_compacted",
+                        turn + 1,
+                        read_paths=list(dict.fromkeys(read_paths)),
+                        keep_reads=self._compact_keep_reads,
+                    )
                     logger.debug("eager_compact: collapsed to distilled direction seed")
 
         # Max turns exhausted. Prefer the last textual assistant message.
+        trace.add(
+            "max_turns_exhausted",
+            max_turns,
+            tool_calls=len(all_tool_calls),
+            has_read=has_read,
+        )
         last_content = ""
         for msg in reversed(history.get_messages()):
             if msg.get("role") == "assistant" and msg.get("content"):
@@ -561,27 +646,30 @@ class AgentRunner:
         # Budget exhausted. A capped agent usually left mid-exploration chatter
         # ("Let me check…"), so force a schema-conforming final answer unless it
         # already emitted the contract.
+        answer_source = "max_turns"
         if (
             self._force_contract
             and all_tool_calls
             and not _has_localization_contract(last_content)
         ):
+            trace.add(
+                "final_answer_forced",
+                max_turns,
+                reason="max_turns_exhausted",
+                read_paths=list(dict.fromkeys(read_paths)),
+            )
             last_content = (
                 self._force_schema_answer(
                     history, usage_tracker, max_turns + 1, read_paths
                 )
                 or last_content
             )
+            answer_source = "forced_schema"
 
-        elapsed = (time.monotonic() - start) * 1000
-        return AgentResult(
+        return _finish_result(
             answer=last_content,
-            tool_calls=all_tool_calls,
-            messages=history.get_messages(),
             total_turns=max_turns,
-            total_duration_ms=elapsed,
-            usage=usage_tracker.totals(),
-            usage_records=list(usage_tracker.records),
+            answer_source=answer_source,
         )
 
     def _compact_history(
@@ -905,6 +993,42 @@ def _serialize_result(result: Any) -> str:
     if len(text) > _MAX_RESULT_CHARS:
         text = text[:_MAX_RESULT_CHARS] + "\n... (truncated)"
     return text
+
+
+def _trace_tool_call_data(
+    record: ToolCallRecord,
+    serialized_result: str,
+) -> Dict[str, Any]:
+    """Summarize a tool call for runtime trace events."""
+
+    status = "error" if record.error is not None else "ok"
+    result = record.result
+    result_count: Optional[int] = None
+    if isinstance(result, (list, tuple)):
+        result_type = "sequence"
+        result_count = len(result)
+    elif isinstance(result, Mapping):
+        result_type = "mapping"
+    elif result is None:
+        result_type = "none"
+    else:
+        result_type = type(result).__name__
+
+    data: Dict[str, Any] = {
+        "tool_call_id": record.tool_call_id,
+        "tool": record.skill_id,
+        "arguments": dict(record.arguments or {}),
+        "status": status,
+        "duration_ms": record.duration_ms,
+        "result_type": "error" if status == "error" else result_type,
+        "result_chars": len(serialized_result or ""),
+        "truncated": bool(serialized_result.endswith("\n... (truncated)")),
+    }
+    if result_count is not None:
+        data["result_count"] = result_count
+    if record.error is not None:
+        data["error"] = record.error
+    return data
 
 
 # ---------------------------------------------------------------------------
