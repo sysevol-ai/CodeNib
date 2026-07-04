@@ -143,10 +143,16 @@ benchmark cell is currently easiest to improve.
    window closes.
 
 8. **M10b: External LOC baseline ownership.**
-   Move reusable external localization baseline helpers into
-   `codeminer.eval.agent_runner.loc_baseline`, update maintained examples to
-   import that package API, and leave `codeminer.eval.loc_agent_runner` as a
-   deprecated compatibility wrapper only.
+   Landed in #298. Reusable external localization baseline helpers live in
+   `codeminer.eval.agent_runner.loc_baseline`; maintained examples import that
+   package API, and `codeminer.eval.loc_agent_runner` is a deprecated
+   compatibility wrapper only.
+
+9. **M10c: Promotion evidence contract.**
+   Add a typed evaluation contract for runtime promotion evidence so future
+   runner defaults require raw-behavior evidence, smoke and holdout slices,
+   failure category attribution, and explicit scorer/benchmark dependency
+   checks before they can leave experiment policy.
 
 ## Current Boundary Decisions
 
@@ -164,6 +170,9 @@ benchmark cell is currently easiest to improve.
 - External localization baseline helpers live under
   `codeminer.eval.agent_runner.loc_baseline`; the old
   `codeminer.eval.loc_agent_runner` module is deprecated compatibility only.
+- Promotion evidence records live under `codeminer.eval.agent_runner` and must
+  keep scorer dependencies and named benchmark dependencies explicit. Runtime
+  defaults should not be promoted when either dependency set is non-empty.
 - External-agent and LSP baseline task/result envelopes live in
   `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
   SDK-specific inputs to that envelope, but they should not own reusable scoring

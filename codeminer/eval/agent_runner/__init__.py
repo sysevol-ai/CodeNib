@@ -61,6 +61,13 @@ from .preload import (
     retrieve_candidates,
     snippet_for_node,
 )
+from .promotion import (
+    FAILURE_CATEGORIES,
+    EvidenceSlice,
+    PromotionEvidence,
+    PromotionGateResult,
+    evaluate_promotion_evidence,
+)
 from .results import summarize_agent_result
 from .scoring import AgentLocalizationEvaluation, evaluate_agent_localization
 from .sweep import (
@@ -99,6 +106,7 @@ __all__ = [
     "BaselineBatchSummary",
     "BaselineTaskRunner",
     "BaselineTask",
+    "EvidenceSlice",
     "FormatArmSummary",
     "FormatDiagnostics",
     "FeedbackGroup",
@@ -108,7 +116,10 @@ __all__ = [
     "GraphNav",
     "LANG_GROUP_TO_KEY",
     "LSPRouteBaselineConfig",
+    "FAILURE_CATEGORIES",
     "PreloadQueryPlan",
+    "PromotionEvidence",
+    "PromotionGateResult",
     "SampleConfig",
     "SweepConfig",
     "Verdict",
@@ -127,6 +138,7 @@ __all__ = [
     "converge_query",
     "default_agent_skills_dir",
     "evaluate_agent_localization",
+    "evaluate_promotion_evidence",
     "expansion_seeds_from_candidates",
     "extract_lsp_symbol_seeds",
     "graph_verify",
