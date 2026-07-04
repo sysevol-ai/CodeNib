@@ -26,6 +26,14 @@ from .format_diagnostics import (
     load_meaningful_cells,
     summarize_format_cells,
 )
+from .lsp_baseline import (
+    LSPRouteBaselineConfig,
+    build_lsp_route_result_entry,
+    extract_lsp_symbol_seeds,
+    load_prebuilt_lsp_graph,
+    locations_from_lsp_nodes,
+    run_lsp_route_baseline,
+)
 from .metrics import load_cell_jsons, metric_at_k, safe_mean, safe_min, usable_cells
 from .orchestrator import (
     GATE_SYSTEM,
@@ -91,6 +99,7 @@ __all__ = [
     "GATE_SYSTEM",
     "GraphNav",
     "LANG_GROUP_TO_KEY",
+    "LSPRouteBaselineConfig",
     "PreloadQueryPlan",
     "SampleConfig",
     "SweepConfig",
@@ -104,11 +113,13 @@ __all__ = [
     "build_symbol_span_index",
     "build_feedback_plan",
     "build_baseline_result_entry",
+    "build_lsp_route_result_entry",
     "candidate_location",
     "converge_query",
     "default_agent_skills_dir",
     "evaluate_agent_localization",
     "expansion_seeds_from_candidates",
+    "extract_lsp_symbol_seeds",
     "graph_verify",
     "load_graph_nav",
     "graph_compose",
@@ -118,6 +129,8 @@ __all__ = [
     "load_dataset_rows",
     "load_format_diagnostics",
     "load_full_contexts",
+    "load_prebuilt_lsp_graph",
+    "locations_from_lsp_nodes",
     "location_symbol_ids",
     "load_meaningful_cells",
     "load_pareto_cells",
@@ -127,6 +140,7 @@ __all__ = [
     "render_expansion",
     "retrieve_candidates",
     "run_cell",
+    "run_lsp_route_baseline",
     "run_verify_expand",
     "scatter_gather_localize",
     "safe_mean",

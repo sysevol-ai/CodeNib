@@ -118,11 +118,16 @@ benchmark cell is currently easiest to improve.
    final answer spans from structured records.
 
 3. **M9a: Baseline task adapter.**
-   Define a task input/output envelope for external agents and LSP workflows.
-   The goal is to compare harness capability, not to force every agent into
-   CodeMiner's localization answer schema.
+   Landed in #293. External agents and LSP workflows now share a task/result
+   envelope and JSONL record builder.
 
-4. **M10a: Legacy script shim cleanup.**
+4. **M9b: Graph-backed LSP route baseline.**
+   Add a reusable eval-layer adapter that routes explicit symbol seeds through
+   the static graph LSP API and emits the shared baseline result envelope. This
+   should measure graph/LSP harness value without adding scorer repairs or
+   external-agent-specific scripts.
+
+5. **M10a: Legacy script shim cleanup.**
    Keep `scripts/agent_compile/lib` only as long as needed for old notebooks.
    Internal scripts and reusable tests should continue importing package APIs
    directly, and the compatibility layer should be removed once the migration
@@ -145,6 +150,10 @@ benchmark cell is currently easiest to improve.
   `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
   SDK-specific inputs to that envelope, but they should not own reusable scoring
   or JSONL record construction.
+- Static graph LSP baselines should route from explicit symbol seeds or
+  code-like identifiers supplied by the task context. They must not read ground
+  truth targets, mutate answer order for a scorer, or hide graph-display gaps
+  with benchmark-specific normalization.
 
 ## Promotion Checklist
 
