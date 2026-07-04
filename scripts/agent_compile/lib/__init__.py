@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Compatibility namespace for the agent-compile cost study.
+"""Deprecated compatibility namespace for the agent-compile cost study.
 
 Reusable sweep configuration and harness helpers now live in
 ``codeminer.eval.agent_runner``. This package remains so older experiment
@@ -19,3 +19,16 @@ Modules:
 * :mod:`prebuilt` — stage offline-built per-instance indexes into the
   ``cache_dir/<type>`` layout ``build_skill_contexts`` expects.
 """
+
+from __future__ import annotations
+
+import warnings
+
+_DEPRECATION_MESSAGE = (
+    "scripts.agent_compile.lib is deprecated; import reusable agent-runner "
+    "helpers from codeminer.eval.agent_runner instead."
+)
+
+warnings.warn(_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+
+__all__ = ["_DEPRECATION_MESSAGE"]

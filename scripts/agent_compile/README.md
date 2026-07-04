@@ -51,7 +51,7 @@ ablation.
 | `feedback_plan.py` | choose a small deterministic feedback slice: fixed smoke cases plus a seed-rotated holdout, stratified by language/group. Outputs JSON instance lists for `run_sweep.py --instances ...`. |
 | `run_sweep.py` | run the sweep: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. Validates the harness (raises on unknown tool/skill ids) before spending. |
 | `aggregate.py` | fold cells into a report: per-arm metrics, skill-invocation histogram, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
-| `lib/*.py` | compatibility shims for older experiment notebooks; reusable config/harness code lives in `codeminer.eval.agent_runner`. |
+| `lib/*.py` | deprecated compatibility shims for older experiment notebooks; reusable config/harness code lives in `codeminer.eval.agent_runner`. |
 
 The base agent-localization scorer (answer + `read` paths + retrieval nodes →
 files@k / symbols@k) lives in
@@ -93,6 +93,13 @@ python scripts/agent_compile/feedback_plan.py \
 `run_sweep.py` resumes per cell and does not persist transient (rate-limit)
 failures, so a re-run retries them. Instances without prebuilt indexes are
 skipped and recorded in `sweep_summary.json`.
+
+## Compatibility Shims
+
+`scripts/agent_compile/lib` is a deprecated import path. New scripts, tests, and
+reusable code should import from `codeminer.eval.agent_runner` directly. The shim
+package remains only for old notebooks and ad hoc experiment commands during the
+migration window.
 
 ## How indexes reach the agent
 

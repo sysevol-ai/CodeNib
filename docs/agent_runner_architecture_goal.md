@@ -132,15 +132,15 @@ benchmark cell is currently easiest to improve.
    `codeminer.eval.agent_runner`.
 
 6. **M9d: External loc baseline driver migration.**
-   Route the existing Codex/Claude localization baseline driver through the
-   shared batch runner while keeping dataset selection and CLI flags in the
-   driver layer.
+   Landed in #296. The existing Codex/Claude localization baseline driver now
+   uses the shared batch runner while keeping dataset selection and CLI flags in
+   the driver layer.
 
 7. **M10a: Legacy script shim cleanup.**
-   Keep `scripts/agent_compile/lib` only as long as needed for old notebooks.
-   Internal scripts and reusable tests should continue importing package APIs
-   directly, and the compatibility layer should be removed once the migration
-   window closes.
+   Mark `scripts/agent_compile/lib` as deprecated compatibility for old
+   notebooks. Internal scripts and reusable tests should continue importing
+   package APIs directly, and the compatibility layer should be removed once the
+   migration window closes.
 
 ## Current Boundary Decisions
 
@@ -153,8 +153,8 @@ benchmark cell is currently easiest to improve.
   failure, span metrics, or preload contribution logic.
 - Small feedback slices are selected by deterministic smoke plus rotated
   holdout plans, not by hand-picking named project instances.
-- Compatibility shims under `scripts/agent_compile/lib` are not core ownership.
-  New code should not import them.
+- Compatibility shims under `scripts/agent_compile/lib` are deprecated and are
+  not core ownership. New code should not import them.
 - External-agent and LSP baseline task/result envelopes live in
   `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
   SDK-specific inputs to that envelope, but they should not own reusable scoring
