@@ -25,3 +25,4 @@ preload:
     top_k: 10
     level: l2
     mode: eager_compact
+    compact_keep_reads: 0

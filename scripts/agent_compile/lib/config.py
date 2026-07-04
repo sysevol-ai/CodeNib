@@ -72,11 +72,13 @@ class SweepConfig:
     # Override the agent system prompt (e.g. a graph-primary prompt with no grep
     # guidance). None = runner's default localization prompt.
     system_prompt: Optional[str] = None
-    # Force a tool call on the FIRST agent turn (e.g. "required"). Weak open
-    # models (Qwen2.5-Coder) answer one-shot under the default "auto" and never
-    # exercise the loop; this makes them actually grep/read. None = leave "auto"
-    # (correct for Claude, which calls tools eagerly).
+    # Force a tool call on the FIRST agent turn (e.g. "required"). Some models
+    # answer one-shot under the default "auto" and never exercise the loop; this
+    # makes them actually grep/read. None = leave "auto".
     first_turn_tool_choice: Optional[str] = None
+    # Provider-specific raw-call body for the lightweight eager_gated classifier.
+    # Keep quirks in config files instead of branching on model names in code.
+    gate_llm_extra_body: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SweepConfig":

@@ -189,15 +189,9 @@ def run_cell(
         if mode == "eager_gated":
 
             def _gate_call(msgs):
-                # Disable chain-of-thought ONLY for Qwen3.5 (else the one-word
-                # verdict is truncated mid-"Thinking Process"). The chat_template
-                # kwarg is Qwen-specific — passing it to vertex/Anthropic errors,
-                # so gate it on the model name.
                 extra = {}
-                if "qwen3" in (cfg.model or "").lower():
-                    extra["extra_body"] = {
-                        "chat_template_kwargs": {"enable_thinking": False}
-                    }
+                if cfg.gate_llm_extra_body:
+                    extra["extra_body"] = cfg.gate_llm_extra_body
                 resp = llm._call_raw(msgs, **extra)
                 u = getattr(resp, "usage", None)
                 if u is not None:
@@ -228,22 +222,9 @@ def run_cell(
     sctx = SessionContext(
         repo_path=repo_path, repo_size=1000, primary_language=language_key
     )
-    # Seed-richness router for eager_compact: weak models can re-read from a
-    # minimal collapse seed (the 4B "re-read tax"), so inline more read content
-    # for them; strong models usually answer from the latest read plus
-    # assessment. Recipe key
-    # ``compact_keep_reads`` overrides the model-size heuristic.
-    _keep_reads = (preload_spec or {}).get("compact_keep_reads")
-    if _keep_reads is None:
-        import re as _re
-
-        # Dial measured on 4B (n=99): keep0 minimal seed HURTS weak models
-        # (files@5 0.667 < grep 0.737); keep1 recovers to grep level (0.741) at
-        # -18% cost; keep2 over-stuffs (worse than keep1). Mid/strong (>=9B,
-        # Haiku) are fine with keep0 (already >= grep). So: weak -> 1, else 0.
-        _mt = _re.search(r"(\d+(?:\.\d+)?)\s*b\b", (cfg.model or "").lower())
-        _sz = float(_mt.group(1)) if _mt else 999.0
-        _keep_reads = 1 if _sz <= 7 else 0
+    # Seed richness is experiment policy. Recipes that use eager_compact should
+    # set compact_keep_reads explicitly; absence means the terse default.
+    _keep_reads = int((preload_spec or {}).get("compact_keep_reads") or 0)
     harness_spec = AgentHarnessSpec(
         max_turns=cfg.max_turns,
         allow_skills=set(skills),
@@ -254,7 +235,7 @@ def run_cell(
         system_prompt=cfg.system_prompt,
         first_turn_tool_choice=getattr(cfg, "first_turn_tool_choice", None) or None,
         compact_after_read=(mode == "eager_compact"),
-        compact_keep_reads=(int(_keep_reads) if mode == "eager_compact" else 0),
+        compact_keep_reads=(_keep_reads if mode == "eager_compact" else 0),
     )
     runner = harness_spec.create_runner(
         llm=llm,
