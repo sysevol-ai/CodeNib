@@ -131,6 +131,7 @@ it and answer rather than exhaustively reading every candidate.
 
 # Maximum characters for a single tool result to avoid context blowup.
 _MAX_RESULT_CHARS = 16_000
+_CHARS_PER_TOKEN_ESTIMATE = 4
 
 
 class AgentRunner:
@@ -1090,8 +1091,25 @@ def _context_ledger_data(
         "summary": summary,
         "path": path,
         "tool_call_id": record.tool_call_id,
+        "provenance": {
+            "kind": "tool_result",
+            "tool": record.skill_id,
+            "tool_call_id": record.tool_call_id,
+        },
+        "freshness": "fresh",
+        "token_estimate": _estimate_context_tokens(serialized_result),
         "metadata": metadata,
     }
+
+
+def _estimate_context_tokens(text: str) -> int:
+    """Cheap token estimate for ledger accounting, matching history fallback."""
+
+    if not text:
+        return 0
+    return max(
+        1, (len(text) + _CHARS_PER_TOKEN_ESTIMATE - 1) // _CHARS_PER_TOKEN_ESTIMATE
+    )
 
 
 def _context_summary(

@@ -118,6 +118,13 @@ def test_trace_summarizes_successful_tool_call():
     assert entry.tool_call_id == "call_1"
     assert entry.summary == "echo returned str (11 chars)"
     assert "echo: hello" not in entry.summary
+    assert entry.provenance == {
+        "kind": "tool_result",
+        "tool": "echo",
+        "tool_call_id": "call_1",
+    }
+    assert entry.freshness == "fresh"
+    assert entry.token_estimate == 3
     assert entry.metadata["arguments"] == {"text": "hello"}
 
 
@@ -154,6 +161,9 @@ def test_trace_records_default_read_events(tmp_path):
     assert entry.state == "read"
     assert entry.path == str(target)
     assert entry.summary.startswith(f"read {target}")
+    assert entry.provenance["kind"] == "tool_result"
+    assert entry.freshness == "fresh"
+    assert entry.token_estimate > 0
     assert entry.metadata["arguments"] == {
         "file_path": str(target),
         "offset": 1,
