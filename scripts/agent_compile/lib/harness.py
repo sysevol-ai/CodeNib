@@ -307,50 +307,24 @@ def run_cell(
                 verify_triggered = True
                 result = _do_run(f"{effective_query}\n\n{extra}")
 
-    nodes: List[Any] = []
-    tool_calls: List[Dict[str, Any]] = []
-    file_read_paths: List[str] = []
-    file_reads: List[Dict[str, Any]] = []
-    for tc in result.tool_calls:
-        n = len(tc.result) if isinstance(tc.result, list) else 0
-        tool_calls.append(
-            {
-                "skill_id": tc.skill_id,
-                "n_results": n,
-                "error": bool(tc.error),
-            }
-        )
-        if isinstance(tc.result, list):
-            nodes.extend(tc.result)
-        if tc.skill_id == "read" and not tc.error:
-            args = tc.arguments or {}
-            p = args.get("file_path")
-            if p:
-                file_read_paths.append(str(p))
-                # Capture the read window (1-based offset/limit) for audit (which
-                # line range the agent inspected); not scored.
-                file_reads.append(
-                    {
-                        "file_path": str(p),
-                        "offset": args.get("offset"),
-                        "limit": args.get("limit"),
-                    }
-                )
+    from codeminer.eval.agent_runner.results import summarize_agent_result
+
+    observations = summarize_agent_result(result)
 
     # Sum token usage across every run so verify/scatter arms are charged for
     # the closed loop, not just their final turn.
     usage_totals = accounting.usage_totals()
 
     return {
-        "nodes": nodes,
-        "tool_calls": tool_calls,
-        "file_read_paths": file_read_paths,
-        "file_reads": file_reads,
+        "nodes": observations["nodes"],
+        "tool_calls": observations["tool_calls"],
+        "file_read_paths": observations["file_read_paths"],
+        "file_reads": observations["file_reads"],
         "preload_candidates": preload_candidates,
-        "answer": result.answer or "",
-        "total_turns": accounting.total_turns(fallback=result.total_turns),
-        "total_duration_ms": result.total_duration_ms,
-        "tool_call_count": len(result.tool_calls),
+        "answer": observations["answer"],
+        "total_turns": accounting.total_turns(fallback=observations["total_turns"]),
+        "total_duration_ms": observations["total_duration_ms"],
+        "tool_call_count": observations["tool_call_count"],
         "verify_triggered": verify_triggered,
         "verify_resolved": verify_resolved,
         "prompt_tokens": usage_totals["prompt_tokens"],
