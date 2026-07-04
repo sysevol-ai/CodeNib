@@ -532,8 +532,8 @@ jobs:
   # Job 4 — Slow tests  (LLM API, GPU embeddings, ~15 min)
   # =============================================================
   slow:
-    needs: [preflight, unit]
-    if: needs.preflight.outputs.should-run == 'true'
+    needs: [preflight, unit, integration, integration-serial, scip-core, graph-consumer]
+    if: always() && needs.preflight.outputs.should-run == 'true' && needs.unit.result == 'success' && needs.integration.result == 'success' && (needs.integration-serial.result == 'success' || needs.integration-serial.result == 'skipped') && (needs.scip-core.result == 'success' || needs.scip-core.result == 'skipped') && (needs.graph-consumer.result == 'success' || needs.graph-consumer.result == 'skipped')
     runs-on: self-hosted
     timeout-minutes: 60
     env:
