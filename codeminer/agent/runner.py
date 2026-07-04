@@ -588,6 +588,12 @@ class AgentRunner:
                         limit=(record.arguments or {}).get("limit"),
                         status="ok" if successful_read else "error",
                     )
+                trace.add_context(
+                    record.skill_id,
+                    _context_state(record, tool_content, successful_read),
+                    turn + 1,
+                    **_context_ledger_data(record, tool_content),
+                )
                 if successful_read:
                     has_read = True
                     _rp = (record.arguments or {}).get("file_path")
@@ -627,6 +633,19 @@ class AgentRunner:
                         turn + 1,
                         read_paths=list(dict.fromkeys(read_paths)),
                         keep_reads=self._compact_keep_reads,
+                    )
+                    trace.add_context(
+                        "runtime.compaction",
+                        "summarized",
+                        turn + 1,
+                        summary=(
+                            "Compacted conversation after reads: "
+                            + (", ".join(dict.fromkeys(read_paths)) or "(none)")
+                        ),
+                        metadata={
+                            "read_paths": list(dict.fromkeys(read_paths)),
+                            "keep_reads": self._compact_keep_reads,
+                        },
                     )
                     logger.debug("eager_compact: collapsed to distilled direction seed")
 
@@ -1029,6 +1048,74 @@ def _trace_tool_call_data(
     if record.error is not None:
         data["error"] = record.error
     return data
+
+
+def _context_state(
+    record: ToolCallRecord,
+    serialized_result: str,
+    successful_read: bool,
+) -> str:
+    if record.skill_id == "read":
+        return "read" if successful_read else "rejected"
+    if record.error is not None:
+        return "rejected"
+    if serialized_result.lstrip().startswith("Error"):
+        return "rejected"
+    return "offered"
+
+
+def _context_ledger_data(
+    record: ToolCallRecord,
+    serialized_result: str,
+) -> Dict[str, Any]:
+    event_data = _trace_tool_call_data(record, serialized_result)
+    path = None
+    if record.skill_id == "read":
+        path_arg = (record.arguments or {}).get("file_path")
+        path = str(path_arg) if path_arg is not None else None
+
+    metadata = {
+        key: value
+        for key, value in event_data.items()
+        if key
+        not in {
+            "tool_call_id",
+            "tool",
+            "arguments",
+        }
+    }
+    metadata["arguments"] = dict(record.arguments or {})
+
+    summary = _context_summary(record, event_data, serialized_result)
+    return {
+        "summary": summary,
+        "path": path,
+        "tool_call_id": record.tool_call_id,
+        "metadata": metadata,
+    }
+
+
+def _context_summary(
+    record: ToolCallRecord,
+    event_data: Mapping[str, Any],
+    serialized_result: str,
+) -> str:
+    tool = record.skill_id
+    result_chars = event_data.get("result_chars", 0)
+    if record.error is not None:
+        return f"{tool} error: {record.error}"
+    if serialized_result.lstrip().startswith("Error"):
+        first_line = serialized_result.strip().splitlines()[0]
+        return f"{tool} rejected: {first_line[:160]}"
+    if tool == "read":
+        path = (record.arguments or {}).get("file_path") or "(unknown)"
+        return f"read {path} ({result_chars} chars)"
+    if "result_count" in event_data:
+        return (
+            f"{tool} returned {event_data['result_count']} item(s) "
+            f"({result_chars} chars)"
+        )
+    return f"{tool} returned {event_data.get('result_type', 'result')} ({result_chars} chars)"
 
 
 # ---------------------------------------------------------------------------

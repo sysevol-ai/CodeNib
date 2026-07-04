@@ -4,10 +4,16 @@
 
 """Runtime support types for agent execution."""
 
-from .trace import AGENT_TRACE_SCHEMA_VERSION, AgentRunTrace, AgentTraceEvent
+from .trace import (
+    AGENT_TRACE_SCHEMA_VERSION,
+    AgentRunTrace,
+    AgentTraceEvent,
+    ContextLedgerEntry,
+)
 
 __all__ = [
     "AGENT_TRACE_SCHEMA_VERSION",
     "AgentRunTrace",
     "AgentTraceEvent",
+    "ContextLedgerEntry",
 ]

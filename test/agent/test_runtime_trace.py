@@ -58,6 +58,11 @@ def _events(result, kind):
     return [event for event in result.trace.events if event.kind == kind]
 
 
+def _context(result, source):
+    assert result.trace is not None
+    return [entry for entry in result.trace.context if entry.source == source]
+
+
 def test_trace_records_direct_answer_contract():
     llm = _make_llm()
     llm._call_raw.return_value = _make_response(content="done")
@@ -70,6 +75,7 @@ def test_trace_records_direct_answer_contract():
 
     assert result.trace is not None
     assert result.trace.to_dict()["schema_version"] == AGENT_TRACE_SCHEMA_VERSION
+    assert result.trace.to_dict()["context"] == []
     assert [event.kind for event in result.trace.events] == [
         "run_start",
         "llm_call",
@@ -107,6 +113,13 @@ def test_trace_summarizes_successful_tool_call():
     assert tool_event.data["result_type"] == "str"
     assert tool_event.data["result_chars"] == len("echo: hello")
 
+    entry = _context(result, "echo")[0]
+    assert entry.state == "offered"
+    assert entry.tool_call_id == "call_1"
+    assert entry.summary == "echo returned str (11 chars)"
+    assert "echo: hello" not in entry.summary
+    assert entry.metadata["arguments"] == {"text": "hello"}
+
 
 def test_trace_records_default_read_events(tmp_path):
     target = tmp_path / "target.py"
@@ -137,6 +150,15 @@ def test_trace_records_default_read_events(tmp_path):
         "status": "ok",
     }
     assert _events(result, "tool_call")[0].data["tool"] == "read"
+    entry = _context(result, "read")[0]
+    assert entry.state == "read"
+    assert entry.path == str(target)
+    assert entry.summary.startswith(f"read {target}")
+    assert entry.metadata["arguments"] == {
+        "file_path": str(target),
+        "offset": 1,
+        "limit": 3,
+    }
 
 
 def test_trace_records_tool_errors():
@@ -157,6 +179,9 @@ def test_trace_records_tool_errors():
     assert tool_event.data["status"] == "error"
     assert tool_event.data["result_type"] == "error"
     assert "not available" in tool_event.data["error"]
+    entry = _context(result, "missing_tool")[0]
+    assert entry.state == "rejected"
+    assert "not available" in entry.summary
 
 
 def test_trace_records_context_compaction(tmp_path):
@@ -184,3 +209,8 @@ def test_trace_records_context_compaction(tmp_path):
     compaction = _events(result, "context_compacted")[0]
     assert compaction.data["read_paths"] == [str(target)]
     assert compaction.data["keep_reads"] == 1
+    read_entry = _context(result, "read")[0]
+    assert read_entry.state == "read"
+    compact_entry = _context(result, "runtime.compaction")[0]
+    assert compact_entry.state == "summarized"
+    assert compact_entry.metadata["read_paths"] == [str(target)]
