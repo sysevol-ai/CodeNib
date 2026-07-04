@@ -17,7 +17,7 @@ on:
   pull_request:
     branches:
       - "*"
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -76,6 +76,8 @@ jobs:
       should-run: ${{ steps.check.outputs.should-run }}
       run-serial: ${{ steps.serial.outputs.run-serial }}
       serial-reason: ${{ steps.serial.outputs.serial-reason }}
+      run-slow: ${{ steps.slow.outputs.run-slow }}
+      slow-reason: ${{ steps.slow.outputs.slow-reason }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -172,6 +174,33 @@ jobs:
           echo "run-serial=$RUN_SERIAL" >> "$GITHUB_OUTPUT"
           echo "serial-reason=$REASON" >> "$GITHUB_OUTPUT"
           echo "run-serial=$RUN_SERIAL ($REASON)"
+
+      - name: Compute run-slow
+        id: slow
+        run: |
+          RUN_SLOW=false
+          REASON="not requested"
+          case "${{ github.event_name }}" in
+            schedule)
+              RUN_SLOW=true
+              REASON="scheduled full run" ;;
+            workflow_dispatch)
+              if [[ "${{ github.event.inputs.test_tier }}" == "full" ]]; then
+                RUN_SLOW=true
+                REASON="manual full tier"
+              else
+                REASON="manual light tier"
+              fi ;;
+            pull_request)
+              if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]] || \
+                 [[ "${{ contains(github.event.pull_request.labels.*.name, 'slow-ci') }}" == "true" ]]; then
+                RUN_SLOW=true
+                REASON="PR label requested slow/full CI"
+              fi ;;
+          esac
+          echo "run-slow=$RUN_SLOW" >> "$GITHUB_OUTPUT"
+          echo "slow-reason=$REASON" >> "$GITHUB_OUTPUT"
+          echo "run-slow=$RUN_SLOW ($REASON)"
 
   # =============================================================
   # Job 1 — Unit tests  (pure logic, mocks only, ~1 min)
@@ -533,7 +562,7 @@ jobs:
   # =============================================================
   slow:
     needs: [preflight, unit, integration, integration-serial, scip-core, graph-consumer]
-    if: always() && needs.preflight.outputs.should-run == 'true' && needs.unit.result == 'success' && needs.integration.result == 'success' && (needs.integration-serial.result == 'success' || needs.integration-serial.result == 'skipped') && (needs.scip-core.result == 'success' || needs.scip-core.result == 'skipped') && (needs.graph-consumer.result == 'success' || needs.graph-consumer.result == 'skipped')
+    if: always() && needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-slow == 'true' && needs.unit.result == 'success' && needs.integration.result == 'success' && (needs.integration-serial.result == 'success' || needs.integration-serial.result == 'skipped') && (needs.scip-core.result == 'success' || needs.scip-core.result == 'skipped') && (needs.graph-consumer.result == 'success' || needs.graph-consumer.result == 'skipped')
     runs-on: self-hosted
     timeout-minutes: 60
     env:

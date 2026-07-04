@@ -237,6 +237,9 @@ fires, or the serial chain is gated off) and **explicit** (`should-run=false`).
   `graph-consumer` for changes confined to `scripts/**`, `examples/**`,
   `docs/**`, `**/*.md`, `LICENSE`, or `.gitignore`. See
   [preflight](#preflight-the-decision-job).
+- **Slow tier gating** — `slow` is skipped by default on PR and push events.
+  It runs for scheduled full CI, `workflow_dispatch` with `test_tier=full`, or
+  PRs labeled `full-ci` or `slow-ci`.
 
 ### Explicit (sets `should-run=false`)
 
