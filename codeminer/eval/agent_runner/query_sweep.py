@@ -224,6 +224,7 @@ def run_query_sweep(
                     "verify_resolved": out.get("verify_resolved"),
                     "tool_calls": out["tool_calls"],
                     "file_read_paths": out["file_read_paths"],
+                    "trace_summary": out.get("trace_summary"),
                     "answer": out["answer"],
                     "total_turns": out["total_turns"],
                     "total_tokens": out["total_tokens"],

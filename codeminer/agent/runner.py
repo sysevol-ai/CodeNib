@@ -25,6 +25,7 @@ from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .history import PlainChatHistory, TokenBudgetedChatHistory
+from .route_context import build_lsp_route_context
 from .runtime.trace import AgentRunTrace
 from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
@@ -170,6 +171,10 @@ class AgentRunner:
         force_first_turn_only: bool = False,
         compact_after_read: bool = False,
         compact_keep_reads: int = 0,
+        enable_lsp_route_context: bool = False,
+        lsp_route_seed_limit: int = 8,
+        lsp_route_top_k: int = 12,
+        lsp_route_include_neighbors: bool = True,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -247,6 +252,14 @@ class AgentRunner:
         # after the collapse (the "re-read tax" observed on 4B). Set by a
         # model-strength router upstream.
         self._compact_keep_reads = compact_keep_reads
+        # Optional startup context over the same static graph exposed by the
+        # lsp_route skill. This is opt-in harness policy: it makes graph route
+        # hints available on turn 1 without depending on the model to discover
+        # the tool, while still requiring normal reads before answering.
+        self._enable_lsp_route_context = bool(enable_lsp_route_context)
+        self._lsp_route_seed_limit = max(1, int(lsp_route_seed_limit or 8))
+        self._lsp_route_top_k = max(1, int(lsp_route_top_k or 12))
+        self._lsp_route_include_neighbors = bool(lsp_route_include_neighbors)
 
         # Resource guard: filter unavailable skills and collect warnings.
         # The "base" allow / exclude are stored so we can recompute the
@@ -411,18 +424,9 @@ class AgentRunner:
                         effective = set(self._base_allow)
                 tools = self._tools_for(effective)
 
-        history = self._new_history()
-        history.add_message({"role": "system", "content": self.system_prompt})
-        for msg in chat_history or []:
-            history.add_message({"role": msg["role"], "content": msg["content"]})
-        history.add_message({"role": "user", "content": query})
         all_tool_calls: List[ToolCallRecord] = []
         usage_tracker = UsageTracker()
         start = time.monotonic()
-        has_read = False  # has the agent read a file yet (gates forced tools)
-        read_paths: List[str] = []  # files the agent read (for schema salvage)
-        read_outputs: List[Dict[str, str]] = []  # successful read transcripts
-        compacted = False  # eager_compact: collapsed to direction seed yet?
         trace = AgentRunTrace()
         trace.add(
             "run_start",
@@ -431,6 +435,58 @@ class AgentRunner:
             max_turns=max_turns,
             tool_count=len(tools or []),
         )
+        user_query = query
+        if self._enable_lsp_route_context:
+            route_context, route_skip_reason = self._initial_lsp_route_context(query)
+            if route_context is not None and route_context.text:
+                user_query = f"{query}\n\n{route_context.text}"
+                seeds = list(route_context.seeds)
+                trace.add(
+                    "lsp_route_context",
+                    0,
+                    status="offered",
+                    seeds=seeds,
+                    route_count=len(route_context.nodes),
+                    context_chars=len(route_context.text),
+                )
+                trace.add_context(
+                    "lsp_route",
+                    "offered",
+                    0,
+                    summary=(
+                        "initial static LSP route context from seeds: "
+                        + ", ".join(seeds)
+                    ),
+                    provenance={
+                        "kind": "initial_context",
+                        "tool": "lsp_route",
+                    },
+                    freshness="fresh",
+                    token_estimate=_estimate_context_tokens(route_context.text),
+                    metadata={
+                        "seeds": seeds,
+                        "route_count": len(route_context.nodes),
+                        "top_k": self._lsp_route_top_k,
+                        "include_neighbors": self._lsp_route_include_neighbors,
+                    },
+                )
+            else:
+                trace.add(
+                    "lsp_route_context",
+                    0,
+                    status="skipped",
+                    reason=route_skip_reason or "empty_route_context",
+                )
+
+        history = self._new_history()
+        history.add_message({"role": "system", "content": self.system_prompt})
+        for msg in chat_history or []:
+            history.add_message({"role": msg["role"], "content": msg["content"]})
+        history.add_message({"role": "user", "content": user_query})
+        has_read = False  # has the agent read a file yet (gates forced tools)
+        read_paths: List[str] = []  # files the agent read (for schema salvage)
+        read_outputs: List[Dict[str, str]] = []  # successful read transcripts
+        compacted = False  # eager_compact: collapsed to direction seed yet?
 
         def _finish_result(
             answer: str,
@@ -690,6 +746,31 @@ class AgentRunner:
             total_turns=max_turns,
             answer_source=answer_source,
         )
+
+    def _initial_lsp_route_context(self, query: str) -> tuple[Any | None, str | None]:
+        """Build optional static graph route context for the opening prompt."""
+
+        meta = self.registry.get("lsp_route")
+        if meta is None or meta.executor_fn is None:
+            return None, "lsp_route_unavailable"
+        try:
+            context = build_lsp_route_context(
+                meta.executor_fn,
+                query,
+                seed_limit=self._lsp_route_seed_limit,
+                top_k=self._lsp_route_top_k,
+                include_neighbors=self._lsp_route_include_neighbors,
+            )
+        except Exception as exc:  # noqa: BLE001 - startup hints are best-effort
+            logger.warning("initial lsp_route context failed: %s", exc)
+            return None, f"lsp_route_error:{type(exc).__name__}"
+        if not context.seeds:
+            return None, "no_symbol_seeds"
+        if not context.nodes:
+            return None, "no_route_nodes"
+        if not context.text:
+            return None, "empty_route_context"
+        return context, None
 
     def _compact_history(
         self,
@@ -1230,6 +1311,10 @@ class CodeMinerAgentOptions:
     system_prompt: Optional[str] = None
     max_turns: int = 10
     max_context_tokens: Optional[int] = None
+    enable_lsp_route_context: bool = False
+    lsp_route_seed_limit: int = 8
+    lsp_route_top_k: int = 12
+    lsp_route_include_neighbors: bool = True
     retry: Optional[RetryConfig] = None
 
     # --- extras for SessionContext.extras ---
@@ -1367,6 +1452,10 @@ def query(
         system_prompt=opts.system_prompt,
         max_turns=opts.max_turns,
         max_context_tokens=opts.max_context_tokens,
+        enable_lsp_route_context=opts.enable_lsp_route_context,
+        lsp_route_seed_limit=opts.lsp_route_seed_limit,
+        lsp_route_top_k=opts.lsp_route_top_k,
+        lsp_route_include_neighbors=opts.lsp_route_include_neighbors,
         retry=opts.retry,
         allow_skills=set(opts.allowed_skills) if opts.allowed_skills else None,
         exclude_skills=set(opts.excluded_skills) if opts.excluded_skills else None,

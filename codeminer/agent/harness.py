@@ -114,6 +114,10 @@ class AgentHarnessSpec:
     force_localization_contract: bool = False
     compact_after_read: bool = False
     compact_keep_reads: int = 0
+    enable_lsp_route_context: bool = False
+    lsp_route_seed_limit: int = 8
+    lsp_route_top_k: int = 12
+    lsp_route_include_neighbors: bool = True
 
     def __post_init__(self) -> None:
         if self.max_turns <= 0:
@@ -122,6 +126,10 @@ class AgentHarnessSpec:
             raise ValueError("max_context_tokens must be positive when set")
         if self.compact_keep_reads < 0:
             raise ValueError("compact_keep_reads must be non-negative")
+        if self.lsp_route_seed_limit <= 0:
+            raise ValueError("lsp_route_seed_limit must be positive")
+        if self.lsp_route_top_k <= 0:
+            raise ValueError("lsp_route_top_k must be positive")
 
         object.__setattr__(
             self,
@@ -195,6 +203,10 @@ class AgentHarnessSpec:
             "force_localization_contract": self.force_localization_contract,
             "compact_after_read": self.compact_after_read,
             "compact_keep_reads": self.compact_keep_reads,
+            "enable_lsp_route_context": self.enable_lsp_route_context,
+            "lsp_route_seed_limit": self.lsp_route_seed_limit,
+            "lsp_route_top_k": self.lsp_route_top_k,
+            "lsp_route_include_neighbors": self.lsp_route_include_neighbors,
             "session_ctx": session_ctx,
             "manifest": manifest,
             "compile_table": compile_table,

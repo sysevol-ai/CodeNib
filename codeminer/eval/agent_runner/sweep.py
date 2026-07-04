@@ -22,7 +22,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from .sweep_config import SweepConfig
 
@@ -107,7 +107,32 @@ def all_index_skill_ids(cfg: SweepConfig) -> List[str]:
             sk = _PRELOAD_RETRIEVER_SKILL.get(retriever)
             if sk and sk not in seen:
                 seen.append(sk)
+    if (
+        cfg.enable_lsp_route_context or cfg.lsp_route_context
+    ) and "lsp_route" not in seen:
+        seen.append("lsp_route")
     return seen
+
+
+def lsp_route_context_for_subset(
+    cfg: SweepConfig,
+    subset_id: str,
+) -> Optional[Dict[str, Any]]:
+    """Return the route-context policy for one arm, or ``None`` when disabled."""
+
+    raw = (cfg.lsp_route_context or {}).get(subset_id)
+    if raw is not None:
+        if raw is True:
+            return {}
+        if isinstance(raw, Mapping):
+            return dict(raw)
+        raise ValueError(
+            f"{cfg.sweep_id}/{subset_id}: lsp_route_context must be a mapping "
+            "or true when present"
+        )
+    if cfg.enable_lsp_route_context:
+        return {}
+    return None
 
 
 def validate_sweep_harness(cfg: SweepConfig) -> None:
@@ -143,6 +168,15 @@ def validate_sweep_harness(cfg: SweepConfig) -> None:
                 f"{cfg.sweep_id}/{arm}: unknown skills {bad} — not a default tool "
                 f"{sorted(defaults)} nor a package under codeminer/agent/skills/."
             )
+    route_arms = set((cfg.lsp_route_context or {}).keys())
+    unknown_route_arms = sorted(route_arms - set(cfg.subsets))
+    if unknown_route_arms:
+        raise ValueError(
+            f"{cfg.sweep_id}: lsp_route_context references unknown subset(s) "
+            f"{unknown_route_arms}; known subsets are {sorted(cfg.subsets)}."
+        )
+    for arm in route_arms:
+        lsp_route_context_for_subset(cfg, arm)
 
 
 def load_full_contexts(cfg: SweepConfig, repo_path: str, cache_dir: str):
@@ -248,6 +282,9 @@ def run_cell(
     # Seed richness is experiment policy. Recipes that use eager_compact should
     # set compact_keep_reads explicitly; absence means the terse default.
     _keep_reads = int((preload_spec or {}).get("compact_keep_reads") or 0)
+    route_context_spec = lsp_route_context_for_subset(cfg, subset_id)
+    route_context_enabled = route_context_spec is not None
+    route_context_spec = route_context_spec or {}
     harness_spec = AgentHarnessSpec(
         max_turns=cfg.max_turns,
         allow_skills=set(skills),
@@ -260,6 +297,17 @@ def run_cell(
         force_localization_contract=cfg.force_localization_contract,
         compact_after_read=(mode == "eager_compact"),
         compact_keep_reads=(_keep_reads if mode == "eager_compact" else 0),
+        enable_lsp_route_context=route_context_enabled,
+        lsp_route_seed_limit=int(
+            route_context_spec.get("seed_limit", cfg.lsp_route_seed_limit)
+        ),
+        lsp_route_top_k=int(route_context_spec.get("top_k", cfg.lsp_route_top_k)),
+        lsp_route_include_neighbors=bool(
+            route_context_spec.get(
+                "include_neighbors",
+                cfg.lsp_route_include_neighbors,
+            )
+        ),
     )
     runner = harness_spec.create_runner(
         llm=llm,
@@ -317,6 +365,7 @@ def run_cell(
         "tool_calls": observations["tool_calls"],
         "file_read_paths": observations["file_read_paths"],
         "file_reads": observations["file_reads"],
+        "trace_summary": observations["trace_summary"],
         "preload_candidates": preload_candidates,
         "answer": observations["answer"],
         "total_turns": accounting.total_turns(fallback=observations["total_turns"]),
@@ -497,6 +546,7 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     "tool_calls": out["tool_calls"],
                     "file_read_paths": out["file_read_paths"],
                     "file_reads": out.get("file_reads", []),
+                    "trace_summary": out.get("trace_summary"),
                     "answer": out["answer"],
                     "total_turns": out["total_turns"],
                     "total_duration_ms": out["total_duration_ms"],

@@ -18,6 +18,12 @@ from .harness import (
 )
 from .history import PlainChatHistory, TokenBudgetedChatHistory, count_message_tokens
 from .rerank_agent import RerankAgent, RerankResult, rerank_nodes_with_query
+from .route_context import (
+    LSPRouteContext,
+    build_lsp_route_context,
+    extract_lsp_symbol_seeds,
+    render_lsp_route_context,
+)
 from .runner import (
     AgentRunner,
     CodeMinerAgentOptions,
@@ -47,6 +53,7 @@ __all__ = [
     "ContextLedgerEntry",
     "KeywordExtraction",
     "KeywordExtractor",
+    "LSPRouteContext",
     "PlainChatHistory",
     "RerankAgent",
     "RerankResult",
@@ -55,10 +62,13 @@ __all__ = [
     "agent_working_directory",
     "compile_repo",
     "count_message_tokens",
+    "build_lsp_route_context",
     "extract_keywords_from_statement",
+    "extract_lsp_symbol_seeds",
     "has_localization_contract",
     "query",
     "rerank_nodes_with_query",
+    "render_lsp_route_context",
     "registry_to_tools",
     "run_agent_in_directory",
     "skill_to_tool_schema",

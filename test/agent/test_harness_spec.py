@@ -77,6 +77,8 @@ def test_with_overrides_revalidates_and_rejects_unknown_options():
     assert spec.with_overrides(max_turns=2).max_turns == 2
     with pytest.raises(ValueError, match="max_turns"):
         spec.with_overrides(max_turns=0)
+    with pytest.raises(ValueError, match="lsp_route_top_k"):
+        spec.with_overrides(lsp_route_top_k=0)
     with pytest.raises(TypeError, match="Unknown harness option"):
         spec.with_overrides(experiment_label="baseline")
 
@@ -91,6 +93,10 @@ def test_create_runner_uses_spec_without_mutating_it():
         first_turn_tool_choice="required",
         compact_after_read=True,
         compact_keep_reads=1,
+        enable_lsp_route_context=True,
+        lsp_route_seed_limit=4,
+        lsp_route_top_k=9,
+        lsp_route_include_neighbors=False,
     )
 
     runner = spec.create_runner(
@@ -108,6 +114,10 @@ def test_create_runner_uses_spec_without_mutating_it():
     assert runner.first_turn_tool_choice == "required"
     assert runner._compact_after_read is True
     assert runner._compact_keep_reads == 1
+    assert runner._enable_lsp_route_context is True
+    assert runner._lsp_route_seed_limit == 4
+    assert runner._lsp_route_top_k == 9
+    assert runner._lsp_route_include_neighbors is False
     assert runner.system_prompt.startswith("Subagent prompt")
     assert spec.max_turns == 6
 

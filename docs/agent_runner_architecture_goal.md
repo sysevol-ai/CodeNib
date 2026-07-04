@@ -182,6 +182,13 @@ benchmark cell is currently easiest to improve.
     load and normalize rows, but context reuse, per-query scoring, resume, and
     transient failure persistence belong to the package layer.
 
+15. **M9f: Opt-in initial static LSP route context.**
+    Add a runner/harness option that extracts symbol-like seeds from the task,
+    routes them through the graph-backed `lsp_route` skill, and injects compact
+    unverified route hints into the opening prompt. The context is traced as
+    harness-provided startup context, not as a model tool call, and remains
+    opt-in until promotion evidence shows raw behavior improvement.
+
 ## Current Boundary Decisions
 
 - Localization answer-contract forcing is an opt-in harness policy, not a core
@@ -218,6 +225,11 @@ benchmark cell is currently easiest to improve.
   code-like identifiers supplied by the task context. They must not read ground
   truth targets, mutate answer order for a scorer, or hide graph-display gaps
   with benchmark-specific normalization.
+- Initial `lsp_route` prompt context is a core opt-in harness feature. Seed
+  extraction and route rendering live under `codeminer.agent`; eval baselines
+  may reuse them, but benchmark-specific context fields stay in eval adapters.
+  Runner trace/ledger records this as startup context so it remains distinct
+  from tools selected by the model itself.
 
 ## Promotion Checklist
 

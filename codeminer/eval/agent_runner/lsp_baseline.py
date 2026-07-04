@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any, List, Mapping, Optional, Sequence
 
 from codeminer.agent.lsp_graph import lsp_route
+from codeminer.agent.route_context import (
+    extract_lsp_symbol_seeds as extract_core_lsp_symbol_seeds,
+)
 
 from .baseline import (
     BaselineLocation,
@@ -18,11 +20,6 @@ from .baseline import (
     BaselineTask,
     build_baseline_result_entry,
 )
-
-_BACKTICK = re.compile(r"`([^`\n]{2,100})`")
-_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
-_CODEISH = re.compile(r"_|[a-z][A-Z]|[0-9][A-Z]|[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_]")
-_IDENT_STOP = {"BUG", "TODO", "FIXME", "NOTE", "XXX", "HACK", "WARNING", "ERROR"}
 
 
 @dataclass(frozen=True)
@@ -47,25 +44,13 @@ def extract_lsp_symbol_seeds(
     by task metadata/context or code-like identifiers in the issue text.
     """
 
-    seeds: List[str] = []
-
-    def add(value: Any) -> None:
-        if value is None:
-            return
-        if isinstance(value, str):
-            text = value.strip().strip("`'\"")
-            if text:
-                seeds.append(text)
-            return
-        if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
-            for item in value:
-                add(item)
+    explicit: List[Any] = []
 
     for source in (task.metadata, task.context):
         if not isinstance(source, Mapping):
             continue
         for key in ("lsp_symbol_seeds", "symbol_seeds", "symbols"):
-            add(source.get(key))
+            explicit.append(source.get(key))
 
     text_parts = [task.query]
     if isinstance(task.context, Mapping):
@@ -73,27 +58,11 @@ def extract_lsp_symbol_seeds(
             value = task.context.get(key)
             if isinstance(value, str):
                 text_parts.append(value)
-    text = "\n".join(part for part in text_parts if part)
-
-    for match in _BACKTICK.findall(text):
-        add(match)
-    for token in _TOKEN.findall(text):
-        if token.upper() in _IDENT_STOP:
-            continue
-        if _CODEISH.search(token) or (token.isupper() and len(token) >= 3):
-            add(token)
-
-    seen: set[str] = set()
-    out: List[str] = []
-    for seed in seeds:
-        key = seed.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(seed)
-        if len(out) >= max(1, int(limit or 8)):
-            break
-    return out
+    return extract_core_lsp_symbol_seeds(
+        *text_parts,
+        explicit=explicit,
+        limit=limit,
+    )
 
 
 def locations_from_lsp_nodes(nodes: Sequence[Any]) -> List[BaselineLocation]:
