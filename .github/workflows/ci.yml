@@ -112,9 +112,10 @@ jobs:
         id: filter
         uses: dorny/paths-filter@v3
         with:
-          base: ${{ github.event_name == 'push' && github.ref || '' }}
+          base: ${{ github.event_name == 'push' && github.event.before || '' }}
           filters: |
             serial:
+              - ".github/workflows/ci.yml"
               - ".github/actions/setup-env/**"
               - "pyproject.toml"
               - "third_party/**"
@@ -154,8 +155,10 @@ jobs:
                 REASON="manual light tier"
               fi ;;
             push)
-              RUN_SERIAL=true
-              REASON="main/master push" ;;
+              if [[ "${{ steps.filter.outputs.serial }}" == "true" ]]; then
+                RUN_SERIAL=true
+                REASON="serial-chain path changed on main/master push"
+              fi ;;
             pull_request)
               if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]] || \
                  [[ "${{ contains(github.event.pull_request.labels.*.name, 'serial-ci') }}" == "true" ]]; then
@@ -179,14 +182,21 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 20
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
       XDG_CACHE_HOME: ${{ github.workspace }}/../.cache/xdg
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -249,13 +259,20 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -280,13 +297,20 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 45
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Persist codeminer cache across runs
         run: |
@@ -354,13 +378,20 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Persist codeminer cache across runs
         run: |
@@ -461,13 +492,20 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 15
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Persist codeminer cache across runs
         run: |
@@ -499,14 +537,21 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 60
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
       VERTEXAI_PROJECT: ${{ vars.VERTEXAI_PROJECT }}
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Persist codeminer cache across runs
         run: |
