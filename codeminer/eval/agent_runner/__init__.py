@@ -20,9 +20,11 @@ from .orchestrator import (
     verify_query,
 )
 from .preload import (
+    PreloadQueryPlan,
     assemble_preload,
     graph_compose,
     interleave_ranked,
+    prepare_preload_query,
     retrieve_candidates,
     snippet_for_node,
 )
@@ -46,6 +48,7 @@ __all__ = [
     "AgentSkillContextSpec",
     "GATE_SYSTEM",
     "GraphNav",
+    "PreloadQueryPlan",
     "Verdict",
     "VerifyExpandRun",
     "VERIFY_SYSTEM_PROMPT",
@@ -60,6 +63,7 @@ __all__ = [
     "graph_compose",
     "interleave_ranked",
     "load_agent_skill_contexts",
+    "prepare_preload_query",
     "query_is_specific",
     "render_expansion",
     "retrieve_candidates",

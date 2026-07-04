@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from codeminer.eval.agent_runner.preload import (
     assemble_preload,
     interleave_ranked,
+    prepare_preload_query,
     snippet_for_node,
 )
 
@@ -108,3 +109,66 @@ def test_assemble_preload_eager_mode_uses_terse_preamble():
     assert "ranked retrieval hits" in preamble
     assert "UNVERIFIED retrieval hints" not in preamble
     assert candidates == [{"file": "pkg/edit.py", "start": 5, "end": 9}]
+
+
+def test_prepare_preload_query_inline_candidates():
+    node = _node("pkg/edit.py", 4, 8, 0.5)
+    contexts = {
+        "retrieve": SimpleNamespace(
+            vector_store=FakeVectorStore([node]),
+            bm25=None,
+        )
+    }
+
+    plan = prepare_preload_query(
+        contexts,
+        "where is auth?",
+        recipe={"retrievers": ["embedding"], "top_k": 1, "mode": "eager"},
+    )
+
+    assert plan.query.startswith("where is auth?\n\n# Candidate locations")
+    assert plan.candidates == [{"file": "pkg/edit.py", "start": 5, "end": 9}]
+    assert plan.scatter is False
+    assert plan.gated_skip is False
+
+
+def test_prepare_preload_query_scatter_keeps_original_query():
+    node = _node("pkg/edit.py", 4, 8, 0.5)
+    contexts = {
+        "retrieve": SimpleNamespace(
+            vector_store=FakeVectorStore([node]),
+            bm25=None,
+        )
+    }
+
+    plan = prepare_preload_query(
+        contexts,
+        "where is auth?",
+        recipe={"retrievers": ["embedding"], "top_k": 1, "mode": "scatter"},
+    )
+
+    assert plan.query == "where is auth?"
+    assert plan.candidates == [{"file": "pkg/edit.py", "start": 5, "end": 9}]
+    assert plan.scatter is True
+
+
+def test_prepare_preload_query_gated_skip_avoids_candidate_retrieval():
+    contexts = {
+        "retrieve": SimpleNamespace(
+            vector_store=FakeVectorStore([_node("pkg/edit.py", 4, 8, 0.5)]),
+            bm25=None,
+        )
+    }
+
+    plan = prepare_preload_query(
+        contexts,
+        "button is broken",
+        recipe={"retrievers": ["embedding"], "top_k": 1, "mode": "eager_gated"},
+        gate_call=lambda messages: "GREP",
+    )
+
+    assert plan.query == "button is broken"
+    assert plan.candidates == []
+    assert plan.scatter is False
+    assert plan.gated_skip is True
+    assert contexts["retrieve"].vector_store.calls == []

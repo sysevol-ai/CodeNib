@@ -169,11 +169,8 @@ def run_cell(
     )
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.compiler.params import SessionContext
-    from codeminer.eval.agent_runner.orchestrator import (
-        query_is_specific,
-        scatter_gather_localize,
-    )
-    from codeminer.eval.agent_runner.preload import assemble_preload
+    from codeminer.eval.agent_runner.orchestrator import scatter_gather_localize
+    from codeminer.eval.agent_runner.preload import prepare_preload_query
 
     accounting = AgentRunAccumulator()
     preload_candidates: List[Dict[str, Any]] = []
@@ -181,11 +178,7 @@ def run_cell(
     scatter_mode = False
     mode = (preload_spec or {}).get("mode")
     if preload_spec:
-        # Adaptive gate: a VAGUE query (no concrete handle) gets NO candidates —
-        # fall back to blank-slate grep, which beats pre-load on behavioral.
-        # A SPECIFIC query gets the eager pre-load (cheap, accurate). One short
-        # LLM call; usage is charged to the cell via runs_usage below.
-        gated_skip = False
+        gate_call = None
         if mode == "eager_gated":
 
             def _gate_call(msgs):
@@ -204,20 +197,17 @@ def run_cell(
                     )
                 return resp.choices[0].message.content
 
-            gated_skip = not query_is_specific(_gate_call, query)
+            gate_call = _gate_call
 
-        if gated_skip:
-            preload_candidates = []  # vague -> blank-slate grep
-        else:
-            preamble, preload_candidates = assemble_preload(
-                contexts, query, recipe=preload_spec
-            )
-            # mode=scatter routes candidates to isolated verify-subagents instead
-            # of injecting them into one context (see lib/orchestrator.py).
-            if mode == "scatter":
-                scatter_mode = True
-            elif preamble:
-                effective_query = f"{query}\n\n{preamble}"
+        preload_plan = prepare_preload_query(
+            contexts,
+            query,
+            recipe=preload_spec,
+            gate_call=gate_call,
+        )
+        preload_candidates = preload_plan.candidates
+        effective_query = preload_plan.query
+        scatter_mode = preload_plan.scatter
 
     sctx = SessionContext(
         repo_path=repo_path, repo_size=1000, primary_language=language_key

@@ -6,14 +6,26 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Sequence, Tuple
 
+from codeminer.eval.agent_runner.orchestrator import query_is_specific
 from codeminer.eval.retrieval_eval import dedup_spans, nodes_to_spans
 
 # Keep snippets short so a candidate list of around ten entries stays compact.
 _SNIPPET_LINES = 4
 _DEFAULT_TOP_K = 10
 _DEFAULT_LEVEL = "l2"
+
+
+@dataclass(frozen=True)
+class PreloadQueryPlan:
+    """Prepared query and audit data for a pre-load recipe."""
+
+    query: str
+    candidates: List[Dict[str, Any]] = field(default_factory=list)
+    scatter: bool = False
+    gated_skip: bool = False
 
 
 def graph_compose(
@@ -177,3 +189,31 @@ def assemble_preload(
         for span in ordered
     ]
     return preamble, candidate_spans
+
+
+def prepare_preload_query(
+    contexts: Dict[str, Any],
+    query: str,
+    *,
+    recipe: Dict[str, Any],
+    gate_call: Any = None,
+) -> PreloadQueryPlan:
+    """Prepare the query text for one optional pre-load recipe.
+
+    The caller owns any gate-call accounting. This helper only applies the
+    recipe: optional eager gate, candidate assembly, and scatter-vs-inline mode.
+    """
+    mode = (recipe or {}).get("mode")
+    if mode == "eager_gated" and gate_call is not None:
+        if not query_is_specific(gate_call, query):
+            return PreloadQueryPlan(query=query, gated_skip=True)
+
+    preamble, candidates = assemble_preload(contexts, query, recipe=recipe)
+    if mode == "scatter":
+        return PreloadQueryPlan(query=query, candidates=candidates, scatter=True)
+    if preamble:
+        return PreloadQueryPlan(
+            query=f"{query}\n\n{preamble}",
+            candidates=candidates,
+        )
+    return PreloadQueryPlan(query=query, candidates=candidates)
