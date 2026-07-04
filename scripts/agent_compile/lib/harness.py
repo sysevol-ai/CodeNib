@@ -115,33 +115,25 @@ def all_index_skill_ids(cfg: SweepConfig) -> List[str]:
 
 def load_full_contexts(cfg: SweepConfig, repo_path: str, cache_dir: str):
     """Build the full (union) context dict + register every skill once."""
-    from codeminer.agent.skills.loader import SkillLoader
-    from codeminer.agent.skills.registry import SkillRegistry
-    from codeminer.compiler import build_skill_contexts
-
-    skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
-    union = all_index_skill_ids(cfg)
-
-    # 1) metadata-only load so build_skill_contexts can read index_requirements
-    SkillRegistry().reset()
-    SkillLoader().load_all(skills_dir, contexts=None)
-
-    contexts = build_skill_contexts(
-        repo_path=repo_path,
-        skill_ids=union,
-        languages=["python"],  # bm25 builds from the prebuilt graph; lang-agnostic
-        cache_dir=cache_dir,
-        embedding_model=cfg.embedding_model,
-        embedding_dimension=cfg.embedding_dimension,
-        default_top_k=cfg.topk,
-        default_level="l2",
-        rebuild=False,
+    from codeminer.eval.agent_runner.contexts import (
+        AgentSkillContextSpec,
+        load_agent_skill_contexts,
     )
 
-    # 2) re-load with contexts so executors are wired
-    SkillRegistry().reset()
-    SkillLoader().load_all(skills_dir, contexts=contexts)
-    return contexts
+    return load_agent_skill_contexts(
+        repo_path=repo_path,
+        cache_dir=cache_dir,
+        spec=AgentSkillContextSpec(
+            skill_ids=all_index_skill_ids(cfg),
+            # bm25 builds from the prebuilt graph; lang-agnostic.
+            languages=["python"],
+            embedding_model=cfg.embedding_model,
+            embedding_dimension=cfg.embedding_dimension,
+            top_k=cfg.topk,
+            default_level="l2",
+            rebuild=False,
+        ),
+    )
 
 
 def run_cell(
