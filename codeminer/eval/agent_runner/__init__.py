@@ -9,6 +9,13 @@ from .contexts import (
     default_agent_skills_dir,
     load_agent_skill_contexts,
 )
+from .format_diagnostics import (
+    FormatArmSummary,
+    FormatDiagnostics,
+    load_format_diagnostics,
+    load_meaningful_cells,
+    summarize_format_cells,
+)
 from .orchestrator import (
     GATE_SYSTEM,
     VERIFY_SYSTEM_PROMPT,
@@ -47,6 +54,8 @@ from .verify_expand import (
 
 __all__ = [
     "AgentSkillContextSpec",
+    "FormatArmSummary",
+    "FormatDiagnostics",
     "GATE_SYSTEM",
     "GraphNav",
     "PreloadQueryPlan",
@@ -65,6 +74,8 @@ __all__ = [
     "graph_compose",
     "interleave_ranked",
     "load_agent_skill_contexts",
+    "load_format_diagnostics",
+    "load_meaningful_cells",
     "load_pareto_cells",
     "prepare_preload_query",
     "query_is_specific",
@@ -74,6 +85,7 @@ __all__ = [
     "scatter_gather_localize",
     "snippet_for_node",
     "summarize_agent_result",
+    "summarize_format_cells",
     "symbol_leaf",
     "verdict_is_yes",
     "verify_query",
