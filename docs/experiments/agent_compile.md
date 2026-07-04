@@ -12,8 +12,8 @@ SPDX-License-Identifier: Apache-2.0
 > **`scripts/agent_compile/configs/design_space.yaml`** (9 arms, full split,
 > neutral prompt), driven by the consolidated `run_sweep.py` +
 > `aggregate.py` (reusable harness code lives under
-> `codeminer.eval.agent_runner`; `scripts/agent_compile/lib` is compatibility
-> shim space only; the offline retrieval ablations moved to
+> `codeminer.eval.agent_runner`; the old `scripts/agent_compile/lib`
+> compatibility namespace has been removed; the offline retrieval ablations moved to
 > `scripts/retrieval_ablation/`). See
 > [`scripts/agent_compile/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/scripts/agent_compile/README.md).
 > Fresh full-split design-space results will be added once the re-run completes.

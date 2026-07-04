@@ -8,7 +8,7 @@
 
 Sweeps ``{subsets} × {instances} × {reps}`` for one model, reusing the
 offline-built per-instance indexes under ``--prebuilt-dir`` (see
-``lib/prebuilt.py``) instead of cloning + reindexing.
+``codeminer.eval.agent_runner.prebuilt``) instead of cloning + reindexing.
 
 Per instance the *full* (union-of-subsets) index set is loaded once and all
 skills are registered; each subset cell then runs ``AgentRunner`` with

@@ -137,10 +137,9 @@ benchmark cell is currently easiest to improve.
    the driver layer.
 
 7. **M10a: Legacy script shim cleanup.**
-   Landed in #297. `scripts/agent_compile/lib` is deprecated compatibility for
-   old notebooks. Internal scripts and reusable tests import package APIs
-   directly, and the compatibility layer should be removed once the migration
-   window closes.
+   Landed in #297. Internal scripts and reusable tests import package APIs
+   directly. `scripts/agent_compile/lib` became temporary deprecated
+   compatibility for old notebooks until the removal milestone.
 
 8. **M10b: External LOC baseline ownership.**
    Landed in #298. Reusable external localization baseline helpers live in
@@ -155,15 +154,21 @@ benchmark cell is currently easiest to improve.
    dependency checks before they can leave experiment policy.
 
 10. **M10d: Legacy shim implementation guard.**
-    Landed in #300. `scripts/agent_compile/lib` is guarded as import-only until
-    removal; tests fail if compatibility modules regain functions, classes, or
-    non-package imports that would move reusable ownership back into scripts.
+    Landed in #300. During the migration window, `scripts/agent_compile/lib`
+    was guarded as import-only so compatibility modules could not regain
+    functions, classes, or non-package imports that would move reusable
+    ownership back into scripts.
 
 11. **M9e: LSP route agent-tool contract guard.**
     Lock the agent-facing `lsp_route` skill contract so it remains a static
     graph-backed tool with symbol-graph requirements, array symbol inputs, and
     route anchors produced by the shared core helper rather than eval-only
     baseline code.
+
+12. **M10e: Legacy shim namespace removal.**
+    Remove `scripts/agent_compile/lib` after the migration window so experiment
+    scripts no longer expose a core-looking library namespace. Reusable
+    agent-runner code must be imported from `codeminer.eval.agent_runner`.
 
 ## Current Boundary Decisions
 
@@ -176,17 +181,16 @@ benchmark cell is currently easiest to improve.
   failure, span metrics, or preload contribution logic.
 - Small feedback slices are selected by deterministic smoke plus rotated
   holdout plans, not by hand-picking named project instances.
-- Compatibility shims under `scripts/agent_compile/lib` are deprecated and are
-  not core ownership. New code should not import them.
+- The old `scripts/agent_compile/lib` compatibility namespace has been removed.
+  New code must import reusable helpers from `codeminer.eval.agent_runner`.
 - External localization baseline helpers live under
   `codeminer.eval.agent_runner.loc_baseline`; the old
   `codeminer.eval.loc_agent_runner` module is deprecated compatibility only.
 - Promotion evidence records live under `codeminer.eval.agent_runner` and must
   keep scorer dependencies and named benchmark dependencies explicit. Runtime
   defaults should not be promoted when either dependency set is non-empty.
-- Legacy modules under `scripts/agent_compile/lib` are import-only
-  compatibility shims. They may re-export package APIs but must not define
-  functions, classes, or new reusable policy.
+- `scripts/agent_compile` owns experiment CLIs, configs, and report glue only;
+  it must not grow a reusable `lib` namespace again.
 - External-agent and LSP baseline task/result envelopes live in
   `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
   SDK-specific inputs to that envelope, but they should not own reusable scoring
