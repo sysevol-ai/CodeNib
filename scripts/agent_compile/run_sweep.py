@@ -47,10 +47,12 @@ from codeminer.eval.agent_runner.prebuilt import (  # noqa: E402
     repo_path_for,
     stage_prebuilt_indexes,
 )
+from codeminer.eval.agent_runner.symbols import (  # noqa: E402
+    build_prebuilt_symbol_span_index,
+)
 from scripts.agent_compile.lib.config import SweepConfig  # noqa: E402
 from scripts.agent_compile.lib.harness import (  # noqa: E402
     LANG_GROUP_TO_KEY,
-    build_symbol_span_index,
     load_dataset_rows,
     load_full_contexts,
     run_cell,
@@ -167,7 +169,9 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
         gt_blocks = collect_target_blocks(row)
         # {(file, leaf): (start, end)} so committed scoring can resolve a named
         # symbol to its span when the agent didn't emit an explicit range.
-        symbol_span_index = build_symbol_span_index(cfg.prebuilt_dir, instance_id)
+        symbol_span_index = build_prebuilt_symbol_span_index(
+            cfg.prebuilt_dir, instance_id
+        )
         gt_meaningful = bool(target_files or target_symbols)
 
         cache_dir = os.path.join(

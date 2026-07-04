@@ -9,19 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple
 
+from codeminer.eval.agent_runner.symbols import symbol_leaf
 from codeminer.eval.retrieval_eval import normalize_file_path, parse_answer_spans
-
-
-def _leaf(name: Any) -> str:
-    """Return the trailing symbol leaf used for graph lookup keys."""
-    value = str(name or "").strip()
-    if not value:
-        return ""
-    if ":" in value:
-        value = value.rsplit(":", 1)[1]
-    value = value.replace("#", ".")
-    value = value.split("(", 1)[0]
-    return value.split("/")[-1].split(".")[-1].strip()
 
 
 def _answer_symbol_names(answer: str) -> List[str]:
@@ -64,7 +53,7 @@ class GraphNav:
                 attrs.get("name"),
             )
             for label in (attrs.get("name"), attrs.get("unified_name")):
-                leaf = _leaf(label)
+                leaf = symbol_leaf(label)
                 if leaf:
                     self.key_to_idx.setdefault((normalized_file, leaf), vertex.index)
 
@@ -127,7 +116,7 @@ def graph_verify(answer: str, nav: GraphNav) -> Verdict:
             continue
         file_part, symbol = str(raw).split(":", 1)
         file_path = normalize_file_path(file_part)
-        leaf = _leaf(symbol)
+        leaf = symbol_leaf(symbol)
         if file_path and leaf and nav.resolves(file_path, leaf):
             resolved.append((file_path, leaf))
     has_locations = bool(parse_answer_spans(answer))
@@ -164,7 +153,7 @@ def expansion_seeds_from_candidates(
     seeds: List[Tuple[str, str]] = []
     for candidate in candidates or []:
         file_path = normalize_file_path(candidate.get("file"))
-        leaf = _leaf(candidate.get("name") or candidate.get("symbol"))
+        leaf = symbol_leaf(candidate.get("name") or candidate.get("symbol"))
         if file_path and leaf:
             seeds.append((file_path, leaf))
     return seeds

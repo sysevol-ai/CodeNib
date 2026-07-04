@@ -144,61 +144,6 @@ def load_full_contexts(cfg: SweepConfig, repo_path: str, cache_dir: str):
     return contexts
 
 
-def _leaf_symbol(name: Any) -> str:
-    """Return the final answer/GT leaf from graph or display symbol names."""
-    s = str(name or "").strip()
-    if not s:
-        return ""
-    if ":" in s:
-        s = s.rsplit(":", 1)[1]
-    s = s.replace("#", ".")
-    s = s.split("(", 1)[0]
-    return s.split("/")[-1].split(".")[-1].strip()
-
-
-def build_symbol_span_index(prebuilt_dir: str, instance_id: str) -> Dict[Any, Any]:
-    """``{(norm_file, leaf_name): (start_1based, end_1based)}`` from the prebuilt
-    graph, so committed scoring can resolve a named symbol to its line span.
-
-    Graph vertices are 0-based (tree-sitter); shifted +1 here to match the
-    1-based ground-truth blocks. Returns an empty dict when no graph is present.
-    """
-    from codeminer.eval.agent_runner.prebuilt import load_prebuilt_code_graph
-    from codeminer.eval.retrieval_eval import normalize_file_path
-
-    path = os.path.join(prebuilt_dir, instance_id, "graph.pkl")
-    if not os.path.exists(path):
-        return {}
-    try:
-        graph = load_prebuilt_code_graph(prebuilt_dir, instance_id)
-    except Exception:  # noqa: BLE001 — a missing/corrupt graph just disables this
-        return {}
-    g = getattr(graph, "graph", None)
-    if g is None:
-        return {}
-    index: Dict[Any, Any] = {}
-    for v in g.vs:
-        attrs = v.attributes()
-        file, start, end = (
-            attrs.get("file"),
-            attrs.get("start_line"),
-            attrs.get("end_line"),
-        )
-        name = attrs.get("name")
-        unified_name = attrs.get("unified_name")
-        if file is None or start is None or end is None or not (name or unified_name):
-            continue
-        nf = normalize_file_path(file)
-        for label in (name, unified_name):
-            leaf = _leaf_symbol(label)
-            if not leaf:
-                continue
-            key = (nf, leaf)
-            if key not in index:  # first definition wins
-                index[key] = (int(start) + 1, int(end) + 1)
-    return index
-
-
 def run_cell(
     cfg: SweepConfig,
     *,
