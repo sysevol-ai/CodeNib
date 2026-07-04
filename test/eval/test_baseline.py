@@ -7,8 +7,12 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
+import sys
 from types import SimpleNamespace
+
+import pytest
 
 from codeminer.eval.agent_runner.baseline import (
     BaselineRunResult,
@@ -17,7 +21,10 @@ from codeminer.eval.agent_runner.baseline import (
     location_symbol_ids,
     unique_location_files,
 )
-from codeminer.eval.loc_agent_runner import build_result_entry, run_agent_baseline
+from codeminer.eval.agent_runner.loc_baseline import (
+    build_result_entry,
+    run_agent_baseline,
+)
 
 
 def _success_result():
@@ -160,6 +167,16 @@ def test_loc_agent_runner_build_result_entry_delegates_to_envelope():
     assert entry["locations"][0]["name"] == "Parser.parse()"
 
 
+def test_loc_agent_runner_legacy_import_warns_deprecated():
+    sys.modules.pop("codeminer.eval.loc_agent_runner", None)
+
+    with pytest.warns(DeprecationWarning, match="agent_runner.loc_baseline"):
+        module = importlib.import_module("codeminer.eval.loc_agent_runner")
+
+    assert module.run_agent_baseline is run_agent_baseline
+    assert "deprecated" in module._DEPRECATION_MESSAGE
+
+
 def test_build_baseline_result_entry_handles_failures():
     task = BaselineTask(
         instance_id="demo__repo-1",
@@ -224,7 +241,7 @@ def test_run_agent_baseline_uses_baseline_task_envelope(monkeypatch, tmp_path):
             return _success_result()
 
     monkeypatch.setattr(
-        "codeminer.eval.loc_agent_runner.build_dataset",
+        "codeminer.eval.agent_runner.loc_baseline.build_dataset",
         lambda _args: FakeDataset(),
     )
     args = SimpleNamespace(
@@ -331,7 +348,7 @@ def test_run_agent_baseline_resume_skips_processing_done_instances(
             return _success_result()
 
     monkeypatch.setattr(
-        "codeminer.eval.loc_agent_runner.build_dataset",
+        "codeminer.eval.agent_runner.loc_baseline.build_dataset",
         lambda _args: dataset,
     )
     result_path = tmp_path / "baseline.jsonl"
