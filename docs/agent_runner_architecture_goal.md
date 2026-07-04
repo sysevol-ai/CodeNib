@@ -176,6 +176,12 @@ benchmark cell is currently easiest to improve.
     transient failure persistence — into `codeminer.eval.agent_runner.sweep`.
     `scripts/agent_compile/run_sweep.py` should remain CLI/config override glue.
 
+14. **M10g: Per-query sweep execution ownership.**
+    Move reusable many-queries-per-repo execution semantics into
+    `codeminer.eval.agent_runner.query_sweep`. Dataset-specific scripts may
+    load and normalize rows, but context reuse, per-query scoring, resume, and
+    transient failure persistence belong to the package layer.
+
 ## Current Boundary Decisions
 
 - Localization answer-contract forcing is an opt-in harness policy, not a core
@@ -200,6 +206,10 @@ benchmark cell is currently easiest to improve.
 - Sweep execution semantics live in `codeminer.eval.agent_runner.sweep`;
   experiment scripts may parse arguments and select configs, but should not own
   reusable cell lifecycle, scoring, or resume behavior.
+- Per-query sweep execution semantics live in
+  `codeminer.eval.agent_runner.query_sweep`; experiment scripts may select a
+  dataset/config but should not own query cell lifecycle, scoring, or context
+  reuse behavior.
 - External-agent and LSP baseline task/result envelopes live in
   `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
   SDK-specific inputs to that envelope, but they should not own reusable scoring

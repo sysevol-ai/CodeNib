@@ -50,6 +50,7 @@ ablation.
 |---|---|
 | `feedback_plan.py` | choose a small deterministic feedback slice: fixed smoke cases plus a seed-rotated holdout, stratified by language/group. Outputs JSON instance lists for `run_sweep.py --instances ...`. |
 | `run_sweep.py` | thin CLI for `codeminer.eval.agent_runner.sweep.run_sweep`: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. |
+| `run_synthesis_sweep.py` | thin CLI for `codeminer.eval.agent_runner.query_sweep.run_query_sweep`: many query rows per prebuilt repo, loaded from `sysevol-ai/codeminer-synthesis`; `cells/<id>.json` + `synthesis_summary.json`. |
 | `aggregate.py` | fold cells into a report: per-arm metrics, skill-invocation histogram, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
 
 The base agent-localization scorer (answer + `read` paths + retrieval nodes →
@@ -95,9 +96,10 @@ skipped and recorded in `sweep_summary.json`.
 
 ## Reusable Code Boundary
 
-Reusable config, harness, sweep execution, preload, orchestration, scoring, and
-baseline helpers live in `codeminer.eval.agent_runner`. `scripts/agent_compile`
-owns experiment CLIs, configs, and report glue only; the old
+Reusable config, harness, sweep execution, per-query sweep execution, preload,
+orchestration, scoring, and baseline helpers live in
+`codeminer.eval.agent_runner`. `scripts/agent_compile` owns experiment CLIs,
+configs, dataset selection, and report glue only; the old
 `scripts.agent_compile.lib` compatibility namespace has been removed.
 
 ## How indexes reach the agent
