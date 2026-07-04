@@ -274,6 +274,7 @@ export default function GraphView({
         <CodeGraph
           data={data}
           variant={variant}
+          repoId={repoId}
           onNodeClick={(node) => setPeek({ kind: "node", node })}
           onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
         />

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type Core, type ElementDefinition, type NodeSingular } from "cytoscape";
-import type { CallSite, CodemapResponse } from "@/lib/api";
+import { fetchEdgeLabel, type CallSite, type CodemapResponse } from "@/lib/api";
 
 export interface EdgeClickInfo {
   anchors: CallSite[];
@@ -449,7 +449,10 @@ function buildElements(
       );
     }
     a.weight += e.weight ?? e.anchors?.length ?? 0;
-    if (symbolEdge && e.anchors) a.anchors.push(...e.anchors);
+    // Collect anchors for ALL edges (incl. file-level aggregates) so the on-hover
+    // label has call-site evidence. The click-peek still only uses them for
+    // symbol edges (see the `anchors` field below).
+    if (e.anchors) a.anchors.push(...e.anchors);
     a.crossFile = a.crossFile || !!e.cross_file;
     if (symbolEdge) {
       a.srcShort = shortById.get(e.source) || "";
@@ -468,7 +471,8 @@ function buildElements(
         id: `e${i++}`,
         source,
         target,
-        anchors: a.symbolEdge ? a.anchors : [],
+        anchors: a.symbolEdge ? a.anchors : [], // click-peek: exact edges only
+        labelAnchors: a.anchors, // on-hover LLM label: all edges, incl. file-level
         weight: a.weight || 1, // # call sites -> drives edge width
         hasAnchor: a.symbolEdge && a.anchors.length ? 1 : 0,
         meta: a.symbolEdge ? 0 : 1, // file-level aggregate (dashed) vs exact reference
@@ -990,6 +994,11 @@ type EdgeHoverInfo = {
   src: string;
   tgt: string;
   aggregate: boolean;
+  // LLM dependency phrase: undefined = not fetched, "…" = loading, else the phrase.
+  label?: string;
+  // Viewport cursor position, for the floating tooltip next to the edge.
+  x?: number;
+  y?: number;
 };
 
 function fileInfo(data: CodemapResponse, file: string | null): SelectedFileInfo | null {
@@ -1040,6 +1049,7 @@ function graphFileCount(data: CodemapResponse): number {
 export default function CodeGraph({
   data,
   variant = "explore",
+  repoId,
   onNodeClick,
   onEdgeClick,
 }: {
@@ -1047,6 +1057,7 @@ export default function CodeGraph({
   // "wiki" = the focused map embedded in a wiki page, tuned for reading.
   // "explore" = the standalone Graph view with richer interaction.
   variant?: "wiki" | "explore";
+  repoId?: string; // needed to fetch on-hover LLM edge labels
   onNodeClick?: (node: GraphNodeInfo) => void;
   onEdgeClick?: (info: EdgeClickInfo) => void;
 }) {
@@ -1069,7 +1080,16 @@ export default function CodeGraph({
   // handler identities (e.g. opening the source peek) — that would reset zoom/pan.
   const onNodeClickRef = useRef(onNodeClick);
   const onEdgeClickRef = useRef(onEdgeClick);
+  // On-hover LLM edge-label plumbing: keep repoId current for the cy closures,
+  // cache phrases per edge id (fetch once), debounce so mousing over the graph
+  // doesn't spam the LLM, and track the hovered edge so a late result only
+  // applies if we're still on that edge.
+  const repoIdRef = useRef(repoId);
+  const edgeLabelCacheRef = useRef<Map<string, string>>(new Map());
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverEdgeIdRef = useRef<string | null>(null);
   useEffect(() => {
+    repoIdRef.current = repoId;
     onNodeClickRef.current = onNodeClick;
     onEdgeClickRef.current = onEdgeClick;
   });
@@ -1521,23 +1541,74 @@ export default function CodeGraph({
       });
     });
 
-    // Edge hover: spotlight the relationship + show its call-site count.
+    // Edge hover: spotlight the relationship, show its call-site count, and
+    // (debounced) fetch a short LLM phrase describing the dependency.
     cy.on("mouseover", "edge", (evt) => {
       const e = evt.target;
       box.style.cursor = e.data("hasAnchor") ? "pointer" : "default";
+      const eid = e.id();
+      hoverEdgeIdRef.current = eid;
+      const cachedLabel = edgeLabelCacheRef.current.get(eid);
+      const oe = evt.originalEvent as MouseEvent | undefined;
       setEdgeHover({
         count: e.data("weight") || 0,
         src: e.data("srcDisplay") || e.data("srcShort") || "source",
         tgt: e.data("tgtDisplay") || e.data("tgtShort") || "target",
         aggregate: e.data("meta") === 1,
+        label: cachedLabel,
+        x: oe?.clientX,
+        y: oe?.clientY,
       });
-      if (focusedRef.current) return;
-      cy.edges().not(e).addClass("faded"); // dim other edges; leave all nodes legible
-      e.addClass("hl");
-      e.connectedNodes().addClass("hl reveal-label");
+      if (!focusedRef.current) {
+        cy.edges().not(e).addClass("faded"); // dim other edges; leave nodes legible
+        e.addClass("hl");
+        e.connectedNodes().addClass("hl reveal-label");
+      }
+      // Lazily fetch the dependency phrase (once per edge), debounced.
+      if (cachedLabel === undefined && repoIdRef.current) {
+        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = setTimeout(() => {
+          if (hoverEdgeIdRef.current !== eid) return; // moved on before debounce fired
+          const s = e.source().data();
+          const t = e.target().data();
+          const body = {
+            source: {
+              file: e.data("srcFile") || s.file || "",
+              line: (s.line ?? null) as number | null,
+              end_line: (s.endLine ?? null) as number | null,
+              label: e.data("srcShort") || e.data("srcDisplay") || "",
+            },
+            target: {
+              file: e.data("tgtFile") || t.file || "",
+              line: (t.line ?? null) as number | null,
+              end_line: (t.endLine ?? null) as number | null,
+              label: e.data("tgtShort") || e.data("tgtDisplay") || "",
+            },
+            anchors: (e.data("labelAnchors") || e.data("anchors") || []) as CallSite[],
+          };
+          setEdgeHover((h) =>
+            h && hoverEdgeIdRef.current === eid ? { ...h, label: "…" } : h
+          );
+          fetchEdgeLabel(repoIdRef.current as string, body)
+            .then((r) => {
+              const lbl = r.label || "";
+              edgeLabelCacheRef.current.set(eid, lbl);
+              setEdgeHover((h) =>
+                h && hoverEdgeIdRef.current === eid ? { ...h, label: lbl } : h
+              );
+            })
+            .catch(() => {
+              setEdgeHover((h) =>
+                h && hoverEdgeIdRef.current === eid ? { ...h, label: "" } : h
+              );
+            });
+        }, 450);
+      }
     });
     cy.on("mouseout", "edge", () => {
       box.style.cursor = "";
+      hoverEdgeIdRef.current = null;
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       setEdgeHover(null);
       if (focusedRef.current) return;
       cy.elements().removeClass("faded hl reveal-label");
@@ -1660,6 +1731,11 @@ export default function CodeGraph({
               · {edgeHover.count} ref{edgeHover.count === 1 ? "" : "s"}
               {edgeHover.aggregate ? " · file-level" : " · exact"}
             </span>
+            {edgeHover.label === "…" ? (
+              <span className="muted"> · describing…</span>
+            ) : edgeHover.label ? (
+              <span className="cg-edgelabel"> · {edgeHover.label}</span>
+            ) : null}
           </span>
         ) : hover ? (
           <span className="cg-info">
@@ -1696,6 +1772,25 @@ export default function CodeGraph({
           Fit
         </button>
       </div>
+      {edgeHover && edgeHover.x != null && edgeHover.y != null && (
+        <div
+          className="cg-edge-tip"
+          style={{ left: Math.min(edgeHover.x + 14, (typeof window !== "undefined" ? window.innerWidth : 9999) - 260), top: edgeHover.y + 14 }}
+        >
+          <div className="cg-edge-tip-head">
+            {edgeHover.src} &rarr; {edgeHover.tgt}
+          </div>
+          <div className="cg-edge-tip-sub">
+            {edgeHover.count} ref{edgeHover.count === 1 ? "" : "s"} ·{" "}
+            {edgeHover.aggregate ? "file-level" : "exact"}
+          </div>
+          {edgeHover.label === "…" ? (
+            <div className="cg-edge-tip-label muted">describing dependency…</div>
+          ) : edgeHover.label ? (
+            <div className="cg-edge-tip-label">{edgeHover.label}</div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

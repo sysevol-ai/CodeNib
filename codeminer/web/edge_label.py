@@ -121,24 +121,31 @@ class EdgeLabeler:
         tgt_name: str,
         anchors: Optional[List[dict]] = None,
     ) -> Tuple[str, bool]:
-        """Return ``(phrase, cached)``. Empty phrase on any failure."""
+        """Return ``(phrase, cached)``. Empty phrase on any failure.
+
+        Works for symbol->symbol edges (both bodies available) *and* file-level
+        aggregate edges (no symbol body, but call-site anchors) — the latter are
+        the ones visible by default in the graph. Evidence is any of: source
+        body, target body, or the call-site snippets.
+        """
         src_code = self._read_symbol(src_file, src_line, src_end)
         tgt_code = self._read_symbol(tgt_file, tgt_line, tgt_end)
-        # Need at least the source body to say anything meaningful; an external /
-        # unreadable target still lets us describe the call from the source side.
-        if not src_code and not tgt_code:
+        anchor_block = self._anchor_block(anchors or [])
+        if not (src_code or tgt_code or anchor_block):
             return "", False
 
-        key = self._key(src_code, tgt_code)
+        # Key on all evidence: file-level edges have empty bodies, so the anchors
+        # are what distinguish one file->file edge from another.
+        key = self._key(src_code, tgt_code, anchor_block)
         cached = self._cache_get(key)
         if cached is not None:
             return cached, True
 
         phrase = self._generate(
-            src_name, src_file, src_code, tgt_name, tgt_file, tgt_code, anchors or []
+            src_name, src_file, src_code, tgt_name, tgt_file, tgt_code, anchor_block
         )
-        # Cache even an empty result? No — leave misses open so a transient LLM
-        # failure can be retried on the next click. Only persist real phrases.
+        # Don't cache empty results — leave misses open so a transient LLM failure
+        # retries on the next hover/click. Only persist real phrases.
         if phrase:
             self._cache_put(key, phrase)
         return phrase, False
@@ -186,7 +193,7 @@ class EdgeLabeler:
         tgt_name: str,
         tgt_file: str,
         tgt_code: str,
-        anchors: List[dict],
+        anchor_block: str,
     ) -> str:
         prompt = _PROMPT.format(
             max_words=_MAX_WORDS,
@@ -196,7 +203,7 @@ class EdgeLabeler:
             tgt_name=tgt_name or "(target)",
             tgt_file=tgt_file,
             tgt_code=tgt_code or "(target is external / unavailable)",
-            anchor_block=self._anchor_block(anchors),
+            anchor_block=anchor_block,
         )
         try:
             import litellm
@@ -217,8 +224,10 @@ class EdgeLabeler:
 
     # -- cache -------------------------------------------------------------
 
-    def _key(self, src_code: str, tgt_code: str) -> str:
-        raw = (src_code + _UNIT_SEP + tgt_code).encode("utf-8")
+    def _key(self, src_code: str, tgt_code: str, anchor_block: str = "") -> str:
+        raw = (src_code + _UNIT_SEP + tgt_code + _UNIT_SEP + anchor_block).encode(
+            "utf-8"
+        )
         return hashlib.sha1(raw).hexdigest()
 
     def _ensure_loaded(self) -> Dict[str, str]:
