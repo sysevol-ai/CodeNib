@@ -98,8 +98,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--max-tool-rounds",
         type=int,
-        default=3,
-        help="Max search_code calls the LLM may make per hotspot",
+        default=6,
+        help="Max search_code rounds the LLM may make before being forced to conclude",
     )
     p.add_argument(
         "--retrieval-top-k",
