@@ -163,8 +163,8 @@ def build_symbol_span_index(prebuilt_dir: str, instance_id: str) -> Dict[Any, An
     Graph vertices are 0-based (tree-sitter); shifted +1 here to match the
     1-based ground-truth blocks. Returns an empty dict when no graph is present.
     """
+    from codeminer.eval.agent_runner.prebuilt import load_prebuilt_code_graph
     from codeminer.eval.retrieval_eval import normalize_file_path
-    from scripts.agent_compile.lib.prebuilt import load_prebuilt_code_graph
 
     path = os.path.join(prebuilt_dir, instance_id, "graph.pkl")
     if not os.path.exists(path):

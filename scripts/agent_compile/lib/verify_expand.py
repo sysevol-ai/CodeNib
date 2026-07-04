@@ -23,7 +23,7 @@ def load_graph_nav(prebuilt_dir: str, instance_id: str) -> Optional[GraphNav]:
     if not os.path.exists(path):
         return None
     try:
-        from scripts.agent_compile.lib.prebuilt import load_prebuilt_code_graph
+        from codeminer.eval.agent_runner.prebuilt import load_prebuilt_code_graph
 
         graph = load_prebuilt_code_graph(prebuilt_dir, instance_id)
     except Exception:  # noqa: BLE001 — missing/corrupt graph just disables verify

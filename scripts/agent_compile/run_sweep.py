@@ -42,6 +42,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from codeminer.eval.agent_runner.prebuilt import (  # noqa: E402
+    has_full_indexes,
+    repo_path_for,
+    stage_prebuilt_indexes,
+)
 from scripts.agent_compile.lib.config import SweepConfig  # noqa: E402
 from scripts.agent_compile.lib.harness import (  # noqa: E402
     LANG_GROUP_TO_KEY,
@@ -51,11 +56,6 @@ from scripts.agent_compile.lib.harness import (  # noqa: E402
     run_cell,
     scenario_for,
     slug,
-)
-from scripts.agent_compile.lib.prebuilt import (  # noqa: E402
-    has_full_indexes,
-    repo_path_for,
-    stage_prebuilt_indexes,
 )
 
 

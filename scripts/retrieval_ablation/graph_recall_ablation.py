@@ -91,9 +91,12 @@ def _analyze_instance(
     budget: int,
 ) -> Dict[str, Any]:
     from codeminer.agent.skills.registry import SkillRegistry
+    from codeminer.eval.agent_runner.prebuilt import (
+        repo_path_for,
+        stage_prebuilt_indexes,
+    )
     from codeminer.eval.retrieval_eval import collect_targets
     from scripts.agent_compile.lib.harness import load_dataset_rows, load_full_contexts
-    from scripts.agent_compile.lib.prebuilt import repo_path_for, stage_prebuilt_indexes
 
     rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[instance_id]

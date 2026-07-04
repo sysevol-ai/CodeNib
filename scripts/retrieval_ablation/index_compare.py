@@ -65,10 +65,10 @@ def _files(docs: List[Any], idxs: List[int]) -> List[str]:
 
 
 def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
+    from codeminer.eval.agent_runner.prebuilt import stage_prebuilt_indexes
     from codeminer.eval.retrieval_eval import collect_targets
     from codeminer.graph.roi_subgraph import ROISubgraph
     from scripts.agent_compile.lib.harness import load_dataset_rows, load_full_contexts
-    from scripts.agent_compile.lib.prebuilt import stage_prebuilt_indexes
 
     rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[inst]
