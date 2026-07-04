@@ -19,6 +19,7 @@ from .orchestrator import (
     verdict_is_yes,
     verify_query,
 )
+from .pareto import analyze_pareto, load_pareto_cells
 from .preload import (
     PreloadQueryPlan,
     assemble_preload,
@@ -53,6 +54,7 @@ __all__ = [
     "VerifyExpandRun",
     "VERIFY_SYSTEM_PROMPT",
     "assemble_preload",
+    "analyze_pareto",
     "build_prebuilt_symbol_span_index",
     "build_symbol_span_index",
     "candidate_location",
@@ -63,6 +65,7 @@ __all__ = [
     "graph_compose",
     "interleave_ranked",
     "load_agent_skill_contexts",
+    "load_pareto_cells",
     "prepare_preload_query",
     "query_is_specific",
     "render_expansion",
