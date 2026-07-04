@@ -38,11 +38,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+
+from codeminer.eval.agent_runner.metrics import metric_at_k, safe_mean, safe_min
 
 EASY_FILES_AT_5 = 0.5  # baseline-arm mean-rep files@5 >= this => "easy" instance
 
@@ -75,30 +76,22 @@ def load_cells(cells_dir: Path) -> List[Dict[str, Any]]:
 
 
 def _at_k(cell: Dict[str, Any], scope: str, k: int) -> Optional[float]:
-    bucket = (cell.get("metrics") or {}).get(scope) or {}
-    stats = bucket.get(k, bucket.get(str(k)))
-    if isinstance(stats, dict):
-        return stats.get("accuracy")
-    return stats
+    return metric_at_k(cell, scope, k)
 
 
 def _field_at_k(
     cell: Dict[str, Any], scope: str, k: int, field: str
 ) -> Optional[float]:
     """Read an arbitrary metric field (precision/recall/...) at cutoff k."""
-    bucket = (cell.get("metrics") or {}).get(scope) or {}
-    stats = bucket.get(k, bucket.get(str(k)))
-    return stats.get(field) if isinstance(stats, dict) else None
+    return metric_at_k(cell, scope, k, field=field)
 
 
 def _safe_mean(xs: Sequence[Optional[float]]) -> Optional[float]:
-    vals = [x for x in xs if x is not None]
-    return statistics.fmean(vals) if vals else None
+    return safe_mean(xs)
 
 
 def _safe_min(xs: Sequence[Optional[float]]) -> Optional[float]:
-    vals = [x for x in xs if x is not None]
-    return min(vals) if vals else None
+    return safe_min(xs)
 
 
 def _fmt(v: Optional[float], nd: int) -> str:

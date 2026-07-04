@@ -20,30 +20,19 @@ Rep folding mirrors aggregate_synthesis (rec mean across reps, cost/turns min).
 
 from __future__ import annotations
 
-import json
 import random
 import statistics
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
+
+from .metrics import load_cell_jsons, metric_at_k, safe_mean, safe_min
 
 EPS = 0.02  # Recall deltas within this count as equal accuracy.
 
 
 def load_pareto_cells(cells_dir: Path) -> List[Dict[str, Any]]:
-    out = []
-    for p in sorted(cells_dir.glob("*.json")):
-        try:
-            out.append(json.loads(p.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
-            pass
-    return out
-
-
-def _rec5(cell: Dict[str, Any]) -> Optional[float]:
-    b = (cell.get("metrics") or {}).get("answer_blocks") or {}
-    s = b.get(5, b.get("5"))
-    return s.get("recall") if isinstance(s, dict) else None
+    return load_cell_jsons(cells_dir)
 
 
 def _fold_reps(cells: Sequence[Dict[str, Any]]) -> Dict[Tuple, Dict[str, float]]:
@@ -55,13 +44,12 @@ def _fold_reps(cells: Sequence[Dict[str, Any]]) -> Dict[Tuple, Dict[str, float]]
         by[(c.get("category"), c.get("subset_id"), c.get("query_id"))].append(c)
     folded: Dict[Tuple, Dict[str, float]] = {}
     for key, reps in by.items():
-        recs = [r for r in (_rec5(c) for c in reps) if r is not None]
-        costs = [c.get("cost_usd") for c in reps if c.get("cost_usd") is not None]
-        turns = [c.get("total_turns") for c in reps if c.get("total_turns") is not None]
         folded[key] = {
-            "rec": statistics.fmean(recs) if recs else None,
-            "cost": min(costs) if costs else None,
-            "turns": min(turns) if turns else None,
+            "rec": safe_mean(
+                [metric_at_k(cell, "answer_blocks", 5, field="recall") for cell in reps]
+            ),
+            "cost": safe_min([cell.get("cost_usd") for cell in reps]),
+            "turns": safe_min([cell.get("total_turns") for cell in reps]),
         }
     return folded
 

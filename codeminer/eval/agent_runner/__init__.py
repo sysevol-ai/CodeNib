@@ -16,6 +16,7 @@ from .format_diagnostics import (
     load_meaningful_cells,
     summarize_format_cells,
 )
+from .metrics import load_cell_jsons, metric_at_k, safe_mean, safe_min, usable_cells
 from .orchestrator import (
     GATE_SYSTEM,
     VERIFY_SYSTEM_PROMPT,
@@ -74,19 +75,24 @@ __all__ = [
     "graph_compose",
     "interleave_ranked",
     "load_agent_skill_contexts",
+    "load_cell_jsons",
     "load_format_diagnostics",
     "load_meaningful_cells",
     "load_pareto_cells",
+    "metric_at_k",
     "prepare_preload_query",
     "query_is_specific",
     "render_expansion",
     "retrieve_candidates",
     "run_verify_expand",
     "scatter_gather_localize",
+    "safe_mean",
+    "safe_min",
     "snippet_for_node",
     "summarize_agent_result",
     "summarize_format_cells",
     "symbol_leaf",
+    "usable_cells",
     "verdict_is_yes",
     "verify_query",
 ]

@@ -32,38 +32,34 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+
+from codeminer.eval.agent_runner.metrics import (
+    load_cell_jsons,
+    metric_at_k,
+    safe_mean,
+    safe_min,
+)
 
 KS = [1, 3, 5, 10]
 
 
 def _load(cells_dir: Path) -> List[Dict[str, Any]]:
-    out = []
-    for p in sorted(cells_dir.glob("*.json")):
-        try:
-            out.append(json.loads(p.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
-            pass
-    return out
+    return load_cell_jsons(cells_dir)
 
 
 def _field(cell: Dict[str, Any], scope: str, k: int, field: str) -> Optional[float]:
-    b = (cell.get("metrics") or {}).get(scope) or {}
-    s = b.get(k, b.get(str(k)))
-    return s.get(field) if isinstance(s, dict) else None
+    return metric_at_k(cell, scope, k, field=field)
 
 
 def _mean(xs: Sequence[Optional[float]]) -> Optional[float]:
-    v = [x for x in xs if x is not None]
-    return statistics.fmean(v) if v else None
+    return safe_mean(xs)
 
 
 def _min(xs: Sequence[Optional[float]]) -> Optional[float]:
-    v = [x for x in xs if x is not None]
-    return min(v) if v else None
+    return safe_min(xs)
 
 
 def _fmt(v: Optional[float], nd: int = 3) -> str:

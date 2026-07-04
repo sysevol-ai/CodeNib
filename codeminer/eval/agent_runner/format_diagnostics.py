@@ -6,11 +6,11 @@
 
 from __future__ import annotations
 
-import json
-import statistics as st
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Sequence, Union
+
+from .metrics import load_cell_jsons, metric_at_k, safe_mean, usable_cells
 
 
 @dataclass(frozen=True)
@@ -35,30 +35,14 @@ class FormatDiagnostics:
     arms: List[FormatArmSummary]
 
 
-def _recall(cell: Dict[str, Any], scope: str, k: int) -> Optional[float]:
-    blocks = (cell.get("metrics") or {}).get(scope) or {}
-    score = blocks.get(k, blocks.get(str(k)))
-    return score.get("recall") if isinstance(score, dict) else None
-
-
-def _mean(values: Sequence[Optional[float]]) -> float:
-    present = [value for value in values if value is not None]
-    return st.fmean(present) if present else 0.0
-
-
 def load_meaningful_cells(result_dir: Union[Path, str]) -> List[Dict[str, Any]]:
     """Load successful cells whose metrics can be interpreted."""
 
     root = Path(result_dir)
-    cells: List[Dict[str, Any]] = []
-    for path in sorted(root.joinpath("cells").glob("*.json")):
-        try:
-            cell = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if cell.get("success") and cell.get("metrics_meaningful"):
-            cells.append(cell)
-    return cells
+    return usable_cells(
+        load_cell_jsons(root.joinpath("cells")),
+        require_metrics_meaningful=True,
+    )
 
 
 def summarize_format_cells(
@@ -84,15 +68,33 @@ def summarize_format_cells(
                 arm=arm,
                 n=len(arm_cells),
                 format_fail_rate=format_fail_rate,
-                files_all=_mean([_recall(cell, "files", k) for cell in arm_cells]),
-                files_formatted=_mean(
-                    [_recall(cell, "files", k) for cell in formatted]
+                files_all=safe_mean(
+                    [
+                        metric_at_k(cell, "files", k, field="recall")
+                        for cell in arm_cells
+                    ],
+                    default=0.0,
                 ),
-                answer_blocks_all=_mean(
-                    [_recall(cell, "answer_blocks", k) for cell in arm_cells]
+                files_formatted=safe_mean(
+                    [
+                        metric_at_k(cell, "files", k, field="recall")
+                        for cell in formatted
+                    ],
+                    default=0.0,
                 ),
-                answer_blocks_formatted=_mean(
-                    [_recall(cell, "answer_blocks", k) for cell in formatted]
+                answer_blocks_all=safe_mean(
+                    [
+                        metric_at_k(cell, "answer_blocks", k, field="recall")
+                        for cell in arm_cells
+                    ],
+                    default=0.0,
+                ),
+                answer_blocks_formatted=safe_mean(
+                    [
+                        metric_at_k(cell, "answer_blocks", k, field="recall")
+                        for cell in formatted
+                    ],
+                    default=0.0,
                 ),
             )
         )
