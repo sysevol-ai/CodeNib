@@ -21,6 +21,7 @@ import pytest
 import codeminer.mcp.server as server_module
 from codeminer.index.embedding.vector_store import CodeVectorStore
 from codeminer.mcp.context import ServerContext
+from codeminer.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
 
 
 @pytest.fixture
@@ -138,6 +139,62 @@ def test_semantic_search_tool_with_vector_index(mock_manifest: Path):
     assert len(result) == 1
     assert result[0]["node_id"] == "test_node"
     assert result[0]["score"] == 0.95
+
+
+def test_lsp_definition_tool_no_symbol_graph():
+    """Test lsp_definition returns an error when symbol_graph is unavailable."""
+    result = lsp_definition_impl(MagicMock(symbol_graph=None), symbol="load_config")
+
+    assert result == {"error": "symbol_graph index not available"}
+
+
+def test_lsp_definition_tool_serializes_one_based_lines():
+    """Test MCP serialization converts internal graph lines to 1-based lines."""
+    mock_graph = MagicMock()
+    from codeminer.types import QueriedNode
+
+    mock_graph.query_range.side_effect = ValueError("should not be called")
+    ctx = MagicMock(symbol_graph=mock_graph)
+    with patch("codeminer.mcp.tools.lsp.lsp_definition") as mock_definition:
+        mock_definition.return_value = [
+            QueriedNode(
+                node_name="load_config",
+                file="config.py",
+                start_line=4,
+                end_line=8,
+                content="definition of load_config",
+            )
+        ]
+        result = lsp_definition_impl(ctx, symbol="load_config")
+
+    assert result[0]["start_line"] == 5
+    assert result[0]["end_line"] == 9
+
+
+def test_lsp_references_tool_delegates_to_core():
+    """Test lsp_references wrapper calls the core graph helper."""
+    from codeminer.types import QueriedNode
+
+    ctx = MagicMock(symbol_graph=MagicMock())
+    with patch("codeminer.mcp.tools.lsp.lsp_references") as mock_references:
+        mock_references.return_value = [
+            QueriedNode(
+                node_name="caller",
+                file="caller.py",
+                start_line=1,
+                end_line=1,
+                content="reference to load_config",
+            )
+        ]
+        result = lsp_references_impl(
+            ctx, file_path="caller.py", line=2, symbol="", include_declaration=False
+        )
+
+    assert result[0]["start_line"] == 2
+    kwargs = mock_references.call_args.kwargs
+    assert kwargs["file_path"] == "caller.py"
+    assert kwargs["line"] == 1
+    assert kwargs["include_declaration"] is False
 
 
 def test_server_status_resource(mock_manifest: Path):

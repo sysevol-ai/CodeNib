@@ -84,6 +84,10 @@ Optional `--log-level {DEBUG,INFO,WARNING,ERROR}` (default `INFO`); logs go to s
 | `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
 | `search_regex` | `symbol_graph` | symbol | structural pattern matching |
 | `search_zoekt` | `zoekt` | file | fast substring/regex across raw repo contents |
+| `dependency_subgraph` | `symbol_graph` | call graph | structural dependency / impact analysis |
+| `lsp_definition` | `symbol_graph` | location | static graph analogue of go-to-definition |
+| `lsp_references` | `symbol_graph` | locations | static graph analogue of find-references |
+| `lsp_route` | `symbol_graph` | locations | compact route anchors for related symbols |
 | `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
 
 ### `search_semantic`
@@ -124,6 +128,15 @@ file-level (`type="file"`).
 - `top_k` (int, default 20).
 - `file_filter` (str, default `""`): glob/regex appended as `file:<expr>`.
 
+### `lsp_definition` / `lsp_references` / `lsp_route`
+Static LSP-shaped navigation over the loaded `symbol_graph`. These tools return
+compact locations only; clients should read source before finalizing.
+
+- `lsp_definition`: provide either `symbol` or `file_path` + 1-based `line`.
+- `lsp_references`: same inputs, with optional `include_declaration`.
+- `lsp_route`: provide one or more `symbols` plus optional `query` to rank
+  endpoint, bridge/factory, provider/value, and type anchors.
+
 ### `get_manifest`
 Returns the repo manifest as a dict: path, commit, languages, available indexes, and
 derived capabilities.
@@ -140,7 +153,7 @@ derived capabilities.
 - **`ServerContext`** (`context.py`): loads the manifest and hydrates available indexes.
 - **Phase 1 (indexing)**: `IndexCompiler` builds indexes and writes the manifest.
 - **Phase 2 (query)**: this server loads the manifest and serves the search tools.
-- **Tool implementations** live in `tools/search.py`; the `@mcp.tool` wrappers and CLI
+- **Tool implementations** live in `tools/*.py`; the `@mcp.tool` wrappers and CLI
   live in `server.py`.
 
 ## Development
