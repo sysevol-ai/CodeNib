@@ -28,12 +28,18 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set
 from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
 from codeminer.dataset.locbench import LocbenchDataset
 from codeminer.dataset.swebench import SwebenchDataset
+from codeminer.eval.agent_runner.baseline import (
+    BaselineLocation,
+    BaselineTask,
+    build_baseline_result_entry,
+    location_symbol_ids,
+    score_baseline_predictions,
+    unique_location_files,
+)
 from codeminer.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
     collect_targets,
-    compute_metrics,
-    normalize_file_path,
 )
 from codeminer.log_utils import get_logger
 
@@ -91,13 +97,7 @@ def already_done_ids(result_path: Path) -> Set[str]:
 
 
 def _unique_files(locations) -> List[str]:
-    seen = set()
-    out: List[str] = []
-    for sym in locations:
-        if sym.file_path and sym.file_path not in seen:
-            out.append(sym.file_path)
-            seen.add(sym.file_path)
-    return out
+    return unique_location_files([BaselineLocation.from_raw(sym) for sym in locations])
 
 
 def _agent_symbol_id(file_path: str, name: str) -> Optional[str]:
@@ -116,20 +116,12 @@ def _agent_symbol_id(file_path: str, name: str) -> Optional[str]:
     """
     if not name or not file_path:
         return None
-    file_norm = normalize_file_path(file_path)
-    if not file_norm:
-        return None
-    return f"{file_norm}:{name}"
+    return BaselineLocation(name=name, type="", file_path=file_path).symbol_id()
 
 
 def _agent_symbol_ids(locations) -> List[str]:
     """Build the predicted symbol id list in agent-output order."""
-    out: List[str] = []
-    for sym in locations:
-        sid = _agent_symbol_id(sym.file_path, sym.name)
-        if sid is not None:
-            out.append(sid)
-    return out
+    return location_symbol_ids([BaselineLocation.from_raw(sym) for sym in locations])
 
 
 def _score_predictions(
@@ -140,13 +132,13 @@ def _score_predictions(
     ks: Sequence[int],
 ) -> Dict[str, Dict[int, Dict[str, float]]]:
     """``{files, symbols}`` × k metric dict via retrieval_eval.compute_metrics."""
-    metrics: Dict[str, Dict[int, Dict[str, float]]] = {"files": {}, "symbols": {}}
-    for k in ks:
-        metrics["files"][k] = compute_metrics(list(predicted_files[:k]), target_files)
-        metrics["symbols"][k] = compute_metrics(
-            list(predicted_symbols[:k]), target_symbols
-        )
-    return metrics
+    return score_baseline_predictions(
+        predicted_files,
+        predicted_symbols,
+        target_files,
+        target_symbols,
+        ks,
+    )
 
 
 def build_result_entry(
@@ -161,61 +153,21 @@ def build_result_entry(
     error: Optional[str] = None,
 ) -> Dict[str, Any]:
     """One JSONL record: predictions + GT + per-scope/per-k metrics."""
-    base = {
-        "instance_id": instance_id,
-        "agent": agent_name,
-        "model": model,
-        "target_files": list(target_files),
-        "target_symbols": list(target_symbols),
-    }
-    if error or result is None or not result.success:
-        base.update(
-            {
-                "success": False,
-                "error": error or (result.error_message if result else "no result"),
-                "metric_k_files": [],
-                "metric_k_node_ids": [],
-                "locations": [],
-                "usage": None,
-                "metrics": None,
-            }
-        )
-        return base
-
-    locations_payload = [
-        {
-            "name": sym.name,
-            "type": sym.type,
-            "file_path": sym.file_path,
-            "line_start": sym.line_start,
-            "line_end": sym.line_end,
-            "action": sym.action,
-            "description": sym.description,
-        }
-        for sym in result.locations
-    ]
-    predicted_files = _unique_files(result.locations)
-    predicted_symbols = _agent_symbol_ids(result.locations)
-    metrics = _score_predictions(
-        predicted_files,
-        predicted_symbols,
-        target_files,
-        target_symbols,
-        metrics_k,
+    task = BaselineTask(
+        instance_id=instance_id,
+        query="",
+        repo_path=str(getattr(result, "repo_path", "") or ""),
+        target_files=tuple(target_files),
+        target_symbols=tuple(target_symbols),
     )
-
-    base.update(
-        {
-            "success": True,
-            "metric_k_files": predicted_files,
-            "metric_k_node_ids": predicted_symbols,
-            "locations": locations_payload,
-            "usage": result.usage,
-            "metrics": metrics,
-            "error": None,
-        }
+    return build_baseline_result_entry(
+        task=task,
+        agent_name=agent_name,
+        model=model,
+        result=result,
+        metrics_k=metrics_k,
+        error=error,
     )
-    return base
 
 
 def _empty_aggregate(ks: Sequence[int]) -> Dict[str, Dict[int, Dict[str, float]]]:
@@ -327,25 +279,29 @@ async def run_agent_baseline(
                 )
 
             logger.info("[%d/%d] %s", i + 1, len(instances), instance_id)
+            task = BaselineTask(
+                instance_id=instance_id,
+                query=str(inst.get("problem_statement") or ""),
+                repo_path="",
+                target_files=tuple(target_files),
+                target_symbols=tuple(target_symbols),
+                repo_name=str(inst.get("repo") or "") or None,
+            )
             try:
                 dataset_obj.process_instance(inst)
                 repo = dataset_obj.get_repo_path(inst)
-                context = {
-                    "issue_title": f"[{instance_id}] {inst['repo']}",
-                    "issue_body": inst["problem_statement"],
-                }
-                if inst.get("hints_text"):
-                    context["hints"] = inst["hints_text"]
-                result = await agent.locate_code(
-                    inst["problem_statement"], repo, context=context
+                task = BaselineTask.from_dataset_instance(
+                    inst,
+                    repo_path=repo,
+                    target_files=target_files,
+                    target_symbols=target_symbols,
                 )
-                entry = build_result_entry(
-                    instance_id=instance_id,
+                result = await agent.locate_code(**task.to_agent_call())
+                entry = build_baseline_result_entry(
+                    task=task,
                     agent_name=agent_name,
                     model=model_label,
                     result=result,
-                    target_files=target_files,
-                    target_symbols=target_symbols,
                     metrics_k=metrics_k,
                 )
                 if entry["success"]:
@@ -354,13 +310,11 @@ async def run_agent_baseline(
                     n_failed += 1
             except Exception as e:  # noqa: BLE001 — record + continue
                 logger.exception("[%s] failed", instance_id)
-                entry = build_result_entry(
-                    instance_id=instance_id,
+                entry = build_baseline_result_entry(
+                    task=task,
                     agent_name=agent_name,
                     model=model_label,
                     result=None,
-                    target_files=target_files,
-                    target_symbols=target_symbols,
                     metrics_k=metrics_k,
                     error=str(e),
                 )

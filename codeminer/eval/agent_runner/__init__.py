@@ -4,6 +4,15 @@
 
 """Reusable evaluation helpers for agent-runner experiments."""
 
+from .baseline import (
+    BaselineLocation,
+    BaselineRunResult,
+    BaselineTask,
+    build_baseline_result_entry,
+    location_symbol_ids,
+    score_baseline_predictions,
+    unique_location_files,
+)
 from .contexts import (
     AgentSkillContextSpec,
     default_agent_skills_dir,
@@ -71,6 +80,9 @@ __all__ = [
     "AgentLocalizationEvaluation",
     "AgentSkillContextSpec",
     "AgentTraceSummary",
+    "BaselineLocation",
+    "BaselineRunResult",
+    "BaselineTask",
     "FormatArmSummary",
     "FormatDiagnostics",
     "FeedbackGroup",
@@ -91,6 +103,7 @@ __all__ = [
     "build_prebuilt_symbol_span_index",
     "build_symbol_span_index",
     "build_feedback_plan",
+    "build_baseline_result_entry",
     "candidate_location",
     "converge_query",
     "default_agent_skills_dir",
@@ -105,6 +118,7 @@ __all__ = [
     "load_dataset_rows",
     "load_format_diagnostics",
     "load_full_contexts",
+    "location_symbol_ids",
     "load_meaningful_cells",
     "load_pareto_cells",
     "metric_at_k",
@@ -117,6 +131,7 @@ __all__ = [
     "scatter_gather_localize",
     "safe_mean",
     "safe_min",
+    "score_baseline_predictions",
     "scenario_for",
     "snippet_for_node",
     "slug",
@@ -124,6 +139,7 @@ __all__ = [
     "summarize_agent_trace",
     "summarize_format_cells",
     "symbol_leaf",
+    "unique_location_files",
     "usable_cells",
     "verdict_is_yes",
     "verify_query",

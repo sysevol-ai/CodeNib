@@ -97,9 +97,9 @@ would catch regressions independent of a single scorer result.
 | M4: Deterministic feedback slices | Landed in #287 | Smoke plus seed-rotated holdout planning | A small run can be selected without hand-picking project names |
 | M5: Shared localization scoring | Landed in #288 | Answer/retrieval/preload scoring glue lives in eval package | Sweep scripts no longer duplicate scoring logic |
 | M6: Quarantine scorer-shaped runtime defaults | Landed in #289 | Localization schema forcing becomes opt-in harness policy | Production/default runners are not shaped by localization scorer formatting |
-| M7: Context ledger runtime contract | Next | First-class context items with provenance, token/cost accounting, freshness, and consumption state | Unit tests can explain why context was injected, used, skipped, or expired |
-| M8: Trace replay and diagnostics | Next | Eval package reconstructs tool use, context consumption, answer spans, and failure category from trace records | Reports diagnose behavior without provider logs or script-specific parsing |
-| M9: External-agent and LSP baseline harness | Planned | Comparable task runner for CodeMiner, Codex, Claude Code, and OpenCode-style LSP workflows | Baseline reports separate harness advantage from answer-format compliance |
+| M7: Context ledger runtime contract | Landed in #291 | First-class context items with provenance, token/cost accounting, freshness, and consumption state | Unit tests can explain why context was injected, used, skipped, or expired |
+| M8: Trace replay and diagnostics | Landed in #292 | Eval package reconstructs tool use, context consumption, answer spans, and failure category from trace records | Reports diagnose behavior without provider logs or script-specific parsing |
+| M9: External-agent and LSP baseline harness | In progress | Comparable task runner for CodeMiner, Codex, Claude Code, and OpenCode-style LSP workflows | Baseline reports separate harness advantage from answer-format compliance |
 | M10: Promotion gates and cleanup | Planned | Raw/normalized metrics, held-out gates, and deprecation/removal of legacy script shims | Runtime defaults require smoke plus holdout evidence; scripts stay thin |
 
 ## Immediate PR Queue
@@ -141,6 +141,10 @@ benchmark cell is currently easiest to improve.
   holdout plans, not by hand-picking named project instances.
 - Compatibility shims under `scripts/agent_compile/lib` are not core ownership.
   New code should not import them.
+- External-agent and LSP baseline task/result envelopes live in
+  `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
+  SDK-specific inputs to that envelope, but they should not own reusable scoring
+  or JSONL record construction.
 
 ## Promotion Checklist
 
