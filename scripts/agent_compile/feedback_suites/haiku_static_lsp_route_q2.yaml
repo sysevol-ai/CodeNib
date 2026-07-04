@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+suite_id: haiku_static_lsp_route_q2
+milestone: M3.5 Static LSP Route Lifecycle
+goal: >
+  Keep scheduled lsp_route changes honest on a frozen, cheap Haiku feedback
+  surface before promoting route lifecycle defaults.
+config: ../configs/haiku_route_scheduler_suite.yaml
+output_dir: ../../../results/agent_compile/haiku_static_lsp_route_q2
+promotion_profiles:
+  - route_lifecycle
+synthesis_configs:
+  - Python
+  - Go
+  - Rust
+categories:
+  - traversal
+max_queries_per_category: 2
+reps: 2
+expected_queries: 6
+expected_cells: 24
+max_cells: 30
+coverage:
+  - language: Python
+    instance: astropy__astropy-13579
+    category: traversal
+    families:
+      - cache/provider route
+      - weak-route skip aftermath
+  - language: Go
+    instance: caddyserver__caddy-6115
+    category: traversal
+    families:
+      - replacement bridge route
+      - health-check traceback route
+  - language: Rust
+    instance: astral-sh__ruff-15330
+    category: traversal
+    families:
+      - type-heavy AST route
+      - traceback final-guard route

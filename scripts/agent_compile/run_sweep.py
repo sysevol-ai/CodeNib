@@ -42,9 +42,12 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from scripts.agent_compile.lib.answer_diagnostics import (  # noqa: E402
+    build_answer_diagnostic_fields,
+)
 from scripts.agent_compile.lib.config import SweepConfig  # noqa: E402
-from scripts.agent_compile.lib.harness import (  # noqa: E402
-    LANG_GROUP_TO_KEY,
+from scripts.agent_compile.lib.harness import LANG_GROUP_TO_KEY  # noqa: E402
+from scripts.agent_compile.lib.harness import (
     build_symbol_span_index,
     load_dataset_rows,
     load_full_contexts,
@@ -52,11 +55,8 @@ from scripts.agent_compile.lib.harness import (  # noqa: E402
     scenario_for,
     slug,
 )
-from scripts.agent_compile.lib.prebuilt import (  # noqa: E402
-    has_full_indexes,
-    repo_path_for,
-    stage_prebuilt_indexes,
-)
+from scripts.agent_compile.lib.prebuilt import has_full_indexes  # noqa: E402
+from scripts.agent_compile.lib.prebuilt import repo_path_for, stage_prebuilt_indexes
 
 
 def _validate_harness(cfg: SweepConfig) -> None:
@@ -97,7 +97,6 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
     from codeminer.eval.retrieval_eval import (
         collect_target_blocks,
         collect_targets,
-        dedup_spans,
         nodes_to_spans,
         parse_answer_spans,
         resolve_symbol_spans,
@@ -106,8 +105,15 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
         spans_overlap,
     )
     from codeminer.llm.litellm_chat import LiteLLMChat
+    from scripts.agent_compile.lib.verify_expand import load_graph_nav
 
     _validate_harness(cfg)
+    needs_graph_nav = any(
+        (r or {}).get("verify")
+        or (r or {}).get("graph_on_fanout")
+        or (r or {}).get("graph_schedule_on_fanout")
+        for r in (cfg.preload or {}).values()
+    )
     cells_dir = output_dir / "cells"
     cells_dir.mkdir(parents=True, exist_ok=True)
 
@@ -168,6 +174,7 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
         # {(file, leaf): (start, end)} so committed scoring can resolve a named
         # symbol to its span when the agent didn't emit an explicit range.
         symbol_span_index = build_symbol_span_index(cfg.prebuilt_dir, instance_id)
+        nav = load_graph_nav(cfg.prebuilt_dir, instance_id) if needs_graph_nav else None
         gt_meaningful = bool(target_files or target_symbols)
 
         cache_dir = os.path.join(
@@ -222,6 +229,10 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     subset_id=subset_id,
                     skills=skills,
                     preload_spec=(cfg.preload or {}).get(subset_id),
+                    verify=bool(
+                        ((cfg.preload or {}).get(subset_id) or {}).get("verify")
+                    ),
+                    nav=nav,
                 )
                 metrics = score_agent_localization(
                     answer=out["answer"],
@@ -253,7 +264,13 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                 # spans that overlap an injected candidate (vs found by grep).
                 # Distinguishes "pre-load helped" from "ignored, grep did it".
                 preload_candidates = out.get("preload_candidates") or []
-                ans_dedup = dedup_spans(answer_spans)
+                ans_dedup, answer_diagnostic_fields = build_answer_diagnostic_fields(
+                    answer=out["answer"] or "",
+                    answer_spans=answer_spans,
+                    gt_blocks=gt_blocks,
+                    metrics=metrics,
+                    metrics_k=cfg.metrics_k,
+                )
                 preload_contribution = (
                     sum(
                         1
@@ -295,12 +312,105 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     "target_symbols": target_symbols,
                     "gt_code_blocks": gt_blocks,
                     "answer_spans": answer_spans,
+                    **answer_diagnostic_fields,
                     "retrieval_spans": retrieval_spans,
                     "preload_candidates": preload_candidates,
                     "preload_contribution": preload_contribution,
+                    "verify_triggered": out.get("verify_triggered"),
+                    "verify_resolved": out.get("verify_resolved"),
+                    "graph_expansion_triggered": out.get("graph_expansion_triggered"),
+                    "graph_expansion_reason": out.get("graph_expansion_reason"),
+                    "graph_expansion_nodes": out.get("graph_expansion_nodes"),
+                    "graph_expansion_resolved": out.get("graph_expansion_resolved"),
+                    "scheduled_context_attempted": out.get(
+                        "scheduled_context_attempted"
+                    ),
+                    "scheduled_context_triggered": out.get(
+                        "scheduled_context_triggered"
+                    ),
+                    "scheduled_context_reason": out.get("scheduled_context_reason"),
+                    "scheduled_context_operation": out.get(
+                        "scheduled_context_operation"
+                    ),
+                    "scheduled_context_nodes": out.get("scheduled_context_nodes"),
+                    "scheduled_context_seed_count": out.get(
+                        "scheduled_context_seed_count"
+                    ),
+                    "scheduled_context_skipped": out.get("scheduled_context_skipped"),
+                    "scheduled_context_skip_reason": out.get(
+                        "scheduled_context_skip_reason"
+                    ),
+                    "scheduled_context_verified_preload": out.get(
+                        "scheduled_context_verified_preload"
+                    ),
+                    "scheduled_route_fanout_hold_count": out.get(
+                        "scheduled_route_fanout_hold_count"
+                    ),
+                    "scheduled_route_fanout_hold_first_turn": out.get(
+                        "scheduled_route_fanout_hold_first_turn"
+                    ),
+                    "scheduled_route_fanout_hold_read_calls": out.get(
+                        "scheduled_route_fanout_hold_read_calls"
+                    ),
+                    "scheduled_route_fanout_hold_search_calls": out.get(
+                        "scheduled_route_fanout_hold_search_calls"
+                    ),
+                    "scheduled_route_fanout_hold_generic_min_reads": out.get(
+                        "scheduled_route_fanout_hold_generic_min_reads"
+                    ),
+                    "scheduled_route_fanout_hold_reason": out.get(
+                        "scheduled_route_fanout_hold_reason"
+                    ),
+                    "scheduled_anchor_audit_triggered": out.get(
+                        "scheduled_anchor_audit_triggered"
+                    ),
+                    "scheduled_anchor_audit_offered": out.get(
+                        "scheduled_anchor_audit_offered"
+                    ),
+                    "scheduled_anchor_audit_read": out.get(
+                        "scheduled_anchor_audit_read"
+                    ),
+                    "scheduled_anchor_audit_cited": out.get(
+                        "scheduled_anchor_audit_cited"
+                    ),
+                    "scheduled_top_anchor_audit_triggered": out.get(
+                        "scheduled_top_anchor_audit_triggered"
+                    ),
+                    "scheduled_top_anchor_audit_reason": out.get(
+                        "scheduled_top_anchor_audit_reason"
+                    ),
+                    "scheduled_top_anchor_audit_missing": out.get(
+                        "scheduled_top_anchor_audit_missing"
+                    ),
+                    "scheduled_ordering_audit_triggered": out.get(
+                        "scheduled_ordering_audit_triggered"
+                    ),
+                    "scheduled_ordering_audit_reason": out.get(
+                        "scheduled_ordering_audit_reason"
+                    ),
+                    "scheduled_ordering_audit_span_count": out.get(
+                        "scheduled_ordering_audit_span_count"
+                    ),
+                    "answer_path_alias_normalized": out.get(
+                        "answer_path_alias_normalized"
+                    ),
+                    "answer_path_alias_replacements": out.get(
+                        "answer_path_alias_replacements"
+                    ),
+                    "answer_schema_salvaged": out.get("answer_schema_salvaged"),
+                    "answer_schema_salvage_locations": out.get(
+                        "answer_schema_salvage_locations"
+                    ),
+                    "answer_location_order_normalized": out.get(
+                        "answer_location_order_normalized"
+                    ),
+                    "answer_location_order_promotions": out.get(
+                        "answer_location_order_promotions"
+                    ),
                     "tool_calls": out["tool_calls"],
                     "file_read_paths": out["file_read_paths"],
                     "file_reads": out.get("file_reads", []),
+                    "trace": out.get("trace"),
                     "answer": out["answer"],
                     "total_turns": out["total_turns"],
                     "total_duration_ms": out["total_duration_ms"],

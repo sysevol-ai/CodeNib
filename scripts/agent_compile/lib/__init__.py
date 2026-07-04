@@ -12,6 +12,8 @@ Modules:
 
 * :mod:`config` — the ``SweepConfig`` experiment schema (model / dataset /
   harness knobs), loaded from a base + per-arm YAML overlay.
+* :mod:`answer_diagnostics` — shared final-answer failure classification for
+  strict span scoring without relaxing the ``Locations:`` contract.
 * :mod:`harness` — per-instance dataset loading, prebuilt-index staging into
   the agent ``contexts`` dict, scenario classification, and the single
   ``run_cell`` agent invocation.

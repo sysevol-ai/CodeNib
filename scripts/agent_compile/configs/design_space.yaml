@@ -21,6 +21,7 @@
 #   hybrid         — + hybrid_search fusion       (isolates fusion vs union)
 #   rerank         — embedding_search + llm_rerank (isolates reranking)
 #   graphnav       — bm25 + find_callers/callees/trace (isolates call-graph nav)
+#   lsp_graph      — bm25 + static graph tools shaped like LSP route/definition/refs
 #   composer       — codeminer_context one-call composer
 #   everything      — the full kept skill set at once (neutral prompt)
 #
@@ -95,6 +96,11 @@ subsets:
     - find_callers
     - find_callees
     - trace
+  lsp_graph:
+    - bm25_search
+    - lsp_route
+    - lsp_definition
+    - lsp_references
   composer:
     - codeminer_context
   everything:
@@ -105,5 +111,8 @@ subsets:
     - llm_rerank
     - find_callers
     - find_callees
+    - lsp_route
+    - lsp_definition
+    - lsp_references
     - trace
     - code_to_query

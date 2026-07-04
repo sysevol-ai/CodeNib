@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Focused M3.4 probe for LSP-shaped graph tools backed by the static graph
+# index. This keeps the question narrow: does a model use familiar LSP
+# navigation verbs better than CodeMiner-specific graph primitives?
+#
+# Intended command:
+#
+#   python scripts/agent_compile/run_synthesis_sweep.py \
+#     --config scripts/agent_compile/configs/haiku_lsp_facade_probe.yaml \
+#     --output-dir results/agent_compile/haiku_lsp_facade_probe \
+#     --synthesis-configs Python,Go,Rust \
+#     --categories traversal \
+#     --max-queries-per-category 1
+#   python scripts/agent_compile/aggregate_feedback_probe.py \
+#     --cells-dir results/agent_compile/haiku_lsp_facade_probe/cells \
+#     --output-dir results/agent_compile/haiku_lsp_facade_probe
+
+base: design_space.yaml
+sweep_id: haiku_lsp_facade_probe
+reps: 1
+max_turns: 12
+
+instances:
+  - astropy__astropy-13579
+  - caddyserver__caddy-6115
+  - astral-sh__ruff-15330
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  graphnav:
+    - read
+    - grep
+    - glob
+    - bash
+    - bm25_search
+    - find_callers
+    - find_callees
+    - trace
+  lsp_graph:
+    - read
+    - grep
+    - glob
+    - bash
+    - bm25_search
+    - lsp_route
+    - lsp_definition
+    - lsp_references

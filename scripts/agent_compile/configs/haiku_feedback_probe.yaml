@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Small, repeatable Haiku feedback loop for agent-runner harness iteration.
+#
+# Intended command:
+#
+#   python scripts/agent_compile/run_synthesis_sweep.py \
+#     --config scripts/agent_compile/configs/haiku_feedback_probe.yaml \
+#     --output-dir results/agent_compile/haiku_feedback_probe \
+#     --synthesis-configs Python,Go,Rust \
+#     --categories behavioral,symbol_hint,traversal \
+#     --max-queries-per-category 1
+#   python scripts/agent_compile/aggregate_feedback_probe.py \
+#     --cells-dir results/agent_compile/haiku_feedback_probe/cells \
+#     --output-dir results/agent_compile/haiku_feedback_probe
+#
+# This is not a paper/result sweep. It is a fixed, low-cost control panel:
+# 3 repos x 3 categories x 3 arms = 27 cells at --max-queries-per-category 1.
+# Increase to 2 only after a change looks promising.
+
+base: design_space.yaml
+sweep_id: haiku_feedback_probe
+reps: 1
+max_turns: 12
+
+instances:
+  - astropy__astropy-13579
+  - caddyserver__caddy-6115
+  - astral-sh__ruff-15330
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_eager:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_eager_compact:
+    - read
+    - grep
+    - glob
+    - bash
+
+preload:
+  preinj_eager:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager
+  preinj_eager_compact:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0

@@ -44,6 +44,11 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from scripts.agent_compile.lib.answer_diagnostics import (
+    answer_diagnosis_rates,
+    format_answer_diagnosis_mix,
+)
+
 EASY_FILES_AT_5 = 0.5  # baseline-arm mean-rep files@5 >= this => "easy" instance
 
 # Baseline arm: the grep/read agent everyone already has. The easy/hard split
@@ -105,6 +110,76 @@ def _fmt(v: Optional[float], nd: int) -> str:
     if v is None:
         return "n/a"
     return f"{v:.{nd}f}"
+
+
+def _tool_call_envelope(call: Dict[str, Any]) -> Dict[str, Any]:
+    envelope = call.get("envelope")
+    return envelope if isinstance(envelope, dict) else {}
+
+
+def _tool_call_status(call: Dict[str, Any]) -> str:
+    envelope = _tool_call_envelope(call)
+    status = envelope.get("status")
+    if status:
+        return str(status)
+    return "error" if call.get("error") else "ok"
+
+
+def _tool_call_result_chars(call: Dict[str, Any]) -> Optional[float]:
+    envelope = _tool_call_envelope(call)
+    value = envelope.get("result_chars")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _tool_call_truncated(call: Dict[str, Any]) -> bool:
+    envelope = _tool_call_envelope(call)
+    metadata = (
+        envelope.get("metadata") if isinstance(envelope.get("metadata"), dict) else {}
+    )
+    return bool(
+        envelope.get("truncated")
+        or metadata.get("output_truncated")
+        or call.get("truncated")
+    )
+
+
+def _tool_envelope_stats(cells: Sequence[Dict[str, Any]]) -> Dict[str, Optional[float]]:
+    calls = [
+        call
+        for cell in cells
+        for call in cell.get("tool_calls") or []
+        if isinstance(call, dict)
+    ]
+    if not calls:
+        return {
+            "tool_call_count": 0.0,
+            "tool_envelope_coverage": None,
+            "tool_error_count": 0.0,
+            "tool_skipped_count": 0.0,
+            "tool_truncated_count": 0.0,
+            "tool_result_chars": 0.0,
+        }
+    result_chars = [
+        value for call in calls if (value := _tool_call_result_chars(call)) is not None
+    ]
+    envelope_count = sum(1.0 for call in calls if _tool_call_envelope(call))
+    return {
+        "tool_call_count": float(len(calls)),
+        "tool_envelope_coverage": envelope_count / len(calls),
+        "tool_error_count": float(
+            sum(1 for call in calls if _tool_call_status(call) == "error")
+        ),
+        "tool_skipped_count": float(
+            sum(1 for call in calls if _tool_call_status(call) == "skipped")
+        ),
+        "tool_truncated_count": float(
+            sum(1 for call in calls if _tool_call_truncated(call))
+        ),
+        "tool_result_chars": float(sum(result_chars)),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +254,9 @@ def aggregate(
         retrieval_acc_k = {k: [] for k in ks}
         retrieval_recall_k = {k: [] for k in ks}
         tokens, turns, cost, cap_hit, durations = [], [], [], [], []
+        format_failed = []
         f5_easy, f5_hard = [], []
+        diagnosis_cells: List[Dict[str, Any]] = []
 
         # invocation histogram accumulators
         skill_invoked_cells: "Counter[str]" = Counter()
@@ -215,6 +292,12 @@ def aggregate(
             turns.append(_safe_min([r.get("total_turns") for r in reps]))
             durations.append(_safe_min([r.get("total_duration_ms") for r in reps]))
             cost.append(_safe_min([r.get("cost_usd") for r in reps]))
+            format_failed.extend(
+                1.0 if r.get("format_failed") else 0.0
+                for r in reps
+                if r.get("format_failed") is not None
+            )
+            diagnosis_cells.extend(reps)
             cap_hit.append(
                 1 if any((r.get("total_turns") or 0) >= max_turns for r in reps) else 0
             )
@@ -270,6 +353,11 @@ def aggregate(
             "mean_total_turns": _safe_mean(turns),
             "mean_total_duration_ms": _safe_mean(durations),
             "mean_cost_usd": _safe_mean(cost),
+            "format_failed_rate": _safe_mean(format_failed),
+            "answer_diagnosis_rate": answer_diagnosis_rates(diagnosis_cells),
+            "tool_envelope": _tool_envelope_stats(
+                [rep for reps in by_inst.values() for rep in reps]
+            ),
             "cap_hit_rate": (sum(cap_hit) / len(cap_hit)) if cap_hit else 0.0,
             "files_at_5_easy": _safe_mean(f5_easy),
             "files_at_5_hard": _safe_mean(f5_hard),
@@ -345,6 +433,28 @@ def pareto_front(agg) -> List[str]:
     return sorted(front)
 
 
+def tool_envelope_health_blockers(agg) -> List[str]:
+    blockers = []
+    for sid, metrics in sorted((agg.get("arms") or {}).items()):
+        stats = metrics.get("tool_envelope") or {}
+        tool_count = stats.get("tool_call_count") or 0.0
+        coverage = stats.get("tool_envelope_coverage")
+        errors = stats.get("tool_error_count") or 0.0
+        skipped = stats.get("tool_skipped_count") or 0.0
+        truncated = stats.get("tool_truncated_count") or 0.0
+        if tool_count <= 0:
+            blockers.append(f"{sid}:missing_tool_calls")
+        elif coverage is None or coverage < 1.0:
+            blockers.append(f"{sid}:incomplete_tool_envelopes")
+        elif errors > 0:
+            blockers.append(f"{sid}:typed_tool_errors")
+        elif skipped > 0:
+            blockers.append(f"{sid}:skipped_tool_calls")
+        elif truncated > 0:
+            blockers.append(f"{sid}:truncated_tool_results")
+    return blockers or (["missing_aggregate_arms"] if not agg.get("arms") else [])
+
+
 # ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
@@ -362,7 +472,7 @@ def render_markdown(agg, front, ks) -> str:
     L.append("## Per-arm metrics")
     L.append("")
     head = (
-        ["arm", "n", "tokens", "turns", "cost$", "cap%"]
+        ["arm", "n", "tokens", "turns", "cost$", "cap%", "fmt_fail", "diag"]
         + [f"files@{k}" for k in ks]
         + ["f@5 easy", "f@5 hard"]
     )
@@ -377,6 +487,12 @@ def render_markdown(agg, front, ks) -> str:
             _fmt(m["mean_total_turns"], 1),
             _fmt(m["mean_cost_usd"], 4),
             f"{m['cap_hit_rate']:.0%}",
+            (
+                "n/a"
+                if m.get("format_failed_rate") is None
+                else f"{m['format_failed_rate']:.0%}"
+            ),
+            format_answer_diagnosis_mix(m.get("answer_diagnosis_rate") or {}),
         ]
         row += [_fmt((m["files_at_k"] or {}).get(k), 3) for k in ks]
         row += [
@@ -424,6 +540,41 @@ def render_markdown(agg, front, ks) -> str:
         row2 += [_fmt((m.get("retrieval_acc_at_k") or {}).get(k), 3) for k in ks]
         row2 += [_fmt((m.get("retrieval_recall_at_k") or {}).get(k), 3) for k in ks]
         L.append("| " + " | ".join(row2) + " |")
+    L.append("")
+
+    L.append("## Tool envelope health")
+    L.append("")
+    L.append(
+        "Typed tool-result envelope coverage and outcomes. Counts prefer the "
+        "structured envelope, falling back to legacy `tool_calls[].error` only "
+        "when old cells lack envelopes."
+    )
+    L.append("")
+    L.append(
+        "| arm | tool_n | envelope% | errors | skipped | truncated | result_kchars |"
+    )
+    L.append("| --- | --- | --- | --- | --- | --- | --- |")
+    for sid in sorted(agg["arms"]):
+        stats = agg["arms"][sid].get("tool_envelope") or {}
+        L.append(
+            "| "
+            + " | ".join(
+                [
+                    sid,
+                    _fmt(stats.get("tool_call_count"), 0),
+                    (
+                        "n/a"
+                        if stats.get("tool_envelope_coverage") is None
+                        else f"{stats['tool_envelope_coverage']:.0%}"
+                    ),
+                    _fmt(stats.get("tool_error_count"), 0),
+                    _fmt(stats.get("tool_skipped_count"), 0),
+                    _fmt(stats.get("tool_truncated_count"), 0),
+                    _fmt((stats.get("tool_result_chars") or 0) / 1000, 1),
+                ]
+            )
+            + " |"
+        )
     L.append("")
 
     L.append("## Skill-invocation histogram")
@@ -492,6 +643,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         default=None,
         help="Arm to use as the easy/hard split reference (default: GREP, else first).",
     )
+    p.add_argument(
+        "--require-tool-envelope-health",
+        action="store_true",
+        help=(
+            "Return non-zero unless every arm has full typed tool-envelope "
+            "coverage and no typed tool errors, skips, or truncation. Artifacts "
+            "are still written first."
+        ),
+    )
     args = p.parse_args(argv)
 
     cells = load_cells(args.cells_dir)
@@ -519,6 +679,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     md = render_markdown(agg, front, args.metrics_k)
     (args.output_dir / "report.md").write_text(md, encoding="utf-8")
     print(md)
+    if args.require_tool_envelope_health:
+        blockers = tool_envelope_health_blockers(agg)
+        if blockers:
+            print(
+                "tool envelope health gate failed: " + ", ".join(blockers),
+                file=sys.stderr,
+            )
+            return 2
     return 0
 
 

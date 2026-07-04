@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Focused M3.3 probe for proactive graph expansion under search fan-out.
+#
+# Intended command:
+#
+#   python scripts/agent_compile/run_synthesis_sweep.py \
+#     --config scripts/agent_compile/configs/haiku_graph_fanout_probe.yaml \
+#     --output-dir results/agent_compile/haiku_graph_fanout_probe \
+#     --synthesis-configs Python,Go,Rust \
+#     --categories traversal \
+#     --max-queries-per-category 1
+#   python scripts/agent_compile/aggregate_feedback_probe.py \
+#     --cells-dir results/agent_compile/haiku_graph_fanout_probe/cells \
+#     --output-dir results/agent_compile/haiku_graph_fanout_probe
+#
+# Keep this separate from the default feedback probe: it adds an experimental
+# graph-fanout arm and a live scheduled-context arm. Promote only if traversal
+# improves without increasing turns/tokens enough to erase the gain.
+
+base: design_space.yaml
+sweep_id: haiku_graph_fanout_probe
+reps: 1
+max_turns: 12
+
+instances:
+  - astropy__astropy-13579
+  - caddyserver__caddy-6115
+  - astral-sh__ruff-15330
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_eager_compact:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_graph_fanout:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_graph_scheduled:
+    - read
+    - grep
+    - glob
+    - bash
+
+preload:
+  preinj_eager_compact:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0
+  preinj_graph_fanout:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0
+    graph_on_fanout: true
+    graph_fanout_search_calls: 3
+    graph_fanout_turn_ratio: 0.75
+    graph_fanout_max_seeds: 5
+    graph_fanout_max_nodes: 10
+  preinj_graph_scheduled:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0
+    graph_schedule_on_fanout: true
+    graph_schedule_on_read_symbols: true
+    graph_schedule_audit_answer: true
+    graph_read_symbol_min_reads: 2
+    graph_read_symbol_max_symbols: 8
+    graph_read_symbol_max_nodes: 8
+    graph_read_symbol_role_quota: true
+    graph_read_symbol_pool_nodes: 20
+    graph_read_symbol_neighbor_nodes: 40
+    graph_fanout_search_calls: 2
+    graph_fanout_read_calls: 6
+    graph_fanout_skip_verified_preload: 2
+    graph_fanout_turn_ratio: 0.75
+    graph_fanout_max_seeds: 5
+    graph_fanout_max_nodes: 5

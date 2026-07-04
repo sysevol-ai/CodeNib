@@ -18,7 +18,9 @@ import igraph as ig
 from codeminer.eval.retrieval_eval import (
     collect_target_blocks,
     compute_block_metrics,
+    compute_path_alias_metrics,
     dedup_spans,
+    diagnose_answer_spans,
     nodes_to_spans,
     parse_answer_spans,
     resolve_symbol_spans,
@@ -212,6 +214,44 @@ def test_parse_answer_spans_markdown_list_and_heading():
         assert spans and (spans[0]["start"], spans[0]["end"]) == (10, 20)
 
 
+def test_parse_answer_spans_bullet_continuation_after_empty_label():
+    answer = "\n".join(
+        [
+            "**Locations:**",
+            "- crates/rule.rs:53-124",
+            "- crates/nodes.rs:565-634",
+            "- crates/nodes.rs:2861-2870",
+        ]
+    )
+
+    spans = parse_answer_spans(answer)
+    got = [(s["file"], s["start"], s["end"]) for s in spans]
+    assert got == [
+        ("crates/rule.rs", 53, 124),
+        ("crates/nodes.rs", 565, 634),
+        ("crates/nodes.rs", 2861, 2870),
+    ]
+
+
+def test_parse_answer_spans_backtick_continuation_after_empty_label():
+    answer = "\n".join(
+        [
+            "Locations:",
+            "`modules/caddyhttp/reverseproxy/healthchecks.go:242-298` starts it.",
+            "`replacer.go:28-37` constructs the bridge.",
+            "`replacer.go:297-336` provides defaults.",
+        ]
+    )
+
+    spans = parse_answer_spans(answer)
+    got = [(s["file"], s["start"], s["end"]) for s in spans]
+    assert got == [
+        ("modules/caddyhttp/reverseproxy/healthchecks.go", 242, 298),
+        ("replacer.go", 28, 37),
+        ("replacer.go", 297, 336),
+    ]
+
+
 # --- symbol -> span resolution (named-symbol committed credit) ---------------
 
 
@@ -326,3 +366,70 @@ def test_partial_recall_multiple_gt_blocks():
     preds = [_span("a.py", 11, 19)]  # hits only the first
     m = compute_block_metrics(preds, gt)
     assert m["recall"] == 0.5 and m["accuracy"] == 0.0 and m["hits"] == 1
+
+
+def test_compute_path_alias_metrics_identifies_basename_gap():
+    gt = [_span("pkg/target.py", 10, 20)]
+    preds = [_span("target.py", 10, 20)]
+
+    strict = compute_block_metrics(preds, gt)
+    alias = compute_path_alias_metrics(preds, gt)
+
+    assert strict["recall"] == 0.0
+    assert alias["recall"] == 1.0
+    assert alias["alias_hits"] == 1.0
+
+
+def test_diagnose_answer_spans_classifies_failure_modes():
+    spans = [_span("a.py", 1, 10)]
+
+    assert (
+        diagnose_answer_spans(
+            answer="Locations: a.py:1-10",
+            deduped_spans=spans,
+            rec_at_k=1.0,
+            rec_all=1.0,
+            alias_recall=1.0,
+        )
+        == "ok"
+    )
+    assert (
+        diagnose_answer_spans(
+            answer="The target is a.py",
+            deduped_spans=[],
+            rec_at_k=0.0,
+            rec_all=0.0,
+            alias_recall=0.0,
+        )
+        == "format_gap"
+    )
+    assert (
+        diagnose_answer_spans(
+            answer="Locations: target.py:1-10",
+            deduped_spans=spans,
+            rec_at_k=0.0,
+            rec_all=0.0,
+            alias_recall=1.0,
+        )
+        == "path_alias_gap"
+    )
+    assert (
+        diagnose_answer_spans(
+            answer="Locations: a.py:1-10, b.py:1-10",
+            deduped_spans=spans,
+            rec_at_k=0.5,
+            rec_all=1.0,
+            alias_recall=1.0,
+        )
+        == "rank_gap"
+    )
+    assert (
+        diagnose_answer_spans(
+            answer="Locations: wrong.py:1-10",
+            deduped_spans=spans,
+            rec_at_k=0.0,
+            rec_all=0.0,
+            alias_recall=0.0,
+        )
+        == "content_gap"
+    )

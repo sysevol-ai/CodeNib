@@ -208,8 +208,10 @@ def summarize_predictions(
 # Agents routinely decorate the answer contract with markdown — ``**Files:**``,
 # ``- Symbols:``, ``### Locations``. A strict ``^\s*files?`` anchor silently
 # missed all of those (a major cause of the symbols@k≈0 artifact), so tolerate
-# leading/surrounding markdown emphasis (* _ ` # > -) around the label.
-_MD = r"[\s>#*_`\-]*"
+# leading/surrounding markdown emphasis (* _ ` # > -) around the label. Keep this
+# to horizontal whitespace; using ``\s`` lets a label regex consume newlines and
+# accidentally swallow the first bullet below ``Locations:``.
+_MD = r"[ \t>#*_`\-]*"
 _FILES_LINE = re.compile(rf"(?im)^{_MD}files?{_MD}[:=]{_MD}\s*(.+)$")
 _SYMBOLS_LINE = re.compile(rf"(?im)^{_MD}symbols?{_MD}[:=]{_MD}\s*(.+)$")
 _PATH_TOKEN = re.compile(r"[\w./\\-]+\.[A-Za-z0-9_]+")
@@ -326,7 +328,11 @@ def score_agent_localization(
 
 # ``path:start-end`` / ``path:start`` / ``path#L12-L45`` location tokens.
 # Markdown-tolerant label (see ``_FILES_LINE``): ``**Locations:**`` is common.
-_LOCATIONS_LINE = re.compile(rf"(?im)^{_MD}locations?{_MD}[:=]{_MD}\s*(.+)$")
+_LOCATIONS_LINE = re.compile(rf"(?im)^{_MD}locations?{_MD}[:=]{_MD}(.*)$")
+_CONTRACT_LABEL_LINE = re.compile(
+    rf"(?im)^{_MD}(?:files?|symbols?|locations?){_MD}[:=]"
+)
+_LOCATION_CONTINUATION_LINE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+")
 _LOC_TOKEN = re.compile(r"([\w./\\-]+\.[A-Za-z0-9_]+)[:#]L?(\d+)(?:\s*[-–]\s*L?(\d+))?")
 
 
@@ -454,7 +460,27 @@ def parse_answer_spans(answer: str, repo_path: str = "") -> List[Dict[str, Any]]
     is too noisy and would reward verbosity. Line numbers there are 1-based (the
     agent reads them straight from the 1-based ``read`` output).
     """
-    payload = " ".join(m.group(1) for m in _LOCATIONS_LINE.finditer(answer or ""))
+    payloads: List[str] = []
+    lines = (answer or "").splitlines()
+    for index, line in enumerate(lines):
+        match = _LOCATIONS_LINE.match(line)
+        if not match:
+            continue
+        payloads.append(match.group(1))
+        for continuation in lines[index + 1 :]:
+            if _CONTRACT_LABEL_LINE.match(continuation):
+                break
+            if not continuation.strip():
+                continue
+            has_location = _LOC_TOKEN.search(continuation)
+            if has_location and (
+                _LOCATION_CONTINUATION_LINE.match(continuation)
+                or continuation.lstrip().startswith(("`", "'"))
+            ):
+                payloads.append(continuation)
+                continue
+            break
+    payload = " ".join(payloads)
     if not payload:
         return []
     spans: List[Dict[str, Any]] = []
@@ -526,6 +552,78 @@ def compute_block_metrics(
         "recall": recall,
         "hits": recalled,
     }
+
+
+def _span_basename(span: Mapping[str, Any]) -> str:
+    return str(span.get("file") or "").replace("\\", "/").rstrip("/").split("/")[-1]
+
+
+def _line_ranges_overlap(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    try:
+        return int(a["start"]) <= int(b["end"]) and int(b["start"]) <= int(a["end"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _basename_overlap(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    basename = _span_basename(a)
+    return (
+        bool(basename) and basename == _span_basename(b) and _line_ranges_overlap(a, b)
+    )
+
+
+def compute_path_alias_metrics(
+    pred_spans: Sequence[Mapping[str, Any]],
+    gt_blocks: Sequence[Mapping[str, Any]],
+) -> Dict[str, float]:
+    """Recall if basename-equivalent paths were accepted as aliases.
+
+    The strict localization metric intentionally requires repo-relative paths.
+    This helper is diagnostic only: it tells the harness whether a miss looks
+    like ``healthchecks.go`` vs ``modules/.../healthchecks.go`` instead of a
+    true content failure.
+    """
+    if not gt_blocks:
+        return {"recall": 0.0, "alias_hits": 0.0, "hits": 0.0}
+    exact_hits = 0
+    alias_hits = 0
+    for gt in gt_blocks:
+        if any(spans_overlap(pred, gt) for pred in pred_spans):
+            exact_hits += 1
+        elif any(_basename_overlap(pred, gt) for pred in pred_spans):
+            alias_hits += 1
+    hits = exact_hits + alias_hits
+    return {
+        "recall": hits / len(gt_blocks),
+        "alias_hits": float(alias_hits),
+        "hits": float(hits),
+    }
+
+
+def diagnose_answer_spans(
+    *,
+    answer: str,
+    deduped_spans: Sequence[Mapping[str, Any]],
+    rec_at_k: float,
+    rec_all: float,
+    alias_recall: float,
+) -> str:
+    """Classify whether a low top-k score is content, format, path, or ranking.
+
+    The labels are intentionally coarse so small feedback probes can decide what
+    to optimize next without loosening the strict ``Locations:`` score.
+    """
+    if rec_at_k >= 1.0:
+        return "ok"
+    if not (answer or "").strip():
+        return "empty_answer"
+    if not deduped_spans:
+        return "format_gap"
+    if rec_all > rec_at_k:
+        return "rank_gap"
+    if alias_recall > rec_all:
+        return "path_alias_gap"
+    return "content_gap"
 
 
 def score_localization_spans(

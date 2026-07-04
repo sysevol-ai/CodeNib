@@ -35,6 +35,26 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 RESULTS = "/mnt/data/codeminer/results"
 random.seed(0)
 
+SWEEP_ALIASES = {
+    # The keep-reads config is named qwen_4b_keepreads, but the original
+    # experiment artifact directory was written with the qwen35 family prefix.
+    "qwen_4b_keepreads": ("qwen_4b_keepreads", "qwen35_4b_keepreads"),
+}
+
+REQUIRED_CELL_SWEEPS = [
+    ("base compact", "qwen35_4b_compact_64k"),
+    ("base compact", "qwen35_9b_compact_64k"),
+    ("base compact", "qwen35_27b_compact_64k"),
+    ("base compact", "haiku_base_compact"),
+    ("embedding ablation", "haiku_base_compact_jina"),
+    ("embedding ablation", "haiku_base_compact_4b"),
+    ("seed-richness dial", "qwen_4b_keepreads"),
+    ("synthesis 500", "haiku_compare_py"),
+    ("synthesis 500", "haiku_compare_multilang"),
+    ("synthesis 500", "haiku_compare_cpp"),
+    ("synthesis 500", "haiku_synth_compact"),
+]
+
 
 def _load_json(p: str) -> Optional[Any]:
     try:
@@ -44,15 +64,41 @@ def _load_json(p: str) -> Optional[Any]:
         return None
 
 
+def _sweep_candidates(d: str) -> Tuple[str, ...]:
+    return SWEEP_ALIASES.get(d, (d,))
+
+
+def _cell_paths(d: str) -> List[str]:
+    for candidate in _sweep_candidates(d):
+        paths = sorted(glob.glob(f"{RESULTS}/{candidate}/cells/*.json"))
+        if paths:
+            return paths
+    return []
+
+
 def _cells(d: str) -> List[Dict[str, Any]]:
     out = []
-    for p in glob.glob(f"{RESULTS}/{d}/cells/*.json"):
+    for p in _cell_paths(d):
         c = _load_json(p)
         if not isinstance(c, dict):
             continue
         if c.get("success") and c.get("metrics_meaningful"):
             out.append(c)
     return out
+
+
+def _validate_required_inputs() -> None:
+    missing = []
+    for section, sweep in REQUIRED_CELL_SWEEPS:
+        if not _cell_paths(sweep):
+            tried = ", ".join(_sweep_candidates(sweep))
+            missing.append(f"- {section}: {sweep} (tried: {tried})")
+    if missing:
+        details = "\n".join(missing)
+        raise SystemExit(
+            "Missing required result cells; refusing to generate a partial "
+            f"compact-preload report.\n{details}"
+        )
 
 
 def _idxcmp_name(p: str) -> str:
@@ -133,6 +179,28 @@ def _sig(lo: float, hi: float) -> str:
     return "" if lo <= 0 <= hi else " *"
 
 
+def _format_failed_rate(cells: Sequence[Dict[str, Any]]) -> str:
+    vals = [
+        bool(c.get("format_failed"))
+        for c in cells
+        if c.get("format_failed") is not None
+    ]
+    if not vals:
+        return "n/a"
+    return f"{100 * sum(vals) / len(vals):.0f}%"
+
+
+def _cost_status(cells: Sequence[Dict[str, Any]]) -> str:
+    if not cells:
+        return "n/a"
+    nulls = sum(c.get("cost_usd") is None for c in cells)
+    if nulls == len(cells):
+        return "null"
+    if nulls:
+        return f"{nulls}/{len(cells)} null"
+    return "present"
+
+
 def _base_key(c: Dict[str, Any]) -> str:
     return c.get("instance_id") or ""
 
@@ -156,13 +224,18 @@ def _paired_delta(cells_a, cells_b, key_fn, scope, k):
     return diff, tok, len(common)
 
 
-def _arm_row(cells, label):
-    return (
+def _arm_row(cells, label, *, quality=False):
+    row = (
         f"| {label} | {len(cells)} | {_mean([_recall(c,'files',5) for c in cells]):.3f} "
         f"| {_mean([_recall(c,'answer_blocks',5) for c in cells]):.3f} "
         f"| {_mean([c.get('total_tokens') for c in cells]):.0f} "
-        f"| {_mean([c.get('total_turns') for c in cells]):.1f} |"
+        f"| {_mean([c.get('total_turns') for c in cells]):.1f} "
     )
+    if quality:
+        row += f"| {_format_failed_rate(cells)} | {_cost_status(cells)} |"
+    else:
+        row += "|"
+    return row
 
 
 def table1_base():
@@ -182,15 +255,15 @@ def table1_base():
         for c in cells:
             by[c.get("subset_id")].append(c)
         print(f"\n### {model}\n")
-        print("| arm | n | files@5 | blk@5 | token | turns |")
-        print("|---|---|---|---|---|---|")
+        print("| arm | n | files@5 | blk@5 | token | turns | fmt_fail | cost_usd |")
+        print("|---|---|---|---|---|---|---|---|")
         for arm, lab in [
             ("grep_only", "grep"),
             ("preinj_eager", "eager"),
             ("preinj_eager_compact", "compact"),
         ]:
             if by.get(arm):
-                print(_arm_row(by[arm], lab))
+                print(_arm_row(by[arm], lab, quality=True))
         g, cp = by.get("grep_only", []), by.get("preinj_eager_compact", [])
         if g and cp:
             for sc, l in [("files", "files@5"), ("answer_blocks", "blk@5")]:
@@ -244,8 +317,8 @@ def table3_dial():
     by = defaultdict(list)
     for c in cells:
         by[c.get("subset_id")].append(c)
-    print("| arm | n | files@5 | blk@5 | token | turns |")
-    print("|---|---|---|---|---|---|")
+    print("| arm | n | files@5 | blk@5 | token | turns | fmt_fail | cost_usd |")
+    print("|---|---|---|---|---|---|---|---|")
     for arm, lab in [
         ("grep_only", "grep"),
         ("preinj_eager_compact_k0", "compact keep0"),
@@ -253,7 +326,7 @@ def table3_dial():
         ("preinj_eager_compact_k2", "compact keep2"),
     ]:
         if by.get(arm):
-            print(_arm_row(by[arm], lab))
+            print(_arm_row(by[arm], lab, quality=True))
     print(
         "\n→ keep0 (minimal seed) hurts the weak model (files@5 below grep); keep1 "
         "recovers to grep level; keep2 over-stuffs. Router: weak≤7B→keep1, else keep0."
@@ -330,6 +403,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = list(argv if argv is not None else sys.argv[1:])
     if args:
         RESULTS = args[0]
+    _validate_required_inputs()
     print("# Compact pre-load — experiment results")
     print(
         "\nGenerated by `scripts/agent_compile/aggregate_compact_results.py`. "

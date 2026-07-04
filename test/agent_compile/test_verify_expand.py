@@ -21,9 +21,12 @@ if str(_ROOT) not in sys.path:
 
 from scripts.agent_compile.lib.verify_expand import (  # noqa: E402
     GraphNav,
+    expansion_seeds_from_candidate_spans,
     expansion_seeds_from_candidates,
     graph_verify,
     render_expansion,
+    render_fanout_expansion,
+    render_lsp_route_context,
 )
 
 
@@ -88,3 +91,47 @@ def test_expansion_seeds_and_render():
     nav = _nav()
     text = render_expansion(nav.neighbors(seeds))
     assert "pkg/mod.go:20-25" in text and "neighbour" in text
+
+
+def test_span_only_candidates_seed_fanout_expansion():
+    nav = _nav()
+    seeds = expansion_seeds_from_candidate_spans(
+        nav, [{"file": "pkg/mod.go", "start": 10, "end": 15}]
+    )
+
+    assert seeds == [("pkg/mod.go", "foo")]
+    text = render_fanout_expansion(
+        nav.neighbors(seeds), reason="search_calls+turn_budget"
+    )
+    assert "search_calls+turn_budget" in text
+    assert "pkg/mod.go:20-25" in text
+
+
+def test_lsp_route_context_guides_type_heavy_answer_locations():
+    text = render_lsp_route_context(
+        [
+            {
+                "file": "crates/ruff_python_ast/src/nodes.rs",
+                "start_line": 2861,
+                "end_line": 2870,
+                "name": "ruff_python_ast/nodes/ExprTuple",
+                "role": "type",
+                "source": "direct_definition",
+            },
+            {
+                "file": "crates/ruff_linter/src/rules/perflint/rules/rule.rs",
+                "start_line": 76,
+                "end_line": 92,
+                "name": "rule/unnecessary_list_cast",
+                "role": "endpoint",
+                "source": "direct_definition",
+            },
+        ],
+        reason="read_symbols",
+        symbols=["ExprTuple", "unnecessary_list_cast"],
+    )
+
+    assert "For type-heavy routes" in text
+    assert "reserve a final Locations slot" in text
+    assert "do not read every variant" in text
+    assert "ExprTuple [type; direct_definition]" in text

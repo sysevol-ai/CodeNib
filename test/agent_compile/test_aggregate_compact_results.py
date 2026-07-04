@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scripts.agent_compile import aggregate_compact_results as agg
 
 
@@ -26,6 +28,8 @@ def _write_cell(root, sweep: str, subset: str) -> None:
         },
         "total_tokens": 123,
         "total_turns": 2,
+        "format_failed": False,
+        "cost_usd": None,
     }
     (cells / "cell.json").write_text(json.dumps(cell), encoding="utf-8")
 
@@ -52,14 +56,24 @@ def test_table2_embedding_reads_recall_from_idxcmp(tmp_path, monkeypatch, capsys
     assert "| Qwen3-Embedding-0.6B | 50% | 1.000 | 0.500 | 123 |" in out
 
 
-def test_table3_uses_qwen_4b_keepreads_dir(tmp_path, monkeypatch, capsys):
+def test_table3_uses_qwen35_keepreads_alias(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(agg, "RESULTS", str(tmp_path))
-    _write_cell(tmp_path, "qwen_4b_keepreads", "grep_only")
+    _write_cell(tmp_path, "qwen35_4b_keepreads", "grep_only")
 
     agg.table3_dial()
 
     out = capsys.readouterr().out
-    assert "| grep | 1 | 1.000 | 0.500 | 123 | 2.0 |" in out
+    assert "| grep | 1 | 1.000 | 0.500 | 123 | 2.0 | 0% | null |" in out
+
+
+def test_main_fails_when_required_sweep_is_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(agg, "RESULTS", str(tmp_path))
+
+    with pytest.raises(SystemExit) as exc:
+        agg.main([])
+
+    assert "Missing required result cells" in str(exc.value)
+    assert "qwen35_4b_compact_64k" in str(exc.value)
 
 
 def test_table5_recall_handles_missing_k(tmp_path, monkeypatch, capsys):

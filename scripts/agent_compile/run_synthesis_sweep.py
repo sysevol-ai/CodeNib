@@ -43,6 +43,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from scripts.agent_compile.lib.answer_diagnostics import (  # noqa: E402
+    build_answer_diagnostic_fields,
+)
 from scripts.agent_compile.lib.config import SweepConfig  # noqa: E402
 from scripts.agent_compile.lib.harness import (  # noqa: E402
     build_symbol_span_index,
@@ -50,10 +53,11 @@ from scripts.agent_compile.lib.harness import (  # noqa: E402
     run_cell,
     slug,
 )
-from scripts.agent_compile.lib.prebuilt import (  # noqa: E402
-    has_full_indexes,
-    repo_path_for,
-    stage_prebuilt_indexes,
+from scripts.agent_compile.lib.prebuilt import has_full_indexes  # noqa: E402
+from scripts.agent_compile.lib.prebuilt import repo_path_for, stage_prebuilt_indexes
+from scripts.agent_compile.lib.trace_summary import (  # noqa: E402
+    link_answer_spans_to_trace,
+    summarize_cell_trace,
 )
 
 # language_group / config -> SessionContext primary_language key.
@@ -65,6 +69,52 @@ _LANG_KEY = {
     "C++_C": "cpp",
 }
 _ALL_CONFIGS = list(_LANG_KEY)
+
+
+def _select_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    instances: Optional[Sequence[str]] = None,
+    categories: Optional[set] = None,
+    max_queries: Optional[int] = None,
+    max_queries_per_category: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Filter synthesis rows for a deterministic feedback probe.
+
+    ``max_queries`` is a coarse per-instance cap kept for backwards
+    compatibility. ``max_queries_per_category`` is the feedback-probe selector:
+    after instance/category filtering, keep the first N rows for each
+    ``(instance_id, category)`` bucket so small runs retain category coverage.
+    """
+    selected = list(rows)
+    if instances:
+        allowed = set(instances)
+        selected = [r for r in selected if r.get("instance_id") in allowed]
+    if categories:
+        selected = [r for r in selected if r.get("category") in categories]
+    if max_queries_per_category:
+        counts: Dict[tuple, int] = {}
+        out = []
+        for r in selected:
+            key = (r.get("instance_id"), r.get("category"))
+            n = counts.get(key, 0)
+            if n >= max_queries_per_category:
+                continue
+            counts[key] = n + 1
+            out.append(r)
+        selected = out
+    elif max_queries:
+        counts: Dict[str, int] = {}
+        out = []
+        for r in selected:
+            key = str(r.get("instance_id"))
+            n = counts.get(key, 0)
+            if n >= max_queries:
+                continue
+            counts[key] = n + 1
+            out.append(r)
+        selected = out
+    return selected
 
 
 def _load_normalized(config_name: str) -> List[Dict[str, Any]]:
@@ -99,11 +149,12 @@ def run(
     *,
     categories: Optional[set],
     max_queries: Optional[int],
+    max_queries_per_category: Optional[int],
     resume: bool,
 ) -> Dict:
+    from codeminer.agent.runner import _has_localization_contract
     from codeminer.eval.retrieval_eval import (
         collect_target_blocks,
-        dedup_spans,
         nodes_to_spans,
         parse_answer_spans,
         resolve_symbol_spans,
@@ -114,7 +165,12 @@ def run(
     from codeminer.llm.litellm_chat import LiteLLMChat
     from scripts.agent_compile.lib.verify_expand import load_graph_nav
 
-    needs_verify = any((r or {}).get("verify") for r in (cfg.preload or {}).values())
+    needs_graph_nav = any(
+        (r or {}).get("verify")
+        or (r or {}).get("graph_on_fanout")
+        or (r or {}).get("graph_schedule_on_fanout")
+        for r in (cfg.preload or {}).values()
+    )
     cells_dir = output_dir / "cells"
     cells_dir.mkdir(parents=True, exist_ok=True)
     vertex_extra: Dict[str, Any] = {}
@@ -132,17 +188,19 @@ def run(
     summary: Dict[str, Any] = {"completed": [], "skipped": [], "failed": []}
 
     for config_name in configs:
-        rows = _load_normalized(config_name)
-        if categories:
-            rows = [r for r in rows if r.get("category") in categories]
+        rows = _select_rows(
+            _load_normalized(config_name),
+            instances=cfg.instances,
+            categories=categories,
+            max_queries=max_queries,
+            max_queries_per_category=max_queries_per_category,
+        )
         # Group by instance_id so the repo index loads ONCE per instance.
         by_instance: Dict[str, List[Dict[str, Any]]] = {}
         for r in rows:
             by_instance.setdefault(r["instance_id"], []).append(r)
 
         for instance_id, inst_rows in by_instance.items():
-            if max_queries:
-                inst_rows = inst_rows[:max_queries]
             if not has_full_indexes(cfg.prebuilt_dir, instance_id, cfg.embedding_model):
                 print(f"synth: WARN {instance_id} missing prebuilt; skipping")
                 summary["skipped"].append(
@@ -181,7 +239,9 @@ def run(
                 continue
             symbol_span_index = build_symbol_span_index(cfg.prebuilt_dir, instance_id)
             nav = (
-                load_graph_nav(cfg.prebuilt_dir, instance_id) if needs_verify else None
+                load_graph_nav(cfg.prebuilt_dir, instance_id)
+                if needs_graph_nav
+                else None
             )
             print(f"synth:   contexts ready in {time.time() - t0:.1f}s")
 
@@ -229,7 +289,20 @@ def run(
                         )
                     )
                     preload_candidates = out.get("preload_candidates") or []
-                    ans_dedup = dedup_spans(answer_spans)
+                    (
+                        ans_dedup,
+                        answer_diagnostic_fields,
+                    ) = build_answer_diagnostic_fields(
+                        answer=out["answer"] or "",
+                        answer_spans=answer_spans,
+                        gt_blocks=gt_blocks,
+                        metrics=metrics,
+                        metrics_k=cfg.metrics_k,
+                    )
+                    format_failed = (
+                        not _has_localization_contract(out["answer"] or "")
+                        and not answer_spans
+                    )
                     preload_contribution = (
                         sum(
                             1
@@ -239,12 +312,6 @@ def run(
                         / len(ans_dedup)
                         if (ans_dedup and preload_candidates)
                         else None
-                    )
-                    from codeminer.agent.runner import _has_localization_contract
-
-                    format_failed = (
-                        not _has_localization_contract(out["answer"] or "")
-                        and not answer_spans
                     )
                     record = {
                         "cell_id": cid,
@@ -267,13 +334,113 @@ def run(
                         "target_symbols": target_symbols,
                         "gt_code_blocks": gt_blocks,
                         "answer_spans": answer_spans,
+                        **answer_diagnostic_fields,
+                        "answer_span_evidence": link_answer_spans_to_trace(
+                            ans_dedup,
+                            out.get("trace"),
+                        ),
                         "retrieval_spans": retrieval_spans,
                         "preload_candidates": preload_candidates,
                         "preload_contribution": preload_contribution,
                         "verify_triggered": out.get("verify_triggered"),
                         "verify_resolved": out.get("verify_resolved"),
+                        "graph_expansion_triggered": out.get(
+                            "graph_expansion_triggered"
+                        ),
+                        "graph_expansion_reason": out.get("graph_expansion_reason"),
+                        "graph_expansion_nodes": out.get("graph_expansion_nodes"),
+                        "graph_expansion_resolved": out.get("graph_expansion_resolved"),
+                        "scheduled_context_attempted": out.get(
+                            "scheduled_context_attempted"
+                        ),
+                        "scheduled_context_triggered": out.get(
+                            "scheduled_context_triggered"
+                        ),
+                        "scheduled_context_reason": out.get("scheduled_context_reason"),
+                        "scheduled_context_operation": out.get(
+                            "scheduled_context_operation"
+                        ),
+                        "scheduled_context_nodes": out.get("scheduled_context_nodes"),
+                        "scheduled_context_seed_count": out.get(
+                            "scheduled_context_seed_count"
+                        ),
+                        "scheduled_context_skipped": out.get(
+                            "scheduled_context_skipped"
+                        ),
+                        "scheduled_context_skip_reason": out.get(
+                            "scheduled_context_skip_reason"
+                        ),
+                        "scheduled_context_verified_preload": out.get(
+                            "scheduled_context_verified_preload"
+                        ),
+                        "scheduled_route_fanout_hold_count": out.get(
+                            "scheduled_route_fanout_hold_count"
+                        ),
+                        "scheduled_route_fanout_hold_first_turn": out.get(
+                            "scheduled_route_fanout_hold_first_turn"
+                        ),
+                        "scheduled_route_fanout_hold_read_calls": out.get(
+                            "scheduled_route_fanout_hold_read_calls"
+                        ),
+                        "scheduled_route_fanout_hold_search_calls": out.get(
+                            "scheduled_route_fanout_hold_search_calls"
+                        ),
+                        "scheduled_route_fanout_hold_generic_min_reads": out.get(
+                            "scheduled_route_fanout_hold_generic_min_reads"
+                        ),
+                        "scheduled_route_fanout_hold_reason": out.get(
+                            "scheduled_route_fanout_hold_reason"
+                        ),
+                        "scheduled_anchor_audit_triggered": out.get(
+                            "scheduled_anchor_audit_triggered"
+                        ),
+                        "scheduled_anchor_audit_offered": out.get(
+                            "scheduled_anchor_audit_offered"
+                        ),
+                        "scheduled_anchor_audit_read": out.get(
+                            "scheduled_anchor_audit_read"
+                        ),
+                        "scheduled_anchor_audit_cited": out.get(
+                            "scheduled_anchor_audit_cited"
+                        ),
+                        "scheduled_top_anchor_audit_triggered": out.get(
+                            "scheduled_top_anchor_audit_triggered"
+                        ),
+                        "scheduled_top_anchor_audit_reason": out.get(
+                            "scheduled_top_anchor_audit_reason"
+                        ),
+                        "scheduled_top_anchor_audit_missing": out.get(
+                            "scheduled_top_anchor_audit_missing"
+                        ),
+                        "scheduled_ordering_audit_triggered": out.get(
+                            "scheduled_ordering_audit_triggered"
+                        ),
+                        "scheduled_ordering_audit_reason": out.get(
+                            "scheduled_ordering_audit_reason"
+                        ),
+                        "scheduled_ordering_audit_span_count": out.get(
+                            "scheduled_ordering_audit_span_count"
+                        ),
+                        "answer_path_alias_normalized": out.get(
+                            "answer_path_alias_normalized"
+                        ),
+                        "answer_path_alias_replacements": out.get(
+                            "answer_path_alias_replacements"
+                        ),
+                        "answer_schema_salvaged": out.get("answer_schema_salvaged"),
+                        "answer_schema_salvage_locations": out.get(
+                            "answer_schema_salvage_locations"
+                        ),
+                        "answer_location_order_normalized": out.get(
+                            "answer_location_order_normalized"
+                        ),
+                        "answer_location_order_promotions": out.get(
+                            "answer_location_order_promotions"
+                        ),
                         "tool_calls": out["tool_calls"],
                         "file_read_paths": out["file_read_paths"],
+                        "file_reads": out.get("file_reads", []),
+                        "trace": out.get("trace"),
                         "answer": out["answer"],
                         "total_turns": out["total_turns"],
                         "total_tokens": out["total_tokens"],
@@ -282,6 +449,7 @@ def run(
                         "elapsed_seconds": time.time() - t,
                         "error": None,
                     }
+                    record["trace_summary"] = summarize_cell_trace(record)
                     summary["completed"].append(cid)
                     ar = metrics.get("answer_blocks", {}).get(5, {}).get("recall")
                     print(
@@ -345,6 +513,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument(
         "--max-queries", type=int, default=None, help="cap queries per instance (smoke)"
     )
+    p.add_argument(
+        "--max-queries-per-category",
+        type=int,
+        default=None,
+        help="cap queries per instance/category bucket (feedback probes)",
+    )
     p.add_argument("--reps", type=int, default=None)
     p.add_argument("--no-resume", action="store_true")
     p.add_argument(
@@ -369,6 +543,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         configs,
         categories=categories,
         max_queries=args.max_queries,
+        max_queries_per_category=args.max_queries_per_category,
         resume=not args.no_resume,
     )
     return 0

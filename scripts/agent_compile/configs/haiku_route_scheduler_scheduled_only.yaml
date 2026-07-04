@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Fast M3.5+ live smoke for scheduled static-LSP route edits.
+#
+# Intended command:
+#
+#   python scripts/agent_compile/run_synthesis_sweep.py \
+#     --config scripts/agent_compile/configs/haiku_route_scheduler_scheduled_only.yaml \
+#     --output-dir results/agent_compile/haiku_route_scheduler_scheduled_only \
+#     --synthesis-configs Go,Rust \
+#     --categories traversal \
+#     --max-queries-per-category 2 \
+#     --reps 1
+#   python scripts/agent_compile/aggregate_feedback_probe.py \
+#     --cells-dir results/agent_compile/haiku_route_scheduler_scheduled_only/cells \
+#     --output-dir results/agent_compile/haiku_route_scheduler_scheduled_only
+#
+# Use this after a paired repeat gate already established the grep baseline.
+# It keeps only the scheduled route arm so prompt-order and trace diagnostics can
+# be checked without re-paying for slow grep-only cells.
+
+base: haiku_route_scheduler_probe.yaml
+sweep_id: haiku_route_scheduler_scheduled_only
+reps: 1
+
+subsets:
+  preinj_graph_scheduled:
+    - read
+    - grep
+    - glob
+    - bash

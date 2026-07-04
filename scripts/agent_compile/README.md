@@ -50,9 +50,11 @@ ablation.
 |---|---|
 | `run_sweep.py` | run the sweep: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. Validates the harness (raises on unknown tool/skill ids) before spending. |
 | `aggregate.py` | fold cells into a report: per-arm metrics, skill-invocation histogram, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
+| `plan_feedback_suite.py` | validate a frozen feedback-suite manifest and emit preflight, sweep, and aggregate commands plus `feedback_suite_plan.json`; this is the small-gate path for runner milestones. |
 | `lib/config.py` | `SweepConfig` (base + per-arm overlay; **empty `instances` = the full split**). |
 | `lib/harness.py` | dataset loading, prebuilt-index staging into agent `contexts`, scenario classification, the one `run_cell` agent call. |
 | `lib/prebuilt.py` | stage offline-built per-instance indexes into the `cache_dir/<type>` layout. |
+| `run_edit_audit.py` | wrap an edit command with before/after diff artifacts, dirty-start preimages, a generated revert script, and optional verification command metadata. The same library also exposes `run_agent_with_edit_audit()` for wrapping an `AgentRunner.run()` edit attempt and persisting `agent_result.json` alongside the diff/revert artifacts; if the runner raises, it still finalizes audit/revert artifacts and writes `agent_error.json`. |
 
 The agent-localization scorer (answer + `read` paths + retrieval nodes →
 files@k / symbols@k) lives in
@@ -80,6 +82,22 @@ python scripts/agent_compile/aggregate.py \
 `run_sweep.py` resumes per cell and does not persist transient (rate-limit)
 failures, so a re-run retries them. Instances without prebuilt indexes are
 skipped and recorded in `sweep_summary.json`.
+
+## Milestone feedback suites
+
+Runner milestones should use a frozen suite manifest instead of hand-picking a
+new smoke every time. The current scheduled static-LSP route gate is:
+
+```bash
+python scripts/agent_compile/plan_feedback_suite.py \
+    --suite-file scripts/agent_compile/feedback_suites/haiku_static_lsp_route_q2.yaml \
+    --write-plan
+```
+
+The emitted plan has three commands: route-lifecycle preflight, the bounded
+Haiku synthesis sweep, and the promotion-profile aggregate. The q2 suite is a
+24-cell local gate: Python/Go/Rust traversal, two queries per instance/category,
+two arms, and two reps.
 
 ## How indexes reach the agent
 

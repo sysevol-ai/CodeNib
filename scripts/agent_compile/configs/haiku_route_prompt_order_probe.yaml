@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Opt-in M3.5+ probe for traceback route prompt reordering.
+#
+# This intentionally keeps the risky prompt-order experiment out of the default
+# scheduled route probe. Use it only to prove that final-guard/top-anchor
+# correction can recover the known Ruff traceback sibling cluster.
+#
+# Intended command:
+#
+#   python scripts/agent_compile/run_synthesis_sweep.py \
+#     --config scripts/agent_compile/configs/haiku_route_prompt_order_probe.yaml \
+#     --output-dir results/agent_compile/haiku_route_prompt_order_probe \
+#     --synthesis-configs Rust \
+#     --categories traversal \
+#     --max-queries-per-category 2 \
+#     --reps 1
+
+base: haiku_route_scheduler_scheduled_only.yaml
+sweep_id: haiku_route_prompt_order_probe
+reps: 1
+
+instances:
+  - astral-sh__ruff-15330
+
+preload:
+  preinj_graph_scheduled:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0
+    graph_schedule_on_fanout: true
+    graph_schedule_on_read_symbols: true
+    graph_schedule_audit_answer: true
+    graph_read_symbol_min_reads: 2
+    graph_read_symbol_max_symbols: 8
+    graph_read_symbol_max_nodes: 8
+    graph_read_symbol_role_quota: true
+    graph_read_symbol_pool_nodes: 20
+    graph_read_symbol_neighbor_nodes: 40
+    graph_read_symbol_traceback_route_prompt_order: true
+    graph_fanout_search_calls: 2
+    graph_fanout_read_calls: 6
+    graph_fanout_skip_verified_preload: 2
+    graph_fanout_turn_ratio: 0.75
+    graph_fanout_max_seeds: 5
+    graph_fanout_max_nodes: 5

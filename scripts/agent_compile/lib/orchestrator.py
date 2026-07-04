@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from codeminer.agent.agent_types import AgentResult
+from codeminer.agent.agent_types import AgentResult, AgentRunTrace
 
 # Adaptive routing gate (one cheap LLM call). The discriminator is NOT
 # "has an identifier" — that sends traversal queries (no identifier, but
@@ -139,8 +139,12 @@ def _converge_query(query: str, confirmed: List[Dict[str, Any]]) -> str:
 def _merge(final: AgentResult, all_results: List[AgentResult]) -> AgentResult:
     """Final answer + merged tool-calls across every subagent (for scoring)."""
     tool_calls = []
+    trace = AgentRunTrace()
     for r in all_results:
         tool_calls.extend(r.tool_calls or [])
+        if r.trace:
+            trace.events.extend(r.trace.events)
+            trace.context.extend(r.trace.context)
     return AgentResult(
         answer=final.answer or "",
         tool_calls=tool_calls,
@@ -149,6 +153,7 @@ def _merge(final: AgentResult, all_results: List[AgentResult]) -> AgentResult:
         total_duration_ms=sum(r.total_duration_ms or 0.0 for r in all_results),
         usage=final.usage,
         usage_records=final.usage_records,
+        trace=trace,
     )
 
 
