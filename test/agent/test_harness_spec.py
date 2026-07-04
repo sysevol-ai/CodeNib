@@ -6,13 +6,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 from codeminer.agent.agent_types import AgentResult
-from codeminer.agent.harness import AgentHarnessSpec, AgentRunAccumulator
+from codeminer.agent.harness import (
+    AgentHarnessSpec,
+    AgentRunAccumulator,
+    run_agent_in_directory,
+)
 from codeminer.agent.runner import AgentRunner
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.llm.litellm_chat import LiteLLMChat
@@ -98,6 +103,19 @@ def test_create_runner_uses_spec_without_mutating_it():
     assert runner._compact_keep_reads == 1
     assert runner.system_prompt.startswith("Subagent prompt")
     assert spec.max_turns == 6
+
+
+def test_run_agent_in_directory_scopes_and_restores_cwd(tmp_path):
+    class CwdRunner:
+        def run(self, prompt):
+            return prompt, Path.cwd()
+
+    previous = Path.cwd()
+
+    result = run_agent_in_directory(CwdRunner(), "locate auth", tmp_path)
+
+    assert result == ("locate auth", tmp_path)
+    assert Path.cwd() == previous
 
 
 def test_run_accumulator_sums_usage_mappings_and_turns():

@@ -17,7 +17,6 @@ underscore-prefixed names from a sibling script.
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -163,7 +162,11 @@ def run_cell(
     answers once more. Token/turn costs of BOTH runs are summed so the verify
     arm is charged for the closed loop.
     """
-    from codeminer.agent.harness import AgentHarnessSpec, AgentRunAccumulator
+    from codeminer.agent.harness import (
+        AgentHarnessSpec,
+        AgentRunAccumulator,
+        run_agent_in_directory,
+    )
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.compiler.params import SessionContext
     from scripts.agent_compile.lib.orchestrator import (
@@ -258,17 +261,9 @@ def run_cell(
         registry=SkillRegistry(),
         session_ctx=sctx,
     )
-    # The always-on default tools (file_read / file_search) resolve relative
-    # paths against the process cwd, so run the agent from the instance repo.
-    # The sweep is sequential, so chdir is safe here.
-    prev_cwd = os.getcwd()
 
     def _do_run(q: str):
-        try:
-            os.chdir(repo_path)
-            r = runner.run(q)
-        finally:
-            os.chdir(prev_cwd)
+        r = run_agent_in_directory(runner, q, repo_path)
         accounting.add_result(r)
         return r
 
@@ -282,11 +277,7 @@ def run_cell(
                 session_ctx=sctx,
                 system_prompt=sys_prompt or cfg.system_prompt,
             )
-            try:
-                os.chdir(repo_path)
-                r = sub.run(q)
-            finally:
-                os.chdir(prev_cwd)
+            r = run_agent_in_directory(sub, q, repo_path)
             accounting.add_result(r)
             return r
 

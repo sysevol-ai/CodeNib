@@ -12,8 +12,22 @@ this module.
 
 from __future__ import annotations
 
+import os
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
-from typing import Any, Collection, Dict, FrozenSet, Iterable, List, Mapping, Optional
+from pathlib import Path
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    FrozenSet,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Union,
+)
 
 from ..llm.usage import TokenUsage
 
@@ -25,6 +39,36 @@ USAGE_TOTAL_KEYS = (
     "cache_read_input_tokens",
     "cache_creation_input_tokens",
 )
+
+
+@contextmanager
+def agent_working_directory(cwd: Optional[Union[str, Path]]) -> Iterator[None]:
+    """Temporarily run agent default tools relative to *cwd*.
+
+    The built-in read/grep/glob tools intentionally accept repo-relative paths.
+    Harnesses that run against many repos should scope the process cwd around
+    each runner invocation and always restore it afterwards.
+    """
+    if cwd is None:
+        yield
+        return
+
+    previous = os.getcwd()
+    os.chdir(cwd)
+    try:
+        yield
+    finally:
+        os.chdir(previous)
+
+
+def run_agent_in_directory(
+    runner: Any,
+    prompt: str,
+    cwd: Optional[Union[str, Path]],
+) -> Any:
+    """Run an ``AgentRunner``-like object with repo-relative default tools."""
+    with agent_working_directory(cwd):
+        return runner.run(prompt)
 
 
 def _normalize_names(
