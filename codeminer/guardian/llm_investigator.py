@@ -237,14 +237,53 @@ def build_test_failure_context(
 # ---------------------------------------------------------------------------
 
 
-def _run_search(query: str, retriever: object, top_k: int) -> str:
+_CONTENT_MAX_LINES = 50
+
+
+def _node_content(n: object, repo_path: str) -> str:
+    """Return the source snippet for a result node.
+
+    Uses the pre-embedded ``content`` field when available; falls back to
+    reading lines ``start_line``..``end_line`` (0-based) from disk.
+    """
+    content = getattr(n, "content", None)
+    if content:
+        return content.strip()
+
+    file = getattr(n, "file", None)
+    start = getattr(n, "start_line", None)
+    end = getattr(n, "end_line", None)
+    if not file or start is None:
+        return ""
+
+    full_path = (
+        os.path.join(repo_path, file)
+        if repo_path and not os.path.isabs(file)
+        else file
+    )
+    try:
+        with open(full_path, encoding="utf-8", errors="replace") as fh:
+            all_lines = fh.readlines()
+        sl = max(0, start)
+        el = min(len(all_lines), (end if end is not None else start) + 1)
+        snippet = all_lines[sl:el]
+        if len(snippet) > _CONTENT_MAX_LINES:
+            snippet = snippet[:_CONTENT_MAX_LINES] + [
+                f"... ({len(all_lines[sl:el]) - _CONTENT_MAX_LINES} more lines)\n"
+            ]
+        return "".join(snippet).strip()
+    except OSError:
+        return ""
+
+
+def _run_search(query: str, retriever: object, top_k: int, repo_path: str = "") -> str:
     try:
         nodes = retriever.query(query, top_k=top_k)  # type: ignore[union-attr]
     except Exception as exc:  # noqa: BLE001
         logger.warning("llm_investigator search failed: %s", exc)
         return f"(search error: {exc})"
 
-    rows: List[str] = []
+    parts: List[str] = []
     for n in nodes or []:
         file = getattr(n, "file", "?") or "?"
         name = getattr(n, "node_name", "?") or "?"
@@ -253,8 +292,13 @@ def _run_search(query: str, retriever: object, top_k: int) -> str:
         score = getattr(n, "score", None)
         loc = f"{file}:{line}" if line is not None else file
         score_str = f"{score:.3f}" if isinstance(score, float) else "—"
-        rows.append(f"{loc} | {name} ({typ}) | score={score_str}")
-    return "\n".join(rows) if rows else "(no results)"
+        header = f"{loc} | {name} ({typ}) | score={score_str}"
+        snippet = _node_content(n, repo_path)
+        if snippet:
+            parts.append(f"{header}\n```\n{snippet}\n```")
+        else:
+            parts.append(header)
+    return "\n\n".join(parts) if parts else "(no results)"
 
 
 # ---------------------------------------------------------------------------
@@ -305,20 +349,22 @@ def _agentic_loop(
     max_tool_rounds: int,
     top_k: int,
     usage_acc: Optional[LLMUsage] = None,
+    repo_path: str = "",
 ) -> str:
     """Run the tool-use loop until the model produces a final answer."""
-    logger.debug(
-        "agentic_loop: start max_rounds=%d\ninitial_messages:\n%s",
-        max_tool_rounds,
-        _format_messages(messages),
-    )
-
     for round_idx in range(max_tool_rounds + 1):
         use_tools = round_idx < max_tool_rounds
         kwargs: dict = {}
         if use_tools:
             kwargs["tools"] = [_SEARCH_TOOL]
             kwargs["tool_choice"] = "auto"
+
+        logger.debug(
+            "agentic_loop: round=%d calling LLM with %d message(s):\n%s",
+            round_idx,
+            len(messages),
+            _format_messages(messages),
+        )
 
         try:
             response = llm._call_raw(messages, **kwargs)
@@ -381,7 +427,7 @@ def _agentic_loop(
             except json.JSONDecodeError:
                 args = {}
             query = args.get("query", "")
-            result = _run_search(query, retriever, top_k)
+            result = _run_search(query, retriever, top_k, repo_path)
             logger.debug(
                 "agentic_loop: tool_result query=%r:\n%s", query, result
             )
@@ -448,6 +494,7 @@ def investigate_with_llm(
         max_tool_rounds=max_tool_rounds,
         top_k=top_k,
         usage_acc=usage_acc,
+        repo_path=repo_path,
     )
 
 
@@ -460,6 +507,7 @@ def investigate_signal(
     max_tool_rounds: int = 3,
     top_k: int = 5,
     usage_acc: Optional[LLMUsage] = None,
+    repo_path: str = "",
 ) -> str:
     """Run the LLM agentic loop with a caller-supplied context string.
 
@@ -488,4 +536,5 @@ def investigate_signal(
         max_tool_rounds=max_tool_rounds,
         top_k=top_k,
         usage_acc=usage_acc,
+        repo_path=repo_path,
     )
