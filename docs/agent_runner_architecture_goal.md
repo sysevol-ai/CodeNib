@@ -149,10 +149,15 @@ benchmark cell is currently easiest to improve.
    compatibility wrapper only.
 
 9. **M10c: Promotion evidence contract.**
-   Add a typed evaluation contract for runtime promotion evidence so future
-   runner defaults require raw-behavior evidence, smoke and holdout slices,
-   failure category attribution, and explicit scorer/benchmark dependency
-   checks before they can leave experiment policy.
+   Landed in #299. Runtime promotion evidence now has a typed evaluation
+   contract so future runner defaults require raw-behavior evidence, smoke and
+   holdout slices, failure category attribution, and explicit scorer/benchmark
+   dependency checks before they can leave experiment policy.
+
+10. **M10d: Legacy shim implementation guard.**
+    Keep `scripts/agent_compile/lib` import-only until removal. Tests should
+    fail if compatibility modules regain functions, classes, or non-package
+    imports that would move reusable ownership back into scripts.
 
 ## Current Boundary Decisions
 
@@ -173,6 +178,9 @@ benchmark cell is currently easiest to improve.
 - Promotion evidence records live under `codeminer.eval.agent_runner` and must
   keep scorer dependencies and named benchmark dependencies explicit. Runtime
   defaults should not be promoted when either dependency set is non-empty.
+- Legacy modules under `scripts/agent_compile/lib` are import-only
+  compatibility shims. They may re-export package APIs but must not define
+  functions, classes, or new reusable policy.
 - External-agent and LSP baseline task/result envelopes live in
   `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
   SDK-specific inputs to that envelope, but they should not own reusable scoring
