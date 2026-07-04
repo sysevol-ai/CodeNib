@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from ...agent.boundary import from_agent_repr, to_agent_repr
 from ...agent.lsp_graph import lsp_definition, lsp_references, lsp_route
 
 
@@ -18,17 +19,9 @@ def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
 
 
 def _node_to_dict(node: Any) -> dict[str, Any]:
-    if hasattr(node, "model_dump"):
-        payload = node.model_dump(exclude_none=True)
-    elif isinstance(node, dict):
-        payload = {k: v for k, v in node.items() if v is not None}
-    else:
+    if not (hasattr(node, "model_dump") or isinstance(node, dict)):
         return {"node": str(node)}
-    for key in ("start_line", "end_line"):
-        value = payload.get(key)
-        if isinstance(value, int):
-            payload[key] = value + 1
-    return payload
+    return to_agent_repr(node)
 
 
 def _symbol_graph(ctx: Any) -> Any:
@@ -50,7 +43,7 @@ def lsp_definition_impl(
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
-    graph_line = int(line) - 1 if line is not None else None
+    graph_line = from_agent_repr(line)
     try:
         results = lsp_definition(
             graph,
@@ -78,7 +71,7 @@ def lsp_references_impl(
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
-    graph_line = int(line) - 1 if line is not None else None
+    graph_line = from_agent_repr(line)
     try:
         results = lsp_references(
             graph,

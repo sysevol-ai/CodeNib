@@ -197,6 +197,17 @@ def test_lsp_references_tool_delegates_to_core():
     assert kwargs["include_declaration"] is False
 
 
+def test_lsp_tools_reuse_agent_line_boundary():
+    """MCP LSP tools share the agent 1-based input boundary."""
+    ctx = MagicMock(symbol_graph=MagicMock())
+    with patch("codeminer.mcp.tools.lsp.lsp_definition") as mock_definition:
+        mock_definition.return_value = []
+
+        lsp_definition_impl(ctx, file_path="caller.py", line=0)
+
+    assert mock_definition.call_args.kwargs["line"] == 0
+
+
 def test_server_status_resource(mock_manifest: Path):
     """Test server_status resource returns correct info."""
     mock_vector = MagicMock(spec=CodeVectorStore)
