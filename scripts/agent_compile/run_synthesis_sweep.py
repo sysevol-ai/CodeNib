@@ -37,26 +37,14 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from codeminer.eval.agent_runner.prebuilt import (  # noqa: E402
-    has_full_indexes,
-    repo_path_for,
-    stage_prebuilt_indexes,
-)
-from codeminer.eval.agent_runner.sweep import (  # noqa: E402
-    load_full_contexts,
-    run_cell,
-    slug,
-)
-from codeminer.eval.agent_runner.sweep_config import SweepConfig  # noqa: E402
-from codeminer.eval.agent_runner.symbols import (  # noqa: E402
-    build_prebuilt_symbol_span_index,
-)
+if TYPE_CHECKING:
+    from codeminer.eval.agent_runner.sweep_config import SweepConfig
 
 # language_group / config -> SessionContext primary_language key.
 _LANG_KEY = {
@@ -103,17 +91,16 @@ def run(
     max_queries: Optional[int],
     resume: bool,
 ) -> Dict:
-    from codeminer.eval.agent_runner.verify_expand import load_graph_nav
-    from codeminer.eval.retrieval_eval import (
-        collect_target_blocks,
-        dedup_spans,
-        nodes_to_spans,
-        parse_answer_spans,
-        resolve_symbol_spans,
-        score_agent_localization,
-        score_localization_spans,
-        spans_overlap,
+    from codeminer.eval.agent_runner.prebuilt import (
+        has_full_indexes,
+        repo_path_for,
+        stage_prebuilt_indexes,
     )
+    from codeminer.eval.agent_runner.scoring import evaluate_agent_localization
+    from codeminer.eval.agent_runner.sweep import load_full_contexts, run_cell, slug
+    from codeminer.eval.agent_runner.symbols import build_prebuilt_symbol_span_index
+    from codeminer.eval.agent_runner.verify_expand import load_graph_nav
+    from codeminer.eval.retrieval_eval import collect_target_blocks
     from codeminer.llm.litellm_chat import LiteLLMChat
 
     needs_verify = any((r or {}).get("verify") for r in (cfg.preload or {}).values())
@@ -209,46 +196,18 @@ def run(
                         ),
                         nav=nav,
                     )
-                    metrics = score_agent_localization(
+                    evaluation = evaluate_agent_localization(
                         answer=out["answer"],
                         file_read_paths=out["file_read_paths"],
                         nodes=out["nodes"],
                         target_files=target_files,
                         target_symbols=target_symbols,
-                        ks=cfg.metrics_k,
+                        gt_blocks=gt_blocks,
+                        metrics_k=cfg.metrics_k,
                         repo_path=repo_path,
-                    )
-                    answer_spans = parse_answer_spans(
-                        out["answer"], repo_path
-                    ) + resolve_symbol_spans(
-                        out["answer"], symbol_span_index, repo_path
-                    )
-                    retrieval_spans = nodes_to_spans(out["nodes"])
-                    metrics.update(
-                        score_localization_spans(
-                            answer_spans=answer_spans,
-                            retrieval_spans=retrieval_spans,
-                            gt_blocks=gt_blocks,
-                            ks=cfg.metrics_k,
-                        )
-                    )
-                    preload_candidates = out.get("preload_candidates") or []
-                    ans_dedup = dedup_spans(answer_spans)
-                    preload_contribution = (
-                        sum(
-                            1
-                            for a in ans_dedup
-                            if any(spans_overlap(a, c) for c in preload_candidates)
-                        )
-                        / len(ans_dedup)
-                        if (ans_dedup and preload_candidates)
-                        else None
-                    )
-                    from codeminer.agent.runner import _has_localization_contract
-
-                    format_failed = (
-                        not _has_localization_contract(out["answer"] or "")
-                        and not answer_spans
+                        symbol_span_index=symbol_span_index,
+                        preload_candidates=out.get("preload_candidates") or [],
+                        metrics_meaningful=bool(target_files or gt_blocks),
                     )
                     record = {
                         "cell_id": cid,
@@ -263,17 +222,9 @@ def run(
                         "rep": rep,
                         "language": _LANG_KEY.get(config_name, "python"),
                         "success": True,
-                        "format_failed": format_failed,
-                        "metrics": metrics,
-                        "metrics_meaningful": bool(target_files or gt_blocks),
+                        **evaluation.to_record_fields(),
                         "query": row["query"],
-                        "target_files": target_files,
-                        "target_symbols": target_symbols,
-                        "gt_code_blocks": gt_blocks,
-                        "answer_spans": answer_spans,
-                        "retrieval_spans": retrieval_spans,
-                        "preload_candidates": preload_candidates,
-                        "preload_contribution": preload_contribution,
+                        "preload_candidates": out.get("preload_candidates") or [],
                         "verify_triggered": out.get("verify_triggered"),
                         "verify_resolved": out.get("verify_resolved"),
                         "tool_calls": out["tool_calls"],
@@ -287,7 +238,11 @@ def run(
                         "error": None,
                     }
                     summary["completed"].append(cid)
-                    ar = metrics.get("answer_blocks", {}).get(5, {}).get("recall")
+                    ar = (
+                        evaluation.metrics.get("answer_blocks", {})
+                        .get(5, {})
+                        .get("recall")
+                    )
                     print(
                         f"synth:   done {cid} [{row.get('category')}] "
                         f"in {time.time() - t:.1f}s turns={out['total_turns']} "
@@ -357,6 +312,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Override config model (e.g. a local openai/ vLLM model).",
     )
     args = p.parse_args(argv)
+
+    from codeminer.eval.agent_runner.sweep_config import SweepConfig
 
     cfg = SweepConfig.from_yaml(args.config)
     if args.reps is not None:

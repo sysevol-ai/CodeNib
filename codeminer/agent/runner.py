@@ -64,7 +64,8 @@ _HAS_SYMBOLS_CONTRACT = re.compile(rf"{_LABEL_PREFIX}symbols?[\s*_`]*[:=]")
 _HAS_LOCATIONS_CONTRACT = re.compile(rf"{_LABEL_PREFIX}locations?[\s*_`]*[:=]")
 
 
-def _has_localization_contract(answer: str) -> bool:
+def has_localization_contract(answer: str) -> bool:
+    """Return true when an answer carries the localization output contract."""
     return all(
         pattern.search(answer or "")
         for pattern in (
@@ -73,6 +74,10 @@ def _has_localization_contract(answer: str) -> bool:
             _HAS_LOCATIONS_CONTRACT,
         )
     )
+
+
+def _has_localization_contract(answer: str) -> bool:
+    return has_localization_contract(answer)
 
 
 _DEFAULT_SYSTEM_PROMPT = f"""\

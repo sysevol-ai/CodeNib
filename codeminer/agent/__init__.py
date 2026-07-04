@@ -18,7 +18,13 @@ from .harness import (
 )
 from .history import PlainChatHistory, TokenBudgetedChatHistory, count_message_tokens
 from .rerank_agent import RerankAgent, RerankResult, rerank_nodes_with_query
-from .runner import AgentRunner, CodeMinerAgentOptions, compile_repo, query
+from .runner import (
+    AgentRunner,
+    CodeMinerAgentOptions,
+    compile_repo,
+    has_localization_contract,
+    query,
+)
 from .runtime import (
     AGENT_TRACE_SCHEMA_VERSION,
     AgentRunTrace,
@@ -48,6 +54,7 @@ __all__ = [
     "compile_repo",
     "count_message_tokens",
     "extract_keywords_from_statement",
+    "has_localization_contract",
     "query",
     "rerank_nodes_with_query",
     "registry_to_tools",

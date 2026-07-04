@@ -39,6 +39,7 @@ from .preload import (
     snippet_for_node,
 )
 from .results import summarize_agent_result
+from .scoring import AgentLocalizationEvaluation, evaluate_agent_localization
 from .sweep import (
     LANG_GROUP_TO_KEY,
     all_index_skill_ids,
@@ -66,6 +67,7 @@ from .verify_expand import (
 )
 
 __all__ = [
+    "AgentLocalizationEvaluation",
     "AgentSkillContextSpec",
     "FormatArmSummary",
     "FormatDiagnostics",
@@ -90,6 +92,7 @@ __all__ = [
     "candidate_location",
     "converge_query",
     "default_agent_skills_dir",
+    "evaluate_agent_localization",
     "expansion_seeds_from_candidates",
     "graph_verify",
     "load_graph_nav",

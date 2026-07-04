@@ -53,10 +53,11 @@ ablation.
 | `aggregate.py` | fold cells into a report: per-arm metrics, skill-invocation histogram, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
 | `lib/*.py` | compatibility shims for older experiment notebooks; reusable config/harness code lives in `codeminer.eval.agent_runner`. |
 
-The agent-localization scorer (answer + `read` paths + retrieval nodes →
+The base agent-localization scorer (answer + `read` paths + retrieval nodes →
 files@k / symbols@k) lives in
 `codeminer/eval/retrieval_eval.py:score_agent_localization`, shared by the
-runner and the offline ablations.
+runner and the offline ablations. Sweep cell scoring glue (span metrics, format
+failure, pre-load contribution) lives in `codeminer.eval.agent_runner.scoring`.
 
 **Not here:** the offline *retrieval* ablations (no agent, no LLM) live in
 `scripts/retrieval_ablation/` (`graphrag_retrieve`, `graph_recall_ablation`,

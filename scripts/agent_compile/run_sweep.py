@@ -36,29 +36,14 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from codeminer.eval.agent_runner.prebuilt import (  # noqa: E402
-    has_full_indexes,
-    repo_path_for,
-    stage_prebuilt_indexes,
-)
-from codeminer.eval.agent_runner.sweep import (  # noqa: E402
-    LANG_GROUP_TO_KEY,
-    load_dataset_rows,
-    load_full_contexts,
-    run_cell,
-    scenario_for,
-    slug,
-)
-from codeminer.eval.agent_runner.sweep_config import SweepConfig  # noqa: E402
-from codeminer.eval.agent_runner.symbols import (  # noqa: E402
-    build_prebuilt_symbol_span_index,
-)
+if TYPE_CHECKING:
+    from codeminer.eval.agent_runner.sweep_config import SweepConfig
 
 
 def _validate_harness(cfg: SweepConfig) -> None:
@@ -96,17 +81,22 @@ def _validate_harness(cfg: SweepConfig) -> None:
 
 
 def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dict:
-    from codeminer.eval.retrieval_eval import (
-        collect_target_blocks,
-        collect_targets,
-        dedup_spans,
-        nodes_to_spans,
-        parse_answer_spans,
-        resolve_symbol_spans,
-        score_agent_localization,
-        score_localization_spans,
-        spans_overlap,
+    from codeminer.eval.agent_runner.prebuilt import (
+        has_full_indexes,
+        repo_path_for,
+        stage_prebuilt_indexes,
     )
+    from codeminer.eval.agent_runner.scoring import evaluate_agent_localization
+    from codeminer.eval.agent_runner.sweep import (
+        LANG_GROUP_TO_KEY,
+        load_dataset_rows,
+        load_full_contexts,
+        run_cell,
+        scenario_for,
+        slug,
+    )
+    from codeminer.eval.agent_runner.symbols import build_prebuilt_symbol_span_index
+    from codeminer.eval.retrieval_eval import collect_target_blocks, collect_targets
     from codeminer.llm.litellm_chat import LiteLLMChat
 
     _validate_harness(cfg)
@@ -227,60 +217,18 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     skills=skills,
                     preload_spec=(cfg.preload or {}).get(subset_id),
                 )
-                metrics = score_agent_localization(
+                evaluation = evaluate_agent_localization(
                     answer=out["answer"],
                     file_read_paths=out["file_read_paths"],
                     nodes=out["nodes"],
                     target_files=target_files,
                     target_symbols=target_symbols,
-                    ks=cfg.metrics_k,
+                    gt_blocks=gt_blocks,
+                    metrics_k=cfg.metrics_k,
                     repo_path=repo_path,
-                )
-                # Line-span localization (overlap-based) — robust to the
-                # symbol-name string-match artifact. ``answer`` = the agent's
-                # deliverable (its ``Locations:`` ranges + ``Symbols:`` resolved
-                # via the graph); ``retrieval`` = the retriever's ranked spans
-                # (the RAG-comparable alignment axis). Neither bounds the other.
-                answer_spans = parse_answer_spans(
-                    out["answer"], repo_path
-                ) + resolve_symbol_spans(out["answer"], symbol_span_index, repo_path)
-                retrieval_spans = nodes_to_spans(out["nodes"])
-                metrics.update(
-                    score_localization_spans(
-                        answer_spans=answer_spans,
-                        retrieval_spans=retrieval_spans,
-                        gt_blocks=gt_blocks,
-                        ks=cfg.metrics_k,
-                    )
-                )
-                # Pre-load contribution: fraction of the agent's committed answer
-                # spans that overlap an injected candidate (vs found by grep).
-                # Distinguishes "pre-load helped" from "ignored, grep did it".
-                preload_candidates = out.get("preload_candidates") or []
-                ans_dedup = dedup_spans(answer_spans)
-                preload_contribution = (
-                    sum(
-                        1
-                        for a in ans_dedup
-                        if any(spans_overlap(a, c) for c in preload_candidates)
-                    )
-                    / len(ans_dedup)
-                    if (ans_dedup and preload_candidates)
-                    else None
-                )
-                # Honesty flag: the agent ran fine but never produced a parseable
-                # localization (no Files:/Symbols:/Locations: contract AND no
-                # resolvable span), even after the force-schema retries. Such a
-                # cell scores 0 NOT because the localization was wrong but because
-                # the answer was unformattable — a known LLM weakness, worst on
-                # small models. Flag it so the aggregator can report localization
-                # accuracy separately from format-failure rate instead of
-                # silently burying these as misses.
-                from codeminer.agent.runner import _has_localization_contract
-
-                format_failed = (
-                    not _has_localization_contract(out["answer"] or "")
-                    and not answer_spans
+                    symbol_span_index=symbol_span_index,
+                    preload_candidates=out.get("preload_candidates") or [],
+                    metrics_meaningful=gt_meaningful,
                 )
                 record = {
                     "cell_id": cell_id,
@@ -292,16 +240,8 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     "scenario": scenario,
                     "language": language_key,
                     "success": True,
-                    "format_failed": format_failed,
-                    "metrics": metrics,
-                    "metrics_meaningful": gt_meaningful,
-                    "target_files": target_files,
-                    "target_symbols": target_symbols,
-                    "gt_code_blocks": gt_blocks,
-                    "answer_spans": answer_spans,
-                    "retrieval_spans": retrieval_spans,
-                    "preload_candidates": preload_candidates,
-                    "preload_contribution": preload_contribution,
+                    **evaluation.to_record_fields(),
+                    "preload_candidates": out.get("preload_candidates") or [],
                     "tool_calls": out["tool_calls"],
                     "file_read_paths": out["file_read_paths"],
                     "file_reads": out.get("file_reads", []),
@@ -322,7 +262,7 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                 print(
                     f"sweep:   done {cell_id} in {time.time() - t:.1f}s "
                     f"turns={out['total_turns']} tokens={out['total_tokens']} "
-                    f"files@5={metrics.get('files', {}).get(5, {}).get('accuracy')}"
+                    f"files@5={evaluation.metrics.get('files', {}).get(5, {}).get('accuracy')}"
                 )
             except Exception as exc:  # noqa: BLE001
                 traceback.print_exc()
@@ -385,6 +325,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--vertex-location", default=None, help="Override config vertex_location."
     )
     args = parser.parse_args(argv)
+
+    from codeminer.eval.agent_runner.sweep_config import SweepConfig
 
     cfg = SweepConfig.from_yaml(args.config)
     if args.reps is not None:
