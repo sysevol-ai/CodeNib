@@ -16,13 +16,31 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 from ..compiler.manifest import RepoManifest
 from ..llm.litellm_chat import LiteLLMChat, RetryConfig
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
-from .agent_types import AgentResult, ToolCallRecord
+from .agent_types import (
+    AgentResult,
+    AgentRunTrace,
+    AgentTraceEvent,
+    ContextLedgerEntry,
+    ToolCallRecord,
+    ToolResultEnvelope,
+)
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .history import PlainChatHistory, TokenBudgetedChatHistory
 from .skills.loader import SkillLoader
@@ -54,10 +72,22 @@ LOCALIZATION_SCHEMA = (
     "Symbols: path/one.ext:symbol_name, ...\n"
     "Locations: path/one.ext:START-END, path/two.ext:START-END"
 )
+LOCALIZATION_SCHEMA_INSTRUCTIONS = (
+    "End with exactly these three single-line, comma-separated contract lines "
+    "with no markdown bullets:\n"
+    f"{LOCALIZATION_SCHEMA}\n"
+    "Use repo-relative paths. Put at most five entries in Locations. Order "
+    "Locations by route importance: endpoint/caller first, bridge/factory "
+    "second, provider/value/type anchors next, then any other implementation "
+    "ranges. Do not let helper/interior ranges appear before the route anchors "
+    "that answer the request. Use line numbers from read output or confirmed "
+    "graph/LSP locations."
+)
 
 # Detect whether an answer already carries the full contract (markdown-tolerant,
 # to match the eval parser): ``Files:``, ``**Files:**``, ``- files =`` all count.
-_LABEL_PREFIX = r"(?im)^[\s>#*_`\-]*"
+# Use horizontal whitespace only so a label cannot consume the next bullet line.
+_LABEL_PREFIX = r"(?im)^[ \t>#*_`\-]*"
 _HAS_FILES_CONTRACT = re.compile(rf"{_LABEL_PREFIX}files?[\s*_`]*[:=]")
 _HAS_SYMBOLS_CONTRACT = re.compile(rf"{_LABEL_PREFIX}symbols?[\s*_`]*[:=]")
 _HAS_LOCATIONS_CONTRACT = re.compile(rf"{_LABEL_PREFIX}locations?[\s*_`]*[:=]")
@@ -92,6 +122,14 @@ Depending on the request you may also have retrieval skills:
 call-graph navigation (who calls X, what X calls, the path from X to Y). Use \
 for impact and to follow a bug across functions — the structural questions \
 grep cannot answer. Compact results; read the ones you care about.
+- lsp_definition(file_path, line, character, symbol) / \
+lsp_references(file_path, line, character, symbol) — LSP-shaped navigation over \
+CodeMiner's static graph index. Use these for go-to-definition and find-references \
+workflows without starting a live LSP server; read returned locations before \
+answering.
+- lsp_route(symbols, query) — graph-backed LSP route map over the static index. \
+Use it when several symbols look related and you need endpoint, bridge/factory, \
+provider/value, and type anchors with `via` markers before targeted reads.
 
 Accuracy comes first: you MUST end up having read the file that actually \
 implements the behavior to change. Use codeminer_context / the graph as a \
@@ -104,14 +142,14 @@ entry-point symbols plus their callers/callees as a starting map.
 2. READ — read the most promising candidate(s) to check whether the code \
 to change is really there.
 3. EXPAND — if it's not (e.g. you landed on a base class, a caller, or a near \
-miss): follow the graph (find_callers / find_callees / trace) AND/OR grep for \
-the symbol across the repo (grep pattern=...). A base-class method \
+miss): use lsp_definition / lsp_references when you have a file+line or symbol, \
+use lsp_route when multiple symbols need a route map, follow the graph \
+(find_callers / find_callees / trace), AND/OR grep for the symbol across the \
+repo (grep pattern=...). A base-class method \
 often has the real change in a SUBCLASS OVERRIDE — grep the method name to find \
 all definitions, then read them. Loop back to READ.
 4. ANSWER — only once you have READ a file and confirmed it contains the code \
-to change. End with these three lines, repo-relative. The line numbers come \
-straight from what `read` showed you — cite the exact range of the code to change:
-{LOCALIZATION_SCHEMA}
+to change. {LOCALIZATION_SCHEMA_INSTRUCTIONS}
 
 Guidelines:
 - The graph map is a hint, not the answer — always confirm by reading.
@@ -125,6 +163,7 @@ it and answer rather than exhaustively reading every candidate.
 
 # Maximum characters for a single tool result to avoid context blowup.
 _MAX_RESULT_CHARS = 16_000
+_COMPACT_TAIL_CHARS = 800
 
 
 class AgentRunner:
@@ -163,6 +202,11 @@ class AgentRunner:
         force_first_turn_only: bool = False,
         compact_after_read: bool = False,
         compact_keep_reads: int = 0,
+        compact_tail_chars: Optional[int] = None,
+        duplicate_tool_call_limit: int = 2,
+        context_scheduler: Optional[
+            Callable[[Mapping[str, Any]], Optional[Mapping[str, Any]]]
+        ] = None,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -240,6 +284,21 @@ class AgentRunner:
         # after the collapse (the "re-read tax" observed on 4B). Set by a
         # model-strength router upstream.
         self._compact_keep_reads = compact_keep_reads
+        self._compact_tail_chars = (
+            _COMPACT_TAIL_CHARS
+            if compact_tail_chars is None
+            else max(0, int(compact_tail_chars))
+        )
+        # Lightweight doom-loop guard: agents sometimes repeat the exact same
+        # deterministic read/search call. Let it happen twice for recovery, then
+        # return a short tool error so the model changes course. ``bash`` is
+        # excluded because shell commands may intentionally have side effects.
+        self._duplicate_tool_call_limit = max(0, int(duplicate_tool_call_limit or 0))
+        # Optional harness hook for CodeMiner-native context scheduling. This is
+        # deliberately off by default: experiments can inject graph/LSP context
+        # into the live loop when trace state shows search fan-out, without
+        # changing normal agent behavior.
+        self._context_scheduler = context_scheduler
 
         # Resource guard: filter unavailable skills and collect warnings.
         # The "base" allow / exclude are stored so we can recompute the
@@ -363,6 +422,7 @@ class AgentRunner:
         *,
         max_turns: Optional[int] = None,
         chat_history: Optional[List[Dict[str, str]]] = None,
+        preload_candidates: Optional[Sequence[Mapping[str, Any]]] = None,
     ) -> AgentResult:
         """Execute the agent loop and return the result.
 
@@ -370,6 +430,10 @@ class AgentRunner:
         ``{"role": "user"|"assistant", "content": ...}`` dicts, no tool
         messages) between the system prompt and *query*, so follow-up
         questions can reference earlier answers.
+
+        ``preload_candidates`` describes context that the harness already
+        injected into ``query``. The runner records these as offered ledger
+        entries so traces can distinguish candidate quality from agent behavior.
         """
         max_turns = max_turns or self.max_turns
 
@@ -404,7 +468,8 @@ class AgentRunner:
                         effective = set(self._base_allow)
                 tools = self._tools_for(effective)
 
-        history = self._new_history()
+        trace = AgentRunTrace()
+        history = _TraceRecordingHistory(self._new_history(), trace)
         history.add_message({"role": "system", "content": self.system_prompt})
         for msg in chat_history or []:
             history.add_message({"role": msg["role"], "content": msg["content"]})
@@ -416,6 +481,46 @@ class AgentRunner:
         read_paths: List[str] = []  # files the agent read (for schema salvage)
         read_outputs: List[Dict[str, str]] = []  # successful read transcripts
         compacted = False  # eager_compact: collapsed to direction seed yet?
+        fallback_nudged = False
+        duplicate_counts: Dict[str, int] = {}
+        preload_entries = _preload_context_entries(preload_candidates or [])
+        trace.context.extend(preload_entries)
+        trace.events.append(
+            AgentTraceEvent(
+                kind="run_start",
+                turn=0,
+                data={
+                    "max_turns": max_turns,
+                    "tool_count": len(tools),
+                    "query_chars": len(query),
+                    "preload_candidates": len(preload_entries),
+                },
+            )
+        )
+
+        def finish(answer: str, total_turns: int) -> AgentResult:
+            elapsed = (time.monotonic() - start) * 1000
+            trace.events.append(
+                AgentTraceEvent(
+                    kind="run_end",
+                    turn=total_turns,
+                    data={
+                        "answer_chars": len(answer or ""),
+                        "tool_calls": len(all_tool_calls),
+                        "duration_ms": elapsed,
+                    },
+                )
+            )
+            return AgentResult(
+                answer=answer,
+                tool_calls=all_tool_calls,
+                messages=history.get_messages(),
+                total_turns=total_turns,
+                total_duration_ms=elapsed,
+                usage=usage_tracker.totals(),
+                usage_records=list(usage_tracker.records),
+                trace=trace,
+            )
 
         for turn in range(max_turns):
             logger.debug("agent turn %d/%d", turn + 1, max_turns)
@@ -442,8 +547,8 @@ class AgentRunner:
                     {
                         "role": "user",
                         "content": (
-                            "Stop exploring. Give your final answer NOW in exactly "
-                            f"this format:\n{LOCALIZATION_SCHEMA}"
+                            "Stop exploring. Give your final answer NOW. "
+                            f"{LOCALIZATION_SCHEMA_INSTRUCTIONS}"
                         ),
                     }
                 )
@@ -465,6 +570,7 @@ class AgentRunner:
                     if not (self._force_first_turn_only and turn > 0):
                         call_kwargs["tool_choice"] = self.first_turn_tool_choice
 
+            history.record_llm_call(turn + 1, call_kwargs)
             response = self.llm._call_raw(history.get_messages(), **call_kwargs)
             choice = response.choices[0]
             assistant_msg = choice.message
@@ -475,6 +581,21 @@ class AgentRunner:
 
             # Check for tool calls
             tool_calls = getattr(assistant_msg, "tool_calls", None)
+            trace.events.append(
+                AgentTraceEvent(
+                    kind="assistant",
+                    turn=turn + 1,
+                    data={
+                        "content_chars": len(
+                            getattr(assistant_msg, "content", None) or ""
+                        ),
+                        "tool_calls": [
+                            getattr(getattr(tc, "function", None), "name", "")
+                            for tc in (tool_calls or [])
+                        ],
+                    },
+                )
+            )
             if not tool_calls:
                 # Terminal: LLM stopped calling tools. If it answered in prose
                 # without the contract (it explored but didn't format), force one
@@ -491,23 +612,52 @@ class AgentRunner:
                         )
                         or answer
                     )
-                elapsed = (time.monotonic() - start) * 1000
-                return AgentResult(
-                    answer=answer,
-                    tool_calls=all_tool_calls,
-                    messages=history.get_messages(),
-                    total_turns=turn + 1,
-                    total_duration_ms=elapsed,
-                    usage=usage_tracker.totals(),
-                    usage_records=list(usage_tracker.records),
-                )
+                return finish(answer, turn + 1)
 
             # Execute each tool call
             for tc in tool_calls:
-                record = self._execute_tool_call(tc)
+                signature = _tool_call_signature(tc)
+                seen_count = duplicate_counts.get(signature, 0) if signature else 0
+                duplicate_guarded = (
+                    bool(signature)
+                    and self._duplicate_tool_call_limit > 0
+                    and seen_count >= self._duplicate_tool_call_limit
+                )
+                if duplicate_guarded:
+                    record = _duplicate_tool_call_record(tc, seen_count)
+                    duplicate_counts[signature] = seen_count + 1
+                else:
+                    record = self._execute_tool_call(tc)
+                    if signature:
+                        duplicate_counts[signature] = seen_count + 1
                 all_tool_calls.append(record)
                 tool_content = _serialize_result(
                     record.result if record.error is None else record.error
+                )
+                record.envelope = _tool_result_envelope(
+                    record, tool_content, duplicate=duplicate_guarded
+                )
+                envelope = record.envelope.to_dict()
+                trace.events.append(
+                    AgentTraceEvent(
+                        kind="tool_call",
+                        turn=turn + 1,
+                        data={
+                            "tool_call_id": record.tool_call_id,
+                            "tool": record.skill_id,
+                            "arguments": record.arguments,
+                            "error": record.error,
+                            "duplicate": duplicate_guarded,
+                            "duration_ms": record.duration_ms,
+                            "result_chars": len(tool_content),
+                            "envelope": envelope,
+                        },
+                    )
+                )
+                trace.context.append(
+                    _context_ledger_entry(
+                        record, tool_content, duplicate=duplicate_guarded
+                    )
                 )
                 # A successful read satisfies the "read before answering"
                 # contract; once it happens, stop forcing tool calls.
@@ -520,6 +670,13 @@ class AgentRunner:
                     _rp = (record.arguments or {}).get("file_path")
                     if _rp:
                         read_paths.append(str(_rp))
+                        _mark_preload_verified(
+                            preload_entries,
+                            str(_rp),
+                            record.arguments or {},
+                            turn=turn + 1,
+                            tool_call_id=record.tool_call_id,
+                        )
                     read_outputs.append(
                         {"path": str(_rp or "(unknown)"), "content": tool_content}
                     )
@@ -533,6 +690,36 @@ class AgentRunner:
                     }
                 )
 
+            if (
+                preload_entries
+                and has_read
+                and not fallback_nudged
+                and not _has_verified_preload(preload_entries)
+            ):
+                fallback_nudged = True
+                history.add_message(
+                    {
+                        "role": "user",
+                        "content": (
+                            "The preloaded candidate spans have not been "
+                            "confirmed by your reads. Stop anchoring on them; "
+                            "fall back to grep/read search and only answer from "
+                            "a span you actually read."
+                        ),
+                    }
+                )
+                trace.events.append(
+                    AgentTraceEvent(
+                        kind="fallback",
+                        turn=turn + 1,
+                        data={
+                            "strategy": "preload_unverified",
+                            "preload_candidates": len(preload_entries),
+                            "read_paths": list(dict.fromkeys(read_paths)),
+                        },
+                    )
+                )
+
             # eager_compact: once the eager phase has read a candidate and judged
             # the direction, COLLAPSE the bulky preload dump + the whole
             # exploration trace to a small distilled seed
@@ -541,15 +728,85 @@ class AgentRunner:
             # preload candidate snippets or the exploration history into every
             # later turn (re-sending them is the dominant prompt-token cost).
             # Once only — this is the explore→commit boundary, not a rolling trim.
-            if self._compact_after_read and has_read and not compacted:
+            if (
+                self._compact_after_read
+                and has_read
+                and not compacted
+                and _can_compact_from_preload(preload_entries)
+            ):
                 compacted = True
                 if self._compact_history(
                     history,
                     read_paths,
                     self._compact_keep_reads,
+                    compact_tail_chars=self._compact_tail_chars,
                     read_outputs=read_outputs,
+                    context_entries=trace.context,
                 ):
                     logger.debug("eager_compact: collapsed to distilled direction seed")
+                    meta = trace.context[-1].metadata if trace.context else {}
+                    trace.events.append(
+                        AgentTraceEvent(
+                            kind="compaction",
+                            turn=turn + 1,
+                            data={
+                                "strategy": "deterministic_summary",
+                                "keep_reads": self._compact_keep_reads,
+                                "read_paths": list(dict.fromkeys(read_paths)),
+                                **meta,
+                            },
+                        )
+                    )
+
+            if self._context_scheduler is not None and turn < max_turns - 1:
+                try:
+                    scheduled = self._context_scheduler(
+                        {
+                            "turn": turn + 1,
+                            "max_turns": max_turns,
+                            "tool_calls": all_tool_calls,
+                            "read_paths": list(read_paths),
+                            "read_outputs": list(read_outputs),
+                            "query": query,
+                            "has_read": has_read,
+                            "context": trace.context,
+                            "events": trace.events,
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001 - scheduler is optional
+                    logger.warning("context scheduler failed: %s", exc)
+                    trace.events.append(
+                        AgentTraceEvent(
+                            kind="scheduled_context_error",
+                            turn=turn + 1,
+                            data={"error": str(exc)},
+                        )
+                    )
+                    scheduled = None
+                if scheduled:
+                    content = str(scheduled.get("content") or "")
+                    if content:
+                        source = str(scheduled.get("source") or "scheduled_context")
+                        metadata = dict(scheduled.get("metadata") or {})
+                        history.add_message({"role": "user", "content": content})
+                        trace.events.append(
+                            AgentTraceEvent(
+                                kind="scheduled_context",
+                                turn=turn + 1,
+                                data={
+                                    "source": source,
+                                    "content_chars": len(content),
+                                    **metadata,
+                                },
+                            )
+                        )
+                        trace.context.append(
+                            ContextLedgerEntry(
+                                source=source,
+                                state="offered",
+                                metadata={**metadata, "result_chars": len(content)},
+                            )
+                        )
 
         # Max turns exhausted. Prefer the last textual assistant message.
         last_content = ""
@@ -573,23 +830,16 @@ class AgentRunner:
                 or last_content
             )
 
-        elapsed = (time.monotonic() - start) * 1000
-        return AgentResult(
-            answer=last_content,
-            tool_calls=all_tool_calls,
-            messages=history.get_messages(),
-            total_turns=max_turns,
-            total_duration_ms=elapsed,
-            usage=usage_tracker.totals(),
-            usage_records=list(usage_tracker.records),
-        )
+        return finish(last_content, max_turns)
 
     def _compact_history(
         self,
         history: Any,
         read_paths: Optional[List[str]] = None,
         keep_reads: int = 0,
+        compact_tail_chars: int = _COMPACT_TAIL_CHARS,
         read_outputs: Optional[List[Dict[str, str]]] = None,
+        context_entries: Optional[List[ContextLedgerEntry]] = None,
     ) -> int:
         """Collapse eager-phase exploration to a distilled direction seed.
 
@@ -628,13 +878,16 @@ class AgentRunner:
             if m.get("role") == "assistant" and m.get("content"):
                 last_assistant = m["content"]
                 break
+        protected_tail = last_assistant[: max(0, int(compact_tail_chars or 0))]
         reads = ", ".join(dict.fromkeys(read_paths or [])) or "(none)"
         # Seed-richness: inline recent successful read outputs, never incidental
         # tool output from grep/glob/bash that happened to run later in the turn.
         kept = ""
+        kept_read_chars = 0
         if read_outputs:
             n_keep = max(1, int(keep_reads or 0))
             kept_reads = [r for r in read_outputs[-n_keep:] if r.get("content")]
+            kept_read_chars = sum(len(r["content"]) for r in kept_reads)
             if kept_reads:
                 kept = (
                     "\n# Content you already read (do NOT re-read these):\n"
@@ -644,20 +897,46 @@ class AgentRunner:
                     )
                     + "\n"
                 )
+        summary, summary_meta = _compact_context_summary(context_entries or [])
+        if summary:
+            summary = f"\n# Exploration summary\n{summary}\n"
         seed = (
             f"{clean_q}\n\n"
             "# Triage complete — focus, do not re-explore from scratch\n"
             f"Files you already read and judged relevant: {reads}\n"
+            f"{summary}"
             f"{kept}"
-            f"Your assessment so far:\n{last_assistant[:600]}\n\n"
+            f"# Recent working tail\n{protected_tail}\n\n"
             "Now give the final Files:/Symbols:/Locations: answer. Only read again "
             "if a needed location is genuinely missing above; do not reopen the "
             "other candidates."
         )
+        original_tool_chars = _tool_result_chars(msgs)
+        pruned_tool_chars = max(0, original_tool_chars - kept_read_chars)
         history.clear()
         if system:
             history.add_message(system)
         history.add_message({"role": "user", "content": seed})
+        if context_entries is not None:
+            context_entries.append(
+                ContextLedgerEntry(
+                    source="compaction",
+                    state="summarized",
+                    metadata={
+                        **summary_meta,
+                        "seed_chars": len(seed),
+                        "dropped_messages": len(msgs) - len(history.get_messages()),
+                        "kept_read_outputs": (
+                            max(1, int(keep_reads or 0)) if read_outputs else 0
+                        ),
+                        "kept_read_chars": kept_read_chars,
+                        "original_tool_result_chars": original_tool_chars,
+                        "pruned_tool_result_chars": pruned_tool_chars,
+                        "compact_tail_chars": max(0, int(compact_tail_chars or 0)),
+                        "protected_tail_chars": len(protected_tail),
+                    },
+                )
+            )
         return 1
 
     # ------------------------------------------------------------------
@@ -704,9 +983,8 @@ class AgentRunner:
                     "role": "user",
                     "content": (
                         "Stop. Do not call any more tools. Give your final answer "
-                        "NOW in EXACTLY this format — all three lines, "
-                        "repo-relative paths, Locations with start-end line "
-                        f"numbers as shown by `read`:\n{LOCALIZATION_SCHEMA}"
+                        "NOW. "
+                        f"{LOCALIZATION_SCHEMA_INSTRUCTIONS}"
                         f"{files_hint}{nudge}"
                     ),
                 }
@@ -719,6 +997,12 @@ class AgentRunner:
                 if self.tools:
                     overrides["tools"] = self.tools
                     overrides["tool_choice"] = "none"
+                if hasattr(history, "record_llm_call"):
+                    history.record_llm_call(
+                        usage_turn + attempt,
+                        overrides,
+                        phase="forced_schema",
+                    )
                 final = self.llm._call_raw(history.get_messages(), **overrides)
                 forced_msg = final.choices[0].message
                 history.add_message(_message_to_dict(forced_msg))
@@ -756,19 +1040,24 @@ class AgentRunner:
     def _execute_tool_call(self, tc: Any) -> ToolCallRecord:
         """Execute a single tool call (a skill or a default tool)."""
         skill_id = tc.function.name
-        try:
-            arguments = json.loads(tc.function.arguments)
-        except (json.JSONDecodeError, TypeError):
-            arguments = {}
+        arguments = _tool_call_arguments(tc)
 
         # Skills and default tools live in separate registries; check both.
         meta = self.registry.get(skill_id) or self.tool_registry.get(skill_id)
         if meta is None or meta.executor_fn is None:
+            metadata = _tool_permission_metadata(skill_id, arguments)
             return ToolCallRecord(
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
                 error=f"Tool {skill_id!r} not available",
+                envelope=ToolResultEnvelope(
+                    status="error",
+                    result_type="error",
+                    error_kind="unavailable",
+                    error=f"Tool {skill_id!r} not available",
+                    metadata=metadata,
+                ),
             )
 
         # Apply parameter scaling (config defaults + session), then validate +
@@ -780,13 +1069,22 @@ class AgentRunner:
         resolved_args = self._apply_input_boundary(meta, resolved_args)
         coerced_args, type_error = coerce_args(meta.inputs, resolved_args)
         if type_error is not None:
+            metadata = _tool_permission_metadata(skill_id, resolved_args)
             return ToolCallRecord(
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
                 error=f"invalid arguments for {skill_id!r}: {type_error}",
+                envelope=ToolResultEnvelope(
+                    status="error",
+                    result_type="error",
+                    error_kind="invalid_args",
+                    error=f"invalid arguments for {skill_id!r}: {type_error}",
+                    metadata=metadata,
+                ),
             )
 
+        metadata = _tool_permission_metadata(skill_id, coerced_args)
         start = time.monotonic()
         try:
             result = meta.executor_fn(**coerced_args)
@@ -802,6 +1100,11 @@ class AgentRunner:
                 arguments=arguments,
                 result=result,
                 duration_ms=elapsed,
+                envelope=ToolResultEnvelope(
+                    status="ok",
+                    result_type="pending",
+                    metadata=metadata,
+                ),
             )
         except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000
@@ -812,6 +1115,14 @@ class AgentRunner:
                 arguments=arguments,
                 error=str(exc),
                 duration_ms=elapsed,
+                envelope=ToolResultEnvelope(
+                    status="error",
+                    result_type="error",
+                    error_kind="exception",
+                    error=str(exc),
+                    duration_ms=elapsed,
+                    metadata=metadata,
+                ),
             )
 
     def _resolve_params(self, meta: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -853,6 +1164,85 @@ class AgentRunner:
 # ---------------------------------------------------------------------------
 
 
+class _TraceRecordingHistory:
+    """Wrap live history with an append-only replay transcript."""
+
+    def __init__(self, history: Any, trace: AgentRunTrace) -> None:
+        self._history = history
+        self._trace = trace
+        self._message_indexes_by_id: Dict[int, int] = {}
+        self._tool_schema_indexes_by_signature: Dict[str, int] = {}
+
+    def __len__(self) -> int:
+        return len(self._history)
+
+    def __iter__(self):
+        return iter(self._history)
+
+    def get_messages(self) -> List[Dict[str, Any]]:
+        return self._history.get_messages()
+
+    def add_message(self, message: Dict[str, Any]) -> None:
+        self._history.add_message(message)
+        self._record_message(message)
+
+    def extend(self, messages: List[Dict[str, Any]]) -> None:
+        for message in messages:
+            self.add_message(message)
+
+    def clear(self) -> None:
+        self._history.clear()
+
+    def record_llm_call(
+        self,
+        turn: int,
+        call_kwargs: Mapping[str, Any],
+        *,
+        phase: str = "agent_loop",
+    ) -> None:
+        tools = call_kwargs.get("tools") or []
+        data: Dict[str, Any] = {
+            "phase": phase,
+            "message_count": len(self.get_messages()),
+            "message_replay_indexes": self.message_replay_indexes(),
+        }
+        if tools:
+            data["tool_count"] = len(tools)
+            data["tool_names"] = _tool_schema_names(tools)
+            data["tool_schema_indexes"] = self.tool_schema_indexes(tools)
+        if "tool_choice" in call_kwargs:
+            data["tool_choice"] = call_kwargs.get("tool_choice")
+        self._trace.events.append(
+            AgentTraceEvent(kind="llm_call", turn=turn, data=data)
+        )
+
+    def message_replay_indexes(self) -> List[int]:
+        indexes: List[int] = []
+        for message in self.get_messages():
+            index = self._message_indexes_by_id.get(id(message))
+            if index is not None:
+                indexes.append(index)
+        return indexes
+
+    def tool_schema_indexes(self, tools: Sequence[Any]) -> List[int]:
+        indexes: List[int] = []
+        for tool in tools:
+            schema = _json_safe_for_replay(tool)
+            signature = json.dumps(schema, sort_keys=True, ensure_ascii=False)
+            index = self._tool_schema_indexes_by_signature.get(signature)
+            if index is None:
+                index = len(self._trace.tool_schema_replay)
+                self._trace.tool_schema_replay.append(schema)
+                self._tool_schema_indexes_by_signature[signature] = index
+            indexes.append(index)
+        return indexes
+
+    def _record_message(self, message: Dict[str, Any]) -> None:
+        index = len(self._trace.message_replay)
+        self._trace.message_replay.append(_json_safe_for_replay(message))
+        self._message_indexes_by_id[id(message)] = index
+
+
 def _message_to_dict(msg: Any) -> Dict[str, Any]:
     """Convert a litellm response message to a raw dict."""
     if hasattr(msg, "model_dump"):
@@ -866,11 +1256,492 @@ def _message_to_dict(msg: Any) -> Dict[str, Any]:
         }
         tool_calls = getattr(msg, "tool_calls", None)
         if tool_calls:
-            d["tool_calls"] = [
-                tc.model_dump(exclude_none=True) if hasattr(tc, "model_dump") else tc
-                for tc in tool_calls
-            ]
-    return d
+            d["tool_calls"] = [_tool_call_to_message_dict(tc) for tc in tool_calls]
+    if d.get("tool_calls"):
+        d["tool_calls"] = [_tool_call_to_message_dict(tc) for tc in d["tool_calls"]]
+    return _json_safe_for_replay(d)
+
+
+def _tool_call_to_message_dict(tc: Any) -> Dict[str, Any]:
+    if hasattr(tc, "model_dump"):
+        return _json_safe_for_replay(tc.model_dump(exclude_none=True))
+    if hasattr(tc, "to_dict"):
+        return _json_safe_for_replay(tc.to_dict())
+    if isinstance(tc, Mapping):
+        return _json_safe_for_replay(tc)
+    function = getattr(tc, "function", None)
+    return {
+        "id": getattr(tc, "id", ""),
+        "type": getattr(tc, "type", "function"),
+        "function": {
+            "name": getattr(function, "name", ""),
+            "arguments": getattr(function, "arguments", ""),
+        },
+    }
+
+
+def _tool_schema_names(tools: Sequence[Any]) -> List[str]:
+    names: List[str] = []
+    for tool in tools:
+        if not isinstance(tool, Mapping):
+            continue
+        function = tool.get("function")
+        if isinstance(function, Mapping):
+            name = function.get("name")
+            if name:
+                names.append(str(name))
+    return names
+
+
+def _json_safe_for_replay(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "model_dump"):
+        return _json_safe_for_replay(value.model_dump(exclude_none=True))
+    if hasattr(value, "to_dict"):
+        return _json_safe_for_replay(value.to_dict())
+    if isinstance(value, Mapping):
+        return {str(k): _json_safe_for_replay(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_for_replay(v) for v in value]
+    if isinstance(value, set):
+        return [_json_safe_for_replay(v) for v in sorted(value, key=str)]
+    if hasattr(value, "__dict__"):
+        return _json_safe_for_replay(vars(value))
+    return str(value)
+
+
+def _tool_call_arguments(tc: Any) -> Dict[str, Any]:
+    try:
+        args = json.loads(tc.function.arguments)
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return {}
+    return args if isinstance(args, dict) else {}
+
+
+def _tool_call_signature(tc: Any) -> Optional[str]:
+    """Stable signature for deterministic duplicate-call detection."""
+    try:
+        skill_id = tc.function.name
+    except AttributeError:
+        return None
+    if skill_id == "bash":
+        return None
+    arguments = _tool_call_arguments(tc)
+    payload = json.dumps(arguments, sort_keys=True, default=str, ensure_ascii=False)
+    return f"{skill_id}:{payload}"
+
+
+def _duplicate_tool_call_record(tc: Any, seen_count: int) -> ToolCallRecord:
+    try:
+        skill_id = tc.function.name
+    except AttributeError:
+        skill_id = "(unknown)"
+    error = (
+        f"Duplicate tool call skipped: {skill_id!r} with the same arguments "
+        f"has already run {seen_count} times in this session. Use the prior "
+        "result if it is still relevant, or change the arguments."
+    )
+    metadata = _tool_permission_metadata(skill_id, _tool_call_arguments(tc))
+    metadata.update({"duplicate": True, "seen_count": seen_count})
+    return ToolCallRecord(
+        tool_call_id=getattr(tc, "id", ""),
+        skill_id=skill_id,
+        arguments=_tool_call_arguments(tc),
+        error=error,
+        envelope=ToolResultEnvelope(
+            status="skipped",
+            result_type="error",
+            error_kind="duplicate",
+            error=error,
+            metadata=metadata,
+        ),
+    )
+
+
+def _preload_context_entries(
+    candidates: Sequence[Mapping[str, Any]],
+) -> List[ContextLedgerEntry]:
+    """Represent harness-injected preload candidates in the context ledger."""
+    entries: List[ContextLedgerEntry] = []
+    for idx, cand in enumerate(candidates, 1):
+        path = cand.get("file") or cand.get("path") or cand.get("file_path")
+        if not path:
+            continue
+        metadata: Dict[str, Any] = {
+            "rank": idx,
+            "read_confirmed": False,
+        }
+        if cand.get("start") is not None:
+            metadata["start_line"] = cand.get("start")
+        if cand.get("end") is not None:
+            metadata["end_line"] = cand.get("end")
+        for key in ("retriever", "score", "level"):
+            if cand.get(key) is not None:
+                metadata[key] = cand.get(key)
+        entries.append(
+            ContextLedgerEntry(
+                source="preload",
+                state="offered",
+                path=str(path),
+                metadata=metadata,
+            )
+        )
+    return entries
+
+
+def _mark_preload_verified(
+    preload_entries: Sequence[ContextLedgerEntry],
+    read_path: str,
+    read_args: Mapping[str, Any],
+    *,
+    turn: int,
+    tool_call_id: str,
+) -> None:
+    """Mark preload candidates whose file was later read by the agent."""
+    read_window = _read_line_window(read_args)
+    for entry in preload_entries:
+        if entry.path != read_path:
+            continue
+        if not _preload_entry_overlaps_read(entry, read_window):
+            continue
+        entry.state = "verified"
+        entry.tool_call_id = tool_call_id
+        entry.metadata["read_confirmed"] = True
+        entry.metadata["read_turn"] = turn
+        entry.metadata["read_tool_call_id"] = tool_call_id
+
+
+def _read_line_window(read_args: Mapping[str, Any]) -> Optional[Tuple[int, int]]:
+    """Return the 1-based inclusive line window a read call inspected."""
+    try:
+        start = max(1, int(read_args.get("offset") or 1))
+        limit = max(1, int(read_args.get("limit") or 200))
+    except (TypeError, ValueError):
+        return None
+    return start, start + limit - 1
+
+
+def _preload_entry_overlaps_read(
+    entry: ContextLedgerEntry, read_window: Optional[Tuple[int, int]]
+) -> bool:
+    """True when a preload span was covered by a read window."""
+    if read_window is None:
+        return True
+    try:
+        start = int(entry.metadata.get("start_line"))
+        end = int(entry.metadata.get("end_line"))
+    except (TypeError, ValueError):
+        return True
+    read_start, read_end = read_window
+    return start <= read_end and end >= read_start
+
+
+def _has_verified_preload(preload_entries: Sequence[ContextLedgerEntry]) -> bool:
+    return any(entry.state == "verified" for entry in preload_entries)
+
+
+def _can_compact_from_preload(preload_entries: Sequence[ContextLedgerEntry]) -> bool:
+    return not preload_entries or _has_verified_preload(preload_entries)
+
+
+def _context_ledger_entry(
+    record: ToolCallRecord, serialized_result: str, *, duplicate: bool = False
+) -> ContextLedgerEntry:
+    """Summarize a tool result as a context-ledger item."""
+    args = record.arguments or {}
+    path_value = args.get("file_path") or args.get("path")
+    path = str(path_value) if path_value else None
+    envelope = record.envelope or _tool_result_envelope(
+        record, serialized_result, duplicate=duplicate
+    )
+    failed = envelope.status == "error" or envelope.status == "skipped"
+    if failed:
+        state = "rejected"
+    elif record.skill_id == "read":
+        state = "read"
+    else:
+        state = "offered"
+    envelope_dict = envelope.to_dict()
+    metadata = {
+        "duration_ms": record.duration_ms,
+        "result_chars": len(serialized_result),
+        "duplicate": duplicate,
+        "tool_result": envelope_dict,
+        "status": envelope.status,
+        "error_kind": envelope.error_kind,
+        "truncated": envelope.truncated,
+    }
+    if record.skill_id == "read":
+        read_window = _read_line_window(args)
+        if read_window is not None:
+            start, end = read_window
+            metadata.update(
+                {
+                    "start_line": start,
+                    "end_line": end,
+                    "offset": start,
+                    "limit": end - start + 1,
+                }
+            )
+    return ContextLedgerEntry(
+        source=record.skill_id,
+        state=state,
+        path=path,
+        tool_call_id=record.tool_call_id,
+        metadata=metadata,
+    )
+
+
+def _compact_context_summary(
+    context_entries: Sequence[ContextLedgerEntry],
+) -> Tuple[str, Dict[str, Any]]:
+    """Deterministically summarize explored context for compacted prompts."""
+    reads: List[str] = []
+    rejected: List[str] = []
+    offered_counts: Dict[str, int] = {}
+    preload_offered: List[str] = []
+    preload_verified: List[str] = []
+    duplicates = 0
+    for entry in context_entries:
+        label = entry.path or entry.tool_call_id or entry.source
+        if entry.source == "preload":
+            preload_label = _preload_entry_label(entry)
+            preload_offered.append(preload_label)
+            if entry.state == "verified":
+                preload_verified.append(preload_label)
+            continue
+        if entry.state == "read":
+            reads.append(str(label))
+        elif entry.state == "rejected":
+            rejected.append(f"{entry.source}:{label}")
+            if entry.metadata.get("duplicate"):
+                duplicates += 1
+        elif entry.state == "offered":
+            offered_counts[entry.source] = offered_counts.get(entry.source, 0) + 1
+
+    lines: List[str] = []
+    uniq_reads = list(dict.fromkeys(reads))
+    uniq_rejected = list(dict.fromkeys(rejected))
+    uniq_preload = list(dict.fromkeys(preload_offered))
+    uniq_preload_verified = list(dict.fromkeys(preload_verified))
+    if uniq_reads:
+        lines.append("Confirmed reads: " + ", ".join(uniq_reads[:8]))
+    if uniq_preload:
+        detail = f"Preload candidates offered: {len(uniq_preload)}"
+        if uniq_preload_verified:
+            detail += "; read-confirmed: " + ", ".join(uniq_preload_verified[:4])
+        lines.append(detail)
+    if offered_counts:
+        offered = ", ".join(f"{k} x{v}" for k, v in sorted(offered_counts.items()))
+        lines.append("Other tool context already offered: " + offered)
+    if uniq_rejected:
+        lines.append("Rejected or unavailable context: " + ", ".join(uniq_rejected[:8]))
+    if duplicates:
+        lines.append(
+            f"Duplicate deterministic tool calls skipped: {duplicates}; change "
+            "arguments instead of repeating them."
+        )
+
+    return "\n".join(f"- {line}" for line in lines), {
+        "summary_reads": len(uniq_reads),
+        "summary_rejected": len(uniq_rejected),
+        "summary_offered_sources": len(offered_counts),
+        "summary_preload_candidates": len(uniq_preload),
+        "summary_preload_verified": len(uniq_preload_verified),
+        "summary_duplicates": duplicates,
+    }
+
+
+def _preload_entry_label(entry: ContextLedgerEntry) -> str:
+    path = entry.path or entry.tool_call_id or entry.source
+    start = entry.metadata.get("start_line")
+    end = entry.metadata.get("end_line")
+    if start is not None and end is not None:
+        return f"{path}:{start}-{end}"
+    return str(path)
+
+
+def _tool_result_chars(messages: Sequence[Dict[str, Any]]) -> int:
+    total = 0
+    for msg in messages:
+        if msg.get("role") != "tool":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            total += len(content)
+        elif content is not None:
+            total += len(str(content))
+    return total
+
+
+def _result_type_and_count(result: Any) -> Tuple[str, Optional[int]]:
+    if result is None:
+        return "none", None
+    if isinstance(result, str):
+        return "text", None
+    if isinstance(result, (list, tuple)):
+        return "list", len(result)
+    if isinstance(result, Mapping):
+        return "object", len(result)
+    if is_line_bearing(result):
+        return "object", None
+    if hasattr(result, "model_dump"):
+        return "object", None
+    return type(result).__name__, None
+
+
+def _path_scope_metadata(value: Any, *, cwd: Optional[Any] = None) -> Dict[str, Any]:
+    raw = "" if value is None else str(value)
+    metadata: Dict[str, Any] = {
+        "value": raw,
+        "is_absolute": bool(raw and Path(raw).is_absolute()),
+    }
+    if not raw:
+        metadata["outside_cwd"] = None
+        return metadata
+    try:
+        base = Path(str(cwd)) if cwd else Path.cwd()
+        base_resolved = base.expanduser().resolve(strict=False)
+        path = Path(raw).expanduser()
+        resolved = (
+            path.resolve(strict=False)
+            if path.is_absolute()
+            else (base_resolved / path).resolve(strict=False)
+        )
+        metadata["outside_cwd"] = not (
+            resolved == base_resolved or base_resolved in resolved.parents
+        )
+    except (OSError, RuntimeError, ValueError):
+        metadata["outside_cwd"] = None
+    return metadata
+
+
+def _tool_permission_metadata(skill_id: str, args: Mapping[str, Any]) -> Dict[str, Any]:
+    """Describe the permission boundary of default file/shell tools.
+
+    This is diagnostic metadata only; it documents the current loose policy
+    rather than enforcing a new sandbox.
+    """
+    args = args or {}
+    if skill_id == "read":
+        return {
+            "permission_boundary": "process_read_permissions",
+            "sandbox": "caller_managed",
+            "path_jail": "none",
+            "side_effects_possible": False,
+            "paths": {"file_path": _path_scope_metadata(args.get("file_path"))},
+        }
+    if skill_id in {"grep", "glob"}:
+        path_arg = args.get("path", ".")
+        return {
+            "permission_boundary": "process_read_permissions",
+            "sandbox": "caller_managed",
+            "path_jail": "none",
+            "side_effects_possible": False,
+            "paths": {"path": _path_scope_metadata(path_arg)},
+        }
+    if skill_id == "bash":
+        cwd = args.get("cwd")
+        metadata: Dict[str, Any] = {
+            "permission_boundary": "process_exec_permissions",
+            "sandbox": "caller_managed",
+            "path_jail": "none",
+            "shell": True,
+            "side_effects_possible": True,
+            "command_chars": len(str(args.get("command") or "")),
+        }
+        if cwd:
+            metadata["cwd"] = _path_scope_metadata(cwd)
+        if args.get("timeout") is not None:
+            metadata["timeout_ms"] = args.get("timeout")
+        return metadata
+    return {}
+
+
+_BASH_EXIT_CODE_RE = re.compile(r"(?m)^\(exit code: (-?\d+)\)$")
+
+
+def _bash_result_metadata(result_value: Any, serialized_result: str) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {}
+    match = _BASH_EXIT_CODE_RE.search(serialized_result or "")
+    if match:
+        metadata["exit_code"] = int(match.group(1))
+    raw_result = result_value if isinstance(result_value, str) else ""
+    if (serialized_result or "").endswith("\n... (output truncated)") or (
+        raw_result.endswith("\n... (output truncated)")
+    ):
+        metadata["output_truncated"] = True
+    return metadata
+
+
+def _bash_error_kind(serialized_result: str) -> Optional[str]:
+    text = serialized_result or ""
+    if text.startswith("Error: command timed out"):
+        return "timeout"
+    if text.startswith("Error executing command"):
+        return "spawn_error"
+    if text.startswith("Error:"):
+        return "tool_result_error"
+    match = _BASH_EXIT_CODE_RE.search(text)
+    if match and int(match.group(1)) != 0:
+        return "exit_nonzero"
+    return None
+
+
+def _tool_result_truncated(serialized_result: str) -> bool:
+    return serialized_result.endswith(
+        "\n... (truncated)"
+    ) or serialized_result.endswith("\n... (output truncated)")
+
+
+def _tool_result_envelope(
+    record: ToolCallRecord, serialized_result: str, *, duplicate: bool = False
+) -> ToolResultEnvelope:
+    """Build a uniform result envelope after serialization/truncation."""
+
+    existing = record.envelope
+    result_value = record.result if record.error is None else record.error
+    result_type, result_count = _result_type_and_count(result_value)
+    serialized_error = serialized_result.lstrip().startswith("Error")
+    error_kind = existing.error_kind if existing else None
+    status = existing.status if existing else "ok"
+    error_text = record.error or (existing.error if existing else None)
+    metadata: Dict[str, Any] = {}
+    if existing and existing.metadata:
+        metadata.update(existing.metadata)
+    if record.skill_id == "bash":
+        metadata.update(_bash_result_metadata(result_value, serialized_result))
+        bash_error_kind = _bash_error_kind(serialized_result)
+        if bash_error_kind:
+            status = "error"
+            error_kind = error_kind or bash_error_kind
+            if error_text is None:
+                error_text = serialized_result.splitlines()[0][:500]
+    if duplicate:
+        status = "skipped"
+        error_kind = error_kind or "duplicate"
+    elif record.error is not None:
+        status = "error"
+        error_kind = error_kind or "exception"
+    elif serialized_error and error_kind is None:
+        status = "error"
+        error_kind = "tool_result_error"
+        error_text = serialized_result.splitlines()[0][:500]
+
+    metadata["duplicate"] = bool(duplicate)
+
+    return ToolResultEnvelope(
+        status=status,
+        result_type=result_type if status == "ok" else "error",
+        result_chars=len(serialized_result),
+        duration_ms=record.duration_ms,
+        result_count=result_count,
+        truncated=_tool_result_truncated(serialized_result),
+        error_kind=error_kind,
+        error=error_text,
+        metadata=metadata,
+    )
 
 
 def _serialize_result(result: Any) -> str:
@@ -1003,6 +1874,9 @@ class CodeMinerAgentOptions:
     max_turns: int = 10
     max_context_tokens: Optional[int] = None
     retry: Optional[RetryConfig] = None
+    compact_after_read: bool = False
+    compact_keep_reads: int = 0
+    compact_tail_chars: Optional[int] = None
 
     # --- extras for SessionContext.extras ---
     session_extras: Dict[str, Any] = field(default_factory=dict)
@@ -1145,6 +2019,9 @@ def query(
         manifest=manifest,
         session_ctx=session_ctx,
         compile_table=table,
+        compact_after_read=opts.compact_after_read,
+        compact_keep_reads=opts.compact_keep_reads,
+        compact_tail_chars=opts.compact_tail_chars,
     )
     return runner.run(prompt)
 

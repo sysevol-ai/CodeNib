@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from codeminer.agent.skills import _graphnav
+from codeminer.graph.code_graph import CodeGraph
 
 
 class _FakeGraph:
@@ -25,6 +26,9 @@ class _FakeGraph:
             "pkg.b.helper": 2,
             "pkg.c.notify": 3,  # ambiguous base "notify" with the next
             "pkg.d.notify": 4,
+            "svc.HealthChecks": 5,
+            "svc.NewReplacer": 6,
+            "svc.globalDefaultReplacements": 7,
         }
         self._attr = {
             0: {
@@ -57,10 +61,39 @@ class _FakeGraph:
                 "file": "d.py",
                 "start_line": 1,
             },
+            5: {
+                "name": "svc.HealthChecks",
+                "type": "function",
+                "file": "health.go",
+                "start_line": 20,
+                "end_line": 60,
+            },
+            6: {
+                "name": "svc.NewReplacer",
+                "type": "function",
+                "file": "replace.go",
+                "start_line": 5,
+                "end_line": 20,
+            },
+            7: {
+                "name": "svc.globalDefaultReplacements",
+                "type": "function",
+                "file": "defaults.go",
+                "start_line": 1,
+                "end_line": 10,
+            },
         }
         # watchEffect -> doWatch -> helper
-        self._succ = {"pkg.a.watchEffect": [0], "pkg.a.doWatch": [2]}
-        self._pred = {"pkg.a.doWatch": [1], "pkg.b.helper": [0]}
+        self._succ = {
+            "pkg.a.watchEffect": [0],
+            "pkg.a.doWatch": [2],
+            "svc.NewReplacer": [7],
+        }
+        self._pred = {
+            "pkg.a.doWatch": [1],
+            "pkg.b.helper": [0],
+            "svc.globalDefaultReplacements": [6],
+        }
         self.graph = SimpleNamespace(get_shortest_paths=self._gsp)
 
     def _gsp(self, v, to=None, mode="out"):
@@ -211,3 +244,214 @@ def test_neighbors_emit_readable_names_for_hash_graph():
     assert "deadbeef00" not in callees[0].node_id
     assert "cafef00d11" not in callees[0].node_id
     assert callees[0].node_id == "src/networking.c:addReplyNull()"
+
+
+def _range_graph():
+    graph = CodeGraph()
+    graph.add_file_node("a.py")
+    graph.add_symbol_node(
+        "a.foo", line=0, scope_start_line=0, scope_end_line=3, symbol_type="function"
+    )
+    graph.graph.vs[graph.name_to_vertex["a.foo"]]["unified_name"] = "a.py:foo()"
+    graph.update_current_scope("a.foo", start_line=0, end_line=3)
+    graph.add_symbol_reference(
+        "b.bar",
+        module_path="b.py",
+        symbol_type="function",
+        anchor_file="a.py",
+        anchor_line=1,
+    )
+
+    graph.add_file_node("b.py")
+    graph.add_symbol_node(
+        "b.bar", line=4, scope_start_line=4, scope_end_line=6, symbol_type="function"
+    )
+    graph.graph.vs[graph.name_to_vertex["b.bar"]]["unified_name"] = "b.py:bar()"
+    graph.build_range_indexes()
+    return graph
+
+
+def test_lsp_definition_jumps_from_reference_anchor_to_definition():
+    graph = _range_graph()
+    defs = _graphnav.lsp_definition(graph, file_path="a.py", line=1)
+    assert [node.node_name for node in defs] == ["b.py:bar()"]
+    assert defs[0].file == "b.py"
+    assert defs[0].start_line == 4
+    assert defs[0].content == "definition of b.py:bar()"
+
+
+def test_lsp_definition_accepts_symbol_seed():
+    graph = _range_graph()
+    defs = _graphnav.lsp_definition(graph, symbol="bar")
+    assert [node.node_name for node in defs] == ["b.py:bar()"]
+
+
+def test_lsp_references_returns_definition_and_anchor_sites():
+    graph = _range_graph()
+    refs = _graphnav.lsp_references(graph, symbol="bar", include_declaration=True)
+    assert [(node.file, node.start_line, node.content) for node in refs] == [
+        ("b.py", 4, "definition of b.py:bar()"),
+        ("a.py", 1, "reference to b.py:bar()"),
+    ]
+    assert refs[1].node_id == "a.py:2:ref:b.py:bar()"
+
+
+def test_lsp_route_returns_direct_roles_and_provider_neighbor():
+    g = _FakeGraph()
+    route = _graphnav.lsp_route(
+        g,
+        symbols=["HealthChecks", "NewReplacer"],
+        query="health checks replacement defaults",
+        top_k=3,
+    )
+
+    assert [node.node_name for node in route] == [
+        "svc.HealthChecks",
+        "svc.NewReplacer",
+        "svc.globalDefaultReplacements",
+    ]
+    assert route[0].content == "route endpoint: direct seed HealthChecks"
+    assert route[1].content == "route bridge: direct seed NewReplacer"
+    assert route[2].content == "route provider: successor via svc.NewReplacer"
+
+
+def test_lsp_route_skips_missing_symbols_but_uses_resolved_ones():
+    g = _FakeGraph()
+    route = _graphnav.lsp_route(
+        g,
+        symbols=["totally_absent_xyz", "HealthChecks"],
+        query="health checks",
+        top_k=3,
+    )
+
+    assert [node.node_name for node in route] == ["svc.HealthChecks"]
+    assert route[0].content == "route endpoint: direct seed HealthChecks"
+
+
+class _OneLineRouteGraph:
+    def __init__(self):
+        self.name_to_vertex = {
+            "svc.Handler#activeHealthCheckPort": 0,
+            "svc.Handler#doActiveHealthCheckForAllHosts": 1,
+        }
+        self._attr = {
+            0: {
+                "name": "svc.Handler#activeHealthCheckPort",
+                "type": "field",
+                "file": "healthchecks.go",
+                "start_line": 183,
+                "end_line": 183,
+            },
+            1: {
+                "name": "svc.Handler#doActiveHealthCheckForAllHosts",
+                "type": "method",
+                "file": "healthchecks.go",
+                "start_line": 243,
+                "end_line": 299,
+            },
+        }
+        self._succ = {}
+        self._pred = {}
+
+    def get_node_info_by_name(self, name):
+        return self._attr.get(self.name_to_vertex.get(name))
+
+    def get_node_info_by_id(self, vid):
+        return self._attr.get(vid)
+
+    def get_successors(self, name):
+        return self._succ.get(name, [])
+
+    def get_predecessors(self, name):
+        return self._pred.get(name, [])
+
+
+def test_lsp_route_demotes_one_line_hash_named_fields():
+    g = _OneLineRouteGraph()
+    route = _graphnav.lsp_route(
+        g,
+        symbols=[
+            "svc.Handler#activeHealthCheckPort",
+            "svc.Handler#doActiveHealthCheckForAllHosts",
+        ],
+        query="active health check loop host",
+        top_k=2,
+    )
+
+    assert [node.node_name for node in route] == [
+        "svc.Handler#doActiveHealthCheckForAllHosts",
+        "svc.Handler#activeHealthCheckPort",
+    ]
+    assert route[0].content.startswith("route endpoint:")
+    assert route[1].content.startswith("route support:")
+
+
+class _TypeHeavyGraph:
+    def __init__(self):
+        self.name_to_vertex = {
+            "ruff.ExprCall": 0,
+            "ruff.ExprName": 1,
+            "ruff.ExprList": 2,
+            "ruff.match_iteration_target": 3,
+        }
+        self._attr = {
+            0: {
+                "name": "ruff.ExprCall",
+                "type": "class",
+                "file": "crates/ruff_python_ast/src/nodes.rs",
+                "start_line": 565,
+                "end_line": 575,
+            },
+            1: {
+                "name": "ruff.ExprName",
+                "type": "class",
+                "file": "crates/ruff_python_ast/src/nodes.rs",
+                "start_line": 576,
+                "end_line": 586,
+            },
+            2: {
+                "name": "ruff.ExprList",
+                "type": "class",
+                "file": "crates/ruff_python_ast/src/nodes.rs",
+                "start_line": 587,
+                "end_line": 597,
+            },
+            3: {
+                "name": "ruff.match_iteration_target",
+                "type": "function",
+                "file": "crates/ruff_python_ast/src/helpers.rs",
+                "start_line": 10,
+                "end_line": 40,
+            },
+        }
+        self._succ = {"ruff.ExprCall": [3]}
+        self._pred = {"ruff.match_iteration_target": [0]}
+
+    def get_node_info_by_name(self, name):
+        return self._attr.get(self.name_to_vertex.get(name))
+
+    def get_node_info_by_id(self, vid):
+        return self._attr.get(vid)
+
+    def get_successors(self, name):
+        return self._succ.get(name, [])
+
+    def get_predecessors(self, name):
+        return self._pred.get(name, [])
+
+
+def test_lsp_route_keeps_type_family_before_neighbors():
+    g = _TypeHeavyGraph()
+    route = _graphnav.lsp_route(
+        g,
+        symbols=["ExprCall", "ExprName", "ExprList"],
+        query="Expr variants AST node traversal",
+        top_k=4,
+    )
+
+    assert [node.node_name for node in route] == [
+        "ruff.ExprCall",
+        "ruff.ExprName",
+        "ruff.ExprList",
+    ]
+    assert all(node.content.startswith("route type: direct seed") for node in route)

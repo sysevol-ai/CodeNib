@@ -21,6 +21,7 @@ import pytest
 import codeminer.mcp.server as server_module
 from codeminer.index.embedding.vector_store import CodeVectorStore
 from codeminer.mcp.context import ServerContext
+from codeminer.mcp.tools.lsp import lsp_route_impl
 
 
 @pytest.fixture
@@ -138,6 +139,101 @@ def test_semantic_search_tool_with_vector_index(mock_manifest: Path):
     assert len(result) == 1
     assert result[0]["node_id"] == "test_node"
     assert result[0]["score"] == 0.95
+
+
+def test_lsp_route_tool_no_symbol_graph(mock_manifest: Path):
+    """Test lsp_route returns an error when symbol_graph is unavailable."""
+    mock_mcp = MagicMock()
+    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+        with patch.object(server_module, "mcp", mock_mcp):
+            with patch.object(CodeVectorStore, "load"):
+                with patch.object(CodeVectorStore, "__init__", return_value=None):
+                    server_module.init_server(str(mock_manifest))
+                    ctx = server_module.get_context()
+                    ctx.symbol_graph = None
+
+    result = asyncio.run(server_module.lsp_route(symbols=["NewReplacer"]))
+
+    assert isinstance(result, dict)
+    assert result["error"] == "symbol_graph index not available"
+
+
+def test_lsp_route_tool_with_symbol_graph(mock_manifest: Path):
+    """Test lsp_route delegates to the graph-backed implementation."""
+    mock_mcp = MagicMock()
+    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+        with patch.object(server_module, "mcp", mock_mcp):
+            with patch.object(CodeVectorStore, "load"):
+                with patch.object(CodeVectorStore, "__init__", return_value=None):
+                    server_module.init_server(str(mock_manifest))
+                    ctx = server_module.get_context()
+                    ctx.symbol_graph = MagicMock()
+
+    with patch.object(
+        server_module,
+        "lsp_route_impl",
+        return_value=[
+            {
+                "node_name": "NewReplacer",
+                "file": "replacer.go",
+                "start_line": 29,
+                "end_line": 38,
+                "content": "route bridge: direct seed NewReplacer",
+            }
+        ],
+    ) as mock_impl:
+        result = asyncio.run(
+            server_module.lsp_route(
+                symbols=["NewReplacer"],
+                query="placeholder replacement bridge",
+                top_k=5,
+            )
+        )
+
+    assert result[0]["node_name"] == "NewReplacer"
+    mock_impl.assert_called_once()
+    args = mock_impl.call_args.args
+    assert args[1] == ["NewReplacer"]
+    assert args[2] == "placeholder replacement bridge"
+    assert args[3] == 5
+
+
+class _TinyRouteGraph:
+    def __init__(self):
+        self.name_to_vertex = {"svc.NewReplacer": 0}
+        self._attr = {
+            0: {
+                "name": "svc.NewReplacer",
+                "unified_name": "replacer.go:NewReplacer()",
+                "type": "function",
+                "file": "replacer.go",
+                "start_line": 28,
+                "end_line": 37,
+            }
+        }
+
+    def get_node_info_by_name(self, name):
+        return self._attr.get(self.name_to_vertex.get(name))
+
+    def get_node_info_by_id(self, vid):
+        return self._attr.get(vid)
+
+    def get_successors(self, name):
+        return []
+
+    def get_predecessors(self, name):
+        return []
+
+
+def test_lsp_route_impl_returns_agent_facing_one_based_lines():
+    ctx = MagicMock()
+    ctx.symbol_graph = _TinyRouteGraph()
+
+    result = lsp_route_impl(ctx, ["svc.NewReplacer"], top_k=1)
+
+    assert result[0]["file"] == "replacer.go"
+    assert result[0]["start_line"] == 29
+    assert result[0]["end_line"] == 38
 
 
 def test_server_status_resource(mock_manifest: Path):

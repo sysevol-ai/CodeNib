@@ -84,6 +84,7 @@ Optional `--log-level {DEBUG,INFO,WARNING,ERROR}` (default `INFO`); logs go to s
 | `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
 | `search_regex` | `symbol_graph` | symbol | structural pattern matching |
 | `search_zoekt` | `zoekt` | file | fast substring/regex across raw repo contents |
+| `lsp_route` | `symbol_graph` | symbol route | graph-backed LSP-style route anchors across endpoint, bridge/factory, provider, and type nodes |
 | `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
 
 ### `search_semantic`
@@ -123,6 +124,19 @@ file-level (`type="file"`).
   `lang:python`.
 - `top_k` (int, default 20).
 - `file_filter` (str, default `""`): glob/regex appended as `file:<expr>`.
+
+### `lsp_route`
+Graph-backed LSP-style route map over the static symbol graph.
+
+- `symbols` (list[str]): symbol seeds, such as names found by `search_bm25`,
+  `search_regex`, or source reads.
+- `query` (str, default `""`): the natural-language task; route scoring uses it
+  to classify endpoint, bridge/factory, provider, and type anchors.
+- `top_k` (int, default 12): max compact anchors to return.
+- `include_neighbors` (bool, default `True`): include query-relevant one-hop graph
+  neighbors that fill route gaps.
+
+Returns compact location dicts only. Callers should read source before finalizing.
 
 ### `get_manifest`
 Returns the repo manifest as a dict: path, commit, languages, available indexes, and

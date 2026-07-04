@@ -61,5 +61,7 @@ def test_workflow_prompt_teaches_graph_and_files():
     runner = AgentRunner(llm, SkillRegistry())
     p = runner.system_prompt
     assert "find_callers" in p and "find_callees" in p  # graph navigation verbs
+    assert "lsp_definition" in p and "lsp_references" in p
+    assert "lsp_route" in p
     assert "grep" in p and "read" in p
     assert "glob" in p and "bash" in p

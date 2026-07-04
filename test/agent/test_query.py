@@ -156,6 +156,42 @@ class TestPreconditions:
         assert result.answer == "ok"
         assert called["n"] == 0
 
+    def test_query_threads_compact_options_to_runner(self, monkeypatch):
+        captured = {}
+
+        from codeminer.agent import runner as runner_mod
+
+        original_init = runner_mod.AgentRunner.__init__
+
+        def _spy_init(self, *args, **kwargs):
+            captured.update(
+                {
+                    "compact_after_read": kwargs.get("compact_after_read"),
+                    "compact_keep_reads": kwargs.get("compact_keep_reads"),
+                    "compact_tail_chars": kwargs.get("compact_tail_chars"),
+                }
+            )
+            return original_init(self, *args, **kwargs)
+
+        monkeypatch.setattr(runner_mod.AgentRunner, "__init__", _spy_init)
+
+        query(
+            "hello",
+            options=CodeMinerAgentOptions(
+                contexts={},
+                llm=_mock_llm_final_answer(answer="ok"),
+                compact_after_read=True,
+                compact_keep_reads=1,
+                compact_tail_chars=123,
+            ),
+        )
+
+        assert captured == {
+            "compact_after_read": True,
+            "compact_keep_reads": 1,
+            "compact_tail_chars": 123,
+        }
+
 
 # ---------------------------------------------------------------------------
 # Compile-table threading

@@ -4,7 +4,7 @@
 
 """Agent package consolidating agent utilities and implementations."""
 
-from .agent_types import AgentResult, ToolCallRecord
+from .agent_types import AgentResult, ToolCallRecord, ToolResultEnvelope
 from .extract_agent import (
     KeywordExtraction,
     KeywordExtractor,
@@ -26,6 +26,7 @@ __all__ = [
     "RerankResult",
     "TokenBudgetedChatHistory",
     "ToolCallRecord",
+    "ToolResultEnvelope",
     "compile_repo",
     "count_message_tokens",
     "extract_keywords_from_statement",
