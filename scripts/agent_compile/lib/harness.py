@@ -173,7 +173,7 @@ def run_cell(
         query_is_specific,
         scatter_gather_localize,
     )
-    from scripts.agent_compile.lib.preload import assemble_preload
+    from codeminer.eval.agent_runner.preload import assemble_preload
 
     accounting = AgentRunAccumulator()
     preload_candidates: List[Dict[str, Any]] = []

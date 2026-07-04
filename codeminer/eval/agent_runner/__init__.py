@@ -19,6 +19,13 @@ from .orchestrator import (
     verdict_is_yes,
     verify_query,
 )
+from .preload import (
+    assemble_preload,
+    graph_compose,
+    interleave_ranked,
+    retrieve_candidates,
+    snippet_for_node,
+)
 from .results import summarize_agent_result
 from .symbols import (
     build_prebuilt_symbol_span_index,
@@ -42,6 +49,7 @@ __all__ = [
     "Verdict",
     "VerifyExpandRun",
     "VERIFY_SYSTEM_PROMPT",
+    "assemble_preload",
     "build_prebuilt_symbol_span_index",
     "build_symbol_span_index",
     "candidate_location",
@@ -49,11 +57,15 @@ __all__ = [
     "default_agent_skills_dir",
     "expansion_seeds_from_candidates",
     "graph_verify",
+    "graph_compose",
+    "interleave_ranked",
     "load_agent_skill_contexts",
     "query_is_specific",
     "render_expansion",
+    "retrieve_candidates",
     "run_verify_expand",
     "scatter_gather_localize",
+    "snippet_for_node",
     "summarize_agent_result",
     "symbol_leaf",
     "verdict_is_yes",
