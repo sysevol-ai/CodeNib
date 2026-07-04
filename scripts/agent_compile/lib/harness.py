@@ -169,7 +169,7 @@ def run_cell(
     )
     from codeminer.agent.skills.registry import SkillRegistry
     from codeminer.compiler.params import SessionContext
-    from scripts.agent_compile.lib.orchestrator import (
+    from codeminer.eval.agent_runner.orchestrator import (
         query_is_specific,
         scatter_gather_localize,
     )

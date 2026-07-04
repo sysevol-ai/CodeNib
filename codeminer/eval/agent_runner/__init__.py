@@ -9,6 +9,16 @@ from .contexts import (
     default_agent_skills_dir,
     load_agent_skill_contexts,
 )
+from .orchestrator import (
+    GATE_SYSTEM,
+    VERIFY_SYSTEM_PROMPT,
+    candidate_location,
+    converge_query,
+    query_is_specific,
+    scatter_gather_localize,
+    verdict_is_yes,
+    verify_query,
+)
 from .results import summarize_agent_result
 from .symbols import (
     build_prebuilt_symbol_span_index,
@@ -27,17 +37,25 @@ from .verify_expand import (
 
 __all__ = [
     "AgentSkillContextSpec",
+    "GATE_SYSTEM",
     "GraphNav",
     "Verdict",
     "VerifyExpandRun",
+    "VERIFY_SYSTEM_PROMPT",
     "build_prebuilt_symbol_span_index",
     "build_symbol_span_index",
+    "candidate_location",
+    "converge_query",
     "default_agent_skills_dir",
     "expansion_seeds_from_candidates",
     "graph_verify",
     "load_agent_skill_contexts",
+    "query_is_specific",
     "render_expansion",
     "run_verify_expand",
+    "scatter_gather_localize",
     "summarize_agent_result",
     "symbol_leaf",
+    "verdict_is_yes",
+    "verify_query",
 ]
