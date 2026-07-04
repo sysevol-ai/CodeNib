@@ -48,11 +48,10 @@ ablation.
 
 | file | purpose |
 |---|---|
+| `feedback_plan.py` | choose a small deterministic feedback slice: fixed smoke cases plus a seed-rotated holdout, stratified by language/group. Outputs JSON instance lists for `run_sweep.py --instances ...`. |
 | `run_sweep.py` | run the sweep: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. Validates the harness (raises on unknown tool/skill ids) before spending. |
 | `aggregate.py` | fold cells into a report: per-arm metrics, skill-invocation histogram, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
-| `lib/config.py` | `SweepConfig` (base + per-arm overlay; **empty `instances` = the full split**). |
-| `lib/harness.py` | dataset loading, prebuilt-index staging into agent `contexts`, scenario classification, the one `run_cell` agent call. |
-| `lib/prebuilt.py` | stage offline-built per-instance indexes into the `cache_dir/<type>` layout. |
+| `lib/*.py` | compatibility shims for older experiment notebooks; reusable config/harness code lives in `codeminer.eval.agent_runner`. |
 
 The agent-localization scorer (answer + `read` paths + retrieval nodes →
 files@k / symbols@k) lives in
@@ -75,6 +74,19 @@ python scripts/agent_compile/run_sweep.py \
 python scripts/agent_compile/aggregate.py \
     --cells-dir results/agent_compile/design_space/cells \
     --output-dir results/agent_compile/design_space
+```
+
+For fast iteration, plan a small feedback slice first and pass the emitted
+`instances` list to `run_sweep.py --instances ...`. Keep the same seed for a
+fixed smoke gate; rotate the seed for a fresh holdout.
+
+```bash
+python scripts/agent_compile/feedback_plan.py \
+    --config scripts/agent_compile/configs/design_space.yaml \
+    --seed 2026w27 \
+    --smoke-per-group 1 \
+    --holdout-per-group 2 \
+    --output-json results/agent_compile/feedback_plan.json
 ```
 
 `run_sweep.py` resumes per cell and does not persist transient (rate-limit)

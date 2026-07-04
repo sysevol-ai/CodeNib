@@ -9,6 +9,7 @@ from .contexts import (
     default_agent_skills_dir,
     load_agent_skill_contexts,
 )
+from .feedback import FeedbackGroup, FeedbackPlan, FeedbackPlanSpec, build_feedback_plan
 from .format_diagnostics import (
     FormatArmSummary,
     FormatDiagnostics,
@@ -68,6 +69,9 @@ __all__ = [
     "AgentSkillContextSpec",
     "FormatArmSummary",
     "FormatDiagnostics",
+    "FeedbackGroup",
+    "FeedbackPlan",
+    "FeedbackPlanSpec",
     "GATE_SYSTEM",
     "GraphNav",
     "LANG_GROUP_TO_KEY",
@@ -82,6 +86,7 @@ __all__ = [
     "analyze_pareto",
     "build_prebuilt_symbol_span_index",
     "build_symbol_span_index",
+    "build_feedback_plan",
     "candidate_location",
     "converge_query",
     "default_agent_skills_dir",
