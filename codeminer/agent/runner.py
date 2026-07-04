@@ -468,10 +468,8 @@ class AgentRunner:
             # Last-turn salvage: if this is the final allowed turn and the agent
             # still hasn't emitted the Files:/Symbols:/Locations: contract, spend
             # it producing a formatted answer instead of one more (truncated)
-            # tool call. Weak models (Qwen3.5-4B) routinely burn all 16 turns
-            # still narrating / mid-grep and never commit a parseable answer
-            # (~55% of cells), which scores 0 even when they found the file. Force
-            # a tool-free schema turn here so the localization isn't lost.
+            # tool call. This is contract preservation: a useful localization can
+            # be lost if the run ends mid-search or in unstructured prose.
             is_last_turn = self._force_contract and turn == max_turns - 1
             last_assistant = ""
             for _m in reversed(history.get_messages()):
@@ -494,13 +492,9 @@ class AgentRunner:
             elif tools:
                 call_kwargs["tools"] = tools
                 # Force tool calls until the agent has actually READ a file.
-                # Claude calls tools eagerly under "auto", but weaker open models
-                # (Qwen2.5-Coder) answer one-shot — and 32B in particular would
-                # fire ONE grep, get 0 hits, then commit a blind answer from the
-                # pre-load candidates without ever reading code (4% read rate vs
-                # 86% for 14B). The localization contract requires reading the
-                # file you cite, so keep tool_choice forced until a read happens;
-                # then drop to "auto" so the model is free to commit. Bounded by
+                # The localization contract requires citing inspected code, so
+                # keep tool_choice forced until a read happens; then drop to
+                # "auto" so the model is free to commit. Bounded by
                 # first_turn_only for the old single-turn behaviour.
                 if self.first_turn_tool_choice and not has_read:
                     if not (self._force_first_turn_only and turn > 0):
@@ -783,11 +777,11 @@ class AgentRunner:
         a tool-history conversation unless ``tools=`` is passed, so we pass it
         with ``tool_choice="none"`` to forbid further calls.
 
-        Weak/over-confident open models (Qwen3.5) often answer in prose or emit a
-        partial contract (e.g. ``Files:`` but no ``Locations:``) even when asked,
-        which scores 0 under span overlap. So we (a) remind them which files they
-        actually read — the answer must come from those — and (b) RETRY until the
-        full 3-line contract is present, up to a small bound.
+        Some runs end in prose or emit a partial contract (e.g. ``Files:`` but no
+        ``Locations:``) even after the prompt requested structured localization.
+        So we (a) remind the model which files it actually read — the answer must
+        come from those — and (b) retry until the full 3-line contract is present,
+        up to a small bound.
         """
         files_hint = ""
         uniq = list(dict.fromkeys(read_paths or []))
