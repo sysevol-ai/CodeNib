@@ -252,3 +252,39 @@ export async function fetchWikiGraph(repoId: string, pageId: string): Promise<Co
   if (!res.ok) throw new Error(`Failed to load page graph (${res.status})`);
   return res.json();
 }
+
+// One end of a dependency edge, addressed by (file, line span) — the frontend
+// has this from the codemap payload but not the graph's internal symbol id.
+export interface EdgeEndpointInput {
+  file: string;
+  line: number | null; // 1-based start of the symbol definition
+  end_line: number | null; // 1-based end
+  label: string; // display name, for the prompt only (not identity)
+}
+
+export interface EdgeLabelResult {
+  label: string; // short LLM phrase, e.g. "validates user input" ("" if none)
+  cached: boolean;
+  disabled: boolean; // feature is off in server config
+}
+
+// Short LLM phrase describing how the source symbol uses the target. On-demand +
+// cached server-side; returns an empty label when the feature is disabled or
+// nothing could be generated (the UI then shows nothing extra).
+export async function fetchEdgeLabel(
+  repoId: string,
+  body: { source: EdgeEndpointInput; target: EdgeEndpointInput; anchors: CallSite[] },
+  opts: { signal?: AbortSignal } = {}
+): Promise<EdgeLabelResult> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/edge-label`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: opts.signal,
+    }
+  );
+  if (!res.ok) throw new Error(`Failed to load edge label (${res.status})`);
+  return res.json();
+}

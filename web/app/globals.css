@@ -2119,6 +2119,19 @@ pre {
   font-weight: 500;
   overflow-wrap: anywhere;
 }
+/* LLM-written one-line summary of how the source symbol uses the target. */
+.callsite-edgelabel {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85em;
+  font-style: italic;
+  color: var(--accent, var(--text-secondary));
+  overflow-wrap: anywhere;
+}
+.callsite-edgelabel.muted {
+  color: var(--muted);
+  font-style: normal;
+}
 .callsite-pager {
   display: inline-flex;
   align-items: center;

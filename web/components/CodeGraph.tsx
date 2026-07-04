@@ -10,6 +10,12 @@ export interface EdgeClickInfo {
   tgtLabel: string;
   srcFile?: string;
   tgtFile?: string;
+  // 1-based definition spans of the two endpoints, so an on-demand edge label
+  // can fetch both symbols' code. Absent for aggregate (collapsed) edges.
+  srcLine?: number | null;
+  srcEnd?: number | null;
+  tgtLine?: number | null;
+  tgtEnd?: number | null;
 }
 
 export interface GraphNodeInfo {
@@ -1539,14 +1545,24 @@ export default function CodeGraph({
     // Click an exact edge → open its LSP/SCIP call site(s). Aggregate (dashed)
     // edges carry no single site — expand the files to reach them.
     cy.on("tap", "edge", (evt) => {
-      const d = evt.target.data();
+      const edge = evt.target;
+      const d = edge.data();
       if (d.anchors?.length) {
+        // Pull the two endpoints' definition spans from the connected nodes so
+        // an edge label can read both symbols' code. Concrete-symbol nodes carry
+        // line/endLine; file pills (aggregate edges) don't → left undefined.
+        const s = edge.source().data();
+        const t = edge.target().data();
         onEdgeClickRef.current?.({
           anchors: d.anchors,
           srcLabel: d.srcShort || d.srcDisplay || "",
           tgtLabel: d.tgtShort || d.tgtDisplay || "",
           srcFile: d.srcFile,
           tgtFile: d.tgtFile,
+          srcLine: s.line ?? null,
+          srcEnd: s.endLine ?? null,
+          tgtLine: t.line ?? null,
+          tgtEnd: t.endLine ?? null,
         });
       }
     });

@@ -67,6 +67,12 @@ class QAConfig:
     # Use the conceptual agent wiki pipeline (outline + per-page generation)
     # instead of the directory-based WikiBuilder.
     wiki_agent: bool = True
+    # Show short LLM-written dependency phrases on graph edges (hover/click).
+    # Off by default: each first-seen edge costs one small LLM call (then cached).
+    edge_labels: bool = False
+    # Optional cheaper model for the (very short) edge-label calls. None ->
+    # falls back to ``model``. Env override: CODEMINER_EDGE_MODEL.
+    edge_label_model: Optional[str] = None
     cors_origins: List[str] = field(
         default_factory=lambda: [
             "http://localhost:3000",
@@ -127,6 +133,11 @@ def load_config(path: Optional[str] = None) -> QAConfig:
             ["python", "javascript", "typescript", "go", "rust"],
         ),
         per_language=data.get("per_language", QAConfig.per_language),
+        # NOTE: use literal defaults, not ``QAConfig.<field>`` — this is a slots
+        # dataclass, so class-level field access returns a member_descriptor
+        # (not the default value) when the YAML key is absent.
+        edge_labels=data.get("edge_labels", False),
+        edge_label_model=data.get("edge_label_model", None),
     )
 
     if os.environ.get("CODEMINER_DEMO_MODEL"):
@@ -135,6 +146,11 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.data_dir = os.environ["CODEMINER_DEMO_DATA_DIR"]
     if os.environ.get("CODEMINER_DEMO_PREBUILT_DIR"):
         cfg.prebuilt_dir = os.environ["CODEMINER_DEMO_PREBUILT_DIR"]
+    _env_edge = os.environ.get("CODEMINER_EDGE_LABELS")
+    if _env_edge is not None:
+        cfg.edge_labels = _env_edge.strip().lower() in ("1", "true", "yes", "on")
+    if os.environ.get("CODEMINER_EDGE_MODEL"):
+        cfg.edge_label_model = os.environ["CODEMINER_EDGE_MODEL"]
 
     return cfg
 

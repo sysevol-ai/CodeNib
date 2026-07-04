@@ -24,6 +24,13 @@ embedding_dimension: 1024
 max_turns: 8
 max_tokens: 4096   # generous: gemini-2.5 is a thinking model (we disable thinking, but keep headroom)
 
+# Show short LLM-written dependency phrases on graph edges (hover/click in the
+# interactive graph view). Off by default: each first-seen edge triggers one
+# small LLM call, then the phrase is cached on disk. Env override:
+# CODEMINER_EDGE_LABELS=1.
+edge_labels: false
+# edge_label_model: openai/gpt-4o-mini   # optional cheaper model for these short calls
+
 cors_origins:
   - http://localhost:3000
   - http://127.0.0.1:3000
