@@ -155,9 +155,15 @@ benchmark cell is currently easiest to improve.
    dependency checks before they can leave experiment policy.
 
 10. **M10d: Legacy shim implementation guard.**
-    Keep `scripts/agent_compile/lib` import-only until removal. Tests should
-    fail if compatibility modules regain functions, classes, or non-package
-    imports that would move reusable ownership back into scripts.
+    Landed in #300. `scripts/agent_compile/lib` is guarded as import-only until
+    removal; tests fail if compatibility modules regain functions, classes, or
+    non-package imports that would move reusable ownership back into scripts.
+
+11. **M9e: LSP route agent-tool contract guard.**
+    Lock the agent-facing `lsp_route` skill contract so it remains a static
+    graph-backed tool with symbol-graph requirements, array symbol inputs, and
+    route anchors produced by the shared core helper rather than eval-only
+    baseline code.
 
 ## Current Boundary Decisions
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from codeminer.agent import lsp_graph
 from codeminer.agent.skills.loader import SkillLoader
+from codeminer.agent.tool_schema import skill_to_tool_schema
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.ops.expand import ExpandContext
 from codeminer.types import NODE_TYPE_FUNCTION
@@ -183,3 +184,37 @@ def test_lsp_skills_load_and_execute_against_expand_context():
     assert meta.executor_fn is not None
     results = meta.executor_fn(symbol="load_config")
     assert [node.node_name for node in results] == ["callee.py:load_config()"]
+
+
+def test_lsp_route_skill_exposes_static_graph_tool_contract():
+    graph = _RouteGraph()
+    context = {"expand": ExpandContext(code_graph=graph)}
+    loader = SkillLoader()
+
+    meta = loader.load_skill("codeminer/agent/skills/lsp_route", context)
+
+    assert meta is not None
+    assert meta.skill_id == "lsp_route"
+    assert meta.operator == "graph.lsp.route"
+    assert meta.defaults == {"top_k": 12, "include_neighbors": True}
+    assert [req.index_type for req in meta.index_requirements] == ["symbol_graph"]
+    assert "Static-index semantic route map" in meta.skill_doc
+
+    schema = skill_to_tool_schema(meta)
+    props = schema["function"]["parameters"]["properties"]
+    assert schema["function"]["parameters"]["required"] == ["symbols"]
+    assert props["symbols"]["type"] == "array"
+    assert props["symbols"]["items"]["type"] == "string"
+    assert props["include_neighbors"]["type"] == "boolean"
+
+    results = meta.executor_fn(
+        symbols=["HandleRequest", "NewResolver"],
+        query="handle request resolver default config",
+        top_k=3,
+    )
+    assert [node.node_name for node in results] == [
+        "svc.HandleRequest",
+        "svc.NewResolver",
+        "svc.DefaultConfig",
+    ]
+    assert results[0].content == "route endpoint: direct seed HandleRequest"
