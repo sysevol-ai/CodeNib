@@ -59,6 +59,30 @@ def test_eval_tests_do_not_import_agent_compile_scripts():
     assert offenders == []
 
 
+def test_experiment_scripts_do_not_use_agent_compile_lib_as_core():
+    """Experiment CLIs should call package APIs, not the legacy lib shims."""
+    offenders = []
+    root = PROJECT_ROOT / "scripts"
+    shim_dir = root / "agent_compile" / "lib"
+    for path in _python_files(root):
+        if path.is_relative_to(shim_dir):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            module = None
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("scripts.agent_compile.lib"):
+                        module = alias.name
+                        break
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module
+            if module and module.startswith("scripts.agent_compile.lib"):
+                offenders.append(f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}")
+
+    assert offenders == []
+
+
 def test_reusable_agent_packages_do_not_name_experiment_surfaces():
     """Core/eval packages should not encode experiment-specific model lore."""
     forbidden = (

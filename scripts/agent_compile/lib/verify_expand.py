@@ -2,35 +2,16 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Agent-compile adapter for graph verify-expand helpers."""
-
-from __future__ import annotations
-
-import os
-from typing import Optional
+"""Compatibility imports for graph verify-expand helpers."""
 
 from codeminer.eval.agent_runner.verify_expand import (
     GraphNav,
     Verdict,
     expansion_seeds_from_candidates,
     graph_verify,
+    load_graph_nav,
     render_expansion,
 )
-
-
-def load_graph_nav(prebuilt_dir: str, instance_id: str) -> Optional[GraphNav]:
-    path = os.path.join(prebuilt_dir, instance_id, "graph.pkl")
-    if not os.path.exists(path):
-        return None
-    try:
-        from codeminer.eval.agent_runner.prebuilt import load_prebuilt_code_graph
-
-        graph = load_prebuilt_code_graph(prebuilt_dir, instance_id)
-    except Exception:  # noqa: BLE001 — missing/corrupt graph just disables verify
-        return None
-    g = getattr(graph, "graph", None)
-    return GraphNav(g) if g is not None else None
-
 
 __all__ = [
     "GraphNav",

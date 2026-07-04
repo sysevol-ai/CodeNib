@@ -48,14 +48,14 @@ from codeminer.eval.agent_runner.prebuilt import (  # noqa: E402
     repo_path_for,
     stage_prebuilt_indexes,
 )
-from codeminer.eval.agent_runner.symbols import (  # noqa: E402
-    build_prebuilt_symbol_span_index,
-)
-from scripts.agent_compile.lib.config import SweepConfig  # noqa: E402
-from scripts.agent_compile.lib.harness import (  # noqa: E402
+from codeminer.eval.agent_runner.sweep import (  # noqa: E402
     load_full_contexts,
     run_cell,
     slug,
+)
+from codeminer.eval.agent_runner.sweep_config import SweepConfig  # noqa: E402
+from codeminer.eval.agent_runner.symbols import (  # noqa: E402
+    build_prebuilt_symbol_span_index,
 )
 
 # language_group / config -> SessionContext primary_language key.
@@ -103,6 +103,7 @@ def run(
     max_queries: Optional[int],
     resume: bool,
 ) -> Dict:
+    from codeminer.eval.agent_runner.verify_expand import load_graph_nav
     from codeminer.eval.retrieval_eval import (
         collect_target_blocks,
         dedup_spans,
@@ -114,7 +115,6 @@ def run(
         spans_overlap,
     )
     from codeminer.llm.litellm_chat import LiteLLMChat
-    from scripts.agent_compile.lib.verify_expand import load_graph_nav
 
     needs_verify = any((r or {}).get("verify") for r in (cfg.preload or {}).values())
     cells_dir = output_dir / "cells"

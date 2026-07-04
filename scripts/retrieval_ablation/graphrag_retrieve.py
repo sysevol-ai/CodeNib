@@ -88,8 +88,8 @@ def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
         repo_path_for,
         stage_prebuilt_indexes,
     )
+    from codeminer.eval.agent_runner.sweep import load_dataset_rows, load_full_contexts
     from codeminer.eval.retrieval_eval import collect_target_blocks, collect_targets
-    from scripts.agent_compile.lib.harness import load_dataset_rows, load_full_contexts
 
     rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[instance_id]
@@ -120,7 +120,7 @@ def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from scripts.agent_compile.lib.config import SweepConfig as SampleConfig
+    from codeminer.eval.agent_runner.sweep_config import SweepConfig as SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)

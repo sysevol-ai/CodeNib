@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -90,6 +91,21 @@ class GraphNav:
                 if len(out) >= max_nodes:
                     return out
         return out
+
+
+def load_graph_nav(prebuilt_dir: str, instance_id: str) -> Optional[GraphNav]:
+    """Load a prebuilt graph as a ``GraphNav`` when available."""
+    path = os.path.join(prebuilt_dir, instance_id, "graph.pkl")
+    if not os.path.exists(path):
+        return None
+    try:
+        from codeminer.eval.agent_runner.prebuilt import load_prebuilt_code_graph
+
+        graph = load_prebuilt_code_graph(prebuilt_dir, instance_id)
+    except Exception:  # noqa: BLE001 - missing/corrupt graph disables verify
+        return None
+    g = getattr(graph, "graph", None)
+    return GraphNav(g) if g is not None else None
 
 
 @dataclass

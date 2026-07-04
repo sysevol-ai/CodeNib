@@ -2,11 +2,12 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared, importable building blocks for the agent-compile cost study.
+"""Compatibility namespace for the agent-compile cost study.
 
-Everything a sweep runner or an offline ablation needs lives here so that no
-*script* imports another *script*. The dependency direction is strictly
-``scripts/* -> scripts/agent_compile/lib/*`` (never script -> sibling script).
+Reusable sweep configuration and harness helpers now live in
+``codeminer.eval.agent_runner``. This package remains so older experiment
+commands and notebooks can import the previous paths while scripts migrate to
+the package APIs directly.
 
 Modules:
 

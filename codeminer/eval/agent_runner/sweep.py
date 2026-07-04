@@ -1,0 +1,291 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Per-instance harness helpers for agent-runner sweep evaluation.
+
+Given a :class:`~codeminer.eval.agent_runner.sweep_config.SweepConfig`, this module
+loads the dataset rows, builds the *full* (union-of-all-subsets) skill context
+once per instance from prebuilt indexes, classifies the scenario, and runs a
+single agent cell (``run_cell``) for a given skill subset.
+
+These helpers intentionally stay independent from ``scripts/`` so experiments
+can provide thin CLIs without owning reusable runner semantics.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List, Optional, Sequence
+
+from .sweep_config import SweepConfig
+
+# language_group (HF column) -> classify() language key
+LANG_GROUP_TO_KEY = {
+    "Python": "python",
+    "Go": "go",
+    "Rust": "rust",
+    "C++/C": "cpp",
+    "TypeScript/JavaScript": "typescript",
+}
+
+
+def slug(value: str) -> str:
+    """Filesystem-safe slug for cell ids."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")
+
+
+# ---------------------------------------------------------------------------
+# Dataset + scenario
+# ---------------------------------------------------------------------------
+
+
+def load_dataset_rows(cfg: SweepConfig):
+    """Return ``(rows_by_id, eval_lookup)`` for the configured instances.
+
+    An empty ``cfg.instances`` means the *whole* split — every instance is
+    returned (the runner then skips any without prebuilt indexes).
+    """
+    from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+
+    ds = CodeMinerBaseDataset(dataset=cfg.dataset, split=cfg.split)
+    data = ds.load()
+    if cfg.instances:
+        wanted = set(cfg.instances)
+        rows_by_id = {r["instance_id"]: r for r in data if r["instance_id"] in wanted}
+    else:
+        rows_by_id = {r["instance_id"]: r for r in data}
+    eval_lookup = ds.load_eval_metadata()
+    return rows_by_id, eval_lookup
+
+
+def scenario_for(query: str, language_key: str) -> str:
+    """Deterministic ``language:has_stacktrace`` scenario key for a query."""
+    from codeminer.agent.compile import classify
+    from codeminer.compiler.params import SessionContext
+
+    sctx = SessionContext(repo_path=".", repo_size=1, primary_language=language_key)
+    return classify(query, sctx).key()
+
+
+# ---------------------------------------------------------------------------
+# Per-instance index loading (full set, once) + per-cell agent run
+# ---------------------------------------------------------------------------
+
+
+# Pre-load recipes name retrievers ("embedding"/"bm25"), not skills; map them to
+# the skill that backs each index so the contexts get built even when no ARM
+# offers that retriever as a tool (pre-load arms only carry default tools).
+_PRELOAD_RETRIEVER_SKILL = {
+    "embedding": "embedding_search",
+    "bm25": "bm25_search",
+    # graph = the codeminer_context composer (search seeds + call-graph expand);
+    # pulling it into the union builds the "expand" (symbol_graph) context.
+    "graph": "codeminer_context",
+}
+
+
+def all_index_skill_ids(cfg: SweepConfig) -> List[str]:
+    """Union of skills across all subsets — used to load the full context once.
+
+    Also includes the skills implied by any ``preload`` recipe, so a pre-load
+    arm whose subset is just default tools still gets its retrieval index built.
+    """
+    seen: List[str] = []
+    for skills in cfg.subsets.values():
+        for s in skills:
+            if s not in seen:
+                seen.append(s)
+    for recipe in (cfg.preload or {}).values():
+        for retriever in recipe.get("retrievers") or []:
+            sk = _PRELOAD_RETRIEVER_SKILL.get(retriever)
+            if sk and sk not in seen:
+                seen.append(sk)
+    return seen
+
+
+def load_full_contexts(cfg: SweepConfig, repo_path: str, cache_dir: str):
+    """Build the full (union) context dict + register every skill once."""
+    from codeminer.eval.agent_runner.contexts import (
+        AgentSkillContextSpec,
+        load_agent_skill_contexts,
+    )
+
+    return load_agent_skill_contexts(
+        repo_path=repo_path,
+        cache_dir=cache_dir,
+        spec=AgentSkillContextSpec(
+            skill_ids=all_index_skill_ids(cfg),
+            # bm25 builds from the prebuilt graph; lang-agnostic.
+            languages=["python"],
+            embedding_model=cfg.embedding_model,
+            embedding_dimension=cfg.embedding_dimension,
+            top_k=cfg.topk,
+            default_level="l2",
+            rebuild=False,
+        ),
+    )
+
+
+def run_cell(
+    cfg: SweepConfig,
+    *,
+    contexts: Dict[str, Any],
+    llm: Any,
+    repo_path: str,
+    language_key: str,
+    query: str,
+    subset_id: str,
+    skills: Sequence[str],
+    preload_spec: Optional[Dict[str, Any]] = None,
+    verify: bool = False,
+    nav: Any = None,
+) -> Dict[str, Any]:
+    """Run one (subset) agent cell against already-loaded contexts.
+
+    When ``preload_spec`` is given, retrieval candidates are computed up front
+    and injected into the agent's opening prompt (the pre-load architecture);
+    the returned ``preload_candidates`` lists the injected ``(file, span)``s for
+    contribution attribution.
+
+    When ``verify`` and a ``nav`` (GraphNav) are given, the committed answer is
+    checked against the graph (deterministic); if it does not resolve to a real
+    symbol, the 1-hop neighbours of the best seeds are injected and the agent
+    answers once more. Token/turn costs of BOTH runs are summed so the verify
+    arm is charged for the closed loop.
+    """
+    from codeminer.agent.harness import (
+        AgentHarnessSpec,
+        AgentRunAccumulator,
+        run_agent_in_directory,
+    )
+    from codeminer.agent.skills.registry import SkillRegistry
+    from codeminer.compiler.params import SessionContext
+    from codeminer.eval.agent_runner.orchestrator import scatter_gather_localize
+    from codeminer.eval.agent_runner.preload import prepare_preload_query
+
+    accounting = AgentRunAccumulator()
+    preload_candidates: List[Dict[str, Any]] = []
+    effective_query = query
+    scatter_mode = False
+    mode = (preload_spec or {}).get("mode")
+    if preload_spec:
+        gate_call = None
+        if mode == "eager_gated":
+
+            def _gate_call(msgs):
+                extra = {}
+                if cfg.gate_llm_extra_body:
+                    extra["extra_body"] = cfg.gate_llm_extra_body
+                resp = llm._call_raw(msgs, **extra)
+                u = getattr(resp, "usage", None)
+                if u is not None:
+                    accounting.add_usage(
+                        {
+                            "prompt_tokens": getattr(u, "prompt_tokens", 0),
+                            "completion_tokens": getattr(u, "completion_tokens", 0),
+                            "total_tokens": getattr(u, "total_tokens", 0),
+                        }
+                    )
+                return resp.choices[0].message.content
+
+            gate_call = _gate_call
+
+        preload_plan = prepare_preload_query(
+            contexts,
+            query,
+            recipe=preload_spec,
+            gate_call=gate_call,
+        )
+        preload_candidates = preload_plan.candidates
+        effective_query = preload_plan.query
+        scatter_mode = preload_plan.scatter
+
+    sctx = SessionContext(
+        repo_path=repo_path, repo_size=1000, primary_language=language_key
+    )
+    # Seed richness is experiment policy. Recipes that use eager_compact should
+    # set compact_keep_reads explicitly; absence means the terse default.
+    _keep_reads = int((preload_spec or {}).get("compact_keep_reads") or 0)
+    harness_spec = AgentHarnessSpec(
+        max_turns=cfg.max_turns,
+        allow_skills=set(skills),
+        include_default_tools=cfg.include_default_tools,
+        default_tool_ids=(
+            set(cfg.default_tool_ids) if cfg.default_tool_ids is not None else None
+        ),
+        system_prompt=cfg.system_prompt,
+        first_turn_tool_choice=getattr(cfg, "first_turn_tool_choice", None) or None,
+        compact_after_read=(mode == "eager_compact"),
+        compact_keep_reads=(_keep_reads if mode == "eager_compact" else 0),
+    )
+    runner = harness_spec.create_runner(
+        llm=llm,
+        registry=SkillRegistry(),
+        session_ctx=sctx,
+    )
+
+    def _do_run(q: str):
+        r = run_agent_in_directory(runner, q, repo_path)
+        accounting.add_result(r)
+        return r
+
+    if scatter_mode:
+
+        def _run_subagent(sys_prompt, q, mt):
+            sub = harness_spec.create_runner(
+                llm=llm,
+                registry=SkillRegistry(),
+                max_turns=mt,
+                session_ctx=sctx,
+                system_prompt=sys_prompt or cfg.system_prompt,
+            )
+            r = run_agent_in_directory(sub, q, repo_path)
+            accounting.add_result(r)
+            return r
+
+        result = scatter_gather_localize(
+            query, preload_candidates, _run_subagent, explore_turns=cfg.max_turns
+        )
+    else:
+        result = _do_run(effective_query)
+
+    from codeminer.eval.agent_runner.verify_expand import run_verify_expand
+
+    verify_run = run_verify_expand(
+        result,
+        query=effective_query,
+        nav=nav,
+        preload_candidates=preload_candidates,
+        rerun=_do_run,
+        enabled=verify,
+    )
+    result = verify_run.result
+
+    from codeminer.eval.agent_runner.results import summarize_agent_result
+
+    observations = summarize_agent_result(result)
+
+    # Sum token usage across every run so verify/scatter arms are charged for
+    # the closed loop, not just their final turn.
+    usage_totals = accounting.usage_totals()
+
+    return {
+        "nodes": observations["nodes"],
+        "tool_calls": observations["tool_calls"],
+        "file_read_paths": observations["file_read_paths"],
+        "file_reads": observations["file_reads"],
+        "preload_candidates": preload_candidates,
+        "answer": observations["answer"],
+        "total_turns": accounting.total_turns(fallback=observations["total_turns"]),
+        "total_duration_ms": observations["total_duration_ms"],
+        "tool_call_count": observations["tool_call_count"],
+        "verify_triggered": verify_run.triggered,
+        "verify_resolved": verify_run.resolved,
+        "prompt_tokens": usage_totals["prompt_tokens"],
+        "completion_tokens": usage_totals["completion_tokens"],
+        "total_tokens": usage_totals["total_tokens"],
+        "cost_usd": usage_totals["cost_usd"],
+        "cache_read_input_tokens": usage_totals["cache_read_input_tokens"],
+        "cache_creation_input_tokens": usage_totals["cache_creation_input_tokens"],
+    }

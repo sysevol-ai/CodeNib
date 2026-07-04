@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.agent_compile.lib.config import SweepConfig
+from codeminer.eval.agent_runner.sweep_config import SweepConfig
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -20,6 +20,8 @@ def test_sweep_config_loads_gate_extra_body_from_yaml(tmp_path):
     config.write_text(
         """
 sweep_id: gate
+model: test/model
+embedding_model: test/embedding
 subsets:
   preinj_eager_gated: [read, grep]
 gate_llm_extra_body:
