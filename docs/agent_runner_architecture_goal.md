@@ -14,6 +14,27 @@ kept as a spike and evidence bundle, not as a merge candidate. The goal is to
 extract the useful findings into reviewable core changes while preventing the
 runner from overfitting to a narrow scorer, dataset slice, or answer format.
 
+## Program Goal
+
+Build an agent harness that turns CodeMiner's graph, chunking, and repository
+analysis into durable agent context, not benchmark-shaped prompt tricks. The
+runner should make context selection, tool use, and finalization observable and
+repeatable across models and repositories. Experiments should prove which
+capabilities help, but the implementation should promote only reusable runtime
+or evaluation APIs.
+
+The program is successful when:
+
+- Core agent modules expose stable contracts for runtime state, tool calls,
+  context accounting, and graph-backed navigation.
+- Evaluation modules can replay and diagnose runs without depending on
+  experiment scripts.
+- Scripts contain configuration, dataset selection, and CLI/report glue only.
+- Every promoted behavior has evidence from raw and normalized metrics across a
+  fixed smoke set and at least one rotating holdout surface.
+- Overfit-risk logic is isolated in evaluation normalization or experiment
+  recipes, never in runtime defaults.
+
 ## North Star
 
 CodeMiner's agent runner should use repository structure better than a plain
@@ -50,7 +71,9 @@ The implementation must keep three layers separate:
 ### Active Iteration Sequence
 
 The milestone labels above describe the long-term architecture. The current
-implementation sequence should stay smaller and reviewable:
+implementation sequence should stay smaller and reviewable. A milestone is only
+done when it improves one of the layer boundaries above and has a test or report
+that would catch regression independent of a single scorer result:
 
 | Step | Scope | Review Boundary | Promotion Signal |
 | --- | --- | --- | --- |
@@ -66,6 +89,19 @@ move reusable plumbing into a package, add a boundary test, or improve the
 feedback signal. Experiment recipes may use model-specific heuristics, but
 runtime and reusable eval APIs must not encode the current scorer, answer
 format, or a tiny fixed dataset slice.
+
+Current operating order:
+
+1. Land the small core/runtime foundations already under review.
+2. Publish one M4b PR that removes reusable harness plumbing from
+   `scripts/agent_compile/lib` without changing benchmark policy.
+3. Publish one M4c PR that moves diagnostics and external-run analysis into
+   `codeminer/eval/agent_runner`.
+4. Build the M5 feedback loop on a small smoke set plus rotating holdout before
+   promoting any runtime default.
+5. Delete or quarantine M6 overfit-risk logic before treating #271 as closed.
+
+Any proposed optimization that cannot pass this order stays experiment-only.
 
 ### M0: Freeze And Audit #271
 
