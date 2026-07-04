@@ -88,7 +88,8 @@ So a PR that touches only docs, scripts, examples, Markdown, `LICENSE`, or
 ### unit
 
 Pure logic with mocks only (~1 min). Sets up a Python 3.12 conda env
-(`codeminer-test`), installs `pip install -e ".[test]"`, then runs (verbatim):
+(`codeminer-test`), preinstalls the pinned CPU PyTorch wheel from the PyTorch
+CPU index, installs `pip install -e ".[test]"`, then runs (verbatim):
 
 ```bash
 pytest -n auto -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short
@@ -244,6 +245,8 @@ use the `./.github/actions/setup-env` composite action, which provisions:
 
 - **conda** env `codeminer-test` (Python 3.12 by default) plus a separate
   `scip-env` from `codeminer/scip_interface/scip-environment.yml`.
+- **Python deps** — pins CPU PyTorch before `pip install -e ".[test]"` so
+  `sentence-transformers` does not resolve CUDA wheels on self-hosted runners.
 - **SCIP Python** — built from the `third_party/scip-python` submodule.
 - **Rust** — stable + a pinned nightly toolchain with the `rust-analyzer`
   component (toggle `install-rust`).
