@@ -25,7 +25,7 @@ from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .history import PlainChatHistory, TokenBudgetedChatHistory
-from .route_context import build_lsp_route_context
+from .route_context import build_lsp_route_context, normalize_lsp_route_seed_policy
 from .runtime.trace import AgentRunTrace
 from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
@@ -173,6 +173,7 @@ class AgentRunner:
         compact_keep_reads: int = 0,
         enable_lsp_route_context: bool = False,
         lsp_route_seed_limit: int = 8,
+        lsp_route_seed_policy: str = "all",
         lsp_route_top_k: int = 12,
         lsp_route_include_neighbors: bool = True,
     ) -> None:
@@ -258,6 +259,9 @@ class AgentRunner:
         # the tool, while still requiring normal reads before answering.
         self._enable_lsp_route_context = bool(enable_lsp_route_context)
         self._lsp_route_seed_limit = max(1, int(lsp_route_seed_limit or 8))
+        self._lsp_route_seed_policy = normalize_lsp_route_seed_policy(
+            lsp_route_seed_policy
+        )
         self._lsp_route_top_k = max(1, int(lsp_route_top_k or 12))
         self._lsp_route_include_neighbors = bool(lsp_route_include_neighbors)
 
@@ -446,6 +450,7 @@ class AgentRunner:
                     0,
                     status="offered",
                     seeds=seeds,
+                    seed_policy=self._lsp_route_seed_policy,
                     route_count=len(route_context.nodes),
                     context_chars=len(route_context.text),
                 )
@@ -465,6 +470,7 @@ class AgentRunner:
                     token_estimate=_estimate_context_tokens(route_context.text),
                     metadata={
                         "seeds": seeds,
+                        "seed_policy": self._lsp_route_seed_policy,
                         "route_count": len(route_context.nodes),
                         "top_k": self._lsp_route_top_k,
                         "include_neighbors": self._lsp_route_include_neighbors,
@@ -758,6 +764,7 @@ class AgentRunner:
                 meta.executor_fn,
                 query,
                 seed_limit=self._lsp_route_seed_limit,
+                seed_policy=self._lsp_route_seed_policy,
                 top_k=self._lsp_route_top_k,
                 include_neighbors=self._lsp_route_include_neighbors,
             )
@@ -1313,6 +1320,7 @@ class CodeMinerAgentOptions:
     max_context_tokens: Optional[int] = None
     enable_lsp_route_context: bool = False
     lsp_route_seed_limit: int = 8
+    lsp_route_seed_policy: str = "all"
     lsp_route_top_k: int = 12
     lsp_route_include_neighbors: bool = True
     retry: Optional[RetryConfig] = None
@@ -1454,6 +1462,7 @@ def query(
         max_context_tokens=opts.max_context_tokens,
         enable_lsp_route_context=opts.enable_lsp_route_context,
         lsp_route_seed_limit=opts.lsp_route_seed_limit,
+        lsp_route_seed_policy=opts.lsp_route_seed_policy,
         lsp_route_top_k=opts.lsp_route_top_k,
         lsp_route_include_neighbors=opts.lsp_route_include_neighbors,
         retry=opts.retry,

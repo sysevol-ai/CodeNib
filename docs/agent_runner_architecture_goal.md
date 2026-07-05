@@ -183,11 +183,19 @@ benchmark cell is currently easiest to improve.
     transient failure persistence belong to the package layer.
 
 15. **M9f: Opt-in initial static LSP route context.**
-    Add a runner/harness option that extracts symbol-like seeds from the task,
-    routes them through the graph-backed `lsp_route` skill, and injects compact
+    Landed in #304. Runner/harness can extract symbol-like seeds from the task,
+    route them through the graph-backed `lsp_route` skill, and inject compact
     unverified route hints into the opening prompt. The context is traced as
     harness-provided startup context, not as a model tool call, and remains
     opt-in until promotion evidence shows raw behavior improvement.
+
+16. **M9g: Route-context seed specificity policy.**
+    Add a core seed policy for opt-in route context so experiments can compare
+    all extracted seeds against a specific-symbol gate without hard-coding
+    instance names or scorer behavior. Generic lowercase seeds such as
+    backticked common words should not trigger graph route startup context under
+    the specific policy; qualified, CamelCase, all-caps, or mixed alpha-digit
+    symbols may still route.
 
 ## Current Boundary Decisions
 
@@ -228,6 +236,9 @@ benchmark cell is currently easiest to improve.
 - Initial `lsp_route` prompt context is a core opt-in harness feature. Seed
   extraction and route rendering live under `codeminer.agent`; eval baselines
   may reuse them, but benchmark-specific context fields stay in eval adapters.
+- Route-context seed gating is harness policy. The default stays `all` for
+  compatibility, while `specific` gives sweeps a cheap feedback path for
+  suppressing low-information seeds before paying the route-context token cost.
   Runner trace/ledger records this as startup context so it remains distinct
   from tools selected by the model itself.
 

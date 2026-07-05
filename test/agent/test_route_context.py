@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from codeminer.agent.route_context import (
     build_lsp_route_context,
     extract_lsp_symbol_seeds,
+    filter_lsp_symbol_seeds,
     render_lsp_route_context,
 )
 from codeminer.types import QueriedNode
@@ -81,3 +84,46 @@ def test_build_lsp_route_context_calls_executor_with_extracted_seeds():
         }
     ]
     assert "svc.py:21-23 svc.NewResolver" in context.text
+
+
+def test_specific_seed_policy_filters_generic_lowercase_seeds():
+    seeds = extract_lsp_symbol_seeds(
+        "Fix `format` in `HandleRequest` near pkg.DefaultConfig and `F523`",
+        limit=8,
+    )
+
+    assert "format" in seeds
+    filtered = filter_lsp_symbol_seeds(seeds, seed_policy="specific")
+
+    assert "format" not in filtered
+    assert "HandleRequest" in filtered
+    assert "pkg.DefaultConfig" in filtered
+    assert "F523" in filtered
+
+
+def test_build_lsp_route_context_specific_policy_skips_generic_seed():
+    calls = []
+
+    def executor(**kwargs):
+        calls.append(kwargs)
+        return []
+
+    context = build_lsp_route_context(
+        executor,
+        "Fix `format` behavior",
+        seed_policy="specific",
+    )
+
+    assert context.seeds == ()
+    assert context.nodes == ()
+    assert context.text == ""
+    assert calls == []
+
+
+def test_lsp_route_context_rejects_unknown_seed_policy():
+    with pytest.raises(ValueError, match="seed_policy"):
+        build_lsp_route_context(
+            lambda **kwargs: [],
+            "Fix `HandleRequest`",
+            seed_policy="benchmark_magic",
+        )

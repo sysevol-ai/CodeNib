@@ -111,6 +111,7 @@ def test_runner_injects_opt_in_lsp_route_context_before_first_llm_call():
     ]
     assert route_events[0].data["status"] == "offered"
     assert route_events[0].data["seeds"] == ["HandleRequest"]
+    assert route_events[0].data["seed_policy"] == "all"
     assert route_events[0].data["route_count"] == 1
 
     route_entries = [
@@ -121,7 +122,38 @@ def test_runner_injects_opt_in_lsp_route_context_before_first_llm_call():
         "kind": "initial_context",
         "tool": "lsp_route",
     }
+    assert route_entries[0].metadata["seed_policy"] == "all"
     assert route_entries[0].metadata["route_count"] == 1
+
+
+def test_runner_specific_lsp_route_seed_policy_skips_generic_seed():
+    calls = []
+    llm = _make_llm()
+    llm._call_raw.return_value = _make_response(content="done")
+
+    result = AgentRunner(
+        llm,
+        _lsp_route_registry(calls),
+        include_default_tools=False,
+        enable_lsp_route_context=True,
+        lsp_route_seed_policy="specific",
+        force_localization_contract=False,
+    ).run("Fix `format` behavior")
+
+    assert calls == []
+    messages = llm._call_raw.call_args.args[0]
+    user_message = next(msg for msg in messages if msg["role"] == "user")["content"]
+    assert user_message == "Fix `format` behavior"
+
+    assert result.trace is not None
+    route_events = [
+        event for event in result.trace.events if event.kind == "lsp_route_context"
+    ]
+    assert route_events[0].data == {
+        "status": "skipped",
+        "reason": "no_symbol_seeds",
+    }
+    assert list(result.trace.context) == []
 
 
 def test_runner_skips_lsp_route_context_when_skill_is_unavailable():

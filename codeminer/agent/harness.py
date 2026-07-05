@@ -30,6 +30,7 @@ from typing import (
 )
 
 from ..llm.usage import TokenUsage
+from .route_context import normalize_lsp_route_seed_policy
 
 USAGE_TOTAL_KEYS = (
     "prompt_tokens",
@@ -116,6 +117,7 @@ class AgentHarnessSpec:
     compact_keep_reads: int = 0
     enable_lsp_route_context: bool = False
     lsp_route_seed_limit: int = 8
+    lsp_route_seed_policy: str = "all"
     lsp_route_top_k: int = 12
     lsp_route_include_neighbors: bool = True
 
@@ -130,6 +132,11 @@ class AgentHarnessSpec:
             raise ValueError("lsp_route_seed_limit must be positive")
         if self.lsp_route_top_k <= 0:
             raise ValueError("lsp_route_top_k must be positive")
+        object.__setattr__(
+            self,
+            "lsp_route_seed_policy",
+            normalize_lsp_route_seed_policy(self.lsp_route_seed_policy),
+        )
 
         object.__setattr__(
             self,
@@ -205,6 +212,7 @@ class AgentHarnessSpec:
             "compact_keep_reads": self.compact_keep_reads,
             "enable_lsp_route_context": self.enable_lsp_route_context,
             "lsp_route_seed_limit": self.lsp_route_seed_limit,
+            "lsp_route_seed_policy": self.lsp_route_seed_policy,
             "lsp_route_top_k": self.lsp_route_top_k,
             "lsp_route_include_neighbors": self.lsp_route_include_neighbors,
             "session_ctx": session_ctx,

@@ -23,6 +23,9 @@ _BACKTICK = re.compile(r"`([^`\n]{2,100})`")
 _TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}(?:\.[A-Za-z_][A-Za-z0-9_]{2,})*")
 _CODEISH = re.compile(r"_|[a-z][A-Z]|[0-9][A-Z]|[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_]")
 _IDENT_STOP = {"BUG", "TODO", "FIXME", "NOTE", "XXX", "HACK", "WARNING", "ERROR"}
+_SEED_POLICIES = frozenset({"all", "specific"})
+_QUALIFIED_SEED = re.compile(r"[._:#/]")
+_CAMEL_SEED = re.compile(r"[a-z][A-Z]")
 
 
 @dataclass(frozen=True)
@@ -73,12 +76,62 @@ def extract_lsp_symbol_seeds(
     return out
 
 
+def normalize_lsp_route_seed_policy(seed_policy: str | None = "all") -> str:
+    """Normalize and validate the startup route seed policy."""
+
+    policy = (seed_policy or "all").strip().lower()
+    if policy not in _SEED_POLICIES:
+        raise ValueError(
+            f"Unsupported lsp_route seed_policy {seed_policy!r}; "
+            f"supported values are {sorted(_SEED_POLICIES)}"
+        )
+    return policy
+
+
+def is_specific_lsp_symbol_seed(seed: str) -> bool:
+    """Return whether *seed* is specific enough for gated startup routing."""
+
+    text = (seed or "").strip().strip("`'\"")
+    if not text:
+        return False
+    if _QUALIFIED_SEED.search(text):
+        return True
+    if _CAMEL_SEED.search(text):
+        return True
+    if text.isupper() and len(text) >= 3:
+        return True
+    if text[:1].isupper() and any(ch.islower() for ch in text[1:]):
+        return True
+    if (
+        any(ch.isalpha() for ch in text)
+        and any(ch.isdigit() for ch in text)
+        and not text.islower()
+    ):
+        return True
+    return False
+
+
+def filter_lsp_symbol_seeds(
+    seeds: Iterable[str],
+    *,
+    seed_policy: str | None = "all",
+) -> List[str]:
+    """Apply a route startup seed policy while preserving seed order."""
+
+    policy = normalize_lsp_route_seed_policy(seed_policy)
+    out = list(seeds)
+    if policy == "all":
+        return out
+    return [seed for seed in out if is_specific_lsp_symbol_seed(seed)]
+
+
 def build_lsp_route_context(
     executor: Any,
     query: str,
     *,
     explicit_seeds: Any = None,
     seed_limit: int = 8,
+    seed_policy: str | None = "all",
     top_k: int = 12,
     include_neighbors: bool = True,
 ) -> LSPRouteContext:
@@ -89,6 +142,7 @@ def build_lsp_route_context(
         explicit=explicit_seeds,
         limit=seed_limit,
     )
+    seeds = filter_lsp_symbol_seeds(seeds, seed_policy=seed_policy)
     if not seeds:
         return LSPRouteContext(seeds=(), nodes=(), text="")
 
@@ -206,5 +260,8 @@ __all__ = [
     "LSPRouteContext",
     "build_lsp_route_context",
     "extract_lsp_symbol_seeds",
+    "filter_lsp_symbol_seeds",
+    "is_specific_lsp_symbol_seed",
+    "normalize_lsp_route_seed_policy",
     "render_lsp_route_context",
 ]

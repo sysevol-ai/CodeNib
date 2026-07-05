@@ -22,6 +22,9 @@ from .route_context import (
     LSPRouteContext,
     build_lsp_route_context,
     extract_lsp_symbol_seeds,
+    filter_lsp_symbol_seeds,
+    is_specific_lsp_symbol_seed,
+    normalize_lsp_route_seed_policy,
     render_lsp_route_context,
 )
 from .runner import (
@@ -65,7 +68,10 @@ __all__ = [
     "build_lsp_route_context",
     "extract_keywords_from_statement",
     "extract_lsp_symbol_seeds",
+    "filter_lsp_symbol_seeds",
     "has_localization_contract",
+    "is_specific_lsp_symbol_seed",
+    "normalize_lsp_route_seed_policy",
     "query",
     "rerank_nodes_with_query",
     "render_lsp_route_context",

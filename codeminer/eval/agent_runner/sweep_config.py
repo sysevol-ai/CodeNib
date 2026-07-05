@@ -81,11 +81,12 @@ class SweepConfig:
     # before a sweep can compare route-context behavior.
     enable_lsp_route_context: bool = False
     lsp_route_seed_limit: int = 8
+    lsp_route_seed_policy: str = "all"
     lsp_route_top_k: int = 12
     lsp_route_include_neighbors: bool = True
     # Per-arm route-context policy, keyed by subset id. A mapping entry enables
-    # route context only for that arm and may override seed_limit/top_k/
-    # include_neighbors; an empty mapping uses the defaults above.
+    # route context only for that arm and may override seed_limit/seed_policy/
+    # top_k/include_neighbors; an empty mapping uses the defaults above.
     lsp_route_context: Dict[str, Any] = field(default_factory=dict)
     # AgentRunner does not force localization formatting by default. This eval
     # config explicitly opts into the localization answer contract so historical

@@ -301,6 +301,9 @@ def run_cell(
         lsp_route_seed_limit=int(
             route_context_spec.get("seed_limit", cfg.lsp_route_seed_limit)
         ),
+        lsp_route_seed_policy=str(
+            route_context_spec.get("seed_policy", cfg.lsp_route_seed_policy)
+        ),
         lsp_route_top_k=int(route_context_spec.get("top_k", cfg.lsp_route_top_k)),
         lsp_route_include_neighbors=bool(
             route_context_spec.get(
