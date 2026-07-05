@@ -2,11 +2,10 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Reuse pre-built per-instance indexes for the agent-compile sample sweep.
+"""Stage pre-built per-instance indexes for agent-runner evaluation.
 
 The offline embedding pipeline writes one directory per instance under a
-prebuilt tree (default ``/mnt/data/codeminer/<instance_id>/``) with a flat
-layout::
+prebuilt tree such as ``<prebuilt-root>/<instance_id>/`` with a flat layout::
 
     <instance_id>/repo/                          # source @ base_commit
     <instance_id>/graph.pkl                      # symbol graph (CodeGraph)

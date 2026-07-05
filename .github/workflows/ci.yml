@@ -17,7 +17,7 @@ on:
   pull_request:
     branches:
       - "*"
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -46,6 +46,10 @@ on:
 permissions:
   contents: read
 
+env:
+  CODEMINER_CI_TORCH_VERSION: "2.12.1+cpu"
+  CODEMINER_CI_TORCH_INDEX_URL: "https://download.pytorch.org/whl/cpu"
+
 concurrency:
   # Group by PR head ref so only a *new commit on the same PR* preempts the
   # in-flight run. On main/master pushes and scheduled runs (no head_ref) we
@@ -72,6 +76,8 @@ jobs:
       should-run: ${{ steps.check.outputs.should-run }}
       run-serial: ${{ steps.serial.outputs.run-serial }}
       serial-reason: ${{ steps.serial.outputs.serial-reason }}
+      run-slow: ${{ steps.slow.outputs.run-slow }}
+      slow-reason: ${{ steps.slow.outputs.slow-reason }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -108,9 +114,10 @@ jobs:
         id: filter
         uses: dorny/paths-filter@v3
         with:
-          base: ${{ github.event_name == 'push' && github.ref || '' }}
+          base: ${{ github.event_name == 'push' && github.event.before || '' }}
           filters: |
             serial:
+              - ".github/workflows/ci.yml"
               - ".github/actions/setup-env/**"
               - "pyproject.toml"
               - "third_party/**"
@@ -150,8 +157,10 @@ jobs:
                 REASON="manual light tier"
               fi ;;
             push)
-              RUN_SERIAL=true
-              REASON="main/master push" ;;
+              if [[ "${{ steps.filter.outputs.serial }}" == "true" ]]; then
+                RUN_SERIAL=true
+                REASON="serial-chain path changed on main/master push"
+              fi ;;
             pull_request)
               if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]] || \
                  [[ "${{ contains(github.event.pull_request.labels.*.name, 'serial-ci') }}" == "true" ]]; then
@@ -166,6 +175,33 @@ jobs:
           echo "serial-reason=$REASON" >> "$GITHUB_OUTPUT"
           echo "run-serial=$RUN_SERIAL ($REASON)"
 
+      - name: Compute run-slow
+        id: slow
+        run: |
+          RUN_SLOW=false
+          REASON="not requested"
+          case "${{ github.event_name }}" in
+            schedule)
+              RUN_SLOW=true
+              REASON="scheduled full run" ;;
+            workflow_dispatch)
+              if [[ "${{ github.event.inputs.test_tier }}" == "full" ]]; then
+                RUN_SLOW=true
+                REASON="manual full tier"
+              else
+                REASON="manual light tier"
+              fi ;;
+            pull_request)
+              if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]] || \
+                 [[ "${{ contains(github.event.pull_request.labels.*.name, 'slow-ci') }}" == "true" ]]; then
+                RUN_SLOW=true
+                REASON="PR label requested slow/full CI"
+              fi ;;
+          esac
+          echo "run-slow=$RUN_SLOW" >> "$GITHUB_OUTPUT"
+          echo "slow-reason=$REASON" >> "$GITHUB_OUTPUT"
+          echo "run-slow=$RUN_SLOW ($REASON)"
+
   # =============================================================
   # Job 1 — Unit tests  (pure logic, mocks only, ~1 min)
   # =============================================================
@@ -175,14 +211,21 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 20
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
       XDG_CACHE_HOME: ${{ github.workspace }}/../.cache/xdg
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -199,6 +242,9 @@ jobs:
         shell: bash -l {0}
         run: |
           python -m pip install --upgrade pip
+          python -m pip install \
+            --index-url "$CODEMINER_CI_TORCH_INDEX_URL" \
+            "torch==$CODEMINER_CI_TORCH_VERSION"
           pip install -e ".[test]"
 
       - name: Prewarm tree-sitter parsers
@@ -242,13 +288,20 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -273,13 +326,20 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 45
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Persist codeminer cache across runs
         run: |
@@ -347,13 +407,20 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Persist codeminer cache across runs
         run: |
@@ -454,13 +521,20 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 15
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Persist codeminer cache across runs
         run: |
@@ -487,19 +561,26 @@ jobs:
   # Job 4 — Slow tests  (LLM API, GPU embeddings, ~15 min)
   # =============================================================
   slow:
-    needs: [preflight, unit]
-    if: needs.preflight.outputs.should-run == 'true'
+    needs: [preflight, unit, integration, integration-serial, scip-core, graph-consumer]
+    if: always() && needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-slow == 'true' && needs.unit.result == 'success' && needs.integration.result == 'success' && (needs.integration-serial.result == 'success' || needs.integration-serial.result == 'skipped') && (needs.scip-core.result == 'success' || needs.scip-core.result == 'skipped') && (needs.graph-consumer.result == 'success' || needs.graph-consumer.result == 'skipped')
     runs-on: self-hosted
     timeout-minutes: 60
     env:
+      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
+      TMPDIR: ${{ github.workspace }}/../.tmp
+      TMP: ${{ github.workspace }}/../.tmp
+      TEMP: ${{ github.workspace }}/../.tmp
       VERTEXAI_PROJECT: ${{ vars.VERTEXAI_PROJECT }}
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Persist codeminer cache across runs
         run: |

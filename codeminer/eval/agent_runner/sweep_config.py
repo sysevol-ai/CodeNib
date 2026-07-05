@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Experiment configuration for the agent-compile cost study.
+"""Experiment configuration for agent-runner sweep evaluation.
 
 A ``SweepConfig`` is one experiment arm: a model + dataset + a *harness*
 (which skills the agent may use, whether the always-on file tools are present,
@@ -41,8 +41,8 @@ class SweepConfig:
     # instance with prebuilt indexes) — the cost arms run on the full corpus,
     # so arms are directly comparable on the same instances.
     instances: List[str] = field(default_factory=list)
-    model: str = "vertex_ai/claude-haiku-4-5"
-    vertex_location: Optional[str] = "us-east5"
+    model: Optional[str] = None
+    vertex_location: Optional[str] = None
     vertex_project: Optional[str] = None
     reps: int = 2
     max_turns: int = 20
@@ -53,7 +53,7 @@ class SweepConfig:
     dataset: str = "fishmingyu/codeminer-base-dataset"
     split: str = "test"
     prebuilt_dir: str = "/mnt/data/codeminer"
-    embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
+    embedding_model: Optional[str] = None
     embedding_dimension: int = 1024
     metrics_k: List[int] = field(default_factory=lambda: [1, 3, 5, 10])
     gt_simplified_symbols: bool = True
@@ -72,11 +72,30 @@ class SweepConfig:
     # Override the agent system prompt (e.g. a graph-primary prompt with no grep
     # guidance). None = runner's default localization prompt.
     system_prompt: Optional[str] = None
-    # Force a tool call on the FIRST agent turn (e.g. "required"). Weak open
-    # models (Qwen2.5-Coder) answer one-shot under the default "auto" and never
-    # exercise the loop; this makes them actually grep/read. None = leave "auto"
-    # (correct for Claude, which calls tools eagerly).
+    # Force a tool call on the FIRST agent turn (e.g. "required"). Some models
+    # answer one-shot under the default "auto" and never exercise the loop; this
+    # makes them actually grep/read. None = leave "auto".
     first_turn_tool_choice: Optional[str] = None
+    # Opt-in startup route hints from the static graph-backed lsp_route skill.
+    # This is harness policy, not a default: configs must enable it explicitly
+    # before a sweep can compare route-context behavior.
+    enable_lsp_route_context: bool = False
+    lsp_route_seed_limit: int = 8
+    lsp_route_seed_policy: str = "all"
+    lsp_route_top_k: int = 12
+    lsp_route_include_neighbors: bool = True
+    # Per-arm route-context policy, keyed by subset id. A mapping entry enables
+    # route context only for that arm and may override seed_limit/seed_policy/
+    # top_k/include_neighbors; an empty mapping uses the defaults above.
+    lsp_route_context: Dict[str, Any] = field(default_factory=dict)
+    # AgentRunner does not force localization formatting by default. This eval
+    # config explicitly opts into the localization answer contract so historical
+    # sweep cells stay comparable while production/default runners remain
+    # benchmark-agnostic.
+    force_localization_contract: bool = True
+    # Provider-specific raw-call body for the lightweight eager_gated classifier.
+    # Keep quirks in config files instead of branching on model names in code.
+    gate_llm_extra_body: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SweepConfig":
@@ -88,7 +107,7 @@ class SweepConfig:
         tools) while the shared environment + dataset live in one base file.
         """
         merged = cls._load_layered(Path(path))
-        for req in ("sweep_id", "subsets"):
+        for req in ("sweep_id", "subsets", "model", "embedding_model"):
             if req not in merged:
                 raise ValueError(f"{path}: {req!r} is required")
         if not isinstance(merged["subsets"], dict):

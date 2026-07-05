@@ -26,6 +26,23 @@ from pathlib import Path
 
 import pytest
 
+
+def _cuda_available() -> bool:
+    try:
+        import torch
+    except Exception:
+        return False
+    return bool(torch.cuda.is_available())
+
+
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        not _cuda_available(),
+        reason="embedding_search e2e requires a CUDA-capable torch install",
+    ),
+]
+
 DEFAULT_EMBEDDING_MODEL = "nomic-ai/CodeRankEmbed"
 DEFAULT_EMBEDDING_DIM = 768
 DEFAULT_EMBEDDING_PROVIDER = "huggingface"
