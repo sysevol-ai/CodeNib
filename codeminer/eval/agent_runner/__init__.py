@@ -25,6 +25,14 @@ from .contexts import (
     load_agent_skill_contexts,
 )
 from .feedback import FeedbackGroup, FeedbackPlan, FeedbackPlanSpec, build_feedback_plan
+from .feedback_summary import (
+    FeedbackArmDelta,
+    FeedbackArmSummary,
+    FeedbackSummary,
+    load_feedback_summary,
+    summarize_feedback_arm,
+    summarize_feedback_cells,
+)
 from .format_diagnostics import (
     FormatArmSummary,
     FormatDiagnostics,
@@ -121,6 +129,9 @@ __all__ = [
     "FeedbackGroup",
     "FeedbackPlan",
     "FeedbackPlanSpec",
+    "FeedbackArmDelta",
+    "FeedbackArmSummary",
+    "FeedbackSummary",
     "GATE_SYSTEM",
     "GraphNav",
     "LANG_GROUP_TO_KEY",
@@ -161,6 +172,7 @@ __all__ = [
     "load_cell_jsons",
     "load_dataset_rows",
     "load_format_diagnostics",
+    "load_feedback_summary",
     "load_full_contexts",
     "load_prebuilt_lsp_graph",
     "locations_from_lsp_nodes",
@@ -188,6 +200,8 @@ __all__ = [
     "slug",
     "summarize_agent_result",
     "summarize_agent_trace",
+    "summarize_feedback_arm",
+    "summarize_feedback_cells",
     "summarize_format_cells",
     "symbol_leaf",
     "unique_location_files",

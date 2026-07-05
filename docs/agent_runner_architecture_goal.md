@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 # Agent Runner Architecture Goal
 
 Status: Active architecture program
-Last revised: 2026-07-04
+Last revised: 2026-07-05
 
 This page is the durable plan for the post-#271 agent runner work. PR #271 stays
 as a spike and evidence bundle, not as a merge candidate. The useful pieces must
@@ -200,6 +200,10 @@ benchmark cell is currently easiest to improve.
   failure, span metrics, or preload contribution logic.
 - Small feedback slices are selected by deterministic smoke plus rotated
   holdout plans, not by hand-picking named project instances.
+- Small-run feedback summaries live in
+  `codeminer.eval.agent_runner.feedback_summary`. Scripts may render or persist
+  them, but arm grouping, baseline deltas, context-source counts, and runtime
+  failure grouping should remain package APIs.
 - The old `scripts/agent_compile/lib` compatibility namespace has been removed.
   New code must import reusable helpers from `codeminer.eval.agent_runner`.
 - External localization baseline helpers live under
