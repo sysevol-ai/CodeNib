@@ -8,6 +8,9 @@ vertex_project: null
 reps: 1
 max_turns: 16
 first_turn_tool_choice: null
+gate_llm_extra_body:
+  chat_template_kwargs:
+    enable_thinking: false
 instances: []
 subsets:
   grep_only: [read, grep, glob, bash]

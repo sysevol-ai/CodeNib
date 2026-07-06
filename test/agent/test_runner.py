@@ -142,13 +142,33 @@ class TestAgentRunner:
             ),
         ]
 
-        runner = AgentRunner(llm, echo_registry)
+        runner = AgentRunner(
+            llm,
+            echo_registry,
+            force_localization_contract=True,
+        )
         result = runner.run("Echo hello")
 
         assert result.total_turns == 2
         assert result.answer.endswith("Locations: src/a.py:10-20")
         assert llm._call_raw.call_count == 3
         assert llm._call_raw.call_args.kwargs.get("tool_choice") == "none"
+
+    def test_partial_contract_answer_is_not_forced_by_default(self, echo_registry):
+        """Generic runner defaults do not repair localization formatting."""
+        llm = _make_llm()
+        tc = _make_tool_call("call_1", "echo", '{"text": "hello"}')
+        llm._call_raw.side_effect = [
+            _make_response(tool_calls=[tc]),
+            _make_response(content="Files: src/a.py"),
+        ]
+
+        runner = AgentRunner(llm, echo_registry)
+        result = runner.run("Echo hello")
+
+        assert result.total_turns == 2
+        assert result.answer == "Files: src/a.py"
+        assert llm._call_raw.call_count == 2
 
     def test_multiple_tool_calls_in_one_response(self, echo_registry):
         """LLM returns multiple tool calls in a single response."""
@@ -197,7 +217,12 @@ class TestAgentRunner:
             _make_response(content="Best-effort summary."),
         ]
 
-        runner = AgentRunner(llm, echo_registry, max_turns=3)
+        runner = AgentRunner(
+            llm,
+            echo_registry,
+            max_turns=3,
+            force_localization_contract=True,
+        )
         result = runner.run("loop forever")
 
         assert result.total_turns == 3

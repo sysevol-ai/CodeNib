@@ -2,33 +2,20 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the prebuilt-index staging helper (issue #133)."""
+"""Unit tests for prebuilt-index staging helpers."""
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import pickle
 from pathlib import Path
 
-_SPEC = importlib.util.spec_from_file_location(
-    "prebuilt",
-    Path(__file__).resolve().parents[2]
-    / "scripts"
-    / "agent_compile"
-    / "lib"
-    / "prebuilt.py",
-)
-prebuilt = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(prebuilt)
+from codeminer.eval.agent_runner import prebuilt
 
 
 def test_model_suffix():
-    assert (
-        prebuilt.model_suffix("Qwen/Qwen3-Embedding-0.6B")
-        == "Qwen__Qwen3-Embedding-0.6B"
-    )
-    assert prebuilt.model_suffix("nomic-ai/CodeRankEmbed") == "nomic-ai__CodeRankEmbed"
+    assert prebuilt.model_suffix("org/embed-small") == "org__embed-small"
+    assert prebuilt.model_suffix("vendor/CodeRankEmbed") == "vendor__CodeRankEmbed"
 
 
 def _make_prebuilt(root: Path, iid: str, model: str, *, full=True):
@@ -72,7 +59,7 @@ def _write_legacy_graph(path: Path):
 
 
 def test_has_full_indexes_true_false(tmp_path):
-    model = "Qwen/Qwen3-Embedding-0.6B"
+    model = "org/embed-small"
     _make_prebuilt(tmp_path, "good", model, full=True)
     _make_prebuilt(tmp_path, "partial", model, full=False)
     assert prebuilt.has_full_indexes(str(tmp_path), "good", model) is True
@@ -86,7 +73,7 @@ def test_repo_and_instance_paths(tmp_path):
 
 
 def test_stage_creates_symlinks_without_bm25(tmp_path):
-    model = "Qwen/Qwen3-Embedding-0.6B"
+    model = "org/embed-small"
     src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
     cache = tmp_path / "cache" / "inst"
     # build_bm25=False so the test needs no real graph/index machinery
@@ -105,7 +92,7 @@ def test_stage_creates_symlinks_without_bm25(tmp_path):
 
 
 def test_stage_is_idempotent(tmp_path):
-    model = "Qwen/Qwen3-Embedding-0.6B"
+    model = "org/embed-small"
     _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
     cache = tmp_path / "cache" / "inst"
     prebuilt.stage_prebuilt_indexes(
@@ -128,7 +115,7 @@ def test_stage_missing_instance_raises(tmp_path):
 
 
 def test_load_prebuilt_code_graph_accepts_legacy_bundle(tmp_path):
-    model = "Qwen/Qwen3-Embedding-0.6B"
+    model = "org/embed-small"
     src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
     _write_legacy_graph(src / "graph.pkl")
 
@@ -143,7 +130,7 @@ def test_load_prebuilt_code_graph_accepts_legacy_bundle(tmp_path):
 def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):
     from codeminer.graph.code_graph import CodeGraph
 
-    model = "Qwen/Qwen3-Embedding-0.6B"
+    model = "org/embed-small"
     src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
     graph = CodeGraph(project_root="repo")
     graph.add_file_node("pkg/direct.py")
@@ -159,7 +146,7 @@ def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):
 def test_stage_normalizes_legacy_graph_for_strict_loader(tmp_path):
     from codeminer.graph.code_graph import CodeGraph
 
-    model = "Qwen/Qwen3-Embedding-0.6B"
+    model = "org/embed-small"
     src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
     _write_legacy_graph(src / "graph.pkl")
     cache = tmp_path / "cache" / "inst"

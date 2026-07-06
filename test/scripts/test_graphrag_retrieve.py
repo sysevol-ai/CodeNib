@@ -68,15 +68,15 @@ def test_retrieve_loads_contexts_from_prebuilt_repo_not_staged_cache(
             )
 
     monkeypatch.setattr(
-        "scripts.agent_compile.lib.harness.load_dataset_rows",
+        "codeminer.eval.agent_runner.sweep.load_dataset_rows",
         fake_load_dataset_rows,
     )
     monkeypatch.setattr(
-        "scripts.agent_compile.lib.prebuilt.stage_prebuilt_indexes",
+        "codeminer.eval.agent_runner.prebuilt.stage_prebuilt_indexes",
         fake_stage_prebuilt_indexes,
     )
     monkeypatch.setattr(
-        "scripts.agent_compile.lib.harness.load_full_contexts",
+        "codeminer.eval.agent_runner.sweep.load_full_contexts",
         fake_load_full_contexts,
     )
     monkeypatch.setattr(

@@ -4,7 +4,7 @@
 
 """Tests for runtime-probe Pareto analysis."""
 
-from scripts.agent_compile.pareto_ci import analyze
+from codeminer.eval.agent_runner.pareto import analyze_pareto
 
 
 def _cell(
@@ -34,6 +34,6 @@ def test_all_pairs_duplicate_query_ids_within_each_category():
         _cell("traversal", "preinj_embed", "same-query-id", 0.0, 0.5, 2),
     ]
 
-    report = analyze(cells, baseline="grep_only", boot=100, seed=0)
+    report = analyze_pareto(cells, baseline="grep_only", boot=100, seed=0)
 
     assert "| ALL | preinj_embed | 2 | +0.000" in report

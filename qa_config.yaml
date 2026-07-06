@@ -31,6 +31,27 @@ max_tokens: 4096   # generous: gemini-2.5 is a thinking model (we disable thinki
 edge_labels: false
 # edge_label_model: openai/gpt-4o-mini   # optional cheaper model for these short calls
 
+# ── Rerank strategy ─────────────────────────────────────────────────────────────
+# Controls how retrieved candidates are re-scored before the LLM writes its answer.
+# Restart the backend after changing (no reindex needed).
+#
+#   "embedding"    — dot-product against pre-indexed FAISS vectors (~16ms, default)
+#                    no extra VRAM, fast, good enough for most use cases
+#   "crossencoder" — neural pair scoring: model sees (query + doc) jointly
+#                    more accurate; ~108ms @ N=25 with Qwen3-Reranker-0.6B (+550MB VRAM)
+#
+# crossencoder_model options (all Qwen3-Reranker-* use the yes/no logit trick;
+# others e.g. mxbai-rerank-large-v2 use sentence-transformers CrossEncoder):
+#   Qwen/Qwen3-Reranker-0.6B          ~108ms @ N=25   ★ recommended
+#   Qwen/Qwen3-Reranker-4B            ~400ms @ N=25     higher quality
+#   mixedbread-ai/mxbai-rerank-large-v2  ~800ms @ N=25  not recommended (batching ceiling)
+#
+# See: codeminer/web/config.py (QAConfig), codeminer/ops/rerank.py (CrossEncoderContext)
+#      index/rerank/cross_encoder.py (build_reranker auto-detects backend from model name)
+rerank_strategy: embedding
+# crossencoder_model: Qwen/Qwen3-Reranker-0.6B
+# crossencoder_batch_size: 8
+
 cors_origins:
   - http://localhost:3000
   - http://127.0.0.1:3000

@@ -48,16 +48,17 @@ ablation.
 
 | file | purpose |
 |---|---|
-| `run_sweep.py` | run the sweep: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. Validates the harness (raises on unknown tool/skill ids) before spending. |
+| `feedback_plan.py` | choose a small deterministic feedback slice: fixed smoke cases plus a seed-rotated holdout, stratified by language/group. Outputs JSON instance lists for `run_sweep.py --instances ...`. |
+| `run_sweep.py` | thin CLI for `codeminer.eval.agent_runner.sweep.run_sweep`: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. |
+| `run_synthesis_sweep.py` | thin CLI for `codeminer.eval.agent_runner.query_sweep.run_query_sweep`: many query rows per prebuilt repo, loaded from `sysevol-ai/codeminer-synthesis`; `cells/<id>.json` + `synthesis_summary.json`. |
+| `feedback_summary.py` | thin report CLI for `codeminer.eval.agent_runner.feedback_summary`: arm summaries, baseline deltas, context-source counts, and runtime failure groups for small feedback runs. |
 | `aggregate.py` | fold cells into a report: per-arm metrics, skill-invocation histogram, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
-| `lib/config.py` | `SweepConfig` (base + per-arm overlay; **empty `instances` = the full split**). |
-| `lib/harness.py` | dataset loading, prebuilt-index staging into agent `contexts`, scenario classification, the one `run_cell` agent call. |
-| `lib/prebuilt.py` | stage offline-built per-instance indexes into the `cache_dir/<type>` layout. |
 
-The agent-localization scorer (answer + `read` paths + retrieval nodes →
+The base agent-localization scorer (answer + `read` paths + retrieval nodes →
 files@k / symbols@k) lives in
 `codeminer/eval/retrieval_eval.py:score_agent_localization`, shared by the
-runner and the offline ablations.
+runner and the offline ablations. Sweep cell scoring glue (span metrics, format
+failure, pre-load contribution) lives in `codeminer.eval.agent_runner.scoring`.
 
 **Not here:** the offline *retrieval* ablations (no agent, no LLM) live in
 `scripts/retrieval_ablation/` (`graphrag_retrieve`, `graph_recall_ablation`,
@@ -77,13 +78,40 @@ python scripts/agent_compile/aggregate.py \
     --output-dir results/agent_compile/design_space
 ```
 
+For fast iteration, plan a small feedback slice first and pass the emitted
+`instances` list to `run_sweep.py --instances ...`. Keep the same seed for a
+fixed smoke gate; rotate the seed for a fresh holdout.
+
+```bash
+python scripts/agent_compile/feedback_plan.py \
+    --config scripts/agent_compile/configs/design_space.yaml \
+    --seed 2026w27 \
+    --smoke-per-group 1 \
+    --holdout-per-group 2 \
+    --output-json results/agent_compile/feedback_plan.json
+
+python scripts/agent_compile/feedback_summary.py \
+    results/agent_compile/design_space \
+    --baseline defaults_only \
+    --output-json results/agent_compile/design_space/feedback_summary.json
+```
+
 `run_sweep.py` resumes per cell and does not persist transient (rate-limit)
 failures, so a re-run retries them. Instances without prebuilt indexes are
 skipped and recorded in `sweep_summary.json`.
 
+## Reusable Code Boundary
+
+Reusable config, harness, sweep execution, per-query sweep execution, preload,
+orchestration, scoring, and baseline helpers live in
+`codeminer.eval.agent_runner`. `scripts/agent_compile` owns experiment CLIs,
+configs, dataset selection, and report glue only; the old
+`scripts.agent_compile.lib` compatibility namespace has been removed.
+
 ## How indexes reach the agent
 
-Prebuilt per-instance indexes: `lib/prebuilt.py` symlinks the prebuilt `vector`
-+ `graph.pkl` under `prebuilt_dir/<instance>/` into the `cache_dir/<type>`
-layout and builds BM25 fresh, then `build_skill_contexts(rebuild=False)` *loads*
-them — no cloning/reindexing, no `RepoManifest`.
+Prebuilt per-instance indexes:
+`codeminer.eval.agent_runner.prebuilt` symlinks the prebuilt `vector` +
+`graph.pkl` under `prebuilt_dir/<instance>/` into the `cache_dir/<type>` layout
+and builds BM25 fresh, then `build_skill_contexts(rebuild=False)` *loads* them
+— no cloning/reindexing, no `RepoManifest`.
