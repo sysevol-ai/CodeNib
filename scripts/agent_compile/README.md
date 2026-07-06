@@ -52,7 +52,7 @@ ablation.
 | `run_sweep.py` | thin CLI for `codeminer.eval.agent_runner.sweep.run_sweep`: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. |
 | `run_synthesis_sweep.py` | thin CLI for `codeminer.eval.agent_runner.query_sweep.run_query_sweep`: many query rows per prebuilt repo, loaded from `sysevol-ai/codeminer-synthesis`; `cells/<id>.json` + `synthesis_summary.json`. |
 | `feedback_summary.py` | thin report CLI for `codeminer.eval.agent_runner.feedback_summary`: arm summaries, baseline deltas, context-source counts, and runtime failure groups for small feedback runs. |
-| `aggregate.py` | fold cells into a report: per-arm metrics, skill-invocation histogram, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
+| `aggregate.py` | thin report CLI for `codeminer.eval.reports.cost_arm_report`: per-arm metrics, skill-invocation histogram, LSP-route adoption, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
 
 The base agent-localization scorer (answer + `read` paths + retrieval nodes →
 files@k / symbols@k) lives in

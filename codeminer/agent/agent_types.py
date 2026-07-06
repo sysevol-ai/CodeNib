@@ -20,6 +20,7 @@ class ToolCallRecord:
     tool_call_id: str
     skill_id: str
     arguments: Dict[str, Any]
+    resolved_arguments: Optional[Dict[str, Any]] = None
     result: Any = None
     duration_ms: float = 0.0
     error: Optional[str] = None

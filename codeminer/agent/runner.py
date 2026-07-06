@@ -25,7 +25,18 @@ from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .history import PlainChatHistory, TokenBudgetedChatHistory
-from .route_context import build_lsp_route_context, normalize_lsp_route_seed_policy
+from .lsp_provider import (
+    fingerprint_lsp_result,
+    lsp_result_metadata,
+    preview_lsp_result,
+)
+from .route_context import (
+    build_lsp_route_context,
+    canonical_lsp_route_args,
+    fingerprint_lsp_route_nodes,
+    normalize_lsp_route_seed_policy,
+    summarize_lsp_route_nodes,
+)
 from .runtime.trace import AgentRunTrace
 from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
@@ -130,6 +141,18 @@ stop until you have actually read the implementing file.
 it and answer rather than exhaustively reading every candidate.
 """
 
+_LSP_ROUTE_TOOL_GUIDANCE = """\
+
+Dynamic LSP route tool:
+- If `lsp_route` is available, use it early when the request names a symbol, \
+error code, config field, API, or behavior that likely crosses files.
+- Call `lsp_route(symbols=[...], query=<original request>, top_k=5)` with the \
+most specific symbol-like names you know. If you have no reliable symbol yet, \
+call it with `symbols=[]` and the original request as `query`.
+- Treat returned nodes as route hints only. Read the first one or two promising \
+files/ranges before citing anything in the final answer.
+"""
+
 # Maximum characters for a single tool result to avoid context blowup.
 _MAX_RESULT_CHARS = 16_000
 _CHARS_PER_TOKEN_ESTIMATE = 4
@@ -174,6 +197,7 @@ class AgentRunner:
         enable_lsp_route_context: bool = False,
         lsp_route_seed_limit: int = 8,
         lsp_route_seed_policy: str = "all",
+        lsp_route_query_fallback: bool = False,
         lsp_route_top_k: int = 12,
         lsp_route_include_neighbors: bool = True,
     ) -> None:
@@ -262,6 +286,7 @@ class AgentRunner:
         self._lsp_route_seed_policy = normalize_lsp_route_seed_policy(
             lsp_route_seed_policy
         )
+        self._lsp_route_query_fallback = bool(lsp_route_query_fallback)
         self._lsp_route_top_k = max(1, int(lsp_route_top_k or 12))
         self._lsp_route_include_neighbors = bool(lsp_route_include_neighbors)
 
@@ -295,6 +320,9 @@ class AgentRunner:
 
         # Build system prompt: base + environment block + resource warnings.
         base_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
+        tool_guidance = self._build_tool_guidance_block(self.tools)
+        if tool_guidance:
+            base_prompt += tool_guidance
         env_block = self._build_environment_block(self.session_ctx)
         if env_block:
             base_prompt += f"\n{env_block}\n"
@@ -302,6 +330,19 @@ class AgentRunner:
             warnings_text = "\n".join(f"- {w}" for w in resource_warnings)
             base_prompt += f"\nIndex warnings:\n{warnings_text}\n"
         self.system_prompt = base_prompt
+
+    @staticmethod
+    def _build_tool_guidance_block(tools: Sequence[Mapping[str, Any]]) -> str:
+        """Render prompt guidance for optional dynamic tools that need adoption."""
+
+        names = {
+            str((tool.get("function") or {}).get("name") or "")
+            for tool in tools or []
+            if isinstance(tool, Mapping)
+        }
+        if "lsp_route" in names:
+            return _LSP_ROUTE_TOOL_GUIDANCE
+        return ""
 
     @staticmethod
     def _build_environment_block(session_ctx: Optional[Any]) -> str:
@@ -441,26 +482,34 @@ class AgentRunner:
         )
         user_query = query
         if self._enable_lsp_route_context:
+            route_start = time.monotonic()
             route_context, route_skip_reason = self._initial_lsp_route_context(query)
+            route_duration_ms = (time.monotonic() - route_start) * 1000
             if route_context is not None and route_context.text:
                 user_query = f"{query}\n\n{route_context.text}"
                 seeds = list(route_context.seeds)
+                seed_source = "symbol" if seeds else "query"
                 trace.add(
                     "lsp_route_context",
                     0,
                     status="offered",
                     seeds=seeds,
+                    seed_source=seed_source,
                     seed_policy=self._lsp_route_seed_policy,
                     route_count=len(route_context.nodes),
                     context_chars=len(route_context.text),
+                    duration_ms=route_duration_ms,
+                    route_args=dict(route_context.arguments or {}),
+                    route_fingerprint=route_context.route_fingerprint,
+                    route_preview=summarize_lsp_route_nodes(route_context.nodes),
                 )
                 trace.add_context(
                     "lsp_route",
                     "offered",
                     0,
                     summary=(
-                        "initial static LSP route context from seeds: "
-                        + ", ".join(seeds)
+                        "initial static LSP route context from "
+                        + ("seeds: " + ", ".join(seeds) if seeds else "query text")
                     ),
                     provenance={
                         "kind": "initial_context",
@@ -470,10 +519,15 @@ class AgentRunner:
                     token_estimate=_estimate_context_tokens(route_context.text),
                     metadata={
                         "seeds": seeds,
+                        "seed_source": seed_source,
                         "seed_policy": self._lsp_route_seed_policy,
                         "route_count": len(route_context.nodes),
                         "top_k": self._lsp_route_top_k,
                         "include_neighbors": self._lsp_route_include_neighbors,
+                        "query_fallback": self._lsp_route_query_fallback,
+                        "duration_ms": route_duration_ms,
+                        "route_args": dict(route_context.arguments or {}),
+                        "route_fingerprint": route_context.route_fingerprint,
                     },
                 )
             else:
@@ -482,6 +536,7 @@ class AgentRunner:
                     0,
                     status="skipped",
                     reason=route_skip_reason or "empty_route_context",
+                    duration_ms=route_duration_ms,
                 )
 
         history = self._new_history()
@@ -765,13 +820,14 @@ class AgentRunner:
                 query,
                 seed_limit=self._lsp_route_seed_limit,
                 seed_policy=self._lsp_route_seed_policy,
+                query_fallback=self._lsp_route_query_fallback,
                 top_k=self._lsp_route_top_k,
                 include_neighbors=self._lsp_route_include_neighbors,
             )
         except Exception as exc:  # noqa: BLE001 - startup hints are best-effort
             logger.warning("initial lsp_route context failed: %s", exc)
             return None, f"lsp_route_error:{type(exc).__name__}"
-        if not context.seeds:
+        if not context.seeds and not self._lsp_route_query_fallback:
             return None, "no_symbol_seeds"
         if not context.nodes:
             return None, "no_route_nodes"
@@ -979,6 +1035,7 @@ class AgentRunner:
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
+                resolved_arguments=resolved_args,
                 error=f"invalid arguments for {skill_id!r}: {type_error}",
             )
 
@@ -995,6 +1052,7 @@ class AgentRunner:
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
+                resolved_arguments=coerced_args,
                 result=result,
                 duration_ms=elapsed,
             )
@@ -1005,6 +1063,7 @@ class AgentRunner:
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
+                resolved_arguments=coerced_args,
                 error=str(exc),
                 duration_ms=elapsed,
             )
@@ -1131,11 +1190,39 @@ def _trace_tool_call_data(
         "result_chars": len(serialized_result or ""),
         "truncated": bool(serialized_result.endswith("\n... (truncated)")),
     }
+    if record.resolved_arguments is not None:
+        data["resolved_arguments"] = dict(record.resolved_arguments or {})
     if result_count is not None:
         data["result_count"] = result_count
+    provider_metadata = lsp_result_metadata(result)
+    if provider_metadata:
+        data["lsp_provider"] = provider_metadata
+        if status == "ok" and isinstance(result, (list, tuple)):
+            data["lsp_result_fingerprint"] = fingerprint_lsp_result(result)
+            data["lsp_result_preview"] = preview_lsp_result(result)
+    if record.skill_id == "lsp_route":
+        route_args = _lsp_route_trace_args(record)
+        data["route_args"] = route_args
+        if status == "ok" and isinstance(result, (list, tuple)):
+            data["route_fingerprint"] = data.get(
+                "lsp_result_fingerprint"
+            ) or fingerprint_lsp_route_nodes(result)
+            data["route_preview"] = data.get("lsp_result_preview") or (
+                summarize_lsp_route_nodes(result)
+            )
     if record.error is not None:
         data["error"] = record.error
     return data
+
+
+def _lsp_route_trace_args(record: ToolCallRecord) -> Dict[str, Any]:
+    args = record.resolved_arguments or record.arguments or {}
+    return canonical_lsp_route_args(
+        symbols=args.get("symbols") or [],
+        query=args.get("query"),
+        top_k=args.get("top_k", 12),
+        include_neighbors=args.get("include_neighbors", True),
+    )
 
 
 def _context_state(
@@ -1321,6 +1408,7 @@ class CodeMinerAgentOptions:
     enable_lsp_route_context: bool = False
     lsp_route_seed_limit: int = 8
     lsp_route_seed_policy: str = "all"
+    lsp_route_query_fallback: bool = False
     lsp_route_top_k: int = 12
     lsp_route_include_neighbors: bool = True
     retry: Optional[RetryConfig] = None
@@ -1463,6 +1551,7 @@ def query(
         enable_lsp_route_context=opts.enable_lsp_route_context,
         lsp_route_seed_limit=opts.lsp_route_seed_limit,
         lsp_route_seed_policy=opts.lsp_route_seed_policy,
+        lsp_route_query_fallback=opts.lsp_route_query_fallback,
         lsp_route_top_k=opts.lsp_route_top_k,
         lsp_route_include_neighbors=opts.lsp_route_include_neighbors,
         retry=opts.retry,

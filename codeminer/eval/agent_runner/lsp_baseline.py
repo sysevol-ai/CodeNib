@@ -6,13 +6,16 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any, List, Mapping, Optional, Sequence
 
 from codeminer.agent.lsp_graph import lsp_route
+from codeminer.agent.route_context import canonical_lsp_route_args
 from codeminer.agent.route_context import (
     extract_lsp_symbol_seeds as extract_core_lsp_symbol_seeds,
 )
+from codeminer.agent.route_context import fingerprint_lsp_route_nodes
 
 from .baseline import (
     BaselineLocation,
@@ -118,14 +121,16 @@ def run_lsp_route_baseline(
             repo_path=task.repo_path,
         )
 
+    route_args = canonical_lsp_route_args(
+        symbols=seeds,
+        query=task.query,
+        top_k=cfg.top_k,
+        include_neighbors=cfg.include_neighbors,
+    )
+    start = time.monotonic()
     try:
-        nodes = lsp_route(
-            graph,
-            symbols=seeds,
-            query=task.query,
-            top_k=cfg.top_k,
-            include_neighbors=cfg.include_neighbors,
-        )
+        nodes = lsp_route(graph, **route_args)
+        duration_ms = (time.monotonic() - start) * 1000
     except Exception as exc:  # noqa: BLE001 - baseline records failures per task
         return BaselineRunResult(
             success=False,
@@ -137,7 +142,14 @@ def run_lsp_route_baseline(
     return BaselineRunResult(
         success=True,
         locations=locations,
-        usage=_usage(cfg, seeds=seeds, route_count=len(nodes)),
+        usage=_usage(
+            cfg,
+            seeds=seeds,
+            route_count=len(nodes),
+            route_args=route_args,
+            duration_ms=duration_ms,
+            route_fingerprint=fingerprint_lsp_route_nodes(nodes),
+        ),
         repo_path=task.repo_path,
         raw_output=nodes,
     )
@@ -176,8 +188,11 @@ def _usage(
     *,
     seeds: Sequence[str],
     route_count: int,
+    route_args: Mapping[str, Any] | None = None,
+    duration_ms: float | None = None,
+    route_fingerprint: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    out = {
         "backend": "static_graph_lsp_route",
         "top_k": config.top_k,
         "seed_limit": config.seed_limit,
@@ -185,6 +200,13 @@ def _usage(
         "symbol_seeds": list(seeds),
         "route_count": route_count,
     }
+    if route_args is not None:
+        out["route_args"] = dict(route_args)
+    if duration_ms is not None:
+        out["duration_ms"] = duration_ms
+    if route_fingerprint is not None:
+        out["route_fingerprint"] = route_fingerprint
+    return out
 
 
 def _node_value(node: Any, key: str) -> Any:

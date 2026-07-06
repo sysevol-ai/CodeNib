@@ -40,6 +40,11 @@ from .format_diagnostics import (
     load_meaningful_cells,
     summarize_format_cells,
 )
+from .live_lsp_provider import (
+    LiveLSPReferenceProvider,
+    compare_static_to_live_lsp_provider,
+    lsp_locations_to_nodes,
+)
 from .lsp_baseline import (
     LSPRouteBaselineConfig,
     build_lsp_route_result_entry,
@@ -47,6 +52,20 @@ from .lsp_baseline import (
     load_prebuilt_lsp_graph,
     locations_from_lsp_nodes,
     run_lsp_route_baseline,
+)
+from .lsp_latency import (
+    load_cell_records,
+    render_lsp_route_latency_markdown,
+    replay_lsp_route_latency,
+    write_lsp_route_latency_report,
+)
+from .lsp_provider_validation import (
+    LSPProviderCall,
+    LSPProviderComparison,
+    LSPProviderRequest,
+    compare_static_lsp_provider,
+    fingerprint_lsp_start_locations,
+    render_lsp_provider_validation_markdown,
 )
 from .metrics import load_cell_jsons, metric_at_k, safe_mean, safe_min, usable_cells
 from .orchestrator import (
@@ -136,6 +155,10 @@ __all__ = [
     "GraphNav",
     "LANG_GROUP_TO_KEY",
     "LSPRouteBaselineConfig",
+    "LSPProviderCall",
+    "LSPProviderComparison",
+    "LSPProviderRequest",
+    "LiveLSPReferenceProvider",
     "FAILURE_CATEGORIES",
     "PreloadQueryPlan",
     "PromotionEvidence",
@@ -155,6 +178,8 @@ __all__ = [
     "build_baseline_result_entry",
     "build_lsp_route_result_entry",
     "candidate_location",
+    "compare_static_lsp_provider",
+    "compare_static_to_live_lsp_provider",
     "converge_query",
     "default_agent_skills_dir",
     "evaluate_agent_localization",
@@ -167,14 +192,17 @@ __all__ = [
     "group_query_rows_by_instance",
     "interleave_ranked",
     "filter_query_rows",
+    "fingerprint_lsp_start_locations",
     "language_key_for_query_row",
     "load_agent_skill_contexts",
     "load_cell_jsons",
+    "load_cell_records",
     "load_dataset_rows",
     "load_format_diagnostics",
     "load_feedback_summary",
     "load_full_contexts",
     "load_prebuilt_lsp_graph",
+    "lsp_locations_to_nodes",
     "locations_from_lsp_nodes",
     "location_symbol_ids",
     "load_meaningful_cells",
@@ -184,7 +212,10 @@ __all__ = [
     "query_is_specific",
     "query_targets",
     "render_expansion",
+    "render_lsp_route_latency_markdown",
+    "render_lsp_provider_validation_markdown",
     "retrieve_candidates",
+    "replay_lsp_route_latency",
     "run_baseline_batch",
     "run_cell",
     "run_sweep",
@@ -209,4 +240,5 @@ __all__ = [
     "validate_sweep_harness",
     "verdict_is_yes",
     "verify_query",
+    "write_lsp_route_latency_report",
 ]

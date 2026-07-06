@@ -82,6 +82,7 @@ class SweepConfig:
     enable_lsp_route_context: bool = False
     lsp_route_seed_limit: int = 8
     lsp_route_seed_policy: str = "all"
+    lsp_route_query_fallback: bool = False
     lsp_route_top_k: int = 12
     lsp_route_include_neighbors: bool = True
     # Per-arm route-context policy, keyed by subset id. A mapping entry enables

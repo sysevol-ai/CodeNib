@@ -12,7 +12,9 @@ from codeminer.agent.route_context import (
     build_lsp_route_context,
     extract_lsp_symbol_seeds,
     filter_lsp_symbol_seeds,
+    fingerprint_lsp_route_nodes,
     render_lsp_route_context,
+    summarize_lsp_route_nodes,
 )
 from codeminer.types import QueriedNode
 
@@ -75,6 +77,13 @@ def test_build_lsp_route_context_calls_executor_with_extracted_seeds():
     )
 
     assert context.seeds == ("NewResolver",)
+    assert context.arguments == {
+        "symbols": ["NewResolver"],
+        "query": "Check `NewResolver` cache directory",
+        "top_k": 7,
+        "include_neighbors": False,
+    }
+    assert context.route_fingerprint == fingerprint_lsp_route_nodes(context.nodes)
     assert calls == [
         {
             "symbols": ["NewResolver"],
@@ -101,6 +110,29 @@ def test_specific_seed_policy_filters_generic_lowercase_seeds():
     assert "F523" in filtered
 
 
+def test_specific_seed_policy_rejects_expression_and_domain_noise():
+    filtered = filter_lsp_symbol_seeds(
+        [
+            'Hello".format("world")',
+            "Hello",
+            'Hello".format()',
+            "docs.astral",
+            "F523",
+            "pkg.DefaultConfig",
+            "NewResolver",
+            "snake_case_name",
+        ],
+        seed_policy="specific",
+    )
+
+    assert filtered == [
+        "F523",
+        "pkg.DefaultConfig",
+        "NewResolver",
+        "snake_case_name",
+    ]
+
+
 def test_build_lsp_route_context_specific_policy_skips_generic_seed():
     calls = []
 
@@ -118,6 +150,66 @@ def test_build_lsp_route_context_specific_policy_skips_generic_seed():
     assert context.nodes == ()
     assert context.text == ""
     assert calls == []
+
+
+def test_build_lsp_route_context_can_use_query_fallback_without_seeds():
+    calls = []
+
+    def executor(**kwargs):
+        calls.append(kwargs)
+        return [
+            QueriedNode(
+                node_name="svc.DefaultConfig",
+                type="function",
+                file="svc.py",
+                start_line=2,
+                end_line=4,
+                content="route provider: query match config, default",
+            )
+        ]
+
+    context = build_lsp_route_context(
+        executor,
+        "Fix default config behavior",
+        seed_policy="specific",
+        query_fallback=True,
+    )
+
+    assert context.seeds == ()
+    assert calls == [
+        {
+            "symbols": [],
+            "query": "Fix default config behavior",
+            "top_k": 12,
+            "include_neighbors": True,
+        }
+    ]
+    assert "Seed source: query text" in context.text
+    assert "svc.py:3-5 svc.DefaultConfig" in context.text
+
+
+def test_summarize_lsp_route_nodes_returns_trace_preview():
+    preview = summarize_lsp_route_nodes(
+        [
+            QueriedNode(
+                node_name="svc.DefaultConfig",
+                type="function",
+                file="svc.py",
+                start_line=2,
+                end_line=4,
+                content="route provider: query match config, default",
+            )
+        ]
+    )
+
+    assert preview == [
+        {
+            "location": "svc.py:3-5",
+            "symbol": "svc.DefaultConfig",
+            "type": "function",
+            "relation": "route provider: query match config, default",
+        }
+    ]
 
 
 def test_lsp_route_context_rejects_unknown_seed_policy():

@@ -13,6 +13,8 @@ dataset.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from typing import Any, Iterable, List, Mapping, Sequence
@@ -24,8 +26,25 @@ _TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}(?:\.[A-Za-z_][A-Za-z0-9_]{2,})*"
 _CODEISH = re.compile(r"_|[a-z][A-Z]|[0-9][A-Z]|[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_]")
 _IDENT_STOP = {"BUG", "TODO", "FIXME", "NOTE", "XXX", "HACK", "WARNING", "ERROR"}
 _SEED_POLICIES = frozenset({"all", "specific"})
-_QUALIFIED_SEED = re.compile(r"[._:#/]")
 _CAMEL_SEED = re.compile(r"[a-z][A-Z]")
+_SIMPLE_CALL = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:[.:#][A-Za-z_][A-Za-z0-9_]*)*\(\)$"
+)
+_DOMAIN_HINTS = {
+    "com",
+    "dev",
+    "docs",
+    "github",
+    "html",
+    "http",
+    "https",
+    "io",
+    "net",
+    "org",
+    "readthedocs",
+    "sh",
+    "www",
+}
 
 
 @dataclass(frozen=True)
@@ -35,6 +54,8 @@ class LSPRouteContext:
     seeds: tuple[str, ...]
     nodes: tuple[Any, ...]
     text: str = ""
+    arguments: Mapping[str, Any] | None = None
+    route_fingerprint: str | None = None
 
 
 def extract_lsp_symbol_seeds(
@@ -94,13 +115,20 @@ def is_specific_lsp_symbol_seed(seed: str) -> bool:
     text = (seed or "").strip().strip("`'\"")
     if not text:
         return False
-    if _QUALIFIED_SEED.search(text):
+    if not _is_symbol_seed_shape(text):
+        return False
+    check = text[:-2] if text.endswith("()") else text
+    if "/" in check or "::" in check or "#" in check:
+        return True
+    if "." in check:
+        if _looks_like_domain_fragment(check):
+            return False
+        return any(_is_specific_name_part(part) for part in check.split("."))
+    if "_" in check:
         return True
     if _CAMEL_SEED.search(text):
         return True
     if text.isupper() and len(text) >= 3:
-        return True
-    if text[:1].isupper() and any(ch.islower() for ch in text[1:]):
         return True
     if (
         any(ch.isalpha() for ch in text)
@@ -132,6 +160,7 @@ def build_lsp_route_context(
     explicit_seeds: Any = None,
     seed_limit: int = 8,
     seed_policy: str | None = "all",
+    query_fallback: bool = False,
     top_k: int = 12,
     include_neighbors: bool = True,
 ) -> LSPRouteContext:
@@ -143,15 +172,18 @@ def build_lsp_route_context(
         limit=seed_limit,
     )
     seeds = filter_lsp_symbol_seeds(seeds, seed_policy=seed_policy)
-    if not seeds:
+    if not seeds and not query_fallback:
         return LSPRouteContext(seeds=(), nodes=(), text="")
 
+    route_args = canonical_lsp_route_args(
+        symbols=seeds,
+        query=query,
+        top_k=top_k,
+        include_neighbors=include_neighbors,
+    )
     nodes = tuple(
         executor(
-            symbols=list(seeds),
-            query=query,
-            top_k=int(top_k or 12),
-            include_neighbors=bool(include_neighbors),
+            **route_args,
         )
         or ()
     )
@@ -159,7 +191,39 @@ def build_lsp_route_context(
         seeds=tuple(seeds),
         nodes=nodes,
         text=render_lsp_route_context(seeds, nodes),
+        arguments=route_args,
+        route_fingerprint=fingerprint_lsp_route_nodes(nodes),
     )
+
+
+def canonical_lsp_route_args(
+    *,
+    symbols: Iterable[Any],
+    query: Any = None,
+    top_k: Any = 12,
+    include_neighbors: Any = True,
+) -> dict[str, Any]:
+    """Return the canonical argument shape for a static LSP route call."""
+
+    return {
+        "symbols": [str(symbol) for symbol in symbols or []],
+        "query": str(query) if query is not None else None,
+        "top_k": int(top_k or 12),
+        "include_neighbors": bool(include_neighbors),
+    }
+
+
+def fingerprint_lsp_route_nodes(nodes: Sequence[Any]) -> str:
+    """Return a stable fingerprint for an ordered route-node result."""
+
+    payload = summarize_lsp_route_nodes(nodes, max_nodes=len(nodes))
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def render_lsp_route_context(
@@ -176,12 +240,14 @@ def render_lsp_route_context(
     if not selected:
         return ""
 
+    seed_line = "Seeds: " + ", ".join(seeds) if seeds else "Seed source: query text"
     lines = [
         "# Static LSP route hints (unverified)",
         "These graph anchors come from explicit symbol-like names in the task. "
-        "Use them to choose what to read; do not cite them until you read the "
-        "file.",
-        "Seeds: " + ", ".join(seeds),
+        "If no symbol seed was available, query text was used to find candidate "
+        "graph anchors. Use them to choose the first one or two files to inspect; "
+        "they are not a checklist. Do not cite them until you read the file.",
+        seed_line,
         "",
     ]
     for index, node in enumerate(selected, 1):
@@ -193,6 +259,28 @@ def render_lsp_route_context(
         suffix = f" - {relation}" if relation else ""
         lines.append(f"{index}. {location} {symbol} [{node_type}]{suffix}")
     return "\n".join(lines)
+
+
+def summarize_lsp_route_nodes(
+    nodes: Sequence[Any],
+    *,
+    max_nodes: int = 5,
+) -> List[dict[str, str]]:
+    """Return a small trace-safe preview of route nodes."""
+
+    preview: List[dict[str, str]] = []
+    for node in list(nodes)[: max(0, int(max_nodes or 0))]:
+        data = _node_dict(node)
+        item = {
+            "location": _location(data),
+            "symbol": str(data.get("node_name") or data.get("node_id") or ""),
+            "type": str(data.get("type") or ""),
+        }
+        relation = str(data.get("content") or "").strip()
+        if relation:
+            item["relation"] = relation
+        preview.append(item)
+    return preview
 
 
 def _flatten_text_values(values: Iterable[Any]) -> List[str]:
@@ -233,6 +321,39 @@ def _add_seed_values(seeds: List[str], value: Any) -> None:
             _add_seed_values(seeds, item)
 
 
+def _is_symbol_seed_shape(text: str) -> bool:
+    if any(ch.isspace() for ch in text):
+        return False
+    if any(ch in text for ch in "\"'`[]{}"):
+        return False
+    if "(" in text or ")" in text:
+        return bool(_SIMPLE_CALL.fullmatch(text))
+    if "://" in text or "@" in text:
+        return False
+    return True
+
+
+def _looks_like_domain_fragment(text: str) -> bool:
+    parts = [part for part in re.split(r"[./]", text.lower()) if part]
+    return any(part in _DOMAIN_HINTS for part in parts)
+
+
+def _is_specific_name_part(text: str) -> bool:
+    if not text:
+        return False
+    if "_" in text:
+        return True
+    if _CAMEL_SEED.search(text):
+        return True
+    if text.isupper() and len(text) >= 3:
+        return True
+    return (
+        any(ch.isalpha() for ch in text)
+        and any(ch.isdigit() for ch in text)
+        and not text.islower()
+    )
+
+
 def _node_dict(node: Any) -> dict[str, Any]:
     if is_line_bearing(node):
         return to_agent_repr(node)
@@ -259,9 +380,12 @@ def _location(data: Mapping[str, Any]) -> str:
 __all__ = [
     "LSPRouteContext",
     "build_lsp_route_context",
+    "canonical_lsp_route_args",
     "extract_lsp_symbol_seeds",
     "filter_lsp_symbol_seeds",
+    "fingerprint_lsp_route_nodes",
     "is_specific_lsp_symbol_seed",
     "normalize_lsp_route_seed_policy",
     "render_lsp_route_context",
+    "summarize_lsp_route_nodes",
 ]

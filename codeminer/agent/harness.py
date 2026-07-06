@@ -118,6 +118,7 @@ class AgentHarnessSpec:
     enable_lsp_route_context: bool = False
     lsp_route_seed_limit: int = 8
     lsp_route_seed_policy: str = "all"
+    lsp_route_query_fallback: bool = False
     lsp_route_top_k: int = 12
     lsp_route_include_neighbors: bool = True
 
@@ -213,6 +214,7 @@ class AgentHarnessSpec:
             "enable_lsp_route_context": self.enable_lsp_route_context,
             "lsp_route_seed_limit": self.lsp_route_seed_limit,
             "lsp_route_seed_policy": self.lsp_route_seed_policy,
+            "lsp_route_query_fallback": self.lsp_route_query_fallback,
             "lsp_route_top_k": self.lsp_route_top_k,
             "lsp_route_include_neighbors": self.lsp_route_include_neighbors,
             "session_ctx": session_ctx,

@@ -98,6 +98,7 @@ def test_create_runner_uses_spec_without_mutating_it():
         enable_lsp_route_context=True,
         lsp_route_seed_limit=4,
         lsp_route_seed_policy="specific",
+        lsp_route_query_fallback=True,
         lsp_route_top_k=9,
         lsp_route_include_neighbors=False,
     )
@@ -120,6 +121,7 @@ def test_create_runner_uses_spec_without_mutating_it():
     assert runner._enable_lsp_route_context is True
     assert runner._lsp_route_seed_limit == 4
     assert runner._lsp_route_seed_policy == "specific"
+    assert runner._lsp_route_query_fallback is True
     assert runner._lsp_route_top_k == 9
     assert runner._lsp_route_include_neighbors is False
     assert runner.system_prompt.startswith("Subagent prompt")

@@ -137,7 +137,7 @@ def test_lsp_route_baseline_returns_locations_and_usage():
         "resolver.py:NewResolver()",
         "config.py:DefaultConfig()",
     ]
-    assert result.usage == {
+    expected_usage = {
         "backend": "static_graph_lsp_route",
         "top_k": 3,
         "seed_limit": 8,
@@ -145,6 +145,17 @@ def test_lsp_route_baseline_returns_locations_and_usage():
         "symbol_seeds": ["HandleRequest", "NewResolver"],
         "route_count": 3,
     }
+    for key, value in expected_usage.items():
+        assert result.usage[key] == value
+    assert result.usage["route_args"] == {
+        "symbols": ["HandleRequest", "NewResolver"],
+        "query": "Fix HandleRequest resolver default config",
+        "top_k": 3,
+        "include_neighbors": True,
+    }
+    assert isinstance(result.usage["duration_ms"], float)
+    assert isinstance(result.usage["route_fingerprint"], str)
+    assert len(result.usage["route_fingerprint"]) == 64
 
 
 def test_build_lsp_route_result_entry_scores_with_baseline_envelope():

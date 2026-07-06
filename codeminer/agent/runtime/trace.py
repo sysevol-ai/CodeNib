@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from .context import ContextLedger, ContextLedgerEntry
 
-AGENT_TRACE_SCHEMA_VERSION = 3
+AGENT_TRACE_SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -26,13 +27,17 @@ class AgentTraceEvent:
     kind: str
     turn: int
     data: Dict[str, Any] = field(default_factory=dict)
+    timestamp_ms: float | None = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        out = {
             "kind": self.kind,
             "turn": self.turn,
             "data": dict(self.data),
         }
+        if self.timestamp_ms is not None:
+            out["timestamp_ms"] = self.timestamp_ms
+        return out
 
 
 @dataclass
@@ -41,9 +46,15 @@ class AgentRunTrace:
 
     events: List[AgentTraceEvent] = field(default_factory=list)
     context: ContextLedger = field(default_factory=ContextLedger)
+    start_monotonic: float = field(default_factory=time.monotonic, repr=False)
 
     def add(self, kind: str, turn: int, **data: Any) -> AgentTraceEvent:
-        event = AgentTraceEvent(kind=kind, turn=turn, data=dict(data))
+        event = AgentTraceEvent(
+            kind=kind,
+            turn=turn,
+            data=dict(data),
+            timestamp_ms=(time.monotonic() - self.start_monotonic) * 1000,
+        )
         self.events.append(event)
         return event
 

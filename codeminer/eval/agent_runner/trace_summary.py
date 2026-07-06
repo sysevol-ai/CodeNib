@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,8 @@ class AgentTraceSummary:
     context_tokens_estimate: int
     context_by_state: Dict[str, int]
     context_sources: Dict[str, int]
+    lsp_route_context: Dict[str, Any]
+    lsp_route_tool_calls: List[Dict[str, Any]]
     compaction_count: int
     max_turns_exhausted: bool
     forced_final_answer: bool
@@ -50,6 +52,8 @@ class AgentTraceSummary:
             "context_tokens_estimate": self.context_tokens_estimate,
             "context_by_state": dict(self.context_by_state),
             "context_sources": dict(self.context_sources),
+            "lsp_route_context": dict(self.lsp_route_context),
+            "lsp_route_tool_calls": list(self.lsp_route_tool_calls),
             "compaction_count": self.compaction_count,
             "max_turns_exhausted": self.max_turns_exhausted,
             "forced_final_answer": self.forced_final_answer,
@@ -77,6 +81,10 @@ def summarize_agent_trace(trace_or_result: Any) -> AgentTraceSummary:
     forced_final_answer = False
     answer_contract_present: Optional[bool] = None
     final_answer_source: Optional[str] = None
+    lsp_route_context: Dict[str, Any] = {}
+    lsp_route_tool_calls: List[Dict[str, Any]] = []
+    next_llm_call_ms_by_turn = _next_llm_call_ms_by_turn(events)
+    next_llm_call_turn_by_turn = _next_llm_call_turn_by_turn(events)
 
     for event in events:
         kind = _event_kind(event)
@@ -89,6 +97,24 @@ def summarize_agent_trace(trace_or_result: Any) -> AgentTraceSummary:
             tool_call_count += 1
             tool = str(data.get("tool") or "(unknown)")
             tools[tool] += 1
+            if tool == "lsp_route":
+                lsp_route_tool_calls.append(
+                    _lsp_route_tool_call_summary(
+                        data,
+                        turn=turn,
+                        timestamp_ms=_event_timestamp_ms(event),
+                        model_can_use_turn=(
+                            next_llm_call_turn_by_turn.get(turn)
+                            if turn is not None
+                            else None
+                        ),
+                        model_can_use_ms=(
+                            next_llm_call_ms_by_turn.get(turn)
+                            if turn is not None
+                            else None
+                        ),
+                    )
+                )
             if data.get("status") == "error":
                 tool_errors[tool] += 1
         elif kind == "read" and data.get("status") == "ok":
@@ -106,6 +132,11 @@ def summarize_agent_trace(trace_or_result: Any) -> AgentTraceSummary:
                 answer_contract_present = bool(data.get("has_contract"))
             final_answer_source = (
                 str(data["source"]) if data.get("source") is not None else None
+            )
+        elif kind == "lsp_route_context":
+            lsp_route_context = _lsp_route_context_summary(
+                data,
+                timestamp_ms=_event_timestamp_ms(event),
             )
 
     context_by_state: Counter[str] = Counter()
@@ -146,6 +177,8 @@ def summarize_agent_trace(trace_or_result: Any) -> AgentTraceSummary:
         context_tokens_estimate=context_tokens_estimate,
         context_by_state=_sorted_counts(context_by_state),
         context_sources=_sorted_counts(context_sources),
+        lsp_route_context=lsp_route_context,
+        lsp_route_tool_calls=lsp_route_tool_calls,
         compaction_count=compaction_count,
         max_turns_exhausted=max_turns_exhausted,
         forced_final_answer=forced_final_answer,
@@ -224,12 +257,145 @@ def _event_turn(event: Any) -> Optional[int]:
     return raw if isinstance(raw, int) else None
 
 
+def _event_timestamp_ms(event: Any) -> Optional[float]:
+    if isinstance(event, Mapping):
+        raw = event.get("timestamp_ms")
+    else:
+        raw = getattr(event, "timestamp_ms", None)
+    return float(raw) if isinstance(raw, (int, float)) else None
+
+
 def _event_data(event: Any) -> Mapping[str, Any]:
     if isinstance(event, Mapping):
         data = event.get("data")
     else:
         data = getattr(event, "data", None)
     return data if isinstance(data, Mapping) else {}
+
+
+def _next_llm_call_ms_by_turn(events: Sequence[Any]) -> Dict[int, float]:
+    out: Dict[int, float] = {}
+    llm_calls = [
+        (_event_turn(event), _event_timestamp_ms(event))
+        for event in events
+        if _event_kind(event) == "llm_call"
+    ]
+    for event in events:
+        if _event_kind(event) != "tool_call":
+            continue
+        turn = _event_turn(event)
+        if turn is None:
+            continue
+        candidates = [
+            timestamp
+            for candidate_turn, timestamp in llm_calls
+            if (
+                candidate_turn is not None
+                and candidate_turn > turn
+                and timestamp is not None
+            )
+        ]
+        if candidates:
+            out[turn] = min(candidates)
+    return out
+
+
+def _next_llm_call_turn_by_turn(events: Sequence[Any]) -> Dict[int, int]:
+    out: Dict[int, int] = {}
+    llm_turns = [
+        turn
+        for turn in (
+            _event_turn(event) for event in events if _event_kind(event) == "llm_call"
+        )
+        if turn is not None
+    ]
+    for event in events:
+        if _event_kind(event) != "tool_call":
+            continue
+        turn = _event_turn(event)
+        if turn is None:
+            continue
+        candidates = [
+            candidate_turn for candidate_turn in llm_turns if candidate_turn > turn
+        ]
+        if candidates:
+            out[turn] = min(candidates)
+    return out
+
+
+def _lsp_route_context_summary(
+    data: Mapping[str, Any],
+    *,
+    timestamp_ms: Optional[float],
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for key in (
+        "status",
+        "reason",
+        "seeds",
+        "seed_source",
+        "seed_policy",
+        "route_count",
+        "context_chars",
+        "duration_ms",
+        "lsp_provider",
+        "lsp_result_fingerprint",
+        "lsp_result_preview",
+        "route_args",
+        "route_fingerprint",
+        "route_preview",
+    ):
+        if key in data:
+            out[key] = data[key]
+    if timestamp_ms is not None:
+        out["event_ms"] = timestamp_ms
+    if data.get("status") == "offered":
+        out["visible_turn"] = 0
+        duration_ms = data.get("duration_ms")
+        if isinstance(duration_ms, (int, float)):
+            out["route_visible_ms"] = float(duration_ms)
+    return out
+
+
+def _lsp_route_tool_call_summary(
+    data: Mapping[str, Any],
+    *,
+    turn: Optional[int],
+    timestamp_ms: Optional[float],
+    model_can_use_turn: Optional[int],
+    model_can_use_ms: Optional[float],
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if turn is not None:
+        out["turn"] = turn
+    for key in (
+        "status",
+        "result_count",
+        "duration_ms",
+        "lsp_provider",
+        "lsp_result_fingerprint",
+        "lsp_result_preview",
+        "route_args",
+        "route_fingerprint",
+        "route_preview",
+    ):
+        if key in data:
+            out[key] = data[key]
+    if timestamp_ms is not None:
+        out["tool_result_ms"] = timestamp_ms
+    if model_can_use_turn is not None:
+        out["model_can_use_turn"] = model_can_use_turn
+        out["extra_model_round_trips"] = max(0, model_can_use_turn - (turn or 0))
+    if model_can_use_ms is not None:
+        out["model_can_use_ms"] = model_can_use_ms
+    args = data.get("arguments")
+    if isinstance(args, Mapping):
+        compact_args: Dict[str, Any] = {}
+        for key in ("symbols", "query", "top_k", "include_neighbors"):
+            if key in args:
+                compact_args[key] = args[key]
+        out["arguments"] = compact_args
+    return out
 
 
 def _sorted_counts(counter: Counter[str]) -> Dict[str, int]:

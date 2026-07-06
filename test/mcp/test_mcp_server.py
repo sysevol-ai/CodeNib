@@ -155,7 +155,9 @@ def test_lsp_definition_tool_serializes_one_based_lines():
 
     mock_graph.query_range.side_effect = ValueError("should not be called")
     ctx = MagicMock(symbol_graph=mock_graph)
-    with patch("codeminer.mcp.tools.lsp.lsp_definition") as mock_definition:
+    with patch(
+        "codeminer.mcp.tools.lsp.StaticLSPProvider.definition"
+    ) as mock_definition:
         mock_definition.return_value = [
             QueriedNode(
                 node_name="load_config",
@@ -176,7 +178,9 @@ def test_lsp_references_tool_delegates_to_core():
     from codeminer.types import QueriedNode
 
     ctx = MagicMock(symbol_graph=MagicMock())
-    with patch("codeminer.mcp.tools.lsp.lsp_references") as mock_references:
+    with patch(
+        "codeminer.mcp.tools.lsp.StaticLSPProvider.references"
+    ) as mock_references:
         mock_references.return_value = [
             QueriedNode(
                 node_name="caller",
@@ -200,7 +204,9 @@ def test_lsp_references_tool_delegates_to_core():
 def test_lsp_tools_reuse_agent_line_boundary():
     """MCP LSP tools share the agent 1-based input boundary."""
     ctx = MagicMock(symbol_graph=MagicMock())
-    with patch("codeminer.mcp.tools.lsp.lsp_definition") as mock_definition:
+    with patch(
+        "codeminer.mcp.tools.lsp.StaticLSPProvider.definition"
+    ) as mock_definition:
         mock_definition.return_value = []
 
         lsp_definition_impl(ctx, file_path="caller.py", line=0)

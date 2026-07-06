@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# LSP route adoption probe.
+#
+# Goal: decide whether lsp_route should be treated as a dynamic agent tool, a
+# startup context source, or both. This intentionally runs a small Haiku slice
+# first so iteration is driven by adoption/turn/cost feedback instead of a full
+# dataset run.
+#
+# Arms:
+#   grep_only         — filesystem defaults only; baseline.
+#   lsp_route_skill   — expose lsp_route as a normal dynamic skill. Measures
+#                       whether the agent voluntarily calls it.
+#   lsp_route_preload — do NOT expose lsp_route as a dynamic skill; inject
+#                       static route context before turn 1. Measures whether
+#                       bypassing adoption reduces turns/cost or improves
+#                       localization.
+#
+# Run:
+#   python scripts/agent_compile/run_sweep.py \
+#       --config scripts/agent_compile/configs/lsp_route_adoption.yaml \
+#       --output-dir results/agent_compile/lsp_route_adoption
+#   python scripts/agent_compile/aggregate.py \
+#       --cells-dir results/agent_compile/lsp_route_adoption/cells \
+#       --output-dir results/agent_compile/lsp_route_adoption \
+#       --baseline grep_only
+
+base: design_space.yaml
+
+sweep_id: lsp_route_adoption
+reps: 1
+max_turns: 16
+
+# Small, language-diverse feedback slice. Expand only after adoption/turn
+# behavior is legible on this set.
+instances:
+  - astral-sh__ruff-15309
+  - axios__axios-4738
+  - caddyserver__caddy-5761
+  - astropy__astropy-13236
+  - redis__redis-10095
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  lsp_route_skill:
+    - lsp_route
+  lsp_route_preload:
+    - read
+    - grep
+    - glob
+    - bash
+
+lsp_route_context:
+  lsp_route_preload:
+    seed_limit: 8
+    seed_policy: specific
+    query_fallback: true
+    top_k: 5
+    include_neighbors: true

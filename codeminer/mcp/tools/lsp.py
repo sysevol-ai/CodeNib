@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 from ...agent.boundary import from_agent_repr, to_agent_repr
-from ...agent.lsp_graph import lsp_definition, lsp_references, lsp_route
+from ...agent.lsp_provider import StaticLSPProvider
 
 
 def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
@@ -45,8 +45,7 @@ def lsp_definition_impl(
         return {"error": "symbol_graph index not available"}
     graph_line = from_agent_repr(line)
     try:
-        results = lsp_definition(
-            graph,
+        results = StaticLSPProvider(graph).definition(
             file_path=file_path or None,
             line=graph_line,
             character=character,
@@ -73,8 +72,7 @@ def lsp_references_impl(
         return {"error": "symbol_graph index not available"}
     graph_line = from_agent_repr(line)
     try:
-        results = lsp_references(
-            graph,
+        results = StaticLSPProvider(graph).references(
             file_path=file_path or None,
             line=graph_line,
             character=character,
@@ -101,8 +99,7 @@ def lsp_route_impl(
     seeds = _coerce_symbols(symbols)
     if not seeds:
         return []
-    results = lsp_route(
-        graph,
+    results = StaticLSPProvider(graph).route(
         symbols=seeds,
         query=query or None,
         top_k=max(1, int(top_k or 12)),

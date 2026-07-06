@@ -123,6 +123,10 @@ _ENDPOINT_TERMS = {
     "run",
     "validate",
 }
+_QUERY_SEED_MIN_OVERLAP = 2
+_ROUTE_SEED_NODE_TYPES = frozenset(
+    {NODE_TYPE_CLASS, NODE_TYPE_FIELD, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
+)
 
 
 def display_name(graph: Any, name: str) -> str:
@@ -543,7 +547,7 @@ def _candidate_score(
     terms = _terms(_node_text(graph, name))
     score = 5.0 * len(terms & query_terms)
 
-    if source == "direct_seed":
+    if source in {"direct_seed", "query_seed"}:
         score += max(0, 8 - int(candidate.get("direct_rank") or 0))
     else:
         score += 3.0
@@ -558,6 +562,49 @@ def _candidate_score(
         score += 1.0
 
     return score
+
+
+def _query_seed_candidates(
+    graph: Any,
+    *,
+    query_terms: set[str],
+    limit: int,
+) -> list[dict[str, Any]]:
+    if not query_terms:
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    for name in getattr(graph, "name_to_vertex", {}) or {}:
+        info = graph.get_node_info_by_name(name) or {}
+        node_type = str(info.get("type") or "")
+        if node_type and node_type not in _ROUTE_SEED_NODE_TYPES:
+            continue
+        # Query fallback intentionally ignores file paths for seed selection:
+        # repo/package names tend to be broad issue text noise.
+        seed_text = f"{display_name(graph, name)} {name}"
+        overlap = _terms(seed_text) & query_terms
+        if len(overlap) < _QUERY_SEED_MIN_OVERLAP:
+            continue
+        role = _role(graph, name, query_terms=query_terms)
+        candidate = {
+            "name": name,
+            "role": role,
+            "source": "query_seed",
+            "seed": ", ".join(sorted(overlap)[:4]),
+            "direct_rank": len(candidates),
+        }
+        candidate["score"] = _candidate_score(
+            graph, candidate, query_terms=query_terms
+        ) + 6.0 * len(overlap)
+        candidates.append(candidate)
+
+    candidates.sort(
+        key=lambda item: (
+            -float(item.get("score") or 0.0),
+            display_name(graph, str(item.get("name") or "")),
+        )
+    )
+    return candidates[:limit]
 
 
 def _route_neighbors(graph: Any, name: str) -> list[tuple[str, str]]:
@@ -597,6 +644,8 @@ def _route_node(graph: Any, candidate: dict[str, Any]) -> QueriedNode:
     direction = str(candidate.get("direction") or "")
     if source == "direct_seed":
         relation = f"route {role}: direct seed {seed}"
+    elif source == "query_seed":
+        relation = f"route {role}: query match {seed}"
     elif via:
         relation = f"route {role}: {direction} via {via}"
     else:
@@ -607,6 +656,50 @@ def _route_node(graph: Any, candidate: dict[str, Any]) -> QueriedNode:
         relation,
         score=float(candidate.get("score") or 0.0),
     )
+
+
+def _append_route_seed(
+    graph: Any,
+    candidates: list[dict[str, Any]],
+    name: str,
+    *,
+    seed: str,
+    rank: int,
+    source: str,
+    query_terms: set[str],
+    include_neighbors: bool,
+) -> None:
+    role = _role(graph, name, query_terms=query_terms)
+    candidate = {
+        "name": name,
+        "role": role,
+        "source": source,
+        "seed": seed,
+        "direct_rank": rank,
+    }
+    candidate["score"] = _candidate_score(graph, candidate, query_terms=query_terms)
+    candidates.append(candidate)
+
+    if not include_neighbors:
+        return
+    for neighbor, direction in _route_neighbors(graph, name):
+        neighbor_role = _role(graph, neighbor, query_terms=query_terms)
+        if not _include_neighbor(
+            graph, neighbor, role=neighbor_role, query_terms=query_terms
+        ):
+            continue
+        neighbor_candidate = {
+            "name": neighbor,
+            "role": neighbor_role,
+            "source": "neighbor",
+            "via": display_name(graph, name),
+            "direction": direction,
+            "direct_rank": rank + len(candidates),
+        }
+        neighbor_candidate["score"] = _candidate_score(
+            graph, neighbor_candidate, query_terms=query_terms
+        )
+        candidates.append(neighbor_candidate)
 
 
 def lsp_route(
@@ -629,45 +722,39 @@ def lsp_route(
 
     for rank, seed in enumerate(symbols or []):
         for name in resolve_symbol_candidates(graph, str(seed), limit=4):
-            role = _role(graph, name, query_terms=query_terms)
-            candidate = {
-                "name": name,
-                "role": role,
-                "source": "direct_seed",
-                "seed": seed,
-                "direct_rank": rank,
-            }
-            candidate["score"] = _candidate_score(
-                graph, candidate, query_terms=query_terms
+            _append_route_seed(
+                graph,
+                candidates,
+                name,
+                seed=str(seed),
+                rank=rank,
+                source="direct_seed",
+                query_terms=query_terms,
+                include_neighbors=include_neighbors,
             )
-            candidates.append(candidate)
 
-            if not include_neighbors:
-                continue
-            for neighbor, direction in _route_neighbors(graph, name):
-                neighbor_role = _role(graph, neighbor, query_terms=query_terms)
-                if not _include_neighbor(
-                    graph, neighbor, role=neighbor_role, query_terms=query_terms
-                ):
-                    continue
-                neighbor_candidate = {
-                    "name": neighbor,
-                    "role": neighbor_role,
-                    "source": "neighbor",
-                    "via": display_name(graph, name),
-                    "direction": direction,
-                    "direct_rank": rank + len(candidates),
-                }
-                neighbor_candidate["score"] = _candidate_score(
-                    graph, neighbor_candidate, query_terms=query_terms
-                )
-                candidates.append(neighbor_candidate)
+    if not candidates:
+        for rank, candidate in enumerate(
+            _query_seed_candidates(graph, query_terms=query_terms, limit=limit)
+        ):
+            _append_route_seed(
+                graph,
+                candidates,
+                str(candidate.get("name") or ""),
+                seed=str(candidate.get("seed") or "query"),
+                rank=rank,
+                source="query_seed",
+                query_terms=query_terms,
+                include_neighbors=include_neighbors,
+            )
 
+    source_rank = {"direct_seed": 0, "query_seed": 0, "neighbor": 1}
     role_rank = {"endpoint": 0, "bridge": 1, "provider": 2, "type": 3, "support": 4}
     candidates.sort(
         key=lambda item: (
-            role_rank.get(str(item.get("role") or "support"), 5),
+            source_rank.get(str(item.get("source") or ""), 2),
             -float(item.get("score") or 0.0),
+            role_rank.get(str(item.get("role") or "support"), 5),
             int(item.get("direct_rank") or 0),
             display_name(graph, str(item.get("name") or "")),
         )

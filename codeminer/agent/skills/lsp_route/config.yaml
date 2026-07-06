@@ -12,11 +12,11 @@ inputs:
   - name: symbols
     type: List[str]
     required: true
-    description: Symbol/display names from search, read, or LSP results to seed a static graph route map.
+    description: Specific symbol/display names from the request, search, read, or LSP results. Use [] when no reliable symbol is known and provide query.
   - name: query
     type: str
     required: false
-    description: Original user request or local search intent, used to rank endpoint/bridge/provider/type route roles.
+    description: Original user request or local search intent, used to rank endpoint/bridge/provider/type route roles and to seed fallback anchors when symbols is [].
   - name: top_k
     type: int
     required: false

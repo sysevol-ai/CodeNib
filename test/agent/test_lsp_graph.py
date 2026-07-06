@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from codeminer.agent import lsp_graph
+from codeminer.agent.lsp_provider import STATIC_LSP_PROVIDER, lsp_result_metadata
 from codeminer.agent.skills.loader import SkillLoader
 from codeminer.agent.tool_schema import skill_to_tool_schema
 from codeminer.graph.code_graph import CodeGraph
@@ -173,6 +174,18 @@ def test_lsp_route_skips_missing_symbols_but_uses_resolved_ones():
     ]
 
 
+def test_lsp_route_can_fallback_to_query_seed_candidates():
+    route = lsp_graph.lsp_route(
+        _RouteGraph(),
+        symbols=[],
+        query="fix default config behavior",
+        top_k=2,
+    )
+
+    assert [node.node_name for node in route] == ["svc.DefaultConfig"]
+    assert route[0].content == "route provider: query match config, default"
+
+
 def test_lsp_skills_load_and_execute_against_expand_context():
     graph = _range_graph()
     context = {"expand": ExpandContext(code_graph=graph)}
@@ -184,6 +197,8 @@ def test_lsp_skills_load_and_execute_against_expand_context():
     assert meta.executor_fn is not None
     results = meta.executor_fn(symbol="load_config")
     assert [node.node_name for node in results] == ["callee.py:load_config()"]
+    assert lsp_result_metadata(results)["provider"] == STATIC_LSP_PROVIDER
+    assert lsp_result_metadata(results)["capability"] == "definition"
 
 
 def test_lsp_route_skill_exposes_static_graph_tool_contract():
@@ -218,3 +233,5 @@ def test_lsp_route_skill_exposes_static_graph_tool_contract():
         "svc.DefaultConfig",
     ]
     assert results[0].content == "route endpoint: direct seed HandleRequest"
+    assert lsp_result_metadata(results)["provider"] == STATIC_LSP_PROVIDER
+    assert lsp_result_metadata(results)["capability"] == "route"

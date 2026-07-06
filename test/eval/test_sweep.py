@@ -97,6 +97,7 @@ def test_run_cell_passes_lsp_route_context_options_to_harness(monkeypatch, tmp_p
             "graph": {
                 "seed_limit": 4,
                 "seed_policy": "specific",
+                "query_fallback": True,
                 "top_k": 9,
                 "include_neighbors": False,
             }
@@ -122,5 +123,6 @@ def test_run_cell_passes_lsp_route_context_options_to_harness(monkeypatch, tmp_p
     assert spec.enable_lsp_route_context is True
     assert spec.lsp_route_seed_limit == 4
     assert spec.lsp_route_seed_policy == "specific"
+    assert spec.lsp_route_query_fallback is True
     assert spec.lsp_route_top_k == 9
     assert spec.lsp_route_include_neighbors is False
