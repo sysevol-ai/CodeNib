@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+# PAYOFF experiment: re-run compact with the 4B embedding (vs 0.6B). The 0.6B
+# recall@10=56% capped compact's accuracy at ~grep; 4B recall@10=64% should let
+# compact BEAT grep on accuracy while keeping the -25% cost. grep is the anchor
+# (embedding-independent). Compare eager_compact here vs grep (same run) and vs
+# haiku_base_compact (0.6B) by instance_id. Haiku=vertex, only embedding on GPU.
+base: design_space.yaml
+sweep_id: haiku_base_compact_4b
+embedding_model: Qwen/Qwen3-Embedding-4B
+embedding_dimension: 2560
+reps: 1
+max_turns: 16
+instances: []
+subsets:
+  grep_only: [read, grep, glob, bash]
+  preinj_eager: [read, grep, glob, bash]
+  preinj_eager_compact: [read, grep, glob, bash]
+preload:
+  preinj_eager:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager
+  preinj_eager_compact:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0

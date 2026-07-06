@@ -147,3 +147,12 @@ def test_graph_pipeline_routes_languages_to_graph_builder_and_rerank(
 
     [vector_call] = vector_calls
     assert vector_call["languages"] == ["rust", "python"]
+
+
+def test_graph_retrieve_pipeline_name_is_sparse_seeded_alias():
+    from codeminer.model import graph_retrieve_pipeline as pipeline_module
+
+    assert issubclass(
+        pipeline_module.GraphRetrievePipeline,
+        pipeline_module.SparseSeededGraphRetrievePipeline,
+    )

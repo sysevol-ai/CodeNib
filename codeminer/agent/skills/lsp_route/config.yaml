@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+skill_id: lsp_route
+skill_type: expand
+operator: graph.lsp.route
+cost: low
+defaults:
+  top_k: 12
+  include_neighbors: true
+inputs:
+  - name: symbols
+    type: List[str]
+    required: true
+    description: Specific symbol/display names from the request, search, read, or LSP results. Use [] when no reliable symbol is known and provide query.
+  - name: query
+    type: str
+    required: false
+    description: Original user request or local search intent, used to rank endpoint/bridge/provider/type route roles and to seed fallback anchors when symbols is [].
+  - name: top_k
+    type: int
+    required: false
+    description: Maximum number of compact route anchors to return.
+  - name: include_neighbors
+    type: bool
+    required: false
+    description: Include query-relevant one-hop graph neighbors with via markers.
+outputs:
+  type: List[QueriedNode]
+  description: Compact semantic route anchors from the static symbol graph. No source bodies; read returned files before answering.
+index_requirements:
+  - type: symbol_graph
+    max_age_seconds: 3600
+    scope: current_repo
+resources: []

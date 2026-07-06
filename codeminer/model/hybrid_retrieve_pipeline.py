@@ -59,8 +59,8 @@ characteristics (e.g., BM25's long tail vs embedding's tight cluster).
 
 Contrast with Other Pipelines
 ------------------------------
-- ``GraphRetrievePipeline``: BM25 → **graph expansion** → embedding rerank
-  (adds a graph-walk middle stage; used for graph-RAG experiments)
+- ``SparseSeededGraphRetrievePipeline``: BM25 → **graph expansion** →
+  embedding rerank (adds a graph-walk middle stage; graph-first baseline)
 - Agent A2 (``bm25_search`` + ``embedding_search``): **LLM decides** when/how to
   call each tool (adaptive, but token-expensive and non-deterministic)
 - ``RetrieveRerankPipeline``: parallel **hybrid fusion** with configurable weights
@@ -127,9 +127,10 @@ class HybridRetrievePipeline:
         self.stage2_topk = stage2_topk
 
         # Load skill registry (required before build_skill_contexts)
+        import os as _os
+
         from ..agent.skills.loader import SkillLoader
         from ..agent.skills.registry import SkillRegistry
-        import os as _os
 
         skills_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(__file__)), "agent", "skills"
@@ -216,7 +217,9 @@ class HybridRetrievePipeline:
         )
 
         # Stage 2: Embedding rerank within BM25 candidates
-        logger.debug("Stage 2: embedding rerank within %d candidates", len(candidate_ids))
+        logger.debug(
+            "Stage 2: embedding rerank within %d candidates", len(candidate_ids)
+        )
         reranked = self.vector_store.search_within_ids(
             query=query,
             mask_node_ids=candidate_ids,

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+# Unified 4-arm comparison on Haiku (cloud strong agent): grep / embed / eager /
+# eager_gated. graph + graph_verify dropped to appendix (runtime_probe rejected).
+base: design_space.yaml
+sweep_id: haiku_compare
+reps: 1
+max_turns: 16
+instances: []
+subsets:
+  grep_only: [read, grep, glob, bash]
+  preinj_embed: [read, grep, glob, bash]
+  preinj_eager: [read, grep, glob, bash]
+  preinj_eager_gated: [read, grep, glob, bash]
+preload:
+  preinj_embed:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+  preinj_eager:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager
+  preinj_eager_gated:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_gated

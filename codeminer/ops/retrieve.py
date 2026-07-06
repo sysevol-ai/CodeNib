@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..index.embedding.vector_store import CodeVectorStore
 from ..index.regex_idx.regex_idx import RegexNodeIndex
@@ -66,26 +66,33 @@ def merge_hybrid(
     branches: List[List[QueriedNode]],
     weights: Optional[List[float]] = None,
     top_k: Optional[int] = None,
+    *,
+    fusion: str = "weighted",
+    rrf_k: int = 60,
 ) -> List[QueriedNode]:
-    """Merge multiple retrieval branches with weighted scoring."""
+    """Merge multiple retrieval branches with weighted scoring or RRF."""
     if not branches:
         return []
 
     if not weights or len(weights) != len(branches):
         weights = [1.0] * len(branches)
+    if rrf_k <= 0:
+        raise ValueError("rrf_k must be positive.")
 
-    accumulator: Dict[
-        Tuple[Optional[str], str, Optional[int], Optional[int]], QueriedNode
-    ] = {}
+    normalized_fusion = _normalize_fusion(fusion)
+
+    accumulator: Dict[Tuple[Any, ...], QueriedNode] = {}
 
     for weight, results in zip(weights, branches, strict=True):
-        for rank, item in enumerate(results):
-            base_score = item.score or 0.0
-            if base_score == 0.0:
-                base_score = 1.0 / (rank + 1)
-
-            key = (item.file, item.node_name, item.start_line, item.end_line)
-            weighted = weight * base_score
+        for rank, item in enumerate(results, start=1):
+            key = queried_node_key(item)
+            weighted = _fusion_score(
+                item,
+                rank=rank,
+                weight=weight,
+                fusion=normalized_fusion,
+                rrf_k=rrf_k,
+            )
 
             if key not in accumulator:
                 accumulator[key] = _with_score(item, weighted)
@@ -101,9 +108,50 @@ def merge_hybrid(
         reverse=True,
     )
 
-    if top_k:
+    if top_k is not None:
         merged = merged[:top_k]
     return merged
+
+
+def queried_node_key(item: QueriedNode) -> Tuple[Any, ...]:
+    """Stable identity for deduping candidate nodes across pipeline stages."""
+    node_id = (item.node_id or "").strip()
+    if node_id:
+        return ("node_id", node_id)
+    return (
+        "span",
+        item.file,
+        item.node_name,
+        item.start_line,
+        item.end_line,
+    )
+
+
+def dedup_queried_nodes(nodes: Sequence[QueriedNode]) -> List[QueriedNode]:
+    """Deduplicate nodes while preserving first-seen rank order.
+
+    Retrieval pipelines often concatenate dense hits with graph-expanded
+    neighbors. The dense order is the ranking signal; duplicates should not
+    consume multiple top-k slots. If a later duplicate carries code content and
+    the first copy does not, keep the first rank but attach the content.
+    """
+    by_key: Dict[Tuple[Any, ...], int] = {}
+    out: List[QueriedNode] = []
+    for node in nodes:
+        key = queried_node_key(node)
+        existing_idx = by_key.get(key)
+        if existing_idx is None:
+            by_key[key] = len(out)
+            out.append(node)
+            continue
+        existing = out[existing_idx]
+        if not existing.content and node.content:
+            out[existing_idx] = _with_score(
+                existing,
+                existing.score or 0.0,
+                content_override=node.content,
+            )
+    return out
 
 
 def _with_score(
@@ -119,6 +167,37 @@ def _with_score(
     data = _dump_model(item)
     data.update(update)
     return QueriedNode(**data)
+
+
+def _fusion_score(
+    item: QueriedNode,
+    *,
+    rank: int,
+    weight: float,
+    fusion: str,
+    rrf_k: int,
+) -> float:
+    if fusion == "rrf":
+        return weight / float(rrf_k + rank)
+
+    base_score = item.score or 0.0
+    if base_score == 0.0:
+        base_score = 1.0 / rank
+    return weight * base_score
+
+
+def _normalize_fusion(value: str) -> str:
+    normalized = (value or "weighted").strip().lower().replace("-", "_")
+    aliases = {
+        "linear": "weighted",
+        "linear_combination": "weighted",
+        "weighted_sum": "weighted",
+        "none": "weighted",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"weighted", "rrf"}:
+        raise ValueError("fusion must be 'weighted' or 'rrf'.")
+    return normalized
 
 
 def _dump_model(model: object) -> Dict[str, object]:

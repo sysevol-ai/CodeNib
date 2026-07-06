@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+# codeminer-base on Haiku (vertex): grep / eager / eager_compact. Inherits
+# model=vertex_ai/claude-haiku-4-5 + vertex_location=us-east5 from design_space.
+# Tests the explore->commit collapse: eager judges direction from preload, then
+# the continuation works a distilled seed (no preload dump, no exploration
+# trace). Strong cloud agent, no local GPU needed.
+base: design_space.yaml
+sweep_id: haiku_base_compact
+reps: 1
+max_turns: 16
+instances: []
+subsets:
+  grep_only: [read, grep, glob, bash]
+  preinj_eager: [read, grep, glob, bash]
+  preinj_eager_compact: [read, grep, glob, bash]
+preload:
+  preinj_eager:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager
+  preinj_eager_compact:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0

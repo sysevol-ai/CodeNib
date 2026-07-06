@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Graph-based retrieval baseline script.
+Sparse-seeded graph retrieval baseline script.
 
 This script demonstrates a three-stage retrieval pipeline:
 1. Stage 1: Select a small number of initial nodes (e.g., 5) using BM25.
@@ -14,7 +14,8 @@ This script demonstrates a three-stage retrieval pipeline:
 3. Stage 3 (optional): Use embeddings within the expanded set to rank/select
    the final results.
 
-This is a baseline for comparison with embedding-only retrieval.
+This is a graph-first baseline for comparison with embedding-only retrieval.
+It is not the dense-first graph-augmentation pipeline.
 
 Usage:
     # Graph-only (no embedding rerank)
@@ -35,8 +36,7 @@ Usage:
     python examples/graph_retrieve_baseline.py --dataset codeminer_base \\
         --metrics-k 1 3 5 10
 
-    # Profiling sweep over a fixed corpus CSV (see
-    # scripts/profiling/profile_graph_rag.sh)
+    # Profiling sweep over a fixed corpus CSV
     python examples/graph_retrieve_baseline.py --dataset swebench_lite \\
         --filter-csv examples/selected_instance.csv \\
         --enable-profiler --record-samples --record-memory
@@ -60,7 +60,7 @@ from codeminer.eval.retrieval_eval import (
     extract_predictions,
 )
 from codeminer.log_utils import get_logger
-from codeminer.model import GraphRetrievePipeline
+from codeminer.model import SparseSeededGraphRetrievePipeline
 from codeminer.profiler import Profiler, percentile_from_sorted
 
 logger = get_logger(__name__)
@@ -582,7 +582,7 @@ def parse_args():
         default=None,
         help=(
             "Directory to store runtime profiler summaries "
-            "(default: <index-cache-dir>/profile_log/graph_rag)."
+            "(default: <index-cache-dir>/profile_log/sparse_seed_graph)."
         ),
     )
     parser.add_argument(
@@ -637,6 +637,16 @@ def _resolve_rerank_strategy(args):
     return "embedding" if args.embedding else "none"
 
 
+def _method_label(args, rerank_strategy: str) -> str:
+    """Stable method label for sparse-seeded graph-first baselines."""
+    expansion = "ppr" if args.ppr else "bfs"
+    label = f"sparse_seed_graph_{expansion}"
+    if rerank_strategy != "none":
+        strategy = rerank_strategy.replace("-", "_")
+        label = f"{label}_plus_{strategy}_rerank"
+    return label
+
+
 def run_graph_pipeline(args):
     """Run the graph-based retrieval baseline."""
 
@@ -666,7 +676,7 @@ def run_graph_pipeline(args):
             if args.profile_dir
             else Path(args.index_cache_dir).expanduser().resolve()
             / "profile_log"
-            / "graph_rag"
+            / "sparse_seed_graph"
         )
         base.mkdir(parents=True, exist_ok=True)
         return base
@@ -721,7 +731,7 @@ def run_graph_pipeline(args):
         query_profiler = None
         if profiling_enabled:
             index_profiler = Profiler(
-                name=f"graph_rag[index][{instance_id}]",
+                name=f"sparse_seed_graph[index][{instance_id}]",
                 logger=logger,
                 emit_events=False,
                 summary_level=logging.INFO,
@@ -729,7 +739,7 @@ def run_graph_pipeline(args):
                 record_memory=args.record_memory,
             )
             query_profiler = Profiler(
-                name=f"graph_rag[query][{instance_id}]",
+                name=f"sparse_seed_graph[query][{instance_id}]",
                 logger=logger,
                 emit_events=False,
                 summary_level=logging.INFO,
@@ -748,7 +758,7 @@ def run_graph_pipeline(args):
             # is multi-language; SWE-bench / Loc-Bench fall back to --languages).
             instance_languages = _resolve_instance_languages(instance, args.languages)
 
-            pipeline = GraphRetrievePipeline(
+            pipeline = SparseSeededGraphRetrievePipeline(
                 repo_path=repo_path,
                 index_path=index_path,
                 stage1_topk=args.stage1_topk,
@@ -842,12 +852,11 @@ def run_graph_pipeline(args):
 
             if all_results is not None:
                 unique_files, normalized_symbols = extract_predictions(results)
+                method_label = _method_label(args, rerank_strategy)
                 all_results.append(
                     {
                         "instance_id": instance_id,
-                        "method": (
-                            "graph_ppr_baseline" if args.ppr else "graph_baseline"
-                        ),
+                        "method": method_label,
                         "stage1_topk": args.stage1_topk,
                         "stage2_topk": args.stage2_topk,
                         "k_hop": args.k_hop,
@@ -910,6 +919,7 @@ def run_graph_pipeline(args):
             "k_hop": args.k_hop,
             "ppr_damping": args.ppr_damping,
             "rerank_strategy": rerank_strategy,
+            "method": _method_label(args, rerank_strategy),
             "embedding_model": (
                 args.embedding_model if rerank_strategy == "embedding" else None
             ),
@@ -952,14 +962,12 @@ def run_graph_pipeline(args):
         tag_part = (
             f"__{_sanitize_filename_part(args.profile_tag)}" if args.profile_tag else ""
         )
-        expansion = "ppr" if args.ppr else "bfs"
         # Sanitize args.dataset for symmetry with profile_tag — today
         # `choices=` constrains it to safe values, but if that ever
         # loosens we don't want to write outside the resolved profile dir.
         dataset_part = _sanitize_filename_part(args.dataset)
-        profile_filename = (
-            f"graph_rag_{dataset_part}_{expansion}_{rerank_strategy}{tag_part}.json"
-        )
+        method_part = _method_label(args, rerank_strategy)
+        profile_filename = f"{method_part}_{dataset_part}{tag_part}.json"
         profile_path = profile_dir / profile_filename
         with open(profile_path, "w", encoding="utf-8") as f:
             json.dump(profile_payload, f, indent=2, ensure_ascii=False)
