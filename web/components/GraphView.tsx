@@ -5,7 +5,13 @@ import dynamic from "next/dynamic";
 import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
 import HighlightedCode from "@/components/HighlightedCode";
 import SystemMap from "@/components/SystemMap";
-import { fetchSource, repoRelative, type CallSite, type CodemapResponse } from "@/lib/api";
+import {
+  fetchEdgeLabel,
+  fetchSource,
+  repoRelative,
+  type CallSite,
+  type CodemapResponse,
+} from "@/lib/api";
 
 // Cytoscape loads only when a graph is shown, so the wiki
 // narrative paints first and the graph fills in a beat later.
@@ -63,6 +69,9 @@ function SourcePeek({
   const [code, setCode] = useState("");
   const [start, setStart] = useState(1);
   const [state, setState] = useState<"loading" | "ok" | "err">("loading");
+  // Short LLM phrase describing how the source uses the target (edge peeks only).
+  // Fetched on-demand; the server returns "" when the feature is disabled.
+  const [edgeLabel, setEdgeLabel] = useState<"idle" | "loading" | string>("idle");
 
   const site = sites[Math.min(idx, sites.length - 1)] || sites[0];
   const rel = repoRelative(site.file);
@@ -82,6 +91,41 @@ function SourcePeek({
     });
     return () => cancelAnimationFrame(id);
   }, [source]);
+
+  useEffect(() => {
+    if (source.kind !== "edge") {
+      setEdgeLabel("idle");
+      return;
+    }
+    let cancelled = false;
+    const ctrl = new AbortController();
+    setEdgeLabel("loading");
+    fetchEdgeLabel(
+      repoId,
+      {
+        source: {
+          file: source.srcFile || "",
+          line: source.srcLine ?? null,
+          end_line: source.srcEnd ?? null,
+          label: source.srcLabel,
+        },
+        target: {
+          file: source.tgtFile || "",
+          line: source.tgtLine ?? null,
+          end_line: source.tgtEnd ?? null,
+          label: source.tgtLabel,
+        },
+        anchors: source.anchors,
+      },
+      { signal: ctrl.signal }
+    )
+      .then((r) => !cancelled && setEdgeLabel(r.label || ""))
+      .catch(() => !cancelled && setEdgeLabel(""));
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [source, repoId]);
 
   useEffect(() => {
     if (isExternal) return; // external dep — no in-repo source to fetch
@@ -119,6 +163,14 @@ function SourcePeek({
           <span className="callsite-loc mono">
             {isExternal ? "external dependency" : `${rel}:${line}`}
           </span>
+          {source.kind === "edge" &&
+            typeof edgeLabel === "string" &&
+            edgeLabel !== "idle" &&
+            (edgeLabel === "loading" ? (
+              <span className="callsite-edgelabel muted">describing dependency…</span>
+            ) : edgeLabel ? (
+              <span className="callsite-edgelabel">“{edgeLabel}”</span>
+            ) : null)}
         </div>
         <div className="callsite-actions">
           <span className="callsite-kindtag">{sourceMeta}</span>
@@ -236,6 +288,7 @@ export default function GraphView({
           data={data}
           variant={variant}
           focusRequest={focusReq}
+          repoId={repoId}
           onNodeClick={(node) => setPeek({ kind: "node", node })}
           onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
         />

@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+base: design_space.yaml
+sweep_id: qwen35_gated
+model: openai/qwen3.5-27b
+vertex_location: null
+vertex_project: null
+reps: 1
+max_turns: 16
+first_turn_tool_choice: null
+gate_llm_extra_body:
+  chat_template_kwargs:
+    enable_thinking: false
+instances: []
+subsets:
+  preinj_eager_gated: [read, grep, glob, bash]
+preload:
+  preinj_eager_gated:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_gated

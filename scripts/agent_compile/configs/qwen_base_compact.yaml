@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+# codeminer-base: grep / eager / eager_compact — isolate mid-run compaction's
+# token saving (eager_compact stubs bulky tool outputs after the first read so
+# later turns stop re-carrying full file/grep text). --model swaps size.
+base: design_space.yaml
+sweep_id: qwen_base_compact
+vertex_location: null
+vertex_project: null
+reps: 1
+max_turns: 16
+first_turn_tool_choice: null
+instances: []
+subsets:
+  grep_only: [read, grep, glob, bash]
+  preinj_eager: [read, grep, glob, bash]
+  preinj_eager_compact: [read, grep, glob, bash]
+preload:
+  preinj_eager:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager
+  preinj_eager_compact:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0  # pinned: clean terse-collapse baseline across tiers

@@ -38,6 +38,42 @@ class RepoInfo(BaseModel):
     capabilities: dict[str, bool] = Field(default_factory=dict)
 
 
+class CallSite(BaseModel):
+    """An exact call site (1-based line), mirroring the frontend ``CallSite``."""
+
+    file: str = ""
+    line: Optional[int] = None
+
+
+class EdgeEndpoint(BaseModel):
+    """One end of a graph edge, identified by source location.
+
+    The frontend has each node's ``file`` + 1-based ``line``/``end_line`` (from
+    the codemap payload) but NOT the graph's internal symbol identity, so an edge
+    is addressed by (file, line span) rather than a symbol name.
+    """
+
+    file: str
+    line: Optional[int] = None  # 1-based start
+    end_line: Optional[int] = None  # 1-based end
+    label: str = ""  # display name, for the prompt only (not identity)
+
+
+class EdgeLabelRequest(BaseModel):
+    """Ask for a short dependency phrase describing how ``source`` uses ``target``."""
+
+    source: EdgeEndpoint
+    target: EdgeEndpoint
+    # Exact call sites where source references target (1-based), if known.
+    anchors: List[CallSite] = Field(default_factory=list)
+
+
+class EdgeLabelResponse(BaseModel):
+    label: str = ""  # e.g. "validates user input"; "" when unavailable/disabled
+    cached: bool = False
+    disabled: bool = False
+
+
 class ChatMessage(BaseModel):
     """One conversation message (text only — citations stay client-side)."""
 

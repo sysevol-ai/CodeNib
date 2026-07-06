@@ -25,6 +25,19 @@ from ..log_utils import get_logger
 from .agent_types import AgentResult, ToolCallRecord
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .history import PlainChatHistory, TokenBudgetedChatHistory
+from .lsp_provider import (
+    fingerprint_lsp_result,
+    lsp_result_metadata,
+    preview_lsp_result,
+)
+from .route_context import (
+    build_lsp_route_context,
+    canonical_lsp_route_args,
+    fingerprint_lsp_route_nodes,
+    normalize_lsp_route_seed_policy,
+    summarize_lsp_route_nodes,
+)
+from .runtime.trace import AgentRunTrace
 from .skills.loader import SkillLoader
 from .skills.registry import SkillRegistry
 from .skills.typecheck import coerce_args
@@ -63,7 +76,8 @@ _HAS_SYMBOLS_CONTRACT = re.compile(rf"{_LABEL_PREFIX}symbols?[\s*_`]*[:=]")
 _HAS_LOCATIONS_CONTRACT = re.compile(rf"{_LABEL_PREFIX}locations?[\s*_`]*[:=]")
 
 
-def _has_localization_contract(answer: str) -> bool:
+def has_localization_contract(answer: str) -> bool:
+    """Return true when an answer carries the localization output contract."""
     return all(
         pattern.search(answer or "")
         for pattern in (
@@ -72,6 +86,10 @@ def _has_localization_contract(answer: str) -> bool:
             _HAS_LOCATIONS_CONTRACT,
         )
     )
+
+
+def _has_localization_contract(answer: str) -> bool:
+    return has_localization_contract(answer)
 
 
 _DEFAULT_SYSTEM_PROMPT = f"""\
@@ -123,8 +141,21 @@ stop until you have actually read the implementing file.
 it and answer rather than exhaustively reading every candidate.
 """
 
+_LSP_ROUTE_TOOL_GUIDANCE = """\
+
+Dynamic LSP route tool:
+- If `lsp_route` is available, use it early when the request names a symbol, \
+error code, config field, API, or behavior that likely crosses files.
+- Call `lsp_route(symbols=[...], query=<original request>, top_k=5)` with the \
+most specific symbol-like names you know. If you have no reliable symbol yet, \
+call it with `symbols=[]` and the original request as `query`.
+- Treat returned nodes as route hints only. Read the first one or two promising \
+files/ranges before citing anything in the final answer.
+"""
+
 # Maximum characters for a single tool result to avoid context blowup.
 _MAX_RESULT_CHARS = 16_000
+_CHARS_PER_TOKEN_ESTIMATE = 4
 
 
 class AgentRunner:
@@ -158,7 +189,17 @@ class AgentRunner:
         include_default_tools: bool = True,
         default_tool_ids: Optional[Set[str]] = None,
         retry: Optional[RetryConfig] = None,
-        force_localization_contract: bool = True,
+        force_localization_contract: bool = False,
+        first_turn_tool_choice: Optional[str] = None,
+        force_first_turn_only: bool = False,
+        compact_after_read: bool = False,
+        compact_keep_reads: int = 0,
+        enable_lsp_route_context: bool = False,
+        lsp_route_seed_limit: int = 8,
+        lsp_route_seed_policy: str = "all",
+        lsp_route_query_fallback: bool = False,
+        lsp_route_top_k: int = 12,
+        lsp_route_include_neighbors: bool = True,
     ) -> None:
         if llm is not None:
             self.llm = llm
@@ -219,6 +260,35 @@ class AgentRunner:
         # Locations: contract; QA callers (web demo) keep prose, so they turn
         # this off and skip the schema-forcing final turn entirely.
         self._force_contract = force_localization_contract
+        self.first_turn_tool_choice = first_turn_tool_choice
+        # When True, only turn 0 is forced (legacy single-turn behaviour);
+        # default False = force until the agent reads a file.
+        self._force_first_turn_only = force_first_turn_only
+        # eager_compact: after the first successful read anchors the agent, stub
+        # the bulky tool outputs already in history (full file/grep text) down to
+        # short references so later turns stop re-carrying them — the dominant
+        # prompt-token cost (prompt is ~97% of spend and grows every turn).
+        # Loss-safe for localization (answers need path/symbol/line, not source).
+        self._compact_after_read = compact_after_read
+        # Seed richness for eager_compact: how many successful read outputs to
+        # keep VERBATIM in the collapse seed. 0 still carries the latest read
+        # transcript so the model can see the file it just requested; higher
+        # values inline additional recent reads so weaker models don't re-read
+        # after the collapse (the "re-read tax" observed on 4B). Set by a
+        # model-strength router upstream.
+        self._compact_keep_reads = compact_keep_reads
+        # Optional startup context over the same static graph exposed by the
+        # lsp_route skill. This is opt-in harness policy: it makes graph route
+        # hints available on turn 1 without depending on the model to discover
+        # the tool, while still requiring normal reads before answering.
+        self._enable_lsp_route_context = bool(enable_lsp_route_context)
+        self._lsp_route_seed_limit = max(1, int(lsp_route_seed_limit or 8))
+        self._lsp_route_seed_policy = normalize_lsp_route_seed_policy(
+            lsp_route_seed_policy
+        )
+        self._lsp_route_query_fallback = bool(lsp_route_query_fallback)
+        self._lsp_route_top_k = max(1, int(lsp_route_top_k or 12))
+        self._lsp_route_include_neighbors = bool(lsp_route_include_neighbors)
 
         # Resource guard: filter unavailable skills and collect warnings.
         # The "base" allow / exclude are stored so we can recompute the
@@ -250,6 +320,9 @@ class AgentRunner:
 
         # Build system prompt: base + environment block + resource warnings.
         base_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
+        tool_guidance = self._build_tool_guidance_block(self.tools)
+        if tool_guidance:
+            base_prompt += tool_guidance
         env_block = self._build_environment_block(self.session_ctx)
         if env_block:
             base_prompt += f"\n{env_block}\n"
@@ -257,6 +330,19 @@ class AgentRunner:
             warnings_text = "\n".join(f"- {w}" for w in resource_warnings)
             base_prompt += f"\nIndex warnings:\n{warnings_text}\n"
         self.system_prompt = base_prompt
+
+    @staticmethod
+    def _build_tool_guidance_block(tools: Sequence[Mapping[str, Any]]) -> str:
+        """Render prompt guidance for optional dynamic tools that need adoption."""
+
+        names = {
+            str((tool.get("function") or {}).get("name") or "")
+            for tool in tools or []
+            if isinstance(tool, Mapping)
+        }
+        if "lsp_route" in names:
+            return _LSP_ROUTE_TOOL_GUIDANCE
+        return ""
 
     @staticmethod
     def _build_environment_block(session_ctx: Optional[Any]) -> str:
@@ -383,14 +469,117 @@ class AgentRunner:
                         effective = set(self._base_allow)
                 tools = self._tools_for(effective)
 
+        all_tool_calls: List[ToolCallRecord] = []
+        usage_tracker = UsageTracker()
+        start = time.monotonic()
+        trace = AgentRunTrace()
+        trace.add(
+            "run_start",
+            0,
+            query_chars=len(query or ""),
+            max_turns=max_turns,
+            tool_count=len(tools or []),
+        )
+        user_query = query
+        if self._enable_lsp_route_context:
+            route_start = time.monotonic()
+            route_context, route_skip_reason = self._initial_lsp_route_context(query)
+            route_duration_ms = (time.monotonic() - route_start) * 1000
+            if route_context is not None and route_context.text:
+                user_query = f"{query}\n\n{route_context.text}"
+                seeds = list(route_context.seeds)
+                seed_source = "symbol" if seeds else "query"
+                trace.add(
+                    "lsp_route_context",
+                    0,
+                    status="offered",
+                    seeds=seeds,
+                    seed_source=seed_source,
+                    seed_policy=self._lsp_route_seed_policy,
+                    route_count=len(route_context.nodes),
+                    context_chars=len(route_context.text),
+                    duration_ms=route_duration_ms,
+                    route_args=dict(route_context.arguments or {}),
+                    route_fingerprint=route_context.route_fingerprint,
+                    route_preview=summarize_lsp_route_nodes(route_context.nodes),
+                )
+                trace.add_context(
+                    "lsp_route",
+                    "offered",
+                    0,
+                    summary=(
+                        "initial static LSP route context from "
+                        + ("seeds: " + ", ".join(seeds) if seeds else "query text")
+                    ),
+                    provenance={
+                        "kind": "initial_context",
+                        "tool": "lsp_route",
+                    },
+                    freshness="fresh",
+                    token_estimate=_estimate_context_tokens(route_context.text),
+                    metadata={
+                        "seeds": seeds,
+                        "seed_source": seed_source,
+                        "seed_policy": self._lsp_route_seed_policy,
+                        "route_count": len(route_context.nodes),
+                        "top_k": self._lsp_route_top_k,
+                        "include_neighbors": self._lsp_route_include_neighbors,
+                        "query_fallback": self._lsp_route_query_fallback,
+                        "duration_ms": route_duration_ms,
+                        "route_args": dict(route_context.arguments or {}),
+                        "route_fingerprint": route_context.route_fingerprint,
+                    },
+                )
+            else:
+                trace.add(
+                    "lsp_route_context",
+                    0,
+                    status="skipped",
+                    reason=route_skip_reason or "empty_route_context",
+                    duration_ms=route_duration_ms,
+                )
+
         history = self._new_history()
         history.add_message({"role": "system", "content": self.system_prompt})
         for msg in chat_history or []:
             history.add_message({"role": msg["role"], "content": msg["content"]})
-        history.add_message({"role": "user", "content": query})
-        all_tool_calls: List[ToolCallRecord] = []
-        usage_tracker = UsageTracker()
-        start = time.monotonic()
+        history.add_message({"role": "user", "content": user_query})
+        has_read = False  # has the agent read a file yet (gates forced tools)
+        read_paths: List[str] = []  # files the agent read (for schema salvage)
+        read_outputs: List[Dict[str, str]] = []  # successful read transcripts
+        compacted = False  # eager_compact: collapsed to direction seed yet?
+
+        def _finish_result(
+            answer: str,
+            *,
+            total_turns: int,
+            answer_source: str,
+        ) -> AgentResult:
+            elapsed = (time.monotonic() - start) * 1000
+            trace.add(
+                "final_answer",
+                total_turns,
+                source=answer_source,
+                answer_chars=len(answer or ""),
+                has_contract=_has_localization_contract(answer or ""),
+            )
+            trace.add(
+                "run_end",
+                total_turns,
+                duration_ms=elapsed,
+                tool_calls=len(all_tool_calls),
+                usage_records=len(usage_tracker.records),
+            )
+            return AgentResult(
+                answer=answer,
+                tool_calls=all_tool_calls,
+                messages=history.get_messages(),
+                total_turns=total_turns,
+                total_duration_ms=elapsed,
+                usage=usage_tracker.totals(),
+                usage_records=list(usage_tracker.records),
+                trace=trace,
+            )
 
         for turn in range(max_turns):
             logger.debug("agent turn %d/%d", turn + 1, max_turns)
@@ -399,9 +588,48 @@ class AgentRunner:
                 "usage_tracker": usage_tracker,
                 "usage_turn": turn + 1,
             }
-            if tools:
+            # Last-turn salvage: if this is the final allowed turn and the agent
+            # still hasn't emitted the Files:/Symbols:/Locations: contract, spend
+            # it producing a formatted answer instead of one more (truncated)
+            # tool call. This is contract preservation: a useful localization can
+            # be lost if the run ends mid-search or in unstructured prose.
+            is_last_turn = self._force_contract and turn == max_turns - 1
+            last_assistant = ""
+            for _m in reversed(history.get_messages()):
+                if _m.get("role") == "assistant" and _m.get("content"):
+                    last_assistant = _m["content"]
+                    break
+            if is_last_turn and not _has_localization_contract(last_assistant):
+                history.add_message(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Stop exploring. Give your final answer NOW in exactly "
+                            f"this format:\n{LOCALIZATION_SCHEMA}"
+                        ),
+                    }
+                )
+                if tools:
+                    call_kwargs["tools"] = tools
+                    call_kwargs["tool_choice"] = "none"
+            elif tools:
                 call_kwargs["tools"] = tools
+                # Force tool calls until the agent has actually READ a file.
+                # The localization contract requires citing inspected code, so
+                # keep tool_choice forced until a read happens; then drop to
+                # "auto" so the model is free to commit. Bounded by
+                # first_turn_only for the old single-turn behaviour.
+                if self.first_turn_tool_choice and not has_read:
+                    if not (self._force_first_turn_only and turn > 0):
+                        call_kwargs["tool_choice"] = self.first_turn_tool_choice
 
+            trace.add(
+                "llm_call",
+                turn + 1,
+                message_count=len(history.get_messages()),
+                tool_count=len(call_kwargs.get("tools") or []),
+                tool_choice=call_kwargs.get("tool_choice", "auto"),
+            )
             response = self.llm._call_raw(history.get_messages(), **call_kwargs)
             choice = response.choices[0]
             assistant_msg = choice.message
@@ -412,48 +640,139 @@ class AgentRunner:
 
             # Check for tool calls
             tool_calls = getattr(assistant_msg, "tool_calls", None)
+            trace.add(
+                "llm_response",
+                turn + 1,
+                content_chars=len(getattr(assistant_msg, "content", None) or ""),
+                tool_call_count=len(tool_calls or []),
+            )
             if not tool_calls:
                 # Terminal: LLM stopped calling tools. If it answered in prose
                 # without the contract (it explored but didn't format), force one
                 # schema turn so a genuine localization isn't lost to formatting.
                 answer = getattr(assistant_msg, "content", None) or ""
+                answer_source = "assistant"
                 if (
                     self._force_contract
                     and all_tool_calls
                     and not _has_localization_contract(answer)
                 ):
+                    trace.add(
+                        "final_answer_forced",
+                        turn + 1,
+                        reason="missing_contract",
+                        read_paths=list(dict.fromkeys(read_paths)),
+                    )
                     answer = (
-                        self._force_schema_answer(history, usage_tracker, turn + 2)
+                        self._force_schema_answer(
+                            history, usage_tracker, turn + 2, read_paths
+                        )
                         or answer
                     )
-                elapsed = (time.monotonic() - start) * 1000
-                return AgentResult(
+                    answer_source = "forced_schema"
+                return _finish_result(
                     answer=answer,
-                    tool_calls=all_tool_calls,
-                    messages=history.get_messages(),
                     total_turns=turn + 1,
-                    total_duration_ms=elapsed,
-                    usage=usage_tracker.totals(),
-                    usage_records=list(usage_tracker.records),
+                    answer_source=answer_source,
                 )
 
             # Execute each tool call
             for tc in tool_calls:
                 record = self._execute_tool_call(tc)
                 all_tool_calls.append(record)
+                tool_content = _serialize_result(
+                    record.result if record.error is None else record.error
+                )
+                trace.add(
+                    "tool_call",
+                    turn + 1,
+                    **_trace_tool_call_data(record, tool_content),
+                )
+                # A successful read satisfies the "read before answering"
+                # contract; once it happens, stop forcing tool calls.
+                successful_read = (
+                    record.skill_id == "read"
+                    and record.error is None
+                    and not tool_content.lstrip().startswith("Error")
+                )
+                if record.skill_id == "read":
+                    trace.add(
+                        "read",
+                        turn + 1,
+                        tool_call_id=record.tool_call_id,
+                        path=str((record.arguments or {}).get("file_path") or ""),
+                        offset=(record.arguments or {}).get("offset"),
+                        limit=(record.arguments or {}).get("limit"),
+                        status="ok" if successful_read else "error",
+                    )
+                trace.add_context(
+                    record.skill_id,
+                    _context_state(record, tool_content, successful_read),
+                    turn + 1,
+                    **_context_ledger_data(record, tool_content),
+                )
+                if successful_read:
+                    has_read = True
+                    _rp = (record.arguments or {}).get("file_path")
+                    if _rp:
+                        read_paths.append(str(_rp))
+                    read_outputs.append(
+                        {"path": str(_rp or "(unknown)"), "content": tool_content}
+                    )
 
                 # Append tool response message
                 history.add_message(
                     {
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": _serialize_result(
-                            record.result if record.error is None else record.error
-                        ),
+                        "content": tool_content,
                     }
                 )
 
+            # eager_compact: once the eager phase has read a candidate and judged
+            # the direction, COLLAPSE the bulky preload dump + the whole
+            # exploration trace to a small distilled seed
+            # ([system, clean_query + judged direction]) and let the
+            # "correct-path" continuation finish from there. We do NOT carry the
+            # preload candidate snippets or the exploration history into every
+            # later turn (re-sending them is the dominant prompt-token cost).
+            # Once only — this is the explore→commit boundary, not a rolling trim.
+            if self._compact_after_read and has_read and not compacted:
+                compacted = True
+                if self._compact_history(
+                    history,
+                    read_paths,
+                    self._compact_keep_reads,
+                    read_outputs=read_outputs,
+                ):
+                    trace.add(
+                        "context_compacted",
+                        turn + 1,
+                        read_paths=list(dict.fromkeys(read_paths)),
+                        keep_reads=self._compact_keep_reads,
+                    )
+                    trace.add_context(
+                        "runtime.compaction",
+                        "summarized",
+                        turn + 1,
+                        summary=(
+                            "Compacted conversation after reads: "
+                            + (", ".join(dict.fromkeys(read_paths)) or "(none)")
+                        ),
+                        metadata={
+                            "read_paths": list(dict.fromkeys(read_paths)),
+                            "keep_reads": self._compact_keep_reads,
+                        },
+                    )
+                    logger.debug("eager_compact: collapsed to distilled direction seed")
+
         # Max turns exhausted. Prefer the last textual assistant message.
+        trace.add(
+            "max_turns_exhausted",
+            max_turns,
+            tool_calls=len(all_tool_calls),
+            has_read=has_read,
+        )
         last_content = ""
         for msg in reversed(history.get_messages()):
             if msg.get("role") == "assistant" and msg.get("content"):
@@ -463,67 +782,213 @@ class AgentRunner:
         # Budget exhausted. A capped agent usually left mid-exploration chatter
         # ("Let me check…"), so force a schema-conforming final answer unless it
         # already emitted the contract.
+        answer_source = "max_turns"
         if (
             self._force_contract
             and all_tool_calls
             and not _has_localization_contract(last_content)
         ):
+            trace.add(
+                "final_answer_forced",
+                max_turns,
+                reason="max_turns_exhausted",
+                read_paths=list(dict.fromkeys(read_paths)),
+            )
             last_content = (
-                self._force_schema_answer(history, usage_tracker, max_turns + 1)
+                self._force_schema_answer(
+                    history, usage_tracker, max_turns + 1, read_paths
+                )
                 or last_content
             )
+            answer_source = "forced_schema"
 
-        elapsed = (time.monotonic() - start) * 1000
-        return AgentResult(
+        return _finish_result(
             answer=last_content,
-            tool_calls=all_tool_calls,
-            messages=history.get_messages(),
             total_turns=max_turns,
-            total_duration_ms=elapsed,
-            usage=usage_tracker.totals(),
-            usage_records=list(usage_tracker.records),
+            answer_source=answer_source,
         )
+
+    def _initial_lsp_route_context(self, query: str) -> tuple[Any | None, str | None]:
+        """Build optional static graph route context for the opening prompt."""
+
+        meta = self.registry.get("lsp_route")
+        if meta is None or meta.executor_fn is None:
+            return None, "lsp_route_unavailable"
+        try:
+            context = build_lsp_route_context(
+                meta.executor_fn,
+                query,
+                seed_limit=self._lsp_route_seed_limit,
+                seed_policy=self._lsp_route_seed_policy,
+                query_fallback=self._lsp_route_query_fallback,
+                top_k=self._lsp_route_top_k,
+                include_neighbors=self._lsp_route_include_neighbors,
+            )
+        except Exception as exc:  # noqa: BLE001 - startup hints are best-effort
+            logger.warning("initial lsp_route context failed: %s", exc)
+            return None, f"lsp_route_error:{type(exc).__name__}"
+        if not context.seeds and not self._lsp_route_query_fallback:
+            return None, "no_symbol_seeds"
+        if not context.nodes:
+            return None, "no_route_nodes"
+        if not context.text:
+            return None, "empty_route_context"
+        return context, None
+
+    def _compact_history(
+        self,
+        history: Any,
+        read_paths: Optional[List[str]] = None,
+        keep_reads: int = 0,
+        read_outputs: Optional[List[Dict[str, str]]] = None,
+    ) -> int:
+        """Collapse eager-phase exploration to a distilled direction seed.
+
+        The eager phase looks at the preload candidates and reads 1-2 to JUDGE
+        the correct direction. Once anchored we reset the context to
+        ``[system, clean_query + judged direction]`` — we do NOT carry the bulky
+        preload candidate snippets or the whole exploration trace into the rest
+        of the run (re-sending them every turn is the dominant prompt cost, ~97%
+        of spend). The continuation works the "correct path" from a small seed.
+
+        ``keep_reads`` is the seed-richness dial set by a model-strength router.
+        The latest successful read is always inlined because this collapse runs
+        immediately after the read result enters history; without that transcript
+        the next model turn would never see the file it just asked to inspect.
+        N>0 inlines up to the last N successful read outputs (not grep/glob/bash
+        output) so a WEAK model does not re-read them after the collapse (the
+        "re-read tax" seen on 4B). It trades some token saving for fewer re-read
+        turns.
+
+        Loss-safe for localization: the seed names the files judged relevant plus
+        the agent's own assessment; answers need path/symbol/line, not source.
+        Returns 1 if it collapsed, else 0.
+        """
+        msgs = history.get_messages()
+        system = next((m for m in msgs if m.get("role") == "system"), None)
+        # Recover the clean task query: the first user message minus the appended
+        # preload preamble (which begins at the "# Candidate locations" marker).
+        first_user = next((m for m in msgs if m.get("role") == "user"), None)
+        clean_q = (first_user or {}).get("content", "") or ""
+        cut = clean_q.find("# Candidate locations")
+        if cut > 0:
+            clean_q = clean_q[:cut].rstrip()
+        # The judged direction: the agent's latest reasoning + the files it read.
+        last_assistant = ""
+        for m in reversed(msgs):
+            if m.get("role") == "assistant" and m.get("content"):
+                last_assistant = m["content"]
+                break
+        reads = ", ".join(dict.fromkeys(read_paths or [])) or "(none)"
+        # Seed-richness: inline recent successful read outputs, never incidental
+        # tool output from grep/glob/bash that happened to run later in the turn.
+        kept = ""
+        if read_outputs:
+            n_keep = max(1, int(keep_reads or 0))
+            kept_reads = [r for r in read_outputs[-n_keep:] if r.get("content")]
+            if kept_reads:
+                kept = (
+                    "\n# Content you already read (do NOT re-read these):\n"
+                    + "\n---\n".join(
+                        f"# read {r.get('path') or '(unknown)'}\n{r['content']}"
+                        for r in kept_reads
+                    )
+                    + "\n"
+                )
+        seed = (
+            f"{clean_q}\n\n"
+            "# Triage complete — focus, do not re-explore from scratch\n"
+            f"Files you already read and judged relevant: {reads}\n"
+            f"{kept}"
+            f"Your assessment so far:\n{last_assistant[:600]}\n\n"
+            "Now give the final Files:/Symbols:/Locations: answer. Only read again "
+            "if a needed location is genuinely missing above; do not reopen the "
+            "other candidates."
+        )
+        history.clear()
+        if system:
+            history.add_message(system)
+        history.add_message({"role": "user", "content": seed})
+        return 1
 
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
 
-    def _force_schema_answer(self, history, usage_tracker, usage_turn: int) -> str:
-        """One tool-free turn that extracts a contract-conforming final answer.
+    def _force_schema_answer(
+        self, history, usage_tracker, usage_turn: int, read_paths=None
+    ) -> str:
+        """Tool-free turn(s) that extract a contract-conforming final answer.
 
         Used when the agent stopped (budget hit, or terminated in prose) without
         emitting the ``Files:/Symbols:/Locations:`` contract — so a genuine
-        localization is not lost to formatting / an unfinished answer. This is an
-        extra turn; it does NOT consume the exploration budget. Anthropic rejects
+        localization is not lost to formatting / an unfinished answer. These are
+        extra turns; they do NOT consume the exploration budget. Anthropic rejects
         a tool-history conversation unless ``tools=`` is passed, so we pass it
-        with ``tool_choice="none"`` to forbid further calls. Best-effort.
+        with ``tool_choice="none"`` to forbid further calls.
+
+        Some runs end in prose or emit a partial contract (e.g. ``Files:`` but no
+        ``Locations:``) even after the prompt requested structured localization.
+        So we (a) remind the model which files it actually read — the answer must
+        come from those — and (b) retry until the full 3-line contract is present,
+        up to a small bound.
         """
-        history.add_message(
-            {
-                "role": "user",
-                "content": (
-                    "Stop. Do not call any more tools. Based on everything you "
-                    "have found, give your final answer NOW in exactly this "
-                    "format (repo-relative paths; line numbers as shown by "
-                    f"`read`):\n{LOCALIZATION_SCHEMA}"
-                ),
-            }
-        )
-        try:
-            overrides: Dict[str, Any] = {
-                "usage_tracker": usage_tracker,
-                "usage_turn": usage_turn,
-            }
-            if self.tools:
-                overrides["tools"] = self.tools
-                overrides["tool_choice"] = "none"
-            final = self.llm._call_raw(history.get_messages(), **overrides)
-            forced_msg = final.choices[0].message
-            history.add_message(_message_to_dict(forced_msg))
-            return getattr(forced_msg, "content", None) or ""
-        except Exception as exc:  # best-effort; keep the partial run
-            logger.warning("forced final-answer turn failed: %s", exc)
-            return ""
+        files_hint = ""
+        uniq = list(dict.fromkeys(read_paths or []))
+        if uniq:
+            files_hint = (
+                "\nYou read these files — your answer MUST cite line ranges from "
+                "them:\n" + "\n".join(f"- {p}" for p in uniq[:10])
+            )
+        out = ""
+        for attempt in range(2):
+            nudge = (
+                ""
+                if attempt == 0
+                else (
+                    "\nYour previous answer was missing the Locations: line with "
+                    "explicit start-end line numbers. Add ALL three lines now."
+                )
+            )
+            history.add_message(
+                {
+                    "role": "user",
+                    "content": (
+                        "Stop. Do not call any more tools. Give your final answer "
+                        "NOW in EXACTLY this format — all three lines, "
+                        "repo-relative paths, Locations with start-end line "
+                        f"numbers as shown by `read`:\n{LOCALIZATION_SCHEMA}"
+                        f"{files_hint}{nudge}"
+                    ),
+                }
+            )
+            try:
+                overrides: Dict[str, Any] = {
+                    "usage_tracker": usage_tracker,
+                    "usage_turn": usage_turn + attempt,
+                }
+                if self.tools:
+                    overrides["tools"] = self.tools
+                    overrides["tool_choice"] = "none"
+                final = self.llm._call_raw(history.get_messages(), **overrides)
+                forced_msg = final.choices[0].message
+                history.add_message(_message_to_dict(forced_msg))
+                out = getattr(forced_msg, "content", None) or out
+            except Exception as exc:  # best-effort; keep the partial run
+                logger.warning("forced final-answer turn failed: %s", exc)
+                break
+            if _has_localization_contract(out):
+                break
+            # Only retry to COMPLETE a partial contract (e.g. Files: present but
+            # Locations: missing). If the model emitted no contract line at all
+            # (pure prose), retrying won't help — stop and avoid a wasted call.
+            if not (
+                _HAS_FILES_CONTRACT.search(out)
+                or _HAS_SYMBOLS_CONTRACT.search(out)
+                or _HAS_LOCATIONS_CONTRACT.search(out)
+            ):
+                break
+        return out
 
     def _new_history(self):
         """Build the chat-history container for one ``run()``.
@@ -570,6 +1035,7 @@ class AgentRunner:
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
+                resolved_arguments=resolved_args,
                 error=f"invalid arguments for {skill_id!r}: {type_error}",
             )
 
@@ -586,6 +1052,7 @@ class AgentRunner:
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
+                resolved_arguments=coerced_args,
                 result=result,
                 duration_ms=elapsed,
             )
@@ -596,6 +1063,7 @@ class AgentRunner:
                 tool_call_id=tc.id,
                 skill_id=skill_id,
                 arguments=arguments,
+                resolved_arguments=coerced_args,
                 error=str(exc),
                 duration_ms=elapsed,
             )
@@ -693,6 +1161,155 @@ def _serialize_result(result: Any) -> str:
     return text
 
 
+def _trace_tool_call_data(
+    record: ToolCallRecord,
+    serialized_result: str,
+) -> Dict[str, Any]:
+    """Summarize a tool call for runtime trace events."""
+
+    status = "error" if record.error is not None else "ok"
+    result = record.result
+    result_count: Optional[int] = None
+    if isinstance(result, (list, tuple)):
+        result_type = "sequence"
+        result_count = len(result)
+    elif isinstance(result, Mapping):
+        result_type = "mapping"
+    elif result is None:
+        result_type = "none"
+    else:
+        result_type = type(result).__name__
+
+    data: Dict[str, Any] = {
+        "tool_call_id": record.tool_call_id,
+        "tool": record.skill_id,
+        "arguments": dict(record.arguments or {}),
+        "status": status,
+        "duration_ms": record.duration_ms,
+        "result_type": "error" if status == "error" else result_type,
+        "result_chars": len(serialized_result or ""),
+        "truncated": bool(serialized_result.endswith("\n... (truncated)")),
+    }
+    if record.resolved_arguments is not None:
+        data["resolved_arguments"] = dict(record.resolved_arguments or {})
+    if result_count is not None:
+        data["result_count"] = result_count
+    provider_metadata = lsp_result_metadata(result)
+    if provider_metadata:
+        data["lsp_provider"] = provider_metadata
+        if status == "ok" and isinstance(result, (list, tuple)):
+            data["lsp_result_fingerprint"] = fingerprint_lsp_result(result)
+            data["lsp_result_preview"] = preview_lsp_result(result)
+    if record.skill_id == "lsp_route":
+        route_args = _lsp_route_trace_args(record)
+        data["route_args"] = route_args
+        if status == "ok" and isinstance(result, (list, tuple)):
+            data["route_fingerprint"] = data.get(
+                "lsp_result_fingerprint"
+            ) or fingerprint_lsp_route_nodes(result)
+            data["route_preview"] = data.get("lsp_result_preview") or (
+                summarize_lsp_route_nodes(result)
+            )
+    if record.error is not None:
+        data["error"] = record.error
+    return data
+
+
+def _lsp_route_trace_args(record: ToolCallRecord) -> Dict[str, Any]:
+    args = record.resolved_arguments or record.arguments or {}
+    return canonical_lsp_route_args(
+        symbols=args.get("symbols") or [],
+        query=args.get("query"),
+        top_k=args.get("top_k", 12),
+        include_neighbors=args.get("include_neighbors", True),
+    )
+
+
+def _context_state(
+    record: ToolCallRecord,
+    serialized_result: str,
+    successful_read: bool,
+) -> str:
+    if record.skill_id == "read":
+        return "read" if successful_read else "rejected"
+    if record.error is not None:
+        return "rejected"
+    if serialized_result.lstrip().startswith("Error"):
+        return "rejected"
+    return "offered"
+
+
+def _context_ledger_data(
+    record: ToolCallRecord,
+    serialized_result: str,
+) -> Dict[str, Any]:
+    event_data = _trace_tool_call_data(record, serialized_result)
+    path = None
+    if record.skill_id == "read":
+        path_arg = (record.arguments or {}).get("file_path")
+        path = str(path_arg) if path_arg is not None else None
+
+    metadata = {
+        key: value
+        for key, value in event_data.items()
+        if key
+        not in {
+            "tool_call_id",
+            "tool",
+            "arguments",
+        }
+    }
+    metadata["arguments"] = dict(record.arguments or {})
+
+    summary = _context_summary(record, event_data, serialized_result)
+    return {
+        "summary": summary,
+        "path": path,
+        "tool_call_id": record.tool_call_id,
+        "provenance": {
+            "kind": "tool_result",
+            "tool": record.skill_id,
+            "tool_call_id": record.tool_call_id,
+        },
+        "freshness": "fresh",
+        "token_estimate": _estimate_context_tokens(serialized_result),
+        "metadata": metadata,
+    }
+
+
+def _estimate_context_tokens(text: str) -> int:
+    """Cheap token estimate for ledger accounting, matching history fallback."""
+
+    if not text:
+        return 0
+    return max(
+        1, (len(text) + _CHARS_PER_TOKEN_ESTIMATE - 1) // _CHARS_PER_TOKEN_ESTIMATE
+    )
+
+
+def _context_summary(
+    record: ToolCallRecord,
+    event_data: Mapping[str, Any],
+    serialized_result: str,
+) -> str:
+    tool = record.skill_id
+    result_chars = event_data.get("result_chars", 0)
+    if record.error is not None:
+        return f"{tool} error: {record.error}"
+    if serialized_result.lstrip().startswith("Error"):
+        first_line = serialized_result.strip().splitlines()[0]
+        return f"{tool} rejected: {first_line[:160]}"
+    if tool == "read":
+        path = (record.arguments or {}).get("file_path") or "(unknown)"
+        return f"read {path} ({result_chars} chars)"
+    if "result_count" in event_data:
+        return (
+            f"{tool} returned {event_data['result_count']} item(s) "
+            f"({result_chars} chars)"
+        )
+    return f"{tool} returned {event_data.get('result_type', 'result')} ({result_chars} chars)"
+
+
 # ---------------------------------------------------------------------------
 # Public facade: query() + CodeMinerAgentOptions
 # ---------------------------------------------------------------------------
@@ -788,6 +1405,12 @@ class CodeMinerAgentOptions:
     system_prompt: Optional[str] = None
     max_turns: int = 10
     max_context_tokens: Optional[int] = None
+    enable_lsp_route_context: bool = False
+    lsp_route_seed_limit: int = 8
+    lsp_route_seed_policy: str = "all"
+    lsp_route_query_fallback: bool = False
+    lsp_route_top_k: int = 12
+    lsp_route_include_neighbors: bool = True
     retry: Optional[RetryConfig] = None
 
     # --- extras for SessionContext.extras ---
@@ -925,6 +1548,12 @@ def query(
         system_prompt=opts.system_prompt,
         max_turns=opts.max_turns,
         max_context_tokens=opts.max_context_tokens,
+        enable_lsp_route_context=opts.enable_lsp_route_context,
+        lsp_route_seed_limit=opts.lsp_route_seed_limit,
+        lsp_route_seed_policy=opts.lsp_route_seed_policy,
+        lsp_route_query_fallback=opts.lsp_route_query_fallback,
+        lsp_route_top_k=opts.lsp_route_top_k,
+        lsp_route_include_neighbors=opts.lsp_route_include_neighbors,
         retry=opts.retry,
         allow_skills=set(opts.allowed_skills) if opts.allowed_skills else None,
         exclude_skills=set(opts.excluded_skills) if opts.excluded_skills else None,

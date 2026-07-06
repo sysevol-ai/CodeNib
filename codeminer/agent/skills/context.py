@@ -36,7 +36,7 @@ from .core import SkillType
 
 if TYPE_CHECKING:  # avoid an import cycle (ops -> agent.* -> ops) at runtime
     from ...ops.expand import ExpandContext
-    from ...ops.rerank import RerankContext
+    from ...ops.rerank import CrossEncoderContext, RerankContext
     from ...ops.retrieve import RetrieveContext
     from ...ops.transform import TransformContext
 
@@ -87,6 +87,7 @@ class ComposerContexts:
     expand: Optional["ExpandContext"] = None
     rerank: Optional["RerankContext"] = None
     transform: Optional["TransformContext"] = None
+    cross_encoder: Optional["CrossEncoderContext"] = None
 
     @classmethod
     def from_mapping(
@@ -99,6 +100,7 @@ class ComposerContexts:
             expand=d.get("expand"),  # type: ignore[arg-type]
             rerank=d.get("rerank"),  # type: ignore[arg-type]
             transform=d.get("transform"),  # type: ignore[arg-type]
+            cross_encoder=d.get("cross_encoder"),  # type: ignore[arg-type]
         )
 
 

@@ -6,6 +6,107 @@ SPDX-License-Identifier: Apache-2.0
 
 # LSP Core Acceleration Gate
 
+## Dynamic Provider Acceleration
+
+The agent-facing LSP contract should stay stable while the backend can switch
+from live JSON-RPC to CodeMiner's static graph index when the static index can
+serve the same request shape.
+
+Current implementation:
+
+- `codeminer.agent.lsp_provider.StaticLSPProvider` serves
+  `textDocument/definition`, `textDocument/references`, and
+  `codeminer/lspRoute` over the loaded `symbol_graph`.
+- Agent `lsp_definition`, `lsp_references`, and `lsp_route` skills use that
+  provider, so dynamic tool calls get the same list-shaped results plus
+  trace-only provider metadata.
+- MCP `lsp_*` tools use the same provider and keep their serialized output
+  format unchanged.
+- Runtime traces record `lsp_provider`, `lsp_result_fingerprint`, and a compact
+  result preview. Route traces also preserve the existing `route_args` and
+  `route_fingerprint` fields.
+- `codeminer.eval.agent_runner.LiveLSPReferenceProvider` wraps the existing
+  JSON-RPC `LSPClient` as a reference provider for validation. It normalizes LSP
+  `Location` / `LocationLink` results into compact `QueriedNode` rows so the
+  static and live paths can be compared by fingerprint.
+
+This is the system-level acceleration path: if an agent asks for an LSP-like
+operation, CodeMiner can satisfy supported requests from the static index
+without starting or round-tripping through a language server. It is separate
+from startup preload experiments.
+
+The behavior guardrail is fingerprint equivalence. Compare the same graph-facing
+file-position request against live JSON-RPC LSP, and only treat the static path
+as a drop-in acceleration when both providers return the same ordered
+fingerprint.
+
+For `definition` and `references`, the first gate uses start-location
+fingerprints (`file:start_line`). Live LSP often returns a token selection range,
+while the static graph may return an enclosing symbol range and richer symbol
+name. Full range/symbol equality is a stricter later gate, not the initial
+dynamic-routing requirement.
+
+Validation entry point:
+
+```python
+from codeminer.eval.agent_runner import (
+    LSPProviderRequest,
+    compare_static_to_live_lsp_provider,
+)
+
+rows = compare_static_to_live_lsp_provider(
+    [
+        LSPProviderRequest(
+            capability="textDocument/definition",
+            arguments={"file_path": "caller.py", "line": 41, "character": 12},
+            request_id="demo-definition",
+        )
+    ],
+    graph=symbol_graph,
+    project_root="/path/to/repo",
+    language="python",
+)
+```
+
+The request arguments are graph-facing: `line` is 0-based, matching the
+executors after the agent boundary conversion. Symbol-only static lookups are
+not valid live-LSP comparison requests because JSON-RPC definition/references
+operate on file positions.
+
+The live path requires an installed language server or an override such as
+`CODEMINER_PYTHON_LSP_CMD`. If no server command is available, use the fake
+client unit path only; do not claim live equivalence from it.
+
+Latest local smoke, using a two-file temporary Python repo and
+`npx --yes --package pyright pyright-langserver --stdio`:
+
+| request | same start location | static ms | live JSON-RPC ms | saved ms | verdict |
+| --- | --- | ---: | ---: | ---: | --- |
+| `textDocument/definition` from `caller.py:3` to `callee.py:1` | yes | 0.24 | 124.21 | 123.96 | `equivalent_static_faster` |
+
+Each row reports static/reference provider status, result count, fingerprint,
+latency, `latency_saved_ms`, `speedup_ratio`, and one of:
+
+- `equivalent_static_faster`
+- `equivalent_static_not_faster`
+- `mismatch`
+- `fallback_required`
+- `static_error`
+- `reference_error`
+
+Promotion rule for dynamic LSP acceleration:
+
+- static provider status is `ok`;
+- reference provider status is `ok`;
+- start-location fingerprints match for the request class being accelerated;
+- static latency is lower on the same request shape;
+- fallback reason is explicit when the graph or capability is unavailable.
+
+Only after that gate should the harness route that request class to the static
+provider by default.
+
+## Cold-start Graph Acceleration
+
 Generic LSP graph support has two separable costs:
 
 - language-server work: `documentSymbol` and optional `references` JSON-RPC calls;

@@ -77,8 +77,8 @@ def _graph_symbol_count(prebuilt_dir: str, instance_id: str) -> int:
 
 
 def build_plan(prebuilt_dir: str, repos_per_lang: int) -> List[Dict[str, Any]]:
-    from scripts.agent_compile.lib.config import SweepConfig
-    from scripts.agent_compile.lib.harness import load_dataset_rows
+    from codeminer.eval.agent_runner.sweep import load_dataset_rows
+    from codeminer.eval.agent_runner.sweep_config import SweepConfig
 
     cfg = SweepConfig.from_yaml(
         str(_PROJECT_ROOT / "scripts/agent_compile/configs/design_space.yaml")

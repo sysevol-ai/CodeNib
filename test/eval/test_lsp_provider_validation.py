@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Tests for static-vs-reference LSP provider validation."""
+
+from __future__ import annotations
+
+import pytest
+
+from codeminer.agent.lsp_provider import JSON_RPC_LSP_PROVIDER, StaticLSPProvider
+from codeminer.eval.agent_runner.lsp_provider_validation import (
+    LSPProviderRequest,
+    compare_static_lsp_provider,
+    render_lsp_provider_validation_markdown,
+)
+from codeminer.graph.code_graph import CodeGraph
+from codeminer.types import NODE_TYPE_FUNCTION
+
+
+def _range_graph() -> CodeGraph:
+    graph = CodeGraph()
+    graph.add_file_node("caller.py")
+    graph.add_symbol_node(
+        "caller.run",
+        line=0,
+        scope_start_line=0,
+        scope_end_line=3,
+        symbol_type=NODE_TYPE_FUNCTION,
+    )
+    graph.update_current_scope("caller.run", start_line=0, end_line=3)
+    graph.add_symbol_reference(
+        "callee.load_config",
+        module_path="callee.py",
+        symbol_type=NODE_TYPE_FUNCTION,
+        anchor_file="caller.py",
+        anchor_line=1,
+    )
+    graph.add_file_node("callee.py")
+    graph.add_symbol_node(
+        "callee.load_config",
+        line=4,
+        scope_start_line=4,
+        scope_end_line=8,
+        symbol_type=NODE_TYPE_FUNCTION,
+    )
+    graph.graph.vs[graph.name_to_vertex["callee.load_config"]][
+        "unified_name"
+    ] = "callee.py:load_config()"
+    graph.build_range_indexes()
+    return graph
+
+
+def _clock(values):
+    iterator = iter(values)
+    return lambda: next(iterator)
+
+
+def test_compare_static_lsp_provider_reports_equivalent_speedup():
+    graph = _range_graph()
+
+    def reference_provider(capability, arguments):
+        assert capability == "definition"
+        assert arguments == {"symbol": "load_config", "top_k": 2}
+        return list(StaticLSPProvider(graph).definition(**arguments))
+
+    rows = compare_static_lsp_provider(
+        [
+            LSPProviderRequest(
+                capability="textDocument/definition",
+                arguments={"symbol": "load_config", "top_k": 2},
+                request_id="jump-load-config",
+            )
+        ],
+        graph=graph,
+        reference_provider=reference_provider,
+        clock=_clock([10.0, 10.001, 20.0, 20.006]),
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.same_result is True
+    assert row.verdict == "equivalent_static_faster"
+    assert row.latency_saved_ms == pytest.approx(5.0)
+    assert row.speedup_ratio == pytest.approx(6.0)
+    assert row.static_call.provider == "codeminer_static_index"
+    assert row.reference_call.provider == JSON_RPC_LSP_PROVIDER
+    assert row.static_call.metadata["lsp_method"] == "textDocument/definition"
+
+    markdown = render_lsp_provider_validation_markdown(rows)
+    assert "# LSP provider validation" in markdown
+    assert "| jump-load-config | definition | equivalent_static_faster | yes |" in (
+        markdown
+    )
+
+
+def test_compare_static_lsp_provider_marks_fallback_when_graph_unavailable():
+    calls = []
+
+    def reference_provider(capability, arguments):
+        calls.append((capability, arguments))
+        return []
+
+    rows = compare_static_lsp_provider(
+        [
+            {
+                "capability": "textDocument/definition",
+                "arguments": {"symbol": "load_config"},
+                "request_id": "fallback",
+            }
+        ],
+        graph=None,
+        reference_provider=reference_provider,
+        clock=_clock([30.0, 30.002]),
+    )
+
+    row = rows[0]
+    assert calls == [("definition", {"symbol": "load_config"})]
+    assert row.same_result is None
+    assert row.verdict == "fallback_required"
+    assert row.static_call.status == "unavailable"
+    assert row.static_call.fallback_reason == "symbol_graph_unavailable"
+    assert row.reference_call.status == "ok"

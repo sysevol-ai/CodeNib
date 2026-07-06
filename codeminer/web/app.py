@@ -30,7 +30,14 @@ from ..wiki.narrator import Narrator
 from .codemap import build_codemap, build_page_subgraph
 from .config import load_config
 from .repo_registry import RepoRegistry
-from .schemas import ChatRequest, ChatResponse, RepoInfo, agent_result_to_response
+from .schemas import (
+    ChatRequest,
+    ChatResponse,
+    EdgeLabelRequest,
+    EdgeLabelResponse,
+    RepoInfo,
+    agent_result_to_response,
+)
 
 logger = get_logger(__name__)
 
@@ -43,6 +50,7 @@ async def lifespan(app: FastAPI):
     registry.load_all()
     app.state.registry = registry
     app.state.wiki_builders = {}
+    app.state.edge_labelers = {}
     # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
     # to templated text when no model/creds are available.
     wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
@@ -100,6 +108,25 @@ def _wiki(repo_id: str):
     return cache[repo_id]
 
 
+def _edge_labeler(repo_id: str):
+    """Lazily build + cache a per-repo edge labeler (reuses the wiki's source reader)."""
+    cache = app.state.edge_labelers
+    if repo_id not in cache:
+        from .edge_label import EdgeLabeler
+
+        config = load_config()
+        bundle = _bundle(repo_id)
+        wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
+        namespace = f"{bundle.entry.instance_id}@{bundle.entry.commit_short}"
+        cache[repo_id] = EdgeLabeler(
+            source_fn=_wiki(repo_id).source,
+            model=config.edge_label_model or config.model,
+            cache_dir=wiki_cache,
+            cache_namespace=namespace,
+        )
+    return cache[repo_id]
+
+
 @app.get("/api/health")
 async def health() -> dict:
     registry = getattr(app.state, "registry", None)
@@ -111,7 +138,13 @@ async def health() -> dict:
 
 @app.get("/api/repos", response_model=list[RepoInfo])
 async def list_repos() -> list[RepoInfo]:
-    return _registry().list_infos()
+    infos = _registry().list_infos()
+    # Surface the (global) edge-label toggle per repo so the UI can gate the
+    # feature. repo_registry.py is skip-worktree, so inject it here instead.
+    edge_on = bool(getattr(load_config(), "edge_labels", False))
+    for info in infos:
+        info.capabilities = {**info.capabilities, "edge_labels": edge_on}
+    return infos
 
 
 @app.get("/api/repos/{repo_id}/wiki")
@@ -197,6 +230,34 @@ async def codemap(
         repo_dir=bundle.entry.repo_dir,
         hierarchy_graph=await asyncio.to_thread(bundle.hierarchical_graph),
     )
+
+
+@app.post("/api/repos/{repo_id}/edge-label", response_model=EdgeLabelResponse)
+async def edge_label(repo_id: str, req: EdgeLabelRequest) -> EdgeLabelResponse:
+    """Short LLM phrase describing how the source symbol uses the target.
+
+    On-demand + cached; gated by ``edge_labels`` config. Returns ``label=""``
+    (with ``disabled``/empty) whenever the feature is off or nothing could be
+    generated — the UI falls back to its ref-count display.
+    """
+    if not bool(getattr(load_config(), "edge_labels", False)):
+        return EdgeLabelResponse(label="", disabled=True)
+    _bundle(repo_id)  # 404 on unknown repo
+    labeler = _edge_labeler(repo_id)
+    anchors = [a.model_dump() for a in req.anchors]
+    label, cached = await asyncio.to_thread(
+        labeler.label,
+        req.source.file,
+        req.source.line,
+        req.source.end_line,
+        req.source.label,
+        req.target.file,
+        req.target.line,
+        req.target.end_line,
+        req.target.label,
+        anchors,
+    )
+    return EdgeLabelResponse(label=label, cached=cached)
 
 
 @app.post("/api/chat", response_model=ChatResponse)

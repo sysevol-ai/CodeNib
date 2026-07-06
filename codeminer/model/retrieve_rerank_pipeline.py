@@ -7,18 +7,34 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
-
-import numpy as np
+from typing import Dict, List, Optional, Sequence, Set
 
 from ..code_chunker import CodeChunker, RepoChunkingConfig
+from ..graph.code_graph import CodeGraph
+from ..graph.roi_subgraph import ROISubgraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.litellm_chat import LiteLLMChat
+from ..index.rerank.cross_encoder import build_reranker
 from ..log_utils import get_logger
-from ..ops.rerank import RerankContext
-from ..ops.retrieve import RetrieveContext
+from ..ops.expand import ExpandContext, expand_graph_neighbors, nodeinfo_to_queried
+from ..ops.rerank import RerankContext, rerank_by_embedding
+from ..ops.retrieve import (
+    RetrieveContext,
+    dedup_queried_nodes,
+    merge_hybrid,
+    to_queried_nodes,
+)
 from ..types import NodeInfo, QueriedNode
+from .retrieval_planner import (
+    BudgetInput,
+    RetrievalBudget,
+    RetrievalCapabilities,
+    RetrievalPathPlan,
+    RetrievalPlanner,
+    RetrievalStagePlan,
+    build_planner_preload_stages,
+)
 
 logger = get_logger(__name__)
 
@@ -46,20 +62,29 @@ class RetrieveStageConfig:
 
 
 def build_retrieve_plan(mode: str = "dense") -> List[RetrieveStageConfig]:
-    """Convenience helper for common retrieval plan presets."""
+    """Convenience helper for common retrieval plan presets.
+
+    ``auto`` returns the dense+sparse preload set used by
+    :class:`RetrievalPlanner`; the per-query path is selected at query time.
+    """
 
     normalized = (mode or "dense").strip().lower()
     if normalized == "dense":
         return [RetrieveStageConfig(engine="dense", top_k=RETRIEVAL_TOP_K)]
     if normalized == "sparse":
         return [RetrieveStageConfig(engine="sparse", top_k=RETRIEVAL_TOP_K)]
+    if normalized == "auto":
+        return [
+            _stage_config_from_planner(stage)
+            for stage in build_planner_preload_stages(top_k=128)
+        ]
     if normalized == "hybrid":
         return [
             RetrieveStageConfig(engine="dense", weight=0.6, top_k=RETRIEVAL_TOP_K),
             RetrieveStageConfig(engine="sparse", weight=0.4, top_k=RETRIEVAL_TOP_K),
         ]
     raise ValueError(
-        f"Unknown retrieval mode {mode!r}. Choose from: dense, sparse, hybrid."
+        f"Unknown retrieval mode {mode!r}. Choose from: auto, dense, sparse, hybrid."
     )
 
 
@@ -97,6 +122,12 @@ class RetrieveRerankPipeline:
         retrieval_plan: Optional[Sequence[RetrieveStageConfig]] = None,
         retrieval_mode: str = "dense",
         retrieval_level: str = "l2",
+        planning_budget: BudgetInput = "balanced",
+        retrieval_planner: Optional[RetrievalPlanner] = None,
+        planner_capabilities: Optional[RetrievalCapabilities] = None,
+        code_graph: Optional[CodeGraph] = None,
+        fusion_strategy: str = "weighted",
+        rrf_k: int = 60,
         embedding_model: str = "nomic-ai/CodeRankEmbed",
         embedding_provider: str = "huggingface",
         embedding_dimension: int = 768,
@@ -110,6 +141,8 @@ class RetrieveRerankPipeline:
         rerank_embedding_dimension: Optional[int] = None,
         rerank_embedding_model_kwargs: Optional[dict] = None,
         rerank_index_metric: str = "ip",
+        crossencoder_model: str = "Qwen/Qwen3-Reranker-0.6B",
+        crossencoder_batch_size: int = 8,
         languages: Optional[List[str]] = None,
         max_lines_per_chunk: int = 100,
         sparse_max_k: int = 128,
@@ -129,17 +162,43 @@ class RetrieveRerankPipeline:
         self.enable_rerank = enable_rerank
         self.index_metric = "ip"
         self.profiler = None
+        self.retrieval_mode = (retrieval_mode or "dense").strip().lower()
+        self.retrieval_planner = retrieval_planner
+        if self.retrieval_planner is None and self.retrieval_mode == "auto":
+            self.retrieval_planner = RetrievalPlanner()
+        self.planning_budget = planning_budget
+        self.fusion_strategy = _normalize_fusion_strategy(fusion_strategy)
+        if rrf_k <= 0:
+            raise ValueError("rrf_k must be positive.")
+        self.rrf_k = rrf_k
+        self.last_selected_plan: Optional[RetrievalPathPlan] = None
+        self.last_query_signals = None
+        self.last_planning_budget: Optional[RetrievalBudget] = None
+        self.last_planner_capabilities: Optional[RetrievalCapabilities] = None
+        self.last_planner_trace: Dict[str, object] = {}
+        self._planner_capabilities_override = planner_capabilities
+        self.expand_context = ExpandContext(code_graph=code_graph)
         if retrieval_level not in ("l0", "l2"):
             raise ValueError(
                 f"Invalid retrieval_level {retrieval_level!r}. Must be 'l0' or 'l2'."
             )
         self.retrieval_level = retrieval_level
 
-        plan = (
-            list(retrieval_plan)
-            if retrieval_plan
-            else build_retrieve_plan(retrieval_mode)
-        )
+        if retrieval_plan:
+            plan = list(retrieval_plan)
+        elif self.retrieval_mode == "auto" and self.retrieval_planner is not None:
+            preload_top_k = max(
+                128,
+                self.retrieval_planner.normalize_budget(
+                    self.planning_budget
+                ).retrieve_top_k,
+            )
+            plan = [
+                _stage_config_from_planner(stage)
+                for stage in build_planner_preload_stages(top_k=preload_top_k)
+            ]
+        else:
+            plan = build_retrieve_plan(self.retrieval_mode)
         if not plan:
             raise ValueError("Retrieval plan must contain at least one stage.")
         self.retrieve_plan: List[RetrieveStageConfig] = plan
@@ -172,16 +231,28 @@ class RetrieveRerankPipeline:
             self.bm25_index = self._initialize_bm25_index(max_k=sparse_cap)
 
         strategy = (rerank_strategy or "llm").strip().lower()
-        if strategy not in ("llm", "embedding"):
-            raise ValueError("rerank_strategy must be 'llm' or 'embedding'.")
+        if strategy not in ("llm", "embedding", "crossencoder"):
+            raise ValueError(
+                "rerank_strategy must be 'llm', 'embedding', or 'crossencoder'."
+            )
         self.rerank_strategy = strategy
 
         rerank_llm = None
+        self.cross_encoder = None
         if strategy == "llm":
             rerank_llm = LiteLLMChat(
                 model=rerank_model,
                 max_tokens=rerank_max_tokens,
                 temperature=rerank_temperature,
+            )
+        elif strategy == "crossencoder":
+            self.cross_encoder = build_reranker(
+                crossencoder_model,
+                batch_size=crossencoder_batch_size,
+            )
+            logger.info(
+                "Cross-encoder reranker loaded",
+                extra={"model": crossencoder_model},
             )
         else:
             rerank_model_kwargs = self._prepare_embedding_kwargs(
@@ -232,15 +303,30 @@ class RetrieveRerankPipeline:
         else:
             self.rerank_context = None
 
+        self.planner_capabilities = (
+            self._planner_capabilities_override
+            if self._planner_capabilities_override is not None
+            else RetrievalCapabilities(
+                has_dense=bool(self.vector_store),
+                has_sparse=bool(self.bm25_index),
+                has_graph=bool(self.expand_context.code_graph),
+                has_embedding_rerank=bool(self.vector_store),
+                has_llm_rerank=strategy == "llm",
+            )
+        )
+
         logger.info(
             "RetrieveRerankPipeline initialized",
             extra={
                 "repo": self.repo_path,
                 "index_path": str(self.index_path),
+                "retrieval_mode": self.retrieval_mode,
                 "retrieval_plan": [stage.engine for stage in self.retrieve_plan],
                 "retrieval_level": self.retrieval_level,
                 "dense_index": bool(self.vector_store),
                 "sparse_index": bool(self.bm25_index),
+                "graph_index": bool(self.expand_context.code_graph),
+                "planner": bool(self.retrieval_planner),
                 "rerank_strategy": (
                     self.rerank_strategy if self.enable_rerank else "disabled"
                 ),
@@ -264,6 +350,13 @@ class RetrieveRerankPipeline:
         self.rerank_vector_store = None
         self._chunks = None
 
+        if self.cross_encoder is not None:
+            try:
+                self.cross_encoder.close()
+            except Exception:
+                pass
+            self.cross_encoder = None
+
         try:
             import gc
 
@@ -275,7 +368,13 @@ class RetrieveRerankPipeline:
         except Exception:
             pass
 
-    def query(self, query: str, top_k: int = 10) -> List[QueriedNode]:
+    def query(
+        self,
+        query: str,
+        top_k: int = 10,
+        *,
+        budget: Optional[BudgetInput] = None,
+    ) -> List[QueriedNode]:
         """Execute retrieve + rerank plan for the provided query.
 
         Args:
@@ -283,10 +382,25 @@ class RetrieveRerankPipeline:
             top_k: Number of results to return. If rerank is enabled, this controls
                 the rerank output. Retrieval always fetches RETRIEVAL_TOP_K
                 candidates internally.
+            budget: Optional per-query planner budget. Only used when a
+                retrieval planner is configured, including ``retrieval_mode=auto``.
         """
+        selected_plan = self._select_query_plan(query, budget)
+        active_plan = (
+            [_stage_config_from_planner(stage) for stage in selected_plan.stages]
+            if selected_plan is not None
+            else self.retrieve_plan
+        )
+        fusion = selected_plan.fusion if selected_plan is not None else None
+        merge_top_k = (
+            selected_plan.retrieval_top_k
+            if selected_plan is not None
+            else RETRIEVAL_TOP_K
+        )
+
         # Step 1: Run each retrieval branch
         branch_results: List[List[QueriedNode]] = []
-        for stage in self.retrieve_plan:
+        for stage in active_plan:
             results = self._run_retrieval_stage(query, stage)
             branch_results.append(results)
 
@@ -294,14 +408,93 @@ class RetrieveRerankPipeline:
         if len(branch_results) == 1:
             candidates = branch_results[0]
         else:
-            weights = [stage.weight for stage in self.retrieve_plan]
-            candidates = self._merge_hybrid(branch_results, weights, RETRIEVAL_TOP_K)
+            weights = [stage.weight for stage in active_plan]
+            candidates = self._merge_hybrid(
+                branch_results,
+                weights,
+                merge_top_k,
+                fusion=fusion or self.fusion_strategy,
+                rrf_k=self.rrf_k,
+            )
+
+        if selected_plan is not None and selected_plan.graph is not None:
+            candidates = self._run_graph_expansion_plan(selected_plan, candidates)
 
         # Step 3: Rerank if enabled
-        if self.enable_rerank and self.rerank_context is not None:
-            candidates = self._run_rerank(query, candidates, top_k)
+        plan_allows_rerank = (
+            selected_plan.enable_rerank if selected_plan is not None else True
+        )
+        if (
+            self.enable_rerank
+            and plan_allows_rerank
+            and self.rerank_context is not None
+        ):
+            candidates = self._run_rerank(
+                query,
+                candidates,
+                top_k,
+                strategy=(
+                    selected_plan.rerank_strategy
+                    if selected_plan is not None
+                    else self.rerank_strategy
+                ),
+                candidate_top_k=self._effective_rerank_candidate_top_k(selected_plan),
+            )
 
         return candidates[:top_k]
+
+    def _effective_rerank_candidate_top_k(
+        self, selected_plan: Optional[RetrievalPathPlan]
+    ) -> Optional[int]:
+        if self.rerank_candidate_top_k is not None:
+            return self.rerank_candidate_top_k
+        if selected_plan is not None:
+            return selected_plan.rerank_candidate_top_k
+        return None
+
+    def _select_query_plan(
+        self, query: str, budget: Optional[BudgetInput]
+    ) -> Optional[RetrievalPathPlan]:
+        if self.retrieval_planner is None:
+            self.last_selected_plan = None
+            self.last_query_signals = None
+            self.last_planning_budget = None
+            self.last_planner_capabilities = None
+            self.last_planner_trace = {}
+            return None
+        active_budget = self.retrieval_planner.normalize_budget(
+            budget or self.planning_budget
+        )
+        signals = self.retrieval_planner.classify_query(query)
+        selected = self.retrieval_planner.select(
+            query=query,
+            budget=active_budget,
+            capabilities=self.planner_capabilities,
+        )
+        self.last_selected_plan = selected
+        self.last_query_signals = signals
+        self.last_planning_budget = active_budget
+        self.last_planner_capabilities = self.planner_capabilities
+        self.last_planner_trace = _planner_trace(
+            signals=signals,
+            budget=active_budget,
+            capabilities=self.planner_capabilities,
+            plan=selected,
+        )
+        logger.debug(
+            "Planner selected retrieval path",
+            extra={
+                "plan": selected.name,
+                "intent": selected.intent,
+                "fusion": selected.fusion,
+                "rerank": selected.rerank_strategy if selected.enable_rerank else None,
+                "signals": self.last_planner_trace["signals"],
+                "budget": self.last_planner_trace["budget"],
+                "capabilities": self.last_planner_trace["capabilities"],
+                "rationale": selected.rationale,
+            },
+        )
+        return selected
 
     # --------------------------------------------------------------------- #
     # Retrieval
@@ -346,61 +539,189 @@ class RetrieveRerankPipeline:
         )
         return _to_queried_nodes(raw_results)
 
+    def _run_graph_expansion_plan(
+        self,
+        selected_plan: RetrievalPathPlan,
+        seeds: List[QueriedNode],
+    ) -> List[QueriedNode]:
+        """Execute the planner's graph expansion plan over retrieved seeds."""
+        graph_plan = selected_plan.graph
+        if graph_plan is None:
+            return seeds
+        if self.expand_context.code_graph is None:
+            raise RuntimeError("Graph expansion requested but no code graph is loaded.")
+
+        seed_cap = graph_plan.seed_top_k or len(seeds)
+        graph_seeds = list(seeds[:seed_cap])
+        if not graph_seeds:
+            return []
+
+        if graph_plan.use_ppr or graph_plan.hops > 1:
+            expanded = self._expand_graph_roi(graph_seeds, graph_plan)
+        else:
+            expanded = []
+
+        if not expanded:
+            expanded = self._expand_graph_neighbors(graph_seeds, graph_plan)
+
+        candidates = dedup_queried_nodes([*graph_seeds, *expanded])
+        return candidates[: graph_plan.expand_top_k]
+
+    def _expand_graph_roi(
+        self, seeds: List[QueriedNode], graph_plan
+    ) -> List[QueriedNode]:
+        graph = self.expand_context.code_graph
+        if graph is None or not hasattr(graph, "name_to_vertex"):
+            return []
+
+        seed_names = _resolve_graph_seed_names(graph, seeds)
+        if not seed_names:
+            return []
+
+        roi = ROISubgraph(graph)
+        if graph_plan.use_ppr:
+            nodes = roi.expand_ppr(
+                seed_names,
+                top_k=graph_plan.expand_top_k,
+                damping=self.expand_context.default_damping,
+                filter_tests=self.expand_context.filter_tests,
+            )
+        else:
+            subgraph = roi.extract_subgraph(
+                seed_names,
+                k_hop=graph_plan.hops,
+                direction=_roi_direction(graph_plan.direction),
+            )
+            nodes = roi.get_filtered_subgraph_nodes(
+                subgraph,
+                filter_tests=self.expand_context.filter_tests,
+            )[: graph_plan.expand_top_k]
+        return nodeinfo_to_queried(nodes)
+
+    def _expand_graph_neighbors(
+        self, seeds: List[QueriedNode], graph_plan
+    ) -> List[QueriedNode]:
+        per_seed = max(1, graph_plan.expand_top_k // max(1, len(seeds)))
+        return expand_graph_neighbors(
+            self.expand_context,
+            seeds,
+            per_seed=per_seed,
+            direction=_neighbor_direction(graph_plan.direction),
+            repo_path=self.repo_path,
+            include_content=True,
+            symbol_only=True,
+            require_span=True,
+        )
+
     @staticmethod
     def _merge_hybrid(
         branches: List[List[QueriedNode]],
         weights: List[float],
         top_k: int,
+        *,
+        fusion: str = "weighted",
+        rrf_k: int = 60,
     ) -> List[QueriedNode]:
-        """Merge multiple retrieval branches with weighted scoring."""
-        if not weights or len(weights) != len(branches):
-            weights = [1.0] * len(branches)
-
-        accumulator: Dict[
-            Tuple[Optional[str], str, Optional[int], Optional[int]], QueriedNode
-        ] = {}
-
-        for weight, results in zip(weights, branches, strict=True):
-            for rank, item in enumerate(results):
-                base_score = item.score or 0.0
-                if base_score == 0.0:
-                    base_score = 1.0 / (rank + 1)
-
-                key = (item.file, item.node_name, item.start_line, item.end_line)
-                weighted = weight * base_score
-
-                if key not in accumulator:
-                    accumulator[key] = _with_score(item, weighted)
-                else:
-                    existing = accumulator[key]
-                    new_score = existing.score + weighted
-                    content = existing.content or item.content
-                    accumulator[key] = _with_score(existing, new_score, content)
-
-        merged = sorted(
-            accumulator.values(),
-            key=lambda node: node.score,
-            reverse=True,
+        """Merge multiple retrieval branches with weighted or RRF scoring."""
+        return merge_hybrid(
+            branches,
+            weights,
+            top_k=top_k,
+            fusion=fusion,
+            rrf_k=rrf_k,
         )
-        return merged[:top_k]
+
+    @staticmethod
+    def _merge_rrf(
+        branches: List[List[QueriedNode]],
+        weights: List[float],
+        top_k: int,
+        *,
+        rrf_k: int = 60,
+    ) -> List[QueriedNode]:
+        """Merge branches with weighted reciprocal-rank fusion."""
+        return merge_hybrid(
+            branches,
+            weights,
+            top_k=top_k,
+            fusion="rrf",
+            rrf_k=rrf_k,
+        )
 
     # --------------------------------------------------------------------- #
     # Reranking
     # --------------------------------------------------------------------- #
 
     def _run_rerank(
-        self, query: str, candidates: List[QueriedNode], top_k: int
+        self,
+        query: str,
+        candidates: List[QueriedNode],
+        top_k: int,
+        *,
+        strategy: Optional[str] = None,
+        candidate_top_k: Optional[int] = None,
     ) -> List[QueriedNode]:
         """Rerank candidates using the configured strategy."""
         if not candidates:
             return []
 
-        if self.rerank_candidate_top_k is not None:
-            candidates = candidates[: self.rerank_candidate_top_k]
+        if candidate_top_k is not None:
+            candidates = candidates[:candidate_top_k]
 
-        if self.rerank_strategy == "embedding":
+        active_strategy = strategy or self.rerank_strategy
+        if active_strategy == "crossencoder":
+            return self._rerank_crossencoder(query, candidates, top_k)
+        if active_strategy == "embedding":
             return self._rerank_embedding(query, candidates, top_k)
+        if active_strategy != "llm":
+            raise ValueError(
+                "rerank strategy must be 'llm', 'embedding', or 'crossencoder'."
+            )
         return self._rerank_llm(query, candidates, top_k)
+
+    def _rerank_crossencoder(
+        self, query: str, candidates: List[QueriedNode], top_k: int
+    ) -> List[QueriedNode]:
+        """Rerank using cross-encoder (STCrossEncoderWrapper or QwenRerankerWrapper)."""
+        if self.cross_encoder is None:
+            raise RuntimeError(
+                "Cross-encoder rerank requested but no wrapper was built."
+            )
+
+        candidates_with_content = [c for c in candidates if c.content]
+        if not candidates_with_content:
+            return candidates[:top_k]
+
+        logger.info(
+            "Running cross-encoder rerank.",
+            extra={
+                "candidate_count": len(candidates_with_content),
+                "top_k": top_k,
+            },
+        )
+
+        docs = [c.content for c in candidates_with_content if c.content]
+        scores = self.cross_encoder.score(query, docs)
+
+        ranked = sorted(
+            zip(scores, candidates_with_content),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+
+        return [
+            QueriedNode(
+                node_name=c.node_name,
+                type=c.type,
+                file=c.file,
+                node_id=c.node_id,
+                start_line=c.start_line,
+                end_line=c.end_line,
+                score=float(score),
+                content=c.content,
+            )
+            for score, c in ranked[:top_k]
+        ]
 
     def _rerank_llm(
         self, query: str, candidates: List[QueriedNode], top_k: int
@@ -442,46 +763,7 @@ class RetrieveRerankPipeline:
         store = self.rerank_context.embedding_store
         if store is None:
             raise RuntimeError("Embedding rerank requested but no embedding store.")
-
-        candidates_with_content = [c for c in candidates if c.content]
-        if not candidates_with_content:
-            return []
-
-        query_vec = np.array(store.embedding.embed_query(query), dtype=np.float32)
-        doc_vectors = np.array(
-            store.embedding.embed_documents(
-                [c.content for c in candidates_with_content]
-            ),
-            dtype=np.float32,
-        )
-
-        metric = store.index_metric
-        if metric == "ip":
-            scores = np.dot(doc_vectors, query_vec).tolist()
-        elif metric == "l2":
-            scores = (-np.linalg.norm(doc_vectors - query_vec, axis=1)).tolist()
-        else:
-            raise ValueError(f"Unsupported index metric: {metric!r}")
-
-        ranked = sorted(
-            zip(scores, candidates_with_content, strict=True),
-            key=lambda pair: pair[0],
-            reverse=True,
-        )
-
-        return [
-            QueriedNode(
-                node_name=c.node_name,
-                type=c.type,
-                file=c.file,
-                node_id=c.node_id,
-                start_line=c.start_line,
-                end_line=c.end_line,
-                score=float(score),
-                content=c.content,
-            )
-            for score, c in ranked[:top_k]
-        ]
+        return rerank_by_embedding(query, candidates, store, top_k=top_k)
 
     # --------------------------------------------------------------------- #
     # Internal helpers
@@ -633,54 +915,109 @@ class RetrieveRerankPipeline:
 # ---------------------------------------------------------------------------
 
 
+def _stage_config_from_planner(stage: RetrievalStagePlan) -> RetrieveStageConfig:
+    return RetrieveStageConfig(
+        engine=stage.engine,
+        weight=stage.weight,
+        top_k=stage.top_k,
+        params=dict(stage.params),
+    )
+
+
+def _normalize_fusion_strategy(value: Optional[str]) -> str:
+    normalized = (value or "weighted").strip().lower().replace("-", "_")
+    aliases = {
+        "linear": "weighted",
+        "linear_combination": "weighted",
+        "weighted_sum": "weighted",
+        "none": "weighted",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"weighted", "rrf"}:
+        raise ValueError("fusion_strategy must be 'weighted' or 'rrf'.")
+    return normalized
+
+
 def _to_queried_nodes(results: Sequence[object]) -> List[QueriedNode]:
     """Normalize retrieval results to QueriedNode."""
-    converted: List[QueriedNode] = []
-    for rank, item in enumerate(results):
-        if isinstance(item, QueriedNode):
-            converted.append(item)
-            continue
-        if isinstance(item, NodeInfo):
-            data = _dump_model(item)
-            score = data.get("score") or 0.0
-            if not score:
-                score = 1.0 / (rank + 1)
-            data["score"] = score
-            converted.append(QueriedNode(**data))
-            continue
-        if isinstance(item, dict):
-            data = dict(item)
-            score = data.get("score") or 0.0
-            if not score:
-                score = 1.0 / (rank + 1)
-            data["score"] = score
-            data.setdefault("node_name", data.get("name", ""))
-            data.setdefault("content", data.get("content"))
-            converted.append(QueriedNode(**data))
-            continue
-        raise TypeError(f"Unsupported result type: {type(item)}")
-    return converted
+    return to_queried_nodes(results)
 
 
-def _with_score(
-    item: QueriedNode, score: float, content_override: Optional[str] = None
-) -> QueriedNode:
-    """Create a copy of a QueriedNode with an updated score."""
-    update = {"score": score}
-    if content_override is not None:
-        update["content"] = content_override
-    if hasattr(item, "model_copy"):
-        return item.model_copy(update=update)
-    if hasattr(item, "copy"):
-        return item.copy(update=update)
-    data = _dump_model(item)
-    data.update(update)
-    return QueriedNode(**data)
+def _planner_trace(
+    *,
+    signals,
+    budget: RetrievalBudget,
+    capabilities: RetrievalCapabilities,
+    plan: RetrievalPathPlan,
+) -> Dict[str, object]:
+    return {
+        "signals": {
+            "lexical": signals.lexical,
+            "semantic": signals.semantic,
+            "structural": signals.structural,
+            "mixed": signals.mixed,
+        },
+        "budget": {
+            "tier": budget.tier,
+            "retrieve_top_k": budget.retrieve_top_k,
+            "rerank_candidate_top_k": budget.rerank_candidate_top_k,
+            "allow_graph": budget.allow_graph,
+            "allow_rerank": budget.allow_rerank,
+            "allow_llm_rerank": budget.allow_llm_rerank,
+            "prefer_rrf": budget.prefer_rrf,
+        },
+        "capabilities": {
+            "has_dense": capabilities.has_dense,
+            "has_sparse": capabilities.has_sparse,
+            "has_graph": capabilities.has_graph,
+            "has_embedding_rerank": capabilities.has_embedding_rerank,
+            "has_llm_rerank": capabilities.has_llm_rerank,
+        },
+        "plan": {
+            "name": plan.name,
+            "intent": plan.intent,
+            "fusion": plan.fusion,
+            "enable_rerank": plan.enable_rerank,
+            "rerank_strategy": plan.rerank_strategy,
+            "uses_graph": plan.uses_graph,
+            "rationale": plan.rationale,
+        },
+    }
 
 
-def _dump_model(model: object) -> Dict[str, object]:
-    if hasattr(model, "model_dump"):
-        return dict(model.model_dump())
-    if hasattr(model, "dict"):
-        return dict(model.dict())
-    raise TypeError(f"Object {model} does not support model dumping.")
+def _resolve_graph_seed_names(
+    graph: CodeGraph, seeds: Sequence[QueriedNode]
+) -> List[str]:
+    name_to_vertex = getattr(graph, "name_to_vertex", {})
+    out: List[str] = []
+    seen: Set[str] = set()
+    for seed in seeds:
+        candidates = [seed.node_id, seed.node_name]
+        if seed.file and seed.node_name:
+            candidates.append(f"{seed.file}:{seed.node_name}")
+        for candidate in candidates:
+            if candidate and candidate in name_to_vertex and candidate not in seen:
+                seen.add(candidate)
+                out.append(candidate)
+                break
+    return out
+
+
+def _roi_direction(direction: str) -> str:
+    normalized = (direction or "both").strip().lower()
+    if normalized in {"callees", "successors", "forward", "out"}:
+        return "forward"
+    if normalized in {"callers", "predecessors", "backward", "in"}:
+        return "backward"
+    return "both"
+
+
+def _neighbor_direction(direction: str) -> str:
+    normalized = (direction or "both").strip().lower()
+    if normalized in {"forward", "out"}:
+        return "successors"
+    if normalized in {"backward", "in"}:
+        return "predecessors"
+    if normalized in {"callees", "successors", "callers", "predecessors", "both"}:
+        return normalized
+    return "both"

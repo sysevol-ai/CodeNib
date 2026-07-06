@@ -101,6 +101,17 @@ def codeminer_base_cache(tmp_path_factory) -> Dict[str, Path]:
     return dirs
 
 
+@pytest.fixture
+def codeminer_base_index_cache(request, codeminer_base_cache) -> Path:
+    """Per-test index cache to avoid concurrent BM25 writes under xdist."""
+    safe_node_id = "".join(
+        ch if ch.isalnum() or ch in "._-" else "_" for ch in request.node.nodeid
+    )
+    path = codeminer_base_cache["index"] / safe_node_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 @pytest.fixture(scope="module")
 def codeminer_base_first_instance(codeminer_base_cache) -> Dict[str, Any]:
     """Load the first instance of the codeminer-base dataset.
@@ -241,7 +252,9 @@ def _tools_passed_first_turn(llm) -> List[str]:
 
 
 @pytest.mark.integration
-def test_query_runs_end_to_end_on_codeminer_base(prepared_repo, codeminer_base_cache):
+def test_query_runs_end_to_end_on_codeminer_base(
+    prepared_repo, codeminer_base_index_cache
+):
     """Smoke: the full query() facade runs against a real codeminer-base repo."""
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
@@ -257,7 +270,7 @@ def test_query_runs_end_to_end_on_codeminer_base(prepared_repo, codeminer_base_c
             allowed_skills=["bm25_search"],  # cheapest skill, no GPU
             primary_language=language,
             languages=(language,),
-            index_cache_dir=str(codeminer_base_cache["index"]),
+            index_cache_dir=str(codeminer_base_index_cache),
             max_turns=3,
         ),
     )
@@ -278,7 +291,7 @@ def test_query_runs_end_to_end_on_codeminer_base(prepared_repo, codeminer_base_c
 
 @pytest.mark.integration
 def test_compile_table_flows_through_query_pipeline(
-    prepared_repo, codeminer_base_cache
+    prepared_repo, codeminer_base_index_cache
 ):
     """End-to-end smoke for the compile_table code path in ``query()``.
 
@@ -320,7 +333,7 @@ def test_compile_table_flows_through_query_pipeline(
             primary_language=language,
             languages=(language,),
             compile_table=table,
-            index_cache_dir=str(codeminer_base_cache["index"]),
+            index_cache_dir=str(codeminer_base_index_cache),
             max_turns=3,
         ),
     )
@@ -351,7 +364,7 @@ def _skip_if_vertex_unconfigured() -> None:
 
 @pytest.mark.slow
 @pytest.mark.parametrize("model", _VERTEX_MODELS)
-def test_query_with_real_vertex_model(prepared_repo, codeminer_base_cache, model):
+def test_query_with_real_vertex_model(prepared_repo, codeminer_base_index_cache, model):
     """End-to-end with a real LLM call via Vertex AI through litellm.
 
     Parametrized over the models declared in ``_VERTEX_MODELS`` (currently
@@ -394,7 +407,7 @@ def test_query_with_real_vertex_model(prepared_repo, codeminer_base_cache, model
             primary_language=language,
             languages=(language,),
             compile_table=table,
-            index_cache_dir=str(codeminer_base_cache["index"]),
+            index_cache_dir=str(codeminer_base_index_cache),
             # Cap turns tightly — the test cares that the wiring works,
             # not that the model produces a brilliant answer.
             max_turns=4,
@@ -429,11 +442,11 @@ def test_query_with_real_vertex_model(prepared_repo, codeminer_base_cache, model
 
 
 @pytest.mark.integration
-def test_query_manifest_mode_e2e(prepared_repo, codeminer_base_cache):
+def test_query_manifest_mode_e2e(prepared_repo, codeminer_base_index_cache):
     """Two-phase AoT round-trip: compile_repo() then query(manifest=...).
 
     Exercises the full prebuilt-index code path: ``compile_repo`` writes
-    a manifest + indexes to ``codeminer_base_cache["index"]``;
+    a manifest + indexes to the per-test index cache;
     ``query(manifest=manifest, ...)`` then loads them via
     :func:`codeminer.compiler.load_contexts_from_manifest`. No inline
     build happens during ``query()`` — verified by the absence of any
@@ -445,7 +458,7 @@ def test_query_manifest_mode_e2e(prepared_repo, codeminer_base_cache):
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
     problem_statement = prepared_repo["row"].get("problem_statement") or "fix bug"
-    cache_dir = str(codeminer_base_cache["index"])
+    cache_dir = str(codeminer_base_index_cache)
 
     # Phase 1 — AoT compile (writes repo_manifest.json + bm25/ artifacts).
     manifest = compile_repo(

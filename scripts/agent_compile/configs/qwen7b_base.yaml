@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Qwen2.5-Coder backend on codeminer-base — the "final agent" (flat embedding
+# pre-load) vs the grep_only baseline, run against a LOCAL vLLM OpenAI server.
+#
+#   serve:  vllm ... --served-model-name qwen2.5-coder-7b --enable-auto-tool-choice
+#           --tool-call-parser hermes --port 8001
+#   run:    OPENAI_API_BASE=http://localhost:8001/v1 OPENAI_API_KEY=dummy \
+#           PYTHONPATH=$PWD python scripts/agent_compile/run_sweep.py \
+#             --config scripts/agent_compile/configs/qwen7b_base.yaml \
+#             --output-dir results/agent_compile/qwen7b_base
+#
+# `openai/<name>` tells litellm to use the OpenAI wire format against
+# OPENAI_API_BASE; vertex_* are nulled so no vertex kwargs leak to the call.
+# Swap model + served-name + port for 14B / 32B (32B served with --quantization fp8).
+base: design_space.yaml
+
+sweep_id: qwen7b_base
+model: openai/qwen2.5-coder-7b
+vertex_location: null
+vertex_project: null
+reps: 1
+max_turns: 16
+
+# Qwen2.5-Coder answers one-shot under tool_choice="auto" (turns=1, no grep/read)
+# — force a tool call on the first turn so the agent loop is actually exercised.
+first_turn_tool_choice: required
+
+instances: []  # whole codeminer-base test split (~100 instances)
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  preinj_embed:
+    - read
+    - grep
+    - glob
+    - bash
+
+preload:
+  preinj_embed:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2

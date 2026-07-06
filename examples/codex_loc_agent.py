@@ -46,7 +46,7 @@ import argparse
 import asyncio
 
 from codeminer.clients.codex_agent import CodexLocAgent
-from codeminer.eval.loc_agent_runner import add_common_args, run_agent_baseline
+from codeminer.eval.agent_runner.loc_baseline import add_common_args, run_agent_baseline
 from codeminer.log_utils import get_logger
 
 logger = get_logger(__name__)

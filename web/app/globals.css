@@ -2032,6 +2032,43 @@ pre {
 .codegraph-bar b {
   font-weight: 600;
 }
+/* LLM-written dependency phrase shown on edge hover, next to the ref count. */
+.cg-edgelabel {
+  font-style: italic;
+  color: var(--accent, var(--text-secondary));
+}
+/* Floating tooltip that appears at the cursor when hovering a graph edge. */
+.cg-edge-tip {
+  position: fixed;
+  z-index: 50;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  color: var(--text);
+  pointer-events: none;
+}
+.cg-edge-tip-head {
+  font-weight: 600;
+  word-break: break-word;
+}
+.cg-edge-tip-sub {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cg-edge-tip-label {
+  margin-top: 4px;
+  font-style: italic;
+  color: var(--accent, var(--text-secondary));
+}
+.cg-edge-tip-label.muted {
+  color: var(--muted);
+  font-style: normal;
+}
 .codegraph-kind {
   margin-left: 8px;
   padding: 1px 7px;
@@ -2165,6 +2202,19 @@ pre {
   color: var(--text-secondary);
   font-weight: 500;
   overflow-wrap: anywhere;
+}
+/* LLM-written one-line summary of how the source symbol uses the target. */
+.callsite-edgelabel {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85em;
+  font-style: italic;
+  color: var(--accent, var(--text-secondary));
+  overflow-wrap: anywhere;
+}
+.callsite-edgelabel.muted {
+  color: var(--muted);
+  font-style: normal;
 }
 .callsite-pager {
   display: inline-flex;
