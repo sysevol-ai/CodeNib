@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 500" font-family="'Helvetica Neue', Arial, sans-serif" role="img" aria-label="CodeMiner operator lanes: three retrieval lanes flow through fuse/expand, an optional filter, and rerank into the answer context.">
+  <style>
+    :root{
+      --paper:#F6F7F9; --ink:#1B2230; --muted:#5B6473; --line:#E2E5EA;
+      --card:#FFFFFF; --card-line:#E7EAF0; --wash:#EEF0F4;
+      --teal:#12897A; --teal-soft:#E4F1EE;
+      --indigo:#4759C4; --indigo-soft:#E8EAF9;
+      --amber:#C77D22; --amber-soft:#F7ECDC;
+      --gold:#9A7B12; --slate:#5B6473; --result:#141A26;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --paper:#11141B; --ink:#EEF1F6; --muted:#9AA3B2; --line:#262C38;
+        --card:#181C25; --card-line:#2A3240; --wash:#1E2430;
+        --teal:#3FB9A6; --teal-soft:#123029; --indigo:#8A97ED; --indigo-soft:#1B2148;
+        --amber:#E4A251; --amber-soft:#3A2A14; --gold:#D8B54A; --slate:#9AA3B2; --result:#E9ECF3;
+      }
+    }
+    :root[data-theme="light"]{
+      --paper:#F6F7F9; --ink:#1B2230; --muted:#5B6473; --line:#E2E5EA;
+      --card:#FFFFFF; --card-line:#E7EAF0; --wash:#EEF0F4;
+      --teal:#12897A; --teal-soft:#E4F1EE; --indigo:#4759C4; --indigo-soft:#E8EAF9;
+      --amber:#C77D22; --amber-soft:#F7ECDC; --gold:#9A7B12; --slate:#5B6473; --result:#141A26;
+    }
+    :root[data-theme="dark"]{
+      --paper:#11141B; --ink:#EEF1F6; --muted:#9AA3B2; --line:#262C38;
+      --card:#181C25; --card-line:#2A3240; --wash:#1E2430;
+      --teal:#3FB9A6; --teal-soft:#123029; --indigo:#8A97ED; --indigo-soft:#1B2148;
+      --amber:#E4A251; --amber-soft:#3A2A14; --gold:#D8B54A; --slate:#9AA3B2; --result:#E9ECF3;
+    }
+    .eyebrow{font-size:11px; letter-spacing:.22em; font-weight:700;}
+    .h1{font-size:21px; font-weight:750; fill:var(--ink);}
+    .sub{font-size:12.5px; fill:var(--muted);}
+    .stage{font-size:11px; letter-spacing:.14em; font-weight:700; fill:var(--muted);}
+    .tag{font-size:9.5px; letter-spacing:.05em; font-weight:700;}
+    .lname{font-size:15px; font-weight:750; fill:var(--ink);}
+    .box-t{font-size:13px; font-weight:750; fill:var(--ink);}
+    .det{font-size:11px; fill:var(--muted); font-family:'SF Mono',Menlo,monospace;}
+    .anno{font-size:10px; fill:var(--muted); font-family:'SF Mono',Menlo,monospace;}
+    .cav{font-size:10px; fill:var(--amber); font-family:'SF Mono',Menlo,monospace;}
+    .term-t{font-size:14px; font-weight:750; fill:#fff;}
+    .term-s{font-size:10.5px; fill:#D9DEE8; font-family:'SF Mono',Menlo,monospace;}
+    .cap{font-size:11px; fill:var(--muted);}
+    .cap b{fill:var(--ink); font-weight:700;}
+  </style>
+  <defs>
+    <marker id="ah2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--slate)"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="500" fill="var(--paper)"/>
+
+  <text x="40" y="40" class="eyebrow" fill="var(--gold)">FIGURE B &#183; OPERATOR LANES</text>
+  <text x="40" y="68" class="h1">One planner-selected lane, then a shared retrieve &#8594; fuse/expand &#8594; rerank spine</text>
+  <text x="40" y="90" class="sub">Each query flows down a single lane chosen in Fig. A; fuse/expand, the optional filter, and rerank are shared operators.</text>
+
+  <!-- stage headers -->
+  <text x="155" y="122" text-anchor="middle" class="stage">RETRIEVE</text>
+  <text x="405" y="122" text-anchor="middle" class="stage">FUSE / EXPAND</text>
+  <text x="645" y="122" text-anchor="middle" class="stage">FILTER (opt)</text>
+  <text x="899" y="122" text-anchor="middle" class="stage">RERANK</text>
+  <text x="1109" y="122" text-anchor="middle" class="stage">ANSWER</text>
+
+  <!-- ============ RETRIEVE LANES ============ -->
+  <!-- A sparse -->
+  <g>
+    <rect x="40" y="158" width="230" height="76" rx="10" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="40" y="158" width="4" height="76" rx="2" fill="var(--teal)"/>
+    <text x="60" y="182" class="tag" fill="var(--teal)">TRIGGER &#183; LEXICAL / &#8804;4-WORD</text>
+    <text x="60" y="208" class="lname">BM25 &#183; sparse</text>
+    <text x="60" y="225" class="det">exact names, symbols, paths</text>
+  </g>
+  <!-- B dense -->
+  <g>
+    <rect x="40" y="246" width="230" height="76" rx="10" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="40" y="246" width="4" height="76" rx="2" fill="var(--indigo)"/>
+    <text x="60" y="270" class="tag" fill="var(--indigo)">TRIGGER &#183; SEMANTIC / &#8805;10-WORD</text>
+    <text x="60" y="296" class="lname">dense &#183; FAISS</text>
+    <text x="60" y="313" class="det">intent, behavior, concepts</text>
+  </g>
+  <!-- C graph -->
+  <g>
+    <rect x="40" y="334" width="230" height="96" rx="10" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="40" y="334" width="4" height="96" rx="2" fill="var(--amber)"/>
+    <text x="60" y="358" class="tag" fill="var(--amber)">TRIGGER &#183; STRUCTURAL</text>
+    <text x="60" y="384" class="lname">graph</text>
+    <text x="60" y="401" class="det">BM25 seed &#8594; graph expand</text>
+    <text x="60" y="420" class="cav">auto only if graph loaded; else &#8594; hybrid</text>
+  </g>
+
+  <!-- arrows retrieve -> fuse/expand -->
+  <path d="M270 190 C292 190 298 224 320 224" stroke="var(--slate)" stroke-width="1.5" fill="none" marker-end="url(#ah2)"/>
+  <path d="M270 284 C292 284 298 250 320 250" stroke="var(--slate)" stroke-width="1.5" fill="none" marker-end="url(#ah2)"/>
+  <path d="M270 382 H320" stroke="var(--slate)" stroke-width="1.5" fill="none" marker-end="url(#ah2)"/>
+
+  <!-- ============ FUSE / EXPAND ============ -->
+  <!-- FUSE -->
+  <g>
+    <rect x="322" y="199" width="188" height="66" rx="10" fill="var(--wash)" stroke="var(--card-line)"/>
+    <text x="338" y="222" class="box-t">FUSE &#183; RRF</text>
+    <text x="338" y="242" class="det">dense 0.6 + sparse 0.4</text>
+    <text x="338" y="258" class="det">k = 60</text>
+  </g>
+  <text x="338" y="283" class="anno">join / dedup key = node_id</text>
+  <text x="338" y="297" class="anno" fill="var(--muted)">&#8618; (file, name, start, end)</text>
+  <!-- EXPAND -->
+  <g>
+    <rect x="322" y="349" width="188" height="66" rx="10" fill="var(--amber-soft)" stroke="var(--card-line)"/>
+    <text x="338" y="372" class="box-t">EXPAND &#183; graph</text>
+    <text x="338" y="392" class="det">2 hops &#183; dir = both</text>
+    <text x="338" y="408" class="det">PPR @ thorough</text>
+  </g>
+
+  <!-- arrows fuse/expand -> filter -->
+  <path d="M510 232 C532 232 538 282 560 282" stroke="var(--slate)" stroke-width="1.5" fill="none" marker-end="url(#ah2)"/>
+  <path d="M510 382 C532 382 538 332 560 332" stroke="var(--slate)" stroke-width="1.5" fill="none" marker-end="url(#ah2)"/>
+
+  <!-- ============ FILTER ============ -->
+  <g>
+    <rect x="562" y="234" width="166" height="146" rx="10" fill="var(--card)" stroke="var(--card-line)" stroke-dasharray="5 4"/>
+    <text x="578" y="260" class="box-t">FILTER</text>
+    <text x="578" y="277" class="det" fill="var(--muted)">optional</text>
+    <line x1="578" y1="289" x2="712" y2="289" stroke="var(--card-line)"/>
+    <text x="578" y="311" class="det">drop tests &#183; filter_tests</text>
+    <text x="578" y="333" class="det">dedup &#183; node_id</text>
+    <text x="578" y="355" class="det">cut &#183; top-50 / 80</text>
+  </g>
+  <path d="M728 307 H778" stroke="var(--slate)" stroke-width="1.5" fill="none" marker-end="url(#ah2)"/>
+
+  <!-- ============ RERANK ============ -->
+  <g>
+    <rect x="780" y="250" width="238" height="114" rx="10" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="780" y="250" width="4" height="114" rx="2" fill="var(--indigo)"/>
+    <text x="800" y="278" class="box-t">RERANK</text>
+    <text x="872" y="278" class="det" fill="var(--muted)">per tier</text>
+    <line x1="800" y1="290" x2="1002" y2="290" stroke="var(--card-line)"/>
+    <text x="800" y="316" class="det" font-size="10">balanced &#8594; embedding <tspan fill="var(--teal)">&#183; pointwise</tspan></text>
+    <text x="800" y="338" class="det" font-size="10">thorough &#8594; LLM <tspan fill="var(--amber)">&#183; listwise</tspan></text>
+    <text x="800" y="356" class="det" font-size="9" fill="var(--muted)">(window-rank, not a cross-encoder)</text>
+  </g>
+  <path d="M1018 307 H1046" stroke="var(--slate)" stroke-width="1.5" fill="none" marker-end="url(#ah2)"/>
+
+  <!-- ============ ANSWER CONTEXT ============ -->
+  <g>
+    <rect x="1048" y="256" width="122" height="102" rx="11" fill="var(--result)"/>
+    <text x="1109" y="300" text-anchor="middle" class="term-t">Answer</text>
+    <text x="1109" y="320" text-anchor="middle" class="term-t">Context</text>
+    <text x="1109" y="342" text-anchor="middle" class="term-s">top-k</text>
+  </g>
+
+  <!-- caption -->
+  <line x1="40" y1="458" x2="1150" y2="458" stroke="var(--card-line)"/>
+  <text x="40" y="482" class="cap"><tspan font-weight="700" fill="var(--ink)">Lanes are mutually exclusive per query</tspan><tspan> — the planner (Fig. A) picks one. Zoekt / trigram is a separate index &amp; MCP tool, not a planner lane.</tspan></text>
+</svg>

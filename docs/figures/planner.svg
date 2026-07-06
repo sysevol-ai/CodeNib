@@ -1,0 +1,185 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 636" font-family="'Helvetica Neue', Arial, sans-serif" role="img" aria-label="CodeMiner retrieval planner: a deterministic query-signal by budget-gate router selecting one of four retrieval paths.">
+  <style>
+    :root{
+      --paper:#F6F7F9; --ink:#1B2230; --muted:#5B6473; --line:#E2E5EA;
+      --card:#FFFFFF; --card-line:#E7EAF0; --wash:#EEF0F4;
+      --teal:#12897A; --teal-soft:#E4F1EE;
+      --indigo:#4759C4; --indigo-soft:#E8EAF9;
+      --amber:#C77D22; --amber-soft:#F7ECDC;
+      --gold:#9A7B12; --slate:#5B6473;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --paper:#11141B; --ink:#EEF1F6; --muted:#9AA3B2; --line:#262C38;
+        --card:#181C25; --card-line:#2A3240; --wash:#1E2430;
+        --teal:#3FB9A6; --teal-soft:#123029; --indigo:#8A97ED; --indigo-soft:#1B2148;
+        --amber:#E4A251; --amber-soft:#3A2A14; --gold:#D8B54A; --slate:#9AA3B2;
+      }
+    }
+    :root[data-theme="light"]{
+      --paper:#F6F7F9; --ink:#1B2230; --muted:#5B6473; --line:#E2E5EA;
+      --card:#FFFFFF; --card-line:#E7EAF0; --wash:#EEF0F4;
+      --teal:#12897A; --teal-soft:#E4F1EE; --indigo:#4759C4; --indigo-soft:#E8EAF9;
+      --amber:#C77D22; --amber-soft:#F7ECDC; --gold:#9A7B12; --slate:#5B6473;
+    }
+    :root[data-theme="dark"]{
+      --paper:#11141B; --ink:#EEF1F6; --muted:#9AA3B2; --line:#262C38;
+      --card:#181C25; --card-line:#2A3240; --wash:#1E2430;
+      --teal:#3FB9A6; --teal-soft:#123029; --indigo:#8A97ED; --indigo-soft:#1B2148;
+      --amber:#E4A251; --amber-soft:#3A2A14; --gold:#D8B54A; --slate:#9AA3B2;
+    }
+    .eyebrow{font-size:11px; letter-spacing:.22em; font-weight:700;}
+    .h1{font-size:21px; font-weight:750; fill:var(--ink);}
+    .sub{font-size:12.5px; fill:var(--muted);}
+    .io{font-size:12.5px; font-weight:700; fill:var(--ink);}
+    .iosm{font-size:10.5px; fill:var(--muted); font-family:'SF Mono',Menlo,monospace;}
+    .plt{font-size:14px; font-weight:750; fill:#fff;}
+    .plsm{font-size:10.5px; fill:#D9DEE8; font-family:'SF Mono',Menlo,monospace;}
+    .lname{font-size:13px; font-weight:750;}
+    .ltrig{font-size:10px; letter-spacing:.04em; font-weight:700;}
+    .ldet{font-size:10.5px; fill:var(--muted); font-family:'SF Mono',Menlo,monospace;}
+    .th{font-size:10px; letter-spacing:.12em; font-weight:700; fill:var(--muted);}
+    .td{font-size:11px; fill:var(--ink);}
+    .tdm{font-size:10.5px; fill:var(--ink); font-family:'SF Mono',Menlo,monospace;}
+    .cap{font-size:10.5px; fill:var(--muted);}
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--slate)"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1120" height="636" fill="var(--paper)"/>
+
+  <text x="40" y="40" class="eyebrow" fill="var(--gold)">FIGURE A &#183; RETRIEVAL PLANNER</text>
+  <text x="40" y="68" class="h1">A deterministic query &#215; budget router — no LLM in the loop</text>
+  <text x="40" y="90" class="sub">RetrievalPlanner.select() classifies the query into signals, reads the budget tier's gates, and emits exactly one of four retrieval paths.</text>
+
+  <!-- ===== schematic flow ===== -->
+  <!-- input: task query + budget -->
+  <g>
+    <rect x="40" y="118" width="150" height="52" rx="9" fill="var(--card)" stroke="var(--card-line)"/>
+    <text x="115" y="141" text-anchor="middle" class="io">Task query</text>
+    <text x="115" y="158" text-anchor="middle" class="iosm">natural language</text>
+
+    <rect x="40" y="180" width="150" height="40" rx="9" fill="var(--wash)" stroke="var(--card-line)"/>
+    <text x="115" y="197" text-anchor="middle" class="iosm" fill="var(--muted)">budget tier</text>
+    <text x="115" y="212" text-anchor="middle" class="iosm">fast &#183; balanced &#183; thorough</text>
+  </g>
+  <path d="M190 168 H236" stroke="var(--slate)" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+
+  <!-- planner box -->
+  <rect x="238" y="118" width="300" height="102" rx="11" fill="#141A26" stroke="none"/>
+  <text x="256" y="146" class="plt">RetrievalPlanner.select()</text>
+  <text x="256" y="167" class="plsm">deterministic &#183; no LLM call</text>
+  <text x="256" y="188" class="plsm">classify_query(signals)</text>
+  <text x="256" y="205" class="plsm">&#215; budget gates &#8594; one path</text>
+  <path d="M538 168 H584" stroke="var(--slate)" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+  <text x="586" y="164" class="iosm" fill="var(--muted)">selected</text>
+  <text x="586" y="179" class="iosm" fill="var(--muted)">path &#8595;</text>
+
+  <!-- ===== four lane cards ===== -->
+  <!-- card geometry: y 244, h 132, width 245, gap 20, x0 40 -->
+  <!-- 1 fast_lexical (teal) -->
+  <g>
+    <rect x="40" y="244" width="245" height="132" rx="10" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="40" y="244" width="4" height="132" rx="2" fill="var(--teal)"/>
+    <text x="60" y="270" class="ltrig" fill="var(--teal)">LEXICAL / &#8804;4-WORD (FAST)</text>
+    <text x="60" y="291" class="lname" fill="var(--ink)">fast_lexical</text>
+    <line x1="60" y1="304" x2="265" y2="304" stroke="var(--card-line)"/>
+    <text x="60" y="324" class="ldet">engine: BM25 (sparse) only</text>
+    <text x="60" y="343" class="ldet">fusion: none</text>
+    <text x="60" y="362" class="ldet">rerank: none</text>
+  </g>
+  <!-- 2 semantic (indigo) -->
+  <g>
+    <rect x="305" y="244" width="245" height="132" rx="10" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="305" y="244" width="4" height="132" rx="2" fill="var(--indigo)"/>
+    <text x="325" y="270" class="ltrig" fill="var(--indigo)">SEMANTIC / &#8805;10-WORD NL</text>
+    <text x="325" y="291" class="lname" fill="var(--ink)">semantic</text>
+    <line x1="325" y1="304" x2="530" y2="304" stroke="var(--card-line)"/>
+    <text x="325" y="324" class="ldet">engine: dense (FAISS)</text>
+    <text x="325" y="343" class="ldet">fusion: none</text>
+    <text x="325" y="362" class="ldet">rerank: per tier &#8595;</text>
+  </g>
+  <!-- 3 hybrid_fusion (teal+indigo) -->
+  <g>
+    <rect x="570" y="244" width="245" height="132" rx="10" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="570" y="244" width="4" height="66" rx="2" fill="var(--indigo)"/>
+    <rect x="570" y="310" width="4" height="66" rx="2" fill="var(--teal)"/>
+    <text x="590" y="270" class="ltrig" fill="var(--slate)">MIXED / UNCERTAIN</text>
+    <text x="590" y="291" class="lname" fill="var(--ink)">hybrid_fusion</text>
+    <line x1="590" y1="304" x2="795" y2="304" stroke="var(--card-line)"/>
+    <text x="590" y="324" class="ldet">dense 0.6 + sparse 0.4</text>
+    <text x="590" y="343" class="ldet">fusion: RRF (k=60)</text>
+    <text x="590" y="362" class="ldet">rerank: per tier &#8595;</text>
+  </g>
+  <!-- 4 structural_graph (amber) -->
+  <g>
+    <rect x="835" y="244" width="245" height="132" rx="10" fill="var(--card)" stroke="var(--card-line)"/>
+    <rect x="835" y="244" width="4" height="132" rx="2" fill="var(--amber)"/>
+    <text x="855" y="270" class="ltrig" fill="var(--amber)">STRUCTURAL + GRAPH LOADED</text>
+    <text x="855" y="291" class="lname" fill="var(--ink)">structural_graph</text>
+    <line x1="855" y1="304" x2="1060" y2="304" stroke="var(--card-line)"/>
+    <text x="855" y="324" class="ldet">BM25 seed &#8594; graph expand</text>
+    <text x="855" y="343" class="ldet">2 hops &#183; both &#183; PPR@thorough</text>
+    <text x="855" y="362" class="ldet" fill="var(--amber)">no graph &#8594; falls back to hybrid</text>
+  </g>
+
+  <!-- ===== two reference tables ===== -->
+  <!-- signals table (left) -->
+  <g>
+    <text x="40" y="418" class="eyebrow" fill="var(--slate)">QUERY &#8594; SIGNALS  (classify_query)</text>
+    <rect x="40" y="430" width="520" height="176" rx="9" fill="var(--card)" stroke="var(--card-line)"/>
+    <line x1="40" y1="466" x2="560" y2="466" stroke="var(--card-line)"/>
+    <line x1="150" y1="430" x2="150" y2="606" stroke="var(--card-line)"/>
+    <text x="58" y="453" class="th">SIGNAL</text>
+    <text x="168" y="453" class="th">TRIGGERS</text>
+
+    <text x="58" y="488" class="td" fill="var(--amber)" font-weight="700">structural</text>
+    <text x="168" y="484" class="ldet">who-calls, callers/callees, dependency,</text>
+    <text x="168" y="499" class="ldet">impact/blast-radius, references, defs/usages</text>
+    <text x="168" y="514" class="ldet">of, inherits/overrides, data/control flow</text>
+
+    <text x="58" y="543" class="td" fill="var(--teal)" font-weight="700">lexical</text>
+    <text x="168" y="539" class="ldet">`x`, foo(...), a.b, a::b, snake_case,</text>
+    <text x="168" y="554" class="ldet">CamelCaseError/Exception/..., path.ext</text>
+    <text x="168" y="569" class="ldet">&#8212; or query &#8804; 4 words</text>
+
+    <text x="58" y="592" class="td" fill="var(--indigo)" font-weight="700">semantic</text>
+    <text x="168" y="590" class="ldet">how/why/what/explain/behavior/logic/...</text>
+    <text x="168" y="603" class="ldet">&#8212; or query &#8805; 10 words</text>
+  </g>
+  <text x="40" y="626" class="cap"><tspan fill="var(--slate)">mixed</tspan> = &#8805;2 signals &#8594; routes to hybrid_fusion.</text>
+
+  <!-- gates table (right) -->
+  <g>
+    <text x="590" y="418" class="eyebrow" fill="var(--slate)">BUDGET &#8594; GATES</text>
+    <rect x="590" y="430" width="490" height="176" rx="9" fill="var(--card)" stroke="var(--card-line)"/>
+    <line x1="590" y1="466" x2="1080" y2="466" stroke="var(--card-line)"/>
+    <text x="608" y="453" class="th">TIER</text>
+    <text x="726" y="453" class="th">top_k</text>
+    <text x="800" y="453" class="th">GRAPH</text>
+    <text x="872" y="453" class="th">RERANK</text>
+    <text x="1030" y="453" class="th">cand</text>
+
+    <text x="608" y="495" class="td" font-weight="700">fast</text>
+    <text x="726" y="495" class="tdm">32</text>
+    <text x="800" y="495" class="tdm" fill="var(--muted)">&#8212;</text>
+    <text x="872" y="495" class="tdm" fill="var(--muted)">none</text>
+    <text x="1030" y="495" class="tdm" fill="var(--muted)">&#8212;</text>
+
+    <text x="608" y="535" class="td" font-weight="700">balanced</text>
+    <text x="726" y="535" class="tdm">100</text>
+    <text x="800" y="535" class="tdm" fill="var(--teal)">&#10003;</text>
+    <text x="872" y="535" class="tdm">embedding&#183;pointwise</text>
+    <text x="1030" y="535" class="tdm">50</text>
+
+    <text x="608" y="575" class="td" font-weight="700">thorough</text>
+    <text x="726" y="575" class="tdm">128</text>
+    <text x="800" y="575" class="tdm" fill="var(--teal)">&#10003;</text>
+    <text x="872" y="575" class="tdm">LLM&#183;listwise</text>
+    <text x="1030" y="575" class="tdm">80</text>
+  </g>
+  <text x="590" y="626" class="cap">graph gate only fires when a code graph is actually loaded (<tspan class="tdm" font-size="10">has_graph</tspan>).</text>
+</svg>
