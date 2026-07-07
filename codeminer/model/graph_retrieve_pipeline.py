@@ -28,12 +28,16 @@ def _section(
     return profiler.section(label, metadata)
 
 
-class GraphRetrievePipeline:
-    """Three-stage graph-based retrieval pipeline.
+class SparseSeededGraphRetrievePipeline:
+    """Sparse-seeded graph-first retrieval pipeline.
 
     Stage 1: BM25 sparse search selects a small set of seed nodes.
     Stage 2: Graph expansion via k-hop BFS or Personalized PageRank.
     Stage 3 (optional): Embedding rerank within the expanded set.
+
+    This is a graph-first baseline. It should not be used as the direct
+    comparison point for dense embedding retrieval unless that sparse seeding
+    design is the intended ablation.
 
     Args:
         repo_path: Repository root to index.
@@ -249,3 +253,7 @@ class GraphRetrievePipeline:
         if self.vector_store is not None:
             self.vector_store.close()
             self.vector_store = None
+
+
+class GraphRetrievePipeline(SparseSeededGraphRetrievePipeline):
+    """Compatibility alias for :class:`SparseSeededGraphRetrievePipeline`."""

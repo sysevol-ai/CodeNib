@@ -57,6 +57,7 @@ function TocTree({
           <button
             className={`toc-link ${p.id === activeId ? "active" : ""}`}
             aria-current={p.id === activeId ? "page" : undefined}
+            title={p.title}
             onClick={() => onPick(p.id)}
           >
             {p.title}
@@ -87,6 +88,7 @@ export default function WikiPageView() {
   const [activeHeading, setActiveHeading] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [tocLoading, setTocLoading] = useState(true);
   const [tocOpen, setTocOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -99,9 +101,12 @@ export default function WikiPageView() {
         setRepo(rs.find((x) => x.id === repoId) ?? null);
       })
       .catch(() => {});
+    setTocLoading(true);
+    setError(null);
     fetchWikiTree(repoId)
       .then((t) => setPages(t.pages))
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(String(e)))
+      .finally(() => setTocLoading(false));
   }, [repoId]);
 
   useEffect(() => {
@@ -217,8 +222,19 @@ export default function WikiPageView() {
           {repo?.commit_short && (
             <div className="rail-sub mono">Last indexed {repo.commit_short}</div>
           )}
-          {error && <div className="muted">Failed to load wiki.</div>}
-          <TocTree pages={pages} activeId={activeId} onPick={pick} />
+          {error ? (
+            <div className="muted">Failed to load wiki.</div>
+          ) : tocLoading ? (
+            <div className="toc-skeleton" aria-hidden>
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="toc-skeleton-row" />
+              ))}
+            </div>
+          ) : pages.length === 0 ? (
+            <div className="muted small">No pages in this wiki yet.</div>
+          ) : (
+            <TocTree pages={pages} activeId={activeId} onPick={pick} />
+          )}
         </aside>
 
         <main className="wiki-main">

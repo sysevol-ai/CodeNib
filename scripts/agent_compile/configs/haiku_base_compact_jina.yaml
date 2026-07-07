@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+# Agent ablation: hold the compact harness fixed, swap the embedding to
+# jina-code-embeddings-1.5b (code-specialized, 1.5B). Compare AGENT end metrics
+# (span hit = answer_blocks@5, + token) vs compact+0.6B (haiku_base_compact) and
+# compact+4B (haiku_base_compact_4b). Tests whether swapping the preload
+# embedding helps the compact agent at all. Haiku=vertex; embedding on CPU.
+base: design_space.yaml
+sweep_id: haiku_base_compact_jina
+embedding_model: jinaai/jina-code-embeddings-1.5b
+embedding_dimension: 1536
+reps: 1
+max_turns: 16
+instances: []
+subsets:
+  grep_only: [read, grep, glob, bash]
+  preinj_eager: [read, grep, glob, bash]
+  preinj_eager_compact: [read, grep, glob, bash]
+preload:
+  preinj_eager:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager
+  preinj_eager_compact:
+    retrievers: [embedding]
+    top_k: 10
+    level: l2
+    mode: eager_compact
+    compact_keep_reads: 0

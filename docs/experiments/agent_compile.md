@@ -11,8 +11,10 @@ SPDX-License-Identifier: Apache-2.0
 > per-subset sweep. The experiment space is now the single canonical
 > **`scripts/agent_compile/configs/design_space.yaml`** (9 arms, full split,
 > neutral prompt), driven by the consolidated `run_sweep.py` +
-> `aggregate.py` (shared code lives under `scripts/agent_compile/lib/`; the
-> offline retrieval ablations moved to `scripts/retrieval_ablation/`). See
+> `aggregate.py` (reusable harness code lives under
+> `codeminer.eval.agent_runner`; the old `scripts/agent_compile/lib`
+> compatibility namespace has been removed; the offline retrieval ablations moved to
+> `scripts/retrieval_ablation/`). See
 > [`scripts/agent_compile/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/scripts/agent_compile/README.md).
 > Fresh full-split design-space results will be added once the re-run completes.
 
@@ -51,7 +53,7 @@ selects which `files@k` / `symbols@k` cutoffs the report folds (default
 | Sample | 5 instances, 4 languages, both Python scenarios (see below) |
 | Agent model | `vertex_ai/claude-haiku-4-5` @ `us-east5`, temp 0.0, max_turns 20 |
 | Embeddings | `Qwen/Qwen3-Embedding-0.6B` (dim 1024), L2 chunks |
-| Indexes | pre-built per-instance under `/mnt/data/codeminer` — vector + symbol graph reused; BM25 built fresh from the prebuilt graph (see `scripts/agent_compile/lib/prebuilt.py`) |
+| Indexes | pre-built per-instance under `/mnt/data/codeminer` — vector + symbol graph reused; BM25 built fresh from the prebuilt graph (see `codeminer.eval.agent_runner.prebuilt`) |
 | Reps | 2 — cost = min across reps, accuracy = mean across reps (per #131) |
 | Metric | `files@k` (LocAgent / PR #128 column set); `symbols@k` also recorded |
 

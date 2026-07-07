@@ -33,9 +33,11 @@
   --muted: var(--text-secondary);
   --accent-contrast: #ffffff;
   --top-h: 64px;
+  --askbar-h: 100px; /* reserved space so the fixed Ask bar never covers content */
   --rail-left: 320px;
   --rail-right: 248px;
   --content-w: 768px;
+  --wiki-gutter: clamp(24px, 4vw, 80px);
 }
 
 [data-theme="dark"] {
@@ -425,7 +427,7 @@ pre {
   gap: 0;
   /* A consistent, modest gutter at every width: never flush to the edges, but
      not the cavernous margins a fixed centred cap leaves on wide screens. */
-  padding-inline: clamp(24px, 4vw, 80px);
+  padding-inline: var(--wiki-gutter);
 }
 @media (max-width: 1180px) {
   .wiki-grid {
@@ -500,7 +502,7 @@ pre {
   position: sticky;
   top: var(--top-h);
   align-self: start;
-  max-height: calc(100vh - var(--top-h));
+  max-height: calc(100vh - var(--top-h) - var(--askbar-h));
   overflow-y: auto;
   width: var(--rail-left);
   padding: 22px 18px 22px 0;
@@ -509,7 +511,7 @@ pre {
   position: sticky;
   top: var(--top-h);
   align-self: start;
-  max-height: calc(100vh - var(--top-h));
+  max-height: calc(100vh - var(--top-h) - var(--askbar-h));
   overflow-y: auto;
   width: var(--rail-right);
   padding: 20px 0 20px 18px;
@@ -557,17 +559,58 @@ pre {
   line-height: 1.45;
   color: var(--muted);
   cursor: pointer;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
 }
 .toc-link:hover {
   background: var(--bg-subtle);
   color: var(--text);
 }
-.toc-link.active {
-  background: color-mix(in srgb, var(--bg-subtle) 76%, var(--bg-surface));
-  color: var(--text);
+.wiki-toc .toc-link.active {
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 600;
-  box-shadow: inset 2px 0 #64748b;
+}
+
+/* Sidebar loading placeholder — shimmer rows instead of an empty flash. */
+.toc-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 6px 0;
+}
+.toc-skeleton-row {
+  height: 16px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-subtle) 25%,
+    color-mix(in srgb, var(--bg-subtle) 55%, var(--bg-surface)) 50%,
+    var(--bg-subtle) 75%
+  );
+  background-size: 200% 100%;
+  animation: toc-shimmer 1.3s ease-in-out infinite;
+}
+.toc-skeleton-row:nth-child(2n) {
+  width: 80%;
+}
+.toc-skeleton-row:nth-child(3n) {
+  width: 62%;
+}
+@keyframes toc-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toc-skeleton-row {
+    animation: none;
+  }
 }
 
 .wiki-main {
@@ -680,9 +723,9 @@ pre {
   background: var(--bg-subtle);
 }
 .onthispage-list a.active {
-  color: var(--text);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 600;
-  box-shadow: inset 2px 0 #94a3b8;
 }
 .refresh-wiki {
   margin-top: 18px;
@@ -709,11 +752,13 @@ pre {
   line-height: 1.65;
   color: var(--text);
 }
-/* Anchor jumps (the "On this page" rail) must clear the sticky header. */
+/* Anchor jumps (the "On this page" rail) must clear the sticky header and,
+   for near-bottom sections, the fixed Ask bar. */
 .markdown h1,
 .markdown h2,
 .markdown h3 {
   scroll-margin-top: calc(var(--top-h) + 16px);
+  scroll-margin-bottom: var(--askbar-h);
 }
 .markdown h1 {
   font-size: 22px;
@@ -1104,29 +1149,32 @@ pre {
 
 /* ===== Bottom Ask bar (DeepWiki-style persistent ask) ===== */
 .wiki {
-  padding-bottom: 88px; /* clear the fixed ask bar */
+  padding-bottom: var(--askbar-h); /* clear the fixed ask bar */
+  scroll-padding-bottom: var(--askbar-h);
 }
 .askbar {
   position: fixed;
-  left: 0;
-  right: 0;
+  /* Span only the center content column so the side rails stay uncovered. */
+  left: calc(var(--wiki-gutter) + var(--rail-left));
+  right: calc(var(--wiki-gutter) + var(--rail-right));
   bottom: 0;
   z-index: 50;
   display: flex;
   justify-content: center;
-  padding: 16px;
-  background: transparent;
+  padding: 16px 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
   pointer-events: none;
 }
-.askbar::before {
-  content: "";
-  position: absolute;
-  inset-block: 0;
-  left: 50%;
-  width: min(760px, calc(100% - 32px));
-  transform: translateX(-50%);
-  background: linear-gradient(to top, var(--bg) 72%, transparent);
-  pointer-events: none;
+@media (max-width: 1180px) {
+  .askbar {
+    right: var(--wiki-gutter); /* right rail is hidden at this width */
+  }
+}
+@media (max-width: 820px) {
+  .askbar {
+    left: var(--wiki-gutter); /* left rail collapses to an overlay */
+  }
 }
 .askbar-inner {
   position: relative;
@@ -1134,12 +1182,11 @@ pre {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: min(720px, 100%);
+  width: min(1100px, 100%);
   padding: 8px 8px 8px 16px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 8px 28px -8px rgba(0, 0, 0, 0.18), 0 2px 6px -2px rgba(0, 0, 0, 0.08);
 }
 .askbar-icon {
   color: var(--accent);
@@ -1985,6 +2032,43 @@ pre {
 .codegraph-bar b {
   font-weight: 600;
 }
+/* LLM-written dependency phrase shown on edge hover, next to the ref count. */
+.cg-edgelabel {
+  font-style: italic;
+  color: var(--accent, var(--text-secondary));
+}
+/* Floating tooltip that appears at the cursor when hovering a graph edge. */
+.cg-edge-tip {
+  position: fixed;
+  z-index: 50;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  color: var(--text);
+  pointer-events: none;
+}
+.cg-edge-tip-head {
+  font-weight: 600;
+  word-break: break-word;
+}
+.cg-edge-tip-sub {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cg-edge-tip-label {
+  margin-top: 4px;
+  font-style: italic;
+  color: var(--accent, var(--text-secondary));
+}
+.cg-edge-tip-label.muted {
+  color: var(--muted);
+  font-style: normal;
+}
 .codegraph-kind {
   margin-left: 8px;
   padding: 1px 7px;
@@ -2118,6 +2202,19 @@ pre {
   color: var(--text-secondary);
   font-weight: 500;
   overflow-wrap: anywhere;
+}
+/* LLM-written one-line summary of how the source symbol uses the target. */
+.callsite-edgelabel {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85em;
+  font-style: italic;
+  color: var(--accent, var(--text-secondary));
+  overflow-wrap: anywhere;
+}
+.callsite-edgelabel.muted {
+  color: var(--muted);
+  font-style: normal;
 }
 .callsite-pager {
   display: inline-flex;

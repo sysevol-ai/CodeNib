@@ -30,8 +30,9 @@ a flat **embedding pre-load context-engine** + the standard grep/read loop.
   - `preinj_embed` — embedding candidates injected into the opening prompt.
   - `preinj_graph` — embedding **+ 1-hop call-graph expansion** injected.
   - `preinj_graph_verify` — graph pre-load **+ verify-expand** closed loop
-    (`lib/verify_expand.py`): if the committed answer does not resolve to a real
-    graph symbol, inject its 1-hop neighbours and answer once more.
+    (`codeminer.eval.agent_runner.verify_expand`): if the committed answer does
+    not resolve to a real graph symbol, inject its 1-hop neighbours and answer
+    once more.
 - **Method:** per-query **paired bootstrap** (5000 resamples) of Δ vs
   `grep_only` (`pareto_ci.py`). Pre-load is a *variance trade* — it rescues
   queries grep fails on and distracts on others — so a point Δ at small n is

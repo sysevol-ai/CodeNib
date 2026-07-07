@@ -30,6 +30,7 @@ from mcp.server.fastmcp import FastMCP
 from .context import ServerContext
 from .prompts import CODEMINER_GUIDE
 from .tools.dependency import dependency_subgraph_impl
+from .tools.lsp import lsp_definition_impl, lsp_references_impl, lsp_route_impl
 from .tools.search import search_bm25_impl, search_regex_impl
 from .tools.search import search_semantic as _search_semantic_impl
 from .tools.search import search_zoekt_impl
@@ -54,7 +55,9 @@ mcp = FastMCP(
         "Use search_semantic for vector/embedding similarity, "
         "search_bm25 for keyword lookups, search_regex for symbol-level "
         "pattern matching, and search_zoekt for fast trigram-based "
-        "substring/regex search across raw file contents."
+        "substring/regex search across raw file contents. Use "
+        "lsp_definition, lsp_references, and lsp_route for graph-backed "
+        "LSP-shaped symbol navigation."
     ),
 )
 
@@ -198,6 +201,94 @@ async def dependency_subgraph(
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
         dependency_subgraph_impl, _ctx, symbol, direction, depth, max_nodes
+    )
+
+
+@mcp.tool(
+    name="lsp_definition",
+    description=(
+        "Return compact definition locations from CodeMiner's static symbol "
+        "graph. Provide either symbol or file_path + 1-based line. Results are "
+        "locations only; read source before finalizing."
+    ),
+)
+async def lsp_definition(
+    file_path: str = "",
+    line: int | None = None,
+    character: int | None = None,
+    symbol: str = "",
+    top_k: int = 8,
+) -> list[dict[str, Any]] | dict[str, str]:
+    """Graph-backed definition lookup over the static symbol graph."""
+    if _ctx is None:
+        raise RuntimeError("Server not initialized")
+    return await asyncio.to_thread(
+        lsp_definition_impl,
+        _ctx,
+        file_path,
+        line,
+        character,
+        symbol,
+        top_k,
+    )
+
+
+@mcp.tool(
+    name="lsp_references",
+    description=(
+        "Return compact definition/reference locations from CodeMiner's static "
+        "symbol graph. Provide either symbol or file_path + 1-based line. "
+        "Results are locations only; read source before finalizing."
+    ),
+)
+async def lsp_references(
+    file_path: str = "",
+    line: int | None = None,
+    character: int | None = None,
+    symbol: str = "",
+    include_declaration: bool = True,
+    top_k: int = 40,
+) -> list[dict[str, Any]] | dict[str, str]:
+    """Graph-backed reference lookup over the static symbol graph."""
+    if _ctx is None:
+        raise RuntimeError("Server not initialized")
+    return await asyncio.to_thread(
+        lsp_references_impl,
+        _ctx,
+        file_path,
+        line,
+        character,
+        symbol,
+        include_declaration,
+        top_k,
+    )
+
+
+@mcp.tool(
+    name="lsp_route",
+    description=(
+        "Return compact route anchors from CodeMiner's static symbol graph for "
+        "one or more symbol seeds. Use this when multiple symbols need a route "
+        "map across endpoint, bridge/factory, provider/value, or type anchors. "
+        "Results are locations only; read source before finalizing."
+    ),
+)
+async def lsp_route(
+    symbols: list[str],
+    query: str = "",
+    top_k: int = 12,
+    include_neighbors: bool = True,
+) -> list[dict[str, Any]] | dict[str, str]:
+    """Graph-backed route map over the static symbol graph."""
+    if _ctx is None:
+        raise RuntimeError("Server not initialized")
+    return await asyncio.to_thread(
+        lsp_route_impl,
+        _ctx,
+        symbols,
+        query,
+        top_k,
+        include_neighbors,
     )
 
 

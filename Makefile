@@ -796,6 +796,25 @@ dev:
 test:
 	pytest
 
+# Rerank latency benchmark — measures wall-clock + VRAM across rerank backends.
+# Candidates: 25 50 100  |  Reps: 3  |  Output: scripts/bench_rerank_results.md
+#
+#   make bench-rerank                              # embedding_cached, st_cross, qwen_cross
+#   make bench-rerank BENCH_BACKENDS="st_cross qwen_cross"
+#   make bench-rerank BENCH_N="10 25 50"
+#   make bench-rerank BENCH_INCLUDE_LLM=--include-llm  # also runs LLM listwise (slow)
+BENCH_BACKENDS ?= embedding embedding_cached st_cross qwen_cross
+BENCH_N        ?= 25 50 100
+BENCH_REPS     ?= 3
+BENCH_INCLUDE_LLM ?=
+
+bench-rerank:
+	python scripts/bench_rerank_latency.py \
+		--backends $(BENCH_BACKENDS) \
+		--candidates $(BENCH_N) \
+		--reps $(BENCH_REPS) \
+		$(BENCH_INCLUDE_LLM)
+
 web-deps:
 	$(call require-command,npm)
 	npm install --prefix web

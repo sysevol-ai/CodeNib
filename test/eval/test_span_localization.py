@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 import igraph as ig
 
+from codeminer.eval.agent_runner.symbols import build_prebuilt_symbol_span_index
 from codeminer.eval.retrieval_eval import (
     collect_target_blocks,
     compute_block_metrics,
@@ -25,7 +26,6 @@ from codeminer.eval.retrieval_eval import (
     score_localization_spans,
     spans_overlap,
 )
-from scripts.agent_compile.lib.harness import build_symbol_span_index
 
 
 def _node(file, start, end, score=0.0, node_id=None):
@@ -259,7 +259,7 @@ def test_prebuilt_symbol_span_index_normalizes_graph_names(tmp_path):
     with (inst / "graph.pkl").open("wb") as f:
         pickle.dump({"graph": graph}, f)
 
-    index = build_symbol_span_index(str(tmp_path), "iid")
+    index = build_prebuilt_symbol_span_index(str(tmp_path), "iid")
     assert index[("src/foo.py", "bar")] == (10, 20)
     assert index[("pkg/calc.go", "Add")] == (4, 8)
 
@@ -272,6 +272,14 @@ def test_nodes_to_spans_ranked_by_score_desc():
         [_node("a.py", 1, 2, score=0.1), _node("b.py", 3, 4, score=0.9)]
     )
     assert [s["file"] for s in spans] == ["b.py", "a.py"]
+
+
+def test_nodes_to_spans_can_preserve_retrieval_order():
+    spans = nodes_to_spans(
+        [_node("a.py", 1, 2, score=0.1), _node("b.py", 3, 4, score=0.9)],
+        sort_by_score=False,
+    )
+    assert [s["file"] for s in spans] == ["a.py", "b.py"]
 
 
 def test_dedup_collapses_overlapping_region():

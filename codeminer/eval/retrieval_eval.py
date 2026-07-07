@@ -413,8 +413,10 @@ def dedup_spans(spans: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return kept
 
 
-def nodes_to_spans(nodes: Sequence[QueriedNode]) -> List[Dict[str, Any]]:
-    """Spans from retrieval nodes, ranked by score desc.
+def nodes_to_spans(
+    nodes: Sequence[QueriedNode], *, sort_by_score: bool = True
+) -> List[Dict[str, Any]]:
+    """Spans from retrieval nodes.
 
     Two empirically-verified quirks of retrieval ``QueriedNode``s drive this:
       * ``node.file`` is the absolute *build-time* path baked into the index
@@ -440,7 +442,8 @@ def nodes_to_spans(nodes: Sequence[QueriedNode]) -> List[Dict[str, Any]]:
         )
         if sp:
             out.append(sp)
-    out.sort(key=lambda s: s["score"], reverse=True)
+    if sort_by_score:
+        out.sort(key=lambda s: s["score"], reverse=True)
     return out
 
 

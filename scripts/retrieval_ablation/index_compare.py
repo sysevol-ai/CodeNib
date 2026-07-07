@@ -65,10 +65,10 @@ def _files(docs: List[Any], idxs: List[int]) -> List[str]:
 
 
 def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
+    from codeminer.eval.agent_runner.prebuilt import stage_prebuilt_indexes
+    from codeminer.eval.agent_runner.sweep import load_dataset_rows, load_full_contexts
     from codeminer.eval.retrieval_eval import collect_targets
     from codeminer.graph.roi_subgraph import ROISubgraph
-    from scripts.agent_compile.lib.harness import load_dataset_rows, load_full_contexts
-    from scripts.agent_compile.lib.prebuilt import stage_prebuilt_indexes
 
     rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[inst]
@@ -119,6 +119,19 @@ def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
     scoped_ms = (time.perf_counter() - t) * 1000
     scoped_files = [_norm(getattr(nd, "file", "") or "") for nd in nodes]
 
+    # GRAPH-SCOPED (BFS): same seeds, hop-ordered k-hop expansion — the default
+    # in GraphRetrievePipeline; ~3-6x faster than PPR at equal recall.
+    t = time.perf_counter()
+    if seed_canon:
+        sub = roi.extract_subgraph(seed_canon, k_hop=2, direction="both")
+        bfs_nodes = roi.get_filtered_subgraph_nodes(
+            sub, exclude_nodes=None, filter_tests=True
+        )[:topn]
+    else:
+        bfs_nodes = []
+    scoped_bfs_ms = (time.perf_counter() - t) * 1000
+    scoped_bfs_files = [_norm(getattr(nd, "file", "") or "") for nd in bfs_nodes]
+
     return {
         "instance_id": inst,
         "language": row.get("language_group"),
@@ -128,18 +141,20 @@ def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
             "flat": round(flat_ms, 2),
             "ivf": round(ivf_ms, 2),
             "scoped": round(scoped_ms, 2),
+            "scoped_bfs": round(scoped_bfs_ms, 2),
         },
         "recall": {
             "flat": _recall(flat_files, targets, ks),
             "ivf": _recall(ivf_files, targets, ks),
             "scoped": _recall(scoped_files, targets, ks),
+            "scoped_bfs": _recall(scoped_bfs_files, targets, ks),
         },
         "scoped_resolved_seeds": len(seed_canon),
     }
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from scripts.agent_compile.lib.config import SweepConfig as SampleConfig
+    from codeminer.eval.agent_runner.sweep_config import SweepConfig as SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)
@@ -149,6 +164,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--nprobe", type=int, default=8)
     ap.add_argument("--seeds", type=int, default=5)
     ap.add_argument("--prebuilt-dir", default="/mnt/data/codeminer")
+    ap.add_argument("--embedding-model", default="Qwen/Qwen3-Embedding-0.6B")
+    ap.add_argument("--embedding-dim", type=int, default=1024)
     args = ap.parse_args(argv)
 
     instances = json.loads(args.instances_json.read_text())
@@ -157,8 +174,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         sweep_id="idxcmp",
         subsets={"CTX": ["codeminer_context"]},
         instances=instances,
-        embedding_model="Qwen/Qwen3-Embedding-0.6B",
-        embedding_dimension=1024,
+        embedding_model=args.embedding_model,
+        embedding_dimension=args.embedding_dim,
     )
 
     results: List[Dict[str, Any]] = []
@@ -188,7 +205,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     ok = [r for r in results if "recall" in r and r.get("n_targets")]
     print(f"\n=== {len(ok)} scored instances ===")
-    for method in ("flat", "ivf", "scoped"):
+    for method in ("flat", "ivf", "scoped", "scoped_bfs"):
         lat = [r["latency_ms"][method] for r in ok]
         med_lat = sorted(lat)[len(lat) // 2] if lat else 0.0
         line = f"{method:7}: median query {med_lat:.2f} ms"

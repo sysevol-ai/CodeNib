@@ -67,6 +67,20 @@ class QAConfig:
     # Use the conceptual agent wiki pipeline (outline + per-page generation)
     # instead of the directory-based WikiBuilder.
     wiki_agent: bool = True
+    # Show short LLM-written dependency phrases on graph edges (hover/click).
+    # Off by default: each first-seen edge costs one small LLM call (then cached).
+    edge_labels: bool = False
+    # Optional cheaper model for the (very short) edge-label calls. None ->
+    # falls back to ``model``. Env override: CODEMINER_EDGE_MODEL.
+    edge_label_model: Optional[str] = None
+
+    # --- rerank strategy -------------------------------------------------------
+    # "embedding"    — dot-product against pre-indexed vectors (default, no extra GPU)
+    # "crossencoder" — neural pair scoring (Qwen3-Reranker or mxbai-rerank-*);
+    #                  requires crossencoder_model to be on disk under HF_HOME
+    rerank_strategy: str = "embedding"
+    crossencoder_model: str = "Qwen/Qwen3-Reranker-0.6B"
+    crossencoder_batch_size: int = 8
     cors_origins: List[str] = field(
         default_factory=lambda: [
             "http://localhost:3000",
@@ -127,6 +141,16 @@ def load_config(path: Optional[str] = None) -> QAConfig:
             ["python", "javascript", "typescript", "go", "rust"],
         ),
         per_language=data.get("per_language", QAConfig.per_language),
+        # NOTE: use literal defaults, not ``QAConfig.<field>`` — this is a slots
+        # dataclass, so class-level field access returns a member_descriptor
+        # (not the default value) when the YAML key is absent.
+        edge_labels=data.get("edge_labels", False),
+        edge_label_model=data.get("edge_label_model", None),
+        rerank_strategy=data.get("rerank_strategy", QAConfig.rerank_strategy),
+        crossencoder_model=data.get("crossencoder_model", QAConfig.crossencoder_model),
+        crossencoder_batch_size=data.get(
+            "crossencoder_batch_size", QAConfig.crossencoder_batch_size
+        ),
     )
 
     if os.environ.get("CODEMINER_DEMO_MODEL"):
@@ -135,6 +159,11 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.data_dir = os.environ["CODEMINER_DEMO_DATA_DIR"]
     if os.environ.get("CODEMINER_DEMO_PREBUILT_DIR"):
         cfg.prebuilt_dir = os.environ["CODEMINER_DEMO_PREBUILT_DIR"]
+    _env_edge = os.environ.get("CODEMINER_EDGE_LABELS")
+    if _env_edge is not None:
+        cfg.edge_labels = _env_edge.strip().lower() in ("1", "true", "yes", "on")
+    if os.environ.get("CODEMINER_EDGE_MODEL"):
+        cfg.edge_label_model = os.environ["CODEMINER_EDGE_MODEL"]
 
     return cfg
 
