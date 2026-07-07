@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 site_name: CodeMiner
-site_description: A code analysis agent with graph-enhancement
+site_description: Source-linked code intelligence for LLM tools
 repo_url: https://github.com/sysevol-ai/CodeMiner
 repo_name: sysevol-ai/CodeMiner
 
@@ -58,30 +58,34 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Getting Started:
+      - MCP Server: mcp.md
+      - Web Demo: web_demo.md
+      - Running Locally: running-locally.md
+      - Language Capabilities: language_capabilities.md
+  - Core Concepts:
+      - SCIP Index: scip_index.md
+      - Graph Range Query: graph_query.md
+      - Regex Index: regex_index.md
+      - Graph Cache: graph_cache_usage.md
+      - Incremental Graph:
+          - Overview: incremental_graph/index.md
+          - Interactive Demo: incremental_graph/interactive.md
+      - Core C++ Backend: core_cpp.md
   - Guides:
       - SWE-bench Collection: collect_swebench.md
       - Synthesis Pipeline: synthesis_pipeline.md
       - Upload to HuggingFace: upload_dataset_to_huggingface.md
-      - CI/CD: ci_cd.md
       - Diagnose Query Leak: diagnose_query_leak.md
       - Contributing a Language: contributing-a-language.md
-      - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md
-  - Components:
-      - Web Demo: web_demo.md
-      - MCP Server: mcp.md
+  - Agent And Retrieval:
       - Agent Skills: agent_skills.md
       - Agent Runner Architecture Goal: agent_runner_architecture_goal.md
       - Agent Compile (Design): agent_compile_design.md
-      - Language Capabilities: language_capabilities.md
       - GT Locator: gt_locator.md
-      - Incremental Graph:
-          - Overview: incremental_graph/index.md
-          - Interactive Demo: incremental_graph/interactive.md
-      - Graph Range Query: graph_query.md
-      - Regex Index: regex_index.md
-      - SCIP Index: scip_index.md
-      - Graph Cache: graph_cache_usage.md
-      - Core C++ Backend: core_cpp.md
+  - Operations:
+      - CI/CD: ci_cd.md
+      - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md
   - Experiments:
       - Agent Compile Sweep: experiments/agent_compile.md
       - Compact Pre-load: experiments/compact_preload.md
