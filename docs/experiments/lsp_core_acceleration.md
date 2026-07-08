@@ -33,12 +33,22 @@ Current implementation:
 This is the system-level acceleration path: if an agent asks for an LSP-like
 operation, CodeMiner can satisfy supported requests from the static index
 without starting or round-tripping through a language server. It is separate
-from startup preload experiments.
+from startup preload and compact-context experiments.
 
-The behavior guardrail is fingerprint equivalence. Compare the same graph-facing
-file-position request against live JSON-RPC LSP, and only treat the static path
-as a drop-in acceleration when both providers return the same ordered
-fingerprint.
+The behavior guardrail is **agent-visible equivalence**, not byte-for-byte
+native LSP parity. For each supported capability, the static provider must
+return the same ordered set of locations that the agent/MCP tool contract will
+show to the model or client. Compare the same graph-facing file-position
+request against live JSON-RPC LSP, and only treat the static path as a drop-in
+acceleration when both providers return the same ordered fingerprint.
+
+Full native LSP behavior is intentionally a larger contract than this gate:
+language servers can return token selection ranges instead of symbol scopes,
+choose import aliases or re-export sites, account for unsaved buffers, and
+depend on workspace/build configuration. CodeMiner should not claim universal
+JSON-RPC equivalence from a static snapshot. It should claim fast-path
+equivalence only for the request classes whose fingerprints match under the
+agent-visible output contract, and fall back explicitly otherwise.
 
 For `definition` and `references`, the first gate uses start-location
 fingerprints (`file:start_line`). Live LSP often returns a token selection range,
@@ -104,6 +114,12 @@ Promotion rule for dynamic LSP acceleration:
 
 Only after that gate should the harness route that request class to the static
 provider by default.
+
+This promotion is independent of whether preloaded route context improves the
+final agent trajectory. Preload/compact experiments answer a policy question:
+what evidence should be shown before turn 1? This gate answers the provider
+question: when the agent or MCP client asks for LSP-shaped evidence, can the
+static graph serve the same agent-visible behavior faster than JSON-RPC?
 
 ## Cold-start Graph Acceleration
 
