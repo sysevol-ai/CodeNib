@@ -124,6 +124,39 @@ The live path requires an installed language server or an override such as
 `CODEMINER_PYTHON_LSP_CMD`. If no server command is available, use the fake
 client unit path only; do not claim live equivalence from it.
 
+Provider replay benchmark:
+
+```bash
+codeminer-lsp-replay-benchmark \
+  --graph /path/to/graph.pkl \
+  --project-root /path/to/repo \
+  --language python \
+  --command 'pyright-langserver --stdio' \
+  --max-per-capability 50 \
+  --warmup-reps 1 \
+  --measured-reps 5 \
+  --output-json /tmp/lsp-replay-report.json \
+  --output-markdown /tmp/lsp-replay-report.md \
+  --require-all-equivalent
+```
+
+Use `--prebuilt-root ... --instance-id ...` for prebuilt agent-runner
+artifacts. If `--requests` is omitted, the benchmark deterministically spreads
+real file-position requests across graph `reference` edges: it reads each
+`anchor_file` / `anchor_line`, places the cursor on the referenced target token,
+and emits both `textDocument/definition` and `textDocument/references` requests
+up to `--max-per-capability`. A JSON/JSONL `--requests` file can be used when
+the same request set must be replayed across commits or machines.
+
+Replay is the preferred latency feedback loop for this gate because every row
+uses the same graph-facing request against both providers. Warmup repetitions
+are discarded; measured repetitions are aggregated by capability and overall.
+The markdown report shows `p50` / `p95` / `p99` static and live latency,
+median speedup, and median milliseconds saved. Setup costs are reported
+separately as graph load, static provider init, and live LSP start time. Latency
+distributions include only equivalent rows; mismatches and provider errors are
+guardrail failures, not speedup data.
+
 Latest local pilot, using a two-file temporary Python repo and
 `npx --yes --package pyright pyright-langserver --stdio`:
 

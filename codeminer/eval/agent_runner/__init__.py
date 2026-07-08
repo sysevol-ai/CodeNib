@@ -71,6 +71,13 @@ from .lsp_provider_validation import (
     render_lsp_provider_validation_markdown,
     summarize_lsp_provider_validation,
 )
+from .lsp_replay_benchmark import (
+    exit_code_for_lsp_replay_benchmark,
+    generate_lsp_replay_requests,
+    render_lsp_replay_benchmark_markdown,
+    run_lsp_replay_benchmark,
+    summarize_lsp_replay_benchmark,
+)
 from .metrics import load_cell_jsons, metric_at_k, safe_mean, safe_min, usable_cells
 from .orchestrator import (
     GATE_SYSTEM,
@@ -190,9 +197,11 @@ __all__ = [
     "default_agent_skills_dir",
     "evaluate_agent_localization",
     "evaluate_promotion_evidence",
+    "exit_code_for_lsp_replay_benchmark",
     "expansion_seeds_from_candidates",
     "extract_lsp_symbol_seeds",
     "graph_verify",
+    "generate_lsp_replay_requests",
     "load_graph_nav",
     "graph_compose",
     "group_query_rows_by_instance",
@@ -219,14 +228,17 @@ __all__ = [
     "query_is_specific",
     "query_targets",
     "render_expansion",
+    "render_lsp_replay_benchmark_markdown",
     "render_lsp_route_latency_markdown",
     "render_lsp_provider_validation_markdown",
+    "summarize_lsp_replay_benchmark",
     "summarize_lsp_provider_validation",
     "retrieve_candidates",
     "replay_lsp_route_latency",
     "run_baseline_batch",
     "run_cell",
     "run_sweep",
+    "run_lsp_replay_benchmark",
     "run_lsp_route_baseline",
     "run_query_sweep",
     "run_verify_expand",

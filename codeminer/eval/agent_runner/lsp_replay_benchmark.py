@@ -1,0 +1,752 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Provider-level LSP request replay benchmark.
+
+This benchmark keeps the latency question below the agent loop: generate or
+load deterministic LSP-shaped requests, replay the same requests against
+CodeMiner's static graph provider and a live JSON-RPC language server, then
+aggregate latency only for rows whose agent-visible fingerprints match.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shlex
+import sys
+import time
+from collections import Counter
+from pathlib import Path
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+
+from codeminer.agent.lsp_provider import (
+    CAPABILITY_DEFINITION,
+    CAPABILITY_REFERENCES,
+    JSON_RPC_LSP_PROVIDER,
+    StaticLSPProvider,
+    normalize_lsp_capability,
+)
+from codeminer.types import EDGE_TYPE_REFERENCE
+
+from .live_lsp_provider import LiveLSPReferenceProvider
+from .lsp_provider_cli import load_lsp_provider_requests
+from .lsp_provider_validation import (
+    FingerprintSelector,
+    LSPProviderRequest,
+    compare_static_lsp_provider,
+    default_lsp_provider_fingerprint,
+)
+
+Clock = Callable[[], float]
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_NATIVE_CAPABILITIES = frozenset({CAPABILITY_DEFINITION, CAPABILITY_REFERENCES})
+
+
+def generate_lsp_replay_requests(
+    graph: Any,
+    *,
+    project_root: str | Path | None = None,
+    capabilities: Sequence[str] = (CAPABILITY_DEFINITION, CAPABILITY_REFERENCES),
+    max_per_capability: int = 50,
+    definition_top_k: int = 8,
+    references_top_k: int = 40,
+    include_declaration: bool = True,
+) -> list[LSPProviderRequest]:
+    """Generate deterministic file-position LSP replay requests from graph refs.
+
+    Reference edges carry real source anchors and target symbols, which lets the
+    benchmark place the cursor on a symbol token instead of hand-picking lines.
+    Requests that cannot be tied back to a source token are skipped.
+    """
+
+    if max_per_capability < 1:
+        raise ValueError("max_per_capability must be positive")
+    requested_capabilities = [
+        normalize_lsp_capability(capability) for capability in capabilities
+    ]
+    unsupported = [
+        capability
+        for capability in requested_capabilities
+        if capability not in _NATIVE_CAPABILITIES
+    ]
+    if unsupported:
+        raise ValueError(
+            "replay request generation supports only native capabilities "
+            f"({', '.join(sorted(_NATIVE_CAPABILITIES))}); got {unsupported}"
+        )
+
+    counts = Counter()
+    seen: set[tuple[str, str, int, int]] = set()
+    requests: list[LSPProviderRequest] = []
+    candidates = _reference_position_candidates(
+        graph, project_root=_project_root(graph, project_root)
+    )
+    for candidate in _evenly_spaced(candidates, max_per_capability):
+        for capability in requested_capabilities:
+            if counts[capability] >= max_per_capability:
+                continue
+            key = (
+                capability,
+                candidate["file_path"],
+                candidate["line"],
+                candidate["character"],
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            args: dict[str, Any] = {
+                "file_path": candidate["file_path"],
+                "line": candidate["line"],
+                "character": candidate["character"],
+            }
+            if capability == CAPABILITY_DEFINITION:
+                args["top_k"] = definition_top_k
+            else:
+                args["include_declaration"] = include_declaration
+                args["top_k"] = references_top_k
+            requests.append(
+                LSPProviderRequest(
+                    capability=f"textDocument/{capability}",
+                    arguments=args,
+                    request_id=_request_id(capability, candidate),
+                )
+            )
+            counts[capability] += 1
+        if all(
+            counts[capability] >= max_per_capability
+            for capability in requested_capabilities
+        ):
+            break
+    return requests
+
+
+def run_lsp_replay_benchmark(
+    requests: Iterable[LSPProviderRequest | Mapping[str, Any]],
+    *,
+    graph: Any,
+    project_root: str | Path,
+    language: str,
+    command: Optional[Sequence[str]] = None,
+    warmup_reps: int = 1,
+    measured_reps: int = 5,
+    skip_probe: bool = False,
+    fingerprint_selector: FingerprintSelector = default_lsp_provider_fingerprint,
+    clock: Clock = time.monotonic,
+    live_provider_factory: Callable[..., LiveLSPReferenceProvider] = (
+        LiveLSPReferenceProvider
+    ),
+) -> dict[str, Any]:
+    """Run a warm provider-level replay benchmark and return JSON-ready data."""
+
+    if warmup_reps < 0:
+        raise ValueError("warmup_reps must be non-negative")
+    if measured_reps < 1:
+        raise ValueError("measured_reps must be positive")
+
+    request_list = [_coerce_request(request) for request in requests]
+    _validate_native_requests(request_list)
+    static_init_start = clock()
+    static_provider = StaticLSPProvider(graph)
+    static_provider_init_ms = (clock() - static_init_start) * 1000
+
+    live_provider = live_provider_factory(
+        project_root=project_root,
+        language=language,
+        command=command,
+        skip_probe=skip_probe,
+    )
+    live_start = clock()
+    live_provider.start()
+    live_start_ms = (clock() - live_start) * 1000
+    comparison_rows: list[dict[str, Any]] = []
+    try:
+        for _ in range(warmup_reps):
+            compare_static_lsp_provider(
+                request_list,
+                graph=graph,
+                static_provider=static_provider,
+                reference_provider=live_provider,
+                reference_provider_name=JSON_RPC_LSP_PROVIDER,
+                fingerprint_selector=fingerprint_selector,
+                clock=clock,
+            )
+
+        for rep in range(1, measured_reps + 1):
+            comparisons = compare_static_lsp_provider(
+                request_list,
+                graph=graph,
+                static_provider=static_provider,
+                reference_provider=live_provider,
+                reference_provider_name=JSON_RPC_LSP_PROVIDER,
+                fingerprint_selector=fingerprint_selector,
+                clock=clock,
+            )
+            for comparison in comparisons:
+                row = comparison.to_dict()
+                row["rep"] = rep
+                comparison_rows.append(row)
+    finally:
+        live_provider.close()
+
+    payload = {
+        "schema_version": 1,
+        "benchmark": "lsp_request_replay",
+        "request_count": len(request_list),
+        "warmup_reps": warmup_reps,
+        "measured_reps": measured_reps,
+        "setup": {
+            "static_provider_init_ms": static_provider_init_ms,
+            "live_start_ms": live_start_ms,
+        },
+        "requests": [request.to_dict() for request in request_list],
+        "comparisons": comparison_rows,
+    }
+    payload["summary"] = summarize_lsp_replay_benchmark(payload)
+    return payload
+
+
+def summarize_lsp_replay_benchmark(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Aggregate replay rows into equivalence guardrails and latency metrics."""
+
+    rows = [
+        dict(row)
+        for row in payload.get("comparisons") or []
+        if isinstance(row, Mapping)
+    ]
+    by_capability: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        request = row.get("request") or {}
+        capability = str(request.get("capability") or row.get("capability") or "")
+        by_capability.setdefault(normalize_lsp_capability(capability), []).append(row)
+
+    summary_by_capability = {
+        capability: _summarize_rows(capability_rows)
+        for capability, capability_rows in sorted(by_capability.items())
+    }
+    return {
+        "overall": _summarize_rows(rows),
+        "by_capability": summary_by_capability,
+    }
+
+
+def render_lsp_replay_benchmark_markdown(payload: Mapping[str, Any]) -> str:
+    """Render replay benchmark results as a compact markdown report."""
+
+    summary = payload.get("summary") or summarize_lsp_replay_benchmark(payload)
+    setup = payload.get("setup") or {}
+    lines = ["# LSP request replay benchmark", ""]
+    lines.append(
+        "Latency distributions include only rows whose static and live "
+        "agent-visible fingerprints are equivalent. Mismatches and errors are "
+        "reported as guardrail failures, not folded into speedup metrics."
+    )
+    lines.append("")
+    lines.append(
+        f"Requests: {payload.get('request_count', 'n/a')}; "
+        f"warmup reps: {payload.get('warmup_reps', 'n/a')}; "
+        f"measured reps: {payload.get('measured_reps', 'n/a')}"
+    )
+    setup_parts = []
+    if "graph_load_ms" in setup:
+        setup_parts.append(f"graph load {_fmt(setup.get('graph_load_ms'), 2)} ms")
+    setup_parts.extend(
+        [
+            f"static provider init {_fmt(setup.get('static_provider_init_ms'), 2)} ms",
+            f"live LSP start {_fmt(setup.get('live_start_ms'), 2)} ms",
+        ]
+    )
+    lines.append("Setup: " + "; ".join(setup_parts))
+    lines.append("")
+    head = [
+        "scope",
+        "equiv/rows",
+        "mismatch",
+        "errors",
+        "static p50/p95/p99 ms",
+        "live p50/p95/p99 ms",
+        "speedup p50",
+        "saved p50 ms",
+    ]
+    lines.append("| " + " | ".join(head) + " |")
+    lines.append("| " + " | ".join("---" for _ in head) + " |")
+    rows = [("overall", summary.get("overall") or {})]
+    rows.extend(
+        (capability, stats)
+        for capability, stats in (summary.get("by_capability") or {}).items()
+    )
+    for label, stats in rows:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(label),
+                    f"{stats.get('equivalent_row_count', 0)}/{stats.get('row_count', 0)}",
+                    str(stats.get("mismatch_count", 0)),
+                    str(stats.get("error_count", 0)),
+                    _latency_triplet(stats.get("static_ms") or {}),
+                    _latency_triplet(stats.get("live_ms") or {}),
+                    _fmt((stats.get("speedup_ratio") or {}).get("p50"), 2),
+                    _fmt((stats.get("latency_saved_ms") or {}).get("p50"), 2),
+                ]
+            )
+            + " |"
+        )
+    lines.append("")
+    guardrail_pass = (summary.get("overall") or {}).get("guardrail_pass")
+    lines.append(f"Equivalence guardrail: {_yes_no(guardrail_pass)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def exit_code_for_lsp_replay_benchmark(
+    payload: Mapping[str, Any],
+    *,
+    require_all_equivalent: bool = False,
+) -> int:
+    """Return a process exit code for replay benchmark gates."""
+
+    overall = (payload.get("summary") or {}).get("overall") or {}
+    if int(overall.get("row_count") or 0) == 0:
+        return 2
+    if int(overall.get("equivalent_row_count") or 0) == 0:
+        return 2
+    if int(overall.get("error_count") or 0) > 0:
+        return 2
+    if require_all_equivalent and int(overall.get("equivalent_row_count") or 0) != int(
+        overall.get("row_count") or 0
+    ):
+        return 3
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--graph", help="Path to a CodeGraph graph.pkl")
+    source.add_argument(
+        "--prebuilt-root", help="Prebuilt root containing instance dirs"
+    )
+    parser.add_argument("--instance-id", help="Required with --prebuilt-root")
+    parser.add_argument(
+        "--project-root",
+        help="Repository root for live LSP. Defaults to prebuilt instance repo.",
+    )
+    parser.add_argument("--language", required=True, help="Graph/LSP language key")
+    parser.add_argument(
+        "--requests",
+        help=(
+            "Optional JSON/JSONL request file. If omitted, requests are "
+            "generated deterministically from graph reference edges."
+        ),
+    )
+    parser.add_argument(
+        "--capabilities",
+        default="definition,references",
+        help="Comma-separated capabilities to generate when --requests is omitted.",
+    )
+    parser.add_argument(
+        "--max-per-capability",
+        type=int,
+        default=50,
+        help="Generated request cap per capability.",
+    )
+    parser.add_argument("--warmup-reps", type=int, default=1)
+    parser.add_argument("--measured-reps", type=int, default=5)
+    parser.add_argument(
+        "--command",
+        help="Optional live LSP command string, for example 'pyright-langserver --stdio'",
+    )
+    parser.add_argument("--skip-probe", action="store_true")
+    parser.add_argument("--output-json", help="Write machine-readable benchmark report")
+    parser.add_argument("--output-markdown", help="Write markdown benchmark report")
+    parser.add_argument(
+        "--require-all-equivalent",
+        action="store_true",
+        help="Exit non-zero if any measured row has a mismatch.",
+    )
+    parser.add_argument("--quiet", action="store_true")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        graph, graph_load_ms = _load_graph_from_args(args)
+        project_root = _project_root_from_args(args)
+        if args.requests:
+            requests = load_lsp_provider_requests(args.requests)
+        else:
+            requests = generate_lsp_replay_requests(
+                graph,
+                project_root=project_root,
+                capabilities=_split_csv(args.capabilities),
+                max_per_capability=args.max_per_capability,
+            )
+        if not requests:
+            raise ValueError("no LSP replay requests available")
+        payload = run_lsp_replay_benchmark(
+            requests,
+            graph=graph,
+            project_root=project_root,
+            language=args.language,
+            command=_command_from_arg(args.command),
+            warmup_reps=args.warmup_reps,
+            measured_reps=args.measured_reps,
+            skip_probe=args.skip_probe,
+        )
+        payload["setup"]["graph_load_ms"] = graph_load_ms
+        _write_reports(
+            payload,
+            output_json=args.output_json,
+            output_markdown=args.output_markdown,
+        )
+    except Exception as exc:  # noqa: BLE001 - CLI should fail cleanly.
+        parser.exit(1, f"codeminer-lsp-replay-benchmark: {exc}\n")
+
+    if not args.quiet and not args.output_markdown:
+        sys.stdout.write(render_lsp_replay_benchmark_markdown(payload))
+    return exit_code_for_lsp_replay_benchmark(
+        payload,
+        require_all_equivalent=args.require_all_equivalent,
+    )
+
+
+def _reference_position_candidates(
+    graph: Any, *, project_root: Optional[Path]
+) -> list[dict[str, Any]]:
+    if not hasattr(graph, "graph"):
+        return []
+    candidates: list[dict[str, Any]] = []
+    for edge in graph.graph.es:
+        attrs = edge.attributes()
+        if attrs.get("type") != EDGE_TYPE_REFERENCE:
+            continue
+        file_path = attrs.get("anchor_file")
+        line = _coerce_int(attrs.get("anchor_line"))
+        if not file_path or line is None:
+            continue
+        target_name = _node_name_for_vid(graph, edge.target)
+        if not target_name:
+            continue
+        character = _source_character_for_target(
+            graph,
+            target_name=target_name,
+            file_path=str(file_path),
+            line=line,
+            project_root=project_root,
+        )
+        if character is None:
+            continue
+        candidates.append(
+            {
+                "file_path": str(file_path),
+                "line": line,
+                "character": character,
+                "target_name": target_name,
+            }
+        )
+    candidates.sort(
+        key=lambda item: (
+            item["file_path"],
+            item["line"],
+            item["character"],
+            item["target_name"],
+        )
+    )
+    return candidates
+
+
+def _evenly_spaced(
+    candidates: Sequence[Mapping[str, Any]], limit: int
+) -> list[Mapping[str, Any]]:
+    if limit >= len(candidates):
+        return list(candidates)
+    if limit == 1:
+        return [candidates[len(candidates) // 2]]
+    return [
+        candidates[round(index * (len(candidates) - 1) / (limit - 1))]
+        for index in range(limit)
+    ]
+
+
+def _source_character_for_target(
+    graph: Any,
+    *,
+    target_name: str,
+    file_path: str,
+    line: int,
+    project_root: Optional[Path],
+) -> Optional[int]:
+    line_text = _source_line(file_path, line, project_root=project_root)
+    if line_text is None:
+        return None
+    for token in _target_tokens(graph, target_name):
+        match = re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])",
+            line_text,
+        )
+        if match:
+            return int(match.start())
+    return None
+
+
+def _target_tokens(graph: Any, target_name: str) -> list[str]:
+    info = graph.get_node_info_by_name(target_name) or {}
+    seeds = [
+        target_name,
+        str(info.get("name") or ""),
+        str(info.get("unified_name") or ""),
+    ]
+    tokens: set[str] = set()
+    for seed in seeds:
+        token = _bare_symbol(seed)
+        if token and _IDENT_RE.fullmatch(token):
+            tokens.add(token)
+    return sorted(tokens, key=lambda value: (-len(value), value))
+
+
+def _source_line(
+    file_path: str,
+    line: int,
+    *,
+    project_root: Optional[Path],
+) -> Optional[str]:
+    path = Path(file_path)
+    if not path.is_absolute():
+        if project_root is None:
+            return None
+        path = project_root / path
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()[line]
+    except (OSError, IndexError):
+        return None
+
+
+def _project_root(graph: Any, project_root: str | Path | None) -> Optional[Path]:
+    root = (
+        project_root
+        if project_root is not None
+        else getattr(graph, "project_root", None)
+    )
+    return Path(root).resolve() if root else None
+
+
+def _summarize_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    verdicts = Counter(str(row.get("verdict") or "unknown") for row in rows)
+    equivalent = [row for row in rows if row.get("same_result") is True]
+    errors = sum(
+        1
+        for row in rows
+        if str(row.get("verdict") or "")
+        in {"static_error", "reference_error", "unknown"}
+    )
+    static_ms = [_duration(row, "static_call") for row in equivalent]
+    live_ms = [_duration(row, "reference_call") for row in equivalent]
+    speedups = [
+        float(row["speedup_ratio"])
+        for row in equivalent
+        if isinstance(row.get("speedup_ratio"), (int, float))
+    ]
+    saved = [
+        float(row["latency_saved_ms"])
+        for row in equivalent
+        if isinstance(row.get("latency_saved_ms"), (int, float))
+    ]
+    return {
+        "row_count": len(rows),
+        "equivalent_row_count": len(equivalent),
+        "mismatch_count": verdicts.get("mismatch", 0),
+        "error_count": errors,
+        "verdict_counts": dict(sorted(verdicts.items())),
+        "guardrail_pass": bool(rows) and len(equivalent) == len(rows),
+        "static_ms": _latency_stats(static_ms),
+        "live_ms": _latency_stats(live_ms),
+        "speedup_ratio": _latency_stats(speedups),
+        "latency_saved_ms": _latency_stats(saved),
+    }
+
+
+def _duration(row: Mapping[str, Any], key: str) -> Optional[float]:
+    call = row.get(key) or {}
+    if not isinstance(call, Mapping):
+        return None
+    value = call.get("duration_ms")
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _latency_stats(values: Sequence[Optional[float]]) -> dict[str, Optional[float]]:
+    data = sorted(float(value) for value in values if isinstance(value, (int, float)))
+    if not data:
+        return {
+            "count": 0,
+            "p50": None,
+            "p95": None,
+            "p99": None,
+            "min": None,
+            "max": None,
+        }
+    return {
+        "count": len(data),
+        "p50": _percentile(data, 50),
+        "p95": _percentile(data, 95),
+        "p99": _percentile(data, 99),
+        "min": data[0],
+        "max": data[-1],
+    }
+
+
+def _percentile(sorted_values: Sequence[float], percentile: float) -> float:
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    position = (len(sorted_values) - 1) * percentile / 100
+    lower = int(position)
+    upper = min(lower + 1, len(sorted_values) - 1)
+    weight = position - lower
+    return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
+
+
+def _latency_triplet(stats: Mapping[str, Any]) -> str:
+    return "/".join(
+        [
+            _fmt(stats.get("p50"), 2),
+            _fmt(stats.get("p95"), 2),
+            _fmt(stats.get("p99"), 2),
+        ]
+    )
+
+
+def _coerce_request(raw: LSPProviderRequest | Mapping[str, Any]) -> LSPProviderRequest:
+    if isinstance(raw, LSPProviderRequest):
+        return raw
+    capability = str(raw.get("capability") or raw.get("lsp_method") or "")
+    arguments = raw.get("arguments") or raw.get("resolved_arguments") or {}
+    return LSPProviderRequest(
+        capability=capability,
+        arguments=dict(arguments) if isinstance(arguments, Mapping) else {},
+        request_id=raw.get("request_id"),
+    )
+
+
+def _validate_native_requests(requests: Sequence[LSPProviderRequest]) -> None:
+    unsupported = [
+        f"{request.request_id or index}:{request.normalized_capability or '<missing>'}"
+        for index, request in enumerate(requests, 1)
+        if request.normalized_capability not in _NATIVE_CAPABILITIES
+    ]
+    if unsupported:
+        allowed = ", ".join(sorted(_NATIVE_CAPABILITIES))
+        raise ValueError(
+            "LSP replay benchmark supports only native capabilities "
+            f"({allowed}); unsupported requests: {', '.join(unsupported)}"
+        )
+
+
+def _node_name_for_vid(graph: Any, vid: int) -> Optional[str]:
+    info = graph.get_node_info_by_id(vid) or {}
+    value = info.get("name")
+    return str(value) if value else None
+
+
+def _bare_symbol(symbol: str) -> str:
+    return symbol.split(":")[-1].split(".")[-1].split("#")[-1].rstrip("()").strip()
+
+
+def _request_id(capability: str, candidate: Mapping[str, Any]) -> str:
+    raw = (
+        f"{capability}:{candidate['file_path']}:{candidate['line']}:"
+        f"{candidate['character']}:{_bare_symbol(str(candidate['target_name']))}"
+    )
+    return re.sub(r"[^A-Za-z0-9_.:-]+", "-", raw)
+
+
+def _coerce_int(value: Any) -> Optional[int]:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_graph_from_args(args: argparse.Namespace) -> tuple[Any, float]:
+    from codeminer.graph.code_graph import CodeGraph
+
+    from .prebuilt import load_prebuilt_code_graph
+
+    start = time.monotonic()
+    if args.graph:
+        graph = CodeGraph.load_graph(str(args.graph))
+    else:
+        if not args.instance_id:
+            raise ValueError("--instance-id is required with --prebuilt-root")
+        graph = load_prebuilt_code_graph(str(args.prebuilt_root), str(args.instance_id))
+    return graph, (time.monotonic() - start) * 1000
+
+
+def _project_root_from_args(args: argparse.Namespace) -> str:
+    from .prebuilt import repo_path_for
+
+    if args.project_root:
+        return str(Path(args.project_root).resolve())
+    if args.prebuilt_root and args.instance_id:
+        return repo_path_for(str(args.prebuilt_root), str(args.instance_id))
+    raise ValueError("--project-root is required when using --graph")
+
+
+def _command_from_arg(command: str | None) -> list[str] | None:
+    if not command:
+        return None
+    parsed = shlex.split(command)
+    if not parsed:
+        raise ValueError("--command cannot be empty")
+    return parsed
+
+
+def _split_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _write_reports(
+    payload: Mapping[str, Any],
+    *,
+    output_json: str | Path | None = None,
+    output_markdown: str | Path | None = None,
+) -> None:
+    if output_json:
+        path = Path(output_json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    if output_markdown:
+        path = Path(output_markdown)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(render_lsp_replay_benchmark_markdown(payload), encoding="utf-8")
+
+
+def _fmt(value: Any, digits: int) -> str:
+    return f"{float(value):.{digits}f}" if isinstance(value, (int, float)) else "n/a"
+
+
+def _yes_no(value: Any) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "n/a"
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+__all__ = [
+    "exit_code_for_lsp_replay_benchmark",
+    "generate_lsp_replay_requests",
+    "render_lsp_replay_benchmark_markdown",
+    "run_lsp_replay_benchmark",
+    "summarize_lsp_replay_benchmark",
+]
