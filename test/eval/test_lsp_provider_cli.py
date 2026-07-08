@@ -13,6 +13,8 @@ from codeminer.eval.agent_runner.lsp_provider_validation import (
     LSPProviderCall,
     LSPProviderComparison,
     LSPProviderRequest,
+    default_lsp_provider_fingerprint,
+    fingerprint_lsp_start_location_set,
 )
 
 
@@ -123,6 +125,8 @@ def test_cli_writes_reports_and_requires_promotion(tmp_path, monkeypatch):
             "python",
             "--requests",
             str(requests_path),
+            "--fingerprint-mode",
+            "start-set",
             "--output-json",
             str(output_json),
             "--output-markdown",
@@ -135,11 +139,58 @@ def test_cli_writes_reports_and_requires_promotion(tmp_path, monkeypatch):
     assert code == 0
     assert seen["kwargs"]["graph"] is sentinel_graph
     assert seen["kwargs"]["language"] == "python"
+    assert seen["kwargs"]["fingerprint_fn"] is fingerprint_lsp_start_location_set
     assert seen["requests"][0].normalized_capability == "definition"
     payload = json.loads(output_json.read_text(encoding="utf-8"))
     assert payload["summary"]["promotion_ready"] is True
     assert payload["summary"]["verdict_counts"] == {"equivalent_static_faster": 1}
     assert "Promotion ready: yes" in output_md.read_text(encoding="utf-8")
+
+
+def test_cli_defaults_to_auto_fingerprint_mode(tmp_path, monkeypatch):
+    requests_path = tmp_path / "requests.json"
+    requests_path.write_text(
+        json.dumps(
+            [
+                {
+                    "capability": "textDocument/references",
+                    "arguments": {"file_path": "caller.py", "line": 2},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    seen = {}
+
+    monkeypatch.setattr(
+        lsp_provider_cli, "_load_graph_from_args", lambda args: object()
+    )
+
+    def fake_compare(requests, **kwargs):
+        seen["kwargs"] = kwargs
+        return [_comparison("equivalent_static_faster")]
+
+    monkeypatch.setattr(
+        lsp_provider_cli, "compare_static_to_live_lsp_provider", fake_compare
+    )
+
+    code = lsp_provider_cli.main(
+        [
+            "--graph",
+            str(tmp_path / "graph.pkl"),
+            "--project-root",
+            str(tmp_path),
+            "--language",
+            "python",
+            "--requests",
+            str(requests_path),
+            "--quiet",
+        ]
+    )
+
+    assert code == 0
+    assert seen["kwargs"]["fingerprint_fn"] is None
+    assert seen["kwargs"]["fingerprint_selector"] is default_lsp_provider_fingerprint
 
 
 def test_exit_code_for_lsp_provider_summary_blocks_mismatch_and_fallback():

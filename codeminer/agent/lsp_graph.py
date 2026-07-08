@@ -13,6 +13,7 @@ about SWE-bench scoring, answer formats, or experiment feedback gates.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
 from ..types import (
@@ -377,7 +378,6 @@ def lsp_definition(
     ``line`` is the graph's 0-based line number. Agent-facing skill schemas mark
     line inputs as 1-based, so the runner performs the boundary conversion.
     """
-    del character  # CodeGraph anchors are line-granular today.
     limit = max(1, int(top_k or 8))
     if symbol:
         return _definitions_for_symbol(graph, symbol, limit)
@@ -406,7 +406,21 @@ def lsp_definition(
         )
         target_names = [node.name for node in defined if getattr(node, "name", None)]
 
+    if character is not None:
+        target_names = _filter_targets_by_character(
+            graph,
+            target_names,
+            file_path=file_path,
+            line=int(line),
+            character=int(character),
+        )
+
     if not target_names:
+        if character is not None:
+            raise ValueError(
+                "no indexed definition token at "
+                f"{file_path}:{int(line) + 1}:{int(character)}"
+            )
         raise ValueError(f"no indexed definition at {file_path}:{int(line) + 1}")
 
     nodes = [
@@ -414,6 +428,60 @@ def lsp_definition(
         for name in target_names
     ]
     return _dedupe_nodes(nodes, limit)
+
+
+def _filter_targets_by_character(
+    graph: Any,
+    target_names: Sequence[str],
+    *,
+    file_path: str,
+    line: int,
+    character: int,
+) -> list[str]:
+    if not target_names:
+        return []
+    token = _source_token_at_character(graph, file_path, line, character)
+    if not token:
+        return []
+    return [
+        name for name in target_names if token in _symbol_anchor_tokens(graph, name)
+    ]
+
+
+def _source_token_at_character(
+    graph: Any, file_path: str, line: int, character: int
+) -> Optional[str]:
+    source_line = _source_line(graph, file_path, line)
+    if source_line is None:
+        return None
+    for match in _WORD_RE.finditer(source_line):
+        if match.start() <= character < match.end():
+            return match.group(0)
+    return None
+
+
+def _source_line(graph: Any, file_path: str, line: int) -> Optional[str]:
+    root = getattr(graph, "project_root", None)
+    path = Path(file_path)
+    if not path.is_absolute():
+        if not root:
+            return None
+        path = Path(root) / path
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()[line]
+    except (OSError, IndexError):
+        return None
+
+
+def _symbol_anchor_tokens(graph: Any, name: str) -> set[str]:
+    info = graph.get_node_info_by_name(name) or {}
+    candidates = {
+        name,
+        display_name(graph, name),
+        str(info.get("name") or ""),
+        str(info.get("unified_name") or ""),
+    }
+    return {_bare(candidate) for candidate in candidates if _bare(candidate)}
 
 
 def lsp_references(

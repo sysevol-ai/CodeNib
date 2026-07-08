@@ -95,6 +95,7 @@ codeminer-lsp-provider-validate \
   --project-root /path/to/repo \
   --language python \
   --requests /tmp/lsp-provider-requests.jsonl \
+  --fingerprint-mode auto \
   --output-json /tmp/lsp-provider-report.json \
   --output-markdown /tmp/lsp-provider-report.md \
   --require-promotion
@@ -107,16 +108,45 @@ every row is `equivalent_static_faster`; `--fail-on-fallback` makes unsupported
 or unavailable static rows fail instead of recording them as explicit fallback
 cases.
 
+The default `--fingerprint-mode auto` uses ordered start-location fingerprints
+for `textDocument/definition` and unordered start-location sets for
+`textDocument/references`. Live LSP servers may return references in a
+different order than CodeMiner's graph traversal, so ordered fingerprints can
+turn a valid location-set match into a false mismatch. Use
+`--fingerprint-mode ordered-start` only when provider order is part of the
+contract being tested.
+
+The CLI validates native JSON-RPC LSP only. It rejects `codeminer/lspRoute`
+before starting a language server because route is a CodeMiner extension, not a
+native LSP request.
+
 The live path requires an installed language server or an override such as
 `CODEMINER_PYTHON_LSP_CMD`. If no server command is available, use the fake
 client unit path only; do not claim live equivalence from it.
 
-Latest local smoke, using a two-file temporary Python repo and
+Latest local pilot, using a two-file temporary Python repo and
 `npx --yes --package pyright pyright-langserver --stdio`:
 
 | request | same start location | static ms | live JSON-RPC ms | saved ms | verdict |
 | --- | --- | ---: | ---: | ---: | --- |
-| `textDocument/definition` from `caller.py:3` to `callee.py:1` | yes | 0.24 | 124.21 | 123.96 | `equivalent_static_faster` |
+| `textDocument/definition` from `caller.py:4` to `callee.py:1` | yes | 0.30 | 83.17 | 82.87 | `equivalent_static_faster` |
+| `textDocument/references` with ordered start fingerprint | no | 0.49 | 3.11 | 2.63 | `mismatch` |
+| `textDocument/references` with `start-set` fingerprint | yes | 0.59 | 3.65 | 3.07 | `equivalent_static_faster` |
+| `textDocument/definition` on the same line but wrong character | n/a | 0.48 | 1.64 | 1.15 | `static_error` |
+
+The pilot exposed three experiment-design constraints:
+
+- Do not include `codeminer/lspRoute` in static-vs-live JSON-RPC equivalence
+  gates. It is a CodeMiner extension, not a native LSP request.
+- References should usually be gated by unordered start-location set equality;
+  otherwise provider ordering differences dominate the result.
+- Position-based dynamic LSP acceleration is not safe for arbitrary characters
+  yet. The static graph is line-granular today, so it can return a line anchor
+  even when live LSP returns no definition for a cursor on whitespace or a
+  keyword. Static lookups now require the source token under `character` to
+  match the indexed target symbol; when the source is unavailable or the cursor
+  misses the symbol token, the static path fails instead of claiming
+  equivalence.
 
 Each row reports static/reference provider status, result count, fingerprint,
 latency, `latency_saved_ms`, `speedup_ratio`, and one of:

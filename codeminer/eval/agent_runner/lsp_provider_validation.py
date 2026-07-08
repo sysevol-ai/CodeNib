@@ -28,6 +28,7 @@ from codeminer.agent.lsp_provider import (
 
 ProviderCallable = Callable[[str, Mapping[str, Any]], Any]
 FingerprintFn = Callable[[Sequence[Any]], str]
+FingerprintSelector = Callable[["LSPProviderRequest"], FingerprintFn]
 Clock = Callable[[], float]
 
 
@@ -154,6 +155,7 @@ def compare_static_lsp_provider(
     reference_provider_name: str = JSON_RPC_LSP_PROVIDER,
     static_provider: Optional[StaticLSPProvider] = None,
     fingerprint_fn: FingerprintFn = fingerprint_lsp_result,
+    fingerprint_selector: Optional[FingerprintSelector] = None,
     clock: Clock = time.monotonic,
 ) -> List[LSPProviderComparison]:
     """Replay the same LSP requests through static and reference providers.
@@ -167,17 +169,20 @@ def compare_static_lsp_provider(
     comparisons: List[LSPProviderComparison] = []
     for raw_request in requests:
         request = _coerce_request(raw_request)
+        request_fingerprint_fn = (
+            fingerprint_selector(request) if fingerprint_selector else fingerprint_fn
+        )
         static_call = _call_static_provider(
             provider,
             request,
-            fingerprint_fn=fingerprint_fn,
+            fingerprint_fn=request_fingerprint_fn,
             clock=clock,
         )
         reference_call = _call_reference_provider(
             reference_provider,
             request,
             provider_name=reference_provider_name,
-            fingerprint_fn=fingerprint_fn,
+            fingerprint_fn=request_fingerprint_fn,
             clock=clock,
         )
         same_result = _same_fingerprint(static_call, reference_call)
@@ -441,6 +446,43 @@ def fingerprint_lsp_start_locations(nodes: Sequence[Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def fingerprint_lsp_start_location_set(nodes: Sequence[Any]) -> str:
+    """Fingerprint unordered repo-relative file/start-line result sets.
+
+    LSP servers do not guarantee the same reference ordering as CodeMiner's
+    graph traversal. Use this for capabilities such as references where the
+    agent-visible contract is the returned location set, not provider order.
+    """
+
+    payload = []
+    for node in nodes:
+        data = _node_dict(node)
+        payload.append(
+            {
+                "file": str(data.get("file") or data.get("file_path") or ""),
+                "start_line": _coerce_int(data.get("start_line")),
+            }
+        )
+    payload.sort(
+        key=lambda item: (item["file"], item["start_line"] is None, item["start_line"])
+    )
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def default_lsp_provider_fingerprint(request: LSPProviderRequest) -> FingerprintFn:
+    """Return the default equivalence fingerprint for one LSP request."""
+
+    if request.normalized_capability == CAPABILITY_REFERENCES:
+        return fingerprint_lsp_start_location_set
+    return fingerprint_lsp_start_locations
+
+
 def _same_fingerprint(
     static_call: LSPProviderCall,
     reference_call: LSPProviderCall,
@@ -537,11 +579,15 @@ def _yes_no(value: Any) -> str:
 
 
 __all__ = [
+    "FingerprintFn",
+    "FingerprintSelector",
     "LSPProviderCall",
     "LSPProviderComparison",
     "LSPProviderRequest",
     "LSPProviderValidationSummary",
     "compare_static_lsp_provider",
+    "default_lsp_provider_fingerprint",
+    "fingerprint_lsp_start_location_set",
     "fingerprint_lsp_start_locations",
     "render_lsp_provider_validation_markdown",
     "summarize_lsp_provider_validation",

@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from codeminer.agent import lsp_graph
 from codeminer.agent.lsp_provider import STATIC_LSP_PROVIDER, lsp_result_metadata
 from codeminer.agent.skills.loader import SkillLoader
@@ -13,8 +15,8 @@ from codeminer.ops.expand import ExpandContext
 from codeminer.types import NODE_TYPE_FUNCTION
 
 
-def _range_graph() -> CodeGraph:
-    graph = CodeGraph()
+def _range_graph(project_root=None) -> CodeGraph:
+    graph = CodeGraph(project_root=str(project_root) if project_root else None)
     graph.add_file_node("caller.py")
     graph.add_symbol_node(
         "caller.run",
@@ -59,6 +61,31 @@ def test_lsp_definition_jumps_from_reference_anchor_to_definition():
     assert results[0].file == "callee.py"
     assert results[0].start_line == 4
     assert results[0].content == "definition of callee.py:load_config()"
+
+
+def test_lsp_definition_character_must_hit_reference_token(tmp_path):
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    return load_config()\n", encoding="utf-8"
+    )
+    graph = _range_graph(tmp_path)
+
+    results = lsp_graph.lsp_definition(
+        graph, file_path="caller.py", line=1, character=15
+    )
+
+    assert [node.node_name for node in results] == ["callee.py:load_config()"]
+    with pytest.raises(ValueError, match="no indexed definition token"):
+        lsp_graph.lsp_definition(graph, file_path="caller.py", line=1, character=4)
+
+
+def test_lsp_references_character_must_hit_reference_token(tmp_path):
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    return load_config()\n", encoding="utf-8"
+    )
+    graph = _range_graph(tmp_path)
+
+    with pytest.raises(ValueError, match="no indexed definition token"):
+        lsp_graph.lsp_references(graph, file_path="caller.py", line=1, character=4)
 
 
 def test_lsp_definition_accepts_symbol_seed():

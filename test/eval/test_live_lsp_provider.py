@@ -143,7 +143,11 @@ def test_live_lsp_reference_provider_calls_injected_client(tmp_path):
 
 
 def test_compare_static_to_live_lsp_uses_start_location_fingerprint(tmp_path):
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    return load_config()\n", encoding="utf-8"
+    )
     graph = _range_graph()
+    graph.project_root = str(tmp_path)
 
     def live_reference_provider(capability, arguments):
         assert capability == "definition"
@@ -167,7 +171,7 @@ def test_compare_static_to_live_lsp_uses_start_location_fingerprint(tmp_path):
         [
             LSPProviderRequest(
                 capability="textDocument/definition",
-                arguments={"file_path": "caller.py", "line": 1, "character": 9},
+                arguments={"file_path": "caller.py", "line": 1, "character": 15},
                 request_id="caller-to-load-config",
             )
         ],
@@ -184,7 +188,11 @@ def test_compare_static_to_live_lsp_uses_start_location_fingerprint(tmp_path):
 
 
 def test_compare_static_to_live_lsp_provider_starts_fake_client(tmp_path):
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    return load_config()\n", encoding="utf-8"
+    )
     graph = _range_graph()
+    graph.project_root = str(tmp_path)
     made = []
 
     class FakeClient:
@@ -215,7 +223,7 @@ def test_compare_static_to_live_lsp_provider_starts_fake_client(tmp_path):
         [
             LSPProviderRequest(
                 capability="textDocument/definition",
-                arguments={"file_path": "caller.py", "line": 1, "character": 9},
+                arguments={"file_path": "caller.py", "line": 1, "character": 15},
             )
         ],
         graph=graph,
@@ -228,3 +236,37 @@ def test_compare_static_to_live_lsp_provider_starts_fake_client(tmp_path):
     assert made[0].started is True
     assert made[0].stopped is True
     assert rows[0].same_result is True
+
+
+def test_compare_static_to_live_lsp_provider_rejects_route_without_lsp_start(
+    tmp_path,
+):
+    graph = _range_graph()
+    made = []
+
+    class FakeClient:
+        def __init__(self, command, project_root, language):
+            made.append((command, project_root, language))
+
+    try:
+        compare_static_to_live_lsp_provider(
+            [
+                LSPProviderRequest(
+                    capability="codeminer/lspRoute",
+                    arguments={"symbols": ["callee.load_config"]},
+                    request_id="route-extension",
+                )
+            ],
+            graph=graph,
+            project_root=tmp_path,
+            language="python",
+            command=["fake-lsp"],
+            client_factory=FakeClient,
+        )
+    except ValueError as exc:
+        assert "supports only native capabilities" in str(exc)
+        assert "route-extension:route" in str(exc)
+    else:
+        raise AssertionError("expected live JSON-RPC validation to reject route")
+
+    assert made == []

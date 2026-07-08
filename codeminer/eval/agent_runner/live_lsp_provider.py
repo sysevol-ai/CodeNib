@@ -21,6 +21,9 @@ from codeminer.languages import normalize_graph_language
 from codeminer.types import QueriedNode
 
 ClientFactory = Callable[..., Any]
+_NATIVE_JSON_RPC_CAPABILITIES = frozenset(
+    {CAPABILITY_DEFINITION, CAPABILITY_REFERENCES}
+)
 
 
 class LiveLSPReferenceProvider:
@@ -210,14 +213,24 @@ def compare_static_to_live_lsp_provider(
     client_factory: ClientFactory = LSPClient,
     skip_probe: bool = False,
     fingerprint_fn: Optional[Callable[[Sequence[Any]], str]] = None,
+    fingerprint_selector: Optional[
+        Callable[[Any], Callable[[Sequence[Any]], str]]
+    ] = None,
 ) -> list[Any]:
     """Compare static graph LSP results with a live JSON-RPC LSP server."""
 
     from .lsp_provider_validation import (  # local import avoids a cycle
         compare_static_lsp_provider,
+        default_lsp_provider_fingerprint,
         fingerprint_lsp_start_locations,
     )
 
+    request_list = _validate_native_lsp_requests(requests)
+    selected_fingerprint_selector = None
+    if fingerprint_fn is None:
+        selected_fingerprint_selector = (
+            fingerprint_selector or default_lsp_provider_fingerprint
+        )
     with LiveLSPReferenceProvider(
         project_root=project_root,
         language=language,
@@ -226,12 +239,50 @@ def compare_static_to_live_lsp_provider(
         skip_probe=skip_probe,
     ) as live_provider:
         return compare_static_lsp_provider(
-            requests,
+            request_list,
             graph=graph,
             reference_provider=live_provider,
             reference_provider_name=JSON_RPC_LSP_PROVIDER,
             fingerprint_fn=fingerprint_fn or fingerprint_lsp_start_locations,
+            fingerprint_selector=selected_fingerprint_selector,
         )
+
+
+def _validate_native_lsp_requests(requests: Iterable[Any]) -> list[Any]:
+    request_list = list(requests)
+    unsupported: list[str] = []
+    for index, request in enumerate(request_list, 1):
+        capability = _request_capability(request)
+        if capability not in _NATIVE_JSON_RPC_CAPABILITIES:
+            request_id = _request_id(request) or f"#{index}"
+            unsupported.append(f"{request_id}:{capability or '<missing>'}")
+    if unsupported:
+        allowed = ", ".join(sorted(_NATIVE_JSON_RPC_CAPABILITIES))
+        raise ValueError(
+            "live JSON-RPC LSP validation supports only native capabilities "
+            f"({allowed}); unsupported requests: {', '.join(unsupported)}"
+        )
+    return request_list
+
+
+def _request_capability(request: Any) -> str:
+    if hasattr(request, "normalized_capability"):
+        return str(request.normalized_capability)
+    if isinstance(request, Mapping):
+        return normalize_lsp_capability(
+            str(request.get("capability") or request.get("lsp_method") or "")
+        )
+    return ""
+
+
+def _request_id(request: Any) -> Optional[str]:
+    if hasattr(request, "request_id"):
+        value = request.request_id
+        return str(value) if value is not None else None
+    if isinstance(request, Mapping):
+        value = request.get("request_id")
+        return str(value) if value is not None else None
+    return None
 
 
 def _uri_to_relpath(uri: str, project_root: Path) -> Optional[str]:
