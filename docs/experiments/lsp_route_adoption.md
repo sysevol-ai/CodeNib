@@ -116,6 +116,57 @@ route evidence. In this run, observed preload used different query text/seeds
 than the model-generated dynamic calls, so preload-vs-dynamic quality/cost is a
 separate policy problem.
 
+### Synthesized benchmark smoke
+
+The current agent-level feedback path should run on
+`sysevol-ai/codeminer-synthesis`, because it gives multiple queries per repo and
+category labels that separate symbol-heavy tasks from traversal/behavioral
+tasks. Use `lsp_route_synthesis_smoke.yaml` for a small Haiku feedback slice:
+
+```bash
+PYTHONPATH=$PWD python scripts/agent_compile/run_synthesis_sweep.py \
+  --config scripts/agent_compile/configs/lsp_route_synthesis_smoke.yaml \
+  --output-dir results/agent_compile/lsp_route_synthesis_smoke \
+  --synthesis-configs Go --categories traversal \
+  --max-instances 1 --max-queries 1 --reps 1
+
+python scripts/agent_compile/aggregate_synthesis.py \
+  --cells-dir results/agent_compile/lsp_route_synthesis_smoke/cells \
+  --output-dir results/agent_compile/lsp_route_synthesis_smoke
+```
+
+The first smoke on `caddyserver__caddy-6115` is intentionally tiny
+(`n=1/query/category`), so it is a route-policy diagnostic, not an accuracy
+claim:
+
+| category | arm | answer_rec@5 | turns | cost$ | dynamic call | startup context | note |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| traversal | `grep_only` | 0.667 | 13 | 0.1813 | 0% | 0% | baseline explored with bash/read. |
+| traversal | `lsp_route_skill` | 0.667 | 12 | 0.1684 | 0% | 0% | dynamic tool was offered but not adopted. |
+| traversal | `lsp_route_preload` | 0.667 | 15 | 0.2609 | 0% | 100% | query fallback route was available, but added cost. |
+| symbol_hint | `grep_only` | 0.000 | 3 | 0.0216 | 0% | 0% | grep found the helper, not the GT bridge method. |
+| symbol_hint | `lsp_route_skill` | 0.000 | 8 | 0.0714 | 100% | 0% | dynamic route was adopted; visible latency included one extra model round trip. |
+| symbol_hint | `lsp_route_preload` | 0.000 | 4 | 0.0309 | 0% | 100% | seeded route was available before turn 1, but did not change final target choice. |
+
+Mechanism read:
+
+- Dynamic adoption is category-sensitive, not globally zero. The same model
+  ignored `lsp_route` on the traversal query and called it on the symbol-hint
+  query.
+- The static backend itself is fast in both exposure modes: preload route
+  construction was 47-184 ms, and the dynamic symbol-hint backend call was 21
+  ms. The dynamic route evidence became model-visible after about 2.3 s because
+  it paid a model-tool-model round trip.
+- Route evidence is not yet task-shaped enough. On the symbol-hint query,
+  `lsp_route` returned both `indexFold` and `MatchFile.selectFile()`, but the
+  agent committed to the helper while the synthesis GT targeted the bridge
+  method, so answer recall stayed zero.
+
+The aggregator now includes an `LSP route exposure` section with
+`dynamic_call`, `startup_context`, `backend_ms`, `visible_ms`, and
+`extra_trips`. Those columns are the minimum diagnostics for scaling this to
+larger synthesized slices.
+
 ## Historical Same-backend Latency Protocol
 
 Do not use this protocol to decide whether static LSP provider acceleration is

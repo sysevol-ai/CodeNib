@@ -64,6 +64,43 @@ def filter_query_rows(
     return selected
 
 
+def select_query_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    categories: Optional[Set[str]] = None,
+    instances: Optional[Sequence[str]] = None,
+    max_instances: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Return query rows selected by category and instance controls.
+
+    ``instances`` is an allowlist from the sweep config. ``max_instances`` keeps
+    the first N instance ids after category/allowlist filtering, preserving
+    dataset order so smoke runs are deterministic.
+    """
+    if max_instances is not None and max_instances < 1:
+        raise ValueError("max_instances must be positive")
+
+    selected = filter_query_rows(rows, categories)
+    if instances:
+        allowed = set(instances)
+        selected = [row for row in selected if row.get("instance_id") in allowed]
+    if max_instances is None:
+        return selected
+
+    kept: Set[str] = set()
+    capped: List[Dict[str, Any]] = []
+    for row in selected:
+        instance_id = str(row.get("instance_id") or "")
+        if not instance_id:
+            continue
+        if instance_id not in kept:
+            if len(kept) >= max_instances:
+                continue
+            kept.add(instance_id)
+        capped.append(row)
+    return capped
+
+
 def group_query_rows_by_instance(
     rows: Iterable[Mapping[str, Any]],
 ) -> Dict[str, List[Dict[str, Any]]]:
@@ -84,6 +121,7 @@ def run_query_sweep(
     *,
     categories: Optional[Set[str]] = None,
     max_queries: Optional[int] = None,
+    max_instances: Optional[int] = None,
     resume: bool = True,
     summary_filename: str = "query_sweep_summary.json",
 ) -> Dict[str, Any]:
@@ -100,7 +138,12 @@ def run_query_sweep(
     from codeminer.eval.retrieval_eval import collect_target_blocks
     from codeminer.llm.litellm_chat import LiteLLMChat
 
-    filtered_rows = filter_query_rows(rows, categories)
+    filtered_rows = select_query_rows(
+        rows,
+        categories=categories,
+        instances=cfg.instances,
+        max_instances=max_instances,
+    )
     needs_verify = any(
         (recipe or {}).get("verify") for recipe in (cfg.preload or {}).values()
     )

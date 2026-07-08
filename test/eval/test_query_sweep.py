@@ -11,6 +11,7 @@ from codeminer.eval.agent_runner.query_sweep import (
     group_query_rows_by_instance,
     language_key_for_query_row,
     query_targets,
+    select_query_rows,
 )
 
 
@@ -45,6 +46,40 @@ def test_filter_query_rows_restricts_categories_without_mutating_inputs():
 
     assert [item["instance_id"] for item in selected] == ["i1"]
     assert row["category"] == "behavioral"
+
+
+def test_select_query_rows_applies_instance_allowlist_and_cap_in_order():
+    rows = [
+        {"instance_id": "i1", "query_id": "q1", "category": "behavioral"},
+        {"instance_id": "i1", "query_id": "q2", "category": "behavioral"},
+        {"instance_id": "i2", "query_id": "q3", "category": "behavioral"},
+        {"instance_id": "i3", "query_id": "q4", "category": "behavioral"},
+    ]
+
+    selected = select_query_rows(
+        rows,
+        instances=["i3", "i1", "missing"],
+        max_instances=1,
+    )
+
+    assert [row["query_id"] for row in selected] == ["q1", "q2"]
+
+
+def test_select_query_rows_caps_instances_after_category_filter():
+    rows = [
+        {"instance_id": "i1", "query_id": "q1", "category": "symbol_hint"},
+        {"instance_id": "i2", "query_id": "q2", "category": "behavioral"},
+        {"instance_id": "i2", "query_id": "q3", "category": "behavioral"},
+        {"instance_id": "i3", "query_id": "q4", "category": "behavioral"},
+    ]
+
+    selected = select_query_rows(
+        rows,
+        categories={"behavioral"},
+        max_instances=1,
+    )
+
+    assert [row["query_id"] for row in selected] == ["q2", "q3"]
 
 
 def test_group_query_rows_by_instance_preserves_order_and_skips_missing_ids():

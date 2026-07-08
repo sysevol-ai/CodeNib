@@ -70,6 +70,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument(
         "--max-queries", type=int, default=None, help="cap queries per instance (smoke)"
     )
+    p.add_argument(
+        "--max-instances",
+        type=int,
+        default=None,
+        help="cap instances after config allowlist/category filtering (smoke)",
+    )
     p.add_argument("--reps", type=int, default=None)
     p.add_argument("--no-resume", action="store_true")
     p.add_argument(
@@ -100,6 +106,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         rows,
         categories=categories,
         max_queries=args.max_queries,
+        max_instances=args.max_instances,
         resume=not args.no_resume,
         summary_filename="synthesis_summary.json",
     )
