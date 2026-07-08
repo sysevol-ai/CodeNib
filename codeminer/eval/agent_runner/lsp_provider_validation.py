@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence
 
@@ -117,6 +118,34 @@ class LSPProviderComparison:
         return out
 
 
+@dataclass(frozen=True)
+class LSPProviderValidationSummary:
+    """Machine-readable gate summary for static-vs-reference validation."""
+
+    total: int
+    verdict_counts: Mapping[str, int]
+    same_result_count: int
+    mismatch_count: int
+    fallback_count: int
+    error_count: int
+    static_faster_count: int
+    static_not_faster_count: int
+    promotion_ready: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total": self.total,
+            "verdict_counts": dict(self.verdict_counts),
+            "same_result_count": self.same_result_count,
+            "mismatch_count": self.mismatch_count,
+            "fallback_count": self.fallback_count,
+            "error_count": self.error_count,
+            "static_faster_count": self.static_faster_count,
+            "static_not_faster_count": self.static_not_faster_count,
+            "promotion_ready": self.promotion_ready,
+        }
+
+
 def compare_static_lsp_provider(
     requests: Iterable[LSPProviderRequest | Mapping[str, Any]],
     *,
@@ -172,6 +201,38 @@ def compare_static_lsp_provider(
     return comparisons
 
 
+def summarize_lsp_provider_validation(
+    comparisons: Sequence[LSPProviderComparison | Mapping[str, Any]],
+) -> LSPProviderValidationSummary:
+    """Summarize whether static provider rows are ready for fast-path routing."""
+
+    rows = [_comparison_dict(row) for row in comparisons]
+    verdicts = Counter(str(row.get("verdict") or "unknown") for row in rows)
+    error_count = sum(
+        1
+        for row in rows
+        if str(row.get("verdict") or "")
+        in {"static_error", "reference_error", "unknown"}
+    )
+    same_result_count = sum(1 for row in rows if row.get("same_result") is True)
+    mismatch_count = verdicts.get("mismatch", 0)
+    fallback_count = verdicts.get("fallback_required", 0)
+    static_faster_count = verdicts.get("equivalent_static_faster", 0)
+    static_not_faster_count = verdicts.get("equivalent_static_not_faster", 0)
+    promotion_ready = bool(rows) and static_faster_count == len(rows)
+    return LSPProviderValidationSummary(
+        total=len(rows),
+        verdict_counts=dict(sorted(verdicts.items())),
+        same_result_count=same_result_count,
+        mismatch_count=mismatch_count,
+        fallback_count=fallback_count,
+        error_count=error_count,
+        static_faster_count=static_faster_count,
+        static_not_faster_count=static_not_faster_count,
+        promotion_ready=promotion_ready,
+    )
+
+
 def render_lsp_provider_validation_markdown(
     comparisons: Sequence[LSPProviderComparison | Mapping[str, Any]],
 ) -> str:
@@ -213,6 +274,9 @@ def render_lsp_provider_validation_markdown(
             str(static_call.get("fallback_reason") or ""),
         ]
         lines.append("| " + " | ".join(rendered) + " |")
+    lines.append("")
+    summary = summarize_lsp_provider_validation(comparisons)
+    lines.append(f"Promotion ready: {_yes_no(summary.promotion_ready)}")
     lines.append("")
     return "\n".join(lines)
 
@@ -476,7 +540,9 @@ __all__ = [
     "LSPProviderCall",
     "LSPProviderComparison",
     "LSPProviderRequest",
+    "LSPProviderValidationSummary",
     "compare_static_lsp_provider",
     "fingerprint_lsp_start_locations",
     "render_lsp_provider_validation_markdown",
+    "summarize_lsp_provider_validation",
 ]

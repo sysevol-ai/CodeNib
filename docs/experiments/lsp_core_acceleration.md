@@ -83,6 +83,30 @@ executors after the agent boundary conversion. Symbol-only static lookups are
 not valid live-LSP comparison requests because JSON-RPC definition/references
 operate on file positions.
 
+For repeatable feedback loops, prefer the package CLI over ad hoc scripts:
+
+```bash
+cat > /tmp/lsp-provider-requests.jsonl <<'EOF'
+{"request_id":"demo-definition","capability":"textDocument/definition","arguments":{"file_path":"caller.py","line":41,"character":12}}
+EOF
+
+codeminer-lsp-provider-validate \
+  --graph /path/to/graph.pkl \
+  --project-root /path/to/repo \
+  --language python \
+  --requests /tmp/lsp-provider-requests.jsonl \
+  --output-json /tmp/lsp-provider-report.json \
+  --output-markdown /tmp/lsp-provider-report.md \
+  --require-promotion
+```
+
+Use `--prebuilt-root ... --instance-id ...` instead of `--graph` when running
+against agent-runner prebuilt artifacts. The default exit code fails on
+mismatches and provider errors. `--require-promotion` additionally fails unless
+every row is `equivalent_static_faster`; `--fail-on-fallback` makes unsupported
+or unavailable static rows fail instead of recording them as explicit fallback
+cases.
+
 The live path requires an installed language server or an override such as
 `CODEMINER_PYTHON_LSP_CMD`. If no server command is available, use the fake
 client unit path only; do not claim live equivalence from it.

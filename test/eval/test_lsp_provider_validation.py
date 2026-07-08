@@ -13,6 +13,7 @@ from codeminer.eval.agent_runner.lsp_provider_validation import (
     LSPProviderRequest,
     compare_static_lsp_provider,
     render_lsp_provider_validation_markdown,
+    summarize_lsp_provider_validation,
 )
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.types import NODE_TYPE_FUNCTION
@@ -121,3 +122,33 @@ def test_compare_static_lsp_provider_marks_fallback_when_graph_unavailable():
     assert row.static_call.status == "unavailable"
     assert row.static_call.fallback_reason == "symbol_graph_unavailable"
     assert row.reference_call.status == "ok"
+
+
+def test_summarize_lsp_provider_validation_marks_promotion_ready():
+    graph = _range_graph()
+
+    def reference_provider(capability, arguments):
+        return list(StaticLSPProvider(graph).definition(**arguments))
+
+    rows = compare_static_lsp_provider(
+        [
+            LSPProviderRequest(
+                capability="definition",
+                arguments={"symbol": "load_config"},
+                request_id="jump-load-config",
+            )
+        ],
+        graph=graph,
+        reference_provider=reference_provider,
+        clock=_clock([1.0, 1.001, 2.0, 2.004]),
+    )
+
+    summary = summarize_lsp_provider_validation(rows)
+
+    assert summary.total == 1
+    assert summary.verdict_counts == {"equivalent_static_faster": 1}
+    assert summary.same_result_count == 1
+    assert summary.mismatch_count == 0
+    assert summary.fallback_count == 0
+    assert summary.error_count == 0
+    assert summary.promotion_ready is True
