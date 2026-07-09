@@ -14,6 +14,8 @@ from codeminer.agent.lsp_provider import (
     CAPABILITY_DEFINITION,
     CAPABILITY_REFERENCES,
     JSON_RPC_LSP_PROVIDER,
+    LSPProviderMetadata,
+    LSPProviderNodes,
     normalize_lsp_capability,
 )
 from codeminer.graph.incremental.lsp_client import LSPClient
@@ -112,7 +114,7 @@ class LiveLSPReferenceProvider:
         character: Optional[int] = None,
         symbol: Optional[str] = None,
         top_k: int = 8,
-    ) -> list[QueriedNode] | dict[str, str]:
+    ) -> LSPProviderNodes | dict[str, str]:
         """Run ``textDocument/definition`` against the live language server."""
 
         del symbol  # Live LSP definition is position-based.
@@ -131,7 +133,10 @@ class LiveLSPReferenceProvider:
             relation="json-rpc definition",
             node_type="definition",
         )
-        return nodes[: max(1, int(top_k or 8))]
+        return self._wrap(
+            CAPABILITY_DEFINITION,
+            nodes[: max(1, int(top_k or 8))],
+        )
 
     def references(
         self,
@@ -142,7 +147,7 @@ class LiveLSPReferenceProvider:
         symbol: Optional[str] = None,
         include_declaration: bool = True,
         top_k: int = 40,
-    ) -> list[QueriedNode] | dict[str, str]:
+    ) -> LSPProviderNodes | dict[str, str]:
         """Run ``textDocument/references`` against the live language server."""
 
         del symbol  # Live LSP references is position-based.
@@ -162,7 +167,10 @@ class LiveLSPReferenceProvider:
             relation="json-rpc reference",
             node_type="reference",
         )
-        return nodes[: max(1, int(top_k or 40))]
+        return self._wrap(
+            CAPABILITY_REFERENCES,
+            nodes[: max(1, int(top_k or 40))],
+        )
 
     def _ensure_client(self) -> Any:
         self.start()
@@ -173,6 +181,19 @@ class LiveLSPReferenceProvider:
         if path.is_absolute():
             return path
         return self.project_root / path
+
+    def _wrap(self, capability: str, nodes: Iterable[Any]) -> LSPProviderNodes:
+        return LSPProviderNodes(
+            nodes,
+            metadata=LSPProviderMetadata(
+                provider=JSON_RPC_LSP_PROVIDER,
+                capability=capability,
+                status="ok",
+                lsp_method=f"textDocument/{capability}",
+                behavior_contract="json_rpc_lsp_v1",
+                position_granularity="character",
+            ),
+        )
 
 
 def _raise_on_client_failure(client: Any, capability: str, result: Any) -> None:

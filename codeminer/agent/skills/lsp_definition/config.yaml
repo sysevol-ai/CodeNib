@@ -20,7 +20,7 @@ inputs:
   - name: character
     type: int
     required: false
-    description: Optional 0-based column hint. Current static graph anchors are line-granular, so this is best-effort.
+    description: Optional 0-based column. Provide it when the source line contains multiple identifiers or overloads.
   - name: symbol
     type: str
     required: false
@@ -31,7 +31,7 @@ inputs:
     description: Maximum number of candidate definitions to return.
 outputs:
   type: List[QueriedNode]
-  description: Compact definition candidates from the static symbol graph. No source bodies; read returned files before answering.
+  description: Compact definition candidates from the selected LSP provider. No source bodies; read returned files before answering.
 index_requirements:
   - type: symbol_graph
     max_age_seconds: 3600

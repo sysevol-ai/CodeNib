@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 
 def create_executor(context: "ExpandContext") -> Callable[..., List["QueriedNode"]]:
-    """Return a static-index implementation of textDocument/references."""
-    from ...lsp_provider import StaticLSPProvider
+    """Return the configured implementation of textDocument/references."""
+    from ...lsp_provider import resolve_lsp_provider
 
     def execute(
         file_path: Optional[str] = None,
@@ -24,9 +24,7 @@ def create_executor(context: "ExpandContext") -> Callable[..., List["QueriedNode
         top_k: int = 40,
         **kwargs: Any,
     ) -> List["QueriedNode"]:
-        if context is None or context.code_graph is None:
-            raise RuntimeError("Symbol graph not available")
-        return StaticLSPProvider(context.code_graph).references(
+        return resolve_lsp_provider(context).references(
             file_path=file_path,
             line=line,
             character=character,

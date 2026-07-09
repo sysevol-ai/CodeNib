@@ -199,6 +199,18 @@ class StaticLSPProvider:
         )
 
 
+def resolve_lsp_provider(context: Any) -> Any:
+    """Return an injected LSP provider or the default static graph provider."""
+
+    provider = getattr(context, "lsp_provider", None) if context is not None else None
+    if provider is not None:
+        return provider
+    graph = getattr(context, "code_graph", None) if context is not None else None
+    if graph is None:
+        raise RuntimeError("LSP provider and symbol graph are unavailable")
+    return StaticLSPProvider(graph)
+
+
 def lsp_result_metadata(result: Any) -> Optional[dict[str, Any]]:
     """Return provider metadata from a list-compatible LSP result."""
 
@@ -289,6 +301,7 @@ __all__ = [
     "LSPProviderNodes",
     "STATIC_LSP_PROVIDER",
     "StaticLSPProvider",
+    "resolve_lsp_provider",
     "fingerprint_lsp_result",
     "lsp_result_metadata",
     "normalize_lsp_capability",

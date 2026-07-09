@@ -65,6 +65,7 @@ class TestExpandContext:
     def test_defaults(self):
         ctx = ExpandContext()
         assert ctx.code_graph is None
+        assert ctx.lsp_provider is None
         assert ctx.default_top_k == 50
         assert ctx.default_hops == 2
         assert ctx.default_direction == "both"

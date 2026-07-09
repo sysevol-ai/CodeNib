@@ -20,6 +20,7 @@ class ExpandContext:
     """Shared resources for graph expansion operators."""
 
     code_graph: Optional[CodeGraph] = None
+    lsp_provider: Optional[Any] = None
     default_top_k: int = 50
     default_hops: int = 2
     default_direction: str = "both"

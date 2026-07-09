@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from codeminer.agent.lsp_provider import JSON_RPC_LSP_PROVIDER, lsp_result_metadata
 from codeminer.eval.agent_runner.live_lsp_provider import (
     LiveLSPReferenceProvider,
     compare_static_to_live_lsp_provider,
@@ -142,6 +143,14 @@ def test_live_lsp_reference_provider_calls_injected_client(tmp_path):
     assert made[0].calls == [("definition", str(tmp_path / "caller.py"), 1, 9)]
     assert result[0].file == "callee.py"
     assert result[0].start_line == 4
+    assert lsp_result_metadata(result) == {
+        "provider": JSON_RPC_LSP_PROVIDER,
+        "capability": "definition",
+        "status": "ok",
+        "lsp_method": "textDocument/definition",
+        "behavior_contract": "json_rpc_lsp_v1",
+        "position_granularity": "character",
+    }
 
 
 def test_live_lsp_reference_provider_raises_on_transport_timeout(tmp_path):

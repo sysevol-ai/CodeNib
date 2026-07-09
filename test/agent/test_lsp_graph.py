@@ -252,6 +252,28 @@ def test_lsp_skills_load_and_execute_against_expand_context():
     assert lsp_result_metadata(results)["capability"] == "definition"
 
 
+def test_lsp_skills_use_injected_provider_without_a_graph():
+    class Provider:
+        def definition(self, **kwargs):
+            return [kwargs]
+
+    context = {"expand": ExpandContext(lsp_provider=Provider())}
+    meta = SkillLoader().load_skill(
+        "codeminer/agent/skills/lsp_definition",
+        context,
+    )
+
+    assert meta.executor_fn(file_path="caller.py", line=3, character=4) == [
+        {
+            "file_path": "caller.py",
+            "line": 3,
+            "character": 4,
+            "symbol": None,
+            "top_k": 8,
+        }
+    ]
+
+
 def test_lsp_route_skill_exposes_static_graph_tool_contract():
     graph = _RouteGraph()
     context = {"expand": ExpandContext(code_graph=graph)}
