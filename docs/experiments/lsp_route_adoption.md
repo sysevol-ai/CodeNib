@@ -4,23 +4,26 @@ SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# LSP-route latency experiment
+# LSP-route adoption experiment
 
-Status: 2026-07-05 feedback loop, not a full-corpus claim.
+Status: historical feedback loop, not the current provider-acceleration gate.
 
-This document is about dynamic-tool adoption vs startup preload for
-`lsp_route`. It is not the provider-level claim that a dynamic LSP request can
-be served faster from CodeMiner's static index than from JSON-RPC LSP; that gate
-lives in `docs/experiments/lsp_core_acceleration.md`.
+This document records the old agent-policy question: when `lsp_route` is exposed
+as a dynamic tool, does the model discover and use it, and what happens when the
+same route evidence is preloaded before turn 1?
 
-This experiment should prove one narrow claim:
+It is **not** the current proof target for LSP acceleration. The active target is
+provider-level: when an agent or MCP client asks for an LSP-shaped operation,
+CodeMiner should serve the supported request from the static graph index faster
+than live JSON-RPC LSP while preserving the agent-visible output contract. That
+gate lives in `docs/experiments/lsp_core_acceleration.md`.
 
-> With the same static graph-backed LSP route backend, CodeMiner's preload path
-> makes route evidence available with lower agent-visible latency than asking
-> the model to discover and call the LSP tool dynamically.
+Preload is already covered by the compact-context line of work. It is a policy
+choice about what context to show before turn 1, not a prerequisite for proving
+that dynamic LSP requests can be accelerated by the static provider.
 
 This is not a claim that CodeMiner's agent is smarter than Claude Code, Codex,
-or opencode. It is a latency-path claim under a controlled backend.
+or opencode.
 
 ## Internal Arms
 
@@ -73,9 +76,9 @@ Per-instance quality/cost signal is mixed:
 | `astral-sh__ruff-15309` | +44,168 | +22,523 | route hints did not reduce exploration. |
 | `caddyserver__caddy-5761` | -6,268 | +34,923 | dynamic route helped, preload over-steered. |
 
-Those quality/cost numbers are useful guardrails, but they are not the proof
-target. The latency proof should compare the same `lsp_route` backend through
-two paths:
+Those quality/cost numbers are useful guardrails for route-context policy, but
+they are not the provider acceleration proof. The old same-backend latency
+replay compared the same `lsp_route` backend through two exposure paths:
 
 1. `dynamic`: the model spends a turn deciding to call `lsp_route`, waits for
    the tool result, then spends a later turn using it.
@@ -103,16 +106,21 @@ the strict same-backend path claim is measurable:
 | `astral-sh__ruff-15309` | yes | 2477.5 | 1779.7 | 5476.0 | 3696.3 | 1 |
 | `caddyserver__caddy-5761` | yes | 107.2 | 54.7 | 2567.0 | 2512.3 | 1 |
 
-This supports the narrow latency-path claim: when the exact dynamic `route_args`
-are replayed directly against the same prebuilt graph backend, the route
-evidence is available without waiting for the model-tool-model round trip.
+This supports only a narrow exposure-path observation: when the exact dynamic
+`route_args` are replayed directly against the same prebuilt graph backend, the
+route evidence is available without waiting for the model-tool-model round
+trip.
 
 It does **not** prove that the current observed preload policy chooses the same
 route evidence. In this run, observed preload used different query text/seeds
 than the model-generated dynamic calls, so preload-vs-dynamic quality/cost is a
 separate policy problem.
 
-## Same-backend Latency Protocol
+## Historical Same-backend Latency Protocol
+
+Do not use this protocol to decide whether static LSP provider acceleration is
+ready. Use `docs/experiments/lsp_core_acceleration.md` for the active
+static-vs-live JSON-RPC provider gate.
 
 Compare access paths, not agent brands.
 
@@ -188,9 +196,9 @@ For internal CodeMiner runs, trace schema v4 records relative event timestamps.
 `lsp_route` tool result. The preload path reports visible turn 0 and uses the
 startup route context backend duration as the route-visible time.
 
-### Promotion Gate
+### Historical Policy Gate
 
-Treat the same-backend latency claim as proven on a slice only if all hold:
+Treat this adoption/preload policy claim as useful on a slice only if all hold:
 
 1. Dynamic and preload arms use the same `lsp_route` implementation and the
    same prebuilt `symbol_graph`.
@@ -200,5 +208,7 @@ Treat the same-backend latency claim as proven on a slice only if all hold:
    duration for the same route args.
 5. `files@5` does not regress enough to invalidate the latency comparison.
 
-Only after this latency claim holds should we ask the larger question of whether
-the route information improves final localization cost or accuracy.
+Even if this claim holds, it does not promote static LSP provider acceleration.
+It only says that a chosen piece of route context can be made visible earlier.
+Provider acceleration is promoted separately by agent-visible fingerprint
+equivalence and static-vs-live latency.

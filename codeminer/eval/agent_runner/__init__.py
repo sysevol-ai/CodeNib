@@ -63,9 +63,11 @@ from .lsp_provider_validation import (
     LSPProviderCall,
     LSPProviderComparison,
     LSPProviderRequest,
+    LSPProviderValidationSummary,
     compare_static_lsp_provider,
     fingerprint_lsp_start_locations,
     render_lsp_provider_validation_markdown,
+    summarize_lsp_provider_validation,
 )
 from .metrics import load_cell_jsons, metric_at_k, safe_mean, safe_min, usable_cells
 from .orchestrator import (
@@ -158,6 +160,7 @@ __all__ = [
     "LSPProviderCall",
     "LSPProviderComparison",
     "LSPProviderRequest",
+    "LSPProviderValidationSummary",
     "LiveLSPReferenceProvider",
     "FAILURE_CATEGORIES",
     "PreloadQueryPlan",
@@ -214,6 +217,7 @@ __all__ = [
     "render_expansion",
     "render_lsp_route_latency_markdown",
     "render_lsp_provider_validation_markdown",
+    "summarize_lsp_provider_validation",
     "retrieve_candidates",
     "replay_lsp_route_latency",
     "run_baseline_batch",
