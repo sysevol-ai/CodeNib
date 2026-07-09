@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 import re
 import shlex
 import subprocess
@@ -48,6 +47,7 @@ from .lsp_provider_validation import (
     compare_static_lsp_provider,
     default_lsp_provider_fingerprint,
 )
+from .lsp_readiness import wait_for_lsp_provider_readiness
 
 Clock = Callable[[], float]
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -219,49 +219,20 @@ def run_lsp_replay_benchmark(
                 )
             idle_wait_ms = (clock() - idle_wait_start) * 1000
 
-        warmup_start = clock()
-        warmup_limit = max_warmup_reps if warmup_until_stable else warmup_reps
-        previous_reference_signature: Optional[tuple[Any, ...]] = None
-        warmup_stable = not warmup_until_stable
-        live_nonempty_count = 0
-        completed_warmup_reps = 0
-        for rep in range(1, warmup_limit + 1):
-            comparisons = compare_static_lsp_provider(
-                request_list,
-                graph=graph,
-                static_provider=static_provider,
-                reference_provider=live_provider,
-                reference_provider_name=JSON_RPC_LSP_PROVIDER,
-                fingerprint_selector=fingerprint_selector,
-                clock=clock,
-            )
-            for comparison in comparisons:
-                row = comparison.to_dict()
-                row["rep"] = rep
-                warmup_rows.append(row)
-            completed_warmup_reps = rep
-            reference_signature, live_nonempty_count, reference_error_count = (
-                _reference_warmup_state(comparisons)
-            )
-            minimum_nonempty = math.ceil(len(request_list) * min_live_nonempty_fraction)
-            converged = (
-                previous_reference_signature == reference_signature
-                and reference_error_count == 0
-                and live_nonempty_count >= minimum_nonempty
-            )
-            if warmup_until_stable and rep >= warmup_reps and converged:
-                warmup_stable = True
-                break
-            previous_reference_signature = reference_signature
-            if warmup_until_stable and rep < warmup_limit:
-                time.sleep(max(0.0, warmup_poll_seconds))
-        warmup_wall_ms = (clock() - warmup_start) * 1000
-        if not warmup_stable:
-            raise RuntimeError(
-                "live reference results did not stabilize after "
-                f"{completed_warmup_reps} warmup reps "
-                f"(nonempty={live_nonempty_count}/{len(request_list)})"
-            )
+        readiness = wait_for_lsp_provider_readiness(
+            request_list,
+            graph=graph,
+            static_provider=static_provider,
+            live_provider=live_provider,
+            minimum_reps=warmup_reps,
+            until_stable=warmup_until_stable,
+            max_reps=max_warmup_reps,
+            poll_seconds=warmup_poll_seconds,
+            min_live_nonempty_fraction=min_live_nonempty_fraction,
+            fingerprint_selector=fingerprint_selector,
+            clock=clock,
+        )
+        warmup_rows.extend(readiness.rows)
 
         for rep in range(1, measured_reps + 1):
             comparisons = compare_static_lsp_provider(
@@ -294,15 +265,15 @@ def run_lsp_replay_benchmark(
         ),
         "request_source": {"kind": "provided"},
         "request_count": len(request_list),
-        "warmup_reps": completed_warmup_reps,
+        "warmup_reps": readiness.completed_reps,
         "warmup_protocol": {
             "minimum_reps": warmup_reps,
             "until_stable": warmup_until_stable,
             "max_reps": max_warmup_reps,
             "poll_seconds": warmup_poll_seconds,
             "min_live_nonempty_fraction": min_live_nonempty_fraction,
-            "stable": warmup_stable,
-            "live_nonempty_count": live_nonempty_count,
+            "stable": readiness.stable,
+            "live_nonempty_count": readiness.live_nonempty_count,
         },
         "measured_reps": measured_reps,
         "warmup_summary": _summarize_rows(warmup_rows),
@@ -310,7 +281,7 @@ def run_lsp_replay_benchmark(
             "static_provider_init_ms": static_provider_init_ms,
             "live_start_ms": live_start_ms,
             "idle_wait_ms": idle_wait_ms,
-            "warmup_wall_ms": warmup_wall_ms,
+            "warmup_wall_ms": readiness.wall_ms,
         },
         "artifact_quality": artifact_quality,
         "requests": [request.to_dict() for request in request_list],
@@ -834,31 +805,6 @@ def _summarize_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "speedup_ratio": _latency_stats(speedups),
         "latency_saved_ms": _latency_stats(saved),
     }
-
-
-def _reference_warmup_state(
-    comparisons: Sequence[Any],
-) -> tuple[tuple[Any, ...], int, int]:
-    signature = []
-    nonempty_count = 0
-    error_count = 0
-    for comparison in comparisons:
-        row = comparison.to_dict()
-        request = row.get("request") or {}
-        reference = row.get("reference_call") or {}
-        status = str(reference.get("status") or "unknown")
-        result_count = int(reference.get("result_count") or 0)
-        nonempty_count += int(status == "ok" and result_count > 0)
-        error_count += int(status != "ok")
-        signature.append(
-            (
-                str(request.get("request_id") or ""),
-                status,
-                reference.get("result_fingerprint"),
-                result_count,
-            )
-        )
-    return tuple(signature), nonempty_count, error_count
 
 
 def _duration(row: Mapping[str, Any], key: str) -> Optional[float]:
