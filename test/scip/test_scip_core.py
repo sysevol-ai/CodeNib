@@ -13,7 +13,7 @@ For each cached integration language with a C++ decoder (python, go, rust, ts):
      python's sympy instance).
   2. Run the C++ core decoder on the same ``index.decoded``.
   3. Assert names + edges + per-vertex attributes (type, file,
-     start/end_line, unified_name) are bit-for-bit identical.
+     start/end_line, selection_line, unified_name) are bit-for-bit identical.
 
 This test intentionally does **not** rebuild the serial graph — it depends on
 the ``integration-serial → scip-core`` job chain in ``ci.yml`` to have
@@ -53,7 +53,14 @@ if importlib.util.find_spec("codeminer_core") is None:
 # same symbol isolation, and this keeps the optional-extension contract stable.
 import codeminer_core  # noqa: E402, F401
 
-_COMPARED_ATTRS = ("type", "file", "start_line", "end_line", "unified_name")
+_COMPARED_ATTRS = (
+    "type",
+    "file",
+    "start_line",
+    "end_line",
+    "selection_line",
+    "unified_name",
+)
 
 # Edge attributes compared for parity. `anchor_file` / `anchor_line` were
 # added in schema v3 to support LSP-aligned line-range queries; both serial

@@ -104,6 +104,7 @@ void SubgraphBuilder::add_symbol_node(const std::string &symbol, int line,
                  std::make_optional<std::string>(current_file_),
                  scope_start_line, scope_end_line);
   }
+  node.data.selection_line = line;
   node.is_definition = true;
 }
 

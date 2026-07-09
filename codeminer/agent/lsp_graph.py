@@ -271,17 +271,31 @@ def _resolve_one(graph: Any, symbol: str) -> tuple[Optional[str], list[str]]:
     return None, [display_name(graph, candidate) for candidate in candidates]
 
 
-def _compact_node(graph: Any, name: str, relation: str, *, score: float = 1.0):
+def _compact_node(
+    graph: Any,
+    name: str,
+    relation: str,
+    *,
+    score: float = 1.0,
+    use_selection_line: bool = False,
+):
     info = graph.get_node_info_by_name(name) or {}
     file_path = info.get("file")
     display = info.get("unified_name") or name
+    selection_line = info.get("selection_line")
+    start_line = (
+        selection_line
+        if use_selection_line and selection_line is not None
+        else info.get("start_line")
+    )
+    end_line = start_line if use_selection_line else info.get("end_line")
     return QueriedNode(
         node_name=display,
         type=info.get("type", ""),
         file=file_path,
         node_id=_node_id(file_path, display),
-        start_line=info.get("start_line"),
-        end_line=info.get("end_line"),
+        start_line=start_line,
+        end_line=end_line,
         score=score,
         content=relation,
     )
@@ -361,7 +375,14 @@ def _definitions_for_symbol(graph: Any, symbol: str, limit: int) -> list[Queried
             "a search result or read output."
         )
     label = display_name(graph, name)
-    return [_compact_node(graph, name, f"definition of {label}")][:limit]
+    return [
+        _compact_node(
+            graph,
+            name,
+            f"definition of {label}",
+            use_selection_line=True,
+        )
+    ][:limit]
 
 
 def lsp_definition(
@@ -424,7 +445,12 @@ def lsp_definition(
         raise ValueError(f"no indexed definition at {file_path}:{int(line) + 1}")
 
     nodes = [
-        _compact_node(graph, name, f"definition of {display_name(graph, name)}")
+        _compact_node(
+            graph,
+            name,
+            f"definition of {display_name(graph, name)}",
+            use_selection_line=True,
+        )
         for name in target_names
     ]
     return _dedupe_nodes(nodes, limit)
@@ -531,7 +557,14 @@ def lsp_references(
     for name in targets:
         label = display_name(graph, name)
         if include_declaration:
-            nodes.append(_compact_node(graph, name, f"definition of {label}"))
+            nodes.append(
+                _compact_node(
+                    graph,
+                    name,
+                    f"definition of {label}",
+                    use_selection_line=True,
+                )
+            )
 
         vid = getattr(graph, "name_to_vertex", {}).get(name)
         if vid is None or not hasattr(graph, "graph"):

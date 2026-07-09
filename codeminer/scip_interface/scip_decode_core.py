@@ -77,6 +77,7 @@ def _build_code_graph(
         "file": [v["file"] for v in vertices],
         "start_line": [v["start_line"] for v in vertices],
         "end_line": [v["end_line"] for v in vertices],
+        "selection_line": [v.get("selection_line") for v in vertices],
         "unified_name": [v["unified_name"] for v in vertices],
     }
     g.add_vertices(len(vertices), attributes=attrs)

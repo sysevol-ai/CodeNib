@@ -239,6 +239,7 @@ void CodeGraph::add_symbol_node(const std::string &symbol, int line,
                         scope_end_line);
     symbol_ranges_[symbol] = Range{true, *scope_start_line, *scope_end_line};
   }
+  vertices_[id].selection_line = line;
 }
 
 void CodeGraph::add_symbol_reference(
@@ -410,6 +411,9 @@ void CodeGraph::batch_upsert_nodes(const std::vector<VertexData> &nodes) {
                           data.file, data.start_line, data.end_line);
       if (data.unified_name.has_value()) {
         vertices_[vertex_id].unified_name = data.unified_name;
+      }
+      if (data.selection_line.has_value()) {
+        vertices_[vertex_id].selection_line = data.selection_line;
       }
 
       if (data.start_line.has_value() && data.end_line.has_value()) {
@@ -690,6 +694,13 @@ void CodeGraph::save_graph(const std::string &output_path) const {
     out << "      \"end_line\": ";
     if (v.end_line.has_value()) {
       out << *v.end_line;
+    } else {
+      out << "null";
+    }
+    out << ",\n";
+    out << "      \"selection_line\": ";
+    if (v.selection_line.has_value()) {
+      out << *v.selection_line;
     } else {
       out << "null";
     }

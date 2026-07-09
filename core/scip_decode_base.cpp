@@ -281,6 +281,8 @@ void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
           existing.data.start_line = node.data.start_line;
         if (node.data.end_line.has_value())
           existing.data.end_line = node.data.end_line;
+        if (node.data.selection_line.has_value())
+          existing.data.selection_line = node.data.selection_line;
         if (node.data.unified_name.has_value())
           existing.data.unified_name = node.data.unified_name;
       } else if (!it->second.is_definition && node.updates_unified_name &&

@@ -96,6 +96,30 @@ def test_lsp_definition_accepts_symbol_seed():
     assert [node.node_name for node in results] == ["callee.py:load_config()"]
 
 
+def test_lsp_definition_uses_declaration_line_not_scope_start():
+    graph = CodeGraph()
+    graph.add_file_node("decorated.py")
+    graph.add_symbol_node(
+        "decorated.Handler",
+        line=5,
+        scope_start_line=3,
+        scope_end_line=9,
+        symbol_type=NODE_TYPE_FUNCTION,
+    )
+    graph.graph.vs[graph.name_to_vertex["decorated.Handler"]][
+        "unified_name"
+    ] = "decorated.py:Handler()"
+
+    result = lsp_graph.lsp_definition(graph, symbol="decorated.Handler")
+
+    assert result[0].start_line == 5
+    assert result[0].end_line == 5
+    info = graph.get_node_info_by_name("decorated.Handler")
+    assert info["start_line"] == 3
+    assert info["end_line"] == 9
+    assert info["selection_line"] == 5
+
+
 def test_lsp_references_returns_declaration_and_reference_site():
     graph = _range_graph()
 

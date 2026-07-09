@@ -41,6 +41,12 @@ import sys
 import tempfile
 from typing import Any, Optional
 
+# External experiment artifacts were written with schema 3 before exact SCIP
+# declaration lines were persisted. They remain valid for retrieval and graph
+# navigation; LSP consumers fall back to the scope start when selection_line is
+# absent. Ordinary CodeGraph caches stay strict.
+_LEGACY_PREBUILT_SCHEMA_VERSIONS = frozenset({None, 3})
+
 
 def model_suffix(embedding_model: str) -> str:
     """``CodeVectorStore`` filename suffix for an embedding model id."""
@@ -103,7 +109,10 @@ def load_code_graph_artifact(path: str, *, project_root: Optional[str] = None):
         graph = data
     elif isinstance(data, dict) and data.get("graph") is not None:
         schema_version = data.get("schema_version")
-        if schema_version not in (None, _SCHEMA_VERSION):
+        if schema_version not in {
+            *_LEGACY_PREBUILT_SCHEMA_VERSIONS,
+            _SCHEMA_VERSION,
+        }:
             raise ValueError(
                 f"prebuilt graph.pkl at {path} has unsupported "
                 f"schema_version={schema_version!r}"

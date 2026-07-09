@@ -153,4 +153,4 @@ def test_runner_traces_static_lsp_provider_for_dynamic_tool_call():
         "index_snapshot": "graph:trace",
     }
     assert len(tool_event.data["lsp_result_fingerprint"]) == 64
-    assert tool_event.data["lsp_result_preview"][0]["location"] == "callee.py:5-9"
+    assert tool_event.data["lsp_result_preview"][0]["location"] == "callee.py:5-5"

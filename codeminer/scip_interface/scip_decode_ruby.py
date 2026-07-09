@@ -327,6 +327,7 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
                     "file": file_path,
                     "start_line": line_index,
                     "end_line": line_index,
+                    "selection_line": line_index,
                     "unified_name": f"{file_path}:{display_name}",
                 },
             )

@@ -36,7 +36,7 @@ def _make_prebuilt(root: Path, iid: str, model: str, *, full=True):
     return d
 
 
-def _write_legacy_graph(path: Path):
+def _write_legacy_graph(path: Path, *, schema_version=None):
     from codeminer.graph.code_graph import CodeGraph
 
     graph = CodeGraph(project_root="repo")
@@ -51,16 +51,16 @@ def _write_legacy_graph(path: Path):
     graph.graph.vs[graph.name_to_vertex["pkg.mod.foo"]][
         "unified_name"
     ] = "pkg/mod.py:foo()"
+    bundle = {
+        "project_root": graph.project_root,
+        "graph": graph.graph,
+        "symbol_ranges": graph.symbol_ranges,
+        "name_to_vertex": graph.name_to_vertex,
+    }
+    if schema_version is not None:
+        bundle["schema_version"] = schema_version
     with path.open("wb") as f:
-        pickle.dump(
-            {
-                "project_root": graph.project_root,
-                "graph": graph.graph,
-                "symbol_ranges": graph.symbol_ranges,
-                "name_to_vertex": graph.name_to_vertex,
-            },
-            f,
-        )
+        pickle.dump(bundle, f)
 
 
 def test_has_full_indexes_true_false(tmp_path):
@@ -194,6 +194,17 @@ def test_normalize_prebuilt_graphs_dry_run_and_write(tmp_path):
     assert (src / "graph.pkl.legacy").exists()
     loaded = CodeGraph.load_graph(src / "graph.pkl")
     assert loaded.project_root == os.path.abspath(src / "repo")
+
+
+def test_load_prebuilt_code_graph_accepts_schema_three_bundle(tmp_path):
+    model = "org/embed-small"
+    src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
+    _write_legacy_graph(src / "graph.pkl", schema_version=3)
+
+    graph = prebuilt.load_prebuilt_code_graph(str(tmp_path / "prebuilt"), "inst")
+
+    assert graph.graph.vcount() == 2
+    assert graph.name_to_vertex["pkg.mod.foo"] == 1
 
 
 def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):

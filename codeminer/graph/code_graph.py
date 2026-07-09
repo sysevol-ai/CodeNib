@@ -35,7 +35,9 @@ from ..types import (
 # v3 (this branch): edges carry anchor_file / anchor_line; range indexes
 #                   (file_nodes / file_edge_anchors) pickled with graph;
 #                   unified_to_names aux dict (display -> identity names)
-_SCHEMA_VERSION = 3
+# v4: symbol vertices persist the exact SCIP declaration occurrence as
+#     selection_line, independently from the symbol scope range.
+_SCHEMA_VERSION = 4
 
 
 @dataclass(slots=True)
@@ -180,6 +182,7 @@ class CodeGraph:
                     "file": self.current_file,
                     "start_line": scope_start_line,
                     "end_line": scope_end_line,
+                    "selection_line": line,
                 },
             )
         else:
@@ -191,6 +194,7 @@ class CodeGraph:
                     "file": self.current_file,
                     "start_line": line,
                     "end_line": line,
+                    "selection_line": line,
                 },
             )
 

@@ -44,6 +44,9 @@ public:
     std::optional<std::string> file;
     std::optional<int> start_line;
     std::optional<int> end_line;
+    // Identifier/declaration line from the SCIP occurrence. Unlike
+    // start_line, this excludes decorators, annotations, and doc comments.
+    std::optional<int> selection_line;
     // Cross-language display path: usually `{file}:{SymbolDisplay}`.
     // Matches the `unified_name` vertex attribute produced by the
     // Python-side decoders in codeminer/scip_interface/.
