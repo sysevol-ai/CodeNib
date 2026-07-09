@@ -186,6 +186,129 @@ def test_run_cycle_test_failure_llm_narrative(tmp_path):
     assert "LLM Analysis" in render_markdown(report)
 
 
+class TestCycleMemoryIntegration:
+    """Tests for cross-cycle memory wiring in run_cycle."""
+
+    def test_memory_dir_creates_store_and_persists(self, tmp_path):
+        """With memory_dir set, run_cycle writes a cycle row to the SQLite store."""
+        repo = _make_repo(tmp_path)
+        memory_dir = str(tmp_path / "memory")
+
+        config = GuardianConfig(
+            repo_path=str(repo),
+            since="10 years ago",
+            memory_dir=memory_dir,
+            graph_snapshot=False,  # no symbol_graph artifact in FakeManifest
+        )
+        run_cycle(config, manifest=_FakeManifest())
+
+        from codeminer.guardian.memory import MemoryStore
+        store = MemoryStore(memory_dir)
+        assert store.cycle_count() == 1
+        findings = store.recent_findings(k=10)
+        assert len(findings) >= 1
+        assert any("mod.py" in f["title"] for f in findings)
+
+    def test_two_cycles_satisfy_cross_cycle_assertion(self, tmp_path):
+        """Two consecutive cycles with memory_dir satisfy the M2 assertion."""
+        repo = _make_repo(tmp_path)
+        memory_dir = str(tmp_path / "memory")
+
+        config = GuardianConfig(
+            repo_path=str(repo),
+            since="10 years ago",
+            memory_dir=memory_dir,
+            graph_snapshot=False,
+        )
+        run_cycle(config, manifest=_FakeManifest())
+        run_cycle(config, manifest=_FakeManifest())
+
+        from codeminer.guardian.memory import MemoryStore
+        store = MemoryStore(memory_dir)
+        store.assert_cross_cycle()  # must not raise
+
+    def test_memoryless_arm_does_not_persist(self, tmp_path):
+        """arm='memoryless' runs the same code path but writes nothing to the store."""
+        repo = _make_repo(tmp_path)
+        memory_dir = str(tmp_path / "memory")
+
+        config = GuardianConfig(
+            repo_path=str(repo),
+            since="10 years ago",
+            memory_dir=memory_dir,
+            arm="memoryless",
+            graph_snapshot=False,
+        )
+        run_cycle(config, manifest=_FakeManifest())
+
+        from codeminer.guardian.memory import MemoryStore
+        store = MemoryStore(memory_dir)
+        assert store.cycle_count() == 0
+
+    def test_no_memory_dir_report_unchanged(self, tmp_path):
+        """Without memory_dir, run_cycle behaves identically to Phase 1."""
+        repo = _make_repo(tmp_path)
+        config = GuardianConfig(repo_path=str(repo), since="10 years ago")
+        report = run_cycle(config, manifest=_FakeManifest())
+        # Only churn findings — no drift findings without graph diff
+        assert all(f.kind == "churn" for f in report.findings)
+
+    def test_drift_findings_appended_when_graph_diff_runs(self, tmp_path):
+        """When a prior graph and current graph both exist, drift findings are added."""
+        from unittest.mock import patch as _patch
+
+        from codeminer.graph.code_graph import CodeGraph
+        from codeminer.guardian.graph_diff import DriftSignal
+        from codeminer.types import EDGE_TYPE_REFERENCE
+
+        repo = _make_repo(tmp_path)
+        memory_dir = str(tmp_path / "memory")
+
+        # Build a minimal prior graph and save it into the memory store.
+        prior = CodeGraph()
+        prior._add_vertex("A", {"type": "function", "file": "a.py"})
+        prior._add_vertex("B", {"type": "function", "file": "b.py"})
+        prior._add_edge("A", "B", EDGE_TYPE_REFERENCE)
+
+        from codeminer.guardian.memory import MemoryStore
+        store = MemoryStore(memory_dir)
+        # Manually persist a fake prior cycle with a graph.
+        from codeminer.guardian.report import Finding, GuardianReport
+        fake_prior_report = GuardianReport(
+            repo=str(repo),
+            commit="prior000",
+            generated_at="2026-01-01 00:00:00 UTC",
+            churn_window="90 days ago",
+        )
+        store.persist_cycle(fake_prior_report, graph=prior, memory_dir=memory_dir)
+
+        # Build a "current" graph that has an extra edge — triggers drift signal.
+        current = CodeGraph()
+        current._add_vertex("A", {"type": "function", "file": "a.py"})
+        current._add_vertex("B", {"type": "function", "file": "b.py"})
+        current._add_edge("A", "B", EDGE_TYPE_REFERENCE)
+        for i in range(5):
+            current._add_vertex(f"C{i}", {"type": "function", "file": f"c{i}.py"})
+            current._add_edge(f"C{i}", "B", EDGE_TYPE_REFERENCE)  # fan-in spike on B
+
+        # Patch _load_current_graph to return our synthetic current graph.
+        with _patch(
+            "codeminer.guardian.cycle._load_current_graph",
+            return_value=current,
+        ):
+            config = GuardianConfig(
+                repo_path=str(repo),
+                since="10 years ago",
+                memory_dir=memory_dir,
+                graph_snapshot=False,  # skip snapshot write in this test
+            )
+            report = run_cycle(config, manifest=_FakeManifest())
+
+        drift = [f for f in report.findings if f.kind == "drift"]
+        assert len(drift) >= 1
+        assert any("fan_in_spike" in f.title for f in drift)
+
+
 @pytest.mark.integration
 def test_run_cycle_end_to_end_bm25_only(tmp_path):
     """One real cycle: compile a BM25 index (no embeddings) and render a report."""

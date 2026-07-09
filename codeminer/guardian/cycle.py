@@ -48,6 +48,10 @@ class GuardianConfig:
     llm_model: str = "vertex_ai/gemini-2.5-flash"
     llm_max_tool_rounds: int = 3
     episode_dir: Optional[str] = None
+    # Cross-cycle memory
+    memory_dir: Optional[str] = None   # path to the memory store dir; None disables
+    arm: str = "memory"                # "memory" | "memoryless" ablation toggle
+    graph_snapshot: bool = True        # save CodeGraph snapshot each cycle for next diff
 
 
 def _current_commit(repo_path: str) -> str:
@@ -184,6 +188,27 @@ def _load_bm25_from_manifest(manifest: object) -> Optional[object]:
         return _BM25Adapter(idx)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Guardian: failed to load BM25 index from manifest: %s", exc)
+        return None
+
+
+def _load_current_graph(manifest: object) -> Optional[object]:
+    """Load the CodeGraph from the manifest's symbol_graph artifact, or None.
+
+    Requires 'symbol_graph' to be a fresh index entry with a graph.pkl inside
+    its artifact directory.  Returns None silently if unavailable.
+    """
+    try:
+        indexes = getattr(manifest, "indexes", None) or {}
+        entry = indexes.get("symbol_graph")
+        if entry is None or getattr(entry, "status", None) != "fresh":
+            return None
+        graph_pkl = os.path.join(entry.path, "graph.pkl")
+        if not os.path.exists(graph_pkl):
+            return None
+        from ..graph.code_graph import CodeGraph
+        return CodeGraph.load_graph(graph_pkl)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Guardian: failed to load current graph from manifest: %s", exc)
         return None
 
 
@@ -325,9 +350,53 @@ def _run_cycle_inner(
     file_count = int(getattr(manifest, "file_count", 0) or 0)
     capabilities = dict(getattr(manifest, "capabilities", {}) or {})
 
-    # 3. Observe — churn hotspots (always) + optional test run.
+    # 0. Memory — load cross-cycle state (prior graph + recent findings).
+    #    Numbered 0 because it logically precedes observe but depends on the
+    #    commit resolved in step 1.
+    _store: Optional[object] = None
+    _prior_graph: Optional[object] = None
+    _prior_findings: List[dict] = []
+    if config.memory_dir:
+        from .memory import MemoryStore
+        _store = MemoryStore(
+            config.memory_dir,
+            readonly=(config.arm == "memoryless"),
+        )
+        _prior_graph = _store.load_prior_graph(config.memory_dir)  # type: ignore[attr-defined]
+        _prior_findings = _store.recent_findings(k=5)  # type: ignore[attr-defined]
+        logger.info(
+            "Guardian: memory loaded — %d prior finding(s), prior graph: %s",
+            len(_prior_findings),
+            "yes" if _prior_graph is not None else "none",
+        )
+
+    # 3. Observe — churn hotspots + graph-diff drift signals + optional test run.
     hotspots = churn_hotspots(repo_path, since=config.since, top_n=config.top_n)
-    logger.info("Guardian: %d churn hotspots", len(hotspots))
+    logger.info("Guardian: %d churn hotspot(s)", len(hotspots))
+
+    # Graph-diff drift: compare current CodeGraph against prior cycle's snapshot.
+    # Requires 'symbol_graph' in index_types so the artifact exists in the manifest.
+    _current_graph: Optional[object] = None
+    _edge_changes: list = []
+    _drift_signals: list = []
+    if _prior_graph is not None:
+        _current_graph = _load_current_graph(manifest)
+        if _current_graph is not None:
+            from .graph_diff import compute_drift_signals, diff_graphs
+            _edge_changes = diff_graphs(_prior_graph, _current_graph)  # type: ignore[arg-type]
+            _drift_signals = compute_drift_signals(
+                _edge_changes, _current_graph, _prior_graph  # type: ignore[arg-type]
+            )
+            logger.info("Guardian: %d drift signal(s) from graph diff", len(_drift_signals))
+        else:
+            logger.debug(
+                "Guardian: symbol_graph artifact unavailable — skipping graph diff "
+                "(add 'symbol_graph' to index_types to enable)"
+            )
+    elif config.graph_snapshot and config.memory_dir:
+        # No prior graph yet (first cycle): load the current graph so we can
+        # snapshot it in step 7 and give the next cycle something to diff against.
+        _current_graph = _load_current_graph(manifest)
 
     test_result = None
     if config.run_tests:
@@ -410,7 +479,13 @@ def _run_cycle_inner(
                 )
             )
 
-    return GuardianReport(
+    # Append drift findings after churn/test findings.
+    if _drift_signals:
+        from .graph_diff import drift_findings
+        findings.extend(drift_findings(_drift_signals))
+
+    # 6. Build report.
+    report = GuardianReport(
         repo=repo_path,
         commit=commit,
         generated_at=generated_at,
@@ -422,3 +497,17 @@ def _run_cycle_inner(
         tests_summary=(test_result.summary if test_result else ""),
         llm_usage=_usage_acc,  # type: ignore[arg-type]
     )
+
+    # 7. Persist — write cycle state to memory store (no-op when memory_dir unset
+    #    or arm == "memoryless").
+    if _store is not None:
+        graph_to_save = _current_graph if config.graph_snapshot else None
+        cycle_no = _store.persist_cycle(  # type: ignore[attr-defined]
+            report,
+            graph=graph_to_save,
+            memory_dir=config.memory_dir,
+        )
+        if _edge_changes and cycle_no > 0:
+            _store.persist_edge_changes(cycle_no, _edge_changes)  # type: ignore[attr-defined]
+
+    return report
