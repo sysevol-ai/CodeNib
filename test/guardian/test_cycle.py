@@ -61,12 +61,11 @@ def test_run_cycle_with_injected_manifest(tmp_path):
 
     assert report.commit == "deadbeefcafebabe"  # from injected manifest
     assert report.file_count == 7
-    assert len(report.findings) == 1
-    assert report.findings[0].kind == "churn"
-    # _NullRetriever returns no results → evidence list is empty (investigate step ran)
+    # No LLM reporter → no findings in report; signals stay in the log.
+    assert len(report.findings) == 0
 
     md = render_markdown(report)
-    assert "mod.py" in md and "non-modifying" in md.lower()
+    assert "non-modifying" in md.lower()
 
 
 def test_run_cycle_injected_reporter_narrative_flows_through(tmp_path):
@@ -205,14 +204,16 @@ class TestCycleMemoryIntegration:
         from codeminer.guardian.memory import MemoryStore
         store = MemoryStore(memory_dir)
         assert store.cycle_count() == 1
-        findings = store.recent_findings(k=10)
-        assert len(findings) >= 1
-        assert any("mod.py" in f["title"] for f in findings)
+        # No LLM reporter → no findings in the report; the cycle row still exists.
+        assert store.recent_findings(k=10) == []
 
     def test_two_cycles_satisfy_cross_cycle_assertion(self, tmp_path):
-        """Two consecutive cycles with memory_dir satisfy the M2 assertion."""
+        """Two consecutive cycles with memory_dir satisfy the M2 assertion (cycle rows exist)."""
         repo = _make_repo(tmp_path)
         memory_dir = str(tmp_path / "memory")
+
+        def fake_reporter(hotspot):
+            return f"LLM: {hotspot.path} is risky."
 
         config = GuardianConfig(
             repo_path=str(repo),
@@ -220,8 +221,8 @@ class TestCycleMemoryIntegration:
             memory_dir=memory_dir,
             graph_snapshot=False,
         )
-        run_cycle(config, manifest=_FakeManifest())
-        run_cycle(config, manifest=_FakeManifest())
+        run_cycle(config, reporter=fake_reporter, manifest=_FakeManifest())
+        run_cycle(config, reporter=fake_reporter, manifest=_FakeManifest())
 
         from codeminer.guardian.memory import MemoryStore
         store = MemoryStore(memory_dir)
@@ -245,13 +246,12 @@ class TestCycleMemoryIntegration:
         store = MemoryStore(memory_dir)
         assert store.cycle_count() == 0
 
-    def test_no_memory_dir_report_unchanged(self, tmp_path):
-        """Without memory_dir, run_cycle behaves identically to Phase 1."""
+    def test_no_memory_dir_no_findings_without_llm(self, tmp_path):
+        """Without memory_dir and no LLM reporter, report has no findings."""
         repo = _make_repo(tmp_path)
         config = GuardianConfig(repo_path=str(repo), since="10 years ago")
         report = run_cycle(config, manifest=_FakeManifest())
-        # Only churn findings — no drift findings without graph diff
-        assert all(f.kind == "churn" for f in report.findings)
+        assert report.findings == []
 
     def test_drift_findings_appended_when_graph_diff_runs(self, tmp_path):
         """When a prior graph and current graph both exist, drift findings are added."""

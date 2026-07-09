@@ -451,16 +451,19 @@ def _run_cycle_inner(
     if reporter is None and _llm is not None:
         reporter = _llm_reporter(config, _retriever, _llm, _usage_acc)
 
-    from .investigate import investigate_hotspot
-
     findings: List[Finding] = []
     for hotspot in hotspots:
-        evidence = investigate_hotspot(hotspot, _retriever, top_k=config.retrieval_top_k)
-        narrative = reporter(hotspot) if reporter is not None else ""
+        if reporter is None:
+            # No LLM — signal already logged in observe step; skip report entry.
+            logger.debug("Guardian: no reporter for %s — skipping finding", hotspot.path)
+            continue
+        narrative = reporter(hotspot)
         logger.info(
-            "Guardian investigate — %s: %d evidence item(s)%s",
-            hotspot.path, len(evidence), ", LLM narrative" if narrative else "",
+            "Guardian investigate — %s: narrative %s",
+            hotspot.path, "produced" if narrative else "empty",
         )
+        if not narrative:
+            continue
         findings.append(
             Finding(
                 kind="churn",
@@ -469,7 +472,7 @@ def _run_cycle_inner(
                     f"Changed in **{hotspot.commit_count}** commits over "
                     f"{config.since}."
                 ),
-                evidence=evidence,
+                evidence=[],
                 narrative=narrative,
             )
         )
