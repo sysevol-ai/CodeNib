@@ -13,8 +13,6 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from codeminer.graph.code_graph import CodeGraph
-
 from .live_lsp_provider import compare_static_to_live_lsp_provider
 from .lsp_provider_validation import (
     FingerprintFn,
@@ -27,7 +25,7 @@ from .lsp_provider_validation import (
     render_lsp_provider_validation_markdown,
     summarize_lsp_provider_validation,
 )
-from .prebuilt import load_prebuilt_code_graph, repo_path_for
+from .prebuilt import load_code_graph_artifact, load_prebuilt_code_graph, repo_path_for
 
 
 def load_lsp_provider_requests(path: str | Path) -> list[LSPProviderRequest]:
@@ -59,8 +57,8 @@ def run_lsp_provider_validation_from_args(
 ) -> list[LSPProviderComparison]:
     """Run static-vs-live validation from parsed CLI arguments."""
 
-    graph = _load_graph_from_args(args)
     project_root = _project_root_from_args(args)
+    graph = _load_graph_from_args(args, project_root=project_root)
     requests = load_lsp_provider_requests(args.requests)
     fingerprint_fn, fingerprint_selector = _fingerprint_config_from_mode(
         args.fingerprint_mode
@@ -216,12 +214,14 @@ def _coerce_request(raw: Any) -> LSPProviderRequest:
     )
 
 
-def _load_graph_from_args(args: argparse.Namespace) -> Any:
+def _load_graph_from_args(args: argparse.Namespace, *, project_root: str) -> Any:
     if args.graph:
-        return CodeGraph.load_graph(str(args.graph))
+        return load_code_graph_artifact(str(args.graph), project_root=project_root)
     if not args.instance_id:
         raise ValueError("--instance-id is required with --prebuilt-root")
-    return load_prebuilt_code_graph(str(args.prebuilt_root), str(args.instance_id))
+    graph = load_prebuilt_code_graph(str(args.prebuilt_root), str(args.instance_id))
+    graph.project_root = str(Path(project_root).resolve())
+    return graph
 
 
 def _project_root_from_args(args: argparse.Namespace) -> str:

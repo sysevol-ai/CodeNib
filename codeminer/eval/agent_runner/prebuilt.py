@@ -32,8 +32,13 @@ requires the vector index.
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
 import pickle
+import shutil
+import sys
+import tempfile
 from typing import Any, Optional
 
 
@@ -73,23 +78,23 @@ def _symlink(target: str, link: str) -> None:
     os.symlink(target, link)
 
 
-def load_prebuilt_code_graph(prebuilt_root: str, instance_id: str):
-    """Load ``<prebuilt_root>/<instance_id>/graph.pkl`` as a ``CodeGraph``.
+def load_code_graph_artifact(path: str, *, project_root: Optional[str] = None):
+    """Load a current or legacy ``graph.pkl`` artifact as a ``CodeGraph``.
 
-    The prebuilt corpus is older than the current on-disk graph cache schema for
-    many instances: those pickles contain the historical flat bundle
-    ``{"graph", "name_to_vertex", "symbol_ranges", "project_root"}`` with no
-    ``schema_version``. Keep ``CodeGraph.load_graph`` strict for ordinary
-    caches, but accept that legacy bundle here because this module's contract is
-    explicitly to consume the external prebuilt tree.
+    Ordinary ``CodeGraph.load_graph`` stays strict for local caches. External
+    prebuilt corpora can contain older flat bundles or direct ``CodeGraph``
+    pickles, and their persisted ``project_root`` often points at the machine
+    that built the artifact. This helper accepts those artifact shapes and
+    optionally rebinds the graph to the current repo snapshot.
     """
     from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
 
-    path = os.path.join(instance_dir(prebuilt_root, instance_id), "graph.pkl")
     try:
-        return CodeGraph.load_graph(path)
+        graph = CodeGraph.load_graph(path)
     except (AttributeError, ValueError):
-        pass
+        graph = None
+    else:
+        return _normalize_loaded_graph(graph, project_root=project_root)
 
     with open(path, "rb") as f:
         data = pickle.load(f)
@@ -103,7 +108,7 @@ def load_prebuilt_code_graph(prebuilt_root: str, instance_id: str):
                 f"prebuilt graph.pkl at {path} has unsupported "
                 f"schema_version={schema_version!r}"
             )
-        graph = CodeGraph(project_root=data.get("project_root"))
+        graph = CodeGraph(project_root=project_root or data.get("project_root"))
         graph.graph = data["graph"]
         graph.symbol_ranges = data.get("symbol_ranges", {})
         graph.name_to_vertex = data.get("name_to_vertex") or _name_to_vertex(
@@ -115,11 +120,171 @@ def load_prebuilt_code_graph(prebuilt_root: str, instance_id: str):
     else:
         raise ValueError(f"prebuilt graph.pkl at {path} is not a CodeGraph bundle")
 
+    return _normalize_loaded_graph(graph, project_root=project_root)
+
+
+def load_prebuilt_code_graph(prebuilt_root: str, instance_id: str):
+    """Load ``<prebuilt_root>/<instance_id>/graph.pkl`` as a ``CodeGraph``.
+
+    The prebuilt corpus is older than the current on-disk graph cache schema for
+    many instances: those pickles contain the historical flat bundle
+    ``{"graph", "name_to_vertex", "symbol_ranges", "project_root"}`` with no
+    ``schema_version``. Keep ``CodeGraph.load_graph`` strict for ordinary
+    caches, but accept that legacy bundle here because this module's contract is
+    explicitly to consume the external prebuilt tree.
+    """
+    path = os.path.join(instance_dir(prebuilt_root, instance_id), "graph.pkl")
+    return load_code_graph_artifact(
+        path,
+        project_root=repo_path_for(prebuilt_root, instance_id),
+    )
+
+
+def _normalize_loaded_graph(graph: Any, *, project_root: Optional[str]):
+    if project_root:
+        graph.project_root = os.path.abspath(project_root)
     if not graph.name_to_vertex:
         graph.name_to_vertex = _name_to_vertex(graph.graph)
     if not graph._file_nodes or not graph._unified_to_names:
         graph.build_range_indexes()
     return graph
+
+
+def graph_artifact_metadata(path: str) -> dict[str, Any]:
+    """Return lightweight metadata for a graph pickle without normalizing it."""
+
+    with open(path, "rb") as f:
+        data = pickle.load(f)
+    if isinstance(data, dict):
+        return {
+            "shape": "bundle",
+            "schema_version": data.get("schema_version"),
+            "project_root": data.get("project_root"),
+        }
+    return {
+        "shape": type(data).__name__,
+        "schema_version": None,
+        "project_root": getattr(data, "project_root", None),
+    }
+
+
+def normalize_prebuilt_graphs(
+    prebuilt_root: str,
+    *,
+    instance_ids: Optional[list[str]] = None,
+    limit: Optional[int] = None,
+    write: bool = False,
+    backup_suffix: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Normalize prebuilt graph pickles to the current schema and repo root.
+
+    Dry-run by default. When ``write`` is true, each stale ``graph.pkl`` is
+    re-serialized with ``CodeGraph.save_graph`` so strict loaders can read it
+    directly and ``project_root`` points at ``<prebuilt_root>/<instance>/repo``.
+    """
+
+    from codeminer.graph.code_graph import _SCHEMA_VERSION
+
+    root = os.path.abspath(prebuilt_root)
+    selected = instance_ids or _prebuilt_instance_ids(root)
+    if limit is not None:
+        selected = selected[: max(0, int(limit))]
+
+    rows: list[dict[str, Any]] = []
+    for instance_id in selected:
+        graph_path = os.path.join(instance_dir(root, instance_id), "graph.pkl")
+        repo_root = repo_path_for(root, instance_id)
+        row: dict[str, Any] = {
+            "instance_id": instance_id,
+            "graph_path": graph_path,
+            "repo_root": repo_root,
+            "write": bool(write),
+        }
+        if not os.path.exists(graph_path):
+            row["status"] = "missing_graph"
+            rows.append(row)
+            continue
+
+        try:
+            before = graph_artifact_metadata(graph_path)
+            expected_root = os.path.abspath(repo_root)
+            actual_root = (
+                os.path.abspath(before["project_root"])
+                if before.get("project_root")
+                else None
+            )
+            needs_update = (
+                before.get("schema_version") != _SCHEMA_VERSION
+                or actual_root != expected_root
+            )
+            row.update(
+                {
+                    "before_schema_version": before.get("schema_version"),
+                    "before_project_root": before.get("project_root"),
+                    "needs_update": needs_update,
+                }
+            )
+            if not needs_update:
+                row["status"] = "current"
+                rows.append(row)
+                continue
+            if not write:
+                row["status"] = "would_update"
+                rows.append(row)
+                continue
+
+            _rewrite_prebuilt_graph(
+                graph_path,
+                project_root=repo_root,
+                backup_suffix=backup_suffix,
+            )
+            after = graph_artifact_metadata(graph_path)
+            row.update(
+                {
+                    "after_schema_version": after.get("schema_version"),
+                    "after_project_root": after.get("project_root"),
+                    "status": "updated",
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - batch audit should continue.
+            row.update({"status": "error", "error": f"{type(exc).__name__}: {exc}"})
+        rows.append(row)
+    return rows
+
+
+def _prebuilt_instance_ids(prebuilt_root: str) -> list[str]:
+    return sorted(
+        name
+        for name in os.listdir(prebuilt_root)
+        if os.path.exists(os.path.join(prebuilt_root, name, "graph.pkl"))
+    )
+
+
+def _rewrite_prebuilt_graph(
+    graph_path: str,
+    *,
+    project_root: str,
+    backup_suffix: Optional[str],
+) -> None:
+    graph = load_code_graph_artifact(graph_path, project_root=project_root)
+    if backup_suffix:
+        backup_path = graph_path + backup_suffix
+        if not os.path.exists(backup_path):
+            shutil.copy2(graph_path, backup_path)
+
+    directory = os.path.dirname(graph_path)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".graph.",
+        suffix=".pkl.tmp",
+        dir=directory,
+    )
+    os.close(fd)
+    try:
+        graph.save_graph(tmp_path)
+        os.replace(tmp_path, graph_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 def _name_to_vertex(igraph_obj: Any) -> dict:
@@ -195,3 +360,68 @@ def stage_prebuilt_indexes(
         BM25CodeIndexer(code_graph=graph).save_index(bm25_dir)
 
     return cache_dir
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Normalize prebuilt graph.pkl artifacts to the current schema."
+    )
+    parser.add_argument("prebuilt_root", help="Root containing instance directories")
+    parser.add_argument(
+        "--instance-id",
+        action="append",
+        dest="instance_ids",
+        help="Instance to normalize. Repeatable. Defaults to every graph.pkl.",
+    )
+    parser.add_argument(
+        "--instances-file",
+        help="Optional newline-delimited instance id file.",
+    )
+    parser.add_argument("--limit", type=int, help="Limit instances after sorting")
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Rewrite graph.pkl files. Omit for dry-run audit.",
+    )
+    parser.add_argument(
+        "--backup-suffix",
+        help="Optional suffix for one-time backups, for example .legacy.",
+    )
+    parser.add_argument("--output-json", help="Write per-instance JSON report")
+    return parser
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    instance_ids = list(args.instance_ids or [])
+    if args.instances_file:
+        with open(args.instances_file, encoding="utf-8") as f:
+            instance_ids.extend(line.strip() for line in f if line.strip())
+    rows = normalize_prebuilt_graphs(
+        args.prebuilt_root,
+        instance_ids=instance_ids or None,
+        limit=args.limit,
+        write=args.write,
+        backup_suffix=args.backup_suffix,
+    )
+    summary = _normalize_summary(rows)
+    payload = {"summary": summary, "rows": rows}
+    if args.output_json:
+        with open(args.output_json, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+            f.write("\n")
+    sys.stdout.write(json.dumps(summary, sort_keys=True) + "\n")
+    return 1 if summary.get("error", 0) else 0
+
+
+def _normalize_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
+    out: dict[str, int] = {"total": len(rows)}
+    for row in rows:
+        status = str(row.get("status") or "unknown")
+        out[status] = out.get(status, 0) + 1
+    return out
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

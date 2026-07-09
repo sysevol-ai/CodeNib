@@ -375,8 +375,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        graph, graph_load_ms = _load_graph_from_args(args)
         project_root = _project_root_from_args(args)
+        graph, graph_load_ms = _load_graph_from_args(args, project_root=project_root)
         if args.requests:
             requests = load_lsp_provider_requests(args.requests)
         else:
@@ -670,18 +670,19 @@ def _coerce_int(value: Any) -> Optional[int]:
         return None
 
 
-def _load_graph_from_args(args: argparse.Namespace) -> tuple[Any, float]:
-    from codeminer.graph.code_graph import CodeGraph
-
-    from .prebuilt import load_prebuilt_code_graph
+def _load_graph_from_args(
+    args: argparse.Namespace, *, project_root: str
+) -> tuple[Any, float]:
+    from .prebuilt import load_code_graph_artifact, load_prebuilt_code_graph
 
     start = time.monotonic()
     if args.graph:
-        graph = CodeGraph.load_graph(str(args.graph))
+        graph = load_code_graph_artifact(str(args.graph), project_root=project_root)
     else:
         if not args.instance_id:
             raise ValueError("--instance-id is required with --prebuilt-root")
         graph = load_prebuilt_code_graph(str(args.prebuilt_root), str(args.instance_id))
+        graph.project_root = str(Path(project_root).resolve())
     return graph, (time.monotonic() - start) * 1000
 
 

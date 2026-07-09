@@ -53,6 +53,7 @@ codeminer-mcp = "codeminer.mcp.server:main"
 codeminer-web = "codeminer.web.app:main"
 codeminer-lsp-provider-validate = "codeminer.eval.agent_runner.lsp_provider_cli:main"
 codeminer-lsp-replay-benchmark = "codeminer.eval.agent_runner.lsp_replay_benchmark:main"
+codeminer-prebuilt-normalize-graphs = "codeminer.eval.agent_runner.prebuilt:main"
 
 [project.optional-dependencies]
 dev = [

@@ -102,7 +102,8 @@ def test_cli_writes_reports_and_requires_promotion(tmp_path, monkeypatch):
     sentinel_graph = object()
     seen = {}
 
-    def fake_load_graph(args):
+    def fake_load_graph(args, *, project_root):
+        seen["project_root"] = project_root
         return sentinel_graph
 
     def fake_compare(requests, **kwargs):
@@ -138,6 +139,7 @@ def test_cli_writes_reports_and_requires_promotion(tmp_path, monkeypatch):
 
     assert code == 0
     assert seen["kwargs"]["graph"] is sentinel_graph
+    assert seen["project_root"] == str(tmp_path.resolve())
     assert seen["kwargs"]["language"] == "python"
     assert seen["kwargs"]["fingerprint_fn"] is fingerprint_lsp_start_location_set
     assert seen["requests"][0].normalized_capability == "definition"
@@ -163,7 +165,9 @@ def test_cli_defaults_to_auto_fingerprint_mode(tmp_path, monkeypatch):
     seen = {}
 
     monkeypatch.setattr(
-        lsp_provider_cli, "_load_graph_from_args", lambda args: object()
+        lsp_provider_cli,
+        "_load_graph_from_args",
+        lambda args, *, project_root: object(),
     )
 
     def fake_compare(requests, **kwargs):

@@ -148,6 +148,24 @@ and emits both `textDocument/definition` and `textDocument/references` requests
 up to `--max-per-capability`. A JSON/JSONL `--requests` file can be used when
 the same request set must be replayed across commits or machines.
 
+Some older prebuilt corpora ship legacy `graph.pkl` bundles with no schema
+version and stale `project_root` values from the machine that built them. Audit
+and normalize them before large replay runs:
+
+```bash
+codeminer-prebuilt-normalize-graphs /mnt/data/codeminer --limit 20
+codeminer-prebuilt-normalize-graphs /mnt/data/codeminer \
+  --write \
+  --backup-suffix .legacy \
+  --output-json /tmp/prebuilt-graph-normalize.json
+```
+
+Normalization rewrites only the graph pickle: it loads current or legacy graph
+artifacts, rebinds `project_root` to `<prebuilt>/<instance>/repo`, rebuilds
+missing range/unified indexes, and saves the graph with the current
+`CodeGraph.save_graph` schema. It does not re-run SCIP/LSP indexing or rebuild
+vector indexes.
+
 Replay is the preferred latency feedback loop for this gate because every row
 uses the same graph-facing request against both providers. Warmup repetitions
 are discarded; measured repetitions are aggregated by capability and overall.

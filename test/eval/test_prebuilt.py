@@ -122,9 +122,51 @@ def test_load_prebuilt_code_graph_accepts_legacy_bundle(tmp_path):
     graph = prebuilt.load_prebuilt_code_graph(str(tmp_path / "prebuilt"), "inst")
 
     assert graph.graph.vcount() == 2
+    assert graph.project_root == os.path.abspath(src / "repo")
     assert graph.name_to_vertex["pkg.mod.foo"] == 1
     assert graph._file_nodes["pkg/mod.py"]
     assert graph._unified_to_names["pkg/mod.py:foo()"] == ["pkg.mod.foo"]
+
+
+def test_load_code_graph_artifact_rebinds_project_root(tmp_path):
+    graph_path = tmp_path / "graph.pkl"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _write_legacy_graph(graph_path)
+
+    graph = prebuilt.load_code_graph_artifact(str(graph_path), project_root=str(repo))
+
+    assert graph.project_root == os.path.abspath(repo)
+    assert graph.graph.vcount() == 2
+
+
+def test_normalize_prebuilt_graphs_dry_run_and_write(tmp_path):
+    from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
+
+    model = "org/embed-small"
+    src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
+    _write_legacy_graph(src / "graph.pkl")
+
+    dry_rows = prebuilt.normalize_prebuilt_graphs(
+        str(tmp_path / "prebuilt"),
+        instance_ids=["inst"],
+    )
+
+    assert dry_rows[0]["status"] == "would_update"
+    assert dry_rows[0]["before_schema_version"] is None
+
+    rows = prebuilt.normalize_prebuilt_graphs(
+        str(tmp_path / "prebuilt"),
+        instance_ids=["inst"],
+        write=True,
+        backup_suffix=".legacy",
+    )
+
+    assert rows[0]["status"] == "updated"
+    assert rows[0]["after_schema_version"] == _SCHEMA_VERSION
+    assert (src / "graph.pkl.legacy").exists()
+    loaded = CodeGraph.load_graph(src / "graph.pkl")
+    assert loaded.project_root == os.path.abspath(src / "repo")
 
 
 def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):
@@ -140,6 +182,7 @@ def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):
     loaded = prebuilt.load_prebuilt_code_graph(str(tmp_path / "prebuilt"), "inst")
 
     assert loaded.graph.vcount() == 1
+    assert loaded.project_root == os.path.abspath(src / "repo")
     assert loaded.name_to_vertex["pkg/direct.py"] == 0
 
 
@@ -158,4 +201,5 @@ def test_stage_normalizes_legacy_graph_for_strict_loader(tmp_path):
     assert not staged.is_symlink()
     loaded = CodeGraph.load_graph(staged)
     assert loaded.graph.vcount() == 2
+    assert loaded.project_root == os.path.abspath(src / "repo")
     assert (cache / "bm25").is_dir()
