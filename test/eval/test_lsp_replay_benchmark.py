@@ -292,6 +292,7 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
         warmup_reps=2,
         warmup_until_stable=True,
         warmup_poll_seconds=0,
+        minimum_equivalent_count=1,
         measured_reps=2,
         wait_until_idle=True,
         live_provider_factory=_FakeLiveProvider,
@@ -305,6 +306,7 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
     assert payload["warmup_summary"]["error_count"] == 0
     assert payload["warmup_protocol"]["stable"] is True
     assert payload["warmup_protocol"]["live_nonempty_count"] == 2
+    assert payload["warmup_protocol"]["minimum_equivalent_count"] == 1
     assert payload["setup"]["warmup_wall_ms"] >= 0
     assert payload["setup"]["idle_wait_ms"] >= 0
     assert payload["subject"]["language"] == "python"

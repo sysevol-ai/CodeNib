@@ -136,6 +136,8 @@ codeminer-lsp-replay-benchmark \
   --command 'clangd' \
   --max-per-capability 50 \
   --warmup-reps 1 \
+  --warmup-until-stable \
+  --minimum-equivalent-count 2 \
   --measured-reps 5 \
   --output-json /tmp/lsp-replay-report.json \
   --output-markdown /tmp/lsp-replay-report.md \
@@ -215,6 +217,12 @@ median speedup, and median milliseconds saved. Setup costs are reported
 separately as graph load, static provider init, and live LSP start time. Latency
 distributions include only equivalent rows; mismatches and provider errors are
 guardrail failures, not speedup data.
+
+For paper runs, use `--warmup-until-stable` with a small non-zero
+`--minimum-equivalent-count`. Process initialization and even consecutive stable
+responses can precede full workspace analysis; the equivalence floor prevents a
+stable-but-unusable live state from entering the measured region. The default is
+zero so coverage studies can still measure snapshots with no equivalent rows.
 
 Latest local pilot, using a two-file temporary Python repo and
 `npx --yes --package pyright pyright-langserver --stdio`:

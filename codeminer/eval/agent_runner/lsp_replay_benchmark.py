@@ -146,6 +146,7 @@ def run_lsp_replay_benchmark(
     max_warmup_reps: int = 10,
     warmup_poll_seconds: float = 1.0,
     min_live_nonempty_fraction: float = 0.1,
+    minimum_equivalent_count: int = 0,
     measured_reps: int = 5,
     skip_probe: bool = False,
     compdb_path: str | Path | None = None,
@@ -229,6 +230,7 @@ def run_lsp_replay_benchmark(
             max_reps=max_warmup_reps,
             poll_seconds=warmup_poll_seconds,
             min_live_nonempty_fraction=min_live_nonempty_fraction,
+            minimum_equivalent_count=minimum_equivalent_count,
             fingerprint_selector=fingerprint_selector,
             clock=clock,
         )
@@ -272,6 +274,7 @@ def run_lsp_replay_benchmark(
             "max_reps": max_warmup_reps,
             "poll_seconds": warmup_poll_seconds,
             "min_live_nonempty_fraction": min_live_nonempty_fraction,
+            "minimum_equivalent_count": minimum_equivalent_count,
             "stable": readiness.stable,
             "live_nonempty_count": readiness.live_nonempty_count,
             "equivalent_count": readiness.equivalent_count,
@@ -487,6 +490,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-warmup-reps", type=int, default=10)
     parser.add_argument("--warmup-poll-seconds", type=float, default=1.0)
     parser.add_argument("--min-live-nonempty-fraction", type=float, default=0.1)
+    parser.add_argument(
+        "--minimum-equivalent-count",
+        type=int,
+        default=0,
+        help=(
+            "Require this many equivalent requests before live behavior can "
+            "be considered ready."
+        ),
+    )
     parser.add_argument("--measured-reps", type=int, default=5)
     parser.add_argument(
         "--command",
@@ -554,6 +566,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_warmup_reps=args.max_warmup_reps,
             warmup_poll_seconds=args.warmup_poll_seconds,
             min_live_nonempty_fraction=args.min_live_nonempty_fraction,
+            minimum_equivalent_count=args.minimum_equivalent_count,
             measured_reps=args.measured_reps,
             skip_probe=args.skip_probe,
             compdb_path=args.compile_db,
