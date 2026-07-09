@@ -10,6 +10,11 @@ import os
 import pickle
 from pathlib import Path
 
+from codeminer.compiler.snapshot_store import (
+    ArtifactProfile,
+    SnapshotArtifactStore,
+    SourceSnapshot,
+)
 from codeminer.eval.agent_runner import prebuilt
 
 
@@ -70,6 +75,28 @@ def test_has_full_indexes_true_false(tmp_path):
 def test_repo_and_instance_paths(tmp_path):
     assert prebuilt.instance_dir(str(tmp_path), "i").endswith("/i")
     assert prebuilt.repo_path_for(str(tmp_path), "i").endswith("/i/repo")
+
+
+def test_prebuilt_consumer_follows_snapshot_profile_alias(tmp_path):
+    model = "org/embed-small"
+    store = SnapshotArtifactStore(tmp_path)
+    binding = store.bind(
+        "org__repo-1",
+        SourceSnapshot("org/repo", "a" * 40),
+        ArtifactProfile.create(["python"]),
+    )
+    (binding.snapshot_dir / "repo").mkdir()
+    (binding.profile_dir / "graph.pkl").write_text("x")
+    suffix = prebuilt.model_suffix(model)
+    l2 = binding.profile_dir / "l2"
+    l2.mkdir()
+    (l2 / f"index_{suffix}.faiss").write_text("x")
+    (l2 / f"documents_{suffix}.pkl").write_text("x")
+
+    assert prebuilt.has_full_indexes(str(tmp_path), "org__repo-1", model)
+    assert Path(prebuilt.repo_path_for(str(tmp_path), "org__repo-1")).resolve() == (
+        binding.snapshot_dir / "repo"
+    )
 
 
 def test_stage_creates_symlinks_without_bm25(tmp_path):

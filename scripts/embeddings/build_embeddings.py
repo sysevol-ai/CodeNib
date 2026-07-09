@@ -29,14 +29,26 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from codeminer.index.embedding import build_hierarchical_vector_store
-from codeminer.log_utils import get_logger
-from codeminer.profiler import Profiler
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from codeminer.compiler.snapshot_store import ArtifactProfile  # noqa: E402
+from codeminer.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
+from codeminer.index.embedding import build_hierarchical_vector_store  # noqa: E402
+from codeminer.log_utils import get_logger  # noqa: E402
+from codeminer.profiler import Profiler  # noqa: E402
 
 logger = get_logger(__name__)
 
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+DEFAULT_MULTILINGUAL_REPO_LANG_CSV = (
+    project_root
+    / "codeminer"
+    / "dataset"
+    / "collect"
+    / "data"
+    / "swebench_multilingual_repos.csv"
+)
 
 
 def parse_args():
@@ -50,7 +62,7 @@ def parse_args():
     parser.add_argument(
         "--dataset-class",
         type=str,
-        choices=["swebench", "codeminer_base"],
+        choices=["swebench", "swebench_multilingual", "codeminer_base"],
         default="swebench",
         help=(
             "Dataset class to use. 'swebench' for SWE-bench Lite/Verified, "
@@ -161,6 +173,12 @@ def parse_args():
         help="Programming languages to process",
     )
     parser.add_argument(
+        "--multilingual-repo-language-csv",
+        type=str,
+        default=str(DEFAULT_MULTILINGUAL_REPO_LANG_CSV),
+        help="Repo-to-language map for SWE-bench Multilingual rows.",
+    )
+    parser.add_argument(
         "--max-lines-per-chunk",
         type=int,
         default=None,
@@ -190,6 +208,20 @@ def parse_args():
         type=str,
         default="/mnt/data/codeminer",
         help="Base directory to store embeddings",
+    )
+    parser.add_argument(
+        "--artifact-layout",
+        choices=["instance", "snapshot"],
+        default="instance",
+        help=(
+            "Store each instance separately or bind it to a shared, "
+            "content-addressed repository snapshot."
+        ),
+    )
+    parser.add_argument(
+        "--artifact-profile",
+        default="benchmark-v1",
+        help="Compatibility profile name used by snapshot-addressed artifacts.",
     )
     parser.add_argument(
         "--force-rebuild",
@@ -238,6 +270,7 @@ def parse_args():
 
 _DATASET_DEFAULTS = {
     "swebench": "princeton-nlp/SWE-bench_Lite",
+    "swebench_multilingual": "SWE-bench/SWE-bench_Multilingual",
     "codeminer_base": "fishmingyu/codeminer-base-dataset",
 }
 
@@ -256,6 +289,8 @@ def _map_language_group(label: Optional[str], fallback: str = "python") -> List[
     text = label.lower()
     if "rust" in text:
         return ["rust"]
+    if text == "go" or "golang" in text:
+        return ["go"]
     if "javascript" in text and "typescript" in text:
         return ["ts", "js"]
     if "typescript" in text or text == "ts":
@@ -264,20 +299,47 @@ def _map_language_group(label: Optional[str], fallback: str = "python") -> List[
         return ["js"]
     if "c++" in text or text in ("cpp", "c"):
         return ["cpp"]
-    if "go" in text or text == "golang":
-        return ["go"]
+    if "c#" in text or "csharp" in text:
+        return ["csharp"]
+    if "java" in text:
+        return ["java"]
+    if "kotlin" in text:
+        return ["kotlin"]
+    if "ruby" in text:
+        return ["ruby"]
+    if "php" in text:
+        return ["php"]
+    if "scala" in text:
+        return ["scala"]
     if "python" in text:
         return ["python"]
     return [fallback]
 
 
-def _resolve_languages(instance: dict, cli_languages: List[str]) -> List[str]:
+def _load_repo_language_map(path: str) -> dict[str, str]:
+    import csv
+
+    with Path(path).expanduser().open(encoding="utf-8") as fp:
+        return {
+            row["repo"]: row["language"]
+            for row in csv.DictReader(fp)
+            if row.get("repo") and row.get("language")
+        }
+
+
+def _resolve_languages(
+    instance: dict,
+    cli_languages: List[str],
+    repo_languages: Optional[dict[str, str]] = None,
+) -> List[str]:
     """Return the language list for a single instance.
 
     If the instance has a ``language_group`` column (codeminer-base), derive
     the chunker language from it.  Otherwise fall back to ``cli_languages``.
     """
-    lang_group = instance.get("language_group")
+    lang_group = instance.get("language_group") or (repo_languages or {}).get(
+        instance.get("repo", "")
+    )
     if lang_group:
         return _map_language_group(lang_group, fallback=cli_languages[0])
     return list(cli_languages)
@@ -291,6 +353,15 @@ def _load_dataset(args):
         from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
 
         return CodeMinerBaseDataset(
+            dataset=dataset_name,
+            split=args.split,
+            filter_instance=args.filter_instance,
+        )
+
+    if args.dataset_class == "swebench_multilingual":
+        from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
+
+        return SwebenchMultilingualDataset(
             dataset=dataset_name,
             split=args.split,
             filter_instance=args.filter_instance,
@@ -322,6 +393,12 @@ def build_embeddings(args):
     logger.info(f"Loaded {len(dataset_instances)} instance(s)")
     logger.info(f"Dataset class: {args.dataset_class}")
     logger.info(f"Embeddings will be stored in: {args.storage_dir}")
+    repo_languages = _load_repo_language_map(args.multilingual_repo_language_csv)
+    snapshot_store = (
+        SnapshotArtifactStore(args.storage_dir)
+        if args.artifact_layout == "snapshot"
+        else None
+    )
 
     # Setup profile output directory
     profile_output_dir = (
@@ -357,15 +434,46 @@ def build_embeddings(args):
             dataset_obj.process_instance(instance)
             repo_path = dataset_obj.get_repo_path(instance)
 
-            # Convert instance_id to directory name (replace / with __)
-            instance_dir_name = instance_id.replace("/", "__")
-
-            # Set final directory for this instance
-            instance_final_dir = Path(args.storage_dir) / instance_dir_name
-            instance_final_dir.mkdir(parents=True, exist_ok=True)
-
             # Resolve per-instance language (uses language_group when available)
-            instance_languages = _resolve_languages(instance, args.languages)
+            instance_languages = _resolve_languages(
+                instance,
+                args.languages,
+                repo_languages,
+            )
+
+            if snapshot_store is not None:
+                binding = snapshot_store.bind(
+                    instance_id,
+                    SourceSnapshot(
+                        repo=instance["repo"],
+                        commit=instance["base_commit"],
+                    ),
+                    ArtifactProfile.create(
+                        instance_languages,
+                        name=args.artifact_profile,
+                    ),
+                )
+                repo_path = str(
+                    snapshot_store.ensure_worktree(
+                        binding,
+                        source_repo=repo_path,
+                        commit=instance["base_commit"],
+                    )
+                )
+                instance_final_dir = binding.profile_dir
+                logger.info(
+                    "Snapshot artifact: snapshot=%s profile=%s "
+                    "snapshot_hit=%s profile_hit=%s alias_hit=%s",
+                    binding.snapshot_id,
+                    binding.profile_id,
+                    binding.snapshot_hit,
+                    binding.profile_hit,
+                    binding.alias_hit,
+                )
+            else:
+                instance_dir_name = instance_id.replace("/", "__")
+                instance_final_dir = Path(args.storage_dir) / instance_dir_name
+                instance_final_dir.mkdir(parents=True, exist_ok=True)
 
             logger.info(f"Repository path: {repo_path}")
             logger.info(f"Target directory: {instance_final_dir}")

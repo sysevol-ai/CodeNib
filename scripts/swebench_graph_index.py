@@ -19,16 +19,26 @@ import csv
 import json
 import logging
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-from codeminer.dataset.locbench import LocbenchDataset
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
-from codeminer.log_utils import get_logger
-from codeminer.ls_router import LSIndexer
-from codeminer.profiler import Profiler
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from codeminer.compiler.snapshot_store import ArtifactProfile  # noqa: E402
+from codeminer.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
+from codeminer.dataset.locbench import LocbenchDataset  # noqa: E402
+from codeminer.dataset.swebench import SwebenchDataset  # noqa: E402
+from codeminer.dataset.swebench_multilingual import (  # noqa: E402
+    SwebenchMultilingualDataset,
+)
+from codeminer.languages import language_capability_rows  # noqa: E402
+from codeminer.log_utils import get_logger  # noqa: E402
+from codeminer.ls_router import LSIndexer  # noqa: E402
+from codeminer.profiler import Profiler  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -39,6 +49,9 @@ DEFAULT_MULTILINGUAL_REPO_LANG_CSV = (
     / "collect"
     / "data"
     / "swebench_multilingual_repos.csv"
+)
+GRAPH_LANGUAGES = sorted(
+    row.key for row in language_capability_rows() if row.graph_backend is not None
 )
 
 
@@ -161,15 +174,29 @@ def parse_args() -> argparse.Namespace:
         "--language",
         type=str,
         default="auto",
-        choices=["auto", "python", "rust", "ts", "cpp"],
+        choices=["auto", *GRAPH_LANGUAGES, "js", "ts"],
         help="SCIP index language. Use auto to infer per instance.",
     )
     parser.add_argument(
         "--default-language",
         type=str,
         default="python",
-        choices=["python", "rust", "ts", "cpp"],
+        choices=GRAPH_LANGUAGES,
         help="Fallback language when auto inference is inconclusive.",
+    )
+    parser.add_argument(
+        "--artifact-layout",
+        choices=["instance", "snapshot"],
+        default="instance",
+        help=(
+            "Store each instance separately or bind it to a shared, "
+            "content-addressed repository snapshot."
+        ),
+    )
+    parser.add_argument(
+        "--artifact-profile",
+        default="benchmark-v1",
+        help="Compatibility profile name used by snapshot-addressed artifacts.",
     )
     parser.add_argument(
         "--multilingual-repo-language-csv",
@@ -196,13 +223,33 @@ def _map_language_label(label: Optional[str], default_language: str) -> str:
     text = label.lower()
     if "rust" in text:
         return "rust"
+    if text == "go" or "golang" in text:
+        return "go"
     if "javascript" in text or "typescript" in text or text == "ts" or text == "js":
-        return "ts"
+        return "typescript"
     if "c++" in text or text == "cpp" or text == "c":
         return "cpp"
+    if "c#" in text or "csharp" in text:
+        return "csharp"
+    if "java" in text:
+        return "java"
+    if "kotlin" in text:
+        return "kotlin"
+    if "ruby" in text:
+        return "ruby"
+    if "php" in text:
+        return "php"
+    if "scala" in text:
+        return "scala"
     if "python" in text:
         return "python"
     return default_language
+
+
+def _profile_languages(language: str) -> List[str]:
+    if language in {"js", "ts", "javascript", "typescript"}:
+        return ["javascript", "typescript"]
+    return [language]
 
 
 def _load_repo_language_map(csv_path: Path) -> Dict[str, str]:
@@ -479,6 +526,11 @@ def main() -> None:
         args.force,
         effective_skip_level if effective_skip_level is not None else "none",
     )
+    snapshot_store = (
+        SnapshotArtifactStore(output_path)
+        if args.artifact_layout == "snapshot"
+        else None
+    )
 
     failures: List[str] = []
     for idx, task in enumerate(tasks):
@@ -503,8 +555,35 @@ def main() -> None:
             )
             logger.info("Repository checked out at: %s", repo_path)
 
-            instance_output_dir = output_path / instance_id.replace("/", "__")
-            instance_output_dir.mkdir(parents=True, exist_ok=True)
+            if snapshot_store is not None:
+                binding = snapshot_store.bind(
+                    instance_id,
+                    SourceSnapshot(repo=repo, commit=base_commit),
+                    ArtifactProfile.create(
+                        _profile_languages(task.language),
+                        name=args.artifact_profile,
+                    ),
+                )
+                repo_path = str(
+                    snapshot_store.ensure_worktree(
+                        binding,
+                        source_repo=repo_path,
+                        commit=base_commit,
+                    )
+                )
+                instance_output_dir = binding.profile_dir
+                logger.info(
+                    "Snapshot artifact: snapshot=%s profile=%s "
+                    "snapshot_hit=%s profile_hit=%s alias_hit=%s",
+                    binding.snapshot_id,
+                    binding.profile_id,
+                    binding.snapshot_hit,
+                    binding.profile_hit,
+                    binding.alias_hit,
+                )
+            else:
+                instance_output_dir = output_path / instance_id.replace("/", "__")
+                instance_output_dir.mkdir(parents=True, exist_ok=True)
 
             profiler = Profiler(
                 name=f"scip_indexer[{instance_id}]",
