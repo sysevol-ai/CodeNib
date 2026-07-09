@@ -163,38 +163,40 @@ seconds to materialize graphs, while the earlier full embedding profiles took
 minutes per snapshot. The systems result must therefore report the break-even
 query count and amortized total cost, not present request latency in isolation.
 
-### Multilanguage replay pilot
+### Multilanguage replay result
 
-A second development pilot adds two repositories each for Go, Rust, and
-TypeScript/JavaScript (six exact snapshots, 120 independent requests). Snapshot
-selection used language and repository size before observing replay outcomes.
-The request population is still graph-covered and therefore not a traffic-wide
-coverage estimate. Live providers are `gopls v0.22.0`, `rust-analyzer
+The current controlled replay uses two repositories each for Go, Rust, and
+TypeScript/JavaScript: six exact snapshots and 120 independent requests.
+Snapshot selection used language and repository size before observing replay
+outcomes. The request population is graph-covered and therefore estimates the
+indexed fast-path population, not arbitrary LSP traffic. Live providers are
+`gopls v0.22.0`, `rust-analyzer
 0.3.2777-standalone`, and `typescript-language-server 5.3.0` with TypeScript
 6.0.3.
 
-This pilot uses behavioral readiness instead of an arbitrary source-file probe:
-start the server without probing, replay the fixed request set until live result
-fingerprints are identical for two consecutive rounds, require at least 10% of
-live results to be non-empty, then begin three measured repetitions. The run
-fails rather than emitting latency if behavior does not stabilize within ten
-warmup rounds. This protocol corrected false 0% results observed while
-rust-analyzer and tsserver were still loading their workspaces.
+The protocol starts each server without a source-file probe and replays the
+fixed request set until live result fingerprints are identical across
+consecutive rounds. It also requires at least 10% non-empty live results and at
+least two non-empty static/live-equivalent requests before readiness. The latter
+condition was added after TypeScript produced a stable but semantically unusable
+early state. Each ready server then runs five measured repetitions; failure to
+become ready within ten rounds aborts the snapshot.
 
 | language | snapshots | definition equivalent | references equivalent | overall equivalent | equivalent-row speedup p50 |
 |---|---:|---:|---:|---:|---:|
-| Go | 2 | 20/20 (100%) | 4/20 (20%) | 24/40 (60%) | 3.71x |
-| Rust | 2 | 19/20 (95%) | 13/20 (65%) | 32/40 (80%) | 3.74x |
-| TypeScript/JavaScript | 2 | 14/20 (70%) | 2/20 (10%) | 16/40 (40%) | 9.62x |
-| overall | 6 | 53/60 (88.3%) | 19/60 (31.7%) | 72/120 (60%) | 4.10x |
+| Go | 2 | 20/20 (100%) | 5/20 (25%) | 25/40 (62.5%) | 3.57x |
+| Rust | 2 | 19/20 (95%) | 13/20 (65%) | 32/40 (80%) | 3.20x |
+| TypeScript/JavaScript | 2 | 16/20 (80%) | 3/20 (15%) | 19/40 (47.5%) | 6.74x |
+| overall | 6 | 55/60 (91.7%) | 21/60 (35%) | 76/120 (63.3%) | 3.83x |
 
-Across these snapshots, graph load p50 is 14.6 ms and live process initialize
-p50 is 88.4 ms, but live behavioral warmup p50 is 7.58 seconds (p95 26.38
-seconds). Two transient `ContentModified` errors occurred among 380 warmup rows;
-all 360 measured rows completed without transport errors. The central systems
-opportunity is therefore larger than steady-state RPC latency: compile the
-snapshot once, load the static service in milliseconds, and amortize dynamic
-workspace analysis across all agent queries that share the snapshot.
+Across these snapshots, static request p50 is 0.54 ms and live request p50 is
+1.89 ms on equivalent rows. Graph load p50 is 10.81 ms and live process
+initialize p50 is 99.05 ms, but live behavioral readiness p50 is 8.34 seconds
+(p95 25.75 seconds). Two transient `ContentModified` errors occurred among 380
+warmup rows; all 600 measured rows completed without transport errors. The
+central systems opportunity is therefore larger than steady-state RPC latency:
+compile the snapshot once, load it in milliseconds, and amortize workspace
+analysis across all agent queries that share the snapshot.
 
 A one-snapshot-per-language break-even pilot reran the complete SCIP-to-graph
 pipeline with warm toolchain/dependency caches. Each rebuilt graph matched its
@@ -206,9 +208,9 @@ per-request latency savings, gives:
 
 | language | one-time static build | live setup/session | break-even sessions |
 |---|---:|---:|---:|
-| Go | 3.39 s | 2.07 s | 2 |
-| Rust | 8.17 s | 7.70 s | 2 |
-| TypeScript/JavaScript | 27.08 s | 7.60 s | 4 |
+| Go | 3.39 s | 2.09 s | 2 |
+| Rust | 8.17 s | 9.31 s | 1 |
+| TypeScript/JavaScript | 27.08 s | 7.51 s | 4 |
 
 These are single-run development measurements, not confidence intervals. The
 TypeScript wall time includes failed frozen-lockfile dependency preparation
@@ -227,7 +229,32 @@ TypeScript, and must fall back to live LSP. TypeScript also demonstrates that
 promotion cannot be global even within a capability; alias resolution and
 workspace state require a language/provider/profile-specific gate. Reports and
 exact request/graph hashes live under
-`/mnt/data/codeminer/results/lsp_replay_multilang_pilot`.
+`/mnt/data/codeminer/results/lsp_replay_multilang_final`.
+
+### Agent backend integration A/B
+
+A small crossover sanity check uses Haiku 4.5 on one Go, one Rust, and one
+TypeScript snapshot. For two exact-equivalent definition requests per snapshot,
+the prompt, tool schema, model, and result DTO are held constant while only the
+injected provider changes. Arm order alternates by request and prompt caching is
+disabled.
+
+| check | result |
+|---|---:|
+| paired requests | 6 |
+| protocol-valid cells | 12/12 |
+| identical tool-result payload pairs | 6/6 |
+| identical answer pairs | 6/6 |
+| identical turn/token count pairs | 6/6 |
+| static tool-duration p50 | 3.55 ms |
+| live tool-duration p50 | 4.82 ms |
+
+All cells used two turns and each pair consumed the same tokens. Agent wall time
+is intentionally not used as evidence of LSP speedup: remote model calls took
+seconds and dominated the millisecond provider difference. This A/B validates
+transparent backend substitution; the five-repetition request replay remains
+the primary latency result. Reports live under
+`/mnt/data/codeminer/results/lsp_agent_ab_multilang`.
 
 ## Confirmatory protocol
 

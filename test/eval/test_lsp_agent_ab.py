@@ -104,7 +104,21 @@ def test_exact_guard_ignores_provider_metadata(tmp_path):
     )
 
     assert guard["exact_match"] is True
+    assert guard["usable"] is True
     assert guard["static_result_sha256"] == guard["live_result_sha256"]
+
+
+def test_exact_guard_does_not_admit_matching_empty_results():
+    class EmptyProvider:
+        def definition(self, **kwargs):
+            return []
+
+    guard = exact_lsp_result_guard(
+        _request(), static_provider=EmptyProvider(), live_provider=EmptyProvider()
+    )
+
+    assert guard["exact_match"] is True
+    assert guard["usable"] is False
 
 
 def test_run_lsp_agent_arm_records_provider_and_protocol(tmp_path):

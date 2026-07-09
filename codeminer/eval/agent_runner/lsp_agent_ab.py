@@ -189,6 +189,7 @@ def exact_lsp_result_guard(
     return {
         "request": request.to_dict(),
         "exact_match": static_payload == live_payload,
+        "usable": bool(static_payload) and static_payload == live_payload,
         "static_result_count": len(static_payload),
         "live_result_count": len(live_payload),
         "static_result_sha256": _sha256_json(static_payload),
@@ -302,7 +303,7 @@ def run_lsp_agent_ab(
         eligible = [
             request
             for request, guard in zip(candidates, guards, strict=True)
-            if guard["exact_match"]
+            if guard["usable"]
         ][:max_cases]
         if len(eligible) < max_cases:
             raise RuntimeError(

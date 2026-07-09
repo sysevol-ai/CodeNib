@@ -97,7 +97,7 @@ def wait_for_lsp_provider_readiness(
         completed_reps = rep
         signature, live_nonempty_count, error_count = _reference_state(comparisons)
         equivalent_count = sum(
-            comparison.same_result is True for comparison in comparisons
+            _is_usable_equivalent(comparison) for comparison in comparisons
         )
         minimum_nonempty = math.ceil(len(requests) * min_live_nonempty_fraction)
         converged = (
@@ -154,6 +154,14 @@ def _reference_state(
             )
         )
     return tuple(signature), nonempty_count, error_count
+
+
+def _is_usable_equivalent(comparison: Any) -> bool:
+    if comparison.same_result is not True:
+        return False
+    static_count = comparison.static_call.result_count
+    live_count = comparison.reference_call.result_count
+    return bool(static_count and live_count)
 
 
 __all__ = ["LSPProviderReadiness", "wait_for_lsp_provider_readiness"]

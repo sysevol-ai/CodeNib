@@ -20,6 +20,9 @@ Current implementation:
 - Agent `lsp_definition`, `lsp_references`, and `lsp_route` skills use that
   provider, so dynamic tool calls get the same list-shaped results plus
   trace-only provider metadata.
+- Native `definition` and `references` results are normalized to a stable,
+  provider-independent location DTO. Rich symbol nodes remain available through
+  the CodeMiner-only `route` capability.
 - MCP `lsp_*` tools use the same provider and keep their serialized output
   format unchanged.
 - Runtime traces record `lsp_provider`, `lsp_result_fingerprint`, and a compact
@@ -36,11 +39,11 @@ without starting or round-tripping through a language server. It is separate
 from startup preload and compact-context experiments.
 
 The behavior guardrail is **agent-visible equivalence**, not byte-for-byte
-native LSP parity. For each supported capability, the static provider must
-return the same ordered set of locations that the agent/MCP tool contract will
-show to the model or client. Compare the same graph-facing file-position
-request against live JSON-RPC LSP, and only treat the static path as a drop-in
-acceleration when both providers return the same ordered fingerprint.
+native LSP parity. For each supported native capability, both providers emit
+the same sorted location DTO fields; provider identity and behavior contract
+stay in trace metadata and are not shown to the model. The replay gate compares
+locations for coverage, and the agent A/B additionally requires the complete
+model-visible DTO payload hash to match before admitting a case.
 
 Full native LSP behavior is intentionally a larger contract than this gate:
 language servers can return token selection ranges instead of symbol scopes,
@@ -50,11 +53,11 @@ JSON-RPC equivalence from a static snapshot. It should claim fast-path
 equivalence only for the request classes whose fingerprints match under the
 agent-visible output contract, and fall back explicitly otherwise.
 
-For `definition` and `references`, the first gate uses start-location
-fingerprints (`file:start_line`). Live LSP often returns a token selection range,
-while the static graph may return an enclosing symbol range and richer symbol
-name. Full range/symbol equality is a stricter later gate, not the initial
-dynamic-routing requirement.
+For `definition`, replay preserves ordered start locations. For `references`,
+it compares an unordered start-location set because JSON-RPC does not promise a
+cross-provider ordering. The provider facade then sorts and deduplicates those
+locations before serialization, so an equivalent request has an identical tool
+payload in both arms.
 
 Validation entry point:
 
@@ -220,9 +223,33 @@ guardrail failures, not speedup data.
 
 For paper runs, use `--warmup-until-stable` with a small non-zero
 `--minimum-equivalent-count`. Process initialization and even consecutive stable
-responses can precede full workspace analysis; the equivalence floor prevents a
-stable-but-unusable live state from entering the measured region. The default is
-zero so coverage studies can still measure snapshots with no equivalent rows.
+responses can precede full workspace analysis; the non-empty equivalence floor
+prevents a stable-but-unusable live state from entering the measured region. The
+default is zero so coverage studies can still measure snapshots with no
+equivalent rows.
+
+Controlled agent backend A/B:
+
+```bash
+codeminer-lsp-agent-ab \
+  --graph /path/to/graph.pkl \
+  --project-root /path/to/repo \
+  --language go \
+  --requests /path/to/fixed-requests.json \
+  --command 'gopls serve' \
+  --capability definition \
+  --max-cases 2 \
+  --reps 1 \
+  --model vertex_ai/claude-haiku-4-5 \
+  --output-json /tmp/lsp-agent-ab.json
+```
+
+This crossover holds the model, prompt, tool name/schema, and model-visible
+result constant; it changes only the injected provider. Prompt caching is off
+by default to avoid an arm-order confound. Use this as an integration guard for
+arguments, traces, turns, tokens, and answers. Remote model wall time is not the
+LSP latency metric because API variance is orders of magnitude larger than one
+warm semantic request.
 
 Latest local pilot, using a two-file temporary Python repo and
 `npx --yes --package pyright pyright-langserver --stdio`:

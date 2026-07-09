@@ -495,8 +495,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Require this many equivalent requests before live behavior can "
-            "be considered ready."
+            "Require this many non-empty equivalent requests before live "
+            "behavior can be considered ready."
         ),
     )
     parser.add_argument("--measured-reps", type=int, default=5)
