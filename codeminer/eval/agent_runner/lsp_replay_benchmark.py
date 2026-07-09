@@ -274,6 +274,7 @@ def run_lsp_replay_benchmark(
             "min_live_nonempty_fraction": min_live_nonempty_fraction,
             "stable": readiness.stable,
             "live_nonempty_count": readiness.live_nonempty_count,
+            "equivalent_count": readiness.equivalent_count,
         },
         "measured_reps": measured_reps,
         "warmup_summary": _summarize_rows(warmup_rows),

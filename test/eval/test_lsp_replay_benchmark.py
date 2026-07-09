@@ -11,7 +11,9 @@ from typing import Any, Mapping, Optional, Sequence
 
 import pytest
 
+from codeminer.agent.lsp_provider import StaticLSPProvider
 from codeminer.eval.agent_runner.live_lsp_provider import lsp_locations_to_nodes
+from codeminer.eval.agent_runner.lsp_readiness import wait_for_lsp_provider_readiness
 from codeminer.eval.agent_runner.lsp_replay_benchmark import (
     exit_code_for_lsp_replay_benchmark,
     generate_lsp_replay_requests,
@@ -144,6 +146,50 @@ class _FakeLiveProvider:
             relation=relation,
             node_type=node_type,
         )
+
+
+def test_readiness_requires_requested_equivalent_case_count(tmp_path):
+    graph = _range_graph(tmp_path)
+    request = generate_lsp_replay_requests(
+        graph, capabilities=["definition"], max_per_capability=1
+    )[0]
+
+    class LoadingProvider:
+        def __init__(self):
+            self.calls = 0
+
+        def __call__(self, capability, arguments):
+            self.calls += 1
+            target = "caller.py" if self.calls <= 2 else "callee.py"
+            line = 1 if self.calls <= 2 else 4
+            return lsp_locations_to_nodes(
+                [
+                    {
+                        "uri": (tmp_path / target).as_uri(),
+                        "range": {
+                            "start": {"line": line, "character": 0},
+                            "end": {"line": line, "character": 1},
+                        },
+                    }
+                ],
+                project_root=tmp_path,
+                relation="json-rpc definition",
+                node_type="definition",
+            )
+
+    readiness = wait_for_lsp_provider_readiness(
+        [request],
+        graph=graph,
+        static_provider=StaticLSPProvider(graph),
+        live_provider=LoadingProvider(),
+        minimum_reps=2,
+        max_reps=4,
+        poll_seconds=0,
+        minimum_equivalent_count=1,
+    )
+
+    assert readiness.completed_reps == 4
+    assert readiness.equivalent_count == 1
 
 
 def test_generate_lsp_replay_requests_from_reference_edges(tmp_path):

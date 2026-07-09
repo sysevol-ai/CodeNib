@@ -289,6 +289,7 @@ def run_lsp_agent_ab(
             until_stable=True,
             max_reps=max_warmup_reps,
             poll_seconds=warmup_poll_seconds,
+            minimum_equivalent_count=max_cases,
         )
         guards = [
             exact_lsp_result_guard(
@@ -347,6 +348,7 @@ def run_lsp_agent_ab(
             "live_start_ms": live_start_ms,
             "warmup_wall_ms": readiness.wall_ms,
             "warmup_reps": readiness.completed_reps,
+            "warmup_equivalent_count": readiness.equivalent_count,
         },
         "candidate_count": len(candidates),
         "guardrails": guards,

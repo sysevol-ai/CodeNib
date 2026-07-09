@@ -32,6 +32,7 @@ class LSPProviderReadiness:
     completed_reps: int
     stable: bool
     live_nonempty_count: int
+    equivalent_count: int
     wall_ms: float
 
 
@@ -46,6 +47,7 @@ def wait_for_lsp_provider_readiness(
     max_reps: int = 10,
     poll_seconds: float = 1.0,
     min_live_nonempty_fraction: float = 0.1,
+    minimum_equivalent_count: int = 0,
     fingerprint_selector: FingerprintSelector = default_lsp_provider_fingerprint,
     clock: Clock = time.monotonic,
     sleep: Sleep = time.sleep,
@@ -64,12 +66,17 @@ def wait_for_lsp_provider_readiness(
         raise ValueError("max_reps must be at least minimum_reps")
     if not 0 <= min_live_nonempty_fraction <= 1:
         raise ValueError("min_live_nonempty_fraction must be between 0 and 1")
+    if minimum_equivalent_count < 0:
+        raise ValueError("minimum_equivalent_count must be non-negative")
+    if minimum_equivalent_count > len(requests):
+        raise ValueError("minimum_equivalent_count exceeds request count")
 
     rows: list[Mapping[str, Any]] = []
     limit = max_reps if until_stable else minimum_reps
     previous_signature: Optional[tuple[Any, ...]] = None
     stable = not until_stable
     live_nonempty_count = 0
+    equivalent_count = 0
     completed_reps = 0
     start = clock()
 
@@ -89,11 +96,15 @@ def wait_for_lsp_provider_readiness(
             rows.append(row)
         completed_reps = rep
         signature, live_nonempty_count, error_count = _reference_state(comparisons)
+        equivalent_count = sum(
+            comparison.same_result is True for comparison in comparisons
+        )
         minimum_nonempty = math.ceil(len(requests) * min_live_nonempty_fraction)
         converged = (
             previous_signature == signature
             and error_count == 0
             and live_nonempty_count >= minimum_nonempty
+            and equivalent_count >= minimum_equivalent_count
         )
         if until_stable and rep >= minimum_reps and converged:
             stable = True
@@ -107,13 +118,15 @@ def wait_for_lsp_provider_readiness(
         raise RuntimeError(
             "live reference results did not stabilize after "
             f"{completed_reps} warmup reps "
-            f"(nonempty={live_nonempty_count}/{len(requests)})"
+            f"(nonempty={live_nonempty_count}/{len(requests)}, "
+            f"equivalent={equivalent_count}/{len(requests)})"
         )
     return LSPProviderReadiness(
         rows=rows,
         completed_reps=completed_reps,
         stable=stable,
         live_nonempty_count=live_nonempty_count,
+        equivalent_count=equivalent_count,
         wall_ms=wall_ms,
     )
 
