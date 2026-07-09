@@ -370,12 +370,15 @@ def _run_cycle_inner(
             "yes" if _prior_graph is not None else "none",
         )
 
-    # 3. Observe — churn hotspots + graph-diff drift signals + optional test run.
+    # 3. Observe — produce signals and log them; no Finding objects yet.
     hotspots = churn_hotspots(repo_path, since=config.since, top_n=config.top_n)
-    logger.info("Guardian: %d churn hotspot(s)", len(hotspots))
+    for h in hotspots:
+        logger.info(
+            "Guardian observe — churn signal: %s (%d commits in %s)",
+            h.path, h.commit_count, config.since,
+        )
 
-    # Graph-diff drift: compare current CodeGraph against prior cycle's snapshot.
-    # Requires 'symbol_graph' in index_types so the artifact exists in the manifest.
+    # Graph-diff drift signals (structural, deterministic — no LLM).
     _current_graph: Optional[object] = None
     _edge_changes: list = []
     _drift_signals: list = []
@@ -387,15 +390,17 @@ def _run_cycle_inner(
             _drift_signals = compute_drift_signals(
                 _edge_changes, _current_graph, _prior_graph  # type: ignore[arg-type]
             )
-            logger.info("Guardian: %d drift signal(s) from graph diff", len(_drift_signals))
+            for s in _drift_signals:
+                logger.info(
+                    "Guardian observe — drift signal [%s]: %s — %s",
+                    s.kind, s.symbol, s.detail,
+                )
         else:
             logger.debug(
                 "Guardian: symbol_graph artifact unavailable — skipping graph diff "
                 "(add 'symbol_graph' to index_types to enable)"
             )
     elif config.graph_snapshot and config.memory_dir:
-        # No prior graph yet (first cycle): load the current graph so we can
-        # snapshot it in step 7 and give the next cycle something to diff against.
         _current_graph = _load_current_graph(manifest)
 
     test_result = None
@@ -403,7 +408,7 @@ def _run_cycle_inner(
         logger.info("Guardian: running test suite (gated by --run-tests)")
         test_result = run_test_suite(repo_path)
 
-    # 4. Build retriever — used by the LLM's search_code tool calls.
+    # 4. Build retriever — used by investigation (static evidence + LLM tool calls).
     #
     # Retriever selection driven by index_types:
     #   - "vector" present  → HybridRetrievePipeline (BM25 + embeddings; needs GPU)
@@ -433,9 +438,8 @@ def _run_cycle_inner(
         logger.info("Guardian: using BM25-only retriever (no GPU required)")
         _retriever = _load_bm25_from_manifest(manifest) or _NullRetriever()
 
-    # 5. Report — optionally run the LLM investigation step.
-    #    A single LLM instance is shared across all signal types so we don't
-    #    pay the connection-setup cost multiple times per cycle.
+    # 5. Investigate — gather evidence for each signal; optionally run LLM for narrative.
+    #    Only investigated findings appear in the report; raw signals stay in the log.
     _llm: Optional[object] = None
     _usage_acc: Optional[object] = None
     if config.use_llm:
@@ -447,9 +451,16 @@ def _run_cycle_inner(
     if reporter is None and _llm is not None:
         reporter = _llm_reporter(config, _retriever, _llm, _usage_acc)
 
+    from .investigate import investigate_hotspot
+
     findings: List[Finding] = []
     for hotspot in hotspots:
+        evidence = investigate_hotspot(hotspot, _retriever, top_k=config.retrieval_top_k)
         narrative = reporter(hotspot) if reporter is not None else ""
+        logger.info(
+            "Guardian investigate — %s: %d evidence item(s)%s",
+            hotspot.path, len(evidence), ", LLM narrative" if narrative else "",
+        )
         findings.append(
             Finding(
                 kind="churn",
@@ -458,13 +469,20 @@ def _run_cycle_inner(
                     f"Changed in **{hotspot.commit_count}** commits over "
                     f"{config.since}."
                 ),
-                evidence=[],
+                evidence=evidence,
                 narrative=narrative,
             )
         )
 
+    # Drift findings: structural analysis from graph-diff, kept as investigated findings.
+    if _drift_signals:
+        from .graph_diff import drift_findings
+        findings.extend(drift_findings(_drift_signals))
+
+    # Test failures: concrete run results; LLM investigation adds root-cause narrative.
     if test_result is not None and test_result.ran:
         for failure in test_result.failures:
+            logger.info("Guardian observe — test failure: %s", failure.nodeid)
             narrative = (
                 _investigate_test_failure(failure, _retriever, _llm, config, _usage_acc)
                 if _llm is not None
@@ -478,11 +496,6 @@ def _run_cycle_inner(
                     narrative=narrative,
                 )
             )
-
-    # Append drift findings after churn/test findings.
-    if _drift_signals:
-        from .graph_diff import drift_findings
-        findings.extend(drift_findings(_drift_signals))
 
     # 6. Build report.
     report = GuardianReport(

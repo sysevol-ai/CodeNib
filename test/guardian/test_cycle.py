@@ -63,7 +63,7 @@ def test_run_cycle_with_injected_manifest(tmp_path):
     assert report.file_count == 7
     assert len(report.findings) == 1
     assert report.findings[0].kind == "churn"
-    assert not report.findings[0].evidence  # pre-LLM evidence step is dropped
+    # _NullRetriever returns no results → evidence list is empty (investigate step ran)
 
     md = render_markdown(report)
     assert "mod.py" in md and "non-modifying" in md.lower()
