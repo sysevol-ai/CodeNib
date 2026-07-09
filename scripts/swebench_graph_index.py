@@ -480,6 +480,7 @@ def main() -> None:
         effective_skip_level if effective_skip_level is not None else "none",
     )
 
+    failures: List[str] = []
     for idx, task in enumerate(tasks):
         instance = task.instance
         instance_id = instance["instance_id"]
@@ -542,13 +543,22 @@ def main() -> None:
                     len(graph.graph.vs),
                     len(graph.graph.es),
                 )
+                quality = indexer.index_quality_report
+                if quality is not None:
+                    logger.info(
+                        "Index quality: %s (%s)",
+                        "passed" if quality["passed"] else "failed",
+                        instance_output_dir / "index_quality.json",
+                    )
             else:
                 logger.error("Failed to create graph index for %s", instance_id)
+                failures.append(instance_id)
 
         except Exception as exc:
             logger.error(
                 "Error processing instance %s: %s", instance_id, exc, exc_info=True
             )
+            failures.append(instance_id)
             continue
 
     logger.info("\n%s", "=" * 80)
@@ -556,6 +566,11 @@ def main() -> None:
     logger.info("Processed %d instances", len(tasks))
     logger.info("Indexes stored in: %s", output_path)
     logger.info("%s", "=" * 80)
+    if failures:
+        raise SystemExit(
+            "Graph indexing failed for "
+            f"{len(failures)} instance(s): {', '.join(failures)}"
+        )
 
 
 if __name__ == "__main__":

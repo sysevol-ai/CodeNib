@@ -599,6 +599,20 @@ acceleration gate yet. Kotlin, PHP, and Scala should get C++ acceleration only
 after larger real-repo profiles show local decode/build is a material
 bottleneck.
 
+C/C++ clangd artifact status: the provider-level LSP acceleration benchmark now
+requires an index-quality report before latency measurement. The shared gate
+checks compile DB size and resolved files, repository translation-unit coverage,
+graph-to-compile-DB translation-unit coverage, range/unified metadata, and
+optional old/new vertex and edge ratios. A
+19-instance `codeminer-base` calibration found one false-success artifact:
+`micropython__micropython-10095` had only 2 compile commands and a graph at
+12.6% of baseline vertices. The corrected `ports/unix` capture produced 286
+compile commands and a graph with 9,151 vertices and 72,207 edges. clangd and
+decode were not the dominant cold-start costs; repository preparation,
+submodules, CMake, Bear, and Make remain the optimization surface. Bear
+candidate selection and warning-as-error normalization therefore belong in the
+Python indexing harness, not in the C++ decoder layer.
+
 Python SCIP decoders now share descriptor extraction, descriptor suffix
 normalization, and `unified_name` formatting helpers in
 `codeminer.scip_interface.scip_decode_utils` where symbol shapes are compatible.

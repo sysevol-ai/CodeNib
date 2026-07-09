@@ -24,6 +24,14 @@ from typing import List, Optional, Union
 from ..graph.code_graph import CodeGraph
 from ..log_utils import get_logger
 from ..profiler import Profiler
+from .index_quality import (
+    IndexQualityPolicy,
+    assess_index_quality,
+    compilation_database_entry_count,
+    compilation_database_stats,
+    discover_compilation_database,
+    prepare_compilation_database_for_indexing,
+)
 
 logger = get_logger("clangd_indexer")
 
@@ -64,6 +72,10 @@ class ClangdIndexer:
         self.graph_file = self.output_dir / "graph.pkl"
         self.exclude_patterns = exclude_patterns if exclude_patterns else []
         self.profiler = profiler or Profiler("clangd_indexer")
+        self.compdb_path: Optional[Path] = None
+        self.compdb_warning_rewrite_count = 0
+        self.index_quality_report: Optional[dict] = None
+        self._quality_policy = IndexQualityPolicy()
 
         # clangd decides its own output location (project-local
         # .cache/clangd/index/).  _run_clangd_indexer overwrites this
@@ -256,6 +268,9 @@ class ClangdIndexer:
         *,
         reset_profiler: bool = True,
         report_profile: bool = True,
+        enforce_quality: bool = True,
+        quality_policy: Optional[IndexQualityPolicy] = None,
+        quality_baseline_graph: Optional[CodeGraph] = None,
         **kwargs,
     ):
         """
@@ -272,6 +287,27 @@ class ClangdIndexer:
 
         if output_file is None:
             output_file = str(self.graph_file)
+        self._quality_policy = quality_policy or IndexQualityPolicy()
+
+        requested_compdb = kwargs.get("compdb_path")
+        if requested_compdb and self._is_valid_compdb(Path(requested_compdb)):
+            self.compdb_path = Path(requested_compdb).resolve()
+        else:
+            self.compdb_path = discover_compilation_database(
+                self.project_root,
+                extra_candidates=(self.output_dir / "compile_commands.json",),
+            )
+
+        if (
+            quality_baseline_graph is None
+            and skip_level != "graph"
+            and self.graph_file.exists()
+        ):
+            try:
+                quality_baseline_graph = CodeGraph.load_graph(str(self.graph_file))
+                logger.info("Using existing graph.pkl as the quality baseline")
+            except Exception as exc:
+                logger.warning("Could not load graph quality baseline: %s", exc)
 
         # Check graph cache
         if skip_level == "graph" and self.graph_file.exists():
@@ -282,7 +318,22 @@ class ClangdIndexer:
                     f"Loaded cached graph "
                     f"({len(graph.graph.vs)} nodes, {len(graph.graph.es)} edges)"
                 )
-                return graph
+                if (
+                    self._record_index_quality(
+                        graph,
+                        baseline_graph=quality_baseline_graph,
+                        policy=quality_policy,
+                    )
+                    or not enforce_quality
+                ):
+                    return graph
+                logger.warning(
+                    "Cached graph failed index quality checks; rebuilding: %s",
+                    ", ".join(self.index_quality_report["failure_names"]),
+                )
+                quality_baseline_graph = graph
+                self._quarantine_graph_artifact(self.graph_file)
+                skip_level = None
             except Exception as e:
                 logger.warning(f"Failed to load cached graph: {e}. Continuing ...")
 
@@ -301,27 +352,42 @@ class ClangdIndexer:
             should_generate = True
 
         # Auto-discover / generate compile_commands.json when needed
-        if should_generate and (
-            "compdb_path" not in kwargs or not kwargs.get("compdb_path")
-        ):
-            for candidate in (
-                self.project_root / "compile_commands.json",
-                self.project_root / "build" / "compile_commands.json",
-            ):
-                if self._is_valid_compdb(candidate):
-                    kwargs["compdb_path"] = str(candidate)
-                    break
-                if candidate.exists():
-                    logger.warning(
-                        "Ignoring invalid compilation database: %s", candidate
-                    )
-            else:
+        if should_generate:
+            should_regenerate_compdb = self.compdb_path is None or (
+                not requested_compdb
+                and self.compdb_path is not None
+                and not self._is_preferred_compdb(self.compdb_path)
+            )
+            if should_regenerate_compdb:
+                existing = self.compdb_path
+                if existing is not None:
+                    existing = self._snapshot_compdb(existing, "discovered")
                 generated = self._auto_generate_compdb()
                 if generated is not None and self._is_valid_compdb(generated):
-                    kwargs["compdb_path"] = str(generated)
+                    self.compdb_path = self._better_compdb(
+                        existing, generated.resolve()
+                    )
                 elif generated is not None:
                     logger.warning(
                         "Auto-generated compilation database is invalid: %s", generated
+                    )
+            if self.compdb_path is not None:
+                prepared_path = self.output_dir / "compile_commands.json"
+                if prepared_path.resolve() == self.compdb_path.resolve():
+                    prepared_path = (
+                        self.output_dir / ".codeminer-index" / "compile_commands.json"
+                    )
+                prepared, rewrite_count = prepare_compilation_database_for_indexing(
+                    self.compdb_path,
+                    prepared_path,
+                )
+                self.compdb_path = prepared
+                self.compdb_warning_rewrite_count = rewrite_count
+                kwargs["compdb_path"] = str(prepared)
+                if rewrite_count:
+                    logger.info(
+                        "Neutralized %d warning-as-error flags in clangd compile DB",
+                        rewrite_count,
                     )
 
         if reset_profiler:
@@ -352,6 +418,18 @@ class ClangdIndexer:
                     f"Graph created successfully "
                     f"({len(graph.graph.vs)} nodes, {len(graph.graph.es)} edges)"
                 )
+                quality_passed = self._record_index_quality(
+                    graph,
+                    baseline_graph=quality_baseline_graph,
+                    policy=quality_policy,
+                )
+                if enforce_quality and not quality_passed:
+                    logger.error(
+                        "Rejecting graph that failed index quality checks: %s",
+                        ", ".join(self.index_quality_report["failure_names"]),
+                    )
+                    self._quarantine_graph_artifact(Path(output_file))
+                    return None
 
             return graph
         finally:
@@ -605,14 +683,25 @@ class ClangdIndexer:
         except Exception:
             return
 
-        source_files = [e["file"] for e in entries if "file" in e]
+        source_files = []
+        for entry in entries:
+            source = entry.get("file")
+            if not source:
+                continue
+            source_path = Path(str(source))
+            if not source_path.is_absolute():
+                directory = Path(str(entry.get("directory") or self.project_root))
+                if not directory.is_absolute():
+                    directory = self.project_root / directory
+                source_path = directory / source_path
+            source_files.append(source_path.resolve())
         logger.info(f"Opening {len(source_files)} source files to trigger indexing")
 
         for src_file in source_files:
-            if not Path(src_file).is_file():
+            if not src_file.is_file():
                 continue
             try:
-                text = Path(src_file).read_text(errors="replace")
+                text = src_file.read_text(errors="replace")
             except Exception:
                 continue
 
@@ -623,7 +712,7 @@ class ClangdIndexer:
                     "method": "textDocument/didOpen",
                     "params": {
                         "textDocument": {
-                            "uri": f"file://{src_file}",
+                            "uri": src_file.as_uri(),
                             "languageId": "cpp",
                             "version": 1,
                             "text": text,
@@ -750,27 +839,62 @@ class ClangdIndexer:
     # Private helpers: compile_commands.json
     # ==================================================================
 
+    def _record_index_quality(
+        self,
+        graph: CodeGraph,
+        *,
+        baseline_graph: Optional[CodeGraph],
+        policy: Optional[IndexQualityPolicy],
+    ) -> bool:
+        self.index_quality_report = assess_index_quality(
+            graph,
+            project_root=self.project_root,
+            language="cpp",
+            compdb_path=self.compdb_path,
+            baseline_graph=baseline_graph,
+            policy=policy,
+        )
+        compdb = self.index_quality_report.get("compile_db")
+        if compdb is not None:
+            compdb["warning_as_error_rewrites"] = self.compdb_warning_rewrite_count
+        report_path = self.output_dir / "index_quality.json"
+        report_path.write_text(
+            json.dumps(self.index_quality_report, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        logger.info(
+            "Index quality %s; report: %s",
+            "passed" if self.index_quality_report["passed"] else "failed",
+            report_path,
+        )
+        return bool(self.index_quality_report["passed"])
+
+    @staticmethod
+    def _quarantine_graph_artifact(graph_path: Path) -> Optional[Path]:
+        if not graph_path.exists():
+            return None
+        rejected = graph_path.with_name(
+            f"{graph_path.stem}.rejected{graph_path.suffix}"
+        )
+        os.replace(graph_path, rejected)
+        logger.warning("Quarantined rejected graph artifact at %s", rejected)
+        return rejected
+
     def _is_valid_compdb(self, compdb: Path) -> bool:
         """Check compile_commands.json is parseable and non-empty."""
-        if not compdb.exists() or not compdb.is_file():
-            return False
-        try:
-            if compdb.stat().st_size < 4:
-                return False
-            with compdb.open("r", encoding="utf-8") as fp:
-                payload = json.load(fp)
-            return isinstance(payload, list) and len(payload) > 0
-        except Exception:
-            return False
+        return compilation_database_entry_count(compdb) > 0
 
     def _auto_generate_compdb(self) -> Optional[Path]:
         """Try generating compile_commands.json with common build flows."""
         compdb = self._auto_generate_compdb_cmake()
-        if compdb is not None:
+        if compdb is not None and self._is_preferred_compdb(compdb):
             return compdb
-        # If CMake approach fails, try bear + make with various heuristics to find a Makefile.
-        compdb = self._auto_generate_compdb_bear()
-        return compdb
+        if compdb is not None:
+            compdb = self._snapshot_compdb(compdb, "cmake")
+        # If CMake fails or captures only a suspiciously small target, compare
+        # it with Bear/Make candidates instead of accepting first success.
+        bear_compdb = self._auto_generate_compdb_bear()
+        return self._better_compdb(compdb, bear_compdb)
 
     def _auto_generate_compdb_cmake(self) -> Optional[Path]:
         cmake_lists = self.project_root / "CMakeLists.txt"
@@ -814,6 +938,8 @@ class ClangdIndexer:
             logger.info("make not found; cannot run bear -- make")
             return None
 
+        best: Optional[Path] = None
+
         # Strategy 1: No root Makefile at all — check if autotools can create one,
         # otherwise go directly to subdirectory search.
         if not self._has_root_makefile():
@@ -825,14 +951,13 @@ class ClangdIndexer:
                 # After bootstrap, the Makefile should exist now
                 if self._has_root_makefile():
                     compdb = self._bear_make()
-                    if compdb:
+                    best = self._better_compdb(best, compdb)
+                    if compdb and self._is_preferred_compdb(compdb):
                         return compdb
             # No root Makefile (even after bootstrap) — try subdirectory builds
             logger.info("No root Makefile found; searching subdirectories")
             compdb = self._try_subdirectory_make()
-            if compdb:
-                return compdb
-            return None
+            return self._better_compdb(best, compdb)
 
         # Strategy 2: Autotools project with existing Makefile — bootstrap
         # first so that ./configure regenerates a proper Makefile.  Without
@@ -844,14 +969,14 @@ class ClangdIndexer:
         # Strategy 3: Run bear -- make (make clean is done inside _bear_make).
         logger.info("Attempting Make compilation DB generation with bear")
         compdb = self._bear_make()
-        if compdb:
+        best = self._better_compdb(best, compdb)
+        if compdb and self._is_preferred_compdb(compdb):
             return compdb
 
-        # Strategy 4: Fallback to subdirectory search
+        # Strategy 4: Compare a suspiciously small root result with prioritized
+        # subdirectory builds instead of accepting the first non-empty JSON file.
         compdb = self._try_subdirectory_make()
-        if compdb:
-            return compdb
-        return None
+        return self._better_compdb(best, compdb)
 
     def _has_root_makefile(self) -> bool:
         """Check if the project root has a Makefile or GNUmakefile."""
@@ -884,21 +1009,23 @@ class ClangdIndexer:
             self.project_root / "build" / "compile_commands.json",
         )
 
+        make_overrides = self._indexing_make_overrides(self.project_root)
+
         # Clean first so bear can observe all compiler invocations
         self._run_build_command(["make", "clean"])
 
         # Try parallel build first (-k = keep going on errors)
-        self._run_build_command(["bear", "--", "make", "-k", "-j"])
-        for candidate in candidates:
-            if self._is_valid_compdb(candidate):
-                return candidate
+        self._clear_compdb_candidates(candidates)
+        self._run_build_command(["bear", "--", "make", "-k", "-j", *make_overrides])
+        best = self._snapshot_best_compdb(candidates, "root-parallel")
+        if best and self._is_preferred_compdb(best):
+            return best
 
         # Retry without -j (some Makefiles break under parallelism)
-        self._run_build_command(["bear", "--", "make", "-k"])
-        for candidate in candidates:
-            if self._is_valid_compdb(candidate):
-                return candidate
-        return None
+        self._clear_compdb_candidates(candidates)
+        self._run_build_command(["bear", "--", "make", "-k", *make_overrides])
+        serial = self._snapshot_best_compdb(candidates, "root-serial")
+        return self._better_compdb(best, serial)
 
     def _try_subdirectory_make(self) -> Optional[Path]:
         """Search for Makefiles in immediate subdirectories and common paths."""
@@ -925,32 +1052,194 @@ class ClangdIndexer:
         if candidates and (self.project_root / ".gitmodules").exists():
             self._run_build_command(["git", "submodule", "update", "--init"])
 
+        best: Optional[Path] = None
+        compdb_candidates = (
+            self.project_root / "compile_commands.json",
+            self.project_root / "build" / "compile_commands.json",
+        )
         for subdir in candidates:
             logger.info(
                 "Found Makefile in subdirectory %s, attempting bear -- make there",
                 subdir,
             )
             self._run_build_command(["make", "-C", str(subdir), "clean"])
-            if self._run_build_command(
-                ["bear", "--", "make", "-k", "-C", str(subdir), "-j"]
-            ) or self._run_build_command(
-                ["bear", "--", "make", "-k", "-C", str(subdir)]
-            ):
-                compdb = self.project_root / "compile_commands.json"
-                if compdb.exists():
-                    try:
-                        with open(compdb) as f:
-                            entries = json.load(f)
-                        if entries:
-                            logger.info(
-                                "Generated compile_commands.json from %s (%d entries)",
-                                subdir,
-                                len(entries),
-                            )
-                            return compdb
-                    except (json.JSONDecodeError, OSError):
-                        pass
-        return None
+            make_overrides = self._indexing_make_overrides(subdir)
+            self._clear_compdb_candidates(compdb_candidates)
+            self._run_build_command(
+                [
+                    "bear",
+                    "--",
+                    "make",
+                    "-k",
+                    "-C",
+                    str(subdir),
+                    "-j",
+                    *make_overrides,
+                ]
+            )
+            label = f"{subdir.relative_to(self.project_root)}-parallel"
+            generated = self._snapshot_best_compdb(compdb_candidates, label)
+            best = self._better_compdb(best, generated)
+            if generated and self._is_preferred_compdb(generated):
+                return generated
+
+            self._clear_compdb_candidates(compdb_candidates)
+            self._run_build_command(
+                [
+                    "bear",
+                    "--",
+                    "make",
+                    "-k",
+                    "-C",
+                    str(subdir),
+                    *make_overrides,
+                ]
+            )
+            label = f"{subdir.relative_to(self.project_root)}-serial"
+            generated = self._snapshot_best_compdb(compdb_candidates, label)
+            best = self._better_compdb(best, generated)
+            if generated and self._is_preferred_compdb(generated):
+                return generated
+        return best
+
+    def _indexing_make_overrides(self, directory: Path) -> List[str]:
+        """Return non-fatal warning overrides supported by a Makefile."""
+
+        makefile = next(
+            (
+                directory / name
+                for name in ("Makefile", "GNUmakefile", "makefile")
+                if (directory / name).exists()
+            ),
+            None,
+        )
+        if makefile is None:
+            return []
+        try:
+            text = makefile.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return []
+
+        overrides: list[str] = []
+        for variable in ("CFLAGS_EXTRA", "CXXFLAGS_EXTRA", "CPPFLAGS_EXTRA"):
+            if re.search(rf"\b{variable}\b", text):
+                value = self._makefile_variable_value(text, variable)
+                value = f"{value} -Wno-error".strip()
+                overrides.append(f"{variable}={value}")
+        if not overrides and re.search(r"(?m)^\s*CWARN\s*[?:+]?=", text):
+            value = self._makefile_variable_value(text, "CWARN")
+            value = re.sub(r"-Werror(?:=[A-Za-z0-9_-]+)?", "-Wno-error", value)
+            if "-Wno-error" not in value:
+                value = f"{value} -Wno-error".strip()
+            overrides.append(f"CWARN={value}")
+        for variable in ("WERROR", "WARNINGS_AS_ERRORS"):
+            if re.search(rf"(?m)^\s*{variable}\s*[?:+]?=", text):
+                overrides.append(f"{variable}=")
+        return overrides
+
+    @staticmethod
+    def _makefile_variable_value(text: str, variable: str) -> str:
+        """Approximate a simple Make variable value before overriding it."""
+
+        value = os.environ.get(variable, "")
+        logical_text = re.sub(r"\\\r?\n\s*", " ", text)
+        pattern = re.compile(
+            rf"(?m)^\s*{re.escape(variable)}\s*(\?=|:=|\+=|=)\s*(.*?)\s*$"
+        )
+        for operator, raw in pattern.findall(logical_text):
+            item = raw.split("#", 1)[0].strip()
+            if operator == "+=":
+                value = f"{value} {item}".strip()
+            elif operator == "?=":
+                if not value:
+                    value = item
+            else:
+                value = item
+        return value
+
+    @staticmethod
+    def _clear_compdb_candidates(candidates) -> None:
+        for candidate in candidates:
+            try:
+                Path(candidate).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _snapshot_best_compdb(self, candidates, label: str) -> Optional[Path]:
+        valid = [Path(path) for path in candidates if self._is_valid_compdb(Path(path))]
+        if not valid:
+            return None
+        source = max(valid, key=compilation_database_entry_count)
+        return self._snapshot_compdb(source, label)
+
+    def _snapshot_compdb(self, source: Path, label: str) -> Path:
+        safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip("-")
+        snapshot = self.output_dir / f"compile_commands.{safe_label}.json"
+        shutil.copy2(source, snapshot)
+        logger.info(
+            "Captured compilation database candidate %s (%d entries)",
+            snapshot,
+            compilation_database_entry_count(snapshot),
+        )
+        return snapshot
+
+    def _better_compdb(
+        self, current: Optional[Path], candidate: Optional[Path]
+    ) -> Optional[Path]:
+        if candidate is None:
+            return current
+        if current is None:
+            return candidate
+        return (
+            candidate
+            if self._compdb_score(candidate) > self._compdb_score(current)
+            else current
+        )
+
+    def _compdb_score(self, compdb: Path) -> tuple:
+        stats = compilation_database_stats(compdb, project_root=self.project_root)
+        return (
+            self._compdb_meets_policy(stats),
+            int(stats["resolved_translation_unit_count"]),
+            float(stats.get("source_coverage") or 0.0),
+            int(stats["entry_count"]),
+        )
+
+    def _compdb_meets_policy(self, stats: dict) -> bool:
+        entry_count = int(stats["entry_count"])
+        source_coverage = stats.get("source_coverage")
+        resolved_ratio = stats.get("resolved_ratio")
+        return bool(
+            entry_count >= self._quality_policy.min_compile_db_entries
+            and isinstance(resolved_ratio, (int, float))
+            and resolved_ratio >= self._quality_policy.min_resolved_compile_db_ratio
+            and isinstance(source_coverage, (int, float))
+            and source_coverage >= self._quality_policy.min_source_coverage
+        )
+
+    def _is_preferred_compdb(self, compdb: Path) -> bool:
+        stats = compilation_database_stats(compdb, project_root=self.project_root)
+        entry_count = int(stats["entry_count"])
+        source_coverage = stats.get("source_coverage")
+        resolved_ratio = stats.get("resolved_ratio")
+        preferred = self._compdb_meets_policy(stats)
+        if not preferred:
+            logger.warning(
+                "Compilation database candidate does not meet quality policy: "
+                "%d entries, resolved ratio=%s, source coverage=%s",
+                entry_count,
+                (
+                    f"{resolved_ratio:.3f}"
+                    if isinstance(resolved_ratio, (int, float))
+                    else "unknown"
+                ),
+                (
+                    f"{source_coverage:.3f}"
+                    if isinstance(source_coverage, (int, float))
+                    else "unknown"
+                ),
+            )
+        return preferred
 
     def _bootstrap_autotools(self) -> None:
         autogen = self.project_root / "autogen.sh"

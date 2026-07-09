@@ -29,6 +29,11 @@ from codeminer.agent.lsp_provider import (
     StaticLSPProvider,
     normalize_lsp_capability,
 )
+from codeminer.ls_index.index_quality import (
+    IndexQualityPolicy,
+    assess_index_quality,
+    discover_compilation_database,
+)
 from codeminer.types import EDGE_TYPE_REFERENCE
 
 from .live_lsp_provider import LiveLSPReferenceProvider
@@ -133,6 +138,10 @@ def run_lsp_replay_benchmark(
     warmup_reps: int = 1,
     measured_reps: int = 5,
     skip_probe: bool = False,
+    compdb_path: str | Path | None = None,
+    baseline_graph: Any = None,
+    quality_policy: IndexQualityPolicy | None = None,
+    allow_low_quality_artifact: bool = False,
     fingerprint_selector: FingerprintSelector = default_lsp_provider_fingerprint,
     clock: Clock = time.monotonic,
     live_provider_factory: Callable[..., LiveLSPReferenceProvider] = (
@@ -148,6 +157,19 @@ def run_lsp_replay_benchmark(
 
     request_list = [_coerce_request(request) for request in requests]
     _validate_native_requests(request_list)
+    resolved_compdb = compdb_path or discover_compilation_database(project_root)
+    artifact_quality = assess_index_quality(
+        graph,
+        project_root=project_root,
+        language=language,
+        compdb_path=resolved_compdb,
+        baseline_graph=baseline_graph,
+        policy=quality_policy,
+    )
+    if not artifact_quality["passed"] and not allow_low_quality_artifact:
+        failures = ", ".join(artifact_quality["failure_names"])
+        raise ValueError(f"graph artifact quality guardrail failed: {failures}")
+
     static_init_start = clock()
     static_provider = StaticLSPProvider(graph)
     static_provider_init_ms = (clock() - static_init_start) * 1000
@@ -201,6 +223,7 @@ def run_lsp_replay_benchmark(
             "static_provider_init_ms": static_provider_init_ms,
             "live_start_ms": live_start_ms,
         },
+        "artifact_quality": artifact_quality,
         "requests": [request.to_dict() for request in request_list],
         "comparisons": comparison_rows,
     }
@@ -259,6 +282,19 @@ def render_lsp_replay_benchmark_markdown(payload: Mapping[str, Any]) -> str:
         ]
     )
     lines.append("Setup: " + "; ".join(setup_parts))
+    quality = payload.get("artifact_quality") or {}
+    if quality:
+        failures = ", ".join(quality.get("failure_names") or []) or "none"
+        compdb = quality.get("compile_db") or {}
+        lines.append(
+            "Artifact quality: "
+            f"{_yes_no(quality.get('passed'))}; "
+            f"compile DB entries {compdb.get('entry_count', 'n/a')}; "
+            f"source coverage {_fmt_percent(compdb.get('source_coverage'))}; "
+            "graph/compile DB coverage "
+            f"{_fmt_percent(compdb.get('graph_compdb_coverage'))}; "
+            f"failures {failures}"
+        )
     lines.append("")
     head = [
         "scope",
@@ -305,9 +341,13 @@ def exit_code_for_lsp_replay_benchmark(
     payload: Mapping[str, Any],
     *,
     require_all_equivalent: bool = False,
+    allow_low_quality_artifact: bool = False,
 ) -> int:
     """Return a process exit code for replay benchmark gates."""
 
+    quality = payload.get("artifact_quality") or {}
+    if quality.get("passed") is False and not allow_low_quality_artifact:
+        return 4
     overall = (payload.get("summary") or {}).get("overall") or {}
     if int(overall.get("row_count") or 0) == 0:
         return 2
@@ -335,6 +375,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Repository root for live LSP. Defaults to prebuilt instance repo.",
     )
     parser.add_argument("--language", required=True, help="Graph/LSP language key")
+    parser.add_argument(
+        "--compile-db",
+        help=(
+            "Compilation database used to audit C/C++ source coverage. "
+            "Defaults to project-root/compile_commands.json or build/."
+        ),
+    )
+    parser.add_argument(
+        "--baseline-graph",
+        help="Optional previous graph.pkl used for vertex/edge shrink guardrails.",
+    )
+    parser.add_argument("--min-compile-db-entries", type=int, default=1)
+    parser.add_argument("--min-source-coverage", type=float, default=0.01)
+    parser.add_argument("--min-graph-compdb-coverage", type=float, default=0.5)
+    parser.add_argument("--min-baseline-graph-ratio", type=float, default=0.5)
+    parser.add_argument(
+        "--allow-low-quality-artifact",
+        action="store_true",
+        help="Run and report replay even when the artifact quality gate fails.",
+    )
     parser.add_argument(
         "--requests",
         help=(
@@ -388,6 +448,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if not requests:
             raise ValueError("no LSP replay requests available")
+        baseline_graph = None
+        if args.baseline_graph:
+            from .prebuilt import load_code_graph_artifact
+
+            baseline_graph = load_code_graph_artifact(
+                args.baseline_graph, project_root=project_root
+            )
+        quality_policy = IndexQualityPolicy(
+            min_compile_db_entries=args.min_compile_db_entries,
+            min_source_coverage=args.min_source_coverage,
+            min_graph_compdb_coverage=args.min_graph_compdb_coverage,
+            min_baseline_vertex_ratio=args.min_baseline_graph_ratio,
+            min_baseline_edge_ratio=args.min_baseline_graph_ratio,
+        )
         payload = run_lsp_replay_benchmark(
             requests,
             graph=graph,
@@ -397,6 +471,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             warmup_reps=args.warmup_reps,
             measured_reps=args.measured_reps,
             skip_probe=args.skip_probe,
+            compdb_path=args.compile_db,
+            baseline_graph=baseline_graph,
+            quality_policy=quality_policy,
+            allow_low_quality_artifact=args.allow_low_quality_artifact,
         )
         payload["setup"]["graph_load_ms"] = graph_load_ms
         _write_reports(
@@ -412,6 +490,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     return exit_code_for_lsp_replay_benchmark(
         payload,
         require_all_equivalent=args.require_all_equivalent,
+        allow_low_quality_artifact=args.allow_low_quality_artifact,
     )
 
 
@@ -730,6 +809,10 @@ def _write_reports(
 
 def _fmt(value: Any, digits: int) -> str:
     return f"{float(value):.{digits}f}" if isinstance(value, (int, float)) else "n/a"
+
+
+def _fmt_percent(value: Any) -> str:
+    return f"{float(value) * 100:.2f}%" if isinstance(value, (int, float)) else "n/a"
 
 
 def _yes_no(value: Any) -> str:

@@ -130,8 +130,10 @@ Provider replay benchmark:
 codeminer-lsp-replay-benchmark \
   --graph /path/to/graph.pkl \
   --project-root /path/to/repo \
-  --language python \
-  --command 'pyright-langserver --stdio' \
+  --language cpp \
+  --compile-db /path/to/repo/compile_commands.json \
+  --baseline-graph /path/to/previous/graph.pkl \
+  --command 'clangd' \
   --max-per-capability 50 \
   --warmup-reps 1 \
   --measured-reps 5 \
@@ -147,6 +149,16 @@ real file-position requests across graph `reference` edges: it reads each
 and emits both `textDocument/definition` and `textDocument/references` requests
 up to `--max-per-capability`. A JSON/JSONL `--requests` file can be used when
 the same request set must be replayed across commits or machines.
+
+Before starting the live language server, replay now applies the same artifact
+quality gate as the clangd indexing pipeline. For C/C++, it reports compilation
+database entries, resolved source paths, repository translation-unit coverage,
+available range/unified metadata, and graph vertex/edge ratios when
+`--baseline-graph` is supplied. The defaults require at least one compile
+command, 1% repository source coverage, 50% graph-to-compile-DB translation-unit
+coverage, and at least 50% of the baseline graph's vertices and edges.
+`--allow-low-quality-artifact` exists for diagnosis only;
+results from that mode are not valid acceleration evidence.
 
 Some older prebuilt corpora ship legacy `graph.pkl` bundles with no schema
 version and stale `project_root` values from the machine that built them. Audit
@@ -165,6 +177,35 @@ artifacts, rebinds `project_root` to `<prebuilt>/<instance>/repo`, rebuilds
 missing range/unified indexes, and saves the graph with the current
 `CodeGraph.save_graph` schema. It does not re-run SCIP/LSP indexing or rebuild
 vector indexes.
+
+The C/C++ indexing path writes `index_quality.json` next to `graph.pkl` and
+returns failure when the report does not pass. A failed canonical artifact is
+quarantined as `graph.rejected.pkl` so consumers cannot load it as a successful
+index. Bear candidates are compared by
+entry count instead of accepting the first non-empty JSON file. Build exit
+status is not treated as compile-command coverage: Bear may capture useful
+translation units even when a later compile or link step fails. When a Makefile
+offers conventional extra-warning variables, the indexing-only build appends
+`-Wno-error`; the selected clangd-facing compilation database also rewrites
+`-Werror` and `-Werror=<warning>` in a derived copy, leaving the repository's
+build configuration unchanged.
+
+Calibration on the 19 C/C++ instances in the 100-instance `codeminer-base`
+sample produced graphs for 19/19 and passed the quality gate for 18/19 before
+the fix. The rejected `micropython__micropython-10095` artifact had only 2
+compile commands, 1,075 vertices, and 1,484 edges, versus 8,542 vertices and
+68,792 edges in its baseline. Capturing `ports/unix` with non-fatal warnings
+recovered 286 compile commands and produced 9,151 vertices and 72,207 edges.
+Re-auditing all 19 regenerated artifacts with the default gate, substituting the
+fixed micropython graph, passed 19/19. The minimum source coverage was 3.98%,
+the minimum graph-to-compile-DB coverage was 66.1%, the minimum baseline vertex
+ratio was 0.960, and the minimum baseline edge ratio was 0.946, leaving margin
+above the defaults. The original low-coverage micropython graph represents less
+than 1% of the repaired compile DB's translation units, so it is rejected even
+when no baseline graph is supplied.
+Across the run, clangd generation and graph decode were generally seconds to
+tens of seconds; checkout, submodules, CMake, Bear, and Make dominated wall
+time.
 
 Replay is the preferred latency feedback loop for this gate because every row
 uses the same graph-facing request against both providers. Warmup repetitions

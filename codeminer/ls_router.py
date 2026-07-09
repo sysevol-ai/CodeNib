@@ -242,6 +242,12 @@ class LSIndexer:
     def clear_cache(self, level: str = "all") -> bool:
         return self._delegate.clear_cache(level=level)
 
+    @property
+    def index_quality_report(self):
+        """Latest backend quality report, when the indexer provides one."""
+
+        return getattr(self._delegate, "index_quality_report", None)
+
     def graph_patch(
         self,
         graph: "CodeGraph",

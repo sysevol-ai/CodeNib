@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
+import pytest
+
 from codeminer.eval.agent_runner.live_lsp_provider import lsp_locations_to_nodes
 from codeminer.eval.agent_runner.lsp_replay_benchmark import (
     exit_code_for_lsp_replay_benchmark,
@@ -236,6 +238,7 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
 
     summary = payload["summary"]["overall"]
     assert payload["request_count"] == 2
+    assert payload["artifact_quality"]["passed"] is True
     assert len(payload["comparisons"]) == 4
     assert summary["row_count"] == 4
     assert summary["equivalent_row_count"] == 4
@@ -249,11 +252,21 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
     markdown = render_lsp_replay_benchmark_markdown(payload)
     assert "# LSP request replay benchmark" in markdown
     assert "graph load 1.25 ms" in markdown
+    assert "Artifact quality: yes" in markdown
     assert "Equivalence guardrail: yes" in markdown
     assert "static p50/p95/p99 ms" in markdown
 
 
 def test_exit_code_for_lsp_replay_benchmark_guardrails():
+    assert (
+        exit_code_for_lsp_replay_benchmark(
+            {
+                "artifact_quality": {"passed": False},
+                "summary": {"overall": {"row_count": 1}},
+            }
+        )
+        == 4
+    )
     assert exit_code_for_lsp_replay_benchmark({"summary": {"overall": {}}}) == 2
     assert (
         exit_code_for_lsp_replay_benchmark(
@@ -302,3 +315,29 @@ def test_exit_code_for_lsp_replay_benchmark_guardrails():
         )
         == 3
     )
+
+
+def test_replay_rejects_low_quality_cpp_graph_before_live_lsp(tmp_path):
+    graph = _range_graph(tmp_path)
+    requests = generate_lsp_replay_requests(
+        graph,
+        capabilities=["definition"],
+        max_per_capability=1,
+    )
+    provider_started = False
+
+    def provider_factory(**kwargs):
+        nonlocal provider_started
+        provider_started = True
+        return _FakeLiveProvider(**kwargs)
+
+    with pytest.raises(ValueError, match="compile_db"):
+        run_lsp_replay_benchmark(
+            requests,
+            graph=graph,
+            project_root=tmp_path,
+            language="cpp",
+            live_provider_factory=provider_factory,
+        )
+
+    assert provider_started is False
