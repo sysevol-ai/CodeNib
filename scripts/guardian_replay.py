@@ -177,7 +177,9 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--repo", required=True, help="Path to the git repository (or bare mirror).")
-    p.add_argument("--commits", required=True, help="Path to a file with one commit SHA per line.")
+    p.add_argument("--commits", required=True,
+                   help="Path to a file with one commit SHA per line, oldest first. "
+                        "Use 'git log --reverse --format=%%H' to produce the correct order.")
     p.add_argument("--out", required=True, help="Output directory for episodes, memory, and cache.")
     p.add_argument("--arm", default="memory", choices=["memory", "memoryless"],
                    help="Memory arm: 'memory' accumulates cross-cycle state; 'memoryless' runs "
