@@ -80,6 +80,20 @@ class LiveLSPReferenceProvider:
             shutdown()
         self._client = None
 
+    def wait_until_idle(
+        self,
+        *,
+        max_wait_s: float = 60.0,
+        idle_grace_s: float = 1.0,
+    ) -> bool:
+        """Wait for reference-server background analysis to quiesce."""
+
+        client = self._ensure_client()
+        wait = getattr(client, "wait_until_idle", None)
+        if not callable(wait):
+            raise RuntimeError("live LSP client does not expose an idle wait")
+        return bool(wait(max_wait_s=max_wait_s, idle_grace_s=idle_grace_s))
+
     def __call__(self, capability: str, arguments: Mapping[str, Any]) -> Any:
         """Serve one graph-facing LSP request for provider comparison."""
 

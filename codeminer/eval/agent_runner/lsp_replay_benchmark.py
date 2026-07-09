@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import shlex
 import subprocess
@@ -31,6 +32,7 @@ from codeminer.agent.lsp_provider import (
     StaticLSPProvider,
     normalize_lsp_capability,
 )
+from codeminer.compiler.snapshot_store import SourceSnapshot
 from codeminer.ls_index.index_quality import (
     IndexQualityPolicy,
     assess_index_quality,
@@ -136,14 +138,22 @@ def run_lsp_replay_benchmark(
     graph: Any,
     project_root: str | Path,
     language: str,
+    source_repo: Optional[str] = None,
+    source_commit: Optional[str] = None,
     command: Optional[Sequence[str]] = None,
     warmup_reps: int = 1,
+    warmup_until_stable: bool = False,
+    max_warmup_reps: int = 10,
+    warmup_poll_seconds: float = 1.0,
+    min_live_nonempty_fraction: float = 0.1,
     measured_reps: int = 5,
     skip_probe: bool = False,
     compdb_path: str | Path | None = None,
     baseline_graph: Any = None,
     quality_policy: IndexQualityPolicy | None = None,
     allow_low_quality_artifact: bool = False,
+    wait_until_idle: bool = False,
+    idle_timeout_s: float = 60.0,
     fingerprint_selector: FingerprintSelector = default_lsp_provider_fingerprint,
     clock: Clock = time.monotonic,
     live_provider_factory: Callable[..., LiveLSPReferenceProvider] = (
@@ -154,8 +164,14 @@ def run_lsp_replay_benchmark(
 
     if warmup_reps < 0:
         raise ValueError("warmup_reps must be non-negative")
+    if max_warmup_reps < max(1, warmup_reps):
+        raise ValueError("max_warmup_reps must be at least warmup_reps")
+    if not 0 <= min_live_nonempty_fraction <= 1:
+        raise ValueError("min_live_nonempty_fraction must be between 0 and 1")
     if measured_reps < 1:
         raise ValueError("measured_reps must be positive")
+    if bool(source_repo) != bool(source_commit):
+        raise ValueError("source_repo and source_commit must be provided together")
 
     request_list = [_coerce_request(request) for request in requests]
     _validate_native_requests(request_list)
@@ -182,13 +198,34 @@ def run_lsp_replay_benchmark(
         command=command,
         skip_probe=skip_probe,
     )
+    idle_wait_ms: Optional[float] = None
+    warmup_rows: list[dict[str, Any]] = []
+    comparison_rows: list[dict[str, Any]] = []
     live_start = clock()
     live_provider.start()
     live_start_ms = (clock() - live_start) * 1000
-    warmup_rows: list[dict[str, Any]] = []
-    comparison_rows: list[dict[str, Any]] = []
     with live_provider:
-        for rep in range(1, warmup_reps + 1):
+        if wait_until_idle:
+            idle_wait_start = clock()
+            wait = getattr(live_provider, "wait_until_idle", None)
+            if not callable(wait):
+                raise RuntimeError(
+                    "live reference provider does not support idle waiting"
+                )
+            if not wait(max_wait_s=idle_timeout_s):
+                raise RuntimeError(
+                    "live reference provider did not become idle within "
+                    f"{idle_timeout_s}s"
+                )
+            idle_wait_ms = (clock() - idle_wait_start) * 1000
+
+        warmup_start = clock()
+        warmup_limit = max_warmup_reps if warmup_until_stable else warmup_reps
+        previous_reference_signature: Optional[tuple[Any, ...]] = None
+        warmup_stable = not warmup_until_stable
+        live_nonempty_count = 0
+        completed_warmup_reps = 0
+        for rep in range(1, warmup_limit + 1):
             comparisons = compare_static_lsp_provider(
                 request_list,
                 graph=graph,
@@ -202,6 +239,29 @@ def run_lsp_replay_benchmark(
                 row = comparison.to_dict()
                 row["rep"] = rep
                 warmup_rows.append(row)
+            completed_warmup_reps = rep
+            reference_signature, live_nonempty_count, reference_error_count = (
+                _reference_warmup_state(comparisons)
+            )
+            minimum_nonempty = math.ceil(len(request_list) * min_live_nonempty_fraction)
+            converged = (
+                previous_reference_signature == reference_signature
+                and reference_error_count == 0
+                and live_nonempty_count >= minimum_nonempty
+            )
+            if warmup_until_stable and rep >= warmup_reps and converged:
+                warmup_stable = True
+                break
+            previous_reference_signature = reference_signature
+            if warmup_until_stable and rep < warmup_limit:
+                time.sleep(max(0.0, warmup_poll_seconds))
+        warmup_wall_ms = (clock() - warmup_start) * 1000
+        if not warmup_stable:
+            raise RuntimeError(
+                "live reference results did not stabilize after "
+                f"{completed_warmup_reps} warmup reps "
+                f"(nonempty={live_nonempty_count}/{len(request_list)})"
+            )
 
         for rep in range(1, measured_reps + 1):
             comparisons = compare_static_lsp_provider(
@@ -228,16 +288,29 @@ def run_lsp_replay_benchmark(
             graph,
             project_root=project_root,
             language=language,
+            source_repo=source_repo,
+            source_commit=source_commit,
             live_command=effective_command,
         ),
         "request_source": {"kind": "provided"},
         "request_count": len(request_list),
-        "warmup_reps": warmup_reps,
+        "warmup_reps": completed_warmup_reps,
+        "warmup_protocol": {
+            "minimum_reps": warmup_reps,
+            "until_stable": warmup_until_stable,
+            "max_reps": max_warmup_reps,
+            "poll_seconds": warmup_poll_seconds,
+            "min_live_nonempty_fraction": min_live_nonempty_fraction,
+            "stable": warmup_stable,
+            "live_nonempty_count": live_nonempty_count,
+        },
         "measured_reps": measured_reps,
         "warmup_summary": _summarize_rows(warmup_rows),
         "setup": {
             "static_provider_init_ms": static_provider_init_ms,
             "live_start_ms": live_start_ms,
+            "idle_wait_ms": idle_wait_ms,
+            "warmup_wall_ms": warmup_wall_ms,
         },
         "artifact_quality": artifact_quality,
         "requests": [request.to_dict() for request in request_list],
@@ -412,6 +485,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run and report replay even when the artifact quality gate fails.",
     )
     parser.add_argument(
+        "--source-repo",
+        help="Canonical repository name used for snapshot identity",
+    )
+    parser.add_argument(
+        "--source-commit",
+        help="Exact source commit used for snapshot identity",
+    )
+    parser.add_argument(
         "--requests",
         help=(
             "Optional JSON/JSONL request file. If omitted, requests are "
@@ -430,12 +511,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generated request cap per capability.",
     )
     parser.add_argument("--warmup-reps", type=int, default=1)
+    parser.add_argument("--warmup-until-stable", action="store_true")
+    parser.add_argument("--max-warmup-reps", type=int, default=10)
+    parser.add_argument("--warmup-poll-seconds", type=float, default=1.0)
+    parser.add_argument("--min-live-nonempty-fraction", type=float, default=0.1)
     parser.add_argument("--measured-reps", type=int, default=5)
     parser.add_argument(
         "--command",
         help="Optional live LSP command string, for example 'pyright-langserver --stdio'",
     )
     parser.add_argument("--skip-probe", action="store_true")
+    parser.add_argument(
+        "--wait-until-idle",
+        action="store_true",
+        help="Wait for live-server background analysis before warmups",
+    )
+    parser.add_argument("--idle-timeout", type=float, default=60.0)
     parser.add_argument("--output-json", help="Write machine-readable benchmark report")
     parser.add_argument("--output-markdown", help="Write markdown benchmark report")
     parser.add_argument(
@@ -483,14 +574,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             graph=graph,
             project_root=project_root,
             language=args.language,
+            source_repo=args.source_repo,
+            source_commit=args.source_commit,
             command=_command_from_arg(args.command),
             warmup_reps=args.warmup_reps,
+            warmup_until_stable=args.warmup_until_stable,
+            max_warmup_reps=args.max_warmup_reps,
+            warmup_poll_seconds=args.warmup_poll_seconds,
+            min_live_nonempty_fraction=args.min_live_nonempty_fraction,
             measured_reps=args.measured_reps,
             skip_probe=args.skip_probe,
             compdb_path=args.compile_db,
             baseline_graph=baseline_graph,
             quality_policy=quality_policy,
             allow_low_quality_artifact=args.allow_low_quality_artifact,
+            wait_until_idle=args.wait_until_idle,
+            idle_timeout_s=args.idle_timeout,
         )
         if args.requests:
             request_path = Path(args.requests).resolve()
@@ -655,16 +754,25 @@ def _benchmark_subject(
     *,
     project_root: str | Path,
     language: str,
+    source_repo: Optional[str],
+    source_commit: Optional[str],
     live_command: Optional[Sequence[str]],
 ) -> dict[str, Any]:
     root = Path(project_root).resolve()
+    snapshot = (
+        SourceSnapshot(source_repo, source_commit)
+        if source_repo is not None and source_commit is not None
+        else None
+    )
     graph_data = getattr(graph, "graph", None)
     vertex_attributes = (
         set(graph_data.vs.attribute_names()) if graph_data is not None else set()
     )
     return {
         "project_root": str(root),
-        "git_commit": _git_commit(root),
+        "repository": snapshot.repo if snapshot is not None else None,
+        "git_commit": snapshot.commit if snapshot is not None else _git_commit(root),
+        "snapshot_id": snapshot.snapshot_id if snapshot is not None else None,
         "language": language,
         "graph": {
             "node_count": graph_data.vcount() if graph_data is not None else None,
@@ -726,6 +834,31 @@ def _summarize_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "speedup_ratio": _latency_stats(speedups),
         "latency_saved_ms": _latency_stats(saved),
     }
+
+
+def _reference_warmup_state(
+    comparisons: Sequence[Any],
+) -> tuple[tuple[Any, ...], int, int]:
+    signature = []
+    nonempty_count = 0
+    error_count = 0
+    for comparison in comparisons:
+        row = comparison.to_dict()
+        request = row.get("request") or {}
+        reference = row.get("reference_call") or {}
+        status = str(reference.get("status") or "unknown")
+        result_count = int(reference.get("result_count") or 0)
+        nonempty_count += int(status == "ok" and result_count > 0)
+        error_count += int(status != "ok")
+        signature.append(
+            (
+                str(request.get("request_id") or ""),
+                status,
+                reference.get("result_fingerprint"),
+                result_count,
+            )
+        )
+    return tuple(signature), nonempty_count, error_count
 
 
 def _duration(row: Mapping[str, Any], key: str) -> Optional[float]:

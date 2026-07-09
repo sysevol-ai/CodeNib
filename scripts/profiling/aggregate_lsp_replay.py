@@ -38,6 +38,8 @@ def _percentile(values: Iterable[float], q: float) -> float | None:
 
 def aggregate_lsp_replay_reports(
     reports: Sequence[Mapping[str, Any]],
+    *,
+    _include_language_breakdown: bool = True,
 ) -> dict[str, Any]:
     comparisons: list[dict[str, Any]] = []
     request_rows: dict[tuple[int, str, str], list[Mapping[str, Any]]] = defaultdict(
@@ -83,7 +85,13 @@ def aggregate_lsp_replay_reports(
 
     setup = [report.get("setup") or {} for report in reports]
     setup_summary = {}
-    for field in ("graph_load_ms", "static_provider_init_ms", "live_start_ms"):
+    for field in (
+        "graph_load_ms",
+        "static_provider_init_ms",
+        "live_start_ms",
+        "idle_wait_ms",
+        "warmup_wall_ms",
+    ):
         values = [
             float(row[field])
             for row in setup
@@ -112,7 +120,7 @@ def aggregate_lsp_replay_reports(
             int(row.get("error_count") or 0) > 0 for row in warmup_summaries
         ),
     }
-    return {
+    summary = {
         "schema_version": 2,
         "snapshot_count": len(reports),
         "subjects": [report.get("subject") or {} for report in reports],
@@ -121,6 +129,20 @@ def aggregate_lsp_replay_reports(
         "setup": setup_summary,
         "measurements": measurement_summary,
     }
+    if _include_language_breakdown:
+        by_language: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+        for report in reports:
+            subject = report.get("subject") or {}
+            language = str(subject.get("language") or "unknown")
+            by_language[language].append(report)
+        summary["by_language"] = {
+            language: aggregate_lsp_replay_reports(
+                language_reports,
+                _include_language_breakdown=False,
+            )
+            for language, language_reports in sorted(by_language.items())
+        }
+    return summary
 
 
 def render_markdown(summary: Mapping[str, Any]) -> str:
@@ -174,10 +196,46 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             ),
         ]
     )
+    by_language = summary.get("by_language") or {}
+    if by_language:
+        lines.extend(
+            [
+                "",
+                "## Languages",
+                "",
+                "| language | snapshots | definition eq | references eq "
+                "| overall eq | speedup p50 |",
+                "|---|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for language, language_summary in sorted(by_language.items()):
+            language_requests = language_summary.get("request_summary") or {}
+            language_measurements = language_summary.get("measurements") or {}
+            lines.append(
+                "| {language} | {snapshots} | {definition} | {references} "
+                "| {overall} | {speedup} |".format(
+                    language=language,
+                    snapshots=language_summary.get("snapshot_count", 0),
+                    definition=_fmt_rate(language_requests.get("definition") or {}),
+                    references=_fmt_rate(language_requests.get("references") or {}),
+                    overall=_fmt_rate(language_requests.get("overall") or {}),
+                    speedup=_fmt_nested(
+                        language_measurements.get("overall") or {},
+                        "speedup_ratio",
+                        "p50",
+                    ),
+                )
+            )
     lines.extend(["", "## Setup", ""])
     lines.append("| phase | p50 ms | p95 ms |")
     lines.append("|---|---:|---:|")
-    for field in ("graph_load_ms", "static_provider_init_ms", "live_start_ms"):
+    for field in (
+        "graph_load_ms",
+        "static_provider_init_ms",
+        "live_start_ms",
+        "idle_wait_ms",
+        "warmup_wall_ms",
+    ):
         values = summary["setup"][field]
         lines.append(
             f"| {field} | {_fmt(values.get('p50'))} | {_fmt(values.get('p95'))} |"
@@ -188,6 +246,13 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
 
 def _fmt_nested(payload: Mapping[str, Any], group: str, field: str) -> str:
     return _fmt((payload.get(group) or {}).get(field))
+
+
+def _fmt_rate(payload: Mapping[str, Any]) -> str:
+    equivalent = int(payload.get("equivalent_requests") or 0)
+    total = int(payload.get("requests") or 0)
+    rate = float(payload.get("equivalence_rate") or 0.0)
+    return f"{equivalent}/{total} ({rate:.0%})"
 
 
 def _fmt(value: Any) -> str:

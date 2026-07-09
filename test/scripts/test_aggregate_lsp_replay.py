@@ -19,6 +19,7 @@ def _row(request_id, capability, same_result, verdict):
 
 def test_aggregate_counts_repetitions_once_per_request():
     report = {
+        "subject": {"language": "python"},
         "warmup_summary": {
             "row_count": 2,
             "equivalent_row_count": 1,
@@ -29,6 +30,8 @@ def test_aggregate_counts_repetitions_once_per_request():
             "graph_load_ms": 5.0,
             "static_provider_init_ms": 0.1,
             "live_start_ms": 100.0,
+            "idle_wait_ms": 1.0,
+            "warmup_wall_ms": 20.0,
         },
         "comparisons": [
             _row("d1", "definition", True, "equivalent_static_faster"),
@@ -56,3 +59,8 @@ def test_aggregate_counts_repetitions_once_per_request():
         "error_count": 1,
         "reports_with_errors": 1,
     }
+    assert summary["by_language"]["python"]["snapshot_count"] == 1
+    assert (
+        summary["by_language"]["python"]["request_summary"]["overall"]
+        == summary["request_summary"]["overall"]
+    )

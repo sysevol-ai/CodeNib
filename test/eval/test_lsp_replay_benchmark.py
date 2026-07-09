@@ -94,6 +94,9 @@ class _FakeLiveProvider:
     def close(self) -> None:
         self.closed = True
 
+    def wait_until_idle(self, *, max_wait_s: float = 60.0) -> bool:
+        return max_wait_s == 60.0
+
     def __call__(self, capability: str, arguments: Mapping[str, Any]) -> Any:
         assert self.started is True
         assert arguments["file_path"] == "caller.py"
@@ -238,8 +241,13 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
         graph=graph,
         project_root=tmp_path,
         language="python",
-        warmup_reps=1,
+        source_repo="org/repo",
+        source_commit="a" * 40,
+        warmup_reps=2,
+        warmup_until_stable=True,
+        warmup_poll_seconds=0,
         measured_reps=2,
+        wait_until_idle=True,
         live_provider_factory=_FakeLiveProvider,
     )
 
@@ -247,9 +255,16 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
     assert payload["request_count"] == 2
     assert payload["artifact_quality"]["passed"] is True
     assert payload["schema_version"] == 2
-    assert payload["warmup_summary"]["row_count"] == 2
+    assert payload["warmup_summary"]["row_count"] == 4
     assert payload["warmup_summary"]["error_count"] == 0
+    assert payload["warmup_protocol"]["stable"] is True
+    assert payload["warmup_protocol"]["live_nonempty_count"] == 2
+    assert payload["setup"]["warmup_wall_ms"] >= 0
+    assert payload["setup"]["idle_wait_ms"] >= 0
     assert payload["subject"]["language"] == "python"
+    assert payload["subject"]["repository"] == "org/repo"
+    assert payload["subject"]["git_commit"] == "a" * 40
+    assert len(payload["subject"]["snapshot_id"]) == 64
     assert payload["subject"]["graph"] == {
         "node_count": 4,
         "edge_count": 1,
@@ -273,6 +288,33 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
     assert "Artifact quality: yes" in markdown
     assert "Equivalence guardrail: yes" in markdown
     assert "static p50/p95/p99 ms" in markdown
+
+
+def test_adaptive_warmup_rejects_stable_but_empty_live_provider(tmp_path):
+    class EmptyLiveProvider(_FakeLiveProvider):
+        def __call__(self, capability, arguments):
+            return []
+
+    graph = _range_graph(tmp_path)
+    requests = generate_lsp_replay_requests(
+        graph,
+        capabilities=["definition"],
+        max_per_capability=1,
+    )
+
+    with pytest.raises(RuntimeError, match="did not stabilize.*nonempty=0/1"):
+        run_lsp_replay_benchmark(
+            requests,
+            graph=graph,
+            project_root=tmp_path,
+            language="python",
+            warmup_reps=2,
+            warmup_until_stable=True,
+            max_warmup_reps=2,
+            warmup_poll_seconds=0,
+            measured_reps=1,
+            live_provider_factory=EmptyLiveProvider,
+        )
 
 
 def test_exit_code_for_lsp_replay_benchmark_guardrails():
