@@ -257,3 +257,56 @@ class TestRunReplay:
             replay_mod.run_replay(args)
 
         assert (Path(args.out) / "memory").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# Integration — real IndexCompiler (BM25 only, no GPU)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_two_cycle_replay_bm25_only(tmp_path):
+    """Full two-cycle replay: real BM25 index, real worktrees, memory accumulates."""
+    import argparse
+
+    repo = _make_repo(tmp_path)
+
+    # Collect all 3 commits (oldest to newest) so graph diff has something to compare.
+    log = subprocess.check_output(
+        ["git", "log", "--format=%H", "--reverse"], cwd=repo, text=True
+    ).strip().splitlines()
+    # Use the last two so the churn window covers both.
+    commits = log[-2:]
+    commits_file = tmp_path / "commits.txt"
+    commits_file.write_text("\n".join(commits) + "\n")
+
+    args = argparse.Namespace(
+        repo=str(repo),
+        commits=str(commits_file),
+        out=str(tmp_path / "out"),
+        arm="memory",
+        index_types="bm25",
+        since="10 years ago",
+        sandbox="worktree",
+        use_llm=False,
+        llm_model="vertex_ai/gemini-2.5-flash",
+        log_level="INFO",
+    )
+
+    replay_mod.run_replay(args)
+
+    out = Path(args.out)
+
+    # Memory store must have exactly two cycle rows.
+    from codeminer.guardian.memory import MemoryStore
+    store = MemoryStore(str(out / "memory"))
+    assert store.cycle_count() == 2
+    store.assert_cross_cycle()
+
+    # Both episodes must have a report.md.
+    ep_dirs = sorted((out / "episodes").iterdir())
+    assert len(ep_dirs) == 2
+    for ep in ep_dirs:
+        md = ep / "report.md"
+        assert md.exists(), f"Missing report.md in {ep}"
+        assert "Repository Guardian Report" in md.read_text()
+        assert (ep / "report.json").exists()
