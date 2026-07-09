@@ -13,9 +13,11 @@ aggregate latency only for rows whose agent-visible fingerprints match.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shlex
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -183,10 +185,11 @@ def run_lsp_replay_benchmark(
     live_start = clock()
     live_provider.start()
     live_start_ms = (clock() - live_start) * 1000
+    warmup_rows: list[dict[str, Any]] = []
     comparison_rows: list[dict[str, Any]] = []
     with live_provider:
-        for _ in range(warmup_reps):
-            compare_static_lsp_provider(
+        for rep in range(1, warmup_reps + 1):
+            comparisons = compare_static_lsp_provider(
                 request_list,
                 graph=graph,
                 static_provider=static_provider,
@@ -195,6 +198,10 @@ def run_lsp_replay_benchmark(
                 fingerprint_selector=fingerprint_selector,
                 clock=clock,
             )
+            for comparison in comparisons:
+                row = comparison.to_dict()
+                row["rep"] = rep
+                warmup_rows.append(row)
 
         for rep in range(1, measured_reps + 1):
             comparisons = compare_static_lsp_provider(
@@ -211,12 +218,23 @@ def run_lsp_replay_benchmark(
                 row["rep"] = rep
                 comparison_rows.append(row)
 
+    effective_command = getattr(live_provider, "effective_command", None)
+    if effective_command is None:
+        effective_command = getattr(live_provider, "command", None) or command
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "benchmark": "lsp_request_replay",
+        "subject": _benchmark_subject(
+            graph,
+            project_root=project_root,
+            language=language,
+            live_command=effective_command,
+        ),
+        "request_source": {"kind": "provided"},
         "request_count": len(request_list),
         "warmup_reps": warmup_reps,
         "measured_reps": measured_reps,
+        "warmup_summary": _summarize_rows(warmup_rows),
         "setup": {
             "static_provider_init_ms": static_provider_init_ms,
             "live_start_ms": live_start_ms,
@@ -474,6 +492,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             quality_policy=quality_policy,
             allow_low_quality_artifact=args.allow_low_quality_artifact,
         )
+        if args.requests:
+            request_path = Path(args.requests).resolve()
+            payload["request_source"] = {
+                "kind": "file",
+                "path": str(request_path),
+                "sha256": _file_sha256(request_path),
+            }
+        else:
+            payload["request_source"] = {
+                "kind": "graph_reference_edges",
+                "capabilities": _split_csv(args.capabilities),
+                "max_per_capability": args.max_per_capability,
+            }
+        graph_source = _graph_source_from_args(args)
+        payload["subject"]["graph"].update(
+            {
+                "artifact_path": str(graph_source),
+                "artifact_sha256": _file_sha256(graph_source),
+            }
+        )
         payload["setup"]["graph_load_ms"] = graph_load_ms
         _write_reports(
             payload,
@@ -610,6 +648,49 @@ def _project_root(graph: Any, project_root: str | Path | None) -> Optional[Path]
         else getattr(graph, "project_root", None)
     )
     return Path(root).resolve() if root else None
+
+
+def _benchmark_subject(
+    graph: Any,
+    *,
+    project_root: str | Path,
+    language: str,
+    live_command: Optional[Sequence[str]],
+) -> dict[str, Any]:
+    root = Path(project_root).resolve()
+    graph_data = getattr(graph, "graph", None)
+    vertex_attributes = (
+        set(graph_data.vs.attribute_names()) if graph_data is not None else set()
+    )
+    return {
+        "project_root": str(root),
+        "git_commit": _git_commit(root),
+        "language": language,
+        "graph": {
+            "node_count": graph_data.vcount() if graph_data is not None else None,
+            "edge_count": graph_data.ecount() if graph_data is not None else None,
+            "has_selection_line": "selection_line" in vertex_attributes,
+        },
+        "reference_provider": {
+            "provider": JSON_RPC_LSP_PROVIDER,
+            "command": list(live_command) if live_command is not None else None,
+        },
+    }
+
+
+def _git_commit(project_root: Path) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project_root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    commit = result.stdout.strip()
+    return commit or None
 
 
 def _summarize_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -763,6 +844,14 @@ def _load_graph_from_args(
     return graph, (time.monotonic() - start) * 1000
 
 
+def _graph_source_from_args(args: argparse.Namespace) -> Path:
+    if args.graph:
+        return Path(args.graph).resolve()
+    if not args.instance_id:
+        raise ValueError("--instance-id is required with --prebuilt-root")
+    return (Path(args.prebuilt_root) / str(args.instance_id) / "graph.pkl").resolve()
+
+
 def _project_root_from_args(args: argparse.Namespace) -> str:
     from .prebuilt import repo_path_for
 
@@ -784,6 +873,14 @@ def _command_from_arg(command: str | None) -> list[str] | None:
 
 def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _write_reports(

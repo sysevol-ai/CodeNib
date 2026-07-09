@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from codeminer.eval.agent_runner.live_lsp_provider import (
     LiveLSPReferenceProvider,
     compare_static_to_live_lsp_provider,
@@ -140,6 +142,62 @@ def test_live_lsp_reference_provider_calls_injected_client(tmp_path):
     assert made[0].calls == [("definition", str(tmp_path / "caller.py"), 1, 9)]
     assert result[0].file == "callee.py"
     assert result[0].start_line == 4
+
+
+def test_live_lsp_reference_provider_raises_on_transport_timeout(tmp_path):
+    class TimeoutClient:
+        _last_error = None
+
+        def __init__(self, command, project_root, language):
+            pass
+
+        def start(self, skip_probe=False):
+            pass
+
+        def shutdown(self):
+            pass
+
+        def definition(self, file_path, line, character):
+            self._last_error = {"code": -1, "message": "timeout"}
+            return []
+
+    provider = LiveLSPReferenceProvider(
+        project_root=tmp_path,
+        language="python",
+        command=["fake-lsp"],
+        client_factory=TimeoutClient,
+    )
+
+    with provider, pytest.raises(RuntimeError, match="definition failed.*timeout"):
+        provider.definition(file_path="caller.py", line=1, character=0)
+
+
+def test_live_lsp_reference_provider_accepts_null_location(tmp_path):
+    class NullClient:
+        _last_error = None
+
+        def __init__(self, command, project_root, language):
+            pass
+
+        def start(self, skip_probe=False):
+            pass
+
+        def shutdown(self):
+            pass
+
+        def definition(self, file_path, line, character):
+            self._last_error = {"code": -2, "message": "null result"}
+            return []
+
+    provider = LiveLSPReferenceProvider(
+        project_root=tmp_path,
+        language="python",
+        command=["fake-lsp"],
+        client_factory=NullClient,
+    )
+
+    with provider:
+        assert provider.definition(file_path="caller.py", line=1, character=0) == []
 
 
 def test_compare_static_to_live_lsp_uses_start_location_fingerprint(tmp_path):

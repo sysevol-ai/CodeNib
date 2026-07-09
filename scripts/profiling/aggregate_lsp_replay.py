@@ -96,10 +96,28 @@ def aggregate_lsp_replay_reports(
         }
 
     measurement_summary = summarize_lsp_replay_benchmark({"comparisons": comparisons})
+    warmup_summaries = [report.get("warmup_summary") or {} for report in reports]
+    warmup_summary = {
+        "row_count": sum(int(row.get("row_count") or 0) for row in warmup_summaries),
+        "equivalent_row_count": sum(
+            int(row.get("equivalent_row_count") or 0) for row in warmup_summaries
+        ),
+        "mismatch_count": sum(
+            int(row.get("mismatch_count") or 0) for row in warmup_summaries
+        ),
+        "error_count": sum(
+            int(row.get("error_count") or 0) for row in warmup_summaries
+        ),
+        "reports_with_errors": sum(
+            int(row.get("error_count") or 0) > 0 for row in warmup_summaries
+        ),
+    }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "snapshot_count": len(reports),
+        "subjects": [report.get("subject") or {} for report in reports],
         "request_summary": request_summary,
+        "warmup_summary": warmup_summary,
         "setup": setup_summary,
         "measurements": measurement_summary,
     }
@@ -142,6 +160,20 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
                 speedup=_fmt_nested(measured, "speedup_ratio", "p50"),
             )
         )
+    warmup = summary.get("warmup_summary") or {}
+    lines.extend(
+        [
+            "",
+            (
+                "Warmup diagnostics: {errors} errors across {rows} rows "
+                "({reports} snapshots affected)."
+            ).format(
+                errors=warmup.get("error_count", 0),
+                rows=warmup.get("row_count", 0),
+                reports=warmup.get("reports_with_errors", 0),
+            ),
+        ]
+    )
     lines.extend(["", "## Setup", ""])
     lines.append("| phase | p50 ms | p95 ms |")
     lines.append("|---|---:|---:|")

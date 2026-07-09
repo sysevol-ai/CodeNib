@@ -246,6 +246,17 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
     summary = payload["summary"]["overall"]
     assert payload["request_count"] == 2
     assert payload["artifact_quality"]["passed"] is True
+    assert payload["schema_version"] == 2
+    assert payload["warmup_summary"]["row_count"] == 2
+    assert payload["warmup_summary"]["error_count"] == 0
+    assert payload["subject"]["language"] == "python"
+    assert payload["subject"]["graph"] == {
+        "node_count": 4,
+        "edge_count": 1,
+        "has_selection_line": True,
+    }
+    assert payload["subject"]["reference_provider"]["provider"] == "json_rpc"
+    assert payload["request_source"] == {"kind": "provided"}
     assert len(payload["comparisons"]) == 4
     assert summary["row_count"] == 4
     assert summary["equivalent_row_count"] == 4

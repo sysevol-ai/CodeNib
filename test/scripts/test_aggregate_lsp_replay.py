@@ -19,6 +19,12 @@ def _row(request_id, capability, same_result, verdict):
 
 def test_aggregate_counts_repetitions_once_per_request():
     report = {
+        "warmup_summary": {
+            "row_count": 2,
+            "equivalent_row_count": 1,
+            "mismatch_count": 0,
+            "error_count": 1,
+        },
         "setup": {
             "graph_load_ms": 5.0,
             "static_provider_init_ms": 0.1,
@@ -43,3 +49,10 @@ def test_aggregate_counts_repetitions_once_per_request():
     }
     assert summary["request_summary"]["definition"]["requests"] == 1
     assert summary["measurements"]["overall"]["equivalent_row_count"] == 2
+    assert summary["warmup_summary"] == {
+        "row_count": 2,
+        "equivalent_row_count": 1,
+        "mismatch_count": 0,
+        "error_count": 1,
+        "reports_with_errors": 1,
+    }

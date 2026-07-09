@@ -126,23 +126,42 @@ Existing agent results are supporting evidence only:
   separately from its baselines. They cannot be the final controlled latency
   result.
 
-The first real-repository LSP replay pilot covers four Python snapshots
-(Astropy, Xarray, Matplotlib, and scikit-learn), 80 independent requests, one
-warmup, and three measured repetitions. Pyright is the live JSON-RPC reference.
+The corrected real-repository LSP replay pilot covers four Python snapshots
+(Astropy, Xarray, Matplotlib, and scikit-learn), 80 independent requests, two
+warmups, and three measured repetitions. Requests are sampled deterministically
+from graph-covered reference anchors, so this is a compatibility and latency
+pilot for the indexed population, not an estimate of arbitrary LSP traffic.
+The live reference is pinned to `basedpyright@1.39.9`; every report records the
+repository commit, graph shape, graph capabilities, and server command.
 
 | capability | equivalent requests | static p50 | live p50 | speedup p50 |
 |---|---:|---:|---:|---:|
-| definition | 28/40 (70%) | 0.57 ms | 1.09 ms | 1.87x |
-| references | 18/40 (45%) | 0.78 ms | 16.75 ms | 18.88x |
-| overall | 46/80 (57.5%) | 0.65 ms | 1.30 ms | 2.65x |
+| definition | 30/40 (75%) | 0.71 ms | 1.26 ms | 1.69x |
+| references | 18/40 (45%) | 0.88 ms | 17.67 ms | 17.88x |
+| overall | 48/80 (60%) | 0.77 ms | 1.42 ms | 2.46x |
 
-Graph load p50 is 60.1 ms, static provider initialization p50 is 0.03 ms, and
-live-server startup p50 is 1,014.8 ms. The low equivalence coverage is the most
-important pilot result: a global static replacement is invalid. The system must
-promote only request classes with demonstrated equivalence and send all other
-requests to the live fallback. The generated reports live under
-`/mnt/data/codeminer/results/lsp_replay_pilot`; aggregate them with
+Graph load p50 is 59.8 ms, static provider initialization p50 is 0.01 ms, and
+live-server startup p50 is 1,056.8 ms. Two transport timeouts occurred among
+160 warmup rows and are recorded separately; all 240 measured rows completed
+without transport errors. Persisting the exact SCIP declaration
+occurrence separately from its scope improved definition equivalence from 70%
+to 75%; it did not change reference equivalence. This is the intended guardrail
+behavior: a schema fix receives credit only for the capability it repairs.
+
+The low overall equivalence coverage remains the most important pilot result: a
+global static replacement is invalid. The system must promote only
+provider/profile/capability slices that meet a predeclared equivalence threshold
+and send all other requests to the live fallback. Transport failures are now
+reported as errors rather than being collapsed into valid empty LSP responses.
+The corrected reports live under
+`/mnt/data/codeminer/results/lsp_replay_v4`; aggregate them with
 `scripts/profiling/aggregate_lsp_replay.py`.
+
+These steady-state request latencies are not cold-index timings. On the same
+four already-materialized SCIP payloads, the C++ graph decoder took 0.55-1.56
+seconds to materialize graphs, while the earlier full embedding profiles took
+minutes per snapshot. The systems result must therefore report the break-even
+query count and amortized total cost, not present request latency in isolation.
 
 ## Confirmatory protocol
 

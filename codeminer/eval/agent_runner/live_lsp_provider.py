@@ -45,6 +45,7 @@ class LiveLSPReferenceProvider:
         self.command = list(command) if command is not None else None
         self.client_factory = client_factory
         self.skip_probe = bool(skip_probe)
+        self.effective_command: Optional[list[str]] = None
         self._client: Any = None
 
     def __enter__(self) -> "LiveLSPReferenceProvider":
@@ -62,6 +63,7 @@ class LiveLSPReferenceProvider:
         command = self.command or LSPClient.get_lsp_command(self.language)
         if not command:
             raise RuntimeError(f"no LSP command registered for {self.language!r}")
+        self.effective_command = list(command)
         client = self.client_factory(command, str(self.project_root), self.language)
         start = getattr(client, "start", None)
         if callable(start):
@@ -108,6 +110,7 @@ class LiveLSPReferenceProvider:
             int(line),
             int(character or 0),
         )
+        _raise_on_client_failure(client, CAPABILITY_DEFINITION, locations)
         nodes = lsp_locations_to_nodes(
             locations,
             project_root=self.project_root,
@@ -138,6 +141,7 @@ class LiveLSPReferenceProvider:
             int(character or 0),
             include_declaration=bool(include_declaration),
         )
+        _raise_on_client_failure(client, CAPABILITY_REFERENCES, locations)
         nodes = lsp_locations_to_nodes(
             locations,
             project_root=self.project_root,
@@ -155,6 +159,22 @@ class LiveLSPReferenceProvider:
         if path.is_absolute():
             return path
         return self.project_root / path
+
+
+def _raise_on_client_failure(client: Any, capability: str, result: Any) -> None:
+    """Keep transport failures distinct from valid empty LSP responses."""
+
+    if result:
+        return
+    error = getattr(client, "_last_error", None)
+    if not isinstance(error, Mapping):
+        return
+    code = error.get("code")
+    if code in (None, -2):
+        # LSP permits a null result when no location exists at the position.
+        return
+    message = str(error.get("message") or "unknown live LSP failure")
+    raise RuntimeError(f"live LSP {capability} failed ({code}): {message}")
 
 
 def lsp_locations_to_nodes(
