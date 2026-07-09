@@ -163,6 +163,72 @@ seconds to materialize graphs, while the earlier full embedding profiles took
 minutes per snapshot. The systems result must therefore report the break-even
 query count and amortized total cost, not present request latency in isolation.
 
+### Multilanguage replay pilot
+
+A second development pilot adds two repositories each for Go, Rust, and
+TypeScript/JavaScript (six exact snapshots, 120 independent requests). Snapshot
+selection used language and repository size before observing replay outcomes.
+The request population is still graph-covered and therefore not a traffic-wide
+coverage estimate. Live providers are `gopls v0.22.0`, `rust-analyzer
+0.3.2777-standalone`, and `typescript-language-server 5.3.0` with TypeScript
+6.0.3.
+
+This pilot uses behavioral readiness instead of an arbitrary source-file probe:
+start the server without probing, replay the fixed request set until live result
+fingerprints are identical for two consecutive rounds, require at least 10% of
+live results to be non-empty, then begin three measured repetitions. The run
+fails rather than emitting latency if behavior does not stabilize within ten
+warmup rounds. This protocol corrected false 0% results observed while
+rust-analyzer and tsserver were still loading their workspaces.
+
+| language | snapshots | definition equivalent | references equivalent | overall equivalent | equivalent-row speedup p50 |
+|---|---:|---:|---:|---:|---:|
+| Go | 2 | 20/20 (100%) | 4/20 (20%) | 24/40 (60%) | 3.71x |
+| Rust | 2 | 19/20 (95%) | 13/20 (65%) | 32/40 (80%) | 3.74x |
+| TypeScript/JavaScript | 2 | 14/20 (70%) | 2/20 (10%) | 16/40 (40%) | 9.62x |
+| overall | 6 | 53/60 (88.3%) | 19/60 (31.7%) | 72/120 (60%) | 4.10x |
+
+Across these snapshots, graph load p50 is 14.6 ms and live process initialize
+p50 is 88.4 ms, but live behavioral warmup p50 is 7.58 seconds (p95 26.38
+seconds). Two transient `ContentModified` errors occurred among 380 warmup rows;
+all 360 measured rows completed without transport errors. The central systems
+opportunity is therefore larger than steady-state RPC latency: compile the
+snapshot once, load the static service in milliseconds, and amortize dynamic
+workspace analysis across all agent queries that share the snapshot.
+
+A one-snapshot-per-language break-even pilot reran the complete SCIP-to-graph
+pipeline with warm toolchain/dependency caches. Each rebuilt graph matched its
+existing artifact in node count, edge count, and all 20 static request
+fingerprints. Using the conservative totals
+`static = build + sessions * graph_load` and
+`live = sessions * (initialize + behavioral_warmup)`, while excluding static
+per-request latency savings, gives:
+
+| language | one-time static build | live setup/session | break-even sessions |
+|---|---:|---:|---:|
+| Go | 3.39 s | 2.07 s | 2 |
+| Rust | 8.17 s | 7.70 s | 2 |
+| TypeScript/JavaScript | 27.08 s | 7.60 s | 4 |
+
+These are single-run development measurements, not confidence intervals. The
+TypeScript wall time includes failed frozen-lockfile dependency preparation
+before successful indexing, while all three runs reuse installed language
+toolchains and package caches. Rust SCIP generation uses the repository's
+configured nightly rust-analyzer toolchain, independently from the standalone
+live LSP binary. The confirmatory build study must separately report clean
+dependency cold start, warm toolchain build, and exact snapshot cache hit. The
+analysis artifact lives under
+`/mnt/data/codeminer/results/scip_build_pilot`; regenerate it with
+`scripts/profiling/analyze_semantic_service_break_even.py`.
+
+Definition is a plausible promoted fast path for Go and Rust under these
+profiles. References is not: coverage remains too low, especially for Go and
+TypeScript, and must fall back to live LSP. TypeScript also demonstrates that
+promotion cannot be global even within a capability; alias resolution and
+workspace state require a language/provider/profile-specific gate. Reports and
+exact request/graph hashes live under
+`/mnt/data/codeminer/results/lsp_replay_multilang_pilot`.
+
 ## Confirmatory protocol
 
 Freeze the artifact profile, compact policy, metrics, and 5-point
@@ -173,9 +239,11 @@ non-inferiority margin before running held-out repositories.
    truth.
 2. Use one exact snapshot artifact for every query, arm, model, and repetition.
    Record snapshot/profile IDs and cache-hit state in every result.
-3. Interleave or deterministically randomize arm order. Run microbenchmarks at
-   least five times after declared warmups; run stochastic agent cells with at
-   least three repetitions on the confirmatory subset.
+3. Interleave or deterministically randomize arm order. Establish live-server
+   readiness by stable observable fingerprints, not sleep time or a random-file
+   probe. Run microbenchmarks at least five times after declared warmups; run
+   stochastic agent cells with at least three repetitions on the confirmatory
+   subset.
 4. Cluster task statistics by repository. For generated queries, resample
    repositories first and queries within repository second.
 5. Report completion and fallback rates. Do not silently remove malformed
