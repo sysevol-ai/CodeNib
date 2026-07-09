@@ -409,6 +409,38 @@ def _run_cycle_inner(
         logger.info("Guardian: running test suite (gated by --run-tests)")
         test_result = run_test_suite(repo_path)
 
+    # 3b. Hypothesize — LLM ranks signals using cross-cycle memory; pure heuristic
+    #     when no model is configured or arm=memoryless (memory_cited stays empty).
+    _llm: Optional[object] = None
+    _usage_acc: Optional[object] = None
+    if config.use_llm:
+        from .llm_investigator import LLMUsage
+
+        _llm = _make_llm(config)
+        _usage_acc = LLMUsage()
+
+    from .hypothesize import Hypothesis, heuristic_hypotheses, hypothesize
+
+    if _llm is not None and (hotspots or _drift_signals):
+        _hypotheses: List[Hypothesis] = hypothesize(
+            hotspots,
+            _drift_signals,  # type: ignore[arg-type]
+            _prior_findings,
+            _llm,
+            usage_acc=_usage_acc,  # type: ignore[arg-type]
+            top_n=config.top_n,
+        )
+        logger.info("Guardian hypothesize — %d hypothesis(es) ranked by LLM", len(_hypotheses))
+    else:
+        _hypotheses = heuristic_hypotheses(
+            hotspots,
+            _drift_signals,  # type: ignore[arg-type]
+            top_n=config.top_n,
+        )
+        logger.info(
+            "Guardian hypothesize — %d hypothesis(es) ranked heuristically", len(_hypotheses)
+        )
+
     # 4. Build retriever — used by investigation (static evidence + LLM tool calls).
     #
     # Retriever selection driven by index_types:
@@ -439,21 +471,68 @@ def _run_cycle_inner(
         logger.info("Guardian: using BM25-only retriever (no GPU required)")
         _retriever = _load_bm25_from_manifest(manifest) or _NullRetriever()
 
-    # 5. Investigate — gather deterministic evidence for each signal; optionally
-    #    run LLM for narrative. BM25-only cycles still report churn findings.
-    _llm: Optional[object] = None
-    _usage_acc: Optional[object] = None
-    if config.use_llm:
-        from .llm_investigator import LLMUsage
-
-        _llm = _make_llm(config)
-        _usage_acc = LLMUsage()
-
+    # 5. Investigate — hypothesis-ordered: findings appear in hypothesis-rank order
+    #    so the memory arm's LLM reranking is visible in the report.
+    #    BM25-only cycles produce churn findings with evidence; LLM cycles add narrative.
     if reporter is None and _llm is not None:
         reporter = _llm_reporter(config, _retriever, _llm, _usage_acc)
 
+    _hotspot_by_path = {h.path: h for h in hotspots}
+    _churn_hypotheses = [h for h in _hypotheses if h.kind == "churn"]
+
     findings: List[Finding] = []
+    _processed_paths: set = set()
+
+    # Primary pass: hypotheses in rank order (carries hypothesis statement + memory_cited).
+    for hyp in _churn_hypotheses:
+        hotspot = _hotspot_by_path.get(hyp.target)
+        if hotspot is None:
+            continue
+        _processed_paths.add(hotspot.path)
+        detail = (
+            f"Changed in **{hotspot.commit_count}** commits over "
+            f"{config.since}."
+        )
+        if reporter is None:
+            evidence = investigate_hotspot(
+                hotspot,
+                _retriever,  # type: ignore[arg-type]
+                top_k=config.retrieval_top_k,
+            )
+            findings.append(
+                Finding(
+                    kind="churn",
+                    title=f"High-churn file: {hotspot.path}",
+                    detail=detail,
+                    evidence=evidence,
+                    hypothesis=hyp.statement,
+                )
+            )
+        else:
+            narrative = reporter(hotspot)
+            logger.info(
+                "Guardian investigate — %s: narrative %s",
+                hotspot.path, "produced" if narrative else "empty",
+            )
+            if not narrative:
+                continue
+            findings.append(
+                Finding(
+                    kind="churn",
+                    title=f"High-churn file: {hotspot.path}",
+                    detail=detail,
+                    evidence=[],
+                    narrative=narrative,
+                    hypothesis=hyp.statement,
+                    verdict="confirmed",
+                )
+            )
+
+    # Fallback pass: hotspots not covered by any churn hypothesis (e.g. LLM returned
+    # fewer items than top_n).
     for hotspot in hotspots:
+        if hotspot.path in _processed_paths:
+            continue
         detail = (
             f"Changed in **{hotspot.commit_count}** commits over "
             f"{config.since}."
@@ -472,23 +551,24 @@ def _run_cycle_inner(
                     evidence=evidence,
                 )
             )
-            continue
-        narrative = reporter(hotspot)
-        logger.info(
-            "Guardian investigate — %s: narrative %s",
-            hotspot.path, "produced" if narrative else "empty",
-        )
-        if not narrative:
-            continue
-        findings.append(
-            Finding(
-                kind="churn",
-                title=f"High-churn file: {hotspot.path}",
-                detail=detail,
-                evidence=[],
-                narrative=narrative,
+        else:
+            narrative = reporter(hotspot)
+            logger.info(
+                "Guardian investigate — %s: narrative %s",
+                hotspot.path, "produced" if narrative else "empty",
             )
-        )
+            if not narrative:
+                continue
+            findings.append(
+                Finding(
+                    kind="churn",
+                    title=f"High-churn file: {hotspot.path}",
+                    detail=detail,
+                    evidence=[],
+                    narrative=narrative,
+                    verdict="confirmed",
+                )
+            )
 
     # Drift findings: structural analysis from graph-diff, kept as investigated findings.
     if _drift_signals:

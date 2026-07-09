@@ -159,9 +159,16 @@ def test_run_cycle_test_failure_llm_narrative(tmp_path):
         )
         return r
 
+    import json as _json
+
+    hyp_json = _json.dumps([{
+        "rank": 1, "target": "mod.py", "kind": "churn",
+        "statement": "mod.py changes frequently.", "confidence": 0.8, "memory_cited": [],
+    }])
     side_effects = [
-        _resp("mod.py changes frequently and risks instability."),
-        _resp("The test fails because run() returns the wrong value."),
+        _resp(hyp_json),                                                    # hypothesize
+        _resp("mod.py changes frequently and risks instability."),          # churn investigate
+        _resp("The test fails because run() returns the wrong value."),     # test failure
     ]
 
     config = GuardianConfig(

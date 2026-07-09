@@ -22,8 +22,12 @@ from .llm_investigator import LLMUsage
 class Finding:
     """One signal plus the evidence Guardian gathered around it.
 
-    kind: ``"churn"`` or ``"test_failure"``.
+    kind: ``"churn"``, ``"drift"``, or ``"test_failure"``.
     narrative: Plain-text LLM analysis; empty string when LLM step is skipped.
+    hypothesis: One-sentence hypothesis from the Hypothesize step; empty when skipped.
+    verdict: ``"confirmed"`` | ``"rejected"`` | ``"inconclusive"`` | ``""``
+    evidence_test: Synthesized risk-revealing test source (Phase 2, future).
+    evidence_diff: Fix-probe diff that corroborates the hypothesis (Phase 2, future).
     """
 
     kind: str
@@ -31,6 +35,10 @@ class Finding:
     detail: str = ""
     evidence: List[Evidence] = field(default_factory=list)
     narrative: str = ""
+    hypothesis: str = ""
+    verdict: str = ""
+    evidence_test: str = ""
+    evidence_diff: str = ""
 
 
 @dataclass
@@ -123,6 +131,12 @@ def render_markdown(report: GuardianReport) -> str:
         L.append("")
         if finding.detail:
             L.append(finding.detail)
+            L.append("")
+        if finding.hypothesis:
+            L.append(f"**Hypothesis:** {finding.hypothesis}")
+            L.append("")
+        if finding.verdict:
+            L.append(f"**Verdict:** {finding.verdict}")
             L.append("")
         if finding.narrative:
             L.append("**LLM Analysis:**")
