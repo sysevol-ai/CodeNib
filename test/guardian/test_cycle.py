@@ -11,6 +11,7 @@ end-to-end test drives the real IndexCompiler with BM25 only (integration tier).
 import json
 import os
 import subprocess
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -61,8 +62,9 @@ def test_run_cycle_with_injected_manifest(tmp_path):
 
     assert report.commit == "deadbeefcafebabe"  # from injected manifest
     assert report.file_count == 7
-    # No LLM reporter → no findings in report; signals stay in the log.
-    assert len(report.findings) == 0
+    assert len(report.findings) == 1
+    assert report.findings[0].title == "High-churn file: mod.py"
+    assert report.findings[0].narrative == ""
 
     md = render_markdown(report)
     assert "non-modifying" in md.lower()
@@ -104,6 +106,11 @@ def test_run_cycle_use_llm_flag_calls_litellm(tmp_path):
         choice.message = msg
         r = MagicMock()
         r.choices = [choice]
+        r.usage = SimpleNamespace(
+            prompt_tokens=1,
+            completion_tokens=1,
+            total_tokens=2,
+        )
         return r
 
     tc = _make_tool_call("c1", "mod f function")
@@ -145,9 +152,17 @@ def test_run_cycle_test_failure_llm_narrative(tmp_path):
         choice.message = msg
         r = MagicMock()
         r.choices = [choice]
+        r.usage = SimpleNamespace(
+            prompt_tokens=1,
+            completion_tokens=1,
+            total_tokens=2,
+        )
         return r
 
-    side_effects = [_resp("The test fails because run() returns the wrong value.")]
+    side_effects = [
+        _resp("mod.py changes frequently and risks instability."),
+        _resp("The test fails because run() returns the wrong value."),
+    ]
 
     config = GuardianConfig(
         repo_path=str(repo),
@@ -204,8 +219,9 @@ class TestCycleMemoryIntegration:
         from codeminer.guardian.memory import MemoryStore
         store = MemoryStore(memory_dir)
         assert store.cycle_count() == 1
-        # No LLM reporter → no findings in the report; the cycle row still exists.
-        assert store.recent_findings(k=10) == []
+        rows = store.recent_findings(k=10)
+        assert len(rows) == 1
+        assert rows[0]["title"] == "High-churn file: mod.py"
 
     def test_two_cycles_satisfy_cross_cycle_assertion(self, tmp_path):
         """Two consecutive cycles with memory_dir satisfy the M2 assertion (cycle rows exist)."""
@@ -246,12 +262,14 @@ class TestCycleMemoryIntegration:
         store = MemoryStore(memory_dir)
         assert store.cycle_count() == 0
 
-    def test_no_memory_dir_no_findings_without_llm(self, tmp_path):
-        """Without memory_dir and no LLM reporter, report has no findings."""
+    def test_no_memory_dir_reports_churn_without_llm(self, tmp_path):
+        """Without memory_dir and no LLM reporter, churn still becomes a finding."""
         repo = _make_repo(tmp_path)
         config = GuardianConfig(repo_path=str(repo), since="10 years ago")
         report = run_cycle(config, manifest=_FakeManifest())
-        assert report.findings == []
+        assert len(report.findings) == 1
+        assert report.findings[0].title == "High-churn file: mod.py"
+        assert report.findings[0].narrative == ""
 
     def test_drift_findings_appended_when_graph_diff_runs(self, tmp_path):
         """When a prior graph and current graph both exist, drift findings are added."""

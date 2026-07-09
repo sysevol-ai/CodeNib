@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Callable, Generator, List, Optional, Sequence
 
 from ..log_utils import get_logger
+from .investigate import investigate_hotspot
 from .report import Finding, GuardianReport
 from .signals import Hotspot, TestFailure, churn_hotspots, run_test_suite
 
@@ -438,8 +439,8 @@ def _run_cycle_inner(
         logger.info("Guardian: using BM25-only retriever (no GPU required)")
         _retriever = _load_bm25_from_manifest(manifest) or _NullRetriever()
 
-    # 5. Investigate — gather evidence for each signal; optionally run LLM for narrative.
-    #    Only investigated findings appear in the report; raw signals stay in the log.
+    # 5. Investigate — gather deterministic evidence for each signal; optionally
+    #    run LLM for narrative. BM25-only cycles still report churn findings.
     _llm: Optional[object] = None
     _usage_acc: Optional[object] = None
     if config.use_llm:
@@ -453,9 +454,24 @@ def _run_cycle_inner(
 
     findings: List[Finding] = []
     for hotspot in hotspots:
+        detail = (
+            f"Changed in **{hotspot.commit_count}** commits over "
+            f"{config.since}."
+        )
         if reporter is None:
-            # No LLM — signal already logged in observe step; skip report entry.
-            logger.debug("Guardian: no reporter for %s — skipping finding", hotspot.path)
+            evidence = investigate_hotspot(
+                hotspot,
+                _retriever,  # type: ignore[arg-type]
+                top_k=config.retrieval_top_k,
+            )
+            findings.append(
+                Finding(
+                    kind="churn",
+                    title=f"High-churn file: {hotspot.path}",
+                    detail=detail,
+                    evidence=evidence,
+                )
+            )
             continue
         narrative = reporter(hotspot)
         logger.info(
@@ -468,10 +484,7 @@ def _run_cycle_inner(
             Finding(
                 kind="churn",
                 title=f"High-churn file: {hotspot.path}",
-                detail=(
-                    f"Changed in **{hotspot.commit_count}** commits over "
-                    f"{config.since}."
-                ),
+                detail=detail,
                 evidence=[],
                 narrative=narrative,
             )
