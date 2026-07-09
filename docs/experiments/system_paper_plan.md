@@ -126,6 +126,24 @@ Existing agent results are supporting evidence only:
   separately from its baselines. They cannot be the final controlled latency
   result.
 
+The first real-repository LSP replay pilot covers four Python snapshots
+(Astropy, Xarray, Matplotlib, and scikit-learn), 80 independent requests, one
+warmup, and three measured repetitions. Pyright is the live JSON-RPC reference.
+
+| capability | equivalent requests | static p50 | live p50 | speedup p50 |
+|---|---:|---:|---:|---:|
+| definition | 28/40 (70%) | 0.57 ms | 1.09 ms | 1.87x |
+| references | 18/40 (45%) | 0.78 ms | 16.75 ms | 18.88x |
+| overall | 46/80 (57.5%) | 0.65 ms | 1.30 ms | 2.65x |
+
+Graph load p50 is 60.1 ms, static provider initialization p50 is 0.03 ms, and
+live-server startup p50 is 1,014.8 ms. The low equivalence coverage is the most
+important pilot result: a global static replacement is invalid. The system must
+promote only request classes with demonstrated equivalence and send all other
+requests to the live fallback. The generated reports live under
+`/mnt/data/codeminer/results/lsp_replay_pilot`; aggregate them with
+`scripts/profiling/aggregate_lsp_replay.py`.
+
 ## Confirmatory protocol
 
 Freeze the artifact profile, compact policy, metrics, and 5-point
