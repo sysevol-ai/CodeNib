@@ -10,7 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.agent.lsp_provider import JSON_RPC_LSP_PROVIDER, lsp_result_metadata
+from codeminer.agent.lsp_provider import (
+    JSON_RPC_LSP_PROVIDER,
+    StaticLSPProvider,
+    lsp_result_metadata,
+)
 from codeminer.eval.agent_runner.live_lsp_provider import (
     LiveLSPReferenceProvider,
     compare_static_to_live_lsp_provider,
@@ -143,6 +147,9 @@ def test_live_lsp_reference_provider_calls_injected_client(tmp_path):
     assert made[0].calls == [("definition", str(tmp_path / "caller.py"), 1, 9)]
     assert result[0].file == "callee.py"
     assert result[0].start_line == 4
+    assert result[0].node_name == "callee.py:5"
+    assert result[0].type == "definition"
+    assert result[0].content == "lsp definition"
     assert lsp_result_metadata(result) == {
         "provider": JSON_RPC_LSP_PROVIDER,
         "capability": "definition",
@@ -151,6 +158,58 @@ def test_live_lsp_reference_provider_calls_injected_client(tmp_path):
         "behavior_contract": "json_rpc_lsp_v1",
         "position_granularity": "character",
     }
+
+
+def test_static_and_live_providers_expose_identical_definition_results(tmp_path):
+    class FakeClient:
+        _last_error = None
+
+        def __init__(self, command, project_root, language):
+            self.project_root = project_root
+
+        def start(self, skip_probe=False):
+            pass
+
+        def shutdown(self):
+            pass
+
+        def definition(self, file_path, line, character):
+            return {
+                "uri": (Path(self.project_root) / "callee.py").as_uri(),
+                "range": {
+                    "start": {"line": 4, "character": 4},
+                    "end": {"line": 4, "character": 15},
+                },
+            }
+
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    return load_config()\n", encoding="utf-8"
+    )
+    graph = _range_graph()
+    graph.project_root = str(tmp_path)
+    static_result = StaticLSPProvider(graph).definition(
+        file_path="caller.py", line=1, character=15
+    )
+    live_provider = LiveLSPReferenceProvider(
+        project_root=tmp_path,
+        language="python",
+        command=["fake-lsp"],
+        client_factory=FakeClient,
+        skip_probe=True,
+    )
+
+    with live_provider:
+        live_result = live_provider.definition(
+            file_path="caller.py", line=1, character=15
+        )
+
+    assert [node.model_dump() for node in static_result] == [
+        node.model_dump() for node in live_result
+    ]
+    assert (
+        lsp_result_metadata(static_result)["provider"]
+        != lsp_result_metadata(live_result)["provider"]
+    )
 
 
 def test_live_lsp_reference_provider_raises_on_transport_timeout(tmp_path):

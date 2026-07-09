@@ -17,6 +17,7 @@ from codeminer.agent.lsp_provider import (
     LSPProviderMetadata,
     LSPProviderNodes,
     normalize_lsp_capability,
+    normalize_native_lsp_nodes,
 )
 from codeminer.graph.incremental.lsp_client import LSPClient
 from codeminer.languages import normalize_graph_language
@@ -184,7 +185,7 @@ class LiveLSPReferenceProvider:
 
     def _wrap(self, capability: str, nodes: Iterable[Any]) -> LSPProviderNodes:
         return LSPProviderNodes(
-            nodes,
+            normalize_native_lsp_nodes(nodes, capability=capability),
             metadata=LSPProviderMetadata(
                 provider=JSON_RPC_LSP_PROVIDER,
                 capability=capability,

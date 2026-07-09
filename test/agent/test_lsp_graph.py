@@ -247,7 +247,7 @@ def test_lsp_skills_load_and_execute_against_expand_context():
     assert meta is not None
     assert meta.executor_fn is not None
     results = meta.executor_fn(symbol="load_config")
-    assert [node.node_name for node in results] == ["callee.py:load_config()"]
+    assert [node.node_name for node in results] == ["callee.py:5"]
     assert lsp_result_metadata(results)["provider"] == STATIC_LSP_PROVIDER
     assert lsp_result_metadata(results)["capability"] == "definition"
 

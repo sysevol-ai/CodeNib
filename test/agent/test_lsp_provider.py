@@ -13,6 +13,7 @@ from codeminer.agent.lsp_provider import (
     STATIC_LSP_PROVIDER,
     LSPProviderNodes,
     StaticLSPProvider,
+    normalize_native_lsp_nodes,
 )
 from codeminer.agent.runner import AgentRunner
 from codeminer.agent.skills.core import (
@@ -80,13 +81,49 @@ def test_static_lsp_provider_returns_list_with_metadata():
 
     assert isinstance(result, list)
     assert isinstance(result, LSPProviderNodes)
-    assert [node.node_name for node in result] == ["callee.py:load_config()"]
+    assert [node.node_name for node in result] == ["callee.py:5"]
+    assert result[0].type == "definition"
+    assert result[0].content == "lsp definition"
     metadata = result.provider_metadata_dict()
     assert metadata["provider"] == STATIC_LSP_PROVIDER
     assert metadata["capability"] == "definition"
     assert metadata["status"] == "ok"
     assert metadata["lsp_method"] == "textDocument/definition"
     assert metadata["index_snapshot"] == "graph:demo"
+
+
+def test_native_lsp_result_normalization_is_stable_and_deduplicated():
+    result = normalize_native_lsp_nodes(
+        [
+            {"file": "z.py", "start_line": 8},
+            {"file_path": "a.py", "start_line": "2"},
+            {"file": "z.py", "start_line": 8},
+        ],
+        capability="textDocument/references",
+    )
+
+    assert [node.model_dump() for node in result] == [
+        {
+            "node_name": "a.py:3",
+            "type": "references",
+            "file": "a.py",
+            "node_id": "a.py:3:references",
+            "start_line": 2,
+            "end_line": 2,
+            "score": 1.0,
+            "content": "lsp references",
+        },
+        {
+            "node_name": "z.py:9",
+            "type": "references",
+            "file": "z.py",
+            "node_id": "z.py:9:references",
+            "start_line": 8,
+            "end_line": 8,
+            "score": 1.0,
+            "content": "lsp references",
+        },
+    ]
 
 
 def test_static_lsp_provider_reports_fallback_reason_without_graph():

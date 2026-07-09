@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
+from ..types import QueriedNode
 from .lsp_graph import lsp_definition, lsp_references, lsp_route
 from .route_context import fingerprint_lsp_route_nodes, summarize_lsp_route_nodes
 
@@ -188,6 +189,8 @@ class StaticLSPProvider:
         *,
         position_granularity: str = "line",
     ) -> LSPProviderNodes:
+        if capability in {CAPABILITY_DEFINITION, CAPABILITY_REFERENCES}:
+            nodes = normalize_native_lsp_nodes(nodes, capability=capability)
         return LSPProviderNodes(
             nodes,
             metadata=_metadata(
@@ -209,6 +212,36 @@ def resolve_lsp_provider(context: Any) -> Any:
     if graph is None:
         raise RuntimeError("LSP provider and symbol graph are unavailable")
     return StaticLSPProvider(graph)
+
+
+def normalize_native_lsp_nodes(
+    nodes: Iterable[Any], *, capability: str
+) -> list[QueriedNode]:
+    """Normalize native LSP results to a provider-independent location list."""
+
+    normalized_capability = normalize_lsp_capability(capability)
+    if normalized_capability not in {CAPABILITY_DEFINITION, CAPABILITY_REFERENCES}:
+        raise ValueError(f"unsupported native LSP capability: {capability!r}")
+
+    locations: dict[tuple[str, int], QueriedNode] = {}
+    for node in nodes:
+        file_path = _node_value(node, "file") or _node_value(node, "file_path")
+        start_line = _coerce_line(_node_value(node, "start_line"))
+        if not file_path or start_line is None:
+            continue
+        file_text = str(file_path)
+        display_line = start_line + 1
+        locations[(file_text, start_line)] = QueriedNode(
+            node_name=f"{file_text}:{display_line}",
+            type=normalized_capability,
+            file=file_text,
+            node_id=f"{file_text}:{display_line}:{normalized_capability}",
+            start_line=start_line,
+            end_line=start_line,
+            score=1.0,
+            content=f"lsp {normalized_capability}",
+        )
+    return [locations[key] for key in sorted(locations)]
 
 
 def lsp_result_metadata(result: Any) -> Optional[dict[str, Any]]:
@@ -292,6 +325,19 @@ def _call_int(obj: Any, method: str) -> int:
         return 0
 
 
+def _node_value(node: Any, key: str) -> Any:
+    if isinstance(node, Mapping):
+        return node.get(key)
+    return getattr(node, key, None)
+
+
+def _coerce_line(value: Any) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 __all__ = [
     "CAPABILITY_DEFINITION",
     "CAPABILITY_REFERENCES",
@@ -304,6 +350,7 @@ __all__ = [
     "resolve_lsp_provider",
     "fingerprint_lsp_result",
     "lsp_result_metadata",
+    "normalize_native_lsp_nodes",
     "normalize_lsp_capability",
     "preview_lsp_result",
 ]
