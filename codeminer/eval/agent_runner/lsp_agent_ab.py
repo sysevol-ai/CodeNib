@@ -2,7 +2,12 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Controlled agent A/B for static-index and live JSON-RPC LSP providers."""
+"""Forced-call protocol check for static and live native LSP providers.
+
+This is intentionally not the CodeMiner Base agent ablation. It verifies that
+an exact request produces the same model-visible payload through either
+provider. The dynamic task-level study lives in :mod:`lsp_agent_study`.
+"""
 
 from __future__ import annotations
 
@@ -337,7 +342,7 @@ def run_lsp_agent_ab(
 
     payload = {
         "schema_version": 1,
-        "benchmark": "lsp_agent_backend_ab",
+        "benchmark": "lsp_provider_protocol_check",
         "subject": {
             "project_root": str(Path(project_root).resolve()),
             "language": language,
@@ -363,7 +368,7 @@ def run_lsp_agent_ab(
 def render_lsp_agent_ab_markdown(payload: Mapping[str, Any]) -> str:
     summary = payload.get("summary") or summarize_lsp_agent_ab(payload)
     setup = payload.get("setup") or {}
-    lines = ["# LSP agent backend A/B", ""]
+    lines = ["# LSP provider protocol check", ""]
     lines.append(
         "The agent prompt, model, tool schema, and model-visible tool result are "
         "held constant; only the injected semantic provider changes."

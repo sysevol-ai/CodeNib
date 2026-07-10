@@ -231,9 +231,9 @@ workspace state require a language/provider/profile-specific gate. Reports and
 exact request/graph hashes live under
 `/mnt/data/codeminer/results/lsp_replay_multilang_final`.
 
-### Agent backend integration A/B
+### Provider protocol check
 
-A small crossover sanity check uses Haiku 4.5 on one Go, one Rust, and one
+A small forced-call crossover check uses Haiku 4.5 on one Go, one Rust, and one
 TypeScript snapshot. For two exact-equivalent definition requests per snapshot,
 the prompt, tool schema, model, and result DTO are held constant while only the
 injected provider changes. Arm order alternates by request and prompt caching is
@@ -252,13 +252,78 @@ disabled.
 All cells used two turns and each pair consumed the same tokens. Agent wall time
 is intentionally not used as evidence of LSP speedup: remote model calls took
 seconds and dominated the millisecond provider difference. This A/B validates
-transparent backend substitution; the five-repetition request replay remains
-the primary latency result. Reports live under
-`/mnt/data/codeminer/results/lsp_agent_ab_multilang`.
+provider wiring and serialization only. It is not an agent ablation because the
+prompt supplies the request and the harness forces the tool call. The
+five-repetition request replay remains the primary latency result. Reports live
+under `/mnt/data/codeminer/results/lsp_agent_ab_multilang`.
+
+### CodeMiner Base agent ablation
+
+The task-level study uses `fishmingyu/codeminer-base-dataset` test split at
+revision `4eb84e2e8918474969ce68c5b06facf14d6be604` (local dataset fingerprint
+`d265af65e9ba4985`). Its sampling frame is every currently supported Go, Rust,
+and TypeScript/JavaScript row: 60 tasks, 15 repositories, and 60 exact source
+snapshots. It does not admit tasks based on graph coverage, static/live
+equivalence, successful LSP adoption, or outcome quality.
+
+The six repositories used for exploratory replay form a repository-disjoint
+development partition: Caddy, Gin, Bat, Tokio, Preact, and Vue (25 tasks).
+The other nine repositories form the confirmatory partition (35 tasks). All
+results may be shown descriptively, but the pre-registered primary comparison
+uses only the 35 confirmatory tasks. A final paper should add repositories if
+the resulting nine confirmatory clusters give an unacceptably wide interval.
+
+Each task uses `vertex_ai/claude-haiku-4-5` at temperature 0 and runs three
+crossover arms for three repetitions, with deterministic within-task arm
+randomization and prompt caching disabled:
+
+| arm | filesystem tools | dynamic native LSP tools | provider |
+|---|---|---|---|
+| `filesystem` | yes | no | none |
+| `live_lsp` | yes | definition + references | live JSON-RPC |
+| `codeminer_lsp` | yes | definition + references | static CodeMiner index |
+
+The model chooses whether and when to call LSP. There is no forced tool choice,
+request injection, preload, compact mode, graph route tool, or outcome-based
+case admission. The two LSP arms have identical system-prompt and tool-schema
+hashes. Native definition/reference schemas require `file_path`, `line`, and
+`character` in both arms; symbol-name navigation remains a separate CodeMiner
+extension.
+
+The primary quality endpoint is answer-block recall@5 with a 5-point
+non-inferiority margin for `codeminer_lsp - live_lsp`. File recall@5, adoption,
+turns, tokens, USD, completion, and fallback are secondary. Inference resamples
+repositories, then instances, then repetitions. Remote agent wall time and
+per-cell LSP duration are descriptive, not the request-latency claim.
+
+Every native LSP call made by the live arm is exported with its resolved
+0-based arguments. Those frozen, naturally adopted traces are subsequently
+replayed against both providers. Equivalent-request paired latency is the
+primary latency endpoint; mismatches, empty results, errors, and fallback remain
+in the denominator as compatibility outcomes.
+
+Generate the deterministic study manifest with:
+
+```bash
+HF_HOME=/mnt/conda/huggingface \
+codeminer-lsp-agent-study-manifest \
+  --dataset-revision 4eb84e2e8918474969ce68c5b06facf14d6be604 \
+  --prebuilt-root /mnt/data/codeminer \
+  --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json
+```
+
+The current legacy prebuilt-tree audit finds 22/60 instance worktrees at the
+declared base commit and 38/60 at a different commit. None of the legacy graph
+directories carries a verifiable snapshot/profile binding, so the strict
+manifest reports 38 `commit_mismatch`, 22 `unverified_identity`, and zero ready
+subjects. This is a hard launch failure, not an exclusion rule. The agent study
+must wait until all 60 subjects resolve through snapshot-addressed worktrees and
+each graph profile records the same source identity. Do not run only the 22
+worktrees whose HEAD happens to match.
 
 ## Confirmatory protocol
 
-Freeze the artifact profile, compact policy, metrics, and 5-point
+Freeze the artifact profile, provider policy, metrics, and 5-point
 non-inferiority margin before running held-out repositories.
 
 1. Select new repositories from SWE-bench Multilingual without inspecting
@@ -284,7 +349,7 @@ non-inferiority margin before running held-out repositories.
 |---|---|---|---|
 | snapshot build/reuse | 20-40 held-out multilingual snapshots, repeated consumers | total and amortized build time; bytes | exact snapshot/profile identity |
 | LSP replay | real definition/reference traces from those snapshots | equivalent-row p50/p95 latency | fingerprint equivalence and fallback rate |
-| agent backend A/B | same model and agent, live versus static semantic provider | wall time and USD | files@5/block@5 non-inferiority |
+| agent backend A/B | CodeMiner Base tasks with dynamic LSP adoption | block recall@5 | repository-clustered 5-point non-inferiority |
 | context ablation | grep, eager, compact over the static provider | USD, tokens, turns | same non-inferiority margin |
 | scale analysis | language, graph size, repository size, queries/snapshot | slope and break-even query count | completion rate |
 

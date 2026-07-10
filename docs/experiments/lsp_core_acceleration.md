@@ -20,6 +20,10 @@ Current implementation:
 - Agent `lsp_definition`, `lsp_references`, and `lsp_route` skills use that
   provider, so dynamic tool calls get the same list-shaped results plus
   trace-only provider metadata.
+- Native definition/reference skills expose only the common JSON-RPC contract:
+  `file_path`, `line`, and `character`. Symbol-only lookup is a
+  CodeMiner extension and stays behind `lsp_route` rather than silently giving
+  the static arm a stronger tool.
 - Native `definition` and `references` results are normalized to a stable,
   provider-independent location DTO. Rich symbol nodes remain available through
   the CodeMiner-only `route` capability.
@@ -42,8 +46,9 @@ The behavior guardrail is **agent-visible equivalence**, not byte-for-byte
 native LSP parity. For each supported native capability, both providers emit
 the same sorted location DTO fields; provider identity and behavior contract
 stay in trace metadata and are not shown to the model. The replay gate compares
-locations for coverage, and the agent A/B additionally requires the complete
-model-visible DTO payload hash to match before admitting a case.
+locations for coverage. The forced-call protocol check additionally requires
+the complete model-visible DTO payload hash to match before admitting a case;
+the task-level agent ablation does not filter cases by equivalence.
 
 Full native LSP behavior is intentionally a larger contract than this gate:
 language servers can return token selection ranges instead of symbol scopes,
@@ -228,10 +233,10 @@ prevents a stable-but-unusable live state from entering the measured region. The
 default is zero so coverage studies can still measure snapshots with no
 equivalent rows.
 
-Controlled agent backend A/B:
+Forced-call provider protocol check:
 
 ```bash
-codeminer-lsp-agent-ab \
+codeminer-lsp-provider-protocol-check \
   --graph /path/to/graph.pkl \
   --project-root /path/to/repo \
   --language go \
@@ -246,10 +251,12 @@ codeminer-lsp-agent-ab \
 
 This crossover holds the model, prompt, tool name/schema, and model-visible
 result constant; it changes only the injected provider. Prompt caching is off
-by default to avoid an arm-order confound. Use this as an integration guard for
-arguments, traces, turns, tokens, and answers. Remote model wall time is not the
-LSP latency metric because API variance is orders of magnitude larger than one
-warm semantic request.
+by default to avoid an arm-order confound. Use this only as an integration
+guard for arguments, traces, turns, tokens, and answers: the harness supplies
+the request and forces one tool call. The CodeMiner Base agent ablation lets the
+model adopt tools dynamically and exports live-arm calls for frozen replay.
+Remote model wall time is not the LSP latency metric because API variance is
+orders of magnitude larger than one warm semantic request.
 
 Latest local pilot, using a two-file temporary Python repo and
 `npx --yes --package pyright pyright-langserver --stdio`:
