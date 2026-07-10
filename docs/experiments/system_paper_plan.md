@@ -379,6 +379,11 @@ shard must use its own output root. Alternate models require a separate
 `--secondary-model --model ...` run so they cannot change the pinned Haiku
 primary block. The local open-model comparison uses `openai/qwen3.5-27b` with
 `--disable-thinking`; Qwen results are secondary and never pooled with Haiku.
+Its one-task, one-repetition 65,536-token pilot completed all three arms without
+errors or LSP adoption; both LSP arms had matching prompt, schema, and model
+hashes, and all three arms reached answer-block recall@5 of 1. A 32,768-token
+server context was insufficient for the final structured-answer request, so the
+secondary protocol pins 65,536 tokens without changing the Haiku block.
 
 ## Confirmatory protocol
 

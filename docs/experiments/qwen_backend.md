@@ -32,10 +32,25 @@ python -m vllm.entrypoints.openai.api_server \
   --max-model-len 32768 --max-num-seqs 64 --gpu-memory-utilization 0.85 --port 8001
 
 # Qwen3.5 (needs vLLM 0.23 in a separate env: torch 2.11/cu13; driver CUDA 13 OK)
+export QWEN_RUNTIME_ROOT=/mnt/data/codeminer
+export TMPDIR=${QWEN_RUNTIME_ROOT}/tmp/vllm
+export VLLM_CACHE_ROOT=${QWEN_RUNTIME_ROOT}/cache/vllm
+export TORCHINDUCTOR_CACHE_DIR=${QWEN_RUNTIME_ROOT}/cache/torchinductor
+export TRITON_CACHE_DIR=${QWEN_RUNTIME_ROOT}/cache/triton
+export CUDA_CACHE_PATH=${QWEN_RUNTIME_ROOT}/cache/cuda
+mkdir -p "$TMPDIR" "$VLLM_CACHE_ROOT" "$TORCHINDUCTOR_CACHE_DIR" \
+  "$TRITON_CACHE_DIR" "$CUDA_CACHE_PATH"
 python -m vllm.entrypoints.openai.api_server \
   --model Qwen/Qwen3.5-4B --served-model-name qwen3.5-4b \
   --enable-auto-tool-choice --tool-call-parser qwen3_xml \
   --max-model-len 32768 --gpu-memory-utilization 0.45 --port 8001
+
+# Native-LSP secondary block (H100 80 GB)
+python -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen3.5-27B --served-model-name qwen3.5-27b \
+  --enable-auto-tool-choice --tool-call-parser qwen3_xml \
+  --max-model-len 65536 --max-num-seqs 4 \
+  --gpu-memory-utilization 0.90 --port 8001
 
 # run (openai/ + OPENAI_API_BASE routes litellm to the local server)
 OPENAI_API_BASE=http://localhost:8001/v1 OPENAI_API_KEY=dummy PYTHONPATH=$PWD \
@@ -147,6 +162,13 @@ verify / fallback-to-explore) instead of consuming them linearly. Design:
 
 - vLLM 0.23 for Qwen3.5 needs torch 2.11/cu13 — clone the env, don't upgrade in
   place. Driver CUDA 13 already supports it; no system change needed.
+- Qwen3.5's first H100 startup JIT-compiles FlashInfer GDN kernels. NVCC uses
+  `TMPDIR`; point it and the vLLM/Torch/Triton caches at a large data volume or
+  the parallel compile can fill a small root filesystem before the API opens.
+- Use a 65,536-token server context for the 27B native-LSP secondary block. A
+  32,768-token pilot reached the harness's final structured-answer request with
+  28,673 input tokens plus a 4,096-token output allowance and received HTTP
+  400. The otherwise identical 65,536-token pilot completed all three arms.
 - Qwen3.5 uses the `qwen3_xml` tool-call format (`<function=…><parameter=…>`),
   **not** hermes — wrong parser silently drops all tool calls under auto.
 - GPU is **shared**: leave headroom for the sweep's Qwen3-Embedding on the same
