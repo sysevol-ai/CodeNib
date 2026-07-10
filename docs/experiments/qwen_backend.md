@@ -17,6 +17,11 @@ Two model families, on the same agent + prebuilt indexes:
 - **Qwen2.5-Coder** 7B/14B/32B (vLLM `--tool-call-parser hermes`)
 - **Qwen3.5** 4B/9B/27B (vLLM 0.23, `--tool-call-parser qwen3_xml`)
 
+For the native-LSP Base study, the open-model secondary block uses
+`openai/qwen3.5-27b`, matching the strongest completed Base agent run. It must
+use a separate result root and `--secondary-model --disable-thinking`; the
+pinned Haiku primary manifest and its confirmatory inference remain unchanged.
+
 ## How to run
 
 ```bash

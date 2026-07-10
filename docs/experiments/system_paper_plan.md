@@ -341,6 +341,45 @@ every graph project root and Git HEAD matches the declared snapshot and no
 worktree has tracked changes. Artifact preparation satisfies the launch gate but
 does not count as any of the 540 planned model cells.
 
+Run the zero-cost execution preflight before any model cells:
+
+```bash
+HF_HOME=/mnt/conda/huggingface \
+codeminer-lsp-agent-study-run \
+  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json \
+  --artifact-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
+  --preflight
+```
+
+The current preflight passes all 60 subjects across 15 repositories and creates
+240 independent live-readiness probes for 540 planned cells. A one-task,
+one-repetition Haiku development smoke also completed all three arms without
+errors and with matching live/static prompt, tool-schema, and model hashes. All
+three smoke cells localized the target, but neither LSP arm adopted its optional
+native LSP tools. This is a pilot observation, not a result; adoption remains a
+pre-registered secondary endpoint and zero-call cells stay in the denominator.
+
+Run the repository-disjoint development gate before spending confirmatory
+budget:
+
+```bash
+codeminer-lsp-agent-study-run \
+  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json \
+  --artifact-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
+  --output-root /mnt/data/codeminer/results/lsp_agent_base_haiku_development_v1 \
+  --role development \
+  --vertex-project "${VERTEX_PROJECT}" \
+  --vertex-location us-east5
+```
+
+The runner writes one atomic JSON file per cell, records live readiness
+separately, keeps errors in the planned denominator, and resumes without
+re-running completed cells. Repository shards are supported, but each concurrent
+shard must use its own output root. Alternate models require a separate
+`--secondary-model --model ...` run so they cannot change the pinned Haiku
+primary block. The local open-model comparison uses `openai/qwen3.5-27b` with
+`--disable-thinking`; Qwen results are secondary and never pooled with Haiku.
+
 ## Confirmatory protocol
 
 Freeze the artifact profile, provider policy, metrics, and 5-point
