@@ -57,6 +57,7 @@ from .lsp_agent_study import (
 )
 from .lsp_agent_study_analysis import (
     analyze_lsp_agent_noninferiority,
+    collect_live_lsp_replay_bundles,
     summarize_lsp_agent_study,
 )
 from .lsp_agent_study_manifest import (
@@ -208,6 +209,7 @@ __all__ = [
     "all_index_skill_ids",
     "analyze_pareto",
     "analyze_lsp_agent_noninferiority",
+    "collect_live_lsp_replay_bundles",
     "baseline_done_ids",
     "build_prebuilt_symbol_span_index",
     "build_symbol_span_index",

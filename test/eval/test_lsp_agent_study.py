@@ -24,6 +24,7 @@ from codeminer.eval.agent_runner.lsp_agent_study import (
 )
 from codeminer.eval.agent_runner.lsp_agent_study_analysis import (
     analyze_lsp_agent_noninferiority,
+    collect_live_lsp_replay_bundles,
     summarize_lsp_agent_study,
 )
 from codeminer.eval.agent_runner.lsp_agent_study_artifacts import (
@@ -363,3 +364,95 @@ def test_noninferiority_uses_complete_repository_clustered_pairs():
     )
     assert incomplete["analysis_ready"] is False
     assert incomplete["noninferior"] is False
+
+
+def test_noninferiority_bounds_keep_missing_live_metric_in_denominator():
+    cells = [
+        {
+            "instance_id": "org/repo-task",
+            "repo": "org/repo",
+            "role": "confirmatory",
+            "rep": 1,
+            "arm": CODEMINER_LSP_ARM,
+            "metrics": {"answer_blocks": {5: {"recall": 0.25}}},
+        },
+        {
+            "instance_id": "org/repo-task",
+            "repo": "org/repo",
+            "role": "confirmatory",
+            "rep": 1,
+            "arm": LIVE_LSP_ARM,
+            "status": "error",
+        },
+    ]
+
+    result = analyze_lsp_agent_noninferiority(
+        cells,
+        expected_pair_count=1,
+        bootstrap_samples=10,
+    )
+
+    assert result["analysis_ready"] is False
+    bounds = result["partial_identification"]
+    assert bounds["bounds_ready"] is True
+    assert bounds["missing_live_metric_pair_count"] == 1
+    assert bounds["point_delta_bounds"] == {"lower": -0.75, "upper": 0.25}
+
+
+def test_collect_live_lsp_replay_bundles_preserves_every_request():
+    cells = [
+        {
+            "instance_id": "org__repo-1",
+            "repo": "org/repo",
+            "base_commit": "abc",
+            "language": "go",
+            "snapshot_id": "snapshot",
+            "role": "development",
+            "rep": 2,
+            "arm": LIVE_LSP_ARM,
+            "lsp_requests": [
+                {
+                    "capability": "definition",
+                    "arguments": {
+                        "file_path": "main.go",
+                        "line": 3,
+                        "character": 4,
+                    },
+                    "request_id": "request-1",
+                },
+                {
+                    "capability": "references",
+                    "arguments": {
+                        "file_path": "main.go",
+                        "line": 3,
+                        "character": 4,
+                    },
+                    "request_id": "request-2",
+                },
+            ],
+        },
+        {
+            "instance_id": "org__repo-1",
+            "repo": "org/repo",
+            "base_commit": "abc",
+            "language": "go",
+            "snapshot_id": "snapshot",
+            "role": "development",
+            "rep": 3,
+            "arm": CODEMINER_LSP_ARM,
+            "lsp_requests": [{"request_id": "excluded-static-request"}],
+        },
+    ]
+
+    bundles = collect_live_lsp_replay_bundles(cells)
+
+    assert len(bundles) == 1
+    assert [row["request_id"] for row in bundles[0]["requests"]] == [
+        "request-1",
+        "request-2",
+    ]
+    assert bundles[0]["requests"][0]["source_cell"] == {
+        "role": "development",
+        "rep": 2,
+        "arm": LIVE_LSP_ARM,
+    }
