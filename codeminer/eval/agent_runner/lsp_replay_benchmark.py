@@ -33,6 +33,7 @@ from codeminer.agent.lsp_provider import (
 )
 from codeminer.compiler.snapshot_store import SourceSnapshot
 from codeminer.ls_index.index_quality import (
+    TRANSLATION_UNIT_SUFFIXES,
     IndexQualityPolicy,
     assess_index_quality,
     discover_compilation_database,
@@ -63,6 +64,7 @@ def generate_lsp_replay_requests(
     definition_top_k: int = 8,
     references_top_k: int = 40,
     include_declaration: bool = True,
+    file_suffixes: Optional[Sequence[str]] = None,
 ) -> list[LSPProviderRequest]:
     """Generate deterministic file-position LSP replay requests from graph refs.
 
@@ -93,6 +95,16 @@ def generate_lsp_replay_requests(
     candidates = _reference_position_candidates(
         graph, project_root=_project_root(graph, project_root)
     )
+    if file_suffixes:
+        normalized_suffixes = {
+            suffix.lower() if suffix.startswith(".") else f".{suffix.lower()}"
+            for suffix in file_suffixes
+        }
+        candidates = [
+            candidate
+            for candidate in candidates
+            if Path(candidate["file_path"]).suffix.lower() in normalized_suffixes
+        ]
     for candidate in _evenly_spaced(candidates, max_per_capability):
         for capability in requested_capabilities:
             if counts[capability] >= max_per_capability:
@@ -542,6 +554,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 project_root=project_root,
                 capabilities=_split_csv(args.capabilities),
                 max_per_capability=args.max_per_capability,
+                file_suffixes=(
+                    tuple(TRANSLATION_UNIT_SUFFIXES)
+                    if args.language.lower() in {"c", "c++", "cpp", "clang"}
+                    else None
+                ),
             )
         if not requests:
             raise ValueError("no LSP replay requests available")

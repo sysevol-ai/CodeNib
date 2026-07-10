@@ -217,6 +217,24 @@ def test_generate_lsp_replay_requests_from_reference_edges(tmp_path):
     ]
     assert requests[0].request_id == "definition:caller.py:1:11:load_config"
 
+    assert not generate_lsp_replay_requests(
+        graph,
+        capabilities=["definition"],
+        max_per_capability=1,
+        file_suffixes=[".cc", ".cpp"],
+    )
+    assert (
+        len(
+            generate_lsp_replay_requests(
+                graph,
+                capabilities=["definition"],
+                max_per_capability=1,
+                file_suffixes=["py"],
+            )
+        )
+        == 1
+    )
+
 
 def test_generate_lsp_replay_requests_spreads_candidates(tmp_path):
     graph = CodeGraph()

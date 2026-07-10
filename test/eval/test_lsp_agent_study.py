@@ -30,6 +30,8 @@ from codeminer.eval.agent_runner.lsp_agent_study_analysis import (
 from codeminer.eval.agent_runner.lsp_agent_study_artifacts import (
     find_source_repository,
     lsp_agent_artifact_profile,
+    requires_lsp_occurrence_index,
+    static_native_backend_for_language,
 )
 from codeminer.eval.agent_runner.lsp_agent_study_manifest import (
     build_base_lsp_agent_manifest,
@@ -119,6 +121,14 @@ def test_study_artifact_profile_pins_graph_compatibility():
     }
     assert profile.options == {"exclude_patterns": [], "graph_route": "active"}
 
+    cpp_profile = lsp_agent_artifact_profile("cpp")
+    assert cpp_profile.languages == ("cpp",)
+    assert cpp_profile.schema_versions == {"code_graph": str(_SCHEMA_VERSION)}
+    assert cpp_profile.options["static_native_backend"] == ("symbol_graph_position_v1")
+    assert requires_lsp_occurrence_index("python") is True
+    assert requires_lsp_occurrence_index("cpp") is False
+    assert static_native_backend_for_language("cpp") == "symbol_graph_position_v1"
+
 
 def test_find_source_repository_uses_clone_containing_commit(tmp_path):
     repo = tmp_path / "org__repo-1" / "repo"
@@ -185,14 +195,16 @@ def test_manifest_uses_all_supported_rows_and_repo_disjoint_roles(tmp_path):
     )
 
     assert first["manifest_sha256"] == second["manifest_sha256"]
-    assert first["summary"]["subject_count"] == 2
+    assert first["schema_version"] == 3
+    assert first["summary"]["subject_count"] == 3
     assert first["summary"]["by_role"] == {
         "confirmatory": 1,
         "development": 1,
+        "language_extension": 1,
     }
     dev_roles = {row["role"] for row in first["subjects"] if row["repo"] == "org/dev"}
     assert dev_roles == {"development"}
-    assert first["summary"]["artifact_status"] == {"missing_repo": 2}
+    assert first["summary"]["artifact_status"] == {"missing_repo": 3}
 
 
 def test_arm_order_is_reproducible_and_contains_each_arm_once():

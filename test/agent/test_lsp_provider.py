@@ -123,6 +123,25 @@ def test_static_lsp_provider_uses_exact_scip_occurrences_for_native_positions():
     assert definition.provider_metadata_dict()["position_granularity"] == ("character")
 
 
+def test_graph_position_backend_records_character_contract(tmp_path):
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    load_config()\n", encoding="utf-8"
+    )
+    graph = _range_graph()
+    graph.project_root = str(tmp_path)
+    provider = StaticLSPProvider(graph, snapshot_id="snapshot:graph-position")
+
+    definition = provider.definition(
+        file_path="caller.py", line=1, character=6, top_k=8
+    )
+
+    assert [(node.file, node.start_line) for node in definition] == [("callee.py", 4)]
+    assert definition.provider_metadata_dict()["behavior_contract"] == (
+        "static_symbol_graph_position_lsp_v1"
+    )
+    assert definition.provider_metadata_dict()["position_granularity"] == "character"
+
+
 def test_native_lsp_result_normalization_is_stable_and_deduplicated():
     result = normalize_native_lsp_nodes(
         [

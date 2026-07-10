@@ -21,6 +21,8 @@ from codeminer.compiler.snapshot_store import (
     SnapshotArtifactStore,
     SourceSnapshot,
 )
+from codeminer.eval.agent_runner.prebuilt import load_code_graph_artifact
+from codeminer.eval.experiments.lsp_agent_study_policy import STATIC_NATIVE_BACKENDS
 from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
 from codeminer.ls_router import ACTIVE_GRAPH_ROUTE, LSIndexer
 from codeminer.scip_interface.lsp_occurrence_index import (
@@ -29,11 +31,39 @@ from codeminer.scip_interface.lsp_occurrence_index import (
 )
 
 ARTIFACT_PROFILE_NAME = "lsp-agent-base-scip-v2"
+CPP_ARTIFACT_PROFILE_NAME = "lsp-agent-base-clangd-graph-v1"
+
+
+def static_native_backend_for_language(language: str) -> str:
+    """Return the pinned static backend for one normalized language."""
+
+    normalized = "typescript" if language in {"javascript", "js", "ts"} else language
+    try:
+        return STATIC_NATIVE_BACKENDS[normalized]
+    except KeyError as exc:
+        raise ValueError(f"no native LSP backend for language {language!r}") from exc
+
+
+def requires_lsp_occurrence_index(language: str) -> bool:
+    """Return whether the language profile persists exact SCIP occurrences."""
+
+    return static_native_backend_for_language(language) == "scip_occurrence_index_v1"
 
 
 def lsp_agent_artifact_profile(language: str) -> ArtifactProfile:
     """Return the compatibility identity for one study graph."""
 
+    if language in {"c", "cpp", "c++"}:
+        return ArtifactProfile.create(
+            ("cpp",),
+            name=CPP_ARTIFACT_PROFILE_NAME,
+            schema_versions={"code_graph": str(_SCHEMA_VERSION)},
+            options={
+                "exclude_patterns": [],
+                "graph_route": ACTIVE_GRAPH_ROUTE,
+                "static_native_backend": static_native_backend_for_language("cpp"),
+            },
+        )
     languages = (
         ("javascript", "typescript")
         if language in {"javascript", "typescript", "js", "ts"}
@@ -126,17 +156,28 @@ def prepare_subject_artifact(
     cache_hit = False
     graph = None
     occurrence_index = None
-    if graph_path.is_file() and lsp_index_path.is_file() and not force:
+    occurrence_required = requires_lsp_occurrence_index(language)
+    if (
+        graph_path.is_file()
+        and (lsp_index_path.is_file() or not occurrence_required)
+        and not force
+    ):
         try:
             graph = CodeGraph.load_graph(graph_path)
             graph.project_root = str(worktree)
-            occurrence_index = SCIPOccurrenceIndex.load(lsp_index_path)
-            graph.lsp_occurrence_index = occurrence_index
+            if lsp_index_path.is_file():
+                occurrence_index = SCIPOccurrenceIndex.load(lsp_index_path)
+                graph.lsp_occurrence_index = occurrence_index
             cache_hit = True
         except Exception:
             graph = None
             occurrence_index = None
-    elif graph_path.is_file() and decoded_path.is_file() and not force:
+    elif (
+        occurrence_required
+        and graph_path.is_file()
+        and decoded_path.is_file()
+        and not force
+    ):
         try:
             graph = CodeGraph.load_graph(graph_path)
             graph.project_root = str(worktree)
@@ -163,8 +204,10 @@ def prepare_subject_artifact(
     if (
         graph is None
         or len(graph.graph.vs) == 0
-        or occurrence_index is None
-        or not lsp_index_path.is_file()
+        or (
+            occurrence_required
+            and (occurrence_index is None or not lsp_index_path.is_file())
+        )
     ):
         raise RuntimeError(f"empty graph for {instance_id}")
 
@@ -176,15 +219,20 @@ def prepare_subject_artifact(
         "graph_path": str(graph_path),
         "instance_id": instance_id,
         "language": language,
-        "lsp_index_path": str(lsp_index_path),
-        "lsp_index_sha256": _sha256_file(lsp_index_path),
-        "lsp_occurrence_count": len(occurrence_index.occurrences),
+        "lsp_index_path": str(lsp_index_path) if lsp_index_path.is_file() else None,
+        "lsp_index_sha256": (
+            _sha256_file(lsp_index_path) if lsp_index_path.is_file() else None
+        ),
+        "lsp_occurrence_count": (
+            len(occurrence_index.occurrences) if occurrence_index is not None else 0
+        ),
         "node_count": len(graph.graph.vs),
         "profile_id": binding.profile_id,
         "quality": quality,
         "repo": repo,
         "snapshot_id": binding.snapshot_id,
         "source_repo": str(source),
+        "static_native_backend": static_native_backend_for_language(language),
         "status": "ready",
     }
     report_path = binding.profile_dir / "build_report.json"
@@ -222,7 +270,7 @@ def _reuse_scip_artifacts(
     decoded_path = source / "index.decoded"
     if not graph_path.is_file() or not decoded_path.is_file():
         return False
-    graph = CodeGraph.load_graph(graph_path)
+    graph = load_code_graph_artifact(graph_path, project_root=str(worktree))
     graph.project_root = str(worktree)
     graph.save_graph(destination / "graph.pkl")
     shutil.copy2(decoded_path, destination / "index.decoded")

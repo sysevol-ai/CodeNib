@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from codeminer.eval.agent_runner import lsp_agent_study_runner as runner
 from codeminer.eval.agent_runner.lsp_agent_study import LSPAgentStudySpec
 
@@ -21,7 +23,7 @@ def _manifest(subjects):
             "split": "test",
         },
         "protocol": LSPAgentStudySpec(reps=1).to_dict(),
-        "schema_version": 2,
+        "schema_version": 3,
         "subjects": subjects,
         "summary": {"subject_count": len(subjects)},
     }
@@ -43,6 +45,7 @@ def _subject(instance_id, repo="org/repo", role="development"):
         "repo": repo,
         "role": role,
         "snapshot_id": f"snapshot-{instance_id}",
+        "static_native_backend": "scip_occurrence_index_v1",
     }
 
 
@@ -70,6 +73,56 @@ def test_selection_keeps_repository_clusters_in_one_shard():
     }
 
 
+def test_occurrence_index_is_optional_only_for_graph_position_backend(tmp_path):
+    assert runner._load_occurrence_index(tmp_path, "cpp") is None
+    with pytest.raises(ValueError, match="required LSP occurrence index missing"):
+        runner._load_occurrence_index(tmp_path, "python")
+
+
+def test_cpp_live_readiness_uses_longer_quiet_grace(monkeypatch):
+    calls = []
+
+    class Provider:
+        language = "cpp"
+        effective_command = ["clangd"]
+
+        def start(self):
+            return None
+
+        def wait_until_idle(self, **kwargs):
+            calls.append(kwargs)
+            return True
+
+    monkeypatch.setattr(
+        runner, "generate_lsp_replay_requests", lambda *a, **k: [SimpleNamespace()]
+    )
+    monkeypatch.setattr(
+        runner,
+        "wait_for_lsp_provider_readiness",
+        lambda *a, **k: SimpleNamespace(
+            completed_reps=2,
+            equivalent_count=1,
+            live_nonempty_count=1,
+            rows=(),
+            stable=True,
+            wall_ms=1.0,
+        ),
+    )
+
+    setup = runner._prepare_live_provider(
+        Provider(),
+        graph=SimpleNamespace(),
+        project_root="/tmp/repo",
+        idle_timeout_s=120,
+        minimum_reps=2,
+        maximum_reps=4,
+        poll_seconds=0,
+    )
+
+    assert calls == [{"max_wait_s": 120, "idle_grace_s": 10.0}]
+    assert setup["idle_grace_s"] == 10.0
+
+
 def test_manifest_runner_writes_atomic_cells_and_resumes(tmp_path, monkeypatch):
     subject = _subject("org__repo-1")
     manifest = _manifest([subject])
@@ -77,6 +130,7 @@ def test_manifest_runner_writes_atomic_cells_and_resumes(tmp_path, monkeypatch):
     artifact.mkdir(parents=True)
     (artifact / "repo").mkdir()
     (artifact / "graph.pkl").write_bytes(b"graph")
+    (artifact / "lsp_index.pkl").write_bytes(b"index")
     task = SimpleNamespace(
         base_commit=subject["base_commit"],
         instance_id=subject["instance_id"],
@@ -155,6 +209,7 @@ def test_error_cells_remain_in_denominator(tmp_path, monkeypatch):
     artifact = tmp_path / "artifacts" / subject["instance_id"]
     artifact.mkdir(parents=True)
     (artifact / "repo").mkdir()
+    (artifact / "lsp_index.pkl").write_bytes(b"index")
     task = SimpleNamespace(
         instance_id=subject["instance_id"],
         language="go",

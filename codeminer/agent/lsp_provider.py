@@ -34,6 +34,7 @@ _LSP_METHODS = {
 }
 _SUPPORTED_CAPABILITIES = frozenset(_LSP_METHODS)
 _GRAPH_BEHAVIOR_CONTRACT = "static_graph_lsp_v1"
+_GRAPH_POSITION_BEHAVIOR_CONTRACT = "static_symbol_graph_position_lsp_v1"
 _OCCURRENCE_BEHAVIOR_CONTRACT = "static_scip_occurrence_lsp_v1"
 
 
@@ -174,7 +175,22 @@ class StaticLSPProvider:
             symbol=symbol,
             top_k=top_k,
         )
-        return self._wrap(CAPABILITY_DEFINITION, nodes)
+        position_query = (
+            file_path is not None
+            and line is not None
+            and character is not None
+            and symbol is None
+        )
+        return self._wrap(
+            CAPABILITY_DEFINITION,
+            nodes,
+            behavior_contract=(
+                _GRAPH_POSITION_BEHAVIOR_CONTRACT
+                if position_query
+                else _GRAPH_BEHAVIOR_CONTRACT
+            ),
+            position_granularity="character" if position_query else "line",
+        )
 
     def references(
         self,
@@ -222,7 +238,22 @@ class StaticLSPProvider:
             include_declaration=include_declaration,
             top_k=top_k,
         )
-        return self._wrap(CAPABILITY_REFERENCES, nodes)
+        position_query = (
+            file_path is not None
+            and line is not None
+            and character is not None
+            and symbol is None
+        )
+        return self._wrap(
+            CAPABILITY_REFERENCES,
+            nodes,
+            behavior_contract=(
+                _GRAPH_POSITION_BEHAVIOR_CONTRACT
+                if position_query
+                else _GRAPH_BEHAVIOR_CONTRACT
+            ),
+            position_granularity="character" if position_query else "line",
+        )
 
     def route(
         self,

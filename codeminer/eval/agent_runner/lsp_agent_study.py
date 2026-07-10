@@ -33,6 +33,7 @@ from codeminer.eval.experiments.lsp_agent_study_policy import (
     DEFAULT_DEVELOPMENT_REPOSITORIES,
     DEFAULT_MODEL,
     LANGUAGE_GROUPS,
+    STATIC_NATIVE_BACKENDS,
 )
 from codeminer.eval.retrieval_eval import collect_target_blocks, collect_targets
 from codeminer.ops.expand import ExpandContext
@@ -79,7 +80,7 @@ class LSPAgentStudySpec:
     max_tokens: int = 4096
     temperature: float = 0.0
     randomization_seed: str = "codeminer-lsp-agent-v1"
-    static_native_backend: str = "scip_occurrence_index_v1"
+    static_native_backend: str = "per_language_v1"
     static_fallback_backend: str = "symbol_graph_v1"
     primary_quality_metric: str = "answer_blocks.recall@5"
     noninferiority_margin: float = 0.05
@@ -132,6 +133,10 @@ class LSPAgentStudySpec:
             "request_admission": "all observed native LSP calls",
             "static_fallback_backend": self.static_fallback_backend,
             "static_native_backend": self.static_native_backend,
+            "static_native_backend_by_language": {
+                LANGUAGE_GROUPS[group]: STATIC_NATIVE_BACKENDS[LANGUAGE_GROUPS[group]]
+                for group in self.language_groups
+            },
             "task_admission": "all supported-language dataset rows",
             "temperature": self.temperature,
         }

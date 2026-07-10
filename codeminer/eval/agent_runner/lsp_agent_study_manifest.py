@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from codeminer.compiler.snapshot_store import ArtifactProfile, SourceSnapshot
+from codeminer.eval.experiments.lsp_agent_study_policy import (
+    LANGUAGE_EXTENSION_GROUPS,
+    LANGUAGE_EXTENSION_ROLE,
+)
 
 from .lsp_agent_study import (
     DEFAULT_BASE_DATASET,
@@ -23,7 +27,11 @@ from .lsp_agent_study import (
     LSPAgentStudySpec,
     LSPAgentStudyTask,
 )
-from .lsp_agent_study_artifacts import lsp_agent_artifact_profile
+from .lsp_agent_study_artifacts import (
+    lsp_agent_artifact_profile,
+    requires_lsp_occurrence_index,
+    static_native_backend_for_language,
+)
 
 
 def build_base_lsp_agent_manifest(
@@ -53,15 +61,21 @@ def build_base_lsp_agent_manifest(
         seen_instances.add(instance_id)
         repo = str(row["repo"])
         commit = str(row["base_commit"])
+        language = LANGUAGE_GROUPS[language_group]
+        if language_group in LANGUAGE_EXTENSION_GROUPS:
+            role = LANGUAGE_EXTENSION_ROLE
+        else:
+            role = "development" if repo in development else "confirmatory"
         subject = {
             "base_commit": commit,
             "instance_id": instance_id,
-            "language": LANGUAGE_GROUPS[language_group],
+            "language": language,
             "language_group": language_group,
             "query_sha256": _sha256_text(str(row["problem_statement"])),
             "repo": repo,
-            "role": "development" if repo in development else "confirmatory",
+            "role": role,
             "snapshot_id": SourceSnapshot(repo, commit).snapshot_id,
+            "static_native_backend": static_native_backend_for_language(language),
         }
         if root is not None:
             subject["artifact"] = _artifact_status(
@@ -69,9 +83,8 @@ def build_base_lsp_agent_manifest(
                 instance_id,
                 repo,
                 commit,
-                expected_profile_id=lsp_agent_artifact_profile(
-                    LANGUAGE_GROUPS[language_group]
-                ).profile_id,
+                expected_profile_id=lsp_agent_artifact_profile(language).profile_id,
+                occurrence_index_required=requires_lsp_occurrence_index(language),
             )
         subjects.append(subject)
 
@@ -86,7 +99,7 @@ def build_base_lsp_agent_manifest(
         )
 
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "benchmark": "codeminer_base_lsp_agent_ablation",
         "dataset": {
             "name": spec.dataset,
@@ -214,6 +227,7 @@ def _artifact_status(
     expected_commit: str,
     *,
     expected_profile_id: str,
+    occurrence_index_required: bool,
 ) -> dict[str, Any]:
     instance = root / instance_id
     repo = instance / "repo"
@@ -225,7 +239,7 @@ def _artifact_status(
         status = "missing_repo"
     elif not graph.is_file():
         status = "missing_graph"
-    elif not lsp_index.is_file():
+    elif occurrence_index_required and not lsp_index.is_file():
         status = "missing_lsp_index"
     elif actual_commit != expected_commit:
         status = "commit_mismatch"
@@ -307,6 +321,7 @@ def _manifest_summary(
 ) -> dict[str, Any]:
     by_language: dict[str, int] = {}
     by_role: dict[str, int] = {}
+    by_static_backend: dict[str, int] = {}
     artifacts: dict[str, int] = {}
     snapshots = set()
     repos = set()
@@ -315,6 +330,8 @@ def _manifest_summary(
         role = str(subject["role"])
         by_language[language] = by_language.get(language, 0) + 1
         by_role[role] = by_role.get(role, 0) + 1
+        backend = str(subject.get("static_native_backend") or "unspecified")
+        by_static_backend[backend] = by_static_backend.get(backend, 0) + 1
         artifact = subject.get("artifact") or {}
         if artifact:
             status = str(artifact.get("status") or "unknown")
@@ -325,6 +342,7 @@ def _manifest_summary(
         "artifact_status": dict(sorted(artifacts.items())),
         "by_language": dict(sorted(by_language.items())),
         "by_role": dict(sorted(by_role.items())),
+        "by_static_backend": dict(sorted(by_static_backend.items())),
         "repository_count": len(repos),
         "snapshot_count": len(snapshots),
         "subject_count": len(subjects),

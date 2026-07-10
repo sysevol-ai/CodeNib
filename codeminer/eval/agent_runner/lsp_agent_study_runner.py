@@ -19,6 +19,7 @@ from codeminer.eval.agent_runner.live_lsp_provider import LiveLSPReferenceProvid
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.graph.incremental.lsp_client import LSPClient
 from codeminer.llm.litellm_chat import LiteLLMChat
+from codeminer.ls_index.index_quality import TRANSLATION_UNIT_SUFFIXES
 from codeminer.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
 
 from .lsp_agent_study import (
@@ -29,6 +30,10 @@ from .lsp_agent_study import (
     study_arm_order,
 )
 from .lsp_agent_study_analysis import summarize_lsp_agent_study
+from .lsp_agent_study_artifacts import (
+    requires_lsp_occurrence_index,
+    static_native_backend_for_language,
+)
 from .lsp_agent_study_manifest import task_from_manifest_subject
 from .lsp_readiness import wait_for_lsp_provider_readiness
 from .lsp_replay_benchmark import generate_lsp_replay_requests
@@ -124,9 +129,10 @@ def preflight_lsp_agent_study(
             repo_path=profile_dir / "repo",
         )
         graph = graph_loader(profile_dir / "graph.pkl")
-        occurrence_index = SCIPOccurrenceIndex.load(profile_dir / "lsp_index.pkl")
-        graph.lsp_occurrence_index = occurrence_index
-        occurrence_count += len(occurrence_index.occurrences)
+        occurrence_index = _load_occurrence_index(profile_dir, task.language)
+        if occurrence_index is not None:
+            graph.lsp_occurrence_index = occurrence_index
+            occurrence_count += len(occurrence_index.occurrences)
         if Path(graph.project_root).resolve() != Path(task.repo_path).resolve():
             raise ValueError(f"graph project_root mismatch for {instance_id}")
         if not LSPClient.check_lsp_available(task.language):
@@ -135,6 +141,9 @@ def preflight_lsp_agent_study(
             graph,
             project_root=task.repo_path,
             max_per_capability=2,
+            file_suffixes=(
+                tuple(TRANSLATION_UNIT_SUFFIXES) if task.language == "cpp" else None
+            ),
         )
         if not probes:
             raise RuntimeError(f"no independent readiness probes for {instance_id}")
@@ -214,8 +223,9 @@ def run_lsp_agent_study_manifest(
             repo_path=profile_dir / "repo",
         )
         graph = graph_loader(profile_dir / "graph.pkl")
-        occurrence_index = SCIPOccurrenceIndex.load(profile_dir / "lsp_index.pkl")
-        graph.lsp_occurrence_index = occurrence_index
+        occurrence_index = _load_occurrence_index(profile_dir, task.language)
+        if occurrence_index is not None:
+            graph.lsp_occurrence_index = occurrence_index
         static_provider = StaticLSPProvider(
             graph,
             snapshot_id=str(subject["snapshot_id"]),
@@ -293,9 +303,9 @@ def run_lsp_agent_study_manifest(
                                     "artifact_graph_sha256": subject["artifact"][
                                         "graph_sha256"
                                     ],
-                                    "artifact_lsp_index_sha256": subject["artifact"][
-                                        "lsp_index_sha256"
-                                    ],
+                                    "artifact_lsp_index_sha256": subject[
+                                        "artifact"
+                                    ].get("lsp_index_sha256"),
                                     "artifact_profile_id": subject["artifact"][
                                         "profile_id"
                                     ],
@@ -358,13 +368,22 @@ def _prepare_live_provider(
     provider.start()
     start_ms = (time.monotonic() - started) * 1000
     idle_started = time.monotonic()
-    if not provider.wait_until_idle(max_wait_s=idle_timeout_s):
+    idle_grace_s = 10.0 if getattr(provider, "language", None) == "cpp" else 1.0
+    if not provider.wait_until_idle(
+        max_wait_s=idle_timeout_s,
+        idle_grace_s=idle_grace_s,
+    ):
         raise RuntimeError(f"live LSP did not become idle within {idle_timeout_s}s")
     idle_ms = (time.monotonic() - idle_started) * 1000
     probes = generate_lsp_replay_requests(
         graph,
         project_root=project_root,
         max_per_capability=2,
+        file_suffixes=(
+            tuple(TRANSLATION_UNIT_SUFFIXES)
+            if getattr(provider, "language", None) == "cpp"
+            else None
+        ),
     )
     if not probes:
         raise RuntimeError("graph produced no independent live-readiness probes")
@@ -385,6 +404,7 @@ def _prepare_live_provider(
         "effective_command": list(provider.effective_command or []),
         "equivalent_probe_count": readiness.equivalent_count,
         "idle_wait_ms": idle_ms,
+        "idle_grace_s": idle_grace_s,
         "live_nonempty_probe_count": readiness.live_nonempty_count,
         "probe_count": len(probes),
         "provider_start_ms": start_ms,
@@ -402,13 +422,28 @@ def _validate_manifest(manifest: Mapping[str, Any]) -> None:
     }
     if not declared or _sha256_json(payload) != declared:
         raise ValueError("manifest SHA does not match its payload")
-    if manifest.get("schema_version") != 2:
-        raise ValueError("manifest must use the LSP occurrence-index schema")
+    schema_version = manifest.get("schema_version")
+    if schema_version not in {2, 3}:
+        raise ValueError("manifest must use schema version 2 or 3")
     protocol = manifest.get("protocol") or {}
     if tuple(protocol.get("arms") or ()) != DEFAULT_ARMS:
         raise ValueError("manifest does not declare the fixed three-arm protocol")
-    if protocol.get("static_native_backend") != "scip_occurrence_index_v1":
-        raise ValueError("manifest does not pin the SCIP occurrence LSP backend")
+    if schema_version == 2:
+        if protocol.get("static_native_backend") != "scip_occurrence_index_v1":
+            raise ValueError("manifest does not pin the SCIP occurrence LSP backend")
+    else:
+        if protocol.get("static_native_backend") != "per_language_v1":
+            raise ValueError("manifest does not pin per-language native backends")
+        declared_backends = protocol.get("static_native_backend_by_language") or {}
+        for subject in manifest.get("subjects") or []:
+            language = str(subject.get("language") or "")
+            expected = static_native_backend_for_language(language)
+            if declared_backends.get(language) != expected:
+                raise ValueError(f"manifest backend map mismatch for {language!r}")
+            if subject.get("static_native_backend") != expected:
+                raise ValueError(
+                    f"manifest subject backend mismatch for {subject.get('instance_id')}"
+                )
     if protocol.get("static_fallback_backend") != "symbol_graph_v1":
         raise ValueError("manifest does not pin the graph fallback backend")
     not_ready = [
@@ -418,6 +453,17 @@ def _validate_manifest(manifest: Mapping[str, Any]) -> None:
     ]
     if not_ready:
         raise ValueError(f"manifest contains non-ready artifacts: {not_ready[:3]}")
+
+
+def _load_occurrence_index(
+    profile_dir: Path, language: str
+) -> Optional[SCIPOccurrenceIndex]:
+    path = profile_dir / "lsp_index.pkl"
+    if path.is_file():
+        return SCIPOccurrenceIndex.load(path)
+    if requires_lsp_occurrence_index(language):
+        raise ValueError(f"required LSP occurrence index missing at {path}")
+    return None
 
 
 def _ensure_run_identity(path: Path, identity: Mapping[str, Any]) -> None:
@@ -541,7 +587,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--disable-thinking", action="store_true")
     parser.add_argument("--instance", action="append")
     parser.add_argument(
-        "--role", action="append", choices=["development", "confirmatory"]
+        "--role",
+        action="append",
+        choices=["development", "confirmatory", "language_extension"],
     )
     parser.add_argument("--shard-count", type=int, default=1)
     parser.add_argument("--shard-index", type=int, default=0)
