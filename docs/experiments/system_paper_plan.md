@@ -309,7 +309,7 @@ regenerate the manifest with strict artifact verification:
 HF_HOME=/mnt/conda/huggingface \
 codeminer-lsp-agent-study-manifest \
   --dataset-revision 4eb84e2e8918474969ce68c5b06facf14d6be604 \
-  --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json
+  --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json
 
 export CODEMINER_SCIP_TOOLS_DIR="${CODEMINER_SCIP_TOOLS_DIR:-/tmp/codeminer-scip-tools}"
 export PATH="${CODEMINER_SCIP_TOOLS_DIR}/go-tools/bin:\
@@ -317,56 +317,74 @@ ${CODEMINER_SCIP_TOOLS_DIR}/go/bin:\
 ${CODEMINER_SCIP_TOOLS_DIR}/node-tools/node_modules/.bin:\
 ${CODEMINER_SCIP_TOOLS_DIR}:${PATH}"
 codeminer-lsp-agent-study-artifacts \
-  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json \
+  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json \
   --source-root /mnt/data/codeminer \
-  --output-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
+  --output-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v4 \
+  --reuse-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
   --workers 12
 
 HF_HOME=/mnt/conda/huggingface \
 codeminer-lsp-agent-study-manifest \
   --dataset-revision 4eb84e2e8918474969ce68c5b06facf14d6be604 \
-  --prebuilt-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
-  --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json
+  --prebuilt-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v4 \
+  --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json
 ```
 
 The legacy prebuilt-tree audit found 22/60 instance worktrees at the declared
 base commit and 38/60 at a different commit, with no verifiable profile binding.
 All 60 source commits were available in the local Git object stores, so the
 artifact preparer created detached snapshot worktrees and rebuilt every graph
-without re-cloning repositories. The strict manifest now reports 60/60 `ready`
-subjects with manifest SHA
-`69862de473c8e66940cba2d327dff09b34c64c94028f33724c64c640e1de7889`.
+without re-cloning repositories. A subsequent compatibility audit found that
+the symbol graph had discarded exact SCIP character ranges and local symbols,
+so natural receiver/local-variable LSP requests failed on the static arm. The
+v4 profile reuses the exact v3 graph and SCIP outputs and adds a separately
+versioned `lsp_index.pkl`; no language indexer is rerun. The strict schema-v2
+manifest reports 60/60 `ready` subjects with manifest SHA
+`434fd80a0f688812d29e45fb7ae749e9392deaf4af5d035ce6da94d1f69fdde6`.
 Independent loading found 567,234 nodes and 3,215,634 edges across the 60 graphs;
-every graph project root and Git HEAD matches the declared snapshot and no
-worktree has tracked changes. Artifact preparation satisfies the launch gate but
-does not count as any of the 540 planned model cells.
+the occurrence artifacts contain 10,287,017 exact positions. Every graph
+project root and Git HEAD matches the declared snapshot and no worktree has
+tracked changes. Artifact preparation satisfies the launch gate but does not
+count as any of the 540 planned model cells.
 
 Run the zero-cost execution preflight before any model cells:
 
 ```bash
 HF_HOME=/mnt/conda/huggingface \
 codeminer-lsp-agent-study-run \
-  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json \
-  --artifact-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
+  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json \
+  --artifact-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v4 \
   --preflight
 ```
 
 The current preflight passes all 60 subjects across 15 repositories and creates
-240 independent live-readiness probes for 540 planned cells. A one-task,
-one-repetition Haiku development smoke also completed all three arms without
-errors and with matching live/static prompt, tool-schema, and model hashes. All
-three smoke cells localized the target, but neither LSP arm adopted its optional
-native LSP tools. This is a pilot observation, not a result; adoption remains a
-pre-registered secondary endpoint and zero-call cells stay in the denominator.
+240 independent live-readiness probes for 540 planned cells while loading all
+10,287,017 occurrences. A corrected one-task, one-repetition Haiku development
+smoke completed all three arms without errors, with matching live/static
+prompt, tool-schema, and model hashes and the same occurrence-index hash in
+every cell. All three cells reached answer-block recall@5 of 1; neither LSP arm
+adopted its optional native LSP tools. This is a pilot observation, not a
+result; adoption remains a pre-registered secondary endpoint and zero-call
+cells stay in the denominator.
+
+The first graph-only development attempt was stopped after 81/225 cells. Its
+six naturally adopted live requests replayed as static errors because they
+targeted local variables or receivers. Those cells are retained as diagnostic
+evidence and are not resumed or pooled with schema-v2 outcomes. Replaying the
+same frozen requests after adding exact occurrences produced 30/30 equivalent
+measured rows: Caddy's paired median speedup was 3.79x and Gin's was 9.73x.
+Generated cross-language smoke requests were 70% equivalent for Rust and 50%
+for TypeScript; compatibility mismatches remain in the denominator, while only
+equivalent rows enter latency estimates.
 
 Run the repository-disjoint development gate before spending confirmatory
 budget:
 
 ```bash
 codeminer-lsp-agent-study-run \
-  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json \
-  --artifact-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
-  --output-root /mnt/data/codeminer/results/lsp_agent_base_haiku_development_v1 \
+  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json \
+  --artifact-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v4 \
+  --output-root /mnt/data/codeminer/results/lsp_agent_base_haiku_development_v2 \
   --role development \
   --vertex-project "${VERTEX_PROJECT}" \
   --vertex-location us-east5

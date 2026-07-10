@@ -259,9 +259,10 @@ Remote model wall time is not the LSP latency metric because API variance is
 orders of magnitude larger than one warm semantic request.
 
 The pinned Base sampling frame is now artifact-ready: 60/60 Go, Rust, and
-TypeScript snapshots pass strict source/profile/graph identity checks under
-`/mnt/data/codeminer/results/lsp_agent_base_artifacts_v3`. This readiness result
-does not replace request replay or constitute an agent outcome; it only removes
+TypeScript snapshots pass strict source/profile/graph/occurrence-index identity
+checks under `/mnt/data/codeminer/results/lsp_agent_base_artifacts_v4`. The
+artifacts contain 10,287,017 exact SCIP occurrences. This readiness result does
+not replace request replay or constitute an agent outcome; it only removes
 artifact drift from the dynamic adoption study.
 
 Latest local pilot, using a two-file temporary Python repo and
@@ -280,13 +281,16 @@ The pilot exposed three experiment-design constraints:
   gates. It is a CodeMiner extension, not a native LSP request.
 - References should usually be gated by unordered start-location set equality;
   otherwise provider ordering differences dominate the result.
-- Position-based dynamic LSP acceleration is not safe for arbitrary characters
-  yet. The static graph is line-granular today, so it can return a line anchor
-  even when live LSP returns no definition for a cursor on whitespace or a
-  keyword. Static lookups now require the source token under `character` to
-  match the indexed target symbol; when the source is unavailable or the cursor
-  misses the symbol token, the static path fails instead of claiming
-  equivalence.
+- Symbol-graph edges alone are not sufficient for native position queries.
+  They discard local symbols and exact character ranges, so naturally adopted
+  receiver/local-variable calls can fail even when the live server succeeds.
+  Native position calls now use a separately versioned SCIP occurrence index
+  and fall back to the graph only for a declaration omitted by an older SCIP
+  producer. The graph remains the backend for symbol-oriented `lsp_route`.
+- Exact positions improve coverage but do not imply universal behavioral
+  equivalence. Indexer/server versions and workspace views can still differ,
+  especially for Rust and TypeScript references. Compatibility is reported on
+  every request; latency is aggregated only for matching fingerprints.
 
 Each row reports static/reference provider status, result count, fingerprint,
 latency, `latency_saved_ms`, `speedup_ratio`, and one of:
