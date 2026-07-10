@@ -372,6 +372,14 @@ codeminer-lsp-agent-study-run \
   --vertex-location us-east5
 ```
 
+The development gate is operational, not outcome-selective. Proceed to the
+held-out block only after all 225 cells are recorded, every cell is either
+successful or has an explained harness failure, all 75 live/static pairs match
+their prompt, tool-schema, and model hashes, live readiness is stable, and the
+primary metric is scoreable. LSP adoption rate and the direction of the
+development quality delta are reported outcomes, not go/no-go criteria; the
+protocol must not be changed after inspecting them.
+
 The runner writes one atomic JSON file per cell, records live readiness
 separately, keeps errors in the planned denominator, and resumes without
 re-running completed cells. Repository shards are supported, but each concurrent
