@@ -21,7 +21,7 @@ def _manifest(subjects):
             "split": "test",
         },
         "protocol": LSPAgentStudySpec(reps=1).to_dict(),
-        "schema_version": 1,
+        "schema_version": 2,
         "subjects": subjects,
         "summary": {"subject_count": len(subjects)},
     }
@@ -33,6 +33,7 @@ def _subject(instance_id, repo="org/repo", role="development"):
     return {
         "artifact": {
             "graph_sha256": "graph-sha",
+            "lsp_index_sha256": "lsp-sha",
             "profile_id": "profile-id",
             "status": "ready",
         },
@@ -85,6 +86,11 @@ def test_manifest_runner_writes_atomic_cells_and_resumes(tmp_path, monkeypatch):
         role="development",
     )
     monkeypatch.setattr(runner, "task_from_manifest_subject", lambda *a, **k: task)
+    monkeypatch.setattr(
+        runner.SCIPOccurrenceIndex,
+        "load",
+        lambda path: SimpleNamespace(occurrences=()),
+    )
     monkeypatch.setattr(
         runner,
         "_prepare_live_provider",
@@ -155,6 +161,11 @@ def test_error_cells_remain_in_denominator(tmp_path, monkeypatch):
         repo_path=str(artifact / "repo"),
     )
     monkeypatch.setattr(runner, "task_from_manifest_subject", lambda *a, **k: task)
+    monkeypatch.setattr(
+        runner.SCIPOccurrenceIndex,
+        "load",
+        lambda path: SimpleNamespace(occurrences=()),
+    )
     monkeypatch.setattr(
         runner,
         "_prepare_live_provider",

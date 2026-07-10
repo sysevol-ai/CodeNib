@@ -25,6 +25,10 @@ from codeminer.agent.skills.core import (
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.llm.litellm_chat import LiteLLMChat
+from codeminer.scip_interface.lsp_occurrence_index import (
+    SCIPOccurrence,
+    SCIPOccurrenceIndex,
+)
 from codeminer.types import NODE_TYPE_FUNCTION
 
 
@@ -90,6 +94,33 @@ def test_static_lsp_provider_returns_list_with_metadata():
     assert metadata["status"] == "ok"
     assert metadata["lsp_method"] == "textDocument/definition"
     assert metadata["index_snapshot"] == "graph:demo"
+
+
+def test_static_lsp_provider_uses_exact_scip_occurrences_for_native_positions():
+    index = SCIPOccurrenceIndex(
+        [
+            SCIPOccurrence("caller.py", 1, 4, 1, 10, "local 0", 1),
+            SCIPOccurrence("caller.py", 2, 8, 2, 14, "local 0", 8),
+        ]
+    )
+    provider = StaticLSPProvider(
+        _range_graph(),
+        snapshot_id="snapshot:demo",
+        occurrence_index=index,
+    )
+
+    definition = provider.definition(file_path="caller.py", line=2, character=9)
+    references = provider.references(file_path="caller.py", line=1, character=5)
+
+    assert [(node.file, node.start_line) for node in definition] == [("caller.py", 1)]
+    assert [(node.file, node.start_line) for node in references] == [
+        ("caller.py", 1),
+        ("caller.py", 2),
+    ]
+    assert definition.provider_metadata_dict()["behavior_contract"] == (
+        "static_scip_occurrence_lsp_v1"
+    )
+    assert definition.provider_metadata_dict()["position_granularity"] == ("character")
 
 
 def test_native_lsp_result_normalization_is_stable_and_deduplicated():

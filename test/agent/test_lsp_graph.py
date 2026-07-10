@@ -78,6 +78,36 @@ def test_lsp_definition_character_must_hit_reference_token(tmp_path):
         lsp_graph.lsp_definition(graph, file_path="caller.py", line=1, character=4)
 
 
+def test_lsp_definition_character_considers_declaration_and_same_line_reference(
+    tmp_path,
+):
+    (tmp_path / "reader.go").write_text(
+        "func (r Reader) Render() {}\n", encoding="utf-8"
+    )
+    graph = CodeGraph(project_root=str(tmp_path))
+    graph.add_file_node("reader.go")
+    graph.add_symbol_node(
+        "Reader.Render",
+        line=0,
+        scope_start_line=0,
+        scope_end_line=0,
+        symbol_type=NODE_TYPE_FUNCTION,
+    )
+    graph.add_symbol_reference(
+        "Reader",
+        module_path="reader.go",
+        anchor_file="reader.go",
+        anchor_line=0,
+    )
+    graph.build_range_indexes()
+
+    result = lsp_graph.lsp_definition(
+        graph, file_path="reader.go", line=0, character=20
+    )
+
+    assert [node.node_name for node in result] == ["Reader.Render"]
+
+
 def test_lsp_references_character_must_hit_reference_token(tmp_path):
     (tmp_path / "caller.py").write_text(
         "def run():\n    return load_config()\n", encoding="utf-8"

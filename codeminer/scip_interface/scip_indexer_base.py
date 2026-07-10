@@ -224,6 +224,7 @@ class SCIPIndexerBase(ABC):
         self.index_file = self.output_dir / "index.scip"
         self.decoded_file = self.output_dir / "index.decoded"
         self.graph_file = self.output_dir / "graph.pkl"
+        self.lsp_index_file = self.output_dir / "lsp_index.pkl"
         self.exclude_patterns = exclude_patterns if exclude_patterns else []
         self._target_dir: str | None = None
         self.profiler = profiler or Profiler(f"scip_{language}_indexer")
@@ -416,6 +417,19 @@ class SCIPIndexerBase(ABC):
             duration = section.duration
             graph = self._filter_project_graph(graph)
 
+            from .lsp_occurrence_index import SCIPOccurrenceIndex
+
+            with self.profiler.section("process_index.build_lsp_occurrence_index"):
+                occurrence_index = SCIPOccurrenceIndex.from_decoded_file(
+                    self.decoded_file,
+                    path_filter=(
+                        self._path_allowed
+                        if self._target_dir or self.exclude_patterns
+                        else None
+                    ),
+                )
+            graph.lsp_occurrence_index = occurrence_index
+
             # Build line-range indexes once the graph is fully assembled.
             # Must happen before save_graph so the indexes are persisted.
             with self.profiler.section("process_index.build_range_indexes"):
@@ -425,6 +439,7 @@ class SCIPIndexerBase(ABC):
                 with self.profiler.section("process_index.save_graph") as save_section:
                     output_path = Path(output_file)
                     graph.save_graph(str(output_path))
+                    occurrence_index.save(output_path.with_name("lsp_index.pkl"))
                 save_duration = save_section.duration
                 logger.info(f"Saved processed SCIP index to {output_path}")
                 logger.info(f"⏱️  Graph saving took: {save_duration:.2f} seconds")
@@ -482,11 +497,33 @@ class SCIPIndexerBase(ABC):
             logger.info(f"Loading cached graph from {self.graph_file}")
             try:
                 graph = CodeGraph.load_graph(str(self.graph_file))
+                if self.lsp_index_file.is_file():
+                    from .lsp_occurrence_index import SCIPOccurrenceIndex
+
+                    graph.lsp_occurrence_index = SCIPOccurrenceIndex.load(
+                        self.lsp_index_file
+                    )
+                elif self.decoded_file.is_file():
+                    from .lsp_occurrence_index import SCIPOccurrenceIndex
+
+                    graph.lsp_occurrence_index = SCIPOccurrenceIndex.from_decoded_file(
+                        self.decoded_file,
+                        path_filter=(
+                            self._path_allowed
+                            if self._target_dir or self.exclude_patterns
+                            else None
+                        ),
+                    )
+                    graph.lsp_occurrence_index.save(self.lsp_index_file)
                 if self._target_dir or self.exclude_patterns:
                     graph = self._filter_project_graph(graph)
                     graph.build_range_indexes()
                     if output_file:
                         graph.save_graph(output_file)
+                        if hasattr(graph, "lsp_occurrence_index"):
+                            graph.lsp_occurrence_index.save(
+                                Path(output_file).with_name("lsp_index.pkl")
+                            )
                 logger.info(
                     "✅ Successfully loaded cached graph "
                     f"({len(graph.graph.vs)} nodes, "
@@ -583,13 +620,22 @@ class SCIPIndexerBase(ABC):
                 files_to_remove = []
                 logger.info("Clearing cache: keeping up to graph (nothing to remove)")
             elif level == "decode":
-                files_to_remove = [self.graph_file]
+                files_to_remove = [self.graph_file, self.lsp_index_file]
                 logger.info("Clearing cache: keeping up to decode, removing graph")
             elif level == "raw":
-                files_to_remove = [self.decoded_file, self.graph_file]
+                files_to_remove = [
+                    self.decoded_file,
+                    self.graph_file,
+                    self.lsp_index_file,
+                ]
                 logger.info("Clearing cache: keeping raw, removing decoded + graph")
             elif level == "all":
-                files_to_remove = [self.index_file, self.decoded_file, self.graph_file]
+                files_to_remove = [
+                    self.index_file,
+                    self.decoded_file,
+                    self.graph_file,
+                    self.lsp_index_file,
+                ]
                 logger.info("Clearing all cache files")
             else:
                 logger.error(

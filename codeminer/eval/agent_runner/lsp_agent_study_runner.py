@@ -19,6 +19,7 @@ from codeminer.eval.agent_runner.live_lsp_provider import LiveLSPReferenceProvid
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.graph.incremental.lsp_client import LSPClient
 from codeminer.llm.litellm_chat import LiteLLMChat
+from codeminer.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
 
 from .lsp_agent_study import (
     CODEMINER_LSP_ARM,
@@ -109,6 +110,7 @@ def preflight_lsp_agent_study(
     _validate_manifest(manifest)
     root = Path(artifact_root).expanduser().resolve()
     by_language: dict[str, int] = {}
+    occurrence_count = 0
     probe_count = 0
     for subject in subjects:
         instance_id = str(subject["instance_id"])
@@ -122,6 +124,9 @@ def preflight_lsp_agent_study(
             repo_path=profile_dir / "repo",
         )
         graph = graph_loader(profile_dir / "graph.pkl")
+        occurrence_index = SCIPOccurrenceIndex.load(profile_dir / "lsp_index.pkl")
+        graph.lsp_occurrence_index = occurrence_index
+        occurrence_count += len(occurrence_index.occurrences)
         if Path(graph.project_root).resolve() != Path(task.repo_path).resolve():
             raise ValueError(f"graph project_root mismatch for {instance_id}")
         if not LSPClient.check_lsp_available(task.language):
@@ -140,6 +145,7 @@ def preflight_lsp_agent_study(
         "artifact_ready_count": len(subjects),
         "by_language": by_language,
         "manifest_sha256": manifest["manifest_sha256"],
+        "lsp_occurrence_count": occurrence_count,
         "planned_cell_count": len(subjects) * int(protocol["reps"]) * len(DEFAULT_ARMS),
         "readiness_probe_count": probe_count,
         "repository_count": len({str(row["repo"]) for row in subjects}),
@@ -208,6 +214,8 @@ def run_lsp_agent_study_manifest(
             repo_path=profile_dir / "repo",
         )
         graph = graph_loader(profile_dir / "graph.pkl")
+        occurrence_index = SCIPOccurrenceIndex.load(profile_dir / "lsp_index.pkl")
+        graph.lsp_occurrence_index = occurrence_index
         static_provider = StaticLSPProvider(
             graph,
             snapshot_id=str(subject["snapshot_id"]),
@@ -284,6 +292,9 @@ def run_lsp_agent_study_manifest(
                                 {
                                     "artifact_graph_sha256": subject["artifact"][
                                         "graph_sha256"
+                                    ],
+                                    "artifact_lsp_index_sha256": subject["artifact"][
+                                        "lsp_index_sha256"
                                     ],
                                     "artifact_profile_id": subject["artifact"][
                                         "profile_id"
@@ -391,9 +402,15 @@ def _validate_manifest(manifest: Mapping[str, Any]) -> None:
     }
     if not declared or _sha256_json(payload) != declared:
         raise ValueError("manifest SHA does not match its payload")
+    if manifest.get("schema_version") != 2:
+        raise ValueError("manifest must use the LSP occurrence-index schema")
     protocol = manifest.get("protocol") or {}
     if tuple(protocol.get("arms") or ()) != DEFAULT_ARMS:
         raise ValueError("manifest does not declare the fixed three-arm protocol")
+    if protocol.get("static_native_backend") != "scip_occurrence_index_v1":
+        raise ValueError("manifest does not pin the SCIP occurrence LSP backend")
+    if protocol.get("static_fallback_backend") != "symbol_graph_v1":
+        raise ValueError("manifest does not pin the graph fallback backend")
     not_ready = [
         str(row.get("instance_id"))
         for row in manifest.get("subjects") or []

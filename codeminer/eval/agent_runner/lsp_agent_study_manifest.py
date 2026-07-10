@@ -23,6 +23,7 @@ from .lsp_agent_study import (
     LSPAgentStudySpec,
     LSPAgentStudyTask,
 )
+from .lsp_agent_study_artifacts import lsp_agent_artifact_profile
 
 
 def build_base_lsp_agent_manifest(
@@ -63,7 +64,15 @@ def build_base_lsp_agent_manifest(
             "snapshot_id": SourceSnapshot(repo, commit).snapshot_id,
         }
         if root is not None:
-            subject["artifact"] = _artifact_status(root, instance_id, repo, commit)
+            subject["artifact"] = _artifact_status(
+                root,
+                instance_id,
+                repo,
+                commit,
+                expected_profile_id=lsp_agent_artifact_profile(
+                    LANGUAGE_GROUPS[language_group]
+                ).profile_id,
+            )
         subjects.append(subject)
 
     if not subjects:
@@ -77,7 +86,7 @@ def build_base_lsp_agent_manifest(
         )
 
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "benchmark": "codeminer_base_lsp_agent_ablation",
         "dataset": {
             "name": spec.dataset,
@@ -132,6 +141,11 @@ def task_from_manifest_subject(
         current_graph_hash = _sha256_file(declared_repo.parent / "graph.pkl")
         if current_graph_hash != graph_sha256:
             raise ValueError("graph artifact changed after manifest creation")
+    lsp_index_sha256 = artifact.get("lsp_index_sha256")
+    if lsp_index_sha256:
+        current_lsp_hash = _sha256_file(declared_repo.parent / "lsp_index.pkl")
+        if current_lsp_hash != lsp_index_sha256:
+            raise ValueError("LSP occurrence index changed after manifest creation")
     return LSPAgentStudyTask.from_base_row(
         row,
         repo_path=root,
@@ -194,21 +208,31 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _artifact_status(
-    root: Path, instance_id: str, expected_repo: str, expected_commit: str
+    root: Path,
+    instance_id: str,
+    expected_repo: str,
+    expected_commit: str,
+    *,
+    expected_profile_id: str,
 ) -> dict[str, Any]:
     instance = root / instance_id
     repo = instance / "repo"
     graph = instance / "graph.pkl"
+    lsp_index = instance / "lsp_index.pkl"
     actual_commit = _git_commit(repo) if repo.is_dir() else None
     identity = _snapshot_profile_identity(instance)
     if not repo.is_dir():
         status = "missing_repo"
     elif not graph.is_file():
         status = "missing_graph"
+    elif not lsp_index.is_file():
+        status = "missing_lsp_index"
     elif actual_commit != expected_commit:
         status = "commit_mismatch"
     elif identity is None:
         status = "unverified_identity"
+    elif identity.get("profile_id") != expected_profile_id:
+        status = "identity_mismatch"
     elif not _identity_matches(
         identity,
         expected_repo=expected_repo,
@@ -220,6 +244,7 @@ def _artifact_status(
     return {
         "actual_commit": actual_commit,
         "graph_sha256": _sha256_file(graph) if graph.is_file() else None,
+        "lsp_index_sha256": (_sha256_file(lsp_index) if lsp_index.is_file() else None),
         "profile_id": identity.get("profile_id") if identity else None,
         "status": status,
     }

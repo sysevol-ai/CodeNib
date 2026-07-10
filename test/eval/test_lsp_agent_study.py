@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from codeminer.agent.lsp_provider import StaticLSPProvider
-from codeminer.compiler.snapshot_store import ArtifactProfile, SourceSnapshot
+from codeminer.compiler.snapshot_store import SourceSnapshot
 from codeminer.eval.agent_runner.lsp_agent_study import (
     CODEMINER_LSP_ARM,
     FILESYSTEM_ARM,
@@ -36,6 +36,9 @@ from codeminer.eval.agent_runner.lsp_agent_study_manifest import (
 )
 from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
 from codeminer.llm.litellm_chat import LiteLLMChat
+from codeminer.scip_interface.lsp_occurrence_index import (
+    LSP_OCCURRENCE_INDEX_SCHEMA_VERSION,
+)
 from codeminer.types import NODE_TYPE_FUNCTION
 
 
@@ -109,7 +112,10 @@ def test_study_artifact_profile_pins_graph_compatibility():
     profile = lsp_agent_artifact_profile("typescript")
 
     assert profile.languages == ("javascript", "typescript")
-    assert profile.schema_versions == {"code_graph": str(_SCHEMA_VERSION)}
+    assert profile.schema_versions == {
+        "code_graph": str(_SCHEMA_VERSION),
+        "lsp_occurrence_index": str(LSP_OCCURRENCE_INDEX_SCHEMA_VERSION),
+    }
     assert profile.options == {"exclude_patterns": [], "graph_route": "active"}
 
 
@@ -217,11 +223,7 @@ def test_manifest_subject_binding_rechecks_source_and_graph_identity(tmp_path):
     row = _base_row("org__repo-1", "org/repo")
     row["base_commit"] = commit
     snapshot = SourceSnapshot(row["repo"], commit)
-    profile = ArtifactProfile.create(
-        ("go",),
-        name="lsp-agent-study",
-        schema_versions={"graph": "4"},
-    )
+    profile = lsp_agent_artifact_profile("go")
     snapshot_dir = tmp_path / ".snapshots" / snapshot.snapshot_id
     profile_dir = snapshot_dir / "profiles" / profile.profile_id
     profile_dir.mkdir(parents=True)
@@ -234,6 +236,7 @@ def test_manifest_subject_binding_rechecks_source_and_graph_identity(tmp_path):
     repo.rename(profile_dir / "repo")
     repo = profile_dir / "repo"
     (profile_dir / "graph.pkl").write_bytes(b"graph-v1")
+    (profile_dir / "lsp_index.pkl").write_bytes(b"lsp-v1")
     instance = tmp_path / "org__repo-1"
     instance.symlink_to(profile_dir, target_is_directory=True)
     spec = LSPAgentStudySpec(development_repositories=("org/repo",))

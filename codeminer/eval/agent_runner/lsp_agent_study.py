@@ -27,6 +27,13 @@ from codeminer.agent.skills.loader import SkillLoader
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.compiler.params import SessionContext
 from codeminer.compiler.snapshot_store import SourceSnapshot
+from codeminer.eval.experiments.lsp_agent_study_policy import (
+    DEFAULT_BASE_DATASET,
+    DEFAULT_BASE_REVISION,
+    DEFAULT_DEVELOPMENT_REPOSITORIES,
+    DEFAULT_MODEL,
+    LANGUAGE_GROUPS,
+)
 from codeminer.eval.retrieval_eval import collect_target_blocks, collect_targets
 from codeminer.ops.expand import ExpandContext
 
@@ -39,27 +46,6 @@ LIVE_LSP_ARM = "live_lsp"
 CODEMINER_LSP_ARM = "codeminer_lsp"
 DEFAULT_ARMS = (FILESYSTEM_ARM, LIVE_LSP_ARM, CODEMINER_LSP_ARM)
 NATIVE_LSP_SKILLS = ("lsp_definition", "lsp_references")
-
-DEFAULT_BASE_DATASET = "fishmingyu/codeminer-base-dataset"
-DEFAULT_BASE_REVISION = "4eb84e2e8918474969ce68c5b06facf14d6be604"
-
-LANGUAGE_GROUPS = {
-    "Go": "go",
-    "Rust": "rust",
-    "TypeScript/JavaScript": "typescript",
-}
-
-# These repositories supplied the exploratory replay evidence. Keeping their
-# complete repository clusters out of the confirmatory partition prevents the
-# promotion policy from being selected and evaluated on the same codebases.
-DEFAULT_DEVELOPMENT_REPOSITORIES = (
-    "caddyserver/caddy",
-    "gin-gonic/gin",
-    "preactjs/preact",
-    "sharkdp/bat",
-    "tokio-rs/tokio",
-    "vuejs/core",
-)
 
 _SYSTEM_PROMPT = f"""\
 You are a code localization agent. Find the repository files, symbols, and
@@ -87,12 +73,14 @@ class LSPAgentStudySpec:
     language_groups: tuple[str, ...] = tuple(LANGUAGE_GROUPS)
     development_repositories: tuple[str, ...] = DEFAULT_DEVELOPMENT_REPOSITORIES
     arms: tuple[str, ...] = DEFAULT_ARMS
-    model: str = "vertex_ai/claude-haiku-4-5"
+    model: str = DEFAULT_MODEL
     reps: int = 3
     max_turns: int = 20
     max_tokens: int = 4096
     temperature: float = 0.0
     randomization_seed: str = "codeminer-lsp-agent-v1"
+    static_native_backend: str = "scip_occurrence_index_v1"
+    static_fallback_backend: str = "symbol_graph_v1"
     primary_quality_metric: str = "answer_blocks.recall@5"
     noninferiority_margin: float = 0.05
     cluster_key: str = "repo"
@@ -109,6 +97,11 @@ class LSPAgentStudySpec:
             raise ValueError("bootstrap_samples must be positive")
         if not self.model.strip():
             raise ValueError("model must be non-empty")
+        if (
+            not self.static_native_backend.strip()
+            or not self.static_fallback_backend.strip()
+        ):
+            raise ValueError("static LSP backend identities must be non-empty")
         if not 0 <= self.noninferiority_margin < 1:
             raise ValueError("noninferiority_margin must be in [0, 1)")
         unknown_groups = set(self.language_groups) - set(LANGUAGE_GROUPS)
@@ -137,6 +130,8 @@ class LSPAgentStudySpec:
             "randomization_seed": self.randomization_seed,
             "reps": self.reps,
             "request_admission": "all observed native LSP calls",
+            "static_fallback_backend": self.static_fallback_backend,
+            "static_native_backend": self.static_native_backend,
             "task_admission": "all supported-language dataset rows",
             "temperature": self.temperature,
         }

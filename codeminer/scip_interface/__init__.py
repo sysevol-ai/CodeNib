@@ -9,6 +9,12 @@ Language-specific SCIP indexing and decoding for active and candidate
 cold-start routes.
 """
 
+from .lsp_occurrence_index import (
+    LSP_OCCURRENCE_INDEX_SCHEMA_VERSION,
+    SCIPLocation,
+    SCIPOccurrence,
+    SCIPOccurrenceIndex,
+)
 from .scip_decode_csharp import SCIPCSharpGraphDecoder
 from .scip_decode_java import SCIPJavaGraphDecoder
 from .scip_decode_php import SCIPPHPGraphDecoder
@@ -45,4 +51,8 @@ __all__ = [
     "SCIPPythonGraphDecoder",
     "SCIPRustGraphDecoder",
     "SCIPTypeScriptGraphDecoder",
+    "LSP_OCCURRENCE_INDEX_SCHEMA_VERSION",
+    "SCIPLocation",
+    "SCIPOccurrence",
+    "SCIPOccurrenceIndex",
 ]

@@ -416,16 +416,20 @@ def lsp_definition(
         if name:
             target_names.append(name)
 
+    defined = sorted(
+        list(getattr(query, "defined", []) or []),
+        key=lambda node: (
+            (getattr(node, "end_line", 0) or 0) - (getattr(node, "start_line", 0) or 0),
+            getattr(node, "start_line", 0) or 0,
+        ),
+    )
+    defined_names = [node.name for node in defined if getattr(node, "name", None)]
     if not target_names:
-        defined = sorted(
-            list(getattr(query, "defined", []) or []),
-            key=lambda node: (
-                (getattr(node, "end_line", 0) or 0)
-                - (getattr(node, "start_line", 0) or 0),
-                getattr(node, "start_line", 0) or 0,
-            ),
-        )
-        target_names = [node.name for node in defined if getattr(node, "name", None)]
+        target_names = defined_names
+    elif character is not None:
+        # A declaration line can also contain receiver/type references. Exact
+        # character lookup must consider both sets before token filtering.
+        target_names.extend(defined_names)
 
     if character is not None:
         target_names = _filter_targets_by_character(

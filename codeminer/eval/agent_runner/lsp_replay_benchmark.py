@@ -160,6 +160,7 @@ def run_lsp_replay_benchmark(
     live_provider_factory: Callable[..., LiveLSPReferenceProvider] = (
         LiveLSPReferenceProvider
     ),
+    occurrence_index: Any = None,
 ) -> dict[str, Any]:
     """Run a warm provider-level replay benchmark and return JSON-ready data."""
 
@@ -190,7 +191,7 @@ def run_lsp_replay_benchmark(
         raise ValueError(f"graph artifact quality guardrail failed: {failures}")
 
     static_init_start = clock()
-    static_provider = StaticLSPProvider(graph)
+    static_provider = StaticLSPProvider(graph, occurrence_index=occurrence_index)
     static_provider_init_ms = (clock() - static_init_start) * 1000
 
     live_provider = live_provider_factory(
@@ -282,6 +283,7 @@ def run_lsp_replay_benchmark(
         "measured_reps": measured_reps,
         "warmup_summary": _summarize_rows(warmup_rows),
         "setup": {
+            "occurrence_index_enabled": occurrence_index is not None,
             "static_provider_init_ms": static_provider_init_ms,
             "live_start_ms": live_start_ms,
             "idle_wait_ms": idle_wait_ms,
@@ -475,6 +477,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--occurrence-index",
+        help="Optional persisted SCIP occurrence index for exact native positions.",
+    )
+    parser.add_argument(
         "--capabilities",
         default="definition,references",
         help="Comma-separated capabilities to generate when --requests is omitted.",
@@ -553,6 +559,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             min_baseline_vertex_ratio=args.min_baseline_graph_ratio,
             min_baseline_edge_ratio=args.min_baseline_graph_ratio,
         )
+        occurrence_index = None
+        occurrence_index_path = (
+            Path(args.occurrence_index).expanduser().resolve()
+            if args.occurrence_index
+            else Path(project_root).parent / "lsp_index.pkl"
+        )
+        if occurrence_index_path.is_file():
+            from codeminer.scip_interface.lsp_occurrence_index import (
+                SCIPOccurrenceIndex,
+            )
+
+            occurrence_index = SCIPOccurrenceIndex.load(occurrence_index_path)
         payload = run_lsp_replay_benchmark(
             requests,
             graph=graph,
@@ -575,6 +593,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             allow_low_quality_artifact=args.allow_low_quality_artifact,
             wait_until_idle=args.wait_until_idle,
             idle_timeout_s=args.idle_timeout,
+            occurrence_index=occurrence_index,
         )
         if args.requests:
             request_path = Path(args.requests).resolve()
@@ -597,6 +616,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
         )
         payload["setup"]["graph_load_ms"] = graph_load_ms
+        if occurrence_index is not None:
+            payload["subject"]["lsp_occurrence_index"] = {
+                "artifact_path": str(occurrence_index_path),
+                "artifact_sha256": _file_sha256(occurrence_index_path),
+            }
         _write_reports(
             payload,
             output_json=args.output_json,

@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import shutil
 import subprocess
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -21,8 +23,12 @@ from codeminer.compiler.snapshot_store import (
 )
 from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
 from codeminer.ls_router import ACTIVE_GRAPH_ROUTE, LSIndexer
+from codeminer.scip_interface.lsp_occurrence_index import (
+    LSP_OCCURRENCE_INDEX_SCHEMA_VERSION,
+    SCIPOccurrenceIndex,
+)
 
-ARTIFACT_PROFILE_NAME = "lsp-agent-base-scip-v1"
+ARTIFACT_PROFILE_NAME = "lsp-agent-base-scip-v2"
 
 
 def lsp_agent_artifact_profile(language: str) -> ArtifactProfile:
@@ -36,7 +42,10 @@ def lsp_agent_artifact_profile(language: str) -> ArtifactProfile:
     return ArtifactProfile.create(
         languages,
         name=ARTIFACT_PROFILE_NAME,
-        schema_versions={"code_graph": str(_SCHEMA_VERSION)},
+        schema_versions={
+            "code_graph": str(_SCHEMA_VERSION),
+            "lsp_occurrence_index": str(LSP_OCCURRENCE_INDEX_SCHEMA_VERSION),
+        },
         options={"exclude_patterns": [], "graph_route": ACTIVE_GRAPH_ROUTE},
     )
 
@@ -81,6 +90,7 @@ def prepare_subject_artifact(
     *,
     source_root: str | Path,
     output_root: str | Path,
+    reuse_root: str | Path | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
     """Build or verify one snapshot graph and return its build record."""
@@ -103,15 +113,40 @@ def prepare_subject_artifact(
         commit=commit,
     )
     graph_path = binding.profile_dir / "graph.pkl"
+    lsp_index_path = binding.profile_dir / "lsp_index.pkl"
+    decoded_path = binding.profile_dir / "index.decoded"
+    if reuse_root is not None and not force and not graph_path.is_file():
+        _reuse_scip_artifacts(
+            Path(reuse_root).expanduser().resolve() / instance_id,
+            binding.profile_dir,
+            worktree=worktree,
+            expected_commit=commit,
+        )
     started = time.perf_counter()
     cache_hit = False
     graph = None
-    if graph_path.is_file() and not force:
+    occurrence_index = None
+    if graph_path.is_file() and lsp_index_path.is_file() and not force:
         try:
             graph = CodeGraph.load_graph(graph_path)
+            graph.project_root = str(worktree)
+            occurrence_index = SCIPOccurrenceIndex.load(lsp_index_path)
+            graph.lsp_occurrence_index = occurrence_index
             cache_hit = True
         except Exception:
             graph = None
+            occurrence_index = None
+    elif graph_path.is_file() and decoded_path.is_file() and not force:
+        try:
+            graph = CodeGraph.load_graph(graph_path)
+            graph.project_root = str(worktree)
+            graph.save_graph(graph_path)
+            occurrence_index = SCIPOccurrenceIndex.from_decoded_file(decoded_path)
+            occurrence_index.save(lsp_index_path)
+            graph.lsp_occurrence_index = occurrence_index
+        except Exception:
+            graph = None
+            occurrence_index = None
     if graph is None:
         indexer = LSIndexer(
             worktree,
@@ -122,9 +157,15 @@ def prepare_subject_artifact(
         )
         graph = indexer.run_pipeline(skip_level=None, report_profile=False)
         quality = indexer.index_quality_report
+        occurrence_index = getattr(graph, "lsp_occurrence_index", None)
     else:
         quality = None
-    if graph is None or len(graph.graph.vs) == 0:
+    if (
+        graph is None
+        or len(graph.graph.vs) == 0
+        or occurrence_index is None
+        or not lsp_index_path.is_file()
+    ):
         raise RuntimeError(f"empty graph for {instance_id}")
 
     record = {
@@ -135,6 +176,9 @@ def prepare_subject_artifact(
         "graph_path": str(graph_path),
         "instance_id": instance_id,
         "language": language,
+        "lsp_index_path": str(lsp_index_path),
+        "lsp_index_sha256": _sha256_file(lsp_index_path),
+        "lsp_occurrence_count": len(occurrence_index.occurrences),
         "node_count": len(graph.graph.vs),
         "profile_id": binding.profile_id,
         "quality": quality,
@@ -150,10 +194,57 @@ def prepare_subject_artifact(
     return record
 
 
+def _reuse_scip_artifacts(
+    source_instance: Path,
+    destination: Path,
+    *,
+    worktree: Path,
+    expected_commit: str,
+) -> bool:
+    """Seed a new profile from an exact-snapshot SCIP/graph artifact."""
+
+    try:
+        source = source_instance.resolve(strict=True)
+    except OSError:
+        return False
+    source_repo = source / "repo"
+    if not source_repo.is_dir():
+        return False
+    actual_commit = subprocess.run(
+        ["git", "-C", str(source_repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if actual_commit != expected_commit:
+        return False
+    graph_path = source / "graph.pkl"
+    decoded_path = source / "index.decoded"
+    if not graph_path.is_file() or not decoded_path.is_file():
+        return False
+    graph = CodeGraph.load_graph(graph_path)
+    graph.project_root = str(worktree)
+    graph.save_graph(destination / "graph.pkl")
+    shutil.copy2(decoded_path, destination / "index.decoded")
+    raw_index = source / "index.scip"
+    if raw_index.is_file():
+        shutil.copy2(raw_index, destination / "index.scip")
+    return True
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def _prepare_repository_group(
     rows: Sequence[Mapping[str, Any]],
     source_root: str | Path,
     output_root: str | Path,
+    reuse_root: str | Path | None,
     force: bool,
 ) -> list[dict[str, Any]]:
     return [
@@ -161,6 +252,7 @@ def _prepare_repository_group(
             row,
             source_root=source_root,
             output_root=output_root,
+            reuse_root=reuse_root,
             force=force,
         )
         for row in sorted(rows, key=lambda item: str(item["instance_id"]))
@@ -172,6 +264,7 @@ def prepare_manifest_artifacts(
     *,
     source_root: str | Path,
     output_root: str | Path,
+    reuse_root: str | Path | None = None,
     workers: int = 4,
     force: bool = False,
 ) -> list[dict[str, Any]]:
@@ -190,6 +283,7 @@ def prepare_manifest_artifacts(
                 rows,
                 source_root,
                 output_root,
+                reuse_root,
                 force,
             ): repo
             for repo, rows in grouped.items()
@@ -211,6 +305,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-json", required=True)
     parser.add_argument("--source-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument(
+        "--reuse-root",
+        help="Optional exact-snapshot artifact root used to seed SCIP files.",
+    )
     parser.add_argument("--summary-json")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--language", action="append")
@@ -237,6 +335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         subjects,
         source_root=args.source_root,
         output_root=output_root,
+        reuse_root=args.reuse_root,
         workers=args.workers,
         force=args.force,
     )
