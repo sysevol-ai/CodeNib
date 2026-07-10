@@ -96,7 +96,10 @@ class _FakeLiveProvider:
     def close(self) -> None:
         self.closed = True
 
-    def wait_until_idle(self, *, max_wait_s: float = 60.0) -> bool:
+    def wait_until_idle(
+        self, *, max_wait_s: float = 60.0, idle_grace_s: float = 1.0
+    ) -> bool:
+        self.idle_grace_s = idle_grace_s
         return max_wait_s == 60.0
 
     def __call__(self, capability: str, arguments: Mapping[str, Any]) -> Any:
@@ -313,6 +316,7 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
         minimum_equivalent_count=1,
         measured_reps=2,
         wait_until_idle=True,
+        idle_grace_s=10.0,
         live_provider_factory=_FakeLiveProvider,
     )
 
@@ -327,6 +331,7 @@ def test_run_lsp_replay_benchmark_reports_equivalent_latency(tmp_path):
     assert payload["warmup_protocol"]["minimum_equivalent_count"] == 1
     assert payload["setup"]["warmup_wall_ms"] >= 0
     assert payload["setup"]["idle_wait_ms"] >= 0
+    assert payload["setup"]["idle_grace_s"] == 10.0
     assert payload["subject"]["language"] == "python"
     assert payload["subject"]["repository"] == "org/repo"
     assert payload["subject"]["git_commit"] == "a" * 40

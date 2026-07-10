@@ -167,6 +167,7 @@ def run_lsp_replay_benchmark(
     allow_low_quality_artifact: bool = False,
     wait_until_idle: bool = False,
     idle_timeout_s: float = 60.0,
+    idle_grace_s: float = 1.0,
     fingerprint_selector: FingerprintSelector = default_lsp_provider_fingerprint,
     clock: Clock = time.monotonic,
     live_provider_factory: Callable[..., LiveLSPReferenceProvider] = (
@@ -226,7 +227,7 @@ def run_lsp_replay_benchmark(
                 raise RuntimeError(
                     "live reference provider does not support idle waiting"
                 )
-            if not wait(max_wait_s=idle_timeout_s):
+            if not wait(max_wait_s=idle_timeout_s, idle_grace_s=idle_grace_s):
                 raise RuntimeError(
                     "live reference provider did not become idle within "
                     f"{idle_timeout_s}s"
@@ -299,6 +300,7 @@ def run_lsp_replay_benchmark(
             "static_provider_init_ms": static_provider_init_ms,
             "live_start_ms": live_start_ms,
             "idle_wait_ms": idle_wait_ms,
+            "idle_grace_s": idle_grace_s if wait_until_idle else None,
             "warmup_wall_ms": readiness.wall_ms,
         },
         "artifact_quality": artifact_quality,
@@ -529,6 +531,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Wait for live-server background analysis before warmups",
     )
     parser.add_argument("--idle-timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--idle-grace",
+        type=float,
+        default=1.0,
+        help="Continuous quiet period required before timed requests.",
+    )
     parser.add_argument("--output-json", help="Write machine-readable benchmark report")
     parser.add_argument("--output-markdown", help="Write markdown benchmark report")
     parser.add_argument(
@@ -610,6 +618,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             allow_low_quality_artifact=args.allow_low_quality_artifact,
             wait_until_idle=args.wait_until_idle,
             idle_timeout_s=args.idle_timeout,
+            idle_grace_s=args.idle_grace,
             occurrence_index=occurrence_index,
         )
         if args.requests:
