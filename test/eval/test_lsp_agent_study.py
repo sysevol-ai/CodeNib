@@ -28,6 +28,7 @@ from codeminer.eval.agent_runner.lsp_agent_study_analysis import (
     summarize_lsp_agent_study,
 )
 from codeminer.eval.agent_runner.lsp_agent_study_artifacts import (
+    _reuse_scip_artifacts,
     find_source_repository,
     lsp_agent_artifact_profile,
     requires_lsp_occurrence_index,
@@ -152,6 +153,33 @@ def test_find_source_repository_uses_clone_containing_commit(tmp_path):
     found = find_source_repository(tmp_path, repo="org/repo", commit=commit)
 
     assert found == repo
+
+
+def test_reuse_artifacts_allows_shared_repository_ownership(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source_repo = source / "repo"
+    destination = tmp_path / "destination"
+    worktree = tmp_path / "worktree"
+    source_repo.mkdir(parents=True)
+    destination.mkdir()
+    worktree.mkdir()
+    (source / "graph.pkl").write_bytes(b"graph")
+    (source / "index.decoded").write_bytes(b"decoded")
+    run = MagicMock(return_value=SimpleNamespace(stdout="expected-commit\n"))
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(
+        "codeminer.eval.agent_runner.lsp_agent_study_artifacts.load_code_graph_artifact",
+        MagicMock(return_value=MagicMock()),
+    )
+
+    assert _reuse_scip_artifacts(
+        source,
+        destination,
+        worktree=worktree,
+        expected_commit="expected-commit",
+    )
+    command = run.call_args.args[0]
+    assert command[:3] == ["git", "-c", f"safe.directory={source_repo.resolve()}"]
 
 
 def _definition_call():

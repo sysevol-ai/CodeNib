@@ -259,7 +259,15 @@ def _reuse_scip_artifacts(
     if not source_repo.is_dir():
         return False
     actual_commit = subprocess.run(
-        ["git", "-C", str(source_repo), "rev-parse", "HEAD"],
+        [
+            "git",
+            "-c",
+            f"safe.directory={source_repo.resolve()}",
+            "-C",
+            str(source_repo),
+            "rev-parse",
+            "HEAD",
+        ],
         check=True,
         capture_output=True,
         text=True,
