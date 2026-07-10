@@ -209,6 +209,8 @@ class SnapshotArtifactStore:
         subprocess.run(
             [
                 "git",
+                "-c",
+                f"safe.directory={Path(source_repo).expanduser().resolve()}",
                 "-C",
                 str(source_repo),
                 "worktree",
@@ -289,8 +291,9 @@ class SnapshotArtifactStore:
 
     @staticmethod
     def _git_output(repo: str | Path, *args: str) -> str:
+        resolved = Path(repo).expanduser().resolve()
         return subprocess.run(
-            ["git", "-C", str(repo), *args],
+            ["git", "-c", f"safe.directory={resolved}", "-C", str(repo), *args],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

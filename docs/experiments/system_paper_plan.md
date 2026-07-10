@@ -302,24 +302,44 @@ replayed against both providers. Equivalent-request paired latency is the
 primary latency endpoint; mismatches, empty results, errors, and fallback remain
 in the denominator as compatibility outcomes.
 
-Generate the deterministic study manifest with:
+Generate the planning manifest, prepare snapshot-addressed graphs, and then
+regenerate the manifest with strict artifact verification:
 
 ```bash
 HF_HOME=/mnt/conda/huggingface \
 codeminer-lsp-agent-study-manifest \
   --dataset-revision 4eb84e2e8918474969ce68c5b06facf14d6be604 \
-  --prebuilt-root /mnt/data/codeminer \
+  --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json
+
+export CODEMINER_SCIP_TOOLS_DIR="${CODEMINER_SCIP_TOOLS_DIR:-/tmp/codeminer-scip-tools}"
+export PATH="${CODEMINER_SCIP_TOOLS_DIR}/go-tools/bin:\
+${CODEMINER_SCIP_TOOLS_DIR}/go/bin:\
+${CODEMINER_SCIP_TOOLS_DIR}/node-tools/node_modules/.bin:\
+${CODEMINER_SCIP_TOOLS_DIR}:${PATH}"
+codeminer-lsp-agent-study-artifacts \
+  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json \
+  --source-root /mnt/data/codeminer \
+  --output-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
+  --workers 12
+
+HF_HOME=/mnt/conda/huggingface \
+codeminer-lsp-agent-study-manifest \
+  --dataset-revision 4eb84e2e8918474969ce68c5b06facf14d6be604 \
+  --prebuilt-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
   --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest.json
 ```
 
-The current legacy prebuilt-tree audit finds 22/60 instance worktrees at the
-declared base commit and 38/60 at a different commit. None of the legacy graph
-directories carries a verifiable snapshot/profile binding, so the strict
-manifest reports 38 `commit_mismatch`, 22 `unverified_identity`, and zero ready
-subjects. This is a hard launch failure, not an exclusion rule. The agent study
-must wait until all 60 subjects resolve through snapshot-addressed worktrees and
-each graph profile records the same source identity. Do not run only the 22
-worktrees whose HEAD happens to match.
+The legacy prebuilt-tree audit found 22/60 instance worktrees at the declared
+base commit and 38/60 at a different commit, with no verifiable profile binding.
+All 60 source commits were available in the local Git object stores, so the
+artifact preparer created detached snapshot worktrees and rebuilt every graph
+without re-cloning repositories. The strict manifest now reports 60/60 `ready`
+subjects with manifest SHA
+`69862de473c8e66940cba2d327dff09b34c64c94028f33724c64c640e1de7889`.
+Independent loading found 567,234 nodes and 3,215,634 edges across the 60 graphs;
+every graph project root and Git HEAD matches the declared snapshot and no
+worktree has tracked changes. Artifact preparation satisfies the launch gate but
+does not count as any of the 540 planned model cells.
 
 ## Confirmatory protocol
 

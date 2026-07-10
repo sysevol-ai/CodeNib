@@ -26,11 +26,15 @@ from codeminer.eval.agent_runner.lsp_agent_study_analysis import (
     analyze_lsp_agent_noninferiority,
     summarize_lsp_agent_study,
 )
+from codeminer.eval.agent_runner.lsp_agent_study_artifacts import (
+    find_source_repository,
+    lsp_agent_artifact_profile,
+)
 from codeminer.eval.agent_runner.lsp_agent_study_manifest import (
     build_base_lsp_agent_manifest,
     task_from_manifest_subject,
 )
-from codeminer.graph.code_graph import CodeGraph
+from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
 from codeminer.llm.litellm_chat import LiteLLMChat
 from codeminer.types import NODE_TYPE_FUNCTION
 
@@ -99,6 +103,38 @@ def _graph(tmp_path):
 def _response(*, content=None, tool_calls=None):
     message = SimpleNamespace(role="assistant", content=content, tool_calls=tool_calls)
     return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+
+def test_study_artifact_profile_pins_graph_compatibility():
+    profile = lsp_agent_artifact_profile("typescript")
+
+    assert profile.languages == ("javascript", "typescript")
+    assert profile.schema_versions == {"code_graph": str(_SCHEMA_VERSION)}
+    assert profile.options == {"exclude_patterns": [], "graph_route": "active"}
+
+
+def test_find_source_repository_uses_clone_containing_commit(tmp_path):
+    repo = tmp_path / "org__repo-1" / "repo"
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "source.go").write_text("package demo\n", encoding="utf-8")
+    subprocess.run(["git", "add", "source.go"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo, check=True)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    found = find_source_repository(tmp_path, repo="org/repo", commit=commit)
+
+    assert found == repo
 
 
 def _definition_call():

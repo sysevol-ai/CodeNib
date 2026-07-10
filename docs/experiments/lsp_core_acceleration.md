@@ -258,6 +258,12 @@ model adopt tools dynamically and exports live-arm calls for frozen replay.
 Remote model wall time is not the LSP latency metric because API variance is
 orders of magnitude larger than one warm semantic request.
 
+The pinned Base sampling frame is now artifact-ready: 60/60 Go, Rust, and
+TypeScript snapshots pass strict source/profile/graph identity checks under
+`/mnt/data/codeminer/results/lsp_agent_base_artifacts_v3`. This readiness result
+does not replace request replay or constitute an agent outcome; it only removes
+artifact drift from the dynamic adoption study.
+
 Latest local pilot, using a two-file temporary Python repo and
 `npx --yes --package pyright pyright-langserver --stdio`:
 
