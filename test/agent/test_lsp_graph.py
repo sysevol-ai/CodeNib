@@ -237,8 +237,11 @@ def test_lsp_route_can_fallback_to_query_seed_candidates():
     assert route[0].content == "route provider: query match config, default"
 
 
-def test_lsp_skills_load_and_execute_against_expand_context():
-    graph = _range_graph()
+def test_lsp_skills_load_and_execute_against_expand_context(tmp_path):
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    return load_config()\n", encoding="utf-8"
+    )
+    graph = _range_graph(tmp_path)
     context = {"expand": ExpandContext(code_graph=graph)}
     loader = SkillLoader()
 
@@ -246,10 +249,13 @@ def test_lsp_skills_load_and_execute_against_expand_context():
 
     assert meta is not None
     assert meta.executor_fn is not None
-    results = meta.executor_fn(symbol="load_config")
+    results = meta.executor_fn(file_path="caller.py", line=1, character=15)
     assert [node.node_name for node in results] == ["callee.py:5"]
     assert lsp_result_metadata(results)["provider"] == STATIC_LSP_PROVIDER
     assert lsp_result_metadata(results)["capability"] == "definition"
+    schema = skill_to_tool_schema(meta)["function"]["parameters"]
+    assert schema["required"] == ["file_path", "line", "character"]
+    assert "symbol" not in schema["properties"]
 
 
 def test_lsp_skills_use_injected_provider_without_a_graph():
@@ -268,7 +274,6 @@ def test_lsp_skills_use_injected_provider_without_a_graph():
             "file_path": "caller.py",
             "line": 3,
             "character": 4,
-            "symbol": None,
             "top_k": 8,
         }
     ]
