@@ -45,14 +45,16 @@ def _git_commits_after(
     repo_path: str,
     commit_t: str,
     n: int,
+    ref: str = "HEAD",
 ) -> List[Tuple[str, List[str]]]:
     """Return up to n commits after commit_t as (sha, [files]) pairs, oldest first.
 
-    Includes only .py source files (the primary signal in the prototype).
+    Uses ``--reverse`` so git emits oldest-first; we stop collecting after n commits
+    rather than passing ``-n`` (which would give the n *newest* and miss near-future ones).
     """
     try:
         out = subprocess.check_output(
-            ["git", "log", "--name-only", "--format=%H", f"-n{n}", f"{commit_t}..HEAD"],
+            ["git", "log", "--reverse", "--name-only", "--format=%H", f"{commit_t}..{ref}"],
             cwd=repo_path,
             text=True,
             stderr=subprocess.DEVNULL,
@@ -67,36 +69,36 @@ def _git_commits_after(
     for line in out.splitlines():
         line = line.strip()
         if not line:
-            continue  # git log emits blanks after each SHA and between commits; skip both
+            continue
         if len(line) == 40 and all(c in "0123456789abcdef" for c in line):
-            if current_sha:
+            if current_sha is not None:
                 commits.append((current_sha, current_files))
+                if len(commits) >= n:
+                    return commits
             current_sha = line
             current_files = []
         else:
             current_files.append(line)
 
-    if current_sha:
+    if current_sha is not None:
         commits.append((current_sha, current_files))
 
-    # git log returns newest-first; reverse so index 1 = first commit after t.
-    commits.reverse()
-    return commits
+    return commits[:n]
 
 
 def post_t_changed_files(
     repo_path: str,
     commit_t: str,
     horizon_commits: int = 20,
+    ref: str = "HEAD",
 ) -> Dict[str, int]:
     """Return {file: commit_index} for files changed in the next horizon_commits commits.
 
     commit_index is 1-based: 1 = the first commit after commit_t.
     Only the first appearance of each file is recorded (smallest commit_index).
-    Returns an empty dict if commit_t is not found in the history or no future
-    commits exist.
+    Use ``ref`` to restrict GT to a specific branch (e.g. ``origin/main``).
     """
-    commits = _git_commits_after(repo_path, commit_t, horizon_commits)
+    commits = _git_commits_after(repo_path, commit_t, horizon_commits, ref=ref)
     result: Dict[str, int] = {}
     for idx, (_, files) in enumerate(commits, start=1):
         for f in files:
@@ -158,6 +160,7 @@ def score_episode(
     *,
     horizon_commits: int = 20,
     top_k: int = 10,
+    ref: str = "HEAD",
 ) -> Optional[dict]:
     """Compute metrics for one episode.
 
@@ -183,7 +186,7 @@ def score_episode(
             finding_files.append(target)
 
     # Ground truth: files changed in the next horizon_commits after this commit.
-    gt = post_t_changed_files(repo_path, commit, horizon_commits)
+    gt = post_t_changed_files(repo_path, commit, horizon_commits, ref=ref)
     gt_files = set(gt.keys())
 
     if not gt_files:
@@ -241,11 +244,15 @@ def score_arm(
     *,
     horizon_commits: int = 20,
     top_k: int = 10,
+    ref: str = "HEAD",
 ) -> List[dict]:
     """Score all episodes in an arm; return list of per-episode metric dicts."""
     results = []
     for ep_dir in _sorted_episode_dirs(episodes_dir):
-        row = score_episode(ep_dir, repo_path, horizon_commits=horizon_commits, top_k=top_k)
+        row = score_episode(
+            ep_dir, repo_path,
+            horizon_commits=horizon_commits, top_k=top_k, ref=ref,
+        )
         if row is not None:
             results.append(row)
     return results
@@ -295,10 +302,17 @@ def compare_arms(
     *,
     horizon_commits: int = 20,
     top_k: int = 10,
+    ref: str = "HEAD",
 ) -> None:
     """Print a paired memory-vs-memoryless ablation table."""
-    mem_rows = score_arm(memory_episodes_dir, repo_path, horizon_commits=horizon_commits, top_k=top_k)
-    ml_rows = score_arm(memoryless_episodes_dir, repo_path, horizon_commits=horizon_commits, top_k=top_k)
+    mem_rows = score_arm(
+        memory_episodes_dir, repo_path,
+        horizon_commits=horizon_commits, top_k=top_k, ref=ref,
+    )
+    ml_rows = score_arm(
+        memoryless_episodes_dir, repo_path,
+        horizon_commits=horizon_commits, top_k=top_k, ref=ref,
+    )
 
     # Match by commit SHA (both arms replay the same commit list).
     ml_by_commit = {r["commit"]: r for r in ml_rows}
@@ -383,6 +397,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Number of commits after each episode commit to use as GT.")
     p.add_argument("--top-k", type=int, default=10,
                    help="Number of top findings to score (precision@k).")
+    p.add_argument("--ref", default="HEAD",
+                   help="Git ref used as the upper bound for post-t ground truth "
+                        "(e.g. 'origin/main' to restrict GT to the main branch).")
     return p
 
 
@@ -397,9 +414,13 @@ def main() -> None:
             repo_path,
             horizon_commits=args.horizon,
             top_k=args.top_k,
+            ref=args.ref,
         )
     else:
-        rows = score_arm(args.episodes, repo_path, horizon_commits=args.horizon, top_k=args.top_k)
+        rows = score_arm(
+            args.episodes, repo_path,
+            horizon_commits=args.horizon, top_k=args.top_k, ref=args.ref,
+        )
         if not rows:
             print("No episodes found or all failed to load.", file=sys.stderr)
             sys.exit(1)
