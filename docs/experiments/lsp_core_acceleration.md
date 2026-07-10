@@ -265,6 +265,22 @@ artifacts contain 10,287,017 exact SCIP occurrences. This readiness result does
 not replace request replay or constitute an agent outcome; it only removes
 artifact drift from the dynamic adoption study.
 
+The completed Haiku Base campaign yielded four naturally adopted live-arm
+requests across Gin, Terraform, and Axios. Frozen five-repetition replay against
+the same snapshot and request arguments produced 4/4 equivalent requests and
+20/20 equivalent measured rows: two definitions and two references, with no
+mismatch, error, or fallback. Static p50/p95 was 0.19/0.58 ms, live JSON-RPC
+p50/p95 was 2.22/12.65 ms, and paired speedup p50 was 11.43x. Graph load, live
+process start, and behavioral warmup p50 were 2.80 ms, 85.15 ms, and 1.78 s,
+respectively, and remain separate setup metrics. The aggregate report is
+`/mnt/data/codeminer/results/lsp_agent_base_haiku_v2_replay/aggregate.json`.
+
+This natural trace is strong mechanism evidence but a small compatibility
+sample. Generated cross-language requests still expose lower equivalence for
+Rust and TypeScript references, so the system must preserve profile-specific
+promotion and live fallback rather than globally replacing every JSON-RPC LSP
+request.
+
 Latest local pilot, using a two-file temporary Python repo and
 `npx --yes --package pyright pyright-langserver --stdio`:
 

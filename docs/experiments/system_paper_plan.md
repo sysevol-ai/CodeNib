@@ -377,6 +377,54 @@ Generated cross-language smoke requests were 70% equivalent for Rust and 50%
 for TypeScript; compatibility mismatches remain in the denominator, while only
 equivalent rows enter latency estimates.
 
+The schema-v2 Haiku campaign is now complete:
+
+| partition | repositories | planned cells | successful | errors | static/live metric pairs | static/live adoption cells | cost |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| development | 6 | 225 | 225 | 0 | 75/75 | 1/1 | $63.9891 |
+| confirmatory | 9 | 315 | 312 | 3 | 102/105 | 3/2 | $97.8545 |
+
+All 75 development pairs have matching prompt, tool-schema, model, and
+occurrence-index identities. Their exploratory static-minus-live answer-block
+recall@5 delta is -0.0178 with a repository/instance/repetition bootstrap 95%
+interval of [-0.0864, 0.0354], which does not establish 5-point
+non-inferiority.
+
+The three confirmatory errors are the three `live_lsp` repetitions of
+`facebook__docusaurus-8927`. The TypeScript server produced no stable non-empty
+reference result after eight readiness rounds, before any model call. They are
+retained in the 315-cell denominator and were not selectively retried. The
+pre-registered primary analysis is therefore not analysis-ready. Across the
+102 complete metric pairs, the descriptive static-minus-live delta is +0.00294
+with a 95% interval of [-0.0914, 0.0859], also failing the non-inferiority gate.
+Under failure-inclusive recall bounds, assigning every missing live score its
+best or worst value gives a point identified set of [-0.0257, 0.00286] and a
+bootstrap interval envelope of [-0.1510, 0.0828]. This is a sensitivity bound,
+not an imputed confirmatory estimate.
+
+Dynamic adoption was rare: the 540 cells produced seven adoption cells and
+eight LSP calls, including four live-arm calls. All three arms had a median of
+20 turns in both partitions, so this campaign does not support an end-to-end
+agent latency claim. It instead supplies naturally chosen requests for the
+provider-level latency endpoint and identifies tool-selection policy as the
+next agent-harness bottleneck.
+
+All four live-arm requests were exported without outcome filtering and replayed
+for five measured repetitions against the exact static and live providers.
+They cover three snapshots, two languages, two definitions, and two references.
+All 4/4 requests and 20/20 measured rows were behaviorally equivalent, with no
+provider errors or fallback. Static p50/p95 latency was 0.19/0.58 ms versus
+2.22/12.65 ms live; paired speedup p50 was 11.43x. This is direct mechanism
+evidence for serving an agent's native LSP call from the snapshot index, but
+four adopted requests are too few for a general compatibility claim. The
+failure-inclusive analysis and replay artifacts are
+`/mnt/data/codeminer/results/lsp_agent_base_haiku_confirmatory_v2_analysis.json`
+and `/mnt/data/codeminer/results/lsp_agent_base_haiku_v2_replay/aggregate.json`.
+
+Reproduce the failure-aware summary and frozen trace export with
+`scripts/analysis/analyze_lsp_agent_study.py`; aggregate the per-snapshot replay
+reports with `scripts/profiling/aggregate_lsp_replay.py`.
+
 Run the repository-disjoint development gate before spending confirmatory
 budget:
 
