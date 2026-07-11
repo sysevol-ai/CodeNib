@@ -65,6 +65,7 @@ nav:
       - Language Capabilities: language_capabilities.md
   - Core Concepts:
       - SCIP Index: scip_index.md
+      - CodeGraph Hierarchy Model: codegraph_hierarchy_model.md
       - Graph Range Query: graph_query.md
       - Regex Index: regex_index.md
       - Graph Cache: graph_cache_usage.md
@@ -90,3 +91,7 @@ nav:
   - Experiments:
       - Agent Compile Sweep: experiments/agent_compile.md
       - Compact Pre-load: experiments/compact_preload.md
+      - Agent Runtime Probe: experiments/agent_runtime.md
+      - Local Model Backend: experiments/qwen_backend.md
+      - LSP Core Acceleration Gate: experiments/lsp_core_acceleration.md
+      - LSP-route Adoption: experiments/lsp_route_adoption.md

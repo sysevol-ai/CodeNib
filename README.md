@@ -121,4 +121,4 @@ cloning. The test suite is split into tiered pytest markers run as separate CI j
 
 CodeMiner is licensed under the [Apache License, Version 2.0](LICENSE).
 Contributions previously made under the MIT License are retained under the terms of
-Section 4 of Apache 2.0; see [NOTICE](NOTICE) for full attribution.
+Section 4 of Apache 2.0.
