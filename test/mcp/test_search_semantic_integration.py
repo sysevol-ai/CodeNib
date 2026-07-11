@@ -23,7 +23,6 @@ TEST_REPO = "astropy__astropy-12907"
 TEST_REPO_PATH = CODEMINER_DATA / TEST_REPO
 
 
-@pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.skipif(
     not TEST_REPO_PATH.exists(),

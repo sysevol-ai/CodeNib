@@ -6,8 +6,12 @@ SPDX-License-Identifier: Apache-2.0
 
 # CI/CD
 
-GitHub Actions pipeline (`.github/workflows/ci.yml`) that runs on every push to
-`main`/`master`, on all pull requests, on a daily cron, and on manual dispatch.
+GitHub Actions has two maintenance workflows:
+
+- `.github/workflows/ci.yml` runs the Python, graph, SCIP, slow, and C++ parity
+  test tiers.
+- `.github/workflows/docs.yml` runs a lightweight strict documentation build for
+  docs-only changes that the main CI intentionally ignores.
 
 ## Triggers
 
@@ -17,6 +21,17 @@ GitHub Actions pipeline (`.github/workflows/ci.yml`) that runs on every push to
 | `pull_request` to any branch (`"*"`) | Subject to `paths-ignore`. Concurrency cancels older in-flight runs for the same PR head ref. |
 | `schedule` — `cron: "0 7 * * *"` | 07:00 UTC daily. Forces a **full serial-chain run** so the `graph.pkl` cache and C++ parity never silently rot on light-only weeks. |
 | `workflow_dispatch` | Manual run with a `skip_tests` boolean input. |
+
+The separate docs workflow runs on pushes/PRs that touch Markdown, `docs/**`,
+`mkdocs.yml`, `pyproject.toml`, or the docs workflow itself. It installs
+`mkdocs-material` on `ubuntu-latest` and runs:
+
+```bash
+python -m mkdocs build --strict
+```
+
+This keeps docs-only PRs covered without forcing the self-hosted test runner to
+run unit, integration, slow, or serial graph jobs for prose-only edits.
 
 !!! note "Concurrency"
     The concurrency group is keyed by `github.head_ref || github.run_id`, and
@@ -106,9 +121,11 @@ running in this tier.
 
 ### integration
 
-Read-only, parallel-safe tests (~2 min): chunkers and fixture-based SCIP. Uses
-the shared `./.github/actions/setup-env` composite action (with `install-clangd`
-and `install-bear`), then runs:
+Read-only, parallel-safe tests (~2 min): chunkers and fixture-based SCIP. This
+tier runs with `pytest-xdist`, so tests that load HuggingFace embedding models,
+consume GPU memory, or depend on LLM credentials do **not** belong here; mark
+those `slow` instead. Uses the shared `./.github/actions/setup-env` composite
+action (with `install-clangd` and `install-bear`), then runs:
 
 ```bash
 pytest -n auto -m "integration" --tb=short
@@ -173,8 +190,11 @@ pytest -m "integration_serial_consumer" -v --tb=short
 
 ### slow
 
-LLM API calls and GPU embeddings (~15 min). Depends on `preflight` and `unit`
-(not on the serial chain). Sets up GCP credentials and `VERTEXAI_PROJECT`, then:
+LLM API calls, HuggingFace downloads, and GPU embeddings (~15 min). Depends on
+`preflight` and `unit` (not on the serial chain). This tier is intentionally not
+xdist-parallelized because embedding model loads can exhaust shared GPU memory
+when started by multiple workers. Sets up GCP credentials and
+`VERTEXAI_PROJECT`, then:
 
 ```bash
 pytest -m "slow" --tb=short
@@ -270,6 +290,17 @@ use the `./.github/actions/setup-env` composite action, which provisions:
 - **clangd** — optional, via `install-clangd` (enabled for the integration /
   serial / core / consumer jobs).
 - **bear** — optional C/C++ compilation-database tool, via `install-bear`.
+
+## Failure triage
+
+Two CI failure modes are easy to confuse:
+
+- A self-hosted job that is `cancelled` with no steps and no `runner_name` did
+  not fail tests. It sat in the self-hosted runner queue until GitHub cancelled
+  it. Check runner availability before changing code.
+- An `integration` failure with `torch.OutOfMemoryError` means a GPU/HuggingFace
+  embedding test is in the wrong tier or is running concurrently with another
+  GPU workload. Move that test to `slow` or make it use a mock/vector fixture.
 
 ## Pre-commit hooks
 
