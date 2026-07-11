@@ -72,6 +72,11 @@ C++ acceleration for a newly promoted language is a separate gate:
 - A C++ decoder or helper mirrors the Python path with parity tests.
 - The C++ implementation is a reusable core module under `core/`, not logic
   embedded only in pybind bindings.
+- New decoder code starts from `SCIPDecoderBase`, `SubgraphBuilder`, and the
+  language-neutral helpers in `core/scip_decode_common.h`; language-specific
+  symbol policy stays in the owning `scip_decode_<language>.cpp` file.
+- Decoder registration, aliases, and Python/C++ registry metadata must be
+  updated together before the language is advertised as core-accelerated.
 
 ## Work Queue
 
@@ -568,7 +573,15 @@ containment `ref=8 cand=8 missing=0 extra=0`, and references `ref=1 cand=0`.
 - [x] Keep C++ decoder registration and language aliases centralized so pybind
   bindings, smoke CLIs, and future language decoders do not duplicate dispatch
   logic.
+- [x] Keep language-neutral SCIP text/string helpers in
+  `core/scip_decode_common.h`/`.cpp` so Python, Go, Rust, Ruby, and TypeScript
+  decoders share one implementation for common parsing primitives.
+- [x] Keep language-specific normalization in the owning decoder file instead
+  of hiding symbol policy in generic helpers.
 - [x] Record speedup and parity in `docs/core_cpp.md` or an experiment doc.
+- [x] Keep a manifest-driven large-repository profiling harness for active
+  SCIP languages whose C++ acceleration status is still serial-only or needs
+  revalidation.
 
 Exit condition: acceleration claims are backed by parity tests and profile
 numbers, and `core/` remains maintainable.
@@ -618,6 +631,25 @@ normalization, and `unified_name` formatting helpers in
 `codeminer.scip_interface.scip_decode_utils` where symbol shapes are compatible.
 Language-specific handling, such as Ruby singleton-class descriptors and Kotlin
 synthetic symbol filters, stays in the owning decoder.
+
+C++ SCIP decoders now follow the same boundary: common text-format primitives
+such as integer extraction, whitespace splitting, suffix checks, trailing
+character stripping, and backtick removal live in `core/scip_decode_common.h`
+and `core/scip_decode_common.cpp`; each language decoder keeps only its
+language policy, metadata loading, and symbol normalization. New accelerated
+languages should extend that shared helper surface only for language-neutral
+operations and must add registry/parity coverage before becoming accepted core
+languages.
+
+Large-repo acceleration watch status: `scripts/profiling/large_scip_repos.yml`
+records representative real repositories for Java, C#, Kotlin, Scala, PHP, and
+Ruby. Run `make large-scip-profile` with language/repo filters to clone those
+targets, profile SCIP index generation, protoc decode, serial graph decode/build,
+and optional C++ core decode, then write JSON and Markdown reports under
+`LARGE_SCIP_PROFILE_OUTPUT_DIR`. The harness applies the same 20% local
+decode/build gate before recommending any new C++ decoder work. This is the
+preferred path for proving that a serial-only active language has outgrown its
+current Python decoder.
 
 ### Phase 6: Multi-Graph Python Surface
 

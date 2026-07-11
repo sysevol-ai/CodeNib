@@ -72,6 +72,11 @@ GRAPH_ALIGNMENT_SKIP_LEVEL ?= none
 GRAPH_ALIGNMENT_TARGET_DIR ?=
 GRAPH_ALIGNMENT_EXCLUDE_PATTERNS ?=
 GRAPH_ALIGNMENT_EXTRA_ARGS ?=
+LARGE_SCIP_PROFILE_MANIFEST ?= scripts/profiling/large_scip_repos.yml
+LARGE_SCIP_PROFILE_CACHE_ROOT ?= /tmp/codeminer-large-scip-repos
+LARGE_SCIP_PROFILE_OUTPUT_DIR ?= /tmp/codeminer-large-scip-profile
+LARGE_SCIP_PROFILE_TIMEOUT ?= 1800
+LARGE_SCIP_PROFILE_EXTRA_ARGS ?=
 PROJECT_LANGUAGE ?=
 PROJECT_ROOT ?=
 hash := \#
@@ -178,7 +183,7 @@ endef
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
-.PHONY: scip-cold-start-smoke scip-candidate-smoke scip-project-smoke-tools scip-project-smoke lsp-smoke lsp-project-smoke graph-route-alignment-tools graph-route-alignment multilang-smoke multilang-registry-check
+.PHONY: scip-cold-start-smoke scip-candidate-smoke scip-project-smoke-tools scip-project-smoke lsp-smoke lsp-project-smoke graph-route-alignment-tools graph-route-alignment large-scip-profile multilang-smoke multilang-registry-check
 .PHONY: scip-java-tool gradle-tool sbt-tool dotnet-tool scip-dotnet-tool scip-ruby-tool
 .PHONY: scip-ruby-system-deps-ubuntu ruby-project-bundle
 .PHONY: scip-php-info scip-php-tool scip-php-docker-tool scip-php-system-deps-ubuntu php-project-scip-tool
@@ -681,6 +686,14 @@ graph-route-alignment: graph-route-alignment-tools
 		$(if $(GRAPH_ALIGNMENT_TARGET_DIR),--target-dir "$(GRAPH_ALIGNMENT_TARGET_DIR)",) \
 		$(foreach pattern,$(GRAPH_ALIGNMENT_EXCLUDE_PATTERNS),--exclude-pattern "$(pattern)") \
 		--json $(GRAPH_ALIGNMENT_EXTRA_ARGS)
+
+large-scip-profile:
+	$(CODEMINER_TOOL_ENV) python scripts/profiling/profile_large_scip_repos.py \
+		--manifest "$(LARGE_SCIP_PROFILE_MANIFEST)" \
+		--cache-root "$(LARGE_SCIP_PROFILE_CACHE_ROOT)" \
+		--output-dir "$(LARGE_SCIP_PROFILE_OUTPUT_DIR)" \
+		--timeout "$(LARGE_SCIP_PROFILE_TIMEOUT)" \
+		$(LARGE_SCIP_PROFILE_EXTRA_ARGS)
 
 multilang-smoke: scip-cold-start-smoke lsp-smoke
 
