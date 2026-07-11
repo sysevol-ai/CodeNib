@@ -8,42 +8,10 @@
 #include <filesystem>
 #include <fstream>
 #include <re2/re2.h>
-#include <sstream>
 
 namespace codeminer::core {
 
 namespace {
-
-std::vector<int> extract_integers(const std::string &text,
-                                  const re2::RE2 &pattern) {
-  std::vector<int> results;
-  re2::StringPiece input(text);
-  int value = 0;
-  while (re2::RE2::FindAndConsume(&input, pattern, &value)) {
-    results.push_back(value);
-  }
-  return results;
-}
-
-std::vector<std::string> split_ws(const std::string &s) {
-  std::vector<std::string> out;
-  std::istringstream iss(s);
-  std::string tok;
-  while (iss >> tok)
-    out.push_back(tok);
-  return out;
-}
-
-bool ends_with(const std::string &s, const std::string &suffix) {
-  return s.size() >= suffix.size() &&
-         s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-std::string rstrip_chars(std::string s, const std::string &chars) {
-  while (!s.empty() && chars.find(s.back()) != std::string::npos)
-    s.pop_back();
-  return s;
-}
 
 // Strip backtick-module-prefix: `github.com/user/proj/calc`/Sym... -> Sym...
 std::string strip_backtick_prefix(const std::string &descriptor) {

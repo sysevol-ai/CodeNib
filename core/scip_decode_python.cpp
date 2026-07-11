@@ -29,17 +29,6 @@ bool contains_function_parentheses(const std::string &symbol) {
          symbol.find('(') != std::string::npos;
 }
 
-std::vector<int> extract_integers(const std::string &text,
-                                  const re2::RE2 &pattern) {
-  std::vector<int> results;
-  re2::StringPiece input(text);
-  int value = 0;
-  while (re2::RE2::FindAndConsume(&input, pattern, &value)) {
-    results.push_back(value);
-  }
-  return results;
-}
-
 } // namespace
 
 Subgraph

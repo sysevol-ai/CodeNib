@@ -17,7 +17,10 @@ files.
 - `code_graph.h` / `code_graph.cpp` – graph container that stores vertices, edges, and metadata compatible with the Python implementation.
 - `graph_layers.h` / `graph_layers.cpp` – shared graph-layer classification
   used by Python graph indexing when the pybind module is available.
-- `scip_decode.h`, `scip_decoder_registry.{h,cpp}`, and the language-specific
+- `scip_decode_common.h` / `scip_decode_common.cpp` – shared SCIP decoder
+  subgraph builders and language-neutral text/string parsing helpers.
+- `scip_decode.h`, `scip_decode_base.{h,cpp}`,
+  `scip_decoder_registry.{h,cpp}`, and the language-specific
   `scip_decode_*.{h,cpp}` files – translate `.decoded` SCIP indexes into the
   C++ `CodeGraph` and keep core decoder aliases/factory wiring centralized.
 - `bindings/pybind_module.cpp` – exposes `decode_scip(...)` and
@@ -45,6 +48,25 @@ make core-test
 ```
 
 The resulting library and Python extension are placed in `build/core`.
+
+## Decoder Engineering Contract
+
+Add C++ decoder code only after profiling shows local decode/build is a real
+bottleneck, not just because a language has an active SCIP cold-start route.
+New decoders should:
+
+- Reuse `SCIPDecoderBase` for file loading, document extraction, parallel
+  document processing, merge order, and post-processing hooks.
+- Use `SubgraphBuilder` for node/edge construction instead of writing directly
+  to `CodeGraph` from language parsers.
+- Put only language-neutral SCIP text helpers in `scip_decode_common.h` /
+  `scip_decode_common.cpp`. Language policy, metadata loading, and symbol
+  normalization stay in `scip_decode_<language>.cpp`.
+- Register canonical language names and aliases in `scip_decoder_registry.cpp`
+  and keep the Python registry parity tests green before advertising a decoder
+  as accepted.
+- Prove serial/core parity for the relevant fixture before recording a speedup
+  in docs.
 
 ## Using the Decoder
 

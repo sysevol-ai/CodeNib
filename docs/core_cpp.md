@@ -19,6 +19,9 @@ files.
 - `graph_layers.h` / `graph_layers.cpp` — language-agnostic default layer
   classification for CodeGraph edge types. This is shared by SCIP, clangd, and
   generic-LSP graphs after they have normalized into the common schema.
+- `scip_decode_common.h` / `scip_decode_common.cpp` — shared per-document
+  `SubgraphBuilder` utilities and language-neutral SCIP text/string helpers
+  used by the accelerated decoders.
 - `scip_decode.h`, `scip_decoder_registry.{h,cpp}`, and the
   language-specific `scip_decode_*.{h,cpp}` files — translate `.decoded` SCIP
   indexes into the C++ `CodeGraph` and keep decoder aliases/factory wiring out
@@ -55,18 +58,58 @@ text index. On the `ruby/rake` gate, serial `process_index` took 7.58s while the
 C++ backend took 1.04s after filtering to `lib/`; both routes produced 815
 vertices, 3,466 edges, and no vertex-attribute or edge-multiset differences.
 
-Java, C#, PHP, and Scala are active SCIP cold-start routes but intentionally
-remain serial-only in Python. Local profiles show their external indexers
-dominate cold-start time: `scip-java` on `jitpack/maven-simple` took about 5.98s
-to index while protoc decode took 0.01s, Python graph decode 0.007s, and
-range-index construction 0.001s; `scip-dotnet` on the recorded C# fixture took
-about 4.3-4.8s while Python decode/build was about 0.01s; the small PHP Composer
-gate spent about 0.551s in SCIP indexing, 0.008s in protoc decode, and 0.007s in
-Python graph decode; the `sbt/io` Scala gate spent about 74.527s in `scip-java`
-indexing, 0.099s in protoc decode, 2.156s in Python graph decode, and 0.069s in
-range-index construction. Adding C++ decoder files for those languages is not
-justified until a larger profile shows local decode/build time crossing the 20%
-acceleration gate.
+Java, C#, Kotlin, PHP, and Scala are active SCIP cold-start routes but
+intentionally remain serial-only in Python. Local profiles show their external
+indexers dominate cold-start time: `scip-java` on `jitpack/maven-simple` took
+about 5.98s to index while protoc decode took 0.01s, Python graph decode
+0.007s, and range-index construction 0.001s; `scip-dotnet` on the recorded C#
+fixture took about 4.3-4.8s while Python decode/build was about 0.01s; the
+KotlinPoet 2.2.0 gate spent 61.914s in `scip-java`, 0.150s in protoc decode,
+6.931s in Python graph decode, and 0.008s in range-index construction; the
+small PHP Composer gate spent about 0.551s in SCIP indexing, 0.008s in protoc
+decode, and 0.007s in Python graph decode; the `sbt/io` Scala gate spent about
+74.527s in `scip-java` indexing, 0.099s in protoc decode, 2.156s in Python
+graph decode, and 0.069s in range-index construction. Adding C++ decoder files
+for those languages is not justified until a larger profile shows local
+decode/build time crossing the 20% acceleration gate.
+
+## Decoder Engineering Contract
+
+The accepted C++ decoder set is deliberately smaller than the active SCIP
+cold-start set. A new language should be added to `core/` only after the
+profiling gate above is met and the implementation follows these boundaries:
+
+- Start from `SCIPDecoderBase` for file loading, document extraction, parallel
+  worker execution, merge ordering, and post-processing hooks.
+- Build nodes and edges through `SubgraphBuilder`; language decoders should not
+  write directly to the graph container.
+- Put language-neutral SCIP text primitives in `scip_decode_common.h` /
+  `scip_decode_common.cpp`. Current shared helpers cover integer extraction,
+  whitespace splitting, suffix checks, trailing-character stripping, and
+  backtick removal.
+- Keep language policy in the owning decoder file: metadata discovery,
+  standard-library filtering, symbol normalization, scope rules, and display
+  naming are not generic helpers.
+- Update `scip_decoder_registry.cpp`, Python registry metadata, and
+  serial/core parity tests together before documenting the language as
+  core-accelerated.
+
+Large-repo acceleration decisions should use the manifest-driven harness before
+new decoder work starts:
+
+```bash
+# Inspect the selected large-repo targets without cloning or indexing.
+make large-scip-profile LARGE_SCIP_PROFILE_EXTRA_ARGS="--dry-run"
+
+# Profile one serial-only active language on the checked-in large-repo targets.
+make large-scip-profile LARGE_SCIP_PROFILE_EXTRA_ARGS="--language java"
+```
+
+The default manifest is `scripts/profiling/large_scip_repos.yml`. Results are
+written to `LARGE_SCIP_PROFILE_OUTPUT_DIR` as `large_scip_profile.json` and
+`large_scip_profile.md`. Each row reports external index time, protoc decode
+time, serial graph decode/build time, optional core decode time for accepted
+C++ languages, and whether the 20% local decode/build gate is crossed.
 
 ## Profiling Shared Helpers
 

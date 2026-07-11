@@ -9,12 +9,23 @@
 #include "code_graph.h"
 
 #include <optional>
+#include <re2/re2.h>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace codeminer::core {
+
+// Reusable language-neutral helpers for SCIP text-format decoders. Keep
+// language policy in language decoders; put only syntax/string primitives here.
+std::vector<int> extract_integers(const std::string &text,
+                                  const re2::RE2 &pattern);
+bool ends_with(const std::string &s, const std::string &suffix);
+std::string rstrip_chars(std::string s, const std::string &chars);
+std::string strip_backticks(std::string s);
+std::vector<std::string> split_ws(const std::string &s);
+std::vector<std::string> split_ws_limit(const std::string &s, int limit);
 
 // Per-document result produced by each language decoder worker. Language-
 // agnostic (symbol payload lives in VertexData + extras). Merged by

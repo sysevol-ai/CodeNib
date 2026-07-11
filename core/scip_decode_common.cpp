@@ -4,10 +4,85 @@
 
 #include "scip_decode_common.h"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <sstream>
 #include <utility>
 
 namespace codeminer::core {
+
+std::vector<int> extract_integers(const std::string &text,
+                                  const re2::RE2 &pattern) {
+  std::vector<int> results;
+  re2::StringPiece input(text);
+  int value = 0;
+  while (re2::RE2::FindAndConsume(&input, pattern, &value)) {
+    results.push_back(value);
+  }
+  return results;
+}
+
+bool ends_with(const std::string &s, const std::string &suffix) {
+  return s.size() >= suffix.size() &&
+         s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string rstrip_chars(std::string s, const std::string &chars) {
+  while (!s.empty() && chars.find(s.back()) != std::string::npos)
+    s.pop_back();
+  return s;
+}
+
+std::string strip_backticks(std::string s) {
+  s.erase(std::remove(s.begin(), s.end(), '`'), s.end());
+  return s;
+}
+
+std::vector<std::string> split_ws(const std::string &s) {
+  std::vector<std::string> out;
+  std::istringstream iss(s);
+  std::string tok;
+  while (iss >> tok)
+    out.push_back(tok);
+  return out;
+}
+
+std::vector<std::string> split_ws_limit(const std::string &s, int limit) {
+  if (limit <= 1) {
+    std::string value = s;
+    std::size_t start = 0;
+    while (start < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[start]))) {
+      ++start;
+    }
+    value = value.substr(start);
+    while (!value.empty() &&
+           std::isspace(static_cast<unsigned char>(value.back()))) {
+      value.pop_back();
+    }
+    return value.empty() ? std::vector<std::string>{}
+                         : std::vector<std::string>{std::move(value)};
+  }
+
+  std::vector<std::string> out;
+  std::size_t i = 0;
+  while (i < s.size() && static_cast<int>(out.size()) < limit - 1) {
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+      ++i;
+    std::size_t start = i;
+    while (i < s.size() && !std::isspace(static_cast<unsigned char>(s[i])))
+      ++i;
+    if (start < i)
+      out.emplace_back(s.substr(start, i - start));
+  }
+
+  while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+    ++i;
+  if (i < s.size())
+    out.emplace_back(s.substr(i));
+  return out;
+}
 
 Subgraph::Node &SubgraphBuilder::ensure_node(const std::string &name) {
   auto it = subgraph_.nodes.find(name);

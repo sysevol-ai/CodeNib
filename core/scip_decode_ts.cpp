@@ -4,7 +4,6 @@
 
 #include "scip_decode_ts.h"
 
-#include <algorithm>
 #include <cctype>
 #include <re2/re2.h>
 #include <sstream>
@@ -12,58 +11,6 @@
 namespace codeminer::core {
 
 namespace {
-
-std::vector<int> extract_integers(const std::string &text,
-                                  const re2::RE2 &pattern) {
-  std::vector<int> results;
-  re2::StringPiece input(text);
-  int value = 0;
-  while (re2::RE2::FindAndConsume(&input, pattern, &value)) {
-    results.push_back(value);
-  }
-  return results;
-}
-
-bool ends_with(const std::string &s, const std::string &suffix) {
-  return s.size() >= suffix.size() &&
-         s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-std::string rstrip_chars(std::string s, const std::string &chars) {
-  while (!s.empty() && chars.find(s.back()) != std::string::npos)
-    s.pop_back();
-  return s;
-}
-
-std::string strip_backticks(std::string s) {
-  s.erase(std::remove(s.begin(), s.end(), '`'), s.end());
-  return s;
-}
-
-std::vector<std::string> split_ws(const std::string &s) {
-  std::vector<std::string> out;
-  std::istringstream iss(s);
-  std::string tok;
-  while (iss >> tok)
-    out.push_back(tok);
-  return out;
-}
-
-std::vector<std::string> all_backtick_segments(const std::string &text) {
-  std::vector<std::string> out;
-  std::size_t p = 0;
-  while (p < text.size()) {
-    auto a = text.find('`', p);
-    if (a == std::string::npos)
-      break;
-    auto b = text.find('`', a + 1);
-    if (b == std::string::npos)
-      break;
-    out.emplace_back(text.substr(a + 1, b - a - 1));
-    p = b + 1;
-  }
-  return out;
-}
 
 bool is_stdlib_symbol(const std::string &symbol) {
   static const char *const needles[] = {" typescript ", "node_modules/",
