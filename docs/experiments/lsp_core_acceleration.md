@@ -141,12 +141,14 @@ codeminer-lsp-replay-benchmark \
   --language cpp \
   --compile-db /path/to/repo/compile_commands.json \
   --baseline-graph /path/to/previous/graph.pkl \
-  --command 'clangd' \
+  --command 'clangd --background-index --compile-commands-dir=/path/to/profile' \
   --max-per-capability 50 \
   --warmup-reps 1 \
   --warmup-until-stable \
   --minimum-equivalent-count 2 \
   --measured-reps 5 \
+  --wait-until-idle \
+  --idle-grace 10 \
   --output-json /tmp/lsp-replay-report.json \
   --output-markdown /tmp/lsp-replay-report.md \
   --require-all-equivalent
@@ -280,6 +282,66 @@ sample. Generated cross-language requests still expose lower equivalence for
 Rust and TypeScript references, so the system must preserve profile-specific
 promotion and live fallback rather than globally replacing every JSON-RPC LSP
 request.
+
+### CodeMiner Base 100-Snapshot Replay
+
+The full CodeMiner Base replay uses all 100 unique `(repo, base_commit,
+language)` snapshots: 21 Go, 20 Rust, 19 TypeScript/JavaScript, 20 Python, and
+20 C/C++. The frozen manifest is
+`/mnt/data/codeminer/results/lsp_agent_base_study_manifest_v3.json` with SHA-256
+`4a2376ad11e1ff4b54857c8f33e8b83c025e3a9fe7cb0da69cbd778e5078f6d4`.
+All 100 snapshot/profile identities and artifact quality gates pass.
+
+Each snapshot contributes five deterministic definition positions and five
+reference positions. Both providers receive the same request. The live server
+is allowed two warmup repetitions and additional repetitions until behavior is
+stable; each measured request then runs ten times. C/C++ starts clangd with
+`--background-index` and the exact profile directory as
+`--compile-commands-dir`, and requires ten continuous idle seconds before the
+timed region. Other languages require one idle second. Reports retain every
+mismatch, while latency distributions include only requests whose result
+fingerprints match in all repetitions.
+
+| language | snapshots | definition equivalent | references equivalent | overall equivalent | equivalent-row p50 speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| C/C++ | 20 | 87/100 (87%) | 22/100 (22%) | 109/200 (55%) | 43.93x |
+| Go | 21 | 104/105 (99%) | 77/105 (73%) | 181/210 (86%) | 6.03x |
+| Python | 20 | 80/100 (80%) | 36/100 (36%) | 116/200 (58%) | 2.74x |
+| Rust | 20 | 85/100 (85%) | 33/100 (33%) | 118/200 (59%) | 2.70x |
+| TypeScript/JavaScript | 19 | 81/95 (85%) | 27/95 (28%) | 108/190 (57%) | 6.42x |
+
+Overall, 632/1,000 requests (63.2%) are behaviorally equivalent: 437/500
+definitions (87.4%) and 195/500 references (39.0%). Across the 6,320 admitted
+measured rows, static p50 is 0.62 ms, live JSON-RPC p50 is 2.30 ms, and paired
+speedup p50 is 4.71x. There are no measured provider errors or fallbacks. Two
+transient reference errors occurred during 2,140 warmup rows; both affected
+servers subsequently stabilized and had error-free measured regions.
+
+The result supports a guarded fast path, not universal replacement. Definition
+coverage is high across all languages, while reference coverage remains
+backend- and language-dependent. Unsupported fingerprints must continue to
+fall back to live JSON-RPC.
+
+The aggregate report and paper figure are:
+
+- `/mnt/data/codeminer/results/lsp_replay_base_v3_100/aggregate.json`
+- `/mnt/data/codeminer/results/lsp_replay_base_v3_100/aggregate.md`
+- `/mnt/data/codeminer/results/lsp_replay_base_v3_100/lsp_replay_100_single_column.pdf`
+
+Regenerate the figure from the 100 machine-readable reports with:
+
+```bash
+python scripts/profiling/plot_lsp_replay_paper.py \
+  --reports-dir /mnt/data/codeminer/results/lsp_replay_base_v3_100/reports \
+  --output-prefix /tmp/lsp_replay_100_single_column
+```
+
+The separate two-snapshot Haiku extension pilot completed six cells without
+runtime errors, but the model made zero native LSP calls in every arm and used
+all 20 turns. Running the remaining 354 model cells would therefore measure
+agent search variance and cost without adding LSP latency observations. The
+100-snapshot provider replay is the primary acceleration experiment; dynamic
+adoption remains a separate negative result.
 
 Latest local pilot, using a two-file temporary Python repo and
 `npx --yes --package pyright pyright-langserver --stdio`:

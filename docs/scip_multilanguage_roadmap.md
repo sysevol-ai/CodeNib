@@ -738,3 +738,15 @@ python -m mkdocs build --strict
 When touching SCIP decoders or C++ acceleration, add the relevant decoder,
 profile, and parity commands from `docs/core_cpp.md` and
 `docs/experiments/lsp_core_acceleration.md`.
+
+The provider-level acceleration gate now has a complete CodeMiner Base run over
+100 unique snapshots and five languages. All artifact quality checks and live
+warmup gates passed. Of 1,000 deterministic native requests, 632 were
+agent-visible equivalent; the admitted measured rows had 0.62 ms static p50,
+2.30 ms live JSON-RPC p50, and 4.71x paired speedup p50. Definition coverage was
+87.4%; references remained lower at 39.0%, so promotion stays
+language/capability guarded with explicit live fallback. C/C++ replay must bind
+clangd to each artifact profile's compilation database and use a ten-second
+idle grace. Durable reports and the single-column figure live under
+`/mnt/data/codeminer/results/lsp_replay_base_v3_100/`; full protocol details are
+in `docs/experiments/lsp_core_acceleration.md`.
