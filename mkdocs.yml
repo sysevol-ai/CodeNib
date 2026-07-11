@@ -80,6 +80,7 @@ nav:
       - Contributing a Language: contributing-a-language.md
   - Agent And Retrieval:
       - Agent Skills: agent_skills.md
+      - RAG Ops And Planner: rag_ops.md
       - Agent Runner Architecture Goal: agent_runner_architecture_goal.md
       - Agent Compile (Design): agent_compile_design.md
       - GT Locator: gt_locator.md

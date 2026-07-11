@@ -86,6 +86,9 @@ exposed, or `include_default_tools=False` to withhold them).
 | `find_callers` | expand | Incoming call-graph edges of a symbol (who calls X). |
 | `find_callees` | expand | Outgoing call-graph edges of a symbol (what X calls). |
 | `trace` | expand | Shortest call path between two symbols. |
+| `lsp_route` | expand | Symbol-name semantic navigation over the static symbol graph: ranks endpoint/bridge/provider/type route anchors for a query, optionally with one-hop neighbors. |
+| `lsp_definition` | expand | LSP-compatible go-to-definition for the identifier at an exact source position (repo-relative `file_path`, 1-based `line`, 0-based `character`), served by the runtime's selected semantic provider — static SCIP occurrences by default, live LSP when injected. |
+| `lsp_references` | expand | LSP-compatible find-references at an exact source position, with optional `include_declaration`; same position contract and provider selection as `lsp_definition`. |
 | `llm_rerank` | rerank | High-precision LLM-judged reranking to refine top results. |
 | `code_to_query` | transform | Packs retrieved code nodes into a reusable follow-up search query. |
 
@@ -116,6 +119,11 @@ site per direction:
 - **Input** — a skill input declared `is_line_number: true` in its
   `config.yaml` is passed through `from_agent_repr` (`-1`) by the runner before
   the executor sees it, so executors keep working in 0-based internals.
+
+The native LSP skills follow the same contract: `lsp_definition` /
+`lsp_references` declare their `line` input `is_line_number: true` (1-based
+in, 0-based internally), while `character` stays **0-based** end to end,
+matching the native LSP wire convention.
 
 ### Authoring a skill that accepts line numbers
 

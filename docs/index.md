@@ -40,6 +40,7 @@ core decoder parity.
 
 - [CI/CD](ci_cd.md) — local and remote test tiers, including serial, graph-consumer, core, and slow jobs
 - [Agent Skills](agent_skills.md) — optional retrieval/rerank/trace skills built on top of the index substrate
+- [RAG Ops And Planner](rag_ops.md) — retrieval operator boundaries, query-aware planner behavior, and graph-plan limits
 - [Collecting SWE-bench Instances](collect_swebench.md) — sample representative instances across languages
 - [Synthesis Pipeline](synthesis_pipeline.md) — synthesize traversal/behavior/multiply queries and build the CodeMiner dataset
 - [Uploading to HuggingFace](upload_dataset_to_huggingface.md) — build and publish the dataset
