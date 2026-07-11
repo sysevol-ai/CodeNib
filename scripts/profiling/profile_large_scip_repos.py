@@ -330,7 +330,11 @@ def ensure_checkout(repo: LargeScipRepo, repo_root: Path, *, timeout: int) -> No
             timeout=timeout,
         )
 
-    run_command(["git", "fetch", "--depth=1", "origin", repo.ref], cwd=repo_root)
+    run_command(
+        ["git", "fetch", "--depth=1", "origin", repo.ref],
+        cwd=repo_root,
+        timeout=timeout,
+    )
     run_command(["git", "checkout", "--force", "FETCH_HEAD"], cwd=repo_root)
     run_command(["git", "clean", "-fd"], cwd=repo_root)
     if repo.submodules:
@@ -348,7 +352,6 @@ def run_serial_profile(
     *,
     timeout: int,
 ) -> BackendProfile:
-    from codeminer.ls_router import LSIndexer
     from codeminer.profiler import Profiler
 
     profile = BackendProfile(backend="serial", status="failed")
@@ -359,11 +362,10 @@ def run_serial_profile(
         emit_events=False,
         record_samples=True,
     )
-    indexer = LSIndexer(
+    indexer = create_profile_indexer(
+        repo,
         repo_root,
-        output_dir=serial_output,
-        exclude_patterns=list(repo.exclude_patterns),
-        language=repo.language,
+        serial_output,
         decoder_backend="serial",
         profiler=profiler,
     )
@@ -379,15 +381,7 @@ def run_serial_profile(
             raise RuntimeError("protoc did not produce index.decoded")
 
         set_target_dir(indexer, repo.target_dir)
-        graph_box: dict[str, Any] = {}
-        profile.timings["process_index_total"] = time_step(
-            lambda: graph_box.setdefault(
-                "graph", indexer.process_index(output_file=str(indexer.graph_file))
-            )
-        )
-        graph = graph_box.get("graph")
-        if graph is None:
-            raise RuntimeError("serial graph processing returned None")
+        graph = process_profile_graph(indexer, profile)
         profile.graph = graph_stats(graph)
         profile.artifacts = artifact_stats(indexer)
         profile.timings.update(profiler_sections(profiler))
@@ -407,7 +401,6 @@ def run_core_profile(
     timeout: int,
 ) -> BackendProfile:
     from codeminer.languages import core_decoder_languages
-    from codeminer.ls_router import LSIndexer
     from codeminer.profiler import Profiler
 
     profile = BackendProfile(backend="core", status="skipped")
@@ -438,25 +431,16 @@ def run_core_profile(
         emit_events=False,
         record_samples=True,
     )
-    indexer = LSIndexer(
+    indexer = create_profile_indexer(
+        repo,
         repo_root,
-        output_dir=core_output,
-        exclude_patterns=list(repo.exclude_patterns),
-        language=repo.language,
+        core_output,
         decoder_backend="core",
         profiler=profiler,
     )
     try:
         set_target_dir(indexer, repo.target_dir)
-        graph_box: dict[str, Any] = {}
-        profile.timings["process_index_total"] = time_step(
-            lambda: graph_box.setdefault(
-                "graph", indexer.process_index(output_file=str(indexer.graph_file))
-            )
-        )
-        graph = graph_box.get("graph")
-        if graph is None:
-            raise RuntimeError("core graph processing returned None")
+        graph = process_profile_graph(indexer, profile)
         profile.graph = graph_stats(graph)
         profile.artifacts = artifact_stats(indexer)
         profile.timings.update(profiler_sections(profiler))
@@ -466,6 +450,29 @@ def run_core_profile(
         profile.error = str(exc)
         profile.artifacts = artifact_stats(indexer)
     return profile
+
+
+def create_profile_indexer(
+    repo: LargeScipRepo,
+    repo_root: Path,
+    output_dir: Path,
+    *,
+    decoder_backend: str,
+    profiler: Any,
+) -> Any:
+    """Create the SCIP route whose decoder backend is being measured."""
+
+    from codeminer.ls_router import SCIP_CANDIDATE_GRAPH_ROUTE, LSIndexer
+
+    return LSIndexer(
+        repo_root,
+        output_dir=output_dir,
+        exclude_patterns=list(repo.exclude_patterns),
+        language=repo.language,
+        decoder_backend=decoder_backend,
+        graph_route=SCIP_CANDIDATE_GRAPH_ROUTE,
+        profiler=profiler,
+    )
 
 
 def call_generate_index(indexer: Any, *, timeout: int) -> bool:
@@ -482,8 +489,39 @@ def call_generate_index(indexer: Any, *, timeout: int) -> bool:
 def set_target_dir(indexer: Any, target_dir: str | None) -> None:
     if not target_dir:
         return
-    delegate = getattr(indexer, "_delegate", indexer)
+    delegate = indexer
+    seen: set[int] = set()
+    while id(delegate) not in seen:
+        seen.add(id(delegate))
+        nested = getattr(delegate, "_delegate", None)
+        if nested is None or nested is delegate:
+            break
+        delegate = nested
     delegate._target_dir = target_dir
+
+
+def process_profile_graph(indexer: Any, profile: BackendProfile) -> Any:
+    """Measure graph construction separately from artifact persistence."""
+
+    graph_box: dict[str, Any] = {}
+    profile.timings["process_index_total"] = time_step(
+        lambda: graph_box.setdefault("graph", indexer.process_index(output_file=None))
+    )
+    graph = graph_box.get("graph")
+    if graph is None:
+        raise RuntimeError(f"{profile.backend} graph processing returned None")
+    profile.timings["save_graph"] = time_step(
+        lambda: save_profile_graph(indexer, graph)
+    )
+    return graph
+
+
+def save_profile_graph(indexer: Any, graph: Any) -> None:
+    output_path = Path(indexer.graph_file)
+    graph.save_graph(str(output_path))
+    occurrence_index = getattr(graph, "lsp_occurrence_index", None)
+    if occurrence_index is not None:
+        occurrence_index.save(output_path.with_name("lsp_index.pkl"))
 
 
 def time_step(fn: Any) -> float:

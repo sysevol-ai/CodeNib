@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from scripts.profiling import profile_large_scip_repos
@@ -88,3 +90,97 @@ def test_dry_run_plan_is_serializable():
     assert plan["acceleration_threshold"] == 0.25
     assert plan["repo_count"] == 1
     assert plan["repos"][0]["target_dir"] == "src/main/java"
+
+
+def test_ensure_checkout_applies_configured_timeout_to_fetch(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    calls = []
+
+    def fake_run_command(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(profile_large_scip_repos, "run_command", fake_run_command)
+    repo = profile_large_scip_repos.LargeScipRepo(
+        name="large",
+        language="java",
+        url="https://example.invalid/large.git",
+        ref="main",
+    )
+
+    profile_large_scip_repos.ensure_checkout(repo, repo_root, timeout=987)
+
+    fetch = next(call for call in calls if call[0][:2] == ["git", "fetch"])
+    assert fetch[1]["timeout"] == 987
+
+
+def test_create_profile_indexer_forces_scip_candidate_route(tmp_path, monkeypatch):
+    captured = {}
+    sentinel = object()
+
+    def fake_indexer(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr("codeminer.ls_router.LSIndexer", fake_indexer)
+    repo = profile_large_scip_repos.LargeScipRepo(
+        name="ruby-large",
+        language="ruby",
+        url="https://example.invalid/ruby.git",
+        exclude_patterns=("vendor/**",),
+    )
+
+    result = profile_large_scip_repos.create_profile_indexer(
+        repo,
+        tmp_path,
+        tmp_path / "out",
+        decoder_backend="serial",
+        profiler=object(),
+    )
+
+    assert result is sentinel
+    assert captured["kwargs"]["graph_route"] == "scip-candidate"
+    assert captured["kwargs"]["decoder_backend"] == "serial"
+    assert captured["kwargs"]["exclude_patterns"] == ["vendor/**"]
+
+
+def test_set_target_dir_reaches_leaf_delegate():
+    leaf = SimpleNamespace(_target_dir=None)
+    wrapper = SimpleNamespace(_delegate=SimpleNamespace(_delegate=leaf))
+
+    profile_large_scip_repos.set_target_dir(wrapper, "src/main")
+
+    assert leaf._target_dir == "src/main"
+
+
+def test_process_profile_graph_excludes_artifact_persistence(tmp_path):
+    saved = []
+    occurrences = []
+
+    class FakeGraph:
+        lsp_occurrence_index = SimpleNamespace(
+            save=lambda path: occurrences.append(path)
+        )
+
+        def save_graph(self, path):
+            saved.append(path)
+
+    graph = FakeGraph()
+
+    class FakeIndexer:
+        graph_file = tmp_path / "graph.pkl"
+
+        def process_index(self, output_file):
+            assert output_file is None
+            return graph
+
+    profile = profile_large_scip_repos.BackendProfile(backend="serial")
+
+    result = profile_large_scip_repos.process_profile_graph(FakeIndexer(), profile)
+
+    assert result is graph
+    assert set(profile.timings) == {"process_index_total", "save_graph"}
+    assert saved == [str(tmp_path / "graph.pkl")]
+    assert occurrences == [tmp_path / "lsp_index.pkl"]
