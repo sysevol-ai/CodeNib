@@ -95,3 +95,4 @@ nav:
       - Local Model Backend: experiments/qwen_backend.md
       - LSP Core Acceleration Gate: experiments/lsp_core_acceleration.md
       - LSP-route Adoption: experiments/lsp_route_adoption.md
+      - Systems Paper Plan: experiments/system_paper_plan.md
