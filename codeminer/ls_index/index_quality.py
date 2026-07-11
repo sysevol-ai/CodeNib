@@ -248,8 +248,11 @@ def assess_index_quality(
                 graph, project_root=Path(project_root).resolve()
             )
             graph_compdb_count = len(compdb_files & graph_files)
+            # Clangd symbol graphs are often header-centric. Validate that graph
+            # translation units belong to the compdb, not that every compdb unit
+            # contributes a range-bearing symbol.
             graph_compdb_coverage = (
-                graph_compdb_count / len(compdb_files) if compdb_files else None
+                graph_compdb_count / len(graph_files) if graph_files else None
             )
             compdb_stats.update(
                 {

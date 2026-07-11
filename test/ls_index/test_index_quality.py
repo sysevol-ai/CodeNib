@@ -135,6 +135,37 @@ def test_quality_accepts_graph_covering_compilation_database(tmp_path):
     assert report["compile_db"]["graph_compdb_coverage"] == 1.0
 
 
+def test_quality_accepts_header_centric_graph_aligned_with_compdb(tmp_path):
+    sources = []
+    for index in range(4):
+        source = tmp_path / "src" / f"unit_{index}.cc"
+        source.parent.mkdir(exist_ok=True)
+        source.write_text("int value;\n", encoding="utf-8")
+        sources.append(source)
+    header = tmp_path / "include" / "api.h"
+    header.parent.mkdir()
+    header.write_text("int api();\n", encoding="utf-8")
+    compdb = tmp_path / "compile_commands.json"
+    _write_compdb(compdb, sources)
+    graph = _Graph(
+        vertices=40,
+        edges=80,
+        range_files=["src/unit_0.cc", "include/api.h"],
+    )
+
+    report = assess_index_quality(
+        graph,
+        project_root=tmp_path,
+        language="cpp",
+        compdb_path=compdb,
+    )
+
+    assert report["passed"] is True
+    assert report["compile_db"]["translation_unit_count"] == 4
+    assert report["compile_db"]["graph_translation_unit_count"] == 1
+    assert report["compile_db"]["graph_compdb_coverage"] == 1.0
+
+
 def test_subdirectory_bear_accepts_compdb_even_when_build_fails(tmp_path, monkeypatch):
     project = tmp_path / "repo"
     subdir = project / "ports" / "unix"
