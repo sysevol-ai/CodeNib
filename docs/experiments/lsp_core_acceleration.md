@@ -322,7 +322,15 @@ coverage is high across all languages, while reference coverage remains
 backend- and language-dependent. Unsupported fingerprints must continue to
 fall back to live JSON-RPC.
 
-The aggregate report and paper figure are:
+Reviewable aggregate artifacts committed with this experiment are:
+
+- [aggregate Markdown](artifacts/lsp_replay_base_v3_100/aggregate.md)
+- [single-column figure](artifacts/lsp_replay_base_v3_100/lsp_replay_100_single_column.png)
+
+![CodeMiner Base 100-snapshot LSP replay](artifacts/lsp_replay_base_v3_100/lsp_replay_100_single_column.png)
+
+The full local report set, including all 100 per-snapshot reports and the PDF
+figure, remains at:
 
 - `/mnt/data/codeminer/results/lsp_replay_base_v3_100/aggregate.json`
 - `/mnt/data/codeminer/results/lsp_replay_base_v3_100/aggregate.md`

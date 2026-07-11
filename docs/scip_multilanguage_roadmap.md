@@ -747,6 +747,7 @@ agent-visible equivalent; the admitted measured rows had 0.62 ms static p50,
 87.4%; references remained lower at 39.0%, so promotion stays
 language/capability guarded with explicit live fallback. C/C++ replay must bind
 clangd to each artifact profile's compilation database and use a ten-second
-idle grace. Durable reports and the single-column figure live under
-`/mnt/data/codeminer/results/lsp_replay_base_v3_100/`; full protocol details are
-in `docs/experiments/lsp_core_acceleration.md`.
+idle grace. Reviewable aggregate artifacts are committed under
+`docs/experiments/artifacts/lsp_replay_base_v3_100/`; the full per-snapshot report
+set remains under `/mnt/data/codeminer/results/lsp_replay_base_v3_100/`. Full
+protocol details are in `docs/experiments/lsp_core_acceleration.md`.
