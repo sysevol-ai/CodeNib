@@ -81,6 +81,13 @@ class _FakeLiveProvider:
         self.started = False
         self.closed = False
 
+    def __enter__(self) -> "_FakeLiveProvider":
+        self.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def start(self) -> None:
         self.started = True
 

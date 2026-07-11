@@ -184,7 +184,7 @@ def run_lsp_replay_benchmark(
     live_provider.start()
     live_start_ms = (clock() - live_start) * 1000
     comparison_rows: list[dict[str, Any]] = []
-    try:
+    with live_provider:
         for _ in range(warmup_reps):
             compare_static_lsp_provider(
                 request_list,
@@ -210,8 +210,6 @@ def run_lsp_replay_benchmark(
                 row = comparison.to_dict()
                 row["rep"] = rep
                 comparison_rows.append(row)
-    finally:
-        live_provider.close()
 
     payload = {
         "schema_version": 1,

@@ -1162,8 +1162,12 @@ class ClangdIndexer:
         for candidate in candidates:
             try:
                 Path(candidate).unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug(
+                    "Ignoring compilation database cleanup failure for %s: %s",
+                    candidate,
+                    exc,
+                )
 
     def _snapshot_best_compdb(self, candidates, label: str) -> Optional[Path]:
         valid = [Path(path) for path in candidates if self._is_valid_compdb(Path(path))]
