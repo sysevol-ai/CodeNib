@@ -1,0 +1,654 @@
+<title>Repository Guardian — explainer (#309)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg:#0f141b; --bg2:#0b0f15; --panel:#161d27; --panel2:#1b2430;
+    --line:#26313f; --line2:#31404f;
+    --ink:#cdd6e2; --ink-dim:#9aa7b7; --muted:#71808f;
+    --accent:#eaa94c; --accent-soft:#3a2f1c; --accent-ink:#f3c579;
+    --mem:#57b8a9;  --mem-soft:#173029;
+    --pass:#5fb87a; --fail:#e0706e; --risk:#e0706e;
+    --det:#7f8ea0;  /* deterministic step */
+    --shadow: 0 1px 0 rgba(255,255,255,.02), 0 18px 40px -24px rgba(0,0,0,.7);
+    --maxw: 1080px; --prose: 68ch;
+    --mono: ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#eef1f5; --bg2:#e6eaf0; --panel:#ffffff; --panel2:#f5f7fa;
+      --line:#dbe1ea; --line2:#c7d0dc;
+      --ink:#1b2532; --ink-dim:#48586b; --muted:#6a7889;
+      --accent:#b9791a; --accent-soft:#f6ecd8; --accent-ink:#8f5c11;
+      --mem:#1f8a7a; --mem-soft:#dcefeb;
+      --pass:#2f9d55; --fail:#c94b49; --risk:#c94b49; --det:#5c6b7d;
+      --shadow: 0 1px 0 rgba(255,255,255,.6), 0 18px 40px -28px rgba(20,30,45,.28);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f141b; --bg2:#0b0f15; --panel:#161d27; --panel2:#1b2430;
+    --line:#26313f; --line2:#31404f; --ink:#cdd6e2; --ink-dim:#9aa7b7; --muted:#71808f;
+    --accent:#eaa94c; --accent-soft:#3a2f1c; --accent-ink:#f3c579;
+    --mem:#57b8a9; --mem-soft:#173029; --pass:#5fb87a; --fail:#e0706e; --risk:#e0706e; --det:#7f8ea0;
+    --shadow: 0 1px 0 rgba(255,255,255,.02), 0 18px 40px -24px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"]{
+    --bg:#eef1f5; --bg2:#e6eaf0; --panel:#ffffff; --panel2:#f5f7fa;
+    --line:#dbe1ea; --line2:#c7d0dc; --ink:#1b2532; --ink-dim:#48586b; --muted:#6a7889;
+    --accent:#b9791a; --accent-soft:#f6ecd8; --accent-ink:#8f5c11;
+    --mem:#1f8a7a; --mem-soft:#dcefeb; --pass:#2f9d55; --fail:#c94b49; --risk:#c94b49; --det:#5c6b7d;
+    --shadow: 0 1px 0 rgba(255,255,255,.6), 0 18px 40px -28px rgba(20,30,45,.28);
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} *{animation:none!important;transition:none!important} }
+  body{
+    margin:0; background:
+      radial-gradient(1200px 600px at 80% -10%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, color-mix(in oklab, var(--mem) 7%, transparent), transparent 55%),
+      var(--bg);
+    color:var(--ink); font-family:var(--sans);
+    font-size:17px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 22px}
+  .prose{max-width:var(--prose)}
+  p{color:var(--ink-dim)}
+  a{color:var(--accent-ink); text-decoration:none; border-bottom:1px solid color-mix(in oklab, var(--accent) 40%, transparent)}
+  a:hover{border-bottom-color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:4px}
+
+  .mono{font-family:var(--mono)}
+  .eyebrow{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent-ink); font-weight:600}
+  h1,h2,h3{text-wrap:balance; line-height:1.12; letter-spacing:-.015em; color:var(--ink)}
+  h2{font-size:clamp(24px,3.4vw,34px); margin:0 0 .3em; font-weight:750}
+  h3{font-size:19px; margin:0 0 .35em; font-weight:700}
+
+  /* top bar */
+  header.bar{position:sticky; top:0; z-index:20; backdrop-filter:blur(10px);
+    background:color-mix(in oklab, var(--bg) 82%, transparent); border-bottom:1px solid var(--line)}
+  .bar-in{max-width:var(--maxw); margin:0 auto; padding:11px 22px; display:flex; align-items:center; gap:16px}
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--mono); font-weight:600; font-size:14px; letter-spacing:.02em}
+  .beacon{width:10px; height:10px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 0 color-mix(in oklab,var(--accent) 60%, transparent); animation:pulse 2.6s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in oklab,var(--accent) 55%,transparent)}70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  nav.jump{margin-left:auto; display:flex; gap:4px; flex-wrap:wrap}
+  nav.jump a{font-family:var(--mono); font-size:12px; color:var(--muted); border:0; padding:5px 9px; border-radius:7px}
+  nav.jump a:hover{color:var(--ink); background:var(--panel)}
+  .toggle{margin-left:6px; font-family:var(--mono); font-size:12px; color:var(--ink-dim); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer}
+  .toggle:hover{border-color:var(--line2)}
+  @media (max-width:760px){ nav.jump{display:none} }
+
+  section{padding:58px 0; border-bottom:1px solid var(--line)}
+  section:last-of-type{border-bottom:0}
+  .reveal{opacity:0; transform:translateY(14px); transition:opacity .6s ease, transform .6s ease}
+  .reveal.in{opacity:1; transform:none}
+
+  /* hero */
+  .hero{padding:70px 0 54px}
+  .hero h1{font-size:clamp(34px,6vw,60px); font-weight:800; margin:.15em 0 .35em}
+  .hero .lede{font-size:clamp(18px,2.2vw,22px); color:var(--ink); max-width:60ch}
+  .hero .lede b{color:var(--accent-ink); font-weight:700}
+  .facts{display:flex; flex-wrap:wrap; gap:10px; margin-top:26px}
+  .chip{font-family:var(--mono); font-size:12.5px; color:var(--ink-dim); background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:7px 13px}
+  .chip b{color:var(--ink); font-weight:600}
+
+  /* commit timeline motif */
+  .timeline-motif{margin-top:34px; border:1px solid var(--line); border-radius:14px; background:linear-gradient(180deg,var(--panel),var(--panel2)); padding:18px 18px 14px; box-shadow:var(--shadow); overflow:hidden}
+  .tm-head{display:flex; justify-content:space-between; font-family:var(--mono); font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em; margin-bottom:12px}
+  .tm-track{position:relative; height:56px}
+  .tm-line{position:absolute; left:0; right:0; top:28px; height:2px; background:var(--line2)}
+  .tick{position:absolute; top:20px; width:2px; height:16px; background:var(--det); border-radius:2px; opacity:.7}
+  .tick.fix{background:var(--fail); height:22px; top:17px; opacity:.95}
+  .sweep{position:absolute; top:8px; width:2px; height:40px; background:linear-gradient(var(--accent),transparent); box-shadow:0 0 14px 2px color-mix(in oklab,var(--accent) 50%,transparent); animation:sweep 7s linear infinite}
+  .sweep::after{content:"◈"; position:absolute; top:-18px; left:-6px; color:var(--accent); font-size:13px}
+  @keyframes sweep{0%{left:2%}100%{left:98%}}
+  .tm-legend{display:flex; gap:16px; font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:8px}
+  .tm-legend i{display:inline-block; width:9px;height:9px;border-radius:2px; margin-right:6px; vertical-align:middle}
+
+  /* generic cards / grid */
+  .grid{display:grid; gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+  @media (max-width:820px){ .g2,.g3{grid-template-columns:1fr} }
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow)}
+  .card h3{display:flex; align-items:center; gap:9px}
+  .card p{margin:.2em 0 0; font-size:15.5px}
+  .kicker{font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+  .lead-tag{display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:12px; color:var(--accent-ink); background:var(--accent-soft); border:1px solid color-mix(in oklab,var(--accent) 30%,var(--line)); border-radius:999px; padding:4px 11px}
+
+  /* the two facets */
+  .facet{border-left:3px solid var(--line2); padding-left:16px}
+  .facet.state{border-color:var(--det)} .facet.mem{border-color:var(--mem)}
+  .facet .kicker{color:var(--det)} .facet.mem .kicker{color:var(--mem)}
+
+  /* cycle loop */
+  .cyclewrap{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:26px; align-items:center}
+  @media (max-width:900px){ .cyclewrap{grid-template-columns:1fr} }
+  .steps{display:flex; flex-direction:column; gap:8px}
+  .step{display:grid; grid-template-columns:34px 1fr; gap:12px; align-items:start; padding:11px 13px; border:1px solid var(--line); border-radius:11px; background:var(--panel)}
+  .step .n{font-family:var(--mono); font-weight:700; font-size:13px; width:34px;height:26px; display:grid;place-items:center; border-radius:7px; background:var(--panel2); color:var(--det); border:1px solid var(--line2)}
+  .step.llm .n{color:var(--accent-ink); background:var(--accent-soft); border-color:color-mix(in oklab,var(--accent) 35%,var(--line))}
+  .step .v{font-family:var(--mono); font-weight:700; color:var(--ink); font-size:14.5px}
+  .step .d{color:var(--muted); font-size:13.5px}
+  .step .badge{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; padding:2px 7px; border-radius:6px; margin-left:8px}
+  .b-det{color:var(--det); background:color-mix(in oklab,var(--det) 12%,transparent)}
+  .b-llm{color:var(--accent-ink); background:var(--accent-soft)}
+  .loopfig{display:grid; place-items:center}
+
+  /* schema */
+  .schema{display:grid; grid-template-columns:repeat(5,1fr); gap:12px}
+  @media (max-width:900px){ .schema{grid-template-columns:repeat(2,1fr)} }
+  .tbl{border:1px solid var(--line); border-radius:11px; overflow:hidden; background:var(--panel)}
+  .tbl .th{font-family:var(--mono); font-weight:700; font-size:13px; color:var(--mem); background:var(--mem-soft); padding:8px 11px; border-bottom:1px solid var(--line)}
+  .tbl .tb{padding:10px 11px; font-size:13px; color:var(--muted)}
+  .pathline{font-family:var(--mono); font-size:13.5px; color:var(--ink-dim); background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:12px 14px; overflow-x:auto}
+  .pathline b{color:var(--mem)}
+
+  /* comparison table */
+  .cmp{width:100%; border-collapse:collapse; font-size:15px; overflow:hidden; border-radius:12px; border:1px solid var(--line)}
+  .cmp th,.cmp td{padding:12px 14px; text-align:left; border-bottom:1px solid var(--line)}
+  .cmp thead th{font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); background:var(--panel2)}
+  .cmp td:first-child{color:var(--ink-dim)}
+  .cmp .col-mem{color:var(--mem); font-weight:700; text-align:center}
+  .cmp .col-none{color:var(--muted); font-weight:700; text-align:center}
+  .cmp tbody tr:last-child td{border-bottom:0}
+  .yes{color:var(--pass)} .no{color:var(--fail)}
+  .tablewrap{overflow-x:auto}
+
+  /* ladder */
+  .ladder{display:flex; flex-direction:column; gap:9px; margin-top:6px}
+  .rung{display:grid; grid-template-columns:150px 1fr; gap:12px; align-items:center}
+  .rung .lab{font-family:var(--mono); font-size:12.5px; color:var(--ink-dim); text-align:right}
+  .bar{height:22px; border-radius:6px; background:linear-gradient(90deg, color-mix(in oklab,var(--accent) 75%,transparent), color-mix(in oklab,var(--accent) 40%,transparent)); border:1px solid color-mix(in oklab,var(--accent) 40%,var(--line))}
+  .rung.dim .bar{background:linear-gradient(90deg,var(--line2),var(--panel)); border-color:var(--line)}
+  .rung .lab.top{color:var(--accent-ink); font-weight:700}
+  @media (max-width:600px){ .rung{grid-template-columns:110px 1fr} }
+
+  /* investigation flow */
+  .flow{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+  @media (max-width:900px){ .flow{grid-template-columns:1fr 1fr} }
+  @media (max-width:520px){ .flow{grid-template-columns:1fr} }
+  .fstep{border:1px solid var(--line); border-radius:12px; padding:15px; background:var(--panel); position:relative}
+  .fstep .fn{font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:.1em}
+  .fstep h4{margin:.35em 0 .2em; font-size:15px; color:var(--ink)}
+  .fstep p{margin:0; font-size:13.5px}
+  .verdict{display:inline-flex; gap:8px; align-items:center; font-family:var(--mono); font-size:12px; margin-top:9px; padding:3px 9px; border-radius:7px}
+  .v-fail{color:var(--fail); background:color-mix(in oklab,var(--fail) 12%,transparent)}
+  .v-pass{color:var(--pass); background:color-mix(in oklab,var(--pass) 12%,transparent)}
+
+  ul.clean{list-style:none; padding:0; margin:12px 0 0; display:grid; gap:9px}
+  ul.clean li{display:grid; grid-template-columns:20px 1fr; gap:10px; font-size:15px; color:var(--ink-dim)}
+  ul.clean li::before{content:"▹"; color:var(--accent); font-size:13px; line-height:1.5}
+
+  /* term → description rows (clearer than an inline bold-then-dash bullet) */
+  .keys{display:grid; gap:11px}
+  .keyitem{display:grid; grid-template-columns:28px 1fr; gap:13px; align-items:start; padding:14px 16px; border:1px solid var(--line); border-radius:12px; background:var(--panel)}
+  .keyitem .kn{font-family:var(--mono); font-weight:700; font-size:13px; color:var(--muted); display:grid; place-items:center; width:28px; height:28px; border-radius:8px; background:var(--panel2); border:1px solid var(--line2)}
+  .keyitem .kt{display:block; font-weight:700; color:var(--ink); font-size:15.5px; margin-bottom:3px; text-wrap:balance}
+  .keyitem .kd{display:block; color:var(--muted); font-size:14.5px; line-height:1.55}
+  .keys.mem .kn{color:var(--mem); background:var(--mem-soft); border-color:color-mix(in oklab,var(--mem) 35%,var(--line))}
+  .keys.acc .kn{color:var(--accent-ink); background:var(--accent-soft); border-color:color-mix(in oklab,var(--accent) 35%,var(--line))}
+
+  /* lighter term→desc list, for use inside cards */
+  .deflist{list-style:none; padding:0; margin:12px 0 0; display:grid; gap:11px}
+  .deflist li{padding-left:13px; border-left:2px solid var(--line2)}
+  .deflist li b{display:block; color:var(--ink); font-weight:650; font-size:14.5px; margin-bottom:1px}
+  .deflist li span{display:block; color:var(--muted); font-size:13.5px; line-height:1.5}
+  .deflist.acc li{border-left-color:color-mix(in oklab,var(--accent) 55%,var(--line2))}
+  .callout{border:1px solid color-mix(in oklab,var(--accent) 30%,var(--line)); background:linear-gradient(180deg,var(--accent-soft),transparent); border-radius:13px; padding:18px 20px}
+  .callout .eyebrow{color:var(--accent-ink)}
+  .invariant{border-left:3px solid var(--accent); background:var(--panel); border-radius:0 12px 12px 0; padding:14px 18px; font-size:15px}
+
+  /* schedule */
+  .miles{display:grid; grid-template-columns:repeat(4,1fr); gap:0; border:1px solid var(--line); border-radius:13px; overflow:hidden}
+  @media (max-width:820px){ .miles{grid-template-columns:1fr 1fr} }
+  .mile{padding:16px; border-right:1px solid var(--line); background:var(--panel)}
+  .mile:nth-child(4){border-right:0}
+  .mile .mid{font-family:var(--mono); font-weight:800; color:var(--accent-ink); font-size:15px}
+  .mile .day{font-family:var(--mono); font-size:11px; color:var(--muted); float:right}
+  .mile p{font-size:13.5px; margin:.5em 0 0}
+
+  /* workstreams */
+  .ws{display:grid; grid-template-columns:repeat(3,1fr); gap:12px}
+  @media (max-width:820px){ .ws{grid-template-columns:1fr} }
+  .wcard{border:1px solid var(--line); border-radius:12px; padding:15px; background:var(--panel)}
+  .wcard .wid{font-family:var(--mono); font-weight:800; color:var(--ink)}
+  .wcard.mine{border-color:color-mix(in oklab,var(--mem) 45%,var(--line)); background:linear-gradient(180deg,var(--mem-soft),transparent)}
+  .wcard.mine .wid{color:var(--mem)}
+  .wcard p{margin:.35em 0 0; font-size:13.5px}
+  .mine-tag{font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--mem); border:1px solid color-mix(in oklab,var(--mem) 40%,var(--line)); padding:2px 7px; border-radius:6px; margin-left:8px}
+
+  /* reading list */
+  .papers{display:grid; gap:12px}
+  .theme-h{font-family:var(--mono); font-size:12.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:20px 0 4px}
+  .paper{border:1px solid var(--line); border-radius:11px; padding:13px 15px; background:var(--panel); display:grid; gap:3px}
+  .paper .pt{font-weight:650; color:var(--ink); font-size:15.5px}
+  .paper .pm{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .paper .pw{font-size:13.5px; color:var(--ink-dim)}
+  .paper.star{border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
+  .paper .no{font-family:var(--mono); font-size:12px; font-weight:700; color:var(--muted); margin-right:9px}
+  .paper.star .no{color:var(--accent-ink)}
+  .paper.star .pt::after{content:" ★"; color:var(--accent); font-size:13px}
+  .stage{margin-top:36px}
+  .stage-head{display:flex; align-items:baseline; gap:12px; border-bottom:1px solid var(--line); padding-bottom:9px; margin-bottom:13px}
+  .stage-head .sno{font-family:var(--mono); font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink)}
+  .stage-head h3{margin:0; font-size:17px}
+  .stage-head .sgoal{margin-left:auto; font-family:var(--mono); font-size:11.5px; color:var(--muted); text-align:right}
+  @media (max-width:700px){ .stage-head{flex-wrap:wrap} .stage-head .sgoal{margin-left:0; text-align:left; width:100%} }
+
+  footer{padding:40px 0 60px; color:var(--muted); font-size:13.5px; font-family:var(--mono)}
+  .disclaim{font-size:12.5px; color:var(--muted); margin-top:10px; font-family:var(--mono)}
+</style>
+
+<header class="bar">
+  <div class="bar-in">
+    <span class="brand"><span class="beacon" aria-hidden="true"></span>REPOSITORY&nbsp;GUARDIAN</span>
+    <nav class="jump" aria-label="Sections">
+      <a href="#idea">Idea</a><a href="#cycle">Cycle</a><a href="#memory">Memory</a>
+      <a href="#drift">Drift</a><a href="#investigate">Investigate</a><a href="#eval">Eval</a>
+      <a href="#plan">Plan</a><a href="#you">Your thread</a><a href="#read">Reading</a>
+    </nav>
+    <button class="toggle" id="tg" aria-label="Toggle light/dark">◐ theme</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero" id="top">
+    <span class="eyebrow">Design spec · issue #309 · target: ICLR</span>
+    <h1>A sentinel that remembers.</h1>
+    <p class="lede">The Guardian watches one repository evolve, cycle after cycle, and writes back a
+      <b>cross-cycle memory</b>. It never edits the code — its move is to <b>form a hypothesis about an
+      emerging risk and write a test that exposes it</b>, run it in a throwaway sandbox, and report the
+      evidence. The whole project asks one question.</p>
+
+    <div class="facts">
+      <span class="chip"><b>H1</b> · does memory beat memoryless — at matched cost?</span>
+      <span class="chip">first target · <b>CodeMiner itself</b></span>
+      <span class="chip">1× <b>H100 80GB</b> · local vLLM · litellm</span>
+      <span class="chip">one <b>ephemeral container</b> / cycle</span>
+      <span class="chip"><b>non-modifying</b> · zero patches</span>
+    </div>
+
+    <figure class="timeline-motif reveal" aria-label="Future-history replay: the Guardian scans the repo's own past">
+      <figcaption class="tm-head"><span>future-history replay</span><span>t0 → tk</span></figcaption>
+      <div class="tm-track">
+        <div class="tm-line"></div>
+        <div class="tick" style="left:6%"></div><div class="tick" style="left:14%"></div>
+        <div class="tick fix" style="left:22%"></div><div class="tick" style="left:31%"></div>
+        <div class="tick" style="left:40%"></div><div class="tick fix" style="left:52%"></div>
+        <div class="tick" style="left:61%"></div><div class="tick" style="left:70%"></div>
+        <div class="tick fix" style="left:80%"></div><div class="tick" style="left:90%"></div>
+        <div class="sweep" aria-hidden="true"></div>
+      </div>
+      <div class="tm-legend">
+        <span><i style="background:var(--det)"></i>commit</span>
+        <span><i style="background:var(--fail)"></i>a future bug-fix / revert (ground truth)</span>
+        <span><i style="background:var(--accent)"></i>Guardian at t — knowledge bounded to ≤ t</span>
+      </div>
+    </figure>
+  </section>
+
+  <section id="idea" class="reveal">
+    <span class="eyebrow">The idea</span>
+    <h2>Two ways of seeing a repository</h2>
+    <p class="prose">The Guardian perceives its target through two facets. The first is standard; the
+      second is the bet.</p>
+    <div class="grid g2" style="margin-top:20px">
+      <div class="card facet state">
+        <span class="kicker">Facet 1 · current state</span>
+        <h3>The repo right now</h3>
+        <p>CodeMiner's index and compiler-precise code graph at commit <span class="mono">t</span>.
+          This is what any single-snapshot tool already sees.</p>
+      </div>
+      <div class="card facet mem">
+        <span class="kicker">Facet 2 · evolution over time</span>
+        <h3>The repo's history — the memory</h3>
+        <p>What changed across cycles: symbol lifetimes, dependency drift, prior findings, test
+          trajectories. <b style="color:var(--mem)">This is the facet a memoryless agent cannot see</b> —
+          and the one under test.</p>
+      </div>
+    </div>
+    <div class="callout reveal" style="margin-top:18px">
+      <span class="eyebrow">H1 — the whole result</span>
+      <p style="color:var(--ink); margin:.4em 0 0; font-size:17px">Replaying a repo through its own history,
+        a Guardian arm that carries <b>memory</b> surfaces higher-precision / earlier maintenance findings
+        than an identical <b>memoryless</b> arm, <b>at a bounded per-cycle cost</b>. The headline is Δ,
+        measured — a null or negative result is still a valid answer.</p>
+    </div>
+  </section>
+
+  <section id="cycle" class="reveal">
+    <span class="eyebrow">The loop</span>
+    <h2>One cycle, seven steps</h2>
+    <p class="prose">Each cycle runs on one commit. Steps 1–3 and 7 are <b>deterministic</b> — no model.
+      Only <b style="color:var(--accent-ink)">reflect</b> and <b style="color:var(--accent-ink)">investigate</b>
+      call the LLM, which is exactly what lets the memoryless ablation be a clean toggle on what step 4 may read.</p>
+
+    <div class="cyclewrap" style="margin-top:22px">
+      <div class="steps">
+        <div class="step"><span class="n">1</span><div><span class="v">sync</span><span class="badge b-det">det</span><div class="d">resolve / checkout commit t.</div></div></div>
+        <div class="step"><span class="n">2</span><div><span class="v">refresh</span><span class="badge b-det">det</span><div class="d">incremental index + code-graph update for t.</div></div></div>
+        <div class="step"><span class="n">3</span><div><span class="v">observe</span><span class="badge b-det">det</span><div class="d">signals: churn + graph-diff drift + test deltas.</div></div></div>
+        <div class="step llm"><span class="n">4</span><div><span class="v">reflect</span><span class="badge b-llm">llm</span><div class="d">reads memory + signals → ranked hypotheses.</div></div></div>
+        <div class="step llm"><span class="n">5</span><div><span class="v">investigate</span><span class="badge b-llm">llm</span><div class="d">retrieve evidence, <b>synthesize a risk-revealing test</b>.</div></div></div>
+        <div class="step"><span class="n">6</span><div><span class="v">report</span><span class="badge b-det">det</span><div class="d">findings + evidence + reasoning trace → .md/.json. No patches.</div></div></div>
+        <div class="step"><span class="n">7</span><div><span class="v">persist</span><span class="badge b-det">det</span><div class="d">write graph snapshot, findings, test state to memory.</div></div></div>
+      </div>
+      <div class="loopfig">
+        <svg viewBox="0 0 260 260" width="100%" style="max-width:300px" role="img" aria-label="The seven-step cycle as a loop around a central memory core">
+          <defs><marker id="ah" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L6,3.5 L0,7 Z" fill="var(--line2)"/></marker></defs>
+          <circle cx="130" cy="130" r="98" fill="none" stroke="var(--line)" stroke-width="1"/>
+          <path d="M130 32 A98 98 0 0 1 216 178" fill="none" stroke="var(--line2)" stroke-width="1.5" marker-end="url(#ah)"/>
+          <circle cx="130" cy="130" r="42" fill="var(--mem-soft)" stroke="color-mix(in oklab,var(--mem) 45%,var(--line))"/>
+          <text x="130" y="126" text-anchor="middle" font-family="var(--mono)" font-size="12" fill="var(--mem)" font-weight="700">memory</text>
+          <text x="130" y="142" text-anchor="middle" font-family="var(--mono)" font-size="8.5" fill="var(--muted)">read @4 · write @7</text>
+          <!-- 7 nodes -->
+          <g font-family="var(--mono)" font-size="10" font-weight="700" text-anchor="middle">
+            <g><circle cx="130" cy="32" r="15" fill="var(--panel)" stroke="var(--det)"/><text x="130" y="36" fill="var(--det)">1</text></g>
+            <g><circle cx="207" cy="72" r="15" fill="var(--panel)" stroke="var(--det)"/><text x="207" y="76" fill="var(--det)">2</text></g>
+            <g><circle cx="225" cy="158" r="15" fill="var(--panel)" stroke="var(--det)"/><text x="225" y="162" fill="var(--det)">3</text></g>
+            <g><circle cx="171" cy="222" r="15" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="171" y="226" fill="var(--accent-ink)">4</text></g>
+            <g><circle cx="89" cy="222" r="15" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="89" y="226" fill="var(--accent-ink)">5</text></g>
+            <g><circle cx="35" cy="158" r="15" fill="var(--panel)" stroke="var(--det)"/><text x="35" y="162" fill="var(--det)">6</text></g>
+            <g><circle cx="53" cy="72" r="15" fill="var(--panel)" stroke="var(--det)"/><text x="53" y="76" fill="var(--det)">7</text></g>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section id="memory" class="reveal">
+    <span class="lead-tag" style="margin-bottom:12px">◆ the memory layer — the storage &amp; retrieval thread</span>
+    <h2>Repository memory</h2>
+    <p class="prose">An append-only store, keyed by commit. It's what makes “memory helps” measurable —
+      and it has to stay cheap to read as history grows, or the memory arm just costs more without
+      winning. Backend is deliberately boring to start; a vector/graph DB is a month-2 decision.</p>
+
+    <div class="pathline" style="margin:18px 0">
+      <b>repo_memory/&lt;repo_id&gt;/</b>  ·  per-cycle graph snapshots (<span style="color:var(--ink)">CodeGraph.save_graph</span>)
+      ·  findings JSON  ·  <span style="color:var(--ink)">index.sqlite</span>
+    </div>
+
+    <div class="schema">
+      <div class="tbl"><div class="th">cycles</div><div class="tb">one row / cycle — token + wall-clock cost (the H1 cost axis)</div></div>
+      <div class="tbl"><div class="th">symbols</div><div class="tb">symbol lifetime → churn / removal</div></div>
+      <div class="tbl"><div class="th">edges</div><div class="tb">dependency evolution → drift</div></div>
+      <div class="tbl"><div class="th">findings</div><div class="tb">prior findings (+ evidence_test, evidence_diff) → recall / de-dup / escalate</div></div>
+      <div class="tbl"><div class="th">test_deltas</div><div class="tb">per-test outcome trajectory over time</div></div>
+    </div>
+
+    <div class="keys mem" style="margin-top:20px">
+      <div class="keyitem"><span class="kn">◆</span><div><span class="kt">Append-only, keyed by commit</span><span class="kd">Each cycle adds a snapshot + findings; nothing is mutated.</span></div></div>
+      <div class="keyitem"><span class="kn">◆</span><div><span class="kt">Reads are paged / summarized</span><span class="kd">A long history never blows the model context — the retrieval policy is the research knob.</span></div></div>
+      <div class="keyitem"><span class="kn">◆</span><div><span class="kt">Graph is a detector, not an LLM input</span><span class="kd">Cross-cycle diffs run deterministically (see next).</span></div></div>
+    </div>
+  </section>
+
+  <section id="drift" class="reveal">
+    <span class="eyebrow">The signal the memory unlocks</span>
+    <h2>Graph-diff drift</h2>
+    <p class="prose">Diff the current <span class="mono">CodeGraph</span> against the prior snapshot for
+      new/removed edges on high-fan-in symbols, fan-in spikes, and public-API arity/signature changes
+      with lagging dependents. It runs deterministically and emits a plain-English shortlist — only that
+      prose plus retrieved code reaches the model. Its job is <b>selection at repo scale</b>, and it's the
+      sharpest test of H1: structural drift across files is exactly what a single-snapshot arm can't see.</p>
+    <div class="invariant reveal" style="margin-top:18px; font-family:var(--mono); font-size:14px; border-left-color:var(--fail)">
+      example shortlist &nbsp;→&nbsp; <span style="color:var(--ink)">parse_config</span> changed arity;
+      <span style="color:var(--fail)">47 dependents</span>; <span style="color:var(--accent-ink)">3 not updated</span>.
+    </div>
+  </section>
+
+  <section id="investigate" class="reveal">
+    <span class="eyebrow">The defining action</span>
+    <h2>A risk is confirmed by a test, not an argument</h2>
+    <p class="prose">The agent writes a <b>new</b> targeted test whose <b>failure demonstrates the risk</b>,
+      runs it with the repo's own <span class="mono">pytest</span> on a throwaway overlay, and corroborates it.
+      Cheaper first-pass probes (existing-test run, call-site grep, import/typecheck) gate the expensive ones.
+      Everything is bounded by a per-cycle budget.</p>
+
+    <div class="flow" style="margin-top:20px">
+      <div class="fstep"><div class="fn">01 · gather</div><h4>Evidence</h4><p><span class="mono">HybridRetrievePipeline.query</span> → rows + source spans.</p></div>
+      <div class="fstep"><div class="fn">02 · synthesize</div><h4>Risk-revealing test</h4><p>Calls the API the way the 47 dependents still do; asserts old behaviour. <span class="verdict v-fail">fails on t = evidence</span></p></div>
+      <div class="fstep"><div class="fn">03 · corroborate</div><h4>Differential + fix-probe</h4><p>Passes on t−1, fails now <span class="verdict v-fail">PASS→FAIL</span> · reverting the cause goes green <span class="verdict v-pass">FAIL→PASS</span></p></div>
+      <div class="fstep"><div class="fn">04 · record</div><h4>Finding</h4><p>Verdict + reasoning trace + synthesized test + any fix-diff — as evidence, never “apply this.”</p></div>
+    </div>
+
+    <div class="invariant reveal" style="margin-top:20px">
+      <span class="eyebrow" style="color:var(--accent-ink)">Non-modifying invariant · hard constraint</span>
+      <p style="margin:.4em 0 0; color:var(--ink-dim)">The agent works only inside a per-cycle container on a
+        <b>disposable overlay</b> checkout. Synthesized tests and fix-edits live on the throwaway layer and
+        die with the container. <span class="mono" style="color:var(--ink)">report.py</span> asserts a
+        no-patch invariant; that test stays green. This is what makes “non-modifying” structural, not a promise.</p>
+    </div>
+  </section>
+
+  <section id="sandbox" class="reveal">
+    <span class="eyebrow">Runtime</span>
+    <h2>One ephemeral container per cycle</h2>
+    <div class="grid g2" style="margin-top:18px">
+      <div class="card">
+        <span class="kicker">Dispatch</span>
+        <h3>Throwaway checkout, overlay mount</h3>
+        <p><span class="mono">git worktree</span> materializes commit t cheaply; a pinned
+          <span class="mono">guardian-runtime</span> image mounts <span class="mono">/repo</span> as an overlay —
+          worktree = read-only lower, tmpfs upper absorbs edits and <b>is</b> the evidence-diff. Podman
+          (rootless) with Docker fallback; <span class="mono">--network none</span> + one localhost rule to the
+          model server; no GPU in the container.</p>
+      </div>
+      <div class="card">
+        <span class="kicker">Model server</span>
+        <h3>Local vLLM behind litellm</h3>
+        <p><b>Qwen3-Coder-Next</b> — 80B-total / 3B-active MoE, 256K context, ~40 GB in 4-bit → KV headroom on
+          one H100. OpenAI-compatible, so nothing in the Guardian changes but the <span class="mono">api_base</span>.
+          Cost is enforced by <span class="mono">--budget-tokens</span>, paged memory reads, and prompt caching;
+          tokens + wall-clock land in the <span class="mono">cycles</span> table.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="eval" class="reveal">
+    <span class="eyebrow">Evaluation</span>
+    <h2>Future-history replay — and one clean ablation</h2>
+    <p class="prose">Run the Guardian as if living through the repo's past, knowledge bounded at each cycle's
+      commit, and check whether its unprompted findings anticipated what actually happened later. Ground
+      truth = post-t issues / bug-fix PRs / reverts, mapped to the symbols they touched (reusing
+      <span class="mono">gt_locate.py</span> + <span class="mono">eval/retrieval_eval.py</span>).</p>
+
+    <h3 style="margin:26px 0 10px">The headline: memory vs memoryless</h3>
+    <p class="prose">Two arms, identical except what <span class="mono">reflect</span> may read. Memoryless is a
+      <b>flag</b> — so any difference is attributable to memory, not implementation drift.</p>
+    <div class="tablewrap" style="margin-top:14px">
+      <table class="cmp">
+        <thead><tr><th>What reflect may read</th><th class="col-mem">Memory</th><th class="col-none">Memoryless</th></tr></thead>
+        <tbody>
+          <tr><td>Current-state facet (index + graph @ t)</td><td class="col-mem yes">✓</td><td class="col-none yes">✓</td></tr>
+          <tr><td>Graph-diff vs prior snapshot</td><td class="col-mem yes">✓</td><td class="col-none no">✕</td></tr>
+          <tr><td>Prior findings / symbol &amp; test history</td><td class="col-mem yes">✓</td><td class="col-none no">✕</td></tr>
+          <tr><td>Model · budget · retrieval · signals</td><td class="col-mem" style="color:var(--muted);font-weight:600">identical</td><td class="col-none" style="color:var(--muted);font-weight:600">identical</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin:30px 0 6px">Positioned against a baseline ladder</h3>
+    <p class="prose">The ablation isolates <i>memory</i>; a short ladder on the same commits / ground truth /
+      budget positions the number. Target shape is monotone.</p>
+    <div class="ladder">
+      <div class="rung"><span class="lab top">memory</span><div class="bar" style="width:100%"></div></div>
+      <div class="rung"><span class="lab">memoryless</span><div class="bar" style="width:78%"></div></div>
+      <div class="rung dim"><span class="lab">graph-diff only</span><div class="bar" style="width:58%"></div></div>
+      <div class="rung dim"><span class="lab">churn-rank</span><div class="bar" style="width:38%"></div></div>
+      <div class="rung dim"><span class="lab">random</span><div class="bar" style="width:16%"></div></div>
+    </div>
+    <p class="disclaim">Illustrative shape only — the real numbers are what the project measures. Ceiling = hindsight-oracle.</p>
+
+    <div class="grid g2" style="margin-top:26px">
+      <div class="card">
+        <span class="kicker">Metrics</span>
+        <h3 style="font-size:16px">What gets reported</h3>
+        <ul class="deflist acc">
+          <li><b>precision · recall@horizon · lead-time</b><span>how much, how complete, and how early the findings are.</span></li>
+          <li><b>memory-unique findings</b><span>confirmed findings memory produced that memoryless didn't — the direct H1 evidence.</span></li>
+          <li><b>cost</b><span>tokens + wall-clock, reported at matched budget.</span></li>
+          <li><b>non-modifying invariant</b><span>100% of reports carry zero applied diffs.</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="kicker">Threats to validity</span>
+        <h3 style="font-size:16px">Named up front</h3>
+        <ul class="deflist">
+          <li><b>hindsight leakage</b><span>nothing after t reaches the sandbox or index — audited.</span></li>
+          <li><b>ground-truth incompleteness</b><span>recall is a lower bound (not every future fix is captured).</span></li>
+          <li><b>n = 1 repo · LLM nondeterminism</b><span>directional at one repo; fixed decoding + model-free signals.</span></li>
+          <li><b>invalid synthesized tests</b><span>the differential run separates “risk is real” from “test is broken.”</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="plan" class="reveal">
+    <span class="eyebrow">Schedule · one month</span>
+    <h2>Four milestones</h2>
+    <div class="miles" style="margin-top:18px">
+      <div class="mile"><span class="day">~day 7</span><div class="mid">M1</div><p>One cycle runs end-to-end in a per-cycle container; non-modifying audit passes.</p></div>
+      <div class="mile"><span class="day">~day 16</span><div class="mid">M2</div><p>Memory + graph-diff persist and are <i>used</i> across cycles; drift findings appear.</p></div>
+      <div class="mile"><span class="day">~day 21</span><div class="mid">M3</div><p>Replay harness yields precision / recall / lead-time / cost for one arm.</p></div>
+      <div class="mile"><span class="day">~day 27</span><div class="mid">M4</div><p>Memory-vs-memoryless headline number + threats + demo.</p></div>
+    </div>
+
+    <h3 style="margin:34px 0 12px">Six workstreams — filed as sub-issues</h3>
+    <div class="ws">
+      <div class="wcard"><span class="wid">W1</span> · Graph-diff drift signal<p>the deterministic detector.</p></div>
+      <div class="wcard mine"><span class="wid">W2</span> · Repository memory <span class="mine-tag">the DB thread</span><p>schema, read/write, memoryless toggle, paged retrieval.</p></div>
+      <div class="wcard"><span class="wid">W3</span> · Investigate / reflect<p>test synthesis + reasoning trace.</p></div>
+      <div class="wcard"><span class="wid">W4</span> · Sandbox runtime + dispatch<p>the per-cycle container (spine).</p></div>
+      <div class="wcard"><span class="wid">W5</span> · Evaluation harness + ablation<p>replay, ground truth, metrics.</p></div>
+      <div class="wcard"><span class="wid">W6</span> · Write-up + demo<p>the paper.</p></div>
+    </div>
+    <p class="disclaim" style="margin-top:14px">Critical path: W4.1 → <b style="color:var(--accent-ink)">W4.3 (container)</b> → W1.1 → <b style="color:var(--mem)">W2.1 → W2.2/2.5</b> → W3.1 → W5.1 → W5.4.</p>
+  </section>
+
+  <section id="you" class="reveal">
+    <span class="lead-tag" style="margin-bottom:12px">◆ where you fit</span>
+    <h2>Own the memory layer as a research thread</h2>
+    <p class="prose">W2 isn't plumbing under the paper — it's the mechanism the result depends on. If memory
+      reads are naive, the memory arm just costs more without winning, and H1 has no signal. Design it well,
+      and “memory helps <i>at matched cost</i>” becomes true. Three knobs, all yours, all publishable:</p>
+    <div class="grid g3" style="margin-top:18px">
+      <div class="card"><span class="kicker" style="color:var(--mem)">storage</span><h3 style="font-size:16px">Versioned, delta-first</h3><p>store graph snapshots + findings as deltas, not full copies — incremental view maintenance, directly.</p></div>
+      <div class="card"><span class="kicker" style="color:var(--mem)">retrieval</span><h3 style="font-size:16px">Budget-bounded reads</h3><p>page / summarize a growing history into the model's context under a token budget. <b>The actual research question.</b></p></div>
+      <div class="card"><span class="kicker" style="color:var(--mem)">cost</span><h3 style="font-size:16px">The cost axis</h3><p>you own the <span class="mono">cycles</span> table → you own the “quality at a cost” number the headline is reported against.</p></div>
+    </div>
+    <div class="keys acc" style="margin-top:20px">
+      <div class="keyitem"><span class="kn">1</span><div><span class="kt">Enter via the incremental index-refresh work (#266)</span><span class="kd">It <i>is</i> step 2 (“refresh”) of the cycle — instant proof you're on the critical path.</span></div></div>
+      <div class="keyitem"><span class="kn">2</span><div><span class="kt">Lock scope + authorship up front</span><span class="kd">Claim W2 as an owned thread, in a DM, before building.</span></div></div>
+      <div class="keyitem"><span class="kn">3</span><div><span class="kt">Co-own a slice of the eval, and write the memory-layer section</span><span class="kd">The cost / lead-time curve. Being on a <i>result</i> — and writing the section — is what earns the name.</span></div></div>
+    </div>
+  </section>
+
+  <section id="read" class="reveal">
+    <span class="eyebrow">The reading path · 46 papers · 4 stages</span>
+    <h2>Read in this order</h2>
+    <p class="prose" id="read-note">Citation-verified (fresh web pass, July 2026) and arranged as a
+      <b>staged reading path</b> — follow the numbers. ★ = the must-reads of each stage. Preprint-only
+      items are marked; cite those as arXiv, not venue papers.</p>
+
+    <div class="stage">
+      <div class="stage-head"><span class="sno">Stage 1</span><h3>Foundations — how agents remember</h3><span class="sgoal">goal: speak the memory literature fluently</span></div>
+      <div class="papers">
+        <div class="paper"><span class="pt"><span class="no">01</span>Generative Agents: Interactive Simulacra of Human Behavior</span><span class="pm">Park et al. · UIST 2023 · arXiv:2304.03442</span><span class="pw">Where agent memory began — memory stream + recency/importance/relevance retrieval + reflection.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">02</span>MemGPT: Towards LLMs as Operating Systems</span><span class="pm">Packer et al. · arXiv:2310.08560 · 2023 (preprint)</span><span class="pw">OS-like paging of a bounded context against an unbounded external store — the pattern your per-commit store extends.</span></div>
+        <div class="paper"><span class="pt"><span class="no">03</span>Reflexion: Language Agents with Verbal Reinforcement Learning</span><span class="pm">Shinn et al. · NeurIPS 2023 · arXiv:2303.11366</span><span class="pw">Episodic self-reflection that improves later trials — the germ of the "memory helps over time" claim H1 tests.</span></div>
+        <div class="paper"><span class="pt"><span class="no">04</span>Cognitive Architectures for Language Agents (CoALA)</span><span class="pm">Sumers et al. · TMLR 2024 · arXiv:2309.02427</span><span class="pw">The memory taxonomy (working / episodic / semantic / procedural) — position your layer with this vocabulary.</span></div>
+        <div class="paper"><span class="pt"><span class="no">05</span>Retrieval-Augmented Generation for Knowledge-Intensive NLP</span><span class="pm">Lewis et al. · NeurIPS 2020 · arXiv:2005.11401</span><span class="pw">Parametric vs non-parametric memory — your SQLite/graph store is the non-parametric half.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">06</span>Lost in the Middle: How LMs Use Long Contexts</span><span class="pm">Liu et al. · TACL 2024 · arXiv:2307.03172</span><span class="pw">Why budgeted retrieval is load-bearing: you can't just dump memory into context.</span></div>
+        <div class="paper"><span class="pt"><span class="no">07</span>MemoryBank: Enhancing LLMs with Long-Term Memory</span><span class="pm">Zhong et al. · AAAI 2024 · arXiv:2305.10250</span><span class="pw">A concrete retention/forgetting policy (Ebbinghaus-style) to cite or contrast.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">08</span>A-MEM: Agentic Memory for LLM Agents</span><span class="pm">Xu et al. · NeurIPS 2025 · arXiv:2502.12110</span><span class="pw">Self-linking structured memory notes — nearest analogue to a findings/symbols/edges store kept queryable across cycles.</span></div>
+        <div class="paper"><span class="pt"><span class="no">09</span>Mem0: Scalable Long-Term Memory for AI Agents</span><span class="pm">Chhikara et al. · ECAI 2025 · arXiv:2504.19413</span><span class="pw">Extract→consolidate→retrieve with explicit token-cost/latency benchmarking — the most systems-flavored memory paper.</span></div>
+        <div class="paper"><span class="pt"><span class="no">10</span>LoCoMo: Evaluating Very Long-Term Conversational Memory</span><span class="pm">Maharana et al. · ACL 2024 · arXiv:2402.17753</span><span class="pw">The benchmark every memory system reports on — its temporal/causal QA design is a template for "what changed between cycles" evals.</span></div>
+        <div class="paper"><span class="pt"><span class="no">11</span>LongMemEval</span><span class="pm">Wu et al. · ICLR 2025 · arXiv:2410.10813</span><span class="pw">Benchmarks exactly your failure modes — temporal reasoning, stale-fact updates, abstention; its index/retrieve/read split maps onto your schema.</span></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head"><span class="sno">Stage 2</span><h3>The system you're building against</h3><span class="sgoal">goal: know the coding-agent + test-synthesis landscape</span></div>
+      <div class="papers">
+        <div class="paper"><span class="pt"><span class="no">12</span>SWE-bench: Can LMs Resolve Real-World GitHub Issues?</span><span class="pm">Jimenez et al. · ICLR 2024 (oral) · arXiv:2310.06770</span><span class="pw">The canonical repo-level eval from real issues + PRs — your future-history ground truth is built the same way.</span></div>
+        <div class="paper"><span class="pt"><span class="no">13</span>SWE-agent: Agent-Computer Interfaces Enable Automated SWE</span><span class="pm">Yang et al. · NeurIPS 2024 · arXiv:2405.15793</span><span class="pw">The agent-environment interface drives performance — relevant to how Guardian tools read/write memory.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">14</span>Agentless: Demystifying LLM-Based SWE Agents</span><span class="pm">Xia et al. · FSE 2025 (Distinguished Paper) · arXiv:2407.01489</span><span class="pw">Simple localize→repair→validate beats complex agents cheaply — the low-cost baseline your bounded-cost claim must beat.</span></div>
+        <div class="paper"><span class="pt"><span class="no">15</span>AutoCodeRover: Autonomous Program Improvement</span><span class="pm">Zhang et al. · ISSTA 2024 · arXiv:2404.05427</span><span class="pw">Structure-aware code search + spectrum-based fault localization.</span></div>
+        <div class="paper"><span class="pt"><span class="no">16</span>RepoCoder: Iterative Retrieval &amp; Generation over a Repo</span><span class="pm">Zhang et al. · EMNLP 2023 · arXiv:2303.12570</span><span class="pw">The canonical "RAG over a codebase" loop.</span></div>
+        <div class="paper"><span class="pt"><span class="no">17</span>CodeRAG-Bench: Can Retrieval Augment Code Generation?</span><span class="pm">Wang et al. · Findings of NAACL 2025 · arXiv:2406.14497</span><span class="pw">How retrieval quality affects code generation — for evaluating your retrieval layer directly.</span></div>
+        <div class="paper"><span class="pt"><span class="no">18</span>LocAgent: Graph-Guided LLM Agents for Code Localization</span><span class="pm">Chen et al. · ACL 2025 · arXiv:2503.09089 · named in #309</span><span class="pw">Heterogeneous dependency graph for multi-hop localization — the retrieval substrate your graph-memory serves.</span></div>
+        <div class="paper"><span class="pt"><span class="no">19</span>CoSIL: Issue Localization via Iterative Code Graph Searching</span><span class="pm">Jiang et al. · ASE 2025 · arXiv:2503.22424 · named in #309</span><span class="pw">Index-free call-graph search with context pruning — a budget-aware counterpoint to precomputed indexes.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">20</span>RepoAudit: Autonomous Repo-Level Code Auditing</span><span class="pm">Guo et al. · ICML 2025 · arXiv:2501.18160 · named in #309</span><span class="pw">Non-modifying, memory-equipped repo auditor — the closest existing system to the Guardian's stance.</span></div>
+        <div class="paper"><span class="pt"><span class="no">21</span>SWT-Bench: Testing &amp; Validating Real-World Bug-Fixes</span><span class="pm">Mündler et al. · NeurIPS 2024 · arXiv:2406.12952 · named in #309</span><span class="pw">Issues → reproducing tests — validates the "synthesize a test that exposes the risk" mechanism.</span></div>
+        <div class="paper"><span class="pt"><span class="no">22</span>Otter: Generating Tests from Issues (+ e-Otter++)</span><span class="pm">Ahmed et al. · ICML 2025 · arXiv:2502.05368 · follow-up ICSE 2026: arXiv:2508.06365</span><span class="pw">The current SOTA recipe for issue→fail-to-pass reproduction tests (+ TDD-Bench Verified).</span></div>
+        <div class="paper"><span class="pt"><span class="no">23</span>TestGenEval</span><span class="pm">Jain et al. · ICLR 2025 · arXiv:2410.00752</span><span class="pw">Execution-based unit-test benchmark with coverage + mutation metrics — closest to maintaining suites over history.</span></div>
+        <div class="paper"><span class="pt"><span class="no">24</span>Mutation-Guided LLM Test Generation at Meta (ACH)</span><span class="pm">Foster et al. · FSE 2025 Industry · arXiv:2501.12862</span><span class="pw">"Synthesize the fault you fear, then the test that catches it," deployed at scale — the hardening-against-regression mechanism.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">25</span>SWE-bench Goes Live! (SWE-bench-Live)</span><span class="pm">Zhang et al. · NeurIPS 2025 D&amp;B · arXiv:2505.23419</span><span class="pw">Monthly-updated, contamination-resistant stream of per-repo issues — a natural substrate for longitudinal memory-vs-memoryless eval.</span></div>
+        <div class="paper"><span class="pt"><span class="no">26</span>SWE-CI: Evaluating Agents on Maintaining Codebases via CI</span><span class="pm">Chen et al. · arXiv:2603.03823 · 2026 (preprint)</span><span class="pw">100 tasks over evolving repos (~71 consecutive commits) — the closest existing eval to persistent cycle-based monitoring.</span></div>
+        <div class="paper"><span class="pt"><span class="no">27</span>TEBench: Breaking, Stale, or Missing?</span><span class="pm">Shang et al. · arXiv:2605.06125 · 2026 (preprint)</span><span class="pw">First project-level test-evolution benchmark — the exact gap a history-aware test-synthesis agent targets.</span></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head"><span class="sno">Stage 3</span><h3>Your DB / systems edge</h3><span class="sgoal">goal: the storage &amp; cost contribution nobody else on the team brings</span></div>
+      <div class="papers">
+        <div class="paper star"><span class="pt"><span class="no">28</span>Maintenance of Materialized Views</span><span class="pm">Gupta &amp; Mumick · IEEE Data Eng. Bull. 18(2) · 1995</span><span class="pw">Per-commit graph snapshots ARE materialized views over git history — incremental-vs-recompute is your bounded-cost thesis in DB terms.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">29</span>AeonG: Built-in Temporal Support in Graph Databases</span><span class="pm">Hou et al. · PVLDB 17(6) 2024 · arXiv:2304.12212</span><span class="pw">Anchor + delta graph versioning — the DB blueprint for per-commit snapshots (full anchors at intervals, diffs between).</span></div>
+        <div class="paper"><span class="pt"><span class="no">30</span>SPFresh: Incremental In-Place Updates for Vector Search</span><span class="pm">Xu et al. · SOSP 2023</span><span class="pw">Background: keeping ANN indexes fresh in place under updates.</span></div>
+        <div class="paper"><span class="pt"><span class="no">31</span>Quake: Adaptive Indexing for Vector Search</span><span class="pm">Mohoney et al. · OSDI 2025 · arXiv:2506.03437</span><span class="pw">SOTA for index freshness under continuous updates — no full rebuilds as the repo evolves.</span></div>
+        <div class="paper"><span class="pt"><span class="no">32</span>SGLang / RadixAttention</span><span class="pm">Zheng et al. · NeurIPS 2024 · arXiv:2312.07104</span><span class="pw">Prefix KV-cache sharing — the serving-side half of "re-reading memory each cycle is cheap."</span></div>
+        <div class="paper star"><span class="pt"><span class="no">33</span>CacheBlend: Fast RAG Serving with Cached Knowledge Fusion</span><span class="pm">Yao et al. · EuroSys 2025 (Best Paper) · arXiv:2405.16444</span><span class="pw">Non-prefix KV-cache reuse for RAG — makes re-injecting stored memory chunks per cycle cheap; core to "matched cost."</span></div>
+        <div class="paper"><span class="pt"><span class="no">34</span>Zep: A Temporal KG Architecture for Agent Memory (Graphiti)</span><span class="pm">Rasmussen et al. · arXiv:2501.13956 · 2025 (industry preprint)</span><span class="pw">Bi-temporal KG (event time vs ingestion time; edges invalidated, never deleted) — the pattern for commit-time vs agent-learned-time.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">35</span>Supporting Our AI Overlords: Agent-First Data Systems</span><span class="pm">Liu et al. · CIDR 2026 · arXiv:2509.00997</span><span class="pw">The DB community's framing for why agent state belongs inside the data system — your positioning paper for the systems contribution.</span></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head"><span class="sno">Stage 4</span><h3>The frontier — differentiate at ICLR</h3><span class="sgoal">goal: know exactly what's claimed, and what isn't</span></div>
+      <div class="papers">
+        <div class="paper"><span class="pt"><span class="no">36</span>HippoRAG: Neurobiologically Inspired Long-Term Memory</span><span class="pm">Jiménez Gutiérrez et al. · NeurIPS 2024 · arXiv:2405.14831</span><span class="pw">Graph-structured memory + PageRank retrieval.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">37</span>From RAG to Memory: Non-Parametric Continual Learning (HippoRAG 2)</span><span class="pm">Jiménez Gutiérrez et al. · ICML 2025 · arXiv:2502.14802</span><span class="pw">Strongest evidence that graph memory beats flat embedding RAG for accumulating knowledge — direct support for code-graph-as-memory.</span></div>
+        <div class="paper"><span class="pt"><span class="no">38</span>Memory OS of AI Agent (MemoryOS)</span><span class="pm">Kang et al. · EMNLP 2025 (oral) · arXiv:2506.06326</span><span class="pw">Three-tier short/mid/long-term storage with promotion policies — a template for tiering per-cycle scratch vs durable repo-profile records.</span></div>
+        <div class="paper"><span class="pt"><span class="no">39</span>MemOS: A Memory OS for AI System</span><span class="pm">Li et al. · arXiv:2507.03724 · 2025 (preprint)</span><span class="pw">"MemCube" abstraction with provenance + versioning metadata — closest analogue to versioned per-commit snapshots as first-class memory.</span></div>
+        <div class="paper"><span class="pt"><span class="no">40</span>Agent Workflow Memory</span><span class="pm">Wang et al. · ICML 2025 · arXiv:2409.07429</span><span class="pw">Induces reusable workflows from past trajectories — distill recurring analysis routines instead of re-deriving each cycle.</span></div>
+        <div class="paper"><span class="pt"><span class="no">41</span>Memp: Exploring Agent Procedural Memory</span><span class="pm">Fang et al. · Findings of ACL 2026 · arXiv:2508.06433</span><span class="pw">Build / retrieve / update lifecycle for procedural memory — how stored procedures stay fresh as the monitored repo drifts.</span></div>
+        <div class="paper"><span class="pt"><span class="no">42</span>SWE-Exp: Experience-Driven Software Issue Resolution</span><span class="pm">Chen et al. · arXiv:2507.23361 · 2025 (preprint)</span><span class="pw">Cross-issue "experience bank" lifts SWE-bench Verified Pass@1 to 73% — evidence accumulated experience beats trial-and-error.</span></div>
+        <div class="paper star"><span class="pt"><span class="no">43</span>SWE-Bench-CL: Continual Learning for Coding Agents</span><span class="pm">Joshi et al. · arXiv:2507.00014 · 2025 (preprint)</span><span class="pw">READ ADVERSARIALLY — the closest prior claim: chronological per-repo sequences, memory-enabled vs memory-disabled. Your paper must beat or clearly differ from this.</span></div>
+        <div class="paper"><span class="pt"><span class="no">44</span>Memory-Operations Survey for LLM Agents</span><span class="pm">Du et al. · arXiv:2505.00675 · 2025 (venue uncertain)</span><span class="pw">Maps the memory-operation design space — a checklist for what your layer does and doesn't do.</span></div>
+        <div class="paper"><span class="pt"><span class="no">45</span>SWE-Lancer</span><span class="pm">OpenAI · arXiv:2502.12115 · 2025 (preprint)</span><span class="pw">The cleanest "matched economic cost" framing — borrow it for the cost axis of H1.</span></div>
+        <div class="paper"><span class="pt"><span class="no">46</span>TestExplora: Proactive Repo-Level Bug Discovery</span><span class="pm">arXiv:2602.10471 · 2026 (preprint)</span><span class="pw">Proactive (unprompted) bug discovery — the test axis without memory; exactly half of what Guardian combines.</span></div>
+      </div>
+    </div>
+
+    <div class="callout reveal" style="margin-top:30px">
+      <span class="eyebrow">The open slot — why this is publishable</span>
+      <p style="color:var(--ink); margin:.4em 0 0">Nothing verified in this pass combines
+        <b>(a)</b> persistent cross-cycle memory, <b>(b)</b> compiler-precise per-commit graph snapshots, and
+        <b>(c)</b> test synthesis for <i>emerging</i> risk — under a matched-cost ablation.
+        SWE-Bench-CL, SWE-Exp, and SWE-CI each cover one axis; TEBench / TestExplora cover the test axis
+        without memory. <b>That intersection is the ICLR slot the Guardian targets — and the memory layer
+        (your thread) is the axis that makes it hold.</b></p>
+    </div>
+
+    <p class="disclaim" style="margin-top:16px">Verified July 2026. Venue updates since the first pass: Mem0 → ECAI 2025 · CoSIL → ASE 2025 · Agentless → FSE 2025 + Distinguished Paper. Preprint-marked items (MemGPT, MemOS, Zep, SWE-CI, TEBench, SWE-Exp, SWE-Bench-CL, SWE-Lancer, TestExplora, Du survey) have no confirmed peer-reviewed venue — cite as arXiv.</p>
+  </section>
+
+  <footer>
+    Repository Guardian · explainer for issue #309 · CodeMiner · sysevol-ai<br>
+    Built from the design spec. Diagrams and the baseline ladder are illustrative; the numbers are the project's to measure.
+  </footer>
+</main>
+
+<script>
+  (function(){
+    var root=document.documentElement, tg=document.getElementById('tg');
+    function cur(){ return root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); }
+    tg.addEventListener('click', function(){ root.setAttribute('data-theme', cur()==='dark'?'light':'dark'); });
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+      var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}})},{threshold:.12});
+      document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});
+    } else { document.querySelectorAll('.reveal').forEach(function(el){el.classList.add('in')}); }
+  })();
+</script>
