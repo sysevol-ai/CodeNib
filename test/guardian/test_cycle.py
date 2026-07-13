@@ -70,21 +70,6 @@ def test_run_cycle_with_injected_manifest(tmp_path):
     assert "non-modifying" in md.lower()
 
 
-def test_run_cycle_injected_reporter_narrative_flows_through(tmp_path):
-    """Injected reporter's narrative appears in Finding and rendered Markdown."""
-    repo = _make_repo(tmp_path)
-
-    def fake_reporter(hotspot):
-        return f"LLM says {hotspot.path} is risky."
-
-    config = GuardianConfig(repo_path=str(repo), since="10 years ago")
-    report = run_cycle(config, reporter=fake_reporter, manifest=_FakeManifest())
-
-    assert report.findings[0].narrative == "LLM says mod.py is risky."
-    md = render_markdown(report)
-    assert "LLM Analysis" in md
-    assert "LLM says mod.py is risky." in md
-
 
 @pytest.mark.slow
 def test_run_cycle_use_llm_flag_calls_litellm(tmp_path):
@@ -126,10 +111,7 @@ def test_run_cycle_use_llm_flag_calls_litellm(tmp_path):
         llm_max_tool_rounds=1,
     )
 
-    with patch(
-        "codeminer.guardian.llm_investigator._read_hotspot_file",
-        return_value="def f():\n    return 0\n",
-    ), patch("litellm.completion", side_effect=side_effects):
+    with patch("litellm.completion", side_effect=side_effects):
         report = run_cycle(config, manifest=_FakeManifest())
 
     assert report.findings
@@ -191,8 +173,6 @@ def test_run_cycle_test_failure_llm_narrative(tmp_path):
     )
 
     with patch(
-        "codeminer.guardian.llm_investigator._read_hotspot_file", return_value=""
-    ), patch(
         "codeminer.guardian.llm_investigator.read_file", return_value="def test_run(): pass\n"
     ), patch(
         "codeminer.guardian.cycle.run_test_suite", return_value=fake_result
@@ -235,17 +215,14 @@ class TestCycleMemoryIntegration:
         repo = _make_repo(tmp_path)
         memory_dir = str(tmp_path / "memory")
 
-        def fake_reporter(hotspot):
-            return f"LLM: {hotspot.path} is risky."
-
         config = GuardianConfig(
             repo_path=str(repo),
             since="10 years ago",
             memory_dir=memory_dir,
             graph_snapshot=False,
         )
-        run_cycle(config, reporter=fake_reporter, manifest=_FakeManifest())
-        run_cycle(config, reporter=fake_reporter, manifest=_FakeManifest())
+        run_cycle(config, manifest=_FakeManifest())
+        run_cycle(config, manifest=_FakeManifest())
 
         from codeminer.guardian.memory import MemoryStore
         store = MemoryStore(memory_dir)
@@ -360,7 +337,6 @@ def test_cycle_budget_stops_early(tmp_path):
         repo_path=str(repo),
         since="10 years ago",
         use_llm=True,
-        use_investigator=True,
         budget_tokens=0,
     )
 
@@ -404,7 +380,6 @@ def test_cycle_probe_trace_in_report(tmp_path):
         repo_path=str(repo),
         since="10 years ago",
         use_llm=True,
-        use_investigator=True,
     )
 
     def _resp(content):

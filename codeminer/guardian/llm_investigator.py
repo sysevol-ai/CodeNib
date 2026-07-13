@@ -4,27 +4,21 @@
 
 """LLM-driven investigation step for Repository Guardian.
 
-Two public entry points:
+Public entry points:
 
-* :func:`investigate_with_llm` — churn signal: reads the hotspot file directly
-  and runs the agentic loop.
 * :func:`investigate_signal` — generic entry point for any signal type; caller
   supplies a pre-built context string (see :func:`build_test_failure_context`).
-
-Both share the same ``_agentic_loop`` core: the LLM may call ``search_code``
-repeatedly before producing a final plain-text narrative.
+* :func:`_agentic_loop` — shared tool-use loop (search_code tool).
 """
 
 from __future__ import annotations
 
 import json
 import os
-import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
 from ..log_utils import get_logger
-from .signals import Hotspot
 
 if TYPE_CHECKING:
     from ..llm.litellm_chat import LiteLLMChat
@@ -88,24 +82,6 @@ _SEARCH_TOOL = {
 # System prompts
 # ---------------------------------------------------------------------------
 
-_CHURN_SYSTEM_PROMPT = (
-    "You are Repository Guardian, a proactive code-health monitor. "
-    "You receive the full source of a high-churn file together with its recent commit history. "
-    "Your job is to investigate the file's role in the codebase thoroughly before drawing conclusions. "
-    "\n\n"
-    "Investigate iteratively using search_code:\n"
-    "- Search for the file's key symbols (classes, functions, constants) to find callers and usages.\n"
-    "- Follow leads: if a search result looks interesting, search for *that* symbol next.\n"
-    "- Look for tests, related modules, and downstream consumers in other files.\n"
-    "- Keep searching until you have evidence from multiple locations, not just the hotspot file itself.\n"
-    "- Only stop and write your final answer when you are confident you understand the risk.\n"
-    "\n"
-    "Final answer format (plain text, no JSON or Markdown):\n"
-    "(1) The specific risk, grounded in what you found across files.\n"
-    "(2) At least two concrete symbols or locations as evidence.\n"
-    "(3) A specific, actionable recommendation."
-)
-
 _TEST_FAILURE_SYSTEM_PROMPT = (
     "You are Repository Guardian, a proactive code-health monitor. "
     "You receive details about a failing test. "
@@ -140,65 +116,6 @@ def read_file(path: str, max_lines: int = FILE_CONTENT_MAX_LINES) -> str:
         return "".join(lines)
     kept = "".join(lines[:max_lines])
     return kept + f"\n... ({len(lines) - max_lines} more lines truncated)"
-
-
-def _read_hotspot_file(hotspot: Hotspot, repo_path: str) -> str:
-    full_path = os.path.join(repo_path, hotspot.path) if repo_path else hotspot.path
-    return read_file(full_path)
-
-
-def _git_log_for_file(
-    path: str, repo_path: str, since: str, max_commits: int = 20
-) -> str:
-    """Return one-line git log for *path* within *repo_path* since *since*."""
-    try:
-        result = subprocess.run(
-            [
-                "git", "log", "--follow", "--oneline",
-                f"--since={since}",
-                "--", path,
-            ],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        lines = result.stdout.strip().splitlines()
-        if not lines:
-            return ""
-        if len(lines) > max_commits:
-            lines = lines[:max_commits] + [f"... ({len(lines) - max_commits} more)"]
-        return "\n".join(lines)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("llm_investigator: git log failed for %s: %s", path, exc)
-        return ""
-
-
-# ---------------------------------------------------------------------------
-# Observation builders
-# ---------------------------------------------------------------------------
-
-
-def _observation_text(
-    hotspot: Hotspot, since: str, file_content: str, commit_log: str = ""
-) -> str:
-    lines = [
-        f"File: {hotspot.path}",
-        f"Churn: {hotspot.commit_count} commits over {since}",
-        "",
-    ]
-    if commit_log:
-        lines += ["Recent commits:", commit_log, ""]
-    if file_content:
-        lines += [f"Source ({hotspot.path}):", "```", file_content.rstrip(), "```", ""]
-    else:
-        lines += ["(file could not be read)", ""]
-    lines.append(
-        "Investigate using search_code. Search for key symbols, follow callers across files, "
-        "look for tests and related modules. Keep searching until you have evidence from "
-        "multiple locations. When you are confident you understand the risk, write your analysis."
-    )
-    return "\n".join(lines)
 
 
 def build_test_failure_context(
@@ -452,60 +369,6 @@ def _agentic_loop(
     except Exception as exc:  # noqa: BLE001
         logger.warning("llm_investigator: final call failed: %s", exc)
         return f"(LLM investigation unavailable: {exc})"
-
-
-# ---------------------------------------------------------------------------
-# Public entry points
-# ---------------------------------------------------------------------------
-
-
-def investigate_with_llm(
-    hotspot: Hotspot,
-    retriever: object,
-    *,
-    repo_path: str = "",
-    since: str = "90 days ago",
-    llm: "LiteLLMChat",
-    max_tool_rounds: int = 3,
-    top_k: int = 5,
-    usage_acc: Optional[LLMUsage] = None,
-) -> str:
-    """Run the LLM agentic loop to investigate a churn hotspot.
-
-    Reads the hotspot file directly and passes its source to the model.
-    """
-    file_content = _read_hotspot_file(hotspot, repo_path)
-    if file_content:
-        logger.debug(
-            "llm_investigator: read %d chars from %s", len(file_content), hotspot.path
-        )
-    else:
-        logger.warning("llm_investigator: could not read %s", hotspot.path)
-
-    commit_log = _git_log_for_file(hotspot.path, repo_path, since) if repo_path else ""
-    if commit_log:
-        logger.debug(
-            "llm_investigator: %d commit log lines for %s",
-            len(commit_log.splitlines()),
-            hotspot.path,
-        )
-
-    messages: List[dict] = [
-        {"role": "system", "content": _CHURN_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": _observation_text(hotspot, since, file_content, commit_log),
-        },
-    ]
-    return _agentic_loop(
-        messages,
-        retriever,
-        llm=llm,
-        max_tool_rounds=max_tool_rounds,
-        top_k=top_k,
-        usage_acc=usage_acc,
-        repo_path=repo_path,
-    )
 
 
 def investigate_signal(

@@ -17,7 +17,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable, Generator, List, Optional, Sequence
+from typing import Generator, List, Optional, Sequence
 
 from ..log_utils import get_logger
 from .investigate import investigate_hotspot
@@ -25,10 +25,6 @@ from .report import Finding, GuardianReport
 from .signals import Hotspot, TestFailure, churn_hotspots, run_test_suite
 
 logger = get_logger(__name__)
-
-# Callable that produces an LLM narrative for a hotspot.
-# Returns an empty string to signal "no narrative" (e.g. LLM disabled/unavailable).
-Reporter = Callable[[Hotspot], str]
 
 
 @dataclass
@@ -54,7 +50,6 @@ class GuardianConfig:
     arm: str = "memory"                # "memory" | "memoryless" ablation toggle
     graph_snapshot: bool = True        # save CodeGraph snapshot each cycle for next diff
     # Investigator sub-agent controls
-    use_investigator: bool = True      # route churn investigation through inner agent loop
     budget_tokens: int = 100_000       # total-token ceiling across all investigator calls
     max_investigator_rounds: int = 8   # max probe rounds per hypothesis
 
@@ -224,36 +219,6 @@ def _make_llm(config: GuardianConfig) -> object:
     return LiteLLMChat(model=config.llm_model, temperature=0.0, max_tokens=1024)
 
 
-def _llm_reporter(
-    config: GuardianConfig,
-    retriever: object,
-    llm: object,
-    usage_acc: object,
-) -> Reporter:
-    """Return a Reporter that runs the LLM agentic loop for each churn hotspot."""
-    from .llm_investigator import investigate_with_llm
-
-    def _report(hotspot: Hotspot) -> str:
-        try:
-            return investigate_with_llm(
-                hotspot,
-                retriever,
-                repo_path=config.repo_path,
-                since=config.since,
-                llm=llm,  # type: ignore[arg-type]
-                max_tool_rounds=config.llm_max_tool_rounds,
-                top_k=config.retrieval_top_k,
-                usage_acc=usage_acc,  # type: ignore[arg-type]
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "Guardian: LLM reporter failed for %s: %s", hotspot.path, exc
-            )
-            return ""
-
-    return _report
-
-
 def _infer_source_from_nodeid(nodeid: str, repo_path: str) -> str:
     """Heuristic: map test/pkg/test_module.py::test_foo → codeminer/pkg/module.py."""
     import re
@@ -317,28 +282,24 @@ def _investigate_test_failure(
 def run_cycle(
     config: GuardianConfig,
     *,
-    reporter: Optional[Reporter] = None,
     manifest: object = None,
 ) -> GuardianReport:
     """Run one Guardian cycle and return a (non-modifying) report.
 
     Args:
         config: Cycle configuration.
-        reporter: Override the LLM narrative callable (for tests). When omitted,
-            a LiteLLM-backed reporter is built iff ``config.use_llm`` is True.
         manifest: Pre-built RepoManifest to reuse instead of compiling (tests).
 
     Returns:
         A :class:`GuardianReport` ready to render.
     """
     with _episode_log_handler(config.episode_dir):
-        return _run_cycle_inner(config, reporter=reporter, manifest=manifest)
+        return _run_cycle_inner(config, manifest=manifest)
 
 
 def _run_cycle_inner(
     config: GuardianConfig,
     *,
-    reporter: Optional[Reporter] = None,
     manifest: object = None,
 ) -> GuardianReport:
     repo_path = config.repo_path
@@ -477,14 +438,8 @@ def _run_cycle_inner(
 
     # 5. Investigate — hypothesis-ordered: findings appear in hypothesis-rank order
     #    so the memory arm's LLM reranking is visible in the report.
-    #    BM25-only cycles produce churn findings with evidence; LLM cycles add narrative.
-    # When use_investigator=True (default) and reporter is not injected, churn hypotheses
-    # are investigated via run_investigator (inner agent loop).  The old _llm_reporter
-    # path is kept for use_investigator=False so existing callers that set use_llm=True
-    # but opt out of the inner loop still work.
-    if reporter is None and _llm is not None and not config.use_investigator:
-        reporter = _llm_reporter(config, _retriever, _llm, _usage_acc)
-
+    #    BM25-only cycles produce churn findings with evidence; LLM cycles use
+    #    run_investigator (inner agent loop) to add narrative + probe trace.
     _hotspot_by_path = {h.path: h for h in hotspots}
     _churn_hypotheses = [h for h in _hypotheses if h.kind == "churn"]
 
@@ -501,27 +456,7 @@ def _run_cycle_inner(
             f"Changed in **{hotspot.commit_count}** commits over "
             f"{config.since}."
         )
-        if reporter is not None:
-            # Injected reporter (tests) or explicit use_investigator=False path.
-            narrative = reporter(hotspot)
-            logger.info(
-                "Guardian investigate — %s: narrative %s",
-                hotspot.path, "produced" if narrative else "empty",
-            )
-            if not narrative:
-                continue
-            findings.append(
-                Finding(
-                    kind="churn",
-                    title=f"High-churn file: {hotspot.path}",
-                    detail=detail,
-                    evidence=[],
-                    narrative=narrative,
-                    hypothesis=hyp.statement,
-                    verdict="confirmed",
-                )
-            )
-        elif _llm is not None and config.use_investigator:
+        if _llm is not None:
             # Inner agent loop path: spawn investigator sub-agent per hypothesis.
             from .investigator import WorktreeSandbox, run_investigator
 
@@ -608,25 +543,7 @@ def _run_cycle_inner(
             f"Changed in **{hotspot.commit_count}** commits over "
             f"{config.since}."
         )
-        if reporter is not None:
-            narrative = reporter(hotspot)
-            logger.info(
-                "Guardian investigate — %s: narrative %s",
-                hotspot.path, "produced" if narrative else "empty",
-            )
-            if not narrative:
-                continue
-            findings.append(
-                Finding(
-                    kind="churn",
-                    title=f"High-churn file: {hotspot.path}",
-                    detail=detail,
-                    evidence=[],
-                    narrative=narrative,
-                    verdict="confirmed",
-                )
-            )
-        elif _llm is not None and config.use_investigator:
+        if _llm is not None:
             from .investigator import WorktreeSandbox, run_investigator
 
             budget_ok = (
