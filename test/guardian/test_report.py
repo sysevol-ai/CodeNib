@@ -4,8 +4,7 @@
 
 """Unit tests for codeminer.guardian.report rendering."""
 
-from codeminer.guardian.investigate import Evidence
-from codeminer.guardian.report import Finding, GuardianReport, render_markdown
+from codeminer.guardian.report import Evidence, Finding, GuardianReport, render_markdown
 
 
 def _sample_report():

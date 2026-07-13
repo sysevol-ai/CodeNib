@@ -4,7 +4,8 @@
 
 """Unit tests for codeminer.guardian.investigate (fake retriever, no embeddings)."""
 
-from codeminer.guardian.investigate import Evidence, hotspot_query, investigate_hotspot
+from codeminer.guardian.report import Evidence
+from codeminer.guardian.investigator.probes import hotspot_query, investigate_hotspot
 from codeminer.guardian.signals import Hotspot
 
 

@@ -8,7 +8,7 @@ import os
 import pytest
 
 from codeminer.graph.code_graph import CodeGraph
-from codeminer.guardian.graph_diff import (
+from codeminer.guardian.signals.graph_diff import (
     DriftSignal,
     EdgeChange,
     compute_drift_signals,

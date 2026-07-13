@@ -106,7 +106,7 @@ class TestPersistCycle:
         assert cycles[0]["has_graph"] == 0
 
     def test_token_cost_stored(self, tmp_path):
-        from codeminer.guardian.llm_investigator import LLMUsage
+        from codeminer.guardian.investigator import LLMUsage
         usage = LLMUsage()
         usage.prompt_tokens = 100
         usage.completion_tokens = 50
@@ -212,7 +212,7 @@ class TestEdgeDrift:
         assert store.edge_drift(since_cycle=1) == []
 
     def test_persisted_edges_returned(self, tmp_path):
-        from codeminer.guardian.graph_diff import EdgeChange
+        from codeminer.guardian.signals.graph_diff import EdgeChange
         store = MemoryStore(str(tmp_path))
         no = store.persist_cycle(_make_report("c1"))
         changes = [EdgeChange(

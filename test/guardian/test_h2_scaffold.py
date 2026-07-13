@@ -53,7 +53,7 @@ def _churn_finding(path, hypothesis="risky change", verdict="confirmed"):
 
 
 def _drift_finding(path, symbol="Foo"):
-    from codeminer.guardian.investigate import Evidence
+    from codeminer.guardian.report import Evidence
     return Finding(
         kind="drift",
         title=f"Fan-in spike: {symbol}",

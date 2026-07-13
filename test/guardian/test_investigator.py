@@ -33,7 +33,7 @@ def _make_hypothesis(
     rank=1,
     confidence=0.75,
 ):
-    from codeminer.guardian.hypothesize import Hypothesis
+    from codeminer.guardian.orchestrator import Hypothesis
     return Hypothesis(
         rank=rank,
         target=target,
@@ -200,7 +200,7 @@ class TestWorktreeSandbox:
 
 class TestRunInvestigatorBudget:
     def test_budget_already_exhausted_returns_inconclusive(self):
-        from codeminer.guardian.llm_investigator import LLMUsage
+        from codeminer.guardian.investigator import LLMUsage
         hyp = _make_hypothesis()
         llm = MagicMock()
         sandbox = _fake_sandbox()
@@ -386,7 +386,7 @@ class TestRunInvestigatorErrors:
         assert result.tokens_used == 30
 
     def test_usage_acc_shared_across_calls(self):
-        from codeminer.guardian.llm_investigator import LLMUsage
+        from codeminer.guardian.investigator import LLMUsage
         hyp = _make_hypothesis()
         tc = _make_tool_call("c1", "retrieve_evidence", query="q")
         side_effects = [

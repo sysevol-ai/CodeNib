@@ -13,6 +13,9 @@ investigation candidate.  Two entry points:
 * :func:`heuristic_hypotheses` — pure deterministic fallback: rank by commit
   count (churn) with drift signals appended at a fixed score.  Used when no LLM
   is available or ``arm="memoryless"``.
+
+Moved from codeminer.guardian.hypothesize (flat module) into the orchestrator/
+sub-package; relative imports updated accordingly.
 """
 
 from __future__ import annotations
@@ -21,11 +24,11 @@ import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
-from ..log_utils import get_logger
+from ...log_utils import get_logger
 
 if TYPE_CHECKING:
-    from .llm_investigator import LLMUsage
-    from .signals import DriftSignal, Hotspot
+    from ..investigator import LLMUsage
+    from ..signals import DriftSignal, Hotspot
 
 logger = get_logger(__name__)
 
@@ -107,7 +110,7 @@ def _build_hypothesize_prompt(
     parts.append("")
     parts.append("=== MEMORY (prior findings, most recent first) ===")
     if prior_findings:
-        from .memory import format_findings_for_prompt
+        from ..memory import format_findings_for_prompt
 
         parts.append(format_findings_for_prompt(prior_findings, max_findings=max_prior))
     else:

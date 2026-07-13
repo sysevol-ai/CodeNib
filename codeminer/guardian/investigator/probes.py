@@ -9,7 +9,7 @@ They are all pure functions of their arguments — no global state, no direct
 LLM calls (the LLM writes the test source itself; see ``synthesize_test``).
 
 ``dispatch_advanced_probe`` is the single entry point imported by
-``investigator.py``; it maps tool names to the appropriate probe function and
+``runner.py``; it maps tool names to the appropriate probe function and
 returns a ``(observation_text, ProbeRecord)`` pair matching the contract
 expected by ``_dispatch_tool`` in the investigator loop.
 
@@ -20,17 +20,104 @@ Corroboration policy (§3.3c):
     (a) fix_probe FAIL→PASS flip, or
     (b) differential_run PASS→FAIL across snapshots
   must hold before a verdict of "confirmed" is admissible.
+
+Also contains the former codeminer.guardian.investigate functions
+(hotspot_query, investigate_hotspot, Evidence) and the read_file
+utility from codeminer.guardian.llm_investigator, all moved here for
+co-location with the rest of the probe toolset.
 """
 
 from __future__ import annotations
 
+import os
 import re
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List, Optional, Protocol, Sequence, Tuple
 
-from ..log_utils import get_logger
-from .investigator import ProbeRecord, SandboxHandle
+from ...log_utils import get_logger
+from ..report import Evidence
+from ..signals import Hotspot
+from .runner import ProbeRecord, _run_search
+from .sandbox import SandboxHandle
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# File reader utility  (from llm_investigator.py)
+# ---------------------------------------------------------------------------
+
+FILE_CONTENT_MAX_LINES = 150
+
+
+def read_file(path: str, max_lines: int = FILE_CONTENT_MAX_LINES) -> str:
+    """Read a file and return its content, truncated to ``max_lines``."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        logger.warning("probes: cannot read %s: %s", path, exc)
+        return ""
+    if len(lines) <= max_lines:
+        return "".join(lines)
+    kept = "".join(lines[:max_lines])
+    return kept + f"\n... ({len(lines) - max_lines} more lines truncated)"
+
+
+# ---------------------------------------------------------------------------
+# Hotspot investigate utilities  (from investigate.py)
+# ---------------------------------------------------------------------------
+
+
+class _Retriever(Protocol):
+    """Minimal surface Guardian needs from a retrieval pipeline."""
+
+    def query(self, query: str, top_k: Optional[int] = ...) -> Sequence: ...
+
+
+def hotspot_query(hotspot: Hotspot) -> str:
+    """Build a natural-language retrieval query from a hotspot path.
+
+    Uses the file stem plus its parent directory so BM25 has identifier-like
+    keywords to latch onto (e.g. ``"runner agent"`` for ``agent/runner.py``).
+    """
+    stem = os.path.splitext(os.path.basename(hotspot.path))[0]
+    parent = os.path.basename(os.path.dirname(hotspot.path))
+    keywords = " ".join(t for t in (stem, parent) if t)
+    return f"code in {hotspot.path} ({keywords})"
+
+
+def investigate_hotspot(
+    hotspot: Hotspot,
+    retriever: _Retriever,
+    *,
+    top_k: int = 5,
+) -> List[Evidence]:
+    """Return up to ``top_k`` evidence locations for a hotspot.
+
+    Degrades gracefully: if retrieval raises (e.g. an index failed to build),
+    we log and return an empty list rather than aborting the whole cycle.
+    """
+    query = hotspot_query(hotspot)
+    try:
+        nodes = retriever.query(query, top_k=top_k)
+    except Exception as exc:  # noqa: BLE001 — a bad query must not kill the cycle
+        logger.warning("investigate_hotspot: retrieval failed for %s: %s", query, exc)
+        return []
+
+    evidence: List[Evidence] = []
+    for n in nodes or []:
+        evidence.append(
+            Evidence(
+                file=getattr(n, "file", None) or "",
+                node_name=getattr(n, "node_name", "") or "",
+                type=getattr(n, "type", "") or "",
+                start_line=getattr(n, "start_line", None),
+                end_line=getattr(n, "end_line", None),
+                score=getattr(n, "score", None),
+            )
+        )
+    return evidence
+
 
 # ---------------------------------------------------------------------------
 # retrieve_evidence
@@ -50,7 +137,6 @@ def retrieve_evidence(
     Returns ``(observation_text, result_dict)`` where ``observation_text``
     is what the LLM receives as the tool result.
     """
-    from .llm_investigator import _run_search
     text = _run_search(query, retriever, top_k, repo_path)
     return text, {"query": query, "top_k": top_k, "result": text}
 
@@ -161,10 +247,10 @@ def synthesize_test(
         slug=_slug(symbol),
     )
     obs = (
-        f"Scaffold for '{target_symbol}' (import validated ✓):\n\n"
+        f"Scaffold for '{target_symbol}' (import validated):\n\n"
         f"```python\n{scaffold}```\n\n"
         f"Task: {description}\n\n"
-        f"Fill in the test body (keep it ≤{_SYNTH_MAX_LINES} lines) and call "
+        f"Fill in the test body (keep it <= {_SYNTH_MAX_LINES} lines) and call "
         f"run_synthesized_test with the complete source."
     )
     return obs, {"valid": True, "target_symbol": target_symbol, "scaffold": scaffold}
@@ -279,7 +365,7 @@ def fix_probe(
     flip = "FAIL→PASS" if result["passed"] is True else (
         "FAIL→FAIL (still red after fix)" if result["passed"] is False else "INVALID"
     )
-    obs = f"fix_probe: patch applied ✓  |  test result: {flip}\n{result['output'][-1500:]}"
+    obs = f"fix_probe: patch applied  |  test result: {flip}\n{result['output'][-1500:]}"
     return obs, {"patch_applied": True, **result}
 
 
@@ -318,7 +404,7 @@ def differential_run(
     is_regression = prior_passed is True and current_passed is False
 
     if is_regression:
-        direction = "PASS→FAIL ✓ regression confirmed in this interval"
+        direction = "PASS→FAIL regression confirmed in this interval"
     elif prior_passed is False and current_passed is False:
         direction = "FAIL→FAIL (pre-existing failure, not a new regression)"
     elif prior_passed is True and current_passed is True:
@@ -380,7 +466,7 @@ def corroboration_policy(
 
 
 # ---------------------------------------------------------------------------
-# dispatch_advanced_probe  (entry point for investigator.py)
+# dispatch_advanced_probe  (entry point for runner.py)
 # ---------------------------------------------------------------------------
 
 
@@ -394,7 +480,7 @@ def dispatch_advanced_probe(
     """Dispatch synthesize_test / run_synthesized_test / fix_probe tool calls.
 
     Returns ``(observation_text, ProbeRecord)`` matching the contract expected
-    by ``_dispatch_tool`` in ``investigator.py``.
+    by ``_dispatch_tool`` in ``runner.py``.
 
     ``synth_test_store`` is the mutable list the investigator loop uses to
     carry the most recently synthesized test source across calls.
@@ -434,7 +520,7 @@ def dispatch_advanced_probe(
             passed=result.get("passed"),
         )
 
-    # Unknown advanced probe — should not happen since investigator guards _TOOL_NAMES.
+    # Unknown advanced probe — should not happen since runner guards _TOOL_NAMES.
     msg = f"(dispatch_advanced_probe: unknown tool '{tool_name}')"
     return msg, ProbeRecord(
         tool=tool_name,

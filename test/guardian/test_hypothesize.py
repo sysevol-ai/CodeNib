@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.guardian.hypothesize import (
+from codeminer.guardian.orchestrator import (
     Hypothesis,
     heuristic_hypotheses,
     hypothesize,
@@ -80,7 +80,7 @@ class TestHeuristicHypotheses:
         assert heuristic_hypotheses([]) == []
 
     def test_drift_signals_appended_after_churn(self):
-        from codeminer.guardian.graph_diff import DriftSignal
+        from codeminer.guardian.signals.graph_diff import DriftSignal
 
         spots = _hotspots(("a.py", 5))
         drift = [DriftSignal(kind="fan_in_spike", symbol="sym", file="b.py",
@@ -143,7 +143,7 @@ class TestHypothesizeLLM:
         assert llm._call_raw.call_count == 1
 
     def test_usage_acc_is_updated(self):
-        from codeminer.guardian.llm_investigator import LLMUsage
+        from codeminer.guardian.investigator import LLMUsage
 
         spots = _hotspots(("a.py", 10))
         llm = _mock_llm(_valid_json_response(self._well_formed()[:1]))

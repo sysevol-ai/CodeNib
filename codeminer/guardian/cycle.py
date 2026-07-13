@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Generator, List, Optional, Sequence
 
 from ..log_utils import get_logger
-from .investigate import investigate_hotspot
+from .investigator import investigate_hotspot
 from .report import Finding, GuardianReport
 from .signals import Hotspot, TestFailure, churn_hotspots, run_test_suite
 
@@ -250,7 +250,7 @@ def _investigate_test_failure(
     usage_acc: object = None,
 ) -> str:
     """Run the LLM agentic loop for a single failing test."""
-    from .llm_investigator import build_test_failure_context, investigate_signal, read_file
+    from .investigator import build_test_failure_context, investigate_signal, read_file
 
     repo_path = config.repo_path
     test_file = failure.nodeid.split("::")[0]
@@ -351,7 +351,7 @@ def _run_cycle_inner(
     if _prior_graph is not None:
         _current_graph = _load_current_graph(manifest)
         if _current_graph is not None:
-            from .graph_diff import compute_drift_signals, diff_graphs
+            from .signals.graph_diff import compute_drift_signals, diff_graphs
             _edge_changes = diff_graphs(_prior_graph, _current_graph)  # type: ignore[arg-type]
             _drift_signals = compute_drift_signals(
                 _edge_changes, _current_graph, _prior_graph  # type: ignore[arg-type]
@@ -379,12 +379,12 @@ def _run_cycle_inner(
     _llm: Optional[object] = None
     _usage_acc: Optional[object] = None
     if config.use_llm:
-        from .llm_investigator import LLMUsage
+        from .investigator import LLMUsage
 
         _llm = _make_llm(config)
         _usage_acc = LLMUsage()
 
-    from .hypothesize import Hypothesis, heuristic_hypotheses, hypothesize
+    from .orchestrator import Hypothesis, heuristic_hypotheses, hypothesize
 
     if _llm is not None and (hotspots or _drift_signals):
         _hypotheses: List[Hypothesis] = hypothesize(
@@ -563,7 +563,7 @@ def _run_cycle_inner(
                     )
                 )
             else:
-                from .hypothesize import Hypothesis
+                from .orchestrator import Hypothesis
 
                 _fb_hyp = Hypothesis(
                     rank=999,
@@ -618,7 +618,7 @@ def _run_cycle_inner(
 
     # Drift findings: structural analysis from graph-diff, kept as investigated findings.
     if _drift_signals:
-        from .graph_diff import drift_findings
+        from .signals.graph_diff import drift_findings
         findings.extend(drift_findings(_drift_signals))
 
     # Test failures: concrete run results; LLM investigation adds root-cause narrative.

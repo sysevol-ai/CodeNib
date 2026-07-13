@@ -14,6 +14,9 @@ three deterministic signals — no LLM involved:
 
 The signals are converted to Finding(kind="drift") objects by drift_findings()
 so the Guardian report pipeline sees them identically to churn findings.
+
+Moved from codeminer.guardian.graph_diff (flat module) into the signals/
+sub-package; relative imports updated accordingly.
 """
 
 from __future__ import annotations
@@ -23,12 +26,12 @@ import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, FrozenSet, List, Optional, Tuple
 
-from ..log_utils import get_logger
-from ..types import DEPENDENCY_EDGE_TYPES, EDGE_TYPE_CONTAIN, is_symbol_node
+from ...log_utils import get_logger
+from ...types import DEPENDENCY_EDGE_TYPES, EDGE_TYPE_CONTAIN, is_symbol_node
 
 if TYPE_CHECKING:
-    from ..graph.code_graph import CodeGraph
-    from .report import Finding
+    from ...graph.code_graph import CodeGraph
+    from ..report import Finding
 
 logger = get_logger(__name__)
 
@@ -61,7 +64,7 @@ def load_snapshot(memory_dir: str, commit: str) -> "Optional[CodeGraph]":
 
     Returns None if the snapshot does not exist.
     """
-    from ..graph.code_graph import CodeGraph
+    from ...graph.code_graph import CodeGraph
 
     path = _snapshot_path(memory_dir, commit)
     if not os.path.exists(path):
@@ -354,7 +357,7 @@ def compute_drift_signals(
 
 def drift_findings(signals: List[DriftSignal]) -> "List[Finding]":
     """Convert DriftSignal list to guardian Finding objects for the report."""
-    from .report import Finding
+    from ..report import Finding
 
     findings = []
     for sig in signals:

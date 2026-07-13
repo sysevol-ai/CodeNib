@@ -173,7 +173,7 @@ def test_run_cycle_test_failure_llm_narrative(tmp_path):
     )
 
     with patch(
-        "codeminer.guardian.llm_investigator.read_file", return_value="def test_run(): pass\n"
+        "codeminer.guardian.investigator.read_file", return_value="def test_run(): pass\n"
     ), patch(
         "codeminer.guardian.cycle.run_test_suite", return_value=fake_result
     ), patch(
@@ -260,7 +260,7 @@ class TestCycleMemoryIntegration:
         from unittest.mock import patch as _patch
 
         from codeminer.graph.code_graph import CodeGraph
-        from codeminer.guardian.graph_diff import DriftSignal
+        from codeminer.guardian.signals.graph_diff import DriftSignal
         from codeminer.types import EDGE_TYPE_REFERENCE
 
         repo = _make_repo(tmp_path)

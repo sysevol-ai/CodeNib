@@ -100,7 +100,7 @@ def graph_diff_only(
         return []
 
     try:
-        from codeminer.guardian.graph_diff import (
+        from codeminer.guardian.signals.graph_diff import (
             compute_drift_signals,
             diff_graphs,
             drift_findings,

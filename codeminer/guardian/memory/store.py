@@ -13,6 +13,9 @@ cross-cycle state:
 The ``readonly=True`` flag implements the ``--arm memoryless`` toggle: all reads
 return empty / None, all writes are no-ops, so the same code path runs in both
 arms and the only difference is what the reflect step receives.
+
+Moved from codeminer.guardian.memory (flat module) into the memory/
+sub-package; relative imports updated accordingly.
 """
 
 from __future__ import annotations
@@ -24,11 +27,11 @@ import sqlite3
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Generator, List, Optional
 
-from ..log_utils import get_logger
+from ...log_utils import get_logger
 
 if TYPE_CHECKING:
-    from ..graph.code_graph import CodeGraph
-    from .report import GuardianReport
+    from ...graph.code_graph import CodeGraph
+    from ..report import GuardianReport
 
 logger = get_logger(__name__)
 
@@ -197,7 +200,7 @@ class MemoryStore:
         has_graph = 0
         if graph is not None:
             try:
-                from .graph_diff import save_snapshot
+                from ..signals.graph_diff import save_snapshot
                 save_snapshot(graph, mdir, report.commit)
                 has_graph = 1
                 logger.info("memory: saved graph snapshot for %s", report.commit[:12])
@@ -284,7 +287,7 @@ class MemoryStore:
                 return None
             commit = row["commit_sha"]
             mdir = memory_dir or self._dir
-            from .graph_diff import load_snapshot
+            from ..signals.graph_diff import load_snapshot
             graph = load_snapshot(mdir, commit)
             if graph is not None:
                 logger.info("memory: loaded prior graph for commit %s", commit[:12])

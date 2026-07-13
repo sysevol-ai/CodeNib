@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.guardian.probes import (
+from codeminer.guardian.investigator.probes import (
     _check_self_mocking,
     _parse_target_symbol,
     corroboration_policy,

@@ -14,8 +14,22 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
-from .investigate import Evidence
-from .llm_investigator import LLMUsage
+
+@dataclass
+class Evidence:
+    """A single ranked code location supporting a finding."""
+
+    file: str
+    node_name: str
+    type: str
+    start_line: Optional[int]
+    end_line: Optional[int]
+    score: Optional[float]
+
+
+# LLMUsage is imported after Evidence is defined to avoid circular import:
+# report → investigator → probes → report (Evidence already defined at this point)
+from .investigator import LLMUsage  # noqa: E402
 
 
 @dataclass

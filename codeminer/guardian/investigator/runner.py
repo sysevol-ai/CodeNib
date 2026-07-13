@@ -2,52 +2,405 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Investigator sub-agent — the inner agent loop for Repository Guardian.
+"""Investigator runner: inner agent loop + LLM investigation utilities.
 
-The orchestrator spawns one :func:`run_investigator` call per committed
-hypothesis.  It is a true tool-use agent loop (not a fixed pipeline): the
-sub-agent chooses which probe to run next based on what prior probes returned,
-and stops when it reaches a conclusive verdict or the per-cycle token budget
-is exhausted.
+Merges the content of the former codeminer.guardian.investigator (minus
+SandboxHandle/WorktreeSandbox, which moved to sandbox.py) with the former
+codeminer.guardian.llm_investigator.
 
-Tool dispatch:
-  - ``retrieve_evidence``    — query the retrieval pipeline for relevant spans
-  - ``run_existing_test``    — run an existing pytest pattern in the sandbox
-  - ``synthesize_test``      — write a new targeted test that exposes the risk
-  - ``run_synthesized_test`` — execute the synthesized test in the sandbox
-  - ``fix_probe``            — minimal reversal of the suspected cause; check
-                               that the synthesized test flips to green
-
-Corroboration policy (enforced by system prompt; verified by probes.py in
-Hour 2): a single red synthesized test is NOT sufficient to confirm a
-hypothesis — a differential run (PASS→FAIL across snapshots) or a fix-probe
-(FAIL→PASS on a minimal revert) is required before marking "confirmed".
-
-``SandboxHandle`` and ``WorktreeSandbox`` live here so the loop can dispatch
-probes without importing the full probes module.  Hour 2 (``probes.py``)
-implements the complex probe functions; Hour 3 wires them into the dispatch
-table below.
+Public entry points:
+* :func:`run_investigator` — inner tool-use agent loop (probe → observe → decide).
+* :func:`investigate_signal` — generic LLM agentic loop for any signal type.
+* :func:`build_test_failure_context` — build the user-message for a failing test.
+* :class:`LLMUsage` — token usage accumulator.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
-import subprocess
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Protocol, Tuple, runtime_checkable
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from ..log_utils import get_logger
-from .llm_investigator import LLMUsage, _run_search
+from ...log_utils import get_logger
+from .sandbox import SandboxHandle
 
 if TYPE_CHECKING:
-    from ..llm.litellm_chat import LiteLLMChat
-    from .hypothesize import Hypothesis
+    from ...llm.litellm_chat import LiteLLMChat
+    from ..orchestrator import Hypothesis
 
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Result dataclasses
+# Token usage accumulator  (from llm_investigator.py)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LLMUsage:
+    """Token counts accumulated across all LLM calls in one Guardian cycle."""
+
+    prompt_tokens: int = field(default=0)
+    completion_tokens: int = field(default=0)
+    total_tokens: int = field(default=0)
+
+    def add(self, response: object) -> None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        self.prompt_tokens += getattr(usage, "prompt_tokens", 0) or 0
+        self.completion_tokens += getattr(usage, "completion_tokens", 0) or 0
+        self.total_tokens += getattr(usage, "total_tokens", 0) or 0
+
+
+# ---------------------------------------------------------------------------
+# Tool schema — search_code (from llm_investigator.py)
+# ---------------------------------------------------------------------------
+
+_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_code",
+        "description": (
+            "Search the codebase for code relevant to a query using BM25 "
+            "keyword matching. Returns matching symbol names and file locations. "
+            "Use this to find callers, related modules, or tests in other files."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Keyword or identifier query — e.g. a function name you "
+                        "want to find callers of, or a concept like 'language registry'."
+                    ),
+                }
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+# ---------------------------------------------------------------------------
+# System prompts  (from llm_investigator.py)
+# ---------------------------------------------------------------------------
+
+_TEST_FAILURE_SYSTEM_PROMPT = (
+    "You are Repository Guardian, a proactive code-health monitor. "
+    "You receive details about a failing test. "
+    "Your job is to trace the root cause through the codebase before concluding. "
+    "\n\n"
+    "Investigate iteratively using search_code:\n"
+    "- Search for the failing symbol or assertion to find the implementation.\n"
+    "- Follow leads: search for related helpers, fixtures, or recently changed code.\n"
+    "- Keep searching until you understand *why* the test fails, not just *where*.\n"
+    "- Only stop and write your final answer when you have traced the root cause.\n"
+    "\n"
+    "Final answer format (plain text, no JSON or Markdown):\n"
+    "(1) Root cause of the failure, traced through code.\n"
+    "(2) The specific failing assertion or symbol, with evidence from your searches.\n"
+    "(3) A concrete fix recommendation."
+)
+
+# ---------------------------------------------------------------------------
+# File content utilities  (from llm_investigator.py)
+# ---------------------------------------------------------------------------
+
+FILE_CONTENT_MAX_LINES = 150
+_CONTENT_MAX_LINES = 50
+
+
+def _node_content(n: object, repo_path: str) -> str:
+    """Return the source snippet for a result node.
+
+    Uses the pre-embedded ``content`` field when available; falls back to
+    reading lines ``start_line``..``end_line`` (0-based) from disk.
+    """
+    content = getattr(n, "content", None)
+    if content:
+        return content.strip()
+
+    file = getattr(n, "file", None)
+    start = getattr(n, "start_line", None)
+    end = getattr(n, "end_line", None)
+    if not file or start is None:
+        return ""
+
+    full_path = (
+        os.path.join(repo_path, file)
+        if repo_path and not os.path.isabs(file)
+        else file
+    )
+    try:
+        with open(full_path, encoding="utf-8", errors="replace") as fh:
+            all_lines = fh.readlines()
+        sl = max(0, start)
+        el = min(len(all_lines), (end if end is not None else start) + 1)
+        snippet = all_lines[sl:el]
+        if len(snippet) > _CONTENT_MAX_LINES:
+            snippet = snippet[:_CONTENT_MAX_LINES] + [
+                f"... ({len(all_lines[sl:el]) - _CONTENT_MAX_LINES} more lines)\n"
+            ]
+        return "".join(snippet).strip()
+    except OSError:
+        return ""
+
+
+def _run_search(query: str, retriever: object, top_k: int, repo_path: str = "") -> str:
+    try:
+        nodes = retriever.query(query, top_k=top_k)  # type: ignore[union-attr]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("llm_investigator search failed: %s", exc)
+        return f"(search error: {exc})"
+
+    parts: List[str] = []
+    for n in nodes or []:
+        file = getattr(n, "file", "?") or "?"
+        name = getattr(n, "node_name", "?") or "?"
+        typ = getattr(n, "type", "?") or "?"
+        line = getattr(n, "start_line", None)
+        score = getattr(n, "score", None)
+        loc = f"{file}:{line}" if line is not None else file
+        score_str = f"{score:.3f}" if isinstance(score, float) else "—"
+        header = f"{loc} | {name} ({typ}) | score={score_str}"
+        snippet = _node_content(n, repo_path)
+        if snippet:
+            parts.append(f"{header}\n```\n{snippet}\n```")
+        else:
+            parts.append(header)
+    return "\n\n".join(parts) if parts else "(no results)"
+
+
+# ---------------------------------------------------------------------------
+# LLM agentic loop utilities  (from llm_investigator.py)
+# ---------------------------------------------------------------------------
+
+
+def _format_messages(messages: List[dict]) -> str:
+    """Render a messages list as readable plain text for debug logging."""
+    parts: List[str] = []
+    for msg in messages:
+        role = msg.get("role", "?")
+        content = msg.get("content") or ""
+        tool_calls = msg.get("tool_calls")
+        tool_call_id = msg.get("tool_call_id")
+
+        if role == "tool":
+            parts.append(f"[tool_result: {tool_call_id}]\n{content}")
+        elif tool_calls:
+            tc_lines = []
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                tc_lines.append(f"  {fn.get('name')}  {fn.get('arguments')}")
+            parts.append(f"[{role} → tool_calls]\n" + "\n".join(tc_lines))
+        else:
+            parts.append(f"[{role}]\n{content}")
+    return "\n\n".join(parts)
+
+
+def _log_usage(response: object, label: str) -> None:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    logger.debug(
+        "agentic_loop: %s usage: prompt=%d completion=%d total=%d",
+        label,
+        getattr(usage, "prompt_tokens", 0) or 0,
+        getattr(usage, "completion_tokens", 0) or 0,
+        getattr(usage, "total_tokens", 0) or 0,
+    )
+
+
+def _agentic_loop(
+    messages: List[dict],
+    retriever: object,
+    *,
+    llm: "LiteLLMChat",
+    max_tool_rounds: int,
+    top_k: int,
+    usage_acc: Optional[LLMUsage] = None,
+    repo_path: str = "",
+) -> str:
+    """Run the tool-use loop until the model produces a final answer."""
+    for round_idx in range(max_tool_rounds + 1):
+        use_tools = round_idx < max_tool_rounds
+        kwargs: dict = {}
+        if use_tools:
+            kwargs["tools"] = [_SEARCH_TOOL]
+            kwargs["tool_choice"] = "auto"
+
+        logger.debug(
+            "agentic_loop: round=%d calling LLM with %d message(s):\n%s",
+            round_idx,
+            len(messages),
+            _format_messages(messages),
+        )
+
+        try:
+            response = llm._call_raw(messages, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "llm_investigator: LLM call failed (round %d): %s", round_idx, exc
+            )
+            return f"(LLM investigation unavailable: {exc})"
+
+        _log_usage(response, f"round={round_idx}")
+        if usage_acc is not None:
+            usage_acc.add(response)
+
+        msg = response.choices[0].message
+        tool_calls = getattr(msg, "tool_calls", None) or []
+
+        if not tool_calls:
+            logger.debug(
+                "agentic_loop: round=%d final_answer:\n%s",
+                round_idx,
+                msg.content or "",
+            )
+            return (msg.content or "").strip()
+
+        logger.debug(
+            "agentic_loop: round=%d tool_calls:\n%s",
+            round_idx,
+            json.dumps(
+                [
+                    {
+                        "id": tc.id,
+                        "function": tc.function.name,
+                        "args": tc.function.arguments,
+                    }
+                    for tc in tool_calls
+                ],
+                indent=2,
+            ),
+        )
+        messages.append(
+            {
+                "role": "assistant",
+                "content": msg.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in tool_calls
+                ],
+            }
+        )
+        for tc in tool_calls:
+            try:
+                args = json.loads(tc.function.arguments)
+            except json.JSONDecodeError:
+                args = {}
+            query = args.get("query", "")
+            result = _run_search(query, retriever, top_k, repo_path)
+            logger.debug(
+                "agentic_loop: tool_result query=%r:\n%s", query, result
+            )
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+
+    try:
+        response = llm._call_raw(messages)
+        _log_usage(response, "round=final(forced)")
+        if usage_acc is not None:
+            usage_acc.add(response)
+        return (response.choices[0].message.content or "").strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("llm_investigator: final call failed: %s", exc)
+        return f"(LLM investigation unavailable: {exc})"
+
+
+def build_test_failure_context(
+    nodeid: str,
+    error: str,
+    *,
+    test_content: str = "",
+    source_content: str = "",
+    source_path: str = "",
+) -> str:
+    """Build the LLM user-message for a failing test.
+
+    Args:
+        nodeid: Pytest node id, e.g. ``"test/guardian/test_cycle.py::test_foo"``.
+        error: Failure message / short traceback from pytest output.
+        test_content: Full source of the test file (truncated by caller).
+        source_content: Full source of the inferred source file (optional).
+        source_path: Relative path of the source file (for display).
+
+    Returns:
+        Plain-text context string ready to be placed in the ``user`` role.
+    """
+    lines = [f"Failing test: {nodeid}", ""]
+    if error:
+        lines += ["Error:", "```", error[:1200].rstrip(), "```", ""]
+    if test_content:
+        test_file = nodeid.split("::")[0]
+        lines += [f"Test source ({test_file}):", "```python", test_content.rstrip(), "```", ""]
+    if source_content and source_path:
+        lines += [
+            f"Source under test ({source_path}):",
+            "```python",
+            source_content.rstrip(),
+            "```",
+            "",
+        ]
+    lines.append(
+        "Investigate why this test is failing. Use search_code to find related "
+        "implementation code if needed. Explain the root cause and recommend a fix."
+    )
+    return "\n".join(lines)
+
+
+def investigate_signal(
+    context: str,
+    retriever: object,
+    *,
+    system_prompt: str = _TEST_FAILURE_SYSTEM_PROMPT,
+    llm: "LiteLLMChat",
+    max_tool_rounds: int = 3,
+    top_k: int = 5,
+    usage_acc: Optional[LLMUsage] = None,
+    repo_path: str = "",
+) -> str:
+    """Run the LLM agentic loop with a caller-supplied context string.
+
+    Use :func:`build_test_failure_context` (or a custom builder) to construct
+    ``context``.  The same ``search_code`` tool is available to the model.
+
+    Args:
+        context: Full user-message describing the signal to investigate.
+        retriever: Duck-typed retriever with ``.query(str, top_k=int) -> list``.
+        system_prompt: Override the default test-failure system prompt.
+        llm: A :class:`~codeminer.llm.litellm_chat.LiteLLMChat` instance.
+        max_tool_rounds: Max search rounds before forcing a final answer.
+        top_k: Results per search query.
+
+    Returns:
+        Plain-text narrative from the LLM.
+    """
+    messages: List[dict] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": context},
+    ]
+    return _agentic_loop(
+        messages,
+        retriever,
+        llm=llm,
+        max_tool_rounds=max_tool_rounds,
+        top_k=top_k,
+        usage_acc=usage_acc,
+        repo_path=repo_path,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Investigator result dataclasses  (from investigator.py)
 # ---------------------------------------------------------------------------
 
 VALID_VERDICTS = frozenset({"confirmed", "rejected", "inconclusive"})
@@ -94,69 +447,7 @@ class InvestigatorResult:
 
 
 # ---------------------------------------------------------------------------
-# Sandbox protocol + WorktreeSandbox
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class SandboxHandle(Protocol):
-    """Minimal interface the investigator needs to run things in the sandbox."""
-
-    repo_path: str
-
-    def run_command(
-        self, cmd: List[str], *, timeout: int = 60
-    ) -> Tuple[int, str]: ...
-
-    def write_file(self, rel_path: str, content: str) -> None: ...
-
-    def read_file(self, rel_path: str) -> str: ...
-
-
-@dataclass
-class WorktreeSandbox:
-    """Sandbox backed by a plain git worktree directory on the host.
-
-    The investigator writes test files and runs commands directly in the
-    worktree.  This is the ``--sandbox worktree`` debug mode; the container
-    sandbox (Hour 5) wraps the same interface.
-    """
-
-    repo_path: str
-
-    def run_command(self, cmd: List[str], *, timeout: int = 60) -> Tuple[int, str]:
-        try:
-            result = subprocess.run(
-                cmd,
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            output = (result.stdout + "\n" + result.stderr).strip()
-            return result.returncode, output
-        except subprocess.TimeoutExpired:
-            return 1, f"(command timed out after {timeout}s)"
-        except Exception as exc:  # noqa: BLE001
-            return 1, f"(command error: {exc})"
-
-    def write_file(self, rel_path: str, content: str) -> None:
-        full_path = os.path.join(self.repo_path, rel_path)
-        os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
-        with open(full_path, "w", encoding="utf-8") as fh:
-            fh.write(content)
-
-    def read_file(self, rel_path: str) -> str:
-        full_path = os.path.join(self.repo_path, rel_path)
-        try:
-            with open(full_path, encoding="utf-8", errors="replace") as fh:
-                return fh.read()
-        except OSError:
-            return ""
-
-
-# ---------------------------------------------------------------------------
-# Tool schemas (OpenAI/litellm format)
+# Tool schemas (OpenAI/litellm format) — for the investigator loop
 # ---------------------------------------------------------------------------
 
 TOOLS = [
@@ -287,7 +578,7 @@ TOOLS = [
 _TOOL_NAMES = {t["function"]["name"] for t in TOOLS}
 
 # ---------------------------------------------------------------------------
-# System prompt
+# Investigator system prompt
 # ---------------------------------------------------------------------------
 
 _SYSTEM = """\
@@ -389,10 +680,10 @@ def _dispatch_run_existing(args: dict, sandbox: SandboxHandle) -> Tuple[str, Pro
 
 
 def _dispatch_stub(tool_name: str, args: dict) -> Tuple[str, ProbeRecord]:
-    """Placeholder for probes not yet implemented (filled in by probes.py Hour 2)."""
+    """Placeholder for probes not yet implemented (filled in by probes.py)."""
     msg = (
         f"(tool '{tool_name}' is not yet implemented in this build; "
-        "install codeminer/guardian/probes.py to enable it)"
+        "install codeminer/guardian/investigator/probes.py to enable it)"
     )
     return msg, ProbeRecord(
         tool=tool_name,
@@ -454,7 +745,7 @@ def run_investigator(
     the orchestrator's context — and returns an :class:`InvestigatorResult`.
 
     Args:
-        hypothesis: The :class:`~codeminer.guardian.hypothesize.Hypothesis` to
+        hypothesis: The :class:`~codeminer.guardian.orchestrator.Hypothesis` to
             investigate.
         llm: A :class:`~codeminer.llm.litellm_chat.LiteLLMChat` instance.
         retriever: Duck-typed retrieval pipeline with ``.query(str, top_k=int)``.

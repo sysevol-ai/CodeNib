@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.guardian.llm_investigator import build_test_failure_context, investigate_signal
+from codeminer.guardian.investigator import build_test_failure_context, investigate_signal
 from codeminer.llm.litellm_chat import LiteLLMChat
 
 # ---------------------------------------------------------------------------
