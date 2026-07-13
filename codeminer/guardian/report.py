@@ -39,6 +39,7 @@ class Finding:
     verdict: str = ""
     evidence_test: str = ""
     evidence_diff: str = ""
+    reasoning_trace: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -137,6 +138,12 @@ def render_markdown(report: GuardianReport) -> str:
             L.append("")
         if finding.verdict:
             L.append(f"**Verdict:** {finding.verdict}")
+            L.append("")
+        if finding.reasoning_trace:
+            L.append("**Investigation trace:**")
+            L.append("")
+            for i, step in enumerate(finding.reasoning_trace, 1):
+                L.append(f"{i}. {step}")
             L.append("")
         if finding.narrative:
             L.append("**LLM Analysis:**")

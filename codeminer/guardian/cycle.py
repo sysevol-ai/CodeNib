@@ -53,6 +53,10 @@ class GuardianConfig:
     memory_dir: Optional[str] = None   # path to the memory store dir; None disables
     arm: str = "memory"                # "memory" | "memoryless" ablation toggle
     graph_snapshot: bool = True        # save CodeGraph snapshot each cycle for next diff
+    # Investigator sub-agent controls
+    use_investigator: bool = True      # route churn investigation through inner agent loop
+    budget_tokens: int = 100_000       # total-token ceiling across all investigator calls
+    max_investigator_rounds: int = 8   # max probe rounds per hypothesis
 
 
 def _current_commit(repo_path: str) -> str:
@@ -474,7 +478,11 @@ def _run_cycle_inner(
     # 5. Investigate — hypothesis-ordered: findings appear in hypothesis-rank order
     #    so the memory arm's LLM reranking is visible in the report.
     #    BM25-only cycles produce churn findings with evidence; LLM cycles add narrative.
-    if reporter is None and _llm is not None:
+    # When use_investigator=True (default) and reporter is not injected, churn hypotheses
+    # are investigated via run_investigator (inner agent loop).  The old _llm_reporter
+    # path is kept for use_investigator=False so existing callers that set use_llm=True
+    # but opt out of the inner loop still work.
+    if reporter is None and _llm is not None and not config.use_investigator:
         reporter = _llm_reporter(config, _retriever, _llm, _usage_acc)
 
     _hotspot_by_path = {h.path: h for h in hotspots}
@@ -493,22 +501,8 @@ def _run_cycle_inner(
             f"Changed in **{hotspot.commit_count}** commits over "
             f"{config.since}."
         )
-        if reporter is None:
-            evidence = investigate_hotspot(
-                hotspot,
-                _retriever,  # type: ignore[arg-type]
-                top_k=config.retrieval_top_k,
-            )
-            findings.append(
-                Finding(
-                    kind="churn",
-                    title=f"High-churn file: {hotspot.path}",
-                    detail=detail,
-                    evidence=evidence,
-                    hypothesis=hyp.statement,
-                )
-            )
-        else:
+        if reporter is not None:
+            # Injected reporter (tests) or explicit use_investigator=False path.
             narrative = reporter(hotspot)
             logger.info(
                 "Guardian investigate — %s: narrative %s",
@@ -525,6 +519,83 @@ def _run_cycle_inner(
                     narrative=narrative,
                     hypothesis=hyp.statement,
                     verdict="confirmed",
+                )
+            )
+        elif _llm is not None and config.use_investigator:
+            # Inner agent loop path: spawn investigator sub-agent per hypothesis.
+            from .investigator import WorktreeSandbox, run_investigator
+
+            budget_ok = (
+                _usage_acc is None
+                or _usage_acc.total_tokens < config.budget_tokens  # type: ignore[union-attr]
+            )
+            if not budget_ok:
+                logger.info(
+                    "Guardian: budget exhausted (%d/%d tokens); skipping investigator for %s",
+                    _usage_acc.total_tokens,  # type: ignore[union-attr]
+                    config.budget_tokens,
+                    hyp.target,
+                )
+                evidence = investigate_hotspot(
+                    hotspot,
+                    _retriever,  # type: ignore[arg-type]
+                    top_k=config.retrieval_top_k,
+                )
+                findings.append(
+                    Finding(
+                        kind="churn",
+                        title=f"High-churn file: {hotspot.path}",
+                        detail=detail,
+                        evidence=evidence,
+                        hypothesis=hyp.statement,
+                    )
+                )
+            else:
+                sandbox = WorktreeSandbox(config.repo_path)
+                inv_result = run_investigator(
+                    hyp,
+                    _llm,
+                    _retriever,
+                    sandbox,
+                    budget_tokens=config.budget_tokens,
+                    max_rounds=config.max_investigator_rounds,
+                    usage_acc=_usage_acc,
+                )
+                trace = [
+                    f"{p.tool}: {p.output_summary}" for p in inv_result.probe_trace
+                ]
+                logger.info(
+                    "Guardian investigate — %s: verdict=%s probes=%d",
+                    hotspot.path, inv_result.verdict, len(inv_result.probe_trace),
+                )
+                findings.append(
+                    Finding(
+                        kind="churn",
+                        title=f"High-churn file: {hotspot.path}",
+                        detail=detail,
+                        evidence=[],
+                        narrative=inv_result.reasoning,
+                        hypothesis=hyp.statement,
+                        verdict=inv_result.verdict,
+                        evidence_test=inv_result.evidence_test,
+                        evidence_diff=inv_result.evidence_diff,
+                        reasoning_trace=trace,
+                    )
+                )
+        else:
+            # No LLM configured — evidence-only.
+            evidence = investigate_hotspot(
+                hotspot,
+                _retriever,  # type: ignore[arg-type]
+                top_k=config.retrieval_top_k,
+            )
+            findings.append(
+                Finding(
+                    kind="churn",
+                    title=f"High-churn file: {hotspot.path}",
+                    detail=detail,
+                    evidence=evidence,
+                    hypothesis=hyp.statement,
                 )
             )
 
@@ -537,21 +608,7 @@ def _run_cycle_inner(
             f"Changed in **{hotspot.commit_count}** commits over "
             f"{config.since}."
         )
-        if reporter is None:
-            evidence = investigate_hotspot(
-                hotspot,
-                _retriever,  # type: ignore[arg-type]
-                top_k=config.retrieval_top_k,
-            )
-            findings.append(
-                Finding(
-                    kind="churn",
-                    title=f"High-churn file: {hotspot.path}",
-                    detail=detail,
-                    evidence=evidence,
-                )
-            )
-        else:
+        if reporter is not None:
             narrative = reporter(hotspot)
             logger.info(
                 "Guardian investigate — %s: narrative %s",
@@ -567,6 +624,78 @@ def _run_cycle_inner(
                     evidence=[],
                     narrative=narrative,
                     verdict="confirmed",
+                )
+            )
+        elif _llm is not None and config.use_investigator:
+            from .investigator import WorktreeSandbox, run_investigator
+
+            budget_ok = (
+                _usage_acc is None
+                or _usage_acc.total_tokens < config.budget_tokens  # type: ignore[union-attr]
+            )
+            if not budget_ok:
+                evidence = investigate_hotspot(
+                    hotspot, _retriever, top_k=config.retrieval_top_k  # type: ignore[arg-type]
+                )
+                findings.append(
+                    Finding(
+                        kind="churn",
+                        title=f"High-churn file: {hotspot.path}",
+                        detail=detail,
+                        evidence=evidence,
+                    )
+                )
+            else:
+                from .hypothesize import Hypothesis
+
+                _fb_hyp = Hypothesis(
+                    rank=999,
+                    target=hotspot.path,
+                    kind="churn",
+                    statement=(
+                        f"{hotspot.path} changed in {hotspot.commit_count} commits "
+                        f"over {config.since} and was not ranked by LLM hypothesize."
+                    ),
+                    confidence=0.0,
+                )
+                sandbox = WorktreeSandbox(config.repo_path)
+                inv_result = run_investigator(
+                    _fb_hyp,
+                    _llm,
+                    _retriever,
+                    sandbox,
+                    budget_tokens=config.budget_tokens,
+                    max_rounds=config.max_investigator_rounds,
+                    usage_acc=_usage_acc,
+                )
+                trace = [
+                    f"{p.tool}: {p.output_summary}" for p in inv_result.probe_trace
+                ]
+                findings.append(
+                    Finding(
+                        kind="churn",
+                        title=f"High-churn file: {hotspot.path}",
+                        detail=detail,
+                        evidence=[],
+                        narrative=inv_result.reasoning,
+                        verdict=inv_result.verdict,
+                        evidence_test=inv_result.evidence_test,
+                        evidence_diff=inv_result.evidence_diff,
+                        reasoning_trace=trace,
+                    )
+                )
+        else:
+            evidence = investigate_hotspot(
+                hotspot,
+                _retriever,  # type: ignore[arg-type]
+                top_k=config.retrieval_top_k,
+            )
+            findings.append(
+                Finding(
+                    kind="churn",
+                    title=f"High-churn file: {hotspot.path}",
+                    detail=detail,
+                    evidence=evidence,
                 )
             )
 

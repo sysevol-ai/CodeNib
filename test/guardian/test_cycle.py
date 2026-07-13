@@ -334,6 +334,110 @@ class TestCycleMemoryIntegration:
         assert any("fan_in_spike" in f.title for f in drift)
 
 
+def test_cycle_budget_stops_early(tmp_path):
+    """With budget_tokens=0 the investigator is skipped; finding falls to evidence-only."""
+    repo = _make_repo(tmp_path)
+
+    def _resp(content):
+        msg = MagicMock()
+        msg.content = content
+        msg.tool_calls = []
+        choice = MagicMock()
+        choice.message = msg
+        r = MagicMock()
+        r.choices = [choice]
+        r.usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+        return r
+
+    import json as _json
+
+    hyp_json = _json.dumps([{
+        "rank": 1, "target": "mod.py", "kind": "churn",
+        "statement": "mod.py is risky.", "confidence": 0.8, "memory_cited": [],
+    }])
+
+    config = GuardianConfig(
+        repo_path=str(repo),
+        since="10 years ago",
+        use_llm=True,
+        use_investigator=True,
+        budget_tokens=0,
+    )
+
+    # Only one LLM call (hypothesize); investigator must not call litellm at all.
+    with patch("litellm.completion", side_effect=[_resp(hyp_json)]):
+        report = run_cycle(config, manifest=_FakeManifest())
+
+    assert report.findings
+    finding = report.findings[0]
+    # Budget exhausted: fell back to evidence-only path, no narrative or trace.
+    assert finding.verdict == ""
+    assert finding.narrative == ""
+    assert finding.reasoning_trace == []
+
+
+def test_cycle_probe_trace_in_report(tmp_path):
+    """Probe trace from InvestigatorResult appears as a numbered list in the markdown."""
+    from codeminer.guardian.investigator import InvestigatorResult, ProbeRecord
+
+    repo = _make_repo(tmp_path)
+
+    fake_inv_result = InvestigatorResult(
+        verdict="confirmed",
+        reasoning="The function changed its return type.",
+        probe_trace=[
+            ProbeRecord(
+                tool="retrieve_evidence",
+                input_summary="mod.py callers",
+                output_summary="found 3 callers",
+            ),
+            ProbeRecord(
+                tool="run_existing_test",
+                input_summary="test_mod.py",
+                output_summary="FAIL: assert error",
+                passed=False,
+            ),
+        ],
+    )
+
+    config = GuardianConfig(
+        repo_path=str(repo),
+        since="10 years ago",
+        use_llm=True,
+        use_investigator=True,
+    )
+
+    def _resp(content):
+        msg = MagicMock()
+        msg.content = content
+        msg.tool_calls = []
+        choice = MagicMock()
+        choice.message = msg
+        r = MagicMock()
+        r.choices = [choice]
+        r.usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+        return r
+
+    with patch(
+        "codeminer.guardian.investigator.run_investigator", return_value=fake_inv_result
+    ), patch(
+        "litellm.completion", return_value=_resp("")
+    ):
+        report = run_cycle(config, manifest=_FakeManifest())
+
+    assert report.findings
+    finding = report.findings[0]
+    assert finding.verdict == "confirmed"
+    assert finding.reasoning_trace == [
+        "retrieve_evidence: found 3 callers",
+        "run_existing_test: FAIL: assert error",
+    ]
+    md = render_markdown(report)
+    assert "Investigation trace:" in md
+    assert "retrieve_evidence: found 3 callers" in md
+    assert "run_existing_test: FAIL: assert error" in md
+
+
 @pytest.mark.integration
 def test_run_cycle_end_to_end_bm25_only(tmp_path):
     """One real cycle: compile a BM25 index (no embeddings) and render a report."""
