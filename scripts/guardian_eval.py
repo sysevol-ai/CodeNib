@@ -378,6 +378,133 @@ def compare_arms(
 
 
 # ---------------------------------------------------------------------------
+# Baseline scoring
+# ---------------------------------------------------------------------------
+
+_BASELINE_CHOICES = ("churn", "graph_diff", "random", "oracle")
+
+
+def score_baseline_arm(
+    baseline_name: str,
+    episodes_dir: str,
+    repo_path: str,
+    *,
+    horizon_commits: int = 20,
+    top_k: int = 10,
+    ref: str = "HEAD",
+    since: str = "90 days ago",
+    seed: int = 42,
+    memory_dir: Optional[str] = None,
+) -> List[dict]:
+    """Score a deterministic baseline against the commits found in an episodes dir.
+
+    For each episode the commit SHA is read from ``report.json``; baseline
+    findings are computed fresh (or using the oracle GT) and scored with the
+    same precision@k / recall / lead-time logic as ``score_arm``.
+
+    Args:
+        baseline_name: One of ``"churn"``, ``"graph_diff"``, ``"random"``,
+            ``"oracle"``.
+        episodes_dir: Path to the episodes directory (commit SHAs come from here).
+        repo_path: Path to the git repository.
+        horizon_commits: Number of future commits for ground-truth extraction.
+        top_k: Findings to score (precision@k denominator).
+        ref: Upper-bound git ref for GT (e.g. ``"origin/main"``).
+        since: Churn window passed to ``churn_ranker`` (ignored for other baselines).
+        seed: RNG seed for ``random_baseline``.
+        memory_dir: Memory store path for ``graph_diff`` baseline.
+    """
+    import sys as _sys
+    import os as _os
+    _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+    if _script_dir not in _sys.path:
+        _sys.path.insert(0, _script_dir)
+
+    from guardian_baselines import (
+        churn_ranker,
+        get_tracked_files,
+        graph_diff_only,
+        oracle_baseline,
+        random_baseline,
+    )
+    from dataclasses import asdict
+
+    # Pre-compute baseline findings that are commit-independent (churn, random).
+    _churn_findings: Optional[List[dict]] = None
+    _random_findings: Optional[List[dict]] = None
+
+    if baseline_name == "churn":
+        _churn_findings = [asdict(f) for f in churn_ranker(repo_path, since=since, top_k=top_k)]
+    elif baseline_name == "random":
+        all_files = get_tracked_files(repo_path)
+        _random_findings = [asdict(f) for f in random_baseline(all_files, top_k=top_k, seed=seed)]
+    elif baseline_name == "graph_diff":
+        _gd_findings: Optional[List[dict]] = [
+            asdict(f) for f in graph_diff_only(repo_path, memory_dir=memory_dir, top_k=top_k)
+        ]
+
+    results: List[dict] = []
+    for ep_dir in _sorted_episode_dirs(episodes_dir):
+        report = load_episode_report(ep_dir)
+        if report is None:
+            continue
+        commit = report.get("commit", "")
+        if not commit:
+            continue
+
+        gt = post_t_changed_files(repo_path, commit, horizon_commits, ref=ref)
+        gt_files = set(gt.keys())
+
+        if baseline_name == "churn":
+            findings = _churn_findings or []
+        elif baseline_name == "random":
+            findings = _random_findings or []
+        elif baseline_name == "oracle":
+            findings = [asdict(f) for f in oracle_baseline(list(gt_files), top_k=top_k)]
+        elif baseline_name == "graph_diff":
+            findings = _gd_findings or []
+        else:
+            findings = []
+
+        finding_files: List[str] = []
+        for f in findings[:top_k]:
+            target = _extract_target_file(f)
+            if target and target not in finding_files:
+                finding_files.append(target)
+
+        if not gt_files:
+            results.append({
+                "commit": commit,
+                "precision_at_k": None,
+                "recall": None,
+                "lead_time_commits": None,
+                "n_findings": len(findings),
+                "n_gt_files": 0,
+                "token_cost": 0,
+            })
+            continue
+
+        hits = [f for f in finding_files if f in gt_files]
+        k_denom = min(top_k, max(1, len(finding_files)))
+        precision = len(hits) / k_denom
+        recall = len(hits) / len(gt_files)
+        lead_times = [gt[f] for f in hits if f in gt]
+        lead_time = min(lead_times) if lead_times else None
+
+        results.append({
+            "commit": commit,
+            "precision_at_k": round(precision, 3),
+            "recall": round(recall, 3),
+            "lead_time_commits": lead_time,
+            "n_findings": len(findings),
+            "n_gt_files": len(gt_files),
+            "token_cost": 0,
+        })
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -400,6 +527,24 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ref", default="HEAD",
                    help="Git ref used as the upper bound for post-t ground truth "
                         "(e.g. 'origin/main' to restrict GT to the main branch).")
+    p.add_argument(
+        "--baseline",
+        choices=_BASELINE_CHOICES,
+        default=None,
+        help=(
+            "Score a deterministic baseline instead of loading LLM findings from episodes. "
+            "One of: churn (churn-rank only), graph_diff (drift signals, no LLM), "
+            "random (random sample, floor), oracle (perfect predictor, ceiling). "
+            "Episode commit SHAs are still read from --episodes to match the same "
+            "evaluation points."
+        ),
+    )
+    p.add_argument("--since", default="90 days ago",
+                   help="Churn window for the 'churn' baseline.")
+    p.add_argument("--seed", type=int, default=42,
+                   help="RNG seed for the 'random' baseline.")
+    p.add_argument("--memory-dir", default=None,
+                   help="Memory store dir for the 'graph_diff' baseline.")
     return p
 
 
@@ -407,7 +552,28 @@ def main() -> None:
     args = _build_parser().parse_args()
     repo_path = os.path.abspath(args.repo)
 
-    if args.memoryless_episodes:
+    if args.baseline:
+        rows = score_baseline_arm(
+            args.baseline,
+            args.episodes,
+            repo_path,
+            horizon_commits=args.horizon,
+            top_k=args.top_k,
+            ref=args.ref,
+            since=args.since,
+            seed=args.seed,
+            memory_dir=args.memory_dir,
+        )
+        if not rows:
+            print("No episodes found or baseline produced no rows.", file=sys.stderr)
+            sys.exit(1)
+        print_single_arm(
+            rows,
+            top_k=args.top_k,
+            horizon_commits=args.horizon,
+            label=f"Baseline: {args.baseline}",
+        )
+    elif args.memoryless_episodes:
         compare_arms(
             args.episodes,
             args.memoryless_episodes,
