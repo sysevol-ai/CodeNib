@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -605,12 +606,19 @@ Corroboration policy — you MUST follow this:
 - "rejected" means the evidence actively contradicts the hypothesis.
 - "inconclusive" means evidence is unclear or budget ran out.
 
-End your final response with EXACTLY one of these lines (no extra punctuation):
+When writing synthesized tests, derive the import path from the file shown in
+retrieve_evidence results:
+  file: codeminer/agent/runner.py  →  from codeminer.agent.runner import <symbol>
+  file: codeminer/guardian/cycle.py  →  from codeminer.guardian.cycle import <symbol>
+Always call synthesize_test with a valid target_symbol before calling
+run_synthesized_test — synthesize_test validates the import for you.
+
+Write your reasoning paragraph (2–5 sentences), then on its own line write
+EXACTLY one of the following (plain text, no markdown formatting, no trailing
+punctuation):
 verdict: confirmed
 verdict: rejected
 verdict: inconclusive
-
-Follow that line with a brief reasoning paragraph (2–5 sentences).
 """
 
 # ---------------------------------------------------------------------------
@@ -621,15 +629,19 @@ Follow that line with a brief reasoning paragraph (2–5 sentences).
 def _parse_verdict(text: str) -> Tuple[str, str]:
     """Extract (verdict, reasoning) from the model's final response.
 
+    Robust to markdown formatting (``**verdict: confirmed**``) and trailing
+    punctuation (``verdict: confirmed.``).
+
     Returns ``("inconclusive", text)`` if no verdict line is found.
     """
     verdict = "inconclusive"
     reasoning_lines: List[str] = []
     found = False
     for line in text.splitlines():
-        stripped = line.strip().lower()
-        if stripped.startswith("verdict:"):
-            candidate = stripped[len("verdict:"):].strip()
+        # Strip markdown bold/italic/code markers before matching.
+        clean = re.sub(r"[*_`]+", "", line).strip().lower()
+        if clean.startswith("verdict:"):
+            candidate = clean[len("verdict:"):].strip().rstrip(".,;:")
             if candidate in VALID_VERDICTS:
                 verdict = candidate
                 found = True
@@ -770,6 +782,17 @@ def run_investigator(
             reasoning="Budget exhausted before investigation could begin.",
         )
 
+    # Derive a Python import hint from the target file path so the model can
+    # construct valid synthesize_test calls without guessing module paths.
+    target = hypothesis.target
+    import_hint = ""
+    if target.endswith(".py"):
+        module_path = target[:-3].replace("/", ".").replace("\\", ".")
+        import_hint = (
+            f"\nPython import hint: `from {module_path} import <symbol>`\n"
+            "(Replace <symbol> with the actual class/function name from retrieve_evidence results.)"
+        )
+
     messages: List[dict] = [
         {"role": "system", "content": _SYSTEM},
         {
@@ -778,7 +801,8 @@ def run_investigator(
                 f"Hypothesis (rank {hypothesis.rank}, confidence {hypothesis.confidence:.2f}):\n"
                 f"{hypothesis.statement}\n\n"
                 f"Target: {hypothesis.target}\n"
-                f"Kind: {hypothesis.kind}\n"
+                f"Kind: {hypothesis.kind}"
+                f"{import_hint}\n"
             ),
         },
     ]

@@ -21,6 +21,7 @@ sub-package; relative imports updated accordingly.
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
@@ -57,8 +58,8 @@ _SYSTEM = """\
 You are a repository risk analyst for the Repository Guardian system.
 
 You receive two inputs:
-1. SIGNALS — deterministic signals detected this cycle (churn hotspots and
-   structural drift from graph-diff).
+1. SIGNALS — deterministic signals detected this cycle (churn hotspots with
+   recent commit messages, and structural drift from graph-diff).
 2. MEMORY — findings produced by prior cycles on this repository (most recent
    first, paged to a maximum of 5 entries).
 
@@ -70,17 +71,35 @@ these keys:
     "rank":          <integer, 1 = highest>,
     "target":        "<file path or symbol name from the signals>",
     "kind":          "<one of: churn | drift | test_failure>",
-    "statement":     "<one sentence: what risk you hypothesize and why>",
+    "statement":     "<one specific sentence: name the exact function/class/behavior
+                       at risk and what could break, based on the commit messages>",
     "confidence":    <float 0.0–1.0>,
     "memory_cited":  ["<prior finding title or snippet that informed this>"]
   }
 
 Rules:
 - Only reference targets that appear in SIGNALS; do not invent new paths.
+- Use the commit messages to form SPECIFIC hypotheses (e.g. "The refactoring of
+  X in commit Y may have broken the Z contract" — not "high churn suggests risk").
 - If MEMORY is empty, base hypotheses only on SIGNALS.
 - memory_cited may be an empty list if memory is not relevant.
 - Return ONLY the JSON array. No prose wrapper, no markdown fences.
 """
+
+
+def _git_log_for_file(repo_path: str, file_path: str, n: int = 5) -> str:
+    """Return the last ``n`` commit one-liners for ``file_path``, or '' on error."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "--oneline", f"-{n}", "--", file_path],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
+        return out
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _build_hypothesize_prompt(
@@ -89,6 +108,7 @@ def _build_hypothesize_prompt(
     prior_findings: List[dict],
     *,
     max_prior: int = 5,
+    repo_path: str = "",
 ) -> str:
     parts: List[str] = []
 
@@ -97,6 +117,11 @@ def _build_hypothesize_prompt(
         parts.append("Churn hotspots (files changed most in this window):")
         for h in hotspots:
             parts.append(f"  - {h.path}  ({h.commit_count} commits)")
+            if repo_path:
+                log = _git_log_for_file(repo_path, h.path)
+                if log:
+                    for commit_line in log.splitlines():
+                        parts.append(f"      {commit_line}")
     else:
         parts.append("Churn hotspots: (none)")
 
@@ -132,6 +157,7 @@ def hypothesize(
     *,
     usage_acc: "Optional[LLMUsage]" = None,
     top_n: int = 5,
+    repo_path: str = "",
 ) -> List[Hypothesis]:
     """Call the LLM once to rank signals into hypotheses.
 
@@ -141,7 +167,9 @@ def hypothesize(
     if not hotspots and not drift_signals:
         return []
 
-    user_msg = _build_hypothesize_prompt(hotspots, drift_signals, prior_findings)
+    user_msg = _build_hypothesize_prompt(
+        hotspots, drift_signals, prior_findings, repo_path=repo_path
+    )
     messages = [
         {"role": "system", "content": _SYSTEM},
         {"role": "user", "content": user_msg},

@@ -394,6 +394,7 @@ def _run_cycle_inner(
             _llm,
             usage_acc=_usage_acc,  # type: ignore[arg-type]
             top_n=config.top_n,
+            repo_path=repo_path,
         )
         logger.info("Guardian hypothesize — %d hypothesis(es) ranked by LLM", len(_hypotheses))
     else:
