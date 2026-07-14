@@ -69,52 +69,48 @@ def _current_commit(repo_path: str) -> str:
         return ""
 
 
-def _guardian_loggers() -> List[_logging.Logger]:
-    """Return all live Logger instances under the ``codeminer.guardian`` namespace.
-
-    ``get_logger`` sets ``propagate=False`` on every logger it creates, so we
-    cannot rely on the parent logger to fan-out to a FileHandler.  Instead we
-    enumerate the standard logging manager's dict and attach directly to each
-    guardian logger.
-    """
-    return [
-        obj
-        for name, obj in _logging.Logger.manager.loggerDict.items()
-        if name.startswith("codeminer.guardian")
-        and isinstance(obj, _logging.Logger)
-    ]
-
 
 @contextlib.contextmanager
 def _episode_log_handler(
     episode_dir: Optional[str],
 ) -> Generator[None, None, None]:
-    """Attach a DEBUG FileHandler to every guardian logger for one cycle.
+    """Route all codeminer.* DEBUG log output to ``{episode_dir}/guardian.log``.
 
-    All ``logger.debug/info/warning`` calls inside ``codeminer.guardian.*``
-    are written to ``{episode_dir}/guardian.log`` for the duration of the
-    ``with`` block.
+    Uses the global LoggingManager so that loggers created *after* this context
+    is entered (lazy module imports inside _run_cycle_inner) also write to the
+    file — the old snapshot-at-entry approach missed them.
     """
     if not episode_dir:
         yield
         return
 
+    from ..log_utils import logging_manager
+
     os.makedirs(episode_dir, exist_ok=True)
-    log_path = os.path.join(episode_dir, "guardian.log")
-    handler = _logging.FileHandler(log_path, encoding="utf-8")
-    handler.setLevel(_logging.DEBUG)
-    handler.setFormatter(
-        _logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s")
-    )
-    loggers = _guardian_loggers()
-    for lg in loggers:
-        lg.addHandler(handler)
+
+    prev_mode = logging_manager.mode
+    prev_log_dir = logging_manager.current_log_dir
+    prev_filename = logging_manager.unified_log_filename
+
+    logging_manager.set_unified_log_filename("guardian.log")
+    logging_manager.set_log_dir(episode_dir)
+    logging_manager.switch_to_both()
     try:
         yield
     finally:
-        for lg in loggers:
-            lg.removeHandler(handler)
-        handler.close()
+        logging_manager.unified_log_filename = prev_filename
+        logging_manager.current_log_dir = prev_log_dir
+        if prev_mode == "stdout":
+            logging_manager.switch_to_stdout()
+        elif prev_mode in ("file", "both"):
+            if prev_log_dir:
+                logging_manager.set_log_dir(prev_log_dir)
+            if prev_mode == "file":
+                logging_manager.switch_to_file()
+            else:
+                logging_manager.switch_to_both()
+        else:
+            logging_manager.switch_to_stdout()
 
 
 def _compile_index(config: GuardianConfig):

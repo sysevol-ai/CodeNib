@@ -175,6 +175,7 @@ def hypothesize(
         {"role": "user", "content": user_msg},
     ]
 
+    logger.debug("hypothesize: sending prompt to LLM:\n%s", user_msg)
     try:
         response = llm._call_raw(messages)  # type: ignore[union-attr]
         if usage_acc is not None:
@@ -184,6 +185,7 @@ def hypothesize(
         logger.warning("hypothesize: LLM call failed (%s); using heuristic fallback", exc)
         return heuristic_hypotheses(hotspots, drift_signals, top_n=top_n)
 
+    logger.debug("hypothesize: raw LLM response:\n%s", raw)
     try:
         items = json.loads(raw)
         if not isinstance(items, list):
