@@ -185,6 +185,14 @@ def hypothesize(
         logger.warning("hypothesize: LLM call failed (%s); using heuristic fallback", exc)
         return heuristic_hypotheses(hotspots, drift_signals, top_n=top_n)
 
+    _u = getattr(response, "usage", None)
+    if _u is not None:
+        logger.info(
+            "hypothesize: tokens — prompt=%d completion=%d total=%d",
+            getattr(_u, "prompt_tokens", 0) or 0,
+            getattr(_u, "completion_tokens", 0) or 0,
+            getattr(_u, "total_tokens", 0) or 0,
+        )
     logger.debug("hypothesize: raw LLM response:\n%s", raw)
     try:
         items = json.loads(raw)

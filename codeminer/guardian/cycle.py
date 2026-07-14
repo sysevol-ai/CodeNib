@@ -424,6 +424,7 @@ def _run_cycle_inner(
             file_count=file_count,
             capabilities=capabilities,
             findings=hyp_findings,
+            llm_usage=_usage_acc,
         )
 
     # 4. Build retriever — used by investigation (static evidence + LLM tool calls).
