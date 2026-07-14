@@ -101,6 +101,11 @@ def main() -> None:
         default=None,
         help="Index cache dir (default: <repo>/.codeminer_cache)",
     )
+    parser.add_argument(
+        "--hypotheses-only",
+        action="store_true",
+        help="Stop after the hypothesize step; print hypotheses without running the investigator",
+    )
     args = parser.parse_args()
 
     repo_dir = os.path.abspath(args.repo_dir)
@@ -128,6 +133,7 @@ def main() -> None:
         llm_model=args.llm_model,
         llm_max_tool_rounds=args.llm_max_tool_rounds,
         episode_dir=episode_dir,
+        hypotheses_only=args.hypotheses_only,
     )
 
     print(f"Running Guardian cycle on {repo_dir} (languages: {', '.join(languages)})")

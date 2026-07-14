@@ -52,6 +52,7 @@ class GuardianConfig:
     # Investigator sub-agent controls
     budget_tokens: int = 100_000       # total-token ceiling across all investigator calls
     max_investigator_rounds: int = 8   # max probe rounds per hypothesis
+    hypotheses_only: bool = False       # stop after hypothesize; skip investigation
 
 
 def _current_commit(repo_path: str) -> str:
@@ -405,6 +406,28 @@ def _run_cycle_inner(
         )
         logger.info(
             "Guardian hypothesize — %d hypothesis(es) ranked heuristically", len(_hypotheses)
+        )
+
+    # Hypotheses-only mode: return immediately after the orchestrator step so
+    # the caller can inspect hypothesis quality without running the investigator.
+    if config.hypotheses_only:
+        hyp_findings: List[Finding] = [
+            Finding(
+                kind=h.kind,
+                title=f"[hypothesis] {h.target}",
+                detail=f"Rank {h.rank} | confidence {h.confidence:.2f}",
+                hypothesis=h.statement,
+            )
+            for h in _hypotheses
+        ]
+        return GuardianReport(
+            repo=repo_path,
+            commit=commit,
+            generated_at=generated_at,
+            churn_window=config.since,
+            file_count=file_count,
+            capabilities=capabilities,
+            findings=hyp_findings,
         )
 
     # 4. Build retriever — used by investigation (static evidence + LLM tool calls).
