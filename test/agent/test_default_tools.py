@@ -27,6 +27,7 @@ Test layout:
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import textwrap
 from pathlib import Path
@@ -154,6 +155,11 @@ class TestGrep:
         result = _grep("def foo", path=str(sample_dir))
         assert "a.py:1:" in result and "def foo" in result
 
+    def test_content_output_has_stable_field_spacing(self, sample_dir):
+        result = _grep("def foo", path=str(sample_dir))
+
+        assert "a.py:1: def foo():" in result.splitlines()
+
     def test_no_match_returns_message(self, sample_dir):
         assert "No matches found" in _grep("ZZZNOMATCH_XYZ", path=str(sample_dir))
 
@@ -177,6 +183,15 @@ class TestGrep:
         assert "readme.md" not in result
         assert "a.py" in result or "b.py" in result
 
+    def test_type_filter_keeps_the_public_extension_contract(self, tmp_path):
+        (tmp_path / "app.js").write_text("needle\n", encoding="utf-8")
+        (tmp_path / "component.vue").write_text("needle\n", encoding="utf-8")
+
+        result = _grep("needle", path=str(tmp_path), type="js")
+
+        assert "app.js" in result
+        assert "component.vue" not in result
+
     def test_output_mode_files_with_matches(self, sample_dir):
         result = _grep("foo", path=str(sample_dir), output_mode="files_with_matches")
         lines = set(result.splitlines())
@@ -196,6 +211,16 @@ class TestGrep:
         # Without multiline, the dot does not cross newlines → no match.
         assert "No matches found" in _grep("start.*end", path=str(tmp_path))
 
+    def test_multiline_preserves_one_row_per_match(self, tmp_path, monkeypatch):
+        (tmp_path / "m.py").write_text("start\nmiddle\nend\n", encoding="utf-8")
+        monkeypatch.setattr(
+            "codeminer.agent.tools.defaults.shutil.which", lambda _command: "/bin/rg"
+        )
+
+        result = _grep("start.*end", path=str(tmp_path), multiline=True)
+
+        assert result.splitlines() == ["m.py:1: start"]
+
     def test_head_limit_cap(self, sample_dir):
         many = sample_dir / "many.py"
         many.write_text(
@@ -210,6 +235,29 @@ class TestGrep:
         result = _grep("[invalid", path=str(sample_dir))
         assert result.startswith("Error:") and "invalid regex" in result
 
+    @pytest.mark.skipif(shutil.which("rg") is None, reason="ripgrep is unavailable")
+    def test_ripgrep_syntax_is_not_rejected_by_python(self, sample_dir):
+        result = _grep(r"\p{L}+", path=str(sample_dir), head_limit=1)
+
+        assert not result.startswith("Error:")
+        assert ".py:" in result
+
+    def test_ripgrep_timeout_is_enforced(self, tmp_path, monkeypatch):
+        slow_rg = tmp_path / "slow-rg"
+        slow_rg.write_text("#!/bin/sh\nsleep 2\n", encoding="utf-8")
+        slow_rg.chmod(0o755)
+        monkeypatch.setattr(
+            "codeminer.agent.tools.defaults.shutil.which",
+            lambda _command: str(slow_rg),
+        )
+        monkeypatch.setattr(
+            "codeminer.agent.tools.defaults._GREP_TIMEOUT_SECONDS", 0.05
+        )
+
+        result = _grep("needle", path=str(tmp_path))
+
+        assert result == "Error: grep timed out after 0.05s"
+
     def test_invalid_output_mode_returns_error(self, sample_dir):
         result = _grep("x", path=str(sample_dir), output_mode="bogus")
         assert result.startswith("Error:") and "output_mode" in result
@@ -217,6 +265,13 @@ class TestGrep:
     def test_nonexistent_path_returns_error(self, tmp_path):
         result = _grep("x", path=str(tmp_path / "missing"))
         assert result.startswith("Error:") and "does not exist" in result
+
+    def test_python_fallback_when_ripgrep_is_unavailable(self, sample_dir, monkeypatch):
+        monkeypatch.setattr(
+            "codeminer.agent.tools.defaults.shutil.which", lambda _command: None
+        )
+        result = _grep("def foo", path=str(sample_dir))
+        assert "a.py:1:" in result and "def foo" in result
 
 
 # ---------------------------------------------------------------------------

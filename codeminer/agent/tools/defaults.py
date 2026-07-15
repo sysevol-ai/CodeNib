@@ -46,9 +46,10 @@ Python identifier. That rules out the reference's literal flag names
 Line numbers follow **opencode** style (``{lineno:6d} | {content}``) and the
 read/grep boundary is **1-based** throughout, aligned with #147/#153.
 
-The ``grep`` tool scans the raw filesystem with no index — it is the regex
-primitive for the agent (an earlier index-backed ``regex_search`` skill was
-removed in favour of it).
+The ``grep`` tool scans the raw filesystem with no index. It uses ripgrep when
+available for bounded, linear-time matching and falls back to the Python
+implementation otherwise. It is the regex primitive for the agent (an earlier
+index-backed ``regex_search`` skill was removed in favour of it).
 
 Related issues: #133 (Agent Router RFC), #145 (defaults), #147 (line-number
 convention), #153 (1-based boundary).
@@ -58,8 +59,12 @@ from __future__ import annotations
 
 import os
 import re
+import select
+import shutil
 import signal
 import subprocess
+import tempfile
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -72,6 +77,7 @@ DEFAULT_TOOL_IDS: frozenset[str] = frozenset({"read", "grep", "glob", "bash"})
 _MAX_LINES_DEFAULT: int = 200
 _MAX_RESULTS_DEFAULT: int = 50
 _GLOB_MAX_RESULTS: int = 100  # mirrors the reference Glob's documented cap
+_GREP_TIMEOUT_SECONDS: int = 30
 _BASH_TIMEOUT_MS_DEFAULT: int = 30_000  # 30s, expressed in ms (reference units)
 _BASH_MAX_OUTPUT_CHARS: int = 16_000  # matches runner._MAX_RESULT_CHARS
 
@@ -115,7 +121,6 @@ _TYPE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
 }
 
 _GREP_OUTPUT_MODES = ("content", "files_with_matches", "count")
-
 
 # ---------------------------------------------------------------------------
 # read
@@ -294,7 +299,7 @@ def _grep_candidate_files(
         yield file_path
 
 
-def _grep(
+def _grep_python(
     pattern: str,
     path: str = ".",
     glob: Optional[str] = None,
@@ -413,17 +418,225 @@ def _grep(
     return text
 
 
+def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except OSError:
+        proc.kill()
+
+
+def _grep_ripgrep(
+    rg_path: str,
+    pattern: str,
+    root: Path,
+    glob: Optional[str],
+    type_: Optional[str],
+    output_mode: str,
+    case_insensitive: bool,
+    multiline: bool,
+    head_limit: int,
+) -> str:
+    """Run the bounded Grep contract on ripgrep's linear-time regex engine."""
+    command = [
+        rg_path,
+        "--color=never",
+        "--no-heading",
+        "--hidden",
+        "--no-ignore",
+        "--text",
+    ]
+    if case_insensitive is not False:
+        command.append("--ignore-case")
+    if multiline:
+        command.extend(("--multiline", "--multiline-dotall"))
+    if output_mode == "content":
+        # NUL separates the path from line/content fields, so paths containing
+        # colons can still be normalized without guessing where the path ends.
+        command.extend(("--line-number", "--with-filename", "--null"))
+    elif output_mode == "files_with_matches":
+        command.extend(("--files-with-matches", "--sort", "path"))
+    else:
+        # Python's fallback counts matching lines, not every match on a line.
+        command.append("--count")
+
+    for skipped_dir in sorted(_SKIP_DIR_PREFIXES):
+        command.extend(("--glob", f"!**/{skipped_dir}/**"))
+    if glob:
+        command.extend(("--glob", glob))
+    normalized_type = (type_ or "").lower()
+    if not root.is_file() and normalized_type in _TYPE_EXTENSIONS:
+        # Define our own type instead of using rg's broader built-ins (for
+        # example rg's ``js`` also includes Vue files). This keeps the rg and
+        # Python backends on the same public extension contract.
+        for extension in _TYPE_EXTENSIONS[normalized_type]:
+            command.extend(("--type-add", f"codeminer:*{extension}"))
+        command.extend(("--type", "codeminer"))
+
+    if root.is_file():
+        cwd = root.parent or Path(".")
+        target = root.name
+    else:
+        cwd = root
+        target = "."
+    command.extend(("--", pattern, target))
+
+    with tempfile.TemporaryFile() as stderr_file:
+        try:
+            proc = subprocess.Popen(  # noqa: S603 - fixed executable and argv
+                command,
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=stderr_file,
+                bufsize=0,
+                start_new_session=True,
+            )
+        except (OSError, ValueError) as exc:
+            return f"Error executing grep: {exc}"
+
+        assert proc.stdout is not None
+        deadline = time.monotonic() + _GREP_TIMEOUT_SECONDS
+        pending = bytearray()
+        rows: List[str] = []
+        timed_out = False
+        eof = False
+        while len(rows) <= head_limit and not eof:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            ready, _, _ = select.select((proc.stdout.fileno(),), (), (), remaining)
+            if not ready:
+                timed_out = True
+                break
+            chunk = os.read(proc.stdout.fileno(), 64 * 1024)
+            if not chunk:
+                eof = True
+            else:
+                pending.extend(chunk)
+            while b"\n" in pending and len(rows) <= head_limit:
+                raw, _, remainder = pending.partition(b"\n")
+                pending = bytearray(remainder)
+                rows.append(raw.rstrip(b"\r").decode("utf-8", errors="replace"))
+        if eof and pending and len(rows) <= head_limit:
+            rows.append(bytes(pending).rstrip(b"\r").decode("utf-8", errors="replace"))
+
+        capped = len(rows) > head_limit
+        if timed_out or capped:
+            _terminate_process_group(proc)
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            _terminate_process_group(proc)
+            proc.wait()
+        stderr_file.seek(0)
+        stderr = stderr_file.read().decode("utf-8", errors="replace")
+        proc.stdout.close()
+
+    if timed_out:
+        return f"Error: grep timed out after {_GREP_TIMEOUT_SECONDS}s"
+    if not capped and proc.returncode not in (0, 1):
+        detail = stderr.strip() or f"ripgrep exited with status {proc.returncode}"
+        if "regex parse error" in detail.lower():
+            return f"Error: invalid regex {pattern!r}: {detail}"
+        return f"Error executing grep for pattern {pattern!r}: {detail}"
+
+    rows = rows[:head_limit]
+    if output_mode == "content":
+        normalized_rows = []
+        for row in rows:
+            path_field, separator, match = row.partition("\0")
+            line_number, line_separator, content = match.partition(":")
+            if separator and line_separator and line_number.isdigit():
+                normalized_rows.append(f"{path_field}:{line_number}: {content}")
+            else:  # Defensive fallback for an unexpected rg output shape.
+                normalized_rows.append(row.replace("\0", ":", 1))
+        rows = normalized_rows
+    if root.is_file():
+        prefix = f"{root.name}:"
+        replacement = f"{root}:"
+        rows = [
+            replacement + row[len(prefix) :] if row.startswith(prefix) else row
+            for row in rows
+        ]
+    else:
+        rows = [row[2:] if row.startswith("./") else row for row in rows]
+
+    if not rows:
+        return "No matches found."
+    text = "\n".join(rows)
+    if capped:
+        cap_unit = "matches" if output_mode == "content" else "files"
+        text += (
+            f"\n... (head_limit={head_limit} {cap_unit} reached; "
+            "narrow with `glob`/`type` or a more specific `pattern`)"
+        )
+    return text
+
+
+def _grep(
+    pattern: str,
+    path: str = ".",
+    glob: Optional[str] = None,
+    type: Optional[str] = None,  # noqa: A002 - matches the reference param name
+    output_mode: str = "content",
+    case_insensitive: bool = True,
+    multiline: bool = False,
+    head_limit: int = _MAX_RESULTS_DEFAULT,
+) -> str:
+    """Regex content search with a bounded ripgrep backend when available."""
+    if output_mode not in _GREP_OUTPUT_MODES:
+        return (
+            f"Error: invalid output_mode {output_mode!r}; "
+            f"expected one of {list(_GREP_OUTPUT_MODES)}"
+        )
+    try:
+        head_limit = max(1, int(head_limit))
+    except (TypeError, ValueError):
+        return "Error: head_limit must be an integer"
+
+    root = Path(path)
+    if not root.exists():
+        return f"Error: path {path!r} does not exist"
+    rg_path = shutil.which("rg")
+    # ripgrep emits one output row per physical line of a multiline match,
+    # whereas this tool's contract emits one row per match. Preserve that
+    # contract by retaining the Python implementation for multiline queries.
+    if rg_path and not multiline:
+        return _grep_ripgrep(
+            rg_path,
+            pattern,
+            root,
+            glob,
+            type,
+            output_mode,
+            case_insensitive,
+            multiline,
+            head_limit,
+        )
+    return _grep_python(
+        pattern,
+        path=path,
+        glob=glob,
+        type=type,
+        output_mode=output_mode,
+        case_insensitive=case_insensitive,
+        multiline=multiline,
+        head_limit=head_limit,
+    )
+
+
 _GREP_TOOL_DOC = """\
 # grep
 
 Regex content search over the raw filesystem (no index). Shape mirrors the
-mainstream Claude Code `Grep` tool.
+mainstream Claude Code `Grep` tool. Searches use ripgrep when installed, with a
+30-second wall-clock bound and a Python fallback.
 
 ## Parameters
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `pattern` | str | *required* | Regular expression (Python `re` syntax). |
+| `pattern` | str | *required* | Regex (rg; Python for multiline/fallback). |
 | `path` | str | `.` | Directory (or single file) to search. |
 | `glob` | str | null | Filter file *names* (e.g. `*.py`, `**/test_*.py`). |
 | `type` | str | null | Filter by language (`py`, `ts`, `go`, `rust`, `cpp`, ...). |
