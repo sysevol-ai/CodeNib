@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Repository-disjoint issue-driven replication of the three-arm runtime study.
+base: qwen35_9b_synth_runtime.yaml
+sweep_id: qwen35_9b_contextbench_external_v1
+prebuilt_dir: /mnt/data/codeminer/results/contextbench_external_v1/indexes
+embedding_revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+instances: []

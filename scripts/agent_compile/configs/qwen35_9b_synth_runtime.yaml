@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Qwen3.5-9B replication of the frozen 500-query runtime protocol. This config
+# differs from qwen35_27b_synth_runtime.yaml only in model identity and sweep id.
+base: qwen_base_compact.yaml
+sweep_id: qwen35_9b_synth_runtime
+model: openai/qwen3.5-9b
+reps: 1
+max_turns: 16
+max_context_tokens: 48000
+max_tokens: 4096
+first_turn_tool_choice: null
+instances: []
