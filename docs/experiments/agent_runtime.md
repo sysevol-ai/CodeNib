@@ -37,14 +37,15 @@ second model family at two sizes on a frozen, balanced workload:
 | Qwen3.5-27B / eager | 57.0% [52.2, 61.9] | -0.011 [-0.055, +0.040] | fail (borderline) |
 | **Qwen3.5-27B / compact** | **44.8% [40.3, 49.9]** | **-0.003 [-0.037, +0.038]** | **pass** |
 
-Applying the predefined lowest-token admitted rule selects eager for Haiku and
-compact for both Qwen sizes; the selected arms use **44.8-49.9% of baseline
-tokens**. The replicated Qwen operating points use 44.8-45.1%, while both full
-quality intervals remain inside the predefined guardrail. The mechanism is
-model-dependent: Haiku benefits most from eager preload, whereas both Qwen sizes
-benefit most when the exploration trace is compacted. We therefore do not
-promote one history policy unconditionally; the deployed model must clear the
-same quality gate.
+For compact model-level reporting, we select the lowest-token compiled-context
+arm whose recall-delta 95% interval stays above -0.05. This rule selects eager
+for Haiku and compact for both Qwen sizes; the selected arms use **44.8-49.9%
+of baseline tokens**. The replicated Qwen operating points use 44.8-45.1%,
+while both full quality intervals remain above the fixed guardrail. The
+mechanism is model-dependent: Haiku benefits most from eager preload, whereas
+both Qwen sizes benefit most when the exploration trace is compacted. We
+therefore do not promote one history policy unconditionally; the deployed
+model must clear the same quality gate.
 
 Each Qwen matrix contains 1,500 successful cells (500 per arm), with no missing
 or duplicate query-arm keys. The 9B run had two initial request failures; both
