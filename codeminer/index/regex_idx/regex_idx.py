@@ -12,7 +12,7 @@ from typing import List, Optional
 
 from ...graph.code_graph import CodeGraph
 from ...log_utils import get_logger
-from ...types import NodeInfo
+from ...types import NODE_TYPE_FILE, NodeInfo
 
 logger = get_logger(__name__)
 
@@ -41,6 +41,7 @@ class RegexNodeIndex:
     def _build_index(self):
         """Build index from CodeGraph."""
         vs = self.code_graph.get_graph().vs
+        content_failures = 0
 
         for v in vs:
             vid = v.index
@@ -48,13 +49,17 @@ class RegexNodeIndex:
 
             # Get content from the node
             content: Optional[str] = None
-            try:
-                content = self.code_graph.get_node_content(vid)
-                if content:
-                    content = content[:MAX_CONTENT_CHARS]
-            except Exception as e:
-                logger.debug(f"Failed to get content for node {vid}: {e}")
-                content = None
+            has_source_range = (
+                attrs.get("start_line") is not None
+                and attrs.get("end_line") is not None
+            )
+            if attrs.get("type") == NODE_TYPE_FILE or has_source_range:
+                try:
+                    content = self.code_graph.get_node_content(vid)
+                    if content:
+                        content = content[:MAX_CONTENT_CHARS]
+                except Exception:  # malformed source metadata is non-fatal here
+                    content_failures += 1
 
             # Create NodeInfo object
             node = NodeInfo(
@@ -68,6 +73,11 @@ class RegexNodeIndex:
             self.nodes.append(node)
 
         logger.info(f"Built index with {len(vs)} nodes")
+        if content_failures:
+            logger.debug(
+                "Skipped content for %d nodes with unreadable source metadata",
+                content_failures,
+            )
 
     def search(
         self,
