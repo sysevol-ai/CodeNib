@@ -87,6 +87,7 @@ nav:
       - GT Locator: gt_locator.md
   - Operations:
       - CI/CD: ci_cd.md
+      - Evaluation Artifact Bundles: evaluation_artifacts.md
       - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md
   - Experiments:
       - Agent Compile Sweep: experiments/agent_compile.md
