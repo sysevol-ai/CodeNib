@@ -2,7 +2,7 @@
   "schema_version": 1,
   "bundle": {
     "name": "CodeMiner paper artifact (core)",
-    "version": "core-rc5"
+    "version": "core-rc6"
   },
   "sources": [
     {

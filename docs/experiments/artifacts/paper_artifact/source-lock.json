@@ -1,5 +1,5 @@
 {
-  "manifest_sha256": "ccd5d8805e3be14d47c1cc06fc3aa0b98a2f621e288bcb48ee2c776a1cfb42aa",
+  "manifest_sha256": "0c94d623138dc0eead3573fd002b31cb205d2e55f44e1e05c90b8ea527674734",
   "schema_version": 1,
   "sources": {
     "agent-haiku-cpp": {
