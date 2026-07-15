@@ -59,6 +59,7 @@ codeminer-lsp-provider-protocol-check = "codeminer.eval.agent_runner.lsp_agent_a
 codeminer-lsp-agent-study-manifest = "codeminer.eval.agent_runner.lsp_agent_study_manifest:main"
 codeminer-lsp-agent-study-artifacts = "codeminer.eval.agent_runner.lsp_agent_study_artifacts:main"
 codeminer-lsp-agent-study-run = "codeminer.eval.agent_runner.lsp_agent_study_runner:main"
+codeminer-artifact-bundle = "codeminer.eval.artifact_bundle:main"
 
 [project.optional-dependencies]
 dev = [
