@@ -126,18 +126,30 @@ def run_query_sweep(
     summary_filename: str = "query_sweep_summary.json",
 ) -> Dict[str, Any]:
     """Run a per-query sweep against already-normalized query rows."""
+    from codeminer.compiler.skill_context import required_index_types
+    from codeminer.eval.agent_runner.contexts import default_agent_skills_dir
     from codeminer.eval.agent_runner.prebuilt import (
-        has_full_indexes,
+        has_required_indexes,
         repo_path_for,
         stage_prebuilt_indexes,
     )
     from codeminer.eval.agent_runner.scoring import evaluate_agent_localization
-    from codeminer.eval.agent_runner.sweep import load_full_contexts, run_cell, slug
+    from codeminer.eval.agent_runner.sweep import (
+        all_index_skill_ids,
+        load_full_contexts,
+        run_cell,
+        slug,
+        validate_sweep_harness,
+    )
     from codeminer.eval.agent_runner.symbols import build_prebuilt_symbol_span_index
     from codeminer.eval.agent_runner.verify_expand import load_graph_nav
     from codeminer.eval.retrieval_eval import collect_target_blocks
     from codeminer.llm.litellm_chat import LiteLLMChat
 
+    validate_sweep_harness(cfg)
+    index_types = required_index_types(
+        all_index_skill_ids(cfg), skills_dir=str(default_agent_skills_dir())
+    )
     filtered_rows = select_query_rows(
         rows,
         categories=categories,
@@ -147,6 +159,8 @@ def run_query_sweep(
     needs_verify = any(
         (recipe or {}).get("verify") for recipe in (cfg.preload or {}).values()
     )
+    if needs_verify:
+        index_types.add("symbol_graph")
     cells_dir = output_dir / "cells"
     cells_dir.mkdir(parents=True, exist_ok=True)
 
@@ -162,14 +176,24 @@ def run_query_sweep(
         max_tokens=cfg.max_tokens,
         extra_kwargs=vertex_extra,
     )
-    summary: Dict[str, Any] = {"completed": [], "skipped": [], "failed": []}
+    summary: Dict[str, Any] = {
+        "required_index_types": sorted(index_types),
+        "completed": [],
+        "skipped": [],
+        "failed": [],
+    }
 
     for instance_id, instance_rows in group_query_rows_by_instance(
         filtered_rows
     ).items():
         if max_queries:
             instance_rows = instance_rows[:max_queries]
-        if not has_full_indexes(cfg.prebuilt_dir, instance_id, cfg.embedding_model):
+        if not has_required_indexes(
+            cfg.prebuilt_dir,
+            instance_id,
+            cfg.embedding_model,
+            index_types,
+        ):
             print(f"query-sweep: WARN {instance_id} missing prebuilt; skipping")
             summary["skipped"].append(
                 {"instance_id": instance_id, "reason": "no-prebuilt"}
@@ -191,7 +215,7 @@ def run_query_sweep(
             continue
 
         repo_path = repo_path_for(cfg.prebuilt_dir, instance_id)
-        cache_dir = repo_path
+        cache_dir = str(output_dir / "cache" / slug(instance_id))
         source = instance_rows[0].get("source_config") if instance_rows else ""
         started = time.time()
         print(
@@ -199,7 +223,12 @@ def run_query_sweep(
             f"({len(plan)} cells over {len(instance_rows)} queries)"
         )
         try:
-            stage_prebuilt_indexes(cfg.prebuilt_dir, instance_id, cache_dir)
+            stage_prebuilt_indexes(
+                cfg.prebuilt_dir,
+                instance_id,
+                cache_dir,
+                required_index_types=index_types,
+            )
             contexts = load_full_contexts(cfg, repo_path, cache_dir)
         except Exception as exc:  # noqa: BLE001
             print(f"query-sweep: FAIL load {instance_id}: {exc}", file=sys.stderr)
@@ -207,8 +236,10 @@ def run_query_sweep(
                 {"instance_id": instance_id, "reason": f"load:{exc}"}
             )
             continue
-        symbol_span_index = build_prebuilt_symbol_span_index(
-            cfg.prebuilt_dir, instance_id
+        symbol_span_index = (
+            build_prebuilt_symbol_span_index(cfg.prebuilt_dir, instance_id)
+            if "symbol_graph" in index_types
+            else None
         )
         nav = load_graph_nav(cfg.prebuilt_dir, instance_id) if needs_verify else None
         print(f"query-sweep:   contexts ready in {time.time() - started:.1f}s")

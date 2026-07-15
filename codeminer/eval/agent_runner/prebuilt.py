@@ -39,7 +39,7 @@ import pickle
 import shutil
 import sys
 import tempfile
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 # External experiment artifacts were written with schema 3 before exact SCIP
 # declaration lines were persisted. They remain valid for retrieval and graph
@@ -74,6 +74,35 @@ def has_full_indexes(
         os.path.join("l2", f"documents_{suffix}.pkl"),
     ]
     return all(os.path.exists(os.path.join(d, r)) for r in required)
+
+
+def has_required_indexes(
+    prebuilt_root: str,
+    instance_id: str,
+    embedding_model: str,
+    index_types: Iterable[str],
+) -> bool:
+    """Return whether a bundle can satisfy the declared index requirements.
+
+    The repository snapshot is always required because default file tools run
+    against it. BM25 may be built from that snapshot at load time, while vector
+    and symbol-graph requirements must have their durable artifacts present.
+    """
+
+    required = set(index_types)
+    instance = instance_dir(prebuilt_root, instance_id)
+    paths = [os.path.join(instance, "repo")]
+    if "symbol_graph" in required:
+        paths.append(os.path.join(instance, "graph.pkl"))
+    if "vector" in required:
+        suffix = model_suffix(embedding_model)
+        paths.extend(
+            [
+                os.path.join(instance, "l2", f"index_{suffix}.faiss"),
+                os.path.join(instance, "l2", f"documents_{suffix}.pkl"),
+            ]
+        )
+    return all(os.path.exists(path) for path in paths)
 
 
 def _symlink(target: str, link: str) -> None:
@@ -333,11 +362,13 @@ def stage_prebuilt_indexes(
     *,
     build_bm25: bool = True,
     code_graph: Optional[object] = None,
+    required_index_types: Optional[Iterable[str]] = None,
 ) -> str:
-    """Stage prebuilt vector + symbol graph (and build BM25) under *cache_dir*.
+    """Stage declared durable indexes under *cache_dir*.
 
     Returns ``cache_dir``. Idempotent: re-staging an already-staged cache is
-    a no-op except that BM25 is rebuilt only when its index dir is empty.
+    a no-op except that BM25 is built only when requested and absent. Omitting
+    ``required_index_types`` preserves the historical graph+vector+BM25 path.
     """
     inst = instance_dir(prebuilt_root, instance_id)
     if not os.path.isdir(inst):
@@ -345,21 +376,37 @@ def stage_prebuilt_indexes(
 
     os.makedirs(cache_dir, exist_ok=True)
 
+    legacy_all = required_index_types is None
+    required = (
+        {"bm25", "symbol_graph", "vector"}
+        if legacy_all
+        else set(required_index_types or ())
+    )
     graph_src = os.path.join(inst, "graph.pkl")
     graph_dst = os.path.join(cache_dir, "symbol_graph", "graph.pkl")
     graph = None
-    if build_bm25:
+    graph_available = os.path.isfile(graph_src) or code_graph is not None
+    should_stage_graph = "symbol_graph" in required or (
+        "bm25" in required and build_bm25 and graph_available
+    )
+    if should_stage_graph and build_bm25:
         graph = _stage_symbol_graph(graph_src, graph_dst, code_graph)
-    else:
+    elif should_stage_graph or legacy_all:
         # Lightweight staging for tests / callers that only need the path shape.
         _symlink(graph_src, graph_dst)
 
     # vector -> the instance dir itself (CodeVectorStore.load scans l0/l2)
-    _symlink(inst, os.path.join(cache_dir, "vector"))
+    if "vector" in required:
+        _symlink(inst, os.path.join(cache_dir, "vector"))
 
     # bm25/ — build fresh from the prebuilt graph (no embedding model needed)
     bm25_dir = os.path.join(cache_dir, "bm25")
-    if build_bm25 and not (os.path.isdir(bm25_dir) and os.listdir(bm25_dir)):
+    if (
+        "bm25" in required
+        and build_bm25
+        and graph_available
+        and not (os.path.isdir(bm25_dir) and os.listdir(bm25_dir))
+    ):
         from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
 
         graph = (

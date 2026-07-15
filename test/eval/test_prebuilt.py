@@ -72,6 +72,23 @@ def test_has_full_indexes_true_false(tmp_path):
     assert prebuilt.has_full_indexes(str(tmp_path), "missing", model) is False
 
 
+def test_has_required_indexes_only_checks_declared_resources(tmp_path):
+    model = "org/embed-small"
+    instance = tmp_path / "vector-only"
+    (instance / "repo").mkdir(parents=True)
+    suffix = prebuilt.model_suffix(model)
+    (instance / "l2").mkdir()
+    (instance / "l2" / f"index_{suffix}.faiss").write_text("x")
+    (instance / "l2" / f"documents_{suffix}.pkl").write_text("x")
+
+    assert prebuilt.has_required_indexes(
+        str(tmp_path), "vector-only", model, {"vector"}
+    )
+    assert not prebuilt.has_required_indexes(
+        str(tmp_path), "vector-only", model, {"symbol_graph", "vector"}
+    )
+
+
 def test_repo_and_instance_paths(tmp_path):
     assert prebuilt.instance_dir(str(tmp_path), "i").endswith("/i")
     assert prebuilt.repo_path_for(str(tmp_path), "i").endswith("/i/repo")
@@ -116,6 +133,24 @@ def test_stage_creates_symlinks_without_bm25(tmp_path):
     vec = cache / "vector"
     assert vec.is_symlink()
     assert os.path.realpath(vec) == os.path.realpath(src)
+
+
+def test_stage_vector_only_does_not_require_or_stage_graph(tmp_path):
+    model = "org/embed-small"
+    src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
+    (src / "graph.pkl").unlink()
+    cache = tmp_path / "cache" / "inst"
+
+    prebuilt.stage_prebuilt_indexes(
+        str(tmp_path / "prebuilt"),
+        "inst",
+        str(cache),
+        required_index_types={"vector"},
+    )
+
+    assert (cache / "vector").is_symlink()
+    assert not (cache / "symbol_graph").exists()
+    assert not (cache / "bm25").exists()
 
 
 def test_stage_is_idempotent(tmp_path):
