@@ -46,6 +46,10 @@ class SweepConfig:
     vertex_project: Optional[str] = None
     reps: int = 2
     max_turns: int = 20
+    # Maximum tokens retained in chat history before old tool turns are evicted.
+    # This is lower than the provider context window because tool schemas and the
+    # requested completion budget are added outside the message history.
+    max_context_tokens: Optional[int] = None
     temperature: float = 0.0
     max_tokens: int = 4096
     topk: int = 50
@@ -54,6 +58,9 @@ class SweepConfig:
     split: str = "test"
     prebuilt_dir: str = "/mnt/data/codeminer"
     embedding_model: Optional[str] = None
+    # Optional immutable model revision. Experiments should set this whenever
+    # the provider accepts mutable model ids such as ``main``.
+    embedding_revision: Optional[str] = None
     embedding_dimension: int = 1024
     metrics_k: List[int] = field(default_factory=lambda: [1, 3, 5, 10])
     gt_simplified_symbols: bool = True
@@ -97,6 +104,10 @@ class SweepConfig:
     # Provider-specific raw-call body for the lightweight eager_gated classifier.
     # Keep quirks in config files instead of branching on model names in code.
     gate_llm_extra_body: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        if self.max_context_tokens is not None and self.max_context_tokens <= 0:
+            raise ValueError("max_context_tokens must be positive when set")
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SweepConfig":

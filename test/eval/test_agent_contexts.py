@@ -87,6 +87,7 @@ def test_load_agent_skill_contexts_loads_metadata_builds_then_reloads(
     spec = AgentSkillContextSpec(
         skill_ids=["embedding_search", "bm25_search"],
         embedding_model="org/embed-small",
+        embedding_revision="model-commit",
         embedding_dimension=256,
         top_k=11,
         languages=["python", "rust"],
@@ -115,6 +116,7 @@ def test_load_agent_skill_contexts_loads_metadata_builds_then_reloads(
         "cache_dir": str(tmp_path / "cache"),
         "skills_dir": str(skills_dir),
         "embedding_model": "org/embed-small",
+        "embedding_revision": "model-commit",
         "embedding_dimension": 256,
         "default_top_k": 11,
         "default_level": "l1",
