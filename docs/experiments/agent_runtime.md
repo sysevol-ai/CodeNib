@@ -65,9 +65,11 @@ Inside the frozen paper artifact bundle, the inputs are under
 `verification/expected/agent_runtime.png` and
 `verification/expected/agent_runtime_breakdown.png`. The bundle-level
 `paper_artifact_config.json` and `figure/reproduce_paper_figures.py` reconstruct
-both figures; `SOURCE_LOCK.json` records the exact CodeMiner and figure-source
-commits. The metrics JSON fingerprints the 1,500 selected cells per model and
-the available run and protocol manifests.
+both figures. The paper panel compresses the pooled language and query-type
+forests beside the model-level results; `agent_runtime_breakdown.png` preserves
+the expanded 2-by-2 audit view. `SOURCE_LOCK.json` records the exact CodeMiner
+and figure-source commits. The metrics JSON fingerprints the 1,500 selected
+cells per model and the available run and protocol manifests.
 
 The sections below document the earlier runtime-probe question, graph and
 verify-expand ablations, and their original four-language result.
