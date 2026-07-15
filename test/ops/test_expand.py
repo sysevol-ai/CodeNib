@@ -6,14 +6,17 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from codeminer.ops.expand import (
     ExpandContext,
     expand_graph_neighbors,
+    hydrate_candidate_contents,
     nodeinfo_to_queried,
 )
-from codeminer.types import NodeInfo, QueriedNode
+from codeminer.types import EDGE_TYPE_REFERENCE, NodeInfo, QueriedNode
 
 # ---------------------------------------------------------------------------
 # Helper tests
@@ -74,6 +77,68 @@ class TestExpandContext:
         assert ctx.filter_tests is True
 
 
+def test_hydrate_candidate_contents_reads_only_missing_spans(tmp_path):
+    source = tmp_path / "src" / "example.py"
+    source.parent.mkdir()
+    source.write_text("line 0\nline 1\nline 2\n", encoding="utf-8")
+    candidates = [
+        QueriedNode(
+            node_name="missing",
+            file="src/example.py",
+            start_line=1,
+            end_line=2,
+        ),
+        QueriedNode(
+            node_name="existing",
+            file="src/example.py",
+            start_line=0,
+            end_line=0,
+            content="already loaded",
+        ),
+    ]
+
+    hydrated = hydrate_candidate_contents(candidates, repo_path=str(tmp_path))
+
+    assert hydrated[0].content == "line 1\nline 2\n"
+    assert hydrated[1] is candidates[1]
+
+
+def test_hydrate_candidate_contents_reads_the_requested_git_snapshot(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"], cwd=tmp_path, check=True
+    )
+    source = tmp_path / "example.py"
+    source.write_text("old 0\nold 1\nold 2\n", encoding="utf-8")
+    subprocess.run(["git", "add", "example.py"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=tmp_path, check=True)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    source.write_text("new 0\n", encoding="utf-8")
+    candidate = QueriedNode(
+        node_name="old symbol",
+        file="example.py",
+        start_line=1,
+        end_line=2,
+    )
+
+    hydrated = hydrate_candidate_contents(
+        [candidate], repo_path=str(tmp_path), git_commit=commit
+    )
+
+    assert hydrated[0].content == "old 1\nold 2\n"
+
+
 class _FakeGraph:
     def __init__(self, *, resolve=None, successors=None, predecessors=None, info=None):
         self.resolve = resolve or {}
@@ -84,10 +149,12 @@ class _FakeGraph:
     def resolve_symbol(self, symbol):
         return self.resolve.get(symbol), None
 
-    def get_successors(self, node_name):
+    def get_successors(self, node_name, edge_types=None):
+        assert edge_types in (None, {EDGE_TYPE_REFERENCE})
         return self.successors.get(node_name, [])
 
-    def get_predecessors(self, node_name):
+    def get_predecessors(self, node_name, edge_types=None):
+        assert edge_types in (None, {EDGE_TYPE_REFERENCE})
         return self.predecessors.get(node_name, [])
 
     def get_node_info_by_id(self, node_id):
@@ -197,6 +264,68 @@ class TestExpandGraphNeighbors:
         )
 
         assert result[0].content == "l1\nl2\n"
+
+    def test_both_directions_share_the_per_seed_budget(self):
+        graph = _FakeGraph(
+            resolve={"seed": "seed"},
+            successors={"seed": [1, 2, 3]},
+            predecessors={"seed": [4, 5, 6]},
+            info={
+                node_id: {
+                    "name": f"neighbor{node_id}",
+                    "type": "function",
+                    "file": f"src/{node_id}.py",
+                    "start_line": node_id,
+                    "end_line": node_id,
+                }
+                for node_id in range(1, 7)
+            },
+        )
+        seed = QueriedNode(node_name="seed", type="function", score=1.0)
+
+        result = expand_graph_neighbors(
+            ExpandContext(code_graph=graph),
+            [seed],
+            per_seed=4,
+            direction="both",
+        )
+
+        assert [node.node_name for node in result] == [
+            "neighbor1",
+            "neighbor4",
+            "neighbor2",
+            "neighbor5",
+        ]
+
+    def test_both_directions_do_not_repeat_the_same_neighbor(self):
+        graph = _FakeGraph(
+            resolve={"seed": "seed"},
+            successors={"seed": [1, 2]},
+            predecessors={"seed": [1, 3]},
+            info={
+                node_id: {
+                    "name": f"neighbor{node_id}",
+                    "type": "function",
+                    "file": f"src/{node_id}.py",
+                    "start_line": node_id,
+                    "end_line": node_id,
+                }
+                for node_id in range(1, 4)
+            },
+        )
+
+        result = expand_graph_neighbors(
+            ExpandContext(code_graph=graph),
+            [QueriedNode(node_name="seed", type="function")],
+            per_seed=3,
+            direction="both",
+        )
+
+        assert [node.node_name for node in result] == [
+            "neighbor1",
+            "neighbor2",
+            "neighbor3",
+        ]
 
     def test_prefers_seed_node_id_over_bare_node_name(self):
         graph = _FakeGraph(

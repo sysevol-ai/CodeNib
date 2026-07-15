@@ -19,10 +19,10 @@ Strategy belongs in a planner or named pipeline.
 
 | Module | Role | What belongs here |
 |--------|------|-------------------|
-| `ops.retrieve` | Candidate normalization and fusion | `RetrieveContext`, `to_queried_nodes`, weighted hybrid merge, stable dedup keys |
+| `ops.retrieve` | Candidate normalization and fusion | `RetrieveContext`, `to_queried_nodes`, node/file-level weighted RRF, stable dedup keys |
 | `ops.filter` | Explicit candidate predicates | span/content checks, symbol-only checks, include/exclude path filters, test-path dropping |
-| `ops.expand` | Compact graph neighborhood expansion | one-hop predecessor/successor expansion from existing seeds, optional span content loading |
-| `ops.rerank` | Candidate-only reranking | embedding similarity over a provided candidate set; lazy LLM reranker context |
+| `ops.expand` | Compact graph neighborhood expansion | one-hop predecessor/successor expansion from existing seeds, edge-type filtering, optional span content loading |
+| `ops.rerank` | Candidate-only reranking | online content embeddings or persisted index vectors over a provided candidate set; lazy LLM reranker context |
 | `ops.transform` | Query/code transforms | shared transform resources such as keyword extraction |
 
 This surface is intentionally not a general workflow engine. It does not encode
@@ -38,6 +38,7 @@ The current ops are enough to express the common CodeMiner RAG paths:
 - dense plus sparse fusion, including RRF in `RetrieveRerankPipeline`
 - candidate filtering before rerank
 - dense-first graph neighbor augmentation
+- file-aware semantic/graph rank fusion in `DenseGraphExpandRerankPipeline`
 - sparse-seeded graph expansion through the graph retrieval pipeline
 - embedding or LLM reranking over an assembled candidate set
 
@@ -76,6 +77,12 @@ It records the most recent `last_selected_plan` and `last_planner_trace`
 Use `SparseSeededGraphRetrievePipeline` or `DenseGraphExpandRerankPipeline` when
 you need an experiment-specific graph baseline rather than the general auto
 pipeline.
+
+The dense GraphRAG path defaults to one-hop `reference` edges. Containment is
+excluded from the dependency budget, callers and callees are interleaved, and
+multi-edges are collapsed before the per-seed cap. Its optional file-level RRF
+uses stable relative paths from node IDs so graph artifacts and vector indexes
+built under different checkout roots still fuse correctly.
 
 ## Maintenance Rules
 

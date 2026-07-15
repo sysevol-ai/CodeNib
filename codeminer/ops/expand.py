@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any, List, Optional, Sequence
 
 from ..graph.code_graph import CodeGraph
 from ..log_utils import get_logger
-from ..types import NodeInfo, QueriedNode, is_symbol_node
+from ..types import EDGE_TYPE_REFERENCE, NodeInfo, QueriedNode, is_symbol_node
 
 logger = get_logger(__name__)
 
@@ -54,6 +56,34 @@ def nodeinfo_to_queried(nodes: List[NodeInfo]) -> List[QueriedNode]:
     return results
 
 
+def hydrate_candidate_contents(
+    candidates: Sequence[QueriedNode],
+    *,
+    repo_path: Optional[str],
+    git_commit: Optional[str] = None,
+) -> List[QueriedNode]:
+    """Fill missing candidate content from persisted source spans."""
+    hydrated: List[QueriedNode] = []
+    for candidate in candidates:
+        if candidate.content:
+            hydrated.append(candidate)
+            continue
+        content = _read_span_content(
+            repo_path=repo_path,
+            file_path=candidate.file,
+            start_line=candidate.start_line,
+            end_line=candidate.end_line,
+            git_commit=git_commit,
+        )
+        if not content:
+            hydrated.append(candidate)
+        elif hasattr(candidate, "model_copy"):
+            hydrated.append(candidate.model_copy(update={"content": content}))
+        else:
+            hydrated.append(candidate.copy(update={"content": content}))
+    return hydrated
+
+
 def expand_graph_neighbors(
     context: ExpandContext,
     seeds: Sequence[QueriedNode],
@@ -65,6 +95,7 @@ def expand_graph_neighbors(
     symbol_only: bool = True,
     require_span: bool = True,
     score_scale: float = 0.5,
+    edge_types: Optional[Sequence[str]] = (EDGE_TYPE_REFERENCE,),
 ) -> List[QueriedNode]:
     """Return graph neighbors for retrieval candidates.
 
@@ -72,6 +103,8 @@ def expand_graph_neighbors(
     navigation helpers: keep dense candidates as seeds, append compact graph
     neighbors, and leave ranking to the downstream reranker. Only one-hop
     predecessor/successor expansion is performed; no BFS/PPR is hidden here.
+    Expansion follows reference edges by default so containment does not consume
+    the dependency-neighbor budget.
     """
     graph = context.code_graph
     if graph is None or not seeds:
@@ -84,15 +117,31 @@ def expand_graph_neighbors(
         raise ValueError(f"Unsupported graph expansion direction: {direction!r}")
 
     out: List[QueriedNode] = []
+    selected_edge_types = None if edge_types is None else set(edge_types)
     for seed_rank, seed in enumerate(seeds, 1):
         canonical = _resolve_seed(graph, seed)
         if canonical is None:
             continue
-        neighbor_ids: List[int] = []
-        if direction in ("callees", "successors", "both"):
-            neighbor_ids.extend(graph.get_successors(canonical))
-        if direction in ("callers", "predecessors", "both"):
-            neighbor_ids.extend(graph.get_predecessors(canonical))
+        successor_ids = (
+            list(graph.get_successors(canonical, edge_types=selected_edge_types))
+            if direction in ("callees", "successors", "both")
+            else []
+        )
+        predecessor_ids = (
+            list(graph.get_predecessors(canonical, edge_types=selected_edge_types))
+            if direction in ("callers", "predecessors", "both")
+            else []
+        )
+        if direction == "both":
+            interleaved = (
+                vertex_id
+                for pair in zip_longest(successor_ids, predecessor_ids)
+                for vertex_id in pair
+                if vertex_id is not None
+            )
+            neighbor_ids = list(dict.fromkeys(interleaved))
+        else:
+            neighbor_ids = successor_ids or predecessor_ids
 
         added_for_seed = 0
         for vid in neighbor_ids:
@@ -185,6 +234,7 @@ def _read_span_content(
     file_path: Optional[str],
     start_line: Any,
     end_line: Any,
+    git_commit: Optional[str] = None,
 ) -> Optional[str]:
     if not file_path or start_line is None or end_line is None:
         return None
@@ -194,16 +244,56 @@ def _read_span_content(
     except (TypeError, ValueError):
         return None
     path = Path(file_path)
+    lines: Optional[List[str]] = None
+    if git_commit:
+        if path.is_absolute() or not repo_path:
+            return None
+        lines = _read_git_file_lines(
+            repo_path=repo_path,
+            file_path=path.as_posix(),
+            git_commit=git_commit,
+        )
+        if lines is None:
+            return None
     if not path.is_absolute():
         if not repo_path:
             return None
         path = Path(repo_path) / file_path
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(True)
-    except OSError:
-        return None
+    if lines is None:
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines(True)
+        except OSError:
+            return None
     start = max(0, start)
     end = min(len(lines) - 1, end)
     if end < start:
         return None
     return "".join(lines[start : end + 1])
+
+
+def _read_git_file_lines(
+    *, repo_path: str, file_path: str, git_commit: str
+) -> Optional[List[str]]:
+    repo = Path(repo_path).resolve()
+    normalized = Path(file_path)
+    if normalized.is_absolute() or ".." in normalized.parts:
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-c",
+                f"safe.directory={repo}",
+                "show",
+                f"{git_commit}:{normalized.as_posix()}",
+            ],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.decode("utf-8", errors="replace").splitlines(True)

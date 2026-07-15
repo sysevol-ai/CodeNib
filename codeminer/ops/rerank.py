@@ -46,12 +46,15 @@ class CrossEncoderContext:
     def ensure_wrapper(self) -> Any:
         if self._wrapper is None:
             from ..index.rerank.cross_encoder import build_reranker
+
             self._wrapper = build_reranker(
                 self.model_name,
                 backend=self.backend,
                 batch_size=self.batch_size,
             )
-            logger.info("Loaded cross-encoder: %s (backend=%s)", self.model_name, self.backend)
+            logger.info(
+                "Loaded cross-encoder: %s (backend=%s)", self.model_name, self.backend
+            )
         return self._wrapper
 
     def score(self, query: str, docs: List[str]) -> List[float]:
@@ -79,6 +82,7 @@ class RerankContext:
     window_size: Optional[int] = None
     window_step: Optional[int] = None
     listwise_format: Literal["structured", "rankgpt"] = "structured"
+    embedding_source: Literal["content", "index"] = "content"
 
     def ensure_agent(self) -> RerankAgent:
         if self.agent is None:
@@ -139,6 +143,90 @@ def rerank_by_embedding(
     if top_k is not None:
         ranked = ranked[:top_k]
     return [_copy_with_score(candidate, float(score)) for score, candidate in ranked]
+
+
+def rerank_by_indexed_embedding(
+    query: str,
+    candidates: Sequence[QueriedNode],
+    embedding_store: CodeVectorStore,
+    *,
+    top_k: Optional[int] = None,
+    level: str = "l2",
+) -> List[QueriedNode]:
+    """Rerank candidates using vectors already stored in the search index.
+
+    Dense-first graph pipelines expand compact graph nodes identified by the
+    same stable ``node_id`` values persisted in the vector store. Reusing those
+    vectors keeps dense and graph candidates in one calibrated score space and
+    avoids re-embedding potentially very large source spans online. Candidates
+    absent from the index are retained at the end in their original order.
+    """
+
+    from .retrieve import dedup_queried_nodes, to_queried_nodes
+
+    if not candidates:
+        return []
+    mask = {candidate.node_id for candidate in candidates if candidate.node_id}
+    if not mask:
+        fallback = list(candidates)
+        return fallback[:top_k] if top_k is not None else fallback
+    indexed = dedup_queried_nodes(
+        to_queried_nodes(
+            embedding_store.search_within_ids(
+                query,
+                mask_node_ids=mask,
+                top_k=len(candidates),
+                level=level,
+            )
+        )
+    )
+    matched = {candidate.node_id for candidate in indexed if candidate.node_id}
+    unmatched = [
+        candidate
+        for candidate in candidates
+        if not candidate.node_id or candidate.node_id not in matched
+    ]
+    ranked = [*indexed, *unmatched]
+    return ranked[:top_k] if top_k is not None else ranked
+
+
+def rerank_by_cross_encoder(
+    query: str,
+    candidates: Sequence[QueriedNode],
+    context: CrossEncoderContext,
+    *,
+    top_k: Optional[int] = None,
+) -> List[QueriedNode]:
+    """Rerank candidate contents with a shared cross-encoder context."""
+    candidates_with_content = [
+        candidate for candidate in candidates if candidate.content
+    ]
+    if not candidates_with_content:
+        fallback = list(candidates)
+        return fallback[:top_k] if top_k is not None else fallback
+
+    scores = context.score(
+        query,
+        [str(candidate.content) for candidate in candidates_with_content],
+    )
+    if len(scores) != len(candidates_with_content):
+        raise RuntimeError(
+            "cross-encoder returned "
+            f"{len(scores)} scores for {len(candidates_with_content)} candidates"
+        )
+    ranked_with_content = sorted(
+        zip(scores, candidates_with_content, strict=True),
+        key=lambda pair: pair[0],
+        reverse=True,
+    )
+    ranked = [
+        _copy_with_score(candidate, float(score))
+        for score, candidate in ranked_with_content
+    ]
+    ranked.extend(candidate for candidate in candidates if not candidate.content)
+    if top_k is not None:
+        ranked = ranked[:top_k]
+    return ranked
 
 
 def _copy_with_score(candidate: QueriedNode, score: float) -> QueriedNode:
