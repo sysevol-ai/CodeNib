@@ -322,8 +322,10 @@ def _add_archive_tree(archive: tarfile.TarFile, root: Path) -> None:
         info.mtime = 0
         info.pax_headers = {}
         if path.is_dir():
+            info.mode = 0o755
             archive.addfile(info)
         elif path.is_file():
+            info.mode = 0o755 if path.stat().st_mode & 0o111 else 0o644
             with path.open("rb") as handle:
                 archive.addfile(info, handle)
         else:

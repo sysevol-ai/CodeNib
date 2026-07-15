@@ -212,6 +212,8 @@ def test_archive_is_deterministic_and_contains_one_bundle_root(tmp_path: Path) -
     output = tmp_path / "bundle"
     build_bundle(manifest, {"data": data}, output)
     first = create_archive(output, tmp_path / "first.tar.gz")
+    output.chmod(0o700)
+    (output / "result.json").chmod(0o600)
     second = create_archive(output, tmp_path / "second.tar.gz")
 
     assert first["sha256"] == second["sha256"]
