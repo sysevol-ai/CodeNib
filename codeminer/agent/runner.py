@@ -92,54 +92,17 @@ def _has_localization_contract(answer: str) -> bool:
     return has_localization_contract(answer)
 
 
-_DEFAULT_SYSTEM_PROMPT = f"""\
+_DEFAULT_SYSTEM_PROMPT_HEADER = """\
 You are a code localization agent. Find the code locations (files and \
 symbols) relevant to the request, then give a concise answer naming them.
 
-You always have a filesystem toolset for navigating the repository:
-- glob(pattern, path) — list files by glob (explore layout)
-- grep(pattern, path, glob, type, output_mode) — search file contents (regex)
-- bash(command) — run a shell command (ls, find, git)
-- read(file_path, offset, limit) — read a file or a line range
-
-Depending on the request you may also have retrieval skills:
-- bm25_search(query) — fast lexical search for exact names / identifiers
-- embedding_search(query) — semantic search for concepts / intent
-- hybrid_search(...) — combine retrievers for maximum recall
-- find_callers(symbol) / find_callees(symbol) / trace(from_symbol, to_symbol) — \
-call-graph navigation (who calls X, what X calls, the path from X to Y). Use \
-for impact and to follow a bug across functions — the structural questions \
-grep cannot answer. Compact results; read the ones you care about.
-
-Accuracy comes first: you MUST end up having read the file that actually \
-implements the behavior to change. Use codeminer_context / the graph as a \
-*heuristic* to point you there fast — but grep and read are how you \
-confirm you reached it.
-
-Workflow — iterate EXPAND → READ → EXPAND until you've confirmed the file:
-1. ORIENT — call codeminer_context(query) first: one call returns candidate \
-entry-point symbols plus their callers/callees as a starting map.
-2. READ — read the most promising candidate(s) to check whether the code \
-to change is really there.
-3. EXPAND — if it's not (e.g. you landed on a base class, a caller, or a near \
-miss): follow the graph (find_callers / find_callees / trace) AND/OR grep for \
-the symbol across the repo (grep pattern=...). A base-class method \
-often has the real change in a SUBCLASS OVERRIDE — grep the method name to find \
-all definitions, then read them. Loop back to READ.
-4. ANSWER — only once you have READ a file and confirmed it contains the code \
-to change. End with these three lines, repo-relative. The line numbers come \
-straight from what `read` showed you — cite the exact range of the code to change:
-{LOCALIZATION_SCHEMA}
-
-Guidelines:
-- The graph map is a hint, not the answer — always confirm by reading.
-- If the obvious symbol is a base/abstract definition, grep its name to find \
-overrides/subclasses and read those before answering.
-- Prefer the heuristic map + targeted reads over blind grep fan-out, but do not \
-stop until you have actually read the implementing file.
-- You have a limited tool budget. Converge: once a file looks right, confirm \
-it and answer rather than exhaustively reading every candidate.
+Only call functions listed as tools in the current request. Any other function \
+name is unavailable.
 """
+
+_GRAPH_NAVIGATION_TOOL_IDS = frozenset(
+    {"codeminer_context", "find_callers", "find_callees", "trace", "lsp_route"}
+)
 
 _LSP_ROUTE_TOOL_GUIDANCE = """\
 
@@ -318,28 +281,103 @@ class AgentRunner:
         # ``run()`` recomputes per-query against the resolved allow set.
         self.tools = self._tools_for(self._base_allow)
 
-        # Build system prompt: base + environment block + resource warnings.
-        base_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
-        tool_guidance = self._build_tool_guidance_block(self.tools)
+        # Keep prompt policy coupled to the model-facing tool list. A compile
+        # table can narrow that list per query, so run() renders it again after
+        # resolving the query-specific subset.
+        self._custom_system_prompt = system_prompt or None
+        self._environment_prompt_block = self._build_environment_block(self.session_ctx)
+        self._resource_warnings = list(resource_warnings)
+        self.system_prompt = self._render_system_prompt(self.tools)
+
+    @staticmethod
+    def _tool_names(tools: Sequence[Mapping[str, Any]]) -> Set[str]:
+        return {
+            str((tool.get("function") or {}).get("name") or "")
+            for tool in tools or []
+            if isinstance(tool, Mapping)
+            and str((tool.get("function") or {}).get("name") or "")
+        }
+
+    @classmethod
+    def _build_default_system_prompt(cls, tools: Sequence[Mapping[str, Any]]) -> str:
+        """Describe only tools that the provider receives for this run."""
+
+        names = cls._tool_names(tools)
+        rendered_names = ", ".join(f"`{name}`" for name in sorted(names))
+        if not rendered_names:
+            rendered_names = "(none)"
+
+        graph_tools = sorted(names & _GRAPH_NAVIGATION_TOOL_IDS)
+        orient = (
+            "Call `codeminer_context` first for a compact candidate map."
+            if "codeminer_context" in names
+            else "Use the available search or navigation tools to find likely files."
+        )
+        if "read" in names:
+            verify = (
+                "Read the most promising file and confirm that it implements the "
+                "requested behavior."
+            )
+            answer_gate = "only after reading and confirming the implementing file"
+            line_source = "Use the exact 1-based line range shown by `read`."
+        else:
+            verify = (
+                "Inspect the strongest source-bearing result and confirm it matches "
+                "the requested behavior."
+            )
+            answer_gate = "only after confirming the strongest available evidence"
+            line_source = "Report the most precise repo-relative range available."
+
+        expand_options = []
+        if graph_tools:
+            expand_options.append(
+                "follow the exposed structural tools "
+                + ", ".join(f"`{name}`" for name in graph_tools)
+            )
+        if "grep" in names:
+            expand_options.append("use `grep` to find definitions and overrides")
+        if "glob" in names:
+            expand_options.append("use `glob` to inspect repository layout")
+        if "bash" in names:
+            expand_options.append("use `bash` for repository metadata when needed")
+        expand = "; or ".join(expand_options) or "refine the available tool query"
+
+        return f"""{_DEFAULT_SYSTEM_PROMPT_HEADER}
+
+Available tools in this run: {rendered_names}.
+
+Workflow:
+1. ORIENT - {orient}
+2. VERIFY - {verify}
+3. EXPAND - If the first candidate is a base class, caller, or near miss, \
+{expand}. Then verify the next candidate.
+4. ANSWER - Answer {answer_gate}. End with exactly these three lines:
+{LOCALIZATION_SCHEMA}
+
+{line_source}
+Treat retrieval and graph results as route hints, not final evidence. You have a \
+limited tool budget, so converge once the implementing location is confirmed.
+"""
+
+    def _render_system_prompt(self, tools: Sequence[Mapping[str, Any]]) -> str:
+        base_prompt = self._custom_system_prompt or self._build_default_system_prompt(
+            tools
+        )
+        tool_guidance = self._build_tool_guidance_block(tools)
         if tool_guidance:
             base_prompt += tool_guidance
-        env_block = self._build_environment_block(self.session_ctx)
-        if env_block:
-            base_prompt += f"\n{env_block}\n"
-        if resource_warnings:
-            warnings_text = "\n".join(f"- {w}" for w in resource_warnings)
+        if self._environment_prompt_block:
+            base_prompt += f"\n{self._environment_prompt_block}\n"
+        if self._resource_warnings:
+            warnings_text = "\n".join(f"- {w}" for w in self._resource_warnings)
             base_prompt += f"\nIndex warnings:\n{warnings_text}\n"
-        self.system_prompt = base_prompt
+        return base_prompt
 
     @staticmethod
     def _build_tool_guidance_block(tools: Sequence[Mapping[str, Any]]) -> str:
         """Render prompt guidance for optional dynamic tools that need adoption."""
 
-        names = {
-            str((tool.get("function") or {}).get("name") or "")
-            for tool in tools or []
-            if isinstance(tool, Mapping)
-        }
+        names = AgentRunner._tool_names(tools)
         if "lsp_route" in names:
             return _LSP_ROUTE_TOOL_GUIDANCE
         return ""
@@ -468,6 +506,7 @@ class AgentRunner:
                         )
                         effective = set(self._base_allow)
                 tools = self._tools_for(effective)
+        active_tool_ids = self._tool_names(tools)
 
         all_tool_calls: List[ToolCallRecord] = []
         usage_tracker = UsageTracker()
@@ -540,7 +579,8 @@ class AgentRunner:
                 )
 
         history = self._new_history()
-        history.add_message({"role": "system", "content": self.system_prompt})
+        run_system_prompt = self._render_system_prompt(tools)
+        history.add_message({"role": "system", "content": run_system_prompt})
         for msg in chat_history or []:
             history.add_message({"role": msg["role"], "content": msg["content"]})
         history.add_message({"role": "user", "content": user_query})
@@ -678,7 +718,10 @@ class AgentRunner:
 
             # Execute each tool call
             for tc in tool_calls:
-                record = self._execute_tool_call(tc)
+                record = self._execute_tool_call(
+                    tc,
+                    allowed_tool_ids=active_tool_ids,
+                )
                 all_tool_calls.append(record)
                 tool_content = _serialize_result(
                     record.result if record.error is None else record.error
@@ -1004,13 +1047,30 @@ class AgentRunner:
             return TokenBudgetedChatHistory(self.max_context_tokens, model=model)
         return PlainChatHistory()
 
-    def _execute_tool_call(self, tc: Any) -> ToolCallRecord:
+    def _execute_tool_call(
+        self,
+        tc: Any,
+        *,
+        allowed_tool_ids: Optional[Set[str]] = None,
+    ) -> ToolCallRecord:
         """Execute a single tool call (a skill or a default tool)."""
         skill_id = tc.function.name
         try:
             arguments = json.loads(tc.function.arguments)
         except (json.JSONDecodeError, TypeError):
             arguments = {}
+
+        # Some providers accept a model-emitted function name even when that
+        # function was not present in the request's tool schemas. Dispatch must
+        # enforce the same per-run allowlist as schema generation; otherwise a
+        # hallucinated name can bypass an experiment or security boundary.
+        if allowed_tool_ids is not None and skill_id not in allowed_tool_ids:
+            return ToolCallRecord(
+                tool_call_id=tc.id,
+                skill_id=skill_id,
+                arguments=arguments,
+                error=f"Tool {skill_id!r} not available in this run",
+            )
 
         # Skills and default tools live in separate registries; check both.
         meta = self.registry.get(skill_id) or self.tool_registry.get(skill_id)

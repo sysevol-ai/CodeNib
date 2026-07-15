@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -131,6 +132,9 @@ class TestAgentRunnerAllowSkills:
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(llm, three_skill_registry, allow_skills={"c"})
         assert _swept(runner.tools) == {"c"}
+        assert "`c`" in runner.system_prompt
+        assert "`a`" not in runner.system_prompt
+        assert "`b`" not in runner.system_prompt
 
     def test_allow_and_exclude_combined(self, three_skill_registry):
         """exclude is applied on top of allow; overlap is excluded."""
@@ -176,6 +180,77 @@ class TestAgentRunnerAllowSkills:
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(llm, three_skill_registry, allow_skills={"a", "ghost"})
         assert _swept(runner.tools) == {"a"}
+
+    def test_unadvertised_registered_skill_call_is_not_dispatched(
+        self, three_skill_registry
+    ):
+        """Provider-parsed hallucinations cannot bypass the active allowlist."""
+        hidden_executor = MagicMock(return_value="should not run")
+        three_skill_registry.get("b").executor_fn = hidden_executor
+        tool_call = SimpleNamespace(
+            id="call_hidden",
+            function=SimpleNamespace(name="b", arguments='{"q": "secret"}'),
+        )
+        llm = MagicMock(spec=LiteLLMChat)
+        llm._call_raw.side_effect = [
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            role="assistant",
+                            content=None,
+                            tool_calls=[tool_call],
+                        )
+                    )
+                ]
+            ),
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            role="assistant",
+                            content="Done.",
+                            tool_calls=None,
+                        )
+                    )
+                ]
+            ),
+        ]
+
+        result = AgentRunner(
+            llm,
+            three_skill_registry,
+            allow_skills={"a"},
+        ).run("test")
+
+        hidden_executor.assert_not_called()
+        assert result.tool_calls[0].skill_id == "b"
+        assert "not available in this run" in result.tool_calls[0].error
+
+    def test_compile_table_renders_prompt_from_query_tools(self, three_skill_registry):
+        llm = MagicMock(spec=LiteLLMChat)
+        llm._call_raw.return_value = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        role="assistant", content="Done.", tool_calls=None
+                    )
+                )
+            ]
+        )
+        runner = AgentRunner(
+            llm,
+            three_skill_registry,
+            allow_skills={"a", "b"},
+            compile_table={"scenarios": {}},
+        )
+
+        with patch("codeminer.agent.compile.agent_compile", return_value={"a"}):
+            runner.run("test")
+
+        request_prompt = llm._call_raw.call_args.args[0][0]["content"]
+        assert "`a`" in request_prompt
+        assert "`b`" not in request_prompt
 
     def test_include_default_tools_false_withholds_defaults(self, three_skill_registry):
         """The cost-study 'structured' condition: defaults are withheld so the
