@@ -194,6 +194,7 @@ def load_full_contexts(cfg: SweepConfig, repo_path: str, cache_dir: str):
             # bm25 builds from the prebuilt graph; lang-agnostic.
             languages=["python"],
             embedding_model=cfg.embedding_model,
+            embedding_revision=cfg.embedding_revision,
             embedding_dimension=cfg.embedding_dimension,
             top_k=cfg.topk,
             default_level="l2",
@@ -287,6 +288,7 @@ def run_cell(
     route_context_spec = route_context_spec or {}
     harness_spec = AgentHarnessSpec(
         max_turns=cfg.max_turns,
+        max_context_tokens=cfg.max_context_tokens,
         allow_skills=set(skills),
         include_default_tools=cfg.include_default_tools,
         default_tool_ids=(

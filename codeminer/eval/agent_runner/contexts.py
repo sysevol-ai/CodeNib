@@ -49,6 +49,7 @@ class AgentSkillContextSpec:
     embedding_model: str
     embedding_dimension: int
     top_k: int
+    embedding_revision: Optional[str] = None
     languages: Sequence[str] = ("python",)
     default_level: str = "l2"
     rebuild: bool = False
@@ -120,6 +121,7 @@ def load_agent_skill_contexts(
         cache_dir=cache_dir,
         skills_dir=skills_dir,
         embedding_model=spec.embedding_model,
+        embedding_revision=spec.embedding_revision,
         embedding_dimension=spec.embedding_dimension,
         default_top_k=spec.top_k,
         default_level=spec.default_level,

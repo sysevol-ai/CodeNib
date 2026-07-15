@@ -93,6 +93,7 @@ def test_run_cell_passes_lsp_route_context_options_to_harness(monkeypatch, tmp_p
     cfg = SweepConfig(
         sweep_id="route",
         subsets={"graph": ["lsp_route"]},
+        max_context_tokens=48_000,
         lsp_route_context={
             "graph": {
                 "seed_limit": 4,
@@ -120,9 +121,19 @@ def test_run_cell_passes_lsp_route_context_options_to_harness(monkeypatch, tmp_p
     assert out["trace_summary"]["schema_version"] is None
     assert captured
     spec = captured[0]
+    assert spec.max_context_tokens == 48_000
     assert spec.enable_lsp_route_context is True
     assert spec.lsp_route_seed_limit == 4
     assert spec.lsp_route_seed_policy == "specific"
     assert spec.lsp_route_query_fallback is True
     assert spec.lsp_route_top_k == 9
     assert spec.lsp_route_include_neighbors is False
+
+
+def test_sweep_config_rejects_non_positive_context_budget():
+    with pytest.raises(ValueError, match="max_context_tokens"):
+        SweepConfig(
+            sweep_id="invalid_context_budget",
+            subsets={"grep_only": ["read", "grep"]},
+            max_context_tokens=0,
+        )
