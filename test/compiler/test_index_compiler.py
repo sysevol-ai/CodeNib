@@ -11,6 +11,8 @@ import os
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from codeminer.compiler.index_builders import (
     BM25IndexBuilder,
     IndexBuilderRegistry,
@@ -149,8 +151,30 @@ class TestVectorIndexBuilder:
         assert status.index_type == "vector"
         assert status.state == IndexState.FRESH
         assert status.metadata["embedding_model"] == "test-model"
+        assert status.metadata["embedding_provider"] == "huggingface"
+        assert status.metadata["embedding_dimension"] == 384
+        assert status.metadata["dimension"] == 384
+        assert status.metadata["embedding_kwargs"] == {}
+        assert status.metadata["index_metric"] == "ip"
         assert status.metadata["document_count"] == {"l0": 2, "l2": 3}
         mock_build_fn.assert_called_once()
+
+    def test_artifact_identity_is_shared_by_full_and_incremental_statuses(self):
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+            embedding_kwargs={"revision": "model-commit"},
+            index_metric="l2",
+        )
+
+        assert builder._artifact_identity() == {
+            "embedding_model": "test-model",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 384,
+            "dimension": 384,
+            "embedding_kwargs": {"revision": "model-commit"},
+            "index_metric": "l2",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +225,7 @@ class TestSymbolGraphBuilder:
             )
         ]
 
-    def test_build_handles_none_graph(self, monkeypatch, tmp_path):
+    def test_build_rejects_none_graph(self, monkeypatch, tmp_path):
         from codeminer import ls_router
 
         monkeypatch.setattr(
@@ -212,19 +236,18 @@ class TestSymbolGraphBuilder:
 
         builder = SymbolGraphBuilder()
         output = str(tmp_path / "graph")
-        status = builder.build(
-            scope="current_repo",
-            repo_path="/fake/repo",
-            output_dir=output,
-        )
-
-        assert status.metadata["node_count"] == 0
+        with pytest.raises(RuntimeError, match="returned no graph"):
+            builder.build(
+                scope="current_repo",
+                repo_path="/fake/repo",
+                output_dir=output,
+            )
 
     def test_build_forwards_multiple_languages(self, monkeypatch, tmp_path):
         from codeminer import ls_router
 
         mock_graph = MagicMock()
-        mock_graph.graph.vs = []
+        mock_graph.graph.vs = [MagicMock()]
         calls = []
 
         def fake_build_graph_for_languages(*args, **kwargs):
@@ -254,7 +277,7 @@ class TestSymbolGraphBuilder:
         from codeminer import ls_router
 
         mock_graph = MagicMock()
-        mock_graph.graph.vs = []
+        mock_graph.graph.vs = [MagicMock()]
         calls = []
 
         def fake_build_graph_for_languages(*args, **kwargs):
@@ -301,7 +324,10 @@ class TestRegisterDefaultBuilders:
             languages=["rust", "python"],
             graph_route="scip-candidate",
             embedding_model="custom-model",
+            embedding_revision="model-commit",
             embedding_dimension=512,
+            embedding_batch_size=4,
+            embedding_max_seq_length=8192,
         )
 
         bm25 = registry.get("bm25")
@@ -312,6 +338,11 @@ class TestRegisterDefaultBuilders:
         assert isinstance(vector, VectorIndexBuilder)
         assert vector.embedding_model == "custom-model"
         assert vector.embedding_dimension == 512
+        assert vector.embedding_kwargs == {
+            "encode_kwargs": {"batch_size": 4},
+            "max_seq_length": 8192,
+            "revision": "model-commit",
+        }
 
         symbol_graph = registry.get("symbol_graph")
         assert isinstance(symbol_graph, SymbolGraphBuilder)

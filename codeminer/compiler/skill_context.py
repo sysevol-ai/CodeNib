@@ -290,21 +290,28 @@ def _load_vector(
     index_path: str,
     *,
     embedding_model: str,
+    embedding_provider: str,
     embedding_dimension: int,
+    embedding_revision: Optional[str] = None,
+    index_metric: str = "ip",
+    embedding_kwargs: Optional[Dict[str, Any]] = None,
     trust_remote_code: bool = False,
     default_batch_size: Optional[int] = None,
 ):
     """Load a FAISS vector store from an arbitrary directory path."""
     from ..index.embedding.vector_store import CodeVectorStore
 
-    kwargs = {}
+    kwargs = dict(embedding_kwargs or {})
+    if embedding_revision is not None:
+        kwargs["revision"] = embedding_revision
     if default_batch_size is not None:
         kwargs["default_batch_size"] = default_batch_size
 
     store = CodeVectorStore(
         embedding_model=embedding_model,
-        embedding_provider="huggingface",
+        embedding_provider=embedding_provider,
         dimension=embedding_dimension,
+        index_metric=index_metric,
         trust_remote_code=trust_remote_code,
         **kwargs,
     )
@@ -353,12 +360,14 @@ def build_skill_contexts(
     skill_registry: Optional[SkillRegistry] = None,
     builder_registry: Optional[IndexBuilderRegistry] = None,
     embedding_model: str = "nomic-ai/CodeRankEmbed",
+    embedding_revision: Optional[str] = None,
     embedding_dimension: int = 768,
     default_top_k: int = 10,
     default_level: str = "l2",
     rebuild: bool = False,
     trust_remote_code: bool = False,
     embedding_batch_size: Optional[int] = None,
+    embedding_max_seq_length: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build the union of indexes required by *skill_ids* and package them.
 
@@ -414,8 +423,11 @@ def build_skill_contexts(
                     registry,
                     languages=list(languages),
                     embedding_model=embedding_model,
+                    embedding_revision=embedding_revision,
                     embedding_dimension=embedding_dimension,
                     trust_remote_code=trust_remote_code,
+                    embedding_batch_size=embedding_batch_size,
+                    embedding_max_seq_length=embedding_max_seq_length,
                 )
             logger.info("Building missing indexes %s under %s", missing, cache_dir)
             _run_compiler(
@@ -440,7 +452,14 @@ def build_skill_contexts(
         loaded["vector"] = _load_vector(
             _index_dir(cache_dir, "vector"),
             embedding_model=embedding_model,
+            embedding_provider="huggingface",
             embedding_dimension=embedding_dimension,
+            embedding_revision=embedding_revision,
+            embedding_kwargs=(
+                {"max_seq_length": embedding_max_seq_length}
+                if embedding_max_seq_length is not None
+                else None
+            ),
             trust_remote_code=trust_remote_code,
             default_batch_size=embedding_batch_size,
         )
@@ -532,12 +551,28 @@ def load_contexts_from_manifest(
         vec_entry = manifest.indexes["vector"]
         # Prefer the embedding config that was used at build time so the
         # load uses a compatible tokenizer/dimension.
-        emb_model = vec_entry.config.get("embedding_model", "nomic-ai/CodeRankEmbed")
-        emb_dim = vec_entry.config.get("embedding_dimension", 768)
+        emb_model = vec_entry.config.get("embedding_model")
+        emb_provider = vec_entry.config.get("embedding_provider")
+        emb_dim = vec_entry.config.get(
+            "dimension", vec_entry.config.get("embedding_dimension")
+        )
+        embedding_kwargs = vec_entry.config.get("embedding_kwargs") or {}
+        if not isinstance(embedding_kwargs, dict):
+            raise ValueError("vector manifest has invalid embedding kwargs")
+        if (
+            not emb_model
+            or not emb_provider
+            or not isinstance(emb_dim, int)
+            or emb_dim <= 0
+        ):
+            raise ValueError("vector manifest has incomplete embedding identity")
         loaded["vector"] = _load_vector(
             vec_entry.path,
             embedding_model=emb_model,
+            embedding_provider=emb_provider,
             embedding_dimension=emb_dim,
+            index_metric=vec_entry.config.get("index_metric", "ip"),
+            embedding_kwargs=embedding_kwargs,
         )
     if "symbol_graph" in needed:
         loaded["symbol_graph"] = _load_symbol_graph(
