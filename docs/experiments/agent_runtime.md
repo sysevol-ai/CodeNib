@@ -5,6 +5,70 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent runtime probe — findings
 
+## Full five-language replication (2026-07-14)
+
+The original four-language probe below is now historical. We completed the
+previously missing Python block and repeated the three-arm experiment with a
+second model family at two sizes on a frozen, balanced workload:
+
+- **Dataset:** all 500 queries from `sysevol-ai/codeminer-synthesis`, covering
+  25 repository snapshots and five language groups (100 queries each).
+- **Arms:** `grep_only`, `preinj_eager`, and `preinj_eager_compact`; all expose
+  exactly `read`, `grep`, `glob`, and `bash` to the model. Both preload arms use
+  the same top-10 L2 embedding context. Compact mode performs a one-time
+  explore-to-commit collapse after the first successful read.
+- **Models:** Claude Haiku 4.5 (the completed historical block), Qwen3.5-9B,
+  and Qwen3.5-27B (two independent local-model replications). Comparisons are
+  paired and normalized within each model; absolute token counts are not
+  compared across providers or model sizes.
+- **Primary metric:** total prompt-plus-completion tokens over the agent
+  trajectory. The quality guardrail is the paired change in committed-answer
+  block Recall@5, with non-inferiority margin -0.05.
+- **Inference:** 10,000-sample percentile bootstrap clustered by repository
+  snapshot. Language strata contain five repository clusters each, so the
+  pooled result is the headline result.
+
+| model / arm | tokens vs. grep [95% CI] | delta block R@5 [95% CI] | guardrail |
+|---|---:|---:|---|
+| Haiku / eager | 49.9% [44.2, 56.7] | -0.009 [-0.043, +0.022] | pass |
+| Haiku / compact | 61.6% [55.0, 68.1] | +0.009 [-0.021, +0.041] | pass |
+| Qwen3.5-9B / eager | 51.5% [46.3, 57.1] | +0.017 [-0.027, +0.071] | pass |
+| **Qwen3.5-9B / compact** | **45.1% [40.2, 50.1]** | **-0.006 [-0.047, +0.038]** | **pass** |
+| Qwen3.5-27B / eager | 57.0% [52.2, 61.9] | -0.011 [-0.055, +0.040] | fail (borderline) |
+| **Qwen3.5-27B / compact** | **44.8% [40.3, 49.9]** | **-0.003 [-0.037, +0.038]** | **pass** |
+
+Applying the predefined lowest-token admitted rule selects eager for Haiku and
+compact for both Qwen sizes; the selected arms use **44.8-49.9% of baseline
+tokens**. The replicated Qwen operating points use 44.8-45.1%, while both full
+quality intervals remain inside the predefined guardrail. The mechanism is
+model-dependent: Haiku benefits most from eager preload, whereas both Qwen sizes
+benefit most when the exploration trace is compacted. We therefore do not
+promote one history policy unconditionally; the deployed model must clear the
+same quality gate.
+
+Each Qwen matrix contains 1,500 successful cells (500 per arm), with no missing
+or duplicate query-arm keys. The 9B run had two initial request failures; both
+failed records are preserved and both cells succeeded under an unchanged,
+serial retry. It also produced 97 answer-contract failures, which remain in the
+quality analysis as zero Block Recall rather than being filtered out. Eighteen
+tool attempts returned errors, including two attempts to call an unadvertised
+`answer` tool; no unadvertised tool call executed. The 27B run had one initial
+malformed tool-call response, preserved and successfully retried under the
+unchanged protocol.
+
+Inside the frozen paper artifact bundle, the inputs are under
+`inputs/agent/`, the publication metrics are
+`verification/expected/agent_runtime.json`, and the expected raster outputs are
+`verification/expected/agent_runtime.png` and
+`verification/expected/agent_runtime_breakdown.png`. The bundle-level
+`paper_artifact_config.json` and `figure/reproduce_paper_figures.py` reconstruct
+both figures; `SOURCE_LOCK.json` records the exact CodeMiner and figure-source
+commits. The metrics JSON fingerprints the 1,500 selected cells per model and
+the available run and protocol manifests.
+
+The sections below document the earlier runtime-probe question, graph and
+verify-expand ablations, and their original four-language result.
+
 **Question.** Beyond grep/read, does anything we add *inside the agent runtime*
 earn its place — specifically (a) does compiled-context **pre-load** save tokens
 at equal accuracy, (b) does **graph** expansion in the pre-load beat plain

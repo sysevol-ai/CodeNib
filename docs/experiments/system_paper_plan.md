@@ -6,6 +6,14 @@ SPDX-License-Identifier: Apache-2.0
 
 # CodeMiner systems paper plan
 
+> **Status:** historical experiment plan. The current paper's RQ and claim
+> contract lives in `codeminer-paper/STORY_AUDIT.md`. In particular, the paper
+> evaluates query execution, dense materialization, static LSP compatibility,
+> and context delivery. The controlled lifecycle trace through the evaluated
+> compiler and runtime is complete in `docs/experiments/materialized_trace.md`;
+> exploratory pilots below remain as a development ledger and must not be
+> substituted for its frozen protocol.
+
 ## Thesis
 
 CodeMiner is a snapshot-indexed semantic service for software-engineering
@@ -105,12 +113,17 @@ python scripts/profiling/analyze_snapshot_reuse.py \
 | synthesis | 500 | 25 | 25 | 25 | 95% | 20.0 |
 | combined | 600 | 100 | 25 | 100 | 83.3% | 6.0 |
 
-For the Qwen3-Embedding-0.6B profiles currently under
-`/mnt/data/codeminer/profile_log`, the 100 base snapshots required 16,180
-observed build seconds (4.49 hours; median 113.9 seconds/snapshot). The 25
-snapshots used by synthesis required 4,472 seconds once, or 8.94 amortized
-seconds across each of 500 queries. These are measurements of the current
-machine and artifacts, not yet a controlled baseline comparison.
+For the frozen Qwen3-Embedding-0.6B profiles under the paper artifact's
+`inputs/profile_log`, the non-overlapping L2 embedding-plus-FAISS timer sums to
+6,619.9 seconds over the 100 base snapshots. The 25 snapshots
+used by synthesis require 1,838.8 seconds once, or 3.678 seconds when spread
+over the trace's 500 consumers. Earlier values of 16,180 and 4,472 seconds
+double-counted nested profiler sections and must not be used. This is
+dense-view accounting on the current machine, not a controlled baseline or a
+full-system break-even result. The final controlled lifecycle trace supersedes
+this partial boundary: across the same 25 snapshots, median full materialization,
+fresh-process hydration, and warm 42-request service are 116.7, 7.40, and
+0.727 seconds. See `docs/experiments/materialized_trace.md`.
 
 Existing agent results are supporting evidence only:
 
@@ -160,8 +173,10 @@ The corrected reports live under
 These steady-state request latencies are not cold-index timings. On the same
 four already-materialized SCIP payloads, the C++ graph decoder took 0.55-1.56
 seconds to materialize graphs, while the earlier full embedding profiles took
-minutes per snapshot. The systems result must therefore report the break-even
-query count and amortized total cost, not present request latency in isolation.
+minutes per snapshot. This observation motivated the final lifecycle study,
+which now reports complete build, hydration, serving, storage, and resource
+distributions. Its session-count curve is deployment accounting from measured
+phases, not a comparative break-even claim.
 
 ### Multilanguage replay result
 
@@ -209,8 +224,8 @@ per-request latency savings, gives:
 | language | one-time static build | live setup/session | break-even sessions |
 |---|---:|---:|---:|
 | Go | 3.39 s | 2.09 s | 2 |
-| Rust | 8.17 s | 9.31 s | 1 |
-| TypeScript/JavaScript | 27.08 s | 7.51 s | 4 |
+| Rust | 8.17 s | 7.70 s | 2 |
+| TypeScript/JavaScript | 27.08 s | 7.60 s | 4 |
 
 These are single-run development measurements, not confidence intervals. The
 TypeScript wall time includes failed frozen-lockfile dependency preparation
