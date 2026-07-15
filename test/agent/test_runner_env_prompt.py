@@ -56,10 +56,13 @@ def test_no_environment_block_without_repo_path():
     assert "repo_path:" not in runner.system_prompt
 
 
-def test_workflow_prompt_teaches_graph_and_files():
+def test_workflow_prompt_only_describes_exposed_tools():
     llm = MagicMock(spec=LiteLLMChat)
     runner = AgentRunner(llm, SkillRegistry())
     p = runner.system_prompt
-    assert "find_callers" in p and "find_callees" in p  # graph navigation verbs
     assert "grep" in p and "read" in p
     assert "glob" in p and "bash" in p
+    assert "bm25_search" not in p
+    assert "embedding_search" not in p
+    assert "codeminer_context" not in p
+    assert "find_callers" not in p and "find_callees" not in p
