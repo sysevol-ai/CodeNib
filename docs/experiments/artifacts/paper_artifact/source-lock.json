@@ -1,5 +1,5 @@
 {
-  "manifest_sha256": "672ddf5c9d43ea0c4a884d80ac259033432830c6afc018e85f1e8b809f407080",
+  "manifest_sha256": "b355a26762238e47401009694e0001ae6257b9786b2cf2ab577f273f5e07c672",
   "schema_version": 1,
   "sources": {
     "agent-haiku-cpp": {
@@ -38,9 +38,9 @@
       "sha256": "6c80266c308c260239c7be80de4b27bc6bfe3f6f6bac4ee3397f8b3ad75e307d"
     },
     "artifact-readme": {
-      "bytes": 5295,
+      "bytes": 5721,
       "files": 1,
-      "sha256": "4cfd422d9dfba97f5ca27c8b62c799b0d6aceb2169b1e6dec2c1d1d9a8c63259"
+      "sha256": "0645852eaef5fec2c1eacf70332d8c46e1767cb8280d71e1768ba567159ebc8a"
     },
     "base-dataset": {
       "bytes": 271835,
@@ -57,15 +57,20 @@
       "files": 1,
       "sha256": "0404a0770470ebf08c6d903a3bd689c24272b3a80ff369cf3502aaa637ec846f"
     },
+    "dense-graphrag-development-sweep": {
+      "bytes": 4670301,
+      "files": 1,
+      "sha256": "ad847fecccb3d715b163761be4ad71b5e957c467f5dd1470837114f2c3570d41"
+    },
     "dense-graphrag-matrix": {
       "bytes": 26849368,
       "files": 11,
       "sha256": "296fb0b7dcdf813f3a10c23beb070ee99efd469cca7f7e94341decd28d30cc9d"
     },
     "expected-figures": {
-      "bytes": 1860893,
-      "files": 11,
-      "sha256": "5ad1e89da601da7589fbc94752105f17404f0ed797a67b964a631c5ce8681ad9"
+      "bytes": 2804949,
+      "files": 16,
+      "sha256": "02e2d52896ee62c7a5839cd1c990f2d81b492ad147bdc9545885bc0e2d29a00d"
     },
     "faiss-index-family": {
       "bytes": 918784,
@@ -73,19 +78,29 @@
       "sha256": "7c01eed9f90b8bc5ed5caafa50b47774a2ecffc1a8d009db1d77af2a5412f207"
     },
     "figure-config": {
-      "bytes": 1052,
+      "bytes": 1140,
       "files": 1,
-      "sha256": "71f9d8c356c14915d40024810cf19ed4b2458f0229f660367b64ce40936a8740"
+      "sha256": "91049326eb43dc5fb1cb0e85062c294787553d06d3333ce59d01220697bdf22f"
     },
     "figure-programs": {
-      "bytes": 155589,
-      "files": 13,
-      "sha256": "c047f1c6dcf0b9d69ced65cebcce830d04612893f7d63295c6a3d6c272ee94b6"
+      "bytes": 179842,
+      "files": 18,
+      "sha256": "8a59b6d128e8b1b1255b658f9b96c4d274a0b918596363ecda294e3f48a9a479"
     },
     "license-boundaries": {
       "bytes": 1408,
       "files": 1,
       "sha256": "cd4b4a4443c851df09b808c3e2a53efad88524ca470fe0f18362acb1223e9cf6"
+    },
+    "lsp-agent-confirmatory-analysis": {
+      "bytes": 7727,
+      "files": 1,
+      "sha256": "46d1215f26c5280c03477de1e9cfb256eb1153938104719edfd21b92f4b97410"
+    },
+    "lsp-agent-development-analysis": {
+      "bytes": 5570,
+      "files": 1,
+      "sha256": "c2775ce97d32c47c5a3e8fb06d910c9ae7dc0f4fe01ca5c3d3f4f1b43abc59fa"
     },
     "lsp-replay": {
       "bytes": 33301531,

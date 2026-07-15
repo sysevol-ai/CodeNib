@@ -2,7 +2,7 @@
   "schema_version": 1,
   "bundle": {
     "name": "CodeMiner paper artifact (core)",
-    "version": "core-rc7"
+    "version": "core-rc8"
   },
   "sources": [
     {
@@ -100,6 +100,12 @@
       ]
     },
     {
+      "id": "dense-graphrag-development-sweep",
+      "root": "data",
+      "path": "results/dense_graphrag_dev_reference_rrf_sweep_v2.json",
+      "destination": "inputs/dense_graphrag_dev_reference_rrf_sweep_v2.json"
+    },
+    {
       "id": "faiss-index-family",
       "root": "data",
       "path": "results/faiss_index_family_qwen06_100.json",
@@ -117,6 +123,18 @@
         ".git",
         "__pycache__"
       ]
+    },
+    {
+      "id": "lsp-agent-development-analysis",
+      "root": "data",
+      "path": "results/lsp_agent_base_haiku_development_v2_analysis.json",
+      "destination": "inputs/lsp_agent_base_haiku_development_v2_analysis.json"
+    },
+    {
+      "id": "lsp-agent-confirmatory-analysis",
+      "root": "data",
+      "path": "results/lsp_agent_base_haiku_confirmatory_v2_analysis.json",
+      "destination": "inputs/lsp_agent_base_haiku_confirmatory_v2_analysis.json"
     },
     {
       "id": "materialized-trace",
@@ -238,13 +256,18 @@
       "include": [
         "FIGURE_STYLE.md",
         "draw_agent_runtime.py",
+        "draw_eval_accuracy.py",
         "draw_faiss_index_ablation.py",
         "draw_graphrag_rerank.py",
+        "draw_lifecycle_stage_costs.py",
         "draw_lsp_replay.py",
+        "draw_lsp_replay_latency.py",
         "draw_materialized_trace.py",
         "draw_pareto_rerank.py",
         "draw_profile.py",
         "draw_query_profile.py",
+        "draw_retrieval_ablation_suite.py",
+        "draw_serving_lifecycle_suite.py",
         "plot_style.py",
         "reproduce_paper_figures.py",
         "requirements-paper.txt",
@@ -264,14 +287,19 @@
         "agent_runtime.json",
         "agent_runtime.png",
         "agent_runtime_breakdown.png",
+        "eval_recall_at_k.png",
         "faiss_index_ablation.png",
         "graphrag_vs_rerank.json",
         "graphrag_vs_rerank.png",
+        "lifecycle_stage_costs.png",
         "lsp_replay_100.png",
+        "lsp_replay_latency.png",
         "materialized_trace.png",
         "pareto_rerank.png",
         "profile_l0_vs_l2.png",
-        "profile_query_time.png"
+        "profile_query_time.png",
+        "retrieval_ablation_suite.png",
+        "serving_lifecycle_suite.png"
       ],
       "exclude_dir_names": [
         ".git",

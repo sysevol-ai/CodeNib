@@ -61,6 +61,16 @@ hf download sysevol-ai/codeminer-synthesis \
 `$CODEMINER_FIGURE_ROOT` is the `codeminer-figure` checkout in cm-draw. These
 paths are runtime bindings and must not be committed.
 
+The graph input set includes both the development weight sweep and the final
+embedding matrix. The figure reproducer checks that the development results
+uniquely select weight 0.5 under the documented File Success@10, @5, @1
+lexicographic rule before rendering the held-out effects.
+
+The retained LSP evidence includes the 100-snapshot replay reports and the
+development/confirmatory failure-aware analyses from the separate 540-cell
+agent study. The latter support only the reported adoption count; they are not
+pooled into the replay latency distribution.
+
 ## Lock Sources
 
 Regenerate the lock only when intentionally changing a reported input or a

@@ -1,10 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "inputs": {
     "profile_dir": "inputs/profile_log",
     "query_dir": "inputs/profile_log/query_runtime",
     "eval_dir": "inputs/eval_results",
     "graph_result_dir": "inputs/dense_graphrag_matrix_v4",
+    "graph_selection_results": "inputs/dense_graphrag_dev_reference_rrf_sweep_v2.json",
     "dataset_stats": "inputs/dataset_stats.json",
     "faiss_results": "inputs/faiss_index_family_qwen06_100.json",
     "lsp_reports": "inputs/lsp_replay_base_v3_100/reports",

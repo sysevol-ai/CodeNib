@@ -2,7 +2,8 @@
 
 This artifact supports the measurements and figures in "CodeMiner: A
 Materialized Repository Substrate for Coding Agents." It is a retained-result
-artifact for auditing the reported estimators and rebuilding Figures 2--8. It
+artifact for auditing the reported estimators and rebuilding data-driven
+Figures 3--8. It
 does not claim turnkey re-execution of historical cloud model calls or a
 comparison against an unmaterialized competing system.
 
@@ -13,12 +14,18 @@ comparison against an unmaterialized competing system.
   quality report.
 - `inputs/profile_log` and `inputs/eval_results`: dense construction, query,
   retrieval, and reranking records.
-- `inputs/dense_graphrag_matrix_v4`: development/test graph-ablation protocol
-  and records.
+- `inputs/dense_graphrag_dev_reference_rrf_sweep_v2.json`: the 58-snapshot
+  development sweep that selects graph weight 0.5 by File Success@10, then
+  @5, then @1.
+- `inputs/dense_graphrag_matrix_v4`: the frozen 42-snapshot held-out graph
+  analysis inputs plus the complete five-embedding result matrix.
 - `inputs/faiss_index_family_qwen06_100.json`: the controlled FAISS family
   ablation.
 - `inputs/lsp_replay_base_v3_100`: frozen LSP requests, setup fields, and all
   replay reports.
+- `inputs/lsp_agent_base_haiku_{development,confirmatory}_v2_analysis.json`:
+  failure-aware summaries for the separate 540-cell natural-adoption study;
+  together they record four live-arm LSP calls.
 - `inputs/materialized_trace_batch_v9`: the lifecycle plan, exact runtime
   source archive, environment capture, traces, per-snapshot reports and logs,
   summary, and independent analyses.
