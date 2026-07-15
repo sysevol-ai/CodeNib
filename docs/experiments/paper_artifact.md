@@ -60,6 +60,11 @@ Compare the generated lock with
 `docs/experiments/artifacts/paper_artifact/source-lock.json`. A mismatch means
 the selected evidence changed; do not bypass it by building without a lock.
 
+The synthesis Hub snapshot retains a historical `README.md` that describes an
+earlier 280-row state. The artifact-level README identifies the five 100-row
+parquets and `quality_report.json` as the canonical paper selection while
+preserving the source README unchanged for provenance.
+
 ## Build And Verify
 
 Build outside the source and input trees. The builder refuses an existing

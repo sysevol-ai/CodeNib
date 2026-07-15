@@ -29,6 +29,14 @@ comparison against an unmaterialized competing system.
 - `verification/expected`: canonical JSON and PNG outputs used by the figure
   verifier.
 
+The immutable synthesis snapshot also contains its historical dataset
+`README.md`, which describes an earlier 280-row state and is not the metadata
+for the paper selection. The five bundled parquet files and
+`quality_report.json` are canonical for this artifact: they contain 500 rows,
+including five rows with non-valid generator-judge verdicts. The paper retains
+those rows and reports the paired exclusion sensitivity. The source README is
+preserved unchanged so its Hub snapshot identity remains auditable.
+
 ContextBench is not part of the reported study and is intentionally absent.
 See `LICENSES.md` for component-level license boundaries; the collection is not
 presented under one blanket license.

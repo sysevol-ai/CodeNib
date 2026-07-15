@@ -1,5 +1,5 @@
 {
-  "manifest_sha256": "a3db049927ce6878a9354fd089ab33399aac6c63aa09af8f885d888aab7ee9c9",
+  "manifest_sha256": "ccd5d8805e3be14d47c1cc06fc3aa0b98a2f621e288bcb48ee2c776a1cfb42aa",
   "schema_version": 1,
   "sources": {
     "agent-haiku-cpp": {
@@ -38,9 +38,9 @@
       "sha256": "6c80266c308c260239c7be80de4b27bc6bfe3f6f6bac4ee3397f8b3ad75e307d"
     },
     "artifact-readme": {
-      "bytes": 4783,
+      "bytes": 5295,
       "files": 1,
-      "sha256": "9579feae13a07eed52e7047a953da8c40e00f697c6add66dd0658f22b57a5b31"
+      "sha256": "4cfd422d9dfba97f5ca27c8b62c799b0d6aceb2169b1e6dec2c1d1d9a8c63259"
     },
     "base-dataset": {
       "bytes": 271835,
