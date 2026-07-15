@@ -92,7 +92,11 @@ nav:
   - Experiments:
       - Agent Compile Sweep: experiments/agent_compile.md
       - Compact Pre-load: experiments/compact_preload.md
+      - Dense GraphRAG Ablation: experiments/dense_graphrag.md
+      - Snapshot Amortization: experiments/snapshot_amortization.md
+      - Mixed-operation Materialization: experiments/materialized_trace.md
       - Agent Runtime Probe: experiments/agent_runtime.md
+      - ContextBench External Validity: experiments/contextbench_external_validity.md
       - Local Model Backend: experiments/qwen_backend.md
       - LSP Core Acceleration Gate: experiments/lsp_core_acceleration.md
       - LSP-route Adoption: experiments/lsp_route_adoption.md
