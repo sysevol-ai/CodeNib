@@ -1,5 +1,5 @@
 {
-  "manifest_sha256": "da6b72d3d7d8f13bc1ce413add4cb5481fec045f422b05d9dd8ffba9225178e6",
+  "manifest_sha256": "d22c22b7060af531af524b817f0e3185b6074de325f34a76f08c33f26650f9da",
   "schema_version": 1,
   "sources": {
     "agent-haiku-cpp": {
@@ -68,9 +68,9 @@
       "sha256": "296fb0b7dcdf813f3a10c23beb070ee99efd469cca7f7e94341decd28d30cc9d"
     },
     "expected-figures": {
-      "bytes": 2794818,
+      "bytes": 2795047,
       "files": 16,
-      "sha256": "ca7807c98d446b73272bb9eb2e3c731910c66e29e5e6e6003dadac0768df8307"
+      "sha256": "75fa4a0e7cf278fa408d8217d67dd2990879872d41ab511d4db080e9c7e0d671"
     },
     "faiss-index-family": {
       "bytes": 918784,
@@ -83,9 +83,9 @@
       "sha256": "91049326eb43dc5fb1cb0e85062c294787553d06d3333ce59d01220697bdf22f"
     },
     "figure-programs": {
-      "bytes": 184895,
+      "bytes": 184903,
       "files": 18,
-      "sha256": "a03ba7e033f00d3333605b312c58b23fd4214a75ab41aae3319e681cc1e50a31"
+      "sha256": "7f26227b68a01a2ff1a3f651a2be01e9b568f39e1d6f1f1cf3d9b36a2b726efe"
     },
     "license-boundaries": {
       "bytes": 1408,
