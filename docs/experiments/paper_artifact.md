@@ -9,6 +9,27 @@ The paper artifact has two ownership layers:
    directory belongs on the publication artifact branch until artifact
    evaluation begins.
 
+## Branch And Promotion Policy
+
+Use `artifact/system-paper-eval` as the integration branch for publication
+work. A change belongs there when it fixes a paper protocol, names a frozen
+dataset or model, stages retained results, renders a paper figure, or updates a
+release manifest. Generated figures and fixed experiment outputs do not belong
+on `main`.
+
+Promote a change to `main` only when it is useful independently of the paper.
+Typical examples are runtime and index behavior, stable MCP or manifest
+contracts, dataset-independent evaluation utilities, and their tests and user
+documentation. Promotion uses a focused branch based on current `main`, with
+only the reusable change and its smallest relevant tests. After that PR merges,
+bring the resulting `main` commit back into the artifact branch; do not merge
+the artifact branch itself into `main`.
+
+Each release candidate remains pinned to the exact CodeMiner and figure-source
+commits recorded in its source lock. Later artifact-branch development does not
+mutate an existing release candidate and does not require rebuilding it unless
+a selected input, plotting source, estimator, or bundled document changes.
+
 Large experiment outputs are inputs, not source code. They may live on a local
 disk, object store, or downloaded release, but no mount point is encoded in the
 manifest. The manifest refers only to named roots and relative paths. A source

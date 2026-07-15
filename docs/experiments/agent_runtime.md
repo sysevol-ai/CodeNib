@@ -23,7 +23,9 @@ second model family at two sizes on a frozen, balanced workload:
   compared across providers or model sizes.
 - **Primary metric:** total prompt-plus-completion tokens over the agent
   trajectory. The quality guardrail is the paired change in committed-answer
-  block Recall@5, with non-inferiority margin -0.05.
+  block Recall@5, with a uniform operational threshold of -0.05. This is a
+  reporting guardrail, not a pre-registered equivalence or non-inferiority
+  test.
 - **Inference:** 10,000-sample percentile bootstrap clustered by repository
   snapshot. Language strata contain five repository clusters each, so the
   pooled result is the headline result.
