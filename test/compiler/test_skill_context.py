@@ -198,10 +198,11 @@ def mocked_build(monkeypatch):
     on the build/load call pattern (e.g. "missing types triggered build,
     already-built types did not").
     """
-    calls = {"compile": [], "loaded": []}
+    calls = {"compile": [], "loaded": [], "registries": [], "vector_kwargs": []}
 
     def fake_run_compiler(repo_path, index_types, cache_dir, **kwargs):
         calls["compile"].append(tuple(sorted(index_types)))
+        calls["registries"].append(kwargs["builder_registry"])
 
     def fake_load_bm25(cache_dir):
         calls["loaded"].append("bm25")
@@ -209,6 +210,7 @@ def mocked_build(monkeypatch):
 
     def fake_load_vector(cache_dir, **kwargs):
         calls["loaded"].append("vector")
+        calls["vector_kwargs"].append(kwargs)
         return object()
 
     def fake_load_graph(cache_dir):
@@ -365,6 +367,38 @@ def test_rebuild_forces_full_recompile(registry, mocked_build, tmp_path):
         rebuild=True,
     )
     assert mocked_build["compile"] == [("bm25", "vector")]
+
+
+def test_embedding_resource_limits_reach_builder_and_loader(
+    registry, mocked_build, tmp_path
+):
+    skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(tmp_path / "cache"),
+        skill_registry=registry,
+        embedding_revision="model-revision",
+        embedding_batch_size=4,
+        embedding_max_seq_length=8192,
+    )
+
+    vector_builder = mocked_build["registries"][0].get("vector")
+    assert vector_builder.embedding_kwargs == {
+        "encode_kwargs": {"batch_size": 4},
+        "max_seq_length": 8192,
+        "revision": "model-revision",
+    }
+    assert mocked_build["vector_kwargs"] == [
+        {
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 768,
+            "embedding_revision": "model-revision",
+            "embedding_kwargs": {"max_seq_length": 8192},
+            "trust_remote_code": False,
+            "default_batch_size": 4,
+        }
+    ]
 
 
 def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):

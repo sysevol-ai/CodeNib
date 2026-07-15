@@ -107,6 +107,53 @@ def test_skip_non_fresh_index(tmp_path: Path) -> None:
     assert "bm25" not in ctx.errors
 
 
+def test_load_vector_accepts_compiler_manifest_identity(tmp_path: Path) -> None:
+    vector_dir = tmp_path / "vector"
+    vector_dir.mkdir()
+    manifest = RepoManifest(
+        repo_path=str(tmp_path),
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(vector_dir),
+                built_at="2026-01-01T00:00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config={
+                    "embedding_model": "test-model",
+                    "embedding_provider": "huggingface",
+                    "embedding_dimension": 384,
+                    "embedding_kwargs": {
+                        "max_seq_length": 8192,
+                        "revision": "model-commit",
+                    },
+                    "index_metric": "ip",
+                },
+            ),
+        },
+    )
+    manifest.save(tmp_path / "repo_manifest.json")
+
+    vector = MagicMock()
+    vector.embedding_model = "test-model"
+    vector.get_stats.return_value = {"total_documents": 3}
+    with patch("codeminer.mcp.context.CodeVectorStore", return_value=vector) as cls:
+        ctx = ServerContext.load(tmp_path / "repo_manifest.json")
+
+    cls.assert_called_once_with(
+        embedding_model="test-model",
+        embedding_provider="huggingface",
+        dimension=384,
+        index_metric="ip",
+        store_path=str(vector_dir),
+        max_seq_length=8192,
+        revision="model-commit",
+    )
+    vector.load.assert_called_once_with()
+    assert ctx.vector is vector
+    assert "vector" not in ctx.errors
+
+
 def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
     """RegexNodeIndex is built when symbol_graph loads successfully."""
     graph_dir = manifest_dir / "symbol_graph"

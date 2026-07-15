@@ -146,14 +146,28 @@ class ServerContext:
 
         try:
             cfg = entry.config
+            embedding_model = cfg.get("embedding_model")
+            embedding_provider = cfg.get("embedding_provider")
+            dimension = cfg.get("dimension", cfg.get("embedding_dimension"))
+            embedding_kwargs = cfg.get("embedding_kwargs") or {}
+            if not isinstance(embedding_kwargs, dict):
+                raise ValueError("vector manifest has invalid embedding kwargs")
+            if (
+                not embedding_model
+                or not embedding_provider
+                or not isinstance(dimension, int)
+                or dimension <= 0
+            ):
+                raise ValueError("vector manifest has incomplete embedding identity")
 
             # Create CodeVectorStore with embedding model from manifest
             self.vector = CodeVectorStore(
-                embedding_model=cfg["embedding_model"],
-                embedding_provider=cfg["embedding_provider"],
-                dimension=cfg.get("dimension"),
+                embedding_model=embedding_model,
+                embedding_provider=embedding_provider,
+                dimension=dimension,
                 index_metric=cfg.get("index_metric", "ip"),
                 store_path=entry.path,
+                **embedding_kwargs,
             )
 
             # Load FAISS index from disk
@@ -161,7 +175,7 @@ class ServerContext:
 
             # Validate model consistency
             loaded_model = self.vector.embedding_model
-            manifest_model = cfg["embedding_model"]
+            manifest_model = embedding_model
             if loaded_model != manifest_model:
                 raise RuntimeError(
                     f"Embedding model mismatch: manifest specifies "
@@ -174,7 +188,7 @@ class ServerContext:
                 "Loaded vector index from %s (%d docs, model=%s)",
                 entry.path,
                 stats["total_documents"],
-                cfg["embedding_model"],
+                embedding_model,
             )
         except Exception as exc:
             self.vector = None

@@ -34,6 +34,7 @@ class IndexBuilder(Protocol):
     """Protocol for index build tools the compiler can invoke."""
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus: ...
+
     def incremental_update(self, scope: str, **kwargs: Any) -> IndexStatus: ...
 
 
@@ -115,6 +116,17 @@ class VectorIndexBuilder:
     build_levels: List[str] = field(default_factory=lambda: ["l0", "l2"])
     max_lines_per_chunk: int = 300
     index_metric: str = "ip"
+
+    def _artifact_identity(self) -> Dict[str, Any]:
+        """Return the embedding contract required to reopen this artifact."""
+        return {
+            "embedding_model": self.embedding_model,
+            "embedding_provider": self.embedding_provider,
+            "embedding_dimension": self.embedding_dimension,
+            "dimension": self.embedding_dimension,
+            "embedding_kwargs": dict(self.embedding_kwargs),
+            "index_metric": self.index_metric,
+        }
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
@@ -233,7 +245,7 @@ class VectorIndexBuilder:
             scope=scope,
             path=output_dir,
             metadata={
-                "embedding_model": self.embedding_model,
+                **self._artifact_identity(),
                 "levels": list(self.build_levels),
                 "document_count": doc_count,
                 "last_commit": head_commit,
@@ -381,7 +393,7 @@ class VectorIndexBuilder:
             scope=scope,
             path=output_dir,
             metadata={
-                "embedding_model": self.embedding_model,
+                **self._artifact_identity(),
                 "levels": list(self.build_levels),
                 "document_count": doc_count,
                 "chunks_reembedded": result.chunks_reembedded,
@@ -489,9 +501,11 @@ class SymbolGraphBuilder:
             graph_route=self.graph_route,
         )
 
-        node_count = 0
-        if graph is not None and hasattr(graph, "graph"):
-            node_count = len(graph.graph.vs)
+        if graph is None or not hasattr(graph, "graph"):
+            raise RuntimeError("symbol graph builder returned no graph")
+        node_count = len(graph.graph.vs)
+        if node_count == 0:
+            raise RuntimeError("symbol graph builder returned an empty graph")
 
         return IndexStatus(
             index_type="symbol_graph",
@@ -523,8 +537,11 @@ def register_default_builders(
     languages: Optional[List[str]] = None,
     graph_route: str = "active",
     embedding_model: str = "nomic-ai/CodeRankEmbed",
+    embedding_revision: Optional[str] = None,
     embedding_dimension: int = 768,
     trust_remote_code: bool = False,
+    embedding_batch_size: Optional[int] = None,
+    embedding_max_seq_length: Optional[int] = None,
 ) -> None:
     """Register all standard index builders with sensible defaults."""
     langs = languages or ["python"]
@@ -534,6 +551,12 @@ def register_default_builders(
     embedding_kwargs = {}
     if trust_remote_code:
         embedding_kwargs = {"model_kwargs": {"trust_remote_code": True}}
+    if embedding_batch_size is not None:
+        embedding_kwargs["encode_kwargs"] = {"batch_size": embedding_batch_size}
+    if embedding_max_seq_length is not None:
+        embedding_kwargs["max_seq_length"] = embedding_max_seq_length
+    if embedding_revision is not None:
+        embedding_kwargs["revision"] = embedding_revision
 
     registry.register(
         "vector",
