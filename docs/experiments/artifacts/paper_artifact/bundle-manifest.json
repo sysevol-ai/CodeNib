@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "bundle": {
+    "name": "CodeMiner paper artifact (core)",
+    "version": "core-rc4"
+  },
+  "sources": [
+    {
+      "id": "artifact-readme",
+      "root": "code",
+      "path": "docs/experiments/artifacts/paper_artifact/README.md",
+      "destination": "README.md"
+    },
+    {
+      "id": "license-boundaries",
+      "root": "code",
+      "path": "docs/experiments/artifacts/paper_artifact/LICENSES.md",
+      "destination": "LICENSES.md"
+    },
+    {
+      "id": "code-license",
+      "root": "code",
+      "path": "LICENSE",
+      "destination": "LICENSE-CODE"
+    },
+    {
+      "id": "figure-config",
+      "root": "code",
+      "path": "docs/experiments/artifacts/paper_artifact/paper_artifact_config.json",
+      "destination": "paper_artifact_config.json"
+    },
+    {
+      "id": "base-dataset",
+      "root": "base_dataset",
+      "path": "data/test-00000-of-00001.parquet",
+      "destination": "inputs/datasets/base/test-00000-of-00001.parquet"
+    },
+    {
+      "id": "synthesis-dataset",
+      "root": "synthesis_dataset",
+      "path": ".",
+      "destination": "inputs/datasets/synthesis",
+      "include": [
+        ".gitattributes",
+        "README.md",
+        "quality_report.json",
+        "C++_C/test-00000-of-00001.parquet",
+        "Go/test-00000-of-00001.parquet",
+        "Python/test-00000-of-00001.parquet",
+        "Rust/test-00000-of-00001.parquet",
+        "TypeScript_JavaScript/test-00000-of-00001.parquet"
+      ],
+      "exclude_dir_names": [
+        ".cache"
+      ]
+    },
+    {
+      "id": "dataset-stats",
+      "root": "data",
+      "path": "dataset_stats.json",
+      "destination": "inputs/dataset_stats.json"
+    },
+    {
+      "id": "profile-records",
+      "root": "data",
+      "path": "profile_log",
+      "destination": "inputs/profile_log",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "retrieval-evaluation",
+      "root": "data",
+      "path": "eval_results",
+      "destination": "inputs/eval_results",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "dense-graphrag-matrix",
+      "root": "data",
+      "path": "results/dense_graphrag_matrix_v4",
+      "destination": "inputs/dense_graphrag_matrix_v4",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "faiss-index-family",
+      "root": "data",
+      "path": "results/faiss_index_family_qwen06_100.json",
+      "destination": "inputs/faiss_index_family_qwen06_100.json"
+    },
+    {
+      "id": "lsp-replay",
+      "root": "data",
+      "path": "results/lsp_replay_base_v3_100",
+      "destination": "inputs/lsp_replay_base_v3_100",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "materialized-trace",
+      "root": "data",
+      "path": "results/materialized_trace_batch_v9",
+      "destination": "inputs/materialized_trace_batch_v9",
+      "exclude": [
+        "SHA256SUMS",
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__",
+        "cache"
+      ]
+    },
+    {
+      "id": "snapshot-amortization",
+      "root": "data",
+      "path": "results/snapshot_amortization_qwen06_synth.json",
+      "destination": "inputs/snapshot_amortization_qwen06_synth.json"
+    },
+    {
+      "id": "agent-sensitivity",
+      "root": "data",
+      "path": "results/paper_agent_runtime_sensitivity",
+      "destination": "inputs/paper_agent_runtime_sensitivity",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "agent-haiku-python",
+      "root": "data",
+      "path": "results/haiku_compare_py",
+      "destination": "inputs/agent/haiku_compare_py",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "agent-haiku-multilang",
+      "root": "data",
+      "path": "results/haiku_compare_multilang",
+      "destination": "inputs/agent/haiku_compare_multilang",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "agent-haiku-cpp",
+      "root": "data",
+      "path": "results/haiku_compare_cpp",
+      "destination": "inputs/agent/haiku_compare_cpp",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "agent-haiku-synthesis",
+      "root": "data",
+      "path": "results/haiku_synth_compact",
+      "destination": "inputs/agent/haiku_synth_compact",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "agent-qwen-9b",
+      "root": "data",
+      "path": "results/qwen35_9b_synth_runtime_v1",
+      "destination": "inputs/agent/qwen35_9b_synth_runtime_v1",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "agent-qwen-27b",
+      "root": "data",
+      "path": "results/qwen35_27b_synth_runtime_v1",
+      "destination": "inputs/agent/qwen35_27b_synth_runtime_v1",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "figure-programs",
+      "root": "figures",
+      "path": ".",
+      "destination": "figure",
+      "include": [
+        "FIGURE_STYLE.md",
+        "draw_agent_runtime.py",
+        "draw_faiss_index_ablation.py",
+        "draw_graphrag_rerank.py",
+        "draw_lsp_replay.py",
+        "draw_materialized_trace.py",
+        "draw_pareto_rerank.py",
+        "draw_profile.py",
+        "draw_query_profile.py",
+        "plot_style.py",
+        "reproduce_paper_figures.py",
+        "requirements-paper.txt",
+        "verify_paper_figures.py"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "expected-figures",
+      "root": "figures",
+      "path": ".",
+      "destination": "verification/expected",
+      "include": [
+        "agent_runtime.json",
+        "agent_runtime.png",
+        "agent_runtime_breakdown.png",
+        "faiss_index_ablation.png",
+        "graphrag_vs_rerank.json",
+        "graphrag_vs_rerank.png",
+        "lsp_replay_100.png",
+        "materialized_trace.png",
+        "pareto_rerank.png",
+        "profile_l0_vs_l2.png",
+        "profile_query_time.png"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "inputs": {
+    "profile_dir": "inputs/profile_log",
+    "query_dir": "inputs/profile_log/query_runtime",
+    "eval_dir": "inputs/eval_results",
+    "graph_result_dir": "inputs/dense_graphrag_matrix_v4",
+    "dataset_stats": "inputs/dataset_stats.json",
+    "faiss_results": "inputs/faiss_index_family_qwen06_100.json",
+    "lsp_reports": "inputs/lsp_replay_base_v3_100/reports",
+    "lifecycle_summary": "inputs/materialized_trace_batch_v9/summary.json",
+    "haiku_roots": [
+      "inputs/agent/haiku_compare_py",
+      "inputs/agent/haiku_compare_multilang",
+      "inputs/agent/haiku_compare_cpp",
+      "inputs/agent/haiku_synth_compact"
+    ],
+    "qwen9b_roots": [
+      "inputs/agent/qwen35_9b_synth_runtime_v1"
+    ],
+    "qwen27b_roots": [
+      "inputs/agent/qwen35_27b_synth_runtime_v1"
+    ]
+  },
+  "protocol": {
+    "graph_bootstrap_samples": 20000,
+    "agent_bootstrap_samples": 10000,
+    "agent_expected_pairs": 500,
+    "seed": 20260713,
+    "recall_guardrail": -0.05,
+    "accuracy_guardrail": 0.95
+  }
+}
