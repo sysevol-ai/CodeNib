@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..index.embedding.vector_store import CodeVectorStore
 from ..index.regex_idx.regex_idx import RegexNodeIndex
@@ -71,6 +71,49 @@ def merge_hybrid(
     rrf_k: int = 60,
 ) -> List[QueriedNode]:
     """Merge multiple retrieval branches with weighted scoring or RRF."""
+    return _merge_rankings(
+        branches,
+        weights=weights,
+        top_k=top_k,
+        fusion=fusion,
+        rrf_k=rrf_k,
+        key_fn=queried_node_key,
+    )
+
+
+def merge_file_rankings(
+    branches: List[List[QueriedNode]],
+    weights: Optional[List[float]] = None,
+    top_k: Optional[int] = None,
+    *,
+    rrf_k: int = 60,
+) -> List[QueriedNode]:
+    """Fuse ranked branches by unique file using weighted RRF.
+
+    Each branch contributes at most once per file. Stable relative file names
+    embedded in ``node_id`` take precedence over machine-specific absolute
+    paths, which keeps graph and vector artifacts comparable across snapshots.
+    """
+    unique_branches = [dedup_queried_files(branch) for branch in branches]
+    return _merge_rankings(
+        unique_branches,
+        weights=weights,
+        top_k=top_k,
+        fusion="rrf",
+        rrf_k=rrf_k,
+        key_fn=queried_file_key,
+    )
+
+
+def _merge_rankings(
+    branches: List[List[QueriedNode]],
+    weights: Optional[List[float]],
+    top_k: Optional[int],
+    *,
+    fusion: str,
+    rrf_k: int,
+    key_fn: Callable[[QueriedNode], Tuple[Any, ...]],
+) -> List[QueriedNode]:
     if not branches:
         return []
 
@@ -85,7 +128,7 @@ def merge_hybrid(
 
     for weight, results in zip(weights, branches, strict=True):
         for rank, item in enumerate(results, start=1):
-            key = queried_node_key(item)
+            key = key_fn(item)
             weighted = _fusion_score(
                 item,
                 rank=rank,
@@ -127,6 +170,23 @@ def queried_node_key(item: QueriedNode) -> Tuple[Any, ...]:
     )
 
 
+def queried_file_key(item: QueriedNode) -> Tuple[Any, ...]:
+    """Stable file identity across relative graph and absolute index paths."""
+    file_path = (item.file or "").strip().replace("\\", "/")
+    node_id = (item.node_id or "").strip().replace("\\", "/")
+    if node_id and ":" in node_id:
+        node_file = node_id.split(":", 1)[0].removeprefix("./")
+        if (
+            node_file
+            and file_path
+            and (file_path == node_file or file_path.endswith("/" + node_file))
+        ):
+            return ("file", node_file)
+    if file_path:
+        return ("file", file_path)
+    return ("node", *queried_node_key(item))
+
+
 def dedup_queried_nodes(nodes: Sequence[QueriedNode]) -> List[QueriedNode]:
     """Deduplicate nodes while preserving first-seen rank order.
 
@@ -151,6 +211,19 @@ def dedup_queried_nodes(nodes: Sequence[QueriedNode]) -> List[QueriedNode]:
                 existing.score or 0.0,
                 content_override=node.content,
             )
+    return out
+
+
+def dedup_queried_files(nodes: Sequence[QueriedNode]) -> List[QueriedNode]:
+    """Keep the first representative node for each stable file identity."""
+    seen: Set[Tuple[Any, ...]] = set()
+    out: List[QueriedNode] = []
+    for node in nodes:
+        key = queried_file_key(node)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(node)
     return out
 
 

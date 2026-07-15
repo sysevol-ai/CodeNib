@@ -37,6 +37,7 @@ def build_hierarchical_vector_store(
     embedding_provider: str,
     embedding_dimension: Optional[int],
     embedding_kwargs: Optional[Dict[str, object]] = None,
+    embedding: Optional[object] = None,
     index_metric: str = "ip",
     index_type: str = "flat",
     ivf_nlist: int = 100,
@@ -74,6 +75,7 @@ def build_hierarchical_vector_store(
                 ivf_nprobe=ivf_nprobe,
                 store_path=str(store_path),
                 profiler=profiler,
+                embedding=embedding,
                 **(embedding_kwargs or {}),
             )
             vector_store.load(str(store_path))
@@ -160,6 +162,7 @@ def build_hierarchical_vector_store(
         ivf_nprobe=ivf_nprobe,
         store_path=str(store_path),
         profiler=profiler,
+        embedding=embedding,
         **(embedding_kwargs or {}),
     )
 

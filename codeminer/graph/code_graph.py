@@ -980,12 +980,14 @@ class CodeGraph:
 
         return self.graph.neighbors(vertex)
 
-    def get_successors(self, node_name):
+    def get_successors(self, node_name, edge_types=None):
         """
         Get the successors of a node_name (outgoing edges).
 
         Args:
             node_name: Name of the node
+            edge_types: Optional edge types to retain. Typed traversal returns
+                unique neighbors even when the graph contains multi-edges.
 
         Returns:
             List of successor vertex IDs
@@ -995,14 +997,18 @@ class CodeGraph:
             if vertex is None:
                 return []
 
-        return self.graph.successors(vertex)
+        if edge_types is None:
+            return self.graph.successors(vertex)
+        return self._get_typed_adjacent(vertex, edge_types, mode="out")
 
-    def get_predecessors(self, node_name):
+    def get_predecessors(self, node_name, edge_types=None):
         """
         Get the predecessors of a node_name (incoming edges).
 
         Args:
             node_name: Name of the node
+            edge_types: Optional edge types to retain. Typed traversal returns
+                unique neighbors even when the graph contains multi-edges.
 
         Returns:
             List of predecessor vertex IDs
@@ -1012,7 +1018,25 @@ class CodeGraph:
             if vertex is None:
                 return []
 
-        return self.graph.predecessors(vertex)
+        if edge_types is None:
+            return self.graph.predecessors(vertex)
+        return self._get_typed_adjacent(vertex, edge_types, mode="in")
+
+    def _get_typed_adjacent(self, vertex, edge_types, *, mode):
+        """Return unique adjacent vertices connected by selected edge types."""
+        selected = set(edge_types)
+        seen = set()
+        neighbors = []
+        for edge_id in self.graph.incident(vertex, mode=mode):
+            edge = self.graph.es[edge_id]
+            if edge.attributes().get("type") not in selected:
+                continue
+            neighbor = edge.target if mode == "out" else edge.source
+            if neighbor in seen:
+                continue
+            seen.add(neighbor)
+            neighbors.append(neighbor)
+        return neighbors
 
     def print_graph_basic_info(self):
         """

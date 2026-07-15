@@ -11,7 +11,7 @@ of code chunks for semantic similarity search.
 import hashlib
 import json
 import pickle
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
@@ -291,6 +291,9 @@ class CodeVectorStore:
             if embedding is not None
             else self._initialize_embedding_model(**embedding_kwargs)
         )
+        self._cached_query_text: Optional[str] = None
+        self._cached_query_vector: Optional[np.ndarray] = None
+        self._query_cache_depth = 0
         self.dimension = self._infer_embedding_dimension(dimension)
 
         # Initialize L0 (file-level skeletons)
@@ -348,6 +351,43 @@ class CodeVectorStore:
         if self.profiler is None:
             return nullcontext()
         return self.profiler.section(label, metadata)
+
+    def _embed_query(self, query: str) -> np.ndarray:
+        """Encode a query, reusing it only inside an explicit request scope."""
+        cached_text = getattr(self, "_cached_query_text", None)
+        cached_vector = getattr(self, "_cached_query_vector", None)
+        cache_active = getattr(self, "_query_cache_depth", 0) > 0
+        if cache_active and cached_text == query and cached_vector is not None:
+            return cached_vector
+
+        vector = np.asarray(
+            self.embedding.embed_query(query), dtype=np.float32
+        ).reshape(-1)
+        if cache_active:
+            self._cached_query_text = query
+            self._cached_query_vector = vector
+        return vector
+
+    @contextmanager
+    def reuse_query_embedding(self):
+        """Reuse one query vector within a composed request, then discard it."""
+
+        depth = getattr(self, "_query_cache_depth", 0)
+        if depth == 0:
+            self.clear_query_cache()
+        self._query_cache_depth = depth + 1
+        try:
+            yield
+        finally:
+            self._query_cache_depth -= 1
+            if self._query_cache_depth == 0:
+                self.clear_query_cache()
+
+    def clear_query_cache(self) -> None:
+        """Clear the single-query embedding reused by consecutive search stages."""
+
+        self._cached_query_text = None
+        self._cached_query_vector = None
 
     def _should_filter_by_threshold(self, score: float, threshold: float) -> bool:
         """
@@ -449,9 +489,7 @@ class CodeVectorStore:
         if index is None or index.ntotal == 0:
             return []
 
-        query_vec = np.array(
-            self.embedding.embed_query(query), dtype=np.float32
-        ).reshape(1, -1)
+        query_vec = self._embed_query(query).reshape(1, -1)
 
         # FAISS search
         k = min(top_k, index.ntotal)
@@ -505,6 +543,9 @@ class CodeVectorStore:
         self.l2_index = None
 
         self.embedding = None
+        self._query_cache_depth = 0
+        self._cached_query_text = None
+        self._cached_query_vector = None
 
         try:
             import torch
@@ -772,7 +813,7 @@ class CodeVectorStore:
             return []
 
         # Encode query
-        query_vec = np.array(self.embedding.embed_query(query), dtype=np.float32)
+        query_vec = self._embed_query(query)
 
         # Reconstruct stored vectors and compute similarity
         results: list[NodeInfo] = []
@@ -797,6 +838,26 @@ class CodeVectorStore:
                 )
             )
 
+        best_by_node = {}
+        for result in results:
+            identity = result.node_id or (
+                result.file,
+                result.node_name,
+                result.start_line,
+                result.end_line,
+            )
+            existing = best_by_node.get(identity)
+            if existing is None:
+                best_by_node[identity] = result
+                continue
+            if self.index_metric == "ip":
+                is_better = result.score > existing.score
+            else:
+                is_better = result.score < existing.score
+            if is_better:
+                best_by_node[identity] = result
+        results = list(best_by_node.values())
+
         # Sort: ip → higher is better; l2 → lower is better
         results.sort(
             key=lambda r: r.score,
@@ -804,7 +865,8 @@ class CodeVectorStore:
         )
 
         logger.debug(
-            "search_within_ids: %d matched, returning top %d",
+            "search_within_ids: %d matched, %d unique, returning top %d",
+            len(matched),
             len(results),
             min(top_k, len(results)),
         )

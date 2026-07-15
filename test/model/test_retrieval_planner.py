@@ -255,10 +255,12 @@ class _FakeGraph:
     def resolve_symbol(self, symbol):
         return self.resolve.get(symbol), None
 
-    def get_successors(self, node_name):
+    def get_successors(self, node_name, edge_types=None):
+        assert edge_types == {"reference"}
         return self.successors.get(node_name, [])
 
-    def get_predecessors(self, node_name):
+    def get_predecessors(self, node_name, edge_types=None):
+        assert edge_types == {"reference"}
         return self.predecessors.get(node_name, [])
 
     def get_node_info_by_id(self, node_id):
