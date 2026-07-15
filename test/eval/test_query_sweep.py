@@ -6,13 +6,17 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from codeminer.eval.agent_runner.query_sweep import (
     filter_query_rows,
     group_query_rows_by_instance,
     language_key_for_query_row,
     query_targets,
+    run_query_sweep,
     select_query_rows,
 )
+from codeminer.eval.agent_runner.sweep_config import SweepConfig
 
 
 def test_query_targets_normalizes_files_and_simplified_symbols():
@@ -102,3 +106,116 @@ def test_language_key_for_query_row_prefers_explicit_then_language_group():
         "typescript"
     )
     assert language_key_for_query_row({"source_config": "Python"}) == "python"
+
+
+def test_run_query_sweep_stages_only_declared_indexes(monkeypatch, tmp_path):
+    calls = {}
+
+    def has_required(prebuilt_dir, instance_id, embedding_model, index_types):
+        calls["preflight"] = (
+            prebuilt_dir,
+            instance_id,
+            embedding_model,
+            set(index_types),
+        )
+        return True
+
+    def stage(prebuilt_dir, instance_id, cache_dir, *, required_index_types):
+        calls["stage"] = (
+            prebuilt_dir,
+            instance_id,
+            cache_dir,
+            set(required_index_types),
+        )
+        return cache_dir
+
+    def unexpected_symbol_graph(*_args, **_kwargs):
+        raise AssertionError("vector-only sweeps must not load the symbol graph")
+
+    monkeypatch.setattr(
+        "codeminer.eval.agent_runner.prebuilt.has_required_indexes", has_required
+    )
+    monkeypatch.setattr(
+        "codeminer.eval.agent_runner.prebuilt.repo_path_for",
+        lambda _root, _instance: "/snapshots/repo",
+    )
+    monkeypatch.setattr(
+        "codeminer.eval.agent_runner.prebuilt.stage_prebuilt_indexes", stage
+    )
+    monkeypatch.setattr(
+        "codeminer.eval.agent_runner.sweep.load_full_contexts",
+        lambda _cfg, _repo, _cache: {},
+    )
+    monkeypatch.setattr(
+        "codeminer.eval.agent_runner.sweep.run_cell",
+        lambda *_args, **_kwargs: {
+            "answer": "",
+            "file_read_paths": [],
+            "nodes": [],
+            "preload_candidates": [],
+            "verify_triggered": False,
+            "verify_resolved": False,
+            "tool_calls": [],
+            "trace_summary": {},
+            "total_turns": 1,
+            "total_tokens": 1,
+            "cost_usd": 0.0,
+            "cache_read_input_tokens": 0,
+        },
+    )
+    monkeypatch.setattr(
+        "codeminer.eval.agent_runner.symbols.build_prebuilt_symbol_span_index",
+        unexpected_symbol_graph,
+    )
+    monkeypatch.setattr(
+        "codeminer.eval.agent_runner.scoring.evaluate_agent_localization",
+        lambda **_kwargs: SimpleNamespace(
+            metrics={"answer_blocks": {5: {"recall": 0.0}}},
+            to_record_fields=lambda: {},
+        ),
+    )
+    monkeypatch.setattr(
+        "codeminer.eval.retrieval_eval.collect_target_blocks", lambda _row: []
+    )
+    monkeypatch.setattr(
+        "codeminer.llm.litellm_chat.LiteLLMChat", lambda **_kwargs: object()
+    )
+
+    cfg = SweepConfig(
+        sweep_id="vector-only",
+        subsets={"vector": ["embedding_search"]},
+        model="provider/model",
+        embedding_model="org/embed-small",
+        prebuilt_dir=str(tmp_path / "prebuilt"),
+        reps=1,
+    )
+    output_dir = tmp_path / "results"
+
+    summary = run_query_sweep(
+        cfg,
+        output_dir,
+        [
+            {
+                "instance_id": "org__repo-1",
+                "query_id": "query-1",
+                "query": "Locate the implementation",
+                "gt_files": [],
+                "gt_symbols": [],
+            }
+        ],
+        resume=False,
+    )
+
+    assert summary["required_index_types"] == ["vector"]
+    assert calls["preflight"] == (
+        str(tmp_path / "prebuilt"),
+        "org__repo-1",
+        "org/embed-small",
+        {"vector"},
+    )
+    assert calls["stage"] == (
+        str(tmp_path / "prebuilt"),
+        "org__repo-1",
+        str(output_dir / "cache" / "org__repo-1"),
+        {"vector"},
+    )
