@@ -73,9 +73,9 @@
       "sha256": "296fb0b7dcdf813f3a10c23beb070ee99efd469cca7f7e94341decd28d30cc9d"
     },
     "expected-figures": {
-      "bytes": 3075967,
+      "bytes": 3080709,
       "files": 18,
-      "sha256": "496fdca8a7133dd9c544dac68ddb59964093d7f2406c92ac6ca8a1f4e491c742"
+      "sha256": "0530724cb06631c3dc29d2c39ce082a2767e5741b6a5c046ed5393c998cc1cbf"
     },
     "faiss-index-family": {
       "bytes": 918784,
