@@ -152,20 +152,21 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-Local `core-rc19` summarizes each admitted LSP request by its ten-repetition
-median before aggregating across requests. It refreshes the direct and derived
-LSP figures, updates the 110-claim ledger, and adds a focused estimator
-regression test. No retained measurement input changed. Its manifest SHA-256 is
-`da68a22fbeaa025e4e92dbfac50a2b96b355bcfe651c97bbd9bdff2cad7ac24d`;
+Local `core-rc20` adds a revision-bound audit of parameter count, output
+dimension, config identity, and weight identity for the five dense embedders.
+The Figure 7 estimator now checks all ten LOC slopes, their rank trend, and the
+warm-query trend against the 118-claim ledger. No retained measurement input
+changed. Its manifest SHA-256 is
+`372469016fbb1237217eaec4aa9ca5d1ed9101fab4517077cdd9ce2660953dd6`;
 its source-lock SHA-256 is
-`511f534afe6b43428e6257bc00069d966c495c70d2b1b7fb93100e9a647144ae`.
-The verified bundle has 7,517 files and 242,330,773 bytes. Its provenance pins
-CodeMiner commit `4eab5ac8d61ed934db325b92f91b47674e6cf981` and figure-source
-commit `898abf630dc3a326d1ca08ac358372ed897f0194`. The bundled runtime
-suite passes 201 tests with seven skips, and the estimator suite passes two
+`69f8823b4b35386ea098743b8399653e755daa75695387a4137caf2bcd806d06`.
+The verified bundle has 7,519 files and 242,354,668 bytes. Its provenance pins
+CodeMiner commit `5da2d32e9eecd4e6975aa1e81ee4324aa4a8def3` and figure-source
+commit `85a5afbf2839e91c8be8408da12a9c98c936c8da`. The bundled runtime
+suite passes 201 tests with seven skips, and the estimator suite passes five
 tests. A clean 15-job rebuild matches all 18 deterministic outputs, passes all
-110 semantic claims, and embeds fonts in all 15 PDFs.
+118 semantic claims, and embeds fonts in all 15 PDFs.
 
-Two independent deterministic archives are 19,488,177 bytes with SHA-256
-`e59075bcd6e93b6329352ae7f3a252c8ef5f05e00445c625edd2516bd1fbd0df`.
+Two independent deterministic archives are 19,495,123 bytes with SHA-256
+`830250980398109c4f26b7ce058cede6b4da20ed2c5af5ffd09bdb70b895d057`.
 This is a local release candidate, not a public artifact URL.
