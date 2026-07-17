@@ -152,23 +152,23 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-Local `core-rc22` makes Figure 4's context state explicit: grep/read starts
-without retrieved units, eager preload initializes history with the shared
-top-10 L2 candidates before turn one, and compact starts from the same history
-before replacing it once after the first successful read. Relative to RC21,
-only the figure-program and expected-figure source groups changed; no retained
-measurement, runtime source, or numerical claim input changed. Its manifest
-SHA-256 is
-`c13e28c324b434105c99cbc87ccd32c21bf81c9a1bf549ec892161461f9b12be`;
+Local `core-rc23` aligns the retained figure programs with the current agent
+presentation. Figure 4 distinguishes grep/read from the two arms that share
+preloaded candidates; Figure 10(b) separates model-level token cost and recall
+change onto aligned single-metric axes. Relative to RC22, only the
+figure-program and expected-figure source groups changed; no retained
+measurement, runtime source, dataset, or numerical claim input changed. Its
+manifest SHA-256 is
+`c69650d3dc631aa00f603cae48c3da983f1a441c1cde471b24cc2362fad59f90`;
 its source-lock SHA-256 is
-`6df05f566604d2eb24748fdfe1f957999fe6b3544399545b5cd10d6ef44fe7ef`.
-The verified bundle has 7,520 files and 242,340,338 bytes. Its provenance pins
-CodeMiner commit `ef6b4fc5a3cf27f2e21ae855bb87a35e53f13596` and figure-source
-commit `68db40db2c51a97a795fe879d82a29e9409c9b97`. The bundled runtime
+`fa339a39fe511c19f0f76004f0c669140e1d1e833b2108f09e6c58e3891c27ec`.
+The verified bundle has 7,520 files and 242,317,314 bytes. Its provenance pins
+CodeMiner commit `748167f9143f997d37a6394b1757d044615ba5a5` and figure-source
+commit `1b514511356d48248065b6d08893aa35806b4af8`. The bundled runtime
 suite passes 201 tests with seven skips, and the estimator suite passes six
 tests. A clean 15-job rebuild matches all 18 deterministic outputs, passes all
 118 semantic claims, and embeds fonts in all 15 PDFs.
 
-Two independent deterministic archives are 19,476,144 bytes with SHA-256
-`96017509195ece0bd6b5f49215b1fd161bafef95abbd17c6fcda6d94c8b0c6e8`.
+Two independent deterministic archives are 19,452,893 bytes with SHA-256
+`98c6245eff70fcbf338bb3277e64f3a86065fe9e4d8fe5ee8c4de376e14b7cec`.
 This is a local release candidate, not a public artifact URL.
