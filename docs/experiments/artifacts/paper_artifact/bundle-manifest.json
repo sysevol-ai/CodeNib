@@ -2,7 +2,7 @@
   "schema_version": 1,
   "bundle": {
     "name": "CodeMiner paper artifact (core)",
-    "version": "core-rc12"
+    "version": "core-rc18"
   },
   "sources": [
     {
@@ -28,6 +28,61 @@
       "root": "code",
       "path": "docs/experiments/artifacts/paper_artifact/paper_artifact_config.json",
       "destination": "paper_artifact_config.json"
+    },
+    {
+      "id": "incremental-results",
+      "root": "code",
+      "path": "docs/experiments/artifacts/incremental_graph_v4",
+      "destination": "inputs/incremental_graph_v4"
+    },
+    {
+      "id": "codeminer-runtime",
+      "root": "code",
+      "path": "codeminer",
+      "destination": "runtime/codeminer",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "incremental-runner",
+      "root": "code",
+      "path": "scripts/profiling/profile_incremental_graph.py",
+      "destination": "runtime/scripts/profiling/profile_incremental_graph.py"
+    },
+    {
+      "id": "incremental-tests",
+      "root": "code",
+      "path": "test",
+      "destination": "runtime/test",
+      "include": [
+        "agent/test_lsp_graph.py",
+        "eval/test_lsp_replay_benchmark.py",
+        "graph/incremental/*.py",
+        "scip/test_scip_go.py",
+        "scripts/test_profile_incremental_graph.py"
+      ],
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        "__pycache__"
+      ]
+    },
+    {
+      "id": "runtime-build-metadata",
+      "root": "code",
+      "path": "pyproject.toml",
+      "destination": "runtime/pyproject.toml"
+    },
+    {
+      "id": "runtime-readme",
+      "root": "code",
+      "path": "README.md",
+      "destination": "runtime/README.md"
     },
     {
       "id": "base-dataset",
@@ -255,7 +310,9 @@
       "destination": "figure",
       "include": [
         "FIGURE_STYLE.md",
+        "build_paper_claims.py",
         "draw_agent_runtime.py",
+        "draw_agent_runtime_schematic.py",
         "draw_eval_accuracy.py",
         "draw_faiss_index_ablation.py",
         "draw_graphrag_rerank.py",
@@ -284,6 +341,7 @@
       "path": ".",
       "destination": "verification/expected",
       "include": [
+        "agent_runtime_schematic.png",
         "agent_runtime.json",
         "agent_runtime.png",
         "agent_runtime_breakdown.png",
@@ -295,6 +353,7 @@
         "lsp_replay_100.png",
         "lsp_replay_latency.png",
         "materialized_trace.png",
+        "paper_claims.json",
         "pareto_rerank.png",
         "profile_l0_vs_l2.png",
         "profile_query_time.png",

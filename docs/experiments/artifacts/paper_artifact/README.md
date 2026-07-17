@@ -1,11 +1,12 @@
 # CodeMiner Paper Artifact (Core)
 
 This artifact supports the measurements and figures in "CodeMiner: A
-Materialized Repository Substrate for Coding Agents." It is a retained-result
-artifact for auditing the reported estimators and rebuilding data-driven
-Figures 3--8. It
-does not claim turnkey re-execution of historical cloud model calls or a
-comparison against an unmaterialized competing system.
+Multi-View Data System for Serving Repository Context to Coding Agents." It is
+a retained-result artifact for auditing the reported estimators, rebuilding
+generated Figures 4--10, and inspecting the incremental-maintenance case study.
+Figure 4 is a data-free mechanism schematic; Figures 5--10 consume the retained
+measurements. The artifact does not claim turnkey re-execution of historical
+cloud model calls or a comparison against an unmaterialized competing system.
 
 ## Contents
 
@@ -26,15 +27,21 @@ comparison against an unmaterialized competing system.
 - `inputs/lsp_agent_base_haiku_{development,confirmatory}_v2_analysis.json`:
   failure-aware summaries for the separate 540-cell natural-adoption study;
   together they record four live-arm LSP calls.
+- `inputs/incremental_graph_v4`: protocol-v4 JSONL for the five-position
+  scikit-learn and Caddy chains, including the retained no-source position and
+  every passing or failing file-level arm.
 - `inputs/materialized_trace_batch_v9`: the lifecycle plan, exact runtime
   source archive, environment capture, traces, per-snapshot reports and logs,
   summary, and independent analyses.
 - `inputs/agent`: all selected Haiku and Qwen policy records, including failed,
   retried, and forced-format trajectories retained by the analysis.
-- `figure`: pinned plotting dependencies, plotting sources, and the one-command
-  reproduction driver.
+- `runtime`: the source-locked CodeMiner Python runtime, incremental benchmark
+  entry point, focused tests, and build metadata used by the case study.
+- `figure`: pinned plotting dependencies, plotting sources (including the
+  data-free agent-runtime schematic), the one-command reproduction driver, and
+  the manuscript claim-ledger builder.
 - `verification/expected`: canonical JSON and PNG outputs used by the figure
-  verifier.
+  verifier, including `paper_claims.json`.
 
 The immutable synthesis snapshot also contains its historical dataset
 `README.md`, which describes an earlier 280-row state and is not the metadata
@@ -56,6 +63,39 @@ files remain, so every lifecycle measurement and failure boundary is auditable.
 An optional cache archive may be published for direct replay without rebuilding,
 but it is not required to reproduce the paper results.
 
+## Audit Incremental Maintenance
+
+The retained inputs are
+`inputs/incremental_graph_v4/sklearn_results_v4.jsonl` and
+`inputs/incremental_graph_v4/caddy_results_v4.jsonl`. Their SHA-256 values are
+`381fb7896f9502c48ea664e69c385f62c1bc27ece6c6e959053b0b22565b2da8`
+and `e0ce67a304a1e2a7a17d258e9d0886e59f3cd36633e39fe627a59fed13302ee4`.
+Protocol v4 admits a speedup only after exact complete-graph and changed-slice
+multiset equality and exact graph-backed definition/reference replay.
+
+The source-locked entry point is
+`runtime/scripts/profiling/profile_incremental_graph.py`. Re-execution requires
+the named repository commits plus scip-python/basedpyright or scip-go/gopls, as
+listed in the input README; those external repository and toolchain payloads
+are not duplicated in the core retained-result archive. From `runtime`, the
+focused local verification is:
+
+```bash
+ARTIFACT_ROOT="$PWD"
+python -m venv "$ARTIFACT_TEST_VENV"
+"$ARTIFACT_TEST_VENV/bin/pip" install "$ARTIFACT_ROOT/runtime[test]"
+cd "$ARTIFACT_ROOT/runtime"
+PYTHONDONTWRITEBYTECODE=1 "$ARTIFACT_TEST_VENV/bin/pytest" \
+  -p no:cacheprovider test/graph/incremental \
+  test/scripts/test_profile_incremental_graph.py \
+  test/agent/test_lsp_graph.py \
+  test/eval/test_lsp_replay_benchmark.py \
+  test/scip/test_scip_go.py -q
+```
+
+Set `$ARTIFACT_TEST_VENV` outside the bundle. The bytecode and cache settings
+keep the checksum-verified artifact tree read-only during this test.
+
 ## Integrity
 
 From the artifact root, verify that every payload file is present and unchanged:
@@ -74,8 +114,8 @@ manifest, source lock, and content provenance as `BUNDLE_MANIFEST.json`,
 Python 3.11 was used for the verified rebuild:
 
 ```bash
-python -m venv .venv
-. .venv/bin/activate
+python -m venv "$ARTIFACT_FIGURE_VENV"
+. "$ARTIFACT_FIGURE_VENV/bin/activate"
 python -m pip install -r figure/requirements-paper.txt
 PYTHONDONTWRITEBYTECODE=1 python figure/reproduce_paper_figures.py \
   --config paper_artifact_config.json \
@@ -84,6 +124,9 @@ PYTHONDONTWRITEBYTECODE=1 python figure/verify_paper_figures.py \
   --expected-dir verification/expected \
   --actual-dir "$REPRODUCED_FIGURE_ROOT"
 ```
+
+Set `$ARTIFACT_FIGURE_VENV` outside the bundle, like
+`$REPRODUCED_FIGURE_ROOT`.
 
 The driver rejects missing inputs and non-empty output directories. It writes
 `reproduction_manifest.json`, including canonical SHA-256 identities for input
@@ -95,6 +138,12 @@ generated files here intentionally causes the complete checksum verifier to
 reject the modified copy. The driver also disables bytecode writes in every
 plotting subprocess so importing `figure/plot_style.py` cannot mutate the
 bundle.
+
+`paper_claims.json` recomputes 110 manuscript-facing values from the same
+frozen inputs. Each record names its source, estimator, unit, raw value,
+rounding rule, and reviewed display value. Reproduction fails if any value,
+sample count, guardrail outcome, or reporting precision drifts; the verifier
+also checks the ledger schema, unique claim IDs, and per-claim pass state.
 
 ## Provenance Boundaries
 

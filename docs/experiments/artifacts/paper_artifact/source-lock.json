@@ -1,5 +1,5 @@
 {
-  "manifest_sha256": "e1c519c612ac1a620dbf95e33ff9e9f67a56ac95433a031ccf04f0eaa774b0b7",
+  "manifest_sha256": "89947c63959188515a0a09faeaa7c5020602977cdfc5bad4936e961bc56181c3",
   "schema_version": 1,
   "sources": {
     "agent-haiku-cpp": {
@@ -38,9 +38,9 @@
       "sha256": "6c80266c308c260239c7be80de4b27bc6bfe3f6f6bac4ee3397f8b3ad75e307d"
     },
     "artifact-readme": {
-      "bytes": 5721,
+      "bytes": 8300,
       "files": 1,
-      "sha256": "0645852eaef5fec2c1eacf70332d8c46e1767cb8280d71e1768ba567159ebc8a"
+      "sha256": "552779e6bbe7c84c288043b061894775b821ac802f0ae261752053c5f09f119d"
     },
     "base-dataset": {
       "bytes": 271835,
@@ -51,6 +51,11 @@
       "bytes": 11299,
       "files": 1,
       "sha256": "5abe4f24fd66aacdc8aa68a61f58709d07d3a7aa82a217631043428ebfd48e88"
+    },
+    "codeminer-runtime": {
+      "bytes": 2864453,
+      "files": 298,
+      "sha256": "034c9a693ff16d9f6fff999895f7d9a26cc35a6fcb11bc014ae3a02f7f2525ff"
     },
     "dataset-stats": {
       "bytes": 68071,
@@ -68,9 +73,9 @@
       "sha256": "296fb0b7dcdf813f3a10c23beb070ee99efd469cca7f7e94341decd28d30cc9d"
     },
     "expected-figures": {
-      "bytes": 2788387,
-      "files": 16,
-      "sha256": "be72879d7b3ab6290f4b15dc7458c62dfc7ce176242e0f055e024d80960bb210"
+      "bytes": 3071618,
+      "files": 18,
+      "sha256": "7cf9a44d6e9b62aa8c6446fcdc829a9986513c09f78404ac43f6878680ddbe96"
     },
     "faiss-index-family": {
       "bytes": 918784,
@@ -78,14 +83,29 @@
       "sha256": "7c01eed9f90b8bc5ed5caafa50b47774a2ecffc1a8d009db1d77af2a5412f207"
     },
     "figure-config": {
-      "bytes": 1140,
+      "bytes": 1202,
       "files": 1,
-      "sha256": "91049326eb43dc5fb1cb0e85062c294787553d06d3333ce59d01220697bdf22f"
+      "sha256": "020613bec9436d6035ce833a80ffdec14d1b4909ffed5dc1ad70dc26943d2223"
     },
     "figure-programs": {
-      "bytes": 185094,
-      "files": 18,
-      "sha256": "6711b798629695005ef4d32d5609d934529ee9011f3afc299691552de4dc87fd"
+      "bytes": 254645,
+      "files": 20,
+      "sha256": "d0c0e6701321d502bbf221a3fdc75385894e9b4c746ae1fa09204f01a7505576"
+    },
+    "incremental-results": {
+      "bytes": 73099,
+      "files": 3,
+      "sha256": "0dc1142d1f950d0bcc9af4af5be9f88e15bae9f87540e5fbaaf9f60ed6543e94"
+    },
+    "incremental-runner": {
+      "bytes": 58687,
+      "files": 1,
+      "sha256": "9d21342d73123995ea9d366d95dff8899773878904b93753df0c41bf2171348c"
+    },
+    "incremental-tests": {
+      "bytes": 199721,
+      "files": 13,
+      "sha256": "115904c4e71d87d3253868d9800927173620e46dfce310e7b4fa3ef4f6348611"
     },
     "license-boundaries": {
       "bytes": 1408,
@@ -121,6 +141,16 @@
       "bytes": 26384892,
       "files": 53,
       "sha256": "93627eae970bc6a77c94ff8d257eaa88c9a83192b38a87992b28080c9c9921e1"
+    },
+    "runtime-build-metadata": {
+      "bytes": 5223,
+      "files": 1,
+      "sha256": "86ff35f7f1a0d8b15d4acc37a492df6b50c500225c47774148d5896813ad6635"
+    },
+    "runtime-readme": {
+      "bytes": 5475,
+      "files": 1,
+      "sha256": "2f1e1a82e32c41ff1c035ed2c53ce548c1266a099e3b9ea177582d1174fb27f9"
     },
     "snapshot-amortization": {
       "bytes": 15964,

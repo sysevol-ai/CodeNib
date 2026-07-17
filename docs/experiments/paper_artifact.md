@@ -71,6 +71,13 @@ development/confirmatory failure-aware analyses from the separate 540-cell
 agent study. The latter support only the reported adoption count; they are not
 pooled into the replay latency distribution.
 
+The incremental-maintenance evidence is source-owned rather than mounted under
+the experiment data root: protocol-v4 JSONL lives in
+`docs/experiments/artifacts/incremental_graph_v4/`, and the manifest packages it
+with the current Python runtime, benchmark entry point, focused tests, and build
+metadata. The core archive does not duplicate the two external Git repositories
+or their LSP/SCIP toolchains.
+
 ## Lock Sources
 
 Regenerate the lock only when intentionally changing a reported input or a
@@ -122,8 +129,8 @@ Write generated files outside the bundle so its complete checksum inventory
 remains valid:
 
 ```bash
-python -m venv .venv
-. .venv/bin/activate
+python -m venv "$ARTIFACT_FIGURE_VENV"
+. "$ARTIFACT_FIGURE_VENV/bin/activate"
 python -m pip install -r figure/requirements-paper.txt
 PYTHONDONTWRITEBYTECODE=1 python figure/reproduce_paper_figures.py \
   --config paper_artifact_config.json \
@@ -142,3 +149,27 @@ LSP caches. They are large, source-linked, and not read by a reported estimator
 or plotting program. The retained lifecycle reports still expose setup,
 hydration, query, resource, and failure measurements. An optional cache archive
 can be published separately, with its own license review and checksum.
+
+## Current Release Candidate
+
+Local `core-rc18` adds the protocol-v4 incremental JSONL, current Python
+runtime, benchmark runner, focused tests, and build metadata. It also includes
+the data-free agent-runtime schematic and updates the artifact title and figure
+map for the current manuscript. A claim-ledger job recomputes 110
+manuscript-facing values, including repository partitions, aggregate LSP match
+rates, projection sizes, and quality guardrails, from the frozen inputs. It also
+records sample counts and rounding contracts. No retained measurement input
+changed. Its manifest SHA-256 is
+`89947c63959188515a0a09faeaa7c5020602977cdfc5bad4936e961bc56181c3`;
+its source-lock SHA-256 is
+`6e5ea8fe1843468b7b2aa2e7a1fe7e17b703aa5d16eedf74a44e706bc753dbc5`.
+The verified bundle has 7,516 files and 242,318,322 bytes. Its provenance pins
+CodeMiner commit `376dfe17be748105290292ed559b5dc96d8ad4eb` and figure-source
+commit `ab7797e6a0550ac4ea285b69f7912c57533e6a90`. The bundled focused
+suite passes 201 tests with seven skips without changing the checksum
+inventory. A clean 15-job rebuild matches all 18 deterministic outputs, passes
+all 110 semantic claims, and embeds fonts in all 15 PDFs.
+
+Two independent deterministic archives are 19,493,813 bytes with SHA-256
+`1c2195483d911278e141506e7dad6b3a6f17e1065baf6c16ec59fdf62dfd4b57`.
+This is a local release candidate, not a public artifact URL.

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "inputs": {
     "profile_dir": "inputs/profile_log",
     "query_dir": "inputs/profile_log/query_runtime",
@@ -10,6 +10,7 @@
     "faiss_results": "inputs/faiss_index_family_qwen06_100.json",
     "lsp_reports": "inputs/lsp_replay_base_v3_100/reports",
     "lifecycle_summary": "inputs/materialized_trace_batch_v9/summary.json",
+    "incremental_results_dir": "inputs/incremental_graph_v4",
     "haiku_roots": [
       "inputs/agent/haiku_compare_py",
       "inputs/agent/haiku_compare_multilang",
