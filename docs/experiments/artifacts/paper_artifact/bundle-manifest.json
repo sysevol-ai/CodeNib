@@ -2,7 +2,7 @@
   "schema_version": 1,
   "bundle": {
     "name": "CodeMiner paper artifact (core)",
-    "version": "core-rc19"
+    "version": "core-rc20"
   },
   "sources": [
     {
@@ -28,6 +28,12 @@
       "root": "code",
       "path": "docs/experiments/artifacts/paper_artifact/paper_artifact_config.json",
       "destination": "paper_artifact_config.json"
+    },
+    {
+      "id": "dense-model-scale",
+      "root": "code",
+      "path": "docs/experiments/artifacts/paper_artifact/dense-model-scale.json",
+      "destination": "inputs/dense-model-scale.json"
     },
     {
       "id": "incremental-results",
@@ -328,6 +334,7 @@
         "plot_style.py",
         "reproduce_paper_figures.py",
         "requirements-paper.txt",
+        "test_build_paper_claims.py",
         "test_draw_lsp_replay.py",
         "verify_paper_figures.py"
       ],

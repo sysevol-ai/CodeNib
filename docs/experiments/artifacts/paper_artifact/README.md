@@ -15,6 +15,8 @@ cloud model calls or a comparison against an unmaterialized competing system.
   quality report.
 - `inputs/profile_log` and `inputs/eval_results`: dense construction, query,
   retrieval, and reranking records.
+- `inputs/dense-model-scale.json`: revision-bound parameter counts, output
+  dimensions, and config/weight identities for the five profiled embedders.
 - `inputs/dense_graphrag_dev_reference_rrf_sweep_v2.json`: the 58-snapshot
   development sweep that selects graph weight 0.5 by File Success@10, then
   @5, then @1.
@@ -124,7 +126,8 @@ PYTHONDONTWRITEBYTECODE=1 python figure/verify_paper_figures.py \
   --expected-dir verification/expected \
   --actual-dir "$REPRODUCED_FIGURE_ROOT"
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=figure \
-  python -m unittest figure/test_draw_lsp_replay.py
+  python -m unittest figure/test_build_paper_claims.py \
+  figure/test_draw_lsp_replay.py
 ```
 
 Set `$ARTIFACT_FIGURE_VENV` outside the bundle, like
@@ -141,11 +144,15 @@ reject the modified copy. The driver also disables bytecode writes in every
 plotting subprocess so importing `figure/plot_style.py` cannot mutate the
 bundle.
 
-`paper_claims.json` recomputes 110 manuscript-facing values from the same
+`paper_claims.json` recomputes 118 manuscript-facing values from the same
 frozen inputs. Each record names its source, estimator, unit, raw value,
 rounding rule, and reviewed display value. Reproduction fails if any value,
 sample count, guardrail outcome, or reporting precision drifts; the verifier
 also checks the ledger schema, unique claim IDs, and per-claim pass state.
+For Figure 7, the ledger binds model scale to the retained cache revisions and
+recomputes the per-model LOC slopes and monotonicity guardrails. These are
+descriptive contracts for the measured model/runtime stack, not causal claims
+that parameter count or output dimension alone determines latency.
 
 ## Provenance Boundaries
 

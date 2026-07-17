@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "source": "Post-hoc audit of the exact Hugging Face cache revisions retained in legacy-model-cache-provenance.json.",
+  "parameter_count_method": "Sum the product of every tensor shape stored in the revision's safetensors files; shared tensors stored once are counted once.",
+  "models": [
+    {
+      "model_id": "Salesforce/SweRankEmbed-Small",
+      "display_label": "SweRank-Small",
+      "revision": "745d2a06103a66d3cfa600aa52fc0d3523010daa",
+      "output_dimension": 768,
+      "dimension_config_key": "n_embd",
+      "stored_parameter_count": 136731648,
+      "tensor_count": 112,
+      "config": {
+        "path": "config.json",
+        "bytes": 1565,
+        "cache_blob_id": "f97b42f6583a4af6df91800767aa37694d297ac7",
+        "sha256": "af32e52eb2adf0fd67cec785edfcfb806f77bbb776aeb568f668fbcda2569f49"
+      },
+      "weights": [
+        {
+          "path": "model.safetensors",
+          "bytes": 273474944,
+          "sha256": "e40687da7f148e684648691facbaa2222503829afb9d21b9b3913034bef14f41"
+        }
+      ]
+    },
+    {
+      "model_id": "Qwen/Qwen3-Embedding-0.6B",
+      "display_label": "Qwen3-Embed-0.6B",
+      "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+      "output_dimension": 1024,
+      "dimension_config_key": "hidden_size",
+      "stored_parameter_count": 595776512,
+      "tensor_count": 310,
+      "config": {
+        "path": "config.json",
+        "bytes": 727,
+        "cache_blob_id": "cef2749ee93607b8f9a58ec72f4f6bfaf874e71d",
+        "sha256": "b5bf1f51fc45be473a54718cef92448d90a1be001bf9b9a44b8c7f10a19feaa9"
+      },
+      "weights": [
+        {
+          "path": "model.safetensors",
+          "bytes": 1191586416,
+          "sha256": "0437e45c94563b09e13cb7a64478fc406947a93cb34a7e05870fc8dcd48e23fd"
+        }
+      ]
+    },
+    {
+      "model_id": "jinaai/jina-code-embeddings-1.5b",
+      "display_label": "Jina-Code-1.5B",
+      "revision": "39aeb4fb9b60f930934c78ae5d749a46287c248a",
+      "output_dimension": 1536,
+      "dimension_config_key": "hidden_size",
+      "stored_parameter_count": 1543714304,
+      "tensor_count": 338,
+      "config": {
+        "path": "config.json",
+        "bytes": 952,
+        "cache_blob_id": "9255c719bf9db1297ffbf064e9cbd5104bcba6ee",
+        "sha256": "bf71653d5d80d02b19c2467ac0faa747257e362c1b10ccb1063bee8a6ed964da"
+      },
+      "weights": [
+        {
+          "path": "model.safetensors",
+          "bytes": 3087465120,
+          "sha256": "176245ca2217e92638464bda018727f5c9082003d18621c2bb90c8771e829ddc"
+        }
+      ]
+    },
+    {
+      "model_id": "Qwen/Qwen3-Embedding-4B",
+      "display_label": "Qwen3-Embed-4B",
+      "revision": "5cf2132abc99cad020ac570b19d031efec650f2b",
+      "output_dimension": 2560,
+      "dimension_config_key": "hidden_size",
+      "stored_parameter_count": 4021774336,
+      "tensor_count": 398,
+      "config": {
+        "path": "config.json",
+        "bytes": 727,
+        "cache_blob_id": "8b4b87fc69023e7a224eb6563753aaf3223d8b98",
+        "sha256": "78d2861cbbfd80eee05839200c5a3b7ed64c789f6c1cab4fbb84cc4eae33eaf5"
+      },
+      "weights": [
+        {
+          "path": "model-00001-of-00002.safetensors",
+          "bytes": 4965826464,
+          "sha256": "e70bfe3c970523fb7ef4eddffed2254ce3f1e7150c3de2af4342de129dd756f8"
+        },
+        {
+          "path": "model-00002-of-00002.safetensors",
+          "bytes": 3077765624,
+          "sha256": "ed1b87c8e9eb7e535a1a155e4fd00d9f4dba80e58a6db48a4c9f82cede7079c1"
+        }
+      ]
+    },
+    {
+      "model_id": "fishmingyu/SweRankEmbed-Large",
+      "display_label": "SweRank-Large",
+      "revision": "7f2b5878ab8bd69effbf9712576a5ce155933fb0",
+      "output_dimension": 3584,
+      "dimension_config_key": "hidden_size",
+      "stored_parameter_count": 7069121024,
+      "tensor_count": 338,
+      "config": {
+        "path": "config.json",
+        "bytes": 921,
+        "cache_blob_id": "ad753c966567981f6f009090af9da7941d363368",
+        "sha256": "035c0ee1285b886c247ff4ff195b27cdc9fe8f7f31f5ebbdc89d20b53d9b7a2b"
+      },
+      "weights": [
+        {
+          "path": "model-00001-of-00003.safetensors",
+          "bytes": 4874663928,
+          "sha256": "c3b3d2ca0c0e534ce6c2e2667a0f2c4a998e8670fdb4f55f5884dcbb341e148e"
+        },
+        {
+          "path": "model-00002-of-00003.safetensors",
+          "bytes": 4932750280,
+          "sha256": "1db9acf8cf57b098fbcb2a74c2ccecb5ba1b8dc67f06ed03e2eea940ddf718e1"
+        },
+        {
+          "path": "model-00003-of-00003.safetensors",
+          "bytes": 4330864528,
+          "sha256": "857686c6f907da427d85d9abff5cff3e1142be7f031a893adad1e2d6d362eab3"
+        }
+      ]
+    }
+  ]
+}

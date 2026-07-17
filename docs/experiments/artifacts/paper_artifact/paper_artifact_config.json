@@ -1,8 +1,10 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "inputs": {
     "profile_dir": "inputs/profile_log",
     "query_dir": "inputs/profile_log/query_runtime",
+    "model_scale_metadata": "inputs/dense-model-scale.json",
+    "model_cache_provenance": "inputs/materialized_trace_batch_v9/environment/legacy-model-cache-provenance.json",
     "eval_dir": "inputs/eval_results",
     "graph_result_dir": "inputs/dense_graphrag_matrix_v4",
     "graph_selection_results": "inputs/dense_graphrag_dev_reference_rrf_sweep_v2.json",
