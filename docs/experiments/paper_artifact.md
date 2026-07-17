@@ -152,21 +152,23 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-Local `core-rc21` pairs Figure 5(a)'s File Recall@10 with the complete L2
-callable-index construction cost used by retrieval and reranking. A focused
-test rejects substitution of the unrelated L0 timer. The Figure 7 scale audit
-and 118-claim ledger remain unchanged, and no retained measurement input
-changed. Its manifest SHA-256 is
-`2979afa332a393e2b5a9866529560f25d33182e88ff795fedb4bd27c1a0b5a2d`;
+Local `core-rc22` makes Figure 4's context state explicit: grep/read starts
+without retrieved units, eager preload initializes history with the shared
+top-10 L2 candidates before turn one, and compact starts from the same history
+before replacing it once after the first successful read. Relative to RC21,
+only the figure-program and expected-figure source groups changed; no retained
+measurement, runtime source, or numerical claim input changed. Its manifest
+SHA-256 is
+`c13e28c324b434105c99cbc87ccd32c21bf81c9a1bf549ec892161461f9b12be`;
 its source-lock SHA-256 is
-`3c544702ed8c92ba5ef3a5191fef869736d5b5570692afa106fe2cfde2d64f0b`.
-The verified bundle has 7,520 files and 242,357,191 bytes. Its provenance pins
-CodeMiner commit `00afce44053ac0c7dee524e6e3d2e3c2c7192fd0` and figure-source
-commit `76bc7e341af59ed485b33a5ecbe3745e699dd501`. The bundled runtime
+`6df05f566604d2eb24748fdfe1f957999fe6b3544399545b5cd10d6ef44fe7ef`.
+The verified bundle has 7,520 files and 242,340,338 bytes. Its provenance pins
+CodeMiner commit `ef6b4fc5a3cf27f2e21ae855bb87a35e53f13596` and figure-source
+commit `68db40db2c51a97a795fe879d82a29e9409c9b97`. The bundled runtime
 suite passes 201 tests with seven skips, and the estimator suite passes six
 tests. A clean 15-job rebuild matches all 18 deterministic outputs, passes all
 118 semantic claims, and embeds fonts in all 15 PDFs.
 
-Two independent deterministic archives are 19,495,758 bytes with SHA-256
-`6aca5f4e84b667d8595d939920e8838e703310fbda02cc59db458001449b01ed`.
+Two independent deterministic archives are 19,476,144 bytes with SHA-256
+`96017509195ece0bd6b5f49215b1fd161bafef95abbd17c6fcda6d94c8b0c6e8`.
 This is a local release candidate, not a public artifact URL.
