@@ -2,7 +2,7 @@
   "schema_version": 1,
   "bundle": {
     "name": "CodeMiner paper artifact (core)",
-    "version": "core-rc20"
+    "version": "core-rc21"
   },
   "sources": [
     {
@@ -335,6 +335,7 @@
         "reproduce_paper_figures.py",
         "requirements-paper.txt",
         "test_build_paper_claims.py",
+        "test_draw_pareto_rerank.py",
         "test_draw_lsp_replay.py",
         "verify_paper_figures.py"
       ],

@@ -127,6 +127,7 @@ PYTHONDONTWRITEBYTECODE=1 python figure/verify_paper_figures.py \
   --actual-dir "$REPRODUCED_FIGURE_ROOT"
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=figure \
   python -m unittest figure/test_build_paper_claims.py \
+  figure/test_draw_pareto_rerank.py \
   figure/test_draw_lsp_replay.py
 ```
 
@@ -153,6 +154,9 @@ For Figure 7, the ledger binds model scale to the retained cache revisions and
 recomputes the per-model LOC slopes and monotonicity guardrails. These are
 descriptive contracts for the measured model/runtime stack, not causal claims
 that parameter count or output dimension alone determines latency.
+Figure 5(a) pairs File Recall@10 with the full L2 callable-index construction
+timer used by the retrieval and reranking paths; a focused test rejects an L0
+timer substitution.
 
 ## Provenance Boundaries
 
