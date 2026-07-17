@@ -152,23 +152,24 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-Local `core-rc24` clarifies the model-level context-policy result in
-Figure 10(b). Token cost and answer quality are now independent, model-aligned
-forest plots with explicit no-change and quality-floor references; no line
-suggests an unsupported relation between models or metrics. Relative to RC23,
-only the manifest, figure-program, and expected-figure source groups changed;
-no retained measurement, runtime source, dataset, or numerical claim input
-changed. Its manifest SHA-256 is
-`dcc7ae4faadeeec68507b8bb37b89191c6746ac36ca83caaebfbbfe97ec615b5`;
+Local `core-rc25` extends the executable evidence behind the model-level
+context-policy result and the incremental appendix. The agent summary now
+retains per-arm execution audits; the claim ledger contracts direct policy
+intervals, all ten transition rows, and the Qwen dense-query value used in the
+lifecycle discussion. Relative to RC24, only the artifact-readme,
+figure-program, expected-figure, and incremental-results source groups changed;
+no retained measurement, runtime source, dataset, or raw claim input changed.
+Its manifest SHA-256 is
+`6a294e4dadfa4901a2d091c3236dbe60a575c6a5570cc9e8d03b3f3de0719ac3`;
 its source-lock SHA-256 is
-`a6c1a3b79c6902c4d87c28875673b5133d03b2e7de98bdce35f001f6f94802db`.
-The verified bundle has 7,520 files and 242,326,028 bytes. Its provenance pins
-CodeMiner commit `d8567292ad1dcdd31b8ec21ba750f1824eb6e7e0` and figure-source
-commit `b5306af34b8364471bb45b069d94b92354c7f348`. The bundled runtime
-suite passes 201 tests with seven skips, and the estimator suite passes six
+`fd6d04ff72c993c4d28e695a96a5cf77f562872ee44fccf9670761af36962d6f`.
+The verified bundle has 7,520 files and 242,344,748 bytes. Its provenance pins
+CodeMiner commit `c0f9d526e08ec8297330018f4ca6226c398e6869` and figure-source
+commit `d40c4c492c86314f90e8d49c6a08e874dcf5b21b`. The bundled runtime
+suite passes 201 tests with seven skips, and the estimator suite passes seven
 tests. A clean 15-job rebuild matches all 18 deterministic outputs, passes all
-118 semantic claims, and embeds fonts in all 15 PDFs.
+133 semantic claims, and embeds fonts in all 15 PDFs.
 
-Two independent deterministic archives are 19,460,800 bytes with SHA-256
-`82cc00e42cef0b62349bc0d37299704422100cd975cfab74ac0481d51f5bc15d`.
+Two independent deterministic archives are 19,462,438 bytes with SHA-256
+`cbfe3095efc575fca072941f5c1253e5f1fbb318b718aae82636e8683bd4827f`.
 This is a local release candidate, not a public artifact URL.
