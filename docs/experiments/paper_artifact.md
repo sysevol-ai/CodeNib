@@ -152,21 +152,21 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-Local `core-rc20` adds a revision-bound audit of parameter count, output
-dimension, config identity, and weight identity for the five dense embedders.
-The Figure 7 estimator now checks all ten LOC slopes, their rank trend, and the
-warm-query trend against the 118-claim ledger. No retained measurement input
+Local `core-rc21` pairs Figure 5(a)'s File Recall@10 with the complete L2
+callable-index construction cost used by retrieval and reranking. A focused
+test rejects substitution of the unrelated L0 timer. The Figure 7 scale audit
+and 118-claim ledger remain unchanged, and no retained measurement input
 changed. Its manifest SHA-256 is
-`372469016fbb1237217eaec4aa9ca5d1ed9101fab4517077cdd9ce2660953dd6`;
+`2979afa332a393e2b5a9866529560f25d33182e88ff795fedb4bd27c1a0b5a2d`;
 its source-lock SHA-256 is
-`69f8823b4b35386ea098743b8399653e755daa75695387a4137caf2bcd806d06`.
-The verified bundle has 7,519 files and 242,354,668 bytes. Its provenance pins
-CodeMiner commit `5da2d32e9eecd4e6975aa1e81ee4324aa4a8def3` and figure-source
-commit `85a5afbf2839e91c8be8408da12a9c98c936c8da`. The bundled runtime
-suite passes 201 tests with seven skips, and the estimator suite passes five
+`3c544702ed8c92ba5ef3a5191fef869736d5b5570692afa106fe2cfde2d64f0b`.
+The verified bundle has 7,520 files and 242,357,191 bytes. Its provenance pins
+CodeMiner commit `00afce44053ac0c7dee524e6e3d2e3c2c7192fd0` and figure-source
+commit `76bc7e341af59ed485b33a5ecbe3745e699dd501`. The bundled runtime
+suite passes 201 tests with seven skips, and the estimator suite passes six
 tests. A clean 15-job rebuild matches all 18 deterministic outputs, passes all
 118 semantic claims, and embeds fonts in all 15 PDFs.
 
-Two independent deterministic archives are 19,495,123 bytes with SHA-256
-`830250980398109c4f26b7ce058cede6b4da20ed2c5af5ffd09bdb70b895d057`.
+Two independent deterministic archives are 19,495,758 bytes with SHA-256
+`6aca5f4e84b667d8595d939920e8838e703310fbda02cc59db458001449b01ed`.
 This is a local release candidate, not a public artifact URL.
