@@ -152,24 +152,20 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-Local `core-rc18` adds the protocol-v4 incremental JSONL, current Python
-runtime, benchmark runner, focused tests, and build metadata. It also includes
-the data-free agent-runtime schematic and updates the artifact title and figure
-map for the current manuscript. A claim-ledger job recomputes 110
-manuscript-facing values, including repository partitions, aggregate LSP match
-rates, projection sizes, and quality guardrails, from the frozen inputs. It also
-records sample counts and rounding contracts. No retained measurement input
-changed. Its manifest SHA-256 is
-`89947c63959188515a0a09faeaa7c5020602977cdfc5bad4936e961bc56181c3`;
+Local `core-rc19` summarizes each admitted LSP request by its ten-repetition
+median before aggregating across requests. It refreshes the direct and derived
+LSP figures, updates the 110-claim ledger, and adds a focused estimator
+regression test. No retained measurement input changed. Its manifest SHA-256 is
+`da68a22fbeaa025e4e92dbfac50a2b96b355bcfe651c97bbd9bdff2cad7ac24d`;
 its source-lock SHA-256 is
-`6e5ea8fe1843468b7b2aa2e7a1fe7e17b703aa5d16eedf74a44e706bc753dbc5`.
-The verified bundle has 7,516 files and 242,318,322 bytes. Its provenance pins
-CodeMiner commit `376dfe17be748105290292ed559b5dc96d8ad4eb` and figure-source
-commit `ab7797e6a0550ac4ea285b69f7912c57533e6a90`. The bundled focused
-suite passes 201 tests with seven skips without changing the checksum
-inventory. A clean 15-job rebuild matches all 18 deterministic outputs, passes
-all 110 semantic claims, and embeds fonts in all 15 PDFs.
+`511f534afe6b43428e6257bc00069d966c495c70d2b1b7fb93100e9a647144ae`.
+The verified bundle has 7,517 files and 242,330,773 bytes. Its provenance pins
+CodeMiner commit `4eab5ac8d61ed934db325b92f91b47674e6cf981` and figure-source
+commit `898abf630dc3a326d1ca08ac358372ed897f0194`. The bundled runtime
+suite passes 201 tests with seven skips, and the estimator suite passes two
+tests. A clean 15-job rebuild matches all 18 deterministic outputs, passes all
+110 semantic claims, and embeds fonts in all 15 PDFs.
 
-Two independent deterministic archives are 19,493,813 bytes with SHA-256
-`1c2195483d911278e141506e7dad6b3a6f17e1065baf6c16ec59fdf62dfd4b57`.
+Two independent deterministic archives are 19,488,177 bytes with SHA-256
+`e59075bcd6e93b6329352ae7f3a252c8ef5f05e00445c625edd2516bd1fbd0df`.
 This is a local release candidate, not a public artifact URL.
