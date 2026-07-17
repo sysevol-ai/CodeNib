@@ -13,9 +13,10 @@ for external vertices with no source range. Source-mapped vertices retain their
 raw identities, so a revision difference remains a guard failure. The replay
 uses the persisted, reloaded graphs and is an end-to-end serving regression
 guard rather than an independent semantic sample.
-Speedup is reported only for admitted rows. Per-step incremental time includes
-change detection, repair, and persistence; `amortized_t_s` additionally assigns
-one fifth of the long-lived LSP startup to each chain position.
+Speedup is reported only for admitted rows. Per-transition incremental time
+includes change detection, repair, and persistence; `amortized_t_s`
+additionally assigns one fifth of the long-lived LSP startup to each of the
+five transitions in a chain.
 
 Final inputs:
 
@@ -26,3 +27,7 @@ Final inputs:
 
 Reproduce a chain with `scripts/profiling/profile_incremental_graph.py`; the
 exact base commits and target transitions are embedded in every row.
+The retained rows identify the Python and Go backend command pairs through the
+source-locked runtime, but they do not serialize execution-time tool versions.
+Use the source commit's managed toolchain recipe for a new run; do not treat its
+later version pins as historical execution metadata.

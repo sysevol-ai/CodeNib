@@ -29,8 +29,8 @@ cloud model calls or a comparison against an unmaterialized competing system.
 - `inputs/lsp_agent_base_haiku_{development,confirmatory}_v2_analysis.json`:
   failure-aware summaries for the separate 540-cell natural-adoption study;
   together they record four live-arm LSP calls.
-- `inputs/incremental_graph_v4`: protocol-v4 JSONL for the five-position
-  scikit-learn and Caddy chains, including the retained no-source position and
+- `inputs/incremental_graph_v4`: protocol-v4 JSONL for the five-transition
+  scikit-learn and Caddy chains, including the retained no-source transition and
   every passing or failing file-level arm.
 - `inputs/materialized_trace_batch_v9`: the lifecycle plan, exact runtime
   source archive, environment capture, traces, per-snapshot reports and logs,
@@ -145,7 +145,7 @@ reject the modified copy. The driver also disables bytecode writes in every
 plotting subprocess so importing `figure/plot_style.py` cannot mutate the
 bundle.
 
-`paper_claims.json` recomputes 118 manuscript-facing values from the same
+`paper_claims.json` recomputes 133 manuscript-facing values from the same
 frozen inputs. Each record names its source, estimator, unit, raw value,
 rounding rule, and reviewed display value. Reproduction fails if any value,
 sample count, guardrail outcome, or reporting precision drifts; the verifier
