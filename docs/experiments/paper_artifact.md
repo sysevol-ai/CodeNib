@@ -152,24 +152,21 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-Local `core-rc25` extends the executable evidence behind the model-level
-context-policy result and the incremental appendix. The agent summary now
-retains per-arm execution audits; the claim ledger contracts direct policy
-intervals, all ten transition rows, and the Qwen dense-query value used in the
-lifecycle discussion. Relative to RC24, only the artifact-readme,
-figure-program, expected-figure, and incremental-results source groups changed;
-no retained measurement, runtime source, dataset, or raw claim input changed.
+Local `core-rc26` clarifies the agent context-policy labels, the compaction
+trigger, and the Recall@5 admission reference. Relative to RC25, only the
+manifest, figure-program, and expected-figure source groups changed; no retained
+measurement, runtime source, dataset, estimator, or raw claim input changed.
 Its manifest SHA-256 is
-`6a294e4dadfa4901a2d091c3236dbe60a575c6a5570cc9e8d03b3f3de0719ac3`;
+`b749fce51cc67d37f2e22a457aa4e0ea285a567a6ef4c36d0b80eda6bfea754b`;
 its source-lock SHA-256 is
-`fd6d04ff72c993c4d28e695a96a5cf77f562872ee44fccf9670761af36962d6f`.
-The verified bundle has 7,520 files and 242,344,748 bytes. Its provenance pins
-CodeMiner commit `c0f9d526e08ec8297330018f4ca6226c398e6869` and figure-source
-commit `d40c4c492c86314f90e8d49c6a08e874dcf5b21b`. The bundled runtime
+`3b1db09ffb7517b98405cdaac628c67893c74be50cfb5829feaa839f08960e38`.
+The verified bundle has 7,520 files and 242,338,739 bytes. Its provenance pins
+CodeMiner commit `6ca9e83d816762495baccb7b47f58060b2d6537f` and figure-source
+commit `e210e92d9f257f000841178e70e75a58ef9c35e3`. The bundled runtime
 suite passes 201 tests with seven skips, and the estimator suite passes seven
 tests. A clean 15-job rebuild matches all 18 deterministic outputs, passes all
 133 semantic claims, and embeds fonts in all 15 PDFs.
 
-Two independent deterministic archives are 19,462,438 bytes with SHA-256
-`cbfe3095efc575fca072941f5c1253e5f1fbb318b718aae82636e8683bd4827f`.
+Two independent deterministic archives are 19,457,399 bytes with SHA-256
+`5ff2cbc4a252d74625c91faa7200689dd27d7125931f5f57d03949b956f1f226`.
 This is a local release candidate, not a public artifact URL.
