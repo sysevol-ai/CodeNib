@@ -2,7 +2,7 @@
   "schema_version": 1,
   "bundle": {
     "name": "CodeMiner paper artifact (core)",
-    "version": "core-rc18"
+    "version": "core-rc19"
   },
   "sources": [
     {
@@ -328,6 +328,7 @@
         "plot_style.py",
         "reproduce_paper_figures.py",
         "requirements-paper.txt",
+        "test_draw_lsp_replay.py",
         "verify_paper_figures.py"
       ],
       "exclude_dir_names": [

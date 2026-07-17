@@ -123,6 +123,8 @@ PYTHONDONTWRITEBYTECODE=1 python figure/reproduce_paper_figures.py \
 PYTHONDONTWRITEBYTECODE=1 python figure/verify_paper_figures.py \
   --expected-dir verification/expected \
   --actual-dir "$REPRODUCED_FIGURE_ROOT"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=figure \
+  python -m unittest figure/test_draw_lsp_replay.py
 ```
 
 Set `$ARTIFACT_FIGURE_VENV` outside the bundle, like

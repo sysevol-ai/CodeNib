@@ -1,5 +1,5 @@
 {
-  "manifest_sha256": "89947c63959188515a0a09faeaa7c5020602977cdfc5bad4936e961bc56181c3",
+  "manifest_sha256": "da68a22fbeaa025e4e92dbfac50a2b96b355bcfe651c97bbd9bdff2cad7ac24d",
   "schema_version": 1,
   "sources": {
     "agent-haiku-cpp": {
@@ -38,9 +38,9 @@
       "sha256": "6c80266c308c260239c7be80de4b27bc6bfe3f6f6bac4ee3397f8b3ad75e307d"
     },
     "artifact-readme": {
-      "bytes": 8300,
+      "bytes": 8398,
       "files": 1,
-      "sha256": "552779e6bbe7c84c288043b061894775b821ac802f0ae261752053c5f09f119d"
+      "sha256": "4dd7ccf083f5f26d8a921e7e624291903425e44b860ce2a9dc8880c8e9fbce72"
     },
     "base-dataset": {
       "bytes": 271835,
@@ -73,9 +73,9 @@
       "sha256": "296fb0b7dcdf813f3a10c23beb070ee99efd469cca7f7e94341decd28d30cc9d"
     },
     "expected-figures": {
-      "bytes": 3071618,
+      "bytes": 3075967,
       "files": 18,
-      "sha256": "7cf9a44d6e9b62aa8c6446fcdc829a9986513c09f78404ac43f6878680ddbe96"
+      "sha256": "496fdca8a7133dd9c544dac68ddb59964093d7f2406c92ac6ca8a1f4e491c742"
     },
     "faiss-index-family": {
       "bytes": 918784,
@@ -88,9 +88,9 @@
       "sha256": "020613bec9436d6035ce833a80ffdec14d1b4909ffed5dc1ad70dc26943d2223"
     },
     "figure-programs": {
-      "bytes": 254645,
-      "files": 20,
-      "sha256": "d0c0e6701321d502bbf221a3fdc75385894e9b4c746ae1fa09204f01a7505576"
+      "bytes": 257872,
+      "files": 21,
+      "sha256": "33ee4d129bfc302cf486abfd07837f5d868aa2464d821423518fd0860d3e062a"
     },
     "incremental-results": {
       "bytes": 73099,
