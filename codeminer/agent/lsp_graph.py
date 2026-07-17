@@ -333,10 +333,26 @@ def _compact_reference(
     )
 
 
-def _dedupe_nodes(nodes: Iterable[QueriedNode], limit: int) -> list[QueriedNode]:
+def _dedupe_nodes(
+    nodes: Iterable[QueriedNode],
+    limit: int,
+    *,
+    canonical_order: bool = False,
+) -> list[QueriedNode]:
+    candidates = list(nodes)
+    if canonical_order:
+        candidates.sort(
+            key=lambda node: (
+                node.file or "",
+                node.start_line if node.start_line is not None else -1,
+                node.end_line if node.end_line is not None else -1,
+                node.node_name or "",
+                node.content or "",
+            )
+        )
     seen: set[tuple[Any, ...]] = set()
     out: list[QueriedNode] = []
-    for node in nodes:
+    for node in candidates:
         key = (node.file, node.start_line, node.end_line, node.node_name, node.content)
         if key in seen:
             continue
@@ -587,7 +603,10 @@ def lsp_references(
                     line=attrs.get("anchor_line"),
                 )
             )
-    return _dedupe_nodes(nodes, limit)
+    # igraph incident order depends on edge insertion history. References do
+    # not have an LSP ordering contract, so canonicalize before top-k
+    # truncation to make equivalent graph snapshots behaviorally identical.
+    return _dedupe_nodes(nodes, limit, canonical_order=True)
 
 
 def _graph_names_for_ids(graph: Any, vertex_ids: Sequence[int]) -> list[str]:

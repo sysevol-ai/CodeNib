@@ -65,6 +65,7 @@ def generate_lsp_replay_requests(
     references_top_k: int = 40,
     include_declaration: bool = True,
     file_suffixes: Optional[Sequence[str]] = None,
+    file_paths: Optional[Sequence[str]] = None,
 ) -> list[LSPProviderRequest]:
     """Generate deterministic file-position LSP replay requests from graph refs.
 
@@ -95,6 +96,13 @@ def generate_lsp_replay_requests(
     candidates = _reference_position_candidates(
         graph, project_root=_project_root(graph, project_root)
     )
+    if file_paths is not None:
+        selected_paths = {_normalize_repo_path(path) for path in file_paths}
+        candidates = [
+            candidate
+            for candidate in candidates
+            if _normalize_repo_path(candidate["file_path"]) in selected_paths
+        ]
     if file_suffixes:
         normalized_suffixes = {
             suffix.lower() if suffix.startswith(".") else f".{suffix.lower()}"
@@ -142,6 +150,11 @@ def generate_lsp_replay_requests(
         ):
             break
     return requests
+
+
+def _normalize_repo_path(path: str | Path) -> str:
+    normalized = Path(str(path).replace("\\", "/")).as_posix()
+    return normalized.removeprefix("./")
 
 
 def run_lsp_replay_benchmark(

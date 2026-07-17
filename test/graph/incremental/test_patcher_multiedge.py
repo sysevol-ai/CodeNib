@@ -12,6 +12,7 @@ anchor so the remap path can re-create one edge per call site.
 """
 
 from codeminer.graph.code_graph import CodeGraph
+from codeminer.graph.incremental.change_mgr import ChangedLineHunk, map_old_line_to_new
 from codeminer.graph.incremental.patcher_base import PatcherBase
 from codeminer.graph.incremental.subgraph_mgr import SubgraphMgr
 from codeminer.types import EDGE_TYPE_REFERENCE
@@ -481,6 +482,177 @@ def test_shift_outgoing_anchor_lines_zero_shift_noop():
     assert _outgoing_ref_anchor_lines(g, "a.py:Foo") == [12, 18]
 
 
+def test_rebase_file_scope_reference_anchors_only_updates_file_node():
+    """Module-level anchors follow hunks without double-shifting symbols."""
+    g = _setup_outgoing_with_anchors([11, 15])
+    g._add_edge(
+        "a.py",
+        "b.py:Tgt",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="a.py",
+        anchor_line=11,
+    )
+    g._add_edge(
+        "a.py",
+        "b.py:Tgt",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="a.py",
+        anchor_line=15,
+    )
+    mgr = _NoopMgr(project_root="/tmp/x", code_graph=g)
+    hunks = [ChangedLineHunk(10, 3, 10, 6)]
+
+    moved, removed = mgr.rebase_file_scope_reference_anchors(
+        "a.py", lambda line: map_old_line_to_new(line, hunks)
+    )
+
+    assert (moved, removed) == (1, 1)
+    assert _outgoing_ref_anchor_lines(g, "a.py") == [18]
+    assert _outgoing_ref_anchor_lines(g, "a.py:Foo") == [11, 15]
+
+
+def test_classify_symbol_affected_when_edit_removes_its_old_tail():
+    """An old-side-only overlap must refresh a symbol's shortened range."""
+    patcher = _StubPatcher(
+        project_root="/tmp/classifyproj",
+        code_graph=CodeGraph(project_root="/tmp/classifyproj"),
+    )
+    old_symbols = {
+        "a.py:Foo": {
+            "vertex_name": "a.py:Foo:10",
+            "start_line": 10,
+            "end_line": 30,
+        }
+    }
+    new_symbols = {
+        "a.py:Foo": {
+            "kind": 12,
+            "start_line": 10,
+            "end_line": 20,
+        }
+    }
+
+    classified = patcher._classify_symbols(
+        old_symbols,
+        new_symbols,
+        [(21, 30, 21, 24)],
+    )
+
+    assert classified["affected"] == ["a.py:Foo"]
+    assert classified["unchanged"] == []
+
+
+def test_synthesize_lsp_omission_when_declaration_is_unchanged():
+    old_symbols = {
+        "a.py:Foo": {
+            "vertex_name": "a.py:Foo",
+            "start_line": 10,
+            "end_line": 30,
+            "selection_line": 10,
+        }
+    }
+    new_symbols = {}
+    hunks = [ChangedLineHunk(30, 1, 30, 2)]
+
+    count = _StubPatcher._synthesize_missing_symbol_locations(
+        old_symbols,
+        new_symbols,
+        hunks,
+    )
+
+    assert count == 1
+    assert new_symbols["a.py:Foo"]["start_line"] == 10
+    assert new_symbols["a.py:Foo"]["end_line"] == 31
+    patcher = _StubPatcher(
+        project_root="/tmp/classifyproj",
+        code_graph=CodeGraph(project_root="/tmp/classifyproj"),
+    )
+    classified = patcher._classify_symbols(
+        old_symbols,
+        new_symbols,
+        [hunks[0].as_inclusive_range()],
+    )
+    assert classified["affected"] == ["a.py:Foo"]
+
+
+def test_does_not_synthesize_symbol_when_declaration_is_edited():
+    old_symbols = {
+        "a.py:Foo": {
+            "vertex_name": "a.py:Foo",
+            "start_line": 10,
+            "end_line": 30,
+            "selection_line": 10,
+        }
+    }
+    new_symbols = {}
+
+    count = _StubPatcher._synthesize_missing_symbol_locations(
+        old_symbols,
+        new_symbols,
+        [ChangedLineHunk(10, 21, 10, 0)],
+    )
+
+    assert count == 0
+    assert new_symbols == {}
+
+
+def test_classify_ignores_lsp_only_symbol_outside_changed_hunk():
+    patcher = _StubPatcher(
+        project_root="/tmp/classifyproj",
+        code_graph=CodeGraph(project_root="/tmp/classifyproj"),
+    )
+    new_symbols = {
+        "a.py:local": {
+            "kind": 13,
+            "start_line": 40,
+            "end_line": 40,
+        },
+        "a.py:added()": {
+            "kind": 12,
+            "start_line": 10,
+            "end_line": 12,
+        },
+    }
+
+    classified = patcher._classify_symbols({}, new_symbols, [(10, 10, 10, 12)])
+
+    assert classified["added"] == ["a.py:added()"]
+    assert classified["backend_only"] == ["a.py:local"]
+
+
+def test_align_common_symbol_location_uses_git_mapping_for_lsp_drift():
+    old_symbols = {
+        "a.py:create()": {
+            "vertex_name": "a.py:create()",
+            "start_line": 41,
+            "end_line": 44,
+            "selection_line": 41,
+        }
+    }
+    new_symbols = {
+        "a.py:create()": {
+            "kind": 12,
+            "start_line": 47,
+            "end_line": 50,
+            "sel_range": {
+                "start": {"line": 47, "character": 4},
+                "end": {"line": 47, "character": 10},
+            },
+        }
+    }
+
+    aligned = _StubPatcher._align_common_symbol_locations(
+        old_symbols,
+        new_symbols,
+        [ChangedLineHunk(old_start=33, old_count=0, new_start=33, new_count=1)],
+    )
+
+    assert aligned == 1
+    assert new_symbols["a.py:create()"]["start_line"] == 42
+    assert new_symbols["a.py:create()"]["end_line"] == 45
+    assert new_symbols["a.py:create()"]["sel_range"]["start"]["line"] == 42
+
+
 # ---------------------------------------------------------------------------
 # P3: reconnect_outgoing / reconnect_incoming must anchor each new edge
 # ---------------------------------------------------------------------------
@@ -550,12 +722,13 @@ def test_reconnect_outgoing_anchors_each_call_site():
     project_root = "/tmp/recproj"
     g = _build_caller_target_graph(project_root)
     mgr = _ReconnectMgr(project_root=project_root, code_graph=g)
+    mgr.build_indexes()
     mgr.canned_tokens = [
         {"line": 12, "character": 8, "text": "Bar"},
         {"line": 18, "character": 8, "text": "Bar"},
     ]
 
-    # Single LSP definition response — both tokens resolve to same target.
+    # Both source positions resolve to the same target.
     fake_lsp = _FakeLSPDefRefs(project_root)
     fake_lsp._defs = {
         12: [
@@ -571,9 +744,6 @@ def test_reconnect_outgoing_anchors_each_call_site():
             }
         ],
     }
-    # _get_semantic_tokens dedups by text BEFORE calling lsp.definition;
-    # but the dedup uses text as the key. Stub: same text "Bar" → only one
-    # definition lookup. So return the line-1 target either way.
     fake_lsp.definition = lambda abs_file, line, character: [
         {
             "targetUri": f"file://{project_root}/tgt.py",
@@ -611,6 +781,58 @@ def test_reconnect_outgoing_anchors_each_call_site():
     ], f"anchor metadata not threaded through; got {pairs}"
 
 
+def test_reconnect_outgoing_resolves_same_text_per_source_position():
+    project_root = "/tmp/recproj"
+    g = _build_caller_target_graph(project_root)
+    g.add_file_node("other.py")
+    g._add_vertex(
+        "other.py:Bar",
+        {
+            "type": "function",
+            "file": "other.py",
+            "start_line": 2,
+            "end_line": 6,
+            "unified_name": "other.py:Bar",
+        },
+    )
+    g.symbol_ranges["other.py:Bar"] = (2, 6)
+    mgr = _ReconnectMgr(project_root=project_root, code_graph=g)
+    mgr.build_indexes()
+    mgr.canned_tokens = [
+        {"line": 12, "character": 8, "text": "Bar"},
+        {"line": 18, "character": 8, "text": "Bar"},
+    ]
+    fake_lsp = _FakeLSPDefRefs(project_root)
+    fake_lsp._defs = {
+        12: [
+            {
+                "targetUri": f"file://{project_root}/tgt.py",
+                "targetSelectionRange": {"start": {"line": 1, "character": 0}},
+            }
+        ],
+        18: [
+            {
+                "targetUri": f"file://{project_root}/other.py",
+                "targetSelectionRange": {"start": {"line": 2, "character": 0}},
+            }
+        ],
+    }
+    mgr.lsp_client = fake_lsp
+
+    stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
+    mgr.reconnect_outgoing(
+        "caller.py", ["caller.py:Foo"], stats, line_ranges=[(10, 30)]
+    )
+
+    src = g.name_to_vertex["caller.py:Foo"]
+    targets = {
+        g.graph.vs[g.graph.es[e].target]["name"]
+        for e in g.graph.incident(src, mode="out")
+        if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
+    }
+    assert targets == {"tgt.py:Bar", "other.py:Bar"}
+
+
 def test_reconnect_outgoing_same_anchor_collapses():
     """If two tokens have IDENTICAL (line, character), _add_edge collapses
     them — same call site, can't be two distinct edges. One edge survives,
@@ -618,6 +840,7 @@ def test_reconnect_outgoing_same_anchor_collapses():
     project_root = "/tmp/recproj"
     g = _build_caller_target_graph(project_root)
     mgr = _ReconnectMgr(project_root=project_root, code_graph=g)
+    mgr.build_indexes()
     mgr.canned_tokens = [
         {"line": 12, "character": 8, "text": "Bar"},
         {"line": 12, "character": 8, "text": "Bar"},
@@ -644,8 +867,8 @@ def test_reconnect_outgoing_same_anchor_collapses():
     assert len(ref_eids) == 1, f"expected 1 edge (same anchor), got {len(ref_eids)}"
 
 
-def test_reconnect_incoming_anchors_caller_site():
-    """reconnect_incoming must anchor the new edge on the caller site."""
+def test_reconnect_incoming_field_anchors_caller_site():
+    """A new field must recover uses that lie outside the changed range."""
     project_root = "/tmp/recproj"
     g = CodeGraph(project_root=project_root)
     g.add_file_node("caller.py")
@@ -663,7 +886,7 @@ def test_reconnect_incoming_anchors_caller_site():
     g._add_vertex(
         "tgt.py:Bar",
         {
-            "type": "function",
+            "type": "field",
             "file": "tgt.py",
             "start_line": 1,
             "end_line": 5,
@@ -710,8 +933,46 @@ def test_reconnect_incoming_anchors_caller_site():
     ), f"anchor_line should be the call line; got {attrs}"
 
 
+def test_reference_validation_rejects_other_interface_method():
+    project_root = "/tmp/recproj"
+    graph = _build_caller_target_graph(project_root)
+    graph.graph.vs[graph.name_to_vertex["tgt.py:Bar"]]["type"] = "method"
+    graph.add_file_node("other.py")
+    graph._add_vertex(
+        "other.py:Bar",
+        {
+            "type": "method",
+            "file": "other.py",
+            "start_line": 3,
+            "end_line": 3,
+            "unified_name": "other.py:Bar",
+        },
+    )
+    graph.symbol_ranges["other.py:Bar"] = (3, 3)
+    manager = _NoopMgr(project_root=project_root, code_graph=graph)
+    manager.build_indexes()
+    manager.lsp_client = _FakeLSPDefRefs(
+        project_root,
+        definitions={
+            7: [
+                {
+                    "targetUri": f"file://{project_root}/other.py",
+                    "targetSelectionRange": {"start": {"line": 3, "character": 0}},
+                }
+            ]
+        },
+    )
+    location = {
+        "uri": f"file://{project_root}/caller.py",
+        "range": {"start": {"line": 7, "character": 4}},
+    }
+
+    assert not manager._reference_resolves_to(location, "tgt.py:Bar")
+    assert manager._reference_resolves_to(location, "other.py:Bar")
+
+
 # ---------------------------------------------------------------------------
-# P5: shifted branch must rebase outgoing anchors via shift_outgoing_anchor_lines
+# P5: file-wide prepass rebases anchors before shifted/affected vertex updates
 # ---------------------------------------------------------------------------
 def test_shifted_rebases_outgoing_anchor_lines():
     """When a symbol shifts (body unchanged but start_line moves), the
@@ -731,6 +992,7 @@ def test_shifted_rebases_outgoing_anchor_lines():
         "refs_remapped": 0,
         "refs_unmatched": 0,
     }
+    patcher.rebase_reference_anchors_for_file("a.py", lambda line: line + 5)
     patcher._process_shifted(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
@@ -750,6 +1012,7 @@ def test_shifted_rebases_outgoing_anchor_lines():
     new_vname = "a.py:Foo:15"
     assert new_vname in g.name_to_vertex, "vertex should be renamed"
     assert "a.py:Foo" not in g.name_to_vertex, "old vname should be gone"
+    assert g.graph.vs[g.name_to_vertex[new_vname]]["selection_line"] == 15
 
     # Outgoing anchors shifted by +5.
     src = g.name_to_vertex[new_vname]
@@ -787,7 +1050,10 @@ def test_affected_preserved_clears_in_range_outgoing():
         "refs_unmatched": 0,
     }
     # Hunk: line 18 (old) → line 18 (new). 1 line in / 1 line out → preserved.
-    hunks = [(18, 18, 18, 18)]
+    hunks = [ChangedLineHunk(18, 1, 18, 1)]
+    patcher.rebase_reference_anchors_for_file(
+        "a.py", lambda line: map_old_line_to_new(line, hunks)
+    )
     _new_vname, new_ranges = patcher._process_affected(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
@@ -799,7 +1065,7 @@ def test_affected_preserved_clears_in_range_outgoing():
                 "end": {"line": 10, "character": 7},
             },
         },
-        hunks=hunks,
+        detailed_hunks=hunks,
         file_path="a.py",
         file_stats=file_stats,
     )
@@ -819,12 +1085,11 @@ def test_affected_preserved_clears_in_range_outgoing():
     # system; for this hunk that's line 18.
     assert (18, 18) in new_ranges, f"new_changed_ranges missing 18; got {new_ranges}"
     assert file_stats["vertices_affected_preserved"] == 1
+    assert g.graph.vs[g.name_to_vertex[new_vname]]["selection_line"] == 10
 
 
-def test_affected_length_changed_clears_all_outgoing():
-    """Case 4 (length_changed): hunk inserts lines into the body. Net line
-    count not preserved, fast-path anchor shift is unsafe → delete every
-    outgoing reference edge from this vertex; Round 2 rebuilds them."""
+def test_affected_length_changed_rebases_unchanged_outgoing():
+    """A length-changing hunk drops edited anchors and maps retained ones."""
     project_root = "/tmp/affproj"
     g = _setup_outgoing_with_anchors([12, 18, 25])  # Foo body 10-30
     patcher = _StubPatcher(project_root=project_root, code_graph=g)
@@ -842,7 +1107,10 @@ def test_affected_length_changed_clears_all_outgoing():
         "refs_unmatched": 0,
     }
     # Hunk: 1 line at old 18 becomes 4 lines at new 18-21. Length changed.
-    hunks = [(18, 18, 18, 21)]
+    hunks = [ChangedLineHunk(18, 1, 18, 4)]
+    patcher.rebase_reference_anchors_for_file(
+        "a.py", lambda line: map_old_line_to_new(line, hunks)
+    )
     _new_vname, new_ranges = patcher._process_affected(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
@@ -854,27 +1122,22 @@ def test_affected_length_changed_clears_all_outgoing():
                 "end": {"line": 10, "character": 7},
             },
         },
-        hunks=hunks,
+        detailed_hunks=hunks,
         file_path="a.py",
         file_stats=file_stats,
     )
 
     new_vname = "a.py:Foo:10"
     src = g.name_to_vertex[new_vname]
-    surviving = [
-        e
+    surviving = sorted(
+        g.graph.es[e].attributes().get("anchor_line")
         for e in g.graph.incident(src, mode="out")
         if g.graph.es[e]["type"] == EDGE_TYPE_REFERENCE
-    ]
-    assert len(surviving) == 0, (
-        "case 4 must clear ALL outgoing ref edges; got "
-        f"{[g.graph.es[e].attributes() for e in surviving]}"
     )
-    # Round 2 reconnects over the entire new body.
-    assert new_ranges == [
-        (10, 33)
-    ], f"slow path should report full new body; got {new_ranges}"
-    assert file_stats["vertices_affected_rebuilt"] == 1
+    assert surviving == [12, 28]
+    assert new_ranges == [(18, 21)]
+    assert file_stats["vertices_affected_preserved"] == 1
+    assert file_stats["vertices_affected_rebuilt"] == 0
 
 
 def test_affected_preserved_with_start_line_shift_uniform_rebase():
@@ -899,7 +1162,13 @@ def test_affected_preserved_with_start_line_shift_uniform_rebase():
     }
     # 5 lines inserted at top of file → symbol shifts +5; old hunk modifies
     # what was old line 18 (now new line 23). Length preserved.
-    hunks = [(18, 18, 23, 23)]
+    hunks = [
+        ChangedLineHunk(0, 0, 0, 5),
+        ChangedLineHunk(18, 1, 23, 1),
+    ]
+    patcher.rebase_reference_anchors_for_file(
+        "a.py", lambda line: map_old_line_to_new(line, hunks)
+    )
     _new_vname, new_ranges = patcher._process_affected(
         uname="a.py:Foo",
         old={"vertex_name": "a.py:Foo", "start_line": 10, "end_line": 30},
@@ -911,7 +1180,7 @@ def test_affected_preserved_with_start_line_shift_uniform_rebase():
                 "end": {"line": 15, "character": 7},
             },
         },
-        hunks=hunks,
+        detailed_hunks=hunks,
         file_path="a.py",
         file_stats=file_stats,
     )
@@ -930,6 +1199,31 @@ def test_affected_preserved_with_start_line_shift_uniform_rebase():
     ], f"expected [17, 30] (uniform +5 shift, line-18 deleted); got {surviving}"
     assert (23, 23) in new_ranges
     assert file_stats["vertices_affected_preserved"] == 1
+
+
+def test_incremental_connect_skips_affected_symbol_without_new_ranges(monkeypatch):
+    g = _setup_outgoing_with_anchors([12])
+    patcher = _StubPatcher(project_root="/tmp/affproj", code_graph=g)
+
+    def fail_reconnect(*args, **kwargs):
+        raise AssertionError("empty changed ranges must not trigger a full-file query")
+
+    monkeypatch.setattr(patcher, "reconnect_outgoing", fail_reconnect)
+    stats = patcher._incremental_connect_edges(
+        "a.py",
+        {
+            "affected_vnames": ["a.py:Foo"],
+            "affected_changed_ranges": [[]],
+            "added_vnames": [],
+            "file_scope_changed_ranges": [],
+        },
+    )
+
+    assert stats == {
+        "refs_incoming": 0,
+        "refs_outgoing": 0,
+        "refs_unmatched": 0,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1237,3 +1531,84 @@ def test_edge_batch_flush_invalidates_edge_index():
         "EdgeBatch.flush left _edge_index stale: a follow-up _add_edge "
         "for the same anchor created a duplicate"
     )
+
+
+def test_merge_stats_keeps_affected_vertex_counts():
+    total = {}
+
+    PatcherBase._merge_stats(
+        total,
+        {
+            "vertices_affected_preserved": 3,
+            "vertices_affected_rebuilt": 1,
+        },
+    )
+
+    assert total == {
+        "vertices_affected_preserved": 3,
+        "vertices_affected_rebuilt": 1,
+    }
+
+
+def test_parent_remains_affected_when_child_body_changes():
+    patcher = _StubPatcher("/tmp", CodeGraph(project_root="/tmp"))
+    old = {
+        "a.py:Service": {"start_line": 1, "end_line": 20},
+        "a.py:Service.run()": {"start_line": 5, "end_line": 10},
+    }
+    new = {
+        "a.py:Service": {"start_line": 1, "end_line": 21},
+        "a.py:Service.run()": {"start_line": 5, "end_line": 11},
+    }
+
+    classified = patcher._classify_symbols(old, new, [(7, 7, 7, 8)])
+
+    assert classified["affected"] == ["a.py:Service", "a.py:Service.run()"]
+    assert classified["shifted"] == []
+
+
+def test_file_anchor_rebase_does_not_trust_source_vertex_file():
+    graph = CodeGraph(project_root="/tmp")
+    graph.add_file_node("changed.go")
+    graph.add_file_node("other.go")
+    graph._add_vertex(
+        "other.go:init",
+        {
+            "type": "function",
+            "file": "other.go",
+            "start_line": 1,
+            "end_line": 3,
+            "unified_name": "init()",
+        },
+    )
+    graph._add_vertex(
+        "target.go:Target",
+        {
+            "type": "class",
+            "file": "target.go",
+            "start_line": 1,
+            "end_line": 2,
+            "unified_name": "Target",
+        },
+    )
+    graph._add_edge(
+        "other.go:init",
+        "target.go:Target",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="changed.go",
+        anchor_line=10,
+    )
+    manager = _NoopMgr("/tmp", graph)
+
+    moved, removed = manager.rebase_reference_anchors_for_file(
+        "changed.go", lambda line: line + 1
+    )
+
+    assert (moved, removed) == (1, 0)
+    anchors = [
+        edge["anchor_line"]
+        for edge in graph.graph.es
+        if edge["type"] == EDGE_TYPE_REFERENCE
+        and edge.attributes().get("anchor_file") == "changed.go"
+    ]
+    assert anchors == [11]

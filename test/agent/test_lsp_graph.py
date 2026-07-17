@@ -12,7 +12,7 @@ from codeminer.agent.skills.loader import SkillLoader
 from codeminer.agent.tool_schema import skill_to_tool_schema
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.ops.expand import ExpandContext
-from codeminer.types import NODE_TYPE_FUNCTION
+from codeminer.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION
 
 
 def _range_graph(project_root=None) -> CodeGraph:
@@ -162,6 +162,53 @@ def test_lsp_references_returns_declaration_and_reference_site():
         ("caller.py", 1, "reference to callee.py:load_config()"),
     ]
     assert results[1].node_id == "caller.py:2:ref:callee.py:load_config()"
+
+
+def test_lsp_references_top_k_is_independent_of_edge_insertion_order():
+    def build_graph(callers):
+        graph = CodeGraph()
+        graph.add_file_node("target.py")
+        graph.add_symbol_node(
+            "target.load",
+            line=5,
+            scope_start_line=5,
+            scope_end_line=8,
+            symbol_type=NODE_TYPE_FUNCTION,
+        )
+        graph.graph.vs[graph.name_to_vertex["target.load"]][
+            "unified_name"
+        ] = "target.py:load()"
+        for file_path, line in callers:
+            graph.add_file_node(file_path)
+            source_name = f"{file_path}:run"
+            graph.add_symbol_node(
+                source_name,
+                line=line,
+                scope_start_line=line,
+                scope_end_line=line,
+                symbol_type=NODE_TYPE_FUNCTION,
+            )
+            graph._add_edge(
+                source_name,
+                "target.load",
+                EDGE_TYPE_REFERENCE,
+                anchor_file=file_path,
+                anchor_line=line,
+            )
+        graph.build_range_indexes()
+        return graph
+
+    callers = [("z.py", 9), ("a.py", 2), ("m.py", 4)]
+    forward = lsp_graph.lsp_references(
+        build_graph(callers), symbol="target.load", top_k=2
+    )
+    reverse = lsp_graph.lsp_references(
+        build_graph(reversed(callers)), symbol="target.load", top_k=2
+    )
+
+    assert [(node.file, node.start_line) for node in forward] == [
+        (node.file, node.start_line) for node in reverse
+    ]
 
 
 class _RouteGraph:

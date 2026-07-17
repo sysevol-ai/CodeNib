@@ -233,6 +233,7 @@ class LSPClient:
         self.process: Optional[subprocess.Popen] = None
         self._next_id = 1
         self._opened_files: set[str] = set()
+        self._document_versions: dict[str, int] = {}
 
         # Populated during start() from server capabilities
         self.semantic_tokens_legend: Optional[dict] = None
@@ -351,6 +352,7 @@ class LSPClient:
         finally:
             self.process = None
             self._opened_files.clear()
+            self._document_versions.clear()
 
     def __enter__(self):
         self.start()
@@ -385,6 +387,38 @@ class LSPClient:
             },
         )
         self._opened_files.add(uri)
+        self._document_versions[uri] = 1
+
+    def sync_document(self, file_path: str):
+        """Publish the current on-disk text after an external file change.
+
+        Incremental graph updates commonly move the worktree with Git rather
+        than through an editor. Once a document is open, language servers use
+        their in-memory buffer and do not observe that change reliably. Send
+        a full-content ``didChange`` with a monotonically increasing version;
+        unopened files use the normal ``didOpen`` path.
+        """
+        abs_path = self._abs_path(file_path)
+        uri = Path(abs_path).as_uri()
+        if uri not in self._opened_files:
+            self.open_document(file_path)
+            return
+
+        try:
+            text = Path(abs_path).read_text(errors="replace")
+        except FileNotFoundError:
+            logger.warning(f"Cannot sync {abs_path}: file not found")
+            return
+
+        version = self._document_versions.get(uri, 1) + 1
+        self._notify(
+            "textDocument/didChange",
+            {
+                "textDocument": {"uri": uri, "version": version},
+                "contentChanges": [{"text": text}],
+            },
+        )
+        self._document_versions[uri] = version
 
     def close_document(self, file_path: str):
         """Send textDocument/didClose for a file."""
@@ -399,6 +433,7 @@ class LSPClient:
             },
         )
         self._opened_files.discard(uri)
+        self._document_versions.pop(uri, None)
 
     def wait_for_analysis(
         self,

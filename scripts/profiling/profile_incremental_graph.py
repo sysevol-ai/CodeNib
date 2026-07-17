@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Benchmark three graph-update strategies along a real commit chain (#129).
+"""Benchmark graph-update strategies along real repository commit chains.
 
 For each instance repo, walk its first-parent commit chain ``N`` steps and, at
 every step, run all three strategies independently and record per-step timing:
@@ -17,16 +17,19 @@ every step, run all three strategies independently and record per-step timing:
      (``codeminer.graph.incremental.patcher_base``): rewire edges by changed
      lines + affected symbols.
 
-Strategies run as phases so the long-lived LSP cold-start cost is amortised
-across the chain for the two patcher strategies:
-
-  Phase 1 — symbol-level-patch, one LSP, N steps
-  Phase 2 — fully-rebuild, cold-start each step (skip when only docs changed)
-  Phase 3 — file-level-patch, one LSP, N steps
+The file- and symbol-level strategies each use one long-lived LSP across the
+chain. Their order is deterministically counterbalanced across repositories,
+and each phase starts from the same base graph and checkout. C/C++ has a
+separate ``backend-incremental`` arm because its ``.idx`` patcher does not
+implement the file/symbol mode distinction.
 
 Output: one JSONL row per ``(instance, step)`` carrying each strategy's
 ``t_s``/``v``/``e``/``status``, the patcher stats, an LSP call summary, and the
 derived ``speedup_vs_fully_rebuild`` / ``speedup_vs_file_level_patch`` ratios.
+Incremental ``t_s`` covers change detection, graph repair, and persistence;
+LSP startup is reported separately and amortized across the chain. Every
+successful patched graph is compared with a fresh rebuild at the same commit,
+both globally and on facts touching changed files.
 ``notes`` flags commits with no source diff (``"no-source-change"``) or
 super-large diffs (``"too_large"``); both are kept (not skipped) because they
 reflect real-world commit traffic.
@@ -55,12 +58,14 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -114,7 +119,9 @@ DEFAULT_STEPS = 5
 DEFAULT_TIMEOUT_S = 600
 DEFAULT_MAX_DELTA_LINES = 5000
 DEFAULT_MAX_WALK = 200
+DEFAULT_BEHAVIOR_REQUESTS_PER_CAPABILITY = 256
 DEFAULT_OUTPUT = Path("profile_incremental.jsonl")
+PROTOCOL_VERSION = 4
 
 # Hardcoded fallback instance list. Override with --instances or --config.
 # Each tuple is (instance_id, language, base_commit). Start at 5 steps; the
@@ -467,6 +474,253 @@ def _summarize_lsp_profile(path: Optional[Path]) -> Dict[str, Any]:
     }
 
 
+def _fact_overlap_metrics(predicted, reference) -> Dict[str, Any]:
+    """Multiset precision/recall/F1 with explicit empty-set semantics."""
+    predicted_counts = Counter(predicted)
+    reference_counts = Counter(reference)
+    predicted_n = sum(predicted_counts.values())
+    reference_n = sum(reference_counts.values())
+    overlap = sum((predicted_counts & reference_counts).values())
+    if not predicted_n and not reference_n:
+        precision = recall = f1 = 1.0
+    else:
+        precision = overlap / predicted_n if predicted_n else 0.0
+        recall = overlap / reference_n if reference_n else 0.0
+        f1 = (
+            2.0 * precision * recall / (precision + recall)
+            if precision + recall
+            else 0.0
+        )
+    return {
+        "predicted": predicted_n,
+        "reference": reference_n,
+        "overlap": overlap,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+    }
+
+
+def _vertex_file(vertex) -> Optional[str]:
+    from codeminer.types import NODE_TYPE_FILE
+
+    attrs = vertex.attributes()
+    file_path = attrs.get("file")
+    if file_path:
+        return str(file_path)
+    if attrs.get("type") == NODE_TYPE_FILE:
+        return str(vertex["name"])
+    return None
+
+
+_SCIP_COMMIT_VERSION_RE = re.compile(r"^(scip-\S+\s+\S+\s+\S+)\s+[0-9a-f]{40}(?=\s|$)")
+
+
+def _normalize_semantic_identity(value: Any, *, source_mapped: bool) -> Any:
+    """Canonicalize commit-valued package metadata on external SCIP stubs."""
+
+    if source_mapped or not isinstance(value, str):
+        return value
+    return _SCIP_COMMIT_VERSION_RE.sub(r"\1 <commit>", value)
+
+
+def _vertex_identity(vertex) -> tuple:
+    """Stable semantic key that ignores igraph ids and internal vertex names."""
+    attrs = vertex.attributes()
+    node_type = str(attrs.get("type") or "")
+    unified_name = attrs.get("unified_name")
+    label_kind = "unified" if unified_name else "name"
+    label = unified_name or vertex["name"]
+    source_mapped = any(
+        attrs.get(field) is not None
+        for field in ("start_line", "end_line", "selection_line")
+    )
+    return (
+        node_type,
+        label_kind,
+        _normalize_semantic_identity(str(label), source_mapped=source_mapped),
+        _normalize_semantic_identity(_vertex_file(vertex), source_mapped=source_mapped),
+        attrs.get("start_line"),
+        attrs.get("end_line"),
+        attrs.get("selection_line"),
+    )
+
+
+def _graph_fact_sets(code_graph, changed_files: set[str]) -> Dict[str, Counter]:
+    """Normalize a graph into whole-graph and changed-slice fact multisets."""
+    from codeminer.types import EDGE_TYPE_REFERENCE
+
+    vertices = code_graph.graph.vs
+    vertex_keys = [_vertex_identity(vertex) for vertex in vertices]
+    vertex_files = [_vertex_file(vertex) for vertex in vertices]
+
+    facts: Dict[str, Counter] = {
+        "vertices": Counter(vertex_keys),
+        "edges": Counter(),
+        "reference_edges": Counter(),
+        "changed_vertices": Counter(),
+        "changed_edges": Counter(),
+        "changed_reference_edges": Counter(),
+    }
+    for key, file_path in zip(vertex_keys, vertex_files, strict=False):
+        if file_path in changed_files:
+            facts["changed_vertices"][key] += 1
+
+    for edge in code_graph.graph.es:
+        attrs = edge.attributes()
+        edge_type = str(attrs.get("type") or "")
+        anchor_file = attrs.get("anchor_file")
+        anchor_line = attrs.get("anchor_line")
+        fact = (
+            edge_type,
+            vertex_keys[edge.source],
+            vertex_keys[edge.target],
+            str(anchor_file) if anchor_file is not None else None,
+            int(anchor_line) if anchor_line is not None else None,
+        )
+        facts["edges"][fact] += 1
+        if edge_type == EDGE_TYPE_REFERENCE:
+            facts["reference_edges"][fact] += 1
+
+        changed = (
+            vertex_files[edge.source] in changed_files
+            or vertex_files[edge.target] in changed_files
+            or anchor_file in changed_files
+        )
+        if changed:
+            facts["changed_edges"][fact] += 1
+            if edge_type == EDGE_TYPE_REFERENCE:
+                facts["changed_reference_edges"][fact] += 1
+    return facts
+
+
+def compare_graphs(
+    predicted_graph,
+    reference_graph,
+    changed_files: set[str],
+) -> Dict[str, Any]:
+    """Compare a patched graph with a fresh rebuild at the same commit."""
+    predicted = _graph_fact_sets(predicted_graph, changed_files)
+    reference = _graph_fact_sets(reference_graph, changed_files)
+    return {
+        name: _fact_overlap_metrics(predicted[name], reference[name])
+        for name in predicted
+    }
+
+
+def compare_graph_behavior(
+    predicted_graph,
+    reference_graph,
+    *,
+    project_root: Path,
+    changed_files: set[str],
+    max_per_capability: int = DEFAULT_BEHAVIOR_REQUESTS_PER_CAPABILITY,
+) -> Dict[str, Any]:
+    """Replay source-location LSP requests against two static graph providers."""
+    from codeminer.agent.lsp_provider import (
+        CAPABILITY_DEFINITION,
+        CAPABILITY_REFERENCES,
+        StaticLSPProvider,
+    )
+    from codeminer.eval.agent_runner.lsp_provider_validation import (
+        compare_static_lsp_provider,
+        default_lsp_provider_fingerprint,
+    )
+    from codeminer.eval.agent_runner.lsp_replay_benchmark import (
+        generate_lsp_replay_requests,
+    )
+
+    requests = generate_lsp_replay_requests(
+        reference_graph,
+        project_root=project_root,
+        capabilities=(CAPABILITY_DEFINITION, CAPABILITY_REFERENCES),
+        max_per_capability=max_per_capability,
+        file_paths=sorted(changed_files),
+    )
+    if not requests:
+        return {
+            "status": "not_evaluable",
+            "contract": "static_lsp_path_start_line_v1",
+            "request_count": 0,
+            "equivalent_count": 0,
+            "equivalent_fraction": None,
+            "exact": False,
+            "by_capability": {},
+            "mismatch_examples": [],
+        }
+
+    predicted_provider = StaticLSPProvider(predicted_graph)
+    reference_provider = StaticLSPProvider(reference_graph)
+
+    def invoke_reference(capability: str, arguments: Dict[str, Any]):
+        if capability == CAPABILITY_DEFINITION:
+            return reference_provider.definition(**arguments)
+        if capability == CAPABILITY_REFERENCES:
+            return reference_provider.references(**arguments)
+        raise ValueError(f"unsupported behavior request: {capability!r}")
+
+    comparisons = compare_static_lsp_provider(
+        requests,
+        graph=predicted_graph,
+        static_provider=predicted_provider,
+        reference_provider=invoke_reference,
+        reference_provider_name="fresh_rebuild_static",
+        fingerprint_selector=default_lsp_provider_fingerprint,
+    )
+    by_capability: Dict[str, Dict[str, int]] = {}
+    mismatch_examples = []
+    equivalent_count = 0
+    error_count = 0
+    for comparison in comparisons:
+        capability = comparison.request.normalized_capability
+        group = by_capability.setdefault(
+            capability,
+            {"requests": 0, "equivalent": 0, "mismatched": 0, "errors": 0},
+        )
+        group["requests"] += 1
+        if comparison.same_result is True:
+            equivalent_count += 1
+            group["equivalent"] += 1
+        elif comparison.same_result is False:
+            group["mismatched"] += 1
+            if len(mismatch_examples) < 5:
+                mismatch_examples.append(comparison.request.request_id)
+        else:
+            error_count += 1
+            group["errors"] += 1
+
+    total = len(comparisons)
+    return {
+        "status": "ok" if not error_count else "error",
+        "contract": "static_lsp_path_start_line_v1",
+        "request_count": total,
+        "equivalent_count": equivalent_count,
+        "equivalent_fraction": equivalent_count / total,
+        "exact": equivalent_count == total,
+        "error_count": error_count,
+        "by_capability": by_capability,
+        "mismatch_examples": mismatch_examples,
+    }
+
+
+def _changed_paths(changed: Dict[str, Any]) -> set[str]:
+    paths = set(changed.get("modified", []))
+    paths.update(changed.get("added", []))
+    paths.update(changed.get("deleted", []))
+    for old_path, new_path in changed.get("renamed", []):
+        paths.add(old_path)
+        paths.add(new_path)
+    return paths
+
+
+def patcher_phase_order(instance_id: str) -> tuple[str, str]:
+    """Counterbalance warm-cache order deterministically across instances."""
+    parity = hashlib.sha256(instance_id.encode("utf-8")).digest()[0] & 1
+    if parity:
+        return ("file-level-patch", "symbol-level-patch")
+    return ("symbol-level-patch", "file-level-patch")
+
+
 # ---------------------------------------------------------------------------
 # Strategy 1: full rebuild at one commit
 # ---------------------------------------------------------------------------
@@ -504,6 +758,152 @@ def _do_rebuild(
     }
 
 
+def prepare_base_graph(
+    instance_id: str,
+    language: str,
+    base_commit: str,
+    cache_root: Path,
+    out_root: Path,
+    timeout_s: int,
+    log,
+    *,
+    force: bool = False,
+) -> Path:
+    """Build or reuse a schema-valid graph tied to the requested base commit."""
+    base_dir = out_root / instance_id / "base"
+    graph_path = base_dir / "graph.pkl"
+    metadata_path = base_dir / "meta.json"
+
+    if not force and graph_path.is_file() and metadata_path.is_file():
+        try:
+            metadata = json.loads(metadata_path.read_text())
+            if (
+                metadata.get("instance_id") == instance_id
+                and metadata.get("language") == language
+                and metadata.get("base_commit") == base_commit
+            ):
+                graph = _CodeGraph().load_graph(str(graph_path))
+                log(
+                    f"[{instance_id}] reuse validated base graph "
+                    f"V={graph.graph.vcount()} E={graph.graph.ecount()}"
+                )
+                return graph_path
+        except Exception as exc:
+            log(
+                f"[{instance_id}] base graph cache rejected: {type(exc).__name__}: {exc}"
+            )
+
+    repo = cache_root / instance_id / "repo"
+    if not repo.is_dir():
+        raise FileNotFoundError(repo)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    log(f"[{instance_id}] build base graph at {base_commit[:12]}")
+    try:
+        info = run_with_timeout(
+            timeout_s,
+            _do_rebuild,
+            language,
+            repo,
+            base_commit,
+            base_dir,
+        )
+    except StrategyTimeout as exc:
+        raise TimeoutError(f"base graph exceeded {timeout_s}s") from exc
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "protocol_version": PROTOCOL_VERSION,
+                "instance_id": instance_id,
+                "language": language,
+                "base_commit": base_commit,
+                "vertices": info["v"],
+                "edges": info["e"],
+                "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            },
+            indent=2,
+        )
+    )
+    return graph_path
+
+
+def attach_graph_fidelity(
+    record: Dict[str, Any],
+    out_root: Path,
+    strategies: Sequence[str],
+    project_root: Path,
+    target_commit: str,
+) -> None:
+    """Compare successful incremental outputs with the same-commit rebuild."""
+    rebuild = record.get("fully-rebuild", {})
+    if rebuild.get("status") != "ok":
+        return
+
+    try:
+        checkout(project_root, target_commit)
+    except Exception as exc:
+        error = f"checkout_target: {type(exc).__name__}: {exc}"
+        for strategy in strategies:
+            sub = record.get(strategy, {})
+            if sub.get("status") == "ok":
+                sub["fidelity"] = {"status": "error", "error": error}
+        return
+
+    step_dir = out_root / record["instance_id"] / f"step{record['step']}"
+    reference_path = step_dir / "rebuild.pkl"
+    try:
+        reference_graph = _CodeGraph().load_graph(str(reference_path))
+    except Exception as exc:
+        rebuild["fidelity_reference_error"] = f"{type(exc).__name__}: {exc}"
+        return
+
+    for strategy in strategies:
+        sub = record.get(strategy, {})
+        if sub.get("status") != "ok":
+            continue
+        predicted_path = step_dir / f"{strategy}.pkl"
+        try:
+            predicted_graph = _CodeGraph().load_graph(str(predicted_path))
+            metrics = compare_graphs(
+                predicted_graph,
+                reference_graph,
+                set(sub.get("changed_files", [])),
+            )
+            raw_graph_whole_exact = all(
+                metrics[name]["precision"] == 1.0 and metrics[name]["recall"] == 1.0
+                for name in ("vertices", "edges")
+            )
+            raw_graph_changed_exact = all(
+                metrics[name]["precision"] == 1.0 and metrics[name]["recall"] == 1.0
+                for name in ("changed_vertices", "changed_edges")
+            )
+            behavior = compare_graph_behavior(
+                predicted_graph,
+                reference_graph,
+                project_root=project_root,
+                changed_files=set(sub.get("changed_files", [])),
+            )
+            sub["fidelity"] = {
+                "status": "ok",
+                "behavior_exact": behavior.get("exact") is True,
+                "equivalence_guardrail_pass": (
+                    behavior.get("exact") is True
+                    and raw_graph_whole_exact
+                    and raw_graph_changed_exact
+                ),
+                "behavior": behavior,
+                "raw_graph": {
+                    "whole_exact": raw_graph_whole_exact,
+                    "changed_exact": raw_graph_changed_exact,
+                    "metrics": metrics,
+                },
+            }
+        except Exception as exc:
+            sub["fidelity"] = {
+                "status": "error",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+
 def run_rebuild_step(
     target: Dict[str, Any],
     cache_root: Path,
@@ -519,7 +919,7 @@ def run_rebuild_step(
     repo = cache_root / iid / "repo"
     rebuild_pkl = step_out_dir / "rebuild.pkl"
 
-    is_no_source = target.get("delta_files_test_excluded", 0) == 0
+    is_no_source = target.get("delta_files", 0) == 0
     if is_no_source and prev_rebuild_pkl is not None and prev_rebuild_pkl.exists():
         log(f"  rebuild step{target['step']} SKIPPED (no source diff)")
         try:
@@ -561,65 +961,8 @@ def run_rebuild_step(
 
 
 # ---------------------------------------------------------------------------
-# Strategies 2/3: patcher phase (one long-lived LSP, walk the whole chain)
+# Incremental patcher phase (one long-lived backend, walk the whole chain)
 # ---------------------------------------------------------------------------
-
-
-def _first_symbol_position(symbols) -> Optional[Tuple[int, int]]:
-    """First (line, char) found by DFS into LSP documentSymbol output."""
-    for s in symbols or []:
-        sel = s.get("selectionRange", s.get("range", {}))
-        line = sel.get("start", {}).get("line")
-        char = sel.get("start", {}).get("character", 0)
-        if line is not None:
-            return (line, char)
-        nested = _first_symbol_position(s.get("children", []))
-        if nested is not None:
-            return nested
-    return None
-
-
-def _get_lsp_client(patcher):
-    return getattr(patcher, "lsp_client", None) or getattr(
-        getattr(patcher, "_impl", None), "lsp_client", None
-    )
-
-
-def _warmup_lsp(
-    patcher, repo: Path, base_sha: str, target_sha: str, language: str
-) -> float:
-    """Open changed files + a dummy ``definition`` so LSP first-call cost
-    falls outside the timed region. Excluded from t_s."""
-    t0 = time.monotonic()
-    r = run_git(["diff", "--name-only", base_sha, target_sha], cwd=repo, timeout=60)
-    names = r.stdout.split() if r.returncode == 0 else []
-    exts = LANG_EXTS.get(language, set())
-    abs_paths = [repo / n for n in names if Path(n).suffix in exts]
-    lsp = _get_lsp_client(patcher)
-    if lsp is None:
-        return 0.0
-    for p in abs_paths:
-        if p.is_file():
-            try:
-                lsp.open_document(str(p))
-            except Exception:
-                # Best-effort: a single file failing to open just means its
-                # first real query inside the timed region pays the lazy-init
-                # cost. Don't abort the run.
-                pass
-    for p in abs_paths:
-        if not p.is_file():
-            continue
-        try:
-            syms = lsp.document_symbol(str(p)) or []
-            real_pos = _first_symbol_position(syms)
-            if real_pos:
-                lsp.definition(str(p), real_pos[0], real_pos[1])
-        except Exception:
-            # Best-effort: documentSymbol/definition failure here just shifts
-            # the first-call cost into the timed region — measurement noise.
-            pass
-    return time.monotonic() - t0
 
 
 def run_patcher_phase(
@@ -651,24 +994,50 @@ def run_patcher_phase(
             sub_records[t["step"]] = {"status": "error", "error": f"load_base: {e}"}
         return sub_records
 
-    patcher = _GraphPatcher()(
-        project_root=str(repo),
-        code_graph=g,
-        language=lang,
-        mode=mode,
-    )
-
-    t0 = time.monotonic()
     try:
-        patcher.start_lsp()
+        checkout(repo, chain[0]["from_commit"])
     except Exception as e:
         for t in chain:
-            sub_records[t["step"]] = {"status": "error", "error": f"start_lsp: {e}"}
+            sub_records[t["step"]] = {
+                "status": "error",
+                "error": f"checkout_base: {type(e).__name__}: {e}",
+            }
         return sub_records
-    cold_start_total = time.monotonic() - t0
+
+    try:
+        patcher = _GraphPatcher()(
+            project_root=str(repo),
+            code_graph=g,
+            language=lang,
+            mode=mode,
+        )
+    except Exception as exc:
+        log(f"  {strategy}: construct failed: {type(exc).__name__}: {exc}")
+        for t in chain:
+            sub_records[t["step"]] = {
+                "status": "error",
+                "error": f"construct: {type(exc).__name__}: {exc}",
+            }
+        return sub_records
+
+    uses_lsp = lang != "cpp"
+    cold_start_total = 0.0
+    if uses_lsp:
+        t0 = time.monotonic()
+        try:
+            patcher.start_lsp()
+        except Exception as e:
+            log(f"  {strategy}: backend start failed: {type(e).__name__}: {e}")
+            for t in chain:
+                sub_records[t["step"]] = {
+                    "status": "error",
+                    "error": f"start_lsp: {e}",
+                }
+            return sub_records
+        cold_start_total = time.monotonic() - t0
 
     log(
-        f"  {strategy}: LSP cold-start {cold_start_total:.1f}s, "
+        f"  {strategy}: backend cold-start {cold_start_total:.1f}s, "
         f"running {len(chain)} steps"
     )
 
@@ -701,13 +1070,15 @@ def run_patcher_phase(
                 lsp_profile_dir.mkdir(parents=True, exist_ok=True)
                 profile_path = lsp_profile_dir / f"{iid}_step{step}_{strategy}.jsonl"
                 profile_path.unlink(missing_ok=True)
-                os.environ["LSP_PROFILE_PATH"] = str(profile_path)
-            else:
-                os.environ.pop("LSP_PROFILE_PATH", None)
+            # Backend startup is outside the per-step profile. All requests
+            # triggered by this update remain inside both the profile and t_s.
+            os.environ.pop("LSP_PROFILE_PATH", None)
 
             try:
                 checkout(repo, t["to_commit"])
             except Exception as e:
+                poisoned = True
+                poisoned_at = step
                 sub_records[step] = {
                     "status": "error",
                     "error": f"checkout: {type(e).__name__}: {e}",
@@ -715,29 +1086,24 @@ def run_patcher_phase(
                 os.environ.pop("LSP_PROFILE_PATH", None)
                 continue
 
-            # Per-step warmup (cpp skipped: patcher_cpp doesn't query LSP).
-            warmup_t0 = time.monotonic()
-            if lang != "cpp":
-                try:
-                    _warmup_lsp(patcher, repo, t["from_commit"], t["to_commit"], lang)
-                except Exception:
-                    # Best-effort: any failure just shifts the first-call cost
-                    # into the timed region.
-                    pass
-            warmup_s = time.monotonic() - warmup_t0
+            if profile_path is not None:
+                os.environ["LSP_PROFILE_PATH"] = str(profile_path)
 
             log(
                 f"  {strategy} step{step} {t['to_commit'][:8]} "
-                f"L{t['delta_lines']} F{t['delta_files_test_excluded']} "
+                f"L{t['delta_lines']} F{t['delta_files']} "
                 f"S{t['delta_symbols']}"
             )
+            total_t0 = time.monotonic()
             try:
+                detect_t0 = time.monotonic()
                 changed = patcher.detect_changed_files(
                     str(repo),
                     t["from_commit"],
                     t["to_commit"],
                     extensions=LANG_EXTS.get(lang),
                 )
+                detect_s = time.monotonic() - detect_t0
                 pt0 = time.monotonic()
                 stats = run_with_timeout(
                     timeout_s,
@@ -746,15 +1112,24 @@ def run_patcher_phase(
                     earlier_commit=t["from_commit"],
                     later_commit=t["to_commit"],
                 )
-                elapsed = time.monotonic() - pt0
+                patch_s = time.monotonic() - pt0
+                persist_t0 = time.monotonic()
                 g.save_graph(str(out_pkl))
+                persist_s = time.monotonic() - persist_t0
+                elapsed = time.monotonic() - total_t0
+                stats = stats or {}
                 sub: Dict[str, Any] = {
                     "t_s": elapsed,
+                    "detect_s": detect_s,
+                    "patch_s": patch_s,
+                    "persist_s": persist_s,
+                    "amortized_t_s": elapsed + cold_start_total / len(chain),
                     "cold_start_s": cold_start_total if i == 0 else 0.0,
-                    "warmup_s": warmup_s,
+                    "phase_cold_start_s": cold_start_total,
                     "v": g.graph.vcount(),
                     "e": g.graph.ecount(),
                     "status": "ok",
+                    "changed_files": sorted(_changed_paths(changed)),
                     "stats": {
                         k: v
                         for k, v in stats.items()
@@ -774,9 +1149,9 @@ def run_patcher_phase(
                 )
                 sub = {
                     "status": "timeout",
-                    "t_s": timeout_s,
+                    "t_s": time.monotonic() - total_t0,
                     "cold_start_s": cold_start_total if i == 0 else 0.0,
-                    "warmup_s": warmup_s,
+                    "phase_cold_start_s": cold_start_total,
                 }
             except Exception as e:
                 poisoned = True
@@ -789,7 +1164,7 @@ def run_patcher_phase(
                     "status": "error",
                     "error": f"{type(e).__name__}: {e}",
                     "cold_start_s": cold_start_total if i == 0 else 0.0,
-                    "warmup_s": warmup_s,
+                    "phase_cold_start_s": cold_start_total,
                 }
             sub["lsp"] = (
                 _summarize_lsp_profile(profile_path)
@@ -800,7 +1175,8 @@ def run_patcher_phase(
             sub_records[step] = sub
     finally:
         try:
-            patcher.stop_lsp()
+            if uses_lsp:
+                patcher.stop_lsp()
         except Exception:
             # Teardown is best-effort: a hung/dead LSP child should not
             # propagate out of ``finally`` and mask the real result we already
@@ -841,21 +1217,21 @@ def build_chain(
     for sha in candidates:
         files_all = diff_file_list(repo, prev, sha, pathspec, exclude_test=False)
         files_excl = diff_file_list(repo, prev, sha, pathspec, exclude_test=True)
-        if not files_excl:
+        if not files_all:
             delta_lines = 0
         else:
-            delta_lines, _ = diff_shortstat(repo, prev, sha, files_excl)
+            delta_lines, _ = diff_shortstat(repo, prev, sha, files_all)
         added, removed, modified = compute_delta_symbols(
             repo,
             prev,
             sha,
-            files_excl,
+            files_all,
             language,
         )
 
         if delta_lines > max_delta_lines:
             notes = "too_large"
-        elif len(files_excl) == 0:
+        elif len(files_all) == 0:
             notes = "no-source-change"
         else:
             notes = None
@@ -901,30 +1277,35 @@ def process_instance(
     out_root: Path,
     lsp_profile_dir: Optional[Path],
     log,
+    rebuild_base: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Build chain, then run three strategies as phases. Returns one result
-    row per step (each row contains rebuild/naive/symbol sub-records)."""
+    """Build one chain and run independent update strategies from its base."""
     chain = build_chain(
         iid, language, base_commit, cache_root, n_steps, max_walk, max_delta_lines, log
     )
     if not chain:
         return []
     repo = cache_root / iid / "repo"
-
-    # The base graph for the patcher is loaded from the instance's pre-existing
-    # rebuild at ``base_commit`` (``<cache_root>/<iid>/graph.pkl``).
-    base_graph_pkl = cache_root / iid / "graph.pkl"
-    if not base_graph_pkl.exists():
-        log(f"[{iid}] missing base graph: {base_graph_pkl}")
-        # ``step=0`` keys the row so --resume skips it next time; without a
-        # step the resume index drops the row and the error re-appends on
-        # every retry.
+    try:
+        base_graph_pkl = prepare_base_graph(
+            iid,
+            language,
+            base_commit,
+            cache_root,
+            out_root,
+            timeout_s,
+            log,
+            force=rebuild_base,
+        )
+    except Exception as exc:
+        log(f"[{iid}] base graph failed: {type(exc).__name__}: {exc}")
         return [
             {
                 "instance_id": iid,
                 "language": language,
                 "step": 0,
-                "error": f"no base graph at {base_graph_pkl}",
+                "base_commit": base_commit,
+                "error": f"base_graph: {type(exc).__name__}: {exc}",
             }
         ]
 
@@ -933,7 +1314,9 @@ def process_instance(
     for t in chain:
         step_recs[t["step"]] = {
             "instance_id": t["instance_id"],
+            "protocol_version": PROTOCOL_VERSION,
             "language": t["language"],
+            "base_commit": base_commit,
             "step": t["step"],
             "from_commit": t["from_commit"],
             "to_commit": t["to_commit"],
@@ -950,26 +1333,44 @@ def process_instance(
 
     log(f"=== {iid} ({language}) — {len(chain)} steps ===")
 
-    # Phase 1: symbol-level patcher.
-    log(f"=== {iid} phase 1/3: symbol-level-patch ===")
-    symbol_subs = run_patcher_phase(
-        "symbol-level-patch",
-        "symbol",
-        chain,
-        base_graph_pkl,
-        cache_root,
-        out_root,
-        timeout_s,
-        lsp_profile_dir,
-        log,
-        "symbol-level-patch.pkl",
-    )
-    for step, sub in symbol_subs.items():
-        step_recs[step]["symbol-level-patch"] = sub
+    if language == "cpp":
+        patcher_specs = [("backend-incremental", "symbol")]
+        primary_strategy = "backend-incremental"
+    else:
+        modes = {
+            "file-level-patch": "naive",
+            "symbol-level-patch": "symbol",
+        }
+        patcher_specs = [(name, modes[name]) for name in patcher_phase_order(iid)]
+        primary_strategy = "symbol-level-patch"
 
-    # Phase 2: cold-start rebuild per step (skip when no source diff).
-    log(f"=== {iid} phase 2/3: fully-rebuild ===")
-    prev_rb_pkl: Optional[Path] = None
+    phase_order = [name for name, _mode in patcher_specs] + ["fully-rebuild"]
+    for record in step_recs.values():
+        record["phase_order"] = phase_order
+        record["primary_incremental_strategy"] = primary_strategy
+
+    for phase, (strategy, mode) in enumerate(patcher_specs, start=1):
+        log(f"=== {iid} phase {phase}/{len(phase_order)}: {strategy} ===")
+        clear_indexer_cache(repo, language)
+        subs = run_patcher_phase(
+            strategy,
+            mode,
+            chain,
+            base_graph_pkl,
+            cache_root,
+            out_root,
+            timeout_s,
+            lsp_profile_dir,
+            log,
+            f"{strategy}.pkl",
+        )
+        for step, sub in subs.items():
+            step_recs[step][strategy] = sub
+
+    # A fresh same-commit graph is both the latency baseline and fidelity oracle.
+    rebuild_phase = len(phase_order)
+    log(f"=== {iid} phase {rebuild_phase}/{len(phase_order)}: fully-rebuild ===")
+    prev_rb_pkl: Optional[Path] = base_graph_pkl
     for t in chain:
         step_dir = out_root / iid / f"step{t['step']}"
         step_dir.mkdir(parents=True, exist_ok=True)
@@ -979,28 +1380,16 @@ def process_instance(
         if rb_pkl.exists():
             prev_rb_pkl = rb_pkl
 
-    # Phase 3: file-level (naive-mode) patcher, with clangd cache cleared.
-    log(f"=== {iid} phase 3/3: file-level-patch ===")
-    clear_indexer_cache(repo, language)
-    file_subs = run_patcher_phase(
-        "file-level-patch",
-        "naive",
-        chain,
-        base_graph_pkl,
-        cache_root,
-        out_root,
-        timeout_s,
-        lsp_profile_dir,
-        log,
-        "file-level-patch.pkl",
-    )
-    for step, sub in file_subs.items():
-        step_recs[step]["file-level-patch"] = sub
-
-    # Speedups + finished timestamp.
     out: List[Dict[str, Any]] = []
     for t in chain:
         rec = step_recs[t["step"]]
+        attach_graph_fidelity(
+            rec,
+            out_root,
+            [name for name, _mode in patcher_specs],
+            repo,
+            t["to_commit"],
+        )
         out.append(finalize_step_record(rec))
     return out
 
@@ -1012,15 +1401,49 @@ def finalize_step_record(rec: Dict[str, Any]) -> Dict[str, Any]:
     mocked sub-records.
     """
     rb = rec.get("fully-rebuild", {})
+    primary_name = rec.get("primary_incremental_strategy", "symbol-level-patch")
+    primary = rec.get(primary_name, {})
     fl = rec.get("file-level-patch", {})
-    sl = rec.get("symbol-level-patch", {})
     tr = rb.get("t_s") if rb.get("status") == "ok" else None
-    tf = fl.get("t_s") if fl.get("status") == "ok" else None
-    ts = sl.get("t_s") if sl.get("status") == "ok" else None
+    tf = fl.get("amortized_t_s", fl.get("t_s")) if fl.get("status") == "ok" else None
+    ts = (
+        primary.get("amortized_t_s", primary.get("t_s"))
+        if primary.get("status") == "ok"
+        else None
+    )
+    steady_tf = fl.get("t_s") if fl.get("status") == "ok" else None
+    steady_ts = primary.get("t_s") if primary.get("status") == "ok" else None
+    rec["speedup_basis"] = "amortized_t_s"
     rec["speedup_vs_fully_rebuild"] = (tr / ts) if (tr and ts) else None
     rec["speedup_vs_file_level_patch"] = (tf / ts) if (tf and ts) else None
+    rec["steady_speedup_vs_fully_rebuild"] = (
+        (tr / steady_ts) if (tr and steady_ts) else None
+    )
+    rec["steady_speedup_vs_file_level_patch"] = (
+        (steady_tf / steady_ts) if (steady_tf and steady_ts) else None
+    )
+    fidelity = primary.get("fidelity", {})
+    rec["equivalence_guarded_speedup_vs_fully_rebuild"] = (
+        rec["speedup_vs_fully_rebuild"]
+        if fidelity.get("status") == "ok" and fidelity.get("equivalence_guardrail_pass")
+        else None
+    )
     rec["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return rec
+
+
+def _record_is_resumable(record: Dict[str, Any]) -> bool:
+    """Only current-protocol rows with measured fidelity are terminal results."""
+    if record.get("protocol_version") != PROTOCOL_VERSION or not record.get("step"):
+        return False
+    primary_name = record.get("primary_incremental_strategy")
+    primary = record.get(primary_name, {}) if primary_name else {}
+    rebuild = record.get("fully-rebuild", {})
+    return (
+        primary.get("status") == "ok"
+        and rebuild.get("status") == "ok"
+        and primary.get("fidelity", {}).get("status") == "ok"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1179,6 +1602,11 @@ def main():
         action="store_true",
         help="skip (iid, step) rows that already exist in --output",
     )
+    ap.add_argument(
+        "--rebuild-base",
+        action="store_true",
+        help="rebuild each schema-valid base graph even when a matching artifact exists",
+    )
     args = ap.parse_args()
 
     # Resolve the instance list.
@@ -1196,9 +1624,8 @@ def main():
     if args.out_root is None:
         args.out_root = args.output.parent / "chain_work"
 
-    # Load already-done keys for --resume. ``done_steps[iid]`` is the set of
-    # step ids written for that instance, including ``0`` for the
-    # missing-base-graph sentinel from process_instance.
+    # Load already-done successful step keys for --resume. Step-0 preparation
+    # errors remain retriable and therefore do not short-circuit an instance.
     done: set = set()
     done_steps: Dict[str, set] = {}
     if args.resume and args.output.exists():
@@ -1209,7 +1636,7 @@ def main():
                 continue
             iid = r.get("instance_id")
             step = r.get("step")
-            if iid and step is not None:
+            if iid and step is not None and _record_is_resumable(r):
                 done.add((iid, step))
                 done_steps.setdefault(iid, set()).add(step)
 
@@ -1224,16 +1651,11 @@ def main():
     fh = args.output.open("a")
     try:
         for iid, language, base_sha in instances:
-            # Whole-instance short-circuit. Skip walking the chain when either
-            # every step 1..N is already written, or the step-0
-            # (missing-base-graph) sentinel was written. Repos whose walk
-            # produces fewer than --steps rows can't be detected without
-            # re-walking, so they fall through to the per-row resume-skip.
-            if args.resume:
+            # Whole-instance short-circuit. Repos whose walk produces fewer
+            # than --steps rows cannot be detected without re-walking, so they
+            # fall through to the per-row resume-skip.
+            if args.resume and not args.rebuild_base:
                 steps_done = done_steps.get(iid, set())
-                if 0 in steps_done:
-                    log(f"[{iid}] resume-skip (missing-base-graph sentinel)")
-                    continue
                 if all(s in steps_done for s in range(1, args.steps + 1)):
                     log(f"[{iid}] resume-skip (all {args.steps} steps in output)")
                     continue
@@ -1249,6 +1671,7 @@ def main():
                 args.out_root,
                 args.lsp_profile_dir,
                 log,
+                rebuild_base=args.rebuild_base,
             )
             for r in rows:
                 key = (r.get("instance_id"), r.get("step"))

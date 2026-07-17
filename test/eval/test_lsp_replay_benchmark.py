@@ -237,6 +237,23 @@ def test_generate_lsp_replay_requests_from_reference_edges(tmp_path):
         )
         == 1
     )
+    assert (
+        len(
+            generate_lsp_replay_requests(
+                graph,
+                capabilities=["definition"],
+                max_per_capability=1,
+                file_paths=["./caller.py"],
+            )
+        )
+        == 1
+    )
+    assert not generate_lsp_replay_requests(
+        graph,
+        capabilities=["definition"],
+        max_per_capability=1,
+        file_paths=["callee.py"],
+    )
 
 
 def test_generate_lsp_replay_requests_spreads_candidates(tmp_path):

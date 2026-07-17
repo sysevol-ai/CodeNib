@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from ...types import NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
+from ...types import NODE_TYPE_CLASS, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
 from .patcher_base import PatcherBase
 
 
@@ -53,4 +53,25 @@ class PatcherGo(PatcherBase):
         return f"{file_path}:{display}"
 
     def flatten_symbols(self, file_path, lsp_symbols):
-        return self._flatten_symbols_default(file_path, lsp_symbols)
+        flattened = self._flatten_symbols_default(file_path, lsp_symbols)
+        for metadata in flattened.values():
+            if self._classify_symbol_type(metadata["kind"]) == NODE_TYPE_CLASS:
+                # scip-go emits no enclosing range for type declarations.
+                metadata["end_line"] = metadata["start_line"]
+        return flattened
+
+    def _added_parent_unified_name(self, file_path, parent_display_name):
+        # Without enclosing ranges, SCIP-go attaches definitions directly to
+        # the file even when documentSymbol presents a nested type hierarchy.
+        return None
+
+    def _reference_scope_for_token(self, file_path, token, preferred_scope):
+        scope = super()._reference_scope_for_token(file_path, token, preferred_scope)
+        if scope and scope != file_path:
+            vertex_id = self.code_graph.name_to_vertex.get(scope)
+            source_range = (
+                self._vertex_line_range(vertex_id) if vertex_id is not None else None
+            )
+            if source_range and source_range[0] == source_range[1]:
+                return file_path
+        return scope

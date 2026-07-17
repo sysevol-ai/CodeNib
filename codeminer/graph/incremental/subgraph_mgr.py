@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from ...log_utils import get_logger
 from ...types import (
@@ -56,12 +56,14 @@ LSP_KIND_TO_NODE_TYPE = {
     25: NODE_TYPE_FUNCTION,  # Operator
 }
 
-# Symbol types worth querying for cross-file incoming references.
-# Variables, fields, and parameters are file-local — querying references
-# for them causes LSP servers to scan the entire workspace, which is slow.
+# Symbol types whose uses may survive outside a changed range. Fields and
+# package/module variables are included: even when language-local, a newly
+# added definition can be referenced by unchanged lines elsewhere in its file.
+# Parameters and local variables are filtered before becoming graph vertices.
 _INCOMING_REF_TYPES = frozenset(
     {
         NODE_TYPE_CLASS,
+        NODE_TYPE_FIELD,
         NODE_TYPE_FUNCTION,
         NODE_TYPE_METHOD,
     }
@@ -197,7 +199,9 @@ class SubgraphMgr(ABC):
         # selectionRange for each vertex (for incoming ref queries)
         self.symbol_selection_ranges: dict[str, tuple[int, int, int, int]] = {}
         # Cache semanticTokens per file (avoid duplicate LSP calls)
-        self._semantic_tokens_cache: dict[str, list[dict] | None] = {}
+        self._semantic_tokens_cache: dict[
+            tuple[str, tuple[tuple[int, int], ...]], list[dict] | None
+        ] = {}
 
     # ═══════════════════════════════════════════════════════════
     # Abstract methods — language-specific
@@ -566,6 +570,120 @@ class SubgraphMgr(ABC):
             g._invalidate_edge_index()
         return moved
 
+    def rebase_file_scope_reference_anchors(
+        self,
+        file_path: str,
+        line_mapper: Callable[[int], int | None],
+    ) -> tuple[int, int]:
+        """Rebase references owned by a file node after line edits.
+
+        Module-level references use the file vertex as their source. Symbol
+        updates therefore do not visit them. ``line_mapper`` returns a new
+        line for retained anchors and ``None`` for anchors invalidated by a
+        changed old-file range.
+
+        Returns ``(moved, removed)``.
+        """
+
+        g = self.code_graph
+        file_vid = g.name_to_vertex.get(file_path)
+        if file_vid is None:
+            return 0, 0
+        file_vertex = g.graph.vs[file_vid]
+        if file_vertex.attributes().get("type") != NODE_TYPE_FILE:
+            return 0, 0
+
+        return self.rebase_outgoing_reference_anchors(
+            file_path,
+            file_path,
+            line_mapper,
+        )
+
+    def rebase_reference_anchors_for_file(
+        self,
+        file_path: str,
+        line_mapper: Callable[[int], int | None],
+    ) -> tuple[int, int]:
+        """Rebase every reference anchored in one changed source file.
+
+        ``anchor_file`` is the source-location authority. The edge's source
+        vertex is not: overloaded or duplicate backend identities such as Go
+        ``init`` functions can make an edge appear to be owned by a vertex
+        from another file. A single file-wide pass also prevents separate
+        file-, shifted-, and affected-symbol paths from applying a line shift
+        more than once.
+        """
+
+        graph = self.code_graph
+        moved = 0
+        to_delete = []
+        for edge in graph.graph.es:
+            attrs = edge.attributes()
+            if edge["type"] != EDGE_TYPE_REFERENCE:
+                continue
+            if attrs.get("anchor_file") != file_path:
+                continue
+            old_line = attrs.get("anchor_line")
+            if old_line is None:
+                continue
+            new_line = line_mapper(old_line)
+            if new_line is None:
+                to_delete.append(edge.index)
+            elif new_line != old_line:
+                edge["anchor_line"] = new_line
+                moved += 1
+
+        if to_delete:
+            graph.graph.delete_edges(to_delete)
+        if moved or to_delete:
+            graph._invalidate_edge_index()
+        return moved, len(to_delete)
+
+    def rebase_outgoing_reference_anchors(
+        self,
+        vertex_name: str,
+        anchor_file: str,
+        line_mapper: Callable[[int], int | None],
+    ) -> tuple[int, int]:
+        """Map retained outgoing anchors and remove anchors in edited lines.
+
+        A zero-context Git hunk provides a lossless mapping for every
+        unchanged source line, even when insertions make the shift inside a
+        symbol non-uniform. Keeping those cold-build edges avoids replacing
+        stable SCIP semantics with an LSP server's potentially different
+        interpretation of unchanged code.
+        """
+
+        g = self.code_graph
+        vertex_id = g.name_to_vertex.get(vertex_name)
+        if vertex_id is None:
+            return 0, 0
+
+        moved = 0
+        to_delete = []
+        for eid in g.graph.incident(vertex_id, mode="out"):
+            edge = g.graph.es[eid]
+            if edge["type"] != EDGE_TYPE_REFERENCE:
+                continue
+            attrs = edge.attributes()
+            if attrs.get("anchor_file") != anchor_file:
+                continue
+            old_line = attrs.get("anchor_line")
+            if old_line is None:
+                continue
+            new_line = line_mapper(old_line)
+            if new_line is None:
+                to_delete.append(eid)
+            elif new_line != old_line:
+                edge["anchor_line"] = new_line
+                moved += 1
+
+        if to_delete:
+            g.graph.delete_edges(to_delete)
+        if moved or to_delete:
+            g._invalidate_edge_index()
+        return moved, len(to_delete)
+
     def rename_vertex(self, old_name: str, new_name: str, new_attrs: dict = None):
         """Rename a vertex without deleting it. All edges preserved."""
         g = self.code_graph
@@ -668,6 +786,9 @@ class SubgraphMgr(ABC):
                     "file": file_path,
                     "start_line": start_line,
                     "end_line": end_line,
+                    "selection_line": sel_range.get("start", {}).get(
+                        "line", start_line
+                    ),
                     "unified_name": unified_name,
                 },
             )
@@ -727,6 +848,7 @@ class SubgraphMgr(ABC):
         abs_file = str(self.project_root / file_path)
 
         for vname in vertex_names:
+            node_type = ""
             vid = self.code_graph.name_to_vertex.get(vname)
             if vid is not None:
                 node_type = self.code_graph.graph.vs[vid].attributes().get("type", "")
@@ -742,11 +864,22 @@ class SubgraphMgr(ABC):
                 abs_file, sel_line, sel_char, include_declaration=False
             )
             for loc in refs:
+                # Some servers treat references to an interface method as
+                # references to every implementation. Keep only call sites
+                # whose own go-to-definition resolves to this concrete method.
+                if node_type == NODE_TYPE_METHOD and not self._reference_resolves_to(
+                    loc, vname
+                ):
+                    continue
                 ref_file = uri_to_relpath(loc.get("uri", ""), str(self.project_root))
                 if ref_file is None:
                     continue
                 ref_line = loc.get("range", {}).get("start", {}).get("line", 0)
-                ref_scope = self.match_location_to_scope(ref_file, ref_line)
+                ref_scope = self._reference_scope_for_token(
+                    ref_file,
+                    {"line": ref_line},
+                    self.match_location_to_scope(ref_file, ref_line),
+                )
                 if ref_scope:
                     if batch is not None:
                         if batch.stage(
@@ -769,6 +902,38 @@ class SubgraphMgr(ABC):
                 else:
                     stats["unmatched"] += 1
 
+    def _reference_resolves_to(self, location: dict, vertex_name: str) -> bool:
+        """Check that a reference location resolves to one concrete vertex."""
+        if not self.lsp_client:
+            return False
+        ref_file = uri_to_relpath(location.get("uri", ""), str(self.project_root))
+        if ref_file is None:
+            return False
+        start = location.get("range", {}).get("start", {})
+        line = start.get("line", 0)
+        character = start.get("character", 0)
+        definitions = self.lsp_client.definition(
+            str(self.project_root / ref_file), line, character
+        )
+        for definition in definitions:
+            target_uri = definition.get("targetUri", definition.get("uri", ""))
+            target_file = uri_to_relpath(target_uri, str(self.project_root))
+            if target_file is None:
+                continue
+            target_range = definition.get(
+                "targetSelectionRange", definition.get("range", {})
+            )
+            target_line = target_range.get("start", {}).get("line", 0)
+            matched = self.match_location_to_vertex(
+                target_file,
+                target_line,
+                allow_scope_fallback=False,
+                allow_name_fallback=False,
+            )
+            if matched == vertex_name:
+                return True
+        return False
+
     def reconnect_outgoing(
         self,
         file_path: str,
@@ -776,6 +941,7 @@ class SubgraphMgr(ABC):
         stats: dict,
         line_ranges: list[tuple[int, int]] | None = None,
         batch: "EdgeBatch | None" = None,
+        scope_filter: set[str] | None = None,
     ):
         """Use semanticTokens + definition to find outgoing refs."""
         if not self.lsp_client:
@@ -808,12 +974,29 @@ class SubgraphMgr(ABC):
             if not ref_tokens:
                 return
 
-        # Deduplicate by text for definition lookup
-        seen_text = {}
-        for t in ref_tokens:
-            key = t["text"]
-            if key not in seen_text:
-                seen_text[key] = self.lsp_client.definition(
+        scoped_tokens = []
+        for token in ref_tokens:
+            scope = None
+            if range_to_vertex:
+                for (start, end), vname in range_to_vertex.items():
+                    if start <= token["line"] <= end:
+                        scope = vname
+                        break
+            scope = self._reference_scope_for_token(file_path, token, scope)
+            if scope_filter is not None and scope not in scope_filter:
+                continue
+            scoped_tokens.append((token, scope))
+        if not scoped_tokens:
+            return
+
+        # Definition is position-sensitive: the same token text may be
+        # shadowed or imported differently in separate scopes. Deduplicate
+        # only repeated semantic-token rows for the same source position.
+        definitions_by_position = {}
+        for t, _scope in scoped_tokens:
+            key = (t["line"], t["character"])
+            if key not in definitions_by_position:
+                definitions_by_position[key] = self.lsp_client.definition(
                     abs_file, t["line"], t["character"]
                 )
 
@@ -822,21 +1005,20 @@ class SubgraphMgr(ABC):
         # second pass occasionally resolves more. The previous 3s sleep
         # added per-file overhead with ~zero real benefit (most empties
         # remain empty on retry).
-        empty_keys = [k for k, v in seen_text.items() if v == []]
+        empty_keys = [k for k, v in definitions_by_position.items() if v == []]
         if empty_keys:
-            text_to_token = {}
-            for t in ref_tokens:
-                if t["text"] not in text_to_token:
-                    text_to_token[t["text"]] = t
+            position_to_token = {}
+            for t, _scope in scoped_tokens:
+                position_to_token.setdefault((t["line"], t["character"]), t)
             resolved = 0
             for key in empty_keys:
-                tok = text_to_token.get(key)
+                tok = position_to_token.get(key)
                 if tok:
                     result = self.lsp_client.definition(
                         abs_file, tok["line"], tok["character"]
                     )
                     if result:
-                        seen_text[key] = result
+                        definitions_by_position[key] = result
                         resolved += 1
             if resolved:
                 logger.debug(
@@ -847,8 +1029,10 @@ class SubgraphMgr(ABC):
         # multi-edge schema preserves call-site identity for range queries.
         # _add_edge dedups on (src, tgt, type, anchor_file, anchor_line),
         # so identical anchors collapse but distinct call sites stay distinct.
-        for ref_token in ref_tokens:
-            defn_list = seen_text.get(ref_token["text"])
+        for ref_token, scope in scoped_tokens:
+            defn_list = definitions_by_position.get(
+                (ref_token["line"], ref_token["character"])
+            )
             if not defn_list:
                 continue
 
@@ -861,16 +1045,14 @@ class SubgraphMgr(ABC):
             target_range = defn.get("targetSelectionRange", defn.get("range", {}))
             target_line = target_range.get("start", {}).get("line", 0)
 
-            scope = None
-            if range_to_vertex:
-                for (start, end), vname in range_to_vertex.items():
-                    if start <= ref_token["line"] <= end:
-                        scope = vname
-                        break
-            if scope is None:
-                scope = self.match_location_to_scope(file_path, ref_token["line"])
-
-            target_vertex = self.match_location_to_vertex(target_file, target_line)
+            target_vertex = self.match_location_to_vertex(
+                target_file,
+                target_line,
+                symbol_name=ref_token.get("text"),
+                allow_scope_fallback=False,
+                allow_name_fallback=ref_token.get("token_type")
+                not in {"variable", "parameter"},
+            )
 
             if scope and target_vertex:
                 if batch is not None:
@@ -904,8 +1086,9 @@ class SubgraphMgr(ABC):
 
         Prefers semanticTokens/range when available, falls back to full.
         """
-        if file_path in self._semantic_tokens_cache:
-            cached = self._semantic_tokens_cache[file_path]
+        cache_key = (file_path, tuple(line_ranges or ()))
+        if cache_key in self._semantic_tokens_cache:
+            cached = self._semantic_tokens_cache[cache_key]
             return list(cached) if cached is not None else None
 
         if not self.lsp_client:
@@ -944,7 +1127,7 @@ class SubgraphMgr(ABC):
                 f"semanticTokens failed for {file_path}, "
                 "skipping outgoing reference discovery"
             )
-            self._semantic_tokens_cache[file_path] = None
+            self._semantic_tokens_cache[cache_key] = None
             return None
 
         tokens = self.lsp_client.decode_semantic_tokens(tokens_response, abs_file)
@@ -959,8 +1142,37 @@ class SubgraphMgr(ABC):
             and "definition" not in t["modifiers"]
             and t["token_type"] in crossfile_types
         ]
-        self._semantic_tokens_cache[file_path] = filtered
+        self._semantic_tokens_cache[cache_key] = filtered
         return list(filtered)
+
+    def _reference_scope_for_token(
+        self,
+        file_path: str,
+        token: dict,
+        preferred_scope: str | None,
+    ) -> str | None:
+        """Resolve the source vertex that owns one reference token.
+
+        Language patchers may override this when evaluation scope differs
+        from the innermost declaration range. Python decorators are one such
+        case: their expressions execute in the decorated definition's parent
+        scope.
+        """
+
+        return preferred_scope or self.match_location_to_scope(file_path, token["line"])
+
+    def _containment_parent(self, vertex_name: str) -> str | None:
+        """Return a vertex's direct containment parent, when available."""
+
+        graph = self.code_graph
+        vertex_id = graph.name_to_vertex.get(vertex_name)
+        if vertex_id is None:
+            return None
+        for edge_id in graph.graph.incident(vertex_id, mode="in"):
+            edge = graph.graph.es[edge_id]
+            if edge["type"] == EDGE_TYPE_CONTAIN and edge.target == vertex_id:
+                return graph.graph.vs[edge.source]["name"]
+        return None
 
     # ═══════════════════════════════════════════════════════════
     # Location matching
@@ -983,11 +1195,34 @@ class SubgraphMgr(ABC):
             end_line = start_line
         return start_line, end_line
 
-    def match_location_to_vertex(self, file_path: str, line: int) -> Optional[str]:
+    @staticmethod
+    def _unified_name_leaf(unified_name: str) -> str:
+        """Return a language-neutral final symbol component."""
+
+        leaf = unified_name.rsplit(":", 1)[-1]
+        leaf = leaf.rstrip("()")
+        return leaf.rsplit(".", 1)[-1]
+
+    def match_location_to_vertex(
+        self,
+        file_path: str,
+        line: int,
+        symbol_name: str | None = None,
+        allow_scope_fallback: bool = True,
+        allow_name_fallback: bool = True,
+    ) -> Optional[str]:
         """Match an LSP location to an existing graph vertex.
 
         Level 1: Exact (file, start_line) match.
-        Level 2: Innermost enclosing scope.
+        Level 2: Unique symbol-name match within the target file, when
+        ``allow_name_fallback`` is true. This handles LSPs that choose a
+        different duplicate declaration than the static index used to build
+        the graph. Variables disable it because an unindexed local ``X`` must
+        not resolve to an unrelated module-level ``X``.
+        Level 3: Innermost enclosing scope, when ``allow_scope_fallback`` is
+        true. Outgoing definition resolution disables this fallback because
+        mapping an unindexed local variable to its containing function creates
+        a false self-reference edge.
 
         Uses ``file_to_vertices`` to constrain the scan to one file's
         vertices instead of the whole graph (5985 calls × 31k vertices
@@ -1001,9 +1236,37 @@ class SubgraphMgr(ABC):
             sr = self._vertex_line_range(vid)
             if sr and sr[0] == line:
                 candidates.append(vname)
+        if symbol_name and len(candidates) > 1:
+            named_candidates = [
+                vname
+                for vname in candidates
+                if self._unified_name_leaf(
+                    str(
+                        g.graph.vs[g.name_to_vertex[vname]]
+                        .attributes()
+                        .get("unified_name")
+                        or ""
+                    )
+                )
+                == symbol_name
+            ]
+            if len(named_candidates) == 1:
+                return named_candidates[0]
         if len(candidates) == 1:
             return candidates[0]
-        return self.match_location_to_scope(file_path, line)
+
+        if symbol_name and allow_name_fallback:
+            named_candidates = []
+            for vid in vids:
+                attrs = g.graph.vs[vid].attributes()
+                unified_name = str(attrs.get("unified_name") or "")
+                if self._unified_name_leaf(unified_name) == symbol_name:
+                    named_candidates.append(g.graph.vs[vid]["name"])
+            if len(named_candidates) == 1:
+                return named_candidates[0]
+        if allow_scope_fallback:
+            return self.match_location_to_scope(file_path, line)
+        return None
 
     def match_location_to_scope(self, file_path: str, line: int) -> Optional[str]:
         """Find the innermost scope vertex containing (file, line)."""

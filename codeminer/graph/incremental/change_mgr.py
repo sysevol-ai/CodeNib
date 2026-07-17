@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -16,6 +17,46 @@ from ...log_utils import get_logger
 logger = get_logger(__name__)
 
 _FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
+
+
+@dataclass(frozen=True)
+class ChangedLineHunk:
+    """One zero-context git diff hunk with lossless line counts.
+
+    ``old_start`` and ``new_start`` are git's 1-based hunk starts converted
+    to zero-based coordinates. A zero-count side denotes an insertion or
+    deletion boundary rather than an actual source line.
+    """
+
+    old_start: int
+    old_count: int
+    new_start: int
+    new_count: int
+
+    def as_inclusive_range(self) -> tuple[int, int, int, int]:
+        """Return the legacy inclusive range representation."""
+
+        if self.old_count == 0:
+            old_marker = max(0, self.old_start - 1)
+            old_s = old_e = old_marker
+        else:
+            old_s = self.old_start
+            old_e = self.old_start + self.old_count - 1
+
+        if self.new_count == 0:
+            new_marker = max(0, self.new_start - 1)
+            new_s = new_e = new_marker
+        else:
+            new_s = self.new_start
+            new_e = self.new_start + self.new_count - 1
+        return old_s, old_e, new_s, new_e
+
+    def new_range(self) -> tuple[int, int] | None:
+        """Return the changed new-file range, or ``None`` for a deletion."""
+
+        if self.new_count == 0:
+            return None
+        return self.new_start, self.new_start + self.new_count - 1
 
 
 def _shorten_ref(ref: str) -> str:
@@ -88,6 +129,70 @@ def detect_changed_files(
     return result
 
 
+def get_changed_line_hunks(
+    project_root: str,
+    file_path: str,
+    base_commit: str,
+    target_commit: str = "HEAD",
+) -> list[ChangedLineHunk]:
+    """Get lossless changed-line hunks between two commits for one file."""
+
+    try:
+        output = subprocess.check_output(
+            [
+                "git",
+                "diff",
+                "-U0",
+                _shorten_ref(base_commit),
+                _shorten_ref(target_commit),
+                "--",
+                file_path,
+            ],
+            cwd=project_root,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        logger.debug(f"git diff failed for {file_path}")
+        return []
+
+    hunks: list[ChangedLineHunk] = []
+    pattern = r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@"
+    for match in re.finditer(pattern, output):
+        hunks.append(
+            ChangedLineHunk(
+                old_start=int(match.group(1)) - 1,
+                old_count=int(match.group(2)) if match.group(2) else 1,
+                new_start=int(match.group(3)) - 1,
+                new_count=int(match.group(4)) if match.group(4) else 1,
+            )
+        )
+    return hunks
+
+
+def map_old_line_to_new(line: int, hunks: list[ChangedLineHunk]) -> int | None:
+    """Map an unchanged old-file line through an ordered diff.
+
+    Returns ``None`` when ``line`` was part of a replaced/deleted old range.
+    Pure insertions shift lines after the insertion boundary without marking
+    any old line stale.
+    """
+
+    delta = 0
+    for hunk in hunks:
+        if hunk.old_count == 0:
+            if line <= hunk.old_start:
+                break
+        else:
+            old_end = hunk.old_start + hunk.old_count - 1
+            if line < hunk.old_start:
+                break
+            if line <= old_end:
+                return None
+        delta += hunk.new_count - hunk.old_count
+    return line + delta
+
+
 def get_changed_line_ranges(
     project_root: str,
     file_path: str,
@@ -113,53 +218,9 @@ def get_changed_line_ranges(
         collapses to a marker (old_start == old_end); for pure-deletion
         hunks the new side collapses similarly.
     """
-    try:
-        output = subprocess.check_output(
-            [
-                "git",
-                "diff",
-                "-U0",
-                _shorten_ref(base_commit),
-                _shorten_ref(target_commit),
-                "--",
-                file_path,
-            ],
-            cwd=project_root,
-            text=True,
-            stderr=subprocess.DEVNULL,
+    return [
+        hunk.as_inclusive_range()
+        for hunk in get_changed_line_hunks(
+            project_root, file_path, base_commit, target_commit
         )
-    except subprocess.CalledProcessError:
-        logger.debug(f"git diff failed for {file_path}")
-        return []
-
-    ranges: list[tuple[int, int, int, int]] = []
-    pattern = r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@"
-    for match in re.finditer(pattern, output):
-        old_start_1 = int(match.group(1))
-        old_count = int(match.group(2)) if match.group(2) else 1
-        new_start_1 = int(match.group(3))
-        new_count = int(match.group(4)) if match.group(4) else 1
-
-        old_start_0 = old_start_1 - 1
-        new_start_0 = new_start_1 - 1
-
-        # Preserve the historical "deletion marker" quirk: pure-deletion
-        # hunks (new_count==0) land at max(0, new_start_0 - 1) on the new
-        # side, since there's no actual new line to point at.
-        if new_count == 0:
-            new_marker = max(0, new_start_0 - 1)
-            new_s, new_e = new_marker, new_marker
-        else:
-            new_s = new_start_0
-            new_e = new_start_0 + new_count - 1
-
-        # Mirror semantics for pure-insertion hunks on the old side.
-        if old_count == 0:
-            old_marker = max(0, old_start_0 - 1)
-            old_s, old_e = old_marker, old_marker
-        else:
-            old_s = old_start_0
-            old_e = old_start_0 + old_count - 1
-
-        ranges.append((old_s, old_e, new_s, new_e))
-    return ranges
+    ]

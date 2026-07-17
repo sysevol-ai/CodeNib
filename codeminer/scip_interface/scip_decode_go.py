@@ -202,7 +202,7 @@ class SCIPGoGraphDecoder:
         # Process the symbol
         self._process_symbol(symbol, file_path, line, symbol_roles, enclosing_ranges)
 
-    def _make_symbol_key(self, symbol):
+    def _make_symbol_key(self, symbol, file_path=None):
         """
         Generate a unique graph vertex key from a Go SCIP symbol.
 
@@ -266,6 +266,14 @@ class SCIPGoGraphDecoder:
 
         if not symbol_part:
             return None
+
+        # Go permits multiple package-level init functions. SCIP identifies
+        # all of them as ``<package>/init()``, so a package-only key would
+        # collapse distinct definitions and attach their body references to
+        # whichever file happened to be decoded last. Include the defining
+        # file for this one language-defined duplicate identity.
+        if symbol_part == "init" and file_path:
+            return f"{file_path}:init"
 
         # Combine: rel_pkg/SymbolDescriptor
         if rel_pkg:
@@ -341,7 +349,10 @@ class SCIPGoGraphDecoder:
 
     def _get_unified_name(self, symbol_key, file_path, symbol_type=None):
         """Generate unified_name in format file_path:SymbolDisplay."""
-        symbol_display = self._extract_symbol_display(symbol_key, symbol_type)
+        if symbol_key == f"{file_path}:init":
+            symbol_display = "init()"
+        else:
+            symbol_display = self._extract_symbol_display(symbol_key, symbol_type)
         if file_path and symbol_display:
             return f"{file_path}:{symbol_display}"
         return file_path or symbol_display or symbol_key
@@ -361,7 +372,7 @@ class SCIPGoGraphDecoder:
         )
 
         # Generate symbol key (graph vertex key)
-        symbol_key = self._make_symbol_key(symbol)
+        symbol_key = self._make_symbol_key(symbol, file_path)
         if not symbol_key:
             return
 

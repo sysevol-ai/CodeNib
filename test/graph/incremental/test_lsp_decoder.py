@@ -76,6 +76,40 @@ class TestDocumentSymbol:
         assert "src/math.rs:multiply():7" in created
         assert "src/math.rs" in g.name_to_vertex
 
+    def test_python_decorator_reference_uses_parent_scope(self, tmp_path):
+        source = tmp_path / "example.py"
+        source.write_text(
+            "class Service:\n"
+            "    @deprecated('old')\n"
+            "    def run(self):\n"
+            "        return helper()\n"
+        )
+        graph = CodeGraph(project_root=str(tmp_path))
+        patcher = PatcherPython(str(tmp_path), graph)
+        patcher.rebuild_file_subgraph(
+            "example.py",
+            [
+                _sym(
+                    "Service",
+                    5,
+                    0,
+                    3,
+                    children=[_sym("run", 6, 1, 3)],
+                )
+            ],
+        )
+        method = "example.py:Service.run():1"
+
+        decorator_scope = patcher._reference_scope_for_token(
+            "example.py", {"line": 1}, method
+        )
+        body_scope = patcher._reference_scope_for_token(
+            "example.py", {"line": 3}, method
+        )
+
+        assert decorator_scope == "example.py:Service:0"
+        assert body_scope == method
+
     def test_rust_struct_with_methods(self):
         g = CodeGraph(project_root="/tmp")
         p = PatcherRust("/tmp", g)
@@ -211,6 +245,7 @@ class TestDocumentSymbol:
         assert vname in p.symbol_selection_ranges
         assert p.symbol_selection_ranges[vname][0] == 0  # start line
         assert p.symbol_selection_ranges[vname][1] == 4  # start char
+        assert g.graph.vs[g.name_to_vertex[vname]]["selection_line"] == 0
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -314,10 +349,10 @@ class TestSemanticTokensDecode:
         types = p._get_crossfile_token_types()
         assert "variable" in types
 
-    def test_crossfile_types_python_excludes_variable(self):
+    def test_reference_types_python_include_variable(self):
         p = PatcherPython("/tmp", CodeGraph())
         types = p._get_crossfile_token_types()
-        assert "variable" not in types
+        assert "variable" in types
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -326,7 +361,6 @@ class TestSemanticTokensDecode:
 
 
 class TestDefinitionDecode:
-
     def test_match_exact_line(self):
         g = CodeGraph(project_root="/tmp")
         p = PatcherRust("/tmp", g)
@@ -368,6 +402,24 @@ class TestDefinitionDecode:
 
         result = p.match_location_to_vertex("src/lib.rs", 20)
         assert result == "src/lib.rs:Router.handle():10"
+
+    def test_strict_match_does_not_promote_local_to_scope(self):
+        g = CodeGraph(project_root="/tmp")
+        p = PatcherRust("/tmp", g)
+        p.rebuild_file_subgraph(
+            "src/lib.rs",
+            [_sym("X", 13, 2, 2), _sym("run", 12, 5, 20)],
+        )
+
+        result = p.match_location_to_vertex(
+            "src/lib.rs",
+            12,
+            symbol_name="X",
+            allow_scope_fallback=False,
+            allow_name_fallback=False,
+        )
+
+        assert result is None
 
     def test_match_class_scope(self):
         g = CodeGraph(project_root="/tmp")
@@ -417,6 +469,19 @@ class TestDefinitionDecode:
         p = PatcherRust("/tmp", g)
         assert p.match_location_to_vertex("unknown.rs", 10) is None
 
+    def test_unique_name_fallback_resolves_duplicate_lsp_declaration(self):
+        g = CodeGraph(project_root="/tmp")
+        p = PatcherRust("/tmp", g)
+        p.rebuild_file_subgraph("src/lib.rs", [_sym("assert_greater", 12, 105, 105)])
+
+        result = p.match_location_to_vertex(
+            "src/lib.rs",
+            341,
+            symbol_name="assert_greater",
+        )
+
+        assert result == "src/lib.rs:assert_greater():105"
+
 
 # ═══════════════════════════════════════════════════════════════
 # 4. references response → scope matching
@@ -424,7 +489,6 @@ class TestDefinitionDecode:
 
 
 class TestReferencesDecode:
-
     def test_scope_inside_function(self):
         g = CodeGraph(project_root="/tmp")
         p = PatcherRust("/tmp", g)
@@ -487,6 +551,61 @@ class TestReferencesDecode:
 
 
 class TestFlattenSymbols:
+    def test_python_lifts_method_local_function_to_class_scope(self):
+        patcher = PatcherPython("/tmp", CodeGraph())
+        symbols = [
+            _sym(
+                "GroupBy",
+                5,
+                0,
+                40,
+                children=[
+                    _sym(
+                        "_restore_dim_order",
+                        6,
+                        10,
+                        25,
+                        children=[_sym("lookup_order", 12, 12, 19)],
+                    )
+                ],
+            )
+        ]
+
+        result = patcher.flatten_symbols("groupby.py", symbols)
+
+        assert "groupby.py:GroupBy.lookup_order()" in result
+        assert "groupby.py:GroupBy._restore_dim_order().lookup_order()" not in result
+        assert result["groupby.py:GroupBy.lookup_order()"]["kind"] == 6
+        assert result["groupby.py:GroupBy.lookup_order()"]["parent_uname"] == "GroupBy"
+
+    def test_python_duplicate_local_function_keeps_first_declaration(self):
+        patcher = PatcherPython("/tmp", CodeGraph())
+        symbols = [
+            _sym(
+                "GroupBy",
+                5,
+                0,
+                50,
+                children=[
+                    _sym(
+                        "_reduce_method",
+                        6,
+                        10,
+                        40,
+                        children=[
+                            _sym("wrapped_func", 12, 14, 20),
+                            _sym("wrapped_func", 12, 25, 34),
+                        ],
+                    )
+                ],
+            )
+        ]
+
+        result = patcher.flatten_symbols("groupby.py", symbols)
+
+        wrapped = result["groupby.py:GroupBy.wrapped_func()"]
+        assert wrapped["start_line"] == 14
+        assert wrapped["end_line"] == 20
 
     def test_filters_local_variables(self):
         g = CodeGraph(project_root="/tmp")

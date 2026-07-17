@@ -938,7 +938,10 @@ class TestSWEBenchRust:
             changed, earlier_commit=earlier, later_commit=self.LATER[:12]
         )
         assert stats["files_modified"] >= 1
-        assert stats["vertices_created"] > 0
+        # These commits edit existing Rust declarations but add no Rust
+        # symbols. The incremental path should preserve those vertex
+        # identities while refreshing references in the changed ranges.
+        assert stats.get("vertices_affected_preserved", 0) > 0
 
         unames_after = _get_unified_names(g)
         # Modified files' symbols should exist

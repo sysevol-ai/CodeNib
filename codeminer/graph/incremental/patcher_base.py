@@ -143,6 +143,7 @@ class PatcherBase(SubgraphMgr):
                 "vertex_name": v["name"],
                 "start_line": sl,
                 "end_line": attrs.get("end_line", sl),
+                "selection_line": attrs.get("selection_line", sl),
             }
         return result
 
@@ -183,7 +184,7 @@ class PatcherBase(SubgraphMgr):
                     child_result = self._flatten_symbols_default(
                         file_path, [child], child_parent
                     )
-                    result.update(child_result)
+                    self._merge_flattened_symbols(result, child_result)
                 continue
 
             range_data = sym.get("range", {})
@@ -199,18 +200,7 @@ class PatcherBase(SubgraphMgr):
                 "sel_range": sel_range,
                 "parent_uname": parent_uname or None,
             }
-            # Dedup: prefer struct/class/enum over impl blocks
-            if uname in result:
-                existing = result[uname]
-                if existing["kind"] in (5, 10, 23) and kind not in (5, 10, 23):
-                    pass  # keep existing definition
-                elif kind in (5, 10, 23) and existing["kind"] not in (5, 10, 23):
-                    result[uname] = entry
-                else:
-                    if (end - start) > (existing["end_line"] - existing["start_line"]):
-                        result[uname] = entry
-            else:
-                result[uname] = entry
+            self._merge_flattened_symbols(result, {uname: entry})
 
             # Recurse into children.
             # Module (kind=2, e.g. Rust `mod tests`) is transparent — SCIP
@@ -223,9 +213,48 @@ class PatcherBase(SubgraphMgr):
                 child_result = self._flatten_symbols_default(
                     file_path, [child], child_parent
                 )
-                result.update(child_result)
+                self._merge_flattened_symbols(result, child_result)
 
         return result
+
+    def _merge_flattened_symbols(
+        self, target: dict[str, dict], candidates: dict[str, dict]
+    ) -> None:
+        """Merge document symbols while preserving language-specific dedup."""
+        definition_kinds = (5, 10, 23)
+        for unified_name, candidate in candidates.items():
+            existing = target.get(unified_name)
+            if existing is None:
+                target[unified_name] = candidate
+            elif (
+                existing["kind"] in definition_kinds
+                and candidate["kind"] not in definition_kinds
+            ):
+                continue
+            elif (
+                candidate["kind"] in definition_kinds
+                and existing["kind"] not in definition_kinds
+            ):
+                target[unified_name] = candidate
+            elif self._prefer_duplicate_symbol(existing, candidate):
+                target[unified_name] = candidate
+
+    def _prefer_duplicate_symbol(self, existing: dict, candidate: dict) -> bool:
+        """Choose one documentSymbol row when a server repeats an identity."""
+        existing_span = existing["end_line"] - existing["start_line"]
+        candidate_span = candidate["end_line"] - candidate["start_line"]
+        return candidate_span > existing_span
+
+    def _added_parent_unified_name(
+        self, file_path: str, parent_display_name: str | None
+    ) -> str | None:
+        """Map a flattened parent display name back to graph identity."""
+        if not parent_display_name:
+            return None
+        prefix = f"{file_path}:"
+        if parent_display_name.startswith(prefix):
+            return parent_display_name
+        return f"{prefix}{parent_display_name}"
 
     # ═══════════════════════════════════════════════════════════
     # LSP lifecycle
@@ -324,6 +353,22 @@ class PatcherBase(SubgraphMgr):
         # Clear stale caches from previous patch_files calls
         self._semantic_tokens_cache.clear()
 
+        # Git updates the worktree outside the LSP protocol. Refresh any
+        # already-open buffers before documentSymbol/references/definition
+        # queries; otherwise a long-lived server can answer later commits
+        # from an earlier step's text snapshot.
+        for path in changed_files.get("deleted", []):
+            self.lsp_client.close_document(path)
+        for old_path, _ in changed_files.get("renamed", []):
+            self.lsp_client.close_document(old_path)
+        current_paths = [
+            *changed_files.get("added", []),
+            *(new_path for _, new_path in changed_files.get("renamed", [])),
+            *changed_files.get("modified", []),
+        ]
+        for path in current_paths:
+            self.lsp_client.sync_document(path)
+
         nodes_before = self.code_graph.graph.vcount()
         edges_before = self.code_graph.graph.ecount()
 
@@ -372,6 +417,12 @@ class PatcherBase(SubgraphMgr):
 
         # ── Round 2: Connect all edges ───────────────────────────
         # All vertices from all files now exist.
+
+        # Vertex deletion renumbers igraph ids, while newly added symbols do
+        # not all flow through rebuild_file_subgraph(). Rebuild ownership
+        # indexes once so Round 2 sees the exact post-patch vertex set.
+        with self.profiler.section("patch_files.build_indexes"):
+            self.build_indexes()
 
         for path, ctx in add_contexts:
             edge_stats = self._rebuild_connect_edges(path, ctx)
@@ -552,24 +603,53 @@ class PatcherBase(SubgraphMgr):
         }
 
         with self.profiler.section("git_diff"):
-            hunks = change_mgr.get_changed_line_ranges(
+            detailed_hunks = change_mgr.get_changed_line_hunks(
                 str(self.project_root), file_path, base_commit
             )
+            hunks = [hunk.as_inclusive_range() for hunk in detailed_hunks]
         if not hunks:
             return None
 
-        abs_file = str(self.project_root / file_path)
-        with self.profiler.section("lsp_document_symbol"):
-            raw_symbols = self.lsp_client.document_symbol(abs_file)
-            new_symbols = self.flatten_symbols(file_path, raw_symbols)
         old_symbols = self.get_old_symbols(file_path)
-
         if not old_symbols:
             # No old symbols (SCIP didn't index this file) — fall back to
             # full rebuild but still in two rounds so cross-file edges work.
             ctx = self._rebuild_prepare_vertices(file_path, is_new=False)
             ctx["fallback_rebuild"] = True
             return ctx
+
+        abs_file = str(self.project_root / file_path)
+        with self.profiler.section("lsp_document_symbol"):
+            raw_symbols = self.lsp_client.document_symbol(abs_file)
+            new_symbols = self.flatten_symbols(file_path, raw_symbols)
+
+        backend_missing = 0
+        if self.mode == "symbol":
+            backend_missing = self._synthesize_missing_symbol_locations(
+                old_symbols,
+                new_symbols,
+                detailed_hunks,
+            )
+        if backend_missing:
+            logger.warning(
+                f"Preserved {backend_missing} symbols omitted by documentSymbol "
+                f"for {file_path}; Git did not edit their declarations"
+            )
+
+        self._align_common_symbol_locations(
+            old_symbols,
+            new_symbols,
+            detailed_hunks,
+        )
+
+        # Anchor locations, rather than source-vertex ownership, determine
+        # which references belong to this file. Rebase every retained anchor
+        # once and remove changed anchors before symbol processing; Round 2
+        # reconnects only the changed new-file positions.
+        self.rebase_reference_anchors_for_file(
+            file_path,
+            lambda line: change_mgr.map_old_line_to_new(line, detailed_hunks),
+        )
 
         with self.profiler.section("classify_symbols"):
             classified = self._classify_symbols(old_symbols, new_symbols, hunks)
@@ -598,7 +678,7 @@ class PatcherBase(SubgraphMgr):
                 uname=uname,
                 old=old_symbols[uname],
                 new=new_symbols[uname],
-                hunks=hunks,
+                detailed_hunks=detailed_hunks,
                 file_path=file_path,
                 file_stats=file_stats,
             )
@@ -624,14 +704,17 @@ class PatcherBase(SubgraphMgr):
             )
             self.code_graph.symbol_ranges[vname] = (new["start_line"], new["end_line"])
 
-            parent_uname = new.get("parent_uname")
+            parent_uname = self._added_parent_unified_name(
+                file_path, new.get("parent_uname")
+            )
             parent_vname = (
                 self._find_vertex_by_unified_name(parent_uname, file_path)
                 if parent_uname
                 else file_path
             )
-            if parent_vname:
-                self.code_graph._add_edge(parent_vname, vname, EDGE_TYPE_CONTAIN)
+            self.code_graph._add_edge(
+                parent_vname or file_path, vname, EDGE_TYPE_CONTAIN
+            )
 
             self._store_selection_range(vname, new)
             added_vnames.append(vname)
@@ -644,7 +727,8 @@ class PatcherBase(SubgraphMgr):
             f"affected={len(classified['affected'])} "
             f"shifted={len(classified['shifted'])} "
             f"unchanged={len(classified['unchanged'])} "
-            f"invisible={len(classified.get('invisible', []))}"
+            f"invisible={len(classified.get('invisible', []))} "
+            f"backend_only={len(classified.get('backend_only', []))}"
         )
 
         return {
@@ -654,6 +738,11 @@ class PatcherBase(SubgraphMgr):
             "affected_changed_ranges": affected_changed_ranges,
             "added_vnames": added_vnames,
             "hunks": hunks,
+            "file_scope_changed_ranges": [
+                changed_range
+                for hunk in detailed_hunks
+                if (changed_range := hunk.new_range()) is not None
+            ],
         }
 
     def _incremental_connect_edges(self, file_path: str, ctx: dict) -> dict:
@@ -694,16 +783,21 @@ class PatcherBase(SubgraphMgr):
                     flat_vnames.append(vname)
                     flat_ranges.append(r)
 
-            ref_stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
-            with self.profiler.section("lsp_outgoing_refs"):
-                self.reconnect_outgoing(
-                    file_path,
-                    flat_vnames,
-                    ref_stats,
-                    line_ranges=flat_ranges,
-                    batch=batch,
-                )
-            edge_stats["refs_outgoing"] = ref_stats["outgoing_added"]
+            if flat_ranges:
+                ref_stats = {
+                    "incoming_added": 0,
+                    "outgoing_added": 0,
+                    "unmatched": 0,
+                }
+                with self.profiler.section("lsp_outgoing_refs"):
+                    self.reconnect_outgoing(
+                        file_path,
+                        flat_vnames,
+                        ref_stats,
+                        line_ranges=flat_ranges,
+                        batch=batch,
+                    )
+                edge_stats["refs_outgoing"] = ref_stats["outgoing_added"]
 
         # Added: incoming + outgoing refs
         if added_vnames:
@@ -737,6 +831,21 @@ class PatcherBase(SubgraphMgr):
             edge_stats["refs_incoming"] = ref_stats["incoming_added"]
             edge_stats["refs_outgoing"] += ref_stats["outgoing_added"]
 
+        file_scope_ranges = ctx.get("file_scope_changed_ranges", [])
+        if file_scope_ranges:
+            ref_stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
+            with self.profiler.section("lsp_file_scope_outgoing_refs"):
+                self.reconnect_outgoing(
+                    file_path,
+                    [],
+                    ref_stats,
+                    line_ranges=file_scope_ranges,
+                    batch=batch,
+                    scope_filter={file_path},
+                )
+            edge_stats["refs_outgoing"] += ref_stats["outgoing_added"]
+            edge_stats["refs_unmatched"] += ref_stats["unmatched"]
+
         with self.profiler.section("edge_batch_flush"):
             batch.flush()
 
@@ -745,6 +854,140 @@ class PatcherBase(SubgraphMgr):
     # ═══════════════════════════════════════════════════════════
     # Symbol classification
     # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _synthesize_missing_symbol_locations(
+        old_symbols: dict[str, dict],
+        new_symbols: dict[str, dict],
+        hunks: list[change_mgr.ChangedLineHunk],
+    ) -> int:
+        """Preserve cold-graph symbols when LSP omits an unchanged declaration.
+
+        ``documentSymbol`` can time out or return a partial tree. Git remains
+        authoritative for existence: a symbol may be deleted only when its
+        declaration line was edited. For every omitted declaration that Git
+        retained, synthesize its mapped range so normal shifted/affected logic
+        can update anchors and reconnect edited lines.
+        """
+
+        def intersects_old(line: int) -> bool:
+            return any(
+                hunk.old_count
+                and hunk.old_start <= line < hunk.old_start + hunk.old_count
+                for hunk in hunks
+            )
+
+        def map_endpoint(line: int) -> int | None:
+            mapped = change_mgr.map_old_line_to_new(line, hunks)
+            if mapped is not None:
+                return mapped
+            for hunk in hunks:
+                if not hunk.old_count:
+                    continue
+                if hunk.old_start <= line < hunk.old_start + hunk.old_count:
+                    if hunk.new_count:
+                        return hunk.new_start + hunk.new_count - 1
+                    return max(0, hunk.new_start - 1)
+            return None
+
+        synthesized = 0
+        for unified_name in old_symbols.keys() - new_symbols.keys():
+            old = old_symbols[unified_name]
+            old_start = old["start_line"]
+            old_selection = old.get("selection_line", old_start)
+            if intersects_old(old_start) or intersects_old(old_selection):
+                continue
+
+            new_start = change_mgr.map_old_line_to_new(old_start, hunks)
+            new_selection = change_mgr.map_old_line_to_new(old_selection, hunks)
+            new_end = map_endpoint(old["end_line"])
+            if None in (new_start, new_end, new_selection):
+                continue
+
+            new_symbols[unified_name] = {
+                "kind": 0,
+                "start_line": new_start,
+                "end_line": max(new_start, new_end),
+                "sel_range": {
+                    "start": {"line": new_selection, "character": 0},
+                    "end": {"line": new_selection, "character": 0},
+                },
+                "backend_synthesized": True,
+            }
+            synthesized += 1
+        return synthesized
+
+    @staticmethod
+    def _align_common_symbol_locations(
+        old_symbols: dict[str, dict],
+        new_symbols: dict[str, dict],
+        hunks: list[change_mgr.ChangedLineHunk],
+    ) -> int:
+        """Keep an unchanged cold-build identity stable across LSP drift.
+
+        Language servers may choose a different declaration when two source
+        definitions share one unified name. If Git did not edit the old or
+        newly selected declaration, the cold-build vertex remains the
+        identity authority and its range is mapped through the diff.
+        """
+
+        def intersects_old(line: int) -> bool:
+            return any(
+                hunk.old_count
+                and hunk.old_start <= line < hunk.old_start + hunk.old_count
+                for hunk in hunks
+            )
+
+        def intersects_new(line: int) -> bool:
+            return any(
+                hunk.new_count
+                and hunk.new_start <= line < hunk.new_start + hunk.new_count
+                for hunk in hunks
+            )
+
+        aligned = 0
+        for unified_name in old_symbols.keys() & new_symbols.keys():
+            old = old_symbols[unified_name]
+            new = new_symbols[unified_name]
+            old_selection = old.get("selection_line", old["start_line"])
+            new_selection = (
+                new.get("sel_range", {}).get("start", {}).get("line", new["start_line"])
+            )
+            if intersects_old(old_selection) or intersects_new(new_selection):
+                continue
+
+            mapped_start = change_mgr.map_old_line_to_new(old["start_line"], hunks)
+            mapped_end = change_mgr.map_old_line_to_new(old["end_line"], hunks)
+            mapped_selection = change_mgr.map_old_line_to_new(old_selection, hunks)
+            if None in (mapped_start, mapped_end, mapped_selection):
+                continue
+            if (new["start_line"], new["end_line"], new_selection) == (
+                mapped_start,
+                mapped_end,
+                mapped_selection,
+            ):
+                continue
+
+            selection_range = new.get("sel_range", {})
+            selection_start = dict(selection_range.get("start", {}))
+            selection_end = dict(selection_range.get("end", {}))
+            selection_delta = mapped_selection - new_selection
+            selection_start["line"] = mapped_selection
+            selection_end["line"] = selection_end.get("line", new_selection) + (
+                selection_delta
+            )
+            new_symbols[unified_name] = {
+                **new,
+                "start_line": mapped_start,
+                "end_line": mapped_end,
+                "sel_range": {
+                    **selection_range,
+                    "start": selection_start,
+                    "end": selection_end,
+                },
+            }
+            aligned += 1
+        return aligned
 
     def _classify_symbols(
         self,
@@ -755,8 +998,9 @@ class PatcherBase(SubgraphMgr):
         """Classify each symbol as deleted/added/affected/shifted/unchanged.
 
         ``hunks`` is a list of (old_start, old_end, new_start, new_end).
-        Common-symbol overlap uses the new-file side; old-only-symbol
-        overlap uses the old-file side.
+        Common-symbol overlap checks both sides: an edit can remove the tail
+        of a symbol so the changed lines no longer fall in its new range.
+        Old-only-symbol overlap uses the old-file side.
 
         old_set − new_set is split into:
           - deleted: old uname whose old-side range overlaps a hunk
@@ -764,6 +1008,11 @@ class PatcherBase(SubgraphMgr):
             indexer (e.g. SCIP) saw this symbol but ``documentSymbol``
             cannot (typically macro-expanded enum variants). Since the
             location wasn't touched, leave the vertex untouched.
+
+        new_set − old_set is likewise split into:
+          - added: new uname whose range overlaps a new-side hunk
+          - backend_only: an LSP-only symbol outside the edit. It is not
+            inserted into a graph whose cold-build backend omitted it.
         """
 
         def overlaps_any_hunk(start, end):
@@ -795,6 +1044,7 @@ class PatcherBase(SubgraphMgr):
                 "shifted": [],
                 "unchanged": [],
                 "invisible": [],
+                "backend_only": [],
             }
 
         deleted = []
@@ -808,7 +1058,14 @@ class PatcherBase(SubgraphMgr):
             else:
                 invisible.append(uname)
 
-        added = sorted(new_set - old_set)
+        added = []
+        backend_only = []
+        for uname in sorted(new_set - old_set):
+            new = new_symbols[uname]
+            if overlaps_any_hunk(new["start_line"], new["end_line"]):
+                added.append(uname)
+            else:
+                backend_only.append(uname)
         common = old_set & new_set
 
         affected = []
@@ -816,31 +1073,17 @@ class PatcherBase(SubgraphMgr):
         unchanged = []
 
         for uname in sorted(common):
+            old = old_symbols[uname]
             new = new_symbols[uname]
-            if overlaps_any_hunk(new["start_line"], new["end_line"]):
+            if overlaps_any_hunk(
+                new["start_line"], new["end_line"]
+            ) or overlaps_any_hunk_old(old["start_line"], old["end_line"]):
                 affected.append(uname)
             else:
-                old = old_symbols[uname]
                 if old["start_line"] != new["start_line"]:
                     shifted.append(uname)
                 else:
                     unchanged.append(uname)
-
-        # Leaf-priority: if a parent (struct) is affected only because
-        # a child (method) is affected, demote parent to shifted.
-        demote = []
-        for uname in affected:
-            children_in_affected = [
-                u for u in affected if u != uname and u.startswith(uname + ".")
-            ]
-            if children_in_affected and not overlaps_any_hunk(
-                new_symbols[uname]["start_line"],
-                new_symbols[uname]["start_line"],
-            ):
-                demote.append(uname)
-        for uname in demote:
-            affected.remove(uname)
-            shifted.append(uname)
 
         return {
             "deleted": deleted,
@@ -849,6 +1092,7 @@ class PatcherBase(SubgraphMgr):
             "shifted": shifted,
             "unchanged": unchanged,
             "invisible": invisible,
+            "backend_only": backend_only,
         }
 
     # ═══════════════════════════════════════════════════════════
@@ -865,26 +1109,12 @@ class PatcherBase(SubgraphMgr):
     ) -> None:
         """Apply a *shifted* symbol update: body unchanged, start_line moved.
 
-        Steps (order matters):
-          1. Rebase outgoing anchored REFERENCE edges from the OLD vname by
-             ``shift = new.start_line - old.start_line`` so range queries
-             keep matching the moved call sites.
-          2. Rename the vertex to the new ``"{uname}:{new_start}"`` form
-             and refresh ``start_line``/``end_line`` attrs.
-          3. Update the selection range index for downstream LSP probes.
+        Reference anchors were already rebased once by their authoritative
+        ``anchor_file`` before symbol classification. This method only renames
+        the vertex, refreshes its range, and updates the selection index.
         """
         old_vname = old["vertex_name"]
         new_vname = f"{uname}:{new['start_line']}"
-
-        shift = new["start_line"] - old["start_line"]
-        if shift:
-            self.shift_outgoing_anchor_lines(
-                vertex_name=old_vname,
-                anchor_file=file_path,
-                old_start=old["start_line"],
-                old_end=old["end_line"],
-                shift=shift,
-            )
 
         self.rename_vertex(
             old_vname,
@@ -902,79 +1132,36 @@ class PatcherBase(SubgraphMgr):
         uname: str,
         old: dict,
         new: dict,
-        hunks: list[tuple[int, int, int, int]],
+        detailed_hunks: list[change_mgr.ChangedLineHunk],
         file_path: str,
         file_stats: dict,
     ) -> tuple[str, list[tuple[int, int]]]:
-        """Apply an *affected* symbol update — body has hunks overlapping it.
+        """Apply an affected update while retaining unchanged SCIP edges.
 
-        Two paths, decided per-symbol:
-
-        - **Fast (case 3, body length preserved)**: every hunk overlapping
-          the body has equal old/new line counts. Surgical:
-            1. Delete outgoing REFERENCE edges with anchors in the OLD
-               changed regions (anchors there are stale).
-            2. Uniform-shift remaining body anchors by ``delta = new.start
-               - old.start`` (file-level shift).
-            3. Rename / refresh attrs.
-          Round 2 then reconnects only the changed regions.
-
-        - **Slow (case 4, body length changed)**: at least one hunk's
-          line count changed. Internal anchor positions are non-uniform,
-          so we wipe ALL outgoing reference edges and let Round 2
-          reconnect the full body.
-
-        Returns ``(new_vname, ranges_for_round_2)`` where ranges are in
-        NEW-file coordinates.
+        Zero-context Git hunks map each unchanged old line to its new
+        coordinate. Edges on edited/deleted lines are removed; every other
+        anchor is rebased individually. Round 2 therefore asks LSP only about
+        changed new-file ranges instead of replacing stable cold-backend
+        semantics for the whole symbol.
         """
         old_vname = old["vertex_name"]
         new_vname = f"{uname}:{new['start_line']}"
-        old_start, old_end = old["start_line"], old["end_line"]
         new_start, new_end = new["start_line"], new["end_line"]
 
-        overlapping_old: list[tuple[int, int]] = []
         overlapping_new: list[tuple[int, int]] = []
-        all_preserving = True
-        for h_old_s, h_old_e, h_new_s, h_new_e in hunks:
-            body_overlap_old = h_old_s <= old_end and h_old_e >= old_start
-            body_overlap_new = h_new_s <= new_end and h_new_e >= new_start
-            if not body_overlap_old and not body_overlap_new:
+        for hunk in detailed_hunks:
+            new_range = hunk.new_range()
+            if new_range is None:
                 continue
-            old_count = h_old_e - h_old_s + 1
-            new_count = h_new_e - h_new_s + 1
-            if old_count != new_count:
-                all_preserving = False
-            if body_overlap_old:
-                overlapping_old.append((max(h_old_s, old_start), min(h_old_e, old_end)))
-            if body_overlap_new:
-                overlapping_new.append((max(h_new_s, new_start), min(h_new_e, new_end)))
+            hunk_start, hunk_end = new_range
+            if hunk_start <= new_end and hunk_end >= new_start:
+                overlapping_new.append(
+                    (max(hunk_start, new_start), min(hunk_end, new_end))
+                )
 
-        if all_preserving:
-            # Fast path: surgical anchor cleanup + uniform shift.
-            if overlapping_old:
-                self.delete_outgoing_in_anchor_ranges(
-                    vertex_name=old_vname,
-                    anchor_file=file_path,
-                    ranges=overlapping_old,
-                )
-            delta = new_start - old_start
-            if delta:
-                self.shift_outgoing_anchor_lines(
-                    vertex_name=old_vname,
-                    anchor_file=file_path,
-                    old_start=old_start,
-                    old_end=old_end,
-                    shift=delta,
-                )
-            file_stats["vertices_affected_preserved"] = (
-                file_stats.get("vertices_affected_preserved", 0) + 1
-            )
-        else:
-            # Slow path: clear all outgoing refs; Round 2 rebuilds.
-            self.delete_outgoing_reference_edges(old_vname)
-            file_stats["vertices_affected_rebuilt"] = (
-                file_stats.get("vertices_affected_rebuilt", 0) + 1
-            )
+        file_stats["vertices_affected_preserved"] = (
+            file_stats.get("vertices_affected_preserved", 0) + 1
+        )
 
         # Rename or refresh in place.
         if old_vname != new_vname:
@@ -991,15 +1178,7 @@ class PatcherBase(SubgraphMgr):
 
         self._update_selection_range(old_vname, new_vname, new)
 
-        # Round 2 ranges in NEW coords. Slow path always does the full body.
-        if all_preserving:
-            ranges_for_r2 = (
-                overlapping_new if overlapping_new else [(new_start, new_end)]
-            )
-        else:
-            ranges_for_r2 = [(new_start, new_end)]
-
-        return new_vname, ranges_for_r2
+        return new_vname, overlapping_new
 
     # ═══════════════════════════════════════════════════════════
     # Remap severed edges
@@ -1256,12 +1435,16 @@ class PatcherBase(SubgraphMgr):
         sel = new_meta["sel_range"]
         sel_start = sel.get("start", {})
         sel_end = sel.get("end", {})
+        selection_line = sel_start.get("line", new_meta["start_line"])
         self.symbol_selection_ranges[new_vname] = (
-            sel_start.get("line", new_meta["start_line"]),
+            selection_line,
             sel_start.get("character", 0),
             sel_end.get("line", new_meta["start_line"]),
             sel_end.get("character", 0),
         )
+        vertex_id = self.code_graph.name_to_vertex.get(new_vname)
+        if vertex_id is not None:
+            self.code_graph.graph.vs[vertex_id]["selection_line"] = selection_line
         if new_vname != old_vname and old_vname in self.symbol_selection_ranges:
             del self.symbol_selection_ranges[old_vname]
 
@@ -1270,12 +1453,16 @@ class PatcherBase(SubgraphMgr):
         sel = meta["sel_range"]
         sel_start = sel.get("start", {})
         sel_end = sel.get("end", {})
+        selection_line = sel_start.get("line", meta["start_line"])
         self.symbol_selection_ranges[vname] = (
-            sel_start.get("line", meta["start_line"]),
+            selection_line,
             sel_start.get("character", 0),
             sel_end.get("line", meta["start_line"]),
             sel_end.get("character", 0),
         )
+        vertex_id = self.code_graph.name_to_vertex.get(vname)
+        if vertex_id is not None:
+            self.code_graph.graph.vs[vertex_id]["selection_line"] = selection_line
 
     @staticmethod
     def _merge_stats(total: dict, file_stats: dict):
@@ -1284,6 +1471,8 @@ class PatcherBase(SubgraphMgr):
             "vertices_deleted",
             "vertices_created",
             "vertices_shifted",
+            "vertices_affected_preserved",
+            "vertices_affected_rebuilt",
             "refs_incoming",
             "refs_outgoing",
             "refs_remapped",
