@@ -3,21 +3,28 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Code-QA SERVING config (server deployment).
-#   Index repos:  python scripts/index_repo.py /path/to/cloned/repo
+#   Index repos:  python scripts/index_repo.py /path/to/repo --registry <data_dir>/qa_registry.json
 #   Serve:        CODEMINER_DEMO_CONFIG=qa_config.yaml python -m codeminer.web.app
 # Full runbook: SERVING.md
 
-# --- LLM backend: Claude Haiku 4.5 on Vertex AI ---
-# litellm model string. Vertex uses gcloud ADC + VERTEXAI_PROJECT / VERTEXAI_LOCATION
-# (export before launch; see SERVING.md). Override with CODEMINER_DEMO_MODEL.
-model: vertex_ai/claude-haiku-4-5@20251001
+# --- LLM backends (two models, split by role) ---
+# Ask (interactive agent) -> local vLLM qwen coder. `api_base`/`api_key` export
+# to OPENAI_API_BASE/KEY. Override the Ask model with CODEMINER_DEMO_MODEL.
+model: openai/qwen3-coder-next
+api_base: http://localhost:8000/v1      # co-located vLLM (8000); backend runs on 8080
+api_key: dummy                          # vLLM ignores it; litellm just needs one set
+
+# Wiki prose + edge labels (offline generation) -> Claude Haiku 4.5 on Vertex AI.
+# Vertex uses gcloud ADC + VERTEXAI_PROJECT / VERTEXAI_LOCATION (export at launch).
+wiki_model: vertex_ai/claude-haiku-4-5@20251001
+
 max_turns: 8
 max_tokens: 4096
 
 # --- retrieval: sparse (BM25 only); repos indexed locally via scripts/index_repo.py ---
 mode: sparse
-data_dir: .codeminer_qa
-prebuilt_dir: null        # no pre-built vector tree on this host
+data_dir: /home/boqin/data/codeminer-index   # registry + wiki_cache live here
+prebuilt_dir: null                            # no pre-built vector tree on this host
 
 cors_origins:
-  - "*"                   # open for the demo; tighten once behind a same-origin proxy
+  - "*"                                       # open for the demo; tighten behind a proxy

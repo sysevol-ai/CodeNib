@@ -47,8 +47,12 @@ class RepoEntry:
 class QAConfig:
     """Top-level demo configuration."""
 
-    # litellm model string for the agent. Env ``CODEMINER_DEMO_MODEL`` wins.
+    # litellm model string for the Ask agent. Env ``CODEMINER_DEMO_MODEL`` wins.
     model: str = "gpt-4o"
+    # Optional separate model for wiki prose + edge labels (the offline
+    # "generation" side). None -> falls back to ``model``. Lets the interactive
+    # Ask agent and the wiki run on different backends.
+    wiki_model: Optional[str] = None
     api_base: Optional[str] = None
     api_key: Optional[str] = None
     # "sparse" (BM25 only) or "hybrid" (BM25 + vector embeddings).
@@ -122,6 +126,7 @@ def load_config(path: Optional[str] = None) -> QAConfig:
 
     cfg = QAConfig(
         model=data.get("model", QAConfig.model),
+        wiki_model=data.get("wiki_model", None),
         api_base=data.get("api_base", None),
         api_key=data.get("api_key", None),
         mode=data.get("mode", QAConfig.mode),

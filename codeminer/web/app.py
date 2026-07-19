@@ -54,7 +54,9 @@ async def lifespan(app: FastAPI):
     # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
     # to templated text when no model/creds are available.
     wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
-    app.state.narrator = Narrator(model=config.model, cache_dir=wiki_cache)
+    app.state.narrator = Narrator(
+        model=config.wiki_model or config.model, cache_dir=wiki_cache
+    )
     logger.info(
         "Wiki narrator: model=%s enabled=%s cache=%s",
         app.state.narrator.model,
@@ -99,7 +101,9 @@ def _wiki(repo_id: str):
 
             wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
             cache[repo_id] = AgentWiki(
-                _bundle(repo_id), config.model, cache_dir=wiki_cache
+                _bundle(repo_id),
+                config.wiki_model or config.model,
+                cache_dir=wiki_cache,
             )
         else:
             cache[repo_id] = WikiBuilder(
@@ -120,7 +124,7 @@ def _edge_labeler(repo_id: str):
         namespace = f"{bundle.entry.instance_id}@{bundle.entry.commit_short}"
         cache[repo_id] = EdgeLabeler(
             source_fn=_wiki(repo_id).source,
-            model=config.edge_label_model or config.model,
+            model=config.edge_label_model or config.wiki_model or config.model,
             cache_dir=wiki_cache,
             cache_namespace=namespace,
         )

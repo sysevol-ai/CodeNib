@@ -5,39 +5,56 @@ SPDX-License-Identifier: Apache-2.0
 
 # Serving runbook (`serving-config` branch)
 
-Server deployment of the CodeMiner web demo: FastAPI backend + **Claude Haiku 4.5 on
-Vertex AI** for the Ask/QA + wiki generation. Config lives in `qa_config.yaml`.
+Server deployment of the CodeMiner web demo, with two LLM backends split by role
+(config: `qa_config.yaml`):
 
-> The qwen vLLM on `:8000` is a **separate** serving endpoint and is not used here.
-> The backend runs on `:8080` to avoid that collision.
+| Role | Model | Backend |
+|---|---|---|
+| **Ask** (interactive agent) | `openai/qwen3-coder-next` | local vLLM on `:8000` |
+| **Wiki prose + edge labels** | `vertex_ai/claude-haiku-4-5@20251001` | Vertex AI (gcloud ADC) |
+
+Backend runs on `:8080` (vLLM owns `:8000`). Indexes live under
+`/home/boqin/data/codeminer-index`.
+
+> **Note:** indexing (`scripts/index_repo.py`, BM25) calls **no LLM** — it's pure
+> local compute. The two models above are only used at serve time.
+
+> **Heads-up on Ask + qwen:** the Ask agent accumulates context over up to
+> `max_turns` turns with no cap, so it can exceed the vLLM `--max-model-len`
+> (65536) on large repos/long sessions. If you hit "maximum context length",
+> lower `max_turns` / retrieval `top_k`, or move Ask to a larger-context model.
 
 ## 0. One-time env setup
 
 ```bash
-conda activate codeminer-backend            # env with litellm / faiss / uvicorn
+conda activate codeminer-backend
 pip install -U "google-cloud-aiplatform>=1.38"   # litellm's Vertex path needs `vertexai`
-gcloud auth application-default login        # Google ADC (once per machine)
+gcloud auth application-default login             # Google ADC (once per machine)
 ```
 
-Sanity-check Vertex works:
+The vLLM qwen server must be running on `:8000` for Ask to work (separate process).
+
+## 1. Index one or more repos (into your index dir)
+
+`index_repo.py` builds BM25 for an already-cloned repo and registers it. Keep the
+repos and the registry under `data_dir` so everything is in one place:
+
 ```bash
-VERTEXAI_PROJECT=ucsd-cse-stable-gcp VERTEXAI_LOCATION=us-east5 \
-python -c "import litellm; print(litellm.completion(model='vertex_ai/claude-haiku-4-5@20251001', messages=[{'role':'user','content':'say OK'}], max_tokens=8).choices[0].message.content)"
+mkdir -p ~/data/codeminer-index/repos
+
+git clone --depth 1 https://github.com/psf/requests ~/data/codeminer-index/repos/requests
+python scripts/index_repo.py ~/data/codeminer-index/repos/requests \
+  --registry ~/data/codeminer-index/qa_registry.json
+
+# repeat for other repos (vllm is large; expect a longer index)
 ```
 
-## 1. Index one or more repos (sparse / BM25)
-
-`index_repo.py` clones-free: point it at an already-cloned repo; it builds the BM25
-index and registers the repo in `.codeminer_qa/qa_registry.json`.
-
-```bash
-# small repo first, to validate the pipeline
-git clone --depth 1 https://github.com/psf/requests ~/repos/requests
-python scripts/index_repo.py ~/repos/requests
-
-# then any others (vllm is large; expect a longer index)
-# git clone --depth 1 https://github.com/vllm-project/vllm ~/repos/vllm
-# python scripts/index_repo.py ~/repos/vllm
+Result:
+```
+~/data/codeminer-index/
+  qa_registry.json                    # registry (absolute paths — don't move repos after)
+  wiki_cache/                         # wiki + edge-label cache (created at serve time)
+  repos/requests/.codeminer_cache/    # BM25 index artifacts
 ```
 
 ## 2. Start the backend (port 8080, reachable by anyone)
@@ -51,7 +68,9 @@ CODEMINER_DEMO_CONFIG=qa_config.yaml \
 python -m codeminer.web.app
 ```
 
-Run it inside `tmux` (e.g. `tmux new -s cm-backend`) so it survives SSH disconnects.
+Vertex creds come from the `VERTEXAI_*` env + ADC (for the wiki model). The qwen
+creds (`OPENAI_API_BASE` / `OPENAI_API_KEY`) come from `qa_config.yaml`
+(`api_base` / `api_key`). Run inside `tmux` (e.g. `tmux new -s cm-backend`).
 
 ## 3. Verify
 
