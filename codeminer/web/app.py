@@ -154,12 +154,17 @@ async def list_repos() -> list[RepoInfo]:
 @app.get("/api/repos/{repo_id}/wiki")
 async def wiki_tree(repo_id: str) -> dict:
     builder = _wiki(repo_id)
-    return {"repo": _bundle(repo_id).entry.repo, "pages": builder.page_tree()}
+    # page_tree() may generate the outline (a blocking LLM call on a cold repo);
+    # run it off the event loop so a cold page-gen doesn't stall other requests.
+    pages = await asyncio.to_thread(builder.page_tree)
+    return {"repo": _bundle(repo_id).entry.repo, "pages": pages}
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
 async def wiki_page(repo_id: str, page_id: str) -> dict:
-    page = _wiki(repo_id).page(page_id)
+    # page() may generate the page (a blocking LLM call on a cache miss) — offload
+    # it so cached reads for other users stay instant instead of serializing.
+    page = await asyncio.to_thread(_wiki(repo_id).page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail=f"Unknown wiki page: {page_id!r}")
     return page
@@ -172,7 +177,7 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
     Lets a wiki page render as a *view over the graph* (subsystem symbols + how
     they connect), using the same ``{nodes, edges}`` payload as ``/codemap``.
     """
-    page = _wiki(repo_id).page(page_id)
+    page = await asyncio.to_thread(_wiki(repo_id).page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail=f"Unknown wiki page: {page_id!r}")
     bundle = _bundle(repo_id)
