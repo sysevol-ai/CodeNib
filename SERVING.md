@@ -112,8 +112,40 @@ python ~/build_vectors.py ~/data/codeminer-index/repos/<owner>_<repo>
 and runs `IndexCompiler(... index_types=["bm25","vector"]).compile_repo(...)`. A repo's
 manifest then reports `hybrid_search: true`. **Restart `cm-backend` after (re)indexing.**
 
-Currently indexed (6): `requests` + the 5 Python repos from
-`sysevol-ai/codeminer-synthesis` (astropy, matplotlib, xarray, scikit-learn, sympy).
+Indexed: 26 repos — `psf/requests` + all 5 language configs of
+`sysevol-ai/codeminer-synthesis` (5 repos each: Python, C/C++, Go, Rust, TS/JS),
+default branch, all `hybrid_search: true`.
+
+## 2b. Symbol graph (codemap / figures) — SCIP toolchain
+
+The wiki **graph/figure** views need the `symbol_graph` index (SCIP static analysis —
+**no LLM**). `index_repo.py` and `build_vectors.py` do NOT build it; `~/build_full.py`
+adds it (registers `SymbolGraphBuilder` and compiles `["bm25","vector","symbol_graph"]`
+together — building `symbol_graph` alone would overwrite the manifest and drop bm25/vector).
+
+Per-language tools, all installed **without sudo** under `~/codeminer-scip-tools`
+(`CODEMINER_SCIP_TOOLS_DIR`) + a `scip-env` miniconda env. This box is **aarch64**:
+
+| Lang | Tool | Install (aarch64) |
+|---|---|---|
+| Python | `scip-python` + miniconda `scip-env` + `protoc` | npm `@sourcegraph/scip-python`; miniconda (`conda tos accept` the default channels; `scip-env` = py3.11+pip+nodejs); protoc release binary |
+| Go | `scip-go` | go1.26.4 linux-arm64 tarball → `go install github.com/scip-code/scip-go/cmd/scip-go@v0.2.7` |
+| TS/JS | `scip-typescript` | npm `@sourcegraph/scip-typescript` (no per-repo `npm install` needed) |
+| Rust | `rust-analyzer` | `rustup component add rust-analyzer`; set `CODEMINER_RUST_TOOLCHAIN=stable` (indexer defaults to nightly) |
+| C/C++ | `clangd` | **NOT scip-clang** (no linux-arm64 build). CodeMiner routes C/C++ through clangd; install via `conda install -n scip-env -c conda-forge clang-tools clangdev` (arm64). No `compile_commands.json` needed — clangd background-indexes. |
+
+Build (env sets tool PATH + conda + protoc; graph lang is the 2nd arg):
+
+```bash
+export CODEMINER_SCIP_TOOLS_DIR=~/codeminer-scip-tools GOROOT=$CODEMINER_SCIP_TOOLS_DIR/go \
+  GOPATH=$CODEMINER_SCIP_TOOLS_DIR/go-tools CODEMINER_RUST_TOOLCHAIN=stable
+export PATH="$CODEMINER_SCIP_TOOLS_DIR/bin:$CODEMINER_SCIP_TOOLS_DIR/go-tools/bin:$CODEMINER_SCIP_TOOLS_DIR/go/bin:$CODEMINER_SCIP_TOOLS_DIR/node-tools/node_modules/.bin:$CODEMINER_SCIP_TOOLS_DIR:$HOME/.cargo/bin:$HOME/miniconda3/envs/scip-env/bin:$PATH:$HOME/miniconda3/bin"
+python ~/build_full.py <repo_dir> <python|go|typescript|rust|cpp>
+```
+
+Manifest then reports `symbol_navigation: true` and `/api/repos/<id>/codemap` returns
+nodes/edges/mermaid. Driver scripts: `~/run_symgraph_py.sh`, `~/run_symgraph_multi.sh`
+(Go/TS/Rust), `~/run_symgraph_cpp.sh`. **Restart `cm-backend` after building graphs.**
 
 ## 3. Config — `qa_config.yaml`
 

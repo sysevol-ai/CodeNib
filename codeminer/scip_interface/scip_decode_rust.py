@@ -188,7 +188,18 @@ class SCIPRustGraphDecoder:
             internal_crates.add(root_pkg_name)
 
         for pattern in member_patterns:
-            for member_dir in self.project_root.glob(pattern):
+            # Normalize the workspace member glob: a trailing slash, an empty
+            # string, or an absolute pattern makes Path.glob raise (e.g.
+            # ``IndexError: tuple index out of range`` on Python 3.12). Skip
+            # those rather than aborting the whole decode.
+            pattern = str(pattern).strip().rstrip("/")
+            if not pattern or pattern.startswith("/"):
+                continue
+            try:
+                members = list(self.project_root.glob(pattern))
+            except (ValueError, IndexError, OSError):
+                continue
+            for member_dir in members:
                 if not member_dir.is_dir():
                     continue
                 member_cargo = member_dir / "Cargo.toml"
