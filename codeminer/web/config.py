@@ -59,6 +59,11 @@ class QAConfig:
     mode: str = "sparse"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dimension: int = 384
+    # Embedding backend: "huggingface" (in-process SentenceTransformer) or
+    # "openai" (remote OpenAI-compatible /v1/embeddings, e.g. a vLLM server).
+    embedding_provider: str = "huggingface"
+    embedding_base_url: Optional[str] = None  # required when provider=openai
+    embedding_api_key: Optional[str] = None
     # Where checked-out repos + indexes + the registry live.
     data_dir: str = ".codeminer_qa"
     # Optional read-only tree of pre-built per-instance artifacts:
@@ -134,6 +139,9 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         embedding_dimension=data.get(
             "embedding_dimension", QAConfig.embedding_dimension
         ),
+        embedding_provider=data.get("embedding_provider", "huggingface"),
+        embedding_base_url=data.get("embedding_base_url", None),
+        embedding_api_key=data.get("embedding_api_key", None),
         data_dir=data.get("data_dir", QAConfig.data_dir),
         prebuilt_dir=data.get("prebuilt_dir", QAConfig.prebuilt_dir),
         max_turns=data.get("max_turns", QAConfig.max_turns),

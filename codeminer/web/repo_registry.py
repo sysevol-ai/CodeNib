@@ -314,12 +314,20 @@ class RepoRegistry:
             emb_dim = vec_entry.config.get(
                 "embedding_dimension", self._config.embedding_dimension
             )
+            emb_provider = self._config.embedding_provider
+            emb_extra: Dict[str, object] = {}
+            if emb_provider == "openai" and self._config.embedding_base_url:
+                emb_extra = {
+                    "base_url": self._config.embedding_base_url,
+                    "api_key": self._config.embedding_api_key or "dummy",
+                }
             vector_store = CodeVectorStore(
                 embedding_model=emb_model,
-                embedding_provider="huggingface",
+                embedding_provider=emb_provider,
                 dimension=emb_dim,
                 store_path=vec_entry.path,
                 embedding=self._embeddings.get(emb_model),
+                **emb_extra,
             )
             # Cache the (possibly just-loaded) model so the next repo reuses it.
             self._embeddings[emb_model] = vector_store.embedding
