@@ -93,7 +93,9 @@ def _format_symbols(symbols: List[Symbol]) -> str:
     return "\n".join(f"- {s.name} — {s.file} — {s.type}" for s in symbols)
 
 
-def generate_outline(bundle: Any, model: str, max_tokens: int = 4096) -> Dict[str, Any]:
+def generate_outline(
+    bundle: Any, model: str, max_tokens: int = 16000
+) -> Dict[str, Any]:
     """Produce a conceptual wiki page tree for *bundle* using *model*.
 
     Returns ``{"pages": [...]}``. On a model/parse failure returns

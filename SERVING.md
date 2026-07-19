@@ -48,6 +48,21 @@ emits a plain-text "Here's a thinking process:" preamble that breaks answers and
 tokens); the agent also force-synthesizes a final answer if it runs out of turns
 mid-exploration. See `codeminer/llm/litellm_chat.py` + `codeminer/agent/runner.py`.
 
+## Agent runtime & compiler (which project components this uses)
+
+- **Agent runtime:** `codeminer/agent/runner.py::AgentRunner` — built per repo in
+  `codeminer/web/repo_registry.py` and driven by `POST /api/chat` → `bundle.runner.run()`.
+  Wiki prose + edge labels run on a separate model via `wiki_model` (not the agent).
+  This branch extends the runtime: `AgentRunner._force_final_answer` (synthesize a real
+  answer when a run ends mid-exploration) and disabling Qwen thinking in
+  `codeminer/llm/litellm_chat.py`.
+- **Compiler:** `codeminer/compiler/IndexCompiler` → `RepoManifest`. BM25 is built by
+  `scripts/index_repo.py`; the dense vector index by `~/build_vectors.py` (mirrors
+  `scripts/build_qa_index.py`'s `VectorIndexBuilder` registration). Both call
+  `IndexCompiler.compile_repo()` and write `.codeminer_cache/repo_manifest.json`, which
+  the backend serves from. This uses the base `IndexCompiler` — **not** the
+  `scripts/agent_compile/` RFC phase-lineage / compiled-subset tooling.
+
 ## 0. One-time env
 
 ```bash

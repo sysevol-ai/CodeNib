@@ -191,6 +191,14 @@ class _HuggingFaceEmbeddingWrapper:
         return vecs.tolist()
 
 
+# Embedding servers cap input length (e.g. Qwen3-Embedding-0.6B: 32768 tokens) and
+# large batches. A few code chunks (huge generated files) exceed the token cap and
+# 400 the whole request, so clip each input to a safe char budget (>=1 char/token
+# guarantees it fits) and split into bounded batches.
+_MAX_EMBED_CHARS = 28000
+_EMBED_BATCH = 256
+
+
 class _OpenAIEmbeddingWrapper:
     """Wraps the OpenAI SDK to expose ``embed_query`` / ``embed_documents``."""
 
@@ -201,12 +209,18 @@ class _OpenAIEmbeddingWrapper:
         self._client = OpenAI(**kwargs)
 
     def embed_query(self, text: str) -> List[float]:
-        resp = self._client.embeddings.create(input=[text], model=self._model)
+        resp = self._client.embeddings.create(
+            input=[text[:_MAX_EMBED_CHARS]], model=self._model
+        )
         return resp.data[0].embedding
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        resp = self._client.embeddings.create(input=texts, model=self._model)
-        return [d.embedding for d in sorted(resp.data, key=lambda x: x.index)]
+        out: List[List[float]] = []
+        for i in range(0, len(texts), _EMBED_BATCH):
+            batch = [t[:_MAX_EMBED_CHARS] for t in texts[i : i + _EMBED_BATCH]]
+            resp = self._client.embeddings.create(input=batch, model=self._model)
+            out.extend(d.embedding for d in sorted(resp.data, key=lambda x: x.index))
+        return out
 
 
 def _to_document(obj: Any) -> _Document:
