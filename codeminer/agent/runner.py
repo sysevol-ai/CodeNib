@@ -92,6 +92,22 @@ def _has_localization_contract(answer: str) -> bool:
     return has_localization_contract(answer)
 
 
+def _looks_incomplete(text: str) -> bool:
+    """True when *text* is mid-exploration narration, not a synthesized reply.
+
+    Weak/agentic models often leave chatter like "Let me look at models.py:"
+    when they run out of turns; the demo should replace that with a real
+    forced answer rather than surface it to the user.
+    """
+    t = (text or "").strip()
+    if len(t) < 200:
+        return True
+    low = t.lower()
+    return low.startswith(
+        ("let me", "let's", "i'll", "i will", "now i", "first, let", "next, ")
+    ) or t.endswith(":")
+
+
 _DEFAULT_SYSTEM_PROMPT = f"""\
 You are a code localization agent. Find the code locations (files and \
 symbols) relevant to the request, then give a concise answer naming them.
@@ -670,6 +686,15 @@ class AgentRunner:
                         or answer
                     )
                     answer_source = "forced_schema"
+                elif (
+                    not self._force_contract
+                    and all_tool_calls
+                    and _looks_incomplete(answer)
+                ):
+                    forced = self._force_final_answer(history, usage_tracker, turn + 2)
+                    if forced.strip():
+                        answer = forced
+                        answer_source = "forced_answer"
                 return _finish_result(
                     answer=answer,
                     total_turns=turn + 1,
@@ -801,6 +826,16 @@ class AgentRunner:
                 or last_content
             )
             answer_source = "forced_schema"
+        elif (
+            not self._force_contract
+            and all_tool_calls
+            and _looks_incomplete(last_content)
+        ):
+            trace.add("final_answer_forced", max_turns, reason="max_turns_exhausted")
+            forced = self._force_final_answer(history, usage_tracker, max_turns + 1)
+            if forced.strip():
+                last_content = forced
+                answer_source = "forced_answer"
 
         return _finish_result(
             answer=last_content,
@@ -914,6 +949,42 @@ class AgentRunner:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _force_final_answer(self, history, usage_tracker, usage_turn: int) -> str:
+        """Tool-free turn that extracts a synthesized natural-language answer.
+
+        Demo counterpart to ``_force_schema_answer``: when the agent runs out of
+        turns still exploring (last message is chatter like "Let me look at ..."),
+        spend one extra tool-free turn asking it to answer from what it already
+        gathered, so the user gets a real answer instead of mid-search narration.
+        These are extra turns; they do NOT consume the exploration budget.
+        """
+        history.add_message(
+            {
+                "role": "user",
+                "content": (
+                    "Stop searching and do not call any more tools. Using "
+                    "everything you have already read, write your complete final "
+                    "answer to the user's question now, citing the relevant files "
+                    "and symbols."
+                ),
+            }
+        )
+        try:
+            overrides: Dict[str, Any] = {
+                "usage_tracker": usage_tracker,
+                "usage_turn": usage_turn,
+            }
+            if self.tools:
+                overrides["tools"] = self.tools
+                overrides["tool_choice"] = "none"
+            final = self.llm._call_raw(history.get_messages(), **overrides)
+            forced_msg = final.choices[0].message
+            history.add_message(_message_to_dict(forced_msg))
+            return getattr(forced_msg, "content", None) or ""
+        except Exception as exc:  # noqa: BLE001 - best-effort; keep the partial run
+            logger.warning("forced final answer failed: %s", exc)
+            return ""
 
     def _force_schema_answer(
         self, history, usage_tracker, usage_turn: int, read_paths=None

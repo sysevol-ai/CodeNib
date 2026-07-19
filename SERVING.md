@@ -36,9 +36,17 @@ Public: frontend **http://stable-spark1.ucsd.edu:3000**, backend `:8000`.
 
 | Role | Model string | Backend |
 |---|---|---|
-| Ask (interactive agent) | `openai/qwen3.6-35b` | vLLM `:8080` |
+| Ask (interactive agent) | `openai/qwen3.6-35b` (served from `Qwen3.6-35B-A3B-FP8` + MTP) | vLLM `:8080` |
 | Wiki prose + edge labels | `vertex_ai/claude-haiku-4-5@20251001` | Vertex (ADC) |
 | Dense embeddings (hybrid retrieval) | `Qwen/Qwen3-Embedding-0.6B` (openai provider) | vLLM `:8081` |
+
+**Ask throughput (GB10 is bandwidth-bound):** bf16 ~20 tok/s → **FP8 + MTP ~50-65 tok/s**
+(~3×). MTP `num_speculative_tokens=1` (this model has one MTP layer; 2 is *slower*).
+NVFP4 was tried but the vLLM `qwen3_5` loader can't map its expert scales, so FP8 is the
+path. Qwen3.6 is a *thinking* model — thinking is disabled for the agent (it otherwise
+emits a plain-text "Here's a thinking process:" preamble that breaks answers and wastes
+tokens); the agent also force-synthesizes a final answer if it runs out of turns
+mid-exploration. See `codeminer/llm/litellm_chat.py` + `codeminer/agent/runner.py`.
 
 ## 0. One-time env
 
@@ -52,13 +60,14 @@ gcloud auth application-default login             # Vertex ADC
 ## 1. vLLM containers (docker, GPU)
 
 ```bash
-# Ask model — thinking MoE, qwen3_xml tool parser
+# Ask model — FP8 MoE + MTP speculative decoding, qwen3_xml tool parser
 docker run -d --name vllm-qwen36 --restart unless-stopped --gpus all --ipc=host \
   -p 8080:8000 -v ~/.cache/huggingface:/root/.cache/huggingface \
   vllm/vllm-openai:cu130-nightly \
-  Qwen/Qwen3.6-35B-A3B --served-model-name qwen3.6-35b \
+  Qwen/Qwen3.6-35B-A3B-FP8 --served-model-name qwen3.6-35b \
   --max-model-len 65536 --gpu-memory-utilization 0.80 --max-num-seqs 2 \
-  --enable-auto-tool-choice --tool-call-parser qwen3_xml
+  --enable-auto-tool-choice --tool-call-parser qwen3_xml \
+  --speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'
 
 # Embedding model — pooling runner, small GPU slice
 docker run -d --name vllm-embed --restart unless-stopped --gpus all --ipc=host \
@@ -127,7 +136,9 @@ The wiki is generated on-demand (Vertex Haiku) and cached to
 - tmux sessions survive SSH drops, not reboots. Docker containers auto-restart.
 - Shared HF cache `~/.cache/huggingface/hub` is root-owned (vLLM writes as root);
   for user-side HF downloads (e.g. `datasets`) set `HF_HOME=~/data/hf-cache`.
-- Ask answers are grounded in symbol names + dense-retrieved code; the thinking
-  model (Qwen3.6-35B) narrates its reasoning, so answers are correct but verbose.
+- Ask answers are grounded in BM25 + dense-retrieved code (hybrid). Thinking is
+  disabled and the agent force-synthesizes a final answer, so replies are clean
+  and complete (verified on requests + matplotlib).
 - **Known issue:** wiki outline generation returns 0 pages for the largest repos
   (astropy, matplotlib, scikit-learn, sympy) — under investigation.
+- **Known issue:** sympy is BM25-only (a chunk exceeds the 32768-token embed limit).
