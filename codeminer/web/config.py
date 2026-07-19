@@ -49,6 +49,8 @@ class QAConfig:
 
     # litellm model string for the agent. Env ``CODEMINER_DEMO_MODEL`` wins.
     model: str = "gpt-4o"
+    api_base: Optional[str] = None
+    api_key: Optional[str] = None
     # "sparse" (BM25 only) or "hybrid" (BM25 + vector embeddings).
     mode: str = "sparse"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
@@ -120,6 +122,8 @@ def load_config(path: Optional[str] = None) -> QAConfig:
 
     cfg = QAConfig(
         model=data.get("model", QAConfig.model),
+        api_base=data.get("api_base", None),
+        api_key=data.get("api_key", None),
         mode=data.get("mode", QAConfig.mode),
         embedding_model=data.get("embedding_model", QAConfig.embedding_model),
         embedding_dimension=data.get(
@@ -164,6 +168,14 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.edge_labels = _env_edge.strip().lower() in ("1", "true", "yes", "on")
     if os.environ.get("CODEMINER_EDGE_MODEL"):
         cfg.edge_label_model = os.environ["CODEMINER_EDGE_MODEL"]
+
+    # litellm reads OPENAI_API_BASE / OPENAI_API_KEY from the environment, so
+    # export the YAML values here. An env var already set (e.g. by
+    # scripts/start_web.sh) wins, matching the model precedence above.
+    if cfg.api_base and not os.environ.get("OPENAI_API_BASE"):
+        os.environ["OPENAI_API_BASE"] = cfg.api_base
+    if cfg.api_key and not os.environ.get("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = cfg.api_key
 
     return cfg
 
