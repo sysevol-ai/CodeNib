@@ -5,27 +5,67 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent runtime probe — findings
 
-## Full five-language replication (2026-07-14)
+## Cross-family extension protocol (2026-07-20)
 
-The original four-language probe below is now historical. We completed the
-previously missing Python block and repeated the three-arm experiment with a
-second model family at two sizes on a frozen, balanced workload:
+The publication matrix now includes two independent replications:
+
+- **Gemma 4-12B-it**, served locally through the OpenAI-compatible vLLM API,
+  adds an open-weight model family near the existing Qwen3.5-9B scale.
+- **Gemini 2.5 Flash**, served by Vertex AI, adds a second closed provider.
+
+Both use the same 500 synthesis queries, three arms, top-10 frozen L2
+candidates, 16-turn cap, 48,000-token history budget, 4,096-token completion
+budget, and temperature zero as the completed Qwen runs. Thinking is disabled:
+Gemma uses the non-thinking chat-template path, while CodeMiner sends Gemini
+2.5 `thinkingBudget=0`. Results remain paired and normalized within model;
+absolute token counts are not compared across tokenizers or providers.
+
+Gemma is served from the immutable Hub revision recorded in the run manifest.
+Its vLLM process must use `--tool-call-parser gemma4`,
+`--reasoning-parser gemma4`, and the Gemma 4 tool chat template. Before a full
+matrix is admitted, each provider must pass a function-call smoke and a
+stratified pilot with complete query-arm keys, no executed unadvertised tools,
+and no systematic context or answer-contract failure.
+
+The local Gemma server reserves 60% of the H100 for model and KV state, leaving
+capacity for the frozen Qwen3-Embedding-0.6B query encoder and its retained CUDA
+allocator state across 25 repository indexes.
+It uses one serving sequence, a 131,072-token serving cap, and vLLM's
+generation defaults; these launch controls and the chat-template digest are
+persisted in the result summary.
+
+The 100-query pilot takes four queries from each of the 25 repositories with
+`--query-selection category_round_robin`. The category order rotates by
+repository, preventing the dataset's category-blocked row order from turning
+the pilot into an all-`behavioral` sample. Full runs consume all 500 queries and
+therefore do not apply a query cap or selection strategy.
+
+## Full five-model replication (updated 2026-07-20)
+
+The original four-language probe below is now historical. The publication
+matrix repeats the three-arm experiment across five model variants from four
+families on one frozen, balanced workload:
 
 - **Dataset:** all 500 queries from `sysevol-ai/codeminer-synthesis`, covering
   25 repository snapshots and five language groups (100 queries each).
 - **Arms:** `grep_only`, `preinj_eager`, and `preinj_eager_compact`; all expose
   exactly `read`, `grep`, `glob`, and `bash` to the model. Both preload arms use
   the same top-10 L2 embedding context. Compact mode performs a one-time
-  explore-to-commit collapse after the first successful read.
-- **Models:** Claude Haiku 4.5 (the completed historical block), Qwen3.5-9B,
-  and Qwen3.5-27B (two independent local-model replications). Comparisons are
-  paired and normalized within each model; absolute token counts are not
-  compared across providers or model sizes.
+  explore-to-commit collapse after the first successful read. The formal recipes
+  retain that newest read, the read paths, and a bounded latest assessment; they
+  drop the preload and earlier exploration transcript without another model call.
+- **Models:** Claude Haiku 4.5, Qwen3.5-9B/27B, Gemma 4-12B, and Gemini 2.5
+  Flash. Comparisons are paired and normalized within each model; absolute
+  token counts are not compared across providers or model sizes.
 - **Primary metric:** total prompt-plus-completion tokens over the agent
   trajectory. The quality guardrail is the paired change in committed-answer
   block Recall@5, with a uniform operational threshold of -0.05. This is a
   reporting guardrail, not a pre-registered equivalence or non-inferiority
   test.
+- **Cache boundary:** token totals are logical provider-reported usage. Prefix
+  caching can reuse unchanged prefixes but does not remove retained KV state;
+  the experiment does not claim cache-hit, GPU-memory, latency, or throughput
+  improvements.
 - **Inference:** 10,000-sample percentile bootstrap clustered by repository
   snapshot. Language strata contain five repository clusters each, so the
   pooled result is the headline result.
@@ -38,16 +78,20 @@ second model family at two sizes on a frozen, balanced workload:
 | **Qwen3.5-9B / compact** | **45.1% [40.2, 50.1]** | **-0.006 [-0.047, +0.038]** | **pass** |
 | Qwen3.5-27B / eager | 57.0% [52.2, 61.9] | -0.011 [-0.055, +0.040] | fail (borderline) |
 | **Qwen3.5-27B / compact** | **44.8% [40.3, 49.9]** | **-0.003 [-0.037, +0.038]** | **pass** |
+| Gemma 4-12B / eager | 46.2% [37.6, 55.2] | +0.110 [+0.059, +0.161] | pass |
+| **Gemma 4-12B / compact** | **12.9% [10.2, 16.1]** | **+0.040 [-0.012, +0.093]** | **pass** |
+| Gemini 2.5 Flash / eager | 46.9% [37.6, 58.3] | +0.111 [+0.063, +0.165] | pass |
+| **Gemini 2.5 Flash / compact** | **35.8% [27.7, 46.6]** | **+0.067 [+0.025, +0.111]** | **pass** |
 
 For compact model-level reporting, we select the lowest-token compiled-context
 arm whose recall-delta 95% interval stays above -0.05. This rule selects eager
-for Haiku and compact for both Qwen sizes; the selected arms use **44.8-49.9%
-of baseline tokens**. The replicated Qwen operating points use 44.8-45.1%,
-while both full quality intervals remain above the fixed guardrail. The
-mechanism is model-dependent: Haiku benefits most from eager preload, whereas
-both Qwen sizes benefit most when the exploration trace is compacted. We
-therefore do not promote one history policy unconditionally; the deployed
-model must clear the same quality gate.
+for Haiku and compact for the other four models; the selected arms use
+**12.9-49.9% of baseline tokens**. The mechanism is model-dependent: compact
+costs 123.3% of eager tokens for Haiku but only 27.9% for Gemma. Gemma and
+Gemini compact also lose 0.070 and 0.044 Recall@5 relative to eager, while
+remaining above the baseline quality guard because eager improves over
+baseline. We therefore do not promote one history policy unconditionally; the
+deployed model must clear the same quality gate.
 
 Each Qwen matrix contains 1,500 successful cells (500 per arm), with no missing
 or duplicate query-arm keys. The 9B run had two initial request failures; both
@@ -58,6 +102,13 @@ tool attempts returned errors, including two attempts to call an unadvertised
 `answer` tool; no unadvertised tool call executed. The 27B run had one initial
 malformed tool-call response, preserved and successfully retried under the
 unchanged protocol.
+
+Each new matrix also contains 1,500 successful, meaningful cells. Gemma has 39
+answer-format failures and 30 rejected tool-call errors; Gemini has 28 and 11.
+Malformed or unadvertised tool attempts are retained in the audit, and neither
+model executes an unadvertised tool. Gemini's full matrix costs $8.65 at the
+recorded Vertex rates. All invalid answers remain in the quality analysis as
+zero recall.
 
 Inside the frozen paper artifact bundle, the inputs are under
 `inputs/agent/`, the publication metrics are
@@ -172,6 +223,43 @@ different task (refactor-safety / impact), not this localization benchmark.
 - verify no-op is mechanism-proven (0 % trigger), not merely a CI.
 
 ## Reproduce
+
+The cross-family runs use the frozen configs above. Fetch
+[`tool_chat_template_gemma4.jinja`](https://raw.githubusercontent.com/vllm-project/vllm/v0.25.1/examples/tool_chat_template_gemma4.jinja)
+from the vLLM `v0.25.1` tag and verify the SHA-256 digest recorded in
+`gemma4_12b_synth_runtime.yaml` before launching the local server:
+
+```bash
+vllm serve google/gemma-4-12B-it \
+  --revision 12ace6d648d72bd41519e140f1185f34d38c7e3d \
+  --served-model-name gemma4-12b --host 127.0.0.1 --port 8001 \
+  --dtype bfloat16 --max-model-len 131072 --max-num-seqs 1 \
+  --gpu-memory-utilization 0.60 --language-model-only \
+  --enable-auto-tool-choice --tool-call-parser gemma4 \
+  --reasoning-parser gemma4 --chat-template "$GEMMA4_CHAT_TEMPLATE" \
+  --default-chat-template-kwargs '{"enable_thinking": false}' \
+  --enable-prefix-caching --generation-config vllm --disable-log-stats
+
+# Use --max-queries 4 --query-selection category_round_robin for the pilot.
+OPENAI_API_BASE=http://127.0.0.1:8001/v1 OPENAI_API_KEY=dummy \
+python scripts/agent_compile/run_synthesis_sweep.py \
+  --config scripts/agent_compile/configs/gemma4_12b_synth_runtime.yaml \
+  --output-dir /mnt/data/codeminer/results/gemma4_12b_synth_runtime_v1 \
+  --synthesis-configs Python,Go,Rust,TypeScript_JavaScript,C++_C
+
+VERTEXAI_PROJECT="$VERTEXAI_PROJECT" VERTEXAI_LOCATION=global \
+python scripts/agent_compile/run_synthesis_sweep.py \
+  --config scripts/agent_compile/configs/gemini25_flash_synth_runtime.yaml \
+  --output-dir /mnt/data/codeminer/results/gemini25_flash_synth_runtime_v1 \
+  --synthesis-configs Python,Go,Rust,TypeScript_JavaScript,C++_C
+```
+
+Run local and remote-provider matrices serially on a single-GPU host. The query
+runner retains CUDA allocator state while switching repository indexes, so an
+idle vLLM process can otherwise cause late context-load OOMs in the remote run.
+
+The commands below reproduce the historical runtime probe rather than the
+cross-family extension:
 
 ```bash
 # 3 pre-load arms (run per language; Python solo to avoid the concurrency hang)

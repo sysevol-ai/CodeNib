@@ -41,13 +41,24 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 
-def _load_normalized(config_name: str) -> List[Dict[str, Any]]:
+def _load_normalized(
+    config_name: str,
+    *,
+    dataset: str = "sysevol-ai/codeminer-synthesis",
+    split: str = "test",
+    revision: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Load + normalize one synthesis config into common CodeMiner rows."""
     from datasets import load_dataset
 
     from codeminer.dataset.codeminer_synthesis import normalize_synthesis_record
 
-    ds = load_dataset("sysevol-ai/codeminer-synthesis", config_name, split="test")
+    ds = load_dataset(
+        dataset,
+        config_name,
+        split=split,
+        revision=revision,
+    )
     return [normalize_synthesis_record(r, config_name) for r in ds]
 
 
@@ -69,6 +80,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     p.add_argument(
         "--max-queries", type=int, default=None, help="cap queries per instance (smoke)"
+    )
+    p.add_argument(
+        "--query-selection",
+        choices=("dataset_order", "category_round_robin"),
+        default="dataset_order",
+        help="selection strategy when --max-queries is set",
     )
     p.add_argument(
         "--max-instances",
@@ -94,12 +111,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.model:
         cfg.model = args.model
     configs = [c.strip() for c in args.synthesis_configs.split(",") if c.strip()]
+    cfg.run_metadata = {**cfg.run_metadata, "synthesis_configs": configs}
     categories = (
         {c.strip() for c in args.categories.split(",")} if args.categories else None
     )
     rows: List[Dict[str, Any]] = []
     for config_name in configs:
-        rows.extend(_load_normalized(config_name))
+        rows.extend(
+            _load_normalized(
+                config_name,
+                dataset=cfg.dataset,
+                split=cfg.split,
+                revision=cfg.dataset_revision,
+            )
+        )
     run_query_sweep(
         cfg,
         args.output_dir,
@@ -107,6 +132,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         categories=categories,
         max_queries=args.max_queries,
         max_instances=args.max_instances,
+        query_selection=args.query_selection,
         resume=not args.no_resume,
         summary_filename="synthesis_summary.json",
     )

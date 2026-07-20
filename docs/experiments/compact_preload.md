@@ -32,9 +32,9 @@ retrieval recall.
   - `preinj_eager_compact` — as eager, but after the first read **collapse** the
     context to `[system, clean_query + judged direction]`, dropping the candidate
     dump and exploration trace (`AgentRunner(compact_after_read=True)`).
-- **Seed-richness router** (`compact_keep_reads`): weak models (≤7B) keep the
-  last read inline in the seed to avoid re-reading; strong models use the terse
-  seed. Set per model size in `harness.py`.
+- **Read seed** (`compact_keep_reads`): the runtime always retains the latest
+  successful read. Values 0 and 1 are aliases for that one-read minimum; values
+  above 1 retain additional recent reads.
 
 ## Results
 
@@ -70,7 +70,7 @@ Haiku −41k* (−16 %…−26 %).
 Retrieval recall spans 56–64 % (an 8-pt gap), but the compact agent's span
 (blk@5) is flat at ~0.61 — **a better retriever does not help the agent.**
 
-### 3. Seed-richness dial on the weak 4B (the router)
+### 3. Historical seed-richness probe on 4B
 
 | arm | files@5 | blk@5 | token | turns |
 |---|---|---|---|---|
@@ -79,9 +79,10 @@ Retrieval recall spans 56–64 % (an 8-pt gap), but the compact agent's span
 | compact keep1 | 0.741 | 0.421 | 138 513 | 10.9 |
 | compact keep2 | 0.721 | 0.371 | 138 875 | 11.1 |
 
-keep0 (terse seed) **hurts** the weak model (files@5 0.667 < grep 0.737); keep1
-recovers it to grep level (0.741) at −18 % cost; keep2 over-stuffs. → router:
-**weak ≤7B → keep1, else keep0.** The router is a *necessity* on weak models.
+These historical rows do not identify a keep0-versus-keep1 effect: both settings
+resolve to the same one-read seed in the recorded runner. Their difference is
+between-run variation, not a policy contrast. Only keep2 changes the retained
+read count, so this table cannot support a model-size router claim.
 
 ### 4. Synthesis 500 (5 languages, paired n=500)
 

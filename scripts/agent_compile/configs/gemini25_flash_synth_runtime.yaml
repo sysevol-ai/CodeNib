@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Gemini 2.5 Flash cross-provider replication of the frozen 500-query runtime
+# protocol. LiteLLMChat pins thinkingBudget=0 for gemini-2.5 models so hidden
+# reasoning does not change the treatment relative to the local-model arms.
+base: qwen_base_compact.yaml
+sweep_id: gemini25_flash_synth_runtime
+model: vertex_ai/gemini-2.5-flash
+dataset: sysevol-ai/codeminer-synthesis
+dataset_revision: 5ac36c39ef69bbfe2e14dac58b6067b8c350c53e
+run_metadata:
+  provider: vertex-ai
+  provider_model_alias: gemini-2.5-flash
+  access_date: "2026-07-20"
+  thinking_budget: 0
+vertex_project: null
+vertex_location: global
+reps: 1
+max_turns: 16
+max_context_tokens: 48000
+max_tokens: 4096
+first_turn_tool_choice: null
+instances: []

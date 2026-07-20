@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Gemma 4-12B cross-family replication of the frozen 500-query runtime
+# protocol. The local vLLM server must expose Gemma's native tool parser and
+# keep thinking disabled; see docs/experiments/agent_runtime.md.
+base: qwen_base_compact.yaml
+sweep_id: gemma4_12b_synth_runtime
+model: openai/gemma4-12b
+model_revision: 12ace6d648d72bd41519e140f1185f34d38c7e3d
+dataset: sysevol-ai/codeminer-synthesis
+dataset_revision: 5ac36c39ef69bbfe2e14dac58b6067b8c350c53e
+run_metadata:
+  model_repo: google/gemma-4-12B-it
+  provider: local-vllm
+  vllm_version: 0.25.1
+  tool_call_parser: gemma4
+  reasoning_parser: gemma4
+  enable_thinking: false
+  generation_config: vllm
+  gpu_memory_utilization: 0.60
+  max_model_len: 131072
+  max_num_seqs: 1
+  chat_template_sha256: afdbb2abe3667ccde95cc2f86919f05370339399bab5f750950a4390523b8927
+reps: 1
+max_turns: 16
+max_context_tokens: 48000
+max_tokens: 4096
+first_turn_tool_choice: null
+instances: []
