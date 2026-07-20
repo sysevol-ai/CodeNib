@@ -38,10 +38,12 @@ from __future__ import annotations
 
 import importlib
 import logging
+import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "coding_agent.md"
+_CODEX_PROMPT_PATH = Path(__file__).parent / "prompts" / "codex_file_bridge.md"
 
 from pier.agents.base import BaseAgent
 from pier.environments.base import BaseEnvironment
@@ -60,6 +62,15 @@ _SOLVER_REGISTRY: dict[str, tuple[str, str]] = {
     "codex": ("pier.agents.installed.codex", "Codex"),
     "claude-code": ("pier.agents.installed.claude_code", "ClaudeCode"),
 }
+
+
+def _quote_shell_path(path: str) -> str:
+    """Quote a shell path while preserving the conventional ``~/`` shortcut."""
+    if path == "~":
+        return "$HOME"
+    if path.startswith("~/"):
+        return "$HOME/" + shlex.quote(path[2:])
+    return shlex.quote(path)
 
 
 def _load_solver_class(name: str) -> type[BaseAgent]:
@@ -98,6 +109,7 @@ class GuardianCodingAgent(BaseAgent):
         guardian_top_n: int = 5,
         guardian_budget_tokens: int = 50_000,
         guardian_poll_interval: int = 10,
+        guardian_findings_dir: str = "~/.guardian",
         # Path to codeminer source tree inside the container (pip install -e)
         codeminer_path: str = "/codeminer",
         *args: Any,
@@ -113,6 +125,15 @@ class GuardianCodingAgent(BaseAgent):
 
         self._solver_name = solver
         self._codeminer_path = codeminer_path
+        self._guardian_repo = guardian_repo
+        self._guardian_arm = guardian_arm
+        self._guardian_memory_dir = guardian_memory_dir
+        self._guardian_model = guardian_model
+        self._guardian_top_n = int(guardian_top_n)
+        self._guardian_budget_tokens = int(guardian_budget_tokens)
+        self._guardian_poll_interval = int(guardian_poll_interval)
+        self._guardian_findings_dir = guardian_findings_dir
+        self._guardian_bridge_pidfile = f"{guardian_findings_dir}/codex_bridge.pid"
 
         # Build the Guardian MCPServerConfig (stdio transport).
         # The inner solver's setup() writes this to its MCP config file.
@@ -182,6 +203,39 @@ class GuardianCodingAgent(BaseAgent):
         # Delegate to inner solver — it handles MCP config registration, skills, etc.
         await self._inner.setup(environment)
 
+    async def _start_codex_bridge(self, environment: BaseEnvironment) -> None:
+        """Start Guardian's Codex filesystem bridge inside the Pier container."""
+        findings_dir = _quote_shell_path(self._guardian_findings_dir)
+        pidfile = _quote_shell_path(self._guardian_bridge_pidfile)
+        repo = shlex.quote(self._guardian_repo)
+        memory_dir = shlex.quote(self._guardian_memory_dir)
+        model = shlex.quote(self._guardian_model)
+        arm = shlex.quote(self._guardian_arm)
+        cmd = (
+            f"mkdir -p {findings_dir} && "
+            "nohup python -m codeminer.guardian.codex_bridge "
+            f"--repo {repo} "
+            f"--arm {arm} "
+            f"--memory-dir {memory_dir} "
+            f"--model {model} "
+            f"--top-n {self._guardian_top_n} "
+            f"--budget-tokens {self._guardian_budget_tokens} "
+            f"--poll-interval {self._guardian_poll_interval} "
+            f"--out-dir {findings_dir} "
+            f"> {findings_dir}/codex_bridge.log 2>&1 & "
+            f"echo $! > {pidfile}"
+        )
+        await environment.exec(cmd)
+
+    async def _stop_codex_bridge(self, environment: BaseEnvironment) -> None:
+        pidfile = _quote_shell_path(self._guardian_bridge_pidfile)
+        await environment.exec(
+            f"if [ -f {pidfile} ]; then "
+            f"kill $(cat {pidfile}) 2>/dev/null || true; "
+            f"rm -f {pidfile}; "
+            "fi"
+        )
+
     async def run(
         self,
         instruction: str,
@@ -189,5 +243,14 @@ class GuardianCodingAgent(BaseAgent):
         context: AgentContext,
     ) -> None:
         guardian_preamble = _PROMPT_PATH.read_text()
+        if self._solver_name == "codex":
+            await self._start_codex_bridge(environment)
+            guardian_preamble = (
+                f"{guardian_preamble}\n\n{_CODEX_PROMPT_PATH.read_text()}"
+            )
         augmented = f"{guardian_preamble}\n\n---\n\n{instruction}"
-        await self._inner.run(augmented, environment, context)
+        try:
+            await self._inner.run(augmented, environment, context)
+        finally:
+            if self._solver_name == "codex":
+                await self._stop_codex_bridge(environment)
