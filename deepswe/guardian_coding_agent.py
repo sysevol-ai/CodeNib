@@ -210,8 +210,7 @@ class GuardianCodingAgent(BaseAgent):
         # The caller mounts the CodeMiner source tree at self._codeminer_path via
         # --mounts-json '[{"type":"bind","source":"/path/to/CodeMiner","target":"/codeminer"}]'
         await environment.exec(
-            f"/opt/venv/bin/pip install -q -e {self._codeminer_path} 2>&1 | tail -5 || "
-            f"pip install -q -e {self._codeminer_path} 2>&1 | tail -5 || true",
+            f"python -m pip install -q -e {self._codeminer_path} 2>&1 | tail -5 || true",
         )
         # Delegate to inner solver — it handles MCP config registration, skills, etc.
         await self._inner.setup(environment)
@@ -226,7 +225,8 @@ class GuardianCodingAgent(BaseAgent):
         arm = shlex.quote(self._guardian_arm)
         cmd = (
             f"mkdir -p {findings_dir} && "
-            "nohup env PYTHONPATH=/codeminer python -m deepswe.codex_bridge "
+            "echo guardian-bridge-starting > /logs/agent/codex_bridge.log && "
+            "nohup python -m deepswe.codex_bridge "
             f"--repo {repo} "
             f"--arm {arm} "
             f"--memory-dir {memory_dir} "
