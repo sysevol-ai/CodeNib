@@ -234,7 +234,7 @@ class GuardianCodingAgent(BaseAgent):
             f"--budget-tokens {self._guardian_budget_tokens} "
             f"--poll-interval {self._guardian_poll_interval} "
             f"--out-dir {findings_dir} "
-            f"> {findings_dir}/codex_bridge.log 2>&1 & "
+            f"> /logs/agent/codex_bridge.log 2>&1 & "
             f"echo $! > {pidfile}"
         )
         await environment.exec(cmd)
