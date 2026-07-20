@@ -8,15 +8,36 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from codeminer.eval.agent_runner.query_sweep import (
     filter_query_rows,
     group_query_rows_by_instance,
     language_key_for_query_row,
+    limit_instance_query_rows,
     query_targets,
     run_query_sweep,
     select_query_rows,
 )
 from codeminer.eval.agent_runner.sweep_config import SweepConfig
+
+
+def test_sweep_config_rejects_non_json_run_metadata(tmp_path):
+    config = tmp_path / "cfg.yaml"
+    config.write_text(
+        """
+sweep_id: invalid_metadata
+model: test/model
+embedding_model: test/embedding
+subsets: {defaults: []}
+run_metadata:
+  unquoted_date: 2026-07-20
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        SweepConfig.from_yaml(config)
 
 
 def test_query_targets_normalizes_files_and_simplified_symbols():
@@ -98,6 +119,38 @@ def test_group_query_rows_by_instance_preserves_order_and_skips_missing_ids():
 
     assert [row["query_id"] for row in grouped["i1"]] == ["q1", "q2"]
     assert [row["query_id"] for row in grouped["i2"]] == ["q3"]
+
+
+def test_limit_instance_query_rows_round_robins_categories_with_offset():
+    rows = [
+        {"query_id": "b1", "category": "behavioral"},
+        {"query_id": "b2", "category": "behavioral"},
+        {"query_id": "f1", "category": "file_hint"},
+        {"query_id": "f2", "category": "file_hint"},
+        {"query_id": "s1", "category": "symbol_hint"},
+    ]
+
+    first = limit_instance_query_rows(
+        rows, 4, strategy="category_round_robin", category_offset=0
+    )
+    shifted = limit_instance_query_rows(
+        rows, 4, strategy="category_round_robin", category_offset=1
+    )
+
+    assert [row["query_id"] for row in first] == ["b1", "f1", "s1", "b2"]
+    assert [row["query_id"] for row in shifted] == ["f1", "s1", "b1", "f2"]
+
+
+def test_limit_instance_query_rows_preserves_dataset_order_by_default():
+    rows = [
+        {"query_id": "b1", "category": "behavioral"},
+        {"query_id": "b2", "category": "behavioral"},
+        {"query_id": "f1", "category": "file_hint"},
+    ]
+
+    selected = limit_instance_query_rows(rows, 2)
+
+    assert [row["query_id"] for row in selected] == ["b1", "b2"]
 
 
 def test_language_key_for_query_row_prefers_explicit_then_language_group():
@@ -207,6 +260,10 @@ def test_run_query_sweep_stages_only_declared_indexes(monkeypatch, tmp_path):
     )
 
     assert summary["required_index_types"] == ["vector"]
+    assert summary["protocol"]["model"] == "provider/model"
+    assert summary["protocol"]["embedding_model"] == "org/embed-small"
+    assert summary["protocol"]["query_selection"] == "dataset_order"
+    assert summary["cached"] == []
     assert calls["preflight"] == (
         str(tmp_path / "prebuilt"),
         "org__repo-1",
@@ -219,3 +276,21 @@ def test_run_query_sweep_stages_only_declared_indexes(monkeypatch, tmp_path):
         str(output_dir / "cache" / "org__repo-1"),
         {"vector"},
     )
+
+    resumed = run_query_sweep(
+        cfg,
+        output_dir,
+        [
+            {
+                "instance_id": "org__repo-1",
+                "query_id": "query-1",
+                "query": "Locate the implementation",
+                "gt_files": [],
+                "gt_symbols": [],
+            }
+        ],
+        resume=True,
+    )
+
+    assert resumed["completed"] == []
+    assert resumed["cached"] == ["query-1__vector__rep1"]
