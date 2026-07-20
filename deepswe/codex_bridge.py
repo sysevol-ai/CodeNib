@@ -20,8 +20,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .cycle import GuardianConfig, run_cycle
-from .report import GuardianReport, render_markdown
+from codeminer.guardian.cycle import GuardianConfig, run_cycle
+from codeminer.guardian.report import GuardianReport, render_markdown
 
 
 def _head(repo_path: str) -> str:

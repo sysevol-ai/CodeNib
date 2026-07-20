@@ -42,9 +42,9 @@ import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-_GUARDIAN_PKG = Path(__file__).parent.parent / "codeminer" / "guardian"
-_PROMPT_PATH = _GUARDIAN_PKG / "prompts" / "coding_agent.md"
-_CODEX_PROMPT_PATH = _GUARDIAN_PKG / "prompts" / "codex_file_bridge.md"
+_PROMPTS = Path(__file__).parent / "prompts"
+_PROMPT_PATH = _PROMPTS / "coding_agent.md"
+_CODEX_PROMPT_PATH = _PROMPTS / "codex_file_bridge.md"
 
 from pier.agents.base import BaseAgent
 from pier.environments.base import BaseEnvironment

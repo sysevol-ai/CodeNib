@@ -6,7 +6,7 @@
 
 import json
 
-from codeminer.guardian import codex_bridge
+from deepswe import codex_bridge
 from codeminer.guardian.cycle import GuardianConfig
 from codeminer.guardian.report import Finding, GuardianReport
 
@@ -106,4 +106,4 @@ def test_main_defaults_out_dir_to_home_guardian(monkeypatch):
 
     codex_bridge.main(["--repo", "/repo", "--once"])
 
-    assert seen["out_dir"] == "/tmp/codex-home/.guardian"
+    assert seen["out_dir"] == "/app/.guardian"
