@@ -114,6 +114,52 @@ def group_query_rows_by_instance(
     return grouped
 
 
+def limit_instance_query_rows(
+    rows: Sequence[Mapping[str, Any]],
+    max_queries: Optional[int],
+    *,
+    strategy: str = "dataset_order",
+    category_offset: int = 0,
+) -> List[Dict[str, Any]]:
+    """Cap one instance's queries with a reproducible selection strategy."""
+    selected = [dict(row) for row in rows]
+    if max_queries is None:
+        return selected
+    if max_queries < 1:
+        raise ValueError("max_queries must be positive")
+    if strategy == "dataset_order":
+        return selected[:max_queries]
+    if strategy != "category_round_robin":
+        raise ValueError(f"unknown query selection strategy: {strategy}")
+
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    for row in selected:
+        buckets.setdefault(str(row.get("category") or ""), []).append(row)
+    if not buckets:
+        return []
+
+    categories = sorted(buckets)
+    offset = category_offset % len(categories)
+    categories = categories[offset:] + categories[:offset]
+    positions = {category: 0 for category in categories}
+    limited: List[Dict[str, Any]] = []
+    while len(limited) < max_queries:
+        made_progress = False
+        for category in categories:
+            position = positions[category]
+            bucket = buckets[category]
+            if position >= len(bucket):
+                continue
+            limited.append(bucket[position])
+            positions[category] += 1
+            made_progress = True
+            if len(limited) >= max_queries:
+                break
+        if not made_progress:
+            break
+    return limited
+
+
 def run_query_sweep(
     cfg: SweepConfig,
     output_dir: Path,
@@ -122,6 +168,7 @@ def run_query_sweep(
     categories: Optional[Set[str]] = None,
     max_queries: Optional[int] = None,
     max_instances: Optional[int] = None,
+    query_selection: str = "dataset_order",
     resume: bool = True,
     summary_filename: str = "query_sweep_summary.json",
 ) -> Dict[str, Any]:
@@ -178,16 +225,45 @@ def run_query_sweep(
     )
     summary: Dict[str, Any] = {
         "required_index_types": sorted(index_types),
+        "query_selection": query_selection,
+        "protocol": {
+            "sweep_id": cfg.sweep_id,
+            "model": cfg.model,
+            "model_revision": cfg.model_revision,
+            "dataset": cfg.dataset,
+            "dataset_revision": cfg.dataset_revision,
+            "split": cfg.split,
+            "subsets": cfg.subsets,
+            "preload": cfg.preload,
+            "reps": cfg.reps,
+            "max_turns": cfg.max_turns,
+            "max_context_tokens": cfg.max_context_tokens,
+            "max_tokens": cfg.max_tokens,
+            "temperature": cfg.temperature,
+            "embedding_model": cfg.embedding_model,
+            "embedding_revision": cfg.embedding_revision,
+            "topk": cfg.topk,
+            "categories": sorted(categories) if categories else None,
+            "max_queries": max_queries,
+            "max_instances": max_instances,
+            "query_selection": query_selection,
+            "run_metadata": cfg.run_metadata,
+        },
         "completed": [],
+        "cached": [],
         "skipped": [],
         "failed": [],
     }
 
-    for instance_id, instance_rows in group_query_rows_by_instance(
-        filtered_rows
-    ).items():
-        if max_queries:
-            instance_rows = instance_rows[:max_queries]
+    for instance_index, (instance_id, instance_rows) in enumerate(
+        group_query_rows_by_instance(filtered_rows).items()
+    ):
+        instance_rows = limit_instance_query_rows(
+            instance_rows,
+            max_queries,
+            strategy=query_selection,
+            category_offset=instance_index,
+        )
         if not has_required_indexes(
             cfg.prebuilt_dir,
             instance_id,
@@ -207,6 +283,7 @@ def run_query_sweep(
                     cell_id = f"{row['query_id']}__{subset_id}__rep{rep}"
                     cell_path = cells_dir / f"{slug(cell_id)}.json"
                     if resume and cell_path.exists():
+                        summary["cached"].append(cell_id)
                         continue
                     plan.append((row, subset_id, list(skills), rep, cell_id, cell_path))
         if not plan:

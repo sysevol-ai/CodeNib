@@ -234,11 +234,8 @@ class AgentRunner:
         # Loss-safe for localization (answers need path/symbol/line, not source).
         self._compact_after_read = compact_after_read
         # Seed richness for eager_compact: how many successful read outputs to
-        # keep VERBATIM in the collapse seed. 0 still carries the latest read
-        # transcript so the model can see the file it just requested; higher
-        # values inline additional recent reads so weaker models don't re-read
-        # after the collapse (the "re-read tax" observed on 4B). Set by a
-        # model-strength router upstream.
+        # keep VERBATIM in the collapse seed. For backward compatibility, 0 is
+        # an alias for the minimum of one read; values 2+ retain more history.
         self._compact_keep_reads = compact_keep_reads
         # Optional startup context over the same static graph exposed by the
         # lsp_route skill. This is opt-in harness policy: it makes graph route
@@ -894,14 +891,12 @@ limited tool budget, so converge once the implementing location is confirmed.
         of the run (re-sending them every turn is the dominant prompt cost, ~97%
         of spend). The continuation works the "correct path" from a small seed.
 
-        ``keep_reads`` is the seed-richness dial set by a model-strength router.
         The latest successful read is always inlined because this collapse runs
         immediately after the read result enters history; without that transcript
         the next model turn would never see the file it just asked to inspect.
-        N>0 inlines up to the last N successful read outputs (not grep/glob/bash
-        output) so a WEAK model does not re-read them after the collapse (the
-        "re-read tax" seen on 4B). It trades some token saving for fewer re-read
-        turns.
+        ``keep_reads`` therefore has a minimum effective value of one: 0 and 1
+        retain the latest read, while N>1 retains the last N successful reads
+        (never grep/glob/bash output).
 
         Loss-safe for localization: the seed names the files judged relevant plus
         the agent's own assessment; answers need path/symbol/line, not source.

@@ -13,6 +13,7 @@ deltas (see :meth:`SweepConfig.from_yaml`).
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -42,6 +43,10 @@ class SweepConfig:
     # so arms are directly comparable on the same instances.
     instances: List[str] = field(default_factory=list)
     model: Optional[str] = None
+    # Provider or model-server revision recorded for experiment provenance.
+    # Immutable local revisions must also be enforced when launching the server.
+    model_revision: Optional[str] = None
+    run_metadata: Dict[str, Any] = field(default_factory=dict)
     vertex_location: Optional[str] = None
     vertex_project: Optional[str] = None
     reps: int = 2
@@ -55,6 +60,7 @@ class SweepConfig:
     topk: int = 50
     num_retries: int = 8
     dataset: str = "fishmingyu/codeminer-base-dataset"
+    dataset_revision: Optional[str] = None
     split: str = "test"
     prebuilt_dir: str = "/mnt/data/codeminer"
     embedding_model: Optional[str] = None
@@ -108,6 +114,12 @@ class SweepConfig:
     def __post_init__(self) -> None:
         if self.max_context_tokens is not None and self.max_context_tokens <= 0:
             raise ValueError("max_context_tokens must be positive when set")
+        try:
+            json.dumps(self.run_metadata)
+        except TypeError as exc:
+            raise ValueError(
+                "run_metadata must contain JSON-serializable values"
+            ) from exc
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SweepConfig":
