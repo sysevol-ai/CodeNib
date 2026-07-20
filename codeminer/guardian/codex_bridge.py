@@ -140,7 +140,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         description="Write live LLM-backed Guardian findings for Codex to read."
     )
     parser.add_argument("--repo", required=True)
-    parser.add_argument("--out-dir", default="~/.guardian")
+    parser.add_argument("--out-dir", default="/app/.guardian")
     parser.add_argument("--arm", choices=["memory", "memoryless"], default="memory")
     parser.add_argument("--memory-dir", default="/app/.guardian/memory")
     parser.add_argument("--model", default="vertex_ai/gemini-2.5-flash")

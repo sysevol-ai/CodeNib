@@ -109,7 +109,7 @@ class GuardianCodingAgent(BaseAgent):
         guardian_top_n: int = 5,
         guardian_budget_tokens: int = 50_000,
         guardian_poll_interval: int = 10,
-        guardian_findings_dir: str = "~/.guardian",
+        guardian_findings_dir: str = "/app/.guardian",
         # Path to codeminer source tree inside the container (pip install -e)
         codeminer_path: str = "/codeminer",
         *args: Any,

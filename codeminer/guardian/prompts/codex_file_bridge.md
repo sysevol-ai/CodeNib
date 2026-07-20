@@ -7,15 +7,15 @@ Guardian runs in the background with its LLM enabled. It analyzes the initial
 checkout and every new git commit, then writes its latest report here:
 
 ```bash
-~/.guardian/findings.md
-~/.guardian/findings.json
-~/.guardian/status.json
+/app/.guardian/findings.md
+/app/.guardian/findings.json
+/app/.guardian/status.json
 ```
 
-Read `~/.guardian/findings.md` with your shell tool:
+Read `/app/.guardian/findings.md` with your shell tool:
 
 ```bash
-cat ~/.guardian/findings.md
+cat /app/.guardian/findings.md
 ```
 
 Use it at these checkpoints:
