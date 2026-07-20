@@ -225,7 +225,7 @@ class GuardianCodingAgent(BaseAgent):
         arm = shlex.quote(self._guardian_arm)
         cmd = (
             f"mkdir -p {findings_dir} && "
-            "nohup python -m deepswe.codex_bridge "
+            "nohup env PYTHONPATH=/codeminer python -m deepswe.codex_bridge "
             f"--repo {repo} "
             f"--arm {arm} "
             f"--memory-dir {memory_dir} "
