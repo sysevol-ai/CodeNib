@@ -210,7 +210,8 @@ class GuardianCodingAgent(BaseAgent):
         # The caller mounts the CodeMiner source tree at self._codeminer_path via
         # --mounts-json '[{"type":"bind","source":"/path/to/CodeMiner","target":"/codeminer"}]'
         await environment.exec(
-            f"pip install -q -e {self._codeminer_path} 2>&1 | tail -3 || true",
+            f"/opt/venv/bin/pip install -q -e {self._codeminer_path} 2>&1 | tail -5 || "
+            f"pip install -q -e {self._codeminer_path} 2>&1 | tail -5 || true",
         )
         # Delegate to inner solver — it handles MCP config registration, skills, etc.
         await self._inner.setup(environment)
