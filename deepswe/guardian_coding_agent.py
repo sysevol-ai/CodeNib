@@ -235,7 +235,7 @@ class GuardianCodingAgent(BaseAgent):
             f"--poll-interval {self._guardian_poll_interval} "
             f"--out-dir {findings_dir} "
             f"> /logs/agent/codex_bridge.log 2>&1 & "
-            f"echo $! > {pidfile}"
+            f"echo $! | tee {pidfile} > /logs/agent/codex_bridge.pid"
         )
         await environment.exec(cmd)
 
