@@ -43,6 +43,7 @@ Claude Code MCP config (injected by the custom Pier agent)::
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import subprocess
 import sys
@@ -74,6 +75,23 @@ _cache: Dict[str, Any] = {
     "cycle_no": 0,      # how many cycles have completed
     "running": False,   # True while a cycle is in progress
 }
+
+# Trace log — set by main() from --trace-log arg; None disables tracing.
+_trace_log_path: Optional[str] = None
+_trace_lock = threading.Lock()
+_call_counter = 0
+
+
+def _trace(record: Dict[str, Any]) -> None:
+    if not _trace_log_path:
+        return
+    line = json.dumps(record, default=str) + "\n"
+    with _trace_lock:
+        try:
+            with open(_trace_log_path, "a", encoding="utf-8") as f:
+                f.write(line)
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +202,7 @@ def _filter_findings(
 
 
 def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
+    global _call_counter
     hypothesis: str = arguments.get("hypothesis", "")
     region: Optional[List[str]] = arguments.get("region")
 
@@ -195,14 +214,32 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
 
     relevant = _filter_findings(findings, hypothesis, region)
 
-    return json.dumps({
+    with _trace_lock:
+        _call_counter += 1
+        call_no = _call_counter
+
+    result = {
         "commit": commit,
         "cycle_no": cycle_no,
         "cycle_running": running,
         "total_findings": len(findings),
         "returned_findings": len(relevant),
         "findings": relevant,
-    }, indent=2)
+    }
+
+    _trace({
+        "call_no": call_no,
+        "ts": datetime.datetime.utcnow().isoformat() + "Z",
+        "hypothesis": hypothesis,
+        "region": region,
+        "commit": commit,
+        "cycle_no": cycle_no,
+        "total_findings": len(findings),
+        "returned_findings": len(relevant),
+        "finding_titles": [f.get("title", "") for f in relevant],
+    })
+
+    return json.dumps(result, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -349,10 +386,13 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help="Heuristic signals only — no LLM calls (faster)")
     parser.add_argument("--poll-interval", type=int, default=POLL_INTERVAL,
                         help=f"Seconds between HEAD polls (default: {POLL_INTERVAL})")
+    parser.add_argument("--trace-log", default=None,
+                        help="Path to append one JSON line per query_guardian call")
     args = parser.parse_args(argv)
 
-    global POLL_INTERVAL
+    global POLL_INTERVAL, _trace_log_path
     POLL_INTERVAL = args.poll_interval
+    _trace_log_path = args.trace_log
 
     config = GuardianConfig(
         repo_path=args.repo,

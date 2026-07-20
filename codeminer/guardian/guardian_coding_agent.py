@@ -150,6 +150,7 @@ class GuardianCodingAgent(BaseAgent):
                 "--top-n", str(guardian_top_n),
                 "--budget-tokens", str(guardian_budget_tokens),
                 "--poll-interval", str(guardian_poll_interval),
+                "--trace-log", "/logs/agent/guardian_queries.jsonl",
             ],
         )
 
@@ -185,7 +186,17 @@ class GuardianCodingAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def network_allowlist(self) -> NetworkAllowlist:
-        return self._inner.network_allowlist()
+        inner = self._inner.network_allowlist()
+        extra: list[str] = []
+        model = self._guardian_model
+        if model.startswith("vertex_ai/") or model.startswith("gemini/"):
+            # Vertex AI / Google AI Studio inference + auth
+            extra = [".googleapis.com", "accounts.google.com"]
+        elif model.startswith("anthropic/"):
+            extra = ["api.anthropic.com"]
+        elif model.startswith("openai/") or model.startswith("gpt"):
+            extra = ["api.openai.com"]
+        return NetworkAllowlist(domains=inner.domains + extra)
 
     def install_spec(self) -> "AgentInstallSpec | None":
         return self._inner.install_spec()
