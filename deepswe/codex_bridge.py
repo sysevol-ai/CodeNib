@@ -165,7 +165,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         since=args.since,
         top_n=args.top_n,
         budget_tokens=args.budget_tokens,
-        episode_dir=os.path.join(out_dir, "latest_cycle"),
+        episode_dir="/logs/agent/guardian_episode",
     )
     run_bridge(cfg, out_dir=out_dir, poll_interval=args.poll_interval, once=args.once)
 
