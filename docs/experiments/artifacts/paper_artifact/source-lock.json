@@ -1,7 +1,17 @@
 {
-  "manifest_sha256": "b749fce51cc67d37f2e22a457aa4e0ea285a567a6ef4c36d0b80eda6bfea754b",
+  "manifest_sha256": "6e5de712a9044a7d0cb098b8293e84310764560cc0056b71f29975ea2208d302",
   "schema_version": 1,
   "sources": {
+    "agent-gemini-25-flash": {
+      "bytes": 9902942,
+      "files": 1501,
+      "sha256": "ee7e5202f24bba071b04367cd4129a689fe798663634cce497bf7427cfede984"
+    },
+    "agent-gemma-12b": {
+      "bytes": 10407486,
+      "files": 1501,
+      "sha256": "c3e3fb6d381915aa783c646372d3e9b01fba60904166d69dcb9b1ffe04811501"
+    },
     "agent-haiku-cpp": {
       "bytes": 5552738,
       "files": 402,
@@ -32,15 +42,25 @@
       "files": 1669,
       "sha256": "cfdd6e551a8c14fea1919909433994f1d715a5759e482a4432137fbace57647e"
     },
+    "agent-runtime-protocols": {
+      "bytes": 12761,
+      "files": 7,
+      "sha256": "cd57b786a9525e28eb25d7ee6173c6f9cbf110ad785f52d0e5de4549e6051aac"
+    },
     "agent-sensitivity": {
       "bytes": 797872,
       "files": 5,
       "sha256": "6c80266c308c260239c7be80de4b27bc6bfe3f6f6bac4ee3397f8b3ad75e307d"
     },
-    "artifact-readme": {
-      "bytes": 9104,
+    "artifact-eval-entrypoint": {
+      "bytes": 7370,
       "files": 1,
-      "sha256": "e3d8f96d6a12a254f7144e1d7b80f244452f7b7bd17d9e6b5650422b60772d42"
+      "sha256": "4535d8246b46af2ac19c7b765ca20d589aba190e2b8cb7e5a6bc1cff99f51b58"
+    },
+    "artifact-readme": {
+      "bytes": 9322,
+      "files": 1,
+      "sha256": "9da518d8bdaff7640325be536deb6e9815bc7542c6abac28e142d868e3955225"
     },
     "base-dataset": {
       "bytes": 271835,
@@ -53,9 +73,9 @@
       "sha256": "5abe4f24fd66aacdc8aa68a61f58709d07d3a7aa82a217631043428ebfd48e88"
     },
     "codeminer-runtime": {
-      "bytes": 2864453,
-      "files": 298,
-      "sha256": "034c9a693ff16d9f6fff999895f7d9a26cc35a6fcb11bc014ae3a02f7f2525ff"
+      "bytes": 2936289,
+      "files": 300,
+      "sha256": "a73d1b0fe9e573a24156fc03d534f37d2b58414c0bdeabef7ea86e893f898ab6"
     },
     "dataset-stats": {
       "bytes": 68071,
@@ -78,9 +98,9 @@
       "sha256": "7777ada61538d50259dcf720e9414d211b32cd71e93d72004b1b61d8c32e2334"
     },
     "expected-figures": {
-      "bytes": 3057210,
+      "bytes": 3392779,
       "files": 18,
-      "sha256": "86f4d03ca793e4bcf81618dbe45f79875e76ade4f8b2bafb2b7ad41c27b251af"
+      "sha256": "25eb5335777981cac6b0a52ff7fc423f5ed3b1f278f008b75d39a972c816b5fe"
     },
     "faiss-index-family": {
       "bytes": 918784,
@@ -88,29 +108,29 @@
       "sha256": "7c01eed9f90b8bc5ed5caafa50b47774a2ecffc1a8d009db1d77af2a5412f207"
     },
     "figure-config": {
-      "bytes": 1378,
+      "bytes": 1757,
       "files": 1,
-      "sha256": "04cbc64d7887553e0c309c28602ac99207bdcbd7c0e77cd3d1444e86ecbbcd38"
+      "sha256": "f2fe10b217918578ccd866adf49524fdfde352324d0c2209cff93c8c3c3a0624"
     },
     "figure-programs": {
-      "bytes": 282661,
-      "files": 23,
-      "sha256": "2a2a00642f08ad5ddd1df20bf5523a0744af67e4e7f0fd62387a7a0ebb6f3978"
+      "bytes": 325010,
+      "files": 25,
+      "sha256": "03e4d4fc3d046dde9fbae131ac4efa17454bc70e49e10885a274e81d93a98597"
     },
-    "incremental-results": {
-      "bytes": 73417,
-      "files": 3,
-      "sha256": "4427fb9b7fb8ac0d7d7639633bda87cb9aaffc527810e4f3be2268317345a9ae"
+    "incremental-maintenance-results": {
+      "bytes": 639047,
+      "files": 6,
+      "sha256": "8c9e4bcbf097b2611567eca7e534d23333197a7d3e21e084710a74dec3e05ba3"
     },
-    "incremental-runner": {
-      "bytes": 58687,
-      "files": 1,
-      "sha256": "9d21342d73123995ea9d366d95dff8899773878904b93753df0c41bf2171348c"
+    "incremental-runners": {
+      "bytes": 152710,
+      "files": 4,
+      "sha256": "4b4d3092112942882318556fe7dd6408ec9f2d5535f2fbbd702440eba8faa01f"
     },
     "incremental-tests": {
-      "bytes": 199721,
-      "files": 13,
-      "sha256": "115904c4e71d87d3253868d9800927173620e46dfce310e7b4fa3ef4f6348611"
+      "bytes": 356402,
+      "files": 29,
+      "sha256": "66226f7b1ad713548b6657a044c690a6d1e3bf71047783ef615c7cefe0db9c38"
     },
     "license-boundaries": {
       "bytes": 1408,

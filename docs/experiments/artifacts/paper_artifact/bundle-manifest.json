@@ -2,7 +2,7 @@
   "schema_version": 1,
   "bundle": {
     "name": "CodeMiner paper artifact (core)",
-    "version": "core-rc26"
+    "version": "core-rc27"
   },
   "sources": [
     {
@@ -10,6 +10,12 @@
       "root": "code",
       "path": "docs/experiments/artifacts/paper_artifact/README.md",
       "destination": "README.md"
+    },
+    {
+      "id": "artifact-eval-entrypoint",
+      "root": "code",
+      "path": "docs/experiments/artifacts/paper_artifact/artifact_eval.py",
+      "destination": "artifact_eval.py"
     },
     {
       "id": "license-boundaries",
@@ -36,10 +42,10 @@
       "destination": "inputs/dense-model-scale.json"
     },
     {
-      "id": "incremental-results",
+      "id": "incremental-maintenance-results",
       "root": "code",
-      "path": "docs/experiments/artifacts/incremental_graph_v4",
-      "destination": "inputs/incremental_graph_v4"
+      "path": "docs/experiments/artifacts/incremental_maintenance_v1",
+      "destination": "inputs/incremental_maintenance_v1"
     },
     {
       "id": "codeminer-runtime",
@@ -54,10 +60,19 @@
       ]
     },
     {
-      "id": "incremental-runner",
+      "id": "incremental-runners",
       "root": "code",
-      "path": "scripts/profiling/profile_incremental_graph.py",
-      "destination": "runtime/scripts/profiling/profile_incremental_graph.py"
+      "path": "scripts/profiling",
+      "destination": "runtime/scripts/profiling",
+      "include": [
+        "aggregate_incremental_maintenance.py",
+        "profile_graph_rebuild_stability.py",
+        "profile_incremental_graph.py",
+        "profile_incremental_vector.py"
+      ],
+      "exclude_dir_names": [
+        "__pycache__"
+      ]
     },
     {
       "id": "incremental-tests",
@@ -67,9 +82,15 @@
       "include": [
         "agent/test_lsp_graph.py",
         "eval/test_lsp_replay_benchmark.py",
+        "eval/test_maintenance_manifest.py",
+        "eval/test_paper_artifact_eval.py",
         "graph/incremental/*.py",
+        "index/incremental/*.py",
         "scip/test_scip_go.py",
-        "scripts/test_profile_incremental_graph.py"
+        "scripts/test_aggregate_incremental_maintenance.py",
+        "scripts/test_profile_graph_rebuild_stability.py",
+        "scripts/test_profile_incremental_graph.py",
+        "scripts/test_profile_incremental_vector.py"
       ],
       "exclude": [
         "*.pyc"
@@ -89,6 +110,24 @@
       "root": "code",
       "path": "README.md",
       "destination": "runtime/README.md"
+    },
+    {
+      "id": "agent-runtime-protocols",
+      "root": "code",
+      "path": "scripts/agent_compile",
+      "destination": "protocol/agent_runtime",
+      "include": [
+        "configs/design_space.yaml",
+        "configs/qwen_base_compact.yaml",
+        "configs/qwen35_9b_synth_runtime.yaml",
+        "configs/qwen35_27b_synth_runtime.yaml",
+        "configs/gemma4_12b_synth_runtime.yaml",
+        "configs/gemini25_flash_synth_runtime.yaml",
+        "run_synthesis_sweep.py"
+      ],
+      "exclude_dir_names": [
+        "__pycache__"
+      ]
     },
     {
       "id": "base-dataset",
@@ -310,6 +349,34 @@
       ]
     },
     {
+      "id": "agent-gemma-12b",
+      "root": "data",
+      "path": "results/gemma4_12b_synth_runtime_v1",
+      "destination": "inputs/agent/gemma4_12b_synth_runtime_v1",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__",
+        "cache"
+      ]
+    },
+    {
+      "id": "agent-gemini-25-flash",
+      "root": "data",
+      "path": "results/gemini25_flash_synth_runtime_v1",
+      "destination": "inputs/agent/gemini25_flash_synth_runtime_v1",
+      "exclude": [
+        "*.pyc"
+      ],
+      "exclude_dir_names": [
+        ".git",
+        "__pycache__",
+        "cache"
+      ]
+    },
+    {
       "id": "figure-programs",
       "root": "figures",
       "path": ".",
@@ -322,7 +389,7 @@
         "draw_eval_accuracy.py",
         "draw_faiss_index_ablation.py",
         "draw_graphrag_rerank.py",
-        "draw_lifecycle_stage_costs.py",
+        "draw_maintenance_lifecycle.py",
         "draw_lsp_replay.py",
         "draw_lsp_replay_latency.py",
         "draw_materialized_trace.py",
@@ -335,8 +402,10 @@
         "reproduce_paper_figures.py",
         "requirements-paper.txt",
         "test_build_paper_claims.py",
+        "test_draw_maintenance_lifecycle.py",
         "test_draw_pareto_rerank.py",
         "test_draw_lsp_replay.py",
+        "test_reproduce_paper_figures.py",
         "verify_paper_figures.py"
       ],
       "exclude_dir_names": [
@@ -358,7 +427,7 @@
         "faiss_index_ablation.png",
         "graphrag_vs_rerank.json",
         "graphrag_vs_rerank.png",
-        "lifecycle_stage_costs.png",
+        "maintenance_lifecycle.png",
         "lsp_replay_100.png",
         "lsp_replay_latency.png",
         "materialized_trace.png",

@@ -72,11 +72,12 @@ agent study. The latter support only the reported adoption count; they are not
 pooled into the replay latency distribution.
 
 The incremental-maintenance evidence is source-owned rather than mounted under
-the experiment data root: protocol-v4 JSONL lives in
-`docs/experiments/artifacts/incremental_graph_v4/`, and the manifest packages it
-with the current Python runtime, benchmark entry point, focused tests, and build
-metadata. The core archive does not duplicate the two external Git repositories
-or their LSP/SCIP toolchains.
+the experiment data root. The 40-transition manifest, graph protocol-21 rows,
+vector protocol-4 rows, stability audit, and schema-2 aggregate live in
+`docs/experiments/artifacts/incremental_maintenance_v1/`. The manifest packages
+them with the current Python runtime, graph/vector/stability runners,
+aggregator, focused tests, and build metadata. The core archive does not
+duplicate external repositories, model weights, or language toolchains.
 
 ## Lock Sources
 
@@ -124,20 +125,15 @@ python -m codeminer.eval.artifact_bundle verify \
   --bundle "$ARTIFACT_BUILD_ROOT/codeminer-paper-artifact"
 ```
 
-Then run the figure reproduction and semantic verifier from the bundle root.
-Write generated files outside the bundle so its complete checksum inventory
-remains valid:
+Then run the reviewer entry point from the bundle root. Write generated files
+outside the bundle so its complete checksum inventory remains valid:
 
 ```bash
 python -m venv "$ARTIFACT_FIGURE_VENV"
 . "$ARTIFACT_FIGURE_VENV/bin/activate"
 python -m pip install -r figure/requirements-paper.txt
-PYTHONDONTWRITEBYTECODE=1 python figure/reproduce_paper_figures.py \
-  --config paper_artifact_config.json \
-  --output-dir "$REPRODUCED_FIGURE_ROOT"
-PYTHONDONTWRITEBYTECODE=1 python figure/verify_paper_figures.py \
-  --expected-dir verification/expected \
-  --actual-dir "$REPRODUCED_FIGURE_ROOT"
+python artifact_eval.py smoke
+python artifact_eval.py full --output-dir "$ARTIFACT_EVAL_OUTPUT"
 
 python -m codeminer.eval.artifact_bundle archive \
   --bundle "$ARTIFACT_BUILD_ROOT/codeminer-paper-artifact" \
@@ -152,21 +148,9 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-Local `core-rc26` clarifies the agent context-policy labels, the compaction
-trigger, and the Recall@5 admission reference. Relative to RC25, only the
-manifest, figure-program, and expected-figure source groups changed; no retained
-measurement, runtime source, dataset, estimator, or raw claim input changed.
-Its manifest SHA-256 is
-`b749fce51cc67d37f2e22a457aa4e0ea285a567a6ef4c36d0b80eda6bfea754b`;
-its source-lock SHA-256 is
-`3b1db09ffb7517b98405cdaac628c67893c74be50cfb5829feaa839f08960e38`.
-The verified bundle has 7,520 files and 242,338,739 bytes. Its provenance pins
-CodeMiner commit `6ca9e83d816762495baccb7b47f58060b2d6537f` and figure-source
-commit `e210e92d9f257f000841178e70e75a58ef9c35e3`. The bundled runtime
-suite passes 201 tests with seven skips, and the estimator suite passes seven
-tests. A clean 15-job rebuild matches all 18 deterministic outputs, passes all
-133 semantic claims, and embeds fonts in all 15 PDFs.
-
-Two independent deterministic archives are 19,457,399 bytes with SHA-256
-`5ff2cbc4a252d74625c91faa7200689dd27d7125931f5f57d03949b956f1f226`.
-This is a local release candidate, not a public artifact URL.
+`core-rc27` supersedes RC26 because the paper now reports five agent models and
+the 40-transition graph/vector maintenance study. The release candidate must be
+rebuilt after any selected input, figure program, expected output, or artifact
+document changes. Record the final manifest, source-lock, bundle, archive, and
+source-commit identities here only after an extracted-bundle `artifact_eval.py
+full` run passes. A local candidate is not a public artifact URL.

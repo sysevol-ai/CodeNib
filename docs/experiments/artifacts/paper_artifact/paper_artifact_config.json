@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "inputs": {
     "profile_dir": "inputs/profile_log",
     "query_dir": "inputs/profile_log/query_runtime",
@@ -12,7 +12,9 @@
     "faiss_results": "inputs/faiss_index_family_qwen06_100.json",
     "lsp_reports": "inputs/lsp_replay_base_v3_100/reports",
     "lifecycle_summary": "inputs/materialized_trace_batch_v9/summary.json",
-    "incremental_results_dir": "inputs/incremental_graph_v4",
+    "incremental_graph_results": "inputs/incremental_maintenance_v1/results/graph_v21.jsonl",
+    "incremental_vector_results": "inputs/incremental_maintenance_v1/results/vector_v4.jsonl",
+    "incremental_summary": "inputs/incremental_maintenance_v1/results/summary_v2.json",
     "haiku_roots": [
       "inputs/agent/haiku_compare_py",
       "inputs/agent/haiku_compare_multilang",
@@ -24,6 +26,12 @@
     ],
     "qwen27b_roots": [
       "inputs/agent/qwen35_27b_synth_runtime_v1"
+    ],
+    "gemma12b_roots": [
+      "inputs/agent/gemma4_12b_synth_runtime_v1"
+    ],
+    "gemini25_roots": [
+      "inputs/agent/gemini25_flash_synth_runtime_v1"
     ]
   },
   "protocol": {
