@@ -149,8 +149,18 @@ can be published separately, with its own license review and checksum.
 ## Current Release Candidate
 
 `core-rc27` supersedes RC26 because the paper now reports five agent models and
-the 40-transition graph/vector maintenance study. The release candidate must be
-rebuilt after any selected input, figure program, expected output, or artifact
-document changes. Record the final manifest, source-lock, bundle, archive, and
-source-commit identities here only after an extracted-bundle `artifact_eval.py
-full` run passes. A local candidate is not a public artifact URL.
+the 40-transition graph/vector maintenance study. Its manifest SHA-256 is
+`6e5de712a9044a7d0cb098b8293e84310764560cc0056b71f29975ea2208d302`;
+its source-lock SHA-256 is
+`ef93918918611f5d1d2c094fab54638159e58a68741092d8ec1cd651cfd843cb`.
+The verified bundle has 10,556 payload files and 263,940,010 bytes. Provenance
+pins CodeMiner commit `642008ab973ff2965cedef0f3d2df9b2aa01f2bf` and figure
+commit `a0336c91bcd517164838d17dcb0e2a55c685207c`.
+
+An extracted-bundle full run passes 15 estimator tests, reproduces and matches
+all 18 deterministic outputs, passes all 146 semantic claims, and verifies
+embedded fonts in 15 PDFs. The archive is 21,532,067 bytes with SHA-256
+`be4cbfd557364d3d225434297058919e26fbfae4ce397140a35b7081b78e1466`.
+This is a local release candidate, not a public artifact URL. Rebuild it after
+any selected input, figure program, expected output, or bundled document
+changes.
