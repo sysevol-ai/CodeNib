@@ -188,7 +188,16 @@ class SCIPRustGraphDecoder:
             internal_crates.add(root_pkg_name)
 
         for pattern in member_patterns:
-            for member_dir in self.project_root.glob(pattern):
+            # Malformed member globs ("", trailing slash, absolute paths) make
+            # Path.glob raise on Python 3.12; skip them instead of aborting.
+            pattern = str(pattern).strip().rstrip("/")
+            if not pattern or pattern.startswith("/"):
+                continue
+            try:
+                members = list(self.project_root.glob(pattern))
+            except (ValueError, IndexError, OSError):
+                continue
+            for member_dir in members:
                 if not member_dir.is_dir():
                     continue
                 member_cargo = member_dir / "Cargo.toml"
