@@ -152,6 +152,34 @@ class TestDetectChanges:
         assert "baz.ts" not in all_basenames
         assert "bar.rs" not in all_basenames
 
+    def test_optional_test_filter_matches_repository_chunking(self, tmp_path):
+        repo = tmp_path / "test_filter_repo"
+        repo.mkdir()
+        _run(["git", "init"], str(repo))
+        _run(["git", "config", "user.email", "t@t.com"], str(repo))
+        _run(["git", "config", "user.name", "T"], str(repo))
+        (repo / "module.py").write_text("VALUE = 1\n")
+        (repo / "test_module.py").write_text("def test_value(): pass\n")
+        _run(["git", "add", "."], str(repo))
+        _run(["git", "commit", "-m", "initial"], str(repo))
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        (repo / "module.py").write_text("VALUE = 2\n")
+        (repo / "test_module.py").write_text("def test_value(): assert True\n")
+        _run(["git", "add", "."], str(repo))
+        _run(["git", "commit", "-m", "update"], str(repo))
+
+        changes = GitDiffDetector(
+            supported_extensions={".py"}, exclude_tests=True
+        ).detect_changes(str(repo), base)
+
+        assert [Path(path).name for path in changes.modified] == ["module.py"]
+
     def test_rename_deletes_old_path(self, tmp_path):
         """
         Git renames must produce a delete for the old path AND a modify for

@@ -1,0 +1,2137 @@
+{
+  "schema_version": 2,
+  "transition_manifest_id": "adbe906131b740d6c15c59381bb6da806f3b62e4e05e6e3d22d27c7c3093b10f",
+  "input_manifest_ids": [
+    "adbe906131b740d6c15c59381bb6da806f3b62e4e05e6e3d22d27c7c3093b10f"
+  ],
+  "graph": {
+    "overall": {
+      "rows": 40,
+      "source_changing_rows": 33,
+      "no_source_change_rows": 7,
+      "rows_with_error": 0,
+      "symbol": {
+        "measured": 33,
+        "observed_amortized_speedup_vs_full": {
+          "count": 33,
+          "p25": 4.8328433209211425,
+          "p50": 8.669695520331173,
+          "p75": 17.002436298176573,
+          "geomean": 7.80140082621108,
+          "min": 0.7030438699644344,
+          "max": 62.1701715621219
+        },
+        "observed_steady_speedup_vs_full": {
+          "count": 33,
+          "p25": 5.25084636538768,
+          "p50": 9.767407554631902,
+          "p75": 23.4443172668868,
+          "geomean": 10.949146020920196,
+          "min": 0.7104340447901931,
+          "max": 290.4933627366681
+        },
+        "admitted": 15,
+        "admission_rate": 0.45454545454545453,
+        "amortized_speedup_vs_full": {
+          "count": 15,
+          "p25": 5.948457884991896,
+          "p50": 8.669695520331173,
+          "p75": 10.988627860251562,
+          "geomean": 8.084892504172199,
+          "min": 2.5471982742741393,
+          "max": 20.7440635194581
+        },
+        "steady_speedup_vs_full": {
+          "count": 15,
+          "p25": 7.002895777043385,
+          "p50": 11.283347985382923,
+          "p75": 19.01286402448485,
+          "geomean": 10.811855396767509,
+          "min": 2.567238782873223,
+          "max": 26.345505771705945
+        },
+        "amortized_update_s": {
+          "count": 15,
+          "p25": 5.072020390862599,
+          "p50": 9.377727592550219,
+          "p75": 30.868244921043512,
+          "geomean": 12.895259386432901,
+          "min": 2.151702801417559,
+          "max": 179.28362585166468
+        },
+        "fault_inclusive_amortized_speedup_vs_full": {
+          "count": 15,
+          "p25": 5.948457884991896,
+          "p50": 8.669695520331173,
+          "p75": 10.988627860251562,
+          "geomean": 8.084892504172199,
+          "min": 2.5471982742741393,
+          "max": 20.7440635194581
+        },
+        "fault_inclusive_update_s": {
+          "count": 15,
+          "p25": 5.072020390862599,
+          "p50": 9.377727592550219,
+          "p75": 30.868244921043512,
+          "geomean": 12.895259386432901,
+          "min": 2.151702801417559,
+          "max": 179.28362585166468
+        },
+        "steady_update_s": {
+          "count": 15,
+          "p25": 2.6568702354561538,
+          "p50": 8.093338422942907,
+          "p75": 29.583855751436204,
+          "geomean": 9.642820970755656,
+          "min": 1.4594407980330288,
+          "max": 177.8840929879807
+        }
+      },
+      "file": {
+        "measured": 33,
+        "observed_amortized_speedup_vs_full": {
+          "count": 33,
+          "p25": 1.1519371007006418,
+          "p50": 2.02907646512494,
+          "p75": 3.063245897065001,
+          "geomean": 1.9058476026378715,
+          "min": 0.2879163499947112,
+          "max": 21.909024456121475
+        },
+        "observed_steady_speedup_vs_full": {
+          "count": 33,
+          "p25": 1.1612855584300754,
+          "p50": 2.1217625076266744,
+          "p75": 3.396132448856117,
+          "geomean": 2.0336525628048423,
+          "min": 0.28918050867640693,
+          "max": 31.546024627408414
+        },
+        "admitted": 14,
+        "admission_rate": 0.42424242424242425,
+        "amortized_speedup_vs_full": {
+          "count": 14,
+          "p25": 1.3761219004031946,
+          "p50": 1.9544250177079783,
+          "p75": 2.8440771438176626,
+          "geomean": 1.88479065977169,
+          "min": 0.6587244404825007,
+          "max": 4.504633060226325
+        },
+        "steady_speedup_vs_full": {
+          "count": 14,
+          "p25": 1.4379687538250068,
+          "p50": 2.171856689543125,
+          "p75": 2.9025283917133717,
+          "geomean": 2.039003687648716,
+          "min": 0.6601527522436091,
+          "max": 5.8575087070404965
+        }
+      },
+      "paired": {
+        "measured": 33,
+        "observed_symbol_speedup_vs_file": {
+          "count": 33,
+          "p25": 2.365814155755504,
+          "p50": 3.8968471868769776,
+          "p75": 6.954003327890553,
+          "geomean": 4.093402229755001,
+          "min": 0.9594079479012534,
+          "max": 22.2806456533843
+        },
+        "admitted": 14,
+        "symbol_speedup_vs_file": {
+          "count": 14,
+          "p25": 2.809842532826048,
+          "p50": 4.254471422111007,
+          "p75": 5.504437390760994,
+          "geomean": 4.432742667102847,
+          "min": 1.9729695528847828,
+          "max": 16.736720746000827
+        }
+      },
+      "fully_rebuild_s": {
+        "count": 33,
+        "p25": 51.01394346123561,
+        "p50": 178.79073002422228,
+        "p75": 665.6511216387153,
+        "geomean": 172.28198112799947,
+        "min": 11.426325685810298,
+        "max": 1493.5142269469798
+      },
+      "reliability": {
+        "fully-rebuild": {
+          "attempted_rows": 33,
+          "succeeded_rows": 33,
+          "failed_rows": 0,
+          "recovered_rows": 0,
+          "failed_attempts": 0,
+          "strategy_attempts": {
+            "count": 33,
+            "p25": 1.0,
+            "p50": 1.0,
+            "p75": 1.0,
+            "geomean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "recovery_s": {
+            "count": 33,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "geomean": null,
+            "min": 0.0,
+            "max": 0.0
+          }
+        },
+        "file-level-patch": {
+          "attempted_rows": 33,
+          "succeeded_rows": 33,
+          "failed_rows": 0,
+          "recovered_rows": 0,
+          "failed_attempts": 0,
+          "strategy_attempts": {
+            "count": 33,
+            "p25": 1.0,
+            "p50": 1.0,
+            "p75": 1.0,
+            "geomean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "recovery_s": {
+            "count": 33,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "geomean": null,
+            "min": 0.0,
+            "max": 0.0
+          }
+        },
+        "symbol-level-patch": {
+          "attempted_rows": 33,
+          "succeeded_rows": 33,
+          "failed_rows": 0,
+          "recovered_rows": 0,
+          "failed_attempts": 0,
+          "strategy_attempts": {
+            "count": 33,
+            "p25": 1.0,
+            "p50": 1.0,
+            "p75": 1.0,
+            "geomean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "recovery_s": {
+            "count": 33,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "geomean": null,
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      "fidelity": {
+        "file-level-patch": {
+          "rows": 33,
+          "behavior_exact": 18,
+          "behavior_exact_rate": 0.5454545454545454,
+          "raw_whole_exact": 14,
+          "raw_whole_exact_rate": 0.42424242424242425,
+          "raw_changed_exact": 23,
+          "raw_changed_exact_rate": 0.696969696969697,
+          "strict_exact": 14,
+          "strict_exact_rate": 0.42424242424242425,
+          "fallback_rows": 0,
+          "behavior_agreement": {
+            "count": 33,
+            "p25": 0.9795081967213115,
+            "p50": 1.0,
+            "p75": 1.0,
+            "geomean": 0.9615934015032799,
+            "min": 0.6494845360824743,
+            "max": 1.0
+          },
+          "edge_f1": {
+            "count": 33,
+            "p25": 0.9672471771181493,
+            "p50": 0.9945459245761269,
+            "p75": 1.0,
+            "geomean": 0.9841540420192793,
+            "min": 0.9341519843388504,
+            "max": 1.0
+          },
+          "reference_edge_f1": {
+            "count": 33,
+            "p25": 0.9578552766102466,
+            "p50": 0.9938008088809684,
+            "p75": 1.0,
+            "geomean": 0.9733869138326241,
+            "min": 0.84767393989296,
+            "max": 1.0
+          },
+          "changed_edge_f1": {
+            "count": 33,
+            "p25": 0.9891282051282051,
+            "p50": 1.0,
+            "p75": 1.0,
+            "geomean": 0.9842654065066244,
+            "min": 0.8636763412489006,
+            "max": 1.0
+          }
+        },
+        "symbol-level-patch": {
+          "rows": 33,
+          "behavior_exact": 19,
+          "behavior_exact_rate": 0.5757575757575758,
+          "raw_whole_exact": 15,
+          "raw_whole_exact_rate": 0.45454545454545453,
+          "raw_changed_exact": 21,
+          "raw_changed_exact_rate": 0.6363636363636364,
+          "strict_exact": 15,
+          "strict_exact_rate": 0.45454545454545453,
+          "fallback_rows": 5,
+          "behavior_agreement": {
+            "count": 33,
+            "p25": 0.9783464566929134,
+            "p50": 1.0,
+            "p75": 1.0,
+            "geomean": 0.9742295202060772,
+            "min": 0.734375,
+            "max": 1.0
+          },
+          "edge_f1": {
+            "count": 33,
+            "p25": 0.9760892165201777,
+            "p50": 0.9999894569262723,
+            "p75": 1.0,
+            "geomean": 0.9883992862579253,
+            "min": 0.9524328249818447,
+            "max": 1.0
+          },
+          "reference_edge_f1": {
+            "count": 33,
+            "p25": 0.9589106545628285,
+            "p50": 0.9999890514145572,
+            "p75": 1.0,
+            "geomean": 0.9808409437529392,
+            "min": 0.8869715271786023,
+            "max": 1.0
+          },
+          "changed_edge_f1": {
+            "count": 33,
+            "p25": 0.9913651315789475,
+            "p50": 1.0,
+            "p75": 1.0,
+            "geomean": 0.9831645882907186,
+            "min": 0.8371278458844134,
+            "max": 1.0
+          }
+        }
+      }
+    },
+    "by_language": {
+      "go": {
+        "rows": 10,
+        "source_changing_rows": 7,
+        "no_source_change_rows": 3,
+        "rows_with_error": 0,
+        "symbol": {
+          "measured": 7,
+          "observed_amortized_speedup_vs_full": {
+            "count": 7,
+            "p25": 6.990029897373974,
+            "p50": 8.887503874744743,
+            "p75": 10.010926468156226,
+            "geomean": 8.098458340200006,
+            "min": 4.8328433209211425,
+            "max": 11.659432153091323
+          },
+          "observed_steady_speedup_vs_full": {
+            "count": 7,
+            "p25": 11.267418422033373,
+            "p50": 15.4324589948741,
+            "p75": 19.624739774882926,
+            "geomean": 14.222130263678483,
+            "min": 6.785343577850153,
+            "max": 26.345505771705945
+          },
+          "admitted": 7,
+          "admission_rate": 1.0,
+          "amortized_speedup_vs_full": {
+            "count": 7,
+            "p25": 6.990029897373974,
+            "p50": 8.887503874744743,
+            "p75": 10.010926468156226,
+            "geomean": 8.098458340200006,
+            "min": 4.8328433209211425,
+            "max": 11.659432153091323
+          },
+          "steady_speedup_vs_full": {
+            "count": 7,
+            "p25": 11.267418422033373,
+            "p50": 15.4324589948741,
+            "p75": 19.624739774882926,
+            "geomean": 14.222130263678483,
+            "min": 6.785343577850153,
+            "max": 26.345505771705945
+          },
+          "amortized_update_s": {
+            "count": 7,
+            "p25": 3.3691590092144907,
+            "p50": 4.577010630257428,
+            "p75": 5.630876520974562,
+            "geomean": 4.090105593478115,
+            "min": 2.151702801417559,
+            "max": 5.8841678282246
+          },
+          "fault_inclusive_amortized_speedup_vs_full": {
+            "count": 7,
+            "p25": 6.990029897373974,
+            "p50": 8.887503874744743,
+            "p75": 10.010926468156226,
+            "geomean": 8.098458340200006,
+            "min": 4.8328433209211425,
+            "max": 11.659432153091323
+          },
+          "fault_inclusive_update_s": {
+            "count": 7,
+            "p25": 3.3691590092144907,
+            "p50": 4.577010630257428,
+            "p75": 5.630876520974562,
+            "geomean": 4.090105593478115,
+            "min": 2.151702801417559,
+            "max": 5.8841678282246
+          },
+          "steady_update_s": {
+            "count": 7,
+            "p25": 1.8154529298190027,
+            "p50": 2.1618604748509824,
+            "p75": 3.2157263655681163,
+            "geomean": 2.329014651229491,
+            "min": 1.4594407980330288,
+            "max": 3.469017672818154
+          }
+        },
+        "file": {
+          "measured": 7,
+          "observed_amortized_speedup_vs_full": {
+            "count": 7,
+            "p25": 1.6212535439319389,
+            "p50": 2.02907646512494,
+            "p75": 3.7807658462339484,
+            "geomean": 2.1651978586611724,
+            "min": 0.6858854541117465,
+            "max": 4.504633060226325
+          },
+          "observed_steady_speedup_vs_full": {
+            "count": 7,
+            "p25": 1.7805954997175975,
+            "p50": 2.2651886073283274,
+            "p75": 4.7339570433581235,
+            "geomean": 2.509732448704041,
+            "min": 0.714472759891764,
+            "max": 5.8575087070404965
+          },
+          "admitted": 7,
+          "admission_rate": 1.0,
+          "amortized_speedup_vs_full": {
+            "count": 7,
+            "p25": 1.6212535439319389,
+            "p50": 2.02907646512494,
+            "p75": 3.7807658462339484,
+            "geomean": 2.1651978586611724,
+            "min": 0.6858854541117465,
+            "max": 4.504633060226325
+          },
+          "steady_speedup_vs_full": {
+            "count": 7,
+            "p25": 1.7805954997175975,
+            "p50": 2.2651886073283274,
+            "p75": 4.7339570433581235,
+            "geomean": 2.509732448704041,
+            "min": 0.714472759891764,
+            "max": 5.8575087070404965
+          }
+        },
+        "paired": {
+          "measured": 7,
+          "observed_symbol_speedup_vs_file": {
+            "count": 7,
+            "p25": 2.67604165932584,
+            "p50": 3.8968471868769776,
+            "p75": 5.179136239456829,
+            "geomean": 3.740285585358747,
+            "min": 1.9729695528847828,
+            "max": 7.04613764871264
+          },
+          "admitted": 7,
+          "symbol_speedup_vs_file": {
+            "count": 7,
+            "p25": 2.67604165932584,
+            "p50": 3.8968471868769776,
+            "p75": 5.179136239456829,
+            "geomean": 3.740285585358747,
+            "min": 1.9729695528847828,
+            "max": 7.04613764871264
+          }
+        },
+        "fully_rebuild_s": {
+          "count": 7,
+          "p25": 30.721303784055635,
+          "p50": 50.51523481402546,
+          "p75": 50.647607306949794,
+          "geomean": 33.123549755801555,
+          "min": 11.426325685810298,
+          "max": 51.01394346123561
+        },
+        "reliability": {
+          "fully-rebuild": {
+            "attempted_rows": 7,
+            "succeeded_rows": 7,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 7,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          },
+          "file-level-patch": {
+            "attempted_rows": 7,
+            "succeeded_rows": 7,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 7,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          },
+          "symbol-level-patch": {
+            "attempted_rows": 7,
+            "succeeded_rows": 7,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 7,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          }
+        },
+        "fidelity": {
+          "file-level-patch": {
+            "rows": 7,
+            "behavior_exact": 7,
+            "behavior_exact_rate": 1.0,
+            "raw_whole_exact": 7,
+            "raw_whole_exact_rate": 1.0,
+            "raw_changed_exact": 7,
+            "raw_changed_exact_rate": 1.0,
+            "strict_exact": 7,
+            "strict_exact_rate": 1.0,
+            "fallback_rows": 0,
+            "behavior_agreement": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "edge_f1": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "reference_edge_f1": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "changed_edge_f1": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            }
+          },
+          "symbol-level-patch": {
+            "rows": 7,
+            "behavior_exact": 7,
+            "behavior_exact_rate": 1.0,
+            "raw_whole_exact": 7,
+            "raw_whole_exact_rate": 1.0,
+            "raw_changed_exact": 7,
+            "raw_changed_exact_rate": 1.0,
+            "strict_exact": 7,
+            "strict_exact_rate": 1.0,
+            "fallback_rows": 0,
+            "behavior_agreement": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "edge_f1": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "reference_edge_f1": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "changed_edge_f1": {
+              "count": 7,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            }
+          }
+        }
+      },
+      "python": {
+        "rows": 10,
+        "source_changing_rows": 8,
+        "no_source_change_rows": 2,
+        "rows_with_error": 0,
+        "symbol": {
+          "measured": 8,
+          "observed_amortized_speedup_vs_full": {
+            "count": 8,
+            "p25": 6.216219543468435,
+            "p50": 6.950706920580611,
+            "p75": 12.99775939207945,
+            "geomean": 8.07304103998807,
+            "min": 2.5471982742741393,
+            "max": 20.7440635194581
+          },
+          "observed_steady_speedup_vs_full": {
+            "count": 8,
+            "p25": 6.368186024334477,
+            "p50": 7.315003633132348,
+            "p75": 14.017652430559854,
+            "geomean": 8.505872294225274,
+            "min": 2.567238782873223,
+            "max": 22.33927364852844
+          },
+          "admitted": 8,
+          "admission_rate": 1.0,
+          "amortized_speedup_vs_full": {
+            "count": 8,
+            "p25": 6.216219543468435,
+            "p50": 6.950706920580611,
+            "p75": 12.99775939207945,
+            "geomean": 8.07304103998807,
+            "min": 2.5471982742741393,
+            "max": 20.7440635194581
+          },
+          "steady_speedup_vs_full": {
+            "count": 8,
+            "p25": 6.368186024334477,
+            "p50": 7.315003633132348,
+            "p75": 14.017652430559854,
+            "geomean": 8.505872294225274,
+            "min": 2.567238782873223,
+            "max": 22.33927364852844
+          },
+          "amortized_update_s": {
+            "count": 8,
+            "p25": 24.42486848726403,
+            "p50": 30.868244921043512,
+            "p75": 48.12189001850784,
+            "geomean": 35.21994708690615,
+            "min": 9.377727592550219,
+            "max": 179.28362585166468
+          },
+          "fault_inclusive_amortized_speedup_vs_full": {
+            "count": 8,
+            "p25": 6.216219543468435,
+            "p50": 6.950706920580611,
+            "p75": 12.99775939207945,
+            "geomean": 8.07304103998807,
+            "min": 2.5471982742741393,
+            "max": 20.7440635194581
+          },
+          "fault_inclusive_update_s": {
+            "count": 8,
+            "p25": 24.42486848726403,
+            "p50": 30.868244921043512,
+            "p75": 48.12189001850784,
+            "geomean": 35.21994708690615,
+            "min": 9.377727592550219,
+            "max": 179.28362585166468
+          },
+          "steady_update_s": {
+            "count": 8,
+            "p25": 23.111693394137546,
+            "p50": 29.583855751436204,
+            "p75": 46.72235715482384,
+            "geomean": 33.42773891066263,
+            "min": 8.093338422942907,
+            "max": 177.8840929879807
+          }
+        },
+        "file": {
+          "measured": 8,
+          "observed_amortized_speedup_vs_full": {
+            "count": 8,
+            "p25": 1.0286339356461065,
+            "p50": 1.6026289137950043,
+            "p75": 2.3243577262254416,
+            "geomean": 1.4445992112004917,
+            "min": 0.5926228823003118,
+            "max": 2.9744608191394444
+          },
+          "observed_steady_speedup_vs_full": {
+            "count": 8,
+            "p25": 1.0360023568834589,
+            "p50": 1.6115477316615232,
+            "p75": 2.3481811780722404,
+            "geomean": 1.4575664779120119,
+            "min": 0.5950682727659957,
+            "max": 3.0379724760922575
+          },
+          "admitted": 7,
+          "admission_rate": 0.875,
+          "amortized_speedup_vs_full": {
+            "count": 7,
+            "p25": 1.2841120747974175,
+            "p50": 1.7889707786958158,
+            "p75": 2.3672138567677337,
+            "geomean": 1.6406980160968818,
+            "min": 0.6587244404825007,
+            "max": 2.9744608191394444
+          },
+          "steady_speedup_vs_full": {
+            "count": 7,
+            "p25": 1.2921775771521633,
+            "p50": 1.800025867448795,
+            "p75": 2.3975194982403982,
+            "geomean": 1.6565654400300327,
+            "min": 0.6601527522436091,
+            "max": 3.0379724760922575
+          }
+        },
+        "paired": {
+          "measured": 8,
+          "observed_symbol_speedup_vs_file": {
+            "count": 8,
+            "p25": 3.5997611375999483,
+            "p50": 4.714897879917279,
+            "p75": 9.359850870141575,
+            "geomean": 5.588429633212389,
+            "min": 2.365814155755504,
+            "max": 16.736720746000827
+          },
+          "admitted": 7,
+          "symbol_speedup_vs_file": {
+            "count": 7,
+            "p25": 3.3326575928930207,
+            "p50": 4.650576661496451,
+            "p75": 8.187374321654831,
+            "geomean": 5.253397662913867,
+            "min": 2.365814155755504,
+            "max": 16.736720746000827
+          }
+        },
+        "fully_rebuild_s": {
+          "count": 8,
+          "p25": 180.54097794147674,
+          "p50": 309.56167462817393,
+          "p75": 447.70474121381994,
+          "geomean": 284.3320782588019,
+          "min": 178.79073002422228,
+          "max": 456.67094237497076
+        },
+        "reliability": {
+          "fully-rebuild": {
+            "attempted_rows": 8,
+            "succeeded_rows": 8,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 8,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          },
+          "file-level-patch": {
+            "attempted_rows": 8,
+            "succeeded_rows": 8,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 8,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          },
+          "symbol-level-patch": {
+            "attempted_rows": 8,
+            "succeeded_rows": 8,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 8,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          }
+        },
+        "fidelity": {
+          "file-level-patch": {
+            "rows": 8,
+            "behavior_exact": 8,
+            "behavior_exact_rate": 1.0,
+            "raw_whole_exact": 7,
+            "raw_whole_exact_rate": 0.875,
+            "raw_changed_exact": 8,
+            "raw_changed_exact_rate": 1.0,
+            "strict_exact": 7,
+            "strict_exact_rate": 0.875,
+            "fallback_rows": 0,
+            "behavior_agreement": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "edge_f1": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 0.9999977437866705,
+              "min": 0.999981950435897,
+              "max": 1.0
+            },
+            "reference_edge_f1": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 0.999997238091687,
+              "min": 0.9999779049470824,
+              "max": 1.0
+            },
+            "changed_edge_f1": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            }
+          },
+          "symbol-level-patch": {
+            "rows": 8,
+            "behavior_exact": 8,
+            "behavior_exact_rate": 1.0,
+            "raw_whole_exact": 8,
+            "raw_whole_exact_rate": 1.0,
+            "raw_changed_exact": 8,
+            "raw_changed_exact_rate": 1.0,
+            "strict_exact": 8,
+            "strict_exact_rate": 1.0,
+            "fallback_rows": 0,
+            "behavior_agreement": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "edge_f1": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "reference_edge_f1": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "changed_edge_f1": {
+              "count": 8,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            }
+          }
+        }
+      },
+      "rust": {
+        "rows": 10,
+        "source_changing_rows": 9,
+        "no_source_change_rows": 1,
+        "rows_with_error": 0,
+        "symbol": {
+          "measured": 9,
+          "observed_amortized_speedup_vs_full": {
+            "count": 9,
+            "p25": 8.969208018651809,
+            "p50": 17.002436298176573,
+            "p75": 40.42331801087605,
+            "geomean": 16.04740782771245,
+            "min": 3.187059382219523,
+            "max": 62.1701715621219
+          },
+          "observed_steady_speedup_vs_full": {
+            "count": 9,
+            "p25": 9.767407554631902,
+            "p50": 26.03063723399752,
+            "p75": 64.54549387895149,
+            "geomean": 27.224314070420316,
+            "min": 3.3219730591684584,
+            "max": 290.4933627366681
+          },
+          "admitted": 0,
+          "admission_rate": 0.0,
+          "amortized_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "steady_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "amortized_update_s": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "fault_inclusive_amortized_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "fault_inclusive_update_s": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "steady_update_s": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          }
+        },
+        "file": {
+          "measured": 9,
+          "observed_amortized_speedup_vs_full": {
+            "count": 9,
+            "p25": 2.7903218124506464,
+            "p50": 3.063245897065001,
+            "p75": 3.3150743645233365,
+            "geomean": 2.8326450450449383,
+            "min": 1.524131559573104,
+            "max": 3.8125621548713475
+          },
+          "observed_steady_speedup_vs_full": {
+            "count": 9,
+            "p25": 2.8926880249252522,
+            "p50": 3.396132448856117,
+            "p75": 3.7436366272992707,
+            "geomean": 2.980447545690595,
+            "min": 1.5544166311548429,
+            "max": 3.9373450284144016
+          },
+          "admitted": 0,
+          "admission_rate": 0.0,
+          "amortized_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "steady_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          }
+        },
+        "paired": {
+          "measured": 9,
+          "observed_symbol_speedup_vs_file": {
+            "count": 9,
+            "p25": 2.4019349839430535,
+            "p50": 5.1288250061990075,
+            "p75": 11.13883722605208,
+            "geomean": 5.6651672103371045,
+            "min": 2.091065802162243,
+            "max": 22.2806456533843
+          },
+          "admitted": 0,
+          "symbol_speedup_vs_file": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          }
+        },
+        "fully_rebuild_s": {
+          "count": 9,
+          "p25": 678.9950673929416,
+          "p50": 1474.9503276213072,
+          "p75": 1487.1048650937155,
+          "geomean": 1044.6769130165246,
+          "min": 665.6511216387153,
+          "max": 1493.5142269469798
+        },
+        "reliability": {
+          "fully-rebuild": {
+            "attempted_rows": 9,
+            "succeeded_rows": 9,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 9,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 9,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          },
+          "file-level-patch": {
+            "attempted_rows": 9,
+            "succeeded_rows": 9,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 9,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 9,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          },
+          "symbol-level-patch": {
+            "attempted_rows": 9,
+            "succeeded_rows": 9,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 9,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 9,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          }
+        },
+        "fidelity": {
+          "file-level-patch": {
+            "rows": 9,
+            "behavior_exact": 0,
+            "behavior_exact_rate": 0.0,
+            "raw_whole_exact": 0,
+            "raw_whole_exact_rate": 0.0,
+            "raw_changed_exact": 5,
+            "raw_changed_exact_rate": 0.5555555555555556,
+            "strict_exact": 0,
+            "strict_exact_rate": 0.0,
+            "fallback_rows": 0,
+            "behavior_agreement": {
+              "count": 9,
+              "p25": 0.8923076923076924,
+              "p50": 0.9656862745098039,
+              "p75": 0.9901574803149606,
+              "geomean": 0.8925837801531263,
+              "min": 0.6494845360824743,
+              "max": 0.998046875
+            },
+            "edge_f1": {
+              "count": 9,
+              "p25": 0.964365353504438,
+              "p50": 0.9912325245735838,
+              "p75": 0.9937833634567693,
+              "geomean": 0.980282042144143,
+              "min": 0.9607517482517482,
+              "max": 0.9946065963215728
+            },
+            "reference_edge_f1": {
+              "count": 9,
+              "p25": 0.9540549224168887,
+              "p50": 0.9900313123641913,
+              "p75": 0.9929343308395678,
+              "geomean": 0.97499550193539,
+              "min": 0.949106434427778,
+              "max": 0.9938712046779163
+            },
+            "changed_edge_f1": {
+              "count": 9,
+              "p25": 0.9782608695652174,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 0.9739316728380859,
+              "min": 0.8636763412489006,
+              "max": 1.0
+            }
+          },
+          "symbol-level-patch": {
+            "rows": 9,
+            "behavior_exact": 0,
+            "behavior_exact_rate": 0.0,
+            "raw_whole_exact": 0,
+            "raw_whole_exact_rate": 0.0,
+            "raw_changed_exact": 3,
+            "raw_changed_exact_rate": 0.3333333333333333,
+            "strict_exact": 0,
+            "strict_exact_rate": 0.0,
+            "fallback_rows": 0,
+            "behavior_agreement": {
+              "count": 9,
+              "p25": 0.8923076923076924,
+              "p50": 0.974025974025974,
+              "p75": 0.9783464566929134,
+              "geomean": 0.9273155539142514,
+              "min": 0.734375,
+              "max": 0.998046875
+            },
+            "edge_f1": {
+              "count": 9,
+              "p25": 0.9634540844577858,
+              "p50": 0.9912477350301293,
+              "p75": 0.9945210028225137,
+              "geomean": 0.98017163905066,
+              "min": 0.9612337624512145,
+              "max": 0.9948621727468486
+            },
+            "reference_edge_f1": {
+              "count": 9,
+              "p25": 0.9528938268805622,
+              "p50": 0.9900486785871712,
+              "p75": 0.9937725288979025,
+              "geomean": 0.9748367863364348,
+              "min": 0.9498111782477342,
+              "max": 0.9941637628584445
+            },
+            "changed_edge_f1": {
+              "count": 9,
+              "p25": 0.9743589743589743,
+              "p50": 0.9951456310679612,
+              "p75": 1.0,
+              "geomean": 0.9629105542297626,
+              "min": 0.8371278458844134,
+              "max": 1.0
+            }
+          }
+        }
+      },
+      "ts": {
+        "rows": 10,
+        "source_changing_rows": 9,
+        "no_source_change_rows": 1,
+        "rows_with_error": 0,
+        "symbol": {
+          "measured": 9,
+          "observed_amortized_speedup_vs_full": {
+            "count": 9,
+            "p25": 1.3201330433340386,
+            "p50": 1.9737399652105216,
+            "p75": 7.591817598062697,
+            "geomean": 3.573585665955645,
+            "min": 0.7030438699644344,
+            "max": 29.696375244911312
+          },
+          "observed_steady_speedup_vs_full": {
+            "count": 9,
+            "p25": 1.3603828974438095,
+            "p50": 2.0346298346236757,
+            "p75": 8.5983377745657,
+            "geomean": 4.497145244318593,
+            "min": 0.7104340447901931,
+            "max": 100.75166042834898
+          },
+          "admitted": 0,
+          "admission_rate": 0.0,
+          "amortized_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "steady_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "amortized_update_s": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "fault_inclusive_amortized_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "fault_inclusive_update_s": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "steady_update_s": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          }
+        },
+        "file": {
+          "measured": 9,
+          "observed_amortized_speedup_vs_full": {
+            "count": 9,
+            "p25": 1.0917190055998465,
+            "p50": 1.1162719813756217,
+            "p75": 1.7829678839940573,
+            "geomean": 1.485448384850262,
+            "min": 0.2879163499947112,
+            "max": 21.909024456121475
+          },
+          "observed_steady_speedup_vs_full": {
+            "count": 9,
+            "p25": 1.1104371861956817,
+            "p50": 1.1444087223035913,
+            "p75": 1.853257778462148,
+            "geomean": 1.5841556788716573,
+            "min": 0.28918050867640693,
+            "max": 31.546024627408414
+          },
+          "admitted": 0,
+          "admission_rate": 0.0,
+          "amortized_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          },
+          "steady_speedup_vs_full": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          }
+        },
+        "paired": {
+          "measured": 9,
+          "observed_symbol_speedup_vs_file": {
+            "count": 9,
+            "p25": 1.1826266943538184,
+            "p50": 1.295401790531009,
+            "p75": 6.855254886520955,
+            "geomean": 2.405728601815992,
+            "min": 0.9594079479012534,
+            "max": 10.418274065993927
+          },
+          "admitted": 0,
+          "symbol_speedup_vs_file": {
+            "count": 0,
+            "p25": null,
+            "p50": null,
+            "p75": null,
+            "geomean": null,
+            "min": null,
+            "max": null
+          }
+        },
+        "fully_rebuild_s": {
+          "count": 9,
+          "p25": 52.63166161393747,
+          "p50": 58.035891416016966,
+          "p75": 84.66599309723824,
+          "geomean": 65.62312768429047,
+          "min": 47.971436655148864,
+          "max": 92.19366173120216
+        },
+        "reliability": {
+          "fully-rebuild": {
+            "attempted_rows": 9,
+            "succeeded_rows": 9,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 9,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 9,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          },
+          "file-level-patch": {
+            "attempted_rows": 9,
+            "succeeded_rows": 9,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 9,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 9,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          },
+          "symbol-level-patch": {
+            "attempted_rows": 9,
+            "succeeded_rows": 9,
+            "failed_rows": 0,
+            "recovered_rows": 0,
+            "failed_attempts": 0,
+            "strategy_attempts": {
+              "count": 9,
+              "p25": 1.0,
+              "p50": 1.0,
+              "p75": 1.0,
+              "geomean": 1.0,
+              "min": 1.0,
+              "max": 1.0
+            },
+            "recovery_s": {
+              "count": 9,
+              "p25": 0.0,
+              "p50": 0.0,
+              "p75": 0.0,
+              "geomean": null,
+              "min": 0.0,
+              "max": 0.0
+            }
+          }
+        },
+        "fidelity": {
+          "file-level-patch": {
+            "rows": 9,
+            "behavior_exact": 3,
+            "behavior_exact_rate": 0.3333333333333333,
+            "raw_whole_exact": 0,
+            "raw_whole_exact_rate": 0.0,
+            "raw_changed_exact": 3,
+            "raw_changed_exact_rate": 0.3333333333333333,
+            "strict_exact": 0,
+            "strict_exact_rate": 0.0,
+            "fallback_rows": 0,
+            "behavior_agreement": {
+              "count": 9,
+              "p25": 0.9795081967213115,
+              "p50": 0.9891304347826086,
+              "p75": 1.0,
+              "geomean": 0.9704796115999177,
+              "min": 0.8423236514522822,
+              "max": 1.0
+            },
+            "edge_f1": {
+              "count": 9,
+              "p25": 0.9603868328063977,
+              "p50": 0.9653589252215947,
+              "p75": 0.9672522760241791,
+              "geomean": 0.9620872354910994,
+              "min": 0.9341519843388504,
+              "max": 0.9701436130007558
+            },
+            "reference_edge_f1": {
+              "count": 9,
+              "p25": 0.9046553267681289,
+              "p50": 0.9270207852193995,
+              "p75": 0.9640725785305995,
+              "geomean": 0.9290632886995643,
+              "min": 0.84767393989296,
+              "max": 0.9660355007681345
+            },
+            "changed_edge_f1": {
+              "count": 9,
+              "p25": 0.9608227228207641,
+              "p50": 0.98262225687869,
+              "p75": 1.0,
+              "geomean": 0.9687602762280554,
+              "min": 0.8740245261984393,
+              "max": 1.0
+            }
+          },
+          "symbol-level-patch": {
+            "rows": 9,
+            "behavior_exact": 4,
+            "behavior_exact_rate": 0.4444444444444444,
+            "raw_whole_exact": 0,
+            "raw_whole_exact_rate": 0.0,
+            "raw_changed_exact": 3,
+            "raw_changed_exact_rate": 0.3333333333333333,
+            "strict_exact": 0,
+            "strict_exact_rate": 0.0,
+            "fallback_rows": 5,
+            "behavior_agreement": {
+              "count": 9,
+              "p25": 0.9795081967213115,
+              "p50": 0.9953271028037384,
+              "p75": 1.0,
+              "geomean": 0.9799347698143311,
+              "min": 0.8838174273858921,
+              "max": 1.0
+            },
+            "edge_f1": {
+              "count": 9,
+              "p25": 0.9656979405613064,
+              "p50": 0.9760892165201777,
+              "p75": 0.9835249042145594,
+              "geomean": 0.9774999696353441,
+              "min": 0.9524328249818447,
+              "max": 0.9999894569262723
+            },
+            "reference_edge_f1": {
+              "count": 9,
+              "p25": 0.941094295692666,
+              "p50": 0.9589106545628285,
+              "p75": 0.9644237049394472,
+              "geomean": 0.9555708829820887,
+              "min": 0.8869715271786023,
+              "max": 0.9999890514145572
+            },
+            "changed_edge_f1": {
+              "count": 9,
+              "p25": 0.9717682020802377,
+              "p50": 0.9913651315789475,
+              "p75": 1.0,
+              "geomean": 0.9758361171993822,
+              "min": 0.8869565217391304,
+              "max": 1.0
+            }
+          }
+        }
+      }
+    },
+    "protocol_versions": [
+      21
+    ],
+    "completeness": {
+      "expected_rows": 40,
+      "observed_transition_rows": 40,
+      "unique_transition_rows": 40,
+      "missing": [],
+      "unexpected": [],
+      "duplicates": [],
+      "complete": true
+    },
+    "backend_setup": {
+      "symbol-level-patch": {
+        "instances": 8,
+        "server_start_s": {
+          "count": 8,
+          "p25": 0.24340508610475808,
+          "p50": 0.6519854872021824,
+          "p75": 0.8770965075818822,
+          "geomean": 0.4887962884717118,
+          "min": 0.07295067189261317,
+          "max": 3.2765040011145175
+        },
+        "workspace_warmup_s": {
+          "count": 8,
+          "p25": 4.224316259147599,
+          "p50": 5.997015121625736,
+          "p75": 16.27795619540848,
+          "geomean": 9.257200601606959,
+          "min": 3.14544184692204,
+          "max": 93.42041426710784
+        },
+        "phase_cold_start_s": {
+          "count": 8,
+          "p25": 6.238120088702999,
+          "p50": 6.709805083228275,
+          "p75": 16.80358966172207,
+          "geomean": 10.898806742433429,
+          "min": 3.4613100169226527,
+          "max": 93.54789828928187
+        }
+      },
+      "file-level-patch": {
+        "instances": 8,
+        "server_start_s": {
+          "count": 8,
+          "p25": 0.2257179922889918,
+          "p50": 0.6698342673480511,
+          "p75": 0.7188774958485737,
+          "geomean": 0.4240153043135853,
+          "min": 0.11612617457285523,
+          "max": 1.0567100648768246
+        },
+        "workspace_warmup_s": {
+          "count": 8,
+          "p25": 5.32927355542779,
+          "p50": 6.238756795646623,
+          "p75": 16.259944773628376,
+          "geomean": 9.990748581619675,
+          "min": 3.1334852701984346,
+          "max": 93.41805681260303
+        },
+        "phase_cold_start_s": {
+          "count": 8,
+          "p25": 6.137548738042824,
+          "p50": 6.963660502340645,
+          "p75": 16.79895320464857,
+          "geomean": 10.894006880187353,
+          "min": 3.3912508632056415,
+          "max": 93.54763200273737
+        }
+      }
+    },
+    "provider_stability": {
+      "rows": 4,
+      "successful_rows": 4,
+      "comparisons": 4,
+      "whole_exact": 1,
+      "changed_exact": 3,
+      "behavior_exact": 2,
+      "fresh_rebuild_s": {
+        "count": 4,
+        "p25": 81.15960290818475,
+        "p50": 380.01492414204404,
+        "p75": 878.4531408626353,
+        "geomean": 260.15973569336313,
+        "min": 49.54118806915358,
+        "max": 1508.8202421618626
+      },
+      "edge_f1": {
+        "count": 4,
+        "p25": 0.988234432937959,
+        "p50": 0.9975453719723475,
+        "p75": 0.9998565879188092,
+        "geomean": 0.9904503301585282,
+        "min": 0.9670918515929874,
+        "max": 1.0
+      },
+      "reference_edge_f1": {
+        "count": 4,
+        "p25": 0.985379250168632,
+        "p50": 0.9972201684806414,
+        "p75": 0.9998510629616029,
+        "geomean": 0.9878496742984961,
+        "min": 0.9576002416370912,
+        "max": 1.0
+      },
+      "behavior_agreement": {
+        "count": 4,
+        "p25": 0.9590097402597403,
+        "p50": 0.9935064935064934,
+        "p75": 1.0,
+        "geomean": 0.9640126437368886,
+        "min": 0.875,
+        "max": 1.0
+      },
+      "cases": [
+        {
+          "instance_id": "astral-sh__ruff-15309",
+          "language": "rust",
+          "step": 1,
+          "repeat": 1,
+          "edge_f1": 0.9952819600529496,
+          "reference_edge_f1": 0.9946389196791456,
+          "behavior_agreement": 0.987012987012987,
+          "changed_exact": true
+        },
+        {
+          "instance_id": "tokio-rs__tokio-4898",
+          "language": "rust",
+          "step": 2,
+          "repeat": 1,
+          "edge_f1": 0.9670918515929874,
+          "reference_edge_f1": 0.9576002416370912,
+          "behavior_agreement": 0.875,
+          "changed_exact": false
+        },
+        {
+          "instance_id": "preactjs__preact-2757",
+          "language": "ts",
+          "step": 3,
+          "repeat": 1,
+          "edge_f1": 0.9998087838917455,
+          "reference_edge_f1": 0.9998014172821371,
+          "behavior_agreement": 1.0,
+          "changed_exact": true
+        },
+        {
+          "instance_id": "axios__axios-4731",
+          "language": "ts",
+          "step": 5,
+          "repeat": 1,
+          "edge_f1": 1.0,
+          "reference_edge_f1": 1.0,
+          "behavior_agreement": 1.0,
+          "changed_exact": true
+        }
+      ]
+    }
+  },
+  "vector": {
+    "overall": {
+      "rows": 40,
+      "source_changing_rows": 31,
+      "no_source_change_rows": 9,
+      "rows_with_error": 0,
+      "fidelity": {
+        "artifact_exact": 31,
+        "ordered_replay_exact": 28,
+        "set_replay_exact": 28
+      },
+      "incremental": {
+        "admitted": 28,
+        "admission_rate": 0.9032258064516129,
+        "speedup_vs_full": {
+          "count": 28,
+          "p25": 15.2427222635152,
+          "p50": 25.437482968001504,
+          "p75": 35.15481917223187,
+          "geomean": 21.91397120608385,
+          "min": 6.143123258277459,
+          "max": 49.256947780181555
+        },
+        "update_s": {
+          "count": 28,
+          "p25": 0.40707186493091285,
+          "p50": 0.4972491569351405,
+          "p75": 1.1063206497346982,
+          "geomean": 0.5815532856325488,
+          "min": 0.12010231567546725,
+          "max": 4.157873376272619
+        },
+        "cache_hit_rate": {
+          "count": 28,
+          "p25": 0.996087233549583,
+          "p50": 0.9988334671438486,
+          "p75": 0.9996840442338073,
+          "geomean": 0.9931968469406549,
+          "min": 0.0,
+          "max": 1.0
+        },
+        "chunks_reembedded": {
+          "count": 28,
+          "p25": 1.0,
+          "p50": 1.0,
+          "p75": 3.0,
+          "geomean": 2.148995985838957,
+          "min": 0.0,
+          "max": 12.0
+        }
+      },
+      "fully_rebuild_s": {
+        "count": 31,
+        "p25": 4.228500342462212,
+        "p50": 17.508697364013642,
+        "p75": 34.24411876453087,
+        "geomean": 15.472810880662701,
+        "min": 3.087216567248106,
+        "max": 96.12265575304627
+      }
+    },
+    "by_language": {
+      "go": {
+        "rows": 10,
+        "source_changing_rows": 7,
+        "no_source_change_rows": 3,
+        "rows_with_error": 0,
+        "fidelity": {
+          "artifact_exact": 7,
+          "ordered_replay_exact": 7,
+          "set_replay_exact": 7
+        },
+        "incremental": {
+          "admitted": 7,
+          "admission_rate": 1.0,
+          "speedup_vs_full": {
+            "count": 7,
+            "p25": 22.17945411515527,
+            "p50": 27.605141007316742,
+            "p75": 31.771391144440692,
+            "geomean": 27.436594391855774,
+            "min": 17.710563597833787,
+            "max": 49.256947780181555
+          },
+          "update_s": {
+            "count": 7,
+            "p25": 0.4206611078698188,
+            "p50": 0.5918489079922438,
+            "p75": 0.7442413540557027,
+            "geomean": 0.5668305244340415,
+            "min": 0.3785796072334051,
+            "max": 0.8564148508012295
+          },
+          "cache_hit_rate": {
+            "count": 7,
+            "p25": 0.9973211847972949,
+            "p50": 0.9988372093023256,
+            "p75": 0.9988382223823898,
+            "geomean": 0.9979657026296282,
+            "min": 0.9951923076923077,
+            "max": 0.999418942475305
+          },
+          "chunks_reembedded": {
+            "count": 7,
+            "p25": 2.0,
+            "p50": 2.0,
+            "p75": 3.0,
+            "geomean": 2.2456485239871014,
+            "min": 1.0,
+            "max": 4.0
+          }
+        },
+        "fully_rebuild_s": {
+          "count": 7,
+          "p25": 14.039953937055543,
+          "p50": 20.74204114312306,
+          "p75": 20.853418175131083,
+          "geomean": 15.551899187819684,
+          "min": 7.522613808047026,
+          "max": 20.901509813033044
+        }
+      },
+      "python": {
+        "rows": 10,
+        "source_changing_rows": 6,
+        "no_source_change_rows": 4,
+        "rows_with_error": 0,
+        "fidelity": {
+          "artifact_exact": 6,
+          "ordered_replay_exact": 6,
+          "set_replay_exact": 6
+        },
+        "incremental": {
+          "admitted": 6,
+          "admission_rate": 1.0,
+          "speedup_vs_full": {
+            "count": 6,
+            "p25": 37.416270642854045,
+            "p50": 38.181542311083454,
+            "p75": 38.749310095590474,
+            "geomean": 36.80366201470573,
+            "min": 29.19777035737431,
+            "max": 40.345677559524454
+          },
+          "update_s": {
+            "count": 6,
+            "p25": 0.4611981841735542,
+            "p50": 0.8480156441219151,
+            "p75": 1.2488719945540652,
+            "geomean": 0.7862712662767852,
+            "min": 0.43396711675450206,
+            "max": 1.6387426862493157
+          },
+          "cache_hit_rate": {
+            "count": 6,
+            "p25": 0.997578765210392,
+            "p50": 0.9991222937390287,
+            "p75": 0.9994148624926857,
+            "geomean": 0.9989637703322957,
+            "min": 0.0,
+            "max": 1.0
+          },
+          "chunks_reembedded": {
+            "count": 6,
+            "p25": 0.25,
+            "p50": 1.0,
+            "p75": 1.75,
+            "geomean": 2.0597671439071177,
+            "min": 0.0,
+            "max": 9.0
+          }
+        },
+        "fully_rebuild_s": {
+          "count": 6,
+          "p25": 17.564901856007054,
+          "p50": 32.58224766654894,
+          "p75": 47.684759126161225,
+          "geomean": 28.937661935925483,
+          "min": 17.508697364013642,
+          "max": 47.84763262793422
+        }
+      },
+      "rust": {
+        "rows": 10,
+        "source_changing_rows": 9,
+        "no_source_change_rows": 1,
+        "rows_with_error": 0,
+        "fidelity": {
+          "artifact_exact": 9,
+          "ordered_replay_exact": 6,
+          "set_replay_exact": 6
+        },
+        "incremental": {
+          "admitted": 6,
+          "admission_rate": 0.6666666666666666,
+          "speedup_vs_full": {
+            "count": 6,
+            "p25": 14.262262538445992,
+            "p50": 19.42558898618187,
+            "p75": 24.787350648941654,
+            "geomean": 19.60098578302832,
+            "min": 13.320409421530803,
+            "max": 33.536418699471476
+          },
+          "update_s": {
+            "count": 6,
+            "p25": 1.1063206497346982,
+            "p50": 1.225412602070719,
+            "p75": 2.438950906624086,
+            "geomean": 1.5236052829400353,
+            "min": 0.6580763948149979,
+            "max": 4.157873376272619
+          },
+          "cache_hit_rate": {
+            "count": 6,
+            "p25": 0.9997410918027032,
+            "p50": 0.9999122345093909,
+            "p75": 0.9999780586273477,
+            "geomean": 0.9998654173794012,
+            "min": 0.9996840442338073,
+            "max": 1.0
+          },
+          "chunks_reembedded": {
+            "count": 6,
+            "p25": 0.25,
+            "p50": 1.0,
+            "p75": 1.0,
+            "geomean": 1.0,
+            "min": 0.0,
+            "max": 1.0
+          }
+        },
+        "fully_rebuild_s": {
+          "count": 9,
+          "p25": 16.678107562940568,
+          "p50": 94.34701792895794,
+          "p75": 94.81880004517734,
+          "geomean": 43.862621152868584,
+          "min": 16.58317627105862,
+          "max": 96.12265575304627
+        }
+      },
+      "ts": {
+        "rows": 10,
+        "source_changing_rows": 9,
+        "no_source_change_rows": 1,
+        "rows_with_error": 0,
+        "fidelity": {
+          "artifact_exact": 9,
+          "ordered_replay_exact": 9,
+          "set_replay_exact": 9
+        },
+        "incremental": {
+          "admitted": 9,
+          "admission_rate": 1.0,
+          "speedup_vs_full": {
+            "count": 9,
+            "p25": 8.917771277693882,
+            "p50": 13.627114632631676,
+            "p75": 25.53124035285212,
+            "geomean": 14.027653694696994,
+            "min": 6.143123258277459,
+            "max": 35.14628685184877
+          },
+          "update_s": {
+            "count": 9,
+            "p25": 0.14542711712419987,
+            "p50": 0.2475484819151461,
+            "p75": 0.4537875377573073,
+            "geomean": 0.2553135337151186,
+            "min": 0.12010231567546725,
+            "max": 0.5228803008794785
+          },
+          "cache_hit_rate": {
+            "count": 9,
+            "p25": 0.9646017699115044,
+            "p50": 0.9909502262443439,
+            "p75": 0.9970674486803519,
+            "geomean": 0.9819355071819634,
+            "min": 0.9510204081632653,
+            "max": 1.0
+          },
+          "chunks_reembedded": {
+            "count": 9,
+            "p25": 1.0,
+            "p50": 2.0,
+            "p75": 8.0,
+            "geomean": 3.096308593747355,
+            "min": 0.0,
+            "max": 12.0
+          }
+        },
+        "fully_rebuild_s": {
+          "count": 9,
+          "p25": 3.1420869608409703,
+          "p50": 3.21211813762784,
+          "p75": 4.221150438301265,
+          "geomean": 3.5814498345250287,
+          "min": 3.087216567248106,
+          "max": 4.231128240935504
+        }
+      }
+    },
+    "protocol_versions": [
+      4
+    ],
+    "completeness": {
+      "expected_rows": 40,
+      "observed_transition_rows": 40,
+      "unique_transition_rows": 40,
+      "missing": [],
+      "unexpected": [],
+      "duplicates": [],
+      "complete": true
+    }
+  }
+}

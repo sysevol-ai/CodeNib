@@ -25,6 +25,30 @@ def _profiler_section(profiler, label, metadata=None):
     return profiler.section(label, metadata)
 
 
+def hierarchical_chunker_kwargs(
+    languages: List[str], max_lines_per_chunk: Optional[int]
+) -> Dict[str, Dict[str, object]]:
+    """Return the canonical chunker contract for each vector-index level."""
+    repo_cfg = RepoChunkingConfig(languages=languages)
+    return {
+        "l0": {
+            "language": languages[0],
+            "repo_config": repo_cfg,
+            "max_lines_per_chunk": None,
+            "chunk_depth": 0,
+            "skeleton_mode": True,
+        },
+        "l2": {
+            "language": languages[0],
+            "repo_config": repo_cfg,
+            "max_lines_per_chunk": max_lines_per_chunk,
+            "chunk_depth": 2,
+            "l2_level_exclusive": True,
+            "skeleton_mode": False,
+        },
+    }
+
+
 def build_hierarchical_vector_store(
     *,
     repo_path: str,
@@ -83,36 +107,14 @@ def build_hierarchical_vector_store(
 
     languages = languages or ["python"]
     build_levels = [level.lower() for level in (build_levels or ["l0", "l2"])]
-    repo_cfg = RepoChunkingConfig(languages=languages)
-
     chunks_by_level = {}
-    level_configs = {
-        "l0": dict(
-            chunker_kwargs=dict(
-                language=languages[0],
-                repo_config=repo_cfg,
-                max_lines_per_chunk=None,
-                chunk_depth=0,
-                skeleton_mode=True,
-            )
-        ),
-        "l2": dict(
-            chunker_kwargs=dict(
-                language=languages[0],
-                repo_config=repo_cfg,
-                max_lines_per_chunk=max_lines_per_chunk,
-                chunk_depth=2,
-                l2_level_exclusive=True,
-                skeleton_mode=False,
-            )
-        ),
-    }
+    level_configs = hierarchical_chunker_kwargs(languages, max_lines_per_chunk)
 
     for level in build_levels:
-        cfg = level_configs.get(level)
-        if not cfg:
+        chunker_kwargs = level_configs.get(level)
+        if not chunker_kwargs:
             continue
-        chunker = CodeChunker(**cfg["chunker_kwargs"])
+        chunker = CodeChunker(**chunker_kwargs)
         with _profiler_section(
             profiler,
             f"chunking_{level}",

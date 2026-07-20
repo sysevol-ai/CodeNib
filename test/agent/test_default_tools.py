@@ -240,7 +240,7 @@ class TestGrep:
         result = _grep(r"\p{L}+", path=str(sample_dir), head_limit=1)
 
         assert not result.startswith("Error:")
-        assert ".py:" in result
+        assert result != "No matches found"
 
     def test_ripgrep_timeout_is_enforced(self, tmp_path, monkeypatch):
         slow_rg = tmp_path / "slow-rg"

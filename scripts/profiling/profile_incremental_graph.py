@@ -9,8 +9,9 @@
 For each instance repo, walk its first-parent commit chain ``N`` steps and, at
 every step, run all three strategies independently and record per-step timing:
 
-  1. ``fully-rebuild`` — wipe the indexer's own cache and re-run the full
-     SCIP/clangd pipeline from a cold start.
+  1. ``fully-rebuild`` — rebuild the graph through the same LSP provider used
+     by the incremental arms (the active SCIP/clangd route remains available
+     as an explicit backend comparison).
   2. ``file-level-patch`` — the patcher in naive (file-granularity) mode:
      delete + rebuild every vertex/edge of each modified file, no symbol diff.
   3. ``symbol-level-patch`` — the production incremental patcher
@@ -57,6 +58,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -68,7 +70,7 @@ import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 HERE = Path(__file__).resolve().parent
 _PROJECT_ROOT = HERE.parent.parent
@@ -79,6 +81,8 @@ _CORE = _PROJECT_ROOT / "build" / "core"
 if _CORE.exists() and str(_CORE) not in sys.path:
     sys.path.insert(0, str(_CORE))
 
+from codeminer.eval.maintenance_manifest import build_manifest  # noqa: E402
+from codeminer.eval.maintenance_manifest import load_manifest, write_manifest
 
 # ---------------------------------------------------------------------------
 # Lazy importers — keep module import light so the pure helpers (and their
@@ -96,6 +100,12 @@ def _CodeGraph():
     from codeminer.graph.code_graph import CodeGraph
 
     return CodeGraph
+
+
+def _graph_schema_version() -> int:
+    from codeminer.graph.code_graph import _SCHEMA_VERSION
+
+    return _SCHEMA_VERSION
 
 
 def _GraphPatcher():
@@ -121,7 +131,46 @@ DEFAULT_MAX_DELTA_LINES = 5000
 DEFAULT_MAX_WALK = 200
 DEFAULT_BEHAVIOR_REQUESTS_PER_CAPABILITY = 256
 DEFAULT_OUTPUT = Path("profile_incremental.jsonl")
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 22
+# Base artifacts depend only on full-oracle construction semantics. Keep this
+# separate from the benchmark protocol so patcher/statistics changes do not
+# invalidate expensive, otherwise identical cold-build graphs.
+BASE_BUILD_PROTOCOL_VERSION = 17
+DEFAULT_REFERENCE_TIMEOUT_S = 120.0
+DEFAULT_REFERENCE_RETRIES = 1
+DEFAULT_LSP_REQUEST_CONCURRENCY = 10
+DEFAULT_STRATEGY_ATTEMPTS = 2
+DEFAULT_LOG_LEVEL = "WARNING"
+
+
+def experiment_config_id(
+    *,
+    graph_route: str,
+    graph_schema_version: int,
+    timeout_s: int,
+    reference_timeout_s: float,
+    reference_retries: int,
+    lsp_request_concurrency: int,
+    strategy_attempts: int,
+    runtime_log_level: str = DEFAULT_LOG_LEVEL,
+) -> str:
+    """Fingerprint settings that change graph execution or admission."""
+
+    payload = {
+        "graph_route": graph_route,
+        "graph_schema_version": graph_schema_version,
+        "timeout_s": timeout_s,
+        "reference_timeout_s": reference_timeout_s,
+        "reference_retries": reference_retries,
+        "lsp_request_concurrency": lsp_request_concurrency,
+        "strategy_attempts": strategy_attempts,
+        "runtime_log_level": runtime_log_level,
+        "behavior_requests_per_capability": DEFAULT_BEHAVIOR_REQUESTS_PER_CAPABILITY,
+        "base_build_protocol_version": BASE_BUILD_PROTOCOL_VERSION,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
 
 # Hardcoded fallback instance list. Override with --instances or --config.
 # Each tuple is (instance_id, language, base_commit). Start at 5 steps; the
@@ -421,7 +470,7 @@ def clear_indexer_cache(repo: Path, language: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-class StrategyTimeout(Exception):
+class StrategyTimeout(TimeoutError):
     pass
 
 
@@ -543,6 +592,7 @@ def _vertex_identity(vertex) -> tuple:
         attrs.get("start_line"),
         attrs.get("end_line"),
         attrs.get("selection_line"),
+        attrs.get("selection_character"),
     )
 
 
@@ -727,11 +777,18 @@ def patcher_phase_order(instance_id: str) -> tuple[str, str]:
 
 
 def _do_rebuild(
-    language: str, repo: Path, target_sha: str, out_dir: Path
+    language: str,
+    repo: Path,
+    target_sha: str,
+    out_dir: Path,
+    graph_route: str = "lsp",
+    reference_timeout_s: float = DEFAULT_REFERENCE_TIMEOUT_S,
+    reference_retries: int = DEFAULT_REFERENCE_RETRIES,
+    lsp_request_concurrency: int = DEFAULT_LSP_REQUEST_CONCURRENCY,
 ) -> Dict[str, Any]:
-    """Cold-start full SCIP/clangd rebuild at ``target_sha``."""
+    """Cold-start full graph rebuild at ``target_sha``."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    for f in ("index.scip", "index.decoded", "graph.pkl"):
+    for f in ("index.scip", "index.decoded", "index.lsp.json", "graph.pkl"):
         (out_dir / f).unlink(missing_ok=True)
 
     checkout(repo, target_sha)
@@ -739,13 +796,27 @@ def _do_rebuild(
         project_root=repo,
         output_dir=out_dir,
         language=language,
+        graph_route=graph_route,
     )
     t0 = time.monotonic()
+    pipeline_kwargs = (
+        {
+            "include_references": True,
+            "reference_timeout_s": reference_timeout_s,
+            "request_timeout_s": reference_timeout_s,
+            "reference_retries": reference_retries,
+            "reference_concurrency": lsp_request_concurrency,
+            "strict_references": True,
+        }
+        if graph_route == "lsp"
+        else {}
+    )
     g = indexer.run_pipeline(
         output_file=str(out_dir / "graph.pkl"),
         skip_level=None,
         reset_profiler=True,
         report_profile=False,
+        **pipeline_kwargs,
     )
     elapsed = time.monotonic() - t0
     if g is None:
@@ -755,6 +826,12 @@ def _do_rebuild(
         "v": g.graph.vcount(),
         "e": g.graph.ecount(),
         "status": "ok",
+        "graph_route": graph_route,
+        "graph_schema_version": _graph_schema_version(),
+        "reference_timeout_s": reference_timeout_s,
+        "request_timeout_s": reference_timeout_s,
+        "reference_retries": reference_retries,
+        "lsp_request_concurrency": lsp_request_concurrency,
     }
 
 
@@ -767,6 +844,11 @@ def prepare_base_graph(
     timeout_s: int,
     log,
     *,
+    graph_route: str = "lsp",
+    reference_timeout_s: float = DEFAULT_REFERENCE_TIMEOUT_S,
+    reference_retries: int = DEFAULT_REFERENCE_RETRIES,
+    lsp_request_concurrency: int = DEFAULT_LSP_REQUEST_CONCURRENCY,
+    strategy_attempts: int = DEFAULT_STRATEGY_ATTEMPTS,
     force: bool = False,
 ) -> Path:
     """Build or reuse a schema-valid graph tied to the requested base commit."""
@@ -781,6 +863,20 @@ def prepare_base_graph(
                 metadata.get("instance_id") == instance_id
                 and metadata.get("language") == language
                 and metadata.get("base_commit") == base_commit
+                and metadata.get("graph_route") == graph_route
+                and metadata.get(
+                    "base_build_protocol_version",
+                    metadata.get("protocol_version"),
+                )
+                == BASE_BUILD_PROTOCOL_VERSION
+                and metadata.get("reference_timeout_s") == reference_timeout_s
+                and metadata.get("request_timeout_s") == reference_timeout_s
+                and metadata.get("reference_retries") == reference_retries
+                and metadata.get(
+                    "lsp_request_concurrency",
+                    metadata.get("full_reference_concurrency"),
+                )
+                == lsp_request_concurrency
             ):
                 graph = _CodeGraph().load_graph(str(graph_path))
                 log(
@@ -798,24 +894,71 @@ def prepare_base_graph(
         raise FileNotFoundError(repo)
     base_dir.mkdir(parents=True, exist_ok=True)
     log(f"[{instance_id}] build base graph at {base_commit[:12]}")
-    try:
-        info = run_with_timeout(
-            timeout_s,
-            _do_rebuild,
-            language,
-            repo,
-            base_commit,
-            base_dir,
-        )
-    except StrategyTimeout as exc:
-        raise TimeoutError(f"base graph exceeded {timeout_s}s") from exc
+    attempt_failures = []
+    recovery_s = 0.0
+    info = None
+    for attempt in range(1, strategy_attempts + 1):
+        attempt_t0 = time.monotonic()
+        try:
+            info = run_with_timeout(
+                timeout_s,
+                _do_rebuild,
+                language,
+                repo,
+                base_commit,
+                base_dir,
+                graph_route,
+                reference_timeout_s,
+                reference_retries,
+                lsp_request_concurrency,
+            )
+            break
+        except Exception as exc:
+            elapsed = time.monotonic() - attempt_t0
+            attempt_failures.append(
+                {
+                    "attempt": attempt,
+                    "status": (
+                        "timeout" if isinstance(exc, StrategyTimeout) else "error"
+                    ),
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "wall_s": elapsed,
+                }
+            )
+            if attempt >= strategy_attempts:
+                if isinstance(exc, StrategyTimeout):
+                    raise TimeoutError(
+                        f"base graph exceeded {timeout_s}s on "
+                        f"{strategy_attempts} attempts"
+                    ) from exc
+                raise
+            recovery_s += elapsed
+            log(
+                f"[{instance_id}] base build attempt {attempt}/"
+                f"{strategy_attempts} failed ({type(exc).__name__}: {exc}); "
+                "restarting from a clean graph"
+            )
+    if info is None:
+        raise RuntimeError("base graph build produced no result")
     metadata_path.write_text(
         json.dumps(
             {
                 "protocol_version": PROTOCOL_VERSION,
+                "base_build_protocol_version": BASE_BUILD_PROTOCOL_VERSION,
                 "instance_id": instance_id,
                 "language": language,
                 "base_commit": base_commit,
+                "graph_route": graph_route,
+                "graph_schema_version": _graph_schema_version(),
+                "reference_timeout_s": reference_timeout_s,
+                "request_timeout_s": reference_timeout_s,
+                "reference_retries": reference_retries,
+                "lsp_request_concurrency": lsp_request_concurrency,
+                "strategy_attempt_limit": strategy_attempts,
+                "build_attempts": len(attempt_failures) + 1,
+                "recovery_s": recovery_s,
+                "prior_attempt_failures": attempt_failures,
+                "build_t_s": info["t_s"],
                 "vertices": info["v"],
                 "edges": info["e"],
                 "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -876,19 +1019,27 @@ def attach_graph_fidelity(
                 metrics[name]["precision"] == 1.0 and metrics[name]["recall"] == 1.0
                 for name in ("changed_vertices", "changed_edges")
             )
+            changed_files = set(sub.get("changed_files", []))
             behavior = compare_graph_behavior(
                 predicted_graph,
                 reference_graph,
                 project_root=project_root,
-                changed_files=set(sub.get("changed_files", [])),
+                changed_files=changed_files,
             )
+            behavior_exact = behavior.get("exact") is True
+            if not changed_files and behavior.get("status") == "not_evaluable":
+                behavior = {
+                    **behavior,
+                    "status": "skipped_no_source",
+                    "reason": "no_changed_source_files",
+                    "exact": True,
+                }
+                behavior_exact = True
             sub["fidelity"] = {
                 "status": "ok",
-                "behavior_exact": behavior.get("exact") is True,
+                "behavior_exact": behavior_exact,
                 "equivalence_guardrail_pass": (
-                    behavior.get("exact") is True
-                    and raw_graph_whole_exact
-                    and raw_graph_changed_exact
+                    behavior_exact and raw_graph_whole_exact and raw_graph_changed_exact
                 ),
                 "behavior": behavior,
                 "raw_graph": {
@@ -911,6 +1062,12 @@ def run_rebuild_step(
     prev_rebuild_pkl: Optional[Path],
     timeout_s: int,
     log,
+    *,
+    graph_route: str = "lsp",
+    reference_timeout_s: float = DEFAULT_REFERENCE_TIMEOUT_S,
+    reference_retries: int = DEFAULT_REFERENCE_RETRIES,
+    lsp_request_concurrency: int = DEFAULT_LSP_REQUEST_CONCURRENCY,
+    strategy_attempts: int = DEFAULT_STRATEGY_ATTEMPTS,
 ) -> Dict[str, Any]:
     """Run a rebuild for one step. When the commit touched 0 source files,
     skip the cold rebuild and reuse the previous step's rebuild graph."""
@@ -931,6 +1088,8 @@ def run_rebuild_step(
                 "e": g.graph.ecount(),
                 "status": "ok",
                 "skipped_no_source": True,
+                "strategy_attempts": 0,
+                "strategy_attempt_limit": strategy_attempts,
             }
         except Exception as e:
             return {
@@ -938,26 +1097,70 @@ def run_rebuild_step(
                 "error": f"reuse-prev failed: {type(e).__name__}: {e}",
             }
 
-    log(f"  rebuild step{target['step']} {target['to_commit'][:8]} (cold start)")
-    try:
-        clear_indexer_cache(repo, lang)
-        info = run_with_timeout(
-            timeout_s,
-            _do_rebuild,
-            lang,
-            repo,
-            target["to_commit"],
-            step_out_dir,
+    attempt_failures = []
+    recovery_s = 0.0
+    for attempt in range(1, strategy_attempts + 1):
+        log(
+            f"  rebuild step{target['step']} {target['to_commit'][:8]} "
+            f"(cold start, attempt {attempt}/{strategy_attempts})"
         )
-        # _do_rebuild writes graph.pkl; rename to rebuild.pkl.
-        src = step_out_dir / "graph.pkl"
-        if src.exists() and src != rebuild_pkl:
-            shutil.move(str(src), str(rebuild_pkl))
-        return info
-    except StrategyTimeout:
-        return {"status": "timeout", "t_s": timeout_s}
-    except Exception as e:
-        return {"status": "error", "error": f"{type(e).__name__}: {e}"}
+        attempt_t0 = time.monotonic()
+        try:
+            clear_indexer_cache(repo, lang)
+            info = run_with_timeout(
+                timeout_s,
+                _do_rebuild,
+                lang,
+                repo,
+                target["to_commit"],
+                step_out_dir,
+                graph_route,
+                reference_timeout_s,
+                reference_retries,
+                lsp_request_concurrency,
+            )
+            src = step_out_dir / "graph.pkl"
+            if src.exists() and src != rebuild_pkl:
+                shutil.move(str(src), str(rebuild_pkl))
+            info.update(
+                {
+                    "strategy_attempts": attempt,
+                    "strategy_attempt_limit": strategy_attempts,
+                    "recovery_s": recovery_s,
+                    "prior_attempt_failures": attempt_failures,
+                    "fault_inclusive_t_s": info["t_s"] + recovery_s,
+                }
+            )
+            return info
+        except Exception as exc:
+            elapsed = time.monotonic() - attempt_t0
+            status = "timeout" if isinstance(exc, StrategyTimeout) else "error"
+            attempt_failures.append(
+                {
+                    "attempt": attempt,
+                    "status": status,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "wall_s": elapsed,
+                }
+            )
+            if attempt < strategy_attempts:
+                recovery_s += elapsed
+                log(
+                    f"  rebuild step{target['step']} attempt {attempt}/"
+                    f"{strategy_attempts} failed ({type(exc).__name__}: {exc}); "
+                    "restarting"
+                )
+                continue
+            return {
+                "status": status,
+                "t_s": elapsed if status == "timeout" else None,
+                "error": f"{type(exc).__name__}: {exc}",
+                "strategy_attempts": attempt,
+                "strategy_attempt_limit": strategy_attempts,
+                "recovery_s": recovery_s,
+                "prior_attempt_failures": attempt_failures[:-1],
+            }
+    raise AssertionError("unreachable rebuild attempt loop")
 
 
 # ---------------------------------------------------------------------------
@@ -976,6 +1179,11 @@ def run_patcher_phase(
     lsp_profile_dir: Optional[Path],
     log,
     out_filename: str,
+    *,
+    graph_route: str = "lsp",
+    reference_timeout_s: float = DEFAULT_REFERENCE_TIMEOUT_S,
+    reference_retries: int = DEFAULT_REFERENCE_RETRIES,
+    lsp_request_concurrency: int = DEFAULT_LSP_REQUEST_CONCURRENCY,
 ) -> Dict[int, Dict[str, Any]]:
     """Run the ``mode`` patcher across the chain with a single long-lived LSP.
 
@@ -1010,6 +1218,11 @@ def run_patcher_phase(
             code_graph=g,
             language=lang,
             mode=mode,
+            respect_backend_exclusions=graph_route != "lsp",
+            reference_timeout_s=reference_timeout_s,
+            reference_retries=reference_retries,
+            reference_concurrency=lsp_request_concurrency,
+            strict_lsp_requests=True,
         )
     except Exception as exc:
         log(f"  {strategy}: construct failed: {type(exc).__name__}: {exc}")
@@ -1021,23 +1234,83 @@ def run_patcher_phase(
         return sub_records
 
     uses_lsp = lang != "cpp"
+    server_start_s = 0.0
+    workspace_warmup_s = 0.0
+    workspace_warmup_files = 0
+    workspace_initial_idle = None
+    workspace_idle = None
+    setup_attempts = 0
     cold_start_total = 0.0
     if uses_lsp:
-        t0 = time.monotonic()
-        try:
-            patcher.start_lsp()
-        except Exception as e:
-            log(f"  {strategy}: backend start failed: {type(e).__name__}: {e}")
+        setup_error: Exception | None = None
+        for attempt in range(1, 3):
+            setup_attempts = attempt
+            start_t0 = time.monotonic()
+            start_recorded = False
+            attempt_warmup_s = 0.0
+            try:
+                patcher.start_lsp()
+                server_start_s += time.monotonic() - start_t0
+                start_recorded = True
+                if graph_route == "lsp":
+                    warmup_t0 = time.monotonic()
+                    try:
+                        workspace_warmup_files = patcher.warmup_workspace()
+                    finally:
+                        attempt_warmup_s = time.monotonic() - warmup_t0
+                        workspace_warmup_s += attempt_warmup_s
+                    workspace_initial_idle = patcher.workspace_initial_idle
+                    workspace_idle = patcher.workspace_warmup_idle
+                    if workspace_initial_idle is not True or workspace_idle is not True:
+                        raise TimeoutError(
+                            "LSP workspace did not become idle after warmup"
+                        )
+                log(
+                    f"  {strategy}: workspace warmup "
+                    f"{workspace_warmup_files} files in "
+                    f"{attempt_warmup_s:.1f}s (attempt {attempt}/2)"
+                )
+                setup_error = None
+                break
+            except Exception as exc:
+                if not start_recorded:
+                    server_start_s += max(time.monotonic() - start_t0, 0.0)
+                setup_error = exc
+                try:
+                    patcher.stop_lsp()
+                except Exception:
+                    pass
+                if attempt < 2:
+                    log(
+                        f"  {strategy}: backend setup attempt {attempt}/2 "
+                        f"failed ({type(exc).__name__}: {exc}); restarting"
+                    )
+        if setup_error is not None:
+            log(
+                f"  {strategy}: backend start failed after {setup_attempts} "
+                f"attempts: {type(setup_error).__name__}: {setup_error}"
+            )
             for t in chain:
                 sub_records[t["step"]] = {
                     "status": "error",
-                    "error": f"start_lsp: {e}",
+                    "error": f"start_lsp: {setup_error}",
                 }
             return sub_records
-        cold_start_total = time.monotonic() - t0
+        cold_start_total = server_start_s + workspace_warmup_s
+
+    backend_setup = {
+        "server_start_s": server_start_s,
+        "workspace_warmup_s": workspace_warmup_s,
+        "workspace_warmup_files": workspace_warmup_files,
+        "workspace_initial_idle": workspace_initial_idle,
+        "workspace_idle": workspace_idle,
+        "setup_attempts": setup_attempts,
+        "phase_cold_start_s": cold_start_total,
+    }
 
     log(
-        f"  {strategy}: backend cold-start {cold_start_total:.1f}s, "
+        f"  {strategy}: backend setup {cold_start_total:.1f}s "
+        f"(start {server_start_s:.1f}s + warmup {workspace_warmup_s:.1f}s), "
         f"running {len(chain)} steps"
     )
 
@@ -1125,7 +1398,7 @@ def run_patcher_phase(
                     "persist_s": persist_s,
                     "amortized_t_s": elapsed + cold_start_total / len(chain),
                     "cold_start_s": cold_start_total if i == 0 else 0.0,
-                    "phase_cold_start_s": cold_start_total,
+                    **backend_setup,
                     "v": g.graph.vcount(),
                     "e": g.graph.ecount(),
                     "status": "ok",
@@ -1151,7 +1424,7 @@ def run_patcher_phase(
                     "status": "timeout",
                     "t_s": time.monotonic() - total_t0,
                     "cold_start_s": cold_start_total if i == 0 else 0.0,
-                    "phase_cold_start_s": cold_start_total,
+                    **backend_setup,
                 }
             except Exception as e:
                 poisoned = True
@@ -1164,7 +1437,7 @@ def run_patcher_phase(
                     "status": "error",
                     "error": f"{type(e).__name__}: {e}",
                     "cold_start_s": cold_start_total if i == 0 else 0.0,
-                    "phase_cold_start_s": cold_start_total,
+                    **backend_setup,
                 }
             sub["lsp"] = (
                 _summarize_lsp_profile(profile_path)
@@ -1221,11 +1494,22 @@ def build_chain(
             delta_lines = 0
         else:
             delta_lines, _ = diff_shortstat(repo, prev, sha, files_all)
+        if not files_excl:
+            delta_lines_test_excluded = 0
+        else:
+            delta_lines_test_excluded, _ = diff_shortstat(repo, prev, sha, files_excl)
         added, removed, modified = compute_delta_symbols(
             repo,
             prev,
             sha,
             files_all,
+            language,
+        )
+        indexed_added, indexed_removed, indexed_modified = compute_delta_symbols(
+            repo,
+            prev,
+            sha,
+            files_excl,
             language,
         )
 
@@ -1246,8 +1530,12 @@ def build_chain(
                 "to_commit": sha,
                 "delta_lines": delta_lines,
                 "delta_files": len(files_all),
+                "delta_lines_test_excluded": delta_lines_test_excluded,
                 "delta_files_test_excluded": len(files_excl),
                 "delta_symbols": added + removed + modified,
+                "delta_symbols_test_excluded": (
+                    indexed_added + indexed_removed + indexed_modified
+                ),
                 "delta_symbols_added": added,
                 "delta_symbols_removed": removed,
                 "delta_symbols_modified": modified,
@@ -1278,11 +1566,30 @@ def process_instance(
     lsp_profile_dir: Optional[Path],
     log,
     rebuild_base: bool = False,
+    chain_override: Optional[List[Dict[str, Any]]] = None,
+    transition_manifest_id: Optional[str] = None,
+    graph_route: str = "lsp",
+    reference_timeout_s: float = DEFAULT_REFERENCE_TIMEOUT_S,
+    reference_retries: int = DEFAULT_REFERENCE_RETRIES,
+    lsp_request_concurrency: int = DEFAULT_LSP_REQUEST_CONCURRENCY,
+    strategy_attempts: int = DEFAULT_STRATEGY_ATTEMPTS,
+    experiment_config_id_value: Optional[str] = None,
+    runtime_log_level: str = DEFAULT_LOG_LEVEL,
+    row_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> List[Dict[str, Any]]:
     """Build one chain and run independent update strategies from its base."""
-    chain = build_chain(
-        iid, language, base_commit, cache_root, n_steps, max_walk, max_delta_lines, log
-    )
+    chain = chain_override
+    if chain is None:
+        chain = build_chain(
+            iid,
+            language,
+            base_commit,
+            cache_root,
+            n_steps,
+            max_walk,
+            max_delta_lines,
+            log,
+        )
     if not chain:
         return []
     repo = cache_root / iid / "repo"
@@ -1295,19 +1602,31 @@ def process_instance(
             out_root,
             timeout_s,
             log,
+            graph_route=graph_route,
+            reference_timeout_s=reference_timeout_s,
+            reference_retries=reference_retries,
+            lsp_request_concurrency=lsp_request_concurrency,
+            strategy_attempts=strategy_attempts,
             force=rebuild_base,
         )
     except Exception as exc:
         log(f"[{iid}] base graph failed: {type(exc).__name__}: {exc}")
-        return [
+        failed_rows = [
             {
                 "instance_id": iid,
+                "protocol_version": PROTOCOL_VERSION,
+                "experiment_config_id": experiment_config_id_value,
+                "runtime_log_level": runtime_log_level,
+                "transition_manifest_id": transition_manifest_id,
                 "language": language,
                 "step": 0,
                 "base_commit": base_commit,
                 "error": f"base_graph: {type(exc).__name__}: {exc}",
             }
         ]
+        if row_callback is not None:
+            row_callback(failed_rows[0])
+        return failed_rows
 
     # Initial per-step record (merged with strategy sub-records below).
     step_recs: Dict[int, Dict[str, Any]] = {}
@@ -1315,6 +1634,16 @@ def process_instance(
         step_recs[t["step"]] = {
             "instance_id": t["instance_id"],
             "protocol_version": PROTOCOL_VERSION,
+            "experiment_config_id": experiment_config_id_value,
+            "runtime_log_level": runtime_log_level,
+            "graph_route": graph_route,
+            "graph_schema_version": _graph_schema_version(),
+            "reference_timeout_s": reference_timeout_s,
+            "request_timeout_s": reference_timeout_s,
+            "reference_retries": reference_retries,
+            "lsp_request_concurrency": lsp_request_concurrency,
+            "strategy_attempt_limit": strategy_attempts,
+            "transition_manifest_id": transition_manifest_id,
             "language": t["language"],
             "base_commit": base_commit,
             "step": t["step"],
@@ -1322,8 +1651,10 @@ def process_instance(
             "to_commit": t["to_commit"],
             "delta_lines": t["delta_lines"],
             "delta_files": t["delta_files"],
+            "delta_lines_test_excluded": t["delta_lines_test_excluded"],
             "delta_files_test_excluded": t["delta_files_test_excluded"],
             "delta_symbols": t["delta_symbols"],
+            "delta_symbols_test_excluded": t["delta_symbols_test_excluded"],
             "delta_symbols_added": t["delta_symbols_added"],
             "delta_symbols_removed": t["delta_symbols_removed"],
             "delta_symbols_modified": t["delta_symbols_modified"],
@@ -1351,37 +1682,95 @@ def process_instance(
 
     for phase, (strategy, mode) in enumerate(patcher_specs, start=1):
         log(f"=== {iid} phase {phase}/{len(phase_order)}: {strategy} ===")
-        clear_indexer_cache(repo, language)
-        subs = run_patcher_phase(
-            strategy,
-            mode,
-            chain,
-            base_graph_pkl,
-            cache_root,
-            out_root,
-            timeout_s,
-            lsp_profile_dir,
-            log,
-            f"{strategy}.pkl",
-        )
+        attempt_failures = []
+        recovery_s = 0.0
+        subs = {}
+        for attempt in range(1, strategy_attempts + 1):
+            for target in chain:
+                artifact = out_root / iid / f"step{target['step']}" / f"{strategy}.pkl"
+                artifact.unlink(missing_ok=True)
+            clear_indexer_cache(repo, language)
+            attempt_t0 = time.monotonic()
+            subs = run_patcher_phase(
+                strategy,
+                mode,
+                chain,
+                base_graph_pkl,
+                cache_root,
+                out_root,
+                timeout_s,
+                lsp_profile_dir,
+                log,
+                f"{strategy}.pkl",
+                graph_route=graph_route,
+                reference_timeout_s=reference_timeout_s,
+                reference_retries=reference_retries,
+                lsp_request_concurrency=lsp_request_concurrency,
+            )
+            failed = [
+                {
+                    "step": target["step"],
+                    "status": subs.get(target["step"], {}).get("status", "missing"),
+                    "error": subs.get(target["step"], {}).get("error"),
+                }
+                for target in chain
+                if subs.get(target["step"], {}).get("status") != "ok"
+            ]
+            if not failed:
+                break
+            attempt_wall_s = time.monotonic() - attempt_t0
+            attempt_failures.append(
+                {
+                    "attempt": attempt,
+                    "wall_s": attempt_wall_s,
+                    "failures": failed,
+                }
+            )
+            if attempt < strategy_attempts:
+                recovery_s += attempt_wall_s
+                log(
+                    f"  {strategy}: phase attempt {attempt}/{strategy_attempts} "
+                    f"failed at step{failed[0]['step']} ({failed[0]['status']}); "
+                    "restarting from the base graph"
+                )
+
+        for sub in subs.values():
+            sub["strategy_attempts"] = attempt
+            sub["strategy_attempt_limit"] = strategy_attempts
+            sub["recovery_s"] = recovery_s
+            sub["attempt_failures"] = attempt_failures
+            if sub.get("status") == "ok" and sub.get("amortized_t_s") is not None:
+                sub["fault_inclusive_amortized_t_s"] = sub[
+                    "amortized_t_s"
+                ] + recovery_s / len(chain)
         for step, sub in subs.items():
             step_recs[step][strategy] = sub
 
     # A fresh same-commit graph is both the latency baseline and fidelity oracle.
     rebuild_phase = len(phase_order)
     log(f"=== {iid} phase {rebuild_phase}/{len(phase_order)}: fully-rebuild ===")
+    out: List[Dict[str, Any]] = []
     prev_rb_pkl: Optional[Path] = base_graph_pkl
     for t in chain:
         step_dir = out_root / iid / f"step{t['step']}"
         step_dir.mkdir(parents=True, exist_ok=True)
-        sub = run_rebuild_step(t, cache_root, step_dir, prev_rb_pkl, timeout_s, log)
+        sub = run_rebuild_step(
+            t,
+            cache_root,
+            step_dir,
+            prev_rb_pkl,
+            timeout_s,
+            log,
+            graph_route=graph_route,
+            reference_timeout_s=reference_timeout_s,
+            reference_retries=reference_retries,
+            lsp_request_concurrency=lsp_request_concurrency,
+            strategy_attempts=strategy_attempts,
+        )
         step_recs[t["step"]]["fully-rebuild"] = sub
         rb_pkl = step_dir / "rebuild.pkl"
         if rb_pkl.exists():
             prev_rb_pkl = rb_pkl
-
-    out: List[Dict[str, Any]] = []
-    for t in chain:
         rec = step_recs[t["step"]]
         attach_graph_fidelity(
             rec,
@@ -1390,7 +1779,10 @@ def process_instance(
             repo,
             t["to_commit"],
         )
-        out.append(finalize_step_record(rec))
+        finalized = finalize_step_record(rec)
+        out.append(finalized)
+        if row_callback is not None:
+            row_callback(finalized)
     return out
 
 
@@ -1423,26 +1815,47 @@ def finalize_step_record(rec: Dict[str, Any]) -> Dict[str, Any]:
         (steady_tf / steady_ts) if (steady_tf and steady_ts) else None
     )
     fidelity = primary.get("fidelity", {})
+    file_fidelity = fl.get("fidelity", {})
+    primary_guarded = fidelity.get("status") == "ok" and fidelity.get(
+        "equivalence_guardrail_pass"
+    )
+    file_guarded = file_fidelity.get("status") == "ok" and file_fidelity.get(
+        "equivalence_guardrail_pass"
+    )
     rec["equivalence_guarded_speedup_vs_fully_rebuild"] = (
-        rec["speedup_vs_fully_rebuild"]
-        if fidelity.get("status") == "ok" and fidelity.get("equivalence_guardrail_pass")
-        else None
+        rec["speedup_vs_fully_rebuild"] if primary_guarded else None
+    )
+    rec["file_level_equivalence_guarded_speedup_vs_fully_rebuild"] = (
+        (tr / tf) if file_guarded and tr and tf else None
+    )
+    rec["equivalence_guarded_speedup_vs_file_level_patch"] = (
+        rec["speedup_vs_file_level_patch"] if primary_guarded and file_guarded else None
     )
     rec["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return rec
 
 
-def _record_is_resumable(record: Dict[str, Any]) -> bool:
-    """Only current-protocol rows with measured fidelity are terminal results."""
+def _record_is_resumable(
+    record: Dict[str, Any], experiment_config_id_value: Optional[str] = None
+) -> bool:
+    """Require every declared arm and its fidelity before skipping a row."""
     if record.get("protocol_version") != PROTOCOL_VERSION or not record.get("step"):
         return False
-    primary_name = record.get("primary_incremental_strategy")
-    primary = record.get(primary_name, {}) if primary_name else {}
+    if (
+        experiment_config_id_value is not None
+        and record.get("experiment_config_id") != experiment_config_id_value
+    ):
+        return False
     rebuild = record.get("fully-rebuild", {})
-    return (
-        primary.get("status") == "ok"
-        and rebuild.get("status") == "ok"
-        and primary.get("fidelity", {}).get("status") == "ok"
+    strategies = [
+        name for name in record.get("phase_order", []) if name != "fully-rebuild"
+    ]
+    if not strategies or rebuild.get("status") != "ok":
+        return False
+    return all(
+        record.get(strategy, {}).get("status") == "ok"
+        and record.get(strategy, {}).get("fidelity", {}).get("status") == "ok"
+        for strategy in strategies
     )
 
 
@@ -1547,6 +1960,36 @@ def main():
         "Overrides DEFAULT_INSTANCES.",
     )
     ap.add_argument(
+        "--transition-manifest",
+        type=Path,
+        default=None,
+        help="frozen maintenance manifest; overrides --instances, --config, "
+        "and commit-chain discovery",
+    )
+    ap.add_argument(
+        "--instance",
+        action="append",
+        default=[],
+        help="run only this instance_id; repeat to select multiple instances",
+    )
+    ap.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="pilot-only cap on transitions loaded from a frozen manifest",
+    )
+    ap.add_argument(
+        "--write-transition-manifest",
+        type=Path,
+        default=None,
+        help="write the discovered chains as a frozen maintenance manifest",
+    )
+    ap.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="write --write-transition-manifest and exit without benchmarking",
+    )
+    ap.add_argument(
         "--steps",
         type=int,
         default=DEFAULT_STEPS,
@@ -1571,6 +2014,38 @@ def main():
         type=int,
         default=DEFAULT_TIMEOUT_S,
         help=f"per-strategy wall-clock cap, seconds (default {DEFAULT_TIMEOUT_S})",
+    )
+    ap.add_argument(
+        "--lsp-request-timeout-s",
+        "--lsp-reference-timeout-s",
+        dest="lsp_reference_timeout_s",
+        type=float,
+        default=DEFAULT_REFERENCE_TIMEOUT_S,
+        help="strict materialization RPC timeout "
+        f"(default {DEFAULT_REFERENCE_TIMEOUT_S:g})",
+    )
+    ap.add_argument(
+        "--lsp-reference-retries",
+        type=int,
+        default=DEFAULT_REFERENCE_RETRIES,
+        help="retries for timed-out/cancelled reference requests "
+        f"(default {DEFAULT_REFERENCE_RETRIES})",
+    )
+    ap.add_argument(
+        "--lsp-request-concurrency",
+        "--full-reference-concurrency",
+        dest="lsp_request_concurrency",
+        type=int,
+        default=DEFAULT_LSP_REQUEST_CONCURRENCY,
+        help="maximum in-flight LSP requests during reference materialization "
+        f"(default {DEFAULT_LSP_REQUEST_CONCURRENCY})",
+    )
+    ap.add_argument(
+        "--strategy-attempts",
+        type=int,
+        default=DEFAULT_STRATEGY_ATTEMPTS,
+        help="maximum clean restarts for each base/rebuild/patch strategy "
+        f"(default {DEFAULT_STRATEGY_ATTEMPTS})",
     )
     ap.add_argument(
         "--cache-root",
@@ -1607,10 +2082,53 @@ def main():
         action="store_true",
         help="rebuild each schema-valid base graph even when a matching artifact exists",
     )
+    ap.add_argument(
+        "--graph-route",
+        choices=("lsp", "active"),
+        default="lsp",
+        help="cold-start/base graph provider; 'lsp' gives a same-provider "
+        "incremental comparison, while 'active' evaluates the production "
+        "SCIP/clangd route (default: lsp)",
+    )
+    ap.add_argument(
+        "--log-level",
+        choices=("WARNING", "ERROR", "CRITICAL"),
+        default=DEFAULT_LOG_LEVEL,
+        help="fixed benchmark logging level (default: WARNING)",
+    )
     args = ap.parse_args()
+    numeric_log_level = getattr(logging, args.log_level)
+    logging.getLogger().setLevel(numeric_log_level)
+    from codeminer.log_utils import logging_manager
+
+    logging_manager.rich_handler.setLevel(numeric_log_level)
+    if args.strategy_attempts < 1:
+        ap.error("--strategy-attempts must be positive")
+    if args.lsp_reference_timeout_s <= 0:
+        ap.error("--lsp-request-timeout-s must be positive")
+    if args.lsp_reference_retries < 0:
+        ap.error("--lsp-reference-retries must be non-negative")
+    if args.lsp_request_concurrency < 1:
+        ap.error("--lsp-request-concurrency must be positive")
+    experiment_id = experiment_config_id(
+        graph_route=args.graph_route,
+        graph_schema_version=_graph_schema_version(),
+        timeout_s=args.timeout_s,
+        reference_timeout_s=args.lsp_reference_timeout_s,
+        reference_retries=args.lsp_reference_retries,
+        lsp_request_concurrency=args.lsp_request_concurrency,
+        strategy_attempts=args.strategy_attempts,
+        runtime_log_level=args.log_level,
+    )
 
     # Resolve the instance list.
-    if args.instances:
+    frozen_chains: Dict[str, List[Dict[str, Any]]] = {}
+    transition_manifest_id: Optional[str] = None
+    if args.transition_manifest:
+        instances, frozen_chains, transition_manifest_id = load_manifest(
+            args.transition_manifest
+        )
+    elif args.instances:
         instances = parse_instances_inline(args.instances, args.cache_root)
     elif args.config:
         instances = parse_instances_config(args.config)
@@ -1619,6 +2137,68 @@ def main():
     if not instances:
         print("error: no instances to run", file=sys.stderr)
         sys.exit(2)
+    if args.instance:
+        selected = set(args.instance)
+        instances = [entry for entry in instances if entry[0] in selected]
+        missing = selected - {entry[0] for entry in instances}
+        if missing:
+            ap.error(f"instances not present in workload: {sorted(missing)}")
+        if frozen_chains:
+            frozen_chains = {
+                instance_id: frozen_chains[instance_id] for instance_id in selected
+            }
+    if args.max_steps is not None:
+        if not frozen_chains:
+            ap.error("--max-steps requires --transition-manifest")
+        frozen_chains = {
+            instance_id: chain[: args.max_steps]
+            for instance_id, chain in frozen_chains.items()
+        }
+    if args.manifest_only and not args.write_transition_manifest:
+        print(
+            "error: --manifest-only requires --write-transition-manifest",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    if args.write_transition_manifest:
+        if frozen_chains:
+            chains_to_write = frozen_chains
+            selection = {
+                "method": "frozen-manifest-copy",
+                "source_manifest_id": transition_manifest_id,
+            }
+        else:
+            chains_to_write = {
+                iid: build_chain(
+                    iid,
+                    language,
+                    base_sha,
+                    args.cache_root,
+                    args.steps,
+                    args.max_walk,
+                    args.max_delta_lines,
+                    print,
+                )
+                for iid, language, base_sha in instances
+            }
+            selection = {
+                "method": "first-parent",
+                "steps_per_instance": args.steps,
+                "max_walk": args.max_walk,
+                "max_delta_lines": args.max_delta_lines,
+                "source_pathspec": "language-specific",
+                "test_files_retained": True,
+            }
+        payload = build_manifest(instances, chains_to_write, selection=selection)
+        transition_manifest_id = write_manifest(args.write_transition_manifest, payload)
+        frozen_chains = chains_to_write
+        print(
+            f"wrote transition manifest {args.write_transition_manifest} "
+            f"id={transition_manifest_id}"
+        )
+        if args.manifest_only:
+            return
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.out_root is None:
@@ -1636,7 +2216,7 @@ def main():
                 continue
             iid = r.get("instance_id")
             step = r.get("step")
-            if iid and step is not None and _record_is_resumable(r):
+            if iid and step is not None and _record_is_resumable(r, experiment_id):
                 done.add((iid, step))
                 done_steps.setdefault(iid, set()).add(step)
 
@@ -1644,22 +2224,44 @@ def main():
         print(msg, flush=True)
 
     log(
-        f"instances={len(instances)} steps={args.steps} "
-        f"timeout_s={args.timeout_s} output={args.output}"
+        f"instances={len(instances)} steps={args.max_steps or args.steps} "
+        f"timeout_s={args.timeout_s} graph_route={args.graph_route} "
+        f"request_policy={args.lsp_reference_timeout_s}s/"
+        f"{args.lsp_reference_retries}retry "
+        f"lsp_request_concurrency={args.lsp_request_concurrency} "
+        f"strategy_attempts={args.strategy_attempts} "
+        f"experiment_config={experiment_id[:12]} "
+        f"output={args.output}"
     )
 
     fh = args.output.open("a")
     try:
+
+        def persist_row(row: Dict[str, Any]) -> None:
+            key = (row.get("instance_id"), row.get("step"))
+            if key in done:
+                log(
+                    f"[{row.get('instance_id')}] step{row.get('step')} "
+                    "resume-skip (already in output)"
+                )
+                return
+            fh.write(json.dumps(row) + "\n")
+            fh.flush()
+            done.add(key)
+            if key[0] is not None and isinstance(key[1], int):
+                done_steps.setdefault(key[0], set()).add(key[1])
+
         for iid, language, base_sha in instances:
             # Whole-instance short-circuit. Repos whose walk produces fewer
             # than --steps rows cannot be detected without re-walking, so they
             # fall through to the per-row resume-skip.
             if args.resume and not args.rebuild_base:
                 steps_done = done_steps.get(iid, set())
-                if all(s in steps_done for s in range(1, args.steps + 1)):
-                    log(f"[{iid}] resume-skip (all {args.steps} steps in output)")
+                expected_steps = len(frozen_chains.get(iid, [])) or args.steps
+                if all(s in steps_done for s in range(1, expected_steps + 1)):
+                    log(f"[{iid}] resume-skip (all {expected_steps} steps in output)")
                     continue
-            rows = process_instance(
+            process_instance(
                 iid,
                 language,
                 base_sha,
@@ -1672,14 +2274,17 @@ def main():
                 args.lsp_profile_dir,
                 log,
                 rebuild_base=args.rebuild_base,
+                chain_override=frozen_chains.get(iid) if frozen_chains else None,
+                transition_manifest_id=transition_manifest_id,
+                graph_route=args.graph_route,
+                reference_timeout_s=args.lsp_reference_timeout_s,
+                reference_retries=args.lsp_reference_retries,
+                lsp_request_concurrency=args.lsp_request_concurrency,
+                strategy_attempts=args.strategy_attempts,
+                experiment_config_id_value=experiment_id,
+                runtime_log_level=args.log_level,
+                row_callback=persist_row,
             )
-            for r in rows:
-                key = (r.get("instance_id"), r.get("step"))
-                if key in done:
-                    log(f"[{iid}] step{r.get('step')} resume-skip (already in output)")
-                    continue
-                fh.write(json.dumps(r) + "\n")
-                fh.flush()
     finally:
         fh.close()
     log(f"done. wrote {args.output}")

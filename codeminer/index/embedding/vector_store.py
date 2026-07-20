@@ -1276,7 +1276,7 @@ class CodeVectorStore:
         changed_content_hashes: Set[str],
         level: Level = "l2",
         threshold: float = 0.1,
-    ) -> None:
+    ) -> str:
         """
         Patch the FAISS index in place when the change set is small.
 
@@ -1297,12 +1297,17 @@ class CodeVectorStore:
             level: Which index level to update.
             threshold: Maximum change ratio (changed/total) for the delta
                 path; above this a full rebuild is performed.
+
+        Returns:
+            ``"delta"`` when FAISS was patched in place, ``"rebuild"`` when
+            the complete index was reconstructed, or ``"clear"`` when the
+            target level became empty.
         """
         total = len(all_documents)
 
         if total == 0:
             self.clear(level)
-            return
+            return "clear"
 
         index, current_docs = self._get_index_and_docs(level)
         change_ratio = len(changed_content_hashes) / total
@@ -1322,7 +1327,7 @@ class CodeVectorStore:
                 level,
             )
             self.rebuild_from_embeddings(all_documents, all_embeddings, level=level)
-            return
+            return "rebuild"
 
         # --- Delta path: in-place patch -------------------------------
         # Use a list per hash so duplicate-content docs (same code in
@@ -1338,7 +1343,7 @@ class CodeVectorStore:
                     "delta_update: target doc missing content_hash → full rebuild."
                 )
                 self.rebuild_from_embeddings(all_documents, all_embeddings, level=level)
-                return
+                return "rebuild"
             target_by_hash[ch].append((doc, emb))
 
         current_hashes = [d.metadata.get("content_hash") for d in current_docs]
@@ -1409,6 +1414,7 @@ class CodeVectorStore:
             index.ntotal,
             change_ratio * 100,
         )
+        return "delta"
 
     def clear(self, level: Optional[Level] = None) -> None:
         """

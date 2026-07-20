@@ -7,7 +7,8 @@
 // Exposes a single function `decode_scip(index_file, project_root, language)`
 // that returns a `DecodedGraph` struct with two flat Python lists:
 //   - vertices: list of dicts
-//       {name,type,file,start_line,end_line,selection_line,unified_name}
+//       {name,type,file,start_line,end_line,selection_line,
+//        selection_character,unified_name}
 //   - edges:    list of 5-tuples (source_name, target_name, type,
 //                                 anchor_file_or_None, anchor_line_or_None)
 //
@@ -45,6 +46,9 @@ py::dict vertex_to_dict(const CodeGraph::VertexData &v) {
   d["end_line"] = v.end_line.has_value() ? py::cast(*v.end_line) : py::none();
   d["selection_line"] =
       v.selection_line.has_value() ? py::cast(*v.selection_line) : py::none();
+  d["selection_character"] = v.selection_character.has_value()
+                                 ? py::cast(*v.selection_character)
+                                 : py::none();
   d["unified_name"] =
       v.unified_name.has_value() ? py::cast(*v.unified_name) : py::none();
   return d;
@@ -122,7 +126,8 @@ Args:
 Returns:
     dict with:
       - "vertices": list of dicts with keys
-          name, type, file, start_line, end_line, selection_line, unified_name
+          name, type, file, start_line, end_line, selection_line,
+          selection_character, unified_name
       - "edges": list of 5-tuples
           (source_name, target_name, edge_type,
            anchor_file_or_None, anchor_line_or_None)

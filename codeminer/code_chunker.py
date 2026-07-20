@@ -22,6 +22,7 @@ from .languages import (
     normalize_chunker_language,
 )
 from .log_utils import get_logger
+from .repository_files import DEFAULT_IGNORED_REPOSITORY_DIRS
 from .utils import is_test_file
 
 logger = get_logger(__name__)
@@ -111,23 +112,7 @@ class RepoChunkingConfig:
             )
 
         if self.ignore_dirs is None:
-            self.ignore_dirs = {
-                "__pycache__",
-                ".git",
-                ".svn",
-                ".hg",
-                "node_modules",
-                ".venv",
-                "venv",
-                "env",
-                ".env",
-                "build",
-                "dist",
-                ".pytest_cache",
-                ".mypy_cache",
-                ".tox",
-                "htmlcov",
-            }
+            self.ignore_dirs = set(DEFAULT_IGNORED_REPOSITORY_DIRS)
 
         if self.ignore_patterns is None:
             self.ignore_patterns = {
@@ -302,6 +287,36 @@ class CodeChunker:
         logger.info(f"Collected {len(self.nodes)} unique nodes")
 
         return all_chunks
+
+    def chunk_repository_file(self, file_path: str, repo_path: str) -> List[CodeChunk]:
+        """Chunk one repository file under the full traversal contract.
+
+        This applies the same extension dispatch and file filters as
+        :meth:`chunk_repository`, which is required when an incremental update
+        rechunks a mixed-language repository one file at a time.
+        """
+        repo_root = Path(repo_path).resolve()
+        path = Path(file_path).resolve()
+        try:
+            path.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError(f"File {path} is outside repository {repo_root}") from exc
+
+        languages = self.repo_config.languages or self._detect_repo_language(repo_root)
+        extension_to_language: Dict[str, str] = {}
+        for language in languages:
+            normalized = normalize_chunker_language(language)
+            if normalized is None:
+                continue
+            for extension in self._extensions_for_chunker_language(normalized):
+                extension_to_language[extension] = normalized
+
+        if not self._should_process_file(path, extension_to_language):
+            return []
+        language = extension_to_language[path.suffix]
+        chunks = self._chunk_file_with_language(path, language, repo_root)
+        self._update_nodes_from_chunks(chunks)
+        return chunks
 
     def get_repository_stats(self, repo_path: str) -> Dict[str, Any]:
         """

@@ -13,11 +13,21 @@ Tests the full decode pipeline for each LSP message format:
 Uses mock LSP responses (no actual LSP server needed).
 """
 
+from pathlib import Path
+
 from codeminer.graph.code_graph import CodeGraph
+from codeminer.graph.incremental.change_mgr import ChangedLineHunk
 from codeminer.graph.incremental.patcher_go import PatcherGo
 from codeminer.graph.incremental.patcher_python import PatcherPython
 from codeminer.graph.incremental.patcher_rust import PatcherRust
 from codeminer.graph.incremental.patcher_ts import PatcherTS
+from codeminer.ls_index.lsp_graph_decode import GenericLSPGraphDecoder
+from codeminer.types import (
+    EDGE_TYPE_REFERENCE,
+    NODE_TYPE_FIELD,
+    NODE_TYPE_FILE,
+    NODE_TYPE_FUNCTION,
+)
 
 # ═══════════════════════════════════════════════════════════════
 # Helpers: mock LSP responses
@@ -54,6 +64,13 @@ def _semantic_tokens_data(tokens_spec):
     return {"data": data}
 
 
+class _BatchReferencesMixin:
+    """Expose the production client's ordered batch contract in test doubles."""
+
+    def references_batch(self, queries, **kwargs):
+        return [(self.references(*query, **kwargs), None) for query in queries]
+
+
 # ═══════════════════════════════════════════════════════════════
 # 1. documentSymbol decoding
 # ═══════════════════════════════════════════════════════════════
@@ -75,6 +92,321 @@ class TestDocumentSymbol:
         assert "src/math.rs:add():0" in created
         assert "src/math.rs:multiply():7" in created
         assert "src/math.rs" in g.name_to_vertex
+
+    def test_old_symbol_selection_line_falls_back_from_legacy_none(self):
+        graph = CodeGraph(project_root="/tmp")
+        graph._add_vertex("legacy.ts", {"type": NODE_TYPE_FILE})
+        vertex_name = "legacy.ts:run():3"
+        graph._add_vertex(
+            vertex_name,
+            {
+                "type": NODE_TYPE_FUNCTION,
+                "file": "legacy.ts",
+                "start_line": 3,
+                "end_line": 7,
+                "selection_line": None,
+                "unified_name": "legacy.ts:run()",
+            },
+        )
+        patcher = PatcherTS("/tmp", graph)
+        patcher.build_indexes()
+
+        old = patcher.get_old_symbols("legacy.ts")["legacy.ts:run()"]
+
+        assert old["selection_line"] == 3
+        assert old["end_line"] == 7
+
+    def test_reference_scope_prefers_new_nested_symbol_over_outer_hint(self):
+        graph = CodeGraph(project_root="/tmp")
+        patcher = PatcherTS("/tmp", graph)
+        patcher.rebuild_file_subgraph(
+            "nested.ts",
+            [
+                _sym(
+                    "outer",
+                    12,
+                    0,
+                    10,
+                    children=[_sym("inner", 12, 4, 6)],
+                )
+            ],
+        )
+        graph.build_range_indexes()
+
+        scope = patcher._reference_scope_for_token(
+            "nested.ts",
+            {"line": 5},
+            "nested.ts:outer():0",
+        )
+
+        assert scope == "nested.ts:outer().inner():4"
+
+    def test_workspace_warmup_visits_all_language_source_files(self, tmp_path):
+        for name in ("component.ts", "helper.js", "README.md"):
+            (tmp_path / name).write_text("export const value = 1;\n")
+        dependency = tmp_path / "node_modules" / "pkg" / "index.ts"
+        dependency.parent.mkdir(parents=True)
+        dependency.write_text("export const dependency = 1;\n")
+        visited = []
+
+        class FakeClient:
+            def document_symbol(self, file_path):
+                visited.append(Path(file_path).name)
+                return []
+
+            def wait_until_idle(self, **kwargs):
+                assert kwargs == {}
+                visited.append("idle")
+                return True
+
+        patcher = PatcherTS(str(tmp_path), CodeGraph(), lsp_client=FakeClient())
+
+        assert patcher.warmup_workspace() == 2
+        assert patcher.workspace_initial_idle is True
+        assert patcher.workspace_warmup_idle is True
+        assert visited == ["idle", "component.ts", "helper.js", "idle"]
+
+    def test_reverse_reference_reconciliation_finds_overloaded_target(self, tmp_path):
+        source = tmp_path / "src.js"
+        source.write_text("node.type\n")
+        target = tmp_path / "types.d.ts"
+        target.write_text("interface Node { type: string }\n")
+        graph = CodeGraph(project_root=str(tmp_path))
+        graph._add_vertex("types.d.ts", {"type": NODE_TYPE_FILE})
+        vertex_name = "types.d.ts:Node.type:0"
+        graph._add_vertex(
+            vertex_name,
+            {
+                "type": NODE_TYPE_FIELD,
+                "file": "types.d.ts",
+                "start_line": 0,
+                "end_line": 0,
+                "selection_line": 0,
+                "selection_character": 17,
+                "unified_name": "types.d.ts:Node.type",
+            },
+        )
+
+        class FakeClient(_BatchReferencesMixin):
+            def references(self, *args, **kwargs):
+                return [
+                    {
+                        "uri": source.as_uri(),
+                        "range": {
+                            "start": {"line": 0, "character": 5},
+                            "end": {"line": 0, "character": 9},
+                        },
+                    }
+                ]
+
+        patcher = PatcherTS(str(tmp_path), graph, lsp_client=FakeClient())
+        patcher.build_indexes()
+
+        targets = patcher._reverse_reference_targets(
+            "src.js",
+            {"line": 0, "character": 5, "length": 4, "text": "type"},
+        )
+
+        assert targets == [vertex_name]
+
+    def test_reverse_reference_reconciliation_validates_direct_target(self, tmp_path):
+        source = tmp_path / "src.js"
+        source.write_text("render(node)\n")
+        target = tmp_path / "types.d.ts"
+        target.write_text("declare function render(node: unknown): void\n")
+        graph = CodeGraph(project_root=str(tmp_path))
+        vertex_name = "types.d.ts:render():0"
+        graph._add_vertex(
+            vertex_name,
+            {
+                "type": NODE_TYPE_FUNCTION,
+                "file": "types.d.ts",
+                "start_line": 0,
+                "end_line": 0,
+                "selection_line": 0,
+                "selection_character": 17,
+                "unified_name": "types.d.ts:render()",
+            },
+        )
+
+        class FakeClient(_BatchReferencesMixin):
+            def references(self, *args, **kwargs):
+                return []
+
+        patcher = PatcherTS(str(tmp_path), graph, lsp_client=FakeClient())
+        patcher.build_indexes()
+
+        targets = patcher._reverse_reference_targets(
+            "src.js",
+            {"line": 0, "character": 0, "length": 6, "text": "render"},
+            direct_targets=[vertex_name],
+        )
+
+        assert targets == []
+
+    def test_strict_reverse_references_have_no_fanout_cutoff(self, tmp_path):
+        source = tmp_path / "source.js"
+        source.write_text("render(node)\n")
+        graph = CodeGraph(project_root=str(tmp_path))
+        target_names = []
+        for index in range(65):
+            relative = f"types{index}.d.ts"
+            (tmp_path / relative).write_text(
+                "declare function render(node: unknown): void\n"
+            )
+            vertex_name = f"{relative}:render():0"
+            graph._add_vertex(
+                vertex_name,
+                {
+                    "type": NODE_TYPE_FUNCTION,
+                    "file": relative,
+                    "start_line": 0,
+                    "end_line": 0,
+                    "selection_line": 0,
+                    "selection_character": 17,
+                    "unified_name": f"{relative}:render()",
+                },
+            )
+            target_names.append(vertex_name)
+
+        class FakeClient(_BatchReferencesMixin):
+            def __init__(self):
+                self.calls = 0
+
+            def references(self, file_path, *args, **kwargs):
+                self.calls += 1
+                if Path(file_path).name != "types64.d.ts":
+                    return []
+                return [
+                    {
+                        "uri": source.as_uri(),
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 6},
+                        },
+                    }
+                ]
+
+        client = FakeClient()
+        patcher = PatcherTS(
+            str(tmp_path),
+            graph,
+            lsp_client=client,
+            strict_lsp_requests=True,
+        )
+        patcher.build_indexes()
+
+        targets = patcher._reverse_reference_targets(
+            "source.js",
+            {"line": 0, "character": 0, "length": 6, "text": "render"},
+        )
+
+        assert targets == [target_names[-1]]
+        assert client.calls == 65
+
+    def test_typescript_property_participates_in_incremental_classification(self):
+        patcher = PatcherTS("/tmp", CodeGraph())
+
+        flattened = patcher.flatten_symbols(
+            "index.d.ts",
+            [_sym("Options", 11, 0, 4, children=[_sym("onProgress", 7, 1, 1)])],
+        )
+
+        assert "index.d.ts:Options.onProgress" in flattened
+
+    def test_typescript_duplicate_identity_requires_file_rebuild(self):
+        graph = CodeGraph(project_root="/tmp")
+        graph.add_file_node("callbacks.ts")
+        for line in (2, 5):
+            graph._add_vertex(
+                f"callbacks.ts:callback():{line}",
+                {
+                    "type": NODE_TYPE_FUNCTION,
+                    "file": "callbacks.ts",
+                    "start_line": line,
+                    "end_line": line,
+                    "unified_name": "callbacks.ts:callback()",
+                },
+            )
+        patcher = PatcherTS("/tmp", graph)
+        patcher.build_indexes()
+
+        reason = patcher._file_level_rebuild_reason(
+            "callbacks.ts",
+            {},
+            {},
+            [ChangedLineHunk(0, 0, 0, 1)],
+        )
+
+        assert reason == "duplicate hierarchical symbol identities cross an edited hunk"
+
+        unchanged_reason = patcher._file_level_rebuild_reason(
+            "callbacks.ts",
+            {},
+            {},
+            [ChangedLineHunk(10, 1, 10, 1)],
+        )
+        assert unchanged_reason is None
+
+    def test_rust_hierarchy_drift_requires_file_rebuild(self):
+        patcher = PatcherRust("/tmp", CodeGraph())
+        old_symbols = {
+            "driver.rs:Driver.new()": {
+                "start_line": 44,
+                "end_line": 84,
+                "selection_line": 45,
+                "selection_character": 18,
+            }
+        }
+        new_symbols = {
+            "driver.rs:new()": {
+                "start_line": 44,
+                "end_line": 84,
+                "sel_range": {
+                    "start": {"line": 45, "character": 18},
+                    "end": {"line": 45, "character": 21},
+                },
+            }
+        }
+
+        reason = patcher._file_level_rebuild_reason(
+            "driver.rs",
+            old_symbols,
+            new_symbols,
+            [ChangedLineHunk(100, 1, 100, 2)],
+        )
+
+        assert reason == "symbol hierarchy changed at an unchanged declaration"
+
+    def test_same_location_with_different_leaf_does_not_force_rebuild(self):
+        patcher = PatcherRust("/tmp", CodeGraph())
+        old_symbols = {
+            "driver.rs:Driver.new()": {
+                "start_line": 44,
+                "end_line": 84,
+                "selection_line": 45,
+                "selection_character": 18,
+            }
+        }
+        new_symbols = {
+            "driver.rs:build()": {
+                "start_line": 44,
+                "end_line": 84,
+                "sel_range": {
+                    "start": {"line": 45, "character": 18},
+                    "end": {"line": 45, "character": 23},
+                },
+            }
+        }
+
+        reason = patcher._file_level_rebuild_reason(
+            "driver.rs",
+            old_symbols,
+            new_symbols,
+            [ChangedLineHunk(100, 1, 100, 2)],
+        )
+
+        assert reason is None
 
     def test_python_decorator_reference_uses_parent_scope(self, tmp_path):
         source = tmp_path / "example.py"
@@ -109,6 +441,128 @@ class TestDocumentSymbol:
 
         assert decorator_scope == "example.py:Service:0"
         assert body_scope == method
+
+    def test_python_lsp_route_keeps_decorator_in_document_symbol_scope(self, tmp_path):
+        source = tmp_path / "example.py"
+        source.write_text(
+            "class Service:\n"
+            "    @deprecated('old')\n"
+            "    def run(self):\n"
+            "        return helper()\n"
+        )
+        graph = CodeGraph(project_root=str(tmp_path))
+        patcher = PatcherPython(str(tmp_path), graph, respect_backend_exclusions=False)
+        patcher.rebuild_file_subgraph(
+            "example.py",
+            [
+                _sym(
+                    "Service",
+                    5,
+                    0,
+                    3,
+                    children=[_sym("run", 6, 1, 3)],
+                )
+            ],
+        )
+        method = "example.py:Service.run():1"
+
+        assert (
+            patcher._reference_scope_for_token("example.py", {"line": 1}, method)
+            == method
+        )
+
+    def test_lsp_file_replacement_reuses_full_index_lowering(self, tmp_path):
+        file_path = "example.py"
+        base_symbols = [
+            _sym(
+                "Service",
+                5,
+                0,
+                8,
+                children=[
+                    _sym(
+                        "run",
+                        6,
+                        1,
+                        8,
+                        children=[_sym("helper", 12, 4, 6)],
+                    )
+                ],
+            )
+        ]
+        target_symbols = [
+            _sym(
+                "Service",
+                5,
+                0,
+                9,
+                children=[
+                    _sym(
+                        "run",
+                        6,
+                        1,
+                        9,
+                        children=[_sym("helper", 12, 5, 7)],
+                    )
+                ],
+            )
+        ]
+        decoder = GenericLSPGraphDecoder(
+            str(tmp_path / "unused.json"), project_root=str(tmp_path)
+        )
+        graph = decoder.decode_documents({file_path: base_symbols})
+
+        class FakeClient:
+            def document_symbol(self, _file_path):
+                return target_symbols
+
+        patcher = PatcherPython(
+            str(tmp_path),
+            graph,
+            lsp_client=FakeClient(),
+            mode="naive",
+            respect_backend_exclusions=False,
+        )
+        context = patcher._rebuild_prepare_vertices(
+            file_path,
+            remap_severed=False,
+            replace_file=True,
+        )
+        expected = decoder.decode_documents({file_path: target_symbols})
+
+        actual_vertices = {
+            (vertex["name"], tuple(sorted(vertex.attributes().items())))
+            for vertex in graph.graph.vs
+        }
+        expected_vertices = {
+            (vertex["name"], tuple(sorted(vertex.attributes().items())))
+            for vertex in expected.graph.vs
+        }
+        actual_edges = {
+            (
+                graph.graph.vs[edge.source]["name"],
+                graph.graph.vs[edge.target]["name"],
+                edge["type"],
+            )
+            for edge in graph.graph.es
+        }
+        expected_edges = {
+            (
+                expected.graph.vs[edge.source]["name"],
+                expected.graph.vs[edge.target]["name"],
+                edge["type"],
+            )
+            for edge in expected.graph.es
+        }
+
+        assert actual_vertices == expected_vertices
+        assert actual_edges == expected_edges
+        assert context["severed_in"] == []
+        assert context["severed_out"] == []
+        assert context["replace_file"] is True
+        assert context["rebuild_file_scope"] is True
+        assert "example.py:Service.run().helper():5" in context["new_vertices"]
+        assert "example.py:Service.helper():5" not in graph.name_to_vertex
 
     def test_rust_struct_with_methods(self):
         g = CodeGraph(project_root="/tmp")
@@ -192,6 +646,43 @@ class TestDocumentSymbol:
         created = p.rebuild_file_subgraph("server.go", symbols)
 
         assert "server.go:Handler.ServeHTTP():10" in created
+        vertex = g.graph.vs[g.name_to_vertex[created[0]]]
+        assert vertex["selection_character"] == 4
+
+    def test_go_lsp_route_preserves_symbol_parent_and_range(self):
+        graph = CodeGraph(project_root="/tmp")
+        patcher = PatcherGo(
+            "/tmp",
+            graph,
+            respect_backend_exclusions=False,
+        )
+        symbols = [
+            _sym(
+                "Router",
+                23,
+                4,
+                20,
+                children=[_sym("Handle", 6, 8, 12)],
+            )
+        ]
+
+        flattened = patcher.flatten_symbols("router.go", symbols)
+
+        assert flattened["router.go:Router"]["end_line"] == 20
+        assert patcher._added_parent_unified_name("router.go", "Router") == (
+            "router.go:Router"
+        )
+
+        patcher.rebuild_file_subgraph("router.go", symbols)
+        patcher.build_indexes()
+        assert (
+            patcher._reference_scope_for_token(
+                "router.go",
+                {"line": 8},
+                "router.go:Router.Handle():8",
+            )
+            == "router.go:Router.Handle():8"
+        )
 
     def test_ts_constructor(self):
         g = CodeGraph(project_root="/tmp")
@@ -334,6 +825,100 @@ class TestSemanticTokensDecode:
         assert tokens[0]["text"] == "std"
         assert tokens[1]["line"] == 1
         assert tokens[1]["text"] == "main"
+
+    def test_lexical_supplement_covers_jsx_properties_with_utf16_positions(
+        self, tmp_path
+    ):
+        src = tmp_path / "component.tsx"
+        line = "\t😀 render(<progress value={0} max='100' />)"
+        src.write_text(line + "\n", encoding="utf-8")
+        patcher = PatcherTS(str(tmp_path), CodeGraph())
+
+        tokens = patcher._get_lexical_reference_tokens(str(src), [(0, 0)])
+        by_text = {token["text"]: token for token in tokens}
+
+        assert {"render", "progress", "value", "max"} <= set(by_text)
+        progress_offset = line.index("progress")
+        assert by_text["progress"]["character"] == (
+            len(line[:progress_offset].encode("utf-16-le")) // 2
+        )
+
+    def test_strict_file_scope_supplements_navigable_doc_tokens(self, tmp_path):
+        source = tmp_path / "source.js"
+        target = tmp_path / "target.d.ts"
+        source.write_text("/** @param {Thing} value */\n", encoding="utf-8")
+        target.write_text("class Thing {}\n", encoding="utf-8")
+
+        graph = CodeGraph(project_root=str(tmp_path))
+        graph.add_file_node("source.js")
+        graph.add_file_node("target.d.ts")
+        target_name = "target.d.ts:Thing:0"
+        graph._add_vertex(
+            target_name,
+            {
+                "type": "class",
+                "file": "target.d.ts",
+                "start_line": 0,
+                "end_line": 0,
+                "selection_line": 0,
+                "selection_character": 6,
+                "unified_name": "target.d.ts:Thing",
+            },
+        )
+        graph.build_range_indexes()
+        thing_character = source.read_text().index("Thing")
+
+        class FakeClient(_BatchReferencesMixin):
+            last_error = None
+
+            def definition(self, file_path, line, character):
+                if Path(file_path) == source and character == thing_character:
+                    return [
+                        {
+                            "uri": target.as_uri(),
+                            "range": {"start": {"line": 0, "character": 6}},
+                        }
+                    ]
+                return []
+
+            def references(self, file_path, line, character, **_kwargs):
+                if Path(file_path) != target:
+                    return []
+                return [
+                    {
+                        "uri": source.as_uri(),
+                        "range": {
+                            "start": {"line": 0, "character": thing_character},
+                            "end": {
+                                "line": 0,
+                                "character": thing_character + len("Thing"),
+                            },
+                        },
+                    }
+                ]
+
+        patcher = PatcherTS(
+            str(tmp_path),
+            graph,
+            lsp_client=FakeClient(),
+            strict_lsp_requests=True,
+        )
+        patcher._get_semantic_tokens = lambda *_args, **_kwargs: []
+        patcher.build_indexes()
+        stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
+
+        patcher.reconnect_outgoing(
+            "source.js",
+            [],
+            stats,
+            line_ranges=None,
+            scope_filter={"source.js"},
+        )
+
+        edges = [edge for edge in graph.graph.es if edge["type"] == EDGE_TYPE_REFERENCE]
+        assert len(edges) == 1
+        assert graph.graph.vs[edges[0].source]["name"] == "source.js"
+        assert graph.graph.vs[edges[0].target]["name"] == target_name
 
     def test_crossfile_types_rust(self):
         p = PatcherRust("/tmp", CodeGraph())

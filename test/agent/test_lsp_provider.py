@@ -65,6 +65,42 @@ def _range_graph() -> CodeGraph:
     return graph
 
 
+def _multi_definition_graph(tmp_path, targets: list[str]) -> CodeGraph:
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    return Result()\n", encoding="utf-8"
+    )
+    graph = CodeGraph(project_root=str(tmp_path))
+    for file_path, symbol in (("left.py", "left.Result"), ("right.py", "right.Result")):
+        graph.add_file_node(file_path)
+        graph.add_symbol_node(
+            symbol,
+            line=2,
+            scope_start_line=2,
+            scope_end_line=3,
+            symbol_type=NODE_TYPE_FUNCTION,
+        )
+        graph.graph.vs[graph.name_to_vertex[symbol]][
+            "unified_name"
+        ] = f"{file_path}:Result()"
+
+    graph.add_file_node("caller.py")
+    graph.add_symbol_node(
+        "caller.run",
+        line=0,
+        scope_start_line=0,
+        scope_end_line=1,
+        symbol_type=NODE_TYPE_FUNCTION,
+    )
+    for target in targets:
+        graph.add_symbol_reference(
+            target,
+            anchor_file="caller.py",
+            anchor_line=1,
+        )
+    graph.build_range_indexes()
+    return graph
+
+
 def _make_response(content=None, tool_calls=None):
     msg = SimpleNamespace(role="assistant", content=content, tool_calls=tool_calls)
     return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
@@ -140,6 +176,23 @@ def test_graph_position_backend_records_character_contract(tmp_path):
         "static_symbol_graph_position_lsp_v1"
     )
     assert definition.provider_metadata_dict()["position_granularity"] == "character"
+
+
+def test_graph_definition_is_stable_across_edge_insertion_order(tmp_path):
+    forward = _multi_definition_graph(tmp_path, ["left.Result", "right.Result"])
+    reverse = _multi_definition_graph(tmp_path, ["right.Result", "left.Result"])
+
+    arguments = {
+        "file_path": "caller.py",
+        "line": 1,
+        "character": 12,
+        "top_k": 1,
+    }
+    forward_result = StaticLSPProvider(forward).definition(**arguments)
+    reverse_result = StaticLSPProvider(reverse).definition(**arguments)
+
+    assert [(node.file, node.start_line) for node in forward_result] == [("left.py", 2)]
+    assert [(node.file, node.start_line) for node in reverse_result] == [("left.py", 2)]
 
 
 def test_native_lsp_result_normalization_is_stable_and_deduplicated():

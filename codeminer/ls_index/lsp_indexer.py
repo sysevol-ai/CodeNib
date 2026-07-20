@@ -19,10 +19,11 @@ from pathlib import Path
 from typing import Iterable, Optional, Union
 
 from ..graph.code_graph import CodeGraph
-from ..graph.incremental.lsp_client import LSPClient
+from ..graph.incremental.lsp_client import LSPClient, is_lsp_document_unavailable_error
 from ..languages import extensions_for_language, normalize_graph_language
 from ..log_utils import get_logger
 from ..profiler import Profiler
+from ..repository_files import iter_repository_source_files
 from .lsp_graph_decode import GenericLSPGraphDecoder, iter_lsp_symbol_definitions
 
 logger = get_logger("generic_lsp_indexer")
@@ -73,24 +74,100 @@ class GenericLSPIndexer:
             "Collecting document symbols for %d %s files", len(files), self.language
         )
         include_references = bool(kwargs.get("include_references", False))
+        reference_timeout_s = float(kwargs.get("reference_timeout_s", 10.0))
+        request_timeout_s = float(kwargs.get("request_timeout_s", reference_timeout_s))
+        reference_retries = int(kwargs.get("reference_retries", 0))
+        reference_concurrency = int(kwargs.get("reference_concurrency", 10))
+        if reference_concurrency < 1:
+            raise ValueError("reference_concurrency must be positive")
+        strict_references = bool(kwargs.get("strict_references", False))
         try:
-            with self.profiler.section("generate_index.lsp_document_symbols"):
-                with LSPClient(
-                    command, str(self.project_root), self.language
-                ) as client:
-                    records = []
-                    for rel_path in files:
-                        symbols = client.document_symbol(
-                            str(self.project_root / rel_path)
+            with LSPClient(command, str(self.project_root), self.language) as client:
+                client.operation_retries = reference_retries
+                client.strict_request_failures = strict_references
+                client.reference_timeout_s = reference_timeout_s
+                client.reference_retries = reference_retries
+                if strict_references:
+                    client.document_symbol_timeout_s = request_timeout_s
+                    client.definition_timeout_s = request_timeout_s
+                    client.semantic_tokens_timeout_s = request_timeout_s
+                records = []
+                if include_references:
+                    with self.profiler.section(
+                        "generate_index.lsp_workspace_initial_idle"
+                    ):
+                        initial_idle = client.wait_until_idle()
+                    if not initial_idle:
+                        message = (
+                            "LSP workspace did not become idle before "
+                            "document-symbol collection"
                         )
-                        record = {"path": rel_path.as_posix(), "symbols": symbols}
-                        if include_references:
-                            record["references"] = self._collect_references(
-                                client,
-                                rel_path,
-                                symbols,
+                        if strict_references:
+                            raise RuntimeError(message)
+                        logger.warning(message)
+                with self.profiler.section("generate_index.lsp_document_symbols"):
+                    for rel_path in files:
+                        file_path = str(self.project_root / rel_path)
+                        try:
+                            symbols = client.document_symbol(file_path)
+                        finally:
+                            client.close_document(file_path)
+                        records.append(
+                            {"path": rel_path.as_posix(), "symbols": symbols}
+                        )
+
+                # Complete workspace-wide symbol discovery before issuing
+                # reference requests. Some servers finish project loading
+                # incrementally as documents are opened, so interleaving
+                # the two phases makes early reference coverage depend on
+                # traversal order and background-index timing.
+                if include_references:
+                    with self.profiler.section("generate_index.lsp_workspace_idle"):
+                        idle = client.wait_until_idle()
+                    if not idle:
+                        message = (
+                            "LSP workspace did not become idle before "
+                            "reference collection"
+                        )
+                        if strict_references:
+                            raise RuntimeError(message)
+                        logger.warning(message)
+                    if files:
+                        # Some servers end workDoneProgress before dependent
+                        # document analysis is query-ready. A request barrier
+                        # on an opened document drains that remaining work.
+                        with self.profiler.section("generate_index.lsp_analysis_ready"):
+                            analysis_ready = client.wait_for_analysis(
+                                str(self.project_root / files[0])
                             )
-                        records.append(record)
+                        if not analysis_ready:
+                            message = (
+                                "LSP document analysis did not become ready "
+                                "before reference collection"
+                            )
+                            if strict_references:
+                                raise RuntimeError(message)
+                            logger.warning(message)
+                    with self.profiler.section("generate_index.lsp_references"):
+                        for rel_path, record in zip(files, records, strict=True):
+                            file_path = str(self.project_root / rel_path)
+                            try:
+                                record["references"] = self._collect_references(
+                                    client,
+                                    rel_path,
+                                    record["symbols"],
+                                    strict=strict_references,
+                                    max_in_flight=reference_concurrency,
+                                )
+                                last_error = getattr(client, "last_error", None)
+                                if is_lsp_document_unavailable_error(last_error):
+                                    record["provider_unavailable"] = str(
+                                        last_error.get("message") or ""
+                                    )
+                            finally:
+                                client.close_document(file_path)
+        except TimeoutError:
+            raise
         except Exception as exc:
             logger.error("LSP index generation failed for %s: %s", self.language, exc)
             return False
@@ -176,18 +253,12 @@ class GenericLSPIndexer:
         return ok
 
     def _iter_source_files(self, target_dir: Optional[str] = None) -> Iterable[Path]:
-        root = (
-            (self.project_root / target_dir).resolve()
-            if target_dir
-            else self.project_root
-        )
         extensions = extensions_for_language(self.language, "graph")
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
-            rel_path = path.relative_to(self.project_root)
-            if path.suffix not in extensions:
-                continue
+        for rel_path in iter_repository_source_files(
+            self.project_root,
+            extensions=extensions,
+            target_dir=target_dir,
+        ):
             if self._is_excluded(rel_path):
                 continue
             yield rel_path
@@ -197,19 +268,39 @@ class GenericLSPIndexer:
         client: LSPClient,
         rel_path: Path,
         symbols: list[dict],
+        *,
+        strict: bool = False,
+        max_in_flight: int = 10,
     ) -> list[dict]:
-        references = []
-        for definition in iter_lsp_symbol_definitions(
-            rel_path.as_posix(),
-            symbols,
-            language=self.language,
-        ):
-            locations = client.references(
-                str(self.project_root / rel_path),
-                definition["selection_line"],
-                definition["selection_character"],
-                include_declaration=False,
+        definitions = list(
+            iter_lsp_symbol_definitions(
+                rel_path.as_posix(),
+                symbols,
+                language=self.language,
             )
+        )
+        file_path = str(self.project_root / rel_path)
+        outcomes = client.references_batch(
+            [
+                (
+                    file_path,
+                    definition["selection_line"],
+                    definition["selection_character"],
+                )
+                for definition in definitions
+            ],
+            include_declaration=False,
+            max_in_flight=max_in_flight,
+        )
+        references = []
+        for definition, (locations, error) in zip(definitions, outcomes, strict=True):
+            if is_lsp_document_unavailable_error(error):
+                return []
+            if strict and error and error.get("code") != -2:
+                raise RuntimeError(
+                    "reference oracle request failed for "
+                    f"{rel_path}:{definition['selection_line']}: {error}"
+                )
             if not locations:
                 continue
             references.append(

@@ -31,14 +31,14 @@ Typical usage
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
 from ...log_utils import get_logger
 from ..embedding.vector_store import _Document
-from .chunk_store import IncrementalChunkStore, VersionedChunk
+from .chunk_store import IncrementalChunkStore, VersionedChunk, _hash_content
 from .embeddings_cache import EmbeddingsCache
 from .git_diff import GitDiffDetector, RepoChanges
 
@@ -61,6 +61,11 @@ class UpdateResult:
     total_chunks: int = 0
     new_commit: str = ""
     duration_seconds: float = 0.0
+    stage_seconds: Dict[str, float] = field(default_factory=dict)
+    chunks_by_level: Dict[str, int] = field(default_factory=dict)
+    chunks_reembedded_by_level: Dict[str, int] = field(default_factory=dict)
+    chunks_from_cache_by_level: Dict[str, int] = field(default_factory=dict)
+    index_update_modes: Dict[str, str] = field(default_factory=dict)
 
     @property
     def cache_hit_rate(self) -> float:
@@ -88,11 +93,15 @@ class IncrementalIndexUpdater:
         embedding_model,
         diff_detector: Optional[GitDiffDetector] = None,
         l0_chunker: Optional["CodeChunker"] = None,
+        delta_threshold: float = 0.1,
     ) -> None:
         self._chunker = chunker
         self._embedding_model = embedding_model
         self._diff_detector = diff_detector or GitDiffDetector()
         self._l0_chunker = l0_chunker
+        if not 0.0 <= delta_threshold <= 1.0:
+            raise ValueError("delta_threshold must be between 0 and 1")
+        self._delta_threshold = delta_threshold
 
     # ------------------------------------------------------------------
     # Public API
@@ -127,9 +136,11 @@ class IncrementalIndexUpdater:
         result = UpdateResult()
 
         # ---- Step 1: detect changes ------------------------------------
+        stage_start = time.monotonic()
         changes: RepoChanges = self._diff_detector.detect_changes(
             repo_path, last_commit
         )
+        result.stage_seconds["change_detection"] = time.monotonic() - stage_start
         result.new_commit = changes.new_commit
         result.files_changed = len(changes.affected) + len(changes.deleted)
 
@@ -141,11 +152,19 @@ class IncrementalIndexUpdater:
             result.duration_seconds = time.monotonic() - t_start
             return result
 
+        levels_to_rebuild = ["l2"]
+        if self._l0_chunker is not None:
+            levels_to_rebuild.append("l0")
+        changed_hashes_by_level: Dict[str, Set[str]] = {
+            level: set() for level in levels_to_rebuild
+        }
+
         # ---- Step 2: rechunk affected files (L2 + optional L0) ----------
+        stage_start = time.monotonic()
         for file_path in changes.affected:
             # L2 rechunk
             try:
-                new_chunks = self._chunker.chunk_file(file_path)
+                new_chunks = self._chunker.chunk_repository_file(file_path, repo_path)
             except Exception as exc:
                 logger.warning("Failed to L2-chunk %s: %s", file_path, exc)
                 new_chunks = []
@@ -155,12 +174,15 @@ class IncrementalIndexUpdater:
             )
             result.chunks_added += len(added)
             result.chunks_removed += len(removed)
+            changed_hashes_by_level["l2"].update(
+                _hash_content(chunk.content) for chunk in added + removed
+            )
 
             # L0 rechunk (file skeleton)
             if self._l0_chunker is not None:
                 try:
-                    l0_chunks = self._l0_chunker.chunk_file(
-                        file_path, skeleton_mode=True
+                    l0_chunks = self._l0_chunker.chunk_repository_file(
+                        file_path, repo_path
                     )
                 except Exception as exc:
                     logger.warning(
@@ -169,22 +191,30 @@ class IncrementalIndexUpdater:
                         exc,
                     )
                     continue
-                chunk_store.update_file(
+                l0_added, l0_removed = chunk_store.update_file(
                     file_path, l0_chunks, changes.new_commit, level="l0"
+                )
+                result.chunks_added += len(l0_added)
+                result.chunks_removed += len(l0_removed)
+                changed_hashes_by_level["l0"].update(
+                    _hash_content(chunk.content) for chunk in l0_added + l0_removed
                 )
 
         # ---- Step 3: handle deleted files ------------------------------
         for file_path in changes.deleted:
-            removed = chunk_store.delete_file(file_path)  # removes both levels
-            result.chunks_removed += len(removed)
+            for level in levels_to_rebuild:
+                removed = chunk_store.delete_file(file_path, level=level)
+                result.chunks_removed += len(removed)
+                changed_hashes_by_level[level].update(
+                    _hash_content(chunk.content) for chunk in removed
+                )
+        result.stage_seconds["rechunk"] = time.monotonic() - stage_start
 
         # ---- Step 4-5: assemble embeddings & rebuild per level ----------
-        levels_to_rebuild = ["l2"]
-        if self._l0_chunker is not None:
-            levels_to_rebuild.append("l0")
-
         total_from_cache = 0
         total_reembedded = 0
+        embedding_seconds = 0.0
+        index_update_seconds = 0.0
 
         for level in levels_to_rebuild:
             level_versioned = chunk_store.get_all_versioned(level=level)
@@ -202,23 +232,36 @@ class IncrementalIndexUpdater:
 
             total_from_cache += len(hits)
             total_reembedded += len(misses)
+            result.chunks_by_level[level] = len(level_versioned)
+            result.chunks_from_cache_by_level[level] = len(hits)
+            result.chunks_reembedded_by_level[level] = len(misses)
 
             # Embed cache-miss chunks
             if misses:
                 miss_contents = [vc.chunk.content for vc in misses]
+                embed_start = time.monotonic()
                 raw_vectors = self._embedding_model.embed_documents(miss_contents)
+                embedding_seconds += time.monotonic() - embed_start
                 for vc, raw_vec in zip(misses, raw_vectors, strict=True):
                     vec = np.asarray(raw_vec, dtype=np.float32)
                     embeddings_cache.put(vc.content_hash, vec)
                     hits.append((vc, vec))
 
-            # Rebuild FAISS for this level (delta when possible)
-            if hits:
-                documents, embeddings = self._build_doc_embedding_pairs(hits)
-                changed_hashes = {vc.content_hash for vc in misses}
-                vector_store.delta_update(
-                    documents, embeddings, changed_hashes, level=level
-                )
+            # Update FAISS for this level (delta when possible). An empty
+            # target must still reach delta_update so the old level is cleared.
+            documents, embeddings = self._build_doc_embedding_pairs(hits)
+            index_start = time.monotonic()
+            result.index_update_modes[level] = vector_store.delta_update(
+                documents,
+                embeddings,
+                changed_hashes_by_level[level],
+                level=level,
+                threshold=self._delta_threshold,
+            )
+            index_update_seconds += time.monotonic() - index_start
+
+        result.stage_seconds["embedding"] = embedding_seconds
+        result.stage_seconds["index_update"] = index_update_seconds
 
         result.total_chunks = chunk_store.chunk_count()
         result.chunks_from_cache = total_from_cache
@@ -232,7 +275,9 @@ class IncrementalIndexUpdater:
         )
 
         # ---- Step 6: prune stale cache entries -------------------------
+        stage_start = time.monotonic()
         pruned = embeddings_cache.prune(chunk_store.get_all_content_hashes())
+        result.stage_seconds["cache_prune"] = time.monotonic() - stage_start
         if pruned:
             logger.debug("Pruned %d stale embedding cache entries.", pruned)
 

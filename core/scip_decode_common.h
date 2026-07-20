@@ -71,7 +71,8 @@ public:
   void add_symbol_node(const std::string &symbol, int line,
                        std::optional<int> scope_start_line,
                        std::optional<int> scope_end_line,
-                       const std::string &symbol_type);
+                       const std::string &symbol_type,
+                       std::optional<int> selection_character = std::nullopt);
 
   // Reference — mirrors serial CodeGraph.add_symbol_reference:
   //   attributes are set only the FIRST time the name is seen; subsequent

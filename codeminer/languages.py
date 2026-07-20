@@ -181,7 +181,9 @@ LANGUAGE_SPECS: Tuple[LanguageSpec, ...] = (
         incremental_backend="lsp",
         incremental_patcher="codeminer.graph.incremental.patcher_rust:PatcherRust",
         lsp_language_id="rust",
-        lsp_command_factory="codeminer.scip_interface.rust_analyzer:rust_analyzer_command",
+        lsp_command_factory=(
+            "codeminer.scip_interface.rust_analyzer:rust_analyzer_lsp_command"
+        ),
         core_decoder=True,
     ),
     LanguageSpec(
@@ -587,6 +589,25 @@ def normalize_graph_language(language: str) -> Optional[str]:
 
     key = graph_language_aliases().get(_norm(language))
     return key
+
+
+def chunker_languages_for_graph_language(language: str) -> Tuple[str, ...]:
+    """Return every chunker language represented by one graph backend key.
+
+    Most graph backends map one-to-one to a tree-sitter chunker. The shared
+    ``ts`` graph backend is intentionally one-to-many: it serves both
+    JavaScript and TypeScript repositories, so view builders consuming a graph
+    workload must retain both source families.
+    """
+
+    graph_language = normalize_graph_language(language)
+    if graph_language is None:
+        return ()
+    return _unique(
+        spec.chunker_language
+        for spec in LANGUAGE_SPECS
+        if spec.graph_language == graph_language and spec.chunker_language
+    )
 
 
 def normalize_agent_language(language: str) -> Optional[str]:
@@ -996,6 +1017,7 @@ __all__ = [
     "agent_language_aliases",
     "chunker_language_aliases",
     "chunker_languages",
+    "chunker_languages_for_graph_language",
     "chunker_class_path",
     "chunker_class_paths",
     "core_decoder_languages",

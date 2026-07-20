@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from codeminer.ls_index.lsp_graph_decode import (
     GenericLSPGraphDecoder,
     iter_lsp_symbol_definitions,
@@ -80,9 +82,39 @@ def test_generic_lsp_decoder_builds_java_symbol_graph(tmp_path):
     assert graph.graph.vs[graph.name_to_vertex[class_name]]["type"] == NODE_TYPE_CLASS
     assert graph.graph.vs[graph.name_to_vertex[ctor_name]]["type"] == NODE_TYPE_METHOD
     assert graph.graph.vs[graph.name_to_vertex[method_name]]["type"] == NODE_TYPE_METHOD
+    method = graph.graph.vs[graph.name_to_vertex[method_name]]
+    assert method["selection_line"] == 10
+    assert method["selection_character"] == 4
 
     class_query = graph.query_range(file_name, 10, 10, kinds={EDGE_TYPE_CONTAIN})
     assert [node.name for node in class_query.defined] == [class_name, method_name]
+
+
+def test_generic_lsp_decoder_normalizes_go_receiver_method(tmp_path):
+    index = tmp_path / "index.lsp.json"
+    index.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "language": "go",
+                "files": [
+                    {
+                        "path": "routergroup.go",
+                        "symbols": [
+                            _sym("(*RouterGroup).createStaticHandler", 6, 184, 205)
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    graph = GenericLSPGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+
+    assert (
+        "routergroup.go:RouterGroup.createStaticHandler():184" in graph.name_to_vertex
+    )
 
 
 def test_generic_lsp_decoder_keeps_ruby_module_parent_names(tmp_path):
@@ -305,12 +337,202 @@ def test_generic_lsp_indexer_uses_resolved_lsp_command(tmp_path, monkeypatch):
         def document_symbol(self, file_path):
             return []
 
+        def close_document(self, file_path):
+            pass
+
     monkeypatch.setattr("codeminer.ls_index.lsp_indexer.LSPClient", FakeLSPClient)
 
     indexer = GenericLSPIndexer(tmp_path, language="java")
 
     assert indexer.generate_index()
     assert calls == [(["/tmp/resolved-jdtls", "--stdio"], str(tmp_path), "java")]
+
+
+def test_generic_lsp_indexer_skips_generated_dependency_trees(tmp_path):
+    source = tmp_path / "src" / "app.ts"
+    dependency = tmp_path / "node_modules" / "pkg" / "index.ts"
+    generated = tmp_path / "dist" / "bundle.ts"
+    for path in (source, dependency, generated):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("export const value = 1;\n", encoding="utf-8")
+
+    indexer = GenericLSPIndexer(tmp_path, language="typescript")
+
+    assert list(indexer._iter_source_files()) == [Path("src/app.ts")]
+
+
+def test_generic_lsp_indexer_applies_uniform_strict_request_budget(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "module.py").write_text("def run():\n    pass\n", encoding="utf-8")
+    clients = []
+
+    class FakeLSPClient:
+        @staticmethod
+        def get_lsp_command(_language):
+            return ["fake-lsp"]
+
+        def __init__(self, *_args):
+            clients.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def document_symbol(self, _file_path):
+            return []
+
+        def close_document(self, file_path):
+            pass
+
+    monkeypatch.setattr("codeminer.ls_index.lsp_indexer.LSPClient", FakeLSPClient)
+
+    indexer = GenericLSPIndexer(tmp_path, language="python")
+    assert indexer.generate_index(
+        strict_references=True,
+        request_timeout_s=73.0,
+        reference_timeout_s=73.0,
+        reference_retries=2,
+    )
+
+    client = clients[0]
+    assert client.strict_request_failures is True
+    assert client.operation_retries == 2
+    assert client.reference_retries == 2
+    assert client.reference_timeout_s == 73.0
+    assert client.document_symbol_timeout_s == 73.0
+    assert client.definition_timeout_s == 73.0
+    assert client.semantic_tokens_timeout_s == 73.0
+
+
+def test_generic_lsp_indexer_propagates_outer_timeout(tmp_path, monkeypatch):
+    (tmp_path / "module.py").write_text("value = 1\n", encoding="utf-8")
+
+    class TimedOutLSPClient:
+        @staticmethod
+        def get_lsp_command(_language):
+            return ["fake-lsp"]
+
+        def __init__(self, *_args):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def document_symbol(self, _file_path):
+            raise TimeoutError("strategy deadline")
+
+        def close_document(self, _file_path):
+            pass
+
+    monkeypatch.setattr("codeminer.ls_index.lsp_indexer.LSPClient", TimedOutLSPClient)
+
+    indexer = GenericLSPIndexer(tmp_path, language="python")
+    with pytest.raises(TimeoutError, match="strategy deadline"):
+        indexer.generate_index()
+
+
+def test_generic_lsp_indexer_strict_reference_oracle_rejects_timeout(tmp_path):
+    indexer = GenericLSPIndexer(tmp_path, language="python")
+    symbols = [_sym("run", 12, 3, 5)]
+
+    class TimedOutClient:
+        last_error = {"code": -1, "message": "timeout"}
+
+        def references_batch(self, queries, **kwargs):
+            return [([], self.last_error) for _query in queries]
+
+    with pytest.raises(RuntimeError, match="reference oracle request failed"):
+        indexer._collect_references(
+            TimedOutClient(), Path("module.py"), symbols, strict=True
+        )
+
+
+def test_generic_lsp_indexer_treats_unavailable_document_as_empty(tmp_path):
+    indexer = GenericLSPIndexer(tmp_path, language="go")
+    symbols = [_sym("run", 12, 3, 5)]
+
+    class UnavailableClient:
+        last_error = {
+            "code": 0,
+            "message": "no package metadata for file file:///repo/fuzz.go",
+        }
+
+        def references_batch(self, queries, **kwargs):
+            return [([], self.last_error) for _query in queries]
+
+    assert (
+        indexer._collect_references(
+            UnavailableClient(), Path("fuzz.go"), symbols, strict=True
+        )
+        == []
+    )
+
+
+def test_generic_lsp_indexer_collects_all_symbols_before_references(
+    tmp_path, monkeypatch
+):
+    for name in ("A.java", "B.java"):
+        (tmp_path / name).write_text(f"class {name[0]} {{}}\n", encoding="utf-8")
+    events = []
+
+    class FakeLSPClient:
+        @staticmethod
+        def get_lsp_command(language):
+            return ["fake-lsp"]
+
+        def __init__(self, command, project_root, language):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def document_symbol(self, file_path):
+            events.append(("symbols", Path(file_path).name))
+            return [_sym(Path(file_path).stem, 5, 0, 0)]
+
+        def wait_until_idle(self):
+            events.append(("idle", None))
+            return True
+
+        def wait_for_analysis(self, file_path):
+            events.append(("analysis", Path(file_path).name))
+            return True
+
+        def references_batch(self, queries, **kwargs):
+            for file_path, _line, _character in queries:
+                events.append(("references", Path(file_path).name))
+            return [([], None) for _query in queries]
+
+        def close_document(self, file_path):
+            events.append(("close", Path(file_path).name))
+
+    monkeypatch.setattr("codeminer.ls_index.lsp_indexer.LSPClient", FakeLSPClient)
+
+    indexer = GenericLSPIndexer(tmp_path, language="java")
+
+    assert indexer.generate_index(include_references=True)
+    assert events == [
+        ("idle", None),
+        ("symbols", "A.java"),
+        ("close", "A.java"),
+        ("symbols", "B.java"),
+        ("close", "B.java"),
+        ("idle", None),
+        ("analysis", "A.java"),
+        ("references", "A.java"),
+        ("close", "A.java"),
+        ("references", "B.java"),
+        ("close", "B.java"),
+    ]
 
 
 def test_generic_lsp_indexer_normalizes_language_alias(tmp_path):
@@ -388,17 +610,29 @@ def test_generic_lsp_indexer_collects_references_from_selection_range(tmp_path):
         def __init__(self):
             self.calls = []
 
-        def references(self, file_path, line, character, include_declaration=False):
-            self.calls.append((file_path, line, character, include_declaration))
-            return [
-                {
-                    "uri": (tmp_path / "src/Foo.java").as_uri(),
-                    "range": {
-                        "start": {"line": 7, "character": 12},
-                        "end": {"line": 7, "character": 15},
-                    },
-                }
-            ]
+        def references_batch(
+            self, queries, include_declaration=False, max_in_flight=None
+        ):
+            outcomes = []
+            for file_path, line, character in queries:
+                self.calls.append(
+                    (file_path, line, character, include_declaration, max_in_flight)
+                )
+                outcomes.append(
+                    (
+                        [
+                            {
+                                "uri": (tmp_path / "src/Foo.java").as_uri(),
+                                "range": {
+                                    "start": {"line": 7, "character": 12},
+                                    "end": {"line": 7, "character": 15},
+                                },
+                            }
+                        ],
+                        None,
+                    )
+                )
+            return outcomes
 
     symbols = [_sym("Foo", 5, 0, 10, children=[_sym("run", 6, 3, 5)])]
     indexer = GenericLSPIndexer(tmp_path, language="java")
@@ -407,8 +641,8 @@ def test_generic_lsp_indexer_collects_references_from_selection_range(tmp_path):
     refs = indexer._collect_references(fake, Path("src/Foo.java"), symbols)
 
     assert fake.calls == [
-        (str(tmp_path / "src/Foo.java"), 0, 4, False),
-        (str(tmp_path / "src/Foo.java"), 3, 4, False),
+        (str(tmp_path / "src/Foo.java"), 0, 4, False, 10),
+        (str(tmp_path / "src/Foo.java"), 3, 4, False, 10),
     ]
     assert refs[1]["target_unified_name"] == "src/Foo.java:Foo.run()"
     assert refs[1]["target_start_line"] == 3

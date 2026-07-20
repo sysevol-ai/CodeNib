@@ -343,6 +343,7 @@ class TestIncrementalIndexUpdater:
         embedding_model = _make_mock_embedding_model(DIM)
         emb_cache = EmbeddingsCache()
         mock_store = _make_mock_vector_store(embedding_model, DIM)
+        mock_store.delta_update.return_value = "clear"
 
         updater = IncrementalIndexUpdater(
             chunker=chunker,
@@ -350,7 +351,7 @@ class TestIncrementalIndexUpdater:
             diff_detector=GitDiffDetector(supported_extensions={".py"}),
         )
 
-        updater.update(
+        result = updater.update(
             repo_path=str(repo),
             vector_store=mock_store,
             chunk_store=chunk_store,
@@ -360,3 +361,11 @@ class TestIncrementalIndexUpdater:
 
         assert chunk_store.chunk_count() == 0
         assert str(repo / "dead.py") not in chunk_store._store
+        mock_store.delta_update.assert_called_once_with(
+            [],
+            [],
+            {_hash_content(dead_chunk.content)},
+            level="l2",
+            threshold=0.1,
+        )
+        assert result.index_update_modes == {"l2": "clear"}

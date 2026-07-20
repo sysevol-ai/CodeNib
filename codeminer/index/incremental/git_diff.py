@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Set
 
 from ...log_utils import get_logger
+from ...utils import is_test_file
 
 logger = get_logger(__name__)
 
@@ -79,17 +80,22 @@ class GitDiffDetector:
         supported_extensions: File extensions to track. Defaults to all
             extensions recognised by CodeChunker. Pass a custom set when
             the project uses a subset of languages.
+        exclude_tests: Apply the same test-file policy as a repository chunker
+            configured with ``filter_tests=True``.
     """
 
     def __init__(
         self,
         supported_extensions: Set[str] = None,
+        *,
+        exclude_tests: bool = False,
     ) -> None:
         self._extensions = (
             supported_extensions
             if supported_extensions is not None
             else _DEFAULT_EXTENSIONS
         )
+        self._exclude_tests = exclude_tests
 
     def get_current_commit(self, repo_path: str) -> str:
         """Return the current HEAD SHA, or empty string if not a git repo."""
@@ -203,7 +209,9 @@ class GitDiffDetector:
         return changes
 
     def _is_supported(self, path: str) -> bool:
-        return Path(path).suffix in self._extensions
+        if Path(path).suffix not in self._extensions:
+            return False
+        return not (self._exclude_tests and is_test_file(path))
 
     # Directories to skip when walking the repo for the first-time fallback.
     _SKIP_DIRS = frozenset(

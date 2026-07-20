@@ -17,6 +17,7 @@ patcher_lang subclasses must implement.
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable, Optional
@@ -33,7 +34,7 @@ from ...types import (
     NODE_TYPE_SYMBOL,
 )
 from ..code_graph import CodeGraph
-from .lsp_client import LSPClient, uri_to_relpath
+from .lsp_client import LSPClient, is_lsp_document_unavailable_error, uri_to_relpath
 
 logger = get_logger(__name__)
 
@@ -68,6 +69,9 @@ _INCOMING_REF_TYPES = frozenset(
         NODE_TYPE_METHOD,
     }
 )
+
+_LEXICAL_IDENTIFIER_RE = re.compile(r"(?:[^\W\d]|[$_])(?:\w|[$])*", re.UNICODE)
+_MAX_REVERSE_REFERENCE_CANDIDATES = 64
 
 
 class EdgeBatch:
@@ -202,6 +206,9 @@ class SubgraphMgr(ABC):
         self._semantic_tokens_cache: dict[
             tuple[str, tuple[tuple[int, int], ...]], list[dict] | None
         ] = {}
+        self._reverse_reference_cache: dict[str, list[dict]] = {}
+        self._touched_reference_targets: set[str] = set()
+        self._symbol_leaf_to_vertices: dict[str, list[int]] = {}
 
     # ═══════════════════════════════════════════════════════════
     # Abstract methods — language-specific
@@ -243,10 +250,13 @@ class SubgraphMgr(ABC):
         """Build unified_name and file_to_vertices indexes."""
         g = self.code_graph
         g.unified_name_to_vertex = {}
+        self._symbol_leaf_to_vertices = {}
         for v in g.graph.vs:
             un = v.attributes().get("unified_name")
             if un:
                 g.unified_name_to_vertex.setdefault(un, []).append(v.index)
+                leaf = self._unified_name_leaf(un)
+                self._symbol_leaf_to_vertices.setdefault(leaf, []).append(v.index)
 
         g.file_to_vertices = {}
         for v in g.graph.vs:
@@ -603,6 +613,8 @@ class SubgraphMgr(ABC):
         self,
         file_path: str,
         line_mapper: Callable[[int], int | None],
+        *,
+        reconcile_removed_targets: bool = False,
     ) -> tuple[int, int]:
         """Rebase every reference anchored in one changed source file.
 
@@ -628,6 +640,10 @@ class SubgraphMgr(ABC):
                 continue
             new_line = line_mapper(old_line)
             if new_line is None:
+                if reconcile_removed_targets:
+                    self._touched_reference_targets.add(
+                        graph.graph.vs[edge.target]["name"]
+                    )
                 to_delete.append(edge.index)
             elif new_line != old_line:
                 edge["anchor_line"] = new_line
@@ -789,6 +805,9 @@ class SubgraphMgr(ABC):
                     "selection_line": sel_range.get("start", {}).get(
                         "line", start_line
                     ),
+                    "selection_character": sel_range.get("start", {}).get(
+                        "character", 0
+                    ),
                     "unified_name": unified_name,
                 },
             )
@@ -849,9 +868,14 @@ class SubgraphMgr(ABC):
 
         for vname in vertex_names:
             node_type = ""
+            target_file = None
+            target_start_line = None
             vid = self.code_graph.name_to_vertex.get(vname)
             if vid is not None:
-                node_type = self.code_graph.graph.vs[vid].attributes().get("type", "")
+                target_attrs = self.code_graph.graph.vs[vid].attributes()
+                node_type = target_attrs.get("type", "")
+                target_file = target_attrs.get("file")
+                target_start_line = target_attrs.get("start_line")
                 if node_type not in _INCOMING_REF_TYPES:
                     continue
 
@@ -867,14 +891,18 @@ class SubgraphMgr(ABC):
                 # Some servers treat references to an interface method as
                 # references to every implementation. Keep only call sites
                 # whose own go-to-definition resolves to this concrete method.
-                if node_type == NODE_TYPE_METHOD and not self._reference_resolves_to(
-                    loc, vname
+                if (
+                    getattr(self, "respect_backend_exclusions", True)
+                    and node_type == NODE_TYPE_METHOD
+                    and not self._reference_resolves_to(loc, vname)
                 ):
                     continue
                 ref_file = uri_to_relpath(loc.get("uri", ""), str(self.project_root))
                 if ref_file is None:
                     continue
                 ref_line = loc.get("range", {}).get("start", {}).get("line", 0)
+                if ref_file == target_file and ref_line == target_start_line:
+                    continue
                 ref_scope = self._reference_scope_for_token(
                     ref_file,
                     {"line": ref_line},
@@ -948,11 +976,40 @@ class SubgraphMgr(ABC):
             return
         abs_file = str(self.project_root / file_path)
 
-        ref_tokens = self._get_semantic_tokens(
-            abs_file,
-            file_path,
-            line_ranges=line_ranges,
+        semantic_tokens = (
+            self._get_semantic_tokens(
+                abs_file,
+                file_path,
+                line_ranges=line_ranges,
+            )
+            or []
         )
+        ref_tokens = list(semantic_tokens)
+        lexical_ranges = line_ranges
+        if (
+            lexical_ranges is None
+            and scope_filter is not None
+            and getattr(self, "strict_lsp_requests", False)
+        ):
+            # Whole-file materialization also owns imports, annotations, and
+            # navigable documentation syntax outside declaration ranges.
+            # Servers commonly omit those positions from semantic tokens, so
+            # the strict path validates lexical candidates through the same
+            # definition/reference oracle. Interactive updates keep the
+            # bounded semantic-token policy.
+            lexical_ranges = [(0, 2**31 - 1)]
+        if lexical_ranges:
+            semantic_positions = {
+                (token["line"], token["character"]) for token in semantic_tokens
+            }
+            ref_tokens.extend(
+                token
+                for token in self._get_lexical_reference_tokens(
+                    abs_file,
+                    lexical_ranges,
+                )
+                if (token["line"], token["character"]) not in semantic_positions
+            )
         if not ref_tokens:
             return
 
@@ -1033,28 +1090,50 @@ class SubgraphMgr(ABC):
             defn_list = definitions_by_position.get(
                 (ref_token["line"], ref_token["character"])
             )
-            if not defn_list:
-                continue
+            target_vertices = []
+            for defn in defn_list or []:
+                target_uri = defn.get("targetUri", defn.get("uri", ""))
+                target_file = uri_to_relpath(target_uri, str(self.project_root))
+                if target_file is None:
+                    continue
+                target_range = defn.get("targetSelectionRange", defn.get("range", {}))
+                target_line = target_range.get("start", {}).get("line", 0)
+                target_vertex = self.match_location_to_vertex(
+                    target_file,
+                    target_line,
+                    symbol_name=ref_token.get("text"),
+                    allow_scope_fallback=False,
+                    allow_name_fallback=ref_token.get("token_type")
+                    not in {"variable", "parameter"},
+                )
+                if target_vertex:
+                    target_vertices.append(target_vertex)
 
-            defn = defn_list[0]
-            target_uri = defn.get("targetUri", defn.get("uri", ""))
-            target_file = uri_to_relpath(target_uri, str(self.project_root))
-            if target_file is None:
-                continue
+            if getattr(self, "mode", None) in {"symbol", "naive"}:
+                # The full LSP graph is declaration-reference materialization.
+                # Declaration-side references therefore validate direct
+                # definition results. Exact-name candidates also recover
+                # overloaded declarations omitted by definition.
+                target_vertices = self._reverse_reference_targets(
+                    file_path,
+                    ref_token,
+                    direct_targets=target_vertices,
+                )
 
-            target_range = defn.get("targetSelectionRange", defn.get("range", {}))
-            target_line = target_range.get("start", {}).get("line", 0)
-
-            target_vertex = self.match_location_to_vertex(
-                target_file,
-                target_line,
-                symbol_name=ref_token.get("text"),
-                allow_scope_fallback=False,
-                allow_name_fallback=ref_token.get("token_type")
-                not in {"variable", "parameter"},
-            )
-
-            if scope and target_vertex:
+            matched = bool(scope and target_vertices)
+            for target_vertex in dict.fromkeys(target_vertices):
+                if not scope:
+                    break
+                target_id = self.code_graph.name_to_vertex.get(target_vertex)
+                if target_id is not None:
+                    target_attrs = self.code_graph.graph.vs[target_id].attributes()
+                    if (
+                        target_attrs.get("file") == file_path
+                        and target_attrs.get("start_line") == ref_token["line"]
+                    ):
+                        # Match the full LSP decoder: declaration locations
+                        # are not materialized as self-reference edges.
+                        continue
                 if batch is not None:
                     if batch.stage(
                         scope,
@@ -1073,8 +1152,267 @@ class SubgraphMgr(ABC):
                         anchor_line=ref_token["line"],
                     )
                     stats["outgoing_added"] += 1
-            else:
+            if not matched:
                 stats["unmatched"] += 1
+
+    def _reverse_reference_targets(
+        self,
+        file_path: str,
+        token: dict,
+        direct_targets: list[str] | None = None,
+    ) -> list[str]:
+        """Resolve overloaded declarations by checking their reference sets.
+
+        ``definition`` may return only one declaration from an overloaded or
+        extended type while a full LSP graph contains an edge to every
+        declaration whose ``references`` response includes the use site.
+        Interactive updates retain a bounded latency policy. Strict
+        materialization scans every exact-name candidate because truncation
+        would make equivalence depend on overload fan-out.
+        """
+
+        if not self.lsp_client:
+            return []
+        symbol_name = str(token.get("text") or "")
+        candidates = self._symbol_leaf_to_vertices.get(symbol_name, [])
+        direct_target_names = set(direct_targets or [])
+        candidate_names = list(dict.fromkeys(direct_targets or []))
+        candidate_names.extend(
+            name
+            for name in self._constructor_targets(candidate_names)
+            if name not in candidate_names
+        )
+        scan_all_candidates = bool(getattr(self, "strict_lsp_requests", False))
+        if candidates and (
+            scan_all_candidates or len(candidates) <= _MAX_REVERSE_REFERENCE_CANDIDATES
+        ):
+            candidate_names.extend(
+                graph_name
+                for vertex_id in candidates
+                if (graph_name := self.code_graph.graph.vs[vertex_id]["name"])
+                not in candidate_names
+            )
+        if not candidate_names:
+            return []
+
+        token_line = int(token["line"])
+        token_character = int(token["character"])
+        token_end = token_character + max(int(token.get("length") or 1), 1)
+        matches = []
+        graph = self.code_graph.graph
+        uncached_names = []
+        uncached_queries = []
+        for vertex_name in candidate_names:
+            vertex_id = self.code_graph.name_to_vertex.get(vertex_name)
+            if vertex_id is None:
+                continue
+            vertex = graph.vs[vertex_id]
+            attrs = vertex.attributes()
+            target_file = attrs.get("file")
+            target_line = attrs.get("selection_line")
+            if not target_file or target_line is None:
+                continue
+            if vertex_name not in self._reverse_reference_cache:
+                uncached_names.append(vertex_name)
+                uncached_queries.append(
+                    (
+                        str(self.project_root / target_file),
+                        int(target_line),
+                        int(attrs.get("selection_character") or 0),
+                    )
+                )
+
+        if uncached_queries:
+            outcomes = self.lsp_client.references_batch(
+                uncached_queries,
+                include_declaration=False,
+            )
+            for vertex_name, (_locations, error) in zip(
+                uncached_names, outcomes, strict=True
+            ):
+                if error and error.get("code") != -2:
+                    if getattr(
+                        self, "strict_lsp_requests", False
+                    ) and not is_lsp_document_unavailable_error(error):
+                        raise RuntimeError(
+                            "reverse-reference oracle request failed for "
+                            f"{vertex_name}: {error}"
+                        )
+                    continue
+                self._reverse_reference_cache[vertex_name] = _locations
+
+        for vertex_name in candidate_names:
+            vertex_id = self.code_graph.name_to_vertex.get(vertex_name)
+            if vertex_id is None:
+                continue
+            references = self._reverse_reference_cache.get(vertex_name)
+            if references is None:
+                continue
+            location_matches = False
+            for location in references:
+                ref_file = uri_to_relpath(
+                    location.get("uri", ""), str(self.project_root)
+                )
+                start = location.get("range", {}).get("start", {})
+                end = location.get("range", {}).get("end", start)
+                if ref_file != file_path or start.get("line") != token_line:
+                    continue
+                start_character = int(start.get("character") or 0)
+                end_character = int(end.get("character") or start_character + 1)
+                if start_character < token_end and token_character < end_character:
+                    matches.append(vertex_name)
+                    location_matches = True
+                    break
+            if vertex_name in direct_target_names or location_matches:
+                self._touched_reference_targets.add(vertex_name)
+        return matches
+
+    def reconcile_touched_incoming(
+        self,
+        changed_files: set[str] | None = None,
+    ) -> dict[str, int]:
+        """Synchronize incoming sets for declarations touched by a diff.
+
+        A source edit can change type resolution at an unchanged call site.
+        Outgoing repair already fetched declaration-side references to validate
+        changed tokens; reuse those responses without another LSP call. When
+        ``changed_files`` is provided, only replace anchors owned by those
+        files. This preserves materialized facts in untouched files when a
+        long-lived language server later reports a broader reference set than
+        the original full-build provider snapshot.
+        """
+        graph = self.code_graph.graph
+        desired_by_target: dict[str, set[tuple[str, str, int]]] = {}
+        reconciled = 0
+        unmatched = 0
+        for target_name in sorted(self._touched_reference_targets):
+            references = self._reverse_reference_cache.get(target_name)
+            target_id = self.code_graph.name_to_vertex.get(target_name)
+            if target_id is None:
+                continue
+            target = graph.vs[target_id]
+            target_attrs = target.attributes()
+            if references is None and self.lsp_client:
+                target_file = target_attrs.get("file")
+                target_line = target_attrs.get("selection_line")
+                if target_file and target_line is not None:
+                    references = self.lsp_client.references(
+                        str(self.project_root / target_file),
+                        int(target_line),
+                        int(target_attrs.get("selection_character") or 0),
+                        include_declaration=False,
+                    )
+                    error = getattr(self.lsp_client, "last_error", None)
+                    if error and error.get("code") != -2:
+                        continue
+                    self._reverse_reference_cache[target_name] = references
+            if references is None:
+                continue
+            desired = desired_by_target.setdefault(target_name, set())
+            for location in references:
+                if (
+                    getattr(self, "respect_backend_exclusions", True)
+                    and target_attrs.get("type") == NODE_TYPE_METHOD
+                    and not self._reference_resolves_to(location, target_name)
+                ):
+                    continue
+                ref_file = uri_to_relpath(
+                    location.get("uri", ""), str(self.project_root)
+                )
+                if ref_file is None:
+                    continue
+                if changed_files is not None and ref_file not in changed_files:
+                    continue
+                ref_line = int(
+                    location.get("range", {}).get("start", {}).get("line", 0)
+                )
+                if ref_file == target_attrs.get(
+                    "file"
+                ) and ref_line == target_attrs.get("start_line"):
+                    continue
+                ref_scope = self._reference_scope_for_token(
+                    ref_file,
+                    {"line": ref_line},
+                    self.match_location_to_scope(ref_file, ref_line),
+                )
+                if ref_scope:
+                    desired.add((ref_scope, ref_file, ref_line))
+                else:
+                    unmatched += 1
+            reconciled += 1
+
+        remove_ids = []
+        for target_name in desired_by_target:
+            target_id = self.code_graph.name_to_vertex.get(target_name)
+            if target_id is None:
+                continue
+            remove_ids.extend(
+                edge_id
+                for edge_id in graph.incident(target_id, mode="in")
+                if graph.es[edge_id]["type"] == EDGE_TYPE_REFERENCE
+                and (
+                    changed_files is None
+                    or graph.es[edge_id].attributes().get("anchor_file")
+                    in changed_files
+                )
+            )
+        if remove_ids:
+            graph.delete_edges(sorted(set(remove_ids)))
+            self.code_graph._invalidate_edge_index()
+
+        batch = EdgeBatch(self.code_graph)
+        added = 0
+        for target_name, desired in desired_by_target.items():
+            for source_name, anchor_file, anchor_line in desired:
+                if batch.stage(
+                    source_name,
+                    target_name,
+                    EDGE_TYPE_REFERENCE,
+                    anchor_file=anchor_file,
+                    anchor_line=anchor_line,
+                ):
+                    added += 1
+        batch.flush()
+        self._touched_reference_targets.clear()
+        return {
+            "targets_reconciled": reconciled,
+            "incoming_removed": len(set(remove_ids)),
+            "incoming_added": added,
+            "unmatched": unmatched,
+        }
+
+    def _constructor_targets(self, direct_targets: list[str]) -> list[str]:
+        """Expand a class definition to constructor declarations it contains.
+
+        Some servers resolve ``Type(...)`` to the class for definition but
+        report the same location as a reference to both the class and its
+        constructor. The full graph materializes both declaration-side facts;
+        incremental repair must consider the constructor before validating its
+        reference response.
+        """
+        constructor_leaf = {
+            "python": "__init__()",
+            "ruby": "initialize()",
+        }.get(self.REGISTRY_LANGUAGE, "constructor()")
+        graph = self.code_graph.graph
+        constructors = []
+        for vertex_name in direct_targets:
+            vertex_id = self.code_graph.name_to_vertex.get(vertex_name)
+            if vertex_id is None or graph.vs[vertex_id]["type"] != NODE_TYPE_CLASS:
+                continue
+            for edge_id in graph.incident(vertex_id, mode="out"):
+                edge = graph.es[edge_id]
+                if edge["type"] != EDGE_TYPE_CONTAIN or edge.source != vertex_id:
+                    continue
+                child = graph.vs[edge.target]
+                unified_name = str(child.attributes().get("unified_name") or "")
+                display_name = unified_name.split(":", 1)[-1]
+                if (
+                    child["type"] == NODE_TYPE_METHOD
+                    and display_name.rsplit(".", 1)[-1] == constructor_leaf
+                ):
+                    constructors.append(child["name"])
+        return constructors
 
     def _get_semantic_tokens(
         self,
@@ -1145,6 +1483,53 @@ class SubgraphMgr(ABC):
         self._semantic_tokens_cache[cache_key] = filtered
         return list(filtered)
 
+    @staticmethod
+    def _get_lexical_reference_tokens(
+        abs_file: str,
+        line_ranges: list[tuple[int, int]],
+    ) -> list[dict]:
+        """Supplement incomplete semantic tokens inside changed line ranges.
+
+        LSP servers may omit navigable syntax such as JSX element and property
+        names from ``semanticTokens`` even though ``definition`` resolves at
+        those positions. Lexical candidates remain provider-agnostic: keyword,
+        comment, and local-variable positions are discarded naturally when
+        definition lookup or graph matching returns no result.
+        """
+
+        try:
+            lines = (
+                Path(abs_file)
+                .read_text(encoding="utf-8", errors="replace")
+                .splitlines()
+            )
+        except OSError:
+            return []
+
+        selected_lines = set()
+        for start, end in line_ranges:
+            if end < 0 or start >= len(lines):
+                continue
+            selected_lines.update(range(max(start, 0), min(end, len(lines) - 1) + 1))
+
+        tokens = []
+        for line_number in sorted(selected_lines):
+            line = lines[line_number]
+            for match in _LEXICAL_IDENTIFIER_RE.finditer(line):
+                prefix = line[: match.start()]
+                text = match.group(0)
+                tokens.append(
+                    {
+                        "line": line_number,
+                        "character": len(prefix.encode("utf-16-le")) // 2,
+                        "length": len(text.encode("utf-16-le")) // 2,
+                        "token_type": "lexical",
+                        "modifiers": [],
+                        "text": text,
+                    }
+                )
+        return tokens
+
     def _reference_scope_for_token(
         self,
         file_path: str,
@@ -1159,7 +1544,7 @@ class SubgraphMgr(ABC):
         scope.
         """
 
-        return preferred_scope or self.match_location_to_scope(file_path, token["line"])
+        return self.match_location_to_scope(file_path, token["line"]) or preferred_scope
 
     def _containment_parent(self, vertex_name: str) -> str | None:
         """Return a vertex's direct containment parent, when available."""

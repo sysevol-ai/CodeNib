@@ -19,6 +19,11 @@ class PatcherPython(PatcherBase):
         scope = super()._reference_scope_for_token(file_path, token, preferred_scope)
         if scope is None:
             return None
+        if not self.respect_backend_exclusions:
+            # The generic LSP decoder assigns decorator references to the
+            # innermost documentSymbol range. Preserve that provider contract
+            # when an LSP-built graph is the incremental baseline.
+            return scope
 
         source_path = self.project_root / file_path
         try:

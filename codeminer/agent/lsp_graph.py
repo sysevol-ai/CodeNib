@@ -473,7 +473,10 @@ def lsp_definition(
         )
         for name in target_names
     ]
-    return _dedupe_nodes(nodes, limit)
+    # igraph preserves edge insertion order, which differs between a fresh
+    # rebuild and an equivalent incrementally patched graph. Definition order
+    # is not semantically significant, so canonicalize before top-k truncation.
+    return _dedupe_nodes(nodes, limit, canonical_order=True)
 
 
 def _filter_targets_by_character(

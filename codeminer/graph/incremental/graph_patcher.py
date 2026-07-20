@@ -43,13 +43,27 @@ def _create_patcher(
     project_root: str,
     code_graph: Optional[CodeGraph],
     mode: str = "symbol",
+    respect_backend_exclusions: bool = True,
+    reference_timeout_s: float = 10.0,
+    reference_retries: int = 0,
+    reference_concurrency: int = 10,
+    strict_lsp_requests: bool = False,
 ) -> PatcherBase:
     """Factory: create language-specific patcher."""
     patcher_path = incremental_patcher_path(language)
     if patcher_path is None:
         raise ValueError(f"Unsupported language: {language}")
     cls = _load_patcher_class(patcher_path)
-    return cls(project_root, code_graph or CodeGraph(project_root), mode=mode)
+    return cls(
+        project_root,
+        code_graph or CodeGraph(project_root),
+        mode=mode,
+        respect_backend_exclusions=respect_backend_exclusions,
+        reference_timeout_s=reference_timeout_s,
+        reference_retries=reference_retries,
+        reference_concurrency=reference_concurrency,
+        strict_lsp_requests=strict_lsp_requests,
+    )
 
 
 class GraphPatcher:
@@ -74,12 +88,25 @@ class GraphPatcher:
         code_graph: Optional[CodeGraph],
         language: str,
         mode: str = "symbol",
+        respect_backend_exclusions: bool = True,
+        reference_timeout_s: float = 10.0,
+        reference_retries: int = 0,
+        reference_concurrency: int = 10,
+        strict_lsp_requests: bool = False,
     ):
         self.project_root = project_root
         self.language = language
         self.mode = mode
         self._impl: PatcherBase = _create_patcher(
-            language, project_root, code_graph, mode=mode
+            language,
+            project_root,
+            code_graph,
+            mode=mode,
+            respect_backend_exclusions=respect_backend_exclusions,
+            reference_timeout_s=reference_timeout_s,
+            reference_retries=reference_retries,
+            reference_concurrency=reference_concurrency,
+            strict_lsp_requests=strict_lsp_requests,
         )
 
     @property
@@ -94,6 +121,14 @@ class GraphPatcher:
     def profiler(self):
         return self._impl.profiler
 
+    @property
+    def workspace_warmup_idle(self) -> bool | None:
+        return self._impl.workspace_warmup_idle
+
+    @property
+    def workspace_initial_idle(self) -> bool | None:
+        return self._impl.workspace_initial_idle
+
     # ── Delegated methods ─────────────────────────────────
 
     def start_lsp(self, skip_probe: bool = False):
@@ -103,6 +138,10 @@ class GraphPatcher:
     def stop_lsp(self):
         """Stop the LSP server."""
         self._impl.stop_lsp()
+
+    def warmup_workspace(self) -> int:
+        """Prime the current LSP session with repository definitions."""
+        return self._impl.warmup_workspace()
 
     def patch_files(self, changed_files: dict, **kwargs) -> dict:
         """Apply incremental patch for all changed files."""

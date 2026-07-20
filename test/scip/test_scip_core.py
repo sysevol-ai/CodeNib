@@ -13,7 +13,7 @@ For each cached integration language with a C++ decoder (python, go, rust, ts):
      python's sympy instance).
   2. Run the C++ core decoder on the same ``index.decoded``.
   3. Assert names + edges + per-vertex attributes (type, file,
-     start/end_line, selection_line, unified_name) are bit-for-bit identical.
+     start/end_line, selection location, unified_name) are bit-for-bit identical.
 
 This test intentionally does **not** rebuild the serial graph — it depends on
 the ``integration-serial → scip-core`` job chain in ``ci.yml`` to have
@@ -59,6 +59,7 @@ _COMPARED_ATTRS = (
     "start_line",
     "end_line",
     "selection_line",
+    "selection_character",
     "unified_name",
 )
 

@@ -176,7 +176,7 @@ define require-command
 endef
 
 .PHONY: install scip bootstrap bootstrap-ubuntu multilang-system-deps-ubuntu multilang-tools toolchain-doctor
-.PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
+.PHONY: active-scip-tools active-lsp-tools active-scip-env print-active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
 .PHONY: core-system-deps-ubuntu core-python-deps core-build core-test
@@ -247,6 +247,17 @@ active-scip-env:
 	@echo "  export GOPATH=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools"
 	@echo "  export CODEMINER_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
 	@echo "  export PATH=$(CODEMINER_TOOL_PATH):\$$PATH"
+
+print-active-scip-env:
+	@printf '%s\n' \
+		'export CODEMINER_SCIP_TOOLS_DIR=$(CODEMINER_SCIP_TOOLS_DIR)' \
+		'export DOTNET_ROOT=$(CODEMINER_SCIP_TOOLS_DIR)/dotnet' \
+		'export GEM_HOME=$(CODEMINER_SCIP_TOOLS_DIR)/gems' \
+		'export GEM_PATH=$(CODEMINER_SCIP_TOOLS_DIR)/gems' \
+		'export GOBIN=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin' \
+		'export GOPATH=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools' \
+		'export CODEMINER_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)' \
+		'export PATH=$(CODEMINER_TOOL_PATH):$$PATH'
 
 toolchain-doctor:
 	@$(CODEMINER_TOOL_ENV) sh -eu -c 'missing=0; \

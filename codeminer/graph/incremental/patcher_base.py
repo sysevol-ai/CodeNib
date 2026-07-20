@@ -14,14 +14,19 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Optional
 
-from ...languages import lsp_command_for_language, lsp_language_id_for_language
+from ...languages import (
+    extensions_for_language,
+    lsp_command_for_language,
+    lsp_language_id_for_language,
+)
 from ...log_utils import get_logger
 from ...profiler import Profiler
+from ...repository_files import iter_repository_source_files
 from ...types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
 from ..code_graph import CodeGraph
 from . import change_mgr
 from .lsp_client import LSPClient
-from .subgraph_mgr import SubgraphMgr
+from .subgraph_mgr import LSP_KIND_TO_NODE_TYPE, SubgraphMgr
 
 logger = get_logger(__name__)
 
@@ -49,23 +54,10 @@ class PatcherBase(SubgraphMgr):
 
     # Subclasses override: which LSP SymbolKinds to include in classification.
     # Default covers most languages. C++ overrides completely.
-    GRAPH_SYMBOL_KINDS = frozenset(
-        {
-            2,  # Module
-            5,  # Class
-            6,  # Method
-            8,  # Field
-            9,  # Constructor
-            10,  # Enum
-            11,  # Interface
-            12,  # Function
-            13,  # Variable
-            14,  # Constant
-            22,  # Enum (alt)
-            23,  # Struct
-            25,  # Operator
-        }
-    )
+    # Keep incremental classification aligned with full LSP lowering. In
+    # particular, TypeScript emits properties as kind 7 and namespaces as
+    # kind 3; dropping either makes an edited declaration look deleted.
+    GRAPH_SYMBOL_KINDS = frozenset(LSP_KIND_TO_NODE_TYPE)
     REGISTRY_LANGUAGE: str | None = None
 
     def __init__(
@@ -74,22 +66,37 @@ class PatcherBase(SubgraphMgr):
         code_graph: CodeGraph,
         lsp_client: Optional[LSPClient] = None,
         mode: str = "symbol",
+        respect_backend_exclusions: bool = True,
+        reference_timeout_s: float = 10.0,
+        reference_retries: int = 0,
+        reference_concurrency: int = 10,
+        strict_lsp_requests: bool = False,
     ):
         """``mode`` is one of:
 
         - ``"symbol"`` (default): the actual symbol-level incremental patcher.
         - ``"naive"``: file-granularity baseline used by the sequential
-          benchmark (issue #129). For modified files, every old symbol is
-          classified as deleted and every new symbol as added — no shifted /
-          affected / unchanged / invisible buckets. Untouched files are still
-          left alone. Only the classifier behaviour changes; the rest of the
-          pipeline (LSP queries, edge reconnection) is identical to symbol
-          mode, which is exactly what makes it the right A/B comparison.
+          benchmark (issue #129). For an LSP-backed graph, modified files are
+          deleted and lowered again through the full indexer's document-symbol
+          path; untouched files are left alone. The edge-reconnection pipeline
+          is shared with symbol mode, which keeps the A/B comparison scoped to
+          update granularity.
         """
         super().__init__(project_root, code_graph, lsp_client)
         if mode not in ("symbol", "naive"):
             raise ValueError(f"unknown patcher mode: {mode!r}")
         self.mode = mode
+        self.respect_backend_exclusions = respect_backend_exclusions
+        self.reference_timeout_s = reference_timeout_s
+        self.reference_retries = reference_retries
+        if reference_concurrency < 1:
+            raise ValueError("reference_concurrency must be positive")
+        self.reference_concurrency = reference_concurrency
+        self.strict_lsp_requests = strict_lsp_requests
+        self.workspace_initial_idle: bool | None = None
+        self.workspace_warmup_idle: bool | None = None
+        self._flattened_symbol_collisions: set[str] = set()
+        self._flattened_symbol_collision_lines: dict[str, set[int]] = {}
         self.profiler = Profiler()
 
     # ═══════════════════════════════════════════════════════════
@@ -139,11 +146,25 @@ class PatcherBase(SubgraphMgr):
             sl = attrs.get("start_line")
             if sl is None:
                 continue  # SCIP reference vertex, not a definition
+            end_line = attrs.get("end_line")
+            selection_line = attrs.get("selection_line")
+            parent_uname = None
+            for edge_id in g.graph.incident(vid, mode="in"):
+                edge = g.graph.es[edge_id]
+                if edge["type"] != EDGE_TYPE_CONTAIN or edge.target != vid:
+                    continue
+                parent_uname = g.graph.vs[edge.source].attributes().get("unified_name")
+                break
             result[uname] = {
                 "vertex_name": v["name"],
                 "start_line": sl,
-                "end_line": attrs.get("end_line", sl),
-                "selection_line": attrs.get("selection_line", sl),
+                "end_line": end_line if end_line is not None else sl,
+                "selection_line": (
+                    selection_line if selection_line is not None else sl
+                ),
+                "selection_character": attrs.get("selection_character") or 0,
+                "node_type": attrs.get("type"),
+                "parent_uname": parent_uname,
             }
         return result
 
@@ -152,6 +173,8 @@ class PatcherBase(SubgraphMgr):
         file_path: str,
         symbols: list[dict],
         parent_uname: str = "",
+        *,
+        _depth: int = 0,
     ) -> dict[str, dict]:
         """Default flatten logic shared by most languages.
 
@@ -161,6 +184,9 @@ class PatcherBase(SubgraphMgr):
 
         Language patchers call this from their flatten_symbols() method.
         """
+        if _depth == 0:
+            self._flattened_symbol_collisions.clear()
+            self._flattened_symbol_collision_lines.clear()
         result = {}
         for sym in symbols or []:
             name = sym.get("name", "")
@@ -182,7 +208,7 @@ class PatcherBase(SubgraphMgr):
                     child_parent = uname.split(":", 1)[1] if ":" in uname else name
                 for child in sym.get("children", []):
                     child_result = self._flatten_symbols_default(
-                        file_path, [child], child_parent
+                        file_path, [child], child_parent, _depth=_depth + 1
                     )
                     self._merge_flattened_symbols(result, child_result)
                 continue
@@ -211,7 +237,7 @@ class PatcherBase(SubgraphMgr):
                 child_parent = uname.split(":", 1)[1] if ":" in uname else name
             for child in sym.get("children", []):
                 child_result = self._flatten_symbols_default(
-                    file_path, [child], child_parent
+                    file_path, [child], child_parent, _depth=_depth + 1
                 )
                 self._merge_flattened_symbols(result, child_result)
 
@@ -226,7 +252,18 @@ class PatcherBase(SubgraphMgr):
             existing = target.get(unified_name)
             if existing is None:
                 target[unified_name] = candidate
-            elif (
+                continue
+
+            self._flattened_symbol_collisions.add(unified_name)
+            collision_lines = self._flattened_symbol_collision_lines.setdefault(
+                unified_name, set()
+            )
+            collision_lines.update(
+                int(symbol["start_line"])
+                for symbol in (existing, candidate)
+                if symbol.get("start_line") is not None
+            )
+            if (
                 existing["kind"] in definition_kinds
                 and candidate["kind"] not in definition_kinds
             ):
@@ -256,6 +293,65 @@ class PatcherBase(SubgraphMgr):
             return parent_display_name
         return f"{prefix}{parent_display_name}"
 
+    def _file_level_rebuild_reason(
+        self,
+        file_path: str,
+        old_symbols: dict[str, dict],
+        new_symbols: dict[str, dict],
+        hunks: list[change_mgr.ChangedLineHunk],
+    ) -> str | None:
+        """Return why symbol identity is unsafe, or ``None`` when usable.
+
+        Language patchers may reject symbol-level invalidation when their LSP
+        provider cannot give every declaration a stable, injective identity.
+        The caller then performs a full-file replacement and records the
+        fallback instead of guessing a symbol correspondence.
+        """
+
+        old_only = old_symbols.keys() - new_symbols.keys()
+        new_only = new_symbols.keys() - old_symbols.keys()
+
+        def leaf_name(unified_name: str) -> str:
+            prefix = f"{file_path}:"
+            display_name = (
+                unified_name[len(prefix) :]
+                if unified_name.startswith(prefix)
+                else unified_name
+            )
+            return display_name.rsplit(".", 1)[-1]
+
+        new_by_location: dict[tuple[int, int, str], list[str]] = {}
+        for unified_name in new_only:
+            symbol = new_symbols[unified_name]
+            selection = symbol.get("sel_range", {}).get("start", {})
+            line = selection.get("line", symbol.get("start_line"))
+            if line is None:
+                continue
+            key = (
+                int(line),
+                int(selection.get("character") or 0),
+                leaf_name(unified_name),
+            )
+            new_by_location.setdefault(key, []).append(unified_name)
+
+        for unified_name in old_only:
+            symbol = old_symbols[unified_name]
+            old_line = symbol.get("selection_line", symbol.get("start_line"))
+            if old_line is None:
+                continue
+            mapped_line = change_mgr.map_old_line_to_new(int(old_line), hunks)
+            if mapped_line is None:
+                continue
+            key = (
+                mapped_line,
+                int(symbol.get("selection_character") or 0),
+                leaf_name(unified_name),
+            )
+            if key in new_by_location:
+                return "symbol hierarchy changed at an unchanged declaration"
+
+        return None
+
     # ═══════════════════════════════════════════════════════════
     # LSP lifecycle
     # ═══════════════════════════════════════════════════════════
@@ -269,7 +365,20 @@ class PatcherBase(SubgraphMgr):
         if resolved:
             cmd = [resolved] + cmd[1:]
 
-        self.lsp_client = LSPClient(cmd, str(self.project_root), self._language_id())
+        self.lsp_client = LSPClient(
+            cmd,
+            str(self.project_root),
+            self._language_id(),
+            max_in_flight_requests=self.reference_concurrency,
+        )
+        self.lsp_client.operation_retries = self.reference_retries
+        self.lsp_client.strict_request_failures = self.strict_lsp_requests
+        self.lsp_client.reference_timeout_s = self.reference_timeout_s
+        self.lsp_client.reference_retries = self.reference_retries
+        if self.strict_lsp_requests:
+            self.lsp_client.document_symbol_timeout_s = self.reference_timeout_s
+            self.lsp_client.definition_timeout_s = self.reference_timeout_s
+            self.lsp_client.semantic_tokens_timeout_s = self.reference_timeout_s
         self.lsp_client.start(skip_probe=skip_probe)
 
     def stop_lsp(self):
@@ -277,6 +386,41 @@ class PatcherBase(SubgraphMgr):
         if self.lsp_client:
             self.lsp_client.shutdown()
             self.lsp_client = None
+
+    def warmup_workspace(self) -> int:
+        """Prime one long-lived LSP session with all indexed source files."""
+
+        if self.lsp_client is None:
+            raise RuntimeError("start_lsp() must be called before workspace warmup")
+        if not self.REGISTRY_LANGUAGE:
+            return 0
+        extensions = extensions_for_language(self.REGISTRY_LANGUAGE, "graph")
+        files = []
+        for relative_path in iter_repository_source_files(
+            self.project_root,
+            extensions=extensions,
+        ):
+            relative = relative_path.as_posix()
+            if self.respect_backend_exclusions and self._should_skip_path(relative):
+                continue
+            files.append(self.project_root / relative_path)
+        with self.profiler.section("lsp_workspace_initial_idle"):
+            self.workspace_initial_idle = self.lsp_client.wait_until_idle()
+        if not self.workspace_initial_idle:
+            raise TimeoutError(
+                "LSP workspace did not become idle before workspace warmup"
+            )
+        with self.profiler.section("lsp_workspace_warmup"):
+            for path in files:
+                self.lsp_client.document_symbol(str(path))
+        with self.profiler.section("lsp_workspace_idle"):
+            self.workspace_warmup_idle = self.lsp_client.wait_until_idle()
+        if not self.workspace_warmup_idle:
+            logger.warning(
+                "LSP progress remained active after workspace warmup; "
+                "continuing with strict per-request failure handling"
+            )
+        return len(files)
 
     def _language_id(self) -> str:
         """Return the LSP language ID. Override if needed."""
@@ -296,7 +440,11 @@ class PatcherBase(SubgraphMgr):
 
     def _filter_changed_files(self, changed_files: dict) -> dict:
         """Apply ``_should_skip_path`` to every entry in ``changed_files``."""
-        skip = self._should_skip_path
+        skip = (
+            self._should_skip_path
+            if self.respect_backend_exclusions
+            else lambda _path: False
+        )
         return {
             "modified": [p for p in changed_files.get("modified", []) if not skip(p)],
             "added": [p for p in changed_files.get("added", []) if not skip(p)],
@@ -341,6 +489,7 @@ class PatcherBase(SubgraphMgr):
             "files_modified": 0,
             "files_added": 0,
             "files_renamed": 0,
+            "files_symbol_identity_fallback": 0,
             "vertices_deleted": 0,
             "vertices_created": 0,
             "vertices_shifted": 0,
@@ -352,6 +501,8 @@ class PatcherBase(SubgraphMgr):
 
         # Clear stale caches from previous patch_files calls
         self._semantic_tokens_cache.clear()
+        self._reverse_reference_cache.clear()
+        self._touched_reference_targets.clear()
 
         # Git updates the worktree outside the LSP protocol. Refresh any
         # already-open buffers before documentSymbol/references/definition
@@ -368,6 +519,15 @@ class PatcherBase(SubgraphMgr):
         ]
         for path in current_paths:
             self.lsp_client.sync_document(path)
+        wait_for_analysis = getattr(self.lsp_client, "wait_for_analysis", None)
+        if current_paths and callable(wait_for_analysis):
+            with self.profiler.section("lsp_changed_document_analysis"):
+                for path in current_paths:
+                    analysis_ready = wait_for_analysis(path)
+                    if self.strict_lsp_requests and not analysis_ready:
+                        raise RuntimeError(
+                            f"LSP analysis barrier did not become ready for {path}"
+                        )
 
         nodes_before = self.code_graph.graph.vcount()
         edges_before = self.code_graph.graph.ecount()
@@ -409,7 +569,15 @@ class PatcherBase(SubgraphMgr):
             raise ValueError("earlier_commit required for modified files")
         mod_contexts = []
         for path in modified:
-            ctx = self._incremental_prepare_vertices(path, earlier_commit)
+            if self.mode == "naive" and not self.respect_backend_exclusions:
+                ctx = self._rebuild_prepare_vertices(
+                    path,
+                    is_new=False,
+                    remap_severed=False,
+                    replace_file=True,
+                )
+            else:
+                ctx = self._incremental_prepare_vertices(path, earlier_commit)
             if ctx is not None:
                 mod_contexts.append((path, ctx))
                 self._merge_stats(total_stats, ctx["file_stats"])
@@ -423,6 +591,8 @@ class PatcherBase(SubgraphMgr):
         # indexes once so Round 2 sees the exact post-patch vertex set.
         with self.profiler.section("patch_files.build_indexes"):
             self.build_indexes()
+        with self.profiler.section("patch_files.build_range_indexes_before_edges"):
+            self.code_graph.build_range_indexes()
 
         for path, ctx in add_contexts:
             edge_stats = self._rebuild_connect_edges(path, ctx)
@@ -433,8 +603,33 @@ class PatcherBase(SubgraphMgr):
             self._merge_stats(total_stats, edge_stats)
 
         for path, ctx in mod_contexts:
-            edge_stats = self._incremental_connect_edges(path, ctx)
+            if ctx.get("replace_file"):
+                edge_stats = self._rebuild_connect_edges(path, ctx)
+            else:
+                edge_stats = self._incremental_connect_edges(path, ctx)
             self._merge_stats(total_stats, edge_stats)
+
+        changed_anchor_files = {
+            *changed_files.get("deleted", []),
+            *changed_files.get("added", []),
+            *changed_files.get("modified", []),
+            *(
+                path
+                for old_path, new_path in changed_files.get("renamed", [])
+                for path in (old_path, new_path)
+            ),
+        }
+        with self.profiler.section("lsp_global_incoming_reconcile"):
+            reconcile_stats = self.reconcile_touched_incoming(
+                changed_files=(
+                    None if self.strict_lsp_requests else changed_anchor_files
+                )
+            )
+        total_stats["global_targets_reconciled"] = reconcile_stats["targets_reconciled"]
+        total_stats["global_incoming_removed"] = reconcile_stats["incoming_removed"]
+        total_stats["global_incoming_added"] = reconcile_stats["incoming_added"]
+        total_stats["refs_incoming"] += reconcile_stats["incoming_added"]
+        total_stats["refs_unmatched"] += reconcile_stats["unmatched"]
 
         nodes_after = self.code_graph.graph.vcount()
         edges_after = self.code_graph.graph.ecount()
@@ -484,6 +679,10 @@ class PatcherBase(SubgraphMgr):
         file_path: str,
         is_new: bool = False,
         line_ranges: list[tuple[int, int]] | None = None,
+        *,
+        remap_severed: bool = True,
+        replace_file: bool = False,
+        symbols: list[dict] | None = None,
     ) -> dict:
         """Round 1 for full rebuild: delete old + build new vertices + remap."""
         file_stats = {
@@ -499,6 +698,17 @@ class PatcherBase(SubgraphMgr):
         severed_out = []
 
         if not is_new:
+            if replace_file:
+                # A file-granularity replacement invalidates every call site
+                # owned by the document, including rare edges whose source
+                # identity was coalesced with a symbol in another file. Track
+                # their targets so the declaration-side reference oracle can
+                # reconstruct non-lexical uses after the replacement.
+                self.rebase_reference_anchors_for_file(
+                    file_path,
+                    lambda _line: None,
+                    reconcile_removed_targets=True,
+                )
             with self.profiler.section("delete_subgraph"):
                 result = self.delete_file_subgraph(file_path)
                 file_stats["vertices_deleted"] = len(result["deleted_vertex_names"])
@@ -506,25 +716,57 @@ class PatcherBase(SubgraphMgr):
                 severed_out = result["severed_outgoing_refs"]
 
         with self.profiler.section("lsp_document_symbol"):
-            abs_file = str(self.project_root / file_path)
-            symbols = self.lsp_client.document_symbol(abs_file)
-            new_vertices = self.rebuild_file_subgraph(file_path, symbols)
+            if symbols is None:
+                abs_file = str(self.project_root / file_path)
+                symbols = self.lsp_client.document_symbol(abs_file)
+            if not self.respect_backend_exclusions:
+                from ...ls_index.lsp_graph_decode import add_lsp_document_symbols
+
+                with self.code_graph.batch_edges():
+                    new_vertices = add_lsp_document_symbols(
+                        self.code_graph,
+                        file_path=file_path,
+                        symbols=symbols,
+                        language=self.REGISTRY_LANGUAGE or "",
+                    )
+                for vertex_name in new_vertices:
+                    vertex_id = self.code_graph.name_to_vertex[vertex_name]
+                    attrs = self.code_graph.graph.vs[vertex_id].attributes()
+                    start_line = int(attrs.get("selection_line") or 0)
+                    start_character = int(attrs.get("selection_character") or 0)
+                    self.symbol_selection_ranges[vertex_name] = (
+                        start_line,
+                        start_character,
+                        start_line,
+                        start_character,
+                    )
+            else:
+                new_vertices = self.rebuild_file_subgraph(file_path, symbols)
             file_stats["vertices_created"] = len(new_vertices)
 
-        with self.profiler.section("remap_edges"):
-            remapped = self._remap_severed_edges(
-                new_vertices,
-                severed_in,
-                severed_out,
-                changed_line_ranges=line_ranges,
-            )
-            file_stats["refs_remapped"] = remapped
+        if remap_severed:
+            with self.profiler.section("remap_edges"):
+                remapped = self._remap_severed_edges(
+                    new_vertices,
+                    severed_in,
+                    severed_out,
+                    changed_line_ranges=line_ranges,
+                )
+                file_stats["refs_remapped"] = remapped
+        else:
+            # Force Round 2 to query every rebuilt declaration. Keeping these
+            # lists would make _rebuild_connect_edges treat remapped symbols
+            # as already covered, which is not a full-file replacement.
+            severed_in = []
+            severed_out = []
 
         return {
             "file_stats": file_stats,
             "new_vertices": new_vertices,
             "severed_in": severed_in,
             "severed_out": severed_out,
+            "replace_file": replace_file,
+            "rebuild_file_scope": replace_file or is_new,
         }
 
     def _rebuild_connect_edges(
@@ -575,6 +817,19 @@ class PatcherBase(SubgraphMgr):
                 line_ranges=outgoing_ranges,
             )
 
+        if ctx.get("rebuild_file_scope"):
+            # Symbol ranges do not cover imports, annotations, and other
+            # module-level uses. Rebuild those separately for new files and
+            # full-file replacements while retaining file-scope ownership.
+            with self.profiler.section("lsp_file_scope_outgoing_refs"):
+                self.reconnect_outgoing(
+                    file_path,
+                    [],
+                    ref_stats,
+                    line_ranges=None,
+                    scope_filter={file_path},
+                )
+
         edge_stats["refs_incoming"] = ref_stats["incoming_added"]
         edge_stats["refs_outgoing"] = ref_stats["outgoing_added"]
         edge_stats["refs_unmatched"] = ref_stats["unmatched"]
@@ -623,13 +878,34 @@ class PatcherBase(SubgraphMgr):
             raw_symbols = self.lsp_client.document_symbol(abs_file)
             new_symbols = self.flatten_symbols(file_path, raw_symbols)
 
-        backend_missing = 0
-        if self.mode == "symbol":
-            backend_missing = self._synthesize_missing_symbol_locations(
-                old_symbols,
-                new_symbols,
-                detailed_hunks,
+        fallback_reason = self._file_level_rebuild_reason(
+            file_path,
+            old_symbols,
+            new_symbols,
+            detailed_hunks,
+        )
+        if fallback_reason:
+            logger.info(
+                "Incremental patch %s: falling back to full-file replacement (%s)",
+                file_path,
+                fallback_reason,
             )
+            ctx = self._rebuild_prepare_vertices(
+                file_path,
+                is_new=False,
+                remap_severed=False,
+                replace_file=True,
+                symbols=raw_symbols,
+            )
+            ctx["fallback_reason"] = fallback_reason
+            ctx["file_stats"]["files_symbol_identity_fallback"] = 1
+            return ctx
+
+        backend_missing = self._synthesize_missing_symbol_locations(
+            old_symbols,
+            new_symbols,
+            detailed_hunks,
+        )
         if backend_missing:
             logger.warning(
                 f"Preserved {backend_missing} symbols omitted by documentSymbol "
@@ -690,7 +966,7 @@ class PatcherBase(SubgraphMgr):
         for uname in classified["added"]:
             new = new_symbols[uname]
             vname = f"{uname}:{new['start_line']}"
-            node_type = self._classify_symbol_type(new["kind"])
+            node_type = new.get("node_type") or self._classify_symbol_type(new["kind"])
 
             self.code_graph._add_vertex(
                 vname,
@@ -906,12 +1182,20 @@ class PatcherBase(SubgraphMgr):
 
             new_symbols[unified_name] = {
                 "kind": 0,
+                "node_type": old.get("node_type"),
                 "start_line": new_start,
                 "end_line": max(new_start, new_end),
                 "sel_range": {
-                    "start": {"line": new_selection, "character": 0},
-                    "end": {"line": new_selection, "character": 0},
+                    "start": {
+                        "line": new_selection,
+                        "character": old.get("selection_character", 0),
+                    },
+                    "end": {
+                        "line": new_selection,
+                        "character": old.get("selection_character", 0),
+                    },
                 },
+                "parent_uname": old.get("parent_uname"),
                 "backend_synthesized": True,
             }
             synthesized += 1
@@ -1125,6 +1409,11 @@ class PatcherBase(SubgraphMgr):
             },
         )
         self._update_selection_range(old_vname, new_vname, new)
+        if self.strict_lsp_requests:
+            # Strict materialization refreshes the declaration-side incoming
+            # set as well as rebasing retained anchors. This captures new uses
+            # introduced by sibling files when a declaration moves.
+            self._touched_reference_targets.add(new_vname)
         file_stats["vertices_shifted"] += 1
 
     def _process_affected(
@@ -1177,6 +1466,8 @@ class PatcherBase(SubgraphMgr):
                 self.code_graph.symbol_ranges[new_vname] = (new_start, new_end)
 
         self._update_selection_range(old_vname, new_vname, new)
+        if self.strict_lsp_requests:
+            self._touched_reference_targets.add(new_vname)
 
         return new_vname, overlapping_new
 
@@ -1445,6 +1736,9 @@ class PatcherBase(SubgraphMgr):
         vertex_id = self.code_graph.name_to_vertex.get(new_vname)
         if vertex_id is not None:
             self.code_graph.graph.vs[vertex_id]["selection_line"] = selection_line
+            self.code_graph.graph.vs[vertex_id]["selection_character"] = sel_start.get(
+                "character", 0
+            )
         if new_vname != old_vname and old_vname in self.symbol_selection_ranges:
             del self.symbol_selection_ranges[old_vname]
 
@@ -1463,6 +1757,9 @@ class PatcherBase(SubgraphMgr):
         vertex_id = self.code_graph.name_to_vertex.get(vname)
         if vertex_id is not None:
             self.code_graph.graph.vs[vertex_id]["selection_line"] = selection_line
+            self.code_graph.graph.vs[vertex_id]["selection_character"] = sel_start.get(
+                "character", 0
+            )
 
     @staticmethod
     def _merge_stats(total: dict, file_stats: dict):
@@ -1473,6 +1770,7 @@ class PatcherBase(SubgraphMgr):
             "vertices_shifted",
             "vertices_affected_preserved",
             "vertices_affected_rebuilt",
+            "files_symbol_identity_fallback",
             "refs_incoming",
             "refs_outgoing",
             "refs_remapped",

@@ -116,6 +116,8 @@ class VectorIndexBuilder:
     build_levels: List[str] = field(default_factory=lambda: ["l0", "l2"])
     max_lines_per_chunk: int = 300
     index_metric: str = "ip"
+    delta_threshold: float = 0.1
+    embedding: Any = field(default=None, repr=False, compare=False)
 
     def _artifact_identity(self) -> Dict[str, Any]:
         """Return the embedding contract required to reopen this artifact."""
@@ -153,6 +155,7 @@ class VectorIndexBuilder:
             embedding_provider=self.embedding_provider,
             embedding_dimension=self.embedding_dimension,
             embedding_kwargs=self.embedding_kwargs,
+            embedding=self.embedding,
             index_metric=self.index_metric,
         )
 
@@ -275,7 +278,8 @@ class VectorIndexBuilder:
         """
         from pathlib import Path
 
-        from ..code_chunker import CodeChunker, RepoChunkingConfig
+        from ..code_chunker import CodeChunker
+        from ..index.embedding.builders import hierarchical_chunker_kwargs
         from ..index.embedding.vector_store import CodeVectorStore
         from ..index.incremental import (
             EmbeddingsCache,
@@ -284,6 +288,7 @@ class VectorIndexBuilder:
             IncrementalIndexUpdater,
             IncrementalState,
         )
+        from ..languages import extensions_for_language
 
         repo_path: str = kwargs["repo_path"]
         output_dir: str = kwargs["output_dir"]
@@ -322,6 +327,7 @@ class VectorIndexBuilder:
             dimension=self.embedding_dimension,
             index_metric=self.index_metric,
             store_path=output_dir,
+            embedding=self.embedding,
             **self.embedding_kwargs,
         )
         vector_store.load(output_dir)
@@ -331,29 +337,30 @@ class VectorIndexBuilder:
 
         # Build chunkers matching the original build config
         primary = self.languages[0] if self.languages else "python"
-        repo_cfg = RepoChunkingConfig(languages=self.languages)
-        chunker = CodeChunker(
-            language=primary,
-            repo_config=repo_cfg,
-            max_lines_per_chunk=self.max_lines_per_chunk,
+        languages = self.languages or [primary]
+        chunker_contract = hierarchical_chunker_kwargs(
+            languages, self.max_lines_per_chunk
         )
+        chunker = CodeChunker(**chunker_contract["l2"])
 
         # L0 chunker for file skeletons (only if L0 was part of the build)
         l0_chunker = None
         if "l0" in self.build_levels:
-            l0_chunker = CodeChunker(
-                language=primary,
-                repo_config=repo_cfg,
-                chunk_depth=0,
-                skeleton_mode=True,
-            )
+            l0_chunker = CodeChunker(**chunker_contract["l0"])
 
-        diff_detector = GitDiffDetector()
+        supported_extensions = set().union(
+            *(extensions_for_language(language, "chunker") for language in languages)
+        )
+        diff_detector = GitDiffDetector(
+            supported_extensions=supported_extensions,
+            exclude_tests=chunker_contract["l2"]["repo_config"].filter_tests,
+        )
         updater = IncrementalIndexUpdater(
             chunker=chunker,
             embedding_model=vector_store.embedding,
             diff_detector=diff_detector,
             l0_chunker=l0_chunker,
+            delta_threshold=self.delta_threshold,
         )
 
         result = updater.update(
@@ -399,6 +406,12 @@ class VectorIndexBuilder:
                 "chunks_reembedded": result.chunks_reembedded,
                 "chunks_from_cache": result.chunks_from_cache,
                 "cache_hit_rate": result.cache_hit_rate,
+                "chunks_by_level": result.chunks_by_level,
+                "chunks_reembedded_by_level": result.chunks_reembedded_by_level,
+                "chunks_from_cache_by_level": result.chunks_from_cache_by_level,
+                "index_update_modes": result.index_update_modes,
+                "stage_seconds": result.stage_seconds,
+                "update_duration_seconds": result.duration_seconds,
                 "new_commit": result.new_commit,
             },
         )

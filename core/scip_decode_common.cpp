@@ -168,7 +168,8 @@ void SubgraphBuilder::add_file_hierarchy(const std::string &file_path) {
 void SubgraphBuilder::add_symbol_node(const std::string &symbol, int line,
                                       std::optional<int> scope_start_line,
                                       std::optional<int> scope_end_line,
-                                      const std::string &symbol_type) {
+                                      const std::string &symbol_type,
+                                      std::optional<int> selection_character) {
   Subgraph::Node &node = ensure_node(symbol);
   // Definitions ALWAYS overwrite (matches serial add_symbol_node semantics).
   apply_update(node, std::make_optional<std::string>(symbol_type),
@@ -180,6 +181,7 @@ void SubgraphBuilder::add_symbol_node(const std::string &symbol, int line,
                  scope_start_line, scope_end_line);
   }
   node.data.selection_line = line;
+  node.data.selection_character = selection_character;
   node.is_definition = true;
 }
 

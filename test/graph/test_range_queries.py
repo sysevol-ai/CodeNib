@@ -345,4 +345,25 @@ def test_query_range_returns_range_query_result():
 
 
 def test_schema_version_constant_exposed():
-    assert _SCHEMA_VERSION >= 3
+    assert _SCHEMA_VERSION >= 5
+
+
+def test_selection_character_survives_graph_roundtrip(tmp_path):
+    graph = CodeGraph()
+    graph.add_file_node("foo.py")
+    graph.add_symbol_node(
+        "foo.py:run",
+        3,
+        2,
+        5,
+        "function",
+        selection_character=7,
+    )
+    path = tmp_path / "graph.pkl"
+
+    graph.save_graph(str(path))
+    loaded = CodeGraph.load_graph(str(path))
+
+    vertex = loaded.graph.vs[loaded.name_to_vertex["foo.py:run"]]
+    assert vertex["selection_line"] == 3
+    assert vertex["selection_character"] == 7

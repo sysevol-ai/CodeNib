@@ -11,11 +11,13 @@ by source/target alone. Severance reporting must surface one record per
 anchor so the remap path can re-create one edge per call site.
 """
 
+import pytest
+
 from codeminer.graph.code_graph import CodeGraph
 from codeminer.graph.incremental.change_mgr import ChangedLineHunk, map_old_line_to_new
 from codeminer.graph.incremental.patcher_base import PatcherBase
 from codeminer.graph.incremental.subgraph_mgr import SubgraphMgr
-from codeminer.types import EDGE_TYPE_REFERENCE
+from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
 
 
 class _StubPatcher(PatcherBase):
@@ -549,6 +551,9 @@ def test_synthesize_lsp_omission_when_declaration_is_unchanged():
             "start_line": 10,
             "end_line": 30,
             "selection_line": 10,
+            "selection_character": 4,
+            "node_type": "function",
+            "parent_uname": "a.py:Container",
         }
     }
     new_symbols = {}
@@ -563,6 +568,9 @@ def test_synthesize_lsp_omission_when_declaration_is_unchanged():
     assert count == 1
     assert new_symbols["a.py:Foo"]["start_line"] == 10
     assert new_symbols["a.py:Foo"]["end_line"] == 31
+    assert new_symbols["a.py:Foo"]["node_type"] == "function"
+    assert new_symbols["a.py:Foo"]["parent_uname"] == "a.py:Container"
+    assert new_symbols["a.py:Foo"]["sel_range"]["start"]["character"] == 4
     patcher = _StubPatcher(
         project_root="/tmp/classifyproj",
         code_graph=CodeGraph(project_root="/tmp/classifyproj"),
@@ -663,6 +671,8 @@ class _FakeLSPDefRefs:
         self.project_root = project_root
         self._defs = definitions or {}  # text → list[loc]
         self._refs = references or {}  # (file, line) → list[loc]
+        self.reference_batches = []
+        self.reference_error = None
 
     def definition(self, abs_file, line, character):
         # Look up by token text — but we don't have text here, so the
@@ -673,6 +683,21 @@ class _FakeLSPDefRefs:
     def references(self, abs_file, line, character, include_declaration=False):
         rel = abs_file.split(self.project_root + "/")[-1]
         return self._refs.get((rel, line, character), [])
+
+    def references_batch(self, queries, include_declaration=False, max_in_flight=None):
+        self.reference_batches.append(list(queries))
+        return [
+            (
+                self.references(
+                    abs_file,
+                    line,
+                    character,
+                    include_declaration=include_declaration,
+                ),
+                self.reference_error,
+            )
+            for abs_file, line, character in queries
+        ]
 
 
 class _ReconnectMgr(_NoopMgr):
@@ -867,6 +892,353 @@ def test_reconnect_outgoing_same_anchor_collapses():
     assert len(ref_eids) == 1, f"expected 1 edge (same anchor), got {len(ref_eids)}"
 
 
+def test_reconnect_outgoing_skips_declaration_location():
+    project_root = "/tmp/recproj"
+    graph = _build_caller_target_graph(project_root)
+    manager = _ReconnectMgr(project_root=project_root, code_graph=graph)
+    manager.build_indexes()
+    manager.canned_tokens = [{"line": 1, "character": 0, "length": 3, "text": "Bar"}]
+    fake_lsp = _FakeLSPDefRefs(project_root)
+    fake_lsp.definition = lambda *args, **kwargs: [
+        {
+            "targetUri": f"file://{project_root}/tgt.py",
+            "targetSelectionRange": {"start": {"line": 1, "character": 0}},
+        }
+    ]
+    manager.lsp_client = fake_lsp
+    stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
+
+    manager.reconnect_outgoing(
+        "tgt.py",
+        ["tgt.py:Bar"],
+        stats,
+        line_ranges=[(1, 1)],
+    )
+
+    assert stats["outgoing_added"] == 0
+
+
+def test_reconnect_outgoing_validates_class_and_constructor_references():
+    project_root = "/tmp/recproj"
+    graph = CodeGraph(project_root=project_root)
+    graph.add_file_node("caller.py")
+    graph.add_file_node("model.py")
+    graph._add_vertex(
+        "caller.py:build():10",
+        {
+            "type": "function",
+            "file": "caller.py",
+            "start_line": 10,
+            "end_line": 20,
+            "selection_line": 10,
+            "selection_character": 4,
+            "unified_name": "caller.py:build()",
+        },
+    )
+    graph._add_vertex(
+        "model.py:Model:1",
+        {
+            "type": "class",
+            "file": "model.py",
+            "start_line": 1,
+            "end_line": 8,
+            "selection_line": 1,
+            "selection_character": 6,
+            "unified_name": "model.py:Model",
+        },
+    )
+    graph._add_vertex(
+        "model.py:Model.__init__():2",
+        {
+            "type": "method",
+            "file": "model.py",
+            "start_line": 2,
+            "end_line": 4,
+            "selection_line": 2,
+            "selection_character": 8,
+            "unified_name": "model.py:Model.__init__()",
+        },
+    )
+    graph._add_edge(
+        "model.py:Model:1",
+        "model.py:Model.__init__():2",
+        EDGE_TYPE_CONTAIN,
+    )
+    graph.build_range_indexes()
+
+    manager = _ReconnectMgr(project_root=project_root, code_graph=graph)
+    manager.REGISTRY_LANGUAGE = "python"
+    manager.mode = "symbol"
+    manager.build_indexes()
+    manager.canned_tokens = [
+        {
+            "line": 12,
+            "character": 8,
+            "length": 5,
+            "text": "Model",
+            "token_type": "class",
+        }
+    ]
+    location = {
+        "uri": f"file://{project_root}/caller.py",
+        "range": {
+            "start": {"line": 12, "character": 8},
+            "end": {"line": 12, "character": 13},
+        },
+    }
+    fake_lsp = _FakeLSPDefRefs(
+        project_root,
+        definitions={
+            12: [
+                {
+                    "targetUri": f"file://{project_root}/model.py",
+                    "targetSelectionRange": {"start": {"line": 1, "character": 6}},
+                }
+            ]
+        },
+        references={
+            ("model.py", 1, 6): [location],
+            ("model.py", 2, 8): [location],
+        },
+    )
+    manager.lsp_client = fake_lsp
+    stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
+
+    manager.reconnect_outgoing(
+        "caller.py",
+        ["caller.py:build():10"],
+        stats,
+        line_ranges=[(10, 20)],
+    )
+
+    caller_id = graph.name_to_vertex["caller.py:build():10"]
+    targets = {
+        graph.graph.vs[graph.graph.es[edge_id].target]["name"]
+        for edge_id in graph.graph.incident(caller_id, mode="out")
+        if graph.graph.es[edge_id]["type"] == EDGE_TYPE_REFERENCE
+    }
+    assert targets == {
+        "model.py:Model:1",
+        "model.py:Model.__init__():2",
+    }
+    assert len(fake_lsp.reference_batches) == 1
+    assert len(fake_lsp.reference_batches[0]) == 2
+
+
+def test_reverse_reference_batch_preserves_strict_failure():
+    project_root = "/tmp/recproj"
+    graph = _build_caller_target_graph(project_root)
+    graph.graph.vs[graph.name_to_vertex["tgt.py:Bar"]]["selection_line"] = 1
+    graph.graph.vs[graph.name_to_vertex["tgt.py:Bar"]]["selection_character"] = 0
+    manager = _ReconnectMgr(project_root=project_root, code_graph=graph)
+    manager.mode = "symbol"
+    manager.REGISTRY_LANGUAGE = "python"
+    manager.strict_lsp_requests = True
+    manager.build_indexes()
+    manager.canned_tokens = [{"line": 12, "character": 8, "length": 3, "text": "Bar"}]
+    fake_lsp = _FakeLSPDefRefs(project_root)
+    fake_lsp.definition = lambda *_args, **_kwargs: [
+        {
+            "targetUri": f"file://{project_root}/tgt.py",
+            "targetSelectionRange": {"start": {"line": 1, "character": 0}},
+        }
+    ]
+    fake_lsp.reference_error = {"code": -1, "message": "timeout"}
+    manager.lsp_client = fake_lsp
+
+    with pytest.raises(RuntimeError, match="reverse-reference oracle request failed"):
+        manager.reconnect_outgoing(
+            "caller.py",
+            ["caller.py:Foo"],
+            {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0},
+            line_ranges=[(10, 30)],
+        )
+
+
+def test_reconcile_touched_incoming_updates_unchanged_call_sites():
+    project_root = "/tmp/recproj"
+    graph = CodeGraph(project_root=project_root)
+    for path in ("old.py", "new.py", "target.py"):
+        graph.add_file_node(path)
+    for path in ("old.py", "new.py"):
+        graph._add_vertex(
+            f"{path}:call():1",
+            {
+                "type": "function",
+                "file": path,
+                "start_line": 1,
+                "end_line": 3,
+                "unified_name": f"{path}:call()",
+            },
+        )
+    target_name = "target.py:run():5"
+    graph._add_vertex(
+        target_name,
+        {
+            "type": "function",
+            "file": "target.py",
+            "start_line": 5,
+            "end_line": 8,
+            "selection_line": 5,
+            "selection_character": 4,
+            "unified_name": "target.py:run()",
+        },
+    )
+    graph._add_edge(
+        "old.py:call():1",
+        target_name,
+        EDGE_TYPE_REFERENCE,
+        anchor_file="old.py",
+        anchor_line=2,
+    )
+    graph.build_range_indexes()
+
+    manager = _ReconnectMgr(project_root=project_root, code_graph=graph)
+    manager.build_indexes()
+    manager._touched_reference_targets.add(target_name)
+    manager._reverse_reference_cache[target_name] = [
+        {
+            "uri": f"file://{project_root}/new.py",
+            "range": {
+                "start": {"line": 2, "character": 3},
+                "end": {"line": 2, "character": 6},
+            },
+        }
+    ]
+
+    stats = manager.reconcile_touched_incoming()
+
+    target_id = graph.name_to_vertex[target_name]
+    incoming = [
+        graph.graph.es[edge_id]
+        for edge_id in graph.graph.incident(target_id, mode="in")
+        if graph.graph.es[edge_id]["type"] == EDGE_TYPE_REFERENCE
+    ]
+    assert stats == {
+        "targets_reconciled": 1,
+        "incoming_removed": 1,
+        "incoming_added": 1,
+        "unmatched": 0,
+    }
+    assert len(incoming) == 1
+    assert graph.graph.vs[incoming[0].source]["name"] == "new.py:call():1"
+    assert incoming[0]["anchor_file"] == "new.py"
+    assert incoming[0]["anchor_line"] == 2
+
+
+def test_reconcile_touched_incoming_fetches_uncached_invalidated_target():
+    project_root = "/tmp/recproj"
+    graph = CodeGraph(project_root=project_root)
+    for path in ("changed.py", "target.py"):
+        graph.add_file_node(path)
+    graph._add_vertex(
+        "changed.py:call():1",
+        {
+            "type": "function",
+            "file": "changed.py",
+            "start_line": 1,
+            "end_line": 3,
+            "unified_name": "changed.py:call()",
+        },
+    )
+    target_name = "target.py:run():5"
+    graph._add_vertex(
+        target_name,
+        {
+            "type": "function",
+            "file": "target.py",
+            "start_line": 5,
+            "end_line": 8,
+            "selection_line": 5,
+            "selection_character": 4,
+            "unified_name": "target.py:run()",
+        },
+    )
+    graph.build_range_indexes()
+
+    manager = _ReconnectMgr(project_root=project_root, code_graph=graph)
+    manager.build_indexes()
+    manager._touched_reference_targets.add(target_name)
+    manager.lsp_client = _FakeLSPDefRefs(
+        project_root,
+        references={
+            ("target.py", 5, 4): [
+                {
+                    "uri": f"file://{project_root}/changed.py",
+                    "range": {
+                        "start": {"line": 2, "character": 3},
+                        "end": {"line": 2, "character": 6},
+                    },
+                }
+            ]
+        },
+    )
+
+    stats = manager.reconcile_touched_incoming(changed_files={"changed.py"})
+
+    assert stats["targets_reconciled"] == 1
+    assert stats["incoming_added"] == 1
+    assert target_name in manager._reverse_reference_cache
+
+
+def test_reconcile_touched_incoming_preserves_untouched_provider_facts():
+    project_root = "/tmp/recproj"
+    graph = CodeGraph(project_root=project_root)
+    for path in ("changed.py", "stable.py", "target.py"):
+        graph.add_file_node(path)
+    for path in ("changed.py", "stable.py"):
+        graph._add_vertex(
+            f"{path}:call():1",
+            {
+                "type": "function",
+                "file": path,
+                "start_line": 1,
+                "end_line": 3,
+                "unified_name": f"{path}:call()",
+            },
+        )
+    target_name = "target.py:run():5"
+    graph._add_vertex(
+        target_name,
+        {
+            "type": "function",
+            "file": "target.py",
+            "start_line": 5,
+            "end_line": 8,
+            "selection_line": 5,
+            "selection_character": 4,
+            "unified_name": "target.py:run()",
+        },
+    )
+    for source_file in ("changed.py", "stable.py"):
+        graph._add_edge(
+            f"{source_file}:call():1",
+            target_name,
+            EDGE_TYPE_REFERENCE,
+            anchor_file=source_file,
+            anchor_line=2,
+        )
+    graph.build_range_indexes()
+
+    manager = _ReconnectMgr(project_root=project_root, code_graph=graph)
+    manager.build_indexes()
+    manager._touched_reference_targets.add(target_name)
+    manager._reverse_reference_cache[target_name] = []
+
+    stats = manager.reconcile_touched_incoming(changed_files={"changed.py"})
+
+    target_id = graph.name_to_vertex[target_name]
+    incoming = [
+        graph.graph.es[edge_id]
+        for edge_id in graph.graph.incident(target_id, mode="in")
+        if graph.graph.es[edge_id]["type"] == EDGE_TYPE_REFERENCE
+    ]
+    assert stats["incoming_removed"] == 1
+    assert stats["incoming_added"] == 0
+    assert len(incoming) == 1
+    assert incoming[0]["anchor_file"] == "stable.py"
+
+
 def test_reconnect_incoming_field_anchors_caller_site():
     """A new field must recover uses that lie outside the changed range."""
     project_root = "/tmp/recproj"
@@ -933,6 +1305,57 @@ def test_reconnect_incoming_field_anchors_caller_site():
     ), f"anchor_line should be the call line; got {attrs}"
 
 
+def test_reconnect_incoming_lsp_route_keeps_provider_method_references():
+    project_root = "/tmp/recproj"
+    graph = _build_caller_target_graph(project_root)
+    graph.graph.vs[graph.name_to_vertex["tgt.py:Bar"]]["type"] = "method"
+    fake_lsp = _FakeLSPDefRefs(project_root)
+    fake_lsp.references = lambda *args, **kwargs: [
+        {
+            "uri": f"file://{project_root}/caller.py",
+            "range": {"start": {"line": 12, "character": 4}},
+        }
+    ]
+    manager = _NoopMgr(
+        project_root=project_root,
+        code_graph=graph,
+        lsp_client=fake_lsp,
+    )
+    manager.respect_backend_exclusions = False
+    manager.symbol_selection_ranges["tgt.py:Bar"] = (1, 0, 1, 3)
+    manager.build_indexes()
+    manager._reference_resolves_to = lambda *_args: False
+    stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
+
+    manager.reconnect_incoming("tgt.py", ["tgt.py:Bar"], stats)
+
+    assert stats["incoming_added"] == 1
+
+
+def test_reconnect_incoming_skips_provider_declaration_location():
+    project_root = "/tmp/recproj"
+    graph = _build_caller_target_graph(project_root)
+    fake_lsp = _FakeLSPDefRefs(project_root)
+    fake_lsp.references = lambda *args, **kwargs: [
+        {
+            "uri": f"file://{project_root}/tgt.py",
+            "range": {"start": {"line": 1, "character": 0}},
+        }
+    ]
+    manager = _NoopMgr(
+        project_root=project_root,
+        code_graph=graph,
+        lsp_client=fake_lsp,
+    )
+    manager.symbol_selection_ranges["tgt.py:Bar"] = (1, 0, 1, 3)
+    manager.build_indexes()
+    stats = {"incoming_added": 0, "outgoing_added": 0, "unmatched": 0}
+
+    manager.reconnect_incoming("tgt.py", ["tgt.py:Bar"], stats)
+
+    assert stats["incoming_added"] == 0
+
+
 def test_reference_validation_rejects_other_interface_method():
     project_root = "/tmp/recproj"
     graph = _build_caller_target_graph(project_root)
@@ -980,7 +1403,11 @@ def test_shifted_rebases_outgoing_anchor_lines():
     `new_start - old_start` so range queries still match."""
     project_root = "/tmp/shftproj"
     g = _setup_outgoing_with_anchors([12, 18, 25])  # Foo body 10-30
-    patcher = _StubPatcher(project_root=project_root, code_graph=g)
+    patcher = _StubPatcher(
+        project_root=project_root,
+        code_graph=g,
+        strict_lsp_requests=True,
+    )
     patcher.symbol_selection_ranges["a.py:Foo"] = (10, 4, 10, 7)
 
     file_stats = {
@@ -1027,6 +1454,7 @@ def test_shifted_rebases_outgoing_anchor_lines():
         30,
     ], f"anchors should shift +5 to [17,23,30]; got {anchor_lines}"
     assert file_stats["vertices_shifted"] == 1
+    assert patcher._touched_reference_targets == {new_vname}
 
 
 def test_affected_preserved_clears_in_range_outgoing():
@@ -1035,7 +1463,11 @@ def test_affected_preserved_clears_in_range_outgoing():
     deleted; edges outside are kept (will be picked up by Round 2 LSP)."""
     project_root = "/tmp/affproj"
     g = _setup_outgoing_with_anchors([12, 18, 25])  # Foo body 10-30
-    patcher = _StubPatcher(project_root=project_root, code_graph=g)
+    patcher = _StubPatcher(
+        project_root=project_root,
+        code_graph=g,
+        strict_lsp_requests=True,
+    )
     patcher.symbol_selection_ranges["a.py:Foo"] = (10, 4, 10, 7)
 
     file_stats = {
@@ -1086,6 +1518,7 @@ def test_affected_preserved_clears_in_range_outgoing():
     assert (18, 18) in new_ranges, f"new_changed_ranges missing 18; got {new_ranges}"
     assert file_stats["vertices_affected_preserved"] == 1
     assert g.graph.vs[g.name_to_vertex[new_vname]]["selection_line"] == 10
+    assert patcher._touched_reference_targets == {new_vname}
 
 
 def test_affected_length_changed_rebases_unchanged_outgoing():
@@ -1612,3 +2045,17 @@ def test_file_anchor_rebase_does_not_trust_source_vertex_file():
         and edge.attributes().get("anchor_file") == "changed.go"
     ]
     assert anchors == [11]
+
+
+def test_file_anchor_invalidation_tracks_targets_for_reconciliation():
+    graph = _setup_two_calls_one_target()
+    manager = _NoopMgr(project_root="/tmp/x", code_graph=graph)
+
+    moved, removed = manager.rebase_reference_anchors_for_file(
+        "caller.py",
+        lambda _line: None,
+        reconcile_removed_targets=True,
+    )
+
+    assert (moved, removed) == (0, 2)
+    assert manager._touched_reference_targets == {"Target"}

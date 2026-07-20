@@ -47,6 +47,8 @@ public:
     // Identifier/declaration line from the SCIP occurrence. Unlike
     // start_line, this excludes decorators, annotations, and doc comments.
     std::optional<int> selection_line;
+    // Optional 0-based identifier character for exact LSP request replay.
+    std::optional<int> selection_character;
     // Cross-language display path: usually `{file}:{SymbolDisplay}`.
     // Matches the `unified_name` vertex attribute produced by the
     // Python-side decoders in codeminer/scip_interface/.
@@ -80,7 +82,8 @@ public:
   void add_symbol_node(const std::string &symbol, int line,
                        std::optional<int> scope_start_line = std::nullopt,
                        std::optional<int> scope_end_line = std::nullopt,
-                       const std::string &symbol_type = NODE_TYPE_SYMBOL);
+                       const std::string &symbol_type = NODE_TYPE_SYMBOL,
+                       std::optional<int> selection_character = std::nullopt);
 
   void add_symbol_reference(
       const std::string &symbol,

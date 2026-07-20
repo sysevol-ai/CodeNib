@@ -26,9 +26,23 @@ from typing import Any, Optional
 
 from ...languages import lsp_command_for_language, normalize_graph_language
 from ...log_utils import get_logger
-from ...scip_interface.rust_analyzer import rust_toolchain
 
 logger = get_logger(__name__)
+
+_DOCUMENT_UNAVAILABLE_MESSAGES = ("no package metadata for file",)
+
+
+def is_lsp_document_unavailable_error(error: Optional[dict]) -> bool:
+    """Return whether an LSP error declares a document outside its workspace.
+
+    These are deterministic provider exclusions (for example, a Go file whose
+    build constraints exclude it), not transport or analysis failures.
+    """
+
+    if not error:
+        return False
+    message = str(error.get("message") or "").lower()
+    return any(pattern in message for pattern in _DOCUMENT_UNAVAILABLE_MESSAGES)
 
 
 # ---------------------------------------------------------------------------
@@ -157,10 +171,14 @@ def _lsp_process_env(
     project_root: str | Path | None = None,
 ) -> dict[str, str]:
     env = os.environ.copy()
-    # Bypass a repository-pinned Rust toolchain so rust-analyzer uses the
-    # CodeMiner-selected toolchain instead.
+    # The analyzer binary is selected independently. Let Cargo and proc macros
+    # honor the repository's rust-toolchain.toml unless explicitly overridden.
     if language == "rust":
-        env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
+        project_toolchain = env.get("CODEMINER_RUST_PROJECT_TOOLCHAIN")
+        if project_toolchain:
+            env["RUSTUP_TOOLCHAIN"] = project_toolchain
+        else:
+            env.pop("RUSTUP_TOOLCHAIN", None)
 
     if language == "ruby":
         env.pop("GEM_PATH", None)
@@ -224,7 +242,10 @@ class LSPClient:
         project_root: str,
         language: str,
         init_options: Optional[dict] = None,
+        max_in_flight_requests: int = 10,
     ):
+        if max_in_flight_requests < 1:
+            raise ValueError("max_in_flight_requests must be positive")
         self.command = command
         self.project_root = Path(project_root).resolve()
         self.root_uri = self.project_root.as_uri()
@@ -247,15 +268,42 @@ class LSPClient:
         # Pending request tracking: limit in-flight requests to avoid
         # overwhelming the LSP server (clangd hangs after ~570 queued requests)
         self._pending_ids: set[int] = set()
-        self._max_pending: int = 10
+        self._max_pending = max_in_flight_requests
 
         # Buffer for out-of-order responses: when _request reads a response
         # for a different request ID, it stores it here instead of discarding.
         self._response_buffer: dict[int, dict] = {}
 
+        # Raw bytes can contain more than one JSON-RPC frame. Keep unread
+        # frames across calls so a response cannot discard a trailing
+        # notification or another response from the same pipe read.
+        self._read_buffer = b""
+
         # Track the last error from _request so callers can decide whether
         # to retry (transient errors like -32801) or not (permanent errors).
         self._last_error: Optional[dict] = None
+        self.strict_request_failures: bool = False
+        self.operation_retries: int = 0
+        self.document_symbol_timeout_s: float = 10.0
+        self.definition_timeout_s: float = 10.0
+        self.semantic_tokens_timeout_s: float = 15.0
+        self.reference_timeout_s: float = 10.0
+        self.reference_retries: int = 0
+
+    @property
+    def last_error(self) -> Optional[dict]:
+        """Return a copy of the most recent request error, if any."""
+        return dict(self._last_error) if self._last_error is not None else None
+
+    def _raise_if_strict_failure(self, method: str, context: str) -> None:
+        error = self.last_error
+        if (
+            self.strict_request_failures
+            and error is not None
+            and error.get("code") != -2
+            and not is_lsp_document_unavailable_error(error)
+        ):
+            raise RuntimeError(f"LSP {method} failed for {context}: {error}")
 
     # ── Lifecycle ─────────────────────────────────────────────
 
@@ -268,6 +316,15 @@ class LSPClient:
                 will analyze the project in the background.
         """
         logger.info(f"Starting LSP server: {' '.join(self.command)}")
+        # A client object can be restarted after a failed strategy attempt. No
+        # transport state from the old process is valid for the new JSON-RPC
+        # session.
+        self._next_id = 1
+        self._pending_ids.clear()
+        self._response_buffer.clear()
+        self._read_buffer = b""
+        self._active_progress.clear()
+        self._last_error = None
         env = _lsp_process_env(self.language, self.project_root)
         self.process = subprocess.Popen(
             self.command,
@@ -440,7 +497,7 @@ class LSPClient:
         file_path: str,
         max_wait: float = 15.0,
         poll_interval: float = 0.5,
-    ):
+    ) -> bool:
         """Wait for the LSP server to finish analyzing a file.
 
         After didOpen/didChange, servers like pyright need time to
@@ -465,15 +522,27 @@ class LSPClient:
             except Exception as exc:
                 logger.debug(f"Analysis probe failed: {exc}")
             elapsed = time.time() - t0
-            # If hover responds in < 1s, server is likely done analyzing
-            if elapsed < 1.0:
-                return
+            error = self.last_error
+            responsive = (
+                error is None
+                or error.get("code") == -2
+                or is_lsp_document_unavailable_error(error)
+            )
+            # A fast result (including a valid null hover) is a readiness
+            # signal; a fast transport/server error is not.
+            if elapsed < 1.0 and responsive:
+                return True
             time.sleep(poll_interval)
+        return False
 
     # ── LSP queries ───────────────────────────────────────────
 
     def document_symbol(
-        self, file_path: str, retries: int = 0, retry_delay: float = 0.5
+        self,
+        file_path: str,
+        retries: Optional[int] = None,
+        retry_delay: float = 0.5,
+        timeout: Optional[float] = None,
     ) -> list[dict]:
         """Get hierarchical document symbols for a file.
 
@@ -484,6 +553,8 @@ class LSPClient:
         not inside this primitive.
         """
         t0 = time.monotonic()
+        retries = self.operation_retries if retries is None else retries
+        timeout = self.document_symbol_timeout_s if timeout is None else timeout
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
         uri = Path(abs_path).as_uri()
@@ -494,7 +565,7 @@ class LSPClient:
                 {
                     "textDocument": {"uri": uri},
                 },
-                timeout=10,  # longest non-empty observed: 138ms
+                timeout=timeout,
             )
             if result is not None:
                 _profile_log(
@@ -506,6 +577,10 @@ class LSPClient:
                     len(result) if isinstance(result, list) else 0,
                 )
                 return result
+            if self._last_error and self._last_error.get("code") == -2:
+                break
+            if not self._is_retryable_error():
+                break
             if attempt < retries:
                 logger.debug(
                     f"documentSymbol returned null for {file_path}, "
@@ -514,6 +589,7 @@ class LSPClient:
                 time.sleep(retry_delay)
 
         _profile_log("documentSymbol", file_path, None, None, time.monotonic() - t0, 0)
+        self._raise_if_strict_failure("textDocument/documentSymbol", file_path)
         return []
 
     def references(self, *args, **kwargs):
@@ -529,14 +605,105 @@ class LSPClient:
         )
         return out
 
+    def references_batch(
+        self,
+        queries: list[tuple[str, int, int]],
+        *,
+        include_declaration: bool = False,
+        timeout: Optional[float] = None,
+        retries: Optional[int] = None,
+        max_in_flight: Optional[int] = None,
+    ) -> list[tuple[list[dict], Optional[dict]]]:
+        """Resolve reference queries through one bounded JSON-RPC window.
+
+        The server may answer requests out of order. Results retain input order,
+        and each request keeps the same timeout/retry semantics as
+        :meth:`references`. JSON-RPC ``null`` remains a valid empty result.
+        """
+
+        if not queries:
+            return []
+        timeout = self.reference_timeout_s if timeout is None else timeout
+        retries = self.reference_retries if retries is None else retries
+        params = []
+        for file_path, line, character in queries:
+            self.open_document(file_path)
+            uri = Path(self._abs_path(file_path)).as_uri()
+            params.append(
+                {
+                    "textDocument": {"uri": uri},
+                    "position": {"line": line, "character": character},
+                    "context": {"includeDeclaration": include_declaration},
+                }
+            )
+
+        outcomes: list[Optional[tuple[list[dict], Optional[dict]]]] = [None] * len(
+            queries
+        )
+        elapsed_s = [0.0] * len(queries)
+        remaining = list(range(len(queries)))
+        for _attempt in range(retries + 1):
+            batch = self._request_batch(
+                "textDocument/references",
+                [params[index] for index in remaining],
+                timeout=timeout,
+                max_in_flight=max_in_flight,
+            )
+            retry_indices = []
+            for index, (result, error, elapsed) in zip(remaining, batch, strict=True):
+                elapsed_s[index] += elapsed
+                if result is not None:
+                    outcomes[index] = (result, None)
+                    continue
+                if error and error.get("code") == -2:
+                    outcomes[index] = ([], error)
+                    continue
+                if (
+                    error
+                    and error.get("code") in {-1, -32801, -32802}
+                    and _attempt < retries
+                ):
+                    retry_indices.append(index)
+                    continue
+                outcomes[index] = ([], error)
+            remaining = retry_indices
+            if not remaining:
+                break
+
+        resolved = []
+        for index, outcome in enumerate(outcomes):
+            result, error = outcome or (
+                [],
+                {"code": -1, "message": "batch request did not complete"},
+            )
+            file_path, line, character = queries[index]
+            _profile_log(
+                "references",
+                file_path,
+                line,
+                character,
+                elapsed_s[index],
+                len(result),
+            )
+            resolved.append((result, error))
+        self._last_error = next(
+            (
+                error
+                for _result, error in resolved
+                if error is not None and error.get("code") != -2
+            ),
+            None,
+        )
+        return resolved
+
     def _references_inner(
         self,
         file_path: str,
         line: int,
         character: int,
         include_declaration: bool = False,
-        timeout: float = 10,
-        retries: int = 0,
+        timeout: Optional[float] = None,
+        retries: Optional[int] = None,
     ) -> list[dict]:
         """Find all references to the symbol at the given position.
 
@@ -554,6 +721,8 @@ class LSPClient:
         Checks response buffer for late-arriving responses from prior
         attempts.
         """
+        timeout = self.reference_timeout_s if timeout is None else timeout
+        retries = self.reference_retries if retries is None else retries
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
         uri = Path(abs_path).as_uri()
@@ -577,11 +746,18 @@ class LSPClient:
                 if attempt > 0:
                     logger.debug(f"references retry succeeded on attempt {attempt + 1}")
                 return result
+            if self._last_error and self._last_error.get("code") == -2:
+                # JSON-RPC null is the LSP's valid "no references" result,
+                # not evidence that the request should be retried.
+                return []
             # Record this attempt's id for buffer check on next retry
             prior_ids.append(self._next_id - 1)
             if not self._is_retryable_error():
                 logger.warning(
                     f"references failed for {file_path}:{line} (permanent error)"
+                )
+                self._raise_if_strict_failure(
+                    "textDocument/references", f"{file_path}:{line}:{character}"
                 )
                 return []
             if attempt < retries:
@@ -599,6 +775,9 @@ class LSPClient:
             logger.warning(
                 f"references failed for {file_path}:{line} after {retries} retries"
             )
+        self._raise_if_strict_failure(
+            "textDocument/references", f"{file_path}:{line}:{character}"
+        )
         return []
 
     def definition(self, *args, **kwargs):
@@ -619,8 +798,8 @@ class LSPClient:
         file_path: str,
         line: int,
         character: int,
-        timeout: float = 10,
-        retries: int = 0,
+        timeout: Optional[float] = None,
+        retries: Optional[int] = None,
     ) -> list[dict]:
         """Go to definition of the symbol at the given position.
 
@@ -640,6 +819,8 @@ class LSPClient:
         not inside this primitive. Checks response buffer for
         late-arriving responses from prior attempts.
         """
+        timeout = self.definition_timeout_s if timeout is None else timeout
+        retries = self.operation_retries if retries is None else retries
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
         uri = Path(abs_path).as_uri()
@@ -667,11 +848,16 @@ class LSPClient:
                 if isinstance(result, dict):
                     return [result]
                 return result
+            if self._last_error and self._last_error.get("code") == -2:
+                return []
             prior_ids.append(self._next_id - 1)
             if not self._is_retryable_error():
                 logger.warning(
                     f"definition failed for {file_path}:{line}:{character} "
                     f"(permanent error)"
+                )
+                self._raise_if_strict_failure(
+                    "textDocument/definition", f"{file_path}:{line}:{character}"
                 )
                 return []
             if attempt < retries:
@@ -690,10 +876,16 @@ class LSPClient:
                 f"definition failed for {file_path}:{line}:{character} "
                 f"after {retries} retries"
             )
+        self._raise_if_strict_failure(
+            "textDocument/definition", f"{file_path}:{line}:{character}"
+        )
         return []
 
     def semantic_tokens_full(
-        self, file_path: str, timeout: float = 15
+        self,
+        file_path: str,
+        timeout: Optional[float] = None,
+        retries: Optional[int] = None,
     ) -> Optional[dict]:
         """Get semantic tokens for the entire file.
 
@@ -708,16 +900,27 @@ class LSPClient:
         runtime before this cap.
         """
         t0 = time.monotonic()
+        timeout = self.semantic_tokens_timeout_s if timeout is None else timeout
+        retries = self.operation_retries if retries is None else retries
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
         uri = Path(abs_path).as_uri()
-        result = self._request(
-            "textDocument/semanticTokens/full",
-            {
-                "textDocument": {"uri": uri},
-            },
-            timeout=timeout,
-        )
+        result = None
+        for attempt in range(retries + 1):
+            result = self._request(
+                "textDocument/semanticTokens/full",
+                {
+                    "textDocument": {"uri": uri},
+                },
+                timeout=timeout,
+            )
+            if result is not None:
+                break
+            if self._last_error and self._last_error.get("code") == -2:
+                break
+            if not self._is_retryable_error() or attempt >= retries:
+                break
+            time.sleep(0.5)
         n_tokens = 0
         if result is not None:
             n_tokens = len(result.get("data", [])) // 5
@@ -730,6 +933,8 @@ class LSPClient:
             time.monotonic() - t0,
             n_tokens,
         )
+        if result is None:
+            self._raise_if_strict_failure("textDocument/semanticTokens/full", file_path)
         return result
 
     def semantic_tokens_range(
@@ -737,7 +942,8 @@ class LSPClient:
         file_path: str,
         start_line: int,
         end_line: int,
-        timeout: float = 30,
+        timeout: Optional[float] = None,
+        retries: Optional[int] = None,
     ) -> Optional[dict]:
         """Get semantic tokens for a specific line range.
 
@@ -745,20 +951,31 @@ class LSPClient:
         Returns None if not supported or on error.
         """
         t0 = time.monotonic()
+        timeout = self.semantic_tokens_timeout_s if timeout is None else timeout
+        retries = self.operation_retries if retries is None else retries
         self.open_document(file_path)
         abs_path = self._abs_path(file_path)
         uri = Path(abs_path).as_uri()
-        result = self._request(
-            "textDocument/semanticTokens/range",
-            {
-                "textDocument": {"uri": uri},
-                "range": {
-                    "start": {"line": start_line, "character": 0},
-                    "end": {"line": end_line + 1, "character": 0},
+        result = None
+        for attempt in range(retries + 1):
+            result = self._request(
+                "textDocument/semanticTokens/range",
+                {
+                    "textDocument": {"uri": uri},
+                    "range": {
+                        "start": {"line": start_line, "character": 0},
+                        "end": {"line": end_line + 1, "character": 0},
+                    },
                 },
-            },
-            timeout=timeout,
-        )
+                timeout=timeout,
+            )
+            if result is not None:
+                break
+            if self._last_error and self._last_error.get("code") == -2:
+                break
+            if not self._is_retryable_error() or attempt >= retries:
+                break
+            time.sleep(0.5)
         n_tokens = 0
         if result is not None:
             n_tokens = len(result.get("data", [])) // 5
@@ -774,6 +991,10 @@ class LSPClient:
             time.monotonic() - t0,
             n_tokens,
         )
+        if result is None:
+            self._raise_if_strict_failure(
+                "textDocument/semanticTokens/range", file_path
+            )
         return result
 
     def decode_semantic_tokens(
@@ -867,8 +1088,10 @@ class LSPClient:
     def _wait_for_ready(self):
         """Wait for the LSP server to become ready.
 
-        Strategy: send a probe documentSymbol on a known file. If it returns,
-        the server is ready. Falls back to a short sleep if no file is available.
+        Send ``documentSymbol`` on a known file to verify the initialized
+        transport can serve document requests. Cross-file semantic readiness
+        is a separate concern handled by workspace warmup and analysis barriers;
+        an empty ``references`` result is valid and must not delay startup.
         """
         # Find a file to probe — use extensions matching the configured language
         _LANG_PROBE_EXTS = {
@@ -886,60 +1109,34 @@ class LSPClient:
             "php": [".php", ".phtml"],
             "kotlin": [".kt", ".kts"],
         }
-        probe_file = None
         probe_exts = _LANG_PROBE_EXTS.get(self.language, [])
+        candidates = []
         for ext in probe_exts:
-            candidates = list(self.project_root.glob(f"**/*{ext}"))
-            if candidates:
-                probe_file = candidates[0]
-                break
+            candidates.extend(self.project_root.glob(f"**/*{ext}"))
 
-        if probe_file:
-            logger.debug(f"Probing server readiness with {probe_file}")
-            self.open_document(str(probe_file))
-            # documentSymbol verifies basic server readiness (syntax analysis)
-            self._request(
-                "textDocument/documentSymbol",
-                {
-                    "textDocument": {"uri": probe_file.as_uri()},
-                },
-                timeout=60,
-            )
-            # Poll references to wait for cross-file semantic analysis.
-            # Servers like rust-analyzer need extra time for project loading;
-            # references returns [] until the project is fully indexed.
-
-            symbols = (
-                self._request(
+        if candidates:
+            for probe_file in sorted(set(candidates)):
+                logger.debug(f"Probing server readiness with {probe_file}")
+                self.open_document(str(probe_file))
+                result = self._request(
                     "textDocument/documentSymbol",
                     {
                         "textDocument": {"uri": probe_file.as_uri()},
                     },
-                    timeout=10,
+                    timeout=60,
                 )
-                or []
-            )
-            if symbols:
-                # Use the first symbol's position to probe references
-                first_sym = symbols[0]
-                sel = first_sym.get("selectionRange", first_sym.get("range", {}))
-                probe_pos = sel.get("start", {"line": 0, "character": 0})
-                for _ in range(15):
-                    result = self._request(
-                        "textDocument/references",
-                        {
-                            "textDocument": {"uri": probe_file.as_uri()},
-                            "position": probe_pos,
-                            "context": {"includeDeclaration": True},
-                        },
-                        timeout=10,
-                    )
-                    if result:
-                        break
-                    time.sleep(1)
+                if result is not None:
+                    return
+                if is_lsp_document_unavailable_error(self.last_error):
+                    continue
+                if self.last_error and self.last_error.get("code") == -2:
+                    continue
+                raise RuntimeError(
+                    f"LSP readiness probe failed for {probe_file}: {self.last_error}"
+                )
+            raise RuntimeError("LSP readiness probe found no queryable source file")
         else:
             # No source files found, just wait briefly
-
             time.sleep(2)
 
     def _send(self, message: dict):
@@ -956,24 +1153,11 @@ class LSPClient:
     def _read_message(self, timeout: float = 30) -> Optional[dict]:
         """Read one JSON-RPC message from the server's stdout."""
         deadline = time.monotonic() + timeout
-        buf = b""
+        buf = self._read_buffer
+        self._read_buffer = b""
 
         while time.monotonic() < deadline:
-            remaining = max(0.1, deadline - time.monotonic())
-            ready, _, _ = select.select([self.process.stdout], [], [], remaining)
-            if not ready:
-                continue
-
-            chunk = (
-                self.process.stdout.read1(65536)
-                if hasattr(self.process.stdout, "read1")
-                else self.process.stdout.read(1)
-            )
-            if not chunk:
-                return None
-            buf += chunk
-
-            # Try to parse a complete message from buffer
+            # Consume complete buffered frames before waiting for more bytes.
             while True:
                 # Find header/body boundary
                 header_end = buf.find(b"\r\n\r\n")
@@ -1048,8 +1232,25 @@ class LSPClient:
                     if message["method"] in skip_methods:
                         continue
 
+                self._read_buffer = buf
                 return message
 
+            remaining = max(0.1, deadline - time.monotonic())
+            ready, _, _ = select.select([self.process.stdout], [], [], remaining)
+            if not ready:
+                continue
+
+            chunk = (
+                self.process.stdout.read1(65536)
+                if hasattr(self.process.stdout, "read1")
+                else self.process.stdout.read(1)
+            )
+            if not chunk:
+                self._read_buffer = buf
+                return None
+            buf += chunk
+
+        self._read_buffer = buf
         return None
 
     # ── progress / idleness tracking ─────────────────────────────────
@@ -1080,21 +1281,18 @@ class LSPClient:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            ready, _, _ = select.select(
-                [self.process.stdout], [], [], min(remaining, 0.05)
-            )
-            if not ready:
-                break
-            msg = self._read_message(timeout=remaining)
-            if msg is None:
+            message = self._read_message(timeout=min(remaining, 0.05))
+            if message is None:
                 break
             n += 1
-            # We don't dispatch unmatched responses here; just count and
-            # let _handle_progress (called inside _read_message) update state.
+            response_id = message.get("id")
+            if response_id is not None:
+                self._pending_ids.discard(response_id)
+                self._response_buffer[response_id] = message
         return n
 
     def wait_until_idle(
-        self, max_wait_s: float = 60.0, idle_grace_s: float = 1.0
+        self, max_wait_s: float = 300.0, idle_grace_s: float = 1.0
     ) -> bool:
         """Wait until no ``$/progress`` tokens are active for ``idle_grace_s``.
 
@@ -1162,6 +1360,8 @@ class LSPClient:
             remaining = max(0.1, deadline - time.monotonic())
             message = self._read_message(timeout=remaining)
             if message is None:
+                self._pending_ids.discard(msg_id)
+                self._notify("$/cancelRequest", {"id": msg_id})
                 self._last_error = {"code": -1, "message": "timeout"}
                 logger.warning(f"LSP request {method} timed out (id={msg_id})")
                 return None
@@ -1190,8 +1390,98 @@ class LSPClient:
                     del self._response_buffer[oldest]
 
         self._last_error = {"code": -1, "message": "timeout"}
+        self._pending_ids.discard(msg_id)
+        self._notify("$/cancelRequest", {"id": msg_id})
         logger.warning(f"LSP request {method} timed out after {timeout}s")
         return None
+
+    def _request_batch(
+        self,
+        method: str,
+        params_batch: list[Any],
+        *,
+        timeout: float = 30,
+        max_in_flight: Optional[int] = None,
+    ) -> list[tuple[Any, Optional[dict], float]]:
+        """Issue a bounded group of requests with one stdout reader.
+
+        This is transport-level pipelining, not a JSON-RPC batch payload: LSP
+        servers receive ordinary requests and can schedule them concurrently.
+        """
+
+        if not params_batch:
+            return []
+        window = self._max_pending if max_in_flight is None else max_in_flight
+        if window < 1:
+            raise ValueError("max_in_flight must be positive")
+
+        results: list[Optional[tuple[Any, Optional[dict], float]]] = [None] * len(
+            params_batch
+        )
+        pending: dict[int, tuple[int, float, float]] = {}
+        next_index = 0
+
+        def fill_window() -> None:
+            nonlocal next_index
+            while next_index < len(params_batch) and len(pending) < window:
+                msg_id = self._next_id
+                self._next_id += 1
+                sent_at = time.monotonic()
+                pending[msg_id] = (next_index, sent_at, sent_at + timeout)
+                self._pending_ids.add(msg_id)
+                self._send(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "method": method,
+                        "params": params_batch[next_index],
+                    }
+                )
+                next_index += 1
+
+        fill_window()
+        while pending:
+            now = time.monotonic()
+            expired = [
+                msg_id
+                for msg_id, (_index, _sent_at, deadline) in pending.items()
+                if deadline <= now
+            ]
+            for msg_id in expired:
+                index, sent_at, _deadline = pending.pop(msg_id)
+                self._pending_ids.discard(msg_id)
+                results[index] = (
+                    None,
+                    {"code": -1, "message": "timeout"},
+                    now - sent_at,
+                )
+                self._notify("$/cancelRequest", {"id": msg_id})
+            fill_window()
+            if not pending:
+                break
+
+            next_deadline = min(deadline for _i, _sent, deadline in pending.values())
+            message = self._read_message(timeout=max(0.01, next_deadline - now))
+            if message is None:
+                continue
+            response_id = message.get("id")
+            if response_id not in pending:
+                if response_id is not None:
+                    self._pending_ids.discard(response_id)
+                    self._response_buffer[response_id] = message
+                continue
+
+            index, sent_at, _deadline = pending.pop(response_id)
+            self._pending_ids.discard(response_id)
+            error = message.get("error")
+            result = message.get("result")
+            if error is None and result is None:
+                error = {"code": -2, "message": "null result"}
+            results[index] = (result, error, time.monotonic() - sent_at)
+            fill_window()
+
+        fallback = (None, {"code": -1, "message": "missing response"}, 0.0)
+        return [result or fallback for result in results]
 
     # LSP error codes that are transient (server busy/updating, worth retrying).
     # Based on LSP 3.17 spec and Neovim's handling (PR #14622, #30999):

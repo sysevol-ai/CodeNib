@@ -8,6 +8,7 @@ from codeminer.languages import (
     chunker_class_path,
     chunker_class_paths,
     chunker_languages,
+    chunker_languages_for_graph_language,
     core_decoder_languages,
     extension_to_language_map,
     get_chunker_spec,
@@ -59,6 +60,15 @@ def test_javascript_typescript_share_graph_backend_but_keep_agent_keys():
     graph_extensions = graph_extensions_by_language()
     assert graph_extensions["ts"] == {".ts", ".tsx", ".js", ".jsx"}
     assert graph_extensions["javascript"] == graph_extensions["ts"]
+    assert chunker_languages_for_graph_language("ts") == (
+        "javascript",
+        "typescript",
+    )
+    assert chunker_languages_for_graph_language("javascript") == (
+        "javascript",
+        "typescript",
+    )
+    assert chunker_languages_for_graph_language("python") == ("python",)
 
 
 def test_gt_extensions_preserve_current_supported_set():

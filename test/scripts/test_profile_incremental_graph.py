@@ -241,6 +241,28 @@ class TestGraphFidelity:
         assert metrics["edges"]["recall"] == pytest.approx(0.5)
         assert metrics["changed_reference_edges"]["recall"] == 0.0
 
+    def test_selection_character_drift_fails_vertex_equivalence(self):
+        reference = self._reference_graph()
+        predicted_vertices = list(reference.graph.vs)
+        predicted_vertices[1] = _FakeVertex(
+            "internal-a",
+            type="function",
+            unified_name="pkg.a()",
+            file="src/a.py",
+            start_line=1,
+            end_line=3,
+            selection_line=1,
+            selection_character=7,
+        )
+        metrics = prof.compare_graphs(
+            _FakeCodeGraph(predicted_vertices, reference.graph.es),
+            reference,
+            {"src/a.py"},
+        )
+
+        assert metrics["vertices"]["f1"] < 1.0
+        assert metrics["changed_vertices"]["f1"] < 1.0
+
     def test_overlap_preserves_duplicate_facts(self):
         metrics = prof._fact_overlap_metrics(["a", "a"], ["a", "a", "a"])
         assert metrics == {
@@ -483,6 +505,35 @@ class TestGraphFidelity:
         assert fidelity["behavior_exact"] is True
         assert fidelity["equivalence_guardrail_pass"] is False
 
+    def test_no_source_transition_uses_exact_graph_guard(self, tmp_path, monkeypatch):
+        graph = self._behavior_graph(tmp_path)
+        record = {
+            "instance_id": "owner__repo-1",
+            "step": 2,
+            "fully-rebuild": {"status": "ok"},
+            "symbol-level-patch": {"status": "ok", "changed_files": []},
+        }
+
+        monkeypatch.setattr(prof, "checkout", lambda *_args: None)
+        monkeypatch.setattr(
+            prof,
+            "_CodeGraph",
+            lambda: type("Loader", (), {"load_graph": lambda _self, _path: graph})(),
+        )
+
+        prof.attach_graph_fidelity(
+            record,
+            tmp_path,
+            ["symbol-level-patch"],
+            tmp_path,
+            "target-commit",
+        )
+
+        fidelity = record["symbol-level-patch"]["fidelity"]
+        assert fidelity["behavior"]["status"] == "skipped_no_source"
+        assert fidelity["behavior_exact"] is True
+        assert fidelity["equivalence_guardrail_pass"] is True
+
 
 class TestPhaseOrder:
     def test_order_is_stable_and_counterbalanced(self):
@@ -537,6 +588,23 @@ class TestFinalizeStepRecord:
         out = prof.finalize_step_record(rec)
         assert out["equivalence_guarded_speedup_vs_fully_rebuild"] == 10.0
 
+    def test_file_guarded_speedups_require_both_equivalent_arms(self):
+        exact = {
+            "status": "ok",
+            "behavior_exact": True,
+            "equivalence_guardrail_pass": True,
+        }
+        rec = self._rec(
+            rebuild={"status": "ok", "t_s": 100.0},
+            file_level={"status": "ok", "amortized_t_s": 40.0, "fidelity": exact},
+            symbol={"status": "ok", "amortized_t_s": 10.0, "fidelity": exact},
+        )
+
+        out = prof.finalize_step_record(rec)
+
+        assert out["file_level_equivalence_guarded_speedup_vs_fully_rebuild"] == 2.5
+        assert out["equivalence_guarded_speedup_vs_file_level_patch"] == 4.0
+
     def test_guarded_speedup_rejects_raw_changed_graph_mismatch(self):
         rec = self._rec(
             rebuild={"status": "ok", "t_s": 100.0},
@@ -589,6 +657,7 @@ class TestResumeEligibility:
         row = {
             "protocol_version": prof.PROTOCOL_VERSION,
             "step": 1,
+            "phase_order": ["symbol-level-patch", "fully-rebuild"],
             "primary_incremental_strategy": "symbol-level-patch",
             "fully-rebuild": {"status": "ok"},
             "symbol-level-patch": {
@@ -598,11 +667,161 @@ class TestResumeEligibility:
         }
         assert prof._record_is_resumable(row) is True
 
+    def test_rejects_row_missing_declared_file_baseline(self):
+        row = {
+            "protocol_version": prof.PROTOCOL_VERSION,
+            "step": 1,
+            "phase_order": [
+                "file-level-patch",
+                "symbol-level-patch",
+                "fully-rebuild",
+            ],
+            "fully-rebuild": {"status": "ok"},
+            "symbol-level-patch": {
+                "status": "ok",
+                "fidelity": {"status": "ok"},
+            },
+            "file-level-patch": {"status": "error"},
+        }
+
+        assert prof._record_is_resumable(row) is False
+
+    def test_rejects_different_experiment_configuration(self):
+        row = {
+            "protocol_version": prof.PROTOCOL_VERSION,
+            "experiment_config_id": "config-a",
+            "step": 1,
+            "phase_order": ["symbol-level-patch", "fully-rebuild"],
+            "fully-rebuild": {"status": "ok"},
+            "symbol-level-patch": {
+                "status": "ok",
+                "fidelity": {"status": "ok"},
+            },
+        }
+
+        assert prof._record_is_resumable(row, "config-a") is True
+        assert prof._record_is_resumable(row, "config-b") is False
+
     @pytest.mark.parametrize("version", [None, 1, 2, 3])
     def test_rejects_old_protocols(self, version):
         assert (
             prof._record_is_resumable({"protocol_version": version, "step": 1}) is False
         )
+
+
+class TestRebuildRecovery:
+    def test_restarts_from_clean_state_after_transient_failure(
+        self, tmp_path, monkeypatch
+    ):
+        attempts = []
+
+        def fake_run_with_timeout(_timeout_s, _fn, *_args):
+            attempts.append(len(attempts) + 1)
+            if len(attempts) == 1:
+                raise RuntimeError("transient provider failure")
+            return {"status": "ok", "t_s": 3.0, "v": 4, "e": 5}
+
+        monkeypatch.setattr(prof, "clear_indexer_cache", lambda *_args: None)
+        monkeypatch.setattr(prof, "run_with_timeout", fake_run_with_timeout)
+        target = {
+            "instance_id": "owner__repo-1",
+            "language": "python",
+            "step": 1,
+            "to_commit": "abcdef1234",
+            "delta_files": 1,
+        }
+
+        result = prof.run_rebuild_step(
+            target,
+            tmp_path,
+            tmp_path / "step1",
+            None,
+            10,
+            lambda _message: None,
+            strategy_attempts=2,
+        )
+
+        assert attempts == [1, 2]
+        assert result["status"] == "ok"
+        assert result["strategy_attempts"] == 2
+        assert len(result["prior_attempt_failures"]) == 1
+        assert result["fault_inclusive_t_s"] >= result["t_s"]
+
+
+class TestRowCheckpointing:
+    @staticmethod
+    def _target(step):
+        return {
+            "instance_id": "owner__repo-1",
+            "language": "python",
+            "step": step,
+            "from_commit": f"from-{step}",
+            "to_commit": f"to-{step}",
+            "delta_lines": 1,
+            "delta_files": 1,
+            "delta_lines_test_excluded": 1,
+            "delta_files_test_excluded": 1,
+            "delta_symbols": 1,
+            "delta_symbols_test_excluded": 1,
+            "delta_symbols_added": 0,
+            "delta_symbols_removed": 0,
+            "delta_symbols_modified": 1,
+            "notes": None,
+        }
+
+    def test_emits_each_finished_step_before_next_rebuild(self, tmp_path, monkeypatch):
+        chain = [self._target(1), self._target(2)]
+        events = []
+        monkeypatch.setattr(
+            prof,
+            "prepare_base_graph",
+            lambda *_args, **_kwargs: tmp_path / "base.pkl",
+        )
+
+        def fake_patcher_phase(_strategy, _mode, targets, *_args, **_kwargs):
+            return {
+                target["step"]: {
+                    "status": "ok",
+                    "t_s": 1.0,
+                    "amortized_t_s": 1.0,
+                    "v": 2,
+                    "e": 1,
+                }
+                for target in targets
+            }
+
+        def fake_rebuild(target, *_args, **_kwargs):
+            events.append(("rebuild", target["step"]))
+            return {"status": "ok", "t_s": 10.0, "v": 2, "e": 1}
+
+        monkeypatch.setattr(prof, "run_patcher_phase", fake_patcher_phase)
+        monkeypatch.setattr(prof, "run_rebuild_step", fake_rebuild)
+        monkeypatch.setattr(prof, "clear_indexer_cache", lambda *_args: None)
+        monkeypatch.setattr(prof, "attach_graph_fidelity", lambda *_args: None)
+
+        rows = prof.process_instance(
+            "owner__repo-1",
+            "python",
+            "base",
+            tmp_path,
+            2,
+            10,
+            100,
+            10,
+            tmp_path / "out",
+            None,
+            lambda _message: None,
+            chain_override=chain,
+            row_callback=lambda row: events.append(("emit", row["step"])),
+        )
+
+        assert [row["step"] for row in rows] == [1, 2]
+        assert events == [
+            ("rebuild", 1),
+            ("emit", 1),
+            ("rebuild", 2),
+            ("emit", 2),
+        ]
 
 
 class TestStrategyNames:
@@ -614,3 +833,27 @@ class TestStrategyNames:
 
     def test_lang_exts_and_pathspec_cover_same_languages(self):
         assert set(prof.LANG_EXTS) == set(prof.LANG_PATHSPEC)
+
+
+def test_experiment_config_id_is_canonical_and_sensitive():
+    kwargs = {
+        "graph_route": "lsp",
+        "graph_schema_version": 5,
+        "timeout_s": 1800,
+        "reference_timeout_s": 120.0,
+        "reference_retries": 1,
+        "lsp_request_concurrency": 10,
+        "strategy_attempts": 2,
+        "runtime_log_level": "WARNING",
+    }
+
+    first = prof.experiment_config_id(**kwargs)
+    same = prof.experiment_config_id(**dict(reversed(list(kwargs.items()))))
+    changed = prof.experiment_config_id(**{**kwargs, "reference_retries": 0})
+    changed_concurrency = prof.experiment_config_id(
+        **{**kwargs, "lsp_request_concurrency": 1}
+    )
+
+    assert first == same
+    assert first != changed
+    assert first != changed_concurrency

@@ -13,6 +13,7 @@ can keep the backend symbol-only until a language has alignment tolerances.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 from urllib.parse import unquote, urlparse
@@ -86,13 +87,10 @@ class GenericLSPGraphDecoder:
                 file_path = entry.get("path")
                 if not file_path:
                     continue
-                _add_file_container(graph, file_path)
-                _process_symbol_tree(
+                add_lsp_document_symbols(
                     graph,
                     file_path=file_path,
                     symbols=entry.get("symbols") or [],
-                    parent_vertex_name=file_path,
-                    parent_unified_part="",
                     language=language,
                 )
 
@@ -117,13 +115,10 @@ class GenericLSPGraphDecoder:
         graph.add_root_node(ROOT_NODE)
         with graph.batch_edges():
             for file_path, symbols in documents.items():
-                _add_file_container(graph, file_path)
-                _process_symbol_tree(
+                add_lsp_document_symbols(
                     graph,
                     file_path=file_path,
                     symbols=list(symbols),
-                    parent_vertex_name=file_path,
-                    parent_unified_part="",
                     language="",
                 )
         graph.build_range_indexes()
@@ -151,6 +146,38 @@ def _add_file_container(graph: CodeGraph, file_path: str) -> None:
     graph._add_edge(parent_name, file_path, EDGE_TYPE_CONTAIN)
 
 
+def add_lsp_document_symbols(
+    graph: CodeGraph,
+    *,
+    file_path: str,
+    symbols: list[dict],
+    language: str,
+) -> list[str]:
+    """Lower one LSP document into an existing graph.
+
+    Full indexing and file-granularity replacement share this entry point so
+    symbol identities, local-symbol filtering, and containment stay identical.
+    The caller owns edge batching and range-index rebuilding.
+    """
+
+    existing_names = set(graph.name_to_vertex)
+    _add_file_container(graph, file_path)
+    _process_symbol_tree(
+        graph,
+        file_path=file_path,
+        symbols=symbols,
+        parent_vertex_name=file_path,
+        parent_unified_part="",
+        language=language,
+    )
+    return [
+        vertex["name"]
+        for vertex in graph.graph.vs
+        if vertex["name"] not in existing_names
+        and vertex.attributes().get("file") == file_path
+    ]
+
+
 def _process_symbol_tree(
     graph: CodeGraph,
     *,
@@ -168,8 +195,11 @@ def _process_symbol_tree(
         child_scope_vertices = scope_vertices
 
         range_data = symbol.get("range") or {}
+        selection_range = symbol.get("selectionRange") or range_data
         start_line = _line(range_data, "start", default=0)
         end_line = _line(range_data, "end", default=start_line)
+        selection_line = _line(selection_range, "start", default=start_line)
+        selection_character = _character(selection_range, "start", default=0)
 
         node_type = _node_type(kind)
         if _is_local_symbol(kind, parent_unified_part) or _is_non_graph_scope(
@@ -194,6 +224,8 @@ def _process_symbol_tree(
                     "file": file_path,
                     "start_line": start_line,
                     "end_line": end_line,
+                    "selection_line": selection_line,
+                    "selection_character": selection_character,
                     "unified_name": unified_name,
                 },
             )
@@ -400,6 +432,14 @@ def _build_unified_name(
     kind: int,
     language: str = "",
 ) -> str:
+    if language == "go":
+        # gopls reports receiver methods as ``(*Type).Method`` or
+        # ``(Type).Method``. Keep the persisted identity aligned with the
+        # SCIP Go decoder and incremental patcher: ``Type.Method()``.
+        receiver = re.match(r"^\(\*?([^)]+)\)\.(.+)$", name)
+        if receiver:
+            name = f"{receiver.group(1)}.{receiver.group(2)}"
+            parent_unified_part = ""
     if language == "ruby":
         name = name.replace("::", ".")
         if kind == 9 or name in ("<constructor>", "constructor"):
@@ -446,4 +486,8 @@ def _ruby_instance_field_parent(parent_unified_part: str) -> str:
     return ".".join(parts)
 
 
-__all__ = ["GenericLSPGraphDecoder", "iter_lsp_symbol_definitions"]
+__all__ = [
+    "GenericLSPGraphDecoder",
+    "add_lsp_document_symbols",
+    "iter_lsp_symbol_definitions",
+]

@@ -7,6 +7,27 @@ from types import SimpleNamespace
 from codeminer.index.embedding import builders
 
 
+def test_hierarchical_chunker_contract_is_explicit_and_shared():
+    contract = builders.hierarchical_chunker_kwargs(["python"], 300)
+
+    assert contract["l0"] == {
+        "language": "python",
+        "repo_config": contract["l0"]["repo_config"],
+        "max_lines_per_chunk": None,
+        "chunk_depth": 0,
+        "skeleton_mode": True,
+    }
+    assert contract["l2"] == {
+        "language": "python",
+        "repo_config": contract["l2"]["repo_config"],
+        "max_lines_per_chunk": 300,
+        "chunk_depth": 2,
+        "l2_level_exclusive": True,
+        "skeleton_mode": False,
+    }
+    assert contract["l0"]["repo_config"] is contract["l2"]["repo_config"]
+
+
 def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path):
     source = tmp_path / "source.py"
     source.write_text("def example():\n    pass\n", encoding="utf-8")

@@ -37,7 +37,9 @@ from ..types import (
 #                   unified_to_names aux dict (display -> identity names)
 # v4: symbol vertices persist the exact SCIP declaration occurrence as
 #     selection_line, independently from the symbol scope range.
-_SCHEMA_VERSION = 4
+# v5: symbol vertices may also persist selection_character, which is needed
+#     to replay declaration-side LSP requests at the exact identifier token.
+_SCHEMA_VERSION = 5
 
 
 @dataclass(slots=True)
@@ -154,7 +156,13 @@ class CodeGraph:
         self.scope_stack = [{file_path: None}]
 
     def add_symbol_node(
-        self, symbol, line, scope_start_line=None, scope_end_line=None, symbol_type=None
+        self,
+        symbol,
+        line,
+        scope_start_line=None,
+        scope_end_line=None,
+        symbol_type=None,
+        selection_character=None,
     ):
         """
         Add a symbol node to the graph.
@@ -166,6 +174,8 @@ class CodeGraph:
             scope_end_line: End line of the symbol's scope (optional)
             symbol_type: Type of symbol
                 (NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FUNCTION) (optional)
+            selection_character: 0-based identifier character for LSP replay
+                (optional)
         """
         # Use specific symbol type if provided, otherwise default to generic symbol
         node_type = symbol_type if symbol_type else NODE_TYPE_SYMBOL
@@ -183,6 +193,7 @@ class CodeGraph:
                     "start_line": scope_start_line,
                     "end_line": scope_end_line,
                     "selection_line": line,
+                    "selection_character": selection_character,
                 },
             )
         else:
@@ -195,6 +206,7 @@ class CodeGraph:
                     "start_line": line,
                     "end_line": line,
                     "selection_line": line,
+                    "selection_character": selection_character,
                 },
             )
 

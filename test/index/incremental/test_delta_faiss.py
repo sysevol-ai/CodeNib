@@ -127,7 +127,7 @@ class TestDeltaUpdate:
 
         # 1 / 10 = 10% changed, threshold 50% → delta path taken
         changed_hashes = {new_hash}
-        store.delta_update(
+        mode = store.delta_update(
             new_docs, new_embeddings, changed_hashes, level="l2", threshold=0.5
         )
 
@@ -149,6 +149,7 @@ class TestDeltaUpdate:
 
         # The new content must be reflected in the docs list.
         assert any(d.page_content == new_content for d in store.l2_documents)
+        assert mode == "delta"
 
     def test_metadata_only_change_updates_docs(self):
         """
@@ -189,7 +190,9 @@ class TestDeltaUpdate:
             for d in new_docs
         ]
 
-        store.delta_update(new_docs, new_embeddings, set(), level="l2", threshold=0.5)
+        mode = store.delta_update(
+            new_docs, new_embeddings, set(), level="l2", threshold=0.5
+        )
 
         # Delta path must have run (empty changed set + non-empty index).
         assert (
@@ -210,6 +213,7 @@ class TestDeltaUpdate:
             matches[0].metadata["file"] == "renamed.py"
         ), "survivor doc kept stale file path — metadata-only change ignored"
         assert matches[0].metadata["start_line"] == 42
+        assert mode == "delta"
 
     def test_large_delta_triggers_full_rebuild(self):
         """When > threshold fraction changed, full rebuild should happen."""
@@ -238,13 +242,14 @@ class TestDeltaUpdate:
             new_embeddings.append(vec)
 
         # threshold=0.1 → 100% changed > 10% → full rebuild
-        store.delta_update(
+        mode = store.delta_update(
             new_docs, new_embeddings, changed_hashes, level="l2", threshold=0.1
         )
 
         assert len(store.l2_documents) == 5
         for i, doc in enumerate(store.l2_documents):
             assert doc.page_content == new_contents[i]
+        assert mode == "rebuild"
 
     def test_empty_changed_set_no_op(self):
         """With no changes, delta_update should still work."""
