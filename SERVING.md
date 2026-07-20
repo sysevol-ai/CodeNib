@@ -23,14 +23,59 @@ Browser
 
 ## Ports & processes
 
-| What | How it runs | Port |
+| What | How it runs | Bind |
 |---|---|---|
-| Frontend (`next start`, prod build) | tmux `cm-frontend` | 3000 |
-| Backend (`codeminer.web.app`) | tmux `cm-backend` | 8000 |
-| vLLM Ask model (Qwen3.6-35B-A3B) | docker `vllm-qwen36` | 8080 |
-| vLLM embeddings (Qwen3-Embedding-0.6B) | docker `vllm-embed` | 8081 |
+| Caddy reverse proxy (tunnel origin) | tmux `cm-caddy` | **127.0.0.1:7860** |
+| Frontend (`next start`, prod build) | tmux `cm-frontend` | **127.0.0.1:3000** |
+| Backend (`codeminer.web.app`) | tmux `cm-backend` | **127.0.0.1:8000** |
+| vLLM Ask model (Qwen3.6-35B-A3B) | docker `vllm-qwen36` | **127.0.0.1:8080** |
+| vLLM embeddings (Qwen3-Embedding-0.6B) | docker `vllm-embed` | **127.0.0.1:8081** |
 
-Public: frontend **http://stable-spark1.ucsd.edu:3000**, backend `:8000`.
+## Public access & security (Cloudflare tunnel)
+
+Public URL: **https://demo.codenib.ai** — served through a Cloudflare tunnel
+(`dgx-codewiki`, token-managed; DNS/TLS/route configured in the Cloudflare dashboard,
+pointing the hostname at `http://localhost:7860`).
+
+**Everything binds `127.0.0.1` — nothing is on the public IP.** The only inbound path
+is the Cloudflare tunnel (outbound-only from the DGX). This closes the bypass where
+`132.239.17.29:<port>` would otherwise hit a service directly, skipping Cloudflare.
+
+```
+Internet ─HTTPS─► Cloudflare ─tunnel(outbound)─► Caddy 127.0.0.1:7860
+                                                    ├─ /api/* → backend 127.0.0.1:8000
+                                                    └─ /*     → frontend 127.0.0.1:3000
+                                                                     └─ vLLM 127.0.0.1:8080 / :8081
+```
+
+Caddy (`~/Caddyfile`, tmux `cm-caddy`) does same-origin routing so the browser only ever
+talks to `demo.codenib.ai` (no mixed content, no CORS):
+
+```
+:7860 {
+    bind 127.0.0.1                       # loopback only — NOT ":7860" alone (that binds *:7860)
+    handle /api/* { reverse_proxy 127.0.0.1:8000 }
+    handle       { reverse_proxy 127.0.0.1:3000 }
+}
+```
+
+Key details:
+- **`bind 127.0.0.1`** is required. A bare `:7860` site binds `*:7860` (all interfaces) —
+  the exact public bypass we're closing. Verify with `ss -tlnp | grep 7860` → must show
+  `127.0.0.1:7860`, never `*:7860` / `0.0.0.0:7860`.
+- Site address is **`:7860` (any Host)**, not `http://127.0.0.1:7860` — Caddy matches sites
+  by Host header, and the tunnel sends `Host: demo.codenib.ai`; a `127.0.0.1` site returns
+  an empty 200 for tunnel traffic.
+- Frontend is built with **`NEXT_PUBLIC_API_BASE=http://127.0.0.1:7860`**: `web/lib/api.ts`
+  same-origins in the browser when the base host is `127.0.0.1`/`localhost` (so the browser
+  calls `demo.codenib.ai/api/...`), while SSR uses the full `127.0.0.1:7860` URL.
+- **Docker port maps must carry the IP** (`-p 127.0.0.1:8080:8000`); a bare `-p 8080:8000`
+  binds `0.0.0.0` and bypasses the firewall, exposing the GPU endpoints publicly.
+- Backend reaches vLLM via `localhost:8080` / `:8081`, so loopback binding is transparent.
+
+Bindings are enforced at process start: `run_backend.sh` (`CODEMINER_DEMO_HOST=127.0.0.1`),
+`run_frontend.sh` (`next start -H 127.0.0.1`), `run_caddy.sh` (Caddyfile `bind 127.0.0.1`),
+and the docker `-p 127.0.0.1:...` maps (containers are `--restart unless-stopped`).
 
 ## Models
 
