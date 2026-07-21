@@ -4,6 +4,10 @@
 
 """Tests for per-repo skill-registry isolation, config, and the QA registry."""
 
+from types import SimpleNamespace
+
+import pytest
+
 from codeminer.agent.skills.registry import SkillRegistry
 from codeminer.web.config import (
     QAConfig,
@@ -12,7 +16,7 @@ from codeminer.web.config import (
     load_registry,
     save_registry,
 )
-from codeminer.web.repo_registry import _fresh_registry
+from codeminer.web.repo_registry import RepoRegistry, _fresh_registry
 
 
 def test_fresh_registry_is_isolated_from_singleton():
@@ -42,7 +46,11 @@ def test_load_config_from_yaml(tmp_path):
     cfg_file = tmp_path / "qa.yaml"
     cfg_file.write_text(
         "model: my-model\n"
+        "wiki_model: wiki-model\n"
+        "model_api_base: http://ask.example/v1\n"
         "mode: hybrid\n"
+        "embedding_provider: openai\n"
+        "embedding_base_url: http://embed.example/v1\n"
         "dataset: foo/bar\n"
         "per_language: 2\n"
         "languages: [python, go]\n"
@@ -50,11 +58,109 @@ def test_load_config_from_yaml(tmp_path):
     )
     cfg = load_config(str(cfg_file))
     assert cfg.model == "my-model"
+    assert cfg.wiki_generation_model == "wiki-model"
+    assert cfg.model_api_base == "http://ask.example/v1"
     assert cfg.mode == "hybrid"
+    assert cfg.embedding_provider == "openai"
+    assert cfg.embedding_base_url == "http://embed.example/v1"
     assert cfg.dataset == "foo/bar"
     assert cfg.per_language == 2
     assert cfg.languages == ["python", "go"]
     assert cfg.instances == ["a__a-1", "b__b-2"]
+
+
+def test_backend_environment_overrides_yaml(tmp_path, monkeypatch):
+    cfg_file = tmp_path / "qa.yaml"
+    cfg_file.write_text(
+        "model: yaml-ask\n"
+        "wiki_model: yaml-wiki\n"
+        "embedding_provider: huggingface\n"
+    )
+    monkeypatch.setenv("CODEMINER_DEMO_MODEL", "env-ask")
+    monkeypatch.setenv("CODEMINER_DEMO_WIKI_MODEL", "env-wiki")
+    monkeypatch.setenv("CODEMINER_DEMO_API_BASE", "http://ask.local/v1")
+    monkeypatch.setenv("CODEMINER_EMBEDDING_PROVIDER", "OPENAI")
+    monkeypatch.setenv("CODEMINER_EMBEDDING_BASE_URL", "http://embed.local/v1")
+
+    cfg = load_config(str(cfg_file))
+
+    assert cfg.model == "env-ask"
+    assert cfg.wiki_generation_model == "env-wiki"
+    assert cfg.model_api_base == "http://ask.local/v1"
+    assert cfg.embedding_provider == "openai"
+    assert cfg.embedding_base_url == "http://embed.local/v1"
+
+
+def test_rejects_unknown_embedding_provider(tmp_path):
+    cfg_file = tmp_path / "qa.yaml"
+    cfg_file.write_text("embedding_provider: custom\n")
+
+    with pytest.raises(ValueError, match="embedding_provider"):
+        load_config(str(cfg_file))
+
+
+def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
+    created = []
+
+    class FakeVectorStore:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.embedding = kwargs.get("embedding") or object()
+            self.loaded = None
+            created.append(self)
+
+        def load(self, path):
+            self.loaded = path
+
+    monkeypatch.setattr("codeminer.web.repo_registry.CodeVectorStore", FakeVectorStore)
+    cfg = QAConfig(
+        embedding_provider="openai",
+        embedding_model="embed-model",
+        embedding_dimension=768,
+        embedding_base_url="http://embed.local/v1",
+        embedding_api_key="secret",
+    )
+    registry = RepoRegistry(cfg)
+    entry = SimpleNamespace(path="/tmp/vector", config={})
+
+    first = registry._load_vector_store(entry)
+    second = registry._load_vector_store(entry)
+
+    assert first.loaded == "/tmp/vector"
+    assert first.kwargs["embedding_provider"] == "openai"
+    assert first.kwargs["base_url"] == "http://embed.local/v1"
+    assert first.kwargs["api_key"] == "secret"
+    assert first.kwargs["dimension"] == 768
+    assert second.kwargs["embedding"] is first.embedding
+
+
+def test_ask_model_receives_its_own_endpoint(monkeypatch):
+    captured = {}
+
+    def fake_chat(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr("codeminer.web.repo_registry.LiteLLMChat", fake_chat)
+    registry = RepoRegistry(
+        QAConfig(
+            model="openai/ask-model",
+            wiki_model="vertex_ai/wiki-model",
+            model_api_base="http://ask.local/v1",
+            model_api_key="ask-secret",
+            max_tokens=2048,
+        )
+    )
+
+    registry._create_ask_llm()
+
+    assert captured == {
+        "model": "openai/ask-model",
+        "temperature": 0.0,
+        "max_tokens": 2048,
+        "api_base": "http://ask.local/v1",
+        "api_key": "ask-secret",
+    }
 
 
 def test_registry_round_trip(tmp_path):

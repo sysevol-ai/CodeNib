@@ -17,7 +17,7 @@ import os
 import re
 from dataclasses import dataclass
 from threading import Lock
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..agent.runner import AgentRunner
 from ..agent.skills.loader import SkillLoader
@@ -259,7 +259,7 @@ class RepoRegistry:
         self._bundles: Dict[str, RepoBundle] = {}
         # One embedding model per model name, shared across repos: the GPU model
         # is loaded once instead of once per CodeVectorStore (one per repo).
-        self._embeddings: Dict[str, object] = {}
+        self._embeddings: Dict[Tuple[str, str, Optional[str]], object] = {}
 
     def load_all(self) -> None:
         """Load every dataset repo in the registry whose manifest exists."""
@@ -294,6 +294,44 @@ class RepoRegistry:
             runtime_loader=self._load_repo_runtime,
         )
 
+    def _load_vector_store(self, vec_entry: Any) -> CodeVectorStore:
+        """Load a manifest vector view with the configured embedding backend."""
+        emb_model = vec_entry.config.get(
+            "embedding_model", self._config.embedding_model
+        )
+        emb_dim = vec_entry.config.get(
+            "embedding_dimension", self._config.embedding_dimension
+        )
+        provider = self._config.embedding_provider
+        cache_key = (provider, emb_model, self._config.embedding_base_url)
+        client_kwargs: Dict[str, object] = {}
+        if self._config.embedding_base_url:
+            client_kwargs["base_url"] = self._config.embedding_base_url
+        if self._config.embedding_api_key:
+            client_kwargs["api_key"] = self._config.embedding_api_key
+
+        vector_store = CodeVectorStore(
+            embedding_model=emb_model,
+            embedding_provider=provider,
+            dimension=emb_dim,
+            store_path=vec_entry.path,
+            embedding=self._embeddings.get(cache_key),
+            **client_kwargs,
+        )
+        self._embeddings[cache_key] = vector_store.embedding
+        vector_store.load(vec_entry.path)
+        return vector_store
+
+    def _create_ask_llm(self) -> LiteLLMChat:
+        """Create the interactive model without mutating process-wide config."""
+        return LiteLLMChat(
+            model=self._config.model,
+            temperature=0.0,
+            max_tokens=self._config.max_tokens,
+            api_base=self._config.model_api_base,
+            api_key=self._config.model_api_key,
+        )
+
     def _load_repo_runtime(self, bundle: RepoBundle) -> None:
         entry = bundle.entry
         manifest = bundle.manifest
@@ -308,22 +346,7 @@ class RepoRegistry:
 
         vec_entry = manifest.indexes.get("vector")
         if vec_entry is not None and vec_entry.status == "fresh":
-            emb_model = vec_entry.config.get(
-                "embedding_model", self._config.embedding_model
-            )
-            emb_dim = vec_entry.config.get(
-                "embedding_dimension", self._config.embedding_dimension
-            )
-            vector_store = CodeVectorStore(
-                embedding_model=emb_model,
-                embedding_provider="huggingface",
-                dimension=emb_dim,
-                store_path=vec_entry.path,
-                embedding=self._embeddings.get(emb_model),
-            )
-            # Cache the (possibly just-loaded) model so the next repo reuses it.
-            self._embeddings[emb_model] = vector_store.embedding
-            vector_store.load(vec_entry.path)
+            vector_store = self._load_vector_store(vec_entry)
 
         retrieve_ctx = RetrieveContext(
             bm25=bm25_index,
@@ -347,11 +370,7 @@ class RepoRegistry:
             ),
         )
 
-        llm = LiteLLMChat(
-            model=self._config.model,
-            temperature=0.0,
-            max_tokens=self._config.max_tokens,
-        )
+        llm = self._create_ask_llm()
         runner = AgentRunner(
             llm=llm,
             registry=registry,
