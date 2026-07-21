@@ -124,15 +124,15 @@ python -m codeminer.eval.artifact_bundle verify \
   --bundle "$ARTIFACT_BUILD_ROOT/codeminer-paper-artifact"
 ```
 
-Then run the reviewer entry point from the bundle root. Write generated files
+Then run the reviewer entry point from the bundle root. The native command
+creates an isolated virtual environment outside the bundle; the Docker command
+runs the same evaluator as a non-root user. Both require a new output path
 outside the bundle so its complete checksum inventory remains valid:
 
 ```bash
-python -m venv "$ARTIFACT_FIGURE_VENV"
-. "$ARTIFACT_FIGURE_VENV/bin/activate"
-python -m pip install -r figure/requirements-paper.txt
-python artifact_eval.py smoke
-python artifact_eval.py full --output-dir "$ARTIFACT_EVAL_OUTPUT"
+./run.sh smoke
+./run.sh full "$ARTIFACT_EVAL_OUTPUT"
+./run.sh docker "$ARTIFACT_DOCKER_OUTPUT"
 
 python -m codeminer.eval.artifact_bundle archive \
   --bundle "$ARTIFACT_BUILD_ROOT/codeminer-paper-artifact" \
@@ -150,7 +150,26 @@ can be published separately, with its own license review and checksum.
 `core-rc28` retains the RC27 experiment inputs while moving the complete
 reviewer program into the repository-level `artifact/` directory. It vendors
 the plotting source and expected outputs, removes machine-local plotting
-defaults, and adds native and Docker one-command entry points. Record the final
-manifest, source-lock, archive, and provenance identities here after the clean
-RC28 build. This remains a local release candidate until a public artifact URL
-is assigned.
+defaults, and adds native and Docker one-command entry points. No experiment was
+rerun for this release; the retained input identities are unchanged from RC27.
+
+The frozen release identities are:
+
+- CodeMiner: `0e49faa58f3ed7b6f60d5e52dafe1c7759088bbd`
+- vendored figure source: `ae4ed0cbddf38edb3512c972b1cf271d55978bde`
+- manifest SHA-256:
+  `60823dead821a0364ddeac3a9bba6b0d42677040e8e8bb6c216e0965f7790d23`
+- source-lock SHA-256:
+  `65ca3f7c8bafc652d9ae1613e4a795d60b88c7b8a1a01a7ff4ca6dd180f8c31a`
+- staged bundle: 10,561 files and 263,713,638 bytes
+- `codeminer-paper-artifact-core-rc28.tar.gz`: 21,529,660 bytes, SHA-256
+  `a6d9446e0473733e7d0994638a0d7b8220d51c71744a814e1a291f76bf422a73`
+
+The native and Debian 12 Docker entry points both completed the full reviewer
+workflow: 21 figure tests, 15 regenerated figure groups, three exact structured
+outputs, 146 passing paper claims, and embedded-font audits for all 15 PDFs.
+Native PNGs matched the canonical SHA-256 values exactly. Docker PNGs passed the
+bounded cross-font dimension, perceptual-hash, and thumbnail-error checks. The
+final archive was independently extracted; all 10,561 `SHA256SUMS` entries and
+the extracted smoke test passed. This remains a local release candidate until a
+public artifact URL is assigned.
