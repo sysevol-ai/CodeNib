@@ -210,10 +210,50 @@ def _load_current_graph(manifest: object) -> Optional[object]:
 
 
 def _make_llm(config: GuardianConfig) -> object:
-    """Instantiate a LiteLLMChat for the cycle."""
+    """Instantiate the configured Guardian LLM backend."""
+    if config.llm_model.startswith("codex:"):
+        import importlib.util
+
+        model = config.llm_model.split(":", 1)[1].strip()
+        if not model:
+            raise ValueError("codex: Guardian model requires a Codex model name")
+        use_sdk = (
+            os.environ.get("CODEMINER_CODEX_TRANSPORT") == "sdk"
+            or (
+                not os.environ.get("CODEX_FORCE_AUTH_JSON")
+                and bool(
+                    os.environ.get("OPENAI_API_KEY")
+                    or os.environ.get("CODEX_API_KEY")
+                )
+            )
+        )
+        if use_sdk and importlib.util.find_spec("openai_codex") is not None:
+            from .llm.codex_cli_chat import CodexSdkChat
+
+            return CodexSdkChat(model=model, cwd=config.repo_path)
+
+        from .llm.codex_cli_chat import CodexCliChat
+
+        return CodexCliChat(model=model, cwd=config.repo_path)
+
     from ..llm.litellm_chat import LiteLLMChat
 
     return LiteLLMChat(model=config.llm_model, temperature=0.0, max_tokens=1024)
+
+
+def _llm_report_metadata(config: GuardianConfig, llm: object) -> dict:
+    """Return stable LLM backend metadata for reports and bridge status."""
+    if not config.use_llm or llm is None:
+        return {}
+    backend = getattr(llm, "backend_name", "")
+    if not backend:
+        backend = "litellm"
+    history = getattr(llm, "transport_history", None)
+    return {
+        "llm_model": config.llm_model,
+        "llm_backend": backend,
+        "llm_transport_history": list(history or [backend]),
+    }
 
 
 def _infer_source_from_nodeid(nodeid: str, repo_path: str) -> str:
@@ -375,11 +415,15 @@ def _run_cycle_inner(
     #     when no model is configured or arm=memoryless (memory_cited stays empty).
     _llm: Optional[object] = None
     _usage_acc: Optional[object] = None
+    _outer_usage: Optional[object] = None
+    _inner_usage: Optional[object] = None
     if config.use_llm:
         from .investigator import LLMUsage
 
         _llm = _make_llm(config)
-        _usage_acc = LLMUsage()
+        _outer_usage = LLMUsage()  # hypothesize (outer loop)
+        _inner_usage = LLMUsage()  # investigate  (inner loop)
+        _usage_acc = LLMUsage()  # combined total (budget gate)
 
     from .orchestrator import Hypothesis, heuristic_hypotheses, hypothesize
 
@@ -389,10 +433,12 @@ def _run_cycle_inner(
             _drift_signals,  # type: ignore[arg-type]
             _prior_findings,
             _llm,
-            usage_acc=_usage_acc,  # type: ignore[arg-type]
+            usage_acc=_outer_usage,  # type: ignore[arg-type]
             top_n=config.top_n,
             repo_path=repo_path,
         )
+        if _usage_acc is not None and _outer_usage is not None:
+            _usage_acc.add(_outer_usage)  # type: ignore[union-attr]
         logger.info("Guardian hypothesize — %d hypothesis(es) ranked by LLM", len(_hypotheses))
     else:
         _hypotheses = heuristic_hypotheses(
@@ -425,6 +471,9 @@ def _run_cycle_inner(
             capabilities=capabilities,
             findings=hyp_findings,
             llm_usage=_usage_acc,
+            outer_llm_usage=_outer_usage,
+            inner_llm_usage=_inner_usage,
+            **_llm_report_metadata(config, _llm),
         )
 
     # 4. Build retriever — used by investigation (static evidence + LLM tool calls).
@@ -515,8 +564,10 @@ def _run_cycle_inner(
                     sandbox,
                     budget_tokens=config.budget_tokens,
                     max_rounds=config.max_investigator_rounds,
-                    usage_acc=_usage_acc,
+                    usage_acc=_inner_usage,
                 )
+                if _usage_acc is not None and _inner_usage is not None:
+                    _usage_acc.add(_inner_usage)  # type: ignore[union-attr]
                 trace = [
                     f"{p.tool}: {p.output_summary}" for p in inv_result.probe_trace
                 ]
@@ -604,8 +655,10 @@ def _run_cycle_inner(
                     sandbox,
                     budget_tokens=config.budget_tokens,
                     max_rounds=config.max_investigator_rounds,
-                    usage_acc=_usage_acc,
+                    usage_acc=_inner_usage,
                 )
+                if _usage_acc is not None and _inner_usage is not None:
+                    _usage_acc.add(_inner_usage)  # type: ignore[union-attr]
                 trace = [
                     f"{p.tool}: {p.output_summary}" for p in inv_result.probe_trace
                 ]
@@ -672,6 +725,9 @@ def _run_cycle_inner(
         tests_ran=bool(test_result and test_result.ran),
         tests_summary=(test_result.summary if test_result else ""),
         llm_usage=_usage_acc,  # type: ignore[arg-type]
+        outer_llm_usage=_outer_usage,  # type: ignore[arg-type]
+        inner_llm_usage=_inner_usage,  # type: ignore[arg-type]
+        **_llm_report_metadata(config, _llm),
     )
 
     # 7. Persist — write cycle state to memory store (no-op when memory_dir unset

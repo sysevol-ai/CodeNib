@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deepswe"
+version = "0.1.0"
+description = "DeepSWE evaluation harness — Guardian coding agent and Codex bridge"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["deepswe*"]

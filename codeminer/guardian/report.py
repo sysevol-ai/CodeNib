@@ -69,7 +69,12 @@ class GuardianReport:
     findings: List[Finding] = field(default_factory=list)
     tests_ran: bool = False
     tests_summary: str = ""
-    llm_usage: Optional[LLMUsage] = None
+    llm_usage: Optional[LLMUsage] = None          # combined total (budget gate)
+    outer_llm_usage: Optional[LLMUsage] = None    # hypothesize step (outer loop)
+    inner_llm_usage: Optional[LLMUsage] = None    # investigate step (inner loop)
+    llm_model: str = ""
+    llm_backend: str = ""
+    llm_transport_history: List[str] = field(default_factory=list)
     retriever: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -115,6 +120,14 @@ def render_markdown(report: GuardianReport) -> str:
     L.append(f"- **Indexed files:** {report.file_count}")
     if report.retriever:
         L.append(f"- **Retriever:** {report.retriever}")
+    if report.llm_model:
+        backend = f" via {report.llm_backend}" if report.llm_backend else ""
+        L.append(f"- **LLM model:** `{report.llm_model}`{backend}")
+    if report.llm_transport_history:
+        L.append(
+            "- **LLM transport history:** "
+            + ", ".join(report.llm_transport_history)
+        )
     if report.capabilities:
         caps = ", ".join(k for k, v in sorted(report.capabilities.items()) if v) or "—"
         L.append(f"- **Index capabilities:** {caps}")
@@ -126,6 +139,19 @@ def render_markdown(report: GuardianReport) -> str:
             f"- **LLM tokens:** {u.total_tokens:,} total"
             f" (prompt: {u.prompt_tokens:,} / completion: {u.completion_tokens:,})"
         )
+        if report.outer_llm_usage or report.inner_llm_usage:
+            ou = report.outer_llm_usage
+            iu = report.inner_llm_usage
+            L.append(
+                f"  - outer (hypothesize): "
+                f"prompt {(ou.prompt_tokens if ou else 0):,} / "
+                f"completion {(ou.completion_tokens if ou else 0):,}"
+            )
+            L.append(
+                f"  - inner (investigate): "
+                f"prompt {(iu.prompt_tokens if iu else 0):,} / "
+                f"completion {(iu.completion_tokens if iu else 0):,}"
+            )
     L.append("")
     L.append(
         "_Non-modifying report: findings and evidence only — no changes were "

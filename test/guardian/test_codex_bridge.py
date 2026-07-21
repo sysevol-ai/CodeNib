@@ -6,7 +6,7 @@
 
 import json
 
-from deepswe import codex_bridge
+from deepsweguardian import codex_bridge
 from codeminer.guardian.cycle import GuardianConfig
 from codeminer.guardian.report import Finding, GuardianReport
 
@@ -17,6 +17,9 @@ def _report() -> GuardianReport:
         commit="abc123def456",
         generated_at="2026-07-20 00:00:00 UTC",
         churn_window="90 days ago",
+        llm_model="codex:gpt-5.6-luna",
+        llm_backend="codex-sdk",
+        llm_transport_history=["codex-sdk"],
         findings=[
             Finding(
                 kind="churn",
@@ -47,8 +50,13 @@ def test_run_bridge_once_writes_markdown_json_and_status(tmp_path, monkeypatch):
 
     assert "High-churn file: pkg/mod.py" in md
     assert data["findings"][0]["verdict"] == "confirmed"
+    assert data["llm_model"] == "codex:gpt-5.6-luna"
+    assert data["llm_backend"] == "codex-sdk"
     assert status["commit"] == "abc123def456"
     assert status["findings"] == 1
+    assert status["llm_model"] == "codex:gpt-5.6-luna"
+    assert status["llm_backend"] == "codex-sdk"
+    assert status["llm_transport_history"] == ["codex-sdk"]
     assert status["running"] is False
 
 
@@ -106,4 +114,4 @@ def test_main_defaults_out_dir_to_home_guardian(monkeypatch):
 
     codex_bridge.main(["--repo", "/repo", "--once"])
 
-    assert seen["out_dir"] == "/app/.guardian"
+    assert seen["out_dir"] == "/tmp/codex-home/.guardian"
