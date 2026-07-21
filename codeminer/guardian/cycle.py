@@ -256,6 +256,15 @@ def _llm_report_metadata(config: GuardianConfig, llm: object) -> dict:
     }
 
 
+def _merge_llm_usage(total: object, *parts: object) -> None:
+    """Merge Guardian LLMUsage accumulators into ``total``."""
+    total.prompt_tokens = sum(getattr(part, "prompt_tokens", 0) or 0 for part in parts)
+    total.completion_tokens = sum(
+        getattr(part, "completion_tokens", 0) or 0 for part in parts
+    )
+    total.total_tokens = sum(getattr(part, "total_tokens", 0) or 0 for part in parts)
+
+
 def _infer_source_from_nodeid(nodeid: str, repo_path: str) -> str:
     """Heuristic: map test/pkg/test_module.py::test_foo → codeminer/pkg/module.py."""
     import re
@@ -438,7 +447,7 @@ def _run_cycle_inner(
             repo_path=repo_path,
         )
         if _usage_acc is not None and _outer_usage is not None:
-            _usage_acc.add(_outer_usage)  # type: ignore[union-attr]
+            _merge_llm_usage(_usage_acc, _outer_usage, _inner_usage)
         logger.info("Guardian hypothesize — %d hypothesis(es) ranked by LLM", len(_hypotheses))
     else:
         _hypotheses = heuristic_hypotheses(
@@ -567,7 +576,7 @@ def _run_cycle_inner(
                     usage_acc=_inner_usage,
                 )
                 if _usage_acc is not None and _inner_usage is not None:
-                    _usage_acc.add(_inner_usage)  # type: ignore[union-attr]
+                    _merge_llm_usage(_usage_acc, _outer_usage, _inner_usage)
                 trace = [
                     f"{p.tool}: {p.output_summary}" for p in inv_result.probe_trace
                 ]
@@ -658,7 +667,7 @@ def _run_cycle_inner(
                     usage_acc=_inner_usage,
                 )
                 if _usage_acc is not None and _inner_usage is not None:
-                    _usage_acc.add(_inner_usage)  # type: ignore[union-attr]
+                    _merge_llm_usage(_usage_acc, _outer_usage, _inner_usage)
                 trace = [
                     f"{p.tool}: {p.output_summary}" for p in inv_result.probe_trace
                 ]

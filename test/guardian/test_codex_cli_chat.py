@@ -192,6 +192,21 @@ def test_guardian_factory_falls_back_to_cli_without_sdk(monkeypatch):
     assert llm.cwd == "/repo"
 
 
+def test_cycle_usage_merge_combines_outer_and_inner_usage():
+    from codeminer.guardian.cycle import _merge_llm_usage
+    from codeminer.guardian.investigator import LLMUsage
+
+    total = LLMUsage()
+    outer = LLMUsage(prompt_tokens=10, completion_tokens=2, total_tokens=12)
+    inner = LLMUsage(prompt_tokens=30, completion_tokens=8, total_tokens=38)
+
+    _merge_llm_usage(total, outer, inner)
+
+    assert total.prompt_tokens == 40
+    assert total.completion_tokens == 10
+    assert total.total_tokens == 50
+
+
 def test_sdk_call_raw_uses_codex_sdk(monkeypatch):
     seen = {}
 
