@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/fishmingyu/cm-draw",
+  "branch": "artifact/system-paper-eval",
+  "commit": "c0bd189242c0dee781d7e0de218235930fa45289",
+  "policy": "The files in this directory are vendored reviewer sources; all retained-result paths are supplied by paper_artifact_config.json."
+}

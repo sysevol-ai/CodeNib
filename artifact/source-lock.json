@@ -68,9 +68,9 @@
       "sha256": "ba66759e3d3b42f62c0b701bae1e68764eb4dc02feadedf8fc851084b434ec9a"
     },
     "artifact-readme": {
-      "bytes": 11255,
+      "bytes": 11313,
       "files": 1,
-      "sha256": "e6f53f17b24a8510f072479dc2ee982b79f8ada135f3cb2bdafaf0c7862ba401"
+      "sha256": "0112049de3f90d296a300dd92f6c1ca9248680b8c24eb1717094ee261f5f24c7"
     },
     "artifact-runner": {
       "bytes": 1791,
@@ -113,9 +113,9 @@
       "sha256": "7777ada61538d50259dcf720e9414d211b32cd71e93d72004b1b61d8c32e2334"
     },
     "expected-figures": {
-      "bytes": 3392779,
+      "bytes": 3151444,
       "files": 18,
-      "sha256": "25eb5335777981cac6b0a52ff7fc423f5ed3b1f278f008b75d39a972c816b5fe"
+      "sha256": "87ba8c1347499934e854caac8ade9d3bb1ef643fbe36f2f3b1e3eb4a69def0f3"
     },
     "faiss-index-family": {
       "bytes": 918784,
@@ -128,9 +128,9 @@
       "sha256": "f2fe10b217918578ccd866adf49524fdfde352324d0c2209cff93c8c3c3a0624"
     },
     "figure-programs": {
-      "bytes": 327223,
+      "bytes": 328196,
       "files": 27,
-      "sha256": "b3426affe5cbad31c0d5e1b68553c8d02aca7c59815f970efcba5d876ad9c2f1"
+      "sha256": "a191600f1740b87e2e66881654258ddced8ba6f2f834452c502c9ef5edd176a6"
     },
     "incremental-maintenance-results": {
       "bytes": 639047,

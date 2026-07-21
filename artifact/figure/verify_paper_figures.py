@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageStat
 
-EXACT_OUTPUTS = (
+STRUCTURED_OUTPUTS = (
     "graphrag_vs_rerank.json",
     "agent_runtime.json",
     "paper_claims.json",
@@ -91,22 +91,23 @@ def raster_mae(expected: Path, actual: Path) -> float:
         return sum(ImageStat.Stat(difference).mean) / (4 * 255)
 
 
+def verify_json(expected: Path, actual: Path) -> None:
+    expected_payload = json.loads(expected.read_text(encoding="utf-8"))
+    actual_payload = json.loads(actual.read_text(encoding="utf-8"))
+    if expected_payload != actual_payload:
+        raise ValueError(f"structured output mismatch for {actual.name}")
+
+
 def verify_deterministic(expected_dir: Path, actual_dir: Path) -> None:
-    for name in EXACT_OUTPUTS:
+    for name in STRUCTURED_OUTPUTS:
         expected = expected_dir / name
         actual = actual_dir / name
         if not expected.is_file():
             raise FileNotFoundError(f"missing expected output: {expected}")
         if not actual.is_file():
             raise FileNotFoundError(f"missing reproduced output: {actual}")
-        expected_sha = sha256(expected)
-        actual_sha = sha256(actual)
-        if expected_sha != actual_sha:
-            raise ValueError(
-                f"deterministic output mismatch for {name}: "
-                f"expected {expected_sha}, got {actual_sha}"
-            )
-        print(f"PASS deterministic {name} {actual_sha}")
+        verify_json(expected, actual)
+        print(f"PASS structured {name}")
 
     for name in RASTER_OUTPUTS:
         expected = expected_dir / name

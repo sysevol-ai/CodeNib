@@ -190,8 +190,9 @@ Set `$ARTIFACT_FIGURE_VENV` and `$ARTIFACT_EVAL_OUTPUT` outside the bundle.
 
 The driver rejects missing inputs and non-empty output directories. It writes
 `reproduction_manifest.json`, including canonical SHA-256 identities for input
-trees, plotting sources, command logs, and outputs. JSON outputs are
-byte-for-byte deterministic. PNGs are checked by exact hash first; when
+trees, plotting sources, command logs, and outputs. JSON outputs must match the
+canonical parsed structure exactly, independent of whitespace or key order.
+PNGs are checked by exact hash first; when
 container font rasterization differs, the verifier requires equal dimensions
 and a bounded normalized pixel error. Matplotlib changes PDF metadata, so PDFs
 are audited for embedded fonts rather than raw hashes. Keep
