@@ -217,17 +217,11 @@ def _make_llm(config: GuardianConfig) -> object:
         model = config.llm_model.split(":", 1)[1].strip()
         if not model:
             raise ValueError("codex: Guardian model requires a Codex model name")
-        use_sdk = (
-            os.environ.get("CODEMINER_CODEX_TRANSPORT") == "sdk"
-            or (
-                not os.environ.get("CODEX_FORCE_AUTH_JSON")
-                and bool(
-                    os.environ.get("OPENAI_API_KEY")
-                    or os.environ.get("CODEX_API_KEY")
-                )
-            )
-        )
-        if use_sdk and importlib.util.find_spec("openai_codex") is not None:
+        transport = os.environ.get("CODEMINER_CODEX_TRANSPORT", "").strip().lower()
+        if (
+            transport not in {"cli", "codex-cli"}
+            and importlib.util.find_spec("openai_codex") is not None
+        ):
             from .llm.codex_cli_chat import CodexSdkChat
 
             return CodexSdkChat(model=model, cwd=config.repo_path)

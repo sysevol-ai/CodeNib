@@ -147,14 +147,37 @@ def test_guardian_factory_selects_sdk_when_installed(monkeypatch):
     assert llm.cwd == "/repo"
 
 
-def test_guardian_factory_selects_cli_for_subscription_auth(monkeypatch):
+def test_guardian_factory_selects_sdk_for_subscription_auth(monkeypatch):
     import importlib.util
 
     from codeminer.guardian.cycle import GuardianConfig, _make_llm
 
     monkeypatch.setenv("CODEX_FORCE_AUTH_JSON", "1")
+    monkeypatch.delenv("CODEMINER_CODEX_TRANSPORT", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("CODEX_API_KEY", raising=False)
+    original_find_spec = importlib.util.find_spec
+
+    def fake_find_spec(name):
+        if name == "openai_codex":
+            return object()
+        return original_find_spec(name)
+
+    monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+
+    llm = _make_llm(GuardianConfig(repo_path="/repo", llm_model="codex:gpt-5.6-luna"))
+
+    assert isinstance(llm, CodexSdkChat)
+    assert llm.model == "gpt-5.6-luna"
+    assert llm.cwd == "/repo"
+
+
+def test_guardian_factory_selects_cli_when_requested(monkeypatch):
+    import importlib.util
+
+    from codeminer.guardian.cycle import GuardianConfig, _make_llm
+
+    monkeypatch.setenv("CODEMINER_CODEX_TRANSPORT", "cli")
     original_find_spec = importlib.util.find_spec
 
     def fake_find_spec(name):
