@@ -54,7 +54,9 @@ async def lifespan(app: FastAPI):
     # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
     # to templated text when no model/creds are available.
     wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
-    app.state.narrator = Narrator(model=config.model, cache_dir=wiki_cache)
+    app.state.narrator = Narrator(
+        model=config.wiki_generation_model, cache_dir=wiki_cache
+    )
     logger.info(
         "Wiki narrator: model=%s enabled=%s cache=%s",
         app.state.narrator.model,
@@ -99,7 +101,9 @@ def _wiki(repo_id: str):
 
             wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
             cache[repo_id] = AgentWiki(
-                _bundle(repo_id), config.model, cache_dir=wiki_cache
+                _bundle(repo_id),
+                config.wiki_generation_model,
+                cache_dir=wiki_cache,
             )
         else:
             cache[repo_id] = WikiBuilder(
@@ -120,7 +124,7 @@ def _edge_labeler(repo_id: str):
         namespace = f"{bundle.entry.instance_id}@{bundle.entry.commit_short}"
         cache[repo_id] = EdgeLabeler(
             source_fn=_wiki(repo_id).source,
-            model=config.edge_label_model or config.model,
+            model=config.edge_label_model or config.wiki_generation_model,
             cache_dir=wiki_cache,
             cache_namespace=namespace,
         )
@@ -150,12 +154,13 @@ async def list_repos() -> list[RepoInfo]:
 @app.get("/api/repos/{repo_id}/wiki")
 async def wiki_tree(repo_id: str) -> dict:
     builder = _wiki(repo_id)
-    return {"repo": _bundle(repo_id).entry.repo, "pages": builder.page_tree()}
+    pages = await asyncio.to_thread(builder.page_tree)
+    return {"repo": _bundle(repo_id).entry.repo, "pages": pages}
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
 async def wiki_page(repo_id: str, page_id: str) -> dict:
-    page = _wiki(repo_id).page(page_id)
+    page = await asyncio.to_thread(_wiki(repo_id).page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail=f"Unknown wiki page: {page_id!r}")
     return page
@@ -168,7 +173,7 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
     Lets a wiki page render as a *view over the graph* (subsystem symbols + how
     they connect), using the same ``{nodes, edges}`` payload as ``/codemap``.
     """
-    page = _wiki(repo_id).page(page_id)
+    page = await asyncio.to_thread(_wiki(repo_id).page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail=f"Unknown wiki page: {page_id!r}")
     bundle = _bundle(repo_id)

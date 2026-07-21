@@ -324,9 +324,13 @@ pre {
 .repo-card .repo-card-footer {
   margin-top: auto;
   padding-top: 12px;
+  /* reserve space for the absolutely-positioned go-arrow so the commit hash
+     never slides under it */
+  padding-right: 40px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -373,6 +377,7 @@ pre {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
 /* language tag */
@@ -383,6 +388,9 @@ pre {
   border: 1px solid var(--border-2);
   color: var(--muted);
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .landing .empty {

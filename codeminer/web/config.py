@@ -47,12 +47,23 @@ class RepoEntry:
 class QAConfig:
     """Top-level demo configuration."""
 
-    # litellm model string for the agent. Env ``CODEMINER_DEMO_MODEL`` wins.
+    # LiteLLM model string for the interactive Ask agent.
     model: str = "gpt-4o"
+    # Wiki prose and edge labels may use a separate provider/model. When unset,
+    # they use ``model``.
+    wiki_model: Optional[str] = None
+    # Optional OpenAI-compatible endpoint for the Ask agent. Provider-native
+    # models (for example Vertex or Anthropic) normally leave these unset.
+    model_api_base: Optional[str] = None
+    model_api_key: Optional[str] = field(default=None, repr=False)
     # "sparse" (BM25 only) or "hybrid" (BM25 + vector embeddings).
     mode: str = "sparse"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dimension: int = 384
+    # Embeddings can run in-process or through an OpenAI-compatible endpoint.
+    embedding_provider: str = "huggingface"
+    embedding_base_url: Optional[str] = None
+    embedding_api_key: Optional[str] = field(default=None, repr=False)
     # Where checked-out repos + indexes + the registry live.
     data_dir: str = ".codeminer_qa"
     # Optional read-only tree of pre-built per-instance artifacts:
@@ -109,6 +120,11 @@ class QAConfig:
     def repo_dir(self, instance_id: str) -> str:
         return os.path.join(os.path.abspath(self.data_dir), "repos", instance_id)
 
+    @property
+    def wiki_generation_model(self) -> str:
+        """Model used by wiki and edge-label generation."""
+        return self.wiki_model or self.model
+
 
 def load_config(path: Optional[str] = None) -> QAConfig:
     """Load demo config from YAML, applying env overrides."""
@@ -120,11 +136,17 @@ def load_config(path: Optional[str] = None) -> QAConfig:
 
     cfg = QAConfig(
         model=data.get("model", QAConfig.model),
+        wiki_model=data.get("wiki_model"),
+        model_api_base=data.get("model_api_base"),
+        model_api_key=data.get("model_api_key"),
         mode=data.get("mode", QAConfig.mode),
         embedding_model=data.get("embedding_model", QAConfig.embedding_model),
         embedding_dimension=data.get(
             "embedding_dimension", QAConfig.embedding_dimension
         ),
+        embedding_provider=data.get("embedding_provider", "huggingface"),
+        embedding_base_url=data.get("embedding_base_url"),
+        embedding_api_key=data.get("embedding_api_key"),
         data_dir=data.get("data_dir", QAConfig.data_dir),
         prebuilt_dir=data.get("prebuilt_dir", QAConfig.prebuilt_dir),
         max_turns=data.get("max_turns", QAConfig.max_turns),
@@ -155,6 +177,12 @@ def load_config(path: Optional[str] = None) -> QAConfig:
 
     if os.environ.get("CODEMINER_DEMO_MODEL"):
         cfg.model = os.environ["CODEMINER_DEMO_MODEL"]
+    if os.environ.get("CODEMINER_DEMO_WIKI_MODEL"):
+        cfg.wiki_model = os.environ["CODEMINER_DEMO_WIKI_MODEL"]
+    if os.environ.get("CODEMINER_DEMO_API_BASE"):
+        cfg.model_api_base = os.environ["CODEMINER_DEMO_API_BASE"]
+    if os.environ.get("CODEMINER_DEMO_API_KEY"):
+        cfg.model_api_key = os.environ["CODEMINER_DEMO_API_KEY"]
     if os.environ.get("CODEMINER_DEMO_DATA_DIR"):
         cfg.data_dir = os.environ["CODEMINER_DEMO_DATA_DIR"]
     if os.environ.get("CODEMINER_DEMO_PREBUILT_DIR"):
@@ -164,6 +192,19 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.edge_labels = _env_edge.strip().lower() in ("1", "true", "yes", "on")
     if os.environ.get("CODEMINER_EDGE_MODEL"):
         cfg.edge_label_model = os.environ["CODEMINER_EDGE_MODEL"]
+
+    if os.environ.get("CODEMINER_EMBEDDING_PROVIDER"):
+        cfg.embedding_provider = os.environ["CODEMINER_EMBEDDING_PROVIDER"]
+    if os.environ.get("CODEMINER_EMBEDDING_MODEL"):
+        cfg.embedding_model = os.environ["CODEMINER_EMBEDDING_MODEL"]
+    if os.environ.get("CODEMINER_EMBEDDING_BASE_URL"):
+        cfg.embedding_base_url = os.environ["CODEMINER_EMBEDDING_BASE_URL"]
+    if os.environ.get("CODEMINER_EMBEDDING_API_KEY"):
+        cfg.embedding_api_key = os.environ["CODEMINER_EMBEDDING_API_KEY"]
+
+    cfg.embedding_provider = cfg.embedding_provider.strip().lower()
+    if cfg.embedding_provider not in {"huggingface", "openai"}:
+        raise ValueError("embedding_provider must be either 'huggingface' or 'openai'")
 
     return cfg
 
