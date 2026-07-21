@@ -1,0 +1,5 @@
+.git
+**/.git
+**/__pycache__
+**/*.pyc
+codeminer-artifact-output

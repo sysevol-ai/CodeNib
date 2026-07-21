@@ -1,5 +1,5 @@
 {
-  "manifest_sha256": "6e5de712a9044a7d0cb098b8293e84310764560cc0056b71f29975ea2208d302",
+  "manifest_sha256": "60823dead821a0364ddeac3a9bba6b0d42677040e8e8bb6c216e0965f7790d23",
   "schema_version": 1,
   "sources": {
     "agent-gemini-25-flash": {
@@ -52,15 +52,30 @@
       "files": 5,
       "sha256": "6c80266c308c260239c7be80de4b27bc6bfe3f6f6bac4ee3397f8b3ad75e307d"
     },
-    "artifact-eval-entrypoint": {
-      "bytes": 7370,
+    "artifact-container": {
+      "bytes": 598,
       "files": 1,
-      "sha256": "4535d8246b46af2ac19c7b765ca20d589aba190e2b8cb7e5a6bc1cff99f51b58"
+      "sha256": "19df9c54b67b8aff82a34f3e7f3e63039bef9d82c4405a319dd561024c16c6e1"
+    },
+    "artifact-dockerignore": {
+      "bytes": 63,
+      "files": 1,
+      "sha256": "4109c058337fce9a14caddac677c7b6157041e6c50b6a7adb66a978dbf6d4430"
+    },
+    "artifact-eval-entrypoint": {
+      "bytes": 7445,
+      "files": 1,
+      "sha256": "ba66759e3d3b42f62c0b701bae1e68764eb4dc02feadedf8fc851084b434ec9a"
     },
     "artifact-readme": {
-      "bytes": 9322,
+      "bytes": 11255,
       "files": 1,
-      "sha256": "9da518d8bdaff7640325be536deb6e9815bc7542c6abac28e142d868e3955225"
+      "sha256": "e6f53f17b24a8510f072479dc2ee982b79f8ada135f3cb2bdafaf0c7862ba401"
+    },
+    "artifact-runner": {
+      "bytes": 1791,
+      "files": 1,
+      "sha256": "302d4fcecefe89afc311328a709adf29fc50996f6555954e1ed0f2918b3d928c"
     },
     "base-dataset": {
       "bytes": 271835,
@@ -73,9 +88,9 @@
       "sha256": "5abe4f24fd66aacdc8aa68a61f58709d07d3a7aa82a217631043428ebfd48e88"
     },
     "codeminer-runtime": {
-      "bytes": 2936289,
+      "bytes": 2939932,
       "files": 300,
-      "sha256": "a73d1b0fe9e573a24156fc03d534f37d2b58414c0bdeabef7ea86e893f898ab6"
+      "sha256": "2da29c84190b81efeefba074f781e9983b6e941c613c05dc88acc881047ca1b7"
     },
     "dataset-stats": {
       "bytes": 68071,
@@ -113,9 +128,9 @@
       "sha256": "f2fe10b217918578ccd866adf49524fdfde352324d0c2209cff93c8c3c3a0624"
     },
     "figure-programs": {
-      "bytes": 325010,
-      "files": 25,
-      "sha256": "03e4d4fc3d046dde9fbae131ac4efa17454bc70e49e10885a274e81d93a98597"
+      "bytes": 327223,
+      "files": 27,
+      "sha256": "b3426affe5cbad31c0d5e1b68553c8d02aca7c59815f970efcba5d876ad9c2f1"
     },
     "incremental-maintenance-results": {
       "bytes": 639047,
@@ -128,9 +143,9 @@
       "sha256": "4b4d3092112942882318556fe7dd6408ec9f2d5535f2fbbd702440eba8faa01f"
     },
     "incremental-tests": {
-      "bytes": 356402,
+      "bytes": 357815,
       "files": 29,
-      "sha256": "66226f7b1ad713548b6657a044c690a6d1e3bf71047783ef615c7cefe0db9c38"
+      "sha256": "80e6d70fc1fe7e8a892ea6d0adc3a995bead61381b762d5adc4288be1797c203"
     },
     "license-boundaries": {
       "bytes": 1408,

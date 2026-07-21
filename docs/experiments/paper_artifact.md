@@ -4,8 +4,8 @@ The paper artifact has two ownership layers:
 
 1. `codeminer.eval.artifact_bundle` is general release infrastructure. It can
    be reviewed and merged into `main` independently of the paper.
-2. `docs/experiments/artifacts/paper_artifact/` freezes the paper-specific
-   datasets, result trees, plotting sources, and release documentation. This
+2. `artifact/` freezes the paper-specific release manifest, plotting sources,
+   expected outputs, container entry point, and reviewer documentation. This
    directory belongs on the publication artifact branch until artifact
    evaluation begins.
 
@@ -57,9 +57,10 @@ hf download sysevol-ai/codeminer-synthesis \
 ```
 
 `$CODEMINER_EXPERIMENT_ROOT` is the root containing `profile_log/`,
-`eval_results/`, and the selected directories under `results/`.
-`$CODEMINER_FIGURE_ROOT` is the `codeminer-figure` checkout in cm-draw. These
-paths are runtime bindings and must not be committed.
+`eval_results/`, and the selected directories under `results/`. This path is a
+release-builder binding and is not committed. Reviewer plotting sources and
+canonical expected outputs are vendored under `artifact/`, so assembling the
+release no longer requires a separate cm-draw checkout.
 
 The graph input set includes both the development weight sweep and the final
 embedding matrix. The figure reproducer checks that the development results
@@ -86,17 +87,16 @@ plotting source. Review the lock diff before building a release.
 
 ```bash
 python -m codeminer.eval.artifact_bundle lock \
-  --manifest docs/experiments/artifacts/paper_artifact/bundle-manifest.json \
+  --manifest artifact/bundle-manifest.json \
   --root code="$PWD" \
   --root data="$CODEMINER_EXPERIMENT_ROOT" \
-  --root figures="$CODEMINER_FIGURE_ROOT" \
   --root base_dataset="$BASE_DATASET_ROOT" \
   --root synthesis_dataset="$SYNTHESIS_DATASET_ROOT" \
   --output /tmp/paper-artifact-source-lock.json
 ```
 
 Compare the generated lock with
-`docs/experiments/artifacts/paper_artifact/source-lock.json`. A mismatch means
+`artifact/source-lock.json`. A mismatch means
 the selected evidence changed; do not bypass it by building without a lock.
 
 The synthesis Hub snapshot retains a historical `README.md` that describes an
@@ -112,11 +112,10 @@ locked source, and records every bundled file in `SHA256SUMS`.
 
 ```bash
 python -m codeminer.eval.artifact_bundle build \
-  --manifest docs/experiments/artifacts/paper_artifact/bundle-manifest.json \
-  --source-lock docs/experiments/artifacts/paper_artifact/source-lock.json \
+  --manifest artifact/bundle-manifest.json \
+  --source-lock artifact/source-lock.json \
   --root code="$PWD" \
   --root data="$CODEMINER_EXPERIMENT_ROOT" \
-  --root figures="$CODEMINER_FIGURE_ROOT" \
   --root base_dataset="$BASE_DATASET_ROOT" \
   --root synthesis_dataset="$SYNTHESIS_DATASET_ROOT" \
   --output "$ARTIFACT_BUILD_ROOT/codeminer-paper-artifact"
@@ -148,19 +147,10 @@ can be published separately, with its own license review and checksum.
 
 ## Current Release Candidate
 
-`core-rc27` supersedes RC26 because the paper now reports five agent models and
-the 40-transition graph/vector maintenance study. Its manifest SHA-256 is
-`6e5de712a9044a7d0cb098b8293e84310764560cc0056b71f29975ea2208d302`;
-its source-lock SHA-256 is
-`ef93918918611f5d1d2c094fab54638159e58a68741092d8ec1cd651cfd843cb`.
-The verified bundle has 10,556 payload files and 263,940,010 bytes. Provenance
-pins CodeMiner commit `642008ab973ff2965cedef0f3d2df9b2aa01f2bf` and figure
-commit `a0336c91bcd517164838d17dcb0e2a55c685207c`.
-
-An extracted-bundle full run passes 15 estimator tests, reproduces and matches
-all 18 deterministic outputs, passes all 146 semantic claims, and verifies
-embedded fonts in 15 PDFs. The archive is 21,532,067 bytes with SHA-256
-`be4cbfd557364d3d225434297058919e26fbfae4ce397140a35b7081b78e1466`.
-This is a local release candidate, not a public artifact URL. Rebuild it after
-any selected input, figure program, expected output, or bundled document
-changes.
+`core-rc28` retains the RC27 experiment inputs while moving the complete
+reviewer program into the repository-level `artifact/` directory. It vendors
+the plotting source and expected outputs, removes machine-local plotting
+defaults, and adds native and Docker one-command entry points. Record the final
+manifest, source-lock, archive, and provenance identities here after the clean
+RC28 build. This remains a local release candidate until a public artifact URL
+is assigned.

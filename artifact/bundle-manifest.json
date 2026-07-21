@@ -2,25 +2,43 @@
   "schema_version": 1,
   "bundle": {
     "name": "CodeMiner paper artifact (core)",
-    "version": "core-rc27"
+    "version": "core-rc28"
   },
   "sources": [
     {
       "id": "artifact-readme",
       "root": "code",
-      "path": "docs/experiments/artifacts/paper_artifact/README.md",
+      "path": "artifact/README.md",
       "destination": "README.md"
     },
     {
       "id": "artifact-eval-entrypoint",
       "root": "code",
-      "path": "docs/experiments/artifacts/paper_artifact/artifact_eval.py",
+      "path": "artifact/artifact_eval.py",
       "destination": "artifact_eval.py"
+    },
+    {
+      "id": "artifact-runner",
+      "root": "code",
+      "path": "artifact/run.sh",
+      "destination": "run.sh"
+    },
+    {
+      "id": "artifact-container",
+      "root": "code",
+      "path": "artifact/Dockerfile",
+      "destination": "Dockerfile"
+    },
+    {
+      "id": "artifact-dockerignore",
+      "root": "code",
+      "path": "artifact/.dockerignore",
+      "destination": ".dockerignore"
     },
     {
       "id": "license-boundaries",
       "root": "code",
-      "path": "docs/experiments/artifacts/paper_artifact/LICENSES.md",
+      "path": "artifact/LICENSES.md",
       "destination": "LICENSES.md"
     },
     {
@@ -32,13 +50,13 @@
     {
       "id": "figure-config",
       "root": "code",
-      "path": "docs/experiments/artifacts/paper_artifact/paper_artifact_config.json",
+      "path": "artifact/paper_artifact_config.json",
       "destination": "paper_artifact_config.json"
     },
     {
       "id": "dense-model-scale",
       "root": "code",
-      "path": "docs/experiments/artifacts/paper_artifact/dense-model-scale.json",
+      "path": "artifact/dense-model-scale.json",
       "destination": "inputs/dense-model-scale.json"
     },
     {
@@ -378,68 +396,22 @@
     },
     {
       "id": "figure-programs",
-      "root": "figures",
-      "path": ".",
+      "root": "code",
+      "path": "artifact/figure",
       "destination": "figure",
-      "include": [
-        "FIGURE_STYLE.md",
-        "build_paper_claims.py",
-        "draw_agent_runtime.py",
-        "draw_agent_runtime_schematic.py",
-        "draw_eval_accuracy.py",
-        "draw_faiss_index_ablation.py",
-        "draw_graphrag_rerank.py",
-        "draw_maintenance_lifecycle.py",
-        "draw_lsp_replay.py",
-        "draw_lsp_replay_latency.py",
-        "draw_materialized_trace.py",
-        "draw_pareto_rerank.py",
-        "draw_profile.py",
-        "draw_query_profile.py",
-        "draw_retrieval_ablation_suite.py",
-        "draw_serving_lifecycle_suite.py",
-        "plot_style.py",
-        "reproduce_paper_figures.py",
-        "requirements-paper.txt",
-        "test_build_paper_claims.py",
-        "test_draw_maintenance_lifecycle.py",
-        "test_draw_pareto_rerank.py",
-        "test_draw_lsp_replay.py",
-        "test_reproduce_paper_figures.py",
-        "verify_paper_figures.py"
+      "exclude": [
+        "*.pyc"
       ],
       "exclude_dir_names": [
-        ".git",
         "__pycache__"
       ]
     },
     {
       "id": "expected-figures",
-      "root": "figures",
-      "path": ".",
+      "root": "code",
+      "path": "artifact/verification/expected",
       "destination": "verification/expected",
-      "include": [
-        "agent_runtime_schematic.png",
-        "agent_runtime.json",
-        "agent_runtime.png",
-        "agent_runtime_breakdown.png",
-        "eval_recall_at_k.png",
-        "faiss_index_ablation.png",
-        "graphrag_vs_rerank.json",
-        "graphrag_vs_rerank.png",
-        "maintenance_lifecycle.png",
-        "lsp_replay_100.png",
-        "lsp_replay_latency.png",
-        "materialized_trace.png",
-        "paper_claims.json",
-        "pareto_rerank.png",
-        "profile_l0_vs_l2.png",
-        "profile_query_time.png",
-        "retrieval_ablation_suite.png",
-        "serving_lifecycle_suite.png"
-      ],
       "exclude_dir_names": [
-        ".git",
         "__pycache__"
       ]
     }

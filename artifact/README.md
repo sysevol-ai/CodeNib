@@ -7,6 +7,52 @@ the generated evaluation figures, and inspecting the incremental-maintenance
 study. The artifact does not claim turnkey re-execution of historical cloud
 model calls or a comparison against an unmaterialized competing system.
 
+## Quick Start
+
+The default command creates an isolated virtual environment under `/tmp`,
+checks every bundled payload, runs the estimator and plotting tests, rebuilds
+all generated paper figures from retained results, and compares deterministic
+outputs with the reviewed references:
+
+```bash
+./run.sh
+```
+
+These commands target the extracted release archive, identified by the
+presence of `SHA256SUMS` and `inputs/`. The Git source directory intentionally
+does not duplicate the retained result trees; release maintainers assemble it
+with the source-locked procedure in `docs/experiments/paper_artifact.md`.
+
+The output defaults to `../codeminer-artifact-output`, outside the immutable
+artifact tree. It must not already exist. A dependency-free integrity and input
+smoke test is also available:
+
+```bash
+./run.sh smoke
+```
+
+For a containerized rebuild, Docker is the only host dependency:
+
+```bash
+./run.sh docker ../codeminer-artifact-docker-output
+```
+
+Equivalently, reviewers can build and invoke the image directly:
+
+```bash
+docker build -t codeminer-artifact .
+mkdir -p ../artifact-results
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD/../artifact-results:/results" \
+  codeminer-artifact full --output-dir /results/run
+```
+
+No command in this section calls an LLM service, downloads a dataset, rebuilds
+a repository index, or requires a GPU. The only network use is installing the
+five pinned Python plotting dependencies during the first native or container
+build.
+
 ## Contents
 
 - `inputs/datasets/base`: the frozen 100-row CodeMiner Base parquet.
@@ -43,8 +89,12 @@ model calls or a comparison against an unmaterialized competing system.
   entry point, focused tests, and build metadata used by the case study.
 - `artifact_eval.py`: the reviewer-facing integrity and reproduction entry
   point. It never invokes a model provider or writes into the verified bundle.
+- `run.sh` and `Dockerfile`: one-command native and containerized entry points.
 - `figure`: pinned plotting dependencies, plotting sources (including the
-  data-free agent-runtime schematic), and the manuscript claim-ledger builder.
+  data-free agent-runtime schematic), the manuscript claim-ledger builder, and
+  upstream source provenance. Every retained-result path comes from
+  `paper_artifact_config.json`; the reviewer sources contain no machine-local
+  `/home` or `/mnt` fallback.
 - `verification/expected`: canonical JSON and PNG outputs used by the figure
   verifier, including `paper_claims.json`.
 
@@ -126,6 +176,7 @@ python artifact_eval.py smoke
 
 ## Rebuild Figures
 
+`./run.sh` is the recommended entry point. To manage the environment manually,
 Python 3.11 was used for the verified rebuild:
 
 ```bash
@@ -139,10 +190,12 @@ Set `$ARTIFACT_FIGURE_VENV` and `$ARTIFACT_EVAL_OUTPUT` outside the bundle.
 
 The driver rejects missing inputs and non-empty output directories. It writes
 `reproduction_manifest.json`, including canonical SHA-256 identities for input
-trees, plotting sources, command logs, and outputs. Under the pinned
-environment, JSON and PNG outputs are deterministic. Matplotlib changes PDF
-metadata; compare page geometry, embedded fonts, or rasterized content instead
-of raw PDF hashes. Keep `$ARTIFACT_EVAL_OUTPUT` outside this bundle; adding
+trees, plotting sources, command logs, and outputs. JSON outputs are
+byte-for-byte deterministic. PNGs are checked by exact hash first; when
+container font rasterization differs, the verifier requires equal dimensions
+and a bounded normalized pixel error. Matplotlib changes PDF metadata, so PDFs
+are audited for embedded fonts rather than raw hashes. Keep
+`$ARTIFACT_EVAL_OUTPUT` outside this bundle; adding
 generated files here intentionally causes the complete checksum verifier to
 reject the modified copy. The driver also disables bytecode writes in every
 plotting subprocess so importing `figure/plot_style.py` cannot mutate the

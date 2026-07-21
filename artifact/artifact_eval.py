@@ -14,12 +14,15 @@ import time
 from pathlib import Path
 from typing import Any, Sequence
 
+sys.dont_write_bytecode = True
+
 FIGURE_TESTS = (
     "figure/test_build_paper_claims.py",
     "figure/test_draw_maintenance_lifecycle.py",
     "figure/test_draw_pareto_rerank.py",
     "figure/test_draw_lsp_replay.py",
     "figure/test_reproduce_paper_figures.py",
+    "figure/test_verify_paper_figures.py",
 )
 
 
