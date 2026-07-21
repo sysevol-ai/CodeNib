@@ -73,9 +73,9 @@
       "sha256": "0112049de3f90d296a300dd92f6c1ca9248680b8c24eb1717094ee261f5f24c7"
     },
     "artifact-runner": {
-      "bytes": 1791,
+      "bytes": 2002,
       "files": 1,
-      "sha256": "302d4fcecefe89afc311328a709adf29fc50996f6555954e1ed0f2918b3d928c"
+      "sha256": "3026b682b6415abcafba376fbcdeab21cba47a530df664ea957028ca4fd62e80"
     },
     "base-dataset": {
       "bytes": 271835,

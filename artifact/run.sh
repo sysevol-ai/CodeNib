@@ -27,20 +27,25 @@ run_docker() {
     echo "docker is required for container mode" >&2
     exit 2
   }
-  local output_parent output_name
+  local output_parent output_name staged_output
   mkdir -p "$(dirname "$output_dir")"
   output_parent="$(cd "$(dirname "$output_dir")" && pwd)"
   output_name="$(basename "$output_dir")"
+  output_dir="$output_parent/$output_name"
   if [[ -e "$output_dir" ]]; then
     echo "output directory already exists: $output_dir" >&2
     exit 2
   fi
+  mkdir "$output_dir"
+  staged_output="$output_dir/.codeminer-artifact-output"
   docker build -t codeminer-artifact:local "$artifact_root"
   docker run --rm \
     --user "$(id -u):$(id -g)" \
-    --volume "$output_parent:/results" \
+    --volume "$output_dir:/results" \
     codeminer-artifact:local full \
-      --output-dir "/results/$output_name"
+      --output-dir "/results/.codeminer-artifact-output"
+  mv "$staged_output"/* "$output_dir/"
+  rmdir "$staged_output"
 }
 
 case "$mode" in
