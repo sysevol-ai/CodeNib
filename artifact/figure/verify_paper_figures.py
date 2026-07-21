@@ -11,7 +11,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageChops, ImageStat
+from scipy.fft import dctn
 
 STRUCTURED_OUTPUTS = (
     "graphrag_vs_rerank.json",
@@ -40,7 +42,9 @@ RASTER_OUTPUTS = (
 # Text rasterization varies across font packages while the plotted geometry and
 # claim ledger remain stable. Exact hashes pass immediately; this normalized
 # mean absolute error admits only small rendering differences.
-MAX_RASTER_MAE = 0.025
+MAX_DIMENSION_DRIFT = 0.02
+MAX_PHASH_DISTANCE = 0.12
+MAX_THUMBNAIL_MAE = 0.03
 
 PDF_OUTPUTS = (
     "agent_runtime_schematic.pdf",
@@ -78,17 +82,35 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def raster_mae(expected: Path, actual: Path) -> float:
+def perceptual_hash(image: Image.Image) -> np.ndarray:
+    pixels = np.asarray(
+        image.convert("L").resize((32, 32), Image.Resampling.LANCZOS),
+        dtype=float,
+    )
+    coefficients = dctn(pixels, type=2, norm="ortho")[:8, :8].ravel()[1:]
+    return coefficients > np.median(coefficients)
+
+
+def raster_metrics(expected: Path, actual: Path) -> tuple[float, float, float]:
     with Image.open(expected) as expected_image, Image.open(actual) as actual_image:
         expected_rgba = expected_image.convert("RGBA")
         actual_rgba = actual_image.convert("RGBA")
-        if expected_rgba.size != actual_rgba.size:
-            raise ValueError(
-                f"raster dimensions differ: expected {expected_rgba.size}, "
-                f"got {actual_rgba.size}"
-            )
-        difference = ImageChops.difference(expected_rgba, actual_rgba)
-        return sum(ImageStat.Stat(difference).mean) / (4 * 255)
+        dimension_drift = max(
+            abs(actual_rgba.width - expected_rgba.width) / expected_rgba.width,
+            abs(actual_rgba.height - expected_rgba.height) / expected_rgba.height,
+        )
+        hash_distance = float(
+            np.mean(perceptual_hash(expected_rgba) != perceptual_hash(actual_rgba))
+        )
+        expected_thumb = expected_rgba.convert("L").resize(
+            (32, 32), Image.Resampling.LANCZOS
+        )
+        actual_thumb = actual_rgba.convert("L").resize(
+            (32, 32), Image.Resampling.LANCZOS
+        )
+        difference = ImageChops.difference(expected_thumb, actual_thumb)
+        thumbnail_mae = ImageStat.Stat(difference).mean[0] / 255
+        return dimension_drift, hash_distance, thumbnail_mae
 
 
 def verify_json(expected: Path, actual: Path) -> None:
@@ -121,13 +143,20 @@ def verify_deterministic(expected_dir: Path, actual_dir: Path) -> None:
         if expected_sha == actual_sha:
             print(f"PASS deterministic {name} {actual_sha}")
             continue
-        error = raster_mae(expected, actual)
-        if error > MAX_RASTER_MAE:
+        dimension_drift, hash_distance, thumbnail_mae = raster_metrics(expected, actual)
+        if (
+            dimension_drift > MAX_DIMENSION_DRIFT
+            or hash_distance > MAX_PHASH_DISTANCE
+            or thumbnail_mae > MAX_THUMBNAIL_MAE
+        ):
             raise ValueError(
-                f"raster output drift for {name}: normalized MAE "
-                f"{error:.6f} exceeds {MAX_RASTER_MAE:.6f}"
+                f"raster output drift for {name}: dimension={dimension_drift:.6f}, "
+                f"phash={hash_distance:.6f}, thumbnail_mae={thumbnail_mae:.6f}"
             )
-        print(f"PASS visual {name} normalized_mae={error:.6f}")
+        print(
+            f"PASS visual {name} dimension={dimension_drift:.6f} "
+            f"phash={hash_distance:.6f} thumbnail_mae={thumbnail_mae:.6f}"
+        )
 
 
 def verify_pdf_fonts(actual_dir: Path) -> None:

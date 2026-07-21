@@ -68,9 +68,9 @@
       "sha256": "ba66759e3d3b42f62c0b701bae1e68764eb4dc02feadedf8fc851084b434ec9a"
     },
     "artifact-readme": {
-      "bytes": 11313,
+      "bytes": 11326,
       "files": 1,
-      "sha256": "0112049de3f90d296a300dd92f6c1ca9248680b8c24eb1717094ee261f5f24c7"
+      "sha256": "bf856b10aed43728b209fda8fa3ab3acaf6ef69c6cfc1afe245f244c4be016a4"
     },
     "artifact-runner": {
       "bytes": 2002,
@@ -128,9 +128,9 @@
       "sha256": "f2fe10b217918578ccd866adf49524fdfde352324d0c2209cff93c8c3c3a0624"
     },
     "figure-programs": {
-      "bytes": 328196,
+      "bytes": 330301,
       "files": 27,
-      "sha256": "a191600f1740b87e2e66881654258ddced8ba6f2f834452c502c9ef5edd176a6"
+      "sha256": "897241c1350632753be3ef2c2596b4dcad0c2b2c97d1be1e8864c7e0a6b8dbf0"
     },
     "incremental-maintenance-results": {
       "bytes": 639047,

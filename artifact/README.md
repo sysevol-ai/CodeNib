@@ -192,10 +192,10 @@ The driver rejects missing inputs and non-empty output directories. It writes
 `reproduction_manifest.json`, including canonical SHA-256 identities for input
 trees, plotting sources, command logs, and outputs. JSON outputs must match the
 canonical parsed structure exactly, independent of whitespace or key order.
-PNGs are checked by exact hash first; when
-container font rasterization differs, the verifier requires equal dimensions
-and a bounded normalized pixel error. Matplotlib changes PDF metadata, so PDFs
-are audited for embedded fonts rather than raw hashes. Keep
+PNGs are checked by exact hash first; when container font rasterization differs,
+the verifier bounds dimension drift, perceptual-hash distance, and thumbnail
+pixel error. Matplotlib changes PDF metadata, so PDFs are audited for embedded
+fonts rather than raw hashes. Keep
 `$ARTIFACT_EVAL_OUTPUT` outside this bundle; adding
 generated files here intentionally causes the complete checksum verifier to
 reject the modified copy. The driver also disables bytecode writes in every
