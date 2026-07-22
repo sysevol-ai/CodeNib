@@ -245,6 +245,7 @@ async def codemap(
     window = _commit_window(repo_id)
     graph = None
     selected_commit = None
+    fell_back = False
     if window.available:
         entry = window.resolve(commit)
         if entry is None and commit:
@@ -252,11 +253,16 @@ async def codemap(
                 status_code=404, detail=f"Unknown commit for this repo: {commit!r}"
             )
         graph = await asyncio.to_thread(window.graph_for, commit)
-        if entry is not None:
+        if entry is not None and graph is not None:
             selected_commit = entry.get("sha")
     if graph is None:
+        # The snapshot was absent or unloadable (e.g. a graph.pkl written under
+        # an older schema_version). Serving the repo's default graph is fine;
+        # reporting it as the requested commit is not -- the client would render
+        # one commit's graph under another commit's label.
         graph = await asyncio.to_thread(bundle.code_graph)
-        selected_commit = selected_commit or bundle.entry.base_commit
+        selected_commit = bundle.entry.base_commit
+        fell_back = window.available
     if graph is None:
         return {
             "available": False,
@@ -276,9 +282,13 @@ async def codemap(
         repo_dir=bundle.entry.repo_dir,
         hierarchy_graph=await asyncio.to_thread(bundle.hierarchical_graph),
     )
-    # Let the client confirm which snapshot it is looking at.
+    # Let the client confirm which snapshot it is looking at. ``fell_back``
+    # marks the case where a window exists but its snapshot could not be served,
+    # so the UI can say so instead of implying the selection took effect.
     if isinstance(result, dict):
         result["commit"] = selected_commit
+        if fell_back:
+            result["fell_back"] = True
     return result
 
 
