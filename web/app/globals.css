@@ -541,6 +541,45 @@ pre {
   border-bottom: 1px solid var(--border);
 }
 
+/* Commit selector: replaces the static "Last indexed" label when the repo has
+   a prebuilt commit window (scripts/build_commit_window.py). */
+.commit-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.commit-picker-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.commit-select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  /* Long subjects must not widen the rail. */
+  text-overflow: ellipsis;
+}
+
+.commit-select:hover {
+  border-color: var(--accent, var(--fg));
+}
+
+.commit-select:focus-visible {
+  outline: 2px solid var(--accent, var(--fg));
+  outline-offset: 1px;
+}
+
 .toc-tree {
   list-style: none;
   margin: 0;

@@ -25,6 +25,8 @@ results/
 
 # Code-QA demo (dir or symlink to a shared data dir)
 .codeminer_qa
+# Compiled index artifacts (manifest, graph pickles, commit-window snapshots).
+.codeminer_cache
 
 # Cloned repos for local demo (gitignored — add via: python scripts/index_repo.py repos/<name>)
 repos/

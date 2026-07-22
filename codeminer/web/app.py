@@ -51,6 +51,7 @@ async def lifespan(app: FastAPI):
     app.state.registry = registry
     app.state.wiki_builders = {}
     app.state.edge_labelers = {}
+    app.state.commit_windows = {}
     # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
     # to templated text when no model/creds are available.
     wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
@@ -131,6 +132,16 @@ def _edge_labeler(repo_id: str):
     return cache[repo_id]
 
 
+def _commit_window(repo_id: str):
+    """Lazily build + cache this repo's per-commit graph window."""
+    cache = app.state.commit_windows
+    if repo_id not in cache:
+        from .commit_window import CommitWindow
+
+        cache[repo_id] = CommitWindow(_bundle(repo_id).entry.repo_dir)
+    return cache[repo_id]
+
+
 @app.get("/api/health")
 async def health() -> dict:
     registry = getattr(app.state, "registry", None)
@@ -201,6 +212,18 @@ async def source(
     return result
 
 
+@app.get("/api/repos/{repo_id}/commits")
+async def commits(repo_id: str) -> dict:
+    """Commits selectable in the graph view, newest first.
+
+    Backed by ``scripts/build_commit_window.py``. Repos without a prebuilt
+    window return ``available=False`` and the UI keeps its single-commit label.
+    """
+    _bundle(repo_id)  # 404 on unknown repo
+    window = _commit_window(repo_id)
+    return await asyncio.to_thread(window.summary)
+
+
 @app.get("/api/repos/{repo_id}/codemap")
 async def codemap(
     repo_id: str,
@@ -208,6 +231,7 @@ async def codemap(
     direction: str = "both",
     depth: int = 2,
     max_nodes: int = 40,
+    commit: str | None = None,
 ) -> dict:
     """Dependency subgraph ("codemap") around *symbol* (or a central default).
 
@@ -215,7 +239,24 @@ async def codemap(
     field renders directly in the frontend's existing diagram component.
     """
     bundle = _bundle(repo_id)
-    graph = await asyncio.to_thread(bundle.code_graph)
+    # Prefer a commit-window snapshot when one exists: an explicit ``commit``
+    # selects that point in history, and an absent one still defaults to the
+    # window's newest commit so the graph matches the selector's default.
+    window = _commit_window(repo_id)
+    graph = None
+    selected_commit = None
+    if window.available:
+        entry = window.resolve(commit)
+        if entry is None and commit:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown commit for this repo: {commit!r}"
+            )
+        graph = await asyncio.to_thread(window.graph_for, commit)
+        if entry is not None:
+            selected_commit = entry.get("sha")
+    if graph is None:
+        graph = await asyncio.to_thread(bundle.code_graph)
+        selected_commit = selected_commit or bundle.entry.base_commit
     if graph is None:
         return {
             "available": False,
@@ -225,7 +266,7 @@ async def codemap(
             "mermaid": "",
             "note": "This repo has no symbol graph.",
         }
-    return await asyncio.to_thread(
+    result = await asyncio.to_thread(
         build_codemap,
         graph,
         symbol,
@@ -235,6 +276,10 @@ async def codemap(
         repo_dir=bundle.entry.repo_dir,
         hierarchy_graph=await asyncio.to_thread(bundle.hierarchical_graph),
     )
+    # Let the client confirm which snapshot it is looking at.
+    if isinstance(result, dict):
+        result["commit"] = selected_commit
+    return result
 
 
 @app.post("/api/repos/{repo_id}/edge-label", response_model=EdgeLabelResponse)

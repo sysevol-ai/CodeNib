@@ -8,12 +8,14 @@ import AskBar from "@/components/AskBar";
 import Codemap from "@/components/Codemap";
 import GraphView from "@/components/GraphView";
 import {
+  fetchCommits,
   fetchRepos,
   fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
   repoRelative,
   type CodemapResponse,
+  type CommitRef,
   type RepoInfo,
   type WikiPage,
   type WikiPageRef,
@@ -90,6 +92,10 @@ export default function WikiPageView() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [tocLoading, setTocLoading] = useState(true);
   const [tocOpen, setTocOpen] = useState(false);
+  // Commit window: empty when this repo has no prebuilt snapshots, in which
+  // case the rail keeps its static "Last indexed" label.
+  const [commits, setCommits] = useState<CommitRef[]>([]);
+  const [selectedCommit, setSelectedCommit] = useState<string | undefined>(undefined);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -99,6 +105,15 @@ export default function WikiPageView() {
     fetchRepos()
       .then((rs) => {
         setRepo(rs.find((x) => x.id === repoId) ?? null);
+      })
+      .catch(() => {});
+    // Optional feature: repos without a prebuilt window just keep the static
+    // commit label, so a failure here is not surfaced as a page error.
+    fetchCommits(repoId)
+      .then((w) => {
+        if (!w.available) return;
+        setCommits(w.commits);
+        setSelectedCommit(w.selected ?? undefined);
       })
       .catch(() => {});
     setTocLoading(true);
@@ -219,8 +234,29 @@ export default function WikiPageView() {
         {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
         <aside className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
-          {repo?.commit_short && (
-            <div className="rail-sub mono">Last indexed {repo.commit_short}</div>
+          {commits.length > 0 ? (
+            <div className="rail-sub commit-picker">
+              <label className="commit-picker-label" htmlFor="commit-select">
+                Viewing commit
+              </label>
+              <select
+                id="commit-select"
+                className="commit-select mono"
+                value={selectedCommit ?? ""}
+                onChange={(e) => setSelectedCommit(e.target.value || undefined)}
+                title="Show the symbol graph as of this commit"
+              >
+                {commits.map((c) => (
+                  <option key={c.sha} value={c.sha}>
+                    {c.short} · {c.date} · {c.subject.slice(0, 40)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            repo?.commit_short && (
+              <div className="rail-sub mono">Last indexed {repo.commit_short}</div>
+            )
           )}
           {error ? (
             <div className="muted">Failed to load wiki.</div>
@@ -360,7 +396,7 @@ export default function WikiPageView() {
               </button>
             </div>
             <div className="graph-modal-body">
-              <Codemap repoId={repoId} initialSymbol={graphSeed} />
+              <Codemap repoId={repoId} initialSymbol={graphSeed} commit={selectedCommit} />
             </div>
           </div>
         </div>

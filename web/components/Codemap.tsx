@@ -16,9 +16,13 @@ type Depth = 1 | 2;
 export default function Codemap({
   repoId,
   initialSymbol,
+  commit,
 }: {
   repoId: string;
   initialSymbol?: string;
+  // Commit snapshot to render. Undefined = the window's newest commit (or the
+  // repo's single indexed graph when no window exists).
+  commit?: string;
 }) {
   const [symbol, setSymbol] = useState(initialSymbol ?? "");
   const [query, setQuery] = useState(initialSymbol ?? ""); // last submitted focus symbol
@@ -45,6 +49,7 @@ export default function Codemap({
       direction,
       depth,
       maxNodes: depth === 1 ? 28 : 40,
+      commit,
     })
       .then((d) => !cancelled && setData(d))
       .catch((e) => !cancelled && setErr(String(e)))
@@ -52,7 +57,7 @@ export default function Codemap({
     return () => {
       cancelled = true;
     };
-  }, [repoId, query, direction, depth]);
+  }, [repoId, query, direction, depth, commit]);
 
   function focus(label: string) {
     setSymbol(label);

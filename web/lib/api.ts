@@ -224,17 +224,61 @@ export interface CodemapResponse {
   hierarchy?: CodemapHierarchy;
   mermaid: string;
   note?: string;
+  // Which commit snapshot this payload was built from.
+  commit?: string | null;
+}
+
+// One selectable point in the repo's commit window. Snapshots are built by
+// scripts/build_commit_window.py; `method` is "cold" for the anchor build and
+// "patched" for commits reached incrementally.
+export interface CommitRef {
+  sha: string;
+  short: string;
+  subject: string;
+  date: string;
+  author: string;
+  method: "cold" | "patched";
+  build_seconds: number;
+  node_count: number;
+  edge_count: number;
+  changed_files: number;
+}
+
+export interface CommitWindowResponse {
+  available: boolean;
+  ref?: string;
+  language?: string;
+  // Every language actually built into these snapshots.
+  languages?: string[];
+  lsp_startup_seconds?: number;
+  commits: CommitRef[];
+  selected: string | null;
+}
+
+// Repos without a prebuilt window return available=false; callers should then
+// fall back to the repo's single indexed commit.
+export async function fetchCommits(repoId: string): Promise<CommitWindowResponse> {
+  const res = await fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/commits`);
+  if (!res.ok) throw new Error(`Failed to load commits (${res.status})`);
+  return res.json();
 }
 
 export async function fetchCodemap(
   repoId: string,
-  opts: { symbol?: string; direction?: string; depth?: number; maxNodes?: number } = {}
+  opts: {
+    symbol?: string;
+    direction?: string;
+    depth?: number;
+    maxNodes?: number;
+    commit?: string;
+  } = {}
 ): Promise<CodemapResponse> {
   const params = new URLSearchParams();
   if (opts.symbol) params.set("symbol", opts.symbol);
   if (opts.direction) params.set("direction", opts.direction);
   if (opts.depth != null) params.set("depth", String(opts.depth));
   if (opts.maxNodes != null) params.set("max_nodes", String(opts.maxNodes));
+  if (opts.commit) params.set("commit", opts.commit);
   const qs = params.toString();
   const res = await fetch(
     `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/codemap${qs ? `?${qs}` : ""}`
