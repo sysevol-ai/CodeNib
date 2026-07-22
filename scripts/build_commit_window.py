@@ -117,9 +117,23 @@ def ensure_worktree(repo: str, path: str, sha: str) -> None:
 
     Never touches ``repo``'s own working tree.
     """
-    if os.path.isdir(os.path.join(path, ".git")) or os.path.isfile(
-        os.path.join(path, ".git")
-    ):
+    dotgit = os.path.join(path, ".git")
+    if os.path.exists(dotgit):
+        # A *linked* worktree records `.git` as a file pointing at the parent's
+        # gitdir; a primary checkout has it as a directory. We refuse the
+        # directory case outright, because the reuse path below runs
+        # `checkout --force` and `clean -qfdx`, which against someone's real
+        # checkout discards uncommitted work and deletes ignored files (.env,
+        # node_modules, .codeminer_cache). The module contract is that the
+        # served or developed tree is never touched -- enforce it here rather
+        # than relying on the caller passing a sane --worktree.
+        if os.path.isdir(dotgit):
+            raise RuntimeError(
+                f"refusing to use {path!r} as a worktree: it looks like a "
+                "primary git checkout, and preparing it would discard "
+                "uncommitted and ignored files. Pass --worktree pointing at a "
+                "disposable path instead."
+            )
         logger.info("reusing worktree %s", path)
         _git(repo, "worktree", "repair", path)
         subprocess.check_call(
@@ -200,7 +214,12 @@ def build_anchor(worktree: str, out_dir: str, languages: List[str], graph_route:
     Rust project (no ``go.mod`` / ``Cargo.toml``) should still get a graph for
     the languages it really is written in, rather than no graph at all.
 
-    Returns ``(graph, languages_actually_built)``.
+    Returns ``(graph, languages_actually_built, build_seconds)``.
+
+    ``build_seconds`` times only the *successful* build, not the failed attempts
+    that preceded it. Those attempts cover languages the patch path never
+    touches, so charging them to the cold baseline would inflate every
+    cold-vs-patch comparison derived from this window.
     """
     from codeminer.ls_router import build_graph_for_languages
 
@@ -209,6 +228,7 @@ def build_anchor(worktree: str, out_dir: str, languages: List[str], graph_route:
     dropped: List[str] = []
 
     while remaining:
+        attempt_start = time.time()
         try:
             graph = build_graph_for_languages(
                 worktree,
@@ -233,13 +253,14 @@ def build_anchor(worktree: str, out_dir: str, languages: List[str], graph_route:
             )
             continue
 
+        build_seconds = time.time() - attempt_start
         if graph is None or not hasattr(graph, "graph"):
             raise RuntimeError("cold graph build returned no graph")
         if len(graph.graph.vs) == 0:
             raise RuntimeError("cold graph build returned an empty graph")
         if dropped:
             logger.warning("cold build skipped language(s): %s", ", ".join(dropped))
-        return graph, remaining
+        return graph, remaining, build_seconds
 
     raise RuntimeError(
         f"no language could be cold-built here (tried: {', '.join(languages)})"
@@ -332,15 +353,15 @@ def main() -> int:
 
     # --- anchor: the one cold build -------------------------------------
     anchor_out = os.path.join(out_dir, f"graph_{anchor['short']}")
-    t0 = time.time()
     logger.info(
         "[1/%d] cold build @ %s (%s)",
         len(chain),
         anchor["short"],
         anchor["subject"][:60],
     )
-    graph, languages = build_anchor(worktree, anchor_out, languages, args.graph_route)
-    cold_s = time.time() - t0
+    graph, languages, cold_s = build_anchor(
+        worktree, anchor_out, languages, args.graph_route
+    )
     anchor_pkl = os.path.join(out_dir, f"graph_{anchor['short']}.pkl")
     graph.save_graph(anchor_pkl)
     nv, ne = _counts(graph)
@@ -523,12 +544,30 @@ def main() -> int:
     logger.info("wrote %s", manifest_path)
     if cold and patched:
         avg_patch = sum(e.build_seconds for e in patched) / len(patched)
+        # Both sides now cover the same language set: `languages` was narrowed
+        # by build_anchor to what actually cold-built, and the patchers were
+        # started from that same list.
+        if avg_patch > 0:
+            logger.info(
+                "cold %.1fs vs mean patch %.2fs over %d transitions (%.1fx) [%s]",
+                cold.build_seconds,
+                avg_patch,
+                len(patched),
+                cold.build_seconds / avg_patch,
+                ", ".join(languages),
+            )
+        else:
+            logger.info(
+                "cold %.1fs vs mean patch %.2fs over %d transitions "
+                "(no ratio: mean patch time is zero) [%s]",
+                cold.build_seconds,
+                avg_patch,
+                len(patched),
+                ", ".join(languages),
+            )
         logger.info(
-            "cold %.1fs vs mean patch %.2fs over %d transitions (%.1fx)",
-            cold.build_seconds,
-            avg_patch,
-            len(patched),
-            (cold.build_seconds / avg_patch) if avg_patch else float("nan"),
+            "      LSP startup %.1fs is excluded from patch times above",
+            lsp_startup,
         )
     return 0
 
