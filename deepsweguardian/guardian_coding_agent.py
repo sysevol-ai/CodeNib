@@ -53,6 +53,8 @@ from pier.models.agent.context import AgentContext
 from pier.models.agent.network import NetworkAllowlist
 from pier.models.task.config import MCPServerConfig
 
+from .checkpoint import guardian_checkpoint_script
+
 if TYPE_CHECKING:
     from pier.models.agent.install import AgentInstallSpec
 
@@ -307,6 +309,11 @@ class GuardianCodingAgent(BaseInstalledAgent):
     async def _start_codex_bridge(self, environment: BaseEnvironment) -> None:
         """Start Guardian's Codex filesystem bridge inside the Pier container."""
         findings_dir = _quote_shell_path(self._guardian_findings_dir)
+        checkpoint_bin_dir = _quote_shell_path(f"{self._guardian_findings_dir}/bin")
+        checkpoint_path = _quote_shell_path(
+            f"{self._guardian_findings_dir}/bin/guardian-checkpoint"
+        )
+        checkpoint_script = shlex.quote(guardian_checkpoint_script())
         pidfile = _quote_shell_path(self._guardian_bridge_pidfile)
         repo = shlex.quote(self._guardian_repo)
         memory_dir = shlex.quote(self._guardian_memory_dir)
@@ -353,7 +360,9 @@ class GuardianCodingAgent(BaseInstalledAgent):
             )
 
         cmd = (
-            f"mkdir -p {findings_dir} && "
+            f"mkdir -p {findings_dir} {checkpoint_bin_dir} && "
+            f"printf %s {checkpoint_script} > {checkpoint_path} && "
+            f"chmod +x {checkpoint_path} && "
             "echo guardian-bridge-starting > /logs/agent/codex_bridge.log && "
             f"{auth_probe}"
             "if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi && "
