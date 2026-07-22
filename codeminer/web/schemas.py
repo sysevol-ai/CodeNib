@@ -216,3 +216,20 @@ def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
         total_turns=result.total_turns,
         total_duration_ms=result.total_duration_ms,
     )
+
+
+class FeedbackRequest(BaseModel):
+    """Anonymous visitor feedback. No identifying fields by design."""
+
+    message: str
+    # UI category; unknown values are stored as "other" rather than rejected.
+    category: str = "other"
+    # Optional context so a report can be located: which repo/page it came from.
+    repo: Optional[str] = None
+    page: Optional[str] = None
+
+
+class FeedbackResponse(BaseModel):
+    ok: bool = True
+    id: str = ""
+    error: str = ""

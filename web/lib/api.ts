@@ -332,3 +332,39 @@ export async function fetchEdgeLabel(
   if (!res.ok) throw new Error(`Failed to load edge label (${res.status})`);
   return res.json();
 }
+
+// --- Anonymous site feedback -----------------------------------------------
+// Nothing identifying is sent: no email, no account, no client id. The server
+// appends submissions to a JSONL file under its data dir.
+
+export type FeedbackCategory = "bug" | "suggestion" | "content" | "praise";
+
+export const FEEDBACK_CATEGORIES: { value: FeedbackCategory; label: string }[] = [
+  { value: "bug", label: "Bug" },
+  { value: "suggestion", label: "Suggestion" },
+  { value: "content", label: "Wrong content" },
+  { value: "praise", label: "Praise" },
+];
+
+export interface FeedbackInput {
+  message: string;
+  category: FeedbackCategory;
+  repo?: string;
+  page?: string;
+}
+
+export interface FeedbackResult {
+  ok: boolean;
+  id: string;
+  error?: string;
+}
+
+export async function submitFeedback(input: FeedbackInput): Promise<FeedbackResult> {
+  const res = await fetch(`${API_BASE}/api/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`Failed to send feedback (${res.status})`);
+  return res.json();
+}

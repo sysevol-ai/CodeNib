@@ -2811,3 +2811,112 @@ a.codepanel-name:hover {
   padding: 0;
   white-space: pre;
 }
+
+/* ── Anonymous feedback dialog ─────────────────────────────────────────────── */
+
+.feedback-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.feedback-dialog {
+  width: 100%;
+  max-width: 460px;
+  box-sizing: border-box;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.feedback-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.feedback-sub {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.feedback-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.feedback-cat {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.feedback-cat:hover { color: var(--fg); }
+
+.feedback-cat.on {
+  border-color: var(--fg);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.feedback-text {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.feedback-text:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 1px;
+}
+
+.feedback-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  gap: 10px;
+}
+
+.feedback-count { font-size: 11px; color: var(--muted); }
+
+.feedback-actions { display: flex; gap: 8px; }
+
+.feedback-error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #c0392b;
+}
+
+.feedback-done { text-align: center; padding: 8px 0; }
+
+.feedback-done-mark { font-size: 26px; line-height: 1; margin-bottom: 8px; }
+
+@media (max-width: 520px) {
+  .feedback-dialog { max-width: 100%; }
+}

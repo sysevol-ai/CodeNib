@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..log_utils import get_logger
@@ -35,6 +36,8 @@ from .schemas import (
     ChatResponse,
     EdgeLabelRequest,
     EdgeLabelResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     RepoInfo,
     agent_result_to_response,
 )
@@ -52,6 +55,11 @@ async def lifespan(app: FastAPI):
     app.state.wiki_builders = {}
     app.state.edge_labelers = {}
     app.state.commit_windows = {}
+    from .feedback import FeedbackStore
+
+    app.state.feedback = FeedbackStore(config.data_dir)
+    # Per-IP submission timestamps for the public feedback endpoint.
+    app.state.feedback_hits = {}
     # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
     # to templated text when no model/creds are available.
     wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
@@ -308,6 +316,56 @@ async def edge_label(repo_id: str, req: EdgeLabelRequest) -> EdgeLabelResponse:
         anchors,
     )
     return EdgeLabelResponse(label=label, cached=cached)
+
+
+# A publicly reachable write endpoint needs a cap. Deliberately coarse: the goal
+# is to stop a script filling the disk, not to police individual users.
+FEEDBACK_MAX_PER_WINDOW = 5
+FEEDBACK_WINDOW_SECONDS = 60.0
+
+
+@app.post("/api/feedback", response_model=FeedbackResponse)
+async def submit_feedback(req: FeedbackRequest, request: Request) -> FeedbackResponse:
+    """Store one anonymous feedback submission.
+
+    Nothing identifying is persisted. The client address is used only for
+    in-memory rate limiting and never written to disk.
+    """
+    store = getattr(app.state, "feedback", None)
+    if store is None:
+        raise HTTPException(status_code=503, detail="feedback storage unavailable")
+
+    client = request.client.host if request.client else "unknown"
+    now = time.time()
+    hits = app.state.feedback_hits
+    recent = [t for t in hits.get(client, []) if now - t < FEEDBACK_WINDOW_SECONDS]
+    if len(recent) >= FEEDBACK_MAX_PER_WINDOW:
+        raise HTTPException(
+            status_code=429, detail="too many submissions; please try again shortly"
+        )
+    recent.append(now)
+    hits[client] = recent
+    # Bound the table so a burst of distinct addresses cannot grow it forever.
+    if len(hits) > 4096:
+        for stale, times in list(hits.items()):
+            if not times or now - times[-1] > FEEDBACK_WINDOW_SECONDS:
+                hits.pop(stale, None)
+
+    try:
+        record = await asyncio.to_thread(
+            store.add,
+            message=req.message,
+            category=req.category,
+            repo=req.repo,
+            page=req.page,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:  # disk full / read-only mount
+        logger.error("feedback: could not persist submission: %s", exc)
+        raise HTTPException(status_code=503, detail="could not store feedback") from exc
+
+    return FeedbackResponse(ok=True, id=record.id)
 
 
 @app.post("/api/chat", response_model=ChatResponse)

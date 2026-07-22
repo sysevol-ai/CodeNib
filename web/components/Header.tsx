@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import FeedbackButton from "@/components/FeedbackButton";
 import { useEffect, useState, type ReactNode } from "react";
 
 function ThemeToggle() {
@@ -80,6 +81,7 @@ export default function Header({
       <div className="header-right">
         <span className="header-note">AI docs you can talk to</span>
         {actions}
+        <FeedbackButton />
         <ShareButton />
         <ThemeToggle />
       </div>
