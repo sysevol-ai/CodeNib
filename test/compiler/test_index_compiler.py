@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import time
 from unittest.mock import MagicMock, patch
 
@@ -616,3 +617,122 @@ class TestTwoPhaseIntegration:
 
         assert not plan.can_execute
         assert "vector" in plan.blocking_builds
+
+
+# ---------------------------------------------------------------------------
+# IndexCompiler.update_repo — incremental advance of an existing manifest
+# ---------------------------------------------------------------------------
+
+
+def _recording_builder(calls: list):
+    """Builder that records whether build or incremental_update was invoked."""
+
+    class RecordingBuilder:
+        def build(self, scope: str, **kwargs) -> IndexStatus:
+            output_dir = kwargs.get("output_dir", "/tmp/rec")
+            os.makedirs(output_dir, exist_ok=True)
+            calls.append(("build", kwargs.get("last_commit")))
+            return IndexStatus(
+                index_type="rec",
+                state=IndexState.FRESH,
+                last_built=time.time(),
+                age_seconds=0.0,
+                scope=scope,
+                path=output_dir,
+                metadata={},
+            )
+
+        def incremental_update(self, scope: str, **kwargs) -> IndexStatus:
+            calls.append(("incremental_update", kwargs.get("last_commit")))
+            rest = {k: v for k, v in kwargs.items() if k != "last_commit"}
+            return self.build(scope, **rest)
+
+    return RecordingBuilder()
+
+
+def _git_repo(path) -> str:
+    """Init a git repo with one commit; return the commit sha."""
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True)
+    (path / "a.py").write_text("def a():\n    pass\n")
+    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-qm", "one"], check=True)
+    return subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _commit(path, name: str) -> str:
+    (path / name).write_text("def b():\n    pass\n")
+    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-qm", name], check=True)
+    return subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+class TestUpdateRepo:
+    def _compiler(self, calls):
+        registry = IndexBuilderRegistry()
+        registry.register("rec", _recording_builder(calls))
+        return IndexCompiler(
+            registry,
+            IndexCompilerConfig(index_types=["rec"], languages=["python"]),
+        )
+
+    def test_falls_back_to_full_build_without_manifest(self, tmp_path):
+        _git_repo(tmp_path)
+        calls: list = []
+        self._compiler(calls).update_repo(str(tmp_path))
+        assert calls == [("build", None)]
+
+    def test_noop_when_head_unchanged(self, tmp_path):
+        _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        compiler.compile_repo(str(tmp_path))
+        assert len(calls) == 1
+        compiler.update_repo(str(tmp_path))
+        # HEAD did not move, so no builder should run again.
+        assert len(calls) == 1
+
+    def test_uses_incremental_path_when_head_moved(self, tmp_path):
+        first = _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        compiler.compile_repo(str(tmp_path))
+        second = _commit(tmp_path, "b.py")
+        assert first != second
+
+        compiler.update_repo(str(tmp_path))
+        assert calls[-2] == ("incremental_update", first)
+
+    def test_manifest_records_new_commit_after_update(self, tmp_path):
+        _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        compiler.compile_repo(str(tmp_path))
+        second = _commit(tmp_path, "b.py")
+
+        manifest = compiler.update_repo(str(tmp_path))
+        assert manifest.commit == second
+        assert manifest.last_indexed_commit == second
+
+    def test_rebuilds_when_manifest_unreadable(self, tmp_path):
+        _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        compiler.compile_repo(str(tmp_path))
+        cache = tmp_path / ".codeminer_cache"
+        (cache / "repo_manifest.json").write_text("{not json")
+
+        calls.clear()
+        compiler.update_repo(str(tmp_path))
+        assert calls == [("build", None)]

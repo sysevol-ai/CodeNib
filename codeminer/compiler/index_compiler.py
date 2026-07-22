@@ -94,6 +94,80 @@ class IndexCompiler:
         Returns:
             The completed ``RepoManifest``.
         """
+        return self._compile(
+            repo_path, index_types=index_types, cache_dir=cache_dir, last_commit=None
+        )
+
+    def update_repo(
+        self,
+        repo_path: str,
+        *,
+        index_types: Optional[List[str]] = None,
+        cache_dir: Optional[str] = None,
+    ) -> RepoManifest:
+        """
+        Advance an existing manifest to the repo's current HEAD.
+
+        Each builder is asked for an incremental update rather than a full
+        build. Builders without a real delta path fall back to a rebuild
+        internally, so the result is always correct -- only the cost differs.
+
+        Falls back to a full :meth:`compile_repo` when there is no existing
+        manifest, or when the previously indexed commit cannot be determined.
+        Returns the existing manifest untouched when HEAD has not moved.
+        """
+        repo_path = os.path.abspath(repo_path)
+        cache = cache_dir or os.path.join(repo_path, self._config.cache_dir_name)
+        manifest_path = os.path.join(cache, MANIFEST_FILENAME)
+
+        if not os.path.isfile(manifest_path):
+            logger.info(
+                "No manifest at %s; falling back to a full build", manifest_path
+            )
+            return self.compile_repo(
+                repo_path, index_types=index_types, cache_dir=cache_dir
+            )
+
+        try:
+            existing = RepoManifest.load(manifest_path)
+        except Exception as exc:  # noqa: BLE001 - unreadable manifest: rebuild
+            logger.warning(
+                "Manifest at %s unusable (%s); rebuilding", manifest_path, exc
+            )
+            return self.compile_repo(
+                repo_path, index_types=index_types, cache_dir=cache_dir
+            )
+
+        previous = existing.last_indexed_commit or existing.commit
+        head_commit = self._get_head_commit(repo_path)
+        if not previous:
+            logger.info("Manifest records no indexed commit; rebuilding")
+            return self.compile_repo(
+                repo_path, index_types=index_types, cache_dir=cache_dir
+            )
+        if head_commit and previous == head_commit:
+            logger.info("Indexes already at %s; nothing to update", head_commit[:8])
+            return existing
+
+        logger.info(
+            "Updating indexes %s -> %s", previous[:8], (head_commit or "HEAD")[:8]
+        )
+        return self._compile(
+            repo_path,
+            index_types=index_types,
+            cache_dir=cache_dir,
+            last_commit=previous,
+        )
+
+    def _compile(
+        self,
+        repo_path: str,
+        *,
+        index_types: Optional[List[str]],
+        cache_dir: Optional[str],
+        last_commit: Optional[str],
+    ) -> RepoManifest:
+        """Shared build loop. ``last_commit`` selects the incremental path."""
         repo_path = os.path.abspath(repo_path)
         cache = cache_dir or os.path.join(repo_path, self._config.cache_dir_name)
         os.makedirs(cache, exist_ok=True)
@@ -116,7 +190,9 @@ class IndexCompiler:
                 continue
 
             output_dir = os.path.join(cache, idx_type)
-            result = self._build_one(builder, idx_type, repo_path, output_dir)
+            result = self._build_one(
+                builder, idx_type, repo_path, output_dir, last_commit=last_commit
+            )
 
             now = datetime.now(timezone.utc)
             entry = IndexEntry(
@@ -153,15 +229,30 @@ class IndexCompiler:
         index_type: str,
         repo_path: str,
         output_dir: str,
+        *,
+        last_commit: Optional[str] = None,
     ) -> BuildResult:
-        """Build a single index, catching errors."""
+        """Build a single index, catching errors.
+
+        When *last_commit* is given, the builder's ``incremental_update`` path is
+        used instead of ``build``. Builders without a real delta implementation
+        fall back to a full rebuild internally, so passing it is always safe.
+        """
         start = time.monotonic()
         try:
-            status = builder.build(
-                scope="current_repo",
-                repo_path=repo_path,
-                output_dir=output_dir,
-            )
+            if last_commit:
+                status = builder.incremental_update(
+                    scope="current_repo",
+                    repo_path=repo_path,
+                    output_dir=output_dir,
+                    last_commit=last_commit,
+                )
+            else:
+                status = builder.build(
+                    scope="current_repo",
+                    repo_path=repo_path,
+                    output_dir=output_dir,
+                )
             elapsed = time.monotonic() - start
             return BuildResult(
                 index_type=index_type,
