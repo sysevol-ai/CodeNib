@@ -141,6 +141,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_poll_interval = int(guardian_poll_interval)
         self._guardian_findings_dir = guardian_findings_dir
         self._guardian_bridge_pidfile = f"{guardian_findings_dir}/codex_bridge.pid"
+        self._guardian_codex_home = "/tmp/guardian-codex-home"
+        self._guardian_codex_secrets_dir = "/tmp/guardian-codex-secrets"
 
         # Build the Guardian MCPServerConfig (stdio transport).
         # The inner solver's setup() writes this to its MCP config file.
@@ -247,6 +249,61 @@ class GuardianCodingAgent(BaseInstalledAgent):
         # already has codeminer's deps installed; no container pip install needed.
         await self._inner.setup(environment)
 
+    def _resolve_codex_auth_json_path(self) -> Path | None:
+        """Resolve the host Codex auth.json path for Guardian's nested Codex calls."""
+        explicit = self._get_env("CODEX_AUTH_JSON_PATH")
+        if explicit:
+            path = Path(explicit)
+            if not path.is_file():
+                raise ValueError(
+                    f"CODEX_AUTH_JSON_PATH points to non-existent file: {explicit}"
+                )
+            return path
+
+        force = (self._get_env("CODEX_FORCE_AUTH_JSON") or "").strip().lower()
+        if force in {"1", "true", "yes", "y", "on"}:
+            path = Path.home() / ".codex" / "auth.json"
+            if not path.is_file():
+                raise ValueError(
+                    f"CODEX_FORCE_AUTH_JSON is set but {path} does not exist"
+                )
+            return path
+
+        default = Path.home() / ".codex" / "auth.json"
+        if self._guardian_model.startswith("codex:") and default.is_file():
+            return default
+
+        return None
+
+    async def _prepare_guardian_codex_auth(
+        self,
+        environment: BaseEnvironment,
+        *,
+        codex_home: str,
+    ) -> None:
+        """Upload subscription auth for Guardian's separate Codex runtime."""
+        auth_json_path = self._resolve_codex_auth_json_path()
+        if auth_json_path is None:
+            return
+
+        secrets_dir = self._guardian_codex_secrets_dir
+        remote_auth_path = f"{secrets_dir}/auth.json"
+        await environment.exec(
+            "mkdir -p "
+            f"{shlex.quote(codex_home)} {shlex.quote(secrets_dir)}"
+        )
+        await environment.upload_file(auth_json_path, remote_auth_path)
+        default_user = getattr(environment, "default_user", None)
+        if default_user is not None:
+            await self.exec_as_root(
+                environment,
+                command=f"chown {default_user} {shlex.quote(remote_auth_path)}",
+            )
+        await environment.exec(
+            f"ln -sf {shlex.quote(remote_auth_path)} "
+            f"{shlex.quote(codex_home)}/auth.json"
+        )
+
     async def _start_codex_bridge(self, environment: BaseEnvironment) -> None:
         """Start Guardian's Codex filesystem bridge inside the Pier container."""
         findings_dir = _quote_shell_path(self._guardian_findings_dir)
@@ -261,10 +318,20 @@ class GuardianCodingAgent(BaseInstalledAgent):
         # applies to the agent's main process via agent_process_env()).
         _persistent = getattr(environment, "_persistent_env", {})
         gtoken = _persistent.get("GOOGLE_OAUTH_ACCESS_TOKEN", "")
-        codex_home = _persistent.get("CODEX_HOME", "")
-        codex_force_auth = _persistent.get("CODEX_FORCE_AUTH_JSON", "")
-        if codex_force_auth and not codex_home:
-            codex_home = "/tmp/codex-home"
+        auth_json_path = self._resolve_codex_auth_json_path()
+        codex_home = _persistent.get("CODEX_HOME", "") or self._get_env("CODEX_HOME")
+        codex_force_auth = _persistent.get(
+            "CODEX_FORCE_AUTH_JSON", ""
+        ) or self._get_env("CODEX_FORCE_AUTH_JSON")
+        if auth_json_path is not None and not codex_home:
+            codex_home = self._guardian_codex_home
+        if auth_json_path is not None and not codex_force_auth:
+            codex_force_auth = "1"
+        if codex_home:
+            await self._prepare_guardian_codex_auth(
+                environment,
+                codex_home=codex_home,
+            )
         _egress = getattr(environment, "_egress_proxy_env", {})
         https_proxy = _egress.get("HTTPS_PROXY", "")
         http_proxy = _egress.get("HTTP_PROXY", "")
@@ -274,10 +341,21 @@ class GuardianCodingAgent(BaseInstalledAgent):
             codex_env += f"CODEX_HOME={shlex.quote(codex_home)} "
         if codex_force_auth:
             codex_env += f"CODEX_FORCE_AUTH_JSON={shlex.quote(codex_force_auth)} "
+        auth_probe = ""
+        if codex_home:
+            quoted_home = shlex.quote(codex_home)
+            auth_probe = (
+                f"if [ -s {quoted_home}/auth.json ]; then "
+                "echo guardian-codex-auth-ready >> /logs/agent/codex_bridge.log; "
+                "else "
+                "echo guardian-codex-auth-missing >> /logs/agent/codex_bridge.log; "
+                "fi && "
+            )
 
         cmd = (
             f"mkdir -p {findings_dir} && "
             "echo guardian-bridge-starting > /logs/agent/codex_bridge.log && "
+            f"{auth_probe}"
             "if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi && "
             "CODEMINER_CODEX_BIN=$(command -v codex || true) && "
             f"nohup env PYTHONPATH=/codeminer "
@@ -300,7 +378,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
             f"--budget-tokens {self._guardian_budget_tokens} "
             f"--poll-interval {self._guardian_poll_interval} "
             f"--out-dir {findings_dir} "
-            f"> /logs/agent/codex_bridge.log 2>&1 & "
+            f">> /logs/agent/codex_bridge.log 2>&1 & "
             f"echo $! | tee {pidfile} > /logs/agent/codex_bridge.pid"
         )
         await environment.exec(cmd)
