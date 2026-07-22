@@ -73,6 +73,35 @@ function TocTree({
   );
 }
 
+// What it cost to reach the selected commit. Every string here is a *measured*
+// claim — how long the build or patch took, how much changed. None of it may
+// imply the patched graph was checked against a fresh rebuild: until the
+// exactness guard lands, every incremental result is recorded
+// verified=false, checked=false, and this line must not out-claim the manifest.
+function commitEvidence(commits: CommitRef[], selected?: string): string | null {
+  if (!commits.length) return null;
+  const i = commits.findIndex((c) => c.sha === selected);
+  const c = i >= 0 ? commits[i] : commits[0];
+  if (!c) return null;
+
+  if (c.method === "cold") {
+    return c.build_seconds != null ? `cold build · ${c.build_seconds.toFixed(1)}s` : null;
+  }
+
+  const parts: string[] = [];
+  if (c.build_seconds != null) parts.push(`patched in ${c.build_seconds.toFixed(2)}s`);
+  if (c.changed_files != null) {
+    parts.push(`${c.changed_files} file${c.changed_files === 1 ? "" : "s"} changed`);
+  }
+  // commits[] is newest-first, so this commit's predecessor is the next entry.
+  const prev = i >= 0 ? commits[i + 1] : commits[1];
+  if (prev && c.node_count != null && prev.node_count != null) {
+    const d = c.node_count - prev.node_count;
+    parts.push(d === 0 ? "±0 nodes" : `${d > 0 ? "+" : "−"}${Math.abs(d)} nodes`);
+  }
+  return parts.length ? parts.join(" · ") : null;
+}
+
 export default function WikiPageView() {
   const params = useParams<{ repoId: string }>();
   const repoId = decodeURIComponent(params.repoId);
@@ -96,6 +125,7 @@ export default function WikiPageView() {
   // case the rail keeps its static "Last indexed" label.
   const [commits, setCommits] = useState<CommitRef[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<string | undefined>(undefined);
+  const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -265,6 +295,7 @@ export default function WikiPageView() {
                   </option>
                 ))}
               </select>
+              {commitCost && <div className="commit-evidence">{commitCost}</div>}
             </div>
           ) : (
             repo?.commit_short && (

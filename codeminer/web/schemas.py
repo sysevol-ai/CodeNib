@@ -18,6 +18,22 @@ from pydantic import BaseModel, Field
 from codeminer.agent.boundary import to_agent_repr
 
 
+class WindowStats(BaseModel):
+    """Cold-vs-patched cost for a repo's commit window.
+
+    Derived once, in ``commit_window.window_stats``. ``speedup`` is ``None``
+    when no defensible ratio exists (no cold anchor, no patched transitions, or
+    a zero denominator) -- surfaces must then make no claim rather than
+    substituting a default.
+    """
+
+    commit_count: int = 0
+    patched_count: int = 0
+    cold_seconds: float | None = None
+    mean_patch_seconds: float | None = None
+    speedup: float | None = None
+
+
 class RepoInfo(BaseModel):
     """A repository the demo can answer questions about.
 
@@ -36,6 +52,9 @@ class RepoInfo(BaseModel):
     languages: List[str] = Field(default_factory=list)
     file_count: int = 0
     capabilities: dict[str, bool] = Field(default_factory=dict)
+    # Present only for repos with a prebuilt commit window; absent otherwise, so
+    # the landing page keeps its single-commit label.
+    incremental: WindowStats | None = None
 
 
 class CallSite(BaseModel):

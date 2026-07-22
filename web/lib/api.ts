@@ -34,6 +34,8 @@ export interface RepoInfo {
   languages: string[];
   file_count: number;
   capabilities: Record<string, boolean>;
+  /** Commit-window cost figures; absent for repos without a prebuilt window. */
+  incremental?: WindowStats | null;
 }
 
 export interface Citation {
@@ -247,8 +249,21 @@ export interface CommitRef {
   changed_files: number;
 }
 
+// Cold-vs-patched cost for a repo's commit window. Derived server-side in
+// commit_window.window_stats so the API, this UI and the build script cannot
+// report different numbers. `speedup` is null when no defensible ratio exists —
+// render nothing in that case rather than substituting a default.
+export interface WindowStats {
+  commit_count: number;
+  patched_count: number;
+  cold_seconds: number | null;
+  mean_patch_seconds: number | null;
+  speedup: number | null;
+}
+
 export interface CommitWindowResponse {
   available: boolean;
+  stats?: WindowStats | null;
   ref?: string;
   language?: string;
   // Every language actually built into these snapshots.

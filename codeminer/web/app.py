@@ -142,6 +142,17 @@ def _commit_window(repo_id: str):
     return cache[repo_id]
 
 
+def _window_stats_for(repo_id: str):
+    """Commit-window cost figures for *repo_id*, or None when it has no window."""
+    from .schemas import WindowStats
+
+    window = _commit_window(repo_id)
+    if not window.available:
+        return None
+    stats = window.summary().get("stats")
+    return WindowStats(**stats) if stats else None
+
+
 @app.get("/api/health")
 async def health() -> dict:
     registry = getattr(app.state, "registry", None)
@@ -159,6 +170,16 @@ async def list_repos() -> list[RepoInfo]:
     edge_on = bool(getattr(load_config(), "edge_labels", False))
     for info in infos:
         info.capabilities = {**info.capabilities, "edge_labels": edge_on}
+        # Attach commit-window cost figures so the landing page can say what
+        # incremental maintenance bought, rather than only naming a commit.
+        # CommitWindow is lazy and cached per repo, and _bundle() is a registry
+        # lookup with no graph loading, so this stays one cheap request.
+        try:
+            info.incremental = await asyncio.to_thread(_window_stats_for, info.id)
+        except HTTPException:
+            # Registry and bundle can disagree transiently; a missing bundle
+            # just means no window figures for that card.
+            info.incremental = None
     return infos
 
 

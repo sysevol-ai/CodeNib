@@ -93,3 +93,38 @@ def test_handles_dict_results():
     assert resp.citations[0].node_name == "g"
     assert resp.citations[0].start_line == 6
     assert resp.citations[0].end_line == 10
+
+
+class TestWindowStatsOnRepoInfo:
+    """RepoInfo carries commit-window figures for the landing page."""
+
+    def test_absent_by_default(self):
+        from codeminer.web.schemas import RepoInfo
+
+        assert RepoInfo(id="x", name="x").incremental is None
+
+    def test_round_trips(self):
+        from codeminer.web.schemas import RepoInfo, WindowStats
+
+        info = RepoInfo(
+            id="x",
+            name="x",
+            incremental=WindowStats(
+                commit_count=5,
+                patched_count=4,
+                cold_seconds=96.5,
+                mean_patch_seconds=4.0,
+                speedup=24.1,
+            ),
+        )
+        dumped = info.model_dump()
+        assert dumped["incremental"]["speedup"] == 24.1
+        assert dumped["incremental"]["commit_count"] == 5
+
+    def test_speedup_may_be_null(self):
+        """No defensible ratio must be representable as null, not 0 or NaN."""
+        from codeminer.web.schemas import WindowStats
+
+        s = WindowStats(commit_count=1, patched_count=0)
+        assert s.speedup is None
+        assert s.cold_seconds is None

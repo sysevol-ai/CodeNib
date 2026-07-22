@@ -39,6 +39,49 @@ def manifest_path(repo_dir: str) -> str:
     return os.path.join(window_dir(repo_dir), MANIFEST_NAME)
 
 
+def window_stats(commits: List[dict]) -> Optional[dict]:
+    """Aggregate cold-vs-patched cost for a window.
+
+    The single place this figure is derived. A speedup also appears in
+    ``build_commit_window.py``'s closing log line; adding a second derivation in
+    the API and a third in the frontend is how two different numbers end up on
+    two different slides. Every surface renders what this returns.
+
+    ``speedup`` is ``None`` -- never ``NaN`` or ``inf`` -- when there is no cold
+    anchor, no patched transitions, or either figure is zero. Callers must treat
+    that as "no claim available" rather than substituting a default.
+
+    Zero-cost transitions stay in the mean: a transition that touched no indexed
+    source legitimately cost 0.00s, and dropping it would flatter the result.
+    """
+    if not commits:
+        return None
+
+    cold = next((c for c in commits if c.get("method") == "cold"), None)
+    patched = [c for c in commits if c.get("method") == "patched"]
+
+    def _seconds(entry: dict) -> float:
+        try:
+            return float(entry.get("build_seconds") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    cold_seconds = _seconds(cold) if cold else None
+    mean_patch = (sum(_seconds(c) for c in patched) / len(patched)) if patched else None
+
+    speedup = None
+    if cold_seconds and mean_patch:
+        speedup = round(cold_seconds / mean_patch, 1)
+
+    return {
+        "commit_count": len(commits),
+        "patched_count": len(patched),
+        "cold_seconds": round(cold_seconds, 2) if cold_seconds is not None else None,
+        "mean_patch_seconds": round(mean_patch, 2) if mean_patch is not None else None,
+        "speedup": speedup,
+    }
+
+
 class CommitWindow:
     """Read-only view over one repo's per-commit graph snapshots.
 
@@ -217,6 +260,7 @@ class CommitWindow:
         languages = m.get("languages") or ([m["language"]] if m.get("language") else [])
         return {
             "available": True,
+            "stats": window_stats(m["commits"]),
             "ref": m.get("ref"),
             "language": m.get("language"),
             "languages": languages,

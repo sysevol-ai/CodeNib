@@ -571,6 +571,17 @@ pre {
   text-overflow: ellipsis;
 }
 
+/* Measured cost of reaching the selected commit. Sits beneath the select rather
+   than inside its options: native <select> options cannot be styled internally
+   in most browsers and truncate inconsistently across platforms. */
+.commit-evidence {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
 .commit-select:hover {
   border-color: var(--accent, var(--fg));
 }

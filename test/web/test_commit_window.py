@@ -169,3 +169,108 @@ class TestSummary:
             language="python",
         )
         assert CommitWindow(str(tmp_path)).summary()["languages"] == ["python"]
+
+
+class TestWindowStats:
+    """The single derivation point for the cold-vs-patched figure."""
+
+    def test_normal_window(self):
+        from codeminer.web.commit_window import window_stats
+
+        s = window_stats(
+            [
+                _commit("b" * 40, "b", build_seconds=2.0),
+                _commit("c" * 40, "c", build_seconds=6.0),
+                _commit("a" * 40, "a", method="cold", build_seconds=96.0),
+            ]
+        )
+        assert s == {
+            "commit_count": 3,
+            "patched_count": 2,
+            "cold_seconds": 96.0,
+            "mean_patch_seconds": 4.0,
+            "speedup": 24.0,
+        }
+
+    def test_zero_cost_transition_stays_in_the_mean(self):
+        """A transition touching no indexed source is real; excluding it flatters."""
+        from codeminer.web.commit_window import window_stats
+
+        s = window_stats(
+            [
+                _commit("b" * 40, "b", build_seconds=0.0),
+                _commit("c" * 40, "c", build_seconds=8.0),
+                _commit("a" * 40, "a", method="cold", build_seconds=80.0),
+            ]
+        )
+        assert s["mean_patch_seconds"] == 4.0
+        assert s["speedup"] == 20.0
+
+    def test_no_cold_anchor_yields_no_speedup(self):
+        from codeminer.web.commit_window import window_stats
+
+        s = window_stats([_commit("b" * 40, "b", build_seconds=2.0)])
+        assert s["cold_seconds"] is None
+        assert s["speedup"] is None
+
+    def test_single_commit_window_yields_no_speedup(self):
+        from codeminer.web.commit_window import window_stats
+
+        s = window_stats([_commit("a" * 40, "a", method="cold", build_seconds=96.0)])
+        assert s["patched_count"] == 0
+        assert s["mean_patch_seconds"] is None
+        assert s["speedup"] is None
+
+    def test_zero_mean_patch_does_not_divide(self):
+        from codeminer.web.commit_window import window_stats
+
+        s = window_stats(
+            [
+                _commit("b" * 40, "b", build_seconds=0.0),
+                _commit("a" * 40, "a", method="cold", build_seconds=96.0),
+            ]
+        )
+        assert s["mean_patch_seconds"] == 0.0
+        assert s["speedup"] is None
+
+    def test_zero_cold_does_not_divide(self):
+        from codeminer.web.commit_window import window_stats
+
+        s = window_stats(
+            [
+                _commit("b" * 40, "b", build_seconds=2.0),
+                _commit("a" * 40, "a", method="cold", build_seconds=0.0),
+            ]
+        )
+        assert s["speedup"] is None
+
+    def test_non_numeric_build_seconds_does_not_raise(self):
+        from codeminer.web.commit_window import window_stats
+
+        s = window_stats(
+            [
+                _commit("b" * 40, "b", build_seconds="oops"),
+                _commit("a" * 40, "a", method="cold", build_seconds=96.0),
+            ]
+        )
+        assert s["mean_patch_seconds"] == 0.0
+        assert s["speedup"] is None
+
+    def test_empty_window(self):
+        from codeminer.web.commit_window import window_stats
+
+        assert window_stats([]) is None
+
+    def test_summary_carries_stats(self, tmp_path):
+        _write_manifest(
+            tmp_path,
+            [
+                _commit("b" * 40, "bbbbbbb", build_seconds=4.0),
+                _commit("a" * 40, "aaaaaaa", method="cold", build_seconds=96.0),
+            ],
+        )
+        s = CommitWindow(str(tmp_path)).summary()
+        assert s["stats"]["speedup"] == 24.0
+
+    def test_unavailable_summary_has_no_stats(self, tmp_path):
+        assert "stats" not in CommitWindow(str(tmp_path)).summary()
