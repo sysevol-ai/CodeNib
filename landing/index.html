@@ -1,0 +1,364 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeNib: Understand any codebase in minutes</title>
+<meta name="description" content="CodeNib compiles a repository into a precise symbol graph, then writes its wiki and answers questions with line-level citations.">
+<meta property="og:title" content="CodeNib">
+<meta property="og:description" content="Understand any codebase in minutes. Wikis, dependency maps, and cited answers, compiled from a symbol graph.">
+<meta property="og:image" content="https://codenib.ai/assets/shots/wiki-light.png">
+<meta property="og:url" content="https://codenib.ai">
+<link rel="icon" href="assets/mark.png">
+<style>
+/* Fonts: self-hosted Geist (variable) */
+@font-face {
+  font-family: "Geist";
+  src: url("assets/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* Tokens: white, matching the demo's light UI */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --subtle: #f8fafc;
+  --line: #e2e8f0;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #94a3b8;
+  --accent: #2563eb;
+  --accent-ink: #ffffff;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px rgba(15, 23, 42, 0.06);
+  --r-box: 16px;   /* containers */
+  --r-ui: 10px;    /* interactive */
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; overflow-x: clip; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.mono { font-family: "Geist Mono", ui-monospace, monospace; }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+/* One content width everywhere: nav, hero, shot, grid, footer share edges. */
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+
+/* ---- nav ---- */
+header {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.nav { display: flex; align-items: center; gap: 28px; height: 64px; }
+.brand { display: flex; align-items: center; font-weight: 620; font-size: 17px; letter-spacing: -0.01em; margin-right: auto; }
+.brand img { height: 26px; width: auto; }
+.nav a.link { font-size: 14.5px; color: var(--ink-2); transition: color .15s; }
+.nav a.link:hover { color: var(--ink); }
+.nav a.gh { display: flex; }
+.nav a.gh svg { width: 20px; height: 20px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 14.5px; font-weight: 540; white-space: nowrap;
+  padding: 9px 18px; border-radius: var(--r-ui);
+  transition: transform .15s, box-shadow .15s, background .15s, border-color .15s;
+}
+.btn:active { transform: translateY(1px) scale(0.99); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { box-shadow: 0 4px 16px rgba(37, 99, 235, 0.18); transform: translateY(-1px); }
+.btn-ghost { border: 1px solid var(--line); color: var(--ink); background: var(--surface); }
+.btn-ghost:hover { border-color: var(--ink-3); transform: translateY(-1px); }
+.btn-lg { font-size: 15.5px; padding: 12px 24px; }
+
+/* ---- hero ---- */
+.hero { position: relative; padding: 88px 0 0; }
+.hero h1 {
+  font-size: clamp(2.5rem, 5.6vw, 4rem);
+  font-weight: 640; letter-spacing: -0.035em; line-height: 1.06;
+  max-width: 15ch;
+}
+.hero p.sub {
+  margin-top: 22px; font-size: 17.5px; color: var(--ink-2);
+  max-width: 54ch;
+}
+.hero .ctas { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+
+/* product stage */
+.shot-stage { position: relative; margin-top: 64px; }
+.frame {
+  border: 1px solid var(--line); border-radius: var(--r-box);
+  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+}
+.frame-bar {
+  display: flex; align-items: center; justify-content: center;
+  height: 38px; border-bottom: 1px solid var(--line); background: var(--subtle);
+}
+.frame-bar span {
+  font-family: "Geist Mono", monospace; font-size: 12px; color: var(--ink-3);
+  background: var(--bg); border: 1px solid var(--line);
+  padding: 3px 14px; border-radius: 99px;
+}
+
+/* Live product embeds: the real demo rendered in a scaled iframe. A fixed
+   design width keeps the demo's desktop layout; the scale factor adapts to
+   whatever container (or phone) the embed lands in. */
+.live { position: relative; overflow: hidden; background: var(--subtle); }
+.live > iframe {
+  position: absolute; top: 0; left: 0; border: 0;
+  transform-origin: 0 0; pointer-events: none;
+}
+.live > a.cover { position: absolute; inset: 0; z-index: 2; }
+
+/* ---- sections ---- */
+section { padding: 96px 0 0; }
+h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0.025em; line-height: 1.15; }
+.section-sub { margin-top: 12px; color: var(--ink-2); font-size: 16.5px; max-width: 58ch; }
+
+/* bento */
+.bento { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 44px; }
+.cell {
+  border: 1px solid var(--line); border-radius: var(--r-box);
+  background: var(--surface); padding: 28px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cell h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.cell p { font-size: 14.5px; color: var(--ink-2); }
+.cell-ask { grid-column: span 3; grid-row: span 2; padding-bottom: 0; }
+.cell-ask .live {
+  margin: 18px -1px -1px; border-radius: 12px 12px 0 0;
+  border: 1px solid var(--line); border-bottom: 0; flex: 1;
+  min-height: 420px;
+}
+.cell-side { grid-column: span 2; justify-content: center; }
+.cell-side.tint { background: var(--subtle); }
+.cell-wide { grid-column: span 5; flex-direction: row; align-items: center; gap: 40px; padding: 0; }
+.cell-wide .cw-text { padding: 32px 0 32px 28px; max-width: 40%; }
+.cell-wide .live { flex: 1; align-self: stretch; border-left: 1px solid var(--line); min-height: 340px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chips span {
+  font-family: "Geist Mono", monospace; font-size: 12px; color: var(--ink-2);
+  border: 1px solid var(--line); background: var(--bg);
+  padding: 3px 10px; border-radius: 99px;
+}
+
+/* hero traits: the three system contributions as blocks, first-fold visible */
+.traits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 56px; }
+.traits > div {
+  display: flex; flex-direction: column; align-items: flex-start;
+  background: var(--subtle); border: 1px solid var(--line);
+  border-radius: var(--r-box); padding: 26px;
+}
+.t-icon {
+  flex: none; width: 42px; height: 42px; border-radius: var(--r-ui);
+  background: var(--surface); border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 26px;
+}
+.t-icon svg { width: 22px; height: 22px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.traits .k { font-family: "Geist Mono", monospace; font-size: 13px; color: var(--accent); font-weight: 560; }
+.traits .v { margin-top: 6px; font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+
+/* final CTA */
+.cta-block { text-align: center; padding: 110px 0; }
+.cta-block h2 { font-size: clamp(2rem, 4vw, 2.9rem); }
+.cta-block .ctas { display: flex; gap: 12px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
+
+footer { border-top: 1px solid var(--line); }
+.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding-top: 26px; padding-bottom: 26px; font-size: 14px; color: var(--ink-2); }
+.foot .brand { font-size: 15px; color: var(--ink); }
+.foot .spacer { margin-left: auto; }
+.foot a:hover { color: var(--ink); }
+
+/* ---- motion ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .rise { opacity: 0; transform: translateY(16px); animation: rise .65s cubic-bezier(.16,1,.3,1) forwards; }
+  .d1 { animation-delay: .06s; } .d2 { animation-delay: .14s; }
+  .d3 { animation-delay: .22s; } .d4 { animation-delay: .34s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1); }
+  .reveal.in { opacity: 1; transform: none; }
+  .cell { transition: border-color .2s, transform .2s, opacity .6s cubic-bezier(.16,1,.3,1); }
+  .cell:hover { border-color: var(--ink-3); }
+}
+
+/* ---- mobile ---- */
+@media (max-width: 860px) {
+  .nav { gap: 16px; }
+  .hero { padding-top: 56px; }
+  .bento { grid-template-columns: 1fr; }
+  .cell-ask, .cell-side, .cell-wide { grid-column: span 1; grid-row: auto; }
+  .cell-wide { flex-direction: column; align-items: stretch; gap: 0; }
+  .cell-wide .cw-text { max-width: none; padding: 28px 28px 24px; }
+  .cell-wide .live { border-left: 0; border-top: 1px solid var(--line); min-height: 260px; }
+  /* The ask page's empty state is too sparse at phone scale; keep the cell
+     as a text card and let the hero + repo-grid embeds carry the live feel. */
+  .cell-ask .live { display: none; }
+  .cell-ask { padding-bottom: 28px; }
+  .traits { grid-template-columns: 1fr; gap: 18px; margin-top: 40px; }
+  section { padding-top: 72px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="/">
+      <img src="assets/logo.png" alt="CodeNib">
+    </a>
+    <a class="link" href="https://docs.codenib.ai">Docs</a>
+    <a class="link gh" href="https://github.com/sysevol-ai/CodeMiner" aria-label="Source on GitHub">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+    </a>
+    <a class="btn btn-primary" href="https://demo.codenib.ai">Open the demo</a>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <h1 class="rise">Understand any codebase in minutes.</h1>
+      <p class="sub rise d1">CodeNib is a multi-view data system that serves codebase context to coding agents.</p>
+      <div class="ctas rise d2">
+        <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
+        <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
+      </div>
+      <div class="traits rise d3">
+        <div>
+          <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.5 20 8l-8 4.5L4 8Z"/><path d="M4 12.5 12 17l8-4.5"/><path d="M4 16.5 12 21l8-4.5"/></svg></span>
+          <div class="k">heterogeneous</div>
+          <div class="v">Lexical, dense, and graph views of the repo, from one compile.</div>
+        </div>
+        <div>
+          <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5 20 19H4Z"/></svg></span>
+          <div class="k">incremental</div>
+          <div class="v">Commit diffs update only the views that changed.</div>
+        </div>
+        <div>
+          <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6.2" cy="12" r="2.9"/><circle cx="17.8" cy="12" r="2.9"/><path d="M9.1 12h5.8"/></svg></span>
+          <div class="k">agent-native</div>
+          <div class="v">Context served to agents as tools, with bounded budgets, over MCP.</div>
+        </div>
+      </div>
+    </div>
+    <div class="wrap shot-stage rise d4">
+      <div class="frame">
+        <div class="frame-bar"><span>demo.codenib.ai</span></div>
+        <div class="live" data-min-w="1100" style="aspect-ratio: 1440 / 860">
+          <iframe src="https://demo.codenib.ai/caddyserver__caddy"
+                  title="Live CodeNib wiki for caddyserver/caddy"></iframe>
+          <a class="cover" href="https://demo.codenib.ai/caddyserver__caddy"
+             aria-label="Open caddyserver/caddy in the demo"></a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2 class="reveal">One graph, three views</h2>
+      <p class="section-sub reveal">The wiki, the dependency map, and the chat are projections of the same compiled index.</p>
+      <div class="bento">
+        <div class="cell cell-ask reveal">
+          <h3>Ask, with receipts</h3>
+          <p>Every answer cites the file and line it came from. Click a citation to open the source.</p>
+          <div class="live" data-min-w="1100">
+            <iframe src="https://demo.codenib.ai/caddyserver__caddy/ask"
+                    title="Ask a question about caddyserver/caddy"></iframe>
+            <a class="cover" href="https://demo.codenib.ai/caddyserver__caddy/ask"
+               aria-label="Ask a question in the demo"></a>
+          </div>
+        </div>
+        <div class="cell cell-side tint reveal">
+          <h3>Compiler-grade graphs</h3>
+          <p>Dependency maps come from SCIP symbol resolution, not model guesses. Edges link to definitions and references in the source.</p>
+          <div class="chips"><span>calls</span><span>imports</span><span>references</span></div>
+        </div>
+        <div class="cell cell-side reveal">
+          <h3>Wikis that write themselves</h3>
+          <p>Architecture pages are generated per subsystem and cached, so every page loads instantly.</p>
+        </div>
+        <div class="cell cell-wide reveal">
+          <div class="cw-text">
+            <h3>Five languages, one index</h3>
+            <p>Tree-sitter parses everything into the same graph. Browse the repositories already indexed in the demo.</p>
+            <div class="chips">
+              <span>python</span><span>c/c++</span><span>go</span><span>rust</span><span>typescript</span>
+            </div>
+          </div>
+          <div class="live" data-min-w="1100">
+            <iframe src="https://demo.codenib.ai/"
+                    title="Repositories indexed in the CodeNib demo"></iframe>
+            <a class="cover" href="https://demo.codenib.ai/"
+               aria-label="Browse indexed repositories in the demo"></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-block">
+    <div class="wrap">
+      <h2 class="reveal">Point it at a codebase.</h2>
+      <div class="ctas reveal">
+        <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
+        <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span class="brand">codenib.ai</span>
+    <span class="spacer"></span>
+    <a href="https://docs.codenib.ai">Docs</a>
+    <a href="https://demo.codenib.ai">Demo</a>
+    <a href="https://github.com/sysevol-ai/CodeMiner">GitHub</a>
+    <span>© 2026 CodeNib</span>
+  </div>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((es) => {
+    for (const e of es) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }, { threshold: 0.15 });
+  document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+  // Scale each live demo embed: render at its design width (desktop layout),
+  // shrink to whatever the container gives us. Never upscale.
+  const fit = (el) => {
+    const frame = el.querySelector("iframe");
+    const w = el.clientWidth, h = el.clientHeight;
+    if (!frame || !w || !h) return;
+    const dw = Math.max(w, parseFloat(el.dataset.minW || "1000"));
+    const scale = w / dw;
+    frame.style.width = dw + "px";
+    frame.style.height = h / scale + "px";
+    frame.style.transform = `scale(${scale})`;
+  };
+  const ro = new ResizeObserver((es) => es.forEach((e) => fit(e.target)));
+  document.querySelectorAll(".live").forEach((el) => { fit(el); ro.observe(el); });
+</script>
+
+</body>
+</html>
