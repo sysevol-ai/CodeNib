@@ -26,6 +26,21 @@ from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 from .resources import IndexState, IndexStatus
 
+
+def _git_output(repo_path: str, *args: str) -> str:
+    """Run git in *repo_path* and return stripped stdout ("" on any failure)."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_path, *args],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception:  # noqa: BLE001 - git absent or hung: treat as unknown
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -478,11 +493,26 @@ class ZoektIndexBuilder:
 
 @dataclass
 class SymbolGraphBuilder:
-    """Build a registry-backed symbol graph."""
+    """Build a registry-backed symbol graph.
+
+    Supports LSP-assisted incremental repair between commits. Every failure
+    path -- missing base graph, moved/dirty worktree, absent language server,
+    patch error, or an update that verification will not admit -- falls back to
+    a full rebuild, so the artifact is always correct and only the cost varies.
+    """
 
     language: str = "python"
     languages: Optional[List[str]] = None
     graph_route: str = "active"
+    # Admission control for incremental updates. The default proves nothing and
+    # says so, which combined with require_verification=True means the builder
+    # behaves exactly like a full rebuild until a real verifier is configured.
+    verifier: Optional[Any] = None
+    # When True, an update that is not positively verified is discarded and the
+    # graph is rebuilt. Callers that knowingly accept unverified incremental
+    # results (e.g. a local demo) set this False; the manifest still records
+    # that the result was never checked.
+    require_verification: bool = True
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
@@ -523,7 +553,172 @@ class SymbolGraphBuilder:
         )
 
     def incremental_update(self, scope: str, **kwargs: Any) -> IndexStatus:
-        return self.build(scope, **kwargs)
+        """Repair the existing graph from ``last_commit`` to the repo's HEAD.
+
+        Required kwargs
+        ---------------
+        repo_path : str
+            Repository root. Must be checked out at the target commit; the
+            patcher reads file bodies from disk.
+        output_dir : str
+            Directory holding ``graph.pkl``.
+        last_commit : str
+            Commit the existing graph was built from. Empty forces a rebuild.
+
+        Falls back to :meth:`build` whenever the incremental path is
+        unavailable or its result is not admitted.
+        """
+        repo_path: str = kwargs["repo_path"]
+        output_dir: str = kwargs["output_dir"]
+        last_commit: str = kwargs.get("last_commit", "") or ""
+
+        reason = self._incremental_blocker(repo_path, output_dir, last_commit)
+        if reason:
+            logger.info("symbol_graph: full rebuild (%s)", reason)
+            return self.build(
+                scope, **{k: v for k, v in kwargs.items() if k != "last_commit"}
+            )
+
+        try:
+            status = self._patch_graph(scope, repo_path, output_dir, last_commit)
+        except Exception as exc:  # noqa: BLE001 - any patch failure means rebuild
+            logger.warning("symbol_graph: patch failed (%s); rebuilding", exc)
+            return self.build(
+                scope, **{k: v for k, v in kwargs.items() if k != "last_commit"}
+            )
+
+        if status is None:
+            return self.build(
+                scope, **{k: v for k, v in kwargs.items() if k != "last_commit"}
+            )
+        return status
+
+    # -- incremental helpers ------------------------------------------------
+
+    def _incremental_blocker(
+        self, repo_path: str, output_dir: str, last_commit: str
+    ) -> Optional[str]:
+        """Return why the incremental path cannot run, or None if it can."""
+        if not last_commit:
+            return "no previously indexed commit"
+        if not os.path.isfile(os.path.join(output_dir, "graph.pkl")):
+            return "no existing graph.pkl to patch"
+        head = _git_output(repo_path, "rev-parse", "HEAD")
+        if not head:
+            return "repository HEAD could not be resolved"
+        if head == last_commit:
+            return "already at the indexed commit"
+        # The patcher reads bodies from the working tree, so a *modified tracked*
+        # file would be silently indexed as though it were part of the target
+        # commit. Rebuilding is correct and simpler than reasoning about that.
+        #
+        # Untracked files are deliberately ignored: the index output directory
+        # normally lives inside the repo (.codeminer_cache/), so counting
+        # untracked paths here would report every repo as dirty and disable the
+        # incremental path entirely. Untracked files also never appear in the
+        # commit-to-commit diff the patcher works from.
+        if _git_output(repo_path, "status", "--porcelain", "--untracked-files=no"):
+            return "working tree has uncommitted changes to tracked files"
+        return None
+
+    def _patch_graph(
+        self, scope: str, repo_path: str, output_dir: str, last_commit: str
+    ) -> Optional[IndexStatus]:
+        """Run the LSP patcher over every configured language. None = rebuild."""
+        from ..graph.code_graph import CodeGraph
+        from ..graph.incremental.graph_patcher import LANGUAGE_EXTENSIONS, GraphPatcher
+        from .verification import NullVerifier
+
+        graph_path = os.path.join(output_dir, "graph.pkl")
+        graph = CodeGraph.load_graph(graph_path)
+        graph_languages = self.languages or [self.language]
+        head = _git_output(repo_path, "rev-parse", "HEAD")
+
+        started: List[Any] = []
+        changed_total = 0
+        per_language: Dict[str, Any] = {}
+        start = time.time()
+        try:
+            for lang in graph_languages:
+                exts = LANGUAGE_EXTENSIONS.get(lang)
+                if not exts:
+                    continue
+                changed = GraphPatcher.detect_changed_files(
+                    repo_path, last_commit, head, extensions=exts
+                )
+                count = sum(len(v) for k, v in changed.items() if k != "renamed") + len(
+                    changed.get("renamed", [])
+                )
+                if not count:
+                    continue
+
+                patcher = GraphPatcher(
+                    project_root=repo_path, code_graph=graph, language=lang
+                )
+                try:
+                    patcher.start_lsp()
+                except Exception as exc:  # noqa: BLE001 - missing server
+                    logger.warning(
+                        "symbol_graph: %s language server unavailable (%s)", lang, exc
+                    )
+                    return None
+                started.append(patcher)
+                per_language[lang] = patcher.patch_files(
+                    changed, earlier_commit=last_commit, later_commit=head
+                )
+                changed_total += count
+        finally:
+            for patcher in started:
+                try:
+                    patcher.stop_lsp()
+                except Exception as exc:  # noqa: BLE001 - shutdown is best-effort
+                    logger.warning("symbol_graph: stop_lsp: %s", exc)
+
+        if changed_total == 0:
+            logger.info("symbol_graph: no source changes for configured languages")
+
+        verifier = self.verifier or NullVerifier()
+        result = verifier.verify(
+            index_type="symbol_graph",
+            patched=graph,
+            fresh=None,
+            context={
+                "repo_path": repo_path,
+                "earlier_commit": last_commit,
+                "later_commit": head,
+                "languages": list(graph_languages),
+            },
+        )
+        if self.require_verification and not result.verified:
+            logger.info(
+                "symbol_graph: update not admitted (%s); rebuilding", result.reason
+            )
+            return None
+
+        graph.save_graph(graph_path)
+        elapsed = time.time() - start
+        node_count = len(graph.graph.vs)
+        return IndexStatus(
+            index_type="symbol_graph",
+            state=IndexState.FRESH,
+            last_built=time.time(),
+            age_seconds=0.0,
+            scope=scope,
+            path=output_dir,
+            metadata={
+                "node_count": node_count,
+                "language": graph_languages[0],
+                "languages": list(graph_languages),
+                "graph_route": self.graph_route,
+                "update_mode": "incremental",
+                "changed_files": changed_total,
+                "patch_seconds": round(elapsed, 3),
+                "earlier_commit": last_commit,
+                "later_commit": head,
+                "patch_stats": per_language,
+                **result.to_metadata(),
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -736,3 +736,157 @@ class TestUpdateRepo:
         calls.clear()
         compiler.update_repo(str(tmp_path))
         assert calls == [("build", None)]
+
+
+# ---------------------------------------------------------------------------
+# SymbolGraphBuilder incremental repair + admission control
+# ---------------------------------------------------------------------------
+
+
+class TestSymbolGraphIncremental:
+    def _builder(self, **kw):
+        from codeminer.compiler.index_builders import SymbolGraphBuilder
+
+        return SymbolGraphBuilder(languages=["python"], **kw)
+
+    # -- blocker logic (pure, no LSP) ------------------------------------
+
+    def test_blocked_without_last_commit(self, tmp_path):
+        reason = self._builder()._incremental_blocker(str(tmp_path), str(tmp_path), "")
+        assert reason and "no previously indexed commit" in reason
+
+    def test_blocked_without_existing_graph(self, tmp_path):
+        _git_repo(tmp_path)
+        reason = self._builder()._incremental_blocker(
+            str(tmp_path), str(tmp_path / "out"), "abc123"
+        )
+        assert reason and "graph.pkl" in reason
+
+    def test_blocked_when_already_at_indexed_commit(self, tmp_path):
+        head = _git_repo(tmp_path)
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "graph.pkl").write_bytes(b"x")
+        reason = self._builder()._incremental_blocker(str(tmp_path), str(out), head)
+        assert reason and "already at the indexed commit" in reason
+
+    def test_blocked_when_worktree_dirty(self, tmp_path):
+        first = _git_repo(tmp_path)
+        _commit(tmp_path, "b.py")
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "graph.pkl").write_bytes(b"x")
+        # Modify a *tracked* file: its disk content no longer matches the
+        # commit, which is the case the patcher cannot reason about.
+        (tmp_path / "a.py").write_text("def a():\n    return 'changed'\n")
+        reason = self._builder()._incremental_blocker(str(tmp_path), str(out), first)
+        assert reason and "uncommitted" in reason
+
+    def test_untracked_files_do_not_block(self, tmp_path):
+        """The cache dir lives inside the repo; untracked paths must not block."""
+        first = _git_repo(tmp_path)
+        _commit(tmp_path, "b.py")
+        out = tmp_path / ".codeminer_cache" / "symbol_graph"
+        out.mkdir(parents=True)
+        (out / "graph.pkl").write_bytes(b"x")
+        assert (
+            self._builder()._incremental_blocker(str(tmp_path), str(out), first) is None
+        )
+
+    def test_not_blocked_when_clean_and_moved(self, tmp_path):
+        first = _git_repo(tmp_path)
+        _commit(tmp_path, "b.py")
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "graph.pkl").write_bytes(b"x")
+        assert (
+            self._builder()._incremental_blocker(str(tmp_path), str(out), first) is None
+        )
+
+    # -- fallback + admission -------------------------------------------
+
+    def test_falls_back_to_build_when_blocked(self, tmp_path, monkeypatch):
+        built = []
+        builder = self._builder()
+        monkeypatch.setattr(
+            builder, "build", lambda scope, **kw: built.append(kw) or "BUILT"
+        )
+        # No last_commit => blocked => build()
+        assert (
+            builder.incremental_update(
+                "current_repo", repo_path=str(tmp_path), output_dir=str(tmp_path)
+            )
+            == "BUILT"
+        )
+        assert len(built) == 1
+        # last_commit must not leak into build()'s kwargs
+        assert "last_commit" not in built[0]
+
+    def test_unverified_update_is_discarded_and_rebuilt(self, tmp_path, monkeypatch):
+        """Default NullVerifier proves nothing, so the patch must be dropped."""
+        builder = self._builder()  # require_verification=True by default
+        monkeypatch.setattr(builder, "_patch_graph", lambda *a, **k: None)
+        monkeypatch.setattr(builder, "build", lambda scope, **kw: "BUILT")
+        first = _git_repo(tmp_path)
+        _commit(tmp_path, "b.py")
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "graph.pkl").write_bytes(b"x")
+
+        result = builder.incremental_update(
+            "current_repo",
+            repo_path=str(tmp_path),
+            output_dir=str(out),
+            last_commit=first,
+        )
+        assert result == "BUILT"
+
+    def test_patch_error_falls_back_to_build(self, tmp_path, monkeypatch):
+        builder = self._builder()
+
+        def boom(*a, **k):
+            raise RuntimeError("lsp exploded")
+
+        monkeypatch.setattr(builder, "_patch_graph", boom)
+        monkeypatch.setattr(builder, "build", lambda scope, **kw: "BUILT")
+        first = _git_repo(tmp_path)
+        _commit(tmp_path, "b.py")
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "graph.pkl").write_bytes(b"x")
+
+        assert (
+            builder.incremental_update(
+                "current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(out),
+                last_commit=first,
+            )
+            == "BUILT"
+        )
+
+    def test_admitted_update_is_kept(self, tmp_path, monkeypatch):
+        """An explicitly-admitting verifier keeps the patched result."""
+        from codeminer.compiler.verification import AlwaysAdmitVerifier
+
+        builder = self._builder(verifier=AlwaysAdmitVerifier())
+        sentinel = object()
+        monkeypatch.setattr(builder, "_patch_graph", lambda *a, **k: sentinel)
+        monkeypatch.setattr(
+            builder, "build", lambda scope, **kw: pytest.fail("should not rebuild")
+        )
+        first = _git_repo(tmp_path)
+        _commit(tmp_path, "b.py")
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "graph.pkl").write_bytes(b"x")
+
+        assert (
+            builder.incremental_update(
+                "current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(out),
+                last_commit=first,
+            )
+            is sentinel
+        )
