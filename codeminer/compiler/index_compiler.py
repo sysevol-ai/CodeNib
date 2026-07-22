@@ -182,6 +182,7 @@ class IndexCompiler:
             languages=list(self._config.languages),
             file_count=self._count_files(repo_path),
         )
+        all_succeeded = True
 
         for idx_type in types_to_build:
             builder = self._builders.get(idx_type)
@@ -211,6 +212,21 @@ class IndexCompiler:
                 entry.metadata["error"] = result.error
 
             manifest.indexes[idx_type] = entry
+            if not result.success:
+                all_succeeded = False
+
+        # Only claim HEAD as indexed when every requested index actually reached
+        # it. Otherwise update_repo() would see `last_indexed_commit == HEAD` on
+        # its next run, report "nothing to update", and leave the failed index
+        # stale forever -- a recoverable failure turned into a silent permanent
+        # one. Leaving the previous commit recorded means the next run retries.
+        if not all_succeeded:
+            manifest.last_indexed_commit = last_commit or ""
+            logger.warning(
+                "Not all indexes reached %s; last_indexed_commit left at %r",
+                (head_commit or "HEAD")[:8],
+                manifest.last_indexed_commit[:8] or "(none)",
+            )
 
         manifest.derive_capabilities()
         now = datetime.now(timezone.utc)

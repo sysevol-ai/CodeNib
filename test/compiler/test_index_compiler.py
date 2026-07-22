@@ -737,6 +737,55 @@ class TestUpdateRepo:
         compiler.update_repo(str(tmp_path))
         assert calls == [("build", None)]
 
+    def test_failed_build_does_not_advance_indexed_commit(self, tmp_path):
+        """A failed index must leave last_indexed_commit behind.
+
+        Otherwise the next update_repo() sees HEAD == last_indexed_commit,
+        reports "nothing to update", and the broken index stays stale forever.
+        """
+        first = _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        compiler.compile_repo(str(tmp_path))
+        second = _commit(tmp_path, "b.py")
+        assert first != second
+
+        builder = compiler._builders.get("rec")
+
+        def boom(scope, **kwargs):
+            raise RuntimeError("builder exploded")
+
+        builder.incremental_update = boom
+
+        manifest = compiler.update_repo(str(tmp_path))
+        assert manifest.commit == second
+        # HEAD moved, but nothing successfully indexed it.
+        assert manifest.last_indexed_commit == first
+        assert manifest.indexes["rec"].status == "failed"
+
+    def test_failed_build_leaves_repo_updatable(self, tmp_path):
+        """The retry after a failure must reach the builder, not short-circuit."""
+        _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        compiler.compile_repo(str(tmp_path))
+        _commit(tmp_path, "b.py")
+
+        builder = compiler._builders.get("rec")
+        healthy = builder.incremental_update
+
+        def boom(scope, **kwargs):
+            raise RuntimeError("builder exploded")
+
+        builder.incremental_update = boom
+        compiler.update_repo(str(tmp_path))
+
+        builder.incremental_update = healthy
+        calls.clear()
+        compiler.update_repo(str(tmp_path))
+        # Not a no-op: the failure left work to do.
+        assert calls, "update_repo short-circuited after a failed build"
+
 
 # ---------------------------------------------------------------------------
 # SymbolGraphBuilder incremental repair + admission control
