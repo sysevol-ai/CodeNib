@@ -50,29 +50,50 @@ class CommitWindow:
     def __init__(self, repo_dir: str) -> None:
         self.repo_dir = os.path.abspath(repo_dir)
         self._manifest: Optional[dict] = None
-        self._loaded = False
+        self._mtime: Optional[float] = None
         self._graphs: Dict[str, Optional[CodeGraph]] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     # -- manifest ---------------------------------------------------------
 
     def _load_manifest(self) -> Optional[dict]:
-        if self._loaded:
-            return self._manifest
-        self._loaded = True
+        """Load the manifest, re-reading it when it changes on disk.
+
+        Held under the lock for the whole read: publishing "loaded" before the
+        parse finishes would let a concurrent request observe an empty manifest
+        and report the window as unavailable. Endpoints reach this through
+        ``asyncio.to_thread``, so concurrent first-requests are the normal case,
+        not a rare one.
+
+        Keyed on mtime so re-running ``build_commit_window.py`` against a live
+        server takes effect without a restart -- otherwise the first request
+        after startup pins the window for the process's lifetime.
+        """
         path = manifest_path(self.repo_dir)
-        if not os.path.isfile(path):
-            logger.debug("commit-window: no manifest at %s", path)
-            return None
         try:
-            with open(path, "r", encoding="utf-8") as fh:
-                self._manifest = json.load(fh)
-        except (
-            Exception
-        ) as exc:  # noqa: BLE001 - a bad manifest just disables the feature
-            logger.warning("commit-window: unusable manifest %s: %s", path, exc)
-            self._manifest = None
-        return self._manifest
+            mtime: Optional[float] = os.path.getmtime(path)
+        except OSError:
+            mtime = None
+
+        with self._lock:
+            if mtime is not None and mtime == self._mtime:
+                return self._manifest
+
+            self._mtime = mtime
+            self._graphs.clear()
+            if mtime is None:
+                logger.debug("commit-window: no manifest at %s", path)
+                self._manifest = None
+                return None
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    self._manifest = json.load(fh)
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - a bad manifest just disables the feature
+                logger.warning("commit-window: unusable manifest %s: %s", path, exc)
+                self._manifest = None
+            return self._manifest
 
     @property
     def available(self) -> bool:
