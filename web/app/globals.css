@@ -128,8 +128,8 @@ pre {
   color: var(--text);
 }
 .site-header .brand .brand-mark {
-  color: var(--text-secondary);
-  font-size: 17px;
+  height: 21px;
+  width: auto;
 }
 .site-header .header-right {
   margin-left: auto;

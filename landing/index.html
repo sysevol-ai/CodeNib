@@ -90,7 +90,8 @@ header {
 .btn-lg { font-size: 15.5px; padding: 12px 24px; }
 
 /* ---- hero ---- */
-.hero { position: relative; padding: 88px 0 0; }
+.hero { position: relative; padding: 72px 0 0; }
+.hero-grid { display: grid; grid-template-columns: 1.2fr 0.9fr; gap: 56px; align-items: center; }
 .hero h1 {
   font-size: clamp(2.5rem, 5.6vw, 4rem);
   font-weight: 640; letter-spacing: -0.035em; line-height: 1.06;
@@ -103,7 +104,7 @@ header {
 .hero .ctas { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
 
 /* product stage */
-.shot-stage { position: relative; margin-top: 64px; }
+.shot-stage { position: relative; margin-top: 48px; }
 .frame {
   border: 1px solid var(--line); border-radius: var(--r-box);
   background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
@@ -160,22 +161,21 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
   padding: 3px 10px; border-radius: 99px;
 }
 
-/* hero traits: the three system contributions as blocks, first-fold visible */
-.traits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 56px; }
+/* hero traits: the three system contributions, stacked beside the headline */
+.traits { display: flex; flex-direction: column; gap: 12px; }
 .traits > div {
-  display: flex; flex-direction: column; align-items: flex-start;
+  display: flex; align-items: flex-start; gap: 14px;
   background: var(--subtle); border: 1px solid var(--line);
-  border-radius: var(--r-box); padding: 26px;
+  border-radius: var(--r-box); padding: 18px;
 }
 .t-icon {
-  flex: none; width: 42px; height: 42px; border-radius: var(--r-ui);
+  flex: none; width: 38px; height: 38px; border-radius: var(--r-ui);
   background: var(--surface); border: 1px solid var(--line);
   display: flex; align-items: center; justify-content: center;
-  margin-bottom: 26px;
 }
-.t-icon svg { width: 22px; height: 22px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.t-icon svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .traits .k { font-family: "Geist Mono", monospace; font-size: 13px; color: var(--accent); font-weight: 560; }
-.traits .v { margin-top: 6px; font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+.traits .v { margin-top: 3px; font-size: 14px; color: var(--ink-2); line-height: 1.5; }
 
 /* final CTA */
 .cta-block { text-align: center; padding: 110px 0; }
@@ -204,6 +204,7 @@ footer { border-top: 1px solid var(--line); }
 @media (max-width: 860px) {
   .nav { gap: 16px; }
   .hero { padding-top: 56px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 36px; }
   .bento { grid-template-columns: 1fr; }
   .cell-ask, .cell-side, .cell-wide { grid-column: span 1; grid-row: auto; }
   .cell-wide { flex-direction: column; align-items: stretch; gap: 0; }
@@ -235,28 +236,36 @@ footer { border-top: 1px solid var(--line); }
 
 <main>
   <div class="hero">
-    <div class="wrap">
-      <h1 class="rise">Understand any codebase in minutes.</h1>
-      <p class="sub rise d1">CodeNib is a multi-view data system that serves codebase context to coding agents.</p>
-      <div class="ctas rise d2">
-        <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
-        <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
+    <div class="wrap hero-grid">
+      <div>
+        <h1 class="rise">Understand any codebase in minutes.</h1>
+        <p class="sub rise d1">CodeNib is a multi-view data system that serves codebase context to coding agents.</p>
+        <div class="ctas rise d2">
+          <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
+          <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
+        </div>
       </div>
-      <div class="traits rise d3">
+      <div class="traits rise d2">
         <div>
           <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.5 20 8l-8 4.5L4 8Z"/><path d="M4 12.5 12 17l8-4.5"/><path d="M4 16.5 12 21l8-4.5"/></svg></span>
-          <div class="k">heterogeneous</div>
-          <div class="v">Lexical, dense, and graph views of the repo, from one compile.</div>
+          <div>
+            <div class="k">heterogeneous</div>
+            <div class="v">Lexical, dense, and graph views of the repo, from one compile.</div>
+          </div>
         </div>
         <div>
           <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5 20 19H4Z"/></svg></span>
-          <div class="k">incremental</div>
-          <div class="v">Commit diffs update only the views that changed.</div>
+          <div>
+            <div class="k">incremental</div>
+            <div class="v">Commit diffs update only the views that changed.</div>
+          </div>
         </div>
         <div>
           <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6.2" cy="12" r="2.9"/><circle cx="17.8" cy="12" r="2.9"/><path d="M9.1 12h5.8"/></svg></span>
-          <div class="k">agent-native</div>
-          <div class="v">Context served to agents as tools, with bounded budgets, over MCP.</div>
+          <div>
+            <div class="k">agent-native</div>
+            <div class="v">Context served to agents as tools, with bounded budgets, over MCP.</div>
+          </div>
         </div>
       </div>
     </div>

@@ -4,9 +4,10 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CodeMiner Wiki · AI documentation you can talk to",
+  title: "CodeNib Wiki · AI documentation you can talk to",
   description:
     "Browse AI-generated, source-grounded documentation for indexed repositories — and ask questions answered with citations, powered by CodeMiner.",
+  icons: { icon: "/codenib-mark.png" },
 };
 
 // Set the theme before paint to avoid a flash of the wrong theme.
