@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeepSWE Guardian Results</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>DeepSWE Guardian Results</h1>
+        <p id="subtitle">Loading local evaluation data...</p>
+      </div>
+      <div class="controls">
+        <label>
+          Metric
+          <select id="metric-select">
+            <option value="pass_rate">Pass rate</option>
+            <option value="avg_total_cost_usd">Avg cost</option>
+            <option value="sum_total_cost_usd">Total cost</option>
+            <option value="avg_main_input_tokens">Avg input tokens</option>
+            <option value="avg_main_output_tokens">Avg output tokens</option>
+            <option value="n_trials">Trials</option>
+          </select>
+        </label>
+        <label>
+          Trials
+          <select id="trial-filter">
+            <option value="all">All</option>
+            <option value="passed">Passed</option>
+            <option value="failed">Failed</option>
+            <option value="guardian">Guardian</option>
+            <option value="solo">Solo</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Heatmap</h2>
+          <span id="heatmap-note"></span>
+        </div>
+        <div id="heatmap" class="heatmap"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Task Comparison</h2>
+          <span>solo vs guardian</span>
+        </div>
+        <div class="table-wrap">
+          <table id="tasks-table"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Trials</h2>
+          <span id="trial-count"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="trials-table"></table>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

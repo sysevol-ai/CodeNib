@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import types
+from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
@@ -137,6 +138,11 @@ def _write_report(out_dir: Path, report: GuardianReport) -> None:
     )
 
 
+def _write_cycle_report(episode_dir: Path, report: GuardianReport) -> None:
+    """Persist the completed report next to the detailed cycle log."""
+    _write_report(episode_dir, report)
+
+
 def _write_status(
     out_dir: Path,
     *,
@@ -182,10 +188,15 @@ def run_bridge(
     output = Path(out_dir)
     output.mkdir(parents=True, exist_ok=True)
     last_commit: Optional[str] = None
+    cycle_idx = 0
 
     while True:
         commit = _head(config.repo_path)
         if commit and commit != last_commit:
+            cycle_idx += 1
+            episode_dir = Path(
+                f"/logs/agent/guardian_episodes/{cycle_idx:04d}_{commit[:12]}"
+            )
             _write_status(
                 output,
                 commit=commit,
@@ -199,8 +210,13 @@ def run_bridge(
                 flush=True,
             )
             try:
-                report = run_cycle(config)
+                cycle_config = replace(
+                    config,
+                    episode_dir=str(episode_dir),
+                )
+                report = run_cycle(cycle_config)
                 _write_report(output, report)
+                _write_cycle_report(episode_dir, report)
                 last_commit = commit
                 print(
                     "guardian-codex-bridge: wrote "

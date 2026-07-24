@@ -444,6 +444,10 @@ def _run_cycle_inner(
             _merge_llm_usage(_usage_acc, _outer_usage, _inner_usage)
         logger.info("Guardian hypothesize — %d hypothesis(es) ranked by LLM", len(_hypotheses))
     else:
+        if _llm is not None and not (hotspots or _drift_signals):
+            logger.info(
+                "Guardian hypothesize — LLM enabled but skipped: no churn or drift signals"
+            )
         _hypotheses = heuristic_hypotheses(
             hotspots,
             _drift_signals,  # type: ignore[arg-type]

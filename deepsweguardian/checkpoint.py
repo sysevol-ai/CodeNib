@@ -42,7 +42,7 @@ def main() -> int:
         description="Wait for Repository Guardian's report for the current HEAD."
     )
     parser.add_argument("--repo", default=os.getcwd())
-    parser.add_argument("--guardian-dir", default="~/.guardian")
+    parser.add_argument("--guardian-dir", default="/app/.guardian/out")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--interval", type=float, default=2.0)
     args = parser.parse_args()
@@ -131,4 +131,3 @@ def main() -> int:
 if __name__ == "__main__":
     raise SystemExit(main())
 '''
-

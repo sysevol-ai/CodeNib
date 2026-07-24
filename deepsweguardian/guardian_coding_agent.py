@@ -109,12 +109,13 @@ class GuardianCodingAgent(BaseInstalledAgent):
         solver: str = "codex",
         guardian_arm: str = "memory",
         guardian_repo: str = "/app",
-        guardian_memory_dir: str = "~/.guardian/memory",
+        guardian_memory_dir: str = "/app/.guardian/memory",
         guardian_model: str = "codex:gpt-5.6-luna",
         guardian_top_n: int = 5,
         guardian_budget_tokens: int = 50_000,
         guardian_poll_interval: int = 10,
-        guardian_findings_dir: str = "~/.guardian",
+        guardian_findings_dir: str = "/app/.guardian/out",
+        guardian_checkpoint_dir: str = "/app/.guardian/bin",
         # Path to codeminer source tree inside the container
         codeminer_path: str = "/codeminer",
         # Path to the mounted host Python env that has codeminer's deps installed
@@ -142,6 +143,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_budget_tokens = int(guardian_budget_tokens)
         self._guardian_poll_interval = int(guardian_poll_interval)
         self._guardian_findings_dir = guardian_findings_dir
+        self._guardian_checkpoint_dir = guardian_checkpoint_dir
         self._guardian_bridge_pidfile = f"{guardian_findings_dir}/codex_bridge.pid"
         self._guardian_codex_home = "/tmp/guardian-codex-home"
         self._guardian_codex_secrets_dir = "/tmp/guardian-codex-secrets"
@@ -309,9 +311,9 @@ class GuardianCodingAgent(BaseInstalledAgent):
     async def _start_codex_bridge(self, environment: BaseEnvironment) -> None:
         """Start Guardian's Codex filesystem bridge inside the Pier container."""
         findings_dir = _quote_shell_path(self._guardian_findings_dir)
-        checkpoint_bin_dir = _quote_shell_path(f"{self._guardian_findings_dir}/bin")
+        checkpoint_bin_dir = _quote_shell_path(self._guardian_checkpoint_dir)
         checkpoint_path = _quote_shell_path(
-            f"{self._guardian_findings_dir}/bin/guardian-checkpoint"
+            f"{self._guardian_checkpoint_dir}/guardian-checkpoint"
         )
         checkpoint_script = shlex.quote(guardian_checkpoint_script())
         pidfile = _quote_shell_path(self._guardian_bridge_pidfile)
