@@ -64,7 +64,7 @@ jobs:
   # Preflight — evaluate skip condition once for all jobs
   # =============================================================
   preflight:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     # paths-filter fetches the PR's changed-file list via the GitHub API
     # (base is empty for pull_request events), which needs pull-requests:read.
     # Job-level permissions replace the top-level block, so contents:read is
