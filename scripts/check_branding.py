@@ -21,6 +21,7 @@ _ALLOWED_LEGACY_PATTERNS = (
     re.compile(rf"sysevol-ai/{LEGACY_BRAND}\b"),
     re.compile(rf"{LEGACY_BRAND}(?:AgentOptions|BaseDataset|SynthesisDataset)\b"),
     re.compile(rf"{LEGACY_BRAND}(?:-| )(?:[Bb]ase|[Ss]ynthesis)\b"),
+    re.compile(rf"{LEGACY_BRAND} compatibility namespace\b"),
     re.compile(rf"[/\\]{LEGACY_BRAND}\b"),
 )
 

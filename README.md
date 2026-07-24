@@ -26,7 +26,8 @@ to agents, web UIs, and evaluation harnesses. The core surfaces are:
 > **Naming compatibility:** CodeNib is the product name. The Python package,
 > existing `codeminer-*` commands, `CODEMINER_*` environment variables,
 > `.codeminer*` state paths, repository URL, and published dataset identities
-> remain stable during this migration.
+> remain stable during this migration. See
+> [Naming and Compatibility](docs/branding.md) for the complete contract.
 
 Language coverage varies by surface. See the generated
 [Language Capabilities](docs/language_capabilities.md) matrix for the current

@@ -86,6 +86,7 @@ nav:
       - Agent Compile (Design): agent_compile_design.md
       - GT Locator: gt_locator.md
   - Operations:
+      - Naming and Compatibility: branding.md
       - CI/CD: ci_cd.md
       - Evaluation Artifact Bundles: evaluation_artifacts.md
       - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md
