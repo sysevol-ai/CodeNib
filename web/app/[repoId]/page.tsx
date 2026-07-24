@@ -99,19 +99,23 @@ export default function WikiPageView() {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setCommits([]);
+    setSelectedCommit(undefined);
+
     // Deep-link support: ?p=<pageId> opens that wiki page directly.
     const p = new URLSearchParams(window.location.search).get("p");
     if (p) setActiveId(p);
     fetchRepos()
       .then((rs) => {
-        setRepo(rs.find((x) => x.id === repoId) ?? null);
+        if (!cancelled) setRepo(rs.find((x) => x.id === repoId) ?? null);
       })
       .catch(() => {});
     // Optional feature: repos without a prebuilt window just keep the static
     // commit label, so a failure here is not surfaced as a page error.
     fetchCommits(repoId)
       .then((w) => {
-        if (!w.available) return;
+        if (cancelled || !w.available) return;
         setCommits(w.commits);
         setSelectedCommit(w.selected ?? undefined);
       })
@@ -119,9 +123,18 @@ export default function WikiPageView() {
     setTocLoading(true);
     setError(null);
     fetchWikiTree(repoId)
-      .then((t) => setPages(t.pages))
-      .catch((e) => setError(String(e)))
-      .finally(() => setTocLoading(false));
+      .then((t) => {
+        if (!cancelled) setPages(t.pages);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setTocLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [repoId]);
 
   useEffect(() => {

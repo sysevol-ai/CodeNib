@@ -123,12 +123,22 @@ class CommitWindow:
         if not commit:
             return commits[0]
         needle = commit.strip().lower()
+        exact = []
         for entry in commits:
             sha = str(entry.get("sha", "")).lower()
             short = str(entry.get("short", "")).lower()
-            if needle in (sha, short) or (len(needle) >= 4 and sha.startswith(needle)):
-                return entry
-        return None
+            if needle in (sha, short):
+                exact.append(entry)
+        if exact:
+            return exact[0]
+        if len(needle) < 4:
+            return None
+        prefixes = [
+            entry
+            for entry in commits
+            if str(entry.get("sha", "")).lower().startswith(needle)
+        ]
+        return prefixes[0] if len(prefixes) == 1 else None
 
     # -- graphs -----------------------------------------------------------
 

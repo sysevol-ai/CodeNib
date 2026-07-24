@@ -109,6 +109,12 @@ export default function Codemap({
             {data.root_label} · {data.nodes.length} symbols · {data.edges.length} edges
             {data.truncated ? " · truncated" : ""}
           </div>
+          {data.fell_back && (
+            <p className="muted small" role="status">
+              The selected snapshot could not be loaded. Showing the default graph
+              {data.commit ? ` at ${data.commit.slice(0, 8)}` : ""}.
+            </p>
+          )}
           {data.note && <p className="muted small">{data.note}</p>}
           <GraphView repoId={repoId} data={data} variant="explore" onFocus={focus} />
           <div className="codemap-nodes">

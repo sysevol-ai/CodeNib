@@ -226,6 +226,9 @@ export interface CodemapResponse {
   note?: string;
   // Which commit snapshot this payload was built from.
   commit?: string | null;
+  // True when the selected snapshot could not be loaded and the API served
+  // the repository's default graph instead.
+  fell_back?: boolean;
 }
 
 // One selectable point in the repo's commit window. Snapshots are built by

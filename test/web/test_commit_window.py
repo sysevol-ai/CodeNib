@@ -117,6 +117,16 @@ class TestResolve:
     def test_too_short_prefix_returns_none(self, tmp_path):
         assert self._window(tmp_path).resolve("aa") is None
 
+    def test_ambiguous_prefix_returns_none(self, tmp_path):
+        _write_manifest(
+            tmp_path,
+            [
+                _commit("abcd" + "1" * 36, "abcd111"),
+                _commit("abcd" + "2" * 36, "abcd222"),
+            ],
+        )
+        assert CommitWindow(str(tmp_path)).resolve("abcd") is None
+
 
 class TestGraphFor:
     def test_missing_snapshot_returns_none(self, tmp_path):
