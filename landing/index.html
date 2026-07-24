@@ -12,8 +12,12 @@ SPDX-License-Identifier: Apache-2.0
 <meta property="og:title" content="CodeNib">
 <meta property="og:description" content="Understand any codebase in minutes. Wikis, dependency maps, and cited answers, compiled from a symbol graph.">
 <meta property="og:image" content="https://codenib.ai/assets/shots/wiki-light.png">
-<meta property="og:url" content="https://codenib.ai">
-<link rel="icon" href="assets/mark.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://codenib.ai/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://codenib.ai/">
+<link rel="icon" href="assets/codenib-icon.svg" type="image/svg+xml">
+<script>document.documentElement.classList.add("js")</script>
 <style>
 /* Fonts: self-hosted Geist (variable) */
 @font-face {
@@ -114,7 +118,7 @@ header {
   height: 38px; border-bottom: 1px solid var(--line); background: var(--subtle);
 }
 .frame-bar span {
-  font-family: "Geist Mono", monospace; font-size: 12px; color: var(--ink-3);
+  font-family: "Geist Mono", monospace; font-size: 12px; color: var(--ink-2);
   background: var(--bg); border: 1px solid var(--line);
   padding: 3px 14px; border-radius: 99px;
 }
@@ -122,11 +126,15 @@ header {
 /* Live product embeds: the real demo rendered in a scaled iframe. A fixed
    design width keeps the demo's desktop layout; the scale factor adapts to
    whatever container (or phone) the embed lands in. */
-.live { position: relative; overflow: hidden; background: var(--subtle); }
+.live {
+  position: relative; overflow: hidden;
+  background: var(--subtle) url("assets/shots/wiki-light.png") center top / cover no-repeat;
+}
 .live > iframe {
   position: absolute; top: 0; left: 0; border: 0;
   transform-origin: 0 0; pointer-events: none;
 }
+html:not(.js) .live > iframe { display: none; }
 .live > a.cover { position: absolute; inset: 0; z-index: 2; }
 
 /* ---- sections ---- */
@@ -194,8 +202,8 @@ footer { border-top: 1px solid var(--line); }
   .d1 { animation-delay: .06s; } .d2 { animation-delay: .14s; }
   .d3 { animation-delay: .22s; } .d4 { animation-delay: .34s; }
   @keyframes rise { to { opacity: 1; transform: none; } }
-  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1); }
-  .reveal.in { opacity: 1; transform: none; }
+  .js .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1); }
+  .js .reveal.in { opacity: 1; transform: none; }
   .cell { transition: border-color .2s, transform .2s, opacity .6s cubic-bezier(.16,1,.3,1); }
   .cell:hover { border-color: var(--ink-3); }
 }
@@ -224,9 +232,9 @@ footer { border-top: 1px solid var(--line); }
 <header>
   <div class="wrap nav">
     <a class="brand" href="/">
-      <img src="assets/logo.png" alt="CodeNib">
+      <img src="assets/codenib-logo.svg" alt="CodeNib">
     </a>
-    <a class="link" href="https://docs.codenib.ai">Docs</a>
+    <a class="link" href="https://github.com/sysevol-ai/CodeMiner#readme">Docs</a>
     <a class="link gh" href="https://github.com/sysevol-ai/CodeMiner" aria-label="Source on GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
     </a>
@@ -242,7 +250,7 @@ footer { border-top: 1px solid var(--line); }
         <p class="sub rise d1">CodeNib is a multi-view data system that serves codebase context to coding agents.</p>
         <div class="ctas rise d2">
           <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
-          <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
+          <a class="btn btn-ghost btn-lg" href="https://github.com/sysevol-ai/CodeMiner#readme">Read the docs</a>
         </div>
       </div>
       <div class="traits rise d2">
@@ -274,7 +282,8 @@ footer { border-top: 1px solid var(--line); }
         <div class="frame-bar"><span>demo.codenib.ai</span></div>
         <div class="live" data-min-w="1100" style="aspect-ratio: 1440 / 860">
           <iframe src="https://demo.codenib.ai/caddyserver__caddy"
-                  title="Live CodeNib wiki for caddyserver/caddy"></iframe>
+                  title="Live CodeNib wiki for caddyserver/caddy"
+                  tabindex="-1" inert aria-hidden="true"></iframe>
           <a class="cover" href="https://demo.codenib.ai/caddyserver__caddy"
              aria-label="Open caddyserver/caddy in the demo"></a>
         </div>
@@ -292,7 +301,8 @@ footer { border-top: 1px solid var(--line); }
           <p>Every answer cites the file and line it came from. Click a citation to open the source.</p>
           <div class="live" data-min-w="1100">
             <iframe src="https://demo.codenib.ai/caddyserver__caddy/ask"
-                    title="Ask a question about caddyserver/caddy"></iframe>
+                    title="Ask a question about caddyserver/caddy"
+                    loading="lazy" tabindex="-1" inert aria-hidden="true"></iframe>
             <a class="cover" href="https://demo.codenib.ai/caddyserver__caddy/ask"
                aria-label="Ask a question in the demo"></a>
           </div>
@@ -316,7 +326,8 @@ footer { border-top: 1px solid var(--line); }
           </div>
           <div class="live" data-min-w="1100">
             <iframe src="https://demo.codenib.ai/"
-                    title="Repositories indexed in the CodeNib demo"></iframe>
+                    title="Repositories indexed in the CodeNib demo"
+                    loading="lazy" tabindex="-1" inert aria-hidden="true"></iframe>
             <a class="cover" href="https://demo.codenib.ai/"
                aria-label="Browse indexed repositories in the demo"></a>
           </div>
@@ -330,7 +341,7 @@ footer { border-top: 1px solid var(--line); }
       <h2 class="reveal">Point it at a codebase.</h2>
       <div class="ctas reveal">
         <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
-        <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
+        <a class="btn btn-ghost btn-lg" href="https://github.com/sysevol-ai/CodeMiner#readme">Read the docs</a>
       </div>
     </div>
   </div>
@@ -340,7 +351,7 @@ footer { border-top: 1px solid var(--line); }
   <div class="wrap foot">
     <span class="brand">codenib.ai</span>
     <span class="spacer"></span>
-    <a href="https://docs.codenib.ai">Docs</a>
+    <a href="https://github.com/sysevol-ai/CodeMiner#readme">Docs</a>
     <a href="https://demo.codenib.ai">Demo</a>
     <a href="https://github.com/sysevol-ai/CodeMiner">GitHub</a>
     <span>© 2026 CodeNib</span>

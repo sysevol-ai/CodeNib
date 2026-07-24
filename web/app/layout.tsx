@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "CodeNib Wiki · AI documentation you can talk to",
   description:
     "Browse AI-generated, source-grounded documentation for indexed repositories — and ask questions answered with citations, powered by CodeMiner.",
-  icons: { icon: "/codenib-mark.png" },
+  icons: { icon: "/codenib-icon.svg" },
 };
 
 // Set the theme before paint to avoid a flash of the wrong theme.

@@ -74,7 +74,7 @@ export default function Header({
   return (
     <header className="site-header">
       <Link href="/" className="brand">
-        <img className="brand-mark" src="/codenib-mark.png" alt="" /> CodeNib Wiki
+        <img className="brand-mark" src="/codenib-icon.svg" alt="" /> CodeNib Wiki
       </Link>
       {center}
       <div className="header-right">
