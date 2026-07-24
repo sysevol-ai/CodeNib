@@ -1,4 +1,4 @@
-# CodeMiner Agent Runtime — coherent design
+# CodeNib Agent Runtime — coherent design
 
 Status: **decided by experiment** (2026-06-19). Extends
 `.claude/design/preload-vs-skill-architecture.md` (confirmed 2026-06-05). §1–§8
@@ -45,7 +45,7 @@ Caveats: Python missing (rerun solo); reps=1; verify no-op is mechanism-proven
 
 Every mainstream code agent (SWE-agent / OpenHands / Aider / Cursor / Claude
 Code) treats the repo as text explored at runtime; the LLM is planner +
-executor + memory; relationships are re-derived lossily each session. CodeMiner's
+executor + memory; relationships are re-derived lossily each session. CodeNib's
 only structural asset is a **compiled, SCIP-precise graph with edge provenance**
 (`IndexCompiler.compile_repo` → `RepoManifest`). So the runtime's job is NOT a
 smarter loop — it is:

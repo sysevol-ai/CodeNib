@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Running the Web Demo Locally (with a Local GPU LLM)
 
-This guide covers running the full CodeMiner web demo — wiki generation + Ask
+This guide covers running the full CodeNib web demo — wiki generation + Ask
 — against **any arbitrary repo** using a **local GPU LLM** (no cloud API keys).
 
 The setup has three services running in separate terminals:
@@ -14,7 +14,7 @@ The setup has three services running in separate terminals:
 | Service | Script | Where to run |
 |---------|--------|--------------|
 | LLM server (llama-cpp-python) | `scripts/start_llm.sh` | GPU node |
-| CodeMiner backend (FastAPI) | `scripts/start_web.sh` | Main machine |
+| CodeNib backend (FastAPI) | `scripts/start_web.sh` | Main machine |
 | Next.js frontend | `cd web && npm run dev` | Main machine |
 
 ---
@@ -22,7 +22,7 @@ The setup has three services running in separate terminals:
 ## Prerequisites
 
 ### Main machine
-- CodeMiner installed: `make dev` or `pip install -e ".[dev]"`
+- CodeNib installed: `make dev` or `pip install -e ".[dev]"`
 - Node.js + npm: `make web-deps` (once)
 - Conda env `codeminer` active
 
@@ -134,7 +134,7 @@ bash scripts/start_llm.sh
 The script will ask for your GGUF model path and start an OpenAI-compatible
 server on port 8080.
 
-### Terminal 2 — CodeMiner backend (on main machine)
+### Terminal 2 — CodeNib backend (on main machine)
 
 ```bash
 cd ~/projects/CodeMiner/CodeMiner

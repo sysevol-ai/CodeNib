@@ -147,7 +147,7 @@ def expected_extensions_for_language(language_group: str) -> set[str]:
 def normalize_synthesis_record(
     row: Mapping[str, Any], config_name: str
 ) -> Dict[str, Any]:
-    """Project a HF synthesis row into the common CodeMiner dataset shape."""
+    """Project a HF synthesis row into the common benchmark shape."""
 
     gt_symbol_nodes = []
     for node in row.get("gt_symbol_nodes") or []:
@@ -332,9 +332,9 @@ def _issue(severity: str, code: str, row: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 class CodeMinerSynthesisDataset(DatasetBase):
-    """Dataset wrapper for synthesized CodeMiner query benchmark rows.
+    """Dataset wrapper for CodeMiner Synthesis benchmark rows.
 
-    The public HF dataset is organized by language config. CodeMiner consumers
+    The public HF dataset is organized by language config. CodeNib consumers
     expect each row to carry its own ``language_group`` and
     ``problem_statement`` fields, so this loader injects them while preserving
     the source config and synthesized GT columns.

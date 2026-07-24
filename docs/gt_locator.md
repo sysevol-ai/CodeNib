@@ -25,7 +25,7 @@ Supports Python, Go, Rust, C/C++, C#, Java, Ruby, PHP, Kotlin, JavaScript, and T
 
 ## Prerequisites
 
-- `tree-sitter-language-pack` (bundled with CodeMiner, provides parsers for all supported languages)
+- `tree-sitter-language-pack` (bundled with CodeNib, provides parsers for all supported languages)
 - `git` (for cloning and checking out repos)
 
 ## Usage

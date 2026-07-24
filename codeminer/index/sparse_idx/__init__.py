@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Sparse indexing module for CodeMiner."""
+"""Sparse indexing module for CodeNib."""
 
 from .bm25_index import BM25CodeIndexer
 

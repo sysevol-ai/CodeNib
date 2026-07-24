@@ -45,7 +45,7 @@ either, but prefer `CAR` for sub-issue cross-references.
 
 ## Context
 
-CodeMiner's agent today receives the full skill registry on every turn,
+CodeNib's agent today receives the full skill registry on every turn,
 paying tool-choice fan-out cost even when a query is trivially served by a
 single skill. The agent-compile RFC adds a small layer that runs **once at
 agent entry**: `classify(query, repo_meta) → Scenario`, then

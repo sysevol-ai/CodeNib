@@ -1,6 +1,6 @@
 # AGENTS.md
 
-CodeMiner is a Python 3.10+ code analysis agent with tree-sitter chunking,
+CodeNib is a Python 3.10+ code analysis agent with tree-sitter chunking,
 semantic graph construction, hybrid retrieval, and MCP-facing search tools.
 Use this file as the repo-level contract for Codex and other code agents.
 

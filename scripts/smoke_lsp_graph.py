@@ -143,8 +143,8 @@ gem "scip-ruby", "{scip_ruby_version}"
 Gem::Specification.new do |spec|
   spec.name = "smoke"
   spec.version = "0.1.0"
-  spec.summary = "CodeMiner ruby-lsp smoke project"
-  spec.authors = ["CodeMiner"]
+  spec.summary = "CodeNib ruby-lsp smoke project"
+  spec.authors = ["CodeNib"]
   spec.files = ["lib/invoice.rb"]
 end
 """.strip()

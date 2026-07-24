@@ -118,7 +118,7 @@ class RetrievalPathPlan:
 
 
 class RetrievalPlanner:
-    """Select one of CodeMiner's retrieval paths for a query and budget."""
+    """Select one of CodeNib's retrieval paths for a query and budget."""
 
     _BUDGET_PRESETS = {
         "fast": RetrievalBudget(

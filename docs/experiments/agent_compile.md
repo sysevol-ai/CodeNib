@@ -311,7 +311,7 @@ selection** with these models. To realize it, graph expansion must be a
 **deterministic pipeline step** — e.g. after the first retrieval hit,
 automatically expand along the call graph and feed the result to the agent —
 rather than an optional tool the agent is trusted to call. This matches
-CodeMiner's AoT (`compile_repo`) direction and is the recommended next
+CodeNib's AoT (`compile_repo`) direction and is the recommended next
 experiment. A fair test also needs reps ≥ 3 (tool-calling variance is large)
 and a graph-only condition (embedding withheld too) to isolate graph from
 embedding.
@@ -381,7 +381,7 @@ friendly `find_related_code`, and intent verbs — and **all three are ignored
 whenever grep/read are available.** The tool shape is not the bottleneck; the
 **harness** is. Per the CodeGraph analysis, adoption + token wins come from:
 (a) serving the graph via the warm **MCP server** with host-agent steering
-(CodeMiner already has `codeminer/mcp/server.py` + the manifest/compiler), and
+(CodeNib already has `codeminer/mcp/server.py` + the manifest/compiler), and
 (b) a **one-call context composer** (`codeminer_context`) that runs
 search→graph-expand→snippet-assembly *internally* so the agent makes one call
 instead of choosing graph over grep — and (c) measuring at large-repo scale.

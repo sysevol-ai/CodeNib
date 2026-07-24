@@ -127,7 +127,7 @@ def update_registry(registry_path: str, entry: dict) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Index a repo for CodeMiner web demo")
+    parser = argparse.ArgumentParser(description="Index a repo for CodeNib web demo")
     parser.add_argument("repo_dir", help="Absolute path to the repo to index")
     parser.add_argument(
         "--language",

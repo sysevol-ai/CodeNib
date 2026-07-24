@@ -189,7 +189,7 @@ endef
 .PHONY: scip-php-info scip-php-tool scip-php-docker-tool scip-php-system-deps-ubuntu php-project-scip-tool
 .PHONY: lsp-smoke-tools lsp-smoke-env lsp-smoke-system-deps-ubuntu
 .PHONY: jdtls-tool csharp-lsp-tool ruby-lsp-tool intelephense-tool kotlin-lsp-tool
-.PHONY: dev test
+.PHONY: dev test branding-assets branding-check
 .PHONY: web-deps web-start web-stop web-restart web-reclaim web-status web-logs web-follow
 
 install:
@@ -237,7 +237,7 @@ active-lsp-tools: python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-
 	@$(MAKE) --no-print-directory active-scip-env
 
 active-scip-env:
-	@echo "CodeMiner tools installed under: $(CODEMINER_SCIP_TOOLS_DIR)"
+	@echo "CodeNib tools installed under: $(CODEMINER_SCIP_TOOLS_DIR)"
 	@echo "Use this environment for active SCIP/LSP and cold-start smoke runs:"
 	@echo "  export CODEMINER_SCIP_TOOLS_DIR=$(CODEMINER_SCIP_TOOLS_DIR)"
 	@echo "  export DOTNET_ROOT=$(CODEMINER_SCIP_TOOLS_DIR)/dotnet"
@@ -581,7 +581,7 @@ scip-php-info:
 	@echo "  composer require --dev $(SCIP_PHP_PACKAGE)"
 	@echo "  composer install"
 	@echo "  vendor/bin/scip-php"
-	@echo "CodeMiner route gates prepare scip-php in an output-local worktree by default;"
+	@echo "CodeNib route gates prepare scip-php in an output-local worktree by default;"
 	@echo "use php-project-scip-tool only when you intentionally prewarm a disposable checkout."
 	@echo "Generated PHP smoke can also use Docker with:"
 	@echo "  make scip-php-docker-tool"
@@ -808,6 +808,12 @@ dev:
 
 test:
 	pytest
+
+branding-assets:
+	python scripts/check_branding.py --sync-assets
+
+branding-check:
+	python scripts/check_branding.py
 
 # Rerank latency benchmark — measures wall-clock + VRAM across rerank backends.
 # Candidates: 25 50 100  |  Reps: 3  |  Output: scripts/bench_rerank_results.md

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Graph-related modules for CodeMiner."""
+"""Graph-related modules for CodeNib."""
 
 from .code_graph import CodeGraph
 from .incremental import GraphPatcher, LSPClient, PatcherBase

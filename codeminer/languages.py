@@ -29,7 +29,7 @@ class ScipColdStartOption:
     """SCIP cold-start backend status for one language.
 
     ``active`` means the language's current cold-start graph backend is SCIP.
-    ``candidate`` means a known SCIP indexer exists, but CodeMiner has not yet
+    ``candidate`` means a known SCIP indexer exists, but CodeNib has not yet
     promoted it to the primary backend because smoke, backend-alignment, decoder,
     and parity gates are still open.
     """
@@ -43,7 +43,7 @@ class ScipColdStartOption:
 
 @dataclass(frozen=True, slots=True)
 class LanguageSpec:
-    """Declarative metadata for one CodeMiner language family."""
+    """Declarative metadata for one CodeNib language family."""
 
     key: str
     display_name: str

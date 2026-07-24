@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Synthesis Traversal Pipeline
 
-CodeMiner's synthesis pipeline generates a code-search retrieval benchmark of
+CodeNib's synthesis pipeline generates a code-search retrieval benchmark of
 natural-language queries paired with verified ground-truth symbols and files.
 Each query is grounded on real source code (not LLM-invented targets), graded by
 an LLM judge, and projected into a HuggingFace dataset organized by language
@@ -78,7 +78,7 @@ solvability, and stance compliance, returning one of `valid` / `fix` /
 ## Dataset wrapper
 
 `CodeMinerSynthesisDataset` (in `codeminer/dataset/codeminer_synthesis.py`) loads
-the published HuggingFace dataset, projects each row into CodeMiner's common
+the published HuggingFace dataset, projects each row into CodeNib's common
 dataset shape, and can clone + check out the row's repository at its
 `base_commit`.
 

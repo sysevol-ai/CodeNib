@@ -227,7 +227,7 @@ def _write_readme(
                 "",
                 "# CodeMiner Synthesis",
                 "",
-                "Synthetic code-search benchmark queries for CodeMiner.",
+                "Synthetic code-search benchmark queries for CodeNib.",
             ]
         )
     path = output_dir / "README.md"

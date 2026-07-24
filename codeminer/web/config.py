@@ -7,7 +7,7 @@
 The demo answers questions about a fixed set of repositories drawn from the
 **codeminer-base-dataset** (each instance = a repo pinned to a ``base_commit``).
 ``scripts/build_qa_index.py`` selects instances, checks out each repo at its
-commit, builds CodeMiner indexes, and writes a ``qa_registry.json`` describing
+commit, builds CodeNib indexes, and writes a ``qa_registry.json`` describing
 what was indexed. The server (``codeminer.web.app``) reads that registry.
 """
 

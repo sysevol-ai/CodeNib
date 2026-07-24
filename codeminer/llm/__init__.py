@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""LLM module for CodeMiner."""
+"""LLM module for CodeNib."""
 
 from .litellm_chat import (
     ChatMessage,

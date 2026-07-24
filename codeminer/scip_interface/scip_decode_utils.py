@@ -46,7 +46,7 @@ def format_unified_name(
     display_name: str,
     fallback: str,
 ) -> str:
-    """Format the CodeMiner unified_name attribute consistently."""
+    """Format the CodeNib unified_name attribute consistently."""
     if file_path and display_name:
         return f"{file_path}:{display_name}"
     return display_name or fallback

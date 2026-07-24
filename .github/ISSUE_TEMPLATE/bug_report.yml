@@ -40,7 +40,7 @@ body:
     id: scope
     attributes:
       label: Scope
-      description: Which area of CodeMiner is affected? (Triage will apply the matching `scope/` label.)
+      description: Which area of CodeNib is affected? (Triage will apply the matching `scope/` label.)
       options:
         - scope/agent
         - scope/chunking

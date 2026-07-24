@@ -42,7 +42,7 @@ os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", HF_HOME)
 
 MANIFEST = ROOT / ".codeminer_cache" / "repo_manifest.json"
 
-# Queries that cover different retrieval patterns in CodeMiner itself
+# Queries that cover different retrieval patterns in CodeNib itself
 BENCH_QUERIES = [
     "how does the BM25 index build and search work",
     "where is the FAISS vector store initialized and queried",
@@ -533,7 +533,7 @@ def main() -> None:
         sys.exit(1)
 
     print("=" * 60)
-    print("CodeMiner rerank latency benchmark")
+    print("CodeNib rerank latency benchmark")
     print(f"Backends : {args.backends}")
     print(f"Candidates: {args.candidates}")
     print(f"Reps/combo: {REPS}")

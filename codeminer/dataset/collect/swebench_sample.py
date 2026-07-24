@@ -5,7 +5,7 @@
 """
 SWE-bench sampling utilities.
 
-This module is designed for programmatic use in the CodeMiner infra. It exposes
+This module is designed for programmatic use in the CodeNib infra. It exposes
 configuration-driven APIs and avoids CLI side effects.
 """
 

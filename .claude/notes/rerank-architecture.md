@@ -1,4 +1,4 @@
-# CodeMiner Rerank + Retrieval Architecture Notes
+# CodeNib Rerank + Retrieval Architecture Notes
 
 > Personal notes — Yash, 2026-06-27
 > Updated after full cross-encoder wiring (session 2).
@@ -151,7 +151,7 @@ it's registered. Real LLM reranking needs an `llm=LiteLLMChat(...)` passed in.
 
 ---
 
-## Latency numbers (measured on this H100, CodeMiner index)
+## Latency numbers (measured on this H100, CodeNib index)
 
 | Strategy | Model | N=25 | N=50 | N=100 | VRAM delta |
 |----------|-------|------|------|-------|------------|

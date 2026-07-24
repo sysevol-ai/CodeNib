@@ -265,7 +265,7 @@ def render_figure(reports: Sequence[Mapping[str, Any]], output_prefix: Path) -> 
                 color="none",
                 markerfacecolor=STATIC_COLOR,
                 markeredgecolor="none",
-                label="CodeMiner static",
+                label="CodeNib static",
             ),
             plt.Line2D(
                 [],
@@ -297,7 +297,7 @@ def render_figure(reports: Sequence[Mapping[str, Any]], output_prefix: Path) -> 
 
     ecdf = fig.add_subplot(grid[1])
     for values, color, label in (
-        (static_all, STATIC_COLOR, "CodeMiner static"),
+        (static_all, STATIC_COLOR, "CodeNib static"),
         (live_all, LIVE_COLOR, "Live JSON-RPC"),
     ):
         ordered = np.sort(values)

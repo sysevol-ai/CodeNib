@@ -5,9 +5,9 @@
 """MCP prompt resource - guidance for calling agents."""
 
 CODEMINER_GUIDE = """\
-# CodeMiner Tools Guide
+# CodeNib Tools Guide
 
-CodeMiner provides **semantic code search** over pre-built indexes. Results are
+CodeNib provides **semantic code search** over pre-built indexes. Results are
 structured at the symbol level (functions, classes, methods) with precise file
 locations and source content, not raw line-level grep output.
 

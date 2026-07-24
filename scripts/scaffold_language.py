@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Scaffold the first files for a new CodeMiner language.
+"""Scaffold the first files for a new CodeNib language.
 
 The scaffold is intentionally conservative: it creates TODO stubs and prints
 the LanguageSpec snippet and manual wiring checklist, but it does not register

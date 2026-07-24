@@ -5,7 +5,7 @@
 """Lightweight agent runner using LLM tool calling.
 
 Implements a think → act → observe loop that lets an LLM decide which
-CodeMiner skills to invoke, execute them, and iterate until the LLM
+CodeNib skills to invoke, execute them, and iterate until the LLM
 produces a final answer.
 """
 
@@ -122,7 +122,7 @@ _CHARS_PER_TOKEN_ESTIMATE = 4
 
 
 class AgentRunner:
-    """LLM-driven agent loop over the CodeMiner skill registry.
+    """LLM-driven agent loop over the CodeNib skill registry.
 
     Usage::
 

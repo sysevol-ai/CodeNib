@@ -158,7 +158,7 @@ def _lsp_process_env(
 ) -> dict[str, str]:
     env = os.environ.copy()
     # Bypass a repository-pinned Rust toolchain so rust-analyzer uses the
-    # CodeMiner-selected toolchain instead.
+    # CodeNib-selected toolchain instead.
     if language == "rust":
         env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
 

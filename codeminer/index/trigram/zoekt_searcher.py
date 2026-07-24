@@ -4,7 +4,7 @@
 
 """Client for the Zoekt trigram code search engine.
 
-Zoekt is written in Go.  CodeMiner interacts with it as a subprocess:
+Zoekt is written in Go.  CodeNib interacts with it as a subprocess:
 
 * ``zoekt-git-index``  builds shard files from a git repository
   (handled by :class:`codeminer.compiler.index_builders.ZoektIndexBuilder`).
@@ -13,7 +13,7 @@ Zoekt is written in Go.  CodeMiner interacts with it as a subprocess:
   endpoint.
 
 The Zoekt API returns *file*-level matches with line ranges and snippet
-content.  CodeMiner's other search backends (BM25, regex) return
+content.  CodeNib's other search backends (BM25, regex) return
 *symbol*-level :class:`~codeminer.types.NodeInfo` results.  The mapper at
 the bottom of this file converts ``FileMatch`` records into ``NodeInfo``
 objects with ``type="file"`` so callers can treat all search results

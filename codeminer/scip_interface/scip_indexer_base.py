@@ -315,7 +315,7 @@ class SCIPIndexerBase(ABC):
         with self.profiler.section("generate_index") as section:
             try:
                 # For Rust projects, override the repository toolchain so SCIP
-                # generation uses CodeMiner's selected rust-analyzer version.
+                # generation uses CodeNib's selected rust-analyzer version.
                 env = None
                 if self.language == "rust":
                     import os

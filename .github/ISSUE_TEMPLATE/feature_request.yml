@@ -8,7 +8,7 @@ labels: ["type/feature", "status/triage"]
 body:
   - type: markdown
     attributes:
-      value: Describe the feature you'd like to see in CodeMiner.
+      value: Describe the feature you'd like to see in CodeNib.
 
   - type: textarea
     id: problem
@@ -36,7 +36,7 @@ body:
     id: scope
     attributes:
       label: Scope
-      description: Which area of CodeMiner does this relate to? (Triage will apply the matching `scope/` label.)
+      description: Which area of CodeNib does this relate to? (Triage will apply the matching `scope/` label.)
       options:
         - scope/agent
         - scope/chunking

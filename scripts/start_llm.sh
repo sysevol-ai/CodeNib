@@ -15,7 +15,7 @@ DEFAULT_MODEL="$HOME/.ollama/models/blobs/sha256-60e05f2100071479f596b964f89f510
 
 # ── Prerequisites ────────────────────────────────────────────────────────────
 
-echo "=== CodeMiner LLM Server ==="
+echo "=== CodeNib LLM Server ==="
 echo ""
 
 # Check conda env

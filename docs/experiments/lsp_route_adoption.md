@@ -14,7 +14,7 @@ same route evidence is preloaded before turn 1?
 
 It is **not** the current proof target for LSP acceleration. The active target is
 provider-level: when an agent or MCP client asks for an LSP-shaped operation,
-CodeMiner should serve the supported request from the static graph index faster
+CodeNib should serve the supported request from the static graph index faster
 than live JSON-RPC LSP while preserving the agent-visible output contract. That
 gate lives in `docs/experiments/lsp_core_acceleration.md`.
 
@@ -22,7 +22,7 @@ Preload is already covered by the compact-context line of work. It is a policy
 choice about what context to show before turn 1, not a prerequisite for proving
 that dynamic LSP requests can be accelerated by the static provider.
 
-This is not a claim that CodeMiner's agent is smarter than Claude Code, Codex,
+This is not a claim that CodeNib's agent is smarter than Claude Code, Codex,
 or opencode.
 
 ## Internal Arms
@@ -82,7 +82,7 @@ replay compared the same `lsp_route` backend through two exposure paths:
 
 1. `dynamic`: the model spends a turn deciding to call `lsp_route`, waits for
    the tool result, then spends a later turn using it.
-2. `preload`: CodeMiner builds the same route context before turn 1, so the
+2. `preload`: CodeNib builds the same route context before turn 1, so the
    first model response already sees it.
 
 The backend `duration_ms` for both paths is recorded. The remaining latency
@@ -179,9 +179,9 @@ Compare access paths, not agent brands.
 
 | arm | LSP backend | route exposure |
 | --- | --- | --- |
-| `codeminer_dynamic_lsp` | CodeMiner `lsp_route` over the prebuilt `symbol_graph` | tool call inside the agent loop |
-| `codeminer_preload_lsp` | same CodeMiner `lsp_route` over the same prebuilt `symbol_graph` | startup context before turn 1 |
-| `external_dynamic_same_lsp` | same CodeMiner `lsp_route` exposed through a thin external-agent tool wrapper | tool call inside Claude Code/Codex/opencode loop |
+| `codeminer_dynamic_lsp` | CodeNib `lsp_route` over the prebuilt `symbol_graph` | tool call inside the agent loop |
+| `codeminer_preload_lsp` | same CodeNib `lsp_route` over the same prebuilt `symbol_graph` | startup context before turn 1 |
+| `external_dynamic_same_lsp` | same CodeNib `lsp_route` exposed through a thin external-agent tool wrapper | tool call inside Claude Code/Codex/opencode loop |
 
 If an external agent has native LSP, run it separately as
 `external_native_lsp`. Do not mix native LSP with the same-backend comparison.
@@ -189,7 +189,7 @@ If an external agent has native LSP, run it separately as
 ### Task Prompt
 
 Every dynamic arm receives the same user task from the dataset and this output
-contract. The preload arm receives the same task plus the rendered CodeMiner
+contract. The preload arm receives the same task plus the rendered CodeNib
 route context before turn 1.
 
 ```text
@@ -241,7 +241,7 @@ preload_route_visible_ms =
     preload_lsp_backend_duration_ms
 ```
 
-For internal CodeMiner runs, trace schema v4 records relative event timestamps.
+For internal CodeNib runs, trace schema v4 records relative event timestamps.
 `trace_summary` therefore reports dynamic `model_can_use_turn` /
 `model_can_use_ms` by finding the next `llm_call` after the completed
 `lsp_route` tool result. The preload path reports visible turn 0 and uses the

@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeMiner
+# CodeNib
 
 **Source-linked code intelligence for LLM tools** — multi-language indexing,
 hybrid retrieval, dependency graphs, and a Model Context Protocol server.
@@ -14,7 +14,7 @@ hybrid retrieval, dependency graphs, and a Model Context Protocol server.
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-526CFE.svg)](docs/index.md)
 
-CodeMiner builds reusable indexes over a repository, then serves those indexes
+CodeNib builds reusable indexes over a repository, then serves those indexes
 to agents, web UIs, and evaluation harnesses. The core surfaces are:
 
 - source chunking and repository manifests;
@@ -22,6 +22,11 @@ to agents, web UIs, and evaluation harnesses. The core surfaces are:
 - SCIP/LSP-backed symbol graphs with source-linked nodes and edges;
 - a stdio **Model Context Protocol** server for agent tools;
 - a DeepWiki-style web UI for browsing indexed repositories.
+
+> **Naming compatibility:** CodeNib is the product name. The Python package,
+> existing `codeminer-*` commands, `CODEMINER_*` environment variables,
+> `.codeminer*` state paths, repository URL, and published dataset identities
+> remain stable during this migration.
 
 Language coverage varies by surface. See the generated
 [Language Capabilities](docs/language_capabilities.md) matrix for the current
@@ -67,7 +72,7 @@ ignored `qa_config.local.yaml` and follow [Running Locally](docs/running-locally
 > toolchain used by the graph backends. `make multilang-tools` installs the wider
 > cold-start smoke toolchains tracked in the language matrix.
 
-## Why CodeMiner
+## Why CodeNib
 
 | | |
 |---|---|
@@ -93,7 +98,7 @@ ignored `qa_config.local.yaml` and follow [Running Locally](docs/running-locally
 The main product path is index -> retrieve/query -> serve. Experimental agent
 harnesses, graph-routing studies, and SCIP cold-start roadmaps live in the docs
 because they guide development, but they are not prerequisites for using
-CodeMiner as an MCP server or web-backed code browser.
+CodeNib as an MCP server or web-backed code browser.
 
 ## Documentation
 
@@ -119,6 +124,6 @@ cloning. The test suite is split into tiered pytest markers run as separate CI j
 
 ## License
 
-CodeMiner is licensed under the [Apache License, Version 2.0](LICENSE).
+CodeNib is licensed under the [Apache License, Version 2.0](LICENSE).
 Contributions previously made under the MIT License are retained under the terms of
 Section 4 of Apache 2.0.

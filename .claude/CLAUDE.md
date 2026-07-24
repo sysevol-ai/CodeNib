@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-CodeMiner is a code analysis agent with graph-enhanced search. It parses
+CodeNib is a code analysis agent with graph-enhanced search. It parses
 multi-language codebases with tree-sitter, builds semantic graphs (igraph),
 and provides hybrid retrieval (BM25 + FAISS/Milvus embeddings + regex/trigram +
 LLM re-ranking) via litellm. Retrieval is exposed both as composable agent

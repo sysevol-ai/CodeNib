@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Embedding module for CodeMiner.
+Embedding module for CodeNib.
 Provides vector storage and semantic search capabilities for code chunks.
 """
 

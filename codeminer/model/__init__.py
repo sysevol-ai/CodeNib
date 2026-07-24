@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Model module for CodeMiner."""
+"""Model module for CodeNib."""
 
 from .agentless_pipeline import AgentlessPipeline
 from .bm25_retrieve_pipeline import BM25RetrievePipeline

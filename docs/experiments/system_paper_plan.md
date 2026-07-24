@@ -4,11 +4,11 @@ SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeMiner systems paper plan
+# CodeNib systems paper plan
 
 ## Thesis
 
-CodeMiner is a snapshot-indexed semantic service for software-engineering
+CodeNib is a snapshot-indexed semantic service for software-engineering
 agents. It compiles an immutable repository snapshot once, exposes the result
 through retrieval, graph-navigation, and LSP-shaped interfaces, and reuses the
 same artifacts across benchmark instances, queries, models, agent arms, and
@@ -45,7 +45,7 @@ The source/profile split follows established content-addressed build-cache
 principles rather than using an instance ID as artifact identity. Bazel, for
 example, separates action metadata from content-addressed outputs. SCIP already
 provides a language-neutral static code-intelligence representation. The
-CodeMiner contribution is the agent systems layer joining reusable snapshot
+CodeNib contribution is the agent systems layer joining reusable snapshot
 artifacts, compatibility-guarded serving, and context lifecycle management.
 
 ## Research questions
@@ -78,7 +78,7 @@ first-class outcomes, not filtered failures.
 With model, task, prompt, tools, and output contract fixed, does the shared
 semantic service reduce agent wall time, billed cost, raw tokens, and turns?
 
-Primary comparison: live/dynamic semantic backend versus CodeMiner static
+Primary comparison: live/dynamic semantic backend versus CodeNib static
 backend. Grep-only, eager preload, and compact context are secondary ablations.
 Task quality is a non-inferiority guard, not inferred from a non-significant
 difference.
@@ -281,13 +281,13 @@ randomization and prompt caching disabled:
 |---|---|---|---|
 | `filesystem` | yes | no | none |
 | `live_lsp` | yes | definition + references | live JSON-RPC |
-| `codeminer_lsp` | yes | definition + references | static CodeMiner index |
+| `codeminer_lsp` | yes | definition + references | static CodeNib index |
 
 The model chooses whether and when to call LSP. There is no forced tool choice,
 request injection, preload, compact mode, graph route tool, or outcome-based
 case admission. The two LSP arms have identical system-prompt and tool-schema
 hashes. Native definition/reference schemas require `file_path`, `line`, and
-`character` in both arms; symbol-name navigation remains a separate CodeMiner
+`character` in both arms; symbol-name navigation remains a separate CodeNib
 extension.
 
 The primary quality endpoint is answer-block recall@5 with a 5-point
@@ -508,6 +508,6 @@ non-inferiority margin before running held-out repositories.
 - [Bazel remote caching](https://bazel.build/remote/caching) is prior art for
   reusable content-addressed build outputs.
 
-CodeMiner should therefore be evaluated as an amortized semantic service for
+CodeNib should therefore be evaluated as an amortized semantic service for
 agents, not as a claim that static indexing, code graphs, or content-addressed
 caching are individually new.

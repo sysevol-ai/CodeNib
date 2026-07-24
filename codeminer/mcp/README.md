@@ -4,10 +4,10 @@ SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeMiner MCP Server
+# CodeNib MCP Server
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes
-CodeMiner's search over a **pre-built index** to LLM agents. It serves four search
+CodeNib's search over a **pre-built index** to LLM agents. It serves four search
 tools — vector (semantic), BM25, regex, and Zoekt trigram — plus a manifest tool, a
 usage-guidance prompt, and a status helper. Transport is stdio.
 

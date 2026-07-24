@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # MCP Server
 
-CodeMiner ships a [Model Context Protocol](https://modelcontextprotocol.io/) server
+CodeNib ships a [Model Context Protocol](https://modelcontextprotocol.io/) server
 (`codeminer-mcp`) that exposes its search over a **pre-built index** to LLM agents.
 It is query-only: build a repository index once, then point the server at the
 resulting manifest.

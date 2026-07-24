@@ -245,7 +245,7 @@ def render_lsp_provider_validation_markdown(
 
     lines = ["# LSP provider validation", ""]
     lines.append(
-        "Each row replays one graph-facing LSP request through CodeMiner's "
+        "Each row replays one graph-facing LSP request through CodeNib's "
         "static index and a reference provider such as JSON-RPC LSP."
     )
     lines.append("")
@@ -423,7 +423,7 @@ def fingerprint_lsp_start_locations(nodes: Sequence[Any]) -> str:
     """Fingerprint LSP results by repo-relative file and start line only.
 
     This is the strictest equivalence mode shared by live JSON-RPC LSP and
-    CodeMiner's static graph today. Static graph results may carry richer symbol
+    CodeNib's static graph today. Static graph results may carry richer symbol
     names and enclosing ranges than a language server's definition response, so
     full-result fingerprints can be too strict for the first acceleration gate.
     """
@@ -449,7 +449,7 @@ def fingerprint_lsp_start_locations(nodes: Sequence[Any]) -> str:
 def fingerprint_lsp_start_location_set(nodes: Sequence[Any]) -> str:
     """Fingerprint unordered repo-relative file/start-line result sets.
 
-    LSP servers do not guarantee the same reference ordering as CodeMiner's
+    LSP servers do not guarantee the same reference ordering as CodeNib's
     graph traversal. Use this for capabilities such as references where the
     agent-visible contract is the returned location set, not provider order.
     """

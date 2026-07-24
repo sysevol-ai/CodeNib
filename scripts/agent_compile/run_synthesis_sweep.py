@@ -42,7 +42,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 
 def _load_normalized(config_name: str) -> List[Dict[str, Any]]:
-    """Load + normalize one synthesis config into common CodeMiner rows."""
+    """Load + normalize one synthesis config into common CodeNib rows."""
     from datasets import load_dataset
 
     from codeminer.dataset.codeminer_synthesis import normalize_synthesis_record

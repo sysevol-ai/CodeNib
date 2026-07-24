@@ -83,7 +83,7 @@ export default function AskPanel({ repoId, repo }: { repoId: string; repo: strin
         )}
         {messages.map((m, i) => (
           <div className={`msg ${m.role}`} key={i}>
-            <div className="role">{m.role === "user" ? "You" : "CodeMiner"}</div>
+            <div className="role">{m.role === "user" ? "You" : "CodeNib"}</div>
             <div className={`bubble ${m.error ? "error" : ""}`}>
               {m.role === "assistant" && !m.error ? <Markdown>{m.text}</Markdown> : m.text}
               {m.citations && m.citations.length > 0 && (
@@ -99,7 +99,7 @@ export default function AskPanel({ repoId, repo }: { repoId: string; repo: strin
         ))}
         {loading && (
           <div className="msg assistant">
-            <div className="role">CodeMiner</div>
+            <div className="role">CodeNib</div>
             <div className="bubble thinking">Searching the codebase…</div>
           </div>
         )}

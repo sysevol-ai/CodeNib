@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Source-of-truth label taxonomy for CodeMiner.
+# Source-of-truth label taxonomy for CodeNib.
 #
 # Four orthogonal dimensions — each issue picks at most one label per prefix:
 #   type/      (blue)   — what kind of change

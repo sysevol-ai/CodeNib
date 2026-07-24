@@ -6,7 +6,7 @@
 
 This benchmark keeps the latency question below the agent loop: generate or
 load deterministic LSP-shaped requests, replay the same requests against
-CodeMiner's static graph provider and a live JSON-RPC language server, then
+CodeNib's static graph provider and a live JSON-RPC language server, then
 aggregate latency only for rows whose agent-visible fingerprints match.
 """
 

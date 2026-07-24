@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Local open-model backend (Qwen2.5-Coder + Qwen3.5) — agent eval
 
-Can the CodeMiner agent run on **local open models** instead of a cloud API, and
+Can the CodeNib agent run on **local open models** instead of a cloud API, and
 does the pre-load context-engine help? Yes to running. The headline finding:
 
 > **Pre-load's value is inversely proportional to the model's own agentic

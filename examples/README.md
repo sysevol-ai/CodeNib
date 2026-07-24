@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeMiner examples
+# CodeNib examples
 
-Runnable scripts that demonstrate CodeMiner's retrieval and agent stacks and
+Runnable scripts that demonstrate CodeNib's retrieval and agent stacks and
 double as the evaluation harnesses used in the experiments under
 [`docs/experiments/`](../docs/experiments/). They fall into four groups:
 
@@ -33,13 +33,13 @@ Most scripts accept `--filter-instance <regex>` to run a single instance and
 
 ## 1. Agent (end-to-end)
 
-The agent loop lets an LLM pick CodeMiner skills/tools (`bm25_search`,
+The agent loop lets an LLM pick CodeNib skills/tools (`bm25_search`,
 `embedding_search`, `graph_expand`, the always-on `file_read` / `file_search`
 primitives, …) and iterate to a localization answer.
 
 | Script | What it shows |
 |--------|---------------|
-| [`skill_agent_aot.py`](skill_agent_aot.py) | **Start here.** Two-phase AoT (ahead-of-time) flow via the public API: `compile_repo()` writes a `RepoManifest` + indexes, then `query()` runs the agent against it. Self-contained — defaults to indexing CodeMiner itself with BM25 only. |
+| [`skill_agent_aot.py`](skill_agent_aot.py) | **Start here.** Two-phase AoT (ahead-of-time) flow via the public API: `compile_repo()` writes a `RepoManifest` + indexes, then `query()` runs the agent against it. Self-contained — defaults to indexing CodeNib itself with BM25 only. |
 | [`skill_agent.py`](skill_agent.py) | The same two-phase pattern wired **by hand** (`IndexCompiler` + `BM25CodeIndexer` + `AgentRunner`). Drop down to this for custom builder registries / partial rebuilds. |
 | [`skill_agent_eval.py`](skill_agent_eval.py) | Evaluation driver: runs `AgentRunner` with an arbitrary skill subset (`--skills`) over SWE-bench / codeminer-base, reporting retrieval accuracy + token usage. Supports `--compile-table` for query-time skill selection (CAR). |
 
@@ -105,7 +105,7 @@ which is where prebuilt indices get their type.
 
 ## 3. Third-party agent baselines (`codeminer/clients/`)
 
-Read-only localization agents built on **external** vendor SDKs (not CodeMiner's
+Read-only localization agents built on **external** vendor SDKs (not CodeNib's
 own agent stack), scored against the same ground truth as the retrieval
 baselines via [`codeminer/eval/loc_agent_runner.py`](../codeminer/eval/loc_agent_runner.py).
 The vendor SDKs are intentionally **not** declared in `pyproject.toml` — install

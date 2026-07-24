@@ -48,7 +48,7 @@ def has_content(node: QueriedNode) -> bool:
 
 
 def is_symbol_candidate(node: QueriedNode) -> bool:
-    """Return true when a node type is a CodeMiner symbol type."""
+    """Return true when a node type is a CodeNib symbol type."""
     return is_symbol_node(node.type)
 
 

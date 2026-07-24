@@ -57,3 +57,11 @@ repos:
     hooks:
       - id: flake8
         additional_dependencies: [flake8-bugbear]
+
+  - repo: local
+    hooks:
+      - id: codenib-branding
+        name: (Brand) Check CodeNib display names and assets
+        entry: python scripts/check_branding.py
+        language: system
+        pass_filenames: false

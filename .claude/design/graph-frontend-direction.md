@@ -68,7 +68,7 @@ for — is **compiler-derived reference edges anchored to exact occurrence sites
 |---|---|---|---|
 | **GitNexus** | tree-sitter AST + heuristic resolution (12-phase DAG, MRO/import inference), every edge carries a **confidence tier** (0.5–0.95) | node-to-node; docs describe no per-invocation file+line | not advertised |
 | **DeepWiki** | LLM/RAG; emits prose + diagrams + an Ask interface | line-level **citations** (RAG-selected evidence opening the file on GitHub) | citations, not traversable graph edges |
-| **CodeMiner** | **SCIP / clangd** semantic indexes | `anchor_file` + `anchor_line` **on every reference edge** | **yes — once threaded to the UI** |
+| **CodeNib** | **SCIP / clangd** semantic indexes | `anchor_file` + `anchor_line` **on every reference edge** | **yes — once threaded to the UI** |
 
 **Hero interaction:** click an edge → the code pane opens at the *exact call site*,
 highlighted. "Verifiable code intelligence, not vibes." That is hard to copy

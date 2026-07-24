@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # SCIP Multi-Language Roadmap
 
-This is the long-running goal for CodeMiner's multi-language graph indexing and
+This is the long-running goal for CodeNib's multi-language graph indexing and
 acceleration work. Keep it current when a PR lands, when a candidate backend is
 promoted, or when an issue is closed because the roadmap gate is satisfied.
 
@@ -23,7 +23,7 @@ The language registry records SCIP cold-start state explicitly:
 | --- | --- | --- |
 | `active` | Python, Go, Rust, C#, Java, Kotlin, Ruby, Scala, JavaScript, TypeScript, PHP | Routed through existing SCIP cold-start paths. Ruby and PHP use hybrid active routes: prepared Bundler/Composer projects prefer SCIP and loose or unprepared projects fall back to LSP. Kotlin and Scala are active through `scip-java`; Scala is limited to Scala 2.x Gradle/SBT projects without a registered LSP baseline. |
 | `candidate` | none | No candidate SCIP backend is currently waiting on promotion gates. |
-| `none` | C++, Swift, Lua | No accepted SCIP cold-start plan in CodeMiner today. C++ uses clangd-style graph indexing. |
+| `none` | C++, Swift, Lua | No accepted SCIP cold-start plan in CodeNib today. C++ uses clangd-style graph indexing. |
 
 Generic LSP graph support for Java, C#, Kotlin, Ruby, and PHP remains available
 through `graph_route="lsp"` for regression checks and for loose-file fallback.
@@ -314,7 +314,7 @@ Scala gate after adding a pinned Makefile SBT install under
 reference edges. `scip-java` indexing took about 74.527s, protoc decode took
 about 0.099s, Python graph decode took about 2.156s, and range-index
 construction took about 0.069s. There is no registered Scala LSP route in
-CodeMiner, so promotion uses generated Scala 2.13 smoke plus the real SBT smoke
+CodeNib, so promotion uses generated Scala 2.13 smoke plus the real SBT smoke
 instead of a Metals alignment baseline. A Scala 3 Gradle probe failed because
 the injected SemanticDB scalac plugin did not match the compiler path, so Scala
 3 support is not proven by this promotion.
@@ -391,7 +391,7 @@ the generic Ruby LSP or Intelephense route.
   `graph_route="lsp"` and keeps `graph_route="scip-candidate"` as a pure SCIP
   gate.
 - [x] Promote Ruby only if symbol/reference coverage is better than or equal
-  to the current LSP path for CodeMiner use cases, or if accepted tolerances are
+  to the current LSP path for CodeNib use cases, or if accepted tolerances are
   documented.
 
 Exit condition: Ruby and PHP active hybrid states reflect measured

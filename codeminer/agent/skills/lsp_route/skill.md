@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # lsp_route
 
-Static-index semantic route map backed by CodeMiner's symbol graph, not a live
+Static-index semantic route map backed by CodeNib's symbol graph, not a live
 LSP server. Use it early when a localization request names a symbol, error code,
 config field, API, or cross-file behavior and you need a compact map of likely
 endpoint, bridge/factory, provider/value, and type anchors.

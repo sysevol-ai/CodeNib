@@ -1,6 +1,6 @@
 # Frontend loop — running & iterating the web demo
 
-How to run, screenshot, and self-critique CodeMiner's web demo (the
+How to run, screenshot, and self-critique CodeNib's web demo (the
 DeepWiki-style repo browser: **wiki / codemap / ask**). This is the playbook for
 any agent doing a UI iteration loop. For where the product is *headed* (graph
 overhaul, differentiation), see [`graph-frontend-direction.md`](../design/graph-frontend-direction.md).

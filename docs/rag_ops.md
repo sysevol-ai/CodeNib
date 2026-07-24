@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # RAG Ops And Planner
 
-CodeMiner keeps RAG behavior in two layers:
+CodeNib keeps RAG behavior in two layers:
 
 - `codeminer/ops/` contains small retrieval operators and typed contexts.
 - `codeminer/model/` chooses and executes pipeline policy.
@@ -31,7 +31,7 @@ dedicated pipelines and graph components.
 
 ## Expressiveness
 
-The current ops are enough to express the common CodeMiner RAG paths:
+The current ops are enough to express the common CodeNib RAG paths:
 
 - dense-only semantic retrieval
 - sparse/BM25 lexical retrieval

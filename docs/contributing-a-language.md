@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Contributing a Language
 
-CodeMiner language support is deliberately split into layers. A language can
+CodeNib language support is deliberately split into layers. A language can
 ship with chunking and retrieval first, then add graph indexing, incremental
 patching, and optional C++ acceleration later. This guide keeps those steps
 explicit so new language work does not become a scattered edit across chunkers,
@@ -187,7 +187,7 @@ Current generic LSP cold-start graph commands are:
 | Java | `jdtls` | Eclipse JDT LS; Maven/Gradle-shaped projects provide better reference coverage than loose files. |
 | C# | `csharp-ls` | Requires a .NET SDK. User-level installs under `~/.dotnet/tools` are auto-resolved. |
 | Ruby | `ruby-lsp` | Requires Ruby headers/native extension support for the `prism` dependency. A user-level `mise` Ruby plus libyaml works without system Ruby headers. |
-| PHP | `intelephense --stdio` | Install with npm; CodeMiner uses stdio mode. |
+| PHP | `intelephense --stdio` | Install with npm; CodeNib uses stdio mode. |
 | Kotlin | `kotlin-language-server --stdio` | The JetBrains standalone archive exposes `bin/intellij-server`; symlink or wrap it as `kotlin-language-server`. |
 
 Swift and Lua currently ship as tree-sitter-only languages in the capability

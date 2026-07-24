@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent Skills
 
-CodeMiner's retrieval, reranking, and graph-expansion capabilities are packaged as
+CodeNib's retrieval, reranking, and graph-expansion capabilities are packaged as
 **skills** — self-contained units of metadata + execution logic that an LLM agent can
 select and invoke. Skills live under `codeminer/agent/skills/`.
 

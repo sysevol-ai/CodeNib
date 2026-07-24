@@ -11,13 +11,13 @@ Last revised: 2026-07-05
 
 This page is the durable plan for the post-#271 agent runner work. PR #271 stays
 as a spike and evidence bundle, not as a merge candidate. The useful pieces must
-be extracted through small reviewable PRs that improve CodeMiner's reusable
+be extracted through small reviewable PRs that improve CodeNib's reusable
 runner, graph tooling, or evaluation harness without baking benchmark-specific
 behavior into production defaults.
 
 ## Operating Thesis
 
-CodeMiner should give agents a repository-context advantage over a plain LLM
+CodeNib should give agents a repository-context advantage over a plain LLM
 shell. The core harness should expose graph, chunk, symbol, search, and LSP
 context as first-class tools with provenance, cost, freshness, and consumption
 state. Experiments should measure which capabilities help, but only reusable
@@ -79,7 +79,7 @@ overfitting.
   alias gap, format gap, context/runtime failure, and infrastructure failure.
 - A runtime default cannot be promoted from a single fixed slice or a single
   model. A model-specific recipe may remain experiment-only.
-- External baselines should compare CodeMiner's harness against general coding
+- External baselines should compare CodeNib's harness against general coding
   agents with similar task inputs, not against hidden scorer details.
 
 ## Milestone Backlog
@@ -99,7 +99,7 @@ would catch regressions independent of a single scorer result.
 | M6: Quarantine scorer-shaped runtime defaults | Landed in #289 | Localization schema forcing becomes opt-in harness policy | Production/default runners are not shaped by localization scorer formatting |
 | M7: Context ledger runtime contract | Landed in #291 | First-class context items with provenance, token/cost accounting, freshness, and consumption state | Unit tests can explain why context was injected, used, skipped, or expired |
 | M8: Trace replay and diagnostics | Landed in #292 | Eval package reconstructs tool use, context consumption, answer spans, and failure category from trace records | Reports diagnose behavior without provider logs or script-specific parsing |
-| M9: External-agent and LSP baseline harness | In progress | Comparable task runner for CodeMiner, Codex, Claude Code, and OpenCode-style LSP workflows | Baseline reports separate harness advantage from answer-format compliance |
+| M9: External-agent and LSP baseline harness | In progress | Comparable task runner for CodeNib, Codex, Claude Code, and OpenCode-style LSP workflows | Baseline reports separate harness advantage from answer-format compliance |
 | M10: Promotion gates and cleanup | Planned | Raw/normalized metrics, held-out gates, and deprecation/removal of legacy script shims | Runtime defaults require smoke plus holdout evidence; scripts stay thin |
 
 ## Immediate PR Queue

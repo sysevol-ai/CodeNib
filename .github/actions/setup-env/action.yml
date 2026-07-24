@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-name: "Setup CodeMiner Environment"
+name: "Setup CodeNib Environment"
 description: "Shared environment setup for CI jobs (conda, scip, toolchains)"
 
 inputs:

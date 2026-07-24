@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "CodeNib Wiki · AI documentation you can talk to",
   description:
-    "Browse AI-generated, source-grounded documentation for indexed repositories — and ask questions answered with citations, powered by CodeMiner.",
+    "Browse AI-generated, source-grounded documentation for indexed repositories — and ask questions answered with citations, powered by CodeNib.",
   icons: { icon: "/codenib-icon.svg" },
 };
 

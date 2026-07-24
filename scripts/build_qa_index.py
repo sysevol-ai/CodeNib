@@ -4,11 +4,11 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Build CodeMiner indexes for code-QA demo repos.
+"""Build CodeNib indexes for code-QA demo repos.
 
 Selects a varied set of instances from the **codeminer-base-dataset**, checks
 out each repo at its ``base_commit`` (via ``CodeMinerBaseDataset`` /
-``process_instance``), builds CodeMiner indexes with ``IndexCompiler``, and
+``process_instance``), builds CodeNib indexes with ``IndexCompiler``, and
 writes ``<data_dir>/qa_registry.json`` describing what was indexed. The server
 (``codeminer-web``) reads that registry.
 

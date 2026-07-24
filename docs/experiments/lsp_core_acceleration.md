@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 ## Dynamic Provider Acceleration
 
 The agent-facing LSP contract should stay stable while the backend can switch
-from live JSON-RPC to CodeMiner's static graph index when the static index can
+from live JSON-RPC to CodeNib's static graph index when the static index can
 serve the same request shape.
 
 Current implementation:
@@ -22,11 +22,11 @@ Current implementation:
   trace-only provider metadata.
 - Native definition/reference skills expose only the common JSON-RPC contract:
   `file_path`, `line`, and `character`. Symbol-only lookup is a
-  CodeMiner extension and stays behind `lsp_route` rather than silently giving
+  CodeNib extension and stays behind `lsp_route` rather than silently giving
   the static arm a stronger tool.
 - Native `definition` and `references` results are normalized to a stable,
   provider-independent location DTO. Rich symbol nodes remain available through
-  the CodeMiner-only `route` capability.
+  the CodeNib-only `route` capability.
 - MCP `lsp_*` tools use the same provider and keep their serialized output
   format unchanged.
 - Runtime traces record `lsp_provider`, `lsp_result_fingerprint`, and a compact
@@ -38,7 +38,7 @@ Current implementation:
   static and live paths can be compared by fingerprint.
 
 This is the system-level acceleration path: if an agent asks for an LSP-like
-operation, CodeMiner can satisfy supported requests from the static index
+operation, CodeNib can satisfy supported requests from the static index
 without starting or round-tripping through a language server. It is separate
 from startup preload and compact-context experiments.
 
@@ -53,7 +53,7 @@ the task-level agent ablation does not filter cases by equivalence.
 Full native LSP behavior is intentionally a larger contract than this gate:
 language servers can return token selection ranges instead of symbol scopes,
 choose import aliases or re-export sites, account for unsaved buffers, and
-depend on workspace/build configuration. CodeMiner should not claim universal
+depend on workspace/build configuration. CodeNib should not claim universal
 JSON-RPC equivalence from a static snapshot. It should claim fast-path
 equivalence only for the request classes whose fingerprints match under the
 agent-visible output contract, and fall back explicitly otherwise.
@@ -119,13 +119,13 @@ cases.
 The default `--fingerprint-mode auto` uses ordered start-location fingerprints
 for `textDocument/definition` and unordered start-location sets for
 `textDocument/references`. Live LSP servers may return references in a
-different order than CodeMiner's graph traversal, so ordered fingerprints can
+different order than CodeNib's graph traversal, so ordered fingerprints can
 turn a valid location-set match into a false mismatch. Use
 `--fingerprint-mode ordered-start` only when provider order is part of the
 contract being tested.
 
 The CLI validates native JSON-RPC LSP only. It rejects `codeminer/lspRoute`
-before starting a language server because route is a CodeMiner extension, not a
+before starting a language server because route is a CodeNib extension, not a
 native LSP request.
 
 The live path requires an installed language server or an override such as
@@ -364,7 +364,7 @@ Latest local pilot, using a two-file temporary Python repo and
 The pilot exposed three experiment-design constraints:
 
 - Do not include `codeminer/lspRoute` in static-vs-live JSON-RPC equivalence
-  gates. It is a CodeMiner extension, not a native LSP request.
+  gates. It is a CodeNib extension, not a native LSP request.
 - References should usually be gated by unordered start-location set equality;
   otherwise provider ordering differences dominate the result.
 - Symbol-graph edges alone are not sufficient for native position queries.

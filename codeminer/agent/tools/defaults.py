@@ -103,7 +103,7 @@ _SKIP_DIR_PREFIXES = frozenset(
 
 # `grep` file-type filter: maps a language token to the extensions it covers.
 # Mirrors the reference Grep's ``type`` parameter (ripgrep types) for the
-# languages CodeMiner indexes, plus a few common siblings.
+# languages CodeNib indexes, plus a few common siblings.
 _TYPE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
     "py": (".py", ".pyi"),
     "python": (".py", ".pyi"),

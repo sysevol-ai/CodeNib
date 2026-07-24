@@ -32,7 +32,7 @@ def _ordered_unique_strings(
 
 
 def default_agent_skills_dir() -> Path:
-    """Return the packaged CodeMiner agent skills directory."""
+    """Return the packaged CodeNib agent skills directory."""
     return Path(__file__).resolve().parents[2] / "agent" / "skills"
 
 

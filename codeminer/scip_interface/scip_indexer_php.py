@@ -359,7 +359,7 @@ class SCIPPHPIndexer(SCIPIndexerBase):
         commands = (
             ["git", "init", "-q"],
             ["git", "config", "user.email", "codeminer@example.invalid"],
-            ["git", "config", "user.name", "CodeMiner"],
+            ["git", "config", "user.name", "CodeNib"],
             ["git", "add", "-A"],
             ["git", "commit", "-qm", "codeminer php scip worktree"],
         )

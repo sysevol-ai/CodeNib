@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""CodeMiner MCP server - exposes backbone capabilities over stdio.
+"""CodeNib MCP server - exposes backbone capabilities over stdio.
 
 Provides MCP tools for semantic indexing, CodeGraph, and hybrid retrieval
 (vector, BM25, regex, Zoekt trigram) for external agent frameworks.

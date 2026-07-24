@@ -269,8 +269,8 @@ gem "scip-ruby", {_SCIP_RUBY_VERSION!r}
 Gem::Specification.new do |spec|
   spec.name = "smoke"
   spec.version = "0.1.0"
-  spec.summary = "CodeMiner scip-ruby smoke project"
-  spec.authors = ["CodeMiner"]
+  spec.summary = "CodeNib scip-ruby smoke project"
+  spec.authors = ["CodeNib"]
   spec.files = ["lib/invoice.rb"]
 end
 """.strip()
@@ -301,7 +301,7 @@ end
             """
 {
   "name": "codeminer/php-scip-smoke",
-  "description": "CodeMiner scip-php smoke project",
+  "description": "CodeNib scip-php smoke project",
   "type": "project",
   "autoload": {
     "psr-4": {
@@ -1073,7 +1073,7 @@ def _init_git_smoke_root(root: Path, *, timeout: int) -> str | None:
     commands = (
         [git, "init"],
         [git, "config", "user.email", "codeminer@example.invalid"],
-        [git, "config", "user.name", "CodeMiner"],
+        [git, "config", "user.name", "CodeNib"],
         [git, "add", "composer.json", "src/Billing/Invoice.php"],
         [git, "commit", "-m", "php scip smoke"],
     )

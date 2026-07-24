@@ -294,7 +294,7 @@ class WikiBuilder:
             lines += [
                 f"`{self._entry.repo}` is indexed at commit "
                 f"`{self._entry.commit_short}` ({lang}). This wiki is generated from "
-                f"CodeMiner's static analysis of **{n_files} source files** and "
+                f"CodeNib's static analysis of **{n_files} source files** and "
                 f"**{total_syms} symbols**, grouped into the modules below.",
                 "",
             ]
@@ -487,7 +487,7 @@ class WikiBuilder:
                 "# Architecture",
                 "",
                 (
-                    "CodeMiner grouped this repository into the following modules. "
+                    "CodeNib grouped this repository into the following modules. "
                     + "Select a module in the sidebar to explore its components."
                 ),
                 "",

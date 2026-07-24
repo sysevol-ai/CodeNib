@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="CodeMiner Code QA", lifespan=lifespan)
+app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

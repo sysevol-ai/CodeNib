@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""LSP-compatible providers over CodeMiner static indexes.
+"""LSP-compatible providers over CodeNib static indexes.
 
 The agent-facing contract remains LSP-shaped. This module chooses the static
 index implementation and records enough metadata for traces to prove which
@@ -84,7 +84,7 @@ class LSPProviderNodes(list):
 
 
 class StaticLSPProvider:
-    """LSP-shaped provider backed by a loaded CodeMiner symbol graph."""
+    """LSP-shaped provider backed by a loaded CodeNib symbol graph."""
 
     provider = STATIC_LSP_PROVIDER
 
@@ -263,7 +263,7 @@ class StaticLSPProvider:
         top_k: int = 12,
         include_neighbors: bool = True,
     ) -> LSPProviderNodes:
-        """Serve CodeMiner's LSP-shaped route extension from the static graph."""
+        """Serve CodeNib's LSP-shaped route extension from the static graph."""
 
         self._require(CAPABILITY_ROUTE)
         nodes = lsp_route(

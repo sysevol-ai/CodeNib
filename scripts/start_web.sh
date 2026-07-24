@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# Start the CodeMiner FastAPI backend pointed at a local LLM server.
+# Start the CodeNib FastAPI backend pointed at a local LLM server.
 # Run this in Terminal 2 (on your main machine).
 # See docs/running-locally.md for the full setup guide.
 
@@ -25,13 +25,13 @@ fi
 
 # ── Prerequisites ────────────────────────────────────────────────────────────
 
-echo "=== CodeMiner Backend ==="
+echo "=== CodeNib Backend ==="
 echo ""
 
 # Must run from repo root
 if [ ! -f "$CONFIG_PATH" ]; then
     echo "ERROR: config not found: $CONFIG_PATH"
-    echo "Run this script from the CodeMiner repo root:"
+    echo "Run this script from the CodeNib repo root:"
     echo "  cd ~/projects/CodeMiner/CodeMiner"
     echo "  bash scripts/start_web.sh"
     echo ""
@@ -109,7 +109,7 @@ echo "  Override with CODEMINER_DEMO_MODEL or CODEMINER_DEMO_CONFIG if needed."
 # ── Launch ────────────────────────────────────────────────────────────────────
 
 echo ""
-echo "Starting CodeMiner backend..."
+echo "Starting CodeNib backend..."
 echo "  Backend:  http://localhost:$BACKEND_PORT"
 echo "  LLM:      $LLM_BASE"
 echo "  Model:    $LOCAL_MODEL"

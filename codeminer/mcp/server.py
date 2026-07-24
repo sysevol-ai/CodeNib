@@ -2,10 +2,10 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""CodeMiner MCP server - stdio transport.
+"""CodeNib MCP server - stdio transport.
 
 Exposes vector (semantic), BM25, regex, and Zoekt trigram search over a
-pre-built CodeMiner index via the Model Context Protocol.
+pre-built CodeNib index via the Model Context Protocol.
 
 Usage::
 
@@ -51,7 +51,7 @@ def get_context() -> ServerContext:
 mcp = FastMCP(
     "codeminer",
     instructions=(
-        "CodeMiner provides code search over pre-built indexes. "
+        "CodeNib provides code search over pre-built indexes. "
         "Use search_semantic for vector/embedding similarity, "
         "search_bm25 for keyword lookups, search_regex for symbol-level "
         "pattern matching, and search_zoekt for fast trigram-based "
@@ -207,7 +207,7 @@ async def dependency_subgraph(
 @mcp.tool(
     name="lsp_definition",
     description=(
-        "Return compact definition locations from CodeMiner's static symbol "
+        "Return compact definition locations from CodeNib's static symbol "
         "graph. Provide either symbol or file_path + 1-based line. Results are "
         "locations only; read source before finalizing."
     ),
@@ -236,7 +236,7 @@ async def lsp_definition(
 @mcp.tool(
     name="lsp_references",
     description=(
-        "Return compact definition/reference locations from CodeMiner's static "
+        "Return compact definition/reference locations from CodeNib's static "
         "symbol graph. Provide either symbol or file_path + 1-based line. "
         "Results are locations only; read source before finalizing."
     ),
@@ -267,7 +267,7 @@ async def lsp_references(
 @mcp.tool(
     name="lsp_route",
     description=(
-        "Return compact route anchors from CodeMiner's static symbol graph for "
+        "Return compact route anchors from CodeNib's static symbol graph for "
         "one or more symbol seeds. Use this when multiple symbols need a route "
         "map across endpoint, bridge/factory, provider/value, or type anchors. "
         "Results are locations only; read source before finalizing."
@@ -313,7 +313,7 @@ async def get_manifest() -> dict[str, Any]:
 
 @mcp.prompt(
     name="codeminer-guide",
-    description="Guidance on how to use CodeMiner search tools effectively.",
+    description="Guidance on how to use CodeNib search tools effectively.",
 )
 async def codeminer_guide() -> str:
     return CODEMINER_GUIDE
@@ -373,7 +373,7 @@ def server_status() -> str:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="codeminer-mcp",
-        description="Start the CodeMiner MCP server (stdio transport).",
+        description="Start the CodeNib MCP server (stdio transport).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
