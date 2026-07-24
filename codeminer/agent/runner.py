@@ -1472,6 +1472,11 @@ class CodeMinerAgentOptions:
     session_extras: Dict[str, Any] = field(default_factory=dict)
 
 
+# Product-facing spelling; keep the original class object for import, type, and
+# serialized-name compatibility.
+CodeNibAgentOptions = CodeMinerAgentOptions
+
+
 def query(
     prompt: str,
     *,

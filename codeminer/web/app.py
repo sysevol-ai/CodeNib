@@ -11,7 +11,7 @@ Endpoints:
 
 Run with::
 
-    codeminer-web                       # uses demo_repos.yaml
+    codenib-web                         # uses demo_repos.yaml
     uvicorn codeminer.web.app:app       # for autoreload during dev
 """
 
@@ -376,7 +376,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
 
 def main() -> None:
-    """Console-script entry point: ``codeminer-web``."""
+    """Console entry point shared by ``codenib-web`` and ``codeminer-web``."""
     import uvicorn
 
     host = os.environ.get("CODEMINER_DEMO_HOST", "127.0.0.1")

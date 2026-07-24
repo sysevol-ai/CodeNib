@@ -9,7 +9,7 @@ pre-built CodeNib index via the Model Context Protocol.
 
 Usage::
 
-    codeminer-mcp --manifest /path/to/repo_manifest.json
+    codenib-mcp --manifest /path/to/repo_manifest.json
 
 Or as a module::
 
@@ -369,10 +369,23 @@ def server_status() -> str:
 # CLI entry point
 # ------------------------------------------------------------------
 
+_CLI_NAMES = frozenset({"codenib-mcp", "codeminer-mcp"})
 
-def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+
+def _cli_program_name() -> str:
+    invoked_name = Path(sys.argv[0]).name
+    if invoked_name in _CLI_NAMES:
+        return invoked_name
+    return "codenib-mcp"
+
+
+def _parse_args(
+    argv: list[str] | None = None,
+    *,
+    prog: str | None = None,
+) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="codeminer-mcp",
+        prog=prog or _cli_program_name(),
         description="Start the CodeNib MCP server (stdio transport).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -417,12 +430,14 @@ def init_server(manifest_path: str | Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """CLI entry point: ``codeminer-mcp <manifest>``."""
+    """CLI entry point shared by ``codenib-mcp`` and ``codeminer-mcp``."""
+    program_name = _cli_program_name()
     args = _parse_args(argv)
     manifest_path = args.manifest_flag or args.manifest
     if not manifest_path:
         logger.error(
-            "No manifest provided. Use: codeminer-mcp <manifest> or --manifest <path>"
+            "No manifest provided. Use: %s <manifest> or --manifest <path>",
+            program_name,
         )
         sys.exit(1)
 

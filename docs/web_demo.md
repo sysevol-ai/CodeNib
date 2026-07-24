@@ -70,10 +70,11 @@ From the repository root (so the relative `data_dir` resolves):
 # autoreload during dev:
 uvicorn codeminer.web.app:app --host 127.0.0.1 --port 8000
 # or the console script:
-codeminer-web                            # honors CODEMINER_DEMO_HOST/PORT
+codenib-web                              # honors CODEMINER_DEMO_HOST/PORT
 ```
 
-The `codeminer-web` console script maps to `codeminer.web.app:main`, which reads
+The `codenib-web` and compatibility `codeminer-web` console scripts both map to
+`codeminer.web.app:main`, which reads
 `CODEMINER_DEMO_HOST` (default `127.0.0.1`) and `CODEMINER_DEMO_PORT` (default
 `8000`). Index loading takes ~20s. Check it is up:
 

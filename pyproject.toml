@@ -49,6 +49,8 @@ dependencies = [
 ]
 
 [project.scripts]
+codenib-mcp = "codeminer.mcp.server:main"
+codenib-web = "codeminer.web.app:main"
 codeminer-mcp = "codeminer.mcp.server:main"
 codeminer-web = "codeminer.web.app:main"
 codeminer-lsp-provider-validate = "codeminer.eval.agent_runner.lsp_provider_cli:main"
@@ -70,7 +72,7 @@ dev = [
     "flake8-bugbear>=24.4.0",
     "mkdocs-material>=9.5.0",
 ]
-test = ["pytest>=6.0.0", "pytest-cov>=3.0.0", "pytest-xdist>=3.0.0", "pytest-timeout>=2.1.0", "filelock>=3.0.0"]
+test = ["pytest>=6.0.0", "pytest-cov>=3.0.0", "pytest-xdist>=3.0.0", "pytest-timeout>=2.1.0", "filelock>=3.0.0", "tomli>=1.1.0; python_version < '3.11'"]
 
 [tool.setuptools]
 include-package-data = true

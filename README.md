@@ -55,8 +55,10 @@ IndexCompiler(
 Serve that manifest to any MCP-capable agent:
 
 ```bash
-codeminer-mcp /path/to/repo/.codeminer_cache/repo_manifest.json   # stdio MCP server
+codenib-mcp /path/to/repo/.codeminer_cache/repo_manifest.json   # stdio MCP server
 ```
+
+The compatibility alias `codeminer-mcp` reaches the same implementation.
 
 For the browser UI, start the managed backend and frontend:
 

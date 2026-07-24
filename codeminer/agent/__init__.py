@@ -38,6 +38,7 @@ from .route_context import (
 from .runner import (
     AgentRunner,
     CodeMinerAgentOptions,
+    CodeNibAgentOptions,
     compile_repo,
     has_localization_contract,
     query,
@@ -59,6 +60,7 @@ __all__ = [
     "AgentRunner",
     "AGENT_TRACE_SCHEMA_VERSION",
     "AgentHarnessSpec",
+    "CodeNibAgentOptions",
     "CodeMinerAgentOptions",
     "ContextLedger",
     "ContextLedgerEntry",
