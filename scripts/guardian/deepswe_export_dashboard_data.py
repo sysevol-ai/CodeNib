@@ -9,8 +9,11 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deepswe_guardian_table import (
     COUNTED_JOB_IDS,

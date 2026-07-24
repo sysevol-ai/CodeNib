@@ -6,7 +6,7 @@
 
 Example:
 
-    python scripts/deepswe_guardian_ablation.py \\
+    python scripts/guardian/deepswe_guardian_ablation.py \\
         --model gpt-5.6-terra \\
         --reasoning-effort medium \\
         --tasks igel-persist-feature-schema
