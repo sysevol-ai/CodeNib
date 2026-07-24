@@ -8,7 +8,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.check_branding import _ASSET_MIRRORS, _asset_drift, _sync_assets
+from scripts.check_branding import (
+    _ASSET_MIRRORS,
+    _asset_drift,
+    _candidate_files,
+    _sync_assets,
+)
 
 
 def test_display_branding_and_asset_mirrors() -> None:
@@ -30,3 +35,22 @@ def test_sync_assets_copies_canonical_bytes(tmp_path: Path) -> None:
 
     assert _sync_assets(tmp_path) == []
     assert _asset_drift(tmp_path) == []
+
+
+def test_candidate_files_ignore_untracked_worktree_files(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("tracked")
+    staged = tmp_path / "staged.txt"
+    staged.write_text("staged")
+    subprocess.run(
+        ["git", "add", tracked.name, staged.name],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    (tmp_path / "scratch.txt").write_text("untracked")
+
+    candidates = {path.relative_to(tmp_path) for path in _candidate_files(tmp_path)}
+
+    assert candidates == {Path(tracked.name), Path(staged.name)}

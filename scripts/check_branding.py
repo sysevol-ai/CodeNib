@@ -45,7 +45,7 @@ def _repo_root() -> Path:
 
 def _candidate_files(root: Path) -> list[Path]:
     result = subprocess.run(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        ["git", "ls-files", "-z", "--cached"],
         cwd=root,
         check=True,
         capture_output=True,
