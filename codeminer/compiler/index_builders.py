@@ -25,6 +25,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 from .resources import IndexState, IndexStatus
+from .verification import NullVerifier, UpdateVerifier, VerificationResult
+
+logger = logging.getLogger(__name__)
 
 
 def _git_output(repo_path: str, *args: str) -> str:
@@ -39,9 +42,6 @@ def _git_output(repo_path: str, *args: str) -> str:
     except Exception:  # noqa: BLE001 - git absent or hung: treat as unknown
         return ""
     return result.stdout.strip() if result.returncode == 0 else ""
-
-
-logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -507,7 +507,7 @@ class SymbolGraphBuilder:
     # Admission control for incremental updates. The default proves nothing and
     # says so, which combined with require_verification=True means the builder
     # behaves exactly like a full rebuild until a real verifier is configured.
-    verifier: Optional[Any] = None
+    verifier: Optional[UpdateVerifier] = None
     # When True, an update that is not positively verified is discarded and the
     # graph is rebuilt. Callers that knowingly accept unverified incremental
     # results (e.g. a local demo) set this False; the manifest still records
@@ -627,7 +627,6 @@ class SymbolGraphBuilder:
         """Run the LSP patcher over every configured language. None = rebuild."""
         from ..graph.code_graph import CodeGraph
         from ..graph.incremental.graph_patcher import LANGUAGE_EXTENSIONS, GraphPatcher
-        from .verification import NullVerifier
 
         graph_path = os.path.join(output_dir, "graph.pkl")
         graph = CodeGraph.load_graph(graph_path)
@@ -637,7 +636,7 @@ class SymbolGraphBuilder:
         started: List[Any] = []
         changed_total = 0
         per_language: Dict[str, Any] = {}
-        start = time.time()
+        start = time.monotonic()
         try:
             for lang in graph_languages:
                 exts = LANGUAGE_EXTENSIONS.get(lang)
@@ -646,9 +645,7 @@ class SymbolGraphBuilder:
                 changed = GraphPatcher.detect_changed_files(
                     repo_path, last_commit, head, extensions=exts
                 )
-                count = sum(len(v) for k, v in changed.items() if k != "renamed") + len(
-                    changed.get("renamed", [])
-                )
+                count = sum(len(paths) for paths in changed.values())
                 if not count:
                     continue
 
@@ -676,19 +673,25 @@ class SymbolGraphBuilder:
 
         if changed_total == 0:
             logger.info("symbol_graph: no source changes for configured languages")
-
-        verifier = self.verifier or NullVerifier()
-        result = verifier.verify(
-            index_type="symbol_graph",
-            patched=graph,
-            fresh=None,
-            context={
-                "repo_path": repo_path,
-                "earlier_commit": last_commit,
-                "later_commit": head,
-                "languages": list(graph_languages),
-            },
-        )
+            result = VerificationResult(
+                verified=True,
+                checked=True,
+                reason="no changed source files for configured languages",
+                details={"method": "empty-relevant-diff"},
+            )
+        else:
+            verifier = self.verifier or NullVerifier()
+            result = verifier.verify(
+                index_type="symbol_graph",
+                patched=graph,
+                fresh=None,
+                context={
+                    "repo_path": repo_path,
+                    "earlier_commit": last_commit,
+                    "later_commit": head,
+                    "languages": list(graph_languages),
+                },
+            )
         if self.require_verification and not result.verified:
             logger.info(
                 "symbol_graph: update not admitted (%s); rebuilding", result.reason
@@ -696,7 +699,7 @@ class SymbolGraphBuilder:
             return None
 
         graph.save_graph(graph_path)
-        elapsed = time.time() - start
+        elapsed = time.monotonic() - start
         node_count = len(graph.graph.vs)
         return IndexStatus(
             index_type="symbol_graph",

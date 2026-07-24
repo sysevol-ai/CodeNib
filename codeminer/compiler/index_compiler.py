@@ -138,16 +138,39 @@ class IndexCompiler:
                 repo_path, index_types=index_types, cache_dir=cache_dir
             )
 
-        previous = existing.last_indexed_commit or existing.commit
+        types_to_update = index_types or self._config.index_types
+        incomplete = [
+            idx_type
+            for idx_type in types_to_update
+            if idx_type not in existing.indexes
+            or existing.indexes[idx_type].status != "fresh"
+        ]
+        # An explicitly empty last_indexed_commit means the previous full build
+        # never established a usable baseline. RepoManifest.from_dict() already
+        # maps legacy manifests that lack this field to `commit`, so falling
+        # back here would only hide a recorded failure.
+        previous = existing.last_indexed_commit
         head_commit = self._get_head_commit(repo_path)
         if not previous:
-            logger.info("Manifest records no indexed commit; rebuilding")
+            logger.info(
+                "Manifest records no complete indexed commit; rebuilding %s",
+                types_to_update,
+            )
             return self.compile_repo(
                 repo_path, index_types=index_types, cache_dir=cache_dir
             )
-        if head_commit and previous == head_commit:
+        if head_commit and previous == head_commit and not incomplete:
             logger.info("Indexes already at %s; nothing to update", head_commit[:8])
             return existing
+        if head_commit and previous == head_commit:
+            logger.info(
+                "Retrying incomplete indexes at %s: %s",
+                head_commit[:8],
+                incomplete,
+            )
+            return self.compile_repo(
+                repo_path, index_types=index_types, cache_dir=cache_dir
+            )
 
         logger.info(
             "Updating indexes %s -> %s", previous[:8], (head_commit or "HEAD")[:8]

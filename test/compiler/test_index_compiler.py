@@ -786,6 +786,39 @@ class TestUpdateRepo:
         # Not a no-op: the failure left work to do.
         assert calls, "update_repo short-circuited after a failed build"
 
+    def test_failed_initial_build_retries_at_unchanged_head(self, tmp_path):
+        """An empty baseline after a failed full build must not alias HEAD."""
+        head = _git_repo(tmp_path)
+        attempts = []
+
+        class FailOnceBuilder:
+            def build(self, scope: str, **kwargs) -> IndexStatus:
+                attempts.append("build")
+                if len(attempts) == 1:
+                    raise RuntimeError("transient build failure")
+                return _mock_builder("rec").build(scope, **kwargs)
+
+            def incremental_update(self, scope: str, **kwargs) -> IndexStatus:
+                attempts.append("incremental_update")
+                return _mock_builder("rec").build(scope, **kwargs)
+
+        registry = IndexBuilderRegistry()
+        registry.register("rec", FailOnceBuilder())
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(index_types=["rec"], languages=["python"]),
+        )
+
+        failed = compiler.compile_repo(str(tmp_path))
+        assert failed.commit == head
+        assert failed.last_indexed_commit == ""
+        assert failed.indexes["rec"].status == "failed"
+
+        recovered = compiler.update_repo(str(tmp_path))
+        assert attempts == ["build", "build"]
+        assert recovered.last_indexed_commit == head
+        assert recovered.indexes["rec"].status == "fresh"
+
 
 # ---------------------------------------------------------------------------
 # SymbolGraphBuilder incremental repair + admission control
@@ -939,3 +972,41 @@ class TestSymbolGraphIncremental:
             )
             is sentinel
         )
+
+    def test_empty_relevant_diff_is_admitted_without_verifier(
+        self, tmp_path, monkeypatch
+    ):
+        """A docs-only transition leaves the configured graph unchanged."""
+        from codeminer.graph.code_graph import CodeGraph
+        from codeminer.graph.incremental.graph_patcher import GraphPatcher
+
+        first = _git_repo(tmp_path)
+        _commit(tmp_path, "README.md")
+        out = tmp_path / "out"
+        out.mkdir()
+
+        graph = MagicMock()
+        graph.graph.vs = []
+        monkeypatch.setattr(CodeGraph, "load_graph", lambda path: graph)
+        monkeypatch.setattr(
+            GraphPatcher,
+            "detect_changed_files",
+            lambda *args, **kwargs: {
+                "added": [],
+                "modified": [],
+                "deleted": [],
+                "renamed": [],
+            },
+        )
+
+        status = self._builder()._patch_graph(
+            "current_repo", str(tmp_path), str(out), first
+        )
+
+        assert status is not None
+        assert status.metadata["changed_files"] == 0
+        assert status.metadata["verified"] is True
+        assert status.metadata["verification_details"] == {
+            "method": "empty-relevant-diff"
+        }
+        graph.save_graph.assert_called_once_with(str(out / "graph.pkl"))
