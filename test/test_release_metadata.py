@@ -67,3 +67,11 @@ def test_optional_capabilities_have_named_extras() -> None:
     assert {"faiss-cpu", "sentence-transformers"} <= _names(extras["semantic"])
     assert "igraph" in _names(extras["graph"])
     assert "mcp" in _names(extras["mcp"])
+
+
+def test_runtime_version_comes_from_distribution_metadata() -> None:
+    import codenib
+    from codenib._version import package_version
+
+    assert codenib.__version__ == _project()["version"]
+    assert package_version() == _project()["version"]

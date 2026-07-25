@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._lazy import exported_dir, load_export
+from ._version import __version__
 
 _EXPORTS = {
     "LSIndexer": ("codenib.ls_router", "LSIndexer"),
@@ -38,6 +39,7 @@ _EXPORTS = {
 }
 
 __all__ = [
+    "__version__",
     "LSIndexer",
     "CodeGraph",
     "BM25CodeIndexer",

@@ -30,6 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -46,7 +47,7 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/sysevol-ai/CodeNib/tree/main/docs"
+Documentation = "https://sysevol-ai.github.io/CodeNib/"
 Homepage = "https://github.com/sysevol-ai/CodeNib"
 Issues = "https://github.com/sysevol-ai/CodeNib/issues"
 Repository = "https://github.com/sysevol-ai/CodeNib.git"

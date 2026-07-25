@@ -12,9 +12,10 @@ import os
 import shutil
 import sys
 from collections import Counter
-from importlib import metadata
 from pathlib import Path
 from typing import Iterable, Sequence
+
+from ._version import package_version
 
 _PRESET_VIEWS = {
     "fast": ("bm25",),
@@ -47,14 +48,6 @@ _SKIP_DIRS = frozenset(
 
 class CLIError(RuntimeError):
     """A user-actionable command error."""
-
-
-def package_version() -> str:
-    """Return the installed distribution version without importing heavy views."""
-    try:
-        return metadata.version("codenib")
-    except metadata.PackageNotFoundError:
-        return "0+unknown"
 
 
 def _split_values(values: Iterable[str] | None) -> list[str]:
