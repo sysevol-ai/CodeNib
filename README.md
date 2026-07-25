@@ -4,15 +4,27 @@ SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeNib
-
-**Source-linked code intelligence for LLM tools** — multi-language indexing,
-hybrid retrieval, dependency graphs, and a Model Context Protocol server.
-
-[![CI](https://github.com/sysevol-ai/CodeMiner/actions/workflows/ci.yml/badge.svg)](https://github.com/sysevol-ai/CodeMiner/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
-[![Docs](https://img.shields.io/badge/docs-mkdocs--material-526CFE.svg)](docs/index.md)
+<div align="center">
+  <img src="assets/codenib_logo.svg" alt="CodeNib" width="560">
+  <h1>Source-Linked Repository Context for Coding Agents</h1>
+  <p>
+    <a href="docs/index.md">Documentation</a>
+    &nbsp;&middot;&nbsp;
+    <a href="#quickstart">Quickstart</a>
+    &nbsp;&middot;&nbsp;
+    <a href="docs/mcp.md">MCP Server</a>
+    &nbsp;&middot;&nbsp;
+    <a href="docs/web_demo.md">Web Demo</a>
+    &nbsp;&middot;&nbsp;
+    <a href="docs/language_capabilities.md">Language Support</a>
+  </p>
+  <p>
+    <a href="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml"><img src="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+    <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
+    <a href="docs/index.md"><img src="https://img.shields.io/badge/docs-mkdocs--material-526CFE.svg" alt="Documentation"></a>
+  </p>
+</div>
 
 CodeNib builds reusable indexes over a repository, then serves those indexes
 to agents, web UIs, and evaluation harnesses. The core surfaces are:
