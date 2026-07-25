@@ -32,6 +32,10 @@ def test_detect_languages_orders_by_file_count_and_skips_generated_dirs(
     (tmp_path / "main.go").write_text("package main\n")
     (tmp_path / "node_modules").mkdir()
     (tmp_path / "node_modules" / "ignored.ts").write_text("export {};\n")
+    (tmp_path / ".next").mkdir()
+    (tmp_path / ".next" / "ignored.js").write_text("export {};\n")
+    (tmp_path / "site").mkdir()
+    (tmp_path / "site" / "ignored.cpp").write_text("int generated = 1;\n")
 
     assert cli.detect_languages(tmp_path) == ["python", "go"]
 
