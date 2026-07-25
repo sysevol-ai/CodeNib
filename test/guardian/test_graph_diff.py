@@ -8,22 +8,19 @@ import os
 import pytest
 
 from codeminer.graph.code_graph import CodeGraph
-from codeminer.guardian.signals.graph_diff import (
-    DriftSignal,
-    EdgeChange,
-    compute_drift_signals,
-    diff_graphs,
-    drift_findings,
-    latest_snapshot_commit,
-    load_snapshot,
-    save_snapshot,
-)
+from codeminer.guardian.signals import Signal
+from codeminer.guardian.signals.graph_diff import (DriftSignal, EdgeChange,
+                                                   compute_drift_signals,
+                                                   diff_graphs,
+                                                   latest_snapshot_commit,
+                                                   load_snapshot,
+                                                   save_snapshot)
 from codeminer.types import EDGE_TYPE_IMPORT, EDGE_TYPE_REFERENCE
-
 
 # ---------------------------------------------------------------------------
 # Helpers — build minimal CodeGraph fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_graph(edges: list) -> CodeGraph:
     """Build a CodeGraph from a list of (src, dst, edge_type) tuples.
@@ -43,6 +40,7 @@ def _make_graph(edges: list) -> CodeGraph:
 # ---------------------------------------------------------------------------
 # diff_graphs
 # ---------------------------------------------------------------------------
+
 
 class TestDiffGraphs:
     def test_empty_graphs_produce_no_changes(self):
@@ -80,10 +78,12 @@ class TestDiffGraphs:
 
     def test_multiple_changes(self):
         prior = _make_graph([("A", "B", EDGE_TYPE_REFERENCE)])
-        current = _make_graph([
-            ("A", "C", EDGE_TYPE_REFERENCE),
-            ("A", "D", EDGE_TYPE_IMPORT),
-        ])
+        current = _make_graph(
+            [
+                ("A", "C", EDGE_TYPE_REFERENCE),
+                ("A", "D", EDGE_TYPE_IMPORT),
+            ]
+        )
         changes = diff_graphs(prior, current)
         kinds = {c.kind for c in changes}
         assert "added" in kinds
@@ -96,6 +96,7 @@ class TestDiffGraphs:
 # compute_drift_signals
 # ---------------------------------------------------------------------------
 
+
 class TestComputeDriftSignals:
     def test_no_changes_no_signals(self):
         g = _make_graph([("A", "B", EDGE_TYPE_REFERENCE)])
@@ -104,39 +105,44 @@ class TestComputeDriftSignals:
     def test_fan_in_spike(self):
         prior = _make_graph([])
         # B gains 5 new callers
-        current = _make_graph([
-            (f"caller{i}", "B", EDGE_TYPE_REFERENCE) for i in range(5)
-        ])
+        current = _make_graph(
+            [(f"caller{i}", "B", EDGE_TYPE_REFERENCE) for i in range(5)]
+        )
         changes = diff_graphs(prior, current)
         signals = compute_drift_signals(changes, current, prior, fan_in_threshold=5)
         spike = [s for s in signals if s.kind == "fan_in_spike"]
         assert len(spike) == 1
+        assert isinstance(spike[0], Signal)
         assert spike[0].symbol == "B"
         assert "5" in spike[0].detail
 
     def test_fan_in_spike_below_threshold_not_emitted(self):
         prior = _make_graph([])
-        current = _make_graph([
-            (f"caller{i}", "B", EDGE_TYPE_REFERENCE) for i in range(3)
-        ])
+        current = _make_graph(
+            [(f"caller{i}", "B", EDGE_TYPE_REFERENCE) for i in range(3)]
+        )
         changes = diff_graphs(prior, current)
         signals = compute_drift_signals(changes, current, prior, fan_in_threshold=5)
         assert not any(s.kind == "fan_in_spike" for s in signals)
 
     def test_contract_change(self):
         # A had 3 dependents in prior; now loses one outgoing edge → contract change
-        prior = _make_graph([
-            ("dep1", "A", EDGE_TYPE_REFERENCE),
-            ("dep2", "A", EDGE_TYPE_REFERENCE),
-            ("dep3", "A", EDGE_TYPE_REFERENCE),
-            ("A", "B", EDGE_TYPE_REFERENCE),   # this edge gets removed
-        ])
-        current = _make_graph([
-            ("dep1", "A", EDGE_TYPE_REFERENCE),
-            ("dep2", "A", EDGE_TYPE_REFERENCE),
-            ("dep3", "A", EDGE_TYPE_REFERENCE),
-            # A→B removed
-        ])
+        prior = _make_graph(
+            [
+                ("dep1", "A", EDGE_TYPE_REFERENCE),
+                ("dep2", "A", EDGE_TYPE_REFERENCE),
+                ("dep3", "A", EDGE_TYPE_REFERENCE),
+                ("A", "B", EDGE_TYPE_REFERENCE),  # this edge gets removed
+            ]
+        )
+        current = _make_graph(
+            [
+                ("dep1", "A", EDGE_TYPE_REFERENCE),
+                ("dep2", "A", EDGE_TYPE_REFERENCE),
+                ("dep3", "A", EDGE_TYPE_REFERENCE),
+                # A→B removed
+            ]
+        )
         changes = diff_graphs(prior, current)
         signals = compute_drift_signals(
             changes, current, prior, contract_min_prior_fan_in=3
@@ -147,13 +153,17 @@ class TestComputeDriftSignals:
         assert "3" in contract[0].detail
 
     def test_contract_change_below_threshold_not_emitted(self):
-        prior = _make_graph([
-            ("dep1", "A", EDGE_TYPE_REFERENCE),
-            ("A", "B", EDGE_TYPE_REFERENCE),
-        ])
-        current = _make_graph([
-            ("dep1", "A", EDGE_TYPE_REFERENCE),
-        ])
+        prior = _make_graph(
+            [
+                ("dep1", "A", EDGE_TYPE_REFERENCE),
+                ("A", "B", EDGE_TYPE_REFERENCE),
+            ]
+        )
+        current = _make_graph(
+            [
+                ("dep1", "A", EDGE_TYPE_REFERENCE),
+            ]
+        )
         changes = diff_graphs(prior, current)
         signals = compute_drift_signals(
             changes, current, prior, contract_min_prior_fan_in=3
@@ -163,41 +173,21 @@ class TestComputeDriftSignals:
     def test_private_symbol_skipped_for_api_surface(self):
         # _private should not emit api_surface_change
         prior = _make_graph([("dep", "_private", EDGE_TYPE_REFERENCE)])
-        current = _make_graph([
-            ("dep", "_private", EDGE_TYPE_REFERENCE),
-            ("new_dep", "_private", EDGE_TYPE_REFERENCE),
-        ])
+        current = _make_graph(
+            [
+                ("dep", "_private", EDGE_TYPE_REFERENCE),
+                ("new_dep", "_private", EDGE_TYPE_REFERENCE),
+            ]
+        )
         changes = diff_graphs(prior, current)
         signals = compute_drift_signals(changes, current, prior)
         assert not any(s.kind == "api_surface_change" for s in signals)
 
 
 # ---------------------------------------------------------------------------
-# drift_findings
-# ---------------------------------------------------------------------------
-
-class TestDriftFindings:
-    def test_empty_signals_empty_findings(self):
-        assert drift_findings([]) == []
-
-    def test_each_signal_produces_one_finding(self):
-        signals = [
-            DriftSignal(kind="fan_in_spike", symbol="Foo", file="foo.py",
-                        detail="Foo gained callers"),
-            DriftSignal(kind="contract_change", symbol="Bar", file="bar.py",
-                        detail="Bar lost edges"),
-        ]
-        findings = drift_findings(signals)
-        assert len(findings) == 2
-        for f in findings:
-            assert f.kind == "drift"
-        assert any("fan_in_spike" in f.title for f in findings)
-        assert any("contract_change" in f.title for f in findings)
-
-
-# ---------------------------------------------------------------------------
 # Snapshot store (uses tmp_path fixture — no real file system side effects)
 # ---------------------------------------------------------------------------
+
 
 class TestSnapshotStore:
     def test_save_and_load_roundtrip(self, tmp_path):

@@ -65,12 +65,14 @@ query_guardian(
 - `total_findings` is how many Guardian found overall; `returned_findings` is
   how many match your query. If they differ, Guardian filtered to what is most
   relevant to your hypothesis.
-- `verdict: "confirmed"` means Guardian's LLM investigation corroborated the
-  risk with code evidence. Treat these as high-priority.
-- `verdict: "rejected"` means Guardian looked and found the risk is contained.
-  You can proceed with less caution.
-- `verdict: "inconclusive"` means the evidence is mixed. Use your own
-  judgment, and consider adding a test that would make the risk observable.
+- Every item in `findings` is a hypothesis at grade `finding`: Guardian
+  verified the behavioral claim with a probe and recorded an actionable
+  remedy. Treat these as high-priority, but verify the cited evidence.
+- `backlog` contains conjectures, supported claims that still lack an
+  actionable remedy, and deferred work. These are context, not confirmed
+  defects.
+- `retractions` records earlier claims that a later probe refuted. Do not act
+  on a superseded finding.
 
 ## What Guardian is not
 

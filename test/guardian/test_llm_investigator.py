@@ -10,7 +10,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.guardian.investigator import build_test_failure_context, investigate_signal
+from codeminer.guardian.investigator import (
+    build_test_failure_context,
+    investigate_signal,
+)
 from codeminer.llm.litellm_chat import LiteLLMChat
 
 # ---------------------------------------------------------------------------
@@ -102,7 +105,10 @@ def test_investigate_signal_passes_context_to_llm():
     first_call = mock_completion.call_args_list[0]
     messages = first_call[1]["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
-    assert "test/foo.py::test_bar" in user_msg["content"]
+    content = user_msg["content"]
+    if isinstance(content, list):
+        content = "\n".join(str(block.get("text", "")) for block in content)
+    assert "test/foo.py::test_bar" in content
 
 
 @pytest.mark.slow

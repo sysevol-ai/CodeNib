@@ -14,17 +14,19 @@ import pytest
 
 from codeminer.guardian.investigator import (
     InvestigatorResult,
+    CurrentSnapshotSandbox,
     ProbeRecord,
     SandboxHandle,
     WorktreeSandbox,
+    PriorSnapshotSandbox,
     _parse_verdict,
     run_investigator,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_hypothesis(
     target="mod.py",
@@ -34,11 +36,14 @@ def _make_hypothesis(
     confidence=0.75,
 ):
     from codeminer.guardian.orchestrator import Hypothesis
-    return Hypothesis(
-        rank=rank,
-        target=target,
-        kind=kind,
-        statement=statement,
+
+    del kind, rank
+    return Hypothesis.create(
+        claim=statement,
+        consequence="dependent behavior may regress",
+        remedy="restore the contract and add a regression test",
+        origin="signal",
+        locus=[target],
         confidence=confidence,
     )
 
@@ -83,9 +88,76 @@ def _fake_sandbox(repo_path="/tmp/repo", run_rc=0, run_output="ok"):
     return sb
 
 
+def test_prior_snapshot_sandbox_materializes_parent_and_is_disposable(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "T",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+        "GIT_COMMITTER_NAME": "T",
+        "GIT_COMMITTER_EMAIL": "t@example.com",
+    }
+    (repo / "mod.py").write_text("VALUE = 'prior'\n")
+    subprocess.run(["git", "add", "mod.py"], cwd=repo, check=True, env=env)
+    subprocess.run(
+        ["git", "commit", "-m", "prior"],
+        cwd=repo,
+        check=True,
+        env=env,
+        capture_output=True,
+    )
+    (repo / "mod.py").write_text("VALUE = 'current'\n")
+    subprocess.run(["git", "add", "mod.py"], cwd=repo, check=True, env=env)
+    subprocess.run(
+        ["git", "commit", "-m", "current"],
+        cwd=repo,
+        check=True,
+        env=env,
+        capture_output=True,
+    )
+    sandbox = PriorSnapshotSandbox(str(repo))
+    temp_path = sandbox.repo_path
+    try:
+        assert "prior" in sandbox.read_file("mod.py")
+        sandbox.write_file("probe.py", "assert True\n")
+        assert "current" in (repo / "mod.py").read_text()
+    finally:
+        sandbox.close()
+    assert not os.path.exists(temp_path)
+
+
+def test_current_snapshot_sandbox_never_writes_source_checkout(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "T",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+        "GIT_COMMITTER_NAME": "T",
+        "GIT_COMMITTER_EMAIL": "t@example.com",
+    }
+    (repo / "mod.py").write_text("VALUE = 'source'\n")
+    subprocess.run(["git", "add", "mod.py"], cwd=repo, check=True, env=env)
+    subprocess.run(
+        ["git", "commit", "-m", "source"],
+        cwd=repo,
+        check=True,
+        env=env,
+        capture_output=True,
+    )
+    with CurrentSnapshotSandbox(str(repo)) as sandbox:
+        sandbox.write_file("mod.py", "VALUE = 'overlay'\n")
+        assert "overlay" in sandbox.read_file("mod.py")
+        assert "source" in (repo / "mod.py").read_text()
+
+
 # ---------------------------------------------------------------------------
 # ProbeRecord
 # ---------------------------------------------------------------------------
+
 
 class TestProbeRecord:
     def test_defaults(self):
@@ -93,13 +165,19 @@ class TestProbeRecord:
         assert p.passed is None
 
     def test_with_passed(self):
-        p = ProbeRecord(tool="run_existing_test", input_summary="t", output_summary="PASS", passed=True)
+        p = ProbeRecord(
+            tool="run_existing_test",
+            input_summary="t",
+            output_summary="PASS",
+            passed=True,
+        )
         assert p.passed is True
 
 
 # ---------------------------------------------------------------------------
 # InvestigatorResult
 # ---------------------------------------------------------------------------
+
 
 class TestInvestigatorResult:
     def test_defaults(self):
@@ -110,7 +188,9 @@ class TestInvestigatorResult:
         assert r.tokens_used == 0
 
     def test_to_dict(self):
-        probe = ProbeRecord(tool="retrieve_evidence", input_summary="q", output_summary="r")
+        probe = ProbeRecord(
+            tool="retrieve_evidence", input_summary="q", output_summary="r"
+        )
         r = InvestigatorResult(
             verdict="confirmed",
             reasoning="risk is real",
@@ -128,6 +208,7 @@ class TestInvestigatorResult:
 # ---------------------------------------------------------------------------
 # _parse_verdict
 # ---------------------------------------------------------------------------
+
 
 class TestParseVerdict:
     def test_confirmed(self):
@@ -161,6 +242,7 @@ class TestParseVerdict:
 # WorktreeSandbox
 # ---------------------------------------------------------------------------
 
+
 class TestWorktreeSandbox:
     def test_run_command_pass(self, tmp_path):
         sb = WorktreeSandbox(str(tmp_path))
@@ -175,7 +257,9 @@ class TestWorktreeSandbox:
 
     def test_run_command_timeout(self, tmp_path):
         sb = WorktreeSandbox(str(tmp_path))
-        rc, out = sb.run_command(["python", "-c", "import time; time.sleep(5)"], timeout=1)
+        rc, out = sb.run_command(
+            ["python", "-c", "import time; time.sleep(5)"], timeout=1
+        )
         assert rc != 0
         assert "timed out" in out
 
@@ -198,16 +282,21 @@ class TestWorktreeSandbox:
 # run_investigator — budget / no-op paths
 # ---------------------------------------------------------------------------
 
+
 class TestRunInvestigatorBudget:
     def test_budget_already_exhausted_returns_inconclusive(self):
         from codeminer.guardian.investigator import LLMUsage
+
         hyp = _make_hypothesis()
         llm = MagicMock()
         sandbox = _fake_sandbox()
         usage = LLMUsage(total_tokens=999_999)
 
         result = run_investigator(
-            hyp, llm, _fake_retriever(), sandbox,
+            hyp,
+            llm,
+            _fake_retriever(),
+            sandbox,
             budget_tokens=100,
             usage_acc=usage,
         )
@@ -229,8 +318,11 @@ class TestRunInvestigatorBudget:
         sandbox = _fake_sandbox()
 
         result = run_investigator(
-            hyp, llm, _fake_retriever(), sandbox,
-            budget_tokens=15,   # exactly one round of 15 tokens
+            hyp,
+            llm,
+            _fake_retriever(),
+            sandbox,
+            budget_tokens=15,  # exactly one round of 15 tokens
             max_rounds=5,
         )
 
@@ -240,6 +332,7 @@ class TestRunInvestigatorBudget:
 # ---------------------------------------------------------------------------
 # run_investigator — tool-use loop
 # ---------------------------------------------------------------------------
+
 
 class TestRunInvestigatorToolLoop:
     def test_single_retrieve_then_verdict(self):
@@ -262,14 +355,18 @@ class TestRunInvestigatorToolLoop:
     def test_two_probes_then_verdict_confirmed(self):
         hyp = _make_hypothesis()
         tc1 = _make_tool_call("c1", "retrieve_evidence", query="parse_config")
-        tc2 = _make_tool_call("c2", "run_existing_test", test_pattern="test/test_config.py")
+        tc2 = _make_tool_call(
+            "c2", "run_existing_test", test_pattern="test/test_config.py"
+        )
         side_effects = [
             _resp("", tool_calls=[tc1]),
             _resp("", tool_calls=[tc2]),
             _resp("verdict: confirmed\nExisting test fails on the symbol."),
         ]
         llm = _make_llm(side_effects)
-        sandbox = _fake_sandbox(run_rc=1, run_output="FAILED test_config.py::test_parse")
+        sandbox = _fake_sandbox(
+            run_rc=1, run_output="FAILED test_config.py::test_parse"
+        )
 
         result = run_investigator(
             hyp, llm, _fake_retriever(), sandbox, budget_tokens=100_000
@@ -279,6 +376,58 @@ class TestRunInvestigatorToolLoop:
         assert len(result.probe_trace) == 2
         assert result.probe_trace[1].tool == "run_existing_test"
         assert result.probe_trace[1].passed is False
+
+    def test_red_synthesized_test_without_corroboration_is_downgraded(self):
+        hyp = _make_hypothesis()
+        source = "def test_contract(): assert False"
+        tc = _make_tool_call("c1", "run_synthesized_test", test_source=source)
+        llm = _make_llm(
+            [
+                _resp("", tool_calls=[tc]),
+                _resp("The test is red.\nverdict: confirmed"),
+            ]
+        )
+        result = run_investigator(
+            hyp,
+            llm,
+            _fake_retriever(),
+            _fake_sandbox(run_rc=1, run_output="1 failed"),
+            budget_tokens=100_000,
+        )
+        assert result.verdict == "inconclusive"
+        assert "Corroboration policy" in result.reasoning
+
+    def test_fix_probe_flip_allows_confirmation(self):
+        hyp = _make_hypothesis()
+        source = "def test_contract(): assert False"
+        synth = _make_tool_call("c1", "run_synthesized_test", test_source=source)
+        fix = _make_tool_call(
+            "c2",
+            "fix_probe",
+            diff="--- a/mod.py\n+++ b/mod.py\n",
+            test_source=source,
+        )
+        llm = _make_llm(
+            [
+                _resp("", tool_calls=[synth]),
+                _resp("", tool_calls=[fix]),
+                _resp("The flip corroborates the claim.\nverdict: confirmed"),
+            ]
+        )
+        sandbox = _fake_sandbox()
+        sandbox.run_command.side_effect = [
+            (1, "1 failed"),
+            (0, "patch applied"),
+            (0, "1 passed"),
+        ]
+        result = run_investigator(
+            hyp,
+            llm,
+            _fake_retriever(),
+            sandbox,
+            budget_tokens=100_000,
+        )
+        assert result.verdict == "confirmed"
 
     def test_probe_trace_entries_correct(self):
         hyp = _make_hypothesis()
@@ -298,9 +447,12 @@ class TestRunInvestigatorToolLoop:
     def test_stub_probe_returns_inconclusive_note(self):
         """synthesize_test is not yet in probes.py — should stub gracefully."""
         hyp = _make_hypothesis()
-        tc = _make_tool_call("c1", "synthesize_test",
-                             description="test arity break",
-                             target_symbol="codeminer.guardian.cycle.run_cycle")
+        tc = _make_tool_call(
+            "c1",
+            "synthesize_test",
+            description="test arity break",
+            target_symbol="codeminer.guardian.cycle.run_cycle",
+        )
         side_effects = [
             _resp("", tool_calls=[tc]),
             _resp("verdict: inconclusive\nTool not available."),
@@ -335,6 +487,7 @@ class TestRunInvestigatorToolLoop:
 # ---------------------------------------------------------------------------
 # run_investigator — error handling
 # ---------------------------------------------------------------------------
+
 
 class TestRunInvestigatorErrors:
     def test_llm_exception_returns_inconclusive(self):
@@ -387,6 +540,7 @@ class TestRunInvestigatorErrors:
 
     def test_usage_acc_shared_across_calls(self):
         from codeminer.guardian.investigator import LLMUsage
+
         hyp = _make_hypothesis()
         tc = _make_tool_call("c1", "retrieve_evidence", query="q")
         side_effects = [
@@ -397,8 +551,12 @@ class TestRunInvestigatorErrors:
         usage = LLMUsage()
 
         run_investigator(
-            hyp, llm, _fake_retriever(), _fake_sandbox(),
-            budget_tokens=100_000, usage_acc=usage,
+            hyp,
+            llm,
+            _fake_retriever(),
+            _fake_sandbox(),
+            budget_tokens=100_000,
+            usage_acc=usage,
         )
 
         assert usage.total_tokens == 30

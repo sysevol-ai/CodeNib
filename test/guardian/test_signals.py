@@ -6,7 +6,7 @@
 
 import subprocess
 
-from codeminer.guardian.signals import Hotspot, churn_hotspots
+from codeminer.guardian.signals import Signal, churn_hotspots
 
 
 def _git(repo, *args):
@@ -58,7 +58,9 @@ def test_churn_ranks_by_commit_count(tmp_path):
     paths = [h.path for h in hotspots]
 
     assert paths[:3] == ["hot.py", "warm.py", "cold.py"]
-    assert hotspots[0] == Hotspot(path="hot.py", commit_count=3)
+    assert isinstance(hotspots[0], Signal)
+    assert hotspots[0].kind == "churn"
+    assert hotspots[0].commit_count == 3
 
 
 def test_churn_respects_top_n(tmp_path):

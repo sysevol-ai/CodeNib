@@ -1,12 +1,11 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
-#
 # SPDX-License-Identifier: Apache-2.0
 
-"""Report step: render one cycle's findings as Markdown (+ a JSON sidecar).
+"""Render a Guardian cycle from graded hypotheses.
 
-Phase 1 reports are **non-modifying**: findings + ranked evidence only, never
-candidate patches or diffs (that is RFC Phase 4). The renderer uses the inline
-pipe-table style from ``scripts/agent_compile/aggregate.py``.
+``Finding`` is a report view, not a separately persisted ontology. The
+authoritative object is :class:`guardian.loop.state.Hypothesis`, and only its
+``grade == "finding"`` subset is rendered in the findings section.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class Evidence:
-    """A single ranked code location supporting a finding."""
+    """A ranked code location retained for backwards-compatible render detail."""
 
     file: str
     node_name: str
@@ -27,38 +26,76 @@ class Evidence:
     score: Optional[float]
 
 
-# LLMUsage is imported after Evidence is defined to avoid circular import:
-# report → investigator → probes → report (Evidence already defined at this point)
 from .investigator import LLMUsage  # noqa: E402
 
 
 @dataclass
 class Finding:
-    """One signal plus the evidence Guardian gathered around it.
+    """Read-only report view of a hypothesis at grade ``finding``."""
 
-    kind: ``"churn"``, ``"drift"``, or ``"test_failure"``.
-    narrative: Plain-text LLM analysis; empty string when LLM step is skipped.
-    hypothesis: One-sentence hypothesis from the Hypothesize step; empty when skipped.
-    verdict: ``"confirmed"`` | ``"rejected"`` | ``"inconclusive"`` | ``""``
-    evidence_test: Synthesized risk-revealing test source (Phase 2, future).
-    evidence_diff: Fix-probe diff that corroborates the hypothesis (Phase 2, future).
-    """
-
-    kind: str
-    title: str
-    detail: str = ""
+    id: str
+    claim: str
+    consequence: str
+    remedy: str
+    origin: str
+    locus: List[str]
+    evidence_refs: List[str]
+    confidence: float
+    supersedes: List[str] = field(default_factory=list)
     evidence: List[Evidence] = field(default_factory=list)
     narrative: str = ""
-    hypothesis: str = ""
-    verdict: str = ""
-    evidence_test: str = ""
-    evidence_diff: str = ""
-    reasoning_trace: List[str] = field(default_factory=list)
+
+    @property
+    def title(self) -> str:
+        return self.claim
+
+    @property
+    def detail(self) -> str:
+        return self.consequence
+
+    @property
+    def kind(self) -> str:
+        """Compatibility view for MCP/dashboard consumers."""
+        return self.origin
+
+    @property
+    def hypothesis(self) -> str:
+        return self.claim
+
+    @property
+    def verdict(self) -> str:
+        return "confirmed"
+
+
+@dataclass
+class BacklogItem:
+    """A non-reportable hypothesis retained for future cycles."""
+
+    id: str
+    claim: str
+    consequence: str
+    remedy: str
+    grade: str
+    origin: str
+    locus: List[str]
+    evidence_refs: List[str]
+    confidence: float
+
+
+@dataclass
+class Retraction:
+    """A refuted hypothesis, rendered only when it retracts prior work."""
+
+    id: str
+    claim: str
+    locus: List[str]
+    evidence_refs: List[str]
+    supersedes: List[str]
 
 
 @dataclass
 class GuardianReport:
-    """The output of a single Guardian cycle."""
+    """The output of one stateful Guardian cycle."""
 
     repo: str
     commit: str
@@ -67,138 +104,202 @@ class GuardianReport:
     file_count: int = 0
     capabilities: Dict[str, bool] = field(default_factory=dict)
     findings: List[Finding] = field(default_factory=list)
+    backlog: List[BacklogItem] = field(default_factory=list)
+    retractions: List[Retraction] = field(default_factory=list)
     tests_ran: bool = False
     tests_summary: str = ""
-    llm_usage: Optional[LLMUsage] = None          # combined total (budget gate)
-    outer_llm_usage: Optional[LLMUsage] = None    # hypothesize step (outer loop)
-    inner_llm_usage: Optional[LLMUsage] = None    # investigate step (inner loop)
+    llm_usage: Optional[LLMUsage] = None
+    outer_llm_usage: Optional[LLMUsage] = None
+    inner_llm_usage: Optional[LLMUsage] = None
     llm_model: str = ""
     llm_backend: str = ""
     llm_transport_history: List[str] = field(default_factory=list)
     retriever: str = ""
+    cycle_no: int = 0
+    exit_reason: str = ""
+    report_summary: str = ""
+    degraded: bool = False
+    decision_log: List[dict] = field(default_factory=list)
+    compaction_events: int = 0
+    trace_metrics: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
-def _table(headers: List[str], rows: List[List[Any]]) -> List[str]:
-    """Return Markdown pipe-table lines (matches aggregate.py's style)."""
-    out = [
-        "| " + " | ".join(headers) + " |",
-        "| " + " | ".join("---" for _ in headers) + " |",
-    ]
-    for row in rows:
-        out.append("| " + " | ".join(str(c) for c in row) + " |")
-    return out
+def report_views(
+    hypotheses: list,
+) -> tuple[List[Finding], List[BacklogItem], List[Retraction]]:
+    """Project the canonical hypothesis set into three report sections."""
+    findings: List[Finding] = []
+    backlog: List[BacklogItem] = []
+    retractions: List[Retraction] = []
+    superseded_ids = {
+        superseded for hypothesis in hypotheses for superseded in hypothesis.supersedes
+    }
+    for item in hypotheses:
+        if item.id in superseded_ids:
+            continue
+        if item.grade == "finding":
+            findings.append(
+                Finding(
+                    id=item.id,
+                    claim=item.claim,
+                    consequence=item.consequence,
+                    remedy=item.remedy,
+                    origin=item.origin,
+                    locus=list(item.locus),
+                    evidence_refs=list(item.evidence),
+                    confidence=item.confidence,
+                    supersedes=list(item.supersedes),
+                )
+            )
+        elif item.grade in {"conjecture", "supported", "deferred"}:
+            backlog.append(
+                BacklogItem(
+                    id=item.id,
+                    claim=item.claim,
+                    consequence=item.consequence,
+                    remedy=item.remedy,
+                    grade=item.grade,
+                    origin=item.origin,
+                    locus=list(item.locus),
+                    evidence_refs=list(item.evidence),
+                    confidence=item.confidence,
+                )
+            )
+        elif item.grade == "refuted" and item.supersedes:
+            retractions.append(
+                Retraction(
+                    id=item.id,
+                    claim=item.claim,
+                    locus=list(item.locus),
+                    evidence_refs=list(item.evidence),
+                    supersedes=list(item.supersedes),
+                )
+            )
+    return findings, backlog, retractions
 
 
-def _evidence_rows(evidence: List[Evidence]) -> List[List[Any]]:
-    rows: List[List[Any]] = []
-    for e in evidence:
-        loc = e.file
-        if e.start_line is not None:
-            loc = f"{e.file}:{e.start_line}"
-            if e.end_line is not None and e.end_line != e.start_line:
-                loc += f"-{e.end_line}"
-        score = f"{e.score:.3f}" if isinstance(e.score, (int, float)) else "—"
-        rows.append([loc, e.node_name or "—", e.type or "—", score])
-    return rows
+def _render_locations(locations: List[str]) -> str:
+    return ", ".join(f"`{item}`" for item in locations) or "—"
 
 
 def render_markdown(report: GuardianReport) -> str:
-    """Render a :class:`GuardianReport` as a Markdown document.
-
-    The output deliberately contains **no patches or diffs** — Guardian proposes
-    by reporting, humans decide and apply.
-    """
-    L: List[str] = []
-    L.append(f"# Repository Guardian Report — {report.repo}")
-    L.append("")
-    L.append(f"- **Commit:** `{report.commit[:12] or '(unknown)'}`")
-    L.append(f"- **Generated:** {report.generated_at}")
-    L.append(f"- **Churn window:** {report.churn_window}")
-    L.append(f"- **Indexed files:** {report.file_count}")
+    """Render findings, backlog, retractions, and auditable exit metadata."""
+    lines: List[str] = [
+        f"# Repository Guardian Report — {report.repo}",
+        "",
+        f"- **Commit:** `{report.commit[:12] or '(unknown)'}`",
+        f"- **Generated:** {report.generated_at}",
+        f"- **Cycle:** {report.cycle_no or '—'}",
+        f"- **Exit:** {report.exit_reason or '—'}",
+        f"- **Churn window:** {report.churn_window}",
+        f"- **Indexed files:** {report.file_count}",
+    ]
+    if report.degraded:
+        lines.append(
+            "- **Ablation eligibility:** excluded (degraded model/fallback path)"
+        )
     if report.retriever:
-        L.append(f"- **Retriever:** {report.retriever}")
+        lines.append(f"- **Retriever:** {report.retriever}")
     if report.llm_model:
         backend = f" via {report.llm_backend}" if report.llm_backend else ""
-        L.append(f"- **LLM model:** `{report.llm_model}`{backend}")
+        lines.append(f"- **LLM model:** `{report.llm_model}`{backend}")
     if report.llm_transport_history:
-        L.append(
-            "- **LLM transport history:** "
-            + ", ".join(report.llm_transport_history)
+        lines.append(
+            "- **LLM transport history:** " + ", ".join(report.llm_transport_history)
         )
     if report.capabilities:
-        caps = ", ".join(k for k, v in sorted(report.capabilities.items()) if v) or "—"
-        L.append(f"- **Index capabilities:** {caps}")
-    if report.tests_ran:
-        L.append(f"- **Tests:** {report.tests_summary or 'ran'}")
-    if report.llm_usage and report.llm_usage.total_tokens:
-        u = report.llm_usage
-        L.append(
-            f"- **LLM tokens:** {u.total_tokens:,} total"
-            f" (prompt: {u.prompt_tokens:,} / completion: {u.completion_tokens:,})"
+        enabled = ", ".join(
+            key for key, value in sorted(report.capabilities.items()) if value
         )
-        if report.outer_llm_usage or report.inner_llm_usage:
-            ou = report.outer_llm_usage
-            iu = report.inner_llm_usage
-            L.append(
-                f"  - outer (hypothesize): "
-                f"prompt {(ou.prompt_tokens if ou else 0):,} / "
-                f"completion {(ou.completion_tokens if ou else 0):,}"
-            )
-            L.append(
-                f"  - inner (investigate): "
-                f"prompt {(iu.prompt_tokens if iu else 0):,} / "
-                f"completion {(iu.completion_tokens if iu else 0):,}"
-            )
-    L.append("")
-    L.append(
-        "_Non-modifying report: findings and evidence only — no changes were "
-        "made to the repository._"
+        lines.append(f"- **Index capabilities:** {enabled or '—'}")
+    if report.tests_ran:
+        lines.append(f"- **Tests:** {report.tests_summary or 'ran'}")
+    if report.llm_usage and report.llm_usage.total_tokens:
+        usage = report.llm_usage
+        lines.append(
+            f"- **LLM tokens:** {usage.total_tokens:,} total "
+            f"(prompt: {usage.prompt_tokens:,} / "
+            f"completion: {usage.completion_tokens:,})"
+        )
+    lines.extend(
+        [
+            f"- **Compaction events:** {report.compaction_events}",
+            "",
+            "_Non-modifying report: findings and evidence only — no changes were "
+            "made to the repository._",
+            "",
+        ]
     )
-    L.append("")
+    if report.trace_metrics:
+        lines.extend(
+            [
+                "## Trace Metrics",
+                "",
+                *[
+                    f"- **{key}:** {value}"
+                    for key, value in sorted(report.trace_metrics.items())
+                ],
+                "",
+            ]
+        )
+    if report.report_summary:
+        lines.extend(["## Cycle Summary", "", report.report_summary, ""])
 
+    lines.extend([f"## Findings ({len(report.findings)})", ""])
     if not report.findings:
-        L.append("## Findings")
-        L.append("")
-        L.append("No findings this cycle.")
-        return "\n".join(L) + "\n"
+        lines.extend(["No verified actionable findings this cycle.", ""])
+    for index, finding in enumerate(report.findings, start=1):
+        lines.extend(
+            [
+                f"### {index}. {finding.claim}",
+                "",
+                f"- **Consequence:** {finding.consequence}",
+                f"- **Remedy:** {finding.remedy}",
+                f"- **Origin:** {finding.origin}",
+                f"- **Locus:** {_render_locations(finding.locus)}",
+                f"- **Confidence:** {finding.confidence:.2f}",
+                f"- **Evidence:** {', '.join(finding.evidence_refs) or '—'}",
+                "",
+            ]
+        )
 
-    L.append(f"## Findings ({len(report.findings)})")
-    L.append("")
-    for i, finding in enumerate(report.findings, start=1):
-        L.append(f"### {i}. {finding.title}  _({finding.kind})_")
-        L.append("")
-        if finding.detail:
-            L.append(finding.detail)
-            L.append("")
-        if finding.hypothesis:
-            L.append(f"**Hypothesis:** {finding.hypothesis}")
-            L.append("")
-        if finding.verdict:
-            L.append(f"**Verdict:** {finding.verdict}")
-            L.append("")
-        if finding.reasoning_trace:
-            L.append("**Investigation trace:**")
-            L.append("")
-            for i, step in enumerate(finding.reasoning_trace, 1):
-                L.append(f"{i}. {step}")
-            L.append("")
-        if finding.narrative:
-            L.append("**LLM Analysis:**")
-            L.append("")
-            L.append(finding.narrative)
-            L.append("")
-        if finding.evidence:
-            L.append("**Evidence (ranked code locations):**")
-            L.append("")
-            L.extend(
-                _table(
-                    ["Location", "Symbol", "Type", "Score"],
-                    _evidence_rows(finding.evidence),
-                )
+    lines.extend([f"## Backlog ({len(report.backlog)})", ""])
+    if not report.backlog:
+        lines.extend(["No supported, deferred, or open hypotheses.", ""])
+    for index, item in enumerate(report.backlog, start=1):
+        lines.extend(
+            [
+                f"### {index}. {item.claim}  _({item.grade})_",
+                "",
+                f"- **Consequence:** {item.consequence}",
+                f"- **Proposed remedy:** {item.remedy}",
+                f"- **Locus:** {_render_locations(item.locus)}",
+                "",
+            ]
+        )
+
+    if report.retractions:
+        lines.extend([f"## Retractions ({len(report.retractions)})", ""])
+        for item in report.retractions:
+            lines.extend(
+                [
+                    f"- **{item.claim}** — refuted; supersedes "
+                    f"{', '.join(item.supersedes)}",
+                ]
             )
-            L.append("")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
-    return "\n".join(L).rstrip() + "\n"
+
+__all__ = [
+    "BacklogItem",
+    "Evidence",
+    "Finding",
+    "GuardianReport",
+    "Retraction",
+    "render_markdown",
+    "report_views",
+]

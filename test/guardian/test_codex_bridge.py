@@ -8,10 +8,21 @@ import json
 
 from deepsweguardian import codex_bridge
 from codeminer.guardian.cycle import GuardianConfig
-from codeminer.guardian.report import Finding, GuardianReport
+from codeminer.guardian.loop import Hypothesis
+from codeminer.guardian.report import GuardianReport, report_views
 
 
 def _report() -> GuardianReport:
+    hypothesis = Hypothesis.create(
+        claim="pkg.mod violates its dependency contract",
+        consequence="dependent callers may fail",
+        remedy="restore the contract and add regression coverage",
+        origin="exploration",
+        locus=["pkg/mod.py"],
+        evidence=["probe:fixture:1"],
+        grade="finding",
+    )
+    findings, backlog, retractions = report_views([hypothesis])
     return GuardianReport(
         repo="/repo",
         commit="abc123def456",
@@ -20,15 +31,9 @@ def _report() -> GuardianReport:
         llm_model="codex:gpt-5.6-luna",
         llm_backend="codex-sdk",
         llm_transport_history=["codex-sdk"],
-        findings=[
-            Finding(
-                kind="churn",
-                title="High-churn file: pkg/mod.py",
-                detail="Changed in **5** commits.",
-                narrative="Guardian found a risky dependency contract.",
-                verdict="confirmed",
-            )
-        ],
+        findings=findings,
+        backlog=backlog,
+        retractions=retractions,
     )
 
 
@@ -48,8 +53,8 @@ def test_run_bridge_once_writes_markdown_json_and_status(tmp_path, monkeypatch):
     data = json.loads((tmp_path / "findings.json").read_text(encoding="utf-8"))
     status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
 
-    assert "High-churn file: pkg/mod.py" in md
-    assert data["findings"][0]["verdict"] == "confirmed"
+    assert "pkg.mod violates its dependency contract" in md
+    assert data["findings"][0]["remedy"].startswith("restore")
     assert data["llm_model"] == "codex:gpt-5.6-luna"
     assert data["llm_backend"] == "codex-sdk"
     assert status["commit"] == "abc123def456"

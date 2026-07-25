@@ -12,7 +12,10 @@ investigator/ sub-package.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import tarfile
+import tempfile
 from dataclasses import dataclass
 from typing import List, Protocol, Tuple, runtime_checkable
 
@@ -23,9 +26,7 @@ class SandboxHandle(Protocol):
 
     repo_path: str
 
-    def run_command(
-        self, cmd: List[str], *, timeout: int = 60
-    ) -> Tuple[int, str]: ...
+    def run_command(self, cmd: List[str], *, timeout: int = 60) -> Tuple[int, str]: ...
 
     def write_file(self, rel_path: str, content: str) -> None: ...
 
@@ -72,3 +73,57 @@ class WorktreeSandbox:
                 return fh.read()
         except OSError:
             return ""
+
+
+class PriorSnapshotSandbox(WorktreeSandbox):
+    """Temporary read/write overlay populated from a prior git snapshot."""
+
+    def __init__(self, repo_path: str, revision: str = "HEAD^") -> None:
+        self._temp_dir = tempfile.mkdtemp(prefix="guardian-prior-")
+        super().__init__(self._temp_dir)
+        archive_path = os.path.join(self._temp_dir, "_snapshot.tar")
+        try:
+            with open(archive_path, "wb") as archive:
+                result = subprocess.run(
+                    ["git", "archive", "--format=tar", revision],
+                    cwd=repo_path,
+                    stdout=archive,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+            if result.returncode != 0:
+                detail = result.stderr.decode("utf-8", errors="replace")
+                raise ValueError(
+                    f"cannot materialize prior revision {revision!r}: {detail}"
+                )
+            with tarfile.open(archive_path) as archive:
+                root = os.path.realpath(self._temp_dir)
+                for member in archive.getmembers():
+                    target = os.path.realpath(os.path.join(root, member.name))
+                    if os.path.commonpath([root, target]) != root:
+                        raise ValueError(
+                            "prior snapshot archive contains an unsafe path"
+                        )
+                archive.extractall(self._temp_dir)
+        except Exception:
+            self.close()
+            raise
+        finally:
+            if os.path.exists(archive_path):
+                os.unlink(archive_path)
+
+    def close(self) -> None:
+        shutil.rmtree(self._temp_dir, ignore_errors=True)
+
+    def __enter__(self) -> "PriorSnapshotSandbox":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+
+class CurrentSnapshotSandbox(PriorSnapshotSandbox):
+    """Temporary read/write overlay populated from the current git snapshot."""
+
+    def __init__(self, repo_path: str) -> None:
+        super().__init__(repo_path, revision="HEAD")

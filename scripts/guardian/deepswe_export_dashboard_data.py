@@ -24,7 +24,6 @@ from deepswe_guardian_table import (
     _with_costs,
 )
 
-
 DEFAULT_DASHBOARD_DIR = Path("deepswe_dashboard")
 
 
@@ -86,7 +85,9 @@ def _trial_row(row: dict[str, Any]) -> dict[str, Any]:
         "latest_guardian_status": (
             f"{latest_episode}/status.json" if latest_episode else ""
         ),
-        "latest_guardian_log": f"{latest_episode}/guardian.log" if latest_episode else "",
+        "latest_guardian_log": (
+            f"{latest_episode}/guardian.log" if latest_episode else ""
+        ),
     }
 
 
@@ -132,9 +133,7 @@ def _summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
                 "avg_total_cost_usd": _metric_mean(group, "total_cost_usd"),
                 "sum_total_cost_usd": _metric_sum(group, "total_cost_usd"),
-                "std_reward": (
-                    statistics.pstdev(rewards) if len(rewards) > 1 else 0.0
-                ),
+                "std_reward": (statistics.pstdev(rewards) if len(rewards) > 1 else 0.0),
                 "latest_output_dir": max(
                     group, key=lambda r: str(r.get("created_at") or "")
                 ).get("output_dir"),
@@ -144,16 +143,23 @@ def _summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _task_rows(summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[str, list[dict[str, Any]]] = {}
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for row in summaries:
-        grouped.setdefault(str(row["task"]), []).append(row)
+        key = (
+            str(row["task"]),
+            str(row["model"]),
+            str(row["reasoning_effort"]),
+        )
+        grouped.setdefault(key, []).append(row)
     result = []
-    for task, rows in sorted(grouped.items()):
+    for (task, model, effort), rows in sorted(grouped.items()):
         solo = next((r for r in rows if r["baseline"] == "solo"), None)
         guardian = next((r for r in rows if r["baseline"] == "guardian"), None)
         result.append(
             {
                 "task": task,
+                "model": model,
+                "reasoning_effort": effort,
                 "solo_pass_rate": (solo or {}).get("pass_rate"),
                 "guardian_pass_rate": (guardian or {}).get("pass_rate"),
                 "delta_pass_rate": (

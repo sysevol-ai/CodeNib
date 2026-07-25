@@ -1,13 +1,44 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
-#
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for codeminer.guardian.report rendering."""
+"""Tests for grade-filtered Guardian report rendering."""
 
-from codeminer.guardian.report import Evidence, Finding, GuardianReport, render_markdown
+from codeminer.guardian.loop import Hypothesis
+from codeminer.guardian.report import (GuardianReport, render_markdown,
+                                       report_views)
+
+
+def _hypothesis(*, grade, suffix="", supersedes=None):
+    evidence = (
+        [f"probe:1:{suffix or '1'}"]
+        if grade in {"finding", "supported", "refuted"}
+        else []
+    )
+    return Hypothesis.create(
+        claim=f"parse{suffix} accepts invalid input",
+        consequence="invalid state reaches callers",
+        remedy="validate input and add a regression test",
+        origin="exploration",
+        locus=[f"agent/runner.py:parse{suffix}"],
+        evidence=evidence,
+        grade=grade,
+        cycle_no=1,
+        supersedes=supersedes or [],
+        confidence=0.8,
+    )
 
 
 def _sample_report():
+    hypotheses = [
+        _hypothesis(grade="finding"),
+        _hypothesis(grade="supported", suffix="_supported"),
+        _hypothesis(
+            grade="refuted",
+            suffix="_old",
+            supersedes=["prior-finding-id"],
+        ),
+    ]
+    findings, backlog, retractions = report_views(hypotheses)
     return GuardianReport(
         repo="/repo",
         commit="abcdef1234567890",
@@ -15,36 +46,42 @@ def _sample_report():
         churn_window="90 days ago",
         file_count=123,
         capabilities={"sparse_search": True, "dense_search": True},
-        findings=[
-            Finding(
-                kind="churn",
-                title="High-churn file: agent/runner.py",
-                detail="Changed in **42** commits over 90 days ago.",
-                evidence=[
-                    Evidence("agent/runner.py", "query", "function", 892, 900, 0.873),
-                ],
-            )
-        ],
+        findings=findings,
+        backlog=backlog,
+        retractions=retractions,
+        cycle_no=1,
+        exit_reason="ReportSubmitted",
+        report_summary="One verified issue and one supported hypothesis.",
     )
 
 
-def test_render_includes_metadata_and_evidence():
-    md = render_markdown(_sample_report())
-    assert "# Repository Guardian Report — /repo" in md
-    assert "`abcdef123456`" in md  # commit truncated to 12
-    assert "Indexed files:** 123" in md
-    assert "agent/runner.py:892-900" in md
-    assert "0.873" in md
-    assert "| Location | Symbol | Type | Score |" in md
+def test_render_includes_metadata_and_actionable_finding():
+    markdown = render_markdown(_sample_report())
+    assert "# Repository Guardian Report — /repo" in markdown
+    assert "`abcdef123456`" in markdown
+    assert "Indexed files:** 123" in markdown
+    assert "parse accepts invalid input" in markdown
+    assert "Remedy:** validate input" in markdown
+    assert "agent/runner.py:parse" in markdown
+
+
+def test_only_finding_grade_reaches_findings_section():
+    report = _sample_report()
+    assert len(report.findings) == 1
+    assert len(report.backlog) == 1
+    assert len(report.retractions) == 1
+    markdown = render_markdown(report)
+    assert "## Findings (1)" in markdown
+    assert "## Backlog (1)" in markdown
+    assert "## Retractions (1)" in markdown
 
 
 def test_render_states_non_modifying_and_has_no_patches():
-    md = render_markdown(_sample_report()).lower()
-    assert "non-modifying" in md
-    # The invariant: a Phase-1 report never proposes patches/diffs.
-    assert "diff --git" not in md
-    assert "+++ " not in md
-    assert "```diff" not in md
+    markdown = render_markdown(_sample_report()).lower()
+    assert "non-modifying" in markdown
+    assert "diff --git" not in markdown
+    assert "+++ " not in markdown
+    assert "```diff" not in markdown
 
 
 def test_render_handles_no_findings():
@@ -54,13 +91,33 @@ def test_render_handles_no_findings():
         generated_at="2026-06-26 00:00:00 UTC",
         churn_window="90 days ago",
     )
-    md = render_markdown(report)
-    assert "No findings this cycle." in md
-    assert "(unknown)" in md
+    markdown = render_markdown(report)
+    assert "No verified actionable findings this cycle." in markdown
+    assert "(unknown)" in markdown
 
 
-def test_to_dict_roundtrips_findings():
-    d = _sample_report().to_dict()
-    assert d["file_count"] == 123
-    assert d["findings"][0]["kind"] == "churn"
-    assert d["findings"][0]["evidence"][0]["file"] == "agent/runner.py"
+def test_to_dict_roundtrips_report_views():
+    payload = _sample_report().to_dict()
+    assert payload["file_count"] == 123
+    assert payload["findings"][0]["origin"] == "exploration"
+    assert payload["findings"][0]["remedy"].startswith("validate")
+    assert payload["backlog"][0]["grade"] == "supported"
+
+
+def test_superseded_hypothesis_is_not_reported_twice():
+    old = _hypothesis(grade="finding", suffix="_old")
+    replacement = Hypothesis.create(
+        claim="parse replacement accepts invalid input",
+        consequence="invalid state reaches callers",
+        remedy="validate input and add a regression test",
+        origin="memory",
+        locus=["agent/runner.py:parse_old"],
+        evidence=["probe:2:1"],
+        grade="finding",
+        cycle_no=2,
+        supersedes=[old.id],
+    )
+    findings, backlog, retractions = report_views([old, replacement])
+    assert [item.id for item in findings] == [replacement.id]
+    assert backlog == []
+    assert retractions == []

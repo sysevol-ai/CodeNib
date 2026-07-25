@@ -16,16 +16,19 @@ from dataclasses import dataclass, field
 from typing import List
 
 from ...log_utils import get_logger
+from .types import Signal
 
 logger = get_logger(__name__)
 
 
-@dataclass
-class TestFailure:
-    """A single failing test node id (and optional one-line message)."""
-
-    nodeid: str
-    message: str = ""
+def TestFailure(nodeid: str, message: str = "") -> Signal:
+    """Compatibility constructor returning the canonical Signal type."""
+    return Signal.create(
+        kind="test_failure",
+        locus=[nodeid],
+        detail=message or f"{nodeid} failed",
+        value={"nodeid": nodeid, "message": message},
+    )
 
 
 @dataclass
@@ -35,7 +38,7 @@ class TestResult:
     passed: int = 0
     failed: int = 0
     errored: int = 0
-    failures: List[TestFailure] = field(default_factory=list)
+    failures: List[Signal] = field(default_factory=list)
     summary: str = ""
     ran: bool = False
 
@@ -82,7 +85,7 @@ def run_test_suite(
         return TestResult(ran=False, summary=f"pytest did not run: {exc}")
 
     out = proc.stdout + "\n" + proc.stderr
-    failures: List[TestFailure] = []
+    failures: List[Signal] = []
     for line in out.splitlines():
         m = _FAILED_LINE_RE.match(line.strip())
         if m:

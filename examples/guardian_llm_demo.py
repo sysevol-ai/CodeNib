@@ -47,7 +47,9 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from codeminer.guardian.llm_investigator import LLMUsage, investigate_with_llm
-from codeminer.guardian.report import Finding, GuardianReport, render_markdown
+from codeminer.guardian.loop import Hypothesis
+from codeminer.guardian.report import (GuardianReport, render_markdown,
+                                       report_views)
 from codeminer.guardian.signals import churn_hotspots
 from codeminer.llm.litellm_chat import LiteLLMChat
 
@@ -83,7 +85,10 @@ def _head_commit(repo_path: str) -> str:
     try:
         return subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=repo_path, capture_output=True, text=True, timeout=5,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=5,
         ).stdout.strip()
     except Exception:
         return ""
@@ -95,6 +100,7 @@ def _manifest_is_fresh(manifest_path: str, repo_path: str, index_type: str) -> b
         return False
     try:
         from codeminer.compiler.manifest import RepoManifest
+
         manifest = RepoManifest.load(manifest_path)
         entry = manifest.indexes.get(index_type)
         if entry is None or entry.status != "fresh":
@@ -104,10 +110,17 @@ def _manifest_is_fresh(manifest_path: str, repo_path: str, index_type: str) -> b
         return False
 
 
-def _compile(repo_path: str, index_type: str, cache_dir: str, languages: list,
-             embedding_model: str, embedding_dimension: int):
+def _compile(
+    repo_path: str,
+    index_type: str,
+    cache_dir: str,
+    languages: list,
+    embedding_model: str,
+    embedding_dimension: int,
+):
     """Phase 1: build the index and write repo_manifest.json."""
     from codeminer.agent import compile_repo
+
     print(f"[Phase 1] Compiling {index_type!r} index ...")
     manifest = compile_repo(
         repo_path,
@@ -124,10 +137,17 @@ def _compile(repo_path: str, index_type: str, cache_dir: str, languages: list,
     return manifest
 
 
-def _load_retriever(index_type: str, retriever_name: str, manifest_path: str,
-                    embedding_model: str, embedding_dimension: int, languages: list):
+def _load_retriever(
+    index_type: str,
+    retriever_name: str,
+    manifest_path: str,
+    embedding_model: str,
+    embedding_dimension: int,
+    languages: list,
+):
     """Phase 2: load the retriever from disk without rebuilding."""
     from codeminer.compiler.manifest import RepoManifest
+
     manifest = RepoManifest.load(manifest_path)
     entry = manifest.indexes[index_type]
     index_path = entry.path
@@ -135,6 +155,7 @@ def _load_retriever(index_type: str, retriever_name: str, manifest_path: str,
     if retriever_name == "bm25":
         from codeminer.graph.code_graph import CodeGraph
         from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
+
         graph_pkl = os.path.join(index_path, "graph.pkl")
         print(f"[Phase 2] Loading code graph from {graph_pkl} ...")
         graph = CodeGraph.load_graph(graph_pkl)
@@ -144,7 +165,9 @@ def _load_retriever(index_type: str, retriever_name: str, manifest_path: str,
         return _BM25Retriever(bm25)
 
     if retriever_name == "embedding":
-        from codeminer.model.embedding_retrieve_pipeline import EmbeddingRetrievePipeline
+        from codeminer.model.embedding_retrieve_pipeline import \
+            EmbeddingRetrievePipeline
+
         print(f"[Phase 2] Loading embedding index from {index_path} ...")
         pipeline = EmbeddingRetrievePipeline(
             repo_path=manifest.repo_path,
@@ -180,16 +203,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--vertex-project", default=None, help="GCP project for Vertex AI")
     p.add_argument("--vertex-location", default=None, help="GCP region for Vertex AI")
     p.add_argument(
-        "--max-tool-rounds", type=int, default=6,
+        "--max-tool-rounds",
+        type=int,
+        default=6,
         help="Max search_code rounds before forcing conclusion",
     )
-    p.add_argument("--retrieval-top-k", type=int, default=5, help="Results per search call")
     p.add_argument(
-        "--language", default="python",
+        "--retrieval-top-k", type=int, default=5, help="Results per search call"
+    )
+    p.add_argument(
+        "--language",
+        default="python",
         help="Primary language (comma-separated for multiple)",
     )
     p.add_argument(
-        "--retriever", default="bm25",
+        "--retriever",
+        default="bm25",
         choices=["bm25", "embedding"],
         help=(
             "bm25: SCIP symbol_graph + BM25 on unified symbol names (default). "
@@ -197,23 +226,29 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
-        "--embedding-model", default="nomic-ai/CodeRankEmbed",
+        "--embedding-model",
+        default="nomic-ai/CodeRankEmbed",
         help="Embedding model (used when --retriever=embedding)",
     )
     p.add_argument(
-        "--embedding-dimension", type=int, default=768,
+        "--embedding-dimension",
+        type=int,
+        default=768,
         help="Embedding vector dimension",
     )
     p.add_argument(
-        "--cache-dir", default=None,
+        "--cache-dir",
+        default=None,
         help="Index cache directory (default: <repo>/.codeminer_cache)",
     )
     p.add_argument(
-        "--force-reindex", action="store_true",
+        "--force-reindex",
+        action="store_true",
         help="Rebuild the index even if the manifest is fresh",
     )
     p.add_argument(
-        "--output-dir", default="guardian_output",
+        "--output-dir",
+        default="guardian_output",
         help="Parent directory for episode output",
     )
     return p.parse_args()
@@ -242,9 +277,12 @@ def main() -> None:
     log_path = os.path.join(episode_dir, "guardian.log")
     _fh = _logging.FileHandler(log_path, encoding="utf-8")
     _fh.setLevel(_logging.DEBUG)
-    _fh.setFormatter(_logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s"))
+    _fh.setFormatter(
+        _logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s")
+    )
     _guardian_loggers = [
-        obj for name, obj in _logging.Logger.manager.loggerDict.items()
+        obj
+        for name, obj in _logging.Logger.manager.loggerDict.items()
         if name.startswith("codeminer.guardian") and isinstance(obj, _logging.Logger)
     ]
     for _lg in _guardian_loggers:
@@ -267,20 +305,30 @@ def main() -> None:
     print()
 
     # ── Phase 1: compile (skip if fresh) ───────────────────────────────────
-    if not args.force_reindex and _manifest_is_fresh(manifest_path, repo_path, index_type):
+    if not args.force_reindex and _manifest_is_fresh(
+        manifest_path, repo_path, index_type
+    ):
         print(f"[Phase 1] Index is fresh for HEAD — skipping rebuild.")
         print(f"          (pass --force-reindex to override)\n")
     else:
         _compile(
-            repo_path, index_type, cache_dir, languages,
-            args.embedding_model, args.embedding_dimension,
+            repo_path,
+            index_type,
+            cache_dir,
+            languages,
+            args.embedding_model,
+            args.embedding_dimension,
         )
         print()
 
     # ── Phase 2: load retriever from cache ─────────────────────────────────
     retriever = _load_retriever(
-        index_type, args.retriever, manifest_path,
-        args.embedding_model, args.embedding_dimension, languages,
+        index_type,
+        args.retriever,
+        manifest_path,
+        args.embedding_model,
+        args.embedding_dimension,
+        languages,
     )
     print()
 
@@ -310,7 +358,7 @@ def main() -> None:
 
     # ── LLM investigation ──────────────────────────────────────────────────
     usage_acc = LLMUsage()
-    findings = []
+    hypotheses = []
     for i, hotspot in enumerate(hotspots, start=1):
         print(f"── Hotspot {i}/{len(hotspots)}: {hotspot.path} ──")
         print(f"  Running LLM investigation (model={args.model}) ...")
@@ -324,12 +372,23 @@ def main() -> None:
             top_k=args.retrieval_top_k,
             usage_acc=usage_acc,
         )
-        findings.append(Finding(
-            kind="churn",
-            title=f"High-churn file: {hotspot.path}",
-            detail=f"Changed in **{hotspot.commit_count}** commits over {args.since}.",
-            narrative=narrative,
-        ))
+        hypotheses.append(
+            Hypothesis.create(
+                claim=(
+                    f"Recent edits to {hotspot.path} may have introduced the "
+                    f"behavioral risk described by the analysis: {narrative[:240]}"
+                ),
+                consequence="Dependent behavior may no longer match its contract",
+                remedy=(
+                    f"Review {hotspot.path}, reproduce the suspected behavior, "
+                    "and add a targeted regression test before correcting it"
+                ),
+                origin="signal",
+                locus=[hotspot.path],
+                evidence=[],
+                confidence=0.5,
+            )
+        )
         print(f"\n  LLM narrative:\n")
         for line in narrative.splitlines():
             print(f"    {line}")
@@ -340,12 +399,15 @@ def main() -> None:
     from datetime import timezone
 
     commit = _head_commit(repo_path) or "(unknown)"
+    findings, backlog, retractions = report_views(hypotheses)
     report = GuardianReport(
         repo=repo_path,
         commit=commit,
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         churn_window=args.since,
         findings=findings,
+        backlog=backlog,
+        retractions=retractions,
         llm_usage=usage_acc,
         retriever=args.retriever,
     )
@@ -359,7 +421,9 @@ def main() -> None:
     md_path = Path(episode_dir) / "report.md"
     json_path = Path(episode_dir) / "report.json"
     md_path.write_text(md, encoding="utf-8")
-    json_path.write_text(_json.dumps(report.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+    json_path.write_text(
+        _json.dumps(report.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
     for _lg in _guardian_loggers:
         _lg.removeHandler(_fh)

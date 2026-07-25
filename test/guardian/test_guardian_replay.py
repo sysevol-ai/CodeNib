@@ -21,10 +21,10 @@ import pytest
 import scripts.guardian_replay as replay_mod
 from scripts.guardian_replay import _read_commits, provision_worktree, teardown_worktree
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _git(repo, *args):
     subprocess.run(
@@ -64,6 +64,7 @@ def _head(repo: Path) -> str:
 # _read_commits
 # ---------------------------------------------------------------------------
 
+
 class TestReadCommits:
     def test_reads_shas(self, tmp_path):
         f = tmp_path / "commits.txt"
@@ -84,6 +85,7 @@ class TestReadCommits:
 # ---------------------------------------------------------------------------
 # provision_worktree / teardown_worktree
 # ---------------------------------------------------------------------------
+
 
 class TestWorktreeHelpers:
     def test_provision_creates_worktree(self, tmp_path):
@@ -128,20 +130,36 @@ class TestWorktreeHelpers:
 # run_replay (injected mock run_cycle)
 # ---------------------------------------------------------------------------
 
+
 def _fake_report(commit="abc12345"):
-    from codeminer.guardian.report import Finding, GuardianReport
+    from codeminer.guardian.loop import Hypothesis
+    from codeminer.guardian.report import GuardianReport, report_views
+
+    hypothesis = Hypothesis.create(
+        claim="mod.parse accepts invalid input",
+        consequence="invalid state reaches callers",
+        remedy="validate input and add a regression test",
+        origin="exploration",
+        locus=["mod.py:parse"],
+        evidence=["probe:fixture:1"],
+        grade="finding",
+    )
+    findings, backlog, retractions = report_views([hypothesis])
     return GuardianReport(
         repo="/repo",
         commit=commit,
         generated_at="2026-01-01 00:00:00 UTC",
         churn_window="90 days ago",
-        findings=[Finding(kind="churn", title="High-churn file: mod.py")],
+        findings=findings,
+        backlog=backlog,
+        retractions=retractions,
     )
 
 
 class TestRunReplay:
     def _make_args(self, tmp_path, repo, commits_file, **kwargs):
         import argparse
+
         args = argparse.Namespace(
             repo=str(repo),
             commits=str(commits_file),
@@ -166,11 +184,16 @@ class TestRunReplay:
 
         args = self._make_args(tmp_path, repo, commits_file)
 
-        with patch("scripts.guardian_replay.provision_worktree",
-                   return_value=str(repo)) as mock_prov, \
-             patch("scripts.guardian_replay.teardown_worktree") as mock_tear, \
-             patch("codeminer.guardian.cycle.run_cycle",
-                   return_value=_fake_report(commits[0])):
+        with (
+            patch(
+                "scripts.guardian_replay.provision_worktree", return_value=str(repo)
+            ) as mock_prov,
+            patch("scripts.guardian_replay.teardown_worktree") as mock_tear,
+            patch(
+                "codeminer.guardian.cycle.run_cycle",
+                return_value=_fake_report(commits[0]),
+            ),
+        ):
             replay_mod.run_replay(args)
 
         out = Path(args.out)
@@ -186,11 +209,13 @@ class TestRunReplay:
 
         args = self._make_args(tmp_path, repo, commits_file)
 
-        with patch("scripts.guardian_replay.provision_worktree",
-                   return_value=str(repo)), \
-             patch("scripts.guardian_replay.teardown_worktree"), \
-             patch("codeminer.guardian.cycle.run_cycle",
-                   return_value=_fake_report(commit)):
+        with (
+            patch("scripts.guardian_replay.provision_worktree", return_value=str(repo)),
+            patch("scripts.guardian_replay.teardown_worktree"),
+            patch(
+                "codeminer.guardian.cycle.run_cycle", return_value=_fake_report(commit)
+            ),
+        ):
             replay_mod.run_replay(args)
 
         ep_dir = next((Path(args.out) / "episodes").iterdir())
@@ -208,32 +233,45 @@ class TestRunReplay:
 
         args = self._make_args(tmp_path, repo, commits_file)
 
-        with patch("scripts.guardian_replay.provision_worktree",
-                   return_value=str(repo)), \
-             patch("scripts.guardian_replay.teardown_worktree") as mock_tear, \
-             patch("codeminer.guardian.cycle.run_cycle",
-                   side_effect=RuntimeError("cycle boom")):
+        with (
+            patch("scripts.guardian_replay.provision_worktree", return_value=str(repo)),
+            patch("scripts.guardian_replay.teardown_worktree") as mock_tear,
+            patch(
+                "codeminer.guardian.cycle.run_cycle",
+                side_effect=RuntimeError("cycle boom"),
+            ),
+        ):
             replay_mod.run_replay(args)  # must not raise
 
         mock_tear.assert_called_once()
+        episode = next((Path(args.out) / "episodes").iterdir())
+        failure = json.loads((episode / "cycle_failure.json").read_text())
+        assert failure["status"] == "failed"
+        assert failure["failure_type"] == "RuntimeError"
+        assert "cycle boom" in failure["reason"]
+        assert not (episode / "report.json").exists()
 
     def test_multiple_commits_produce_multiple_episodes(self, tmp_path):
         repo = _make_repo(tmp_path)
         # Collect the last 3 commits.
-        log = subprocess.check_output(
-            ["git", "log", "--format=%H", "-3"], cwd=repo, text=True
-        ).strip().splitlines()
+        log = (
+            subprocess.check_output(
+                ["git", "log", "--format=%H", "-3"], cwd=repo, text=True
+            )
+            .strip()
+            .splitlines()
+        )
         commits_file = tmp_path / "commits.txt"
         commits_file.write_text("\n".join(log) + "\n")
 
         args = self._make_args(tmp_path, repo, commits_file)
 
         side_effects = [_fake_report(c) for c in log]
-        with patch("scripts.guardian_replay.provision_worktree",
-                   return_value=str(repo)), \
-             patch("scripts.guardian_replay.teardown_worktree"), \
-             patch("codeminer.guardian.cycle.run_cycle",
-                   side_effect=side_effects):
+        with (
+            patch("scripts.guardian_replay.provision_worktree", return_value=str(repo)),
+            patch("scripts.guardian_replay.teardown_worktree"),
+            patch("codeminer.guardian.cycle.run_cycle", side_effect=side_effects),
+        ):
             replay_mod.run_replay(args)
 
         ep_dirs = sorted((Path(args.out) / "episodes").iterdir())
@@ -249,11 +287,13 @@ class TestRunReplay:
 
         args = self._make_args(tmp_path, repo, commits_file)
 
-        with patch("scripts.guardian_replay.provision_worktree",
-                   return_value=str(repo)), \
-             patch("scripts.guardian_replay.teardown_worktree"), \
-             patch("codeminer.guardian.cycle.run_cycle",
-                   return_value=_fake_report(commit)):
+        with (
+            patch("scripts.guardian_replay.provision_worktree", return_value=str(repo)),
+            patch("scripts.guardian_replay.teardown_worktree"),
+            patch(
+                "codeminer.guardian.cycle.run_cycle", return_value=_fake_report(commit)
+            ),
+        ):
             replay_mod.run_replay(args)
 
         assert (Path(args.out) / "memory").is_dir()
@@ -263,6 +303,7 @@ class TestRunReplay:
 # Integration — real IndexCompiler (BM25 only, no GPU)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.integration
 def test_two_cycle_replay_bm25_only(tmp_path):
     """Full two-cycle replay: real BM25 index, real worktrees, memory accumulates."""
@@ -271,9 +312,13 @@ def test_two_cycle_replay_bm25_only(tmp_path):
     repo = _make_repo(tmp_path)
 
     # Collect all 3 commits (oldest to newest) so graph diff has something to compare.
-    log = subprocess.check_output(
-        ["git", "log", "--format=%H", "--reverse"], cwd=repo, text=True
-    ).strip().splitlines()
+    log = (
+        subprocess.check_output(
+            ["git", "log", "--format=%H", "--reverse"], cwd=repo, text=True
+        )
+        .strip()
+        .splitlines()
+    )
     # Use the last two so the churn window covers both.
     commits = log[-2:]
     commits_file = tmp_path / "commits.txt"
@@ -298,9 +343,12 @@ def test_two_cycle_replay_bm25_only(tmp_path):
 
     # Memory store must have exactly two cycle rows.
     from codeminer.guardian.memory import MemoryStore
+
     store = MemoryStore(str(out / "memory"))
     assert store.cycle_count() == 2
-    store.assert_cross_cycle()
+    # Degraded no-model cycles persist their exits and signals but correctly
+    # create no hypotheses, so there is no hypothesis trajectory to assert.
+    assert store.recall(k=1) == []
 
     # Both episodes must have a report.md.
     ep_dirs = sorted((out / "episodes").iterdir())

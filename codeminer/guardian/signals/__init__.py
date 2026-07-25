@@ -11,12 +11,12 @@ module, so existing imports continue to work unchanged.
 
 from .churn import Hotspot, churn_hotspots
 from .tests import TestFailure, TestResult, run_test_suite
+from .types import Signal
 from .graph_diff import (
     DriftSignal,
     EdgeChange,
     compute_drift_signals,
     diff_graphs,
-    drift_findings,
     latest_snapshot_commit,
     load_snapshot,
     save_snapshot,
@@ -30,12 +30,12 @@ __all__ = [
     "TestFailure",
     "TestResult",
     "run_test_suite",
+    "Signal",
     # graph_diff
     "DriftSignal",
     "EdgeChange",
     "compute_drift_signals",
     "diff_graphs",
-    "drift_findings",
     "latest_snapshot_commit",
     "load_snapshot",
     "save_snapshot",

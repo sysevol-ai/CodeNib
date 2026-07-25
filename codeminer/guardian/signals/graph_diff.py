@@ -12,8 +12,8 @@ three deterministic signals — no LLM involved:
   api_surface_change  — a public symbol has net edge changes while none of its
                         existing dependents have new corresponding edges
 
-The signals are converted to Finding(kind="drift") objects by drift_findings()
-so the Guardian report pipeline sees them identically to churn findings.
+The signals enter the outer loop as measurements. They can suggest hypotheses,
+but are never converted directly into report findings.
 
 Moved from codeminer.guardian.graph_diff (flat module) into the signals/
 sub-package; relative imports updated accordingly.
@@ -21,17 +21,16 @@ sub-package; relative imports updated accordingly.
 
 from __future__ import annotations
 
-import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, FrozenSet, List, Optional, Tuple
 
 from ...log_utils import get_logger
-from ...types import DEPENDENCY_EDGE_TYPES, EDGE_TYPE_CONTAIN, is_symbol_node
+from ...types import DEPENDENCY_EDGE_TYPES, is_symbol_node
+from .types import Signal
 
 if TYPE_CHECKING:
     from ...graph.code_graph import CodeGraph
-    from ..report import Finding
 
 logger = get_logger(__name__)
 
@@ -42,6 +41,7 @@ _TRACKED_EDGE_TYPES: FrozenSet[str] = DEPENDENCY_EDGE_TYPES
 # ---------------------------------------------------------------------------
 # Snapshot store
 # ---------------------------------------------------------------------------
+
 
 def _snapshot_path(memory_dir: str, commit: str) -> str:
     return os.path.join(memory_dir, "graph", f"{commit[:12]}.pkl")
@@ -89,9 +89,7 @@ def latest_snapshot_commit(memory_dir: str) -> Optional[str]:
     graph_dir = os.path.join(memory_dir, "graph")
     if not os.path.isdir(graph_dir):
         return None
-    pkls = sorted(
-        f for f in os.listdir(graph_dir) if f.endswith(".pkl")
-    )
+    pkls = sorted(f for f in os.listdir(graph_dir) if f.endswith(".pkl"))
     if not pkls:
         return None
     return pkls[-1].replace(".pkl", "")
@@ -101,16 +99,17 @@ def latest_snapshot_commit(memory_dir: str) -> Optional[str]:
 # Edge diff
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class EdgeChange:
     """One added or removed dependency edge between two graph snapshots."""
 
-    kind: str        # "added" | "removed"
-    edge_type: str   # "reference" | "import" | "type-use"
-    src: str         # source node name
-    dst: str         # destination node name
-    src_file: str    # file containing src (empty if unknown)
-    dst_file: str    # file containing dst (empty if unknown)
+    kind: str  # "added" | "removed"
+    edge_type: str  # "reference" | "import" | "type-use"
+    src: str  # source node name
+    dst: str  # destination node name
+    src_file: str  # file containing src (empty if unknown)
+    dst_file: str  # file containing dst (empty if unknown)
 
 
 def _edge_set(graph: "CodeGraph") -> FrozenSet[Tuple[str, str, str]]:
@@ -151,22 +150,33 @@ def diff_graphs(prior: "CodeGraph", current: "CodeGraph") -> List[EdgeChange]:
     changes: List[EdgeChange] = []
 
     for src, dst, etype in sorted(added):
-        changes.append(EdgeChange(
-            kind="added", edge_type=etype, src=src, dst=dst,
-            src_file=_node_file(current, src),
-            dst_file=_node_file(current, dst),
-        ))
+        changes.append(
+            EdgeChange(
+                kind="added",
+                edge_type=etype,
+                src=src,
+                dst=dst,
+                src_file=_node_file(current, src),
+                dst_file=_node_file(current, dst),
+            )
+        )
 
     for src, dst, etype in sorted(removed):
-        changes.append(EdgeChange(
-            kind="removed", edge_type=etype, src=src, dst=dst,
-            src_file=_node_file(prior, src),
-            dst_file=_node_file(prior, dst),
-        ))
+        changes.append(
+            EdgeChange(
+                kind="removed",
+                edge_type=etype,
+                src=src,
+                dst=dst,
+                src_file=_node_file(prior, src),
+                dst_file=_node_file(prior, dst),
+            )
+        )
 
     logger.debug(
         "graph_diff: %d added, %d removed dependency edges",
-        len(added), len(removed),
+        len(added),
+        len(removed),
     )
     return changes
 
@@ -175,15 +185,28 @@ def diff_graphs(prior: "CodeGraph", current: "CodeGraph") -> List[EdgeChange]:
 # Drift signals
 # ---------------------------------------------------------------------------
 
-@dataclass
-class DriftSignal:
-    """A human-readable structural drift finding derived from an edge diff."""
 
-    kind: str                              # "fan_in_spike" | "contract_change" | "api_surface_change"
-    symbol: str                            # primary symbol name
-    file: str                              # file containing symbol
-    detail: str                            # plain-English one-liner for report / LLM prompt
-    edge_changes: List[EdgeChange] = field(default_factory=list)
+def DriftSignal(
+    *,
+    kind: str,
+    symbol: str,
+    file: str,
+    detail: str,
+    edge_changes: Optional[List[EdgeChange]] = None,
+) -> Signal:
+    """Compatibility constructor returning the canonical Signal type."""
+    return Signal.create(
+        kind=kind,
+        locus=[item for item in [file, symbol] if item],
+        detail=detail,
+        value={
+            "symbol": symbol,
+            "file": file,
+            "edge_changes": [
+                asdict(change) for change in (edge_changes or [])
+            ],
+        },
+    )
 
 
 def _fan_in_counts(
@@ -210,7 +233,7 @@ def compute_drift_signals(
     prior: "CodeGraph",
     fan_in_threshold: int = 5,
     contract_min_prior_fan_in: int = 3,
-) -> List[DriftSignal]:
+) -> List[Signal]:
     """Derive DriftSignal list from a raw EdgeChange list.
 
     Three signal types:
@@ -234,7 +257,7 @@ def compute_drift_signals(
         return []
 
     # --- fan_in_spike ---
-    added_in: dict = {}   # dst → [EdgeChange]
+    added_in: dict = {}  # dst → [EdgeChange]
     removed_out: dict = {}  # src → [EdgeChange]
 
     for ch in changes:
@@ -244,21 +267,23 @@ def compute_drift_signals(
         else:
             removed_out.setdefault(ch.src, []).append(ch)
 
-    signals: List[DriftSignal] = []
+    signals: List[Signal] = []
 
     # fan_in_spike: dst gained many new incoming edges
     for dst, chs in added_in.items():
         if len(chs) >= fan_in_threshold:
-            signals.append(DriftSignal(
-                kind="fan_in_spike",
-                symbol=dst,
-                file=chs[0].dst_file,
-                detail=(
-                    f"`{dst}` gained {len(chs)} new incoming "
-                    f"{chs[0].edge_type} edge(s) — rising blast-radius."
-                ),
-                edge_changes=chs,
-            ))
+            signals.append(
+                DriftSignal(
+                    kind="fan_in_spike",
+                    symbol=dst,
+                    file=chs[0].dst_file,
+                    detail=(
+                        f"`{dst}` gained {len(chs)} new incoming "
+                        f"{chs[0].edge_type} edge(s) — rising blast-radius."
+                    ),
+                    edge_changes=chs,
+                )
+            )
 
     # --- contract_change ---
     prior_fan_in = _fan_in_counts(prior)
@@ -266,23 +291,23 @@ def compute_drift_signals(
     for src, chs in removed_out.items():
         prior_fi = prior_fan_in.get(src, 0)
         if prior_fi >= contract_min_prior_fan_in:
-            signals.append(DriftSignal(
-                kind="contract_change",
-                symbol=src,
-                file=chs[0].src_file,
-                detail=(
-                    f"`{src}` lost {len(chs)} outgoing edge(s); "
-                    f"it had {prior_fi} dependent(s) in the prior snapshot — "
-                    f"possible contract / signature change with lagging consumers."
-                ),
-                edge_changes=chs,
-            ))
+            signals.append(
+                DriftSignal(
+                    kind="contract_change",
+                    symbol=src,
+                    file=chs[0].src_file,
+                    detail=(
+                        f"`{src}` lost {len(chs)} outgoing edge(s); "
+                        f"it had {prior_fi} dependent(s) in the prior snapshot — "
+                        f"possible contract / signature change with lagging consumers."
+                    ),
+                    edge_changes=chs,
+                )
+            )
 
     # --- api_surface_change ---
     # Public symbols that have net changes; check if their prior dependents
     # added any outgoing edge toward them (if not, consumers haven't adapted).
-    current_fan_in = _fan_in_counts(current)
-
     changed_symbols: set = set()
     for ch in changes:
         changed_symbols.add(ch.dst if ch.kind == "added" else ch.src)
@@ -331,17 +356,19 @@ def compute_drift_signals(
             n_lag = len(lagging)
             sym_changes = [c for c in changes if c.src == sym or c.dst == sym]
             f = _node_file(current, sym) or _node_file(prior, sym)
-            signals.append(DriftSignal(
-                kind="api_surface_change",
-                symbol=sym,
-                file=f,
-                detail=(
-                    f"`{sym}` interface changed; "
-                    f"{n_lag} prior dependent(s) have not added new edges — "
-                    f"possible undetected breakage."
-                ),
-                edge_changes=sym_changes,
-            ))
+            signals.append(
+                DriftSignal(
+                    kind="api_surface_change",
+                    symbol=sym,
+                    file=f,
+                    detail=(
+                        f"`{sym}` interface changed; "
+                        f"{n_lag} prior dependent(s) have not added new edges — "
+                        f"possible undetected breakage."
+                    ),
+                    edge_changes=sym_changes,
+                )
+            )
 
     logger.info(
         "graph_diff: %d drift signal(s): %s",
@@ -349,22 +376,3 @@ def compute_drift_signals(
         ", ".join(s.kind for s in signals),
     )
     return signals
-
-
-# ---------------------------------------------------------------------------
-# Convert to Finding objects
-# ---------------------------------------------------------------------------
-
-def drift_findings(signals: List[DriftSignal]) -> "List[Finding]":
-    """Convert DriftSignal list to guardian Finding objects for the report."""
-    from ..report import Finding
-
-    findings = []
-    for sig in signals:
-        loc = f"{sig.file}: " if sig.file else ""
-        findings.append(Finding(
-            kind="drift",
-            title=f"Graph-diff drift: {sig.kind} — {loc}`{sig.symbol}`",
-            detail=sig.detail,
-        ))
-    return findings

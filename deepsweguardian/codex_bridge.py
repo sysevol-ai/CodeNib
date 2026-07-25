@@ -194,9 +194,15 @@ def run_bridge(
         commit = _head(config.repo_path)
         if commit and commit != last_commit:
             cycle_idx += 1
-            episode_dir = Path(
-                f"/logs/agent/guardian_episodes/{cycle_idx:04d}_{commit[:12]}"
+            episode_root = Path(
+                os.environ.get("GUARDIAN_EPISODES_DIR", "/logs/agent/guardian_episodes")
             )
+            try:
+                episode_root.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                episode_root = output / "episodes"
+                episode_root.mkdir(parents=True, exist_ok=True)
+            episode_dir = episode_root / f"{cycle_idx:04d}_{commit[:12]}"
             _write_status(
                 output,
                 commit=commit,

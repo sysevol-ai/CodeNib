@@ -20,9 +20,20 @@ from __future__ import annotations
 
 import random as _random
 import subprocess
+from dataclasses import dataclass
 from typing import List, Optional
 
-from codeminer.guardian.report import Finding
+
+@dataclass
+class BaselineFinding:
+    """Evaluation prediction, deliberately distinct from a Guardian finding."""
+
+    kind: str
+    title: str
+    detail: str = ""
+
+
+Finding = BaselineFinding
 
 
 # ---------------------------------------------------------------------------
@@ -101,14 +112,21 @@ def graph_diff_only(
 
     try:
         from codeminer.guardian.signals.graph_diff import (
-            compute_drift_signals,
-            diff_graphs,
-            drift_findings,
-        )
+            compute_drift_signals, diff_graphs)
 
         edge_changes = diff_graphs(prior_graph, current_graph)
         signals = compute_drift_signals(edge_changes, current_graph, prior_graph)
-        all_findings = drift_findings(signals)
+        all_findings = [
+            BaselineFinding(
+                kind="drift",
+                title=(
+                    f"Graph-diff drift: {signal.kind} — "
+                    f"{signal.file}: `{signal.symbol}`"
+                ),
+                detail=signal.detail,
+            )
+            for signal in signals
+        ]
         return all_findings[:top_k]
     except Exception:  # noqa: BLE001
         return []

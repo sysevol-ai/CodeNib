@@ -12,10 +12,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _git(repo, *args):
     subprocess.run(
@@ -49,10 +49,12 @@ def _make_repo(tmp_path):
 # _assert_mirror_unchanged
 # ---------------------------------------------------------------------------
 
+
 class TestAssertMirrorUnchanged:
     def test_passes_when_head_is_same(self, tmp_path):
         repo = _make_repo(tmp_path)
         from scripts.guardian_replay import _assert_mirror_unchanged
+
         before = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=repo, text=True
         ).strip()
@@ -69,7 +71,9 @@ class TestAssertMirrorUnchanged:
         # Move HEAD to parent
         subprocess.run(
             ["git", "reset", "--hard", "HEAD~1"],
-            cwd=repo, check=True, capture_output=True,
+            cwd=repo,
+            check=True,
+            capture_output=True,
         )
 
         with pytest.raises(AssertionError, match="Non-modifying invariant violated"):
@@ -80,9 +84,11 @@ class TestAssertMirrorUnchanged:
 # provision_container
 # ---------------------------------------------------------------------------
 
+
 class TestProvisionContainer:
     def _make_cfg(self):
         from codeminer.guardian.cycle import GuardianConfig
+
         return GuardianConfig(
             repo_path="/repo",
             arm="memory",
@@ -103,7 +109,9 @@ class TestProvisionContainer:
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            provision_container(str(wt), str(mem), str(ep), cfg, image="guardian-runtime:latest")
+            provision_container(
+                str(wt), str(mem), str(ep), cfg, image="guardian-runtime:latest"
+            )
 
         cmd = mock_run.call_args[0][0]
         assert cmd[0] == "docker"
@@ -162,11 +170,19 @@ class TestProvisionContainer:
 # Integration smoke (skipped when docker is absent)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.integration
 def test_container_sandbox_runs_one_cycle(tmp_path):
     """smoke: docker run guardian-runtime produces report.json in /out."""
     if not shutil.which("docker"):
         pytest.skip("docker not available")
+    daemon = subprocess.run(
+        ["docker", "info"],
+        capture_output=True,
+        text=True,
+    )
+    if daemon.returncode != 0:
+        pytest.skip("docker daemon is not accessible")
 
     import json
 

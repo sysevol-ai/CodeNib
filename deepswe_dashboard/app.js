@@ -47,41 +47,55 @@ function heatColor(value, metric) {
 }
 
 function columns() {
-  const seen = new Set();
-  const cols = [];
-  for (const row of state.data.summary) {
-    const key = row.label;
-    if (!seen.has(key)) {
-      seen.add(key);
-      cols.push(key);
-    }
-  }
-  return cols;
+  return ["solo", "guardian"];
 }
 
-function tasks() {
-  return [...new Set(state.data.summary.map((r) => r.task))].sort();
+function settings() {
+  const seen = new Set();
+  const rows = [];
+  for (const row of state.data.summary) {
+    const key = `${row.task}:::${row.model}:::${row.reasoning_effort}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      rows.push({
+        key,
+        task: row.task,
+        model: row.model,
+        reasoning_effort: row.reasoning_effort,
+      });
+    }
+  }
+  return rows.sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function settingLabel(row) {
+  return `${row.task} · ${row.model} · ${row.reasoning_effort}`;
 }
 
 function renderHeatmap() {
   const host = document.getElementById("heatmap");
   const cols = columns();
-  const ts = tasks();
+  const rows = settings();
   const metric = state.metric;
-  const lookup = new Map(state.data.summary.map((r) => [`${r.task}:::${r.label}`, r]));
+  const lookup = new Map(
+    state.data.summary.map((r) => [
+      `${r.task}:::${r.model}:::${r.reasoning_effort}:::${r.baseline}`,
+      r,
+    ]),
+  );
 
   host.innerHTML = "";
   const grid = document.createElement("div");
   grid.className = "heat-grid";
-  grid.style.gridTemplateColumns = `minmax(260px, 1.3fr) repeat(${cols.length}, minmax(160px, 1fr))`;
+  grid.style.gridTemplateColumns = `minmax(420px, 1.6fr) repeat(${cols.length}, minmax(160px, 1fr))`;
 
-  grid.appendChild(cell("Task", "heat-head"));
+  grid.appendChild(cell("Task / Model / Effort", "heat-head"));
   for (const col of cols) grid.appendChild(cell(col, "heat-head"));
 
-  for (const task of ts) {
-    grid.appendChild(cell(task, "heat-task"));
+  for (const rowInfo of rows) {
+    grid.appendChild(cell(settingLabel(rowInfo), "heat-task"));
     for (const col of cols) {
-      const row = lookup.get(`${task}:::${col}`);
+      const row = lookup.get(`${rowInfo.key}:::${col}`);
       const value = row ? row[metric] : null;
       const el = document.createElement("div");
       el.className = "heat-cell";
@@ -104,9 +118,21 @@ function cell(text, className) {
 function renderTasks() {
   const table = document.getElementById("tasks-table");
   table.innerHTML = tableHtml(
-    ["Task", "Solo", "Guardian", "Delta", "Solo n", "Guardian n", "Guardian avg cost"],
+    [
+      "Task",
+      "Model",
+      "Effort",
+      "Solo",
+      "Guardian",
+      "Delta",
+      "Solo n",
+      "Guardian n",
+      "Guardian avg cost",
+    ],
     state.data.tasks.map((r) => [
       r.task,
+      r.model,
+      r.reasoning_effort,
       fmt(r.solo_pass_rate, "pct"),
       fmt(r.guardian_pass_rate, "pct"),
       fmt(r.delta_pass_rate, "pct"),
@@ -114,7 +140,7 @@ function renderTasks() {
       fmt(r.guardian_trials),
       fmt(r.guardian_avg_cost_usd, "cost"),
     ]),
-    [false, true, true, true, true, true, true],
+    [false, false, false, true, true, true, true, true, true],
   );
 }
 
@@ -136,6 +162,8 @@ function renderTrials() {
   table.innerHTML = tableHtml(
     [
       "Task",
+      "Model",
+      "Effort",
       "Baseline",
       "Job",
       "Reward",
@@ -144,11 +172,11 @@ function renderTrials() {
       "Cost",
       "Main tokens",
       "Guardian tokens",
-      "Findings",
-      "Artifacts",
     ],
     rows.map((r) => [
       r.task,
+      r.model,
+      r.reasoning_effort,
       r.baseline,
       r.job_id,
       `<span class="${Number(r.reward) === 1 ? "status-pass" : "status-fail"}">${fmt(r.reward)}</span>`,
@@ -157,24 +185,9 @@ function renderTrials() {
       fmt(r.total_cost_usd, "cost"),
       fmt(r.main_input_tokens),
       fmt((Number(r.guardian_prompt_tokens) || 0) + (Number(r.guardian_completion_tokens) || 0)),
-      fmt(r.guardian_findings),
-      artifactLinks(r),
     ]),
-    [false, false, false, true, true, true, true, true, true, true, false],
+    [false, false, false, false, false, true, true, true, true, true],
   );
-}
-
-function artifactLinks(r) {
-  const links = [];
-  if (r.pier_result_json) links.push(link("result", r.pier_result_json));
-  if (r.codex_log) links.push(link("codex", r.codex_log));
-  if (r.latest_guardian_findings) links.push(link("findings", r.latest_guardian_findings));
-  if (r.latest_guardian_log) links.push(link("g-log", r.latest_guardian_log));
-  return links.join(" ");
-}
-
-function link(label, path) {
-  return `<a href="file://${path}">${label}</a>`;
 }
 
 function tableHtml(headers, rows, numeric) {
@@ -197,7 +210,16 @@ function render() {
 }
 
 async function init() {
-  const response = await fetch("data.json", { cache: "no-store" });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  const response = await fetch(`data.json?v=${Date.now()}`, {
+    cache: "no-store",
+    signal: controller.signal,
+  });
+  clearTimeout(timeout);
+  if (!response.ok) {
+    throw new Error(`data.json returned HTTP ${response.status}`);
+  }
   state.data = await response.json();
   document.getElementById("subtitle").textContent = `${state.data.output_root} · ${state.data.trials.length} fixed-slot trial(s) · ${state.data.counted_job_ids.join(", ")}`;
   document.getElementById("metric-select").addEventListener("change", (event) => {

@@ -18,7 +18,6 @@ Public entry points:
 from __future__ import annotations
 
 import json
-import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -130,9 +129,7 @@ def _node_content(n: object, repo_path: str) -> str:
         return ""
 
     full_path = (
-        os.path.join(repo_path, file)
-        if repo_path and not os.path.isabs(file)
-        else file
+        os.path.join(repo_path, file) if repo_path and not os.path.isabs(file) else file
     )
     try:
         with open(full_path, encoding="utf-8", errors="replace") as fh:
@@ -301,9 +298,7 @@ def _agentic_loop(
                 args = {}
             query = args.get("query", "")
             result = _run_search(query, retriever, top_k, repo_path)
-            logger.debug(
-                "agentic_loop: tool_result query=%r:\n%s", query, result
-            )
+            logger.debug("agentic_loop: tool_result query=%r:\n%s", query, result)
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
     try:
@@ -342,7 +337,13 @@ def build_test_failure_context(
         lines += ["Error:", "```", error[:1200].rstrip(), "```", ""]
     if test_content:
         test_file = nodeid.split("::")[0]
-        lines += [f"Test source ({test_file}):", "```python", test_content.rstrip(), "```", ""]
+        lines += [
+            f"Test source ({test_file}):",
+            "```python",
+            test_content.rstrip(),
+            "```",
+            "",
+        ]
     if source_content and source_path:
         lines += [
             f"Source under test ({source_path}):",
@@ -415,16 +416,17 @@ class ProbeRecord:
     input_summary: str
     output_summary: str
     passed: Optional[bool] = None  # None for non-test probes
+    result: dict = field(default_factory=dict)
 
 
 @dataclass
 class InvestigatorResult:
     """Full output of one investigator sub-agent run."""
 
-    verdict: str                              # "confirmed" | "rejected" | "inconclusive"
-    reasoning: str                            # one-paragraph summary from the model
-    evidence_test: str = ""                   # synthesized test source, or ""
-    evidence_diff: str = ""                   # fix-probe diff, or ""
+    verdict: str  # "confirmed" | "rejected" | "inconclusive"
+    reasoning: str  # one-paragraph summary from the model
+    evidence_test: str = ""  # synthesized test source, or ""
+    evidence_diff: str = ""  # fix-probe diff, or ""
     probe_trace: List[ProbeRecord] = field(default_factory=list)
     tokens_used: int = 0
 
@@ -440,6 +442,7 @@ class InvestigatorResult:
                     "input_summary": p.input_summary,
                     "output_summary": p.output_summary,
                     "passed": p.passed,
+                    "result": p.result,
                 }
                 for p in self.probe_trace
             ],
@@ -574,6 +577,30 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "differential_run",
+            "description": (
+                "Run the synthesized test on the prior and current snapshots. "
+                "PASS on prior and FAIL on current pins a regression to this interval."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "test_source": {
+                        "type": "string",
+                        "description": "The synthesized pytest source; defaults to the last synthesized test.",
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Seconds allowed for each snapshot run.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 _TOOL_NAMES = {t["function"]["name"] for t in TOOLS}
@@ -641,7 +668,7 @@ def _parse_verdict(text: str) -> Tuple[str, str]:
         # Strip markdown bold/italic/code markers before matching.
         clean = re.sub(r"[*_`]+", "", line).strip().lower()
         if clean.startswith("verdict:"):
-            candidate = clean[len("verdict:"):].strip().rstrip(".,;:")
+            candidate = clean[len("verdict:") :].strip().rstrip(".,;:")
             if candidate in VALID_VERDICTS:
                 verdict = candidate
                 found = True
@@ -655,12 +682,61 @@ def _parse_verdict(text: str) -> Tuple[str, str]:
     return verdict, reasoning
 
 
+def _enforce_corroboration(
+    verdict: str,
+    reasoning: str,
+    probe_trace: List[ProbeRecord],
+) -> Tuple[str, str]:
+    """Downgrade unsupported confirmation of a red synthesized test."""
+    if verdict != "confirmed":
+        return verdict, reasoning
+    synth = next(
+        (
+            record.result
+            for record in reversed(probe_trace)
+            if record.tool == "run_synthesized_test" and record.result
+        ),
+        None,
+    )
+    if synth is None:
+        return verdict, reasoning
+    fix = next(
+        (
+            record.result
+            for record in reversed(probe_trace)
+            if record.tool == "fix_probe" and record.result
+        ),
+        None,
+    )
+    differential = next(
+        (
+            record.result
+            for record in reversed(probe_trace)
+            if record.tool == "differential_run" and record.result
+        ),
+        None,
+    )
+    from .probes import corroboration_policy
+
+    may_confirm, policy_reason = corroboration_policy(
+        synth,
+        differential_result=differential,
+        fix_result=fix,
+    )
+    if may_confirm:
+        return verdict, reasoning
+    suffix = f"Corroboration policy downgraded confirmation: {policy_reason}"
+    return "inconclusive", f"{reasoning}\n\n{suffix}".strip()
+
+
 # ---------------------------------------------------------------------------
 # Tool dispatch
 # ---------------------------------------------------------------------------
 
 
-def _dispatch_retrieve(args: dict, retriever: object, repo_path: str) -> Tuple[str, ProbeRecord]:
+def _dispatch_retrieve(
+    args: dict, retriever: object, repo_path: str
+) -> Tuple[str, ProbeRecord]:
     query = args.get("query", "")
     top_k = int(args.get("top_k", 5))
     result = _run_search(query, retriever, top_k, repo_path)
@@ -673,7 +749,9 @@ def _dispatch_retrieve(args: dict, retriever: object, repo_path: str) -> Tuple[s
     )
 
 
-def _dispatch_run_existing(args: dict, sandbox: SandboxHandle) -> Tuple[str, ProbeRecord]:
+def _dispatch_run_existing(
+    args: dict, sandbox: SandboxHandle
+) -> Tuple[str, ProbeRecord]:
     pattern = args.get("test_pattern", "")
     timeout = int(args.get("timeout", 60))
     rc, output = sandbox.run_command(
@@ -712,6 +790,7 @@ def _dispatch_tool(
     repo_path: str,
     *,
     synth_test_store: List[str],
+    prior_sandbox: Optional[SandboxHandle] = None,
 ) -> Tuple[str, ProbeRecord]:
     """Execute one tool call; return (observation_text, ProbeRecord).
 
@@ -728,8 +807,13 @@ def _dispatch_tool(
     # Advanced probes: delegate to probes.py when available, else stub.
     try:
         from .probes import dispatch_advanced_probe  # type: ignore[import]
+
         return dispatch_advanced_probe(
-            tool_name, args, sandbox, synth_test_store=synth_test_store
+            tool_name,
+            args,
+            sandbox,
+            synth_test_store=synth_test_store,
+            prior_sandbox=prior_sandbox,
         )
     except ImportError:
         return _dispatch_stub(tool_name, args)
@@ -749,6 +833,7 @@ def run_investigator(
     budget_tokens: int = 20_000,
     max_rounds: int = 8,
     usage_acc: Optional[LLMUsage] = None,
+    prior_sandbox: Optional[SandboxHandle] = None,
 ) -> InvestigatorResult:
     """Inner agent loop: probe → observe → decide until verdict or budget.
 
@@ -775,7 +860,9 @@ def run_investigator(
     if usage_acc is not None and usage_acc.total_tokens >= budget_tokens:
         logger.info(
             "investigator: budget already exhausted (%d >= %d); skipping %s",
-            usage_acc.total_tokens, budget_tokens, hypothesis.target,
+            usage_acc.total_tokens,
+            budget_tokens,
+            hypothesis.target,
         )
         return InvestigatorResult(
             verdict="inconclusive",
@@ -813,11 +900,16 @@ def run_investigator(
 
     for round_idx in range(max_rounds + 1):
         # Budget check at the start of every round.
-        combined_tokens = (usage_acc.total_tokens if usage_acc else 0) + local_usage.total_tokens
+        combined_tokens = (
+            usage_acc.total_tokens
+            if usage_acc is not None
+            else local_usage.total_tokens
+        )
         if combined_tokens >= budget_tokens:
             logger.info(
                 "investigator: budget reached at round %d (%d tokens); stopping",
-                round_idx, combined_tokens,
+                round_idx,
+                combined_tokens,
             )
             break
 
@@ -830,7 +922,9 @@ def run_investigator(
         try:
             response = llm._call_raw(messages, **kwargs)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("investigator: LLM call failed (round %d): %s", round_idx, exc)
+            logger.warning(
+                "investigator: LLM call failed (round %d): %s", round_idx, exc
+            )
             return InvestigatorResult(
                 verdict="inconclusive",
                 reasoning=f"LLM unavailable: {exc}",
@@ -852,6 +946,7 @@ def run_investigator(
                 "investigator: round=%d final answer: %s", round_idx, final_text[:200]
             )
             verdict, reasoning = _parse_verdict(final_text)
+            verdict, reasoning = _enforce_corroboration(verdict, reasoning, probe_trace)
             return InvestigatorResult(
                 verdict=verdict,
                 reasoning=reasoning,
@@ -896,8 +991,13 @@ def run_investigator(
                 )
             else:
                 obs, record = _dispatch_tool(
-                    name, args, sandbox, retriever, repo_path,
+                    name,
+                    args,
+                    sandbox,
+                    retriever,
+                    repo_path,
                     synth_test_store=synth_test_store,
+                    prior_sandbox=prior_sandbox,
                 )
                 # Track synthesized test source for evidence_test field.
                 if name == "synthesize_test" and obs and not obs.startswith("("):
@@ -916,9 +1016,13 @@ def run_investigator(
             usage_acc.add(response)
         final_text = (response.choices[0].message.content or "").strip()
         verdict, reasoning = _parse_verdict(final_text)
+        verdict, reasoning = _enforce_corroboration(verdict, reasoning, probe_trace)
     except Exception as exc:  # noqa: BLE001
         logger.warning("investigator: forced final call failed: %s", exc)
-        verdict, reasoning = "inconclusive", f"Budget exhausted; forced call failed: {exc}"
+        verdict, reasoning = (
+            "inconclusive",
+            f"Budget exhausted; forced call failed: {exc}",
+        )
 
     return InvestigatorResult(
         verdict=verdict,

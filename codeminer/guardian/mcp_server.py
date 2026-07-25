@@ -59,7 +59,7 @@ from .report import Finding
 # Constants
 # ---------------------------------------------------------------------------
 
-POLL_INTERVAL = 10          # seconds between HEAD polls
+POLL_INTERVAL = 10  # seconds between HEAD polls
 MCP_PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "guardian"
 SERVER_VERSION = "1.0.0"
@@ -70,10 +70,10 @@ SERVER_VERSION = "1.0.0"
 
 _lock = threading.Lock()
 _cache: Dict[str, Any] = {
-    "findings": [],     # List[Dict] — last cycle's findings
-    "commit": "",       # SHA of the commit that produced them
-    "cycle_no": 0,      # how many cycles have completed
-    "running": False,   # True while a cycle is in progress
+    "findings": [],  # List[Dict] — last cycle's findings
+    "commit": "",  # SHA of the commit that produced them
+    "cycle_no": 0,  # how many cycles have completed
+    "running": False,  # True while a cycle is in progress
 }
 
 # Trace log — set by main() from --trace-log arg; None disables tracing.
@@ -98,11 +98,15 @@ def _trace(record: Dict[str, Any]) -> None:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _head(repo_path: str) -> str:
     try:
         return subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=repo_path, capture_output=True, text=True, check=True,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
     except Exception:  # noqa: BLE001
         return ""
@@ -110,6 +114,15 @@ def _head(repo_path: str) -> str:
 
 def _finding_to_dict(f: Finding) -> Dict[str, Any]:
     d = asdict(f)
+    d.update(
+        {
+            "title": f.claim,
+            "detail": f.consequence,
+            "hypothesis": f.claim,
+            "verdict": "confirmed",
+            "kind": f.origin,
+        }
+    )
     d["evidence"] = [
         {
             "file": e["file"],
@@ -130,6 +143,7 @@ def _stderr(msg: str) -> None:
 # Guardian watcher (background thread)
 # ---------------------------------------------------------------------------
 
+
 def _watcher(config: GuardianConfig) -> None:
     """Poll for new commits and run a Guardian cycle on each one.
 
@@ -145,7 +159,9 @@ def _watcher(config: GuardianConfig) -> None:
             with _lock:
                 _cache["running"] = True
 
-            _stderr(f"guardian: new commit {commit[:8]} — starting cycle {_cache['cycle_no'] + 1}")
+            _stderr(
+                f"guardian: new commit {commit[:8]} — starting cycle {_cache['cycle_no'] + 1}"
+            )
             try:
                 report = run_cycle(config)
                 findings = [_finding_to_dict(f) for f in report.findings]
@@ -171,6 +187,7 @@ def _watcher(config: GuardianConfig) -> None:
 # query_guardian tool
 # ---------------------------------------------------------------------------
 
+
 def _filter_findings(
     findings: List[Dict[str, Any]],
     hypothesis: str,
@@ -184,13 +201,16 @@ def _filter_findings(
     hyp_tokens = {t.lower() for t in hypothesis.split() if len(t) > 3}
 
     def _matches(f: Dict[str, Any]) -> bool:
-        text = " ".join([
-            f.get("title", ""),
-            f.get("detail", ""),
-            f.get("hypothesis", ""),
-            f.get("narrative", ""),
-            " ".join(e.get("file", "") for e in f.get("evidence", [])),
-        ]).lower()
+        text = " ".join(
+            [
+                f.get("title", ""),
+                f.get("detail", ""),
+                f.get("hypothesis", ""),
+                f.get("narrative", ""),
+                " ".join(f.get("locus", [])),
+                " ".join(e.get("file", "") for e in f.get("evidence", [])),
+            ]
+        ).lower()
         if region_paths and any(p in text for p in region_paths):
             return True
         if hyp_tokens and any(t in text for t in hyp_tokens):
@@ -227,17 +247,19 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
         "findings": relevant,
     }
 
-    _trace({
-        "call_no": call_no,
-        "ts": datetime.datetime.utcnow().isoformat() + "Z",
-        "hypothesis": hypothesis,
-        "region": region,
-        "commit": commit,
-        "cycle_no": cycle_no,
-        "total_findings": len(findings),
-        "returned_findings": len(relevant),
-        "finding_titles": [f.get("title", "") for f in relevant],
-    })
+    _trace(
+        {
+            "call_no": call_no,
+            "ts": datetime.datetime.utcnow().isoformat() + "Z",
+            "hypothesis": hypothesis,
+            "region": region,
+            "commit": commit,
+            "cycle_no": cycle_no,
+            "total_findings": len(findings),
+            "returned_findings": len(relevant),
+            "finding_titles": [f.get("title", "") for f in relevant],
+        }
+    )
 
     return json.dumps(result, indent=2)
 
@@ -294,8 +316,7 @@ def _respond(req_id: Any, result: Any) -> None:
 
 
 def _respond_error(req_id: Any, code: int, message: str) -> None:
-    _send({"jsonrpc": "2.0", "id": req_id,
-           "error": {"code": code, "message": message}})
+    _send({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}})
 
 
 def _handle_request(msg: Dict[str, Any]) -> None:
@@ -308,11 +329,14 @@ def _handle_request(msg: Dict[str, Any]) -> None:
         return
 
     if method == "initialize":
-        _respond(req_id, {
-            "protocolVersion": MCP_PROTOCOL_VERSION,
-            "capabilities": {"tools": {}},
-            "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
-        })
+        _respond(
+            req_id,
+            {
+                "protocolVersion": MCP_PROTOCOL_VERSION,
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+            },
+        )
 
     elif method == "ping":
         _respond(req_id, {})
@@ -327,15 +351,21 @@ def _handle_request(msg: Dict[str, Any]) -> None:
             return
         try:
             text = _handle_query_guardian(params.get("arguments") or {})
-            _respond(req_id, {
-                "content": [{"type": "text", "text": text}],
-                "isError": False,
-            })
+            _respond(
+                req_id,
+                {
+                    "content": [{"type": "text", "text": text}],
+                    "isError": False,
+                },
+            )
         except Exception as exc:  # noqa: BLE001
-            _respond(req_id, {
-                "content": [{"type": "text", "text": f"guardian error: {exc}"}],
-                "isError": True,
-            })
+            _respond(
+                req_id,
+                {
+                    "content": [{"type": "text", "text": f"guardian error: {exc}"}],
+                    "isError": True,
+                },
+            )
 
     else:
         _respond_error(req_id, -32601, f"Method not found: {method}")
@@ -362,35 +392,65 @@ def _stdio_loop() -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main(argv: Optional[List[str]] = None) -> None:
+    global POLL_INTERVAL, _trace_log_path
     parser = argparse.ArgumentParser(
         description="Repository Guardian MCP server (stdio transport)"
     )
-    parser.add_argument("--repo", required=True,
-                        help="Path to the repository to monitor")
-    parser.add_argument("--arm", choices=["memory", "memoryless"], default="memory",
-                        help="'memory' (default) or 'memoryless' ablation arm")
-    parser.add_argument("--memory-dir", default=None,
-                        help="Cross-cycle memory store path (enables memory arm)")
-    parser.add_argument("--model", default="vertex_ai/gemini-2.5-flash",
-                        help="LiteLLM model string for Guardian's LLM calls")
-    parser.add_argument("--index-types", nargs="+", default=["bm25"],
-                        help="Index types: bm25, vector, ...")
-    parser.add_argument("--since", default="90 days ago",
-                        help="Churn window for git log")
-    parser.add_argument("--top-n", type=int, default=5,
-                        help="Max findings per cycle")
-    parser.add_argument("--budget-tokens", type=int, default=50_000,
-                        help="Token budget per Guardian cycle")
-    parser.add_argument("--no-llm", action="store_true",
-                        help="Heuristic signals only — no LLM calls (faster)")
-    parser.add_argument("--poll-interval", type=int, default=POLL_INTERVAL,
-                        help=f"Seconds between HEAD polls (default: {POLL_INTERVAL})")
-    parser.add_argument("--trace-log", default=None,
-                        help="Path to append one JSON line per query_guardian call")
+    parser.add_argument(
+        "--repo", required=True, help="Path to the repository to monitor"
+    )
+    parser.add_argument(
+        "--arm",
+        choices=["memory", "memoryless"],
+        default="memory",
+        help="'memory' (default) or 'memoryless' ablation arm",
+    )
+    parser.add_argument(
+        "--memory-dir",
+        default=None,
+        help="Cross-cycle memory store path (enables memory arm)",
+    )
+    parser.add_argument(
+        "--model",
+        default="vertex_ai/gemini-2.5-flash",
+        help="LiteLLM model string for Guardian's LLM calls",
+    )
+    parser.add_argument(
+        "--index-types",
+        nargs="+",
+        default=["bm25"],
+        help="Index types: bm25, vector, ...",
+    )
+    parser.add_argument(
+        "--since", default="90 days ago", help="Churn window for git log"
+    )
+    parser.add_argument("--top-n", type=int, default=5, help="Max findings per cycle")
+    parser.add_argument(
+        "--budget-tokens",
+        type=int,
+        default=50_000,
+        help="Token budget per Guardian cycle",
+    )
+    parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Heuristic signals only — no LLM calls (faster)",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=POLL_INTERVAL,
+        help=f"Seconds between HEAD polls (default: {POLL_INTERVAL})",
+    )
+    parser.add_argument(
+        "--trace-log",
+        default=None,
+        help="Path to append one JSON line per query_guardian call",
+    )
     args = parser.parse_args(argv)
 
-    global POLL_INTERVAL, _trace_log_path
     POLL_INTERVAL = args.poll_interval
     _trace_log_path = args.trace_log
 

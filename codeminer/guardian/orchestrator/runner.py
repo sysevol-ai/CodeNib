@@ -1,157 +1,68 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
-#
 # SPDX-License-Identifier: Apache-2.0
 
-"""Hypothesize step for Repository Guardian.
+"""Compatibility helpers around the stateful outer-loop hypothesis type.
 
-Takes observe signals (churn hotspots + graph-diff drift) plus paged cross-cycle
-memory and produces a ranked list of :class:`Hypothesis` objects — one per
-investigation candidate.  Two entry points:
-
-* :func:`hypothesize` — calls the LLM once to rank signals using memory context.
-  Used by the memory arm when a model is configured.
-* :func:`heuristic_hypotheses` — pure deterministic fallback: rank by commit
-  count (churn) with drift signals appended at a fixed score.  Used when no LLM
-  is available or ``arm="memoryless"``.
-
-Moved from codeminer.guardian.hypothesize (flat module) into the orchestrator/
-sub-package; relative imports updated accordingly.
+The production cycle no longer performs a one-shot ``hypothesize`` stage.
+These helpers remain for callers evaluating candidate formation in isolation;
+the real cycle forms hypotheses through ``write_hypothesis`` tool calls.
 """
 
 from __future__ import annotations
 
 import json
-import subprocess
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
 from ...log_utils import get_logger
+from ..loop.state import Hypothesis
 
 if TYPE_CHECKING:
     from ..investigator import LLMUsage
-    from ..signals import DriftSignal, Hotspot
+    from ..signals import Signal
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------------------
-# Data structures
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class Hypothesis:
-    """One ranked investigation candidate produced by the Hypothesize step."""
-
-    rank: int
-    target: str
-    kind: str           # "churn" | "drift" | "test_failure"
-    statement: str      # one-sentence hypothesis passed to the investigate step
-    confidence: float   # 0.0–1.0 (model estimate or heuristic proxy)
-    memory_cited: List[str] = field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# Prompt construction
-# ---------------------------------------------------------------------------
-
 _SYSTEM = """\
-You are a repository risk analyst for the Repository Guardian system.
-
-You receive two inputs:
-1. SIGNALS — deterministic signals detected this cycle (churn hotspots with
-   recent commit messages, and structural drift from graph-diff).
-2. MEMORY — findings produced by prior cycles on this repository (most recent
-   first, paged to a maximum of 5 entries).
-
-Your task: return a JSON array of investigation hypotheses, ranked by estimated
-risk (rank 1 = highest priority). Each element must be an object with exactly
-these keys:
-
-  {
-    "rank":          <integer, 1 = highest>,
-    "target":        "<file path or symbol name from the signals>",
-    "kind":          "<one of: churn | drift | test_failure>",
-    "statement":     "<one specific sentence: name the exact function/class/behavior
-                       at risk and what could break, based on the commit messages>",
-    "confidence":    <float 0.0–1.0>,
-    "memory_cited":  ["<prior finding title or snippet that informed this>"]
-  }
-
-Rules:
-- Only reference targets that appear in SIGNALS; do not invent new paths.
-- Use the commit messages to form SPECIFIC hypotheses (e.g. "The refactoring of
-  X in commit Y may have broken the Z contract" — not "high churn suggests risk").
-- If MEMORY is empty, base hypotheses only on SIGNALS.
-- memory_cited may be an empty list if memory is not relevant.
-- Return ONLY the JSON array. No prose wrapper, no markdown fences.
+You are Repository Guardian. Return a JSON array of complete hypotheses.
+A signal is only a measurement; "A.txt changed three times" is not a hypothesis.
+Every item must contain claim, consequence, remedy, origin, locus, evidence,
+and confidence. Claims may originate from signal, memory, exploration, or human
+context and are not restricted to paths named by signals. Return only JSON.
 """
 
 
-def _git_log_for_file(repo_path: str, file_path: str, n: int = 5) -> str:
-    """Return the last ``n`` commit one-liners for ``file_path``, or '' on error."""
-    try:
-        out = subprocess.run(
-            ["git", "log", "--oneline", f"-{n}", "--", file_path],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        ).stdout.strip()
-        return out
-    except Exception:  # noqa: BLE001
-        return ""
-
-
-def _build_hypothesize_prompt(
-    hotspots: "List[Hotspot]",
-    drift_signals: "List[DriftSignal]",
+def _signal_context(
+    hotspots: "List[Signal]",
+    drift_signals: "List[Signal]",
     prior_findings: List[dict],
-    *,
-    max_prior: int = 5,
-    repo_path: str = "",
 ) -> str:
-    parts: List[str] = []
-
-    parts.append("=== SIGNALS ===")
-    if hotspots:
-        parts.append("Churn hotspots (files changed most in this window):")
-        for h in hotspots:
-            parts.append(f"  - {h.path}  ({h.commit_count} commits)")
-            if repo_path:
-                log = _git_log_for_file(repo_path, h.path)
-                if log:
-                    for commit_line in log.splitlines():
-                        parts.append(f"      {commit_line}")
-    else:
-        parts.append("Churn hotspots: (none)")
-
-    if drift_signals:
-        parts.append("Graph-diff drift signals:")
-        for s in drift_signals:
-            parts.append(f"  - [{s.kind}] {s.symbol} ({s.file}): {s.detail}")
-    else:
-        parts.append("Graph-diff drift signals: (none)")
-
-    parts.append("")
-    parts.append("=== MEMORY (prior findings, most recent first) ===")
-    if prior_findings:
-        from ..memory import format_findings_for_prompt
-
-        parts.append(format_findings_for_prompt(prior_findings, max_findings=max_prior))
-    else:
-        parts.append("(no prior findings in memory)")
-
-    return "\n".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# LLM-backed hypothesize
-# ---------------------------------------------------------------------------
+    return json.dumps(
+        {
+            "signals": [
+                {
+                    "kind": "churn",
+                    "locus": [item.path],
+                    "detail": f"{item.commit_count} commits in the configured window",
+                }
+                for item in hotspots
+            ]
+            + [
+                {
+                    "kind": item.kind,
+                    "locus": [value for value in [item.file, item.symbol] if value],
+                    "detail": item.detail,
+                }
+                for item in drift_signals
+            ],
+            "memory": prior_findings,
+        },
+        sort_keys=True,
+    )
 
 
 def hypothesize(
-    hotspots: "List[Hotspot]",
-    drift_signals: "List[DriftSignal]",
+    hotspots: "List[Signal]",
+    drift_signals: "List[Signal]",
     prior_findings: List[dict],
     llm: object,
     *,
@@ -159,147 +70,91 @@ def hypothesize(
     top_n: int = 5,
     repo_path: str = "",
 ) -> List[Hypothesis]:
-    """Call the LLM once to rank signals into hypotheses.
-
-    Falls back to :func:`heuristic_hypotheses` if the LLM call fails or
-    returns malformed JSON.  Always returns a list; never raises.
-    """
-    if not hotspots and not drift_signals:
+    """One-shot compatibility adapter; production uses the L2 tool loop."""
+    del repo_path
+    if not hotspots and not drift_signals and not prior_findings:
         return []
-
-    user_msg = _build_hypothesize_prompt(
-        hotspots, drift_signals, prior_findings, repo_path=repo_path
-    )
-    messages = [
-        {"role": "system", "content": _SYSTEM},
-        {"role": "user", "content": user_msg},
-    ]
-
-    logger.debug("hypothesize: sending prompt to LLM:\n%s", user_msg)
     try:
-        response = llm._call_raw(messages)  # type: ignore[union-attr]
+        response = llm._call_raw(
+            [
+                {"role": "system", "content": _SYSTEM},
+                {
+                    "role": "user",
+                    "content": _signal_context(hotspots, drift_signals, prior_findings),
+                },
+            ]
+        )
         if usage_acc is not None:
             usage_acc.add(response)
-        raw = (response.choices[0].message.content or "").strip()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("hypothesize: LLM call failed (%s); using heuristic fallback", exc)
-        return heuristic_hypotheses(hotspots, drift_signals, top_n=top_n)
-
-    _u = getattr(response, "usage", None)
-    if _u is not None:
-        logger.info(
-            "hypothesize: tokens — prompt=%d completion=%d total=%d",
-            getattr(_u, "prompt_tokens", 0) or 0,
-            getattr(_u, "completion_tokens", 0) or 0,
-            getattr(_u, "total_tokens", 0) or 0,
-        )
-    logger.debug("hypothesize: raw LLM response:\n%s", raw)
-    try:
-        items = json.loads(raw)
+        items = json.loads(response.choices[0].message.content or "[]")
         if not isinstance(items, list):
             raise ValueError("expected a JSON array")
-    except (json.JSONDecodeError, ValueError) as exc:
-        logger.warning(
-            "hypothesize: model returned malformed JSON (%s); using heuristic fallback.\n"
-            "Raw response (first 300 chars): %s",
-            exc,
-            raw[:300],
-        )
-        return heuristic_hypotheses(hotspots, drift_signals, top_n=top_n)
-
-    results: List[Hypothesis] = []
-    for item in items[:top_n]:
-        if not isinstance(item, dict):
-            continue
-        try:
+        results = []
+        for item in items[:top_n]:
             results.append(
-                Hypothesis(
-                    rank=int(item.get("rank", len(results) + 1)),
-                    target=str(item.get("target", "")),
-                    kind=str(item.get("kind", "churn")),
-                    statement=str(item.get("statement", "")),
+                Hypothesis.create(
+                    claim=str(item.get("claim", "")),
+                    consequence=str(item.get("consequence", "")),
+                    remedy=str(item.get("remedy", "")),
+                    origin=str(item.get("origin", "exploration")),
+                    locus=item.get("locus") or [],
+                    evidence=item.get("evidence") or [],
                     confidence=float(item.get("confidence", 0.5)),
-                    memory_cited=list(item.get("memory_cited") or []),
                 )
             )
-        except (TypeError, ValueError) as exc:
-            logger.debug("hypothesize: skipping malformed item %r: %s", item, exc)
-
-    if not results:
-        logger.warning("hypothesize: model returned no valid hypotheses; using heuristic fallback")
+        return results
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("one-shot hypothesize degraded: %s", exc)
         return heuristic_hypotheses(hotspots, drift_signals, top_n=top_n)
-
-    results.sort(key=lambda h: h.rank)
-    logger.info(
-        "hypothesize: LLM produced %d hypothesis(es) (top: %s, conf=%.2f)",
-        len(results), results[0].target if results else "—", results[0].confidence if results else 0,
-    )
-    return results
-
-
-# ---------------------------------------------------------------------------
-# Heuristic fallback
-# ---------------------------------------------------------------------------
-
-_DRIFT_CONFIDENCE = 0.60  # fixed confidence score for graph-diff drift signals
-_CHURN_CONFIDENCE_MAX = 0.80
-_CHURN_CONFIDENCE_MIN = 0.30
 
 
 def heuristic_hypotheses(
-    hotspots: "List[Hotspot]",
-    drift_signals: "Optional[List[DriftSignal]]" = None,
+    hotspots: "List[Signal]",
+    drift_signals: "Optional[List[Signal]]" = None,
     *,
     top_n: int = 5,
 ) -> List[Hypothesis]:
-    """Rank signals without a model call.
-
-    Churn hotspots are ranked by descending commit count; confidence is linearly
-    scaled between ``_CHURN_CONFIDENCE_MIN`` and ``_CHURN_CONFIDENCE_MAX`` relative
-    to the highest-churn file.  Drift signals are appended after churn with a
-    fixed confidence.
-    """
-    if drift_signals is None:
-        drift_signals = []
-
-    results: List[Hypothesis] = []
-    rank = 1
-
-    sorted_hotspots = sorted(hotspots, key=lambda h: (-h.commit_count, h.path))
-    max_count = sorted_hotspots[0].commit_count if sorted_hotspots else 1
-    for h in sorted_hotspots:
-        if rank > top_n:
-            break
-        ratio = h.commit_count / max_count if max_count else 0.0
-        conf = _CHURN_CONFIDENCE_MIN + ratio * (_CHURN_CONFIDENCE_MAX - _CHURN_CONFIDENCE_MIN)
-        results.append(
-            Hypothesis(
-                rank=rank,
-                target=h.path,
-                kind="churn",
-                statement=(
-                    f"{h.path} changed in {h.commit_count} commits and may accumulate "
-                    "technical debt or introduce regressions."
+    """Degraded, memory-blind fallback; its cycles must be excluded from C−B."""
+    candidates: List[Hypothesis] = []
+    ranked_hotspots = sorted(hotspots, key=lambda item: (-item.commit_count, item.path))
+    for hotspot in ranked_hotspots:
+        candidates.append(
+            Hypothesis.create(
+                claim=(
+                    f"Recent edits to {hotspot.path} may have introduced a "
+                    "behavioral regression not covered by its current tests"
                 ),
-                confidence=round(conf, 2),
-                memory_cited=[],
+                consequence=(
+                    "Callers may observe behavior inconsistent with the "
+                    "pre-change contract"
+                ),
+                remedy=(
+                    f"Review the changed behavior in {hotspot.path} and add a "
+                    "targeted regression test before correcting any mismatch"
+                ),
+                origin="signal",
+                locus=[hotspot.path],
+                evidence=[],
+                confidence=0.3,
             )
         )
-        rank += 1
-
-    for s in drift_signals:
-        if rank > top_n:
-            break
-        results.append(
-            Hypothesis(
-                rank=rank,
-                target=s.symbol,
-                kind="drift",
-                statement=f"[{s.kind}] {s.symbol}: {s.detail}",
-                confidence=_DRIFT_CONFIDENCE,
-                memory_cited=[],
+    for signal in drift_signals or []:
+        locus = [item for item in [signal.file, signal.symbol] if item]
+        candidates.append(
+            Hypothesis.create(
+                claim=(
+                    f"The {signal.kind} structural change at "
+                    f"{signal.symbol or signal.file} may violate a dependency contract"
+                ),
+                consequence="Dependent symbols may fail or silently change behavior",
+                remedy="Inspect affected dependents and add a contract regression probe",
+                origin="signal",
+                locus=locus,
+                evidence=[],
+                confidence=0.3,
             )
         )
-        rank += 1
+    return candidates[:top_n]
 
-    return results
+
+__all__ = ["Hypothesis", "heuristic_hypotheses", "hypothesize"]

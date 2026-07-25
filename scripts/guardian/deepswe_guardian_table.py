@@ -19,12 +19,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_OUTPUT_ROOT = Path("/mnt/data/xiangye/deepswe_outputs")
 DEFAULT_SUMMARY_CSV = DEFAULT_OUTPUT_ROOT / "guardian_ablation_summary.csv"
 COUNTED_JOB_IDS = {f"job_{idx}" for idx in range(1, 5)}
 
 DEFAULT_PRICES_USD_PER_MTOK = {
+    "gpt-5.6-luna": {
+        "input": 2.50,
+        "cached_input": 0.25,
+        "output": 15.00,
+    },
     "gpt-5.6-terra": {
         "input": 2.50,
         "cached_input": 0.25,
@@ -48,12 +52,29 @@ def _load_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _row_setting_key(row: dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(row.get("task") or ""),
+        str(row.get("baseline") or ""),
+        str(row.get("model") or ""),
+        str(row.get("reasoning_effort") or ""),
+    )
+
+
+def _metadata_paths(output_root: Path) -> list[Path]:
+    paths: list[Path] = []
+    for path in output_root.rglob("metadata.json"):
+        job_id = path.parent.name
+        baseline = path.parent.parent.name if path.parent.parent else ""
+        if job_id in COUNTED_JOB_IDS and baseline in {"solo", "guardian"}:
+            paths.append(path)
+    return sorted(paths)
+
+
 def _load_rows(output_root: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for path in sorted(output_root.glob("*/*/job_*/metadata.json")):
+    for path in _metadata_paths(output_root):
         job_id = path.parent.name
-        if job_id not in COUNTED_JOB_IDS:
-            continue
         row = _load_json(path)
         if not row:
             print(f"[warn] ignoring unreadable metadata: {path}", file=sys.stderr)
@@ -62,22 +83,42 @@ def _load_rows(output_root: Path) -> list[dict[str, Any]]:
             continue
         row["job_id"] = job_id
         row.setdefault("metadata_path", str(path))
+        row["_layout"] = (
+            "setting" if len(path.relative_to(output_root).parts) >= 5 else "legacy"
+        )
         rows.append(row)
-    return rows
+
+    setting_keys = {
+        _row_setting_key(row) for row in rows if row.get("_layout") == "setting"
+    }
+    filtered = [
+        row
+        for row in rows
+        if row.get("_layout") == "setting" or _row_setting_key(row) not in setting_keys
+    ]
+    for row in filtered:
+        row.pop("_layout", None)
+    return filtered
 
 
 def _pricing_for_model(model: str, args: argparse.Namespace) -> Pricing:
     defaults = DEFAULT_PRICES_USD_PER_MTOK.get(model, {})
     return Pricing(
-        input_usd_per_mtok=args.input_usd_per_mtok
-        if args.input_usd_per_mtok is not None
-        else defaults.get("input"),
-        cached_input_usd_per_mtok=args.cached_input_usd_per_mtok
-        if args.cached_input_usd_per_mtok is not None
-        else defaults.get("cached_input"),
-        output_usd_per_mtok=args.output_usd_per_mtok
-        if args.output_usd_per_mtok is not None
-        else defaults.get("output"),
+        input_usd_per_mtok=(
+            args.input_usd_per_mtok
+            if args.input_usd_per_mtok is not None
+            else defaults.get("input")
+        ),
+        cached_input_usd_per_mtok=(
+            args.cached_input_usd_per_mtok
+            if args.cached_input_usd_per_mtok is not None
+            else defaults.get("cached_input")
+        ),
+        output_usd_per_mtok=(
+            args.output_usd_per_mtok
+            if args.output_usd_per_mtok is not None
+            else defaults.get("output")
+        ),
         output_includes_reasoning=not args.output_excludes_reasoning,
     )
 

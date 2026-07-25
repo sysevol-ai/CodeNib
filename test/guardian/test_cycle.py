@@ -1,22 +1,18 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
-#
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for codeminer.guardian.cycle.run_cycle.
-
-The orchestration test injects a fake manifest + investigator (unit tier). The
-end-to-end test drives the real IndexCompiler with BM25 only (integration tier).
-"""
+"""Tests for the host boundary around Guardian's stateful outer loop."""
 
 import json
 import os
 import subprocess
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from codeminer.guardian.cycle import GuardianConfig, run_cycle
+from codeminer.guardian.memory import MemoryStore
 from codeminer.guardian.report import render_markdown
 
 
@@ -24,6 +20,7 @@ class _FakeManifest:
     commit = "deadbeefcafebabe"
     file_count = 7
     capabilities = {"sparse_search": True}
+    indexes = {}
 
 
 def _git(repo, *args):
@@ -47,385 +44,322 @@ def _make_repo(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
-    for i in range(3):
-        (repo / "mod.py").write_text(f"def f():\n    return {i}\n", encoding="utf-8")
+    for index in range(3):
+        (repo / "mod.py").write_text(
+            f"def parse(value):\n    return {index}\n", encoding="utf-8"
+        )
         _git(repo, "add", "mod.py")
-        _git(repo, "commit", "-m", f"rev {i}")
+        _git(repo, "commit", "-m", f"rev {index}")
     return repo
 
 
-def test_run_cycle_with_injected_manifest(tmp_path):
-    repo = _make_repo(tmp_path)
-
-    config = GuardianConfig(repo_path=str(repo), since="10 years ago")
-    report = run_cycle(config, manifest=_FakeManifest())
-
-    assert report.commit == "deadbeefcafebabe"  # from injected manifest
-    assert report.file_count == 7
-    assert len(report.findings) == 1
-    assert report.findings[0].title == "High-churn file: mod.py"
-    assert report.findings[0].narrative == ""
-
-    md = render_markdown(report)
-    assert "non-modifying" in md.lower()
-
-
-
-@pytest.mark.slow
-def test_run_cycle_use_llm_flag_calls_litellm(tmp_path):
-    """use_llm=True wires up the LLM reporter; narrative ends up in the report."""
-    repo = _make_repo(tmp_path)
-
-    def _make_tool_call(call_id, query):
-        tc = MagicMock()
-        tc.id = call_id
-        tc.function.name = "search_code"
-        tc.function.arguments = json.dumps({"query": query})
-        return tc
-
-    def _resp(content, tool_calls=None):
-        msg = MagicMock()
-        msg.content = content
-        msg.tool_calls = tool_calls or []
-        choice = MagicMock()
-        choice.message = msg
-        r = MagicMock()
-        r.choices = [choice]
-        r.usage = SimpleNamespace(
-            prompt_tokens=1,
-            completion_tokens=1,
-            total_tokens=2,
-        )
-        return r
-
-    tc = _make_tool_call("c1", "mod f function")
-    side_effects = [
-        _resp("", tool_calls=[tc]),  # first call: one tool round
-        _resp("mod.py changes frequently and risks instability."),  # final answer
-    ]
-
-    config = GuardianConfig(
-        repo_path=str(repo),
-        since="10 years ago",
-        use_llm=True,
-        llm_max_tool_rounds=1,
+def _call(call_id, name, arguments):
+    return SimpleNamespace(
+        id=call_id,
+        function=SimpleNamespace(name=name, arguments=json.dumps(arguments)),
     )
 
-    with patch("litellm.completion", side_effect=side_effects):
-        report = run_cycle(config, manifest=_FakeManifest())
 
-    assert report.findings
-    assert "instability" in report.findings[0].narrative
-    md = render_markdown(report)
-    assert "LLM Analysis" in md
-    assert "instability" in md
+def _response(*calls, tokens=5):
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="", tool_calls=list(calls)))
+        ],
+        usage=SimpleNamespace(
+            prompt_tokens=tokens,
+            completion_tokens=0,
+            total_tokens=tokens,
+        ),
+    )
 
 
-@pytest.mark.slow
-def test_run_cycle_test_failure_llm_narrative(tmp_path):
-    """When use_llm=True and a test fails, the Finding gets an LLM narrative."""
+class _ScriptedLLM:
+    backend_name = "test"
+    transport_history = ["test"]
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+
+    def _call_raw(self, messages, **kwargs):
+        return self.responses.pop(0)
+
+
+def _finding_script(signal_id):
+    claim = "mod.parse accepts invalid input without validation"
+    # The synthetic probe ref exercises the grade floor independently of L3;
+    # investigation behavior is covered in test_outer_loop.py.
+    return (
+        _ScriptedLLM(
+            [
+                _response(_call("s1", "list_signals", {})),
+                _response(
+                    _call(
+                        "h1",
+                        "write_hypothesis",
+                        {
+                            "claim": claim,
+                            "consequence": "invalid state reaches callers",
+                            "remedy": "validate input and add a regression test",
+                            "origin": "signal",
+                            "locus": ["mod.py:parse"],
+                            "evidence": [f"signal:{signal_id}", "probe:fixture:1"],
+                            "confidence": 0.8,
+                        },
+                    )
+                ),
+                # The stable id is derived from claim+locus; obtain it in a setup
+                # call below rather than duplicating hashing logic here.
+            ]
+        ),
+        claim,
+    )
+
+
+def test_no_model_is_explicitly_degraded_and_signals_do_not_become_findings(tmp_path):
     repo = _make_repo(tmp_path)
-
-    def _resp(content, tool_calls=None):
-        msg = MagicMock()
-        msg.content = content
-        msg.tool_calls = tool_calls or []
-        choice = MagicMock()
-        choice.message = msg
-        r = MagicMock()
-        r.choices = [choice]
-        r.usage = SimpleNamespace(
-            prompt_tokens=1,
-            completion_tokens=1,
-            total_tokens=2,
-        )
-        return r
-
-    import json as _json
-
-    hyp_json = _json.dumps([{
-        "rank": 1, "target": "mod.py", "kind": "churn",
-        "statement": "mod.py changes frequently.", "confidence": 0.8, "memory_cited": [],
-    }])
-    side_effects = [
-        _resp(hyp_json),                                                    # hypothesize
-        _resp("mod.py changes frequently and risks instability."),          # churn investigate
-        _resp("The test fails because run() returns the wrong value."),     # test failure
-    ]
-
-    config = GuardianConfig(
-        repo_path=str(repo),
-        since="10 years ago",
-        run_tests=True,
-        use_llm=True,
-        llm_max_tool_rounds=0,
+    report = run_cycle(
+        GuardianConfig(
+            repo_path=str(repo),
+            since="10 years ago",
+            checkpoint_path=str(tmp_path / "cycle.json"),
+        ),
+        manifest=_FakeManifest(),
     )
+    assert report.commit == "deadbeefcafebabe"
+    assert report.findings == []
+    assert report.degraded is True
+    assert report.exit_reason == "Degraded"
+    assert "No verified actionable findings" in render_markdown(report)
 
-    # Inject a fake test result with one failure so we don't shell out to pytest.
-    from codeminer.guardian.signals import TestFailure, TestResult
 
-    fake_result = TestResult(
-        ran=True,
-        passed=0,
-        failed=1,
-        failures=[TestFailure(nodeid="test/mod.py::test_run", message="AssertionError")],
-        summary="1 failed",
+def test_agent_cycle_projects_only_graded_finding(tmp_path):
+    from codeminer.guardian.loop import Hypothesis, Signal
+
+    repo = _make_repo(tmp_path)
+    signal = Signal.create(
+        kind="churn",
+        locus=["mod.py"],
+        detail="mod.py changed in 3 commits over 10 years ago",
+        value={"commit_count": 3, "window": "10 years ago"},
     )
-
-    with patch(
-        "codeminer.guardian.investigator.read_file", return_value="def test_run(): pass\n"
-    ), patch(
-        "codeminer.guardian.cycle.run_test_suite", return_value=fake_result
-    ), patch(
-        "litellm.completion", side_effect=side_effects
-    ):
-        report = run_cycle(config, manifest=_FakeManifest())
-
-    test_findings = [f for f in report.findings if f.kind == "test_failure"]
-    assert test_findings
-    assert "wrong value" in test_findings[0].narrative
-    assert "LLM Analysis" in render_markdown(report)
-
-
-class TestCycleMemoryIntegration:
-    """Tests for cross-cycle memory wiring in run_cycle."""
-
-    def test_memory_dir_creates_store_and_persists(self, tmp_path):
-        """With memory_dir set, run_cycle writes a cycle row to the SQLite store."""
-        repo = _make_repo(tmp_path)
-        memory_dir = str(tmp_path / "memory")
-
-        config = GuardianConfig(
-            repo_path=str(repo),
-            since="10 years ago",
-            memory_dir=memory_dir,
-            graph_snapshot=False,  # no symbol_graph artifact in FakeManifest
-        )
-        run_cycle(config, manifest=_FakeManifest())
-
-        from codeminer.guardian.memory import MemoryStore
-        store = MemoryStore(memory_dir)
-        assert store.cycle_count() == 1
-        rows = store.recent_findings(k=10)
-        assert len(rows) == 1
-        assert rows[0]["title"] == "High-churn file: mod.py"
-
-    def test_two_cycles_satisfy_cross_cycle_assertion(self, tmp_path):
-        """Two consecutive cycles with memory_dir satisfy the M2 assertion (cycle rows exist)."""
-        repo = _make_repo(tmp_path)
-        memory_dir = str(tmp_path / "memory")
-
-        config = GuardianConfig(
-            repo_path=str(repo),
-            since="10 years ago",
-            memory_dir=memory_dir,
-            graph_snapshot=False,
-        )
-        run_cycle(config, manifest=_FakeManifest())
-        run_cycle(config, manifest=_FakeManifest())
-
-        from codeminer.guardian.memory import MemoryStore
-        store = MemoryStore(memory_dir)
-        store.assert_cross_cycle()  # must not raise
-
-    def test_memoryless_arm_does_not_persist(self, tmp_path):
-        """arm='memoryless' runs the same code path but writes nothing to the store."""
-        repo = _make_repo(tmp_path)
-        memory_dir = str(tmp_path / "memory")
-
-        config = GuardianConfig(
-            repo_path=str(repo),
-            since="10 years ago",
-            memory_dir=memory_dir,
-            arm="memoryless",
-            graph_snapshot=False,
-        )
-        run_cycle(config, manifest=_FakeManifest())
-
-        from codeminer.guardian.memory import MemoryStore
-        store = MemoryStore(memory_dir)
-        assert store.cycle_count() == 0
-
-    def test_no_memory_dir_reports_churn_without_llm(self, tmp_path):
-        """Without memory_dir and no LLM reporter, churn still becomes a finding."""
-        repo = _make_repo(tmp_path)
-        config = GuardianConfig(repo_path=str(repo), since="10 years ago")
-        report = run_cycle(config, manifest=_FakeManifest())
-        assert len(report.findings) == 1
-        assert report.findings[0].title == "High-churn file: mod.py"
-        assert report.findings[0].narrative == ""
-
-    def test_drift_findings_appended_when_graph_diff_runs(self, tmp_path):
-        """When a prior graph and current graph both exist, drift findings are added."""
-        from unittest.mock import patch as _patch
-
-        from codeminer.graph.code_graph import CodeGraph
-        from codeminer.guardian.signals.graph_diff import DriftSignal
-        from codeminer.types import EDGE_TYPE_REFERENCE
-
-        repo = _make_repo(tmp_path)
-        memory_dir = str(tmp_path / "memory")
-
-        # Build a minimal prior graph and save it into the memory store.
-        prior = CodeGraph()
-        prior._add_vertex("A", {"type": "function", "file": "a.py"})
-        prior._add_vertex("B", {"type": "function", "file": "b.py"})
-        prior._add_edge("A", "B", EDGE_TYPE_REFERENCE)
-
-        from codeminer.guardian.memory import MemoryStore
-        store = MemoryStore(memory_dir)
-        # Manually persist a fake prior cycle with a graph.
-        from codeminer.guardian.report import Finding, GuardianReport
-        fake_prior_report = GuardianReport(
-            repo=str(repo),
-            commit="prior000",
-            generated_at="2026-01-01 00:00:00 UTC",
-            churn_window="90 days ago",
-        )
-        store.persist_cycle(fake_prior_report, graph=prior, memory_dir=memory_dir)
-
-        # Build a "current" graph that has an extra edge — triggers drift signal.
-        current = CodeGraph()
-        current._add_vertex("A", {"type": "function", "file": "a.py"})
-        current._add_vertex("B", {"type": "function", "file": "b.py"})
-        current._add_edge("A", "B", EDGE_TYPE_REFERENCE)
-        for i in range(5):
-            current._add_vertex(f"C{i}", {"type": "function", "file": f"c{i}.py"})
-            current._add_edge(f"C{i}", "B", EDGE_TYPE_REFERENCE)  # fan-in spike on B
-
-        # Patch _load_current_graph to return our synthetic current graph.
-        with _patch(
-            "codeminer.guardian.cycle._load_current_graph",
-            return_value=current,
-        ):
-            config = GuardianConfig(
+    scripted, claim = _finding_script(signal.id)
+    hypothesis_id = Hypothesis.create(
+        claim=claim,
+        consequence="invalid state reaches callers",
+        remedy="validate input and add a regression test",
+        origin="signal",
+        locus=["mod.py:parse"],
+    ).id
+    scripted.responses.extend(
+        [
+            _response(
+                _call(
+                    "u1",
+                    "update_hypothesis",
+                    {
+                        "id": hypothesis_id,
+                        "grade": "finding",
+                        "reason": "the probe verified the contract violation",
+                    },
+                )
+            ),
+            _response(_call("r1", "submit_report", {"summary": "One finding."})),
+        ]
+    )
+    with patch("codeminer.guardian.cycle._make_llm", return_value=scripted):
+        report = run_cycle(
+            GuardianConfig(
                 repo_path=str(repo),
                 since="10 years ago",
-                memory_dir=memory_dir,
-                graph_snapshot=False,  # skip snapshot write in this test
-            )
-            report = run_cycle(config, manifest=_FakeManifest())
-
-        drift = [f for f in report.findings if f.kind == "drift"]
-        assert len(drift) >= 1
-        assert any("fan_in_spike" in f.title for f in drift)
-
-
-def test_cycle_budget_stops_early(tmp_path):
-    """With budget_tokens=0 the investigator is skipped; finding falls to evidence-only."""
-    repo = _make_repo(tmp_path)
-
-    def _resp(content):
-        msg = MagicMock()
-        msg.content = content
-        msg.tool_calls = []
-        choice = MagicMock()
-        choice.message = msg
-        r = MagicMock()
-        r.choices = [choice]
-        r.usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0, total_tokens=0)
-        return r
-
-    import json as _json
-
-    hyp_json = _json.dumps([{
-        "rank": 1, "target": "mod.py", "kind": "churn",
-        "statement": "mod.py is risky.", "confidence": 0.8, "memory_cited": [],
-    }])
-
-    config = GuardianConfig(
-        repo_path=str(repo),
-        since="10 years ago",
-        use_llm=True,
-        budget_tokens=0,
+                use_llm=True,
+                checkpoint_path=str(tmp_path / "cycle.json"),
+            ),
+            manifest=_FakeManifest(),
+        )
+    assert report.exit_reason == "ReportSubmitted"
+    assert len(report.findings) == 1
+    assert report.findings[0].claim == claim
+    assert report.findings[0].remedy.startswith("validate")
+    assert (
+        len([row for row in report.decision_log if row.get("event") == "tool_call"])
+        == 4
     )
 
-    # Only one LLM call (hypothesize); investigator must not call litellm at all.
-    with patch("litellm.completion", side_effect=[_resp(hyp_json)]):
-        report = run_cycle(config, manifest=_FakeManifest())
 
-    assert report.findings
-    finding = report.findings[0]
-    # Budget exhausted: fell back to evidence-only path, no narrative or trace.
-    assert finding.verdict == ""
-    assert finding.narrative == ""
-    assert finding.reasoning_trace == []
+def test_memoryless_recall_tool_is_present_and_returns_empty(tmp_path):
+    repo = _make_repo(tmp_path)
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "m1",
+                    "recall",
+                    {"query": "parse", "kind": "recent", "k": 5},
+                )
+            ),
+            _response(_call("r1", "submit_report", {"summary": "No memory."})),
+        ]
+    )
+    with patch("codeminer.guardian.cycle._make_llm", return_value=llm):
+        report = run_cycle(
+            GuardianConfig(
+                repo_path=str(repo),
+                use_llm=True,
+                arm="memoryless",
+                memory_dir=str(tmp_path / "memory"),
+                checkpoint_path=str(tmp_path / "cycle.json"),
+            ),
+            manifest=_FakeManifest(),
+        )
+    recall = next(row for row in report.decision_log if row.get("tool") == "recall")
+    assert recall["observation"] == "[]"
+    assert report.exit_reason == "ReportSubmitted"
+    assert not (tmp_path / "memory").exists()
 
 
-def test_cycle_probe_trace_in_report(tmp_path):
-    """Probe trace from InvestigatorResult appears as a numbered list in the markdown."""
-    from codeminer.guardian.investigator import InvestigatorResult, ProbeRecord
+def test_memory_cycle_persists_hypothesis_trajectory(tmp_path):
+    from codeminer.guardian.loop import Hypothesis, Signal
 
     repo = _make_repo(tmp_path)
-
-    fake_inv_result = InvestigatorResult(
-        verdict="confirmed",
-        reasoning="The function changed its return type.",
-        probe_trace=[
-            ProbeRecord(
-                tool="retrieve_evidence",
-                input_summary="mod.py callers",
-                output_summary="found 3 callers",
-            ),
-            ProbeRecord(
-                tool="run_existing_test",
-                input_summary="test_mod.py",
-                output_summary="FAIL: assert error",
-                passed=False,
-            ),
-        ],
+    signal = Signal.create(
+        kind="churn",
+        locus=["mod.py"],
+        detail="mod.py changed in 3 commits over 10 years ago",
+        value={"commit_count": 3, "window": "10 years ago"},
     )
-
-    config = GuardianConfig(
-        repo_path=str(repo),
-        since="10 years ago",
-        use_llm=True,
+    scripted, claim = _finding_script(signal.id)
+    hypothesis_id = Hypothesis.create(
+        claim=claim,
+        consequence="invalid state reaches callers",
+        remedy="validate input and add a regression test",
+        origin="signal",
+        locus=["mod.py:parse"],
+    ).id
+    scripted.responses.extend(
+        [
+            _response(
+                _call(
+                    "u1",
+                    "update_hypothesis",
+                    {
+                        "id": hypothesis_id,
+                        "grade": "finding",
+                        "reason": "verified",
+                    },
+                )
+            ),
+            _response(_call("r1", "submit_report", {"summary": "done"})),
+        ]
     )
+    memory_dir = tmp_path / "memory"
+    with patch("codeminer.guardian.cycle._make_llm", return_value=scripted):
+        run_cycle(
+            GuardianConfig(
+                repo_path=str(repo),
+                since="10 years ago",
+                use_llm=True,
+                memory_dir=str(memory_dir),
+                checkpoint_path=str(tmp_path / "cycle.json"),
+                graph_snapshot=False,
+            ),
+            manifest=_FakeManifest(),
+        )
+    store = MemoryStore(str(memory_dir))
+    assert store.cycle_count() == 1
+    assert store.recent_findings(1)[0]["claim"] == claim
 
-    def _resp(content):
-        msg = MagicMock()
-        msg.content = content
-        msg.tool_calls = []
-        choice = MagicMock()
-        choice.message = msg
-        r = MagicMock()
-        r.choices = [choice]
-        r.usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0, total_tokens=0)
-        return r
 
+def test_exploration_finding_without_signal_evidence_is_measured(tmp_path):
+    from codeminer.guardian.loop import Hypothesis
+
+    repo = _make_repo(tmp_path)
+    claim = "mod.parse and its caller disagree on the invalid-input contract"
+    hypothesis_id = Hypothesis.create(
+        claim=claim,
+        consequence="the caller handles an impossible state",
+        remedy="align the contracts and add a cross-function regression test",
+        origin="exploration",
+        locus=["mod.py:parse", "mod.py:caller"],
+    ).id
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "h1",
+                    "write_hypothesis",
+                    {
+                        "claim": claim,
+                        "consequence": "the caller handles an impossible state",
+                        "remedy": (
+                            "align the contracts and add a cross-function "
+                            "regression test"
+                        ),
+                        "origin": "exploration",
+                        "locus": ["mod.py:parse", "mod.py:caller"],
+                        "evidence": ["probe:fixture:exploration"],
+                        "confidence": 0.7,
+                    },
+                )
+            ),
+            _response(
+                _call(
+                    "u1",
+                    "update_hypothesis",
+                    {
+                        "id": hypothesis_id,
+                        "grade": "finding",
+                        "reason": "probe verified the mismatch",
+                    },
+                )
+            ),
+            _response(_call("r1", "submit_report", {"summary": "proactive"})),
+        ]
+    )
+    with patch("codeminer.guardian.cycle._make_llm", return_value=llm):
+        report = run_cycle(
+            GuardianConfig(
+                repo_path=str(repo),
+                use_llm=True,
+                checkpoint_path=str(tmp_path / "cycle.json"),
+            ),
+            manifest=_FakeManifest(),
+        )
+    assert report.findings[0].origin == "exploration"
+    assert report.trace_metrics["proactive_findings"] == 1
+    assert report.trace_metrics["no_signal_hypothesis_fraction"] == 1.0
+
+
+def test_zero_budget_is_typed_exit(tmp_path):
+    repo = _make_repo(tmp_path)
     with patch(
-        "codeminer.guardian.investigator.run_investigator", return_value=fake_inv_result
-    ), patch(
-        "litellm.completion", return_value=_resp("")
+        "codeminer.guardian.cycle._make_llm",
+        return_value=_ScriptedLLM([]),
     ):
-        report = run_cycle(config, manifest=_FakeManifest())
-
-    assert report.findings
-    finding = report.findings[0]
-    assert finding.verdict == "confirmed"
-    assert finding.reasoning_trace == [
-        "retrieve_evidence: found 3 callers",
-        "run_existing_test: FAIL: assert error",
-    ]
-    md = render_markdown(report)
-    assert "Investigation trace:" in md
-    assert "retrieve_evidence: found 3 callers" in md
-    assert "run_existing_test: FAIL: assert error" in md
+        report = run_cycle(
+            GuardianConfig(
+                repo_path=str(repo),
+                use_llm=True,
+                budget_tokens=0,
+                checkpoint_path=str(tmp_path / "cycle.json"),
+            ),
+            manifest=_FakeManifest(),
+        )
+    assert report.exit_reason == "BudgetExceeded"
+    assert report.findings == []
 
 
 @pytest.mark.integration
-def test_run_cycle_end_to_end_bm25_only(tmp_path):
-    """One real cycle: compile a BM25 index (no embeddings) and render a report."""
+def test_run_cycle_end_to_end_bm25_only_is_non_modifying(tmp_path):
     repo = _make_repo(tmp_path)
-    config = GuardianConfig(
-        repo_path=str(repo),
-        since="10 years ago",
-        index_types=("bm25",),
+    report = run_cycle(
+        GuardianConfig(
+            repo_path=str(repo),
+            since="10 years ago",
+            checkpoint_path=str(tmp_path / "cycle.json"),
+        )
     )
-    report = run_cycle(config)
-
-    assert report.commit  # real HEAD from compile/git
-    assert report.findings  # mod.py is a hotspot
-    md = render_markdown(report)
-    assert "Repository Guardian Report" in md
-    assert "diff --git" not in md  # non-modifying invariant
+    assert report.commit
+    assert report.degraded
+    markdown = render_markdown(report)
+    assert "Repository Guardian Report" in markdown
+    assert "diff --git" not in markdown

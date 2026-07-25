@@ -104,7 +104,10 @@ def main() -> None:
     parser.add_argument(
         "--hypotheses-only",
         action="store_true",
-        help="Stop after the hypothesize step; print hypotheses without running the investigator",
+        help=(
+            "Trace-inspection mode: allow one outer-agent turn, then stop at "
+            "the cycle turn limit"
+        ),
     )
     args = parser.parse_args()
 

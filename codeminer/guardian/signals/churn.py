@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import os
 import subprocess
-from dataclasses import dataclass
 from typing import List, Optional, Set
 
 from ...log_utils import get_logger
+from .types import Signal
 
 logger = get_logger(__name__)
 
@@ -42,12 +42,14 @@ _CODE_EXTENSIONS: Set[str] = {
 }
 
 
-@dataclass
-class Hotspot:
-    """A file ranked by how often it changed in the churn window."""
-
-    path: str
-    commit_count: int
+def Hotspot(path: str, commit_count: int) -> Signal:
+    """Compatibility constructor returning the canonical Signal type."""
+    return Signal.create(
+        kind="churn",
+        locus=[path],
+        detail=f"{path} changed in {commit_count} commits",
+        value={"commit_count": commit_count},
+    )
 
 
 def churn_hotspots(
@@ -56,7 +58,7 @@ def churn_hotspots(
     since: str = "90 days ago",
     top_n: int = 10,
     extensions: Optional[Set[str]] = None,
-) -> List[Hotspot]:
+) -> List[Signal]:
     """Return the most-changed code files since ``since``, highest churn first.
 
     Churn = number of commits in the window that touched the file. Only files
@@ -100,4 +102,12 @@ def churn_hotspots(
         counts[rel] = counts.get(rel, 0) + 1
 
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    return [Hotspot(path=path, commit_count=count) for path, count in ranked[:top_n]]
+    return [
+        Signal.create(
+            kind="churn",
+            locus=[path],
+            detail=f"{path} changed in {count} commits over {since}",
+            value={"commit_count": count, "window": since},
+        )
+        for path, count in ranked[:top_n]
+    ]

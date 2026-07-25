@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
 from typing import List, Optional, Protocol, Sequence, Tuple
 
 from ...log_utils import get_logger
@@ -359,13 +358,26 @@ def fix_probe(
     )
     if rc_patch != 0:
         msg = f"PATCH_FAILED: patch command exited {rc_patch}\n{patch_out[:500]}"
-        return msg, {"patch_applied": False, "passed": None, "rc": rc_patch, "output": patch_out}
+        return msg, {
+            "patch_applied": False,
+            "passed": None,
+            "rc": rc_patch,
+            "output": patch_out,
+        }
 
     _, result = run_synthesized_test(test_src, sandbox, timeout=timeout)
-    flip = "FAIL→PASS" if result["passed"] is True else (
-        "FAIL→FAIL (still red after fix)" if result["passed"] is False else "INVALID"
+    flip = (
+        "FAIL→PASS"
+        if result["passed"] is True
+        else (
+            "FAIL→FAIL (still red after fix)"
+            if result["passed"] is False
+            else "INVALID"
+        )
     )
-    obs = f"fix_probe: patch applied  |  test result: {flip}\n{result['output'][-1500:]}"
+    obs = (
+        f"fix_probe: patch applied  |  test result: {flip}\n{result['output'][-1500:]}"
+    )
     return obs, {"patch_applied": True, **result}
 
 
@@ -391,12 +403,16 @@ def differential_run(
     ``prior_output``, ``current_output``, ``is_regression``.
     """
     _, prior_result = run_synthesized_test(
-        test_src, sandbox_prior,
-        test_filename=_SYNTH_TEST_FILENAME, timeout=timeout,
+        test_src,
+        sandbox_prior,
+        test_filename=_SYNTH_TEST_FILENAME,
+        timeout=timeout,
     )
     _, current_result = run_synthesized_test(
-        test_src, sandbox_current,
-        test_filename=_SYNTH_TEST_FILENAME, timeout=timeout,
+        test_src,
+        sandbox_current,
+        test_filename=_SYNTH_TEST_FILENAME,
+        timeout=timeout,
     )
 
     prior_passed = prior_result["passed"]
@@ -457,12 +473,18 @@ def corroboration_policy(
 
     if differential_result is not None:
         if differential_result.get("is_regression") is True:
-            return True, "differential run PASS→FAIL: regression pinned to this interval"
+            return (
+                True,
+                "differential run PASS→FAIL: regression pinned to this interval",
+            )
 
     if fix_result is not None or differential_result is not None:
         return False, "corroboration attempted but did not flip — evidence is weak"
 
-    return False, "red synthesized test alone is insufficient — run fix_probe or differential_run"
+    return (
+        False,
+        "red synthesized test alone is insufficient — run fix_probe or differential_run",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +498,7 @@ def dispatch_advanced_probe(
     sandbox: SandboxHandle,
     *,
     synth_test_store: List[str],
+    prior_sandbox: Optional[SandboxHandle] = None,
 ) -> Tuple[str, ProbeRecord]:
     """Dispatch synthesize_test / run_synthesized_test / fix_probe tool calls.
 
@@ -493,7 +516,11 @@ def dispatch_advanced_probe(
         return obs, ProbeRecord(
             tool="synthesize_test",
             input_summary=f"synthesize_test({target_symbol!r})",
-            output_summary=("scaffold returned" if result.get("valid") else f"import error: {result.get('error', '')[:80]}"),
+            output_summary=(
+                "scaffold returned"
+                if result.get("valid")
+                else f"import error: {result.get('error', '')[:80]}"
+            ),
             passed=passed,
         )
 
@@ -507,17 +534,49 @@ def dispatch_advanced_probe(
             input_summary=f"run_synthesized_test({len(test_src)} chars)",
             output_summary=obs[:200],
             passed=result.get("passed"),
+            result=result,
         )
 
     if tool_name == "fix_probe":
         diff = args.get("diff", "")
-        test_src = args.get("test_source", "") or (synth_test_store[-1] if synth_test_store else "")
+        test_src = args.get("test_source", "") or (
+            synth_test_store[-1] if synth_test_store else ""
+        )
         obs, result = fix_probe(diff, test_src, sandbox)
         return obs, ProbeRecord(
             tool="fix_probe",
             input_summary=f"fix_probe(diff={len(diff)} chars)",
             output_summary=obs[:200],
             passed=result.get("passed"),
+            result=result,
+        )
+
+    if tool_name == "differential_run":
+        test_src = args.get("test_source", "") or (
+            synth_test_store[-1] if synth_test_store else ""
+        )
+        if prior_sandbox is None:
+            msg = (
+                "differential_run unavailable: no prior snapshot sandbox "
+                "was provisioned"
+            )
+            return msg, ProbeRecord(
+                tool="differential_run",
+                input_summary=f"differential_run({len(test_src)} chars)",
+                output_summary=msg,
+            )
+        obs, result = differential_run(
+            test_src,
+            sandbox,
+            prior_sandbox,
+            timeout=int(args.get("timeout", 60)),
+        )
+        return obs, ProbeRecord(
+            tool="differential_run",
+            input_summary=f"differential_run({len(test_src)} chars)",
+            output_summary=obs[:200],
+            passed=result.get("is_regression"),
+            result=result,
         )
 
     # Unknown advanced probe — should not happen since runner guards _TOOL_NAMES.

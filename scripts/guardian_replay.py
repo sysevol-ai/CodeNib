@@ -37,6 +37,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from codeminer.guardian.cycle import GuardianConfig
 
 logger = logging.getLogger(__name__)
 
@@ -100,17 +104,28 @@ def provision_container(
     reachable via a future ``--add-host`` flag.
     """
     cmd = [
-        "docker", "run", "--rm",
-        "--network", "none",
-        "-v", f"{os.path.abspath(wt_path)}:/repo:ro",
-        "-v", f"{os.path.abspath(memory_dir)}:/memory:ro",
-        "-v", f"{os.path.abspath(ep_dir)}:/out:rw",
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "-v",
+        f"{os.path.abspath(wt_path)}:/repo:ro",
+        "-v",
+        f"{os.path.abspath(memory_dir)}:/memory:ro",
+        "-v",
+        f"{os.path.abspath(ep_dir)}:/out:rw",
         image,
-        "--repo", "/repo",
-        "--out", "/out",
-        "--arm", cfg.arm,
-        "--index-types", ",".join(cfg.index_types),
-        "--since", cfg.since,
+        "--repo",
+        "/repo",
+        "--out",
+        "/out",
+        "--arm",
+        cfg.arm,
+        "--index-types",
+        ",".join(cfg.index_types),
+        "--since",
+        cfg.since,
     ]
     return subprocess.run(cmd, check=True, text=True, capture_output=True)
 
@@ -126,12 +141,15 @@ def teardown_worktree(mirror: str, wt_path: str) -> None:
             text=True,
         )
     except subprocess.CalledProcessError as exc:
-        logger.warning("guardian_replay: worktree remove failed for %s: %s", wt_path, exc)
+        logger.warning(
+            "guardian_replay: worktree remove failed for %s: %s", wt_path, exc
+        )
 
 
 # ---------------------------------------------------------------------------
 # Replay loop
 # ---------------------------------------------------------------------------
+
 
 def _read_commits(path: str) -> list[str]:
     commits = []
@@ -140,6 +158,29 @@ def _read_commits(path: str) -> list[str]:
         if line and not line.startswith("#"):
             commits.append(line)
     return commits
+
+
+def _write_cycle_failure(
+    episode_dir: Path,
+    *,
+    commit: str,
+    failure_type: str,
+    reason: str,
+) -> None:
+    """Make a failed cycle distinguishable from an empty successful report."""
+    (episode_dir / "cycle_failure.json").write_text(
+        json.dumps(
+            {
+                "commit": commit,
+                "status": "failed",
+                "failure_type": failure_type,
+                "reason": reason,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def run_replay(args: argparse.Namespace) -> None:
@@ -162,7 +203,10 @@ def run_replay(args: argparse.Namespace) -> None:
 
     logger.info(
         "guardian_replay: replaying %d commit(s) from %s (arm=%s, sandbox=%s)",
-        len(commits), repo, args.arm, args.sandbox,
+        len(commits),
+        repo,
+        args.arm,
+        args.sandbox,
     )
 
     # Capture mirror HEAD before any cycle so we can assert it never moves.
@@ -189,12 +233,16 @@ def run_replay(args: argparse.Namespace) -> None:
                     since=args.since,
                 )
                 provision_container(
-                    wt_path, str(memory_dir), str(ep_dir), cfg,
+                    wt_path,
+                    str(memory_dir),
+                    str(ep_dir),
+                    cfg,
                     image=args.container_image,
                 )
                 logger.info(
                     "guardian_replay: cycle %d done (container) — output in %s",
-                    i, ep_dir,
+                    i,
+                    ep_dir,
                 )
             else:
                 cfg = GuardianConfig(
@@ -220,12 +268,23 @@ def run_replay(args: argparse.Namespace) -> None:
                 )
                 logger.info(
                     "guardian_replay: cycle %d done — %d finding(s), written to %s",
-                    i, len(report.findings), ep_dir,
+                    i,
+                    len(report.findings),
+                    ep_dir,
                 )
         except Exception as exc:  # noqa: BLE001
+            _write_cycle_failure(
+                ep_dir,
+                commit=commit,
+                failure_type=type(exc).__name__,
+                reason=str(exc),
+            )
             logger.error(
                 "guardian_replay: cycle %d failed for commit %s: %s",
-                i, short, exc, exc_info=True,
+                i,
+                short,
+                exc,
+                exc_info=True,
             )
         finally:
             teardown_worktree(repo, wt_path)
@@ -239,37 +298,71 @@ def run_replay(args: argparse.Namespace) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Replay Guardian cycles over a sequence of commits.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--repo", required=True, help="Path to the git repository (or bare mirror).")
-    p.add_argument("--commits", required=True,
-                   help="Path to a file with one commit SHA per line, oldest first. "
-                        "Use 'git log --reverse --format=%%H' to produce the correct order.")
-    p.add_argument("--out", required=True, help="Output directory for episodes, memory, and cache.")
-    p.add_argument("--arm", default="memory", choices=["memory", "memoryless"],
-                   help="Memory arm: 'memory' accumulates cross-cycle state; 'memoryless' runs "
-                        "the same code path but discards state after each cycle.")
-    p.add_argument("--index-types", default="bm25",
-                   help="Comma-separated index types to build per cycle (e.g. 'bm25,symbol_graph').")
-    p.add_argument("--since", default="90 days ago",
-                   help="Churn window passed to git log for hotspot detection.")
-    p.add_argument("--sandbox", default="worktree", choices=["worktree", "container"],
-                   help="Isolation mode. 'worktree' runs the cycle in-process in a git worktree. "
-                        "'container' launches an ephemeral Docker container per cycle.")
-    p.add_argument("--container-image", default="guardian-runtime:latest",
-                   help="Docker image to use when --sandbox container is set. "
-                        "Build with: docker build -t guardian-runtime:latest "
-                        "-f codeminer/guardian/Dockerfile .")
-    p.add_argument("--use-llm", action="store_true",
-                   help="Enable LLM narrative generation for each cycle.")
-    p.add_argument("--llm-model", default="vertex_ai/gemini-2.5-flash",
-                   help="LiteLLM model string used when --use-llm is set.")
-    p.add_argument("--log-level", default="INFO",
-                   choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                   help="Logging verbosity.")
+    p.add_argument(
+        "--repo", required=True, help="Path to the git repository (or bare mirror)."
+    )
+    p.add_argument(
+        "--commits",
+        required=True,
+        help="Path to a file with one commit SHA per line, oldest first. "
+        "Use 'git log --reverse --format=%%H' to produce the correct order.",
+    )
+    p.add_argument(
+        "--out", required=True, help="Output directory for episodes, memory, and cache."
+    )
+    p.add_argument(
+        "--arm",
+        default="memory",
+        choices=["memory", "memoryless"],
+        help="Memory arm: 'memory' accumulates cross-cycle state; 'memoryless' runs "
+        "the same code path but discards state after each cycle.",
+    )
+    p.add_argument(
+        "--index-types",
+        default="bm25",
+        help="Comma-separated index types to build per cycle (e.g. 'bm25,symbol_graph').",
+    )
+    p.add_argument(
+        "--since",
+        default="90 days ago",
+        help="Churn window passed to git log for hotspot detection.",
+    )
+    p.add_argument(
+        "--sandbox",
+        default="worktree",
+        choices=["worktree", "container"],
+        help="Isolation mode. 'worktree' runs the cycle in-process in a git worktree. "
+        "'container' launches an ephemeral Docker container per cycle.",
+    )
+    p.add_argument(
+        "--container-image",
+        default="guardian-runtime:latest",
+        help="Docker image to use when --sandbox container is set. "
+        "Build with: docker build -t guardian-runtime:latest "
+        "-f codeminer/guardian/Dockerfile .",
+    )
+    p.add_argument(
+        "--use-llm",
+        action="store_true",
+        help="Enable LLM narrative generation for each cycle.",
+    )
+    p.add_argument(
+        "--llm-model",
+        default="vertex_ai/gemini-2.5-flash",
+        help="LiteLLM model string used when --use-llm is set.",
+    )
+    p.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging verbosity.",
+    )
     return p
 
 

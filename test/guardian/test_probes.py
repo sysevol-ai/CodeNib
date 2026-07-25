@@ -21,10 +21,10 @@ from codeminer.guardian.investigator.probes import (
     synthesize_test,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _fake_sandbox(repo_path="/tmp/repo", *, run_rc=0, run_output="ok"):
     sb = MagicMock()
@@ -51,6 +51,7 @@ def _fake_retriever(result_text="file.py | my_func (function) | score=0.900"):
 # retrieve_evidence
 # ---------------------------------------------------------------------------
 
+
 class TestRetrieveEvidence:
     def test_calls_retriever_and_returns_text(self):
         obs, result = retrieve_evidence("parse_config callers", _fake_retriever())
@@ -73,19 +74,26 @@ class TestRetrieveEvidence:
 # run_existing_test
 # ---------------------------------------------------------------------------
 
+
 class TestRunExistingTest:
     def test_pass(self):
-        obs, result = run_existing_test("test/foo.py", _fake_sandbox(run_rc=0, run_output="1 passed"))
+        obs, result = run_existing_test(
+            "test/foo.py", _fake_sandbox(run_rc=0, run_output="1 passed")
+        )
         assert result["passed"] is True
         assert "PASS" in obs
 
     def test_fail(self):
-        obs, result = run_existing_test("test/foo.py", _fake_sandbox(run_rc=1, run_output="1 failed"))
+        obs, result = run_existing_test(
+            "test/foo.py", _fake_sandbox(run_rc=1, run_output="1 failed")
+        )
         assert result["passed"] is False
         assert "FAIL" in obs
 
     def test_collection_error_sets_passed_none(self):
-        obs, result = run_existing_test("test/bad.py", _fake_sandbox(run_rc=2, run_output="ERROR collecting"))
+        obs, result = run_existing_test(
+            "test/bad.py", _fake_sandbox(run_rc=2, run_output="ERROR collecting")
+        )
         assert result["passed"] is None
         assert "INVALID" in obs
 
@@ -99,6 +107,7 @@ class TestRunExistingTest:
 # ---------------------------------------------------------------------------
 # _parse_target_symbol
 # ---------------------------------------------------------------------------
+
 
 class TestParseTargetSymbol:
     def test_dotted_path(self):
@@ -116,6 +125,7 @@ class TestParseTargetSymbol:
 # synthesize_test
 # ---------------------------------------------------------------------------
 
+
 class TestSynthesizeTest:
     def test_valid_import_returns_scaffold(self):
         sb = _fake_sandbox(run_rc=0, run_output="ok")
@@ -127,7 +137,9 @@ class TestSynthesizeTest:
         assert "scaffold" in obs.lower() or "import" in obs.lower()
 
     def test_invalid_import_returns_error(self):
-        sb = _fake_sandbox(run_rc=1, run_output="ModuleNotFoundError: no module named 'nonexistent'")
+        sb = _fake_sandbox(
+            run_rc=1, run_output="ModuleNotFoundError: no module named 'nonexistent'"
+        )
         obs, result = synthesize_test("test something", "nonexistent.BadSymbol", sb)
         assert result["valid"] is False
         assert "Cannot import" in obs
@@ -149,13 +161,16 @@ class TestSynthesizeTest:
 # _check_self_mocking
 # ---------------------------------------------------------------------------
 
+
 class TestCheckSelfMocking:
     def test_no_mocking(self):
         src = "def test_x():\n    assert my_func() == 1\n"
         assert _check_self_mocking(src) is False
 
     def test_patch_and_magicmock(self):
-        src = "@patch('mod.my_func')\ndef test_x(m):\n    m.return_value = MagicMock()\n"
+        src = (
+            "@patch('mod.my_func')\ndef test_x(m):\n    m.return_value = MagicMock()\n"
+        )
         assert _check_self_mocking(src) is True
 
     def test_patch_without_magicmock(self):
@@ -166,6 +181,7 @@ class TestCheckSelfMocking:
 # ---------------------------------------------------------------------------
 # run_synthesized_test
 # ---------------------------------------------------------------------------
+
 
 class TestRunSynthesizedTest:
     def test_pass(self):
@@ -213,6 +229,7 @@ class TestRunSynthesizedTest:
 # fix_probe
 # ---------------------------------------------------------------------------
 
+
 class TestFixProbe:
     def _make_sandbox(self, patch_rc=0, test_rc=0):
         sb = MagicMock()
@@ -226,14 +243,18 @@ class TestFixProbe:
 
     def test_fail_to_pass_flip(self):
         sb = self._make_sandbox(patch_rc=0, test_rc=0)
-        obs, result = fix_probe("--- a/mod.py\n+++ b/mod.py\n", "def test_x(): pass", sb)
+        obs, result = fix_probe(
+            "--- a/mod.py\n+++ b/mod.py\n", "def test_x(): pass", sb
+        )
         assert result["patch_applied"] is True
         assert result["passed"] is True
         assert "FAIL→PASS" in obs
 
     def test_fail_to_fail(self):
         sb = self._make_sandbox(patch_rc=0, test_rc=1)
-        obs, result = fix_probe("--- a/mod.py\n+++ b/mod.py\n", "def test_x(): assert False", sb)
+        obs, result = fix_probe(
+            "--- a/mod.py\n+++ b/mod.py\n", "def test_x(): assert False", sb
+        )
         assert result["patch_applied"] is True
         assert result["passed"] is False
         assert "FAIL→FAIL" in obs
@@ -260,6 +281,7 @@ class TestFixProbe:
 # differential_run
 # ---------------------------------------------------------------------------
 
+
 class TestDifferentialRun:
     def _make_sandboxes(self, *, prior_rc, current_rc):
         def make(rc):
@@ -267,6 +289,7 @@ class TestDifferentialRun:
             sb.repo_path = "/repo"
             sb.run_command.return_value = (rc, "output")
             return sb
+
         return make(prior_rc), make(current_rc)
 
     def test_regression_pass_to_fail(self):
@@ -279,7 +302,9 @@ class TestDifferentialRun:
 
     def test_both_fail_not_regression(self):
         prior_sb, current_sb = self._make_sandboxes(prior_rc=1, current_rc=1)
-        obs, result = differential_run("def test_x(): assert False", current_sb, prior_sb)
+        obs, result = differential_run(
+            "def test_x(): assert False", current_sb, prior_sb
+        )
         assert result["is_regression"] is False
         assert "FAIL→FAIL" in obs
 
@@ -293,6 +318,7 @@ class TestDifferentialRun:
 # ---------------------------------------------------------------------------
 # corroboration_policy
 # ---------------------------------------------------------------------------
+
 
 class TestCorroborationPolicy:
     def test_invalid_test_cannot_confirm(self):
@@ -348,18 +374,25 @@ class TestCorroborationPolicy:
 # dispatch_advanced_probe
 # ---------------------------------------------------------------------------
 
+
 class TestDispatchAdvancedProbe:
     def test_synthesize_test_valid(self):
         sb = _fake_sandbox(run_rc=0, run_output="ok")
         synth_store: list = []
         obs, record = dispatch_advanced_probe(
             "synthesize_test",
-            {"description": "test arity", "target_symbol": "codeminer.guardian.cycle.run_cycle"},
+            {
+                "description": "test arity",
+                "target_symbol": "codeminer.guardian.cycle.run_cycle",
+            },
             sb,
             synth_test_store=synth_store,
         )
         assert record.tool == "synthesize_test"
-        assert "scaffold" in record.output_summary.lower() or "import" in record.output_summary.lower()
+        assert (
+            "scaffold" in record.output_summary.lower()
+            or "import" in record.output_summary.lower()
+        )
 
     def test_synthesize_test_invalid_import(self):
         sb = _fake_sandbox(run_rc=1, run_output="ImportError")
@@ -398,8 +431,8 @@ class TestDispatchAdvancedProbe:
         sb = MagicMock()
         sb.repo_path = "/repo"
         sb.run_command.side_effect = [
-            (0, "patching"),   # patch
-            (0, "1 passed"),   # test run
+            (0, "patching"),  # patch
+            (0, "1 passed"),  # test run
         ]
         store = ["def test_stored(): pass"]
         obs, record = dispatch_advanced_probe(
@@ -412,6 +445,30 @@ class TestDispatchAdvancedProbe:
         # The stored test source should have been used (write_file called twice:
         # once for patch file, once for test file inside run_synthesized_test).
         assert sb.write_file.call_count == 2
+
+    def test_differential_run_is_reachable_with_prior_sandbox(self):
+        current = _fake_sandbox(run_rc=1, run_output="1 failed")
+        prior = _fake_sandbox(run_rc=0, run_output="1 passed")
+        obs, record = dispatch_advanced_probe(
+            "differential_run",
+            {"test_source": "def test_contract(): assert True"},
+            current,
+            synth_test_store=[],
+            prior_sandbox=prior,
+        )
+        assert record.tool == "differential_run"
+        assert record.result["is_regression"] is True
+        assert "PASS→FAIL" in obs
+
+    def test_differential_run_without_prior_is_typed_observation(self):
+        obs, record = dispatch_advanced_probe(
+            "differential_run",
+            {"test_source": "def test_contract(): pass"},
+            _fake_sandbox(),
+            synth_test_store=[],
+        )
+        assert "unavailable" in obs
+        assert record.tool == "differential_run"
 
     def test_unknown_tool_returns_error_record(self):
         sb = _fake_sandbox()

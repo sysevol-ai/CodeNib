@@ -17,11 +17,11 @@ The script runs two baselines for each task:
 * ``guardian``: GuardianCodingAgent wrapping Codex with the Guardian sidecar.
 
 Each requested baseline is run ``--runs`` times.  Results are stored in fixed
-slots:
+slots keyed by model setting:
 
-    deepswe_outputs/<task_name>/<baseline_name>/job_1/
+    deepswe_outputs/<model>_<reasoning_effort>/<task_name>/<baseline_name>/job_1/
     ...
-    deepswe_outputs/<task_name>/<baseline_name>/job_4/
+    deepswe_outputs/<model>_<reasoning_effort>/<task_name>/<baseline_name>/job_4/
 
 Each job directory is self-contained:
 
@@ -55,7 +55,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_CODEMINER_ROOT = Path("/home/xiangye/CodeMiner")
 DEFAULT_DEEPSWE_ROOT = Path("/home/xiangye/deep-swe")
 DEFAULT_OUTPUT_ROOT = Path("/mnt/data/xiangye/deepswe_outputs")
@@ -63,8 +62,13 @@ DEFAULT_JOBS_DIR = DEFAULT_DEEPSWE_ROOT / "jobs"
 DEFAULT_CONDA_ENV = Path("/home/xiangye/miniconda3/envs/codeminer")
 DEFAULT_TREE_SITTER_CACHE = Path("/home/xiangye/.cache/tree-sitter-language-pack")
 
+
 def _slug(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
+
+
+def _setting_slug(model: str, reasoning_effort: str) -> str:
+    return f"{_slug(model)}_{_slug(reasoning_effort)}"
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -92,7 +96,7 @@ def _extract_metrics(result: dict[str, Any] | None) -> dict[str, float | None]:
     }
     if not result:
         return empty
-    evals = ((result.get("stats") or {}).get("evals") or {})
+    evals = (result.get("stats") or {}).get("evals") or {}
     for eval_row in evals.values():
         metrics = eval_row.get("metrics") or []
         if metrics:
@@ -107,6 +111,35 @@ def _latest_guardian_status(logs_dir: Path) -> dict[str, Any] | None:
     return _load_json(statuses[-1])
 
 
+def _codex_tokens_from_log(log_path: Path) -> dict[str, int] | None:
+    totals = {
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_output_tokens": 0,
+    }
+    seen = False
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except FileNotFoundError:
+        return None
+
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        usage = event.get("usage")
+        if event.get("type") != "turn.completed" or not isinstance(usage, dict):
+            continue
+        seen = True
+        for key in totals:
+            value = usage.get(key)
+            if isinstance(value, int):
+                totals[key] += value
+    return totals if seen else None
+
+
 def _find_result_path(stdout: str, jobs_dir: Path, started_at: float) -> Path | None:
     match = re.search(r"Results written to (.+/result\.json)", stdout)
     if match:
@@ -114,9 +147,7 @@ def _find_result_path(stdout: str, jobs_dir: Path, started_at: float) -> Path | 
         if path.exists():
             return path
     candidates = [
-        p
-        for p in jobs_dir.glob("*/result.json")
-        if p.stat().st_mtime >= started_at - 2
+        p for p in jobs_dir.glob("*/result.json") if p.stat().st_mtime >= started_at - 2
     ]
     if not candidates:
         return None
@@ -252,7 +283,8 @@ def _run_trial(
     repeat_index: int,
 ) -> dict[str, Any]:
     job_id = f"job_{repeat_index}"
-    base_dir = args.output_root / _slug(task) / baseline / job_id
+    setting = _setting_slug(args.model, args.reasoning_effort)
+    base_dir = args.output_root / setting / _slug(task) / baseline / job_id
     if baseline == "guardian" and base_dir.exists():
         _repair_output_permissions(base_dir)
         shutil.rmtree(base_dir)
@@ -295,8 +327,12 @@ def _run_trial(
     result = _load_json(result_path) if result_path else None
     metrics = _extract_metrics(result)
 
-    codex_tokens = _load_json(logs_dir / "codex_tokens.json")
-    guardian_status = _latest_guardian_status(logs_dir) if baseline == "guardian" else None
+    codex_tokens = _load_json(logs_dir / "codex_tokens.json") or _codex_tokens_from_log(
+        logs_dir / "codex.txt"
+    )
+    guardian_status = (
+        _latest_guardian_status(logs_dir) if baseline == "guardian" else None
+    )
 
     row: dict[str, Any] = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -341,7 +377,7 @@ def _existing_jobs(
     model: str,
     reasoning_effort: str,
 ) -> list[dict[str, Any]]:
-    base = output_root / _slug(task) / baseline
+    base = output_root / _setting_slug(model, reasoning_effort) / _slug(task) / baseline
     rows: list[dict[str, Any]] = []
     for path in sorted(base.glob("job_*/metadata.json")):
         row = _load_json(path)
@@ -370,7 +406,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--jobs-dir", type=Path, default=DEFAULT_JOBS_DIR)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--conda-env", type=Path, default=DEFAULT_CONDA_ENV)
-    parser.add_argument("--tree-sitter-cache", type=Path, default=DEFAULT_TREE_SITTER_CACHE)
+    parser.add_argument(
+        "--tree-sitter-cache", type=Path, default=DEFAULT_TREE_SITTER_CACHE
+    )
     parser.add_argument(
         "--force-solo",
         action="store_true",
@@ -383,7 +421,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     args = parser.parse_args(argv)
     if args.runs < 1 or args.runs > 4:
-        raise ValueError("--runs must be between 1 and 4; analysis only counts job_1..job_4")
+        raise ValueError(
+            "--runs must be between 1 and 4; analysis only counts job_1..job_4"
+        )
     if args.guardian_model is None:
         args.guardian_model = f"codex:{args.model}"
     return args
@@ -411,9 +451,16 @@ def main(argv: list[str] | None = None) -> int:
         }
         for idx in range(1, args.runs + 1):
             if idx in solo_existing and not args.force_solo:
+                existing_dir = (
+                    args.output_root
+                    / _setting_slug(args.model, args.reasoning_effort)
+                    / _slug(task)
+                    / "solo"
+                    / f"job_{idx}"
+                )
                 print(
                     f"[skip] {task} solo job_{idx}: existing trial in "
-                    f"{args.output_root / _slug(task) / 'solo' / f'job_{idx}'}"
+                    f"{existing_dir}"
                 )
             else:
                 plan.append(("solo", idx))
@@ -422,7 +469,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             for baseline, idx in plan:
                 job_id = f"job_{idx}"
-                base_dir = args.output_root / _slug(task) / baseline / job_id
+                base_dir = (
+                    args.output_root
+                    / _setting_slug(args.model, args.reasoning_effort)
+                    / _slug(task)
+                    / baseline
+                    / job_id
+                )
                 logs_dir = base_dir / "agent_logs"
                 cmd = _build_pier_command(
                     args,

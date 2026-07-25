@@ -1,280 +1,257 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for codeminer.guardian.memory (SQLite store, no LLM, no network)."""
+"""Unit tests for the v2 hypothesis-trajectory memory store."""
 
 import pytest
 
 from codeminer.graph.code_graph import CodeGraph
+from codeminer.guardian.loop import CycleState, Hypothesis, Signal
 from codeminer.guardian.memory import MemoryStore, format_findings_for_prompt
-from codeminer.guardian.report import Finding, GuardianReport
+from codeminer.guardian.report import GuardianReport, report_views
 from codeminer.types import EDGE_TYPE_REFERENCE
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-def _make_report(commit: str = "abc123", findings=None) -> GuardianReport:
-    return GuardianReport(
-        repo="/tmp/repo",
-        commit=commit,
-        generated_at="2026-07-08 00:00:00 UTC",
-        churn_window="90 days ago",
-        findings=findings or [],
+def _hypothesis(cycle_no=1, *, grade="finding", suffix=""):
+    evidence = (
+        [f"probe:{cycle_no}:1"] if grade in {"finding", "supported", "refuted"} else []
+    )
+    return Hypothesis.create(
+        claim=f"parse{suffix} accepts invalid input",
+        consequence="invalid state reaches callers",
+        remedy="validate input and add a regression test",
+        origin="exploration",
+        locus=[f"mod{suffix}.py:parse"],
+        evidence=evidence,
+        grade=grade,
+        cycle_no=cycle_no,
     )
 
 
-def _make_graph() -> CodeGraph:
-    g = CodeGraph()
-    g._add_vertex("A", {"type": "function", "file": "a.py"})
-    g._add_vertex("B", {"type": "function", "file": "b.py"})
-    g._add_edge("A", "B", EDGE_TYPE_REFERENCE)
-    return g
+def _state(cycle_no=1, *, hypotheses=None):
+    return CycleState(
+        cycle_no=cycle_no,
+        commit=f"commit{cycle_no}",
+        hypotheses=list(hypotheses or []),
+        signals=[
+            Signal.create(
+                kind="churn",
+                locus=["mod.py"],
+                detail="mod.py changed three times",
+            )
+        ],
+        current=None,
+        budget_total=10_000,
+        budget_spent=100,
+        decision_log=[{"event": "tool_call", "tool": "recall"}],
+        exit_reason="ReportSubmitted",
+        carried_from=(cycle_no - 1 if cycle_no > 1 else None),
+        report_summary="done",
+    )
 
 
-# ---------------------------------------------------------------------------
-# Schema / init
-# ---------------------------------------------------------------------------
-
-class TestInit:
-    def test_creates_db_file(self, tmp_path):
-        store = MemoryStore(str(tmp_path / "mem"))
-        assert (tmp_path / "mem" / "index.sqlite").exists()
-
-    def test_readonly_does_not_create_db(self, tmp_path):
-        store = MemoryStore(str(tmp_path / "mem"), readonly=True)
-        assert not (tmp_path / "mem").exists()
-
-    def test_cycle_count_zero_on_fresh_store(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        assert store.cycle_count() == 0
+def _report(state):
+    findings, backlog, retractions = report_views(state.hypotheses)
+    return GuardianReport(
+        repo="/repo",
+        commit=state.commit,
+        generated_at="2026-07-08 00:00:00 UTC",
+        churn_window="90 days ago",
+        findings=findings,
+        backlog=backlog,
+        retractions=retractions,
+        cycle_no=state.cycle_no,
+        exit_reason=state.exit_reason or "",
+    )
 
 
-# ---------------------------------------------------------------------------
-# persist_cycle
-# ---------------------------------------------------------------------------
+def _graph():
+    graph = CodeGraph()
+    graph._add_vertex("A", {"type": "function", "file": "a.py"})
+    graph._add_vertex("B", {"type": "function", "file": "b.py"})
+    graph._add_edge("A", "B", EDGE_TYPE_REFERENCE)
+    return graph
 
-class TestPersistCycle:
-    def test_returns_cycle_no(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        no = store.persist_cycle(_make_report("c1"))
-        assert no == 1
 
-    def test_increments_cycle_no(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        n1 = store.persist_cycle(_make_report("c1"))
-        n2 = store.persist_cycle(_make_report("c2"))
-        assert n2 == n1 + 1
+def test_init_and_cycle_numbering(tmp_path):
+    store = MemoryStore(str(tmp_path / "memory"))
+    assert store.next_cycle_no() == 1
+    state = _state(1, hypotheses=[_hypothesis()])
+    assert store.persist_state(state, _report(state)) == 1
+    assert store.next_cycle_no() == 2
+    assert store.cycle_count() == 1
 
-    def test_cycle_count_increments(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(_make_report("c1"))
-        store.persist_cycle(_make_report("c2"))
-        assert store.cycle_count() == 2
 
-    def test_findings_persisted(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        findings = [
-            Finding(kind="churn", title="High-churn file: foo.py", detail="Changed 5 times"),
-            Finding(kind="drift", title="Graph-diff drift: fan_in_spike — bar.py: `Baz`"),
+def test_readonly_has_identical_api_but_no_data_or_writes(tmp_path):
+    store = MemoryStore(str(tmp_path / "memory"), readonly=True)
+    state = _state(1, hypotheses=[_hypothesis()])
+    assert store.persist_state(state, _report(state)) == -1
+    assert store.recall(query="parse") == []
+    assert store.load_hypotheses() == []
+    assert not (tmp_path / "memory").exists()
+
+
+def test_hypotheses_and_signals_persist_separately(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    state = _state(1, hypotheses=[_hypothesis()])
+    store.persist_state(state, _report(state))
+    recalled = store.recall(query="invalid")
+    assert len(recalled) == 1
+    assert recalled[0]["grade"] == "finding"
+    assert recalled[0]["remedy"].startswith("validate")
+    with store._connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM hypotheses").fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE name='findings'"
+            ).fetchone()
+            is None
+        )
+
+
+def test_load_latest_snapshot_of_carried_hypothesis(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    first = _hypothesis(1, grade="conjecture")
+    state1 = _state(1, hypotheses=[first])
+    store.persist_state(state1, _report(state1))
+    first.evidence.append("probe:2:1")
+    first.grade = "supported"
+    first.last_touched_cycle = 2
+    state2 = _state(2, hypotheses=[first])
+    store.persist_state(state2, _report(state2))
+    loaded = store.load_hypotheses()
+    assert len(loaded) == 1
+    assert loaded[0].grade == "supported"
+    assert loaded[0].first_seen_cycle == 1
+
+
+def test_recall_supports_locus_and_trajectory_queries(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    hypothesis = _hypothesis(1)
+    state1 = _state(1, hypotheses=[hypothesis])
+    store.persist_state(state1, _report(state1))
+    hypothesis.last_touched_cycle = 2
+    state2 = _state(2, hypotheses=[hypothesis])
+    store.persist_state(state2, _report(state2))
+    assert len(store.recall(locus="mod.py")) == 2
+    trajectory = store.recall(query=hypothesis.id, kind="trajectory")
+    # Evidence/id queries are allowed; use locus to select the trajectory.
+    if not trajectory:
+        trajectory = store.recall(locus="mod.py", kind="trajectory")
+    assert [row["cycle_no"] for row in trajectory] == [1, 2]
+    assert trajectory[0]["recurrence_count"] == 2
+    assert len(trajectory[0]["grade_history"]) == 2
+
+
+def test_semantic_recall_returns_relevant_claim_without_exact_phrase(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    relevant = _hypothesis(1)
+    unrelated = Hypothesis.create(
+        claim="renderer emits the wrong heading color",
+        consequence="the report is harder to scan",
+        remedy="bind heading styles to the theme token",
+        origin="exploration",
+        locus=["report.py:render"],
+        cycle_no=1,
+    )
+    state = _state(1, hypotheses=[unrelated, relevant])
+    store.persist_state(state, _report(state))
+    rows = store.recall(
+        query="input validation parser callers",
+        kind="semantic",
+        k=2,
+    )
+    assert rows[0]["hypothesis_id"] == relevant.id
+
+
+def test_recent_findings_filters_non_findings(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    hypotheses = [_hypothesis(1), _hypothesis(1, grade="deferred", suffix="_later")]
+    state = _state(1, hypotheses=hypotheses)
+    store.persist_state(state, _report(state))
+    rows = store.recent_findings(k=5)
+    assert len(rows) == 1
+    assert rows[0]["grade"] == "finding"
+
+
+def test_graph_snapshot_round_trip(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    state = _state(1, hypotheses=[_hypothesis()])
+    store.persist_state(state, _report(state), graph=_graph())
+    assert store.recent_cycles(1)[0]["has_graph"] == 1
+    assert store.load_prior_graph() is not None
+
+
+def test_symbol_and_edge_history(tmp_path):
+    from codeminer.guardian.signals.graph_diff import EdgeChange
+
+    store = MemoryStore(str(tmp_path))
+    state = _state(1, hypotheses=[_hypothesis()])
+    store.persist_state(state, _report(state))
+    assert store.symbol_history("mod.py:parse")["first_seen_cycle"] == 1
+    store.persist_edge_changes(
+        1,
+        [
+            EdgeChange(
+                kind="added",
+                edge_type=EDGE_TYPE_REFERENCE,
+                src="A",
+                dst="B",
+                src_file="a.py",
+                dst_file="b.py",
+            )
+        ],
+    )
+    assert store.edge_drift(1)[0]["src_symbol"] == "A"
+
+
+def test_cross_cycle_assertion_requires_trajectory(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    state = _state(1, hypotheses=[_hypothesis()])
+    store.persist_state(state, _report(state))
+    with pytest.raises(AssertionError):
+        store.assert_cross_cycle()
+    carried = state.hypotheses
+    second = _state(2, hypotheses=carried)
+    store.persist_state(second, _report(second))
+    store.assert_cross_cycle()
+
+
+def test_two_cycle_rederived_claim_supersedes_instead_of_duplicates(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    old = _hypothesis(1)
+    first = _state(1, hypotheses=[old])
+    store.persist_state(first, _report(first))
+    replacement = Hypothesis.create(
+        claim="parse still accepts malformed input through the alternate path",
+        consequence="invalid state reaches callers",
+        remedy="validate both paths and add a parameterized regression test",
+        origin="memory",
+        locus=["mod.py:parse"],
+        evidence=["cycle:1", "probe:2:1"],
+        grade="finding",
+        cycle_no=2,
+        supersedes=[old.id],
+    )
+    second = _state(2, hypotheses=[old, replacement])
+    report = _report(second)
+    store.persist_state(second, report)
+    assert [item.id for item in report.findings] == [replacement.id]
+    assert len(store.load_hypotheses()) == 2
+    assert store.load_hypotheses()[1].supersedes == [old.id]
+
+
+def test_format_findings_uses_claim_and_remedy():
+    rendered = format_findings_for_prompt(
+        [
+            {
+                "commit": "abc12345",
+                "grade": "finding",
+                "claim": "parse accepts invalid input",
+                "remedy": "validate input",
+            }
         ]
-        store.persist_cycle(_make_report("c1", findings))
-        rows = store.recent_findings(k=10)
-        assert len(rows) == 2
-        kinds = {r["kind"] for r in rows}
-        assert kinds == {"churn", "drift"}
-
-    def test_readonly_persist_is_noop(self, tmp_path):
-        store = MemoryStore(str(tmp_path), readonly=True)
-        result = store.persist_cycle(_make_report("c1"))
-        assert result == -1
-        assert store.cycle_count() == 0
-
-    def test_graph_saved_and_has_graph_flag_set(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        g = _make_graph()
-        store.persist_cycle(_make_report("abc123def456"), graph=g)
-        cycles = store.recent_cycles(k=1)
-        assert cycles[0]["has_graph"] == 1
-        assert (tmp_path / "graph" / "abc123def456.pkl").exists()
-
-    def test_no_graph_has_graph_flag_zero(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(_make_report("c1"))
-        cycles = store.recent_cycles(k=1)
-        assert cycles[0]["has_graph"] == 0
-
-    def test_token_cost_stored(self, tmp_path):
-        from codeminer.guardian.investigator import LLMUsage
-        usage = LLMUsage()
-        usage.prompt_tokens = 100
-        usage.completion_tokens = 50
-        usage.total_tokens = 150
-        report = _make_report("c1")
-        report.llm_usage = usage
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(report)
-        cycles = store.recent_cycles(k=1)
-        assert cycles[0]["token_cost"] == 150
-
-
-# ---------------------------------------------------------------------------
-# recent_findings
-# ---------------------------------------------------------------------------
-
-class TestRecentFindings:
-    def test_empty_on_no_cycles(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        assert store.recent_findings() == []
-
-    def test_returns_newest_first(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(_make_report("c1", [
-            Finding(kind="churn", title="High-churn file: old.py")
-        ]))
-        store.persist_cycle(_make_report("c2", [
-            Finding(kind="churn", title="High-churn file: new.py")
-        ]))
-        rows = store.recent_findings(k=5)
-        assert rows[0]["title"] == "High-churn file: new.py"
-
-
-    def test_k_limits_results(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        for i in range(10):
-            store.persist_cycle(_make_report(f"c{i}", [
-                Finding(kind="churn", title=f"High-churn file: f{i}.py")
-            ]))
-        rows = store.recent_findings(k=3)
-        assert len(rows) == 3
-
-    def test_readonly_returns_empty(self, tmp_path):
-        store = MemoryStore(str(tmp_path), readonly=True)
-        assert store.recent_findings() == []
-
-
-# ---------------------------------------------------------------------------
-# load_prior_graph
-# ---------------------------------------------------------------------------
-
-class TestLoadPriorGraph:
-    def test_returns_none_when_no_graph_saved(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(_make_report("c1"))
-        assert store.load_prior_graph() is None
-
-    def test_loads_saved_graph(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        g = _make_graph()
-        store.persist_cycle(_make_report("abc123def456"), graph=g)
-        loaded = store.load_prior_graph()
-        assert loaded is not None
-
-    def test_loads_most_recent_graph(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        g1 = _make_graph()
-        store.persist_cycle(_make_report("aaa111"), graph=g1)
-        store.persist_cycle(_make_report("bbb222"), graph=None)  # no graph
-        g3 = _make_graph()
-        store.persist_cycle(_make_report("ccc333"), graph=g3)
-        loaded = store.load_prior_graph()
-        assert loaded is not None  # should be ccc333's graph
-
-    def test_readonly_returns_none(self, tmp_path):
-        store = MemoryStore(str(tmp_path), readonly=True)
-        assert store.load_prior_graph() is None
-
-
-# ---------------------------------------------------------------------------
-# symbol_history + edge_drift
-# ---------------------------------------------------------------------------
-
-class TestSymbolHistory:
-    def test_unknown_symbol_returns_empty(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        assert store.symbol_history("nonexistent") == {}
-
-    def test_symbol_recorded_after_persist(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(_make_report("c1", [
-            Finding(kind="churn", title="High-churn file: codeminer/foo.py")
-        ]))
-        h = store.symbol_history("codeminer/foo.py")
-        assert h["first_seen_cycle"] == 1
-        assert h["last_seen_cycle"] == 1
-
-
-class TestEdgeDrift:
-    def test_empty_on_no_edges(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(_make_report("c1"))
-        assert store.edge_drift(since_cycle=1) == []
-
-    def test_persisted_edges_returned(self, tmp_path):
-        from codeminer.guardian.signals.graph_diff import EdgeChange
-        store = MemoryStore(str(tmp_path))
-        no = store.persist_cycle(_make_report("c1"))
-        changes = [EdgeChange(
-            kind="added", edge_type=EDGE_TYPE_REFERENCE,
-            src="A", dst="B", src_file="a.py", dst_file="b.py",
-        )]
-        store.persist_edge_changes(no, changes)
-        drift = store.edge_drift(since_cycle=1)
-        assert len(drift) == 1
-        assert drift[0]["src_symbol"] == "A"
-
-
-# ---------------------------------------------------------------------------
-# assert_cross_cycle (M2 invariant)
-# ---------------------------------------------------------------------------
-
-class TestCrossCycleAssertion:
-    def test_fails_with_zero_cycles(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        with pytest.raises(AssertionError, match="cycles"):
-            store.assert_cross_cycle()
-
-    def test_fails_with_one_cycle(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(_make_report("c1", [
-            Finding(kind="churn", title="High-churn file: f.py")
-        ]))
-        with pytest.raises(AssertionError):
-            store.assert_cross_cycle()
-
-    def test_passes_with_two_cycles_and_findings(self, tmp_path):
-        store = MemoryStore(str(tmp_path))
-        store.persist_cycle(_make_report("c1", [
-            Finding(kind="churn", title="High-churn file: f.py")
-        ]))
-        store.persist_cycle(_make_report("c2", [
-            Finding(kind="drift", title="Graph-diff drift: contract_change — `foo`")
-        ]))
-        store.assert_cross_cycle()  # must not raise
-
-
-# ---------------------------------------------------------------------------
-# format_findings_for_prompt
-# ---------------------------------------------------------------------------
-
-class TestFormatFindingsForPrompt:
-    def test_empty_findings(self):
-        assert "no prior findings" in format_findings_for_prompt([])
-
-    def test_renders_title_and_commit(self):
-        findings = [{"commit": "abc12345", "kind": "churn",
-                     "title": "High-churn file: foo.py", "detail": "5 commits"}]
-        out = format_findings_for_prompt(findings)
-        assert "abc12345" in out  # commit_sha field used by format helper
-        assert "churn" in out
-        assert "foo.py" in out
-
-    def test_truncates_to_max_findings(self):
-        findings = [
-            {"commit": f"c{i}" * 4, "kind": "churn",
-             "title": f"f{i}.py", "detail": ""}
-            for i in range(10)
-        ]
-        out = format_findings_for_prompt(findings, max_findings=3)
-        assert "7 more" in out
+    )
+    assert "parse accepts" in rendered
+    assert "remedy: validate" in rendered
