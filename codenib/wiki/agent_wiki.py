@@ -201,9 +201,13 @@ class AgentWiki:
         return page
 
     def _retrieve(self, meta: Dict[str, Any], top_k: int = 8) -> List[Any]:
-        ensure_runtime = getattr(self._bundle, "ensure_runtime", None)
-        if callable(ensure_runtime):
-            ensure_runtime()
+        ensure_views = getattr(self._bundle, "ensure_views", None)
+        if callable(ensure_views):
+            ensure_views()
+        else:
+            ensure_runtime = getattr(self._bundle, "ensure_runtime", None)
+            if callable(ensure_runtime):
+                ensure_runtime()
         files = [f for f in meta.get("files") or [] if isinstance(f, str)]
         query = " ".join(
             [meta.get("title", ""), meta.get("summary", "")]

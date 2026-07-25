@@ -16,7 +16,7 @@ from codenib.web.config import (
     load_registry,
     save_registry,
 )
-from codenib.web.repo_registry import RepoRegistry, _fresh_registry
+from codenib.web.repo_registry import RepoBundle, RepoRegistry, _fresh_registry
 
 
 def test_fresh_registry_is_isolated_from_singleton():
@@ -29,6 +29,27 @@ def test_fresh_registry_is_isolated_from_singleton():
     assert reg_a is not reg_b
     assert reg_a._skills is not reg_b._skills
     assert reg_a._skills is not singleton._skills
+
+
+def test_bundle_loads_views_without_constructing_agent_runtime():
+    calls = []
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        view_loader=lambda target: calls.append(("views", target)),
+        runtime_loader=lambda target: calls.append(("runtime", target)),
+    )
+
+    bundle.ensure_views()
+    bundle.ensure_views()
+
+    assert calls == [("views", bundle)]
+    assert bundle.runner is None
+
+    bundle.ensure_runtime()
+    bundle.ensure_runtime()
+
+    assert calls == [("views", bundle), ("runtime", bundle)]
 
 
 def test_config_index_types_for_mode():
@@ -112,7 +133,10 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
         def load(self, path):
             self.loaded = path
 
-    monkeypatch.setattr("codenib.web.repo_registry.CodeVectorStore", FakeVectorStore)
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: FakeVectorStore,
+    )
     cfg = QAConfig(
         embedding_provider="openai",
         embedding_model="embed-model",
@@ -141,7 +165,7 @@ def test_ask_model_receives_its_own_endpoint(monkeypatch):
         captured.update(kwargs)
         return object()
 
-    monkeypatch.setattr("codenib.web.repo_registry.LiteLLMChat", fake_chat)
+    monkeypatch.setattr("codenib.web.repo_registry._ask_llm_type", lambda: fake_chat)
     registry = RepoRegistry(
         QAConfig(
             model="openai/ask-model",

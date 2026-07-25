@@ -28,7 +28,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..log_utils import get_logger
 from ..wiki import WikiBuilder
 from ..wiki.narrator import Narrator
-from .codemap import build_codemap, build_page_subgraph
 from .config import load_config
 from .repo_registry import RepoRegistry
 from .schemas import (
@@ -219,6 +218,8 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
     graph = await asyncio.to_thread(bundle.code_graph)
     if graph is None:
         return {"available": False, "nodes": [], "edges": [], "mermaid": ""}
+    from .codemap import build_page_subgraph
+
     hierarchy_graph = await asyncio.to_thread(bundle.hierarchical_graph)
     citations = page.get("citations", []) if isinstance(page, dict) else []
     return await asyncio.to_thread(
@@ -300,6 +301,8 @@ async def codemap(
             "mermaid": "",
             "note": "This repo has no symbol graph.",
         }
+    from .codemap import build_codemap
+
     result = await asyncio.to_thread(
         build_codemap,
         graph,

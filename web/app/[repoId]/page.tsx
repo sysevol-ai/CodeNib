@@ -446,7 +446,9 @@ export default function WikiPageView() {
         </div>
       )}
 
-      <AskBar repoId={repoId} repo={repo ? repo.repo : repoId} />
+      {repo?.capabilities?.chat && (
+        <AskBar repoId={repoId} repo={repo.repo} />
+      )}
     </div>
   );
 }

@@ -16,23 +16,21 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from importlib.util import find_spec
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from ..agent.runner import AgentRunner
-from ..agent.skills.loader import SkillLoader
-from ..agent.skills.registry import SkillRegistry
 from ..compiler.manifest import RepoManifest
-from ..compiler.params import SessionContext
-from ..graph.code_graph import CodeGraph
-from ..index.embedding.vector_store import CodeVectorStore
-from ..index.sparse_idx.bm25_index import BM25CodeIndexer
-from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
-from ..ops.rerank import RerankContext
-from ..ops.retrieve import RetrieveContext
 from .config import QAConfig, RepoEntry, load_registry
 from .schemas import RepoInfo
+
+if TYPE_CHECKING:
+    from ..agent.runner import AgentRunner
+    from ..graph.code_graph import CodeGraph
+    from ..index.embedding.vector_store import CodeVectorStore
+    from ..index.sparse_idx.bm25_index import BM25CodeIndexer
+    from ..llm.litellm_chat import LiteLLMChat
 
 logger = get_logger(__name__)
 
@@ -88,11 +86,25 @@ def _readme_summary(text: str, limit: int = 160) -> str:
     return ""
 
 
-def _fresh_registry() -> SkillRegistry:
+def _fresh_registry():
     """Create an isolated registry that bypasses the global singleton."""
+    from ..agent.skills.registry import SkillRegistry
+
     reg = object.__new__(SkillRegistry)
     reg._skills = {}
     return reg
+
+
+def _vector_store_type():
+    from ..index.embedding.vector_store import CodeVectorStore
+
+    return CodeVectorStore
+
+
+def _ask_llm_type():
+    from ..llm.litellm_chat import LiteLLMChat
+
+    return LiteLLMChat
 
 
 @dataclass
@@ -101,18 +113,35 @@ class RepoBundle:
 
     entry: RepoEntry
     manifest: RepoManifest
-    runner: Optional[AgentRunner] = None
+    runner: Optional["AgentRunner"] = None
     # Read-only handles reused by the wiki builder (index-derived docs).
-    vector_store: Optional[CodeVectorStore] = None
-    bm25: Optional[BM25CodeIndexer] = None
+    vector_store: Optional["CodeVectorStore"] = None
+    bm25: Optional["BM25CodeIndexer"] = None
+    chat_available: bool = False
+    view_loader: Optional[Callable[["RepoBundle"], None]] = None
     runtime_loader: Optional[Callable[["RepoBundle"], None]] = None
 
     def __post_init__(self) -> None:
+        self._views_lock = Lock()
         self._runtime_lock = Lock()
+        self._views_loaded = self.view_loader is None
         self._runtime_loaded = self.runner is not None
 
+    def ensure_views(self) -> None:
+        """Load retrieval views without constructing the interactive agent."""
+        if self._views_loaded:
+            return
+        with self._views_lock:
+            if self._views_loaded:
+                return
+            if self.view_loader is None:
+                raise RuntimeError("repo view loader is not configured")
+            self.view_loader(self)
+            self._views_loaded = True
+
     def ensure_runtime(self) -> None:
-        """Load heavy retrieval indexes and the QA runner on first real use."""
+        """Load retrieval views and the QA runner on first chat request."""
+        self.ensure_views()
         if self._runtime_loaded:
             return
         with self._runtime_lock:
@@ -127,7 +156,10 @@ class RepoBundle:
         capabilities = dict(self.manifest.capabilities)
         # The prebuilt indexes ship a symbol graph that the manifest doesn't
         # declare; surface a "codemap" capability so the UI can offer the mode.
-        capabilities["codemap"] = self._graph_path() is not None
+        capabilities["codemap"] = (
+            self._graph_path() is not None and find_spec("igraph") is not None
+        )
+        capabilities["chat"] = self.chat_available
         display_name = self.entry.repo
         if self.entry.commit_short:
             display_name += f" @ {self.entry.commit_short}"
@@ -180,6 +212,8 @@ class RepoBundle:
         if path is None:
             return None
         try:
+            from ..graph.code_graph import CodeGraph
+
             self._code_graph = CodeGraph.load_graph(path)
             logger.info(
                 "codemap: loaded symbol graph for %r (%s)", self.entry.instance_id, path
@@ -294,10 +328,12 @@ class RepoRegistry:
         return RepoBundle(
             entry=entry,
             manifest=manifest,
+            chat_available=find_spec("litellm") is not None,
+            view_loader=self._load_repo_views,
             runtime_loader=self._load_repo_runtime,
         )
 
-    def _load_vector_store(self, vec_entry: Any) -> CodeVectorStore:
+    def _load_vector_store(self, vec_entry: Any) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
         emb_model = vec_entry.config.get(
             "embedding_model", self._config.embedding_model
@@ -313,7 +349,7 @@ class RepoRegistry:
         if self._config.embedding_api_key:
             client_kwargs["api_key"] = self._config.embedding_api_key
 
-        vector_store = CodeVectorStore(
+        vector_store = _vector_store_type()(
             embedding_model=emb_model,
             embedding_provider=provider,
             dimension=emb_dim,
@@ -325,9 +361,9 @@ class RepoRegistry:
         vector_store.load(vec_entry.path)
         return vector_store
 
-    def _create_ask_llm(self) -> LiteLLMChat:
+    def _create_ask_llm(self) -> "LiteLLMChat":
         """Create the interactive model without mutating process-wide config."""
-        return LiteLLMChat(
+        return _ask_llm_type()(
             model=self._config.model,
             temperature=0.0,
             max_tokens=self._config.max_tokens,
@@ -335,12 +371,14 @@ class RepoRegistry:
             api_key=self._config.model_api_key,
         )
 
-    def _load_repo_runtime(self, bundle: RepoBundle) -> None:
-        entry = bundle.entry
+    def _load_repo_views(self, bundle: RepoBundle) -> None:
+        """Load only the persisted retrieval views needed by static Wiki pages."""
+        from ..index.sparse_idx.bm25_index import BM25CodeIndexer
+
         manifest = bundle.manifest
 
-        bm25_index: Optional[BM25CodeIndexer] = None
-        vector_store: Optional[CodeVectorStore] = None
+        bm25_index: Optional["BM25CodeIndexer"] = None
+        vector_store: Optional["CodeVectorStore"] = None
 
         bm25_entry = manifest.indexes.get("bm25")
         if bm25_entry is not None and bm25_entry.status == "fresh":
@@ -350,6 +388,21 @@ class RepoRegistry:
         vec_entry = manifest.indexes.get("vector")
         if vec_entry is not None and vec_entry.status == "fresh":
             vector_store = self._load_vector_store(vec_entry)
+
+        bundle.vector_store = vector_store
+        bundle.bm25 = bm25_index
+
+    def _load_repo_runtime(self, bundle: RepoBundle) -> None:
+        from ..agent.runner import AgentRunner
+        from ..agent.skills.loader import SkillLoader
+        from ..compiler.params import SessionContext
+        from ..ops.rerank import RerankContext
+        from ..ops.retrieve import RetrieveContext
+
+        entry = bundle.entry
+        manifest = bundle.manifest
+        bm25_index = bundle.bm25
+        vector_store = bundle.vector_store
 
         retrieve_ctx = RetrieveContext(
             bm25=bm25_index,
@@ -391,8 +444,6 @@ class RepoRegistry:
             force_localization_contract=False,
         )
         bundle.runner = runner
-        bundle.vector_store = vector_store
-        bundle.bm25 = bm25_index
 
     # -- queries --
 

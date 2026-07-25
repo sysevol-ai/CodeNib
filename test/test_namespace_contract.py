@@ -47,7 +47,9 @@ def test_distribution_package_and_commands_use_codenib_only() -> None:
     assert project["name"] == "codenib"
     assert not (root / ("code" + "miner")).exists()
     assert (root / "codenib").is_dir()
-    assert all(name.startswith("codenib-") for name in project["scripts"])
+    assert all(
+        name == "codenib" or name.startswith("codenib-") for name in project["scripts"]
+    )
     assert all(target.startswith("codenib.") for target in project["scripts"].values())
     assert not hasattr(agent_api, "Code" + "MinerAgentOptions")
 

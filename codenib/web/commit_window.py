@@ -19,10 +19,12 @@ import json
 import logging
 import os
 import threading
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from ..graph.code_graph import CodeGraph
 from ..paths import REPO_INDEX_DIRNAME
+
+if TYPE_CHECKING:
+    from ..graph.code_graph import CodeGraph
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +97,7 @@ class CommitWindow:
         self.repo_dir = os.path.abspath(repo_dir)
         self._manifest: Optional[dict] = None
         self._mtime: Optional[float] = None
-        self._graphs: Dict[str, Optional[CodeGraph]] = {}
+        self._graphs: Dict[str, Optional["CodeGraph"]] = {}
         self._lock = threading.RLock()
 
     # -- manifest ---------------------------------------------------------
@@ -186,7 +188,7 @@ class CommitWindow:
 
     # -- graphs -----------------------------------------------------------
 
-    def graph_for(self, commit: Optional[str]) -> Optional[CodeGraph]:
+    def graph_for(self, commit: Optional[str]) -> Optional["CodeGraph"]:
         """Load (and cache) the graph snapshot for *commit*.
 
         Returns ``None`` when the window is absent or the commit is unknown, so
@@ -213,11 +215,13 @@ class CommitWindow:
                 )
                 if p
             ]
-            graph: Optional[CodeGraph] = None
+            graph: Optional["CodeGraph"] = None
             for candidate in candidates:
                 if not os.path.isfile(candidate):
                     continue
                 try:
+                    from ..graph.code_graph import CodeGraph
+
                     graph = CodeGraph.load_graph(candidate)
                     logger.info(
                         "commit-window: loaded graph %s (%s)",

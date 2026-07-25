@@ -109,6 +109,32 @@ def test_fast_index_builds_fresh_bm25_manifest(tmp_path: Path) -> None:
     assert (tmp_path / ".codenib_cache" / "repo_manifest.json").is_file()
 
 
+def test_semantic_preset_reports_required_extra(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    monkeypatch.setattr(
+        cli,
+        "_check_module",
+        lambda module: module != "faiss",
+    )
+
+    assert cli.run(["index", str(tmp_path), "--preset", "semantic"]) == 2
+    assert "codenib[semantic]" in capsys.readouterr().err
+
+
+def test_mcp_command_reports_required_extra(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "_check_module", lambda _module: False)
+
+    assert cli.run(["mcp"]) == 2
+    assert "codenib[mcp]" in capsys.readouterr().err
+
+
 def test_prepare_local_wiki_writes_single_repo_registry(
     tmp_path: Path,
 ) -> None:

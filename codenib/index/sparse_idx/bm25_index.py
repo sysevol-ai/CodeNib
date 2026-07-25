@@ -2,21 +2,64 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 import json
 import os
 import re
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, List, Optional
 
-from langchain_community.retrievers import BM25Retriever
-from langchain_core.documents import Document
+from rank_bm25 import BM25Okapi
 
 from ...code_chunker import CodeChunk
-from ...graph.code_graph import CodeGraph
 from ...log_utils import get_logger
 from ...types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, NodeInfo, is_symbol_node
 from ...utils import is_test_file, wrap_code_snippet
 
+if TYPE_CHECKING:
+    from ...graph.code_graph import CodeGraph
+
 logger = get_logger(__name__)
+
+
+@dataclass(slots=True)
+class Document:
+    """Minimal document shape shared with existing retrieval consumers."""
+
+    page_content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class BM25Retriever:
+    """Small ``invoke``-compatible wrapper around :class:`BM25Okapi`."""
+
+    def __init__(self, documents: List[Document], *, k: int) -> None:
+        self.documents = list(documents)
+        self.k = k
+        tokenized = [document.page_content.split() for document in self.documents]
+        self._index = BM25Okapi(tokenized) if tokenized else None
+
+    @classmethod
+    def from_documents(
+        cls,
+        documents: List[Document],
+        *,
+        k: int,
+    ) -> BM25Retriever:
+        return cls(documents, k=k)
+
+    def invoke(self, query: str) -> List[Document]:
+        if self._index is None:
+            return []
+        count = min(self.k, len(self.documents))
+        return list(
+            self._index.get_top_n(
+                query.split(),
+                self.documents,
+                n=count,
+            )
+        )
 
 
 class BM25CodeIndexer:

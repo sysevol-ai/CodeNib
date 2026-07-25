@@ -176,9 +176,13 @@ class WikiBuilder:
         return self._symbols_cache
 
     def _compute_symbols(self) -> tuple:
-        ensure_runtime = getattr(self._bundle, "ensure_runtime", None)
-        if callable(ensure_runtime):
-            ensure_runtime()
+        ensure_views = getattr(self._bundle, "ensure_views", None)
+        if callable(ensure_views):
+            ensure_views()
+        else:
+            ensure_runtime = getattr(self._bundle, "ensure_runtime", None)
+            if callable(ensure_runtime):
+                ensure_runtime()
         vs = getattr(self._bundle, "vector_store", None)
         docs = list(getattr(vs, "l2_documents", []) or []) if vs is not None else []
         if not docs:

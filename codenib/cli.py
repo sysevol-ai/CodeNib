@@ -207,6 +207,7 @@ def _run_index(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
     views = _selected_views(args.preset, args.view)
+    _check_view_dependencies(views)
     manifest, failed = index_repository(
         repo_path,
         languages=languages,
@@ -224,6 +225,7 @@ def _run_index(args: argparse.Namespace) -> int:
 
 
 def _run_mcp(args: argparse.Namespace) -> int:
+    _require_modules(("mcp",), extra="mcp", feature="the MCP server")
     manifest_path = resolve_manifest_path(args.path)
     from .mcp.server import main as mcp_main
 
@@ -235,6 +237,13 @@ def _run_wiki(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
     views = _selected_views(args.preset, args.view)
+    _check_view_dependencies(views)
+    if args.agent_wiki:
+        _require_modules(
+            ("litellm",),
+            extra="agent",
+            feature="agent-authored Wiki pages",
+        )
 
     if args.no_index:
         manifest_path = resolve_manifest_path(str(repo_path))
@@ -282,6 +291,37 @@ def _check_module(name: str) -> bool:
         return importlib.util.find_spec(name) is not None
     except (ImportError, ValueError):
         return False
+
+
+def _require_modules(
+    modules: Sequence[str],
+    *,
+    extra: str,
+    feature: str,
+) -> None:
+    missing = [module for module in modules if not _check_module(module)]
+    if not missing:
+        return
+    raise CLIError(
+        f"{feature} requires the `{extra}` optional dependencies "
+        f"(missing: {', '.join(missing)}). "
+        f"Install them with `pip install 'codenib[{extra}]'`."
+    )
+
+
+def _check_view_dependencies(views: Sequence[str]) -> None:
+    if "vector" in views:
+        _require_modules(
+            ("faiss", "sentence_transformers"),
+            extra="semantic",
+            feature="the vector view",
+        )
+    if "symbol_graph" in views:
+        _require_modules(
+            ("igraph",),
+            extra="graph",
+            feature="the symbol graph view",
+        )
 
 
 def _doctor_rows() -> dict[str, list[tuple[str, bool, str]]]:
@@ -374,6 +414,20 @@ def _doctor_rows() -> dict[str, list[tuple[str, bool, str]]]:
                     ),
                     "missing",
                 ),
+            ),
+        ],
+        "agent": [
+            (
+                "LiteLLM",
+                _check_module("litellm"),
+                "installed" if _check_module("litellm") else "missing",
+            ),
+        ],
+        "mcp": [
+            (
+                "MCP SDK",
+                _check_module("mcp"),
+                "installed" if _check_module("mcp") else "missing",
             ),
         ],
     }
@@ -496,7 +550,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument(
         "--require",
         action="append",
-        choices=("core", "wiki", "semantic", "graph"),
+        choices=("core", "wiki", "semantic", "graph", "agent", "mcp"),
         help="capability group that must pass; repeat as needed",
     )
     doctor_parser.set_defaults(handler=_run_doctor)

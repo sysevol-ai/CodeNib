@@ -19,16 +19,47 @@ The package provides:
   config defaults, session adjustments, and query-time overrides.
 """
 
-from .index_builders import IndexBuilderRegistry
-from .index_compiler import IndexCompiler, IndexCompilerConfig
-from .manifest import ManifestIndexStateStore, RepoManifest
-from .params import ResolvedParams, SessionContext, resolve_params
-from .resources import IndexRequirement, IndexState, ResourcePlan, ResourceResolver
-from .skill_context import (
-    build_skill_contexts,
-    load_contexts_from_manifest,
-    required_index_types,
-)
+from __future__ import annotations
+
+from typing import Any
+
+from .._lazy import exported_dir, load_export
+
+_EXPORTS = {
+    "IndexCompiler": ("codenib.compiler.index_compiler", "IndexCompiler"),
+    "IndexCompilerConfig": (
+        "codenib.compiler.index_compiler",
+        "IndexCompilerConfig",
+    ),
+    "IndexBuilderRegistry": (
+        "codenib.compiler.index_builders",
+        "IndexBuilderRegistry",
+    ),
+    "RepoManifest": ("codenib.compiler.manifest", "RepoManifest"),
+    "ManifestIndexStateStore": (
+        "codenib.compiler.manifest",
+        "ManifestIndexStateStore",
+    ),
+    "ResourceResolver": ("codenib.compiler.resources", "ResourceResolver"),
+    "ResourcePlan": ("codenib.compiler.resources", "ResourcePlan"),
+    "IndexRequirement": ("codenib.compiler.resources", "IndexRequirement"),
+    "IndexState": ("codenib.compiler.resources", "IndexState"),
+    "SessionContext": ("codenib.compiler.params", "SessionContext"),
+    "resolve_params": ("codenib.compiler.params", "resolve_params"),
+    "ResolvedParams": ("codenib.compiler.params", "ResolvedParams"),
+    "build_skill_contexts": (
+        "codenib.compiler.skill_context",
+        "build_skill_contexts",
+    ),
+    "load_contexts_from_manifest": (
+        "codenib.compiler.skill_context",
+        "load_contexts_from_manifest",
+    ),
+    "required_index_types": (
+        "codenib.compiler.skill_context",
+        "required_index_types",
+    ),
+}
 
 __all__ = [
     # Index compilation
@@ -52,3 +83,11 @@ __all__ = [
     "load_contexts_from_manifest",
     "required_index_types",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    return load_export(globals(), _EXPORTS, name)
+
+
+def __dir__() -> list[str]:
+    return exported_dir(globals(), _EXPORTS)
