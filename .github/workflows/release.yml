@@ -48,22 +48,22 @@ concurrency:
 jobs:
   build:
     name: Build and inspect distributions
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
@@ -78,11 +78,14 @@ jobs:
 
       - name: Build Python distributions
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install build twine
-          python -m build
-          python -m twine check dist/*
-          python scripts/verify_release_artifacts.py dist
+          BUILD_VENV="$RUNNER_TEMP/codenib-release-build-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$BUILD_VENV"
+          "$BUILD_VENV/bin/python" -m pip install \
+            --upgrade pip build twine
+          "$BUILD_VENV/bin/python" -m build
+          "$BUILD_VENV/bin/python" -m twine check dist/*
+          "$BUILD_VENV/bin/python" \
+            scripts/verify_release_artifacts.py dist
 
       - name: Validate production release ref
         if: github.ref_type == 'tag'
@@ -92,7 +95,7 @@ jobs:
           python scripts/verify_release_artifacts.py dist --tag "$GITHUB_REF_NAME"
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: python-package-distributions
           path: |
@@ -104,7 +107,7 @@ jobs:
   install-smoke:
     name: Install smoke (Python ${{ matrix.python-version }})
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -117,23 +120,26 @@ jobs:
           - "3.14"
     steps:
       - name: Checkout smoke harness
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Download distributions
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v4
         with:
           name: python-package-distributions
           path: dist
 
       - name: Install wheel
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install dist/*.whl
+          SMOKE_VENV="$RUNNER_TEMP/codenib-release-smoke-${{ matrix.python-version }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$SMOKE_VENV"
+          echo "$SMOKE_VENV/bin" >> "$GITHUB_PATH"
+          "$SMOKE_VENV/bin/python" -m pip install --upgrade pip
+          "$SMOKE_VENV/bin/python" -m pip install dist/*.whl
 
       - name: Exercise installed CLI
         working-directory: ${{ runner.temp }}
@@ -148,7 +154,7 @@ jobs:
     needs:
       - build
       - install-smoke
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment:
       name: testpypi
       url: https://test.pypi.org/p/codenib
@@ -156,7 +162,7 @@ jobs:
       id-token: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v4
         with:
           name: python-package-distributions
           path: dist
@@ -172,7 +178,7 @@ jobs:
     needs:
       - build
       - install-smoke
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment:
       name: pypi
       url: https://pypi.org/p/codenib
@@ -180,7 +186,7 @@ jobs:
       id-token: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v4
         with:
           name: python-package-distributions
           path: dist
@@ -192,12 +198,12 @@ jobs:
     name: Create GitHub Release
     if: github.ref_type == 'tag'
     needs: publish-pypi
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v4
         with:
           name: python-package-distributions
           path: dist
