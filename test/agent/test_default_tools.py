@@ -237,7 +237,12 @@ class TestGrep:
 
     @pytest.mark.skipif(shutil.which("rg") is None, reason="ripgrep is unavailable")
     def test_ripgrep_syntax_is_not_rejected_by_python(self, sample_dir):
-        result = _grep(r"\p{L}+", path=str(sample_dir), head_limit=1)
+        result = _grep(
+            r"\p{L}+",
+            path=str(sample_dir),
+            glob="*.py",
+            head_limit=1,
+        )
 
         assert not result.startswith("Error:")
         assert ".py:" in result
