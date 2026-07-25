@@ -10,6 +10,7 @@ on:
       - ".github/workflows/release.yml"
       - "codenib/**"
       - "scripts/smoke_release_install.py"
+      - "scripts/smoke_release_services.py"
       - "scripts/verify_release_artifacts.py"
       - "test/test_release_artifacts.py"
       - "web/**"
@@ -148,12 +149,78 @@ jobs:
           codenib doctor --require core
           python "$GITHUB_WORKSPACE/scripts/smoke_release_install.py"
 
+  service-smoke:
+    name: Installed Wiki and MCP services
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Checkout service harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install wheel with MCP support
+        run: |
+          SERVICE_VENV="$RUNNER_TEMP/codenib-release-services-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$SERVICE_VENV"
+          echo "$SERVICE_VENV/bin" >> "$GITHUB_PATH"
+          "$SERVICE_VENV/bin/python" -m pip install --upgrade pip
+          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL"
+          "$SERVICE_VENV/bin/python" -m pip install "${WHEEL}[mcp]"
+
+      - name: Verify optional runtime boundary
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          unexpected = [
+              name
+              for name in ("faiss", "igraph", "litellm", "sentence_transformers")
+              if importlib.util.find_spec(name) is not None
+          ]
+          if unexpected:
+              raise SystemExit(f"unexpected optional runtimes: {unexpected}")
+
+          import sys
+          import codenib.mcp.server
+
+          eagerly_loaded = [
+              name
+              for name in ("faiss", "igraph", "litellm", "sentence_transformers")
+              if name in sys.modules
+          ]
+          if eagerly_loaded:
+              raise SystemExit(f"optional runtimes loaded eagerly: {eagerly_loaded}")
+          PY
+
+      - name: Exercise installed services
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/scripts/smoke_release_services.py"
+
   publish-testpypi:
     name: Publish to TestPyPI
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
     needs:
       - build
       - install-smoke
+      - service-smoke
     runs-on: self-hosted
     environment:
       name: testpypi
@@ -178,6 +245,7 @@ jobs:
     needs:
       - build
       - install-smoke
+      - service-smoke
     runs-on: self-hosted
     environment:
       name: pypi
