@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -264,6 +265,7 @@ async def _assert_mcp_async(
     repo: Path,
     *,
     executable: str,
+    env: dict[str, str],
 ) -> None:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -277,50 +279,58 @@ async def _assert_mcp_async(
         command=executable,
         args=["mcp", str(repo)],
         cwd=root,
+        env=env,
     )
     try:
-        with stderr_path.open("w+", encoding="utf-8") as server_stderr:
-            async with stdio_client(parameters, errlog=server_stderr) as streams:
-                async with ClientSession(*streams) as session:
-                    await session.initialize()
-                    tools = await session.list_tools()
-                    names = {tool.name for tool in tools.tools}
-                    required = {"get_manifest", "search_bm25", "search_semantic"}
-                    if not required.issubset(names):
-                        raise RuntimeError(
-                            f"MCP tools are missing: {sorted(required - names)}"
-                        )
+        try:
+            with stderr_path.open("w+", encoding="utf-8") as server_stderr:
+                async with stdio_client(parameters, errlog=server_stderr) as streams:
+                    async with ClientSession(*streams) as session:
+                        await session.initialize()
+                        tools = await session.list_tools()
+                        names = {tool.name for tool in tools.tools}
+                        required = {"get_manifest", "search_bm25", "search_semantic"}
+                        if not required.issubset(names):
+                            raise RuntimeError(
+                                f"MCP tools are missing: {sorted(required - names)}"
+                            )
 
-                    result = await session.call_tool(
-                        "search_bm25",
-                        arguments={"query": "release_signature", "top_k": 5},
-                    )
-                    payload = _structured_result(result)
-                    hits = payload.get("result")
-                    if not isinstance(hits, list) or not hits:
-                        raise RuntimeError(
-                            f"MCP BM25 search returned no hits: {payload!r}"
+                        result = await session.call_tool(
+                            "search_bm25",
+                            arguments={"query": "release_signature", "top_k": 5},
                         )
-                    if "release_signature" not in hits[0].get("content", ""):
-                        raise RuntimeError(f"MCP BM25 hit was unexpected: {hits[0]!r}")
+                        payload = _structured_result(result)
+                        hits = payload.get("result")
+                        if not isinstance(hits, list) or not hits:
+                            raise RuntimeError(
+                                f"MCP BM25 search returned no hits: {payload!r}"
+                            )
+                        if "release_signature" not in hits[0].get("content", ""):
+                            raise RuntimeError(
+                                f"MCP BM25 hit was unexpected: {hits[0]!r}"
+                            )
 
-                    unavailable = await session.call_tool(
-                        "search_semantic",
-                        arguments={"query": "release signature", "top_k": 5},
-                    )
-                    unavailable_payload = _structured_result(unavailable)
-                    unavailable_result = unavailable_payload.get(
-                        "result",
-                        unavailable_payload,
-                    )
-                    if (
-                        not isinstance(unavailable_result, dict)
-                        or "error" not in unavailable_result
-                    ):
-                        raise RuntimeError(
-                            "missing semantic view did not return a capability error: "
-                            f"{unavailable_payload!r}"
+                        unavailable = await session.call_tool(
+                            "search_semantic",
+                            arguments={"query": "release signature", "top_k": 5},
                         )
+                        unavailable_payload = _structured_result(unavailable)
+                        unavailable_result = unavailable_payload.get(
+                            "result",
+                            unavailable_payload,
+                        )
+                        if (
+                            not isinstance(unavailable_result, dict)
+                            or "error" not in unavailable_result
+                        ):
+                            raise RuntimeError(
+                                "missing semantic view did not return a capability "
+                                f"error: {unavailable_payload!r}"
+                            )
+        except Exception:
+            server_log = stderr_path.read_text(encoding="utf-8", errors="replace")
+            print(f"\n--- MCP service log ---\n{server_log}", file=sys.stderr)
+            raise
     finally:
         protocol_logger.removeHandler(protocol_errors)
 
@@ -337,8 +347,15 @@ async def _assert_mcp_async(
         )
 
 
-def _assert_mcp(root: Path, repo: Path, *, executable: str) -> None:
-    asyncio.run(_assert_mcp_async(root, repo, executable=executable))
+def _assert_mcp(
+    root: Path,
+    repo: Path,
+    *,
+    executable: str,
+    env: dict[str, str],
+) -> None:
+    print("+", executable, "mcp", repo, flush=True)
+    asyncio.run(_assert_mcp_async(root, repo, executable=executable, env=env))
 
 
 def smoke(root: Path, *, executable: str = "codenib") -> None:
@@ -363,7 +380,7 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
     )
     _run([executable, "index", str(repo)], cwd=root, env=env)
     _assert_wiki(root, repo, executable=executable, env=env)
-    _assert_mcp(root, repo, executable=executable)
+    _assert_mcp(root, repo, executable=executable, env=env)
     print("Installed Wiki and MCP service smoke passed")
 
 
@@ -394,6 +411,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             smoke(Path(value), executable=executable)
     except Exception as exc:
         print(f"release service smoke failed: {exc}", file=sys.stderr)
+        traceback.print_exception(exc)
         if isinstance(exc, subprocess.CalledProcessError):
             if exc.stdout:
                 print(exc.stdout, file=sys.stderr)
