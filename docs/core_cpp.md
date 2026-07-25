@@ -145,5 +145,5 @@ int main() {
 }
 ```
 
-See [`core/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/core/README.md)
+See [`core/README.md`](https://github.com/sysevol-ai/CodeNib/blob/main/core/README.md)
 for the latest details.

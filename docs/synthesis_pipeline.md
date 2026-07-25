@@ -72,7 +72,7 @@ solvability, and stance compliance, returning one of `valid` / `fix` /
 !!! note "Line-number origin"
     Ground-truth code blocks follow the same conventions as the rest of the
     dataset code — see [Ground-Truth Locator](gt_locator.md) and
-    [`codenib/dataset/CLAUDE.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/codenib/dataset/CLAUDE.md) for the
+    [`codenib/dataset/CLAUDE.md`](https://github.com/sysevol-ai/CodeNib/blob/main/codenib/dataset/CLAUDE.md) for the
     0-based (`CodeChunk`) vs. 1-based (`CodeLocation`) boundary.
 
 ## Dataset wrapper

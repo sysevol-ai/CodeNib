@@ -14,9 +14,25 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "Zhongming Yu", email = "zhy025@ucsd.edu" }]
+keywords = [
+    "code-search",
+    "coding-agents",
+    "model-context-protocol",
+    "repository-context",
+    "static-analysis",
+]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
     "fastapi>=0.100.0",
@@ -28,6 +44,12 @@ dependencies = [
     "tree-sitter-language-pack>=1.8.1,<1.9.0",
     "uvicorn>=0.20.0",
 ]
+
+[project.urls]
+Documentation = "https://github.com/sysevol-ai/CodeNib/tree/main/docs"
+Homepage = "https://github.com/sysevol-ai/CodeNib"
+Issues = "https://github.com/sysevol-ai/CodeNib/issues"
+Repository = "https://github.com/sysevol-ai/CodeNib.git"
 
 [project.scripts]
 codenib = "codenib.cli:main"

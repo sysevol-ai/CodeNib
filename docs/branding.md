@@ -13,11 +13,11 @@ state paths directly.
 
 ## Preferred Commands
 
-New installations may use the product-facing commands:
+New installations should use the unified product command:
 
 ```bash
-codenib-mcp /path/to/repo/.codenib_cache/repo_manifest.json
-codenib-web
+codenib wiki /path/to/repo
+codenib mcp /path/to/repo
 ```
 
 Python uses the `codenib` distribution and import package:
@@ -39,13 +39,13 @@ The following identifiers remain canonical:
   `repo_manifest.json`, `graph.pkl`, `incremental_state.json`,
   `chunk_store.pkl`, `embeddings_cache.pkl`, and `qa_registry.json` entry
   filenames;
-- repository URL `https://github.com/sysevol-ai/CodeMiner`;
+- repository URL `https://github.com/sysevol-ai/CodeNib`;
 - CodeNib Base, CodeNib Synthesis, their Hub IDs, and artifact paths;
 - public classes such as `CodeNibAgentOptions`, `CodeNibBaseDataset`, and
   `CodeNibSynthesisDataset`.
 
-The GitHub and Hub values above are immutable external addresses, not aliases
-for executable CodeNib interfaces. Schemas change only when their serialized
+The published Hub dataset IDs are immutable external addresses, not aliases for
+executable CodeNib interfaces. Schemas change only when their serialized
 structure or declared identity changes.
 
 ## Filesystem Roots

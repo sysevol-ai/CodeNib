@@ -78,7 +78,7 @@ export default function Header({
       </Link>
       {center}
       <div className="header-right">
-        <span className="header-note">AI docs you can talk to</span>
+        <span className="header-note">Source-linked repository docs</span>
         {actions}
         <ShareButton />
         <ThemeToggle />

@@ -15,7 +15,7 @@ SPDX-License-Identifier: Apache-2.0
 > `codenib.eval.agent_runner`; the old `scripts/agent_compile/lib`
 > compatibility namespace has been removed; the offline retrieval ablations moved to
 > `scripts/retrieval_ablation/`). See
-> [`scripts/agent_compile/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/scripts/agent_compile/README.md).
+> [`scripts/agent_compile/README.md`](https://github.com/sysevol-ai/CodeNib/blob/main/scripts/agent_compile/README.md).
 > Fresh full-split design-space results will be added once the re-run completes.
 
 This is the **sample** instantiation of the #133 Phase-2 experiment: run the

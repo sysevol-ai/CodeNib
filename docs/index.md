@@ -6,9 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 # CodeNib
 
-CodeNib is a source-linked indexing and retrieval layer for code tools. It
-builds repository manifests, search indexes, and SCIP/LSP-backed symbol graphs,
-then serves them through MCP, a web UI, and optional agent/eval harnesses.
+CodeNib compiles repositories into reusable, source-linked context for coding
+agents and developers. Start with a local Wiki, then reuse the same manifest
+through MCP, Python APIs, and evaluation harnesses.
 
 Language support varies by surface. Start with the generated
 [Language Capabilities](language_capabilities.md) matrix when you need to know
@@ -19,8 +19,9 @@ core decoder parity.
 
 | Goal | Read |
 |------|------|
+| Turn a local repository into a Wiki | [Quickstart](quickstart.md) |
 | Build an index and expose it to an agent | [MCP Server](mcp.md) |
-| Browse indexed repos in the DeepWiki-style UI | [Web Demo](web_demo.md) |
+| Configure the full browser application | [Web UI](web_demo.md) |
 | Run without cloud-hosted LLM APIs | [Running Locally](running-locally.md) |
 | Understand language support and gaps | [Language Capabilities](language_capabilities.md) |
 | Add or promote a language backend | [Contributing a Language](contributing-a-language.md) |
@@ -30,7 +31,7 @@ core decoder parity.
 | Surface | Description |
 |---------|-------------|
 | [Index and MCP](mcp.md) | Build manifests with `IndexCompiler`; serve BM25, semantic, regex, Zoekt, and dependency-subgraph tools over MCP |
-| [Web Demo](web_demo.md) | DeepWiki-style wiki + Ask site over indexed repos, backed by the same graph and search artifacts |
+| [Web UI](web_demo.md) | Source-linked Wiki and optional Ask flow over indexed repositories |
 | [Graph Range Query](graph_query.md) | LSP-aligned line-range and symbol queries with typed, source-linked results |
 | [Incremental Graph](incremental_graph/index.md) | Update a graph in place after a diff where the language backend supports it |
 | [SCIP Index](scip_index.md) | SCIP and language-server graph indexing details, cache levels, and backend behavior |
@@ -59,21 +60,18 @@ normal index -> retrieve/query -> serve path.
 ## Quick Start
 
 ```bash
-pip install -e ".[dev]"
+pip install codenib
+codenib wiki /path/to/repository
 ```
 
-Build a repository manifest with `IndexCompiler`; see [MCP Server](mcp.md) for
-the full example and index options.
+The default Wiki is deterministic, uses BM25, and needs no API key. CodeNib
+detects repository languages, writes a reusable manifest under
+`.codenib_cache`, and opens the browser UI. Read the
+[Quickstart](quickstart.md) for profiles and troubleshooting.
 
 ```bash
-codenib-mcp /path/to/repo/.codenib_cache/repo_manifest.json
-```
-
-For the browser UI:
-
-```bash
-make web-deps
-make web-start
+pip install "codenib[mcp]"
+codenib mcp /path/to/repository
 ```
 
 ## Serving Docs Locally

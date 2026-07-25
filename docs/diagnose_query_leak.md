@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 # Diagnosing semantic / lexical leak in synthesized retrieval queries
 
 Tooling that operationalizes the Tier-1 and Tier-3 checks proposed in
-[issue #130](https://github.com/sysevol-ai/CodeMiner/issues/130).
+[issue #130](https://github.com/sysevol-ai/CodeNib/issues/130).
 
 ## Why
 

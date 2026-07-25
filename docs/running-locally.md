@@ -22,7 +22,7 @@ The setup has three services running in separate terminals:
 ## Prerequisites
 
 ### Main machine
-- CodeNib installed: `make dev` or `pip install -e ".[dev]"`
+- A CodeNib source checkout with development dependencies: `make dev`
 - Node.js + npm: `make web-deps` (once)
 - Conda env `codenib` active
 

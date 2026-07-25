@@ -6,136 +6,149 @@ SPDX-License-Identifier: Apache-2.0
 
 <div align="center">
   <img src="assets/codenib_logo.svg" alt="CodeNib" width="560">
-  <h1>Source-Linked Repository Context for Coding Agents</h1>
+  <h1>Repository context, ready for agents and humans</h1>
   <p>
-    <a href="docs/index.md">Documentation</a>
-    &nbsp;&middot;&nbsp;
+    Build a source-linked Wiki and reusable search indexes from any local repository.
+  </p>
+  <p>
     <a href="#quickstart">Quickstart</a>
     &nbsp;&middot;&nbsp;
-    <a href="docs/mcp.md">MCP Server</a>
+    <a href="docs/index.md">Documentation</a>
     &nbsp;&middot;&nbsp;
-    <a href="docs/web_demo.md">Web Demo</a>
+    <a href="docs/mcp.md">MCP</a>
     &nbsp;&middot;&nbsp;
-    <a href="docs/language_capabilities.md">Language Support</a>
+    <a href="docs/language_capabilities.md">Languages</a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
   </p>
   <p>
     <a href="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml"><img src="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
-    <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
-    <a href="docs/index.md"><img src="https://img.shields.io/badge/docs-mkdocs--material-526CFE.svg" alt="Documentation"></a>
+    <a href="pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>
+    <img src="https://img.shields.io/badge/Release-Developer_Preview-EA580C.svg" alt="Developer Preview">
   </p>
 </div>
 
-CodeNib builds reusable indexes over a repository, then serves those indexes
-to agents, web UIs, and evaluation harnesses. The core surfaces are:
-
-- source chunking and repository manifests;
-- BM25, dense-vector, regex/trigram, Zoekt, and rerank retrieval;
-- SCIP/LSP-backed symbol graphs with source-linked nodes and edges;
-- a stdio **Model Context Protocol** server for agent tools;
-- a DeepWiki-style web UI for browsing indexed repositories.
-
-> **Naming:** CodeNib is the product and programmatic namespace. The frozen
-> artifact branch preserves earlier experiments; the GitHub repository and
-> published dataset URLs remain external resource identities. See
-> [CodeNib Naming](docs/branding.md) for the complete contract.
-
-Language coverage varies by surface. See the generated
-[Language Capabilities](docs/language_capabilities.md) matrix for the current
-chunking, graph, incremental, and C++ core parity status.
+CodeNib compiles a repository into aligned lexical, semantic, and structural
+views, then serves source-linked context through a local Wiki, a Python API,
+and Model Context Protocol (MCP) tools. The default installation stays small:
+it can build a deterministic Wiki with BM25 search and no API key.
 
 ## Quickstart
 
-```bash
-pip install -e .
-```
-
-Build an index for a repository:
-
-```python
-from codenib.compiler import IndexCompiler, IndexCompilerConfig
-from codenib.compiler.index_builders import IndexBuilderRegistry, register_default_builders
-
-registry = IndexBuilderRegistry()
-register_default_builders(registry, languages=["python"])
-IndexCompiler(
-    registry,
-    IndexCompilerConfig(index_types=["bm25", "vector", "symbol_graph", "zoekt"]),
-).compile_repo("/path/to/repo")  # writes <repo>/.codenib_cache/repo_manifest.json
-```
-
-Serve that manifest to any MCP-capable agent:
+Requires Python 3.10+ and Node.js 18.18+.
 
 ```bash
-codenib-mcp /path/to/repo/.codenib_cache/repo_manifest.json   # stdio MCP server
+pip install codenib
+codenib wiki /path/to/repository
 ```
 
-For the browser UI, start the managed backend and frontend:
+CodeNib detects the repository languages, builds a reusable index under
+`<repo>/.codenib_cache`, launches the local Wiki, and opens
+[http://localhost:3000](http://localhost:3000). The first launch installs the
+packaged frontend dependencies with `npm ci`; later launches reuse them.
+
+Check the environment or index without opening the Wiki:
 
 ```bash
-make web-deps
-make web-start                                                     # backend :8000, frontend :3000
+codenib doctor --require core --require wiki
+codenib index /path/to/repository
 ```
 
-For a no-cloud local GPU LLM setup, copy `qa_config.local.yaml.example` to the
-ignored `qa_config.local.yaml` and follow [Running Locally](docs/running-locally.md).
+See the [Quickstart](docs/quickstart.md) for ports, reusable manifests, presets,
+and troubleshooting.
 
-> **Optional — full graph indexing.** `make scip` installs the active SCIP/LSP
-> toolchain used by the graph backends. `make multilang-tools` installs the wider
-> cold-start smoke toolchains tracked in the language matrix.
+<p align="center">
+  <img src="assets/codenib_wiki.png" alt="CodeNib Wiki showing a source-linked overview of the CodeNib repository" width="100%">
+</p>
 
-## Why CodeNib
+## Choose A Profile
 
-| | |
+| Profile | Install | Views | Best for |
+|---|---|---|---|
+| `fast` (default) | `pip install codenib` | BM25 | A quick local Wiki with no model download |
+| `semantic` | `pip install "codenib[semantic]"` | BM25 + dense vectors | Natural-language repository search |
+| `full` | `pip install "codenib[full]"` | BM25 + vectors + symbol graph + Zoekt | Advanced source and graph workflows |
+
+Select a profile when indexing or launching:
+
+```bash
+codenib wiki /path/to/repository --preset semantic
+```
+
+The `full` profile also needs the relevant SCIP/LSP and Zoekt binaries. Backend
+availability differs by language; consult the
+[Language Capabilities](docs/language_capabilities.md) matrix and
+[SCIP setup](docs/scip_index.md).
+
+## Connect An Agent
+
+Install the MCP extra, build once, and serve the same repository manifest over
+stdio:
+
+```bash
+pip install "codenib[mcp]"
+codenib index /path/to/repository
+codenib mcp /path/to/repository
+```
+
+The MCP server exposes BM25, semantic, regex, Zoekt, dependency, and static
+navigation tools when their backing views are available. See
+[MCP Server](docs/mcp.md) for client configuration and tool contracts.
+
+## What CodeNib Provides
+
+| Surface | Purpose |
 |---|---|
-| **Reusable index substrate** | Build once with `IndexCompiler`, then reuse the same manifest from MCP, the web UI, tests, and eval scripts. |
-| **Retrieval before orchestration** | BM25, dense vectors, regex/trigram, Zoekt, and rerank paths are first-class. Agent skills are an integration surface, not the only way to use the system. |
-| **Source-linked graph context** | SCIP/LSP graph backends preserve symbol names, locations, and dependency edges so graph navigation points back to real code spans. |
-| **Operationally testable** | CI is split into unit, integration, serial integration, core, graph-consumer, and slow tiers so heavy graph/LLM work is explicit. |
+| Local Wiki | Browse deterministic, source-linked repository pages; optionally enable LLM-authored conceptual pages |
+| Index compiler | Build and update a manifest of independently managed repository views |
+| Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths |
+| Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
+| MCP server | Reuse one manifest from MCP-capable coding agents |
+| Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 
-## Features
-
-| Area | What it does | Docs |
-|------|--------------|------|
-| Index compiler | Builds manifests and index artifacts for downstream tools | [MCP Server](docs/mcp.md) |
-| Search and retrieval | BM25, semantic, regex, Zoekt, and rerank retrieval over indexed code | [MCP Server](docs/mcp.md) |
-| Dependency graph | Symbol graph queries, source-linked edges, and incremental patching where supported | [Graph Range Query](docs/graph_query.md), [Incremental Graph](docs/incremental_graph/index.md) |
-| Web demo | DeepWiki-style wiki + Ask over indexed repos, with an interactive code-dependency graph | [Web Demo](docs/web_demo.md) |
-| MCP server | Semantic / BM25 / regex / Zoekt search + dependency subgraphs over MCP | [MCP Server](docs/mcp.md) |
-| Agent and eval harness | Optional skills, traces, sweeps, and experiments built on top of the same indexes | [Agent Skills](docs/agent_skills.md), [Experiments](docs/experiments/agent_compile.md) |
-| Datasets | SWE-bench ground-truth extraction + query synthesis pipeline | [Synthesis Pipeline](docs/synthesis_pipeline.md) |
-
-## Project Boundaries
-
-The main product path is index -> retrieve/query -> serve. Experimental agent
-harnesses, graph-routing studies, and SCIP cold-start roadmaps live in the docs
-because they guide development, but they are not prerequisites for using
-CodeNib as an MCP server or web-backed code browser.
+Language support varies by surface. The generated
+[capability matrix](docs/language_capabilities.md) records chunking, graph,
+incremental, and C++ decoder support.
 
 ## Documentation
 
-Full docs are built with [mkdocs-material](https://squidfunk.github.io/mkdocs-material/):
+- [Quickstart](docs/quickstart.md)
+- [MCP Server](docs/mcp.md)
+- [Web UI](docs/web_demo.md)
+- [Language Capabilities](docs/language_capabilities.md)
+- [Architecture and experiments](docs/index.md)
+
+Build the documentation site locally with:
 
 ```bash
-pip install mkdocs-material
-mkdocs serve   # http://localhost:8000
+pip install "codenib[dev]"
+mkdocs serve
 ```
-
-Start at [`docs/index.md`](docs/index.md).
 
 ## Development
 
 ```bash
-make dev    # pip install -e ".[dev,test]"
-make test   # pytest
+git clone https://github.com/sysevol-ai/CodeNib.git
+cd CodeNib
+make dev
+make test
 ```
 
-Pre-commit hooks (black, isort, flake8) are configured — run `pre-commit install` after
-cloning. The test suite is split into tiered pytest markers run as separate CI jobs; see
-[CI/CD](docs/ci_cd.md) for the marker tiers and how to run each locally.
+The test suite is split into unit, integration, serial integration, core,
+graph-consumer, and slow tiers. See [CI/CD](docs/ci_cd.md) before running the
+credential- or toolchain-dependent tiers.
+
+## Status
+
+CodeNib `0.1.0` is a developer preview. The CLI and manifest format are usable,
+but public interfaces may still change before a stable release. Historical
+research artifacts retain their published dataset identifiers; the maintained
+package, import namespace, commands, and repository use `CodeNib`. See
+[Naming](docs/branding.md).
 
 ## License
 
 CodeNib is licensed under the [Apache License, Version 2.0](LICENSE).
-Contributions previously made under the MIT License are retained under the terms of
-Section 4 of Apache 2.0.
+Contributions previously made under the MIT License are retained under the
+terms of Section 4 of Apache 2.0.

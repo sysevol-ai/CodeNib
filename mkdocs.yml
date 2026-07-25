@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 site_name: CodeNib
-site_description: Source-linked code intelligence for LLM tools
-repo_url: https://github.com/sysevol-ai/CodeMiner
-repo_name: sysevol-ai/CodeMiner
+site_description: Source-linked repository context for coding agents and developers
+repo_url: https://github.com/sysevol-ai/CodeNib
+repo_name: sysevol-ai/CodeNib
 
 theme:
   name: material
@@ -59,8 +59,9 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
+      - Quickstart: quickstart.md
       - MCP Server: mcp.md
-      - Web Demo: web_demo.md
+      - Web UI: web_demo.md
       - Running Locally: running-locally.md
       - Language Capabilities: language_capabilities.md
   - Core Concepts:

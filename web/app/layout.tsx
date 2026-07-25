@@ -4,9 +4,9 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CodeNib Wiki · AI documentation you can talk to",
+  title: "CodeNib Wiki · Source-linked repository docs",
   description:
-    "Browse AI-generated, source-grounded documentation for indexed repositories — and ask questions answered with citations, powered by CodeNib.",
+    "Browse source-linked documentation for indexed repositories and optionally ask questions with cited answers, powered by CodeNib.",
   icons: { icon: "/codenib-icon.svg" },
 };
 
