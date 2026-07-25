@@ -27,14 +27,21 @@ matches `project.version`.
 
 ## Trusted Publisher Setup
 
-Create PyPI and TestPyPI trusted publishers with:
+For the first release, create a pending publisher on both the
+[PyPI](https://pypi.org/manage/account/publishing/) and
+[TestPyPI](https://test.pypi.org/manage/account/publishing/) account pages.
+Use the same GitHub identity fields on both indexes:
 
 | Field | Value |
 |---|---|
+| Project | `codenib` |
 | Owner | `sysevol-ai` |
 | Repository | `CodeNib` |
 | Workflow | `release.yml` |
-| Environment | `pypi` or `testpypi` |
+
+Set the environment to `pypi` for PyPI and `testpypi` for TestPyPI. These
+values must match exactly; an unregistered or mismatched publisher fails the
+OIDC exchange with `invalid-publisher`.
 
 The corresponding GitHub environments should restrict deployments to trusted
 maintainers. The workflow receives `id-token: write` only in publishing jobs;
@@ -46,9 +53,9 @@ no long-lived PyPI token is stored in GitHub.
    `CHANGELOG.md`.
 2. Confirm `CITATION.cff` and `pyproject.toml` use the release version.
 3. Run `pre-commit run --all-files` and the local package smoke.
-4. Dispatch the Release workflow with `testpypi`.
-5. Install and test the TestPyPI artifact in a clean environment.
-6. Merge the release commit to `main`.
+4. Merge the release commit to `main` and confirm its package gates pass.
+5. Dispatch the Release workflow from `main` with target `testpypi`.
+6. Install and test the TestPyPI artifact in a clean environment.
 7. Create and push an annotated `v<version>` tag.
 8. Confirm the PyPI deployment and generated GitHub Release.
 
