@@ -137,7 +137,10 @@ def test_load_vector_accepts_compiler_manifest_identity(tmp_path: Path) -> None:
     vector = MagicMock()
     vector.embedding_model = "test-model"
     vector.get_stats.return_value = {"total_documents": 3}
-    with patch("codenib.mcp.context.CodeVectorStore", return_value=vector) as cls:
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ) as cls:
         ctx = ServerContext.load(tmp_path / "repo_manifest.json")
 
     cls.assert_called_once_with(
@@ -182,7 +185,10 @@ def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
     )
     manifest.save(manifest_dir / "repo_manifest.json")
 
-    with patch("codenib.mcp.context.CodeGraph.load_graph", return_value=mock_graph):
+    with patch(
+        "codenib.graph.code_graph.CodeGraph.load_graph",
+        return_value=mock_graph,
+    ):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     assert ctx.symbol_graph is mock_graph
@@ -216,7 +222,10 @@ def test_zoekt_started_when_entry_fresh(manifest_dir: Path) -> None:
     fake_searcher = MagicMock()
     fake_searcher.port = 9999
 
-    with patch("codenib.mcp.context.ZoektSearcher", return_value=fake_searcher):
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=fake_searcher,
+    ):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     fake_searcher.start.assert_called_once()
@@ -235,7 +244,10 @@ def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:
     fake_searcher = MagicMock()
     fake_searcher.start.side_effect = ZoektUnavailableError("binary not found")
 
-    with patch("codenib.mcp.context.ZoektSearcher", return_value=fake_searcher):
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=fake_searcher,
+    ):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     assert ctx.zoekt is None
@@ -262,7 +274,7 @@ def test_zoekt_skipped_when_entry_failed(manifest_dir: Path) -> None:
     )
     manifest.save(manifest_dir / "repo_manifest.json")
 
-    with patch("codenib.mcp.context.ZoektSearcher") as mock_cls:
+    with patch("codenib.index.trigram.ZoektSearcher") as mock_cls:
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     mock_cls.assert_not_called()

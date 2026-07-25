@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""ServerContext - loads a RepoManifest and hydrates index objects from disk.
+"""ServerContext - loads a RepoManifest and available index objects from disk.
 
 Holds vector, symbol_graph, BM25, regex, and Zoekt indexes. Each loads
 independently; failures land in ``ctx.errors`` and the corresponding
@@ -15,14 +15,16 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 from ..compiler.manifest import RepoManifest
-from ..graph.code_graph import CodeGraph
-from ..index.embedding.vector_store import CodeVectorStore
-from ..index.regex_idx import RegexNodeIndex
 from ..index.sparse_idx import BM25CodeIndexer
-from ..index.trigram import ZoektSearcher, ZoektUnavailableError
+
+if TYPE_CHECKING:
+    from ..graph.code_graph import CodeGraph
+    from ..index.embedding.vector_store import CodeVectorStore
+    from ..index.regex_idx import RegexNodeIndex
+    from ..index.trigram import ZoektSearcher
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
 class ServerContext:
     """Runtime context for the MCP server.
 
-    Holds the loaded manifest and hydrated index objects. Missing or
+    Holds the loaded manifest and runtime-loaded index objects. Missing or
     failed indexes stay ``None``; tools check at call time and return
     descriptive errors.
     """
@@ -46,7 +48,7 @@ class ServerContext:
 
     @classmethod
     def load(cls, manifest_path: str | Path) -> ServerContext:
-        """Load a manifest and hydrate all available indexes.
+        """Load a manifest and all available indexes.
 
         Each index is loaded independently; a failure in one does not
         block the others. Failed indexes are recorded in ``errors``.
@@ -79,6 +81,8 @@ class ServerContext:
         if not entry or entry.status != "fresh":
             return
         try:
+            from ..graph.code_graph import CodeGraph
+
             graph_path = Path(entry.path)
             pkl = graph_path / "graph.pkl" if graph_path.is_dir() else graph_path
             self.symbol_graph = CodeGraph.load_graph(str(pkl))
@@ -105,6 +109,8 @@ class ServerContext:
         if self.symbol_graph is None:
             return
         try:
+            from ..index.regex_idx import RegexNodeIndex
+
             self.regex_index = RegexNodeIndex(self.symbol_graph)
             logger.info("Built RegexNodeIndex (%d nodes)", len(self.regex_index.nodes))
         except Exception as exc:
@@ -122,6 +128,13 @@ class ServerContext:
         entry = self.manifest.indexes.get("zoekt")
         if not entry or entry.status != "fresh":
             return
+        try:
+            from ..index.trigram import ZoektSearcher, ZoektUnavailableError
+        except Exception as exc:
+            self.errors["zoekt"] = str(exc)
+            logger.warning("Failed to load Zoekt runtime: %s", exc)
+            return
+
         try:
             searcher = ZoektSearcher(index_dir=entry.path)
             searcher.start()
@@ -145,6 +158,8 @@ class ServerContext:
             return
 
         try:
+            from ..index.embedding.vector_store import CodeVectorStore
+
             cfg = entry.config
             embedding_model = cfg.get("embedding_model")
             embedding_provider = cfg.get("embedding_provider")

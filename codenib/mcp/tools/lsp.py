@@ -8,9 +8,6 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from ...agent.boundary import from_agent_repr, to_agent_repr
-from ...agent.lsp_provider import StaticLSPProvider
-
 
 def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
     if isinstance(symbols, str):
@@ -21,6 +18,9 @@ def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
 def _node_to_dict(node: Any) -> dict[str, Any]:
     if not (hasattr(node, "model_dump") or isinstance(node, dict)):
         return {"node": str(node)}
+
+    from ...agent.boundary import to_agent_repr
+
     return to_agent_repr(node)
 
 
@@ -43,6 +43,10 @@ def lsp_definition_impl(
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
+
+    from ...agent.boundary import from_agent_repr
+    from ...agent.lsp_provider import StaticLSPProvider
+
     graph_line = from_agent_repr(line)
     try:
         results = StaticLSPProvider(graph).definition(
@@ -70,6 +74,10 @@ def lsp_references_impl(
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
+
+    from ...agent.boundary import from_agent_repr
+    from ...agent.lsp_provider import StaticLSPProvider
+
     graph_line = from_agent_repr(line)
     try:
         results = StaticLSPProvider(graph).references(
@@ -96,6 +104,9 @@ def lsp_route_impl(
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
+
+    from ...agent.lsp_provider import StaticLSPProvider
+
     seeds = _coerce_symbols(symbols)
     if not seeds:
         return []

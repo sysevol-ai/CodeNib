@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...graph.dependency import DependencyAnalyzer
-
 
 def dependency_subgraph_impl(
     ctx: Any,
@@ -34,6 +32,9 @@ def dependency_subgraph_impl(
     graph = getattr(ctx, "symbol_graph", None)
     if graph is None:
         return {"error": "symbol_graph index not available"}
+
+    from ...graph.dependency import DependencyAnalyzer
+
     analyzer = DependencyAnalyzer(graph)
     d = (direction or "both").lower()
     depth = max(1, int(depth or 1))

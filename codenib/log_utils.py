@@ -6,6 +6,7 @@ import logging
 import os
 from typing import Dict, Optional
 
+from rich.console import Console
 from rich.logging import RichHandler
 from rich.style import Style
 
@@ -38,12 +39,16 @@ class LoggingManager:
         self.loggers: Dict[str, logging.Logger] = {}
         self.current_log_dir: str = ""
         self.unified_log_filename: str = "total.log"
+        # ``stdout`` is the legacy name for console output. Rich writes that
+        # output to stderr so machine-readable stdout (for example MCP stdio)
+        # remains protocol-safe.
         # Modes: 'stdout' (console only), 'file' (unified file only),
         # 'both' (console + unified file).
         self.mode: str = "stdout"
         self.scip_debug_enabled: bool = False  # Track if SCIP debug is enabled
         self.scip_loggers: set = set()  # Explicitly registered SCIP loggers
         self.rich_handler: RichHandler = RichHandler(
+            console=Console(stderr=True),
             show_time=bool(os.environ.get("LOG_TIME", False)),
             show_path=bool(os.environ.get("LOG_PATH", False)),
         )

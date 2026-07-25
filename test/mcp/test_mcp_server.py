@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,6 +24,20 @@ import codenib.mcp.server as server_module
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
+
+
+def test_server_import_keeps_optional_index_runtimes_lazy() -> None:
+    script = """
+import sys
+import codenib.mcp.server
+
+optional = ("faiss", "igraph", "litellm", "requests", "sentence_transformers")
+loaded = [name for name in optional if name in sys.modules]
+if loaded:
+    raise SystemExit(f"optional runtimes loaded eagerly: {loaded}")
+"""
+
+    subprocess.run([sys.executable, "-c", script], check=True)
 
 
 @pytest.fixture
@@ -155,7 +171,9 @@ def test_lsp_definition_tool_serializes_one_based_lines():
 
     mock_graph.query_range.side_effect = ValueError("should not be called")
     ctx = MagicMock(symbol_graph=mock_graph)
-    with patch("codenib.mcp.tools.lsp.StaticLSPProvider.definition") as mock_definition:
+    with patch(
+        "codenib.agent.lsp_provider.StaticLSPProvider.definition"
+    ) as mock_definition:
         mock_definition.return_value = [
             QueriedNode(
                 node_name="load_config",
@@ -176,7 +194,9 @@ def test_lsp_references_tool_delegates_to_core():
     from codenib.types import QueriedNode
 
     ctx = MagicMock(symbol_graph=MagicMock())
-    with patch("codenib.mcp.tools.lsp.StaticLSPProvider.references") as mock_references:
+    with patch(
+        "codenib.agent.lsp_provider.StaticLSPProvider.references"
+    ) as mock_references:
         mock_references.return_value = [
             QueriedNode(
                 node_name="caller",
@@ -200,7 +220,9 @@ def test_lsp_references_tool_delegates_to_core():
 def test_lsp_tools_reuse_agent_line_boundary():
     """MCP LSP tools share the agent 1-based input boundary."""
     ctx = MagicMock(symbol_graph=MagicMock())
-    with patch("codenib.mcp.tools.lsp.StaticLSPProvider.definition") as mock_definition:
+    with patch(
+        "codenib.agent.lsp_provider.StaticLSPProvider.definition"
+    ) as mock_definition:
         mock_definition.return_value = []
 
         lsp_definition_impl(ctx, file_path="caller.py", line=0)
