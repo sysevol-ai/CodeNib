@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from ...log_utils import get_logger
-from ..orchestrator.tools import TOOL_NAMES, TOOLS
 from .context import compact_messages, initial_messages
 from .exceptions import (BudgetExceeded, CycleInterrupt, Degraded, NoProgress,
                          ReportSubmitted, WallClockExceeded)
 from .state import (GRADE_RULES, CycleState, Hypothesis, check_invariants,
                     save_checkpoint, validate_hypothesis)
+from .tools import TOOL_NAMES, TOOLS
 from .tools_code import read_code, search_code
 
 logger = get_logger(__name__)

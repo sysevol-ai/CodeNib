@@ -28,7 +28,7 @@ from .sandbox import SandboxHandle
 
 if TYPE_CHECKING:
     from ...llm.litellm_chat import LiteLLMChat
-    from ..orchestrator import Hypothesis
+    from ..loop import Hypothesis
 
 logger = get_logger(__name__)
 
@@ -837,12 +837,12 @@ def run_investigator(
 ) -> InvestigatorResult:
     """Inner agent loop: probe → observe → decide until verdict or budget.
 
-    The orchestrator calls this once per committed hypothesis.  The sub-agent
+    The L2 cycle loop calls this once per committed hypothesis. The sub-agent
     runs its own tool-use loop with *its own* message context — independent of
-    the orchestrator's context — and returns an :class:`InvestigatorResult`.
+    the cycle loop's context — and returns an :class:`InvestigatorResult`.
 
     Args:
-        hypothesis: The :class:`~codeminer.guardian.orchestrator.Hypothesis` to
+        hypothesis: The :class:`~codeminer.guardian.loop.Hypothesis` to
             investigate.
         llm: A :class:`~codeminer.llm.litellm_chat.LiteLLMChat` instance.
         retriever: Duck-typed retrieval pipeline with ``.query(str, top_k=int)``.

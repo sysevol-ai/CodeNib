@@ -35,7 +35,7 @@ def _make_hypothesis(
     rank=1,
     confidence=0.75,
 ):
-    from codeminer.guardian.orchestrator import Hypothesis
+    from codeminer.guardian.loop import Hypothesis
 
     del kind, rank
     return Hypothesis.create(
