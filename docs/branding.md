@@ -37,11 +37,14 @@ from codeminer.agent import CodeMinerAgentOptions, CodeNibAgentOptions
 The following identifiers remain canonical:
 
 - `CODEMINER_*` environment variables;
-- `~/.codeminer`, `.codeminer_cache`, `.codeminer_qa`, and related state paths;
+- `~/.codeminer`, `.codeminer_cache`, and `.codeminer_qa` state roots;
 - the `codeminer` package and every existing `codeminer-*` command;
 - MCP server ID `codeminer`, prompt ID `codeminer-guide`, tool names, and
   `codeminer_context` skill ID;
-- manifest, graph, vector, and incremental-cache schemas and filenames;
+- manifest, graph, vector, and incremental-cache formats, including the
+  `repo_manifest.json`, `graph.pkl`, `incremental_state.json`,
+  `chunk_store.pkl`, `embeddings_cache.pkl`, and `qa_registry.json` entry
+  filenames;
 - repository URL `https://github.com/sysevol-ai/CodeMiner`;
 - CodeMiner Base, CodeMiner Synthesis, their Hub IDs, and artifact paths;
 - public classes such as `CodeMinerAgentOptions`, `CodeMinerBaseDataset`, and

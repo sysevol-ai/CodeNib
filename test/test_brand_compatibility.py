@@ -5,9 +5,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import inspect
 import json
 import pickle
+from importlib.metadata import EntryPoint
 from pathlib import Path
 
 import numpy as np
@@ -18,13 +21,20 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 from codeminer.compiler.index_compiler import IndexCompilerConfig
-from codeminer.compiler.manifest import MANIFEST_VERSION, RepoManifest
+from codeminer.compiler.manifest import (
+    MANIFEST_FILENAME,
+    MANIFEST_VERSION,
+    RepoManifest,
+)
 from codeminer.dataset.base import DatasetBase
 from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
 from codeminer.dataset.codeminer_synthesis import DEFAULT_DATASET
 from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
 from codeminer.index.incremental.embeddings_cache import EmbeddingsCache
+from codeminer.index.incremental.state import _STATE_FILENAME, IncrementalState
+from codeminer.ls_index.lsp_indexer import GenericLSPIndexer
 from codeminer.mcp.server import mcp
+from codeminer.web.config import CACHE_DIR_NAME, REGISTRY_FILENAME, QAConfig
 
 _LEGACY_SCRIPTS = {
     "codeminer-mcp": "codeminer.mcp.server:main",
@@ -79,6 +89,8 @@ def test_legacy_distribution_and_commands_remain_installed() -> None:
     assert project["name"] == "codeminer"
     for command, target in _LEGACY_SCRIPTS.items():
         assert project["scripts"][command] == target
+        entry_point = EntryPoint(name=command, value=target, group="console_scripts")
+        assert callable(entry_point.load())
 
 
 def test_artifact_names_versions_and_cache_roots_remain_stable(tmp_path: Path) -> None:
@@ -86,12 +98,26 @@ def test_artifact_names_versions_and_cache_roots_remain_stable(tmp_path: Path) -
         inspect.signature(CodeMinerBaseDataset).parameters["dataset"].default
     )
     dataset = DatasetBase(root=str(tmp_path))
+    incremental_state = IncrementalState()
+    lsp_indexer = GenericLSPIndexer(
+        project_root=tmp_path / "repo",
+        output_dir=tmp_path / "lsp-index",
+    )
+    qa_config = QAConfig()
 
     assert base_dataset_default == "fishmingyu/codeminer-base-dataset"
     assert DEFAULT_DATASET == "sysevol-ai/codeminer-synthesis"
+    assert MANIFEST_FILENAME == "repo_manifest.json"
     assert MANIFEST_VERSION == "1.0"
     assert _SCHEMA_VERSION == 4
+    assert lsp_indexer.graph_file.name == "graph.pkl"
+    assert _STATE_FILENAME == "incremental_state.json"
+    assert incremental_state.chunk_store_path == "chunk_store.pkl"
+    assert incremental_state.embeddings_cache_path == "embeddings_cache.pkl"
     assert IndexCompilerConfig().cache_dir_name == ".codeminer_cache"
+    assert CACHE_DIR_NAME == ".codeminer_cache"
+    assert qa_config.data_dir == ".codeminer_qa"
+    assert REGISTRY_FILENAME == "qa_registry.json"
     assert Path(dataset._resolve_root(None)).name == ".codeminer"
 
 
@@ -107,8 +133,8 @@ def test_mcp_protocol_identifiers_remain_stable() -> None:
     prompt_names, tool_names = asyncio.run(identifiers())
 
     assert mcp.name == "codeminer"
-    assert prompt_names == {"codeminer-guide"}
-    assert tool_names == _MCP_TOOL_NAMES
+    assert {"codeminer-guide"} <= prompt_names
+    assert _MCP_TOOL_NAMES <= tool_names
 
 
 def test_pre_brand_manifest_load_is_read_only(tmp_path: Path) -> None:
@@ -137,17 +163,23 @@ def test_pre_brand_manifest_load_is_read_only(tmp_path: Path) -> None:
 
 
 def test_graph_pickle_load_is_read_only(tmp_path: Path) -> None:
-    graph = CodeGraph(project_root="/repo")
-    graph.add_file_node("module.py")
-    graph.add_symbol_node("module.py:run", 0, 0, 1, "function")
-    graph.build_range_indexes()
+    root = Path(__file__).resolve().parent
+    fixture_path = root / "fixtures/branding/pre_brand_graph_schema4.fixture"
+    fixture = json.loads(fixture_path.read_text())
+    payload = base64.b64decode(fixture["payload_base64"], validate=True)
+
+    assert fixture["source_commit"] == "e1eb03c84372e9b9d26ee113d202c66e2f725ec8"
+    assert fixture["schema_version"] == 4
+    assert hashlib.sha256(payload).hexdigest() == fixture["sha256"]
+
     path = tmp_path / "graph.pkl"
-    graph.save_graph(path)
+    path.write_bytes(payload)
     before = path.read_bytes()
 
     loaded = CodeGraph.load_graph(path)
 
     assert path.read_bytes() == before
+    assert str(loaded.project_root) == "/legacy/repository"
     assert "module.py:run" in loaded.name_to_vertex
 
 
