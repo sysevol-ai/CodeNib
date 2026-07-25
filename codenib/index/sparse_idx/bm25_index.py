@@ -74,6 +74,7 @@ class BM25CodeIndexer:
         chunks=None,
         max_k: int = 15,
         language: str = "english",
+        project_root: Optional[str] = None,
     ):
         """
         Initialize the BM25CodeIndexer and optionally build the index immediately.
@@ -89,20 +90,21 @@ class BM25CodeIndexer:
             language: Language for stopword removal
                       Default is "english" which works well for processing code tokens
                       as it treats special characters as separators
+            project_root: Repository root used to resolve relative source paths
         """
         self.max_k = max_k
         self.language = language
         self.documents = []
         self.retriever = None
         self.code_graph: CodeGraph = None
-        self.project_root: Optional[str] = None
+        self.project_root = project_root
         self.nodes: List[str] = []
 
         # Build the index immediately if a code_graph is provided
         if code_graph is not None:
             self.build_index_from_graph(code_graph)
         elif chunks is not None:
-            self.build_index_from_chunks(chunks)
+            self.build_index_from_chunks(chunks, project_root=project_root)
 
     def build_index_from_graph(self, code_graph: CodeGraph) -> BM25Retriever:
         """
@@ -131,12 +133,18 @@ class BM25CodeIndexer:
 
         return self.retriever
 
-    def build_index_from_chunks(self, chunks: List[CodeChunk]) -> BM25Retriever:
+    def build_index_from_chunks(
+        self,
+        chunks: List[CodeChunk],
+        *,
+        project_root: Optional[str] = None,
+    ) -> BM25Retriever:
         """
         Build a BM25 index from a list of CodeChunk objects.
 
         Args:
             chunks: List of CodeChunk objects (with node_id, chunk_type, name, file, etc.)
+            project_root: Repository root used to resolve relative source paths
 
         Returns:
             BM25Retriever instance
@@ -145,25 +153,53 @@ class BM25CodeIndexer:
         self.documents = []
         self.nodes = []
         self.code_graph = None
-        self.project_root = None
+        self.project_root = project_root
 
-        # Extract unique node IDs from chunks
-        unique_node_ids = set()
+        # Keep one deterministic document per symbol. Split chunks share a
+        # node_id, so widen their source range without changing indexed text.
+        documents_by_node: dict[str, Document] = {}
         for chunk in chunks:
-            if hasattr(chunk, "node_id") and chunk.node_id:
-                unique_node_ids.add(chunk.node_id)
-
-        # Convert unique node IDs to documents
-        for node_id in unique_node_ids:
-            doc = self._convert_node_id_to_document(node_id)
+            node_id = getattr(chunk, "node_id", None)
+            if not node_id:
+                continue
+            doc = self._convert_chunk_to_document(chunk)
             if doc is not None:
-                self.documents.append(doc)
-                self.nodes.append(node_id)
+                existing = documents_by_node.get(node_id)
+                if existing is None:
+                    documents_by_node[node_id] = doc
+                    continue
+                existing.metadata["start_line"] = min(
+                    existing.metadata["start_line"],
+                    doc.metadata["start_line"],
+                )
+                existing.metadata["end_line"] = max(
+                    existing.metadata["end_line"],
+                    doc.metadata["end_line"],
+                )
+
+        self.documents = list(documents_by_node.values())
+        self.nodes = list(documents_by_node)
 
         # Create BM25Retriever with LangChain format
         self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)
 
         return self.retriever
+
+    def _convert_chunk_to_document(self, chunk: CodeChunk) -> Optional[Document]:
+        """Convert a source chunk while preserving its repository location."""
+        doc = self._convert_node_id_to_document(chunk.node_id)
+        if doc is None:
+            return None
+        doc.metadata.update(
+            {
+                "chunk_type": chunk.chunk_type,
+                "type": chunk.chunk_type,
+                "name": chunk.name,
+                "start_line": int(chunk.start_line),
+                "end_line": int(chunk.end_line),
+            }
+        )
+        return doc
 
     def _convert_node_id_to_document(self, node_id: str):
         """

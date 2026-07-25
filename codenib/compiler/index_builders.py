@@ -97,7 +97,11 @@ class BM25IndexBuilder:
         )
         chunks = chunker.chunk_repository(repo_path=repo_path)
 
-        indexer = BM25CodeIndexer(chunks=chunks, max_k=self.max_k)
+        indexer = BM25CodeIndexer(
+            chunks=chunks,
+            max_k=self.max_k,
+            project_root=repo_path,
+        )
         os.makedirs(output_dir, exist_ok=True)
         indexer.save_index(output_dir)
 
