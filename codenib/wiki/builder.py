@@ -176,6 +176,9 @@ class WikiBuilder:
         return self._symbols_cache
 
     def _compute_symbols(self) -> tuple:
+        ensure_runtime = getattr(self._bundle, "ensure_runtime", None)
+        if callable(ensure_runtime):
+            ensure_runtime()
         vs = getattr(self._bundle, "vector_store", None)
         docs = list(getattr(vs, "l2_documents", []) or []) if vs is not None else []
         if not docs:
@@ -291,9 +294,14 @@ class WikiBuilder:
         if narrative:
             lines += [narrative, ""]
         else:
+            commit = (
+                f" at commit `{self._entry.commit_short}`"
+                if self._entry.commit_short
+                else ""
+            )
             lines += [
-                f"`{self._entry.repo}` is indexed at commit "
-                f"`{self._entry.commit_short}` ({lang}). This wiki is generated from "
+                f"`{self._entry.repo}` is indexed{commit} ({lang}). "
+                "This wiki is generated from "
                 f"CodeNib's static analysis of **{n_files} source files** and "
                 f"**{total_syms} symbols**, grouped into the modules below.",
                 "",

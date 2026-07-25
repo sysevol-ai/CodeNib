@@ -136,44 +136,43 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         with open(cfg_path) as f:
             data = yaml.safe_load(f) or {}
 
+    defaults = QAConfig()
     cfg = QAConfig(
-        model=data.get("model", QAConfig.model),
+        model=data.get("model", defaults.model),
         wiki_model=data.get("wiki_model"),
         model_api_base=data.get("model_api_base"),
         model_api_key=data.get("model_api_key"),
-        mode=data.get("mode", QAConfig.mode),
-        embedding_model=data.get("embedding_model", QAConfig.embedding_model),
+        mode=data.get("mode", defaults.mode),
+        embedding_model=data.get("embedding_model", defaults.embedding_model),
         embedding_dimension=data.get(
-            "embedding_dimension", QAConfig.embedding_dimension
+            "embedding_dimension", defaults.embedding_dimension
         ),
-        embedding_provider=data.get("embedding_provider", "huggingface"),
+        embedding_provider=data.get("embedding_provider", defaults.embedding_provider),
         embedding_base_url=data.get("embedding_base_url"),
         embedding_api_key=data.get("embedding_api_key"),
-        data_dir=data.get("data_dir", QAConfig.data_dir),
-        prebuilt_dir=data.get("prebuilt_dir", QAConfig.prebuilt_dir),
-        max_turns=data.get("max_turns", QAConfig.max_turns),
-        max_tokens=data.get("max_tokens", QAConfig.max_tokens),
+        data_dir=data.get("data_dir", defaults.data_dir),
+        prebuilt_dir=data.get("prebuilt_dir", defaults.prebuilt_dir),
+        max_turns=data.get("max_turns", defaults.max_turns),
+        max_tokens=data.get("max_tokens", defaults.max_tokens),
+        wiki_agent=data.get("wiki_agent", defaults.wiki_agent),
         cors_origins=data.get(
             "cors_origins",
-            ["http://localhost:3000", "http://127.0.0.1:3000"],
+            defaults.cors_origins,
         ),
-        dataset=data.get("dataset", QAConfig.dataset),
-        split=data.get("split", QAConfig.split),
+        dataset=data.get("dataset", defaults.dataset),
+        split=data.get("split", defaults.split),
         instances=data.get("instances", []),
         languages=data.get(
             "languages",
-            ["python", "javascript", "typescript", "go", "rust"],
+            defaults.languages,
         ),
-        per_language=data.get("per_language", QAConfig.per_language),
-        # NOTE: use literal defaults, not ``QAConfig.<field>`` — this is a slots
-        # dataclass, so class-level field access returns a member_descriptor
-        # (not the default value) when the YAML key is absent.
-        edge_labels=data.get("edge_labels", False),
-        edge_label_model=data.get("edge_label_model", None),
-        rerank_strategy=data.get("rerank_strategy", QAConfig.rerank_strategy),
-        crossencoder_model=data.get("crossencoder_model", QAConfig.crossencoder_model),
+        per_language=data.get("per_language", defaults.per_language),
+        edge_labels=data.get("edge_labels", defaults.edge_labels),
+        edge_label_model=data.get("edge_label_model", defaults.edge_label_model),
+        rerank_strategy=data.get("rerank_strategy", defaults.rerank_strategy),
+        crossencoder_model=data.get("crossencoder_model", defaults.crossencoder_model),
         crossencoder_batch_size=data.get(
-            "crossencoder_batch_size", QAConfig.crossencoder_batch_size
+            "crossencoder_batch_size", defaults.crossencoder_batch_size
         ),
     )
 

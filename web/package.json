@@ -2,6 +2,9 @@
   "name": "codenib-qa-demo",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=18.18.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -17,7 +20,7 @@
     "geist": "^1.7.1",
     "highlight.js": "^11.11.1",
     "mermaid": "^11.15.0",
-    "next": "14.2.5",
+    "next": "15.5.21",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-markdown": "9.0.1",
@@ -26,7 +29,7 @@
     "remark-gfm": "4.0.0"
   },
   "devDependencies": {
-    "@types/node": "20.14.10",
+    "@types/node": "20.19.43",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "pixelmatch": "^7.2.0",
@@ -34,5 +37,10 @@
     "pngjs": "^7.0.0",
     "typescript": "5.5.3",
     "vitest": "^4.1.8"
+  },
+  "overrides": {
+    "dompurify": "3.4.12",
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
   }
 }

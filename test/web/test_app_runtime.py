@@ -41,3 +41,16 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
     assert tree == {"repo": "org/repo", "pages": [{"id": "overview"}]}
     assert page == {"id": "overview"}
     assert calls == [("page_tree", ()), ("page", ("overview",))]
+
+
+def test_template_wiki_disables_narrator(tmp_path):
+    config = SimpleNamespace(
+        data_dir=str(tmp_path),
+        wiki_generation_model="gpt-4o",
+        wiki_agent=False,
+    )
+
+    narrator = web_app._wiki_narrator(config)
+
+    assert narrator.enabled is False
+    assert narrator.cache_dir is None

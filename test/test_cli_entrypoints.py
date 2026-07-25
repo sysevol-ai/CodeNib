@@ -33,7 +33,7 @@ def test_console_scripts_use_only_codenib_namespace() -> None:
     scripts = _console_scripts()
 
     assert scripts
-    assert all(name.startswith("codenib-") for name in scripts)
+    assert all(name == "codenib" or name.startswith("codenib-") for name in scripts)
     assert all(target.startswith("codenib.") for target in scripts.values())
 
 

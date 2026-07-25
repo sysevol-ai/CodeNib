@@ -43,6 +43,15 @@ from .schemas import (
 logger = get_logger(__name__)
 
 
+def _wiki_narrator(config):
+    wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
+    return Narrator(
+        model=config.wiki_generation_model,
+        cache_dir=wiki_cache if config.wiki_agent else None,
+        enabled=None if config.wiki_agent else False,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config = load_config()
@@ -55,15 +64,12 @@ async def lifespan(app: FastAPI):
     app.state.commit_windows = {}
     # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
     # to templated text when no model/creds are available.
-    wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
-    app.state.narrator = Narrator(
-        model=config.wiki_generation_model, cache_dir=wiki_cache
-    )
+    app.state.narrator = _wiki_narrator(config)
     logger.info(
         "Wiki narrator: model=%s enabled=%s cache=%s",
         app.state.narrator.model,
         app.state.narrator.enabled,
-        wiki_cache,
+        app.state.narrator.cache_dir,
     )
     logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
     yield

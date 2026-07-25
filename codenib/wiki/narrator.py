@@ -67,9 +67,11 @@ class Narrator:
         self.cache_dir = cache_dir
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
-        self.enabled = self._usable() if enabled is None else enabled
+        auto_enabled = enabled is None
+        self.enabled = self._usable() if auto_enabled else enabled
         if not self.enabled:
-            logger.info("Wiki narrator disabled (no usable creds for %s)", self.model)
+            reason = "no usable credentials" if auto_enabled else "configuration"
+            logger.info("Wiki narrator disabled by %s for %s", reason, self.model)
 
     def _usable(self) -> bool:
         m = self.model.lower()

@@ -128,9 +128,12 @@ class RepoBundle:
         # The prebuilt indexes ship a symbol graph that the manifest doesn't
         # declare; surface a "codemap" capability so the UI can offer the mode.
         capabilities["codemap"] = self._graph_path() is not None
+        display_name = self.entry.repo
+        if self.entry.commit_short:
+            display_name += f" @ {self.entry.commit_short}"
         return RepoInfo(
             id=self.entry.instance_id,
-            name=f"{self.entry.repo} @ {self.entry.commit_short}",
+            name=display_name,
             repo=self.entry.repo,
             base_commit=self.entry.base_commit,
             commit_short=self.entry.commit_short,

@@ -49,6 +49,7 @@ dependencies = [
 ]
 
 [project.scripts]
+codenib = "codenib.cli:main"
 codenib-mcp = "codenib.mcp.server:main"
 codenib-web = "codenib.web.app:main"
 codenib-lsp-provider-validate = "codenib.eval.agent_runner.lsp_provider_cli:main"
