@@ -121,6 +121,37 @@ Controlled by the `chunk_depth` parameter in `BaseCodeChunker`:
 | `property` | L1/L2 | `property_declaration` | `val total: Int = 0` |
 | `method` | L2 | `function_declaration`, `secondary_constructor` | `fun total() {}`, `constructor(...)` |
 
+### Swift (`swift_chunker.py`)
+
+| chunk_type | Level | AST node | Example |
+|------------|-------|----------|---------|
+| `class` | L1 | `class_declaration` | `class Invoice {}` |
+| `struct` | L1 | `class_declaration` (with `struct` keyword) | `struct Point {}` |
+| `actor` | L1 | `class_declaration` (with `actor` keyword) | `actor Counter {}` |
+| `protocol` | L1 | `protocol_declaration` | `protocol Runner {}` |
+| `enum` | L1 | `enum_declaration` | `enum Status {}` |
+| `extension` | L1 | `extension_declaration` | `extension Invoice {}` |
+| `function` | L1 | top-level `function_declaration` | `func normalize() {}` |
+| `method` | L2 | `function_declaration`, `protocol_function_declaration` in a body | `func total() {}` |
+| `property` | L2 | `property_declaration` | `var total: Int = 0` |
+
+### Scala (`scala_chunker.py`)
+
+| chunk_type | Level | AST node | Example |
+|------------|-------|----------|---------|
+| `class` | L1 | `class_definition` | `class Invoice {}` |
+| `object` | L1 | `object_definition` | `object Config {}` |
+| `trait` | L1 | `trait_definition` | `trait Runner {}` |
+| `function` | L1 | top-level `function_definition` | `def normalize() = ...` |
+| `method` | L2 | `function_definition`, `function_declaration` in `template_body` | `def total = ...` |
+| `property` | L2 | `val_definition`, `var_definition`, `val`/`var` class parameters | `val total: Int = 0` |
+
+### Lua (`lua_chunker.py`)
+
+| chunk_type | Level | AST node | Example |
+|------------|-------|----------|---------|
+| `function` | L1 | `function_declaration`, or `function_definition` assigned via `variable_declaration` / `assignment_statement` | `function M.foo() end`, `M.foo = function() end` |
+
 ### JavaScript / TypeScript (`js_chunker.py`)
 
 | chunk_type | Level | AST node | Example |
@@ -174,5 +205,8 @@ Used by `gt_locate.py` to select the correct chunker:
 | `.rb` | `ruby` |
 | `.php`, `.phtml` | `php` |
 | `.kt`, `.kts` | `kotlin` |
+| `.swift` | `swift` |
+| `.scala`, `.sc` | `scala` |
+| `.lua`, `.luau` | `lua` |
 | `.js`, `.jsx` | `javascript` |
 | `.ts`, `.tsx` | `typescript` |

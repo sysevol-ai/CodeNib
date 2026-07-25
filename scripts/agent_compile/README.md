@@ -100,6 +100,27 @@ python scripts/agent_compile/feedback_summary.py \
 failures, so a re-run retries them. Instances without prebuilt indexes are
 skipped and recorded in `sweep_summary.json`.
 
+### Provenance: the summary `protocol` block
+
+`synthesis_summary.json` embeds a `protocol` block so a synthesis sweep is
+reproducible from its artifact alone: `sweep_id`, `model` / `model_revision`,
+`dataset` / `dataset_revision`, `split`, `subsets`, `preload`, `reps`,
+`max_turns`, token/temperature settings, `embedding_model` /
+`embedding_revision`, `topk`, the category/query/instance caps,
+`query_selection`, and the free-form `run_metadata` mapping. The `*_revision`
+and `run_metadata` fields come from the sweep config
+(`codenib.eval.agent_runner.sweep_config.SweepConfig`); `model_revision` is
+*recorded*, not enforced — immutable local revisions must also be enforced when
+launching the model server.
+
+Per-instance query capping (`--max-queries`) is deterministic:
+`run_query_sweep` supports `dataset_order` (first N rows in dataset order —
+what `run_synthesis_sweep.py` uses) and `category_round_robin` (round-robin
+across sorted categories, starting category rotated by instance index); the
+strategy used lands in `protocol.query_selection`. On a resumed run,
+already-written cells are listed under the summary's `cached` key instead of
+being re-run, so the summary still accounts for every cell.
+
 ## Reusable Code Boundary
 
 Reusable config, harness, sweep execution, per-query sweep execution, preload,

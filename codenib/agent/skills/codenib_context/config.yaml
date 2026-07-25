@@ -30,7 +30,7 @@ outputs:
   description: >-
     Compact, deduped set — entry-point symbols (from search) plus their
     callers/callees (from the call graph), each with name, file:line, kind, and
-    relation. No code bodies; file_read the ones you want to inspect.
+    relation. No code bodies; read the ones you want to inspect.
 index_requirements:
   - type: bm25
     max_age_seconds: 3600

@@ -10,8 +10,9 @@ design: [`docs/agent_compile_design.md`](../../docs/agent_compile_design.md).
 
 - **Phase names skip 0 → 2 on purpose.** Scripts exist only for phases that run
   data; Phase 1 (`classify()`) is code + a doc, not a sweep. `run_sweep.py` +
-  `aggregate.py` drive Phase 0; `run_sweep.py` + `aggregate_phase2.py` drive the
-  Phase 2 subset sweep. Don't "fix" the numbering.
+  the consolidated `aggregate.py` drive both Phase 0 and the Phase 2 subset
+  sweep (the old `aggregate_phase2.py` was evicted in the scripts dedup). Don't
+  "fix" the numbering.
 - **Indexes reach the agent through `RepoManifest`.**
   `IndexCompiler.compile_repo()` (in `codenib/compiler/`) builds `bm25` /
   `vector` / `symbol_graph` and writes `repo_manifest.json` — the source of

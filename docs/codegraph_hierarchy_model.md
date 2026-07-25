@@ -75,35 +75,25 @@ to deriving it from `node.file` only for older payloads. It renders:
 - symbol scope boxes (class/container symbols) under expanded files,
 - concrete symbol nodes inside those scopes,
 - reference edges between the currently visible endpoints,
-- SVG bundled paths for cross-file aggregate edges, routed through
-  `edges[].bundle_path`,
-- scope-aware SVG routes for exact same-file references, so class/member calls
-  visually follow the containment path while the original Cytoscape edge remains
-  clickable for exact source peeks.
+- scope-aware styling for exact same-file references: those Cytoscape edges
+  carry a `scopeRoute` attribute so class/member calls read differently from
+  cross-file edges, and the edge remains clickable for exact source peeks.
 
-The hierarchy is intentionally mode-sensitive:
+Hierarchical SVG edge bundling for cross-file aggregate edges is **not yet
+consumed by the frontend** — see the planned subsection below; the backend
+already emits `edges[].bundle_path` for it.
 
-- `Files`: shows the full directory/file backbone.
-- `Symbols`: expands only the DOI-like core spine and keeps the long tail as
-  file pills.
-- wiki embedded maps start in `Symbols` so the narrative page shows the cited
-  subsystem's active symbols immediately; the standalone explorer still starts
-  in `Files` as an overview.
-- manual file expansion in `Files`: preserves the same directory/file
-  projection, then semantically zooms into the clicked file's internal scope
-  tree. The global `Fit` action remains available to restore the whole graph.
+The shipped UI is a single files-overview mode: `GraphMode` is hardcoded to
+`"files"` in `CodeGraph.tsx`, and there is no `Files`/`Symbols` switch. The
+graph opens with one pill per file grouped under directory compounds. Clicking
+a file toggles its symbols and scope tree inline while preserving the
+directory/file projection; clicking a concrete symbol opens its source, and
+clicking an edge opens the exact SCIP/LSP call site. The global `Fit` action
+remains available to restore the whole graph.
 
-The dependency overlay also has lightweight layers:
-
-- `Map`: default compound view; containment stays primary, routed dependency
-  overlays are visible, raw exact edges are subdued;
-- `Routes`: emphasizes hierarchical routes/bundles and further quiets raw edges;
-- `Raw`: hides SVG routes and shows the original Cytoscape reference edges for
-  debugging exact graph structure.
-
-The wiki embedded map keeps the reader-facing controls minimal: mode switch,
-compact status, and fit. The explorer modal keeps the full edge-layer controls
-for debugging and deeper navigation.
+Both the wiki embedded map and the standalone explorer use this same
+files-overview component, and its reader-facing controls stay minimal: an edge
+legend, a compact status note (file count or current selection), and `Fit`.
 
 The standalone graph explorer defaults to a one-hop focus window. This follows
 Sourcetrail's focus+context pattern: start with the current symbol and immediate
@@ -117,6 +107,21 @@ The Cytoscape layer also applies semantic zoom classes:
 - mid zoom: concrete symbol labels return in a compact style;
 - high zoom / hover / focus: exact symbol labels are fully readable and still
   open source peeks without rebuilding the graph instance.
+
+### Planned / not yet consumed by the frontend
+
+Earlier design passes sketched richer presentation that the backend already
+supports but the shipped component does not render:
+
+- hierarchical SVG edge bundling for cross-file aggregate edges: the backend's
+  `attach_edge_routes` (`codenib/graph/hierarchy.py`) emits
+  `edges[].bundle_path`/`bundle_lca`, and the fields are typed in
+  `web/lib/api.ts`, but no component consumes them yet;
+- `Map` / `Routes` / `Raw` edge-layer controls (compound-first, route-emphasis,
+  and raw-edge debugging views) — these presentation layers have no UI today;
+- a `Files`/`Symbols` mode switch with a DOI-driven `Symbols` spine — the
+  shipped component hardcodes the files overview and leaves expansion to the
+  user.
 
 ## Current backend model
 
@@ -176,8 +181,11 @@ The current implementation uses DOI-style ranking in two places:
 - the backend computes `doi`/`open_by_default` hints for the current focus
   window, combining reference distance and containment-tree distance from the
   focus symbol;
-- the frontend `Symbols` mode expands only the highest-value file spine and
-  keeps the long tail folded as file pills.
+- the frontend keeps every file folded as a pill and expands it manually on
+  click. Hierarchy scope nodes fall back to `doi` for their `importance` value,
+  which drives node font size, padding, and layout ordering; the
+  `open_by_default`/`open_files` hints ride along in the payload as expansion
+  hints the UI does not yet auto-apply.
 
 The ranking follows the fisheye shape:
 

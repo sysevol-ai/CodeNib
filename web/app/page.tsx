@@ -11,11 +11,9 @@ function repoDescription(r: RepoInfo): string {
   return `${r.language || "Source"} repository indexed at ${r.commit_short}`;
 }
 
-// What incremental maintenance bought, for repos that have a commit window.
-// Deliberately says "faster to re-index" — a *measured* cost claim. Nothing here
-// may imply the patched result was verified against a fresh rebuild; until the
-// exactness guard lands, every incremental result is recorded
-// verified=false, checked=false, and this UI must not out-claim the manifest.
+// Cold graph-build time divided by mean warm patch time. The measurement
+// excludes LSP startup and transition overhead, and is not end-to-end re-index
+// latency or a fresh-rebuild equality claim.
 function incrementalNote(r: RepoInfo): string | null {
   const s = r.incremental;
   if (!s || s.commit_count < 1) return null;
@@ -23,7 +21,7 @@ function incrementalNote(r: RepoInfo): string | null {
   // No speedup is derivable (single-commit window, no cold anchor, zero
   // denominator) — say only what we can stand behind.
   if (s.speedup == null) return commits;
-  return `${commits} · ${s.speedup}× faster to re-index`;
+  return `${commits} · ${s.speedup}× warm-patch speedup`;
 }
 
 function RepoCard({ r }: { r: RepoInfo }) {
@@ -46,7 +44,7 @@ function RepoCard({ r }: { r: RepoInfo }) {
           </span>
         )}
         {incremental ? (
-          <span className="repo-metric repo-incremental" title="Measured on this repo's commit window: one cold build, the rest reached by incremental patching">
+          <span className="repo-metric repo-incremental" title="Cold graph-build time divided by mean warm patch time; excludes LSP startup and transition overhead">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M13 2 3 14h9l-1 8 10-12h-9z" />
             </svg>

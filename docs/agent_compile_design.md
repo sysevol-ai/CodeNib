@@ -171,8 +171,10 @@ data motivates it.
 
 ## Wiring decisions
 
-* **BM25 indexing always uses chunks** (`examples/skill_agent_eval.py`
-  builds `BM25CodeIndexer(chunks=chunks, ...)` unconditionally). Resolved
+* **BM25 indexing always uses chunks** (the compiler's BM25 builder
+  constructs `BM25CodeIndexer(chunks=chunks, ...)` unconditionally —
+  `codenib/compiler/index_builders.py`; `examples/skill_agent_eval.py`
+  routes through `build_skill_contexts`). Resolved
   by siriuxyu 2026-05-09. Means Phase 2's `language` dimension is
   **decoupled from #109's BM25 tokenization discussion** — Phase 0 and
   Phase 2 unblocked from that prereq.

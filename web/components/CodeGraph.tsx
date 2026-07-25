@@ -1041,10 +1041,9 @@ function graphFileCount(data: CodemapResponse): number {
 }
 
 /**
- * Interactive dependency graph (Cytoscape). Opens as a files overview — one pill
- * per file. Selecting a file keeps the tree stable and opens a separate symbol
- * drilldown; click a symbol there to open its source. Click an edge to open the
- * exact SCIP/LSP call site.
+ * Interactive dependency graph (Cytoscape). Opens as a files overview with one
+ * pill per file. Clicking a file toggles its symbols inline; click a concrete
+ * symbol to open its source or an edge to open the exact SCIP/LSP call site.
  */
 export default function CodeGraph({
   data,

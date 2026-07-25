@@ -39,9 +39,9 @@ end:
    matrix.
 2. Promote candidate SCIP cold-start backends only after gated smoke, decode,
    backend-alignment, and documentation work.
-3. Keep active SCIP backends for Python, Go, Rust, C#, Java, Ruby,
-   JavaScript, TypeScript, and PHP fast and parity-tested where a C++ core
-   decoder exists.
+3. Keep active SCIP backends for Python, Go, Rust, C#, Java, Kotlin, Ruby,
+   Scala, JavaScript, TypeScript, and PHP fast and parity-tested where a C++
+   core decoder exists.
 4. Add C++ acceleration only where profiling shows local decode or graph
    processing is a meaningful bottleneck.
 5. Keep PRs, commits, and issues synchronized with this roadmap so multi-step
@@ -714,15 +714,14 @@ Issue triage rules:
 - If a PR changes graph schema or decoder semantics, run parity checks and
   inspect whether `_SCHEMA_VERSION` must change.
 
-Current issue triage notes from June 20, 2026:
+Current issue triage notes from July 25, 2026:
 
-- PR #248 remains open and is outside this SCIP roadmap. It is an
-  agent-compile/Qwen backend PR with green CodeQL checks; its `unit` job is
-  still queued on the offline self-hosted runner, so it should be evaluated as
-  agent-compile work rather than merged as part of this roadmap.
+- PR #248 is merged (June 25, 2026). It was an agent-compile/Qwen local-backend
+  PR outside this SCIP roadmap and landed as agent-compile work, not as a
+  roadmap phase.
 - #198 is closed. It no longer has open roadmap action for the multi-language
   SCIP cold-start and acceleration program.
-- #252 is a Repository Guardian RFC and remains open.
+- #252, the Repository Guardian RFC, is closed (July 7, 2026).
 - #199 is an enterprise index-storage RFC and remains open.
 - #133 is an agent-compile RFC and remains open because the query-time
   skill-selection mechanism is still tracked as follow-up work.

@@ -39,14 +39,17 @@ The following identifiers remain canonical:
   `repo_manifest.json`, `graph.pkl`, `incremental_state.json`,
   `chunk_store.pkl`, `embeddings_cache.pkl`, and `qa_registry.json` entry
   filenames;
-- repository URL `https://github.com/sysevol-ai/CodeNib`;
+- canonical repository URL `https://github.com/sysevol-ai/CodeNib` (GitHub
+  redirects the repository's former URL for historical references);
 - CodeNib Base, CodeNib Synthesis, their Hub IDs, and artifact paths;
 - public classes such as `CodeNibAgentOptions`, `CodeNibBaseDataset`, and
   `CodeNibSynthesisDataset`.
 
-The published Hub dataset IDs are immutable external addresses, not aliases for
+The Hub values above are immutable external addresses, not aliases for
 executable CodeNib interfaces. Schemas change only when their serialized
-structure or declared identity changes.
+structure or declared identity changes. The full mapping from former
+identifiers to their CodeNib replacements lives in the
+[namespace migration record](codenib_namespace_migration.md).
 
 ## Filesystem Roots
 

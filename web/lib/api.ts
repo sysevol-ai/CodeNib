@@ -249,10 +249,10 @@ export interface CommitRef {
   changed_files: number;
 }
 
-// Cold-vs-patched cost for a repo's commit window. Derived server-side in
-// commit_window.window_stats so the API, this UI and the build script cannot
-// report different numbers. `speedup` is null when no defensible ratio exists —
-// render nothing in that case rather than substituting a default.
+// Cold-build vs warm-patch cost for a repo's commit window. Derived server-side
+// in commit_window.window_stats so the API, this UI and the build script cannot
+// report different numbers. This excludes LSP startup and transition overhead;
+// `speedup` is null when no defensible ratio exists.
 export interface WindowStats {
   commit_count: number;
   patched_count: number;

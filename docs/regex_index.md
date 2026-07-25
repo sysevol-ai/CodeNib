@@ -29,10 +29,12 @@ The `RegexNodeIndex` provides grep-like functionality for searching code content
 ### Basic Usage
 
 ```python
+import os
+
 from codenib import CodeGraph, RegexNodeIndex
 
-# Load existing CodeGraph
-code_graph = CodeGraph.load_graph("~/.codenib/xxx/graph.pkl")
+# Load existing CodeGraph (load_graph does not expand "~" itself)
+code_graph = CodeGraph.load_graph(os.path.expanduser("~/.codenib/xxx/graph.pkl"))
 
 # Build index from CodeGraph
 idx = RegexNodeIndex(code_graph=code_graph)

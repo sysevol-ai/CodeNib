@@ -14,7 +14,7 @@ inputs:
     description: Function/class name to find callees of (functions it calls) (fuzzy-matched; ambiguity returns candidates).
 outputs:
   type: List[QueriedNode]
-  description: Compact list of callers (name, file:line, kind). No code bodies — file_read the ones you need.
+  description: Compact list of callees (name, file:line, kind). No code bodies — read the ones you need.
 index_requirements:
   - type: symbol_graph
     max_age_seconds: 3600

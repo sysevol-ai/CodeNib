@@ -7,7 +7,7 @@
 Centralises the engine so the agent skills (``find_callers`` /
 ``find_callees`` / ``trace``) and the MCP server tools share one
 implementation. All results are COMPACT — name, file:line, kind, and a short
-relation marker, with no code bodies (callers fetch source with file_read /
+relation marker, with no code bodies (callers fetch source with ``read`` or
 the search tools). This module is not a skill itself (no ``config.yaml``), so
 ``SkillLoader`` ignores it.
 """

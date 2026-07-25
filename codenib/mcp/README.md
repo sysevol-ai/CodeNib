@@ -80,7 +80,7 @@ Optional `--log-level {DEBUG,INFO,WARNING,ERROR}` (default `INFO`); logs go to s
 
 | Tool | Backing index | Result granularity | Use for |
 |------|---------------|--------------------|---------|
-| `search_semantic` | `vector` | symbol (l0/l1/l2) | natural-language / conceptual queries |
+| `search_semantic` | `vector` | file (l0) / symbol (l2) | natural-language / conceptual queries |
 | `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
 | `search_regex` | `symbol_graph` | symbol | structural pattern matching |
 | `search_zoekt` | `zoekt` | file | fast substring/regex across raw repo contents |
@@ -95,8 +95,8 @@ Vector-embedding similarity search.
 
 - `query` (str): natural-language or code query.
 - `top_k` (int, default 10): max results.
-- `level` (str, default `"l2"`): hierarchy level — `"l0"` (files), `"l1"` (top-level
-  symbols), `"l2"` (functions/methods).
+- `level` (str, default `"l2"`): hierarchy level — `"l0"` (files), `"l2"`
+  (functions/methods).
 - `score_threshold` (float, default 0.0): minimum similarity; `0` disables the filter.
 
 Returns a list of node dicts (`node_id`, `file_path`, `node_type`, `content`, `score`,

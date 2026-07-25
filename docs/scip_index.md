@@ -103,7 +103,8 @@ conda env create -f codenib/scip_interface/scip-environment.yml
 from codenib.ls_router import LSIndexer
 
 # Create an indexer for a project
-# By default, output goes to /tmp/<project_name>/
+# By default, output goes to $CODENIB_TEMP_DIR/<project_name>/
+# (default: /tmp/codenib/<project_name>/)
 indexer = LSIndexer("/path/to/project")
 
 # Or specify a custom output directory

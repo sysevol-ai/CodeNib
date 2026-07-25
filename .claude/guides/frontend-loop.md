@@ -48,8 +48,12 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   `CODENIB_DEMO_PREBUILT_DIR`). Layout: `<dir>/<instance_id>/{repo,l0,l2}/index_<suffix>.faiss`.
 - **Frontend → backend** is wired by `NEXT_PUBLIC_API_BASE` (default `http://127.0.0.1:8000`).
   Don't confuse it with `CODENIB_DEMO_MODEL`, which only sets the backend's LLM.
-- **Over SSH, forward both ports** — API calls run *in the browser*, not server-side:
-  `ssh -L 3000:localhost:3000 -L 8000:localhost:8000 <host>`.
+- **Over SSH with the default or another loopback API base**, forward port
+  3000 only. The browser talks same-origin to the frontend, and the Next.js
+  dev server proxies `/api/*` to `CODENIB_API_BASE` (default
+  `http://127.0.0.1:8000`) server-side: `ssh -L 3000:localhost:3000 <host>`.
+  A non-loopback `NEXT_PUBLIC_API_BASE` bypasses that proxy and must be
+  browser-reachable with suitable CORS configuration.
 
 ## Performance & caching (why a page can feel slow)
 

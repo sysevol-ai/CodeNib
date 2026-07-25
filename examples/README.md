@@ -34,8 +34,8 @@ Most scripts accept `--filter-instance <regex>` to run a single instance and
 ## 1. Agent (end-to-end)
 
 The agent loop lets an LLM pick CodeNib skills/tools (`bm25_search`,
-`embedding_search`, `graph_expand`, the always-on `file_read` / `file_search`
-primitives, …) and iterate to a localization answer.
+`embedding_search`, `codenib_context`, the always-on `read` / `grep` /
+`glob` / `bash` tools, …) and iterate to a localization answer.
 
 | Script | What it shows |
 |--------|---------------|

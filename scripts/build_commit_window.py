@@ -27,6 +27,10 @@ Example::
 ``--language`` takes a comma-separated list; ``paper`` expands to the languages
 the incremental-maintenance experiment covers (go, python, rust, typescript).
 Languages that are not buildable in the target repo are dropped with a warning.
+The builder is best-effort rather than commit-exact: an LSP startup failure
+omits that language, and a transition-level patch failure leaves its previous
+facts in place. Inspect warnings and ``patch_stats`` before treating a window
+as representative of repository evolution.
 
 Requires each language's LSP on PATH (Python: ``basedpyright-langserver`` via
 ``make python-lsp-tool``; TypeScript: ``typescript-language-server``).
@@ -66,7 +70,7 @@ class CommitEntry:
     date: str
     author: str
     graph_path: str
-    # "cold" for the anchor, "patched" for every incrementally reached commit.
+    # "cold" for the anchor, "patched" for every attempted incremental step.
     method: str
     build_seconds: float
     node_count: int

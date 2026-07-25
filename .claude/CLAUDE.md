@@ -45,7 +45,9 @@ make scip         # Install SCIP toolchain (rust-analyzer, scip-clang, TS, Pytho
 make install      # pip install -e .
 ```
 
-Pre-commit hooks: black (line-length 88), isort, flake8+bugbear, clang-format for C/C++.
+Pre-commit hooks: black (line-length 88), isort, flake8+bugbear, clang-format
+for C/C++, and the local `codenib-namespace` hook (`scripts/check_namespace.py`)
+guarding the CodeNib naming migration.
 
 ## Critical conventions
 
@@ -90,11 +92,24 @@ Rules for any AI/code agent (Claude Code, etc.) committing or opening PRs here.
 
 ## CI
 
-Three parallel jobs on a self-hosted runner (see `.github/workflows/ci.yml`):
+Seven jobs on a self-hosted runner, chained from a `preflight` decision job
+(see `.github/workflows/ci.yml`; full reference:
+[`docs/ci_cd.md`](../docs/ci_cd.md)):
 
-1. **unit** — fast, no external deps
-2. **integration** — needs SCIP, clangd, rust-analyzer, bear
-3. **slow** — needs LLM API keys, GPU
+1. **preflight** — no tests; computes `should-run` / `run-serial` / `run-slow`
+2. **unit** — fast, no external deps (all unmarked tests)
+3. **integration** — read-only, parallel-safe; needs SCIP, clangd, rust-analyzer, bear
+4. **integration-serial** — repo-mutating `integration_serial` tests, run sequentially
+5. **scip-core** — builds `core/`, parity-checks the C++ decoder against the serial graphs
+6. **graph-consumer** — `integration_serial_consumer` tests reading the serial `graph.pkl`
+7. **slow** — LLM API keys, GPU; opt-in (schedule, `full`-tier dispatch, or `full-ci`/`slow-ci` PR label)
+
+The serial chain (4–6) runs only when the change touches the serial-chain
+path allowlist (chunking, dataset, graph, index, ls_index, core, and a few
+graph-related scripts/tests — see [`docs/ci_cd.md`](../docs/ci_cd.md)), on
+scheduled or `full`-tier dispatch runs, or when the PR carries the
+`full-ci`/`serial-ci` label. All other changes — including agent, eval,
+model, and web code — run only unit + integration.
 
 Skip mechanisms:
 - `paths-ignore`: `**.md`, `docs/**`, `LICENSE`, `.gitignore`

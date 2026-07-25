@@ -65,6 +65,7 @@ LanguageSpec(
     aliases=("ex",),
     chunker_language="example",
     chunker_aliases=("example", "ex"),
+    chunker_class="codenib.code_chunking.example_chunker:ExampleCodeChunker",
     chunk_extensions=(".ex",),
     gt_language="example",
     gt_extensions=(".ex",),
@@ -112,9 +113,10 @@ python scripts/scaffold_language.py java \
 
 The scaffold is dry-run by default. Add `--write` after reviewing the
 `LanguageSpec` snippet and planned files. Generated files are intentionally not
-registered in routers yet; fill in the implementation and tests before wiring
-the language into `create_chunker()`, `LSIndexer`, `GraphPatcher`, or core
-bindings. For `--graph-backend lsp`, the scaffold points the registry at the
+registered in routers yet; fill in the implementation and tests before
+registering `chunker_class` in the `LanguageSpec` or wiring the language into
+`LSIndexer`, `GraphPatcher`, or core bindings. For `--graph-backend lsp`, the
+scaffold points the registry at the
 shared `GenericLSPIndexer` / `GenericLSPGraphDecoder` and does not generate
 per-language indexer/decoder files unless a server-specific backend is needed.
 
@@ -124,13 +126,15 @@ Add a chunker when the language should support retrieval or GT extraction.
 
 1. Create `codenib/code_chunking/{lang}_chunker.py`.
 2. Export the chunker from `codenib/code_chunking/__init__.py`.
-3. Extend `create_chunker()` to instantiate the chunker from the registry
-   normalized language key.
+3. Set `chunker_class="codenib.code_chunking.{lang}_chunker:XxxCodeChunker"`
+   on the `LanguageSpec`. `create_chunker()` is registry-driven: it loads the
+   chunker from this field and raises `Unsupported language` when a spec
+   leaves it unset, so there is no per-language factory branch to extend.
 4. Add repository-level tests under `test/chunker/`.
 
 Chunking-only support is valid. In that state:
 
-- `chunker_language` and `chunk_extensions` should be set.
+- `chunker_language`, `chunker_class`, and `chunk_extensions` should be set.
 - `graph_language`, graph backends, and patchers can remain unset.
 - User-facing code should advertise retrieval support, not full graph support.
 
@@ -163,12 +167,11 @@ backend. Use `graph_route="lsp"` for backend comparison and regression checks
 when a language has an LSP command, especially before promoting a SCIP
 candidate over an existing LSP graph route.
 
-Remaining SCIP cold-start candidates that should be evaluated before treating
-LSP or tree-sitter-only as final:
-
-| Language | Candidate | Current active graph | Promotion gate |
-| --- | --- | --- | --- |
-| Kotlin | `scip-java index` | generic LSP / Kotlin LS | JVM smoke, LSP alignment, Kotlin symbol normalization |
+No SCIP cold-start candidates are currently pending evaluation; every language
+with a known SCIP route has been promoted to an active
+`scip_cold_start=ScipColdStartOption(..., status="active")` entry. When a new
+candidate appears, record it here with its promotion gate before treating LSP
+or tree-sitter-only as final.
 
 Promoted SCIP cold-start routes are still expected to keep their LSP baseline
 reachable through `graph_route="lsp"`:
@@ -176,6 +179,7 @@ reachable through `graph_route="lsp"`:
 | Language | Active SCIP route | LSP regression route |
 | --- | --- | --- |
 | Java | `scip-java index` | generic LSP / JDT LS |
+| Kotlin | `scip-java index` | generic LSP / Kotlin LS |
 | C# | `scip-dotnet` | generic LSP / csharp-ls |
 | Scala | `scip-java index` | none registered |
 | PHP | `PHPHybridIndexer` prefers `scip-php` for Composer projects | generic LSP / Intelephense |
@@ -244,9 +248,9 @@ make toolchain-doctor
 The bootstrap targets install tools under `CODENIB_SCIP_TOOLS_DIR`, defaulting
 to `${CODENIB_TEMP_DIR}/scip-tools`, instead of relying on global npm/go/gem/dotnet
 state. `make multilang-tools` is the no-sudo toolchain subset used by the smoke
-targets. It installs active SCIP/LSP tools for Python, Go, Rust, Java, C#,
-Ruby, Scala, PHP, JavaScript, TypeScript, and C/C++ plus candidate SCIP/LSP
-tools for Kotlin, plus Zoekt binaries used by MCP/search integration. The
+targets. It installs active SCIP/LSP tools for Python, Go, Rust, Java, Kotlin,
+C#, Ruby, Scala, PHP, JavaScript, TypeScript, and C/C++, plus Zoekt binaries
+used by MCP/search integration. The
 TypeScript path also installs local `yarn` and `pnpm` wrappers for workspace
 repositories. Use `make active-scip-env` to print the exact PATH, `GOBIN`,
 `GOPATH`, `DOTNET_ROOT`, and gem environment needed by manual commands.
@@ -333,8 +337,8 @@ packages, `curl`, `git`, `gzip`, and `unzip`. Override `SCIP_JDK_PACKAGE` or
 Use `make scip-jvm-compat-system-deps-ubuntu` when a compatibility probe needs
 an older JDK such as OpenJDK 11 for legacy Gradle projects.
 
-`make scip-cold-start-tools` installs reproducible local copies of active
-Java/C#/Ruby/Scala SCIP tools and the Kotlin candidate toolchain under
+`make scip-cold-start-tools` installs reproducible local copies of the active
+Java/Kotlin/C#/Ruby/Scala SCIP toolchains under
 `CODENIB_SCIP_TOOLS_DIR`, defaulting to `${CODENIB_TEMP_DIR}/scip-tools`. It
 installs `scip-java`, Gradle, SBT, .NET SDK channels 8.0 and 10.0,
 `scip-dotnet`, `csharp-ls`, Bundler, and `scip-ruby`. Ruby gem installation uses
@@ -402,12 +406,14 @@ against JDT LS. On the tiny Maven smoke, this keeps symbol and containment
 alignment strict while leaving constructor reference-count differences as an
 informational metric.
 
-The Kotlin candidate path uses the same scip-java command but requires Gradle
+The Kotlin active SCIP path uses the same scip-java command but requires Gradle
 or another build path that emits SemanticDB. Its decoder accepts `.kt`
 documents, uses owner descriptors for member containment when scip-java omits
 `enclosing_range`, and keeps top-level function display names stable. Kotlin
-generated-smoke alignment against Kotlin LS should stay strict-green for symbols
-and containment; real-repo alignment is still required before promotion.
+was promoted after the generated-smoke and KotlinPoet 2.2.0 LSP alignment
+gates; generated-smoke alignment against Kotlin LS should stay strict-green for
+symbols and containment, and `graph_route="lsp"` remains the Kotlin LS
+regression baseline.
 
 The Scala active SCIP path also uses scip-java. Generated smoke proves a Gradle
 Scala 2.13 project, and the real `sbt/io` gate proves an SBT Scala 2.x project

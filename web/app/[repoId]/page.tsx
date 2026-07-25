@@ -73,11 +73,9 @@ function TocTree({
   );
 }
 
-// What it cost to reach the selected commit. Every string here is a *measured*
-// claim — how long the build or patch took, how much changed. None of it may
-// imply the patched graph was checked against a fresh rebuild: until the
-// exactness guard lands, every incremental result is recorded
-// verified=false, checked=false, and this line must not out-claim the manifest.
+// Timed cold graph-build or warm patch section for the selected snapshot. This
+// excludes LSP startup and transition overhead and does not imply equality with
+// a fresh rebuild.
 function commitEvidence(commits: CommitRef[], selected?: string): string | null {
   if (!commits.length) return null;
   const i = commits.findIndex((c) => c.sha === selected);
@@ -89,7 +87,7 @@ function commitEvidence(commits: CommitRef[], selected?: string): string | null 
   }
 
   const parts: string[] = [];
-  if (c.build_seconds != null) parts.push(`patched in ${c.build_seconds.toFixed(2)}s`);
+  if (c.build_seconds != null) parts.push(`warm patch · ${c.build_seconds.toFixed(2)}s`);
   if (c.changed_files != null) {
     parts.push(`${c.changed_files} file${c.changed_files === 1 ? "" : "s"} changed`);
   }
@@ -280,7 +278,7 @@ export default function WikiPageView() {
           {commits.length > 0 ? (
             <div className="rail-sub commit-picker">
               <label className="commit-picker-label" htmlFor="commit-select">
-                Viewing commit
+                Graph snapshot
               </label>
               <select
                 id="commit-select"

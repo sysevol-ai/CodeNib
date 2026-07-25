@@ -66,10 +66,13 @@ graph = indexer.run_pipeline(skip_level='graph')
 
 ## Output Directory Structure
 
-By default, cache files are stored in `/tmp/<project_name>/`:
+By default, cache files are stored in `$TMPDIR/codenib/<project_name>/`
+(usually `/tmp/codenib/<project_name>/`). The root comes from
+`temp_state_dir()` in `codenib.paths` and can be relocated by setting the
+`CODENIB_TEMP_DIR` environment variable (see [branding](branding.md)):
 
 ```
-/tmp/my_project/
+/tmp/codenib/my_project/
 ├── index.scip        # SCIP binary index
 ├── index.decoded     # Decoded protobuf text
 └── graph.pkl         # Serialized CodeGraph (pickle format)
@@ -107,24 +110,23 @@ graph = indexer.run_pipeline(skip_level='graph')  # Fast!
 
 ## CLI Usage
 
-> **Note:** ls_router currently has no CLI entry point (no `__main__` / argparse). Use the Python API above instead.
+> **Note:** ls_router currently has no CLI entry point (no `__main__` / argparse). Use the Python API instead:
 
-```bash
+```python
+from codenib.ls_router import LSIndexer
+
 # Full pipeline
-python -m codenib.ls_router \
-  --project-dir /path/to/repo \
-  --output graph.pkl
+graph = LSIndexer(project_root="/path/to/repo").run_pipeline(skip_level=None)
 
 # Use graph cache
-python -m codenib.ls_router \
-  --project-dir /path/to/repo \
-  --skip-level graph
+graph = LSIndexer(project_root="/path/to/repo").run_pipeline(skip_level='graph')
 
 # Custom output directory
-python -m codenib.ls_router \
-  --project-dir /path/to/repo \
-  --output-dir /cache/instance-123 \
-  --skip-level graph
+indexer = LSIndexer(
+    project_root="/path/to/repo",
+    output_dir="/cache/instance-123",
+)
+graph = indexer.run_pipeline(skip_level='graph')
 ```
 
 ## Performance Comparison

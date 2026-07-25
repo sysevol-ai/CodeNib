@@ -21,10 +21,11 @@ from codenib.agent.boundary import to_agent_repr
 class WindowStats(BaseModel):
     """Cold-vs-patched cost for a repo's commit window.
 
-    Derived once, in ``commit_window.window_stats``. ``speedup`` is ``None``
-    when no defensible ratio exists (no cold anchor, no patched transitions, or
-    a zero denominator) -- surfaces must then make no claim rather than
-    substituting a default.
+    Derived once, in ``commit_window.window_stats``. ``speedup`` is the cold
+    graph-build time divided by mean warm patch time, not an end-to-end re-index
+    ratio. It is ``None`` when no defensible ratio exists (no cold anchor, no
+    patched transitions, or a zero denominator) -- surfaces must then make no
+    claim rather than substituting a default.
     """
 
     commit_count: int = 0

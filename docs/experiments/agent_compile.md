@@ -44,6 +44,8 @@ python scripts/agent_compile/aggregate.py \
 exactly the directory `aggregate.py --cells-dir` consumes. `--metrics-k`
 selects which `files@k` / `symbols@k` cutoffs the report folds (default
 `1 3 5 10`); narrowing it to `1` gives the discriminating top-1 view used below.
+The frozen per-subset report for this run is archived at
+[agent_compile_runs/sample/phase2_report.md](agent_compile_runs/sample/phase2_report.md).
 
 ## Setup
 
@@ -179,7 +181,8 @@ graph; system prompt rewritten as an explore→locate→expand→read→answer
 workflow + `<environment>` block; **localization scored from the agent's final
 answer + the files it `file_read` + retrieval-skill nodes** (not skill nodes
 alone); `max_turns` 20→10. Re-run: reps=1 on 3 shared instances
-(`astropy-12907` py, `caddy-5870` go, `axios-4731` ts).
+(`astropy-12907` py, `caddy-5870` go, `axios-4731` ts). Frozen report:
+[agent_compile_runs/sample_defaults_v2/phase2_report.md](agent_compile_runs/sample_defaults_v2/phase2_report.md).
 
 ## Baseline (no defaults) vs default tool layer — same 3 instances
 
@@ -247,9 +250,10 @@ file layer — cheapest at full accuracy).
 
 ## Corroboration at larger N (5 instances, reps=2, max_turns=20)
 
-A fuller default-tool run over all 5 instances × 2 reps (70 cells,
-`docs/experiments/agent_compile_runs/sample_defaults/`) confirms the headline results and
-strengthens two of them:
+A fuller default-tool run over all 5 instances × 2 reps (70 cells; frozen
+report:
+[agent_compile_runs/sample_defaults/phase2_report.md](agent_compile_runs/sample_defaults/phase2_report.md))
+confirms the headline results and strengthens two of them:
 
 - **`graph_expand` invocation = 0 % across all 70 cells** — the agent never
   reaches for it once file tools exist, regardless of subset, instance, or
@@ -926,7 +930,7 @@ context is not more localized truth; distractors cost both tokens and accuracy.
 
 The graph fails in the agent loop but the composer (search seeds → call-graph
 expansion) is a legitimate **retrieval pipeline**. Evaluated as a retriever
-(`scripts/agent_compile/graphrag_retrieve.py`, files@k recall vs ground truth,
+(`scripts/retrieval_ablation/graphrag_retrieve.py`, files@k recall vs ground truth,
 no LLM) over all **100 codenib-base** instances:
 
 | recall@k | search-only | GraphRAG (search+graph) | GraphRAG + identifier seeding |

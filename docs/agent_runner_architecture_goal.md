@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 # Agent Runner Architecture Goal
 
 Status: Active architecture program
-Last revised: 2026-07-05
+Last revised: 2026-07-25
 
 This page is the durable plan for the post-#271 agent runner work. PR #271 stays
 as a spike and evidence bundle, not as a merge candidate. The useful pieces must
@@ -108,14 +108,15 @@ The next work should be ordered by architecture leverage, not by whichever
 benchmark cell is currently easiest to improve.
 
 1. **M7a: Context ledger primitives.**
-   Add a small `codenib/agent/runtime` contract for context entries,
-   provenance, token/cost estimates, freshness, and consumption status. This PR
-   should not change model prompts or scorer behavior.
+   Landed in #291. `codenib/agent/runtime` provides the contract for context
+   entries, provenance, token/cost estimates, freshness, and consumption
+   status, without changing model prompts or scorer behavior.
 
 2. **M8a: Trace replay summary.**
-   Move run-diagnosis logic into `codenib.eval.agent_runner` so reports can
-   explain tool calls, skipped reads, repeated searches, injected context, and
-   final answer spans from structured records.
+   Landed in #292. Run-diagnosis logic lives in `codenib.eval.agent_runner`
+   (trace summaries), so reports can explain tool calls, skipped reads,
+   repeated searches, injected context, and final answer spans from structured
+   records.
 
 3. **M9a: Baseline task adapter.**
    Landed in #293. External agents and LSP workflows now share a task/result
@@ -160,24 +161,25 @@ benchmark cell is currently easiest to improve.
     ownership back into scripts.
 
 11. **M9e: LSP route agent-tool contract guard.**
-    Lock the agent-facing `lsp_route` skill contract so it remains a static
-    graph-backed tool with symbol-graph requirements, array symbol inputs, and
-    route anchors produced by the shared core helper rather than eval-only
-    baseline code.
+    Landed. A focused unit guard locks the agent-facing `lsp_route` skill
+    contract: it remains a static graph-backed tool with symbol-graph
+    requirements, array symbol inputs, and route anchors produced by the shared
+    core helper rather than eval-only baseline code.
 
 12. **M10e: Legacy shim namespace removal.**
-    Remove `scripts/agent_compile/lib` after the migration window so experiment
-    scripts no longer expose a core-looking library namespace. Reusable
-    agent-runner code must be imported from `codenib.eval.agent_runner`.
+    Landed. `scripts/agent_compile/lib` was removed after the migration window,
+    so experiment scripts no longer expose a core-looking library namespace.
+    Reusable agent-runner code must be imported from
+    `codenib.eval.agent_runner`.
 
 13. **M10f: Sweep execution ownership.**
-    Move reusable sweep execution semantics — harness validation, resume,
+    Landed. Reusable sweep execution semantics — harness validation, resume,
     prebuilt index loading, per-cell scoring, JSON record construction, and
-    transient failure persistence — into `codenib.eval.agent_runner.sweep`.
-    `scripts/agent_compile/run_sweep.py` should remain CLI/config override glue.
+    transient failure persistence — live in `codenib.eval.agent_runner.sweep`.
+    `scripts/agent_compile/run_sweep.py` remains CLI/config override glue.
 
 14. **M10g: Per-query sweep execution ownership.**
-    Move reusable many-queries-per-repo execution semantics into
+    Landed. Reusable many-queries-per-repo execution semantics live in
     `codenib.eval.agent_runner.query_sweep`. Dataset-specific scripts may
     load and normalize rows, but context reuse, per-query scoring, resume, and
     transient failure persistence belong to the package layer.
@@ -190,12 +192,12 @@ benchmark cell is currently easiest to improve.
     opt-in until promotion evidence shows raw behavior improvement.
 
 16. **M9g: Route-context seed specificity policy.**
-    Add a core seed policy for opt-in route context so experiments can compare
-    all extracted seeds against a specific-symbol gate without hard-coding
-    instance names or scorer behavior. Generic lowercase seeds such as
-    backticked common words should not trigger graph route startup context under
-    the specific policy; qualified, CamelCase, all-caps, or mixed alpha-digit
-    symbols may still route.
+    Landed. Opt-in route context carries a core seed policy (`all` /
+    `specific`) so experiments can compare all extracted seeds against a
+    specific-symbol gate without hard-coding instance names or scorer behavior.
+    Generic lowercase seeds such as backticked common words do not trigger
+    graph route startup context under the specific policy; qualified,
+    CamelCase, all-caps, or mixed alpha-digit symbols may still route.
 
 ## Current Boundary Decisions
 

@@ -20,8 +20,9 @@ A skill is a package directory containing:
 - `executor.py` — a `create_executor(context) -> Callable` factory returning the
   execution function. `context` is the typed op-context dataclass for the skill's
   type (`RetrieveContext` / `RerankContext` / `TransformContext` / `ExpandContext`);
-  `custom` composer skills (`codenib_context`, `bm25_search`) instead receive a
-  typed `ComposerContexts` bundle (`codenib/agent/skills/context.py`).
+  `custom` composer skills (`codenib_context`, `bm25_search`,
+  `crossencoder_rerank`) instead receive a typed `ComposerContexts` bundle
+  (`codenib/agent/skills/context.py`).
 
 `SkillLoader.load_all(skills_dir, contexts)` scans the directory, parses each
 `config.yaml`, reads `skill.md`, imports the executor, and registers a `SkillMetadata`
@@ -90,12 +91,14 @@ exposed, or `include_default_tools=False` to withhold them).
 | `lsp_definition` | expand | LSP-compatible go-to-definition for the identifier at an exact source position (repo-relative `file_path`, 1-based `line`, 0-based `character`), served by the runtime's selected semantic provider — static SCIP occurrences by default, live LSP when injected. |
 | `lsp_references` | expand | LSP-compatible find-references at an exact source position, with optional `include_declaration`; same position contract and provider selection as `lsp_definition`. |
 | `llm_rerank` | rerank | High-precision LLM-judged reranking to refine top results. |
+| `crossencoder_rerank` | custom | Fast pairwise reranking: scores each (query, candidate) pair jointly with a cross-encoder model — more accurate than embedding similarity, faster than `llm_rerank`; requires a `CrossEncoderContext` in the runner's skill contexts. |
 | `code_to_query` | transform | Packs retrieved code nodes into a reusable follow-up search query. |
 
 > Removed in the skill redesign (low in-loop value per the #133 cost study; see
 > `docs/experiments/agent_compile.md`): `graph_expand` and `impact_analysis`
 > (bulk/transitive graph nav — ignored when grep is present), `regex_search`
-> (subsumed by the `grep` default tool), `embedding_rerank` (use `llm_rerank`),
+> (subsumed by the `grep` default tool), `embedding_rerank` (use `llm_rerank`
+> or `crossencoder_rerank`),
 > `query_transform` (the LLM reformulates natively), `read_code_block` (use the
 > `read` default tool), and `bm25_names` (merged into `bm25_search` as
 > `names_only`).

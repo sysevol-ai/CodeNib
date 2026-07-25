@@ -53,13 +53,32 @@ The setup has three services running in separate terminals:
 
 ## Step 1 — Index a repo
 
-For any repo you want to explore, build its BM25 index:
+For any repo you want to explore, build its BM25 index and register it in one
+command:
 
 ```bash
 # Clone the repo (skip if already cloned)
 git clone https://github.com/<owner>/<repo> ~/projects/<repo>
 
-# Build indexes
+# Build the index and register the repo
+conda activate codenib
+cd ~/projects/CodeNib/CodeNib
+python scripts/index_repo.py /absolute/path/to/your/repo
+```
+
+The script auto-detects the language from file extensions (override with
+`--language go` — comma- or slash-separated values such as
+`javascript/typescript` also work), builds the BM25 index under
+`<repo>/.codenib_cache/`, and registers the repo in
+`.codenib_qa/qa_registry.json` (change the path with `--registry`). Restart
+the backend afterwards to pick up the new repo.
+
+### What happens underneath (manual flow)
+
+`scripts/index_repo.py` drives `IndexCompiler` and writes the registry entry
+for you. Doing the same by hand:
+
+```bash
 conda activate codenib
 cd ~/projects/CodeNib/CodeNib
 python - <<'EOF'
@@ -183,12 +202,18 @@ To regenerate, delete that directory.
 
 ## Running over SSH
 
-If accessing from a remote machine, forward both ports — the browser calls the
-backend directly:
+With the default or another loopback API configuration, forward port 3000
+only:
 
 ```bash
-ssh -L 3000:localhost:3000 -L 8000:localhost:8000 <main-machine>
+ssh -L 3000:localhost:3000 <main-machine>
 ```
+
+The browser talks same-origin to the Next.js dev server, which proxies
+`/api/*` server-side to the FastAPI backend at `CODENIB_API_BASE` (default
+`http://127.0.0.1:8000`; see `web/next.config.js`) — port 8000 does not need to
+be forwarded. A non-loopback `NEXT_PUBLIC_API_BASE` bypasses this proxy and
+must be browser-reachable with suitable CORS configuration.
 
 If the LLM server is on a different node than the backend, only the backend
 needs to reach port 8080 on the GPU node — the browser never talks to port 8080

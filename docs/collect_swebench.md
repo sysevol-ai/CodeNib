@@ -12,7 +12,7 @@ This guide covers how to use the `collect_swebench.sh` script to sample represen
 
 The collection pipeline:
 
-1. Loads SWE-bench datasets (Python from SWE-bench Lite, others from SWE-bench Multilingual)
+1. Loads SWE-bench datasets (Python from SWE-bench Verified, others from SWE-bench Multilingual)
 2. Selects top repositories per language by instance count
 3. Samples instances per repo with patch-size diversity
 4. Classifies difficulty (low/medium/high) using a Claude agent

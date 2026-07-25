@@ -1,6 +1,7 @@
 # code_chunking/ — rules
 
-Tree-sitter chunkers, one per language (`python`, `go`, `cpp`, `csharp`, `rust`, `java`, `ruby`, `php`, `kotlin`, `js`).
+Tree-sitter chunkers, one per language (`python`, `go`, `cpp`, `csharp`, `rust`,
+`java`, `ruby`, `php`, `kotlin`, `swift`, `scala`, `lua`, `js`).
 The authoritative reference for chunk depths and the full per-language
 `chunk_type` tables is [`README.md`](./README.md) — read it before adding or
 changing a chunker. This file is the short list of rules that bite.
@@ -14,10 +15,12 @@ changing a chunker. This file is the short list of rules that bite.
 - **`.c` files use the `cpp` chunker.** There is no separate C chunker; the
   language→chunker map sends `.c` to `cpp`. Forgetting this produces empty
   `code_blocks` (the bug that silently broke redis/jqlang instances).
-- **C#, Java, Ruby, PHP, and Kotlin are chunker/GT/agent-only for now.** The `.cs`,
-  `.java`, `.rb`, `.php`, and `.kt` chunkers are registered for tree-sitter chunking
-  and ground-truth extraction, but graph/LSP/core backend support is still
-  intentionally unset in the language registry.
+- **Graph backends are per-language — check `codenib/languages.py`, don't
+  assume.** C#, Java, Ruby, PHP, Kotlin, and Scala have *active* SCIP cold-start
+  routes in the language registry (`scip-dotnet` / `scip-java` / `scip-ruby` /
+  `scip-php`), most with an LSP fallback (`graph_route='lsp'`); Ruby is also
+  core-decoder accelerated. Only Swift and Lua are chunker/GT/agent-only (no
+  graph/LSP backend registered), and C/C++ cold-starts via clangd, not SCIP.
 - **Chunk depth** (`chunk_depth` on `BaseCodeChunker`): L0 = whole file
   (skeleton when `skeleton_mode`), L1 = top-level symbols, L2 = nested
   methods/members (default; with `l2_level_exclusive=True` the L1 containers are

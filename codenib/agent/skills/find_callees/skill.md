@@ -8,4 +8,4 @@ SPDX-License-Identifier: Apache-2.0
 
 "What does this function call?" — outgoing call-graph edges. Use to follow a
 symbol into its dependencies. Returns a compact list (name, file:line); call
-file_read for the bodies you care about.
+read for the bodies you care about.

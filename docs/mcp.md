@@ -64,7 +64,7 @@ Only tools whose backing views are fresh and available can return results.
 
 | Tool | Backing view | Granularity | Use for |
 |---|---|---|---|
-| `search_semantic` | `vector` | symbol (L0/L1/L2) | Natural-language or conceptual queries |
+| `search_semantic` | `vector` | file/symbol (L0/L2) | Natural-language or conceptual queries |
 | `search_bm25` | `bm25` | symbol | Exact names and keyword lookups |
 | `search_regex` | `symbol_graph` | symbol | Structural pattern matching |
 | `search_zoekt` | `zoekt` | file | Fast substring or regex search over files |

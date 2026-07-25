@@ -91,3 +91,39 @@ The archive normalizes timestamps and ownership, uses a single top-level
 directory, and writes a sibling `.sha256` file. Generated analyses should be
 written outside the staged bundle unless they were selected by the manifest;
 otherwise the complete-inventory verifier will reject the modified copy.
+
+## Sweep Protocol Records
+
+Agent query sweeps self-record their protocol, so bundling a sweep's output
+directory captures full provenance without extra bookkeeping. `run_query_sweep`
+(`codenib/eval/agent_runner/query_sweep.py`) writes a summary JSON
+(`query_sweep_summary.json` by default) whose top-level `protocol` block pins
+the run configuration:
+
+- **Identity and model**: `sweep_id`, `model`, `model_revision` — the provider
+  or model-server revision recorded for experiment provenance. Immutable local
+  revisions must also be enforced when launching the server.
+- **Dataset**: `dataset`, `dataset_revision`, `split`, plus the applied
+  filters `categories`, `max_queries`, and `max_instances`.
+- **Harness**: `subsets` (the per-arm skill lists), `preload` (per-arm
+  context pre-load recipes), `reps`, `max_turns`, `max_context_tokens`,
+  `max_tokens`, `temperature`, and `topk`.
+- **Embeddings**: `embedding_model` and `embedding_revision`. Experiments
+  should set the revision whenever the provider accepts mutable model ids such
+  as `main`.
+- **Selection and free-form context**: `query_selection` and `run_metadata`
+  (an arbitrary JSON-serializable mapping from the sweep config).
+
+`query_selection` names the deterministic per-instance query capping strategy:
+`dataset_order` takes the first `max_queries` rows, while
+`category_round_robin` draws round-robin from category buckets sorted by name,
+rotating the starting category per instance. Reruns of the same config
+therefore select the same queries.
+
+Alongside `protocol`, the summary records the outcome of every cell so resumed
+runs are auditable: `completed` (cells run this invocation), `cached` (cells
+whose per-cell JSON already existed and were reused under `resume`), `skipped`
+(instances without the required prebuilt indexes, with a reason), and `failed`
+(cell- or instance-level failures, each with a reason). Bundle the sweep
+output directory — summary plus `cells/` — with the manifest flow above to
+freeze both the protocol and the per-cell results.

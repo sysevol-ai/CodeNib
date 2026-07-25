@@ -50,9 +50,12 @@ def window_stats(commits: List[dict]) -> Optional[dict]:
     the API and a third in the frontend is how two different numbers end up on
     two different slides. Every surface renders what this returns.
 
-    ``speedup`` is ``None`` -- never ``NaN`` or ``inf`` -- when there is no cold
-    anchor, no patched transitions, or either figure is zero. Callers must treat
-    that as "no claim available" rather than substituting a default.
+    ``speedup`` compares the successful cold graph build with mean warm
+    ``patch_files()`` time. It excludes language-server startup, diff detection,
+    checkout, and snapshot serialization; it is not an end-to-end re-index
+    speedup. The value is ``None`` -- never ``NaN`` or ``inf`` -- when there is
+    no cold anchor, no patched transitions, or either figure is zero. Callers
+    must treat that as "no claim available" rather than substituting a default.
 
     Zero-cost transitions stay in the mean: a transition that touched no indexed
     source legitimately cost 0.00s, and dropping it would flatter the result.

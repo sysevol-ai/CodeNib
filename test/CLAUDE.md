@@ -8,18 +8,27 @@ Mirrors the `codenib/` package layout. Loads on top of the project-wide
 | Marker | Scope | Duration |
 |--------|-------|----------|
 | _(none)_ | Unit — pure logic, mocks only | ~1 min |
-| `integration` | Repo cloning, SCIP indexing, chunkers | ~15 min |
+| `integration` | External repos, **read-only / parallel-safe**: chunkers, fixture-based SCIP | ~2 min |
+| `integration_serial` | **Mutates shared repos** (SCIP indexing, `process_instance`, `git checkout`/`apply`) — must run sequentially | ~25 min |
+| `integration_serial_consumer` | Consumes the `graph.pkl` written by `integration_serial` (runs in a separate downstream job) | ~5 min |
 | `slow` | LLM API calls, GPU embeddings | ~15 min |
 
 ```bash
-pytest -m "not slow and not integration" -x   # unit only
-pytest -m integration                          # integration only
+pytest -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x  # unit only
+pytest -m "integration and not slow"           # parallel-safe integration
+pytest -m integration_serial                   # serial (repo-mutating)
+pytest -m integration_serial_consumer          # graph.pkl consumers
 pytest -m slow                                 # slow only
 ```
 
-A new test defaults to the unit tier — only add `@pytest.mark.integration`
-or `@pytest.mark.slow` if it actually needs the heavier deps. The three CI jobs
-key off exactly these markers.
+A new test defaults to the unit tier — only add a marker if it actually needs
+the heavier deps, and pick the right tier: anything that *mutates* a shared
+repo must be `integration_serial`, never plain `integration` — the
+`integration` job runs parallel under pytest-xdist and a mutating test breaks
+it. The CI jobs key off exactly these markers (`unit`, `integration`,
+`integration-serial`, `graph-consumer`, `slow`; `scip-core` runs
+`test/scip/test_scip_core.py` directly) — see
+[`docs/ci_cd.md`](../docs/ci_cd.md) for the job chain.
 
 ## Fixtures & caches
 

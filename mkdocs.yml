@@ -90,6 +90,7 @@ nav:
   - Operations:
       - Naming: branding.md
       - Releasing: releasing.md
+      - Namespace Migration: codenib_namespace_migration.md
       - CI/CD: ci_cd.md
       - Evaluation Artifact Bundles: evaluation_artifacts.md
       - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md

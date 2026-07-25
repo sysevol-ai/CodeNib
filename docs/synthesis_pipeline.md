@@ -147,9 +147,14 @@ and `stance`.
 - `normalize_synthesis_record(row, config_name)` projects a raw HF row into the
   schema above. It tolerates legacy column names (`question` → `query`,
   `target_symbols` → `gt_symbols`, `target_files` → `gt_files`,
-  `target_symbol_nodes` → `gt_symbol_nodes`, `query_type`/`difficulty` →
-  `category`), fills `language_group` from the config when missing, stamps
-  `source_config`, and computes `gt_code_blocks_count`.
+  `query_type`/`difficulty` → `category`), fills `language_group` from the
+  config when missing, stamps `source_config`, and computes
+  `gt_code_blocks_count`. There is no fallback for legacy
+  `target_symbol_nodes`: a row carrying only that column normalizes to empty
+  `gt_symbol_nodes` with `gt_code_blocks_count=0`, and still passes validation
+  because the empty-ground-truth check only inspects `gt_files`/`gt_symbols`.
+  Rename that column to `gt_symbol_nodes` upstream (the generation scripts
+  under `scripts/` already do) before normalizing legacy rows.
 - `validate_synthesis_records(rows, *, expected_category_counts=None, compare_category_distribution=True)`
   returns a structured report (`row_count`, `by_config`, `by_category`,
   `by_config_category`, `issues`, `error_count`, `warning_count`). It flags

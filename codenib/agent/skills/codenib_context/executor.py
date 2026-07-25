@@ -10,7 +10,7 @@ internally — search for entry-point symbols (bm25 + embedding), then
 return a compact, deduped, budget-capped set. This is the graph-aware harness
 piece: the graph is used regardless of whether the model would have chosen a
 graph tool itself, while staying token-cheap (names + file:line + relation, no
-code bodies — the agent file_reads the few it needs).
+code bodies — the agent reads the few it needs).
 
 Skill type is ``custom`` so the loader hands it a typed ``ComposerContexts``
 bundle (it needs both the ``retrieve`` and ``expand`` contexts).
