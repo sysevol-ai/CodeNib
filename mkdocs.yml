@@ -4,6 +4,7 @@
 
 site_name: CodeNib
 site_description: Source-linked repository context for coding agents and developers
+site_url: https://sysevol-ai.github.io/CodeNib/
 repo_url: https://github.com/sysevol-ai/CodeNib
 repo_name: sysevol-ai/CodeNib
 
@@ -88,6 +89,7 @@ nav:
       - GT Locator: gt_locator.md
   - Operations:
       - Naming: branding.md
+      - Releasing: releasing.md
       - CI/CD: ci_cd.md
       - Evaluation Artifact Bundles: evaluation_artifacts.md
       - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md

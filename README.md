@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 <div align="center">
-  <img src="assets/codenib_logo.svg" alt="CodeNib" width="560">
+  <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_logo.svg" alt="CodeNib" width="560">
   <h1>Repository context, ready for agents and humans</h1>
   <p>
     Build a source-linked Wiki and reusable search indexes from any local repository.
@@ -13,18 +13,18 @@ SPDX-License-Identifier: Apache-2.0
   <p>
     <a href="#quickstart">Quickstart</a>
     &nbsp;&middot;&nbsp;
-    <a href="docs/index.md">Documentation</a>
+    <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/index.md">Documentation</a>
     &nbsp;&middot;&nbsp;
-    <a href="docs/mcp.md">MCP</a>
+    <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/mcp.md">MCP</a>
     &nbsp;&middot;&nbsp;
-    <a href="docs/language_capabilities.md">Languages</a>
+    <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md">Languages</a>
     &nbsp;&middot;&nbsp;
     <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
   </p>
   <p>
     <a href="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml"><img src="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
-    <a href="pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>
+    <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+    <a href="https://github.com/sysevol-ai/CodeNib/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>
     <img src="https://img.shields.io/badge/Release-Developer_Preview-EA580C.svg" alt="Developer Preview">
   </p>
 </div>
@@ -55,11 +55,12 @@ codenib doctor --require core --require wiki
 codenib index /path/to/repository
 ```
 
-See the [Quickstart](docs/quickstart.md) for ports, reusable manifests, presets,
-and troubleshooting.
+See the
+[Quickstart](https://github.com/sysevol-ai/CodeNib/blob/main/docs/quickstart.md)
+for ports, reusable manifests, presets, and troubleshooting.
 
 <p align="center">
-  <img src="assets/codenib_wiki.png" alt="CodeNib Wiki showing a source-linked overview of the CodeNib repository" width="100%">
+  <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_wiki.png" alt="CodeNib Wiki showing a source-linked overview of the CodeNib repository" width="100%">
 </p>
 
 ## Choose A Profile
@@ -78,8 +79,9 @@ codenib wiki /path/to/repository --preset semantic
 
 The `full` profile also needs the relevant SCIP/LSP and Zoekt binaries. Backend
 availability differs by language; consult the
-[Language Capabilities](docs/language_capabilities.md) matrix and
-[SCIP setup](docs/scip_index.md).
+[Language Capabilities](https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md)
+matrix and
+[SCIP setup](https://github.com/sysevol-ai/CodeNib/blob/main/docs/scip_index.md).
 
 ## Connect An Agent
 
@@ -94,7 +96,8 @@ codenib mcp /path/to/repository
 
 The MCP server exposes BM25, semantic, regex, Zoekt, dependency, and static
 navigation tools when their backing views are available. See
-[MCP Server](docs/mcp.md) for client configuration and tool contracts.
+[MCP Server](https://github.com/sysevol-ai/CodeNib/blob/main/docs/mcp.md)
+for client configuration and tool contracts.
 
 ## What CodeNib Provides
 
@@ -108,16 +111,16 @@ navigation tools when their backing views are available. See
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 
 Language support varies by surface. The generated
-[capability matrix](docs/language_capabilities.md) records chunking, graph,
-incremental, and C++ decoder support.
+[capability matrix](https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md)
+records chunking, graph, incremental, and C++ decoder support.
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md)
-- [MCP Server](docs/mcp.md)
-- [Web UI](docs/web_demo.md)
-- [Language Capabilities](docs/language_capabilities.md)
-- [Architecture and experiments](docs/index.md)
+- [Quickstart](https://github.com/sysevol-ai/CodeNib/blob/main/docs/quickstart.md)
+- [MCP Server](https://github.com/sysevol-ai/CodeNib/blob/main/docs/mcp.md)
+- [Web UI](https://github.com/sysevol-ai/CodeNib/blob/main/docs/web_demo.md)
+- [Language Capabilities](https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md)
+- [Architecture and experiments](https://github.com/sysevol-ai/CodeNib/blob/main/docs/index.md)
 
 Build the documentation site locally with:
 
@@ -136,8 +139,9 @@ make test
 ```
 
 The test suite is split into unit, integration, serial integration, core,
-graph-consumer, and slow tiers. See [CI/CD](docs/ci_cd.md) before running the
-credential- or toolchain-dependent tiers.
+graph-consumer, and slow tiers. See
+[CI/CD](https://github.com/sysevol-ai/CodeNib/blob/main/docs/ci_cd.md) before
+running the credential- or toolchain-dependent tiers.
 
 ## Status
 
@@ -145,10 +149,21 @@ CodeNib `0.1.0` is a developer preview. The CLI and manifest format are usable,
 but public interfaces may still change before a stable release. Historical
 research artifacts retain their published dataset identifiers; the maintained
 package, import namespace, commands, and repository use `CodeNib`. See
-[Naming](docs/branding.md).
+[Naming](https://github.com/sysevol-ai/CodeNib/blob/main/docs/branding.md).
+
+## Project
+
+[Changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md)
+&nbsp;&middot;&nbsp;
+[Contributing](https://github.com/sysevol-ai/CodeNib/blob/main/CONTRIBUTING.md)
+&nbsp;&middot;&nbsp;
+[Security](https://github.com/sysevol-ai/CodeNib/blob/main/SECURITY.md)
+&nbsp;&middot;&nbsp;
+[Citation](https://github.com/sysevol-ai/CodeNib/blob/main/CITATION.cff)
 
 ## License
 
-CodeNib is licensed under the [Apache License, Version 2.0](LICENSE).
+CodeNib is licensed under the
+[Apache License, Version 2.0](https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE).
 Contributions previously made under the MIT License are retained under the
 terms of Section 4 of Apache 2.0.

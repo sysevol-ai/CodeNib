@@ -1,0 +1,79 @@
+cff-version: 1.2.0
+message: "If you use CodeNib in research, please cite this software."
+title: "CodeNib"
+type: software
+version: 0.1.0
+abstract: >-
+  CodeNib compiles repositories into reusable lexical, semantic, and
+  structural views and serves source-linked context to coding agents and
+  developers.
+authors:
+  - family-names: Yu
+    given-names: Zhongming
+    email: zhy025@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Yu
+    given-names: Hengjia
+    email: hey015@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Yuan
+    given-names: Boqin
+    email: b4yuan@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Zhao
+    given-names: Shuting
+    email: shz106@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Chen
+    given-names: Yizhao
+    email: yic138@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Dokania
+    given-names: Aryan
+    email: adokania@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Jagtap
+    given-names: Mihir
+    email: mjagtap@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Chang
+    given-names: Jiayu
+    email: cjy1125@stanford.edu
+    affiliation: Stanford University
+  - family-names: Ma
+    given-names: Yitong
+    email: yim030@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Jayswal
+    given-names: Yash
+    email: yjayswal@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Ni
+    given-names: Wentao
+    email: w2ni@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Zhang
+    given-names: Hejia
+    email: hez024@ucsd.edu
+    affiliation: University of California San Diego
+  - family-names: Chen
+    given-names: Zhaoling
+    email: zhaoling.chen@email.ucr.edu
+    affiliation: University of California Riverside
+  - family-names: Deng
+    given-names: Gangda
+    email: gangdade@usc.edu
+    affiliation: University of Southern California
+  - family-names: Zhao
+    given-names: Jishen
+    email: jzhao@ucsd.edu
+    affiliation: University of California San Diego
+repository-code: "https://github.com/sysevol-ai/CodeNib"
+url: "https://github.com/sysevol-ai/CodeNib"
+license: Apache-2.0
+keywords:
+  - coding agents
+  - repository context
+  - code search
+  - static analysis
+  - Model Context Protocol
