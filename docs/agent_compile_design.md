@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -20,7 +20,7 @@ Last revised: 2026-06-01
 > skills were pruned (#196); the A0–A6 subset sweep is retired in favour of the
 > design-space arms; the deterministic `(language, has_stacktrace)` scenario
 > classifier is kept (the runner records it per cell). The CAR router runtime
-> (`codeminer/agent/compile.py`, `compile_table`) still exists; no compile_table
+> (`codenib/agent/compile.py`, `compile_table`) still exists; no compile_table
 > is fitted today. The fit/held-out **partition** scaffolding (#151/#190) has
 > been **removed** — this work is test-only, with no fit/validate split. The
 > rest of this document is the historical router design.
@@ -34,7 +34,7 @@ so the implementation phases can proceed without re-litigating them.
 The feature is referred to by two names that mean the same thing:
 
 * **agent compile** / `compile_table` — the descriptive name used in
-  the parent RFC and the codebase (`codeminer/agent/compile.py`,
+  the parent RFC and the codebase (`codenib/agent/compile.py`,
   `load_compile_table`, etc.). Keep this in code.
 * **CAR (Compile-Adaptive Router)** — short alias used in
   sub-issue titles, dashboards, and casual references (e.g.
@@ -109,7 +109,7 @@ explain residual variance worth adding.
 
 ### `has_stacktrace` regexes
 
-See `codeminer/agent/compile.py::_STACKTRACE_PATTERNS`. Patterns match
+See `codenib/agent/compile.py::_STACKTRACE_PATTERNS`. Patterns match
 *structural* runtime markers (e.g. Python `Traceback (most recent call
 last):` banner, Rust `thread 'X' panicked at`, Go `^panic: ` followed by
 a goroutine frame, Node `    at name (file:line)` frames, JVM
@@ -132,7 +132,7 @@ and *validate* it on held-out.
 **This scaffolding was removed.** The work is pure test/eval — there is no
 training or fit/validate exercise, so every instance is simply test. The
 `partition.py` splitter, its frozen `data/agent_compile/partition.json`,
-`build_codeminer_base_partition.py`, and their tests no longer exist; Phase 4
+`build_codenib_base_partition.py`, and their tests no longer exist; Phase 4
 (held-out validation) is dropped with them.
 
 ## Phase 0 — kill switch
@@ -186,7 +186,7 @@ data motivates it.
 | Phase | What | #109 prereqs |
 |-------|------|---------------|
 | 0 — kill switch | A0/A6 on the test corpus, kill-threshold check | none (Phase 1 of #109 already shipped: `allow_skills` + token tracking) |
-| 1 — ADR + `classify()` | this document + `codeminer/agent/compile.py` + tests | none |
+| 1 — ADR + `classify()` | this document + `codenib/agent/compile.py` + tests | none |
 | 2 — sweep | A0..A6 × model_matrix × harnesses | #109 Phase 3 (retry) + Phase 4 (`TokenBudgetedChatHistory`) |
 | 3 — wire runtime | `AgentRunner` reads `compile_table` at entry | Phase 2 output |
 

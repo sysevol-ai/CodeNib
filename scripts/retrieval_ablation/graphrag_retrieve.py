@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """GraphRAG retrieval pipeline — run as a SCRIPT, not an agent tool (#133).
 
-The ``codeminer_context`` composer (bm25 + embedding seeds -> call-graph
+The ``codenib_context`` composer (bm25 + embedding seeds -> call-graph
 expansion → assembled context) is GraphRAG over a code call-graph. The agent
 ablation showed it does not earn its keep as an in-loop agent tool (additive
 overhead). Its honest home is here: a deterministic RETRIEVAL method, evaluated
@@ -14,7 +14,7 @@ the agent baseline.
 This runner loads an instance's prebuilt indexes, runs the pipeline once, and
 reports ranked retrieval metrics vs ground truth. Use
 ``--no-graph`` to compare against search-only (isolates the graph's recall
-contribution, same as the agent-side CODEMINER_COMPOSER_NO_GRAPH ablation but
+contribution, same as the agent-side CODENIB_COMPOSER_NO_GRAPH ablation but
 with no LLM in the loop).
 
 Usage:
@@ -35,6 +35,8 @@ import traceback
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from codenib.paths import prebuilt_data_dir
 
 
 def _norm(p: str) -> str:
@@ -83,13 +85,10 @@ def _node_payload(nodes: List[Any], limit: int = 30) -> List[Dict[str, Any]]:
 
 def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
     """Run the GraphRAG composer once; return nodes + target metadata."""
-    from codeminer.agent.skills.registry import SkillRegistry
-    from codeminer.eval.agent_runner.prebuilt import (
-        repo_path_for,
-        stage_prebuilt_indexes,
-    )
-    from codeminer.eval.agent_runner.sweep import load_dataset_rows, load_full_contexts
-    from codeminer.eval.retrieval_eval import collect_target_blocks, collect_targets
+    from codenib.agent.skills.registry import SkillRegistry
+    from codenib.eval.agent_runner.prebuilt import repo_path_for, stage_prebuilt_indexes
+    from codenib.eval.agent_runner.sweep import load_dataset_rows, load_full_contexts
+    from codenib.eval.retrieval_eval import collect_target_blocks, collect_targets
 
     rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[instance_id]
@@ -102,7 +101,7 @@ def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
     repo_path = repo_path_for(prebuilt_dir, instance_id)
     stage_prebuilt_indexes(prebuilt_dir, instance_id, cache_dir)
     load_full_contexts(cfg, repo_path, cache_dir)
-    compose = SkillRegistry().get("codeminer_context").executor_fn
+    compose = SkillRegistry().get("codenib_context").executor_fn
     nodes = compose(query=query, seeds=5, max_results=30)
     ranked_files: List[str] = []
     for n in nodes:  # preserve composer order; dedup
@@ -120,22 +119,22 @@ def _retrieve(instance_id: str, cfg: Any, prebuilt_dir: str, cache_root: str):
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from codeminer.eval.agent_runner.sweep_config import SweepConfig as SampleConfig
+    from codenib.eval.agent_runner.sweep_config import SweepConfig as SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--k", type=int, nargs="+", default=[1, 5, 10])
-    ap.add_argument("--prebuilt-dir", default="/mnt/data/codeminer")
+    ap.add_argument("--prebuilt-dir", default=str(prebuilt_data_dir()))
     ap.add_argument(
         "--no-graph",
         action="store_true",
-        help="search-only (sets CODEMINER_COMPOSER_NO_GRAPH=1 for this process).",
+        help="search-only (sets CODENIB_COMPOSER_NO_GRAPH=1 for this process).",
     )
     args = ap.parse_args(argv)
 
     if args.no_graph:
-        os.environ["CODEMINER_COMPOSER_NO_GRAPH"] = "1"
+        os.environ["CODENIB_COMPOSER_NO_GRAPH"] = "1"
 
     instances = json.loads(args.instances_json.read_text())
     cache_root = os.path.join(
@@ -143,7 +142,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     cfg = SampleConfig(
         sweep_id="graphrag",
-        subsets={"CTX": ["codeminer_context"]},
+        subsets={"CTX": ["codenib_context"]},
         instances=instances,
         embedding_model="Qwen/Qwen3-Embedding-0.6B",
         embedding_dimension=1024,
@@ -161,7 +160,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     for i, inst in enumerate(instances, 1):
         t0 = time.time()
         try:
-            from codeminer.eval.retrieval_eval import (
+            from codenib.eval.retrieval_eval import (
                 evaluate_predictions,
                 nodes_to_spans,
                 score_localization_spans,

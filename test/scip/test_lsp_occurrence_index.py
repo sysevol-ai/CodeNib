@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
-from codeminer.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
+from codenib.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
 
 _DECODED = r"""
 metadata {

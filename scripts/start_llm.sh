@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 #
 # Start the llama-cpp-python OpenAI-compatible server on the GPU node.
@@ -8,7 +8,7 @@
 
 set -e
 
-CONDA_ENV="${CONDA_ENV:-codeminer}"
+CONDA_ENV="${CONDA_ENV:-codenib}"
 PORT="${LLM_PORT:-8080}"
 N_CTX="${N_CTX:-8192}"
 DEFAULT_MODEL="$HOME/.ollama/models/blobs/sha256-60e05f2100071479f596b964f89f510f057ce397ea22f2833a0cfe029bfc2463"

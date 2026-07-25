@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -17,12 +17,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
 
 bool debug_logging_enabled() {
-  static const bool enabled = std::getenv("CODEMINER_SCIP_DEBUG") != nullptr;
+  static const bool enabled = std::getenv("CODENIB_SCIP_DEBUG") != nullptr;
   return enabled;
 }
 
@@ -308,4 +308,4 @@ void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
   code_graph_.batch_add_edges(all_edges);
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

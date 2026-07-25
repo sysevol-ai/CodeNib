@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,7 +9,7 @@
 # The Python per-category run showed embedding pre-injection REGRESSES on
 # `traversal` (multi-hop: file-level files@5 1.0 -> 0.8) because semantic
 # candidates anchor on the wrong hop. Traversal needs STRUCTURE, so this probe
-# adds a graph recipe (codeminer_context composer: search seeds + call-graph
+# adds a graph recipe (codenib_context composer: search seeds + call-graph
 # expansion) and compares on the traversal queries (which carry real GT spans,
 # so symbol-level answer_rec is valid — no dataset regen needed).
 #

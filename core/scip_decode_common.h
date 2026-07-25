@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -15,7 +15,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 // Reusable language-neutral helpers for SCIP text-format decoders. Keep
 // language policy in language decoders; put only syntax/string primitives here.
@@ -144,4 +144,4 @@ private:
   std::string current_scope_;
 };
 
-} // namespace codeminer::core
+} // namespace codenib::core

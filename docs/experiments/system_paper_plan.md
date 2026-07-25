@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -101,12 +101,12 @@ python scripts/profiling/analyze_snapshot_reuse.py \
 
 | workload | records | instances | repositories | snapshots | reuse | records/snapshot |
 |---|---:|---:|---:|---:|---:|---:|
-| CodeMiner base | 100 | 100 | 25 | 100 | 0% | 1.0 |
+| CodeNib base | 100 | 100 | 25 | 100 | 0% | 1.0 |
 | synthesis | 500 | 25 | 25 | 25 | 95% | 20.0 |
 | combined | 600 | 100 | 25 | 100 | 83.3% | 6.0 |
 
 For the Qwen3-Embedding-0.6B profiles currently under
-`/mnt/data/codeminer/profile_log`, the 100 base snapshots required 16,180
+`${CODENIB_RESULTS_DIR}/profile_log`, the 100 base snapshots required 16,180
 observed build seconds (4.49 hours; median 113.9 seconds/snapshot). The 25
 snapshots used by synthesis required 4,472 seconds once, or 8.94 amortized
 seconds across each of 500 queries. These are measurements of the current
@@ -154,7 +154,7 @@ provider/profile/capability slices that meet a predeclared equivalence threshold
 and send all other requests to the live fallback. Transport failures are now
 reported as errors rather than being collapsed into valid empty LSP responses.
 The corrected reports live under
-`/mnt/data/codeminer/results/lsp_replay_v4`; aggregate them with
+`${CODENIB_RESULTS_DIR}/lsp_replay_v4`; aggregate them with
 `scripts/profiling/aggregate_lsp_replay.py`.
 
 These steady-state request latencies are not cold-index timings. On the same
@@ -220,7 +220,7 @@ configured nightly rust-analyzer toolchain, independently from the standalone
 live LSP binary. The confirmatory build study must separately report clean
 dependency cold start, warm toolchain build, and exact snapshot cache hit. The
 analysis artifact lives under
-`/mnt/data/codeminer/results/scip_build_pilot`; regenerate it with
+`${CODENIB_RESULTS_DIR}/scip_build_pilot`; regenerate it with
 `scripts/profiling/analyze_semantic_service_break_even.py`.
 
 Definition is a plausible promoted fast path for Go and Rust under these
@@ -229,7 +229,7 @@ TypeScript, and must fall back to live LSP. TypeScript also demonstrates that
 promotion cannot be global even within a capability; alias resolution and
 workspace state require a language/provider/profile-specific gate. Reports and
 exact request/graph hashes live under
-`/mnt/data/codeminer/results/lsp_replay_multilang_final`.
+`${CODENIB_RESULTS_DIR}/lsp_replay_multilang_final`.
 
 ### Provider protocol check
 
@@ -255,9 +255,9 @@ seconds and dominated the millisecond provider difference. This A/B validates
 provider wiring and serialization only. It is not an agent ablation because the
 prompt supplies the request and the harness forces the tool call. The
 five-repetition request replay remains the primary latency result. Reports live
-under `/mnt/data/codeminer/results/lsp_agent_ab_multilang`.
+under `${CODENIB_RESULTS_DIR}/lsp_agent_ab_multilang`.
 
-### CodeMiner Base agent ablation
+### CodeNib Base agent ablation
 
 The task-level study uses `fishmingyu/codeminer-base-dataset` test split at
 revision `4eb84e2e8918474969ce68c5b06facf14d6be604` (local dataset fingerprint
@@ -281,7 +281,7 @@ randomization and prompt caching disabled:
 |---|---|---|---|
 | `filesystem` | yes | no | none |
 | `live_lsp` | yes | definition + references | live JSON-RPC |
-| `codeminer_lsp` | yes | definition + references | static CodeNib index |
+| `codenib_lsp` | yes | definition + references | static CodeNib index |
 
 The model chooses whether and when to call LSP. There is no forced tool choice,
 request injection, preload, compact mode, graph route tool, or outcome-based
@@ -291,7 +291,7 @@ hashes. Native definition/reference schemas require `file_path`, `line`, and
 extension.
 
 The primary quality endpoint is answer-block recall@5 with a 5-point
-non-inferiority margin for `codeminer_lsp - live_lsp`. File recall@5, adoption,
+non-inferiority margin for `codenib_lsp - live_lsp`. File recall@5, adoption,
 turns, tokens, USD, completion, and fallback are secondary. Inference resamples
 repositories, then instances, then repetitions. Remote agent wall time and
 per-cell LSP duration are descriptive, not the request-latency claim.
@@ -306,28 +306,30 @@ Generate the planning manifest, prepare snapshot-addressed graphs, and then
 regenerate the manifest with strict artifact verification:
 
 ```bash
-HF_HOME=/mnt/conda/huggingface \
-codeminer-lsp-agent-study-manifest \
+HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}" \
+codenib-lsp-agent-study-manifest \
   --dataset-revision 4eb84e2e8918474969ce68c5b06facf14d6be604 \
-  --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json
+  --output-json ${CODENIB_RESULTS_DIR}/lsp_agent_base_study_manifest_v2.json
 
-export CODEMINER_SCIP_TOOLS_DIR="${CODEMINER_SCIP_TOOLS_DIR:-/tmp/codeminer-scip-tools}"
-export PATH="${CODEMINER_SCIP_TOOLS_DIR}/go-tools/bin:\
-${CODEMINER_SCIP_TOOLS_DIR}/go/bin:\
-${CODEMINER_SCIP_TOOLS_DIR}/node-tools/node_modules/.bin:\
-${CODEMINER_SCIP_TOOLS_DIR}:${PATH}"
-codeminer-lsp-agent-study-artifacts \
-  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json \
-  --source-root /mnt/data/codeminer \
-  --output-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v4 \
-  --reuse-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v3 \
+export CODENIB_HOME="${CODENIB_HOME:-$HOME/.codenib}"
+export CODENIB_TEMP_DIR="${CODENIB_TEMP_DIR:-${TMPDIR:-/tmp}/codenib}"
+export CODENIB_SCIP_TOOLS_DIR="${CODENIB_SCIP_TOOLS_DIR:-${CODENIB_TEMP_DIR}/scip-tools}"
+export PATH="${CODENIB_SCIP_TOOLS_DIR}/go-tools/bin:\
+${CODENIB_SCIP_TOOLS_DIR}/go/bin:\
+${CODENIB_SCIP_TOOLS_DIR}/node-tools/node_modules/.bin:\
+${CODENIB_SCIP_TOOLS_DIR}:${PATH}"
+codenib-lsp-agent-study-artifacts \
+  --manifest-json ${CODENIB_RESULTS_DIR}/lsp_agent_base_study_manifest_v2.json \
+  --source-root ${CODENIB_PREBUILT_DIR} \
+  --output-root ${CODENIB_RESULTS_DIR}/lsp_agent_base_artifacts_v4 \
+  --reuse-root ${CODENIB_RESULTS_DIR}/lsp_agent_base_artifacts_v3 \
   --workers 12
 
-HF_HOME=/mnt/conda/huggingface \
-codeminer-lsp-agent-study-manifest \
+HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}" \
+codenib-lsp-agent-study-manifest \
   --dataset-revision 4eb84e2e8918474969ce68c5b06facf14d6be604 \
-  --prebuilt-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v4 \
-  --output-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json
+  --prebuilt-root ${CODENIB_RESULTS_DIR}/lsp_agent_base_artifacts_v4 \
+  --output-json ${CODENIB_RESULTS_DIR}/lsp_agent_base_study_manifest_v2.json
 ```
 
 The legacy prebuilt-tree audit found 22/60 instance worktrees at the declared
@@ -350,10 +352,10 @@ count as any of the 540 planned model cells.
 Run the zero-cost execution preflight before any model cells:
 
 ```bash
-HF_HOME=/mnt/conda/huggingface \
-codeminer-lsp-agent-study-run \
-  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json \
-  --artifact-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v4 \
+HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}" \
+codenib-lsp-agent-study-run \
+  --manifest-json ${CODENIB_RESULTS_DIR}/lsp_agent_base_study_manifest_v2.json \
+  --artifact-root ${CODENIB_RESULTS_DIR}/lsp_agent_base_artifacts_v4 \
   --preflight
 ```
 
@@ -418,8 +420,8 @@ provider errors or fallback. Static p50/p95 latency was 0.19/0.58 ms versus
 evidence for serving an agent's native LSP call from the snapshot index, but
 four adopted requests are too few for a general compatibility claim. The
 failure-inclusive analysis and replay artifacts are
-`/mnt/data/codeminer/results/lsp_agent_base_haiku_confirmatory_v2_analysis.json`
-and `/mnt/data/codeminer/results/lsp_agent_base_haiku_v2_replay/aggregate.json`.
+`${CODENIB_RESULTS_DIR}/lsp_agent_base_haiku_confirmatory_v2_analysis.json`
+and `${CODENIB_RESULTS_DIR}/lsp_agent_base_haiku_v2_replay/aggregate.json`.
 
 Reproduce the failure-aware summary and frozen trace export with
 `scripts/analysis/analyze_lsp_agent_study.py`; aggregate the per-snapshot replay
@@ -429,10 +431,10 @@ Run the repository-disjoint development gate before spending confirmatory
 budget:
 
 ```bash
-codeminer-lsp-agent-study-run \
-  --manifest-json /mnt/data/codeminer/results/lsp_agent_base_study_manifest_v2.json \
-  --artifact-root /mnt/data/codeminer/results/lsp_agent_base_artifacts_v4 \
-  --output-root /mnt/data/codeminer/results/lsp_agent_base_haiku_development_v2 \
+codenib-lsp-agent-study-run \
+  --manifest-json ${CODENIB_RESULTS_DIR}/lsp_agent_base_study_manifest_v2.json \
+  --artifact-root ${CODENIB_RESULTS_DIR}/lsp_agent_base_artifacts_v4 \
+  --output-root ${CODENIB_RESULTS_DIR}/lsp_agent_base_haiku_development_v2 \
   --role development \
   --vertex-project "${VERTEX_PROJECT}" \
   --vertex-location us-east5
@@ -487,7 +489,7 @@ non-inferiority margin before running held-out repositories.
 |---|---|---|---|
 | snapshot build/reuse | 20-40 held-out multilingual snapshots, repeated consumers | total and amortized build time; bytes | exact snapshot/profile identity |
 | LSP replay | real definition/reference traces from those snapshots | equivalent-row p50/p95 latency | fingerprint equivalence and fallback rate |
-| agent backend A/B | CodeMiner Base tasks with dynamic LSP adoption | block recall@5 | repository-clustered 5-point non-inferiority |
+| agent backend A/B | CodeNib Base tasks with dynamic LSP adoption | block recall@5 | repository-clustered 5-point non-inferiority |
 | context ablation | grep, eager, compact over the static provider | USD, tokens, turns | same non-inferiority margin |
 | scale analysis | language, graph size, repository size, queries/snapshot | slope and break-even query count | completion rate |
 

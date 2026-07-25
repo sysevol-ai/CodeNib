@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -28,23 +28,24 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from codeminer.compiler.snapshot_store import ArtifactProfile  # noqa: E402
-from codeminer.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
-from codeminer.dataset.locbench import LocbenchDataset  # noqa: E402
-from codeminer.dataset.swebench import SwebenchDataset  # noqa: E402
-from codeminer.dataset.swebench_multilingual import (  # noqa: E402
+from codenib.compiler.snapshot_store import ArtifactProfile  # noqa: E402
+from codenib.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
+from codenib.dataset.locbench import LocbenchDataset  # noqa: E402
+from codenib.dataset.swebench import SwebenchDataset  # noqa: E402
+from codenib.dataset.swebench_multilingual import (  # noqa: E402
     SwebenchMultilingualDataset,
 )
-from codeminer.languages import language_capability_rows  # noqa: E402
-from codeminer.log_utils import get_logger  # noqa: E402
-from codeminer.ls_router import LSIndexer  # noqa: E402
-from codeminer.profiler import Profiler  # noqa: E402
+from codenib.languages import language_capability_rows  # noqa: E402
+from codenib.log_utils import get_logger  # noqa: E402
+from codenib.ls_router import LSIndexer  # noqa: E402
+from codenib.paths import user_state_dir  # noqa: E402
+from codenib.profiler import Profiler  # noqa: E402
 
 logger = get_logger(__name__)
 
 DEFAULT_MULTILINGUAL_REPO_LANG_CSV = (
     Path(__file__).resolve().parents[1]
-    / "codeminer"
+    / "codenib"
     / "dataset"
     / "collect"
     / "data"
@@ -155,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default="~/.codeminer",
+        default=str(user_state_dir()),
         help="Cache directory for datasets.",
     )
     parser.add_argument(
@@ -498,7 +499,7 @@ def main() -> None:
     args = parse_args()
 
     if args.output_path is None:
-        args.output_path = str(Path.home() / ".codeminer")
+        args.output_path = str(user_state_dir())
     output_path = Path(args.output_path).expanduser()
     output_path.mkdir(parents=True, exist_ok=True)
     logger.info("Graph indexes will be stored in: %s", output_path)

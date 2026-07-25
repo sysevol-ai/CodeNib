@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -23,10 +23,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from codeminer.dataset.locbench import LocbenchDataset
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.log_utils import get_logger
-from codeminer.model import AgentlessPipeline
+from codenib.dataset.locbench import LocbenchDataset
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.log_utils import get_logger
+from codenib.model import AgentlessPipeline
+from codenib.paths import prebuilt_data_dir
 
 logger = get_logger(__name__)
 
@@ -119,8 +120,8 @@ def parse_args():
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default="/mnt/data/codeminer",
-        help="Cache directory for index (default: /mnt/data/codeminer)",
+        default=str(prebuilt_data_dir()),
+        help="Directory for reusable prebuilt indexes",
     )
 
     return parser.parse_args()

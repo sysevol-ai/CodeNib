@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -32,8 +32,8 @@ Usage:
     python examples/graph_retrieve_baseline.py --dataset swebench_lite \\
         --stage1-topk 5 --stage2-topk 50 --k-hop 2
 
-    # codeminer_base (multi-language; GT read from the dataset)
-    python examples/graph_retrieve_baseline.py --dataset codeminer_base \\
+    # codenib_base (multi-language; GT read from the dataset)
+    python examples/graph_retrieve_baseline.py --dataset codenib_base \\
         --metrics-k 1 3 5 10
 
     # Profiling sweep over a fixed corpus CSV
@@ -50,18 +50,19 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from codeminer.dataset.locbench import LocbenchDataset
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.eval.retrieval_eval import (
+from codenib.dataset.locbench import LocbenchDataset
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
     collect_targets,
     evaluate_predictions,
     extract_predictions,
 )
-from codeminer.log_utils import get_logger
-from codeminer.model import SparseSeededGraphRetrievePipeline
-from codeminer.profiler import Profiler, percentile_from_sorted
+from codenib.log_utils import get_logger
+from codenib.model import SparseSeededGraphRetrievePipeline
+from codenib.paths import prebuilt_data_dir, user_state_dir
+from codenib.profiler import Profiler, percentile_from_sorted
 
 logger = get_logger(__name__)
 
@@ -96,7 +97,7 @@ def _map_language_group(label: Optional[str], fallback: str = "python") -> List[
 def _resolve_instance_languages(instance: dict, cli_languages: List[str]) -> List[str]:
     """Return chunker languages for this instance.
 
-    CodeMiner-base instances carry a ``language_group`` column; fall back to
+    CodeNib-base instances carry a ``language_group`` column; fall back to
     the CLI ``--languages`` for datasets that don't have it (SWE-bench /
     Loc-Bench). Only Stage 3 embedding rerank consumes this — graph build and
     BM25 are language-agnostic — so SWE-bench runs are unchanged (default
@@ -203,7 +204,7 @@ def _aggregate_query_length_buckets(instance_query_profiles) -> dict:
 def _build_dataset(args):
     """Dataset factory — mirrors ``embedding_retrieve_baseline._build_dataset``.
 
-    ``codeminer_base`` is loaded lazily so SWE-bench / Loc-Bench runs don't
+    ``codenib_base`` is loaded lazily so SWE-bench / Loc-Bench runs don't
     import the HuggingFace-backed wrapper (and its ``datasets`` dependency
     chain) unless they need it.
     """
@@ -221,10 +222,10 @@ def _build_dataset(args):
             filter_instance=args.filter_instance,
             repo_root=args.repo_cache_dir,
         )
-    if args.dataset == "codeminer_base":
-        from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+    if args.dataset == "codenib_base":
+        from codenib.dataset.codenib_base import CodeNibBaseDataset
 
-        return CodeMinerBaseDataset(
+        return CodeNibBaseDataset(
             dataset="fishmingyu/codeminer-base-dataset",
             split=args.split,
             filter_instance=args.filter_instance,
@@ -425,7 +426,7 @@ def parse_args():
         "--dataset",
         type=str,
         required=True,
-        choices=["swebench_lite", "locbench_v1", "codeminer_base"],
+        choices=["swebench_lite", "locbench_v1", "codenib_base"],
     )
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--filter-instance", type=str, default=".*")
@@ -440,7 +441,7 @@ def parse_args():
         ),
     )
     # Graph/chunker languages when rebuilding an index.
-    # codeminer_base auto-detects per instance from its language_group column;
+    # codenib_base auto-detects per instance from its language_group column;
     # SWE-bench / Loc-Bench fall back to this value (default python).
     parser.add_argument(
         "--languages",
@@ -449,7 +450,7 @@ def parse_args():
         default=["python"],
         help=(
             "Primary graph language plus Stage 3 chunker languages. Ignored "
-            "for codeminer_base instances (read from the language_group column)."
+            "for codenib_base instances (read from the language_group column)."
         ),
     )
     parser.add_argument(
@@ -536,12 +537,12 @@ def parse_args():
     parser.add_argument(
         "--index-cache-dir",
         type=str,
-        default="/mnt/data/codeminer",
+        default=str(prebuilt_data_dir()),
     )
     parser.add_argument(
         "--repo-cache-dir",
         type=str,
-        default="~/.codeminer/",
+        default=str(user_state_dir()),
     )
     parser.add_argument("--result-path", type=str, default=None)
 
@@ -630,7 +631,7 @@ def _resolve_rerank_strategy(args):
         if args.rerank_strategy == "cross-encoder":
             raise NotImplementedError(
                 "rerank-strategy='cross-encoder' requires the rerank "
-                "wrappers from PR #128 (codeminer/index/rerank/cross_encoder.py). "
+                "wrappers from PR #128 (codenib/index/rerank/cross_encoder.py). "
                 "That PR has not landed on main yet."
             )
         return args.rerank_strategy
@@ -700,13 +701,13 @@ def run_graph_pipeline(args):
 
     # GT files are dataset-specific; derive the default from --dataset so a
     # Loc-Bench run can't silently align against the SWE-bench ground truth.
-    # codeminer_base carries GT in-dataset, so an empty path makes
+    # codenib_base carries GT in-dataset, so an empty path makes
     # load_eval_metadata project the gt_* columns directly (no on-disk file).
-    if args.dataset == "codeminer_base":
+    if args.dataset == "codenib_base":
         eval_path = args.eval_instances or ""
     else:
         eval_path = args.eval_instances or str(
-            Path.home() / ".codeminer" / f"{args.dataset}_{args.split}_gt.json"
+            Path.home() / ".codenib" / f"{args.dataset}_{args.split}_gt.json"
         )
     eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     metrics_k = sorted(set(args.metrics_k))
@@ -754,7 +755,7 @@ def run_graph_pipeline(args):
             index_path = str(
                 Path(args.index_cache_dir) / instance_id.replace("/", "__")
             )
-            # Per-instance chunker language for Stage 3 rerank (codeminer_base
+            # Per-instance chunker language for Stage 3 rerank (codenib_base
             # is multi-language; SWE-bench / Loc-Bench fall back to --languages).
             instance_languages = _resolve_instance_languages(instance, args.languages)
 

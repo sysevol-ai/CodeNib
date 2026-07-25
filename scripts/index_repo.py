@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 """Build BM25 index for a repo and register it in qa_registry.json.
 
@@ -15,16 +15,18 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO, stream=sys.stdout, format="%(levelname)-8s %(message)s"
 )
 
-from codeminer.compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.index_builders import (
+from codenib.compiler import IndexCompiler, IndexCompilerConfig
+from codenib.compiler.index_builders import (
     IndexBuilderRegistry,
     register_default_builders,
 )
+from codenib.paths import QA_DATA_DIRNAME, repo_index_dir
 
 _LANGUAGE_ALIASES = {
     "python": ["python"],
@@ -104,7 +106,7 @@ def normalize_languages(value: str) -> list[str]:
 def detect_languages(repo_dir: str) -> list[str]:
     counts: dict[str, int] = {}
     for root, _, files in os.walk(repo_dir):
-        if "/.git" in root or "/.codeminer" in root:
+        if "/.git" in root or "/.codenib" in root:
             continue
         for f in files:
             for lang in _EXT_LANGS.get(os.path.splitext(f)[1].lower(), []):
@@ -138,8 +140,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--registry",
-        default=".codeminer_qa/qa_registry.json",
-        help="Path to qa_registry.json (default: .codeminer_qa/qa_registry.json)",
+        default=str(Path(QA_DATA_DIRNAME) / "qa_registry.json"),
+        help="Path to qa_registry.json (default: .codenib_qa/qa_registry.json)",
     )
     args = parser.parse_args()
 
@@ -186,7 +188,7 @@ def main() -> None:
     github_repo = f"{owner}/{repo}"
     instance_id = f"{owner}__{repo}"
     base_commit = get_base_commit(repo_dir)
-    manifest_path = os.path.join(repo_dir, ".codeminer_cache", "repo_manifest.json")
+    manifest_path = str(repo_index_dir(repo_dir) / "repo_manifest.json")
 
     entry = {
         "instance_id": instance_id,

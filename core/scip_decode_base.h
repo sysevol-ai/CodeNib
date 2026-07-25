@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 // Common orchestration for SCIP decoders across languages. Subclasses
 // implement `process_document` (language-specific symbol parsing + subgraph
@@ -71,4 +71,4 @@ std::vector<std::string> extract_blocks(const std::string &text,
 // field is present or the string is unterminated.
 std::optional<std::string> extract_symbol(const std::string &text);
 
-} // namespace codeminer::core
+} // namespace codenib::core

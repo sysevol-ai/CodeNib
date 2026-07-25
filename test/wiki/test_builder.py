@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from codeminer.web.repo_registry import _readme_summary
-from codeminer.wiki.builder import WikiBuilder, _slug, _top_module
+from codenib.web.repo_registry import _readme_summary
+from codenib.wiki.builder import WikiBuilder, _slug, _top_module
 
 
 @dataclass
@@ -149,7 +149,7 @@ def test_overview_links_modules(repo_dir):
 
 # -- Critique #8: LLM-authored content layer ---------------------------------
 
-from codeminer.wiki.narrator import Narrator, _no_thinking_kwargs  # noqa: E402
+from codenib.wiki.narrator import Narrator, _no_thinking_kwargs  # noqa: E402
 
 
 def test_narrator_gemini_25_uses_litellm_thinking_zero_budget():

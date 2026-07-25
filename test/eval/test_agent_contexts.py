@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.eval.agent_runner.contexts import (
+from codenib.agent.skills.loader import SkillLoader
+from codenib.eval.agent_runner.contexts import (
     AgentSkillContextSpec,
     default_agent_skills_dir,
     load_agent_skill_contexts,
@@ -80,7 +80,7 @@ def test_load_agent_skill_contexts_loads_metadata_builds_then_reloads(
 
     monkeypatch.setattr(SkillLoader, "load_all", fake_load_all)
     monkeypatch.setattr(
-        "codeminer.compiler.build_skill_contexts",
+        "codenib.compiler.build_skill_contexts",
         fake_build_skill_contexts,
     )
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -20,7 +20,7 @@ import faiss
 import numpy as np
 import pytest
 
-from codeminer.index.embedding.vector_store import CodeVectorStore, _Document
+from codenib.index.embedding.vector_store import CodeVectorStore, _Document
 
 DIM = 8
 
@@ -148,7 +148,7 @@ class TestCacheSeeding:
 
     def test_seeded_cache_gives_full_hit_rate(self, populated_store):
         """Simulate the cache seeding workflow from build()."""
-        from codeminer.index.incremental import EmbeddingsCache
+        from codenib.index.incremental import EmbeddingsCache
 
         store, expected_hashes = populated_store
         hash_to_vec = store.get_embeddings_by_content_hash(level="l2")

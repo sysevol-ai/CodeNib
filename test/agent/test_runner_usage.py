@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,16 +11,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.core import (
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.llm.usage import (
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.llm.usage import (
     TokenUsage,
     UsageRecord,
     UsageTracker,
@@ -153,7 +153,7 @@ class TestExtractTokenUsage:
 class TestUsageTracker:
     def test_record_and_totals(self):
         tracker = UsageTracker()
-        with patch("codeminer.llm.usage._safe_completion_cost", return_value=None):
+        with patch("codenib.llm.usage._safe_completion_cost", return_value=None):
             tracker.record_response(
                 _make_response(prompt_tokens=10, completion_tokens=20),
                 model="gpt-4o",
@@ -180,7 +180,7 @@ class TestUsageTracker:
     def test_cost_aggregation_when_available(self):
         tracker = UsageTracker()
         with patch(
-            "codeminer.llm.usage._safe_completion_cost",
+            "codenib.llm.usage._safe_completion_cost",
             side_effect=[0.001, 0.002],
         ):
             tracker.record_response(
@@ -220,10 +220,10 @@ class TestLiteLLMChatUsageTracker:
 
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 return_value=fake_response,
             ),
-            patch("codeminer.llm.usage._safe_completion_cost", return_value=None),
+            patch("codenib.llm.usage._safe_completion_cost", return_value=None),
         ):
             resp = chat._call_raw(
                 [{"role": "user", "content": "hi"}],
@@ -246,8 +246,8 @@ class TestLiteLLMChatUsageTracker:
         chat = LiteLLMChat(model="gpt-4o")
         tracker = UsageTracker()
         with (
-            patch("codeminer.llm.litellm_chat.litellm.completion") as mock_completion,
-            patch("codeminer.llm.usage._safe_completion_cost", return_value=None),
+            patch("codenib.llm.litellm_chat.litellm.completion") as mock_completion,
+            patch("codenib.llm.usage._safe_completion_cost", return_value=None),
         ):
             mock_completion.return_value = _make_response(content="ok")
             chat._call_raw(
@@ -277,7 +277,7 @@ class TestAgentRunnerUsage:
             )
             if tracker is not None:
                 with patch(
-                    "codeminer.llm.usage._safe_completion_cost",
+                    "codenib.llm.usage._safe_completion_cost",
                     return_value=None,
                 ):
                     tracker.record_response(
@@ -314,7 +314,7 @@ class TestAgentRunnerUsage:
             call_count["i"] += 1
             if tracker is not None:
                 with patch(
-                    "codeminer.llm.usage._safe_completion_cost",
+                    "codenib.llm.usage._safe_completion_cost",
                     return_value=None,
                 ):
                     tracker.record_response(
@@ -361,7 +361,7 @@ class TestAgentRunnerUsage:
             resp = _make_response(tool_calls=[tc], prompt_tokens=7, completion_tokens=3)
             if tracker is not None:
                 with patch(
-                    "codeminer.llm.usage._safe_completion_cost",
+                    "codenib.llm.usage._safe_completion_cost",
                     return_value=None,
                 ):
                     tracker.record_response(

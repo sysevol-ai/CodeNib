@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.eval.artifact_bundle import (
+from codenib.eval.artifact_bundle import (
     ArtifactBundleError,
     ArtifactIntegrityError,
     build_bundle,

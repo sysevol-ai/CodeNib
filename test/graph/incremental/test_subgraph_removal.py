@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for SubgraphMgr subgraph deletion and index building."""
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.incremental.patcher_rust import PatcherRust
-from codeminer.types import (
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.incremental.patcher_rust import PatcherRust
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
     NODE_TYPE_CLASS,

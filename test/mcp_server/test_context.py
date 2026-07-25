@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for codeminer.mcp.context.ServerContext."""
+"""Unit tests for codenib.mcp.context.ServerContext."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.compiler.manifest import IndexEntry, RepoManifest
-from codeminer.mcp.context import ServerContext
+from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.mcp.context import ServerContext
 
 
 @pytest.fixture()
@@ -137,7 +137,7 @@ def test_load_vector_accepts_compiler_manifest_identity(tmp_path: Path) -> None:
     vector = MagicMock()
     vector.embedding_model = "test-model"
     vector.get_stats.return_value = {"total_documents": 3}
-    with patch("codeminer.mcp.context.CodeVectorStore", return_value=vector) as cls:
+    with patch("codenib.mcp.context.CodeVectorStore", return_value=vector) as cls:
         ctx = ServerContext.load(tmp_path / "repo_manifest.json")
 
     cls.assert_called_once_with(
@@ -182,7 +182,7 @@ def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
     )
     manifest.save(manifest_dir / "repo_manifest.json")
 
-    with patch("codeminer.mcp.context.CodeGraph.load_graph", return_value=mock_graph):
+    with patch("codenib.mcp.context.CodeGraph.load_graph", return_value=mock_graph):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     assert ctx.symbol_graph is mock_graph
@@ -216,7 +216,7 @@ def test_zoekt_started_when_entry_fresh(manifest_dir: Path) -> None:
     fake_searcher = MagicMock()
     fake_searcher.port = 9999
 
-    with patch("codeminer.mcp.context.ZoektSearcher", return_value=fake_searcher):
+    with patch("codenib.mcp.context.ZoektSearcher", return_value=fake_searcher):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     fake_searcher.start.assert_called_once()
@@ -226,7 +226,7 @@ def test_zoekt_started_when_entry_fresh(manifest_dir: Path) -> None:
 
 def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:
     """If the zoekt binary is missing, ServerContext records the error and keeps zoekt=None."""
-    from codeminer.index.trigram import ZoektUnavailableError
+    from codenib.index.trigram import ZoektUnavailableError
 
     shard_dir = manifest_dir / "zoekt"
     shard_dir.mkdir()
@@ -235,7 +235,7 @@ def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:
     fake_searcher = MagicMock()
     fake_searcher.start.side_effect = ZoektUnavailableError("binary not found")
 
-    with patch("codeminer.mcp.context.ZoektSearcher", return_value=fake_searcher):
+    with patch("codenib.mcp.context.ZoektSearcher", return_value=fake_searcher):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     assert ctx.zoekt is None
@@ -262,7 +262,7 @@ def test_zoekt_skipped_when_entry_failed(manifest_dir: Path) -> None:
     )
     manifest.save(manifest_dir / "repo_manifest.json")
 
-    with patch("codeminer.mcp.context.ZoektSearcher") as mock_cls:
+    with patch("codenib.mcp.context.ZoektSearcher") as mock_cls:
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     mock_cls.assert_not_called()

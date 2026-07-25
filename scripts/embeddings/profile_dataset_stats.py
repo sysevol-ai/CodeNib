@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Compute chunk count and LOC statistics for codeminer-base dataset instances.
+Compute chunk count and LOC statistics for codenib-base dataset instances.
 
 Reads existing embedding configs for document counts and optionally re-chunks
 repos to compute detailed statistics (total LOC, file counts, chunk sizes)
@@ -14,18 +14,18 @@ without re-embedding.
 Usage:
     # Quick: read existing configs only (no re-chunking)
     python scripts/embeddings/profile_dataset_stats.py \
-        --storage-dir /mnt/data/codeminer
+        --storage-dir ${CODENIB_PREBUILT_DIR}
 
     # Full: re-chunk repos to get LOC stats
     python scripts/embeddings/profile_dataset_stats.py \
-        --storage-dir /mnt/data/codeminer \
+        --storage-dir ${CODENIB_PREBUILT_DIR} \
         --rechunk
 
     # Output JSON summary
     python scripts/embeddings/profile_dataset_stats.py \
-        --storage-dir /mnt/data/codeminer \
+        --storage-dir ${CODENIB_PREBUILT_DIR} \
         --rechunk \
-        --output /mnt/data/codeminer/dataset_stats.json
+        --output ${CODENIB_PREBUILT_DIR}/dataset_stats.json
 """
 
 import argparse
@@ -33,8 +33,9 @@ import json
 import sys
 from pathlib import Path
 
-from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-from codeminer.log_utils import get_logger
+from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+from codenib.log_utils import get_logger
+from codenib.paths import prebuilt_data_dir
 
 logger = get_logger(__name__)
 
@@ -97,19 +98,19 @@ def read_existing_configs(instance_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Compute chunk/LOC stats for codeminer-base instances.",
+        description="Compute chunk/LOC stats for codenib-base instances.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--dataset-class",
-        default="codeminer_base",
-        choices=["codeminer_base", "swebench"],
+        default="codenib_base",
+        choices=["codenib_base", "swebench"],
     )
     parser.add_argument("--dataset", default=None, help="HuggingFace dataset name")
     parser.add_argument("--split", default="test")
     parser.add_argument(
         "--storage-dir",
-        default="/mnt/data/codeminer",
+        default=str(prebuilt_data_dir()),
         help="Base directory with embedding outputs",
     )
     parser.add_argument(
@@ -142,7 +143,7 @@ def main():
 
     _DATASET_DEFAULTS = {
         "swebench": "princeton-nlp/SWE-bench_Lite",
-        "codeminer_base": "fishmingyu/codeminer-base-dataset",
+        "codenib_base": "fishmingyu/codeminer-base-dataset",
     }
     load_args = SimpleNamespace(
         dataset_class=args.dataset_class,

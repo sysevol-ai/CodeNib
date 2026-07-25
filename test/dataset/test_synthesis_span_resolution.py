@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Regression test: hint-category synthesis must carry real line spans.
 
-The HuggingFace ``codeminer-synthesis`` build had (0,0) ``gt_symbol_nodes`` for
+The HuggingFace ``codenib-synthesis`` build had (0,0) ``gt_symbol_nodes`` for
 the file_hint / module_hint / symbol_hint / reasoning categories, because their
 ground truth is derived from ``file:symbol`` strings (no line ranges). The fix
 resolves each symbol's real span from the graph-sampled ``candidate_blocks``
@@ -12,10 +12,10 @@ resolves each symbol's real span from the graph-sampled ``candidate_blocks``
 re-generated dataset has usable spans for span-overlap eval.
 """
 
-from codeminer.dataset.synthesize._types import BehavioralContext, SampledCodeBlock
-from codeminer.dataset.synthesize.context_loader import _leaf_symbol
-from codeminer.dataset.synthesize.query_synthesizer import ClaudeQuerySynthesizer
-from codeminer.dataset.utils import CodeLocation, GroundTruth
+from codenib.dataset.synthesize._types import BehavioralContext, SampledCodeBlock
+from codenib.dataset.synthesize.context_loader import _leaf_symbol
+from codenib.dataset.synthesize.query_synthesizer import ClaudeQuerySynthesizer
+from codenib.dataset.utils import CodeLocation, GroundTruth
 
 
 def _block(file: str, node_name: str, start: int, end: int) -> SampledCodeBlock:

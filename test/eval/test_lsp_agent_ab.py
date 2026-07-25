@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,17 +9,17 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from codeminer.agent.lsp_provider import StaticLSPProvider
-from codeminer.eval.agent_runner.lsp_agent_ab import (
+from codenib.agent.lsp_provider import StaticLSPProvider
+from codenib.eval.agent_runner.lsp_agent_ab import (
     exact_lsp_result_guard,
     lsp_agent_prompt,
     run_lsp_agent_arm,
     summarize_lsp_agent_ab,
 )
-from codeminer.eval.agent_runner.lsp_provider_validation import LSPProviderRequest
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.types import NODE_TYPE_FUNCTION
+from codenib.eval.agent_runner.lsp_provider_validation import LSPProviderRequest
+from codenib.graph.code_graph import CodeGraph
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.types import NODE_TYPE_FUNCTION
 
 
 def _graph(tmp_path):
@@ -141,7 +141,7 @@ def test_run_lsp_agent_arm_records_provider_and_protocol(tmp_path):
     )
 
     assert row["protocol_ok"] is True
-    assert row["provider"] == "codeminer_static_index"
+    assert row["provider"] == "codenib_static_index"
     assert row["resolved_arguments"]["line"] == 1
     assert row["expected_locations"] == ["callee.py:5"]
     assert row["answer_contains_all_locations"] is True

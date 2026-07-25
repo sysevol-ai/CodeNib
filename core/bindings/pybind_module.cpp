@@ -1,8 +1,8 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Pybind11 bindings for codeminer::core SCIP decoders.
+// Pybind11 bindings for codenib::core SCIP decoders.
 //
 // Exposes a single function `decode_scip(index_file, project_root, language)`
 // that returns a `DecodedGraph` struct with two flat Python lists:
@@ -31,7 +31,7 @@
 #include <vector>
 
 namespace py = pybind11;
-using codeminer::core::CodeGraph;
+using codenib::core::CodeGraph;
 
 namespace {
 
@@ -54,7 +54,7 @@ py::dict decode_scip(const std::string &index_file,
                      std::optional<std::string> project_root,
                      const std::string &language) {
   auto decoder =
-      codeminer::core::make_scip_decoder(language, index_file, project_root);
+      codenib::core::make_scip_decoder(language, index_file, project_root);
 
   // Release the GIL while the C++ decoder runs (it does its own
   // std::thread-based parallelism; we don't call back into Python).
@@ -94,17 +94,17 @@ py::dict decode_scip(const std::string &index_file,
   return result;
 }
 
-codeminer::core::LayerBuckets
+codenib::core::LayerBuckets
 classify_edge_layers_py(const std::vector<std::string> &edge_types) {
   py::gil_scoped_release release;
-  return codeminer::core::classify_edge_layers(edge_types);
+  return codenib::core::classify_edge_layers(edge_types);
 }
 
 } // namespace
 
-PYBIND11_MODULE(codeminer_core, m) {
+PYBIND11_MODULE(codenib_core, m) {
   m.doc() =
-      "codeminer::core SCIP decoders (Python / Go / Rust / Ruby / TypeScript).";
+      "codenib::core SCIP decoders (Python / Go / Rust / Ruby / TypeScript).";
 
   m.def("decode_scip", &decode_scip, py::arg("index_file"),
         py::arg("project_root") = std::optional<std::string>(std::nullopt),
@@ -130,13 +130,13 @@ Returns:
 )pbdoc");
 
   m.def("canonical_scip_decoder_languages",
-        &codeminer::core::canonical_scip_decoder_languages,
+        &codenib::core::canonical_scip_decoder_languages,
         R"pbdoc(
 Return the canonical language names implemented by the C++ SCIP decoder.
 )pbdoc");
 
   m.def("accepted_scip_decoder_languages",
-        &codeminer::core::accepted_scip_decoder_languages,
+        &codenib::core::accepted_scip_decoder_languages,
         R"pbdoc(
 Return canonical language names plus aliases accepted by the C++ SCIP decoder.
 )pbdoc");

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from codeminer.eval.reports import cost_arm_report as agg_mod
+from codenib.eval.reports import cost_arm_report as agg_mod
 
 
 def _cell(instance, arm, skills, rep, *, f5, tokens, scenario, calls, turns=3):

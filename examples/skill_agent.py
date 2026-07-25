@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -43,14 +43,15 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-from codeminer.compiler.params import SessionContext
-from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
-from codeminer.ops.rerank import RerankContext
-from codeminer.ops.retrieve import RetrieveContext
-from codeminer.types import QueriedNode
+from codenib.agent.skills.loader import SkillLoader
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+from codenib.compiler.params import SessionContext
+from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+from codenib.ops.rerank import RerankContext
+from codenib.ops.retrieve import RetrieveContext
+from codenib.paths import repo_index_dir
+from codenib.types import QueriedNode
 
 
 def parse_args() -> argparse.Namespace:
@@ -126,10 +127,7 @@ def build_vector_store(
     embedding_dimension: int,
 ):
     """Build (or load) hierarchical embedding index."""
-    from codeminer.index.embedding import (
-        CodeVectorStore,
-        build_hierarchical_vector_store,
-    )
+    from codenib.index.embedding import CodeVectorStore, build_hierarchical_vector_store
 
     store_path = Path(index_path)
     store_path.mkdir(parents=True, exist_ok=True)
@@ -253,7 +251,7 @@ def run_standalone(args: argparse.Namespace) -> None:
         default_top_k=args.top_k,
         default_level="l2",
     )
-    skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
+    skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
     loader = SkillLoader()
     loaded = loader.load_all(skills_dir, contexts={"retrieve": retrieve_ctx})
     print(f"  Loaded {len(loaded)} skills: {[s.skill_id for s in loaded]}")
@@ -296,19 +294,19 @@ def run_agent(args: argparse.Namespace) -> None:
     Phase 2: AgentRunner loads the manifest, filters unavailable skills,
     and lets the LLM decide which skills to call.
     """
-    from codeminer.agent.runner import AgentRunner
-    from codeminer.compiler.index_builders import (
+    from codenib.agent.runner import AgentRunner
+    from codenib.compiler.index_builders import (
         BM25IndexBuilder,
         IndexBuilderRegistry,
         VectorIndexBuilder,
     )
-    from codeminer.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
-    from codeminer.compiler.manifest import RepoManifest
-    from codeminer.index.embedding import CodeVectorStore
-    from codeminer.llm.litellm_chat import LiteLLMChat
+    from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+    from codenib.compiler.manifest import RepoManifest
+    from codenib.index.embedding import CodeVectorStore
+    from codenib.llm.litellm_chat import LiteLLMChat
 
     repo_path = os.path.abspath(args.repo)
-    cache_dir = args.index_path or os.path.join(repo_path, ".codeminer_cache")
+    cache_dir = args.index_path or str(repo_index_dir(repo_path))
 
     print(f"Repository : {repo_path}")
     print(f"Query      : {args.query}")
@@ -403,7 +401,7 @@ def run_agent(args: argparse.Namespace) -> None:
     if vector_store:
         contexts["rerank"] = RerankContext(embedding_store=vector_store)
 
-    skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
+    skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
     loader = SkillLoader()
     loaded = loader.load_all(skills_dir, contexts=contexts)
     print(f"  Loaded {len(loaded)} skills: {[s.skill_id for s in loaded]}")

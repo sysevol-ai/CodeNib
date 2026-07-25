@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Unit tests for ``query()``'s AoT manifest mode.
 
-Verifies the wiring of ``CodeMinerAgentOptions.manifest`` — that
+Verifies the wiring of ``CodeNibAgentOptions.manifest`` — that
 ``query()`` accepts both ``RepoManifest`` instances and path strings,
 short-circuits the inline build, threads the resolved manifest into
 ``AgentRunner``, and fails loudly when the manifest doesn't carry the
@@ -23,10 +23,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent import CodeMinerAgentOptions, query
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.compiler.manifest import IndexEntry, RepoManifest
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent import CodeNibAgentOptions, query
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.llm.litellm_chat import LiteLLMChat
 
 
 @pytest.fixture(autouse=True)
@@ -89,14 +89,14 @@ class TestExactlyOneModeEnforced:
         with pytest.raises(ValueError, match="All three are unset"):
             query(
                 "anything",
-                options=CodeMinerAgentOptions(llm=_mock_llm_final_answer()),
+                options=CodeNibAgentOptions(llm=_mock_llm_final_answer()),
             )
 
     def test_two_modes_raises_repo_path_and_contexts(self):
         with pytest.raises(ValueError, match="exactly one"):
             query(
                 "anything",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     repo_path="/tmp/x",
                     contexts={},
                     llm=_mock_llm_final_answer(),
@@ -107,7 +107,7 @@ class TestExactlyOneModeEnforced:
         with pytest.raises(ValueError, match="exactly one"):
             query(
                 "anything",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     repo_path="/tmp/x",
                     manifest=_fake_manifest(),
                     llm=_mock_llm_final_answer(),
@@ -118,7 +118,7 @@ class TestExactlyOneModeEnforced:
         with pytest.raises(ValueError, match="exactly one"):
             query(
                 "anything",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     repo_path="/tmp/x",
                     contexts={},
                     manifest=_fake_manifest(),
@@ -139,7 +139,7 @@ class TestManifestMode:
         Even one accidental call to ``build_skill_contexts`` would defeat
         the purpose of AoT — we'd pay for re-indexing on every query.
         """
-        from codeminer import compiler as compiler_mod
+        from codenib import compiler as compiler_mod
 
         def _boom(*a, **kw):
             raise AssertionError("build_skill_contexts must not run in manifest mode")
@@ -151,7 +151,7 @@ class TestManifestMode:
         # exercises the rest of query()'s pipeline.
         # Patch on the compiler package namespace — that's what
         # ``query()`` imports from via ``from ..compiler import ...``.
-        from codeminer import compiler as compiler_pkg
+        from codenib import compiler as compiler_pkg
 
         monkeypatch.setattr(
             compiler_pkg, "load_contexts_from_manifest", lambda *a, **kw: {}
@@ -159,7 +159,7 @@ class TestManifestMode:
 
         result = query(
             "noop",
-            options=CodeMinerAgentOptions(
+            options=CodeNibAgentOptions(
                 manifest=_fake_manifest(),
                 llm=_mock_llm_final_answer(answer="ok"),
                 allowed_skills=["bm25_search"],
@@ -175,8 +175,8 @@ class TestManifestMode:
 
         # Capture what AgentRunner.__init__ is given as manifest=
         captured: Dict[str, Any] = {}
-        from codeminer import compiler as compiler_pkg
-        from codeminer.agent import runner as runner_mod
+        from codenib import compiler as compiler_pkg
+        from codenib.agent import runner as runner_mod
 
         original_init = runner_mod.AgentRunner.__init__
 
@@ -191,7 +191,7 @@ class TestManifestMode:
 
         query(
             "noop",
-            options=CodeMinerAgentOptions(
+            options=CodeNibAgentOptions(
                 manifest=str(manifest_path),
                 llm=_mock_llm_final_answer(),
                 allowed_skills=["bm25_search"],
@@ -207,7 +207,7 @@ class TestManifestMode:
         with pytest.raises(FileNotFoundError, match="manifest path does not exist"):
             query(
                 "noop",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     manifest="/tmp/this-path-does-not-exist/repo_manifest.json",
                     llm=_mock_llm_final_answer(),
                     allowed_skills=["bm25_search"],
@@ -219,8 +219,8 @@ class TestManifestMode:
         manifest = _fake_manifest()
         captured: Dict[str, Any] = {}
 
-        from codeminer import compiler as compiler_pkg
-        from codeminer.agent import runner as runner_mod
+        from codenib import compiler as compiler_pkg
+        from codenib.agent import runner as runner_mod
 
         original_init = runner_mod.AgentRunner.__init__
 
@@ -235,7 +235,7 @@ class TestManifestMode:
 
         query(
             "noop",
-            options=CodeMinerAgentOptions(
+            options=CodeNibAgentOptions(
                 manifest=manifest,
                 llm=_mock_llm_final_answer(),
                 allowed_skills=["bm25_search"],
@@ -254,7 +254,7 @@ class TestManifestMode:
         with pytest.raises(ValueError, match="missing required index"):
             query(
                 "noop",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     manifest=manifest,
                     llm=_mock_llm_final_answer(),
                     allowed_skills=["bm25_search"],
@@ -265,7 +265,7 @@ class TestManifestMode:
         with pytest.raises(TypeError, match="must be a RepoManifest"):
             query(
                 "noop",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     manifest=12345,  # type: ignore[arg-type]
                     llm=_mock_llm_final_answer(),
                     allowed_skills=["bm25_search"],

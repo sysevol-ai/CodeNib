@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 `CodeGraph` supports LSP-aligned queries that resolve a **source-file line range** (or a
 symbol) into the symbols defined there and the reference edges crossing that range.
 These return typed records (`NodeRef`/`EdgeRef`/`RangeQueryResult`) so consumers never
-poke `graph.vs[...]` directly. The API lives in `codeminer/graph/code_graph.py`.
+poke `graph.vs[...]` directly. The API lives in `codenib/graph/code_graph.py`.
 
 ## Building the indexes
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,23 +12,28 @@ from typing import Dict, Optional
 
 import pytest
 
-from codeminer.web.edge_label import EdgeLabeler, _sanitize
-
+from codenib.web.edge_label import EdgeLabeler, _sanitize
 
 # --- fake LLM ------------------------------------------------------------------
 
 
 class _Msg:
+    __slots__ = ("content",)
+
     def __init__(self, content: str) -> None:
         self.content = content
 
 
 class _Choice:
+    __slots__ = ("message",)
+
     def __init__(self, content: str) -> None:
         self.message = _Msg(content)
 
 
 class _Resp:
+    __slots__ = ("choices",)
+
     def __init__(self, content: str) -> None:
         self.choices = [_Choice(content)]
 
@@ -73,13 +78,22 @@ def _make_labeler(tmp_path, sources: Optional[Dict[str, str]] = None, model="tes
     )
 
 
-_SRC = {"a.py": "def router():\n    return validate(x)\n", "b.py": "def validate(x):\n    return x\n"}
+_SRC = {
+    "a.py": "def router():\n    return validate(x)\n",
+    "b.py": "def validate(x):\n    return x\n",
+}
 
 
 def _label(labeler):
     return labeler.label(
-        "a.py", 1, 2, "router",
-        "b.py", 1, 2, "validate",
+        "a.py",
+        1,
+        2,
+        "router",
+        "b.py",
+        1,
+        2,
+        "validate",
         anchors=[{"file": "a.py", "line": 2}],
     )
 
@@ -92,7 +106,10 @@ def _label(labeler):
     [
         ("```\nValidates user input.\n```", "validates user input"),
         ('"Loads DB config"', "loads db config"),
-        ("dispatches request to handler quickly and safely now", "dispatches request to handler quickly and"),
+        (
+            "dispatches request to handler quickly and safely now",
+            "dispatches request to handler quickly and",
+        ),
         ("Calls validate().", "calls validate()"),
         ("", ""),
         ("   ", ""),
@@ -135,7 +152,11 @@ def test_cache_key_changes_with_code(tmp_path, monkeypatch):
     assert fake.calls == 1
 
     # mutate the source symbol's code -> different content hash -> regenerate
-    labeler._source = lambda f, s, e: {"content": "def router():\n    return other()\n"} if f == "a.py" else {"content": _SRC["b.py"]}  # type: ignore
+    labeler._source = lambda f, s, e: (  # type: ignore
+        {"content": "def router():\n    return other()\n"}
+        if f == "a.py"
+        else {"content": _SRC["b.py"]}
+    )
     _label(labeler)
     assert fake.calls == 2
 
@@ -158,9 +179,7 @@ def test_no_source_skips_llm(tmp_path, monkeypatch):
     _patch_llm(monkeypatch, fake)
     labeler = _make_labeler(tmp_path, sources={})  # source_fn returns None for all
 
-    label, cached = labeler.label(
-        "x.py", 1, 2, "a", "y.py", 1, 2, "b", anchors=[]
-    )
+    label, cached = labeler.label("x.py", 1, 2, "a", "y.py", 1, 2, "b", anchors=[])
     assert label == ""
     assert fake.calls == 0
 

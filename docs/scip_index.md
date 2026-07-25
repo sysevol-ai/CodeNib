@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -89,18 +89,18 @@ The `LSIndexer` class provides a Python interface for working with SCIP indices.
 
 The indexer automatically:
 1. Checks if conda is installed
-2. Creates a dedicated `scip-env` environment (if not exists) using [scip-environment.yml](https://github.com/sysevol-ai/CodeMiner/blob/main/codeminer/scip_interface/scip-environment.yml)
+2. Creates a dedicated `scip-env` environment (if not exists) using [scip-environment.yml](https://github.com/sysevol-ai/CodeMiner/blob/main/codenib/scip_interface/scip-environment.yml)
 3. Runs all `scip-python` commands within this isolated environment
 
 **Manual conda environment setup** (optional - the indexer does this automatically):
 ```bash
-conda env create -f codeminer/scip_interface/scip-environment.yml
+conda env create -f codenib/scip_interface/scip-environment.yml
 ```
 
 #### Basic Usage
 
 ```python
-from codeminer.ls_router import LSIndexer
+from codenib.ls_router import LSIndexer
 
 # Create an indexer for a project
 # By default, output goes to /tmp/<project_name>/
@@ -191,7 +191,7 @@ indexer = LSIndexer(
 Build a graph directly from an existing decoded index:
 
 ```python
-from codeminer.ls_router import LSGraphDecoder
+from codenib.ls_router import LSGraphDecoder
 
 decoder = LSGraphDecoder("index.decoded", project_root="/path/to/repo", language="rust")
 graph = decoder.decode()

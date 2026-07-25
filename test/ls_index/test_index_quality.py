@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 import json
 from pathlib import Path
 
-from codeminer.ls_index.clangd_indexer import ClangdIndexer
-from codeminer.ls_index.index_quality import (
+from codenib.ls_index.clangd_indexer import ClangdIndexer
+from codenib.ls_index.index_quality import (
     IndexQualityPolicy,
     assess_index_quality,
     compilation_database_entry_count,

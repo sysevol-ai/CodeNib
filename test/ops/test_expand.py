@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for graph expansion ops (codeminer.ops.expand)."""
+"""Tests for graph expansion ops (codenib.ops.expand)."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ import subprocess
 
 import pytest
 
-from codeminer.ops.expand import (
+from codenib.ops.expand import (
     ExpandContext,
     expand_graph_neighbors,
     hydrate_candidate_contents,
     nodeinfo_to_queried,
 )
-from codeminer.types import EDGE_TYPE_REFERENCE, NodeInfo, QueriedNode
+from codenib.types import EDGE_TYPE_REFERENCE, NodeInfo, QueriedNode
 
 # ---------------------------------------------------------------------------
 # Helper tests

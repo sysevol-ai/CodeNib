@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,14 +6,14 @@
 
 from __future__ import annotations
 
-from codeminer.ops.retrieve import (
+from codenib.ops.retrieve import (
     dedup_queried_nodes,
     merge_file_rankings,
     merge_hybrid,
     queried_file_key,
     queried_node_key,
 )
-from codeminer.types import QueriedNode
+from codenib.types import QueriedNode
 
 
 def test_queried_node_key_prefers_node_id():

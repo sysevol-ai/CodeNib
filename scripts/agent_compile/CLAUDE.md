@@ -13,7 +13,7 @@ design: [`docs/agent_compile_design.md`](../../docs/agent_compile_design.md).
   `aggregate.py` drive Phase 0; `run_sweep.py` + `aggregate_phase2.py` drive the
   Phase 2 subset sweep. Don't "fix" the numbering.
 - **Indexes reach the agent through `RepoManifest`.**
-  `IndexCompiler.compile_repo()` (in `codeminer/compiler/`) builds `bm25` /
+  `IndexCompiler.compile_repo()` (in `codenib/compiler/`) builds `bm25` /
   `vector` / `symbol_graph` and writes `repo_manifest.json` — the source of
   truth for what exists, its freshness, and status. Skill contexts load either
   JIT (`build_skill_contexts`, builds missing indexes) or AoT

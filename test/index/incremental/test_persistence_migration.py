@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,9 +19,9 @@ from pathlib import Path
 
 import numpy as np
 
-from codeminer.code_chunking.base import CodeChunk
-from codeminer.index.incremental.chunk_store import IncrementalChunkStore
-from codeminer.index.incremental.embeddings_cache import EmbeddingsCache
+from codenib.code_chunking.base import CodeChunk
+from codenib.index.incremental.chunk_store import IncrementalChunkStore
+from codenib.index.incremental.embeddings_cache import EmbeddingsCache
 
 # ---------------------------------------------------------------------------
 # Helpers

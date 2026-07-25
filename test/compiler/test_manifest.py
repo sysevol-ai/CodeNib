@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,13 +11,13 @@ import time
 
 import pytest
 
-from codeminer.compiler.manifest import (
+from codenib.compiler.manifest import (
     MANIFEST_VERSION,
     IndexEntry,
     ManifestIndexStateStore,
     RepoManifest,
 )
-from codeminer.compiler.resources import (
+from codenib.compiler.resources import (
     IndexRequirement,
     IndexState,
     IndexStatus,

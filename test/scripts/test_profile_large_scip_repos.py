@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -124,7 +124,7 @@ def test_create_profile_indexer_forces_scip_candidate_route(tmp_path, monkeypatc
         captured["kwargs"] = kwargs
         return sentinel
 
-    monkeypatch.setattr("codeminer.ls_router.LSIndexer", fake_indexer)
+    monkeypatch.setattr("codenib.ls_router.LSIndexer", fake_indexer)
     repo = profile_large_scip_repos.LargeScipRepo(
         name="ruby-large",
         language="ruby",

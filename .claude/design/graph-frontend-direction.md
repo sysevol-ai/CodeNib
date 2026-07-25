@@ -15,7 +15,7 @@ The graph overhaul and the click-to-source differentiator are **live** on branch
   `<Mermaid>` (Mermaid is still used by the wiki diagrams).
 - **Click an edge → exact call site** (the differentiator): anchors flow
   `traverse_graph.get_neighbors` (adds `anchor_file`/`anchor_line` to edge meta,
-  additive) → `codeminer/web/codemap.py` (aggregates call sites per `(src,tgt)`
+  additive) → `codenib/web/codemap.py` (aggregates call sites per `(src,tgt)`
   edge, 1-based) → `CodemapEdge.anchors` (`web/lib/api.ts`) → `CodeGraph` edge tap
   → `CallSitePeek` in `Codemap.tsx` (source window + spotlighted line via
   `HighlightedCode`'s new `highlightLine`). Multi-site edges get a call-site pager.
@@ -52,7 +52,7 @@ roles — colour/label edges by relation). Original design rationale below.
 Two things to fix at once:
 
 1. **The graph looks crude.** Root cause: the codemap renders through **Mermaid**
-   (`web/components/Codemap.tsx` + `codeminer/web/codemap.py`), and Mermaid is a
+   (`web/components/Codemap.tsx` + `codenib/web/codemap.py`), and Mermaid is a
    *static-diagram* tool. Its auto-layout on a dense call graph is unavoidably
    messy — no zoom/pan, no clustering, no filtering, only click-a-chip-to-refocus.
    No amount of CSS fixes this; it's the wrong rendering layer.
@@ -118,13 +118,13 @@ The wiki is the most copyable surface. Don't delete it (it's real onboarding
 value), but stop shipping it as standalone prose. Reframe: a subsystem page **is** a
 saved graph neighborhood + narration, where **every claim carries a clickable
 anchor**. Graph is the spine; prose is connective tissue. This sheds "just another
-wiki" while keeping the narration layer (`codeminer/wiki/`).
+wiki" while keeping the narration layer (`codenib/wiki/`).
 
 ## What to build (the two backend gaps)
 
 **The anchor data already flows end-to-end at the storage/query layer — the drop is
 purely in the graph-*consumption* layer.** Providers thread `anchor_file`/`anchor_line`
-into `CodeGraph._add_edge` (`codeminer/graph/code_graph.py:329-405`, stored on igraph
+into `CodeGraph._add_edge` (`codenib/graph/code_graph.py:329-405`, stored on igraph
 edge attrs ~:401-405) from SCIP 5-tuples (`scip_interface/scip_decode_core.py:99-123`
 + per-language decoders) and clangd `.idx` locations (`ls_index/clangd_decode.py:847-889`).
 `CodeGraph.query_range` already exposes them via `EdgeRef.anchor_file/anchor_line`
@@ -134,17 +134,17 @@ edge attrs ~:401-405) from SCIP 5-tuples (`scip_interface/scip_decode_core.py:99
 re-builds edges without the anchor:
 
 1. `traverse_graph.RepoDependencySearcher.get_neighbors` forwards only `{"type": etype}`
-   (`codeminer/graph/traverse_graph.py:81-88`) — it has `edge.attributes()` but drops
+   (`codenib/graph/traverse_graph.py:81-88`) — it has `edge.attributes()` but drops
    the anchors. **This is the upstream origin of the drop**; `DependencyAnalyzer`
    never even receives them.
 2. `DependencyAnalyzer._bfs`/`call_path` build `DepEdge(source,target,type)` and
-   `DepEdge` has no anchor fields (`codeminer/graph/dependency.py:59-66`, `:154-160`,
+   `DepEdge` has no anchor fields (`codenib/graph/dependency.py:59-66`, `:154-160`,
    `:193-201`).
 3. MCP `dependency_subgraph` serializes that anchor-less edge
-   (`codeminer/mcp/tools/dependency.py:48`, `codeminer/mcp/server.py:178-201`).
+   (`codenib/mcp/tools/dependency.py:48`, `codenib/mcp/server.py:178-201`).
 4. Web codemap edges are `{source,target}` node-ids only — no type, no anchor, and
    the node `line` is the symbol's *own definition* line, not the call site
-   (`codeminer/web/codemap.py:203-207`; `web/lib/api.ts` `CodemapEdge`:143-146).
+   (`codenib/web/codemap.py:203-207`; `web/lib/api.ts` `CodemapEdge`:143-146).
 
    *Plan:* add `anchor_file`/`anchor_line` to `DepEdge` + `to_dict`; have
    `get_neighbors` carry the edge's anchor attrs into the tuple; thread through
@@ -159,19 +159,19 @@ re-builds edges without the anchor:
    **and** drop `codemap.py`'s `(src,tgt)` dedup.
 
 **Gap B — coarse edge types (stretch, scope later).** Only `EDGE_TYPE_CONTAIN="contain"`
-and `EDGE_TYPE_REFERENCE="reference"` exist (`codeminer/types.py:16-17`). There is no
+and `EDGE_TYPE_REFERENCE="reference"` exist (`codenib/types.py:16-17`). There is no
 CALLS/IMPORTS/EXTENDS/IMPLEMENTS distinction — even clangd inheritance/override fold
 into reference-class edges (`ls_index/clangd_decode.py:891+`). GitNexus distinguishes
 these. SCIP symbol roles can recover some; bigger backend change — defer.
 
 ## Reuse, don't reinvent (graph ops that already exist)
 
-- `DependencyAnalyzer` (`codeminer/graph/dependency.py`): `impact()` (blast radius,
+- `DependencyAnalyzer` (`codenib/graph/dependency.py`): `impact()` (blast radius,
   `:108-115`), `dependencies()` (callees, `:117-121`), `subgraph()` (1-hop, `:123-125`),
   `call_path()` (shortest A→B, `:127-161`).
-- MCP `dependency_subgraph` (`codeminer/mcp/tools/dependency.py:20-48`) →
+- MCP `dependency_subgraph` (`codenib/mcp/tools/dependency.py:20-48`) →
   `{root,direction,nodes,edges,truncated,note}`.
-- Agent skills `find_callees`/`find_callers`/`trace` (`codeminer/agent/skills/_graphnav.py`).
+- Agent skills `find_callees`/`find_callers`/`trace` (`codenib/agent/skills/_graphnav.py`).
   ⚠️ `find_callees` executor docstring says "incoming" but returns callees (stale
   docstring; behavior is correct). ⚠️ `impact_analysis` skill dir has no source
   `executor.py` in the checkout (only `__pycache__`) — verify before relying on it.

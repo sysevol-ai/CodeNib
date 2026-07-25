@@ -1,8 +1,12 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-CODEMINER_SCIP_TOOLS_DIR ?= /tmp/codeminer-scip-tools
+CODENIB_HOME ?= $(HOME)/.codenib
+CODENIB_TEMP_DIR ?= $(if $(TMPDIR),$(TMPDIR),/tmp)/codenib
+CODENIB_PREBUILT_DIR ?= $(CODENIB_HOME)/prebuilt
+CODENIB_RESULTS_DIR ?= $(CODENIB_HOME)/results
+CODENIB_SCIP_TOOLS_DIR ?= $(CODENIB_TEMP_DIR)/scip-tools
 GO_VERSION ?= 1.26.4
 GO_OS ?= linux
 GO_ARCH ?= amd64
@@ -32,9 +36,9 @@ CSHARP_LS_VERSION ?= 0.25.0
 BUNDLER_VERSION ?= 2.6.9
 SCIP_RUBY_VERSION ?= 0.4.7
 RUBY_GEM ?= gem
-RUBY_PROJECT_GEMFILE ?= .codeminer/Gemfile
+RUBY_PROJECT_GEMFILE ?= .codenib/Gemfile
 RUBY_PROJECT_GEMSPEC_PATH ?= ..
-RUBY_PROJECT_BUNDLE_PATH ?= .codeminer/vendor/bundle
+RUBY_PROJECT_BUNDLE_PATH ?= .codenib/vendor/bundle
 SCIP_PHP_PACKAGE ?= davidrjenni/scip-php:0.0.2
 COMPOSER_DOCKER_IMAGE ?= composer:2
 SCIP_JDK_PACKAGE ?= openjdk-21-jdk
@@ -53,19 +57,19 @@ KOTLIN_LSP_EXTENSION_VERSION ?= 0.0.5
 KOTLIN_LSP_URL ?= https://download-cdn.jetbrains.com/language-server/kotlin-server/$(KOTLIN_LSP_VERSION)/kotlin-server-$(KOTLIN_LSP_EXTENSION_VERSION)-linux-amd64.vsix
 LSP_SMOKE_SYSTEM_PACKAGES ?= nodejs npm
 SCIP_SMOKE_LANGUAGES ?= java kotlin scala csharp ruby php
-SCIP_SMOKE_OUTPUT_DIR ?= /tmp/codeminer-scip-cold-start-smoke
+SCIP_SMOKE_OUTPUT_DIR ?= $(CODENIB_TEMP_DIR)/scip-cold-start-smoke
 SCIP_SMOKE_TIMEOUT ?= 300
 SCIP_SMOKE_EXTRA_ARGS ?=
-SCIP_PROJECT_OUTPUT_DIR ?= /tmp/codeminer-scip-project-smoke
+SCIP_PROJECT_OUTPUT_DIR ?= $(CODENIB_TEMP_DIR)/scip-project-smoke
 SCIP_PROJECT_EXTRA_ARGS ?=
 LSP_SMOKE_LANGUAGES ?= java csharp ruby php kotlin
 LSP_SMOKE_REFERENCE_LANGUAGES ?= java
 LSP_SMOKE_MIN_REFERENCES ?= java=1
-LSP_SMOKE_OUTPUT_DIR ?= /tmp/codeminer-lsp-smoke
+LSP_SMOKE_OUTPUT_DIR ?= $(CODENIB_TEMP_DIR)/lsp-smoke
 LSP_SMOKE_EXTRA_ARGS ?=
-LSP_PROJECT_OUTPUT_DIR ?= /tmp/codeminer-lsp-project-smoke
+LSP_PROJECT_OUTPUT_DIR ?= $(CODENIB_TEMP_DIR)/lsp-project-smoke
 LSP_PROJECT_EXTRA_ARGS ?=
-GRAPH_ALIGNMENT_OUTPUT_DIR ?= /tmp/codeminer-graph-route-alignment
+GRAPH_ALIGNMENT_OUTPUT_DIR ?= $(CODENIB_TEMP_DIR)/graph-route-alignment
 GRAPH_ALIGNMENT_REFERENCE_ROUTE ?= lsp
 GRAPH_ALIGNMENT_CANDIDATE_ROUTE ?= scip-candidate
 GRAPH_ALIGNMENT_SKIP_LEVEL ?= none
@@ -73,23 +77,23 @@ GRAPH_ALIGNMENT_TARGET_DIR ?=
 GRAPH_ALIGNMENT_EXCLUDE_PATTERNS ?=
 GRAPH_ALIGNMENT_EXTRA_ARGS ?=
 LARGE_SCIP_PROFILE_MANIFEST ?= scripts/profiling/large_scip_repos.yml
-LARGE_SCIP_PROFILE_CACHE_ROOT ?= /tmp/codeminer-large-scip-repos
-LARGE_SCIP_PROFILE_OUTPUT_DIR ?= /tmp/codeminer-large-scip-profile
+LARGE_SCIP_PROFILE_CACHE_ROOT ?= $(CODENIB_TEMP_DIR)/large-scip-repos
+LARGE_SCIP_PROFILE_OUTPUT_DIR ?= $(CODENIB_TEMP_DIR)/large-scip-profile
 LARGE_SCIP_PROFILE_TIMEOUT ?= 1800
 LARGE_SCIP_PROFILE_EXTRA_ARGS ?=
 PROJECT_LANGUAGE ?=
 PROJECT_ROOT ?=
 hash := \#
-CODEMINER_TOOL_PATH = $(CODEMINER_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)/bin:$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-tools:$(CODEMINER_SCIP_TOOLS_DIR)/dotnet:$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin:$(CODEMINER_SCIP_TOOLS_DIR)/go/bin:$(CODEMINER_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin:$(CODEMINER_SCIP_TOOLS_DIR):$(CODEMINER_SCIP_TOOLS_DIR)/gems/bin
-CODEMINER_TOOL_ENV = CODEMINER_SCIP_TOOLS_DIR="$(CODEMINER_SCIP_TOOLS_DIR)" DOTNET_ROOT="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet" GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" GOBIN="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin" GOPATH="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools" CODEMINER_PHP_COMPOSER_IMAGE="$(COMPOSER_DOCKER_IMAGE)" PATH="$(CODEMINER_TOOL_PATH):$$PATH"
+CODENIB_TOOL_PATH = $(CODENIB_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)/bin:$(CODENIB_SCIP_TOOLS_DIR)/dotnet-tools:$(CODENIB_SCIP_TOOLS_DIR)/dotnet:$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin:$(CODENIB_SCIP_TOOLS_DIR)/go/bin:$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin:$(CODENIB_SCIP_TOOLS_DIR):$(CODENIB_SCIP_TOOLS_DIR)/gems/bin
+CODENIB_TOOL_ENV = CODENIB_HOME="$(CODENIB_HOME)" CODENIB_TEMP_DIR="$(CODENIB_TEMP_DIR)" CODENIB_PREBUILT_DIR="$(CODENIB_PREBUILT_DIR)" CODENIB_RESULTS_DIR="$(CODENIB_RESULTS_DIR)" CODENIB_SCIP_TOOLS_DIR="$(CODENIB_SCIP_TOOLS_DIR)" DOTNET_ROOT="$(CODENIB_SCIP_TOOLS_DIR)/dotnet" GEM_HOME="$(CODENIB_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODENIB_SCIP_TOOLS_DIR)/gems" GOBIN="$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin" GOPATH="$(CODENIB_SCIP_TOOLS_DIR)/go-tools" CODENIB_PHP_COMPOSER_IMAGE="$(COMPOSER_DOCKER_IMAGE)" PATH="$(CODENIB_TOOL_PATH):$$PATH"
 SCIP_COLD_START_SYSTEM_PACKAGES = $(sort $(SCIP_JDK_PACKAGE) $(SCIP_CANDIDATE_SYSTEM_PACKAGES) $(SCIP_PHP_SYSTEM_PACKAGES))
 MULTILANG_SYSTEM_PACKAGES = $(sort $(ACTIVE_SCIP_SYSTEM_PACKAGES) $(CORE_SYSTEM_PACKAGES) $(SCIP_JDK_PACKAGE) $(SCIP_CANDIDATE_SYSTEM_PACKAGES) $(SCIP_PHP_SYSTEM_PACKAGES) $(LSP_SMOKE_SYSTEM_PACKAGES))
 
 define write-ruby-bundle-wrapper
-	@ruby_cmd="$$(GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" "$(RUBY_GEM)" environment | sed -n 's/^  - RUBY EXECUTABLE: //p')"; \
+	@ruby_cmd="$$(GEM_HOME="$(CODENIB_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODENIB_SCIP_TOOLS_DIR)/gems" "$(RUBY_GEM)" environment | sed -n 's/^  - RUBY EXECUTABLE: //p')"; \
 	ruby_bindir="$$(dirname "$$ruby_cmd")"; \
 	bundle_exe="$$ruby_bindir/bundle"; \
-	if [ ! -f "$$bundle_exe" ]; then bundle_exe="$(CODEMINER_SCIP_TOOLS_DIR)/gems/gems/bundler-$(BUNDLER_VERSION)/exe/bundle"; fi; \
+	if [ ! -f "$$bundle_exe" ]; then bundle_exe="$(CODENIB_SCIP_TOOLS_DIR)/gems/gems/bundler-$(BUNDLER_VERSION)/exe/bundle"; fi; \
 	test -n "$$ruby_cmd" || { echo "Could not resolve Ruby executable from $(RUBY_GEM)" >&2; exit 1; }; \
 	test -x "$$ruby_cmd" || { echo "Resolved Ruby is not executable: $$ruby_cmd" >&2; exit 1; }; \
 	test -f "$$bundle_exe" || { echo "Missing Bundler executable: $$bundle_exe" >&2; exit 1; }; \
@@ -99,18 +103,18 @@ define write-ruby-bundle-wrapper
 		printf '%s\n' "ruby_cmd='$$ruby_cmd'"; \
 		printf '%s\n' "ruby_bindir='$$ruby_bindir'"; \
 		printf '%s\n' "bundle_exe='$$bundle_exe'"; \
-		printf '%s\n' 'export GEM_HOME="$${GEM_HOME:-$(CODEMINER_SCIP_TOOLS_DIR)/gems}"'; \
-		printf '%s\n' 'export GEM_PATH="$${GEM_PATH:-$(CODEMINER_SCIP_TOOLS_DIR)/gems}"'; \
+		printf '%s\n' 'export GEM_HOME="$${GEM_HOME:-$(CODENIB_SCIP_TOOLS_DIR)/gems}"'; \
+		printf '%s\n' 'export GEM_PATH="$${GEM_PATH:-$(CODENIB_SCIP_TOOLS_DIR)/gems}"'; \
 		printf '%s\n' 'export PATH="$$ruby_bindir:$$PATH"'; \
 		printf '%s\n' 'exec "$$ruby_cmd" "$$bundle_exe" "$$@"'; \
-	} > "$(CODEMINER_SCIP_TOOLS_DIR)/bundle"; \
-	chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/bundle"
+	} > "$(CODENIB_SCIP_TOOLS_DIR)/bundle"; \
+	chmod +x "$(CODENIB_SCIP_TOOLS_DIR)/bundle"
 endef
 
 define write-ruby-lsp-wrapper
-	@ruby_cmd="$$(GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" "$(RUBY_GEM)" environment | sed -n 's/^  - RUBY EXECUTABLE: //p')"; \
+	@ruby_cmd="$$(GEM_HOME="$(CODENIB_SCIP_TOOLS_DIR)/gems" GEM_PATH="$(CODENIB_SCIP_TOOLS_DIR)/gems" "$(RUBY_GEM)" environment | sed -n 's/^  - RUBY EXECUTABLE: //p')"; \
 	ruby_bindir="$$(dirname "$$ruby_cmd")"; \
-	ruby_lsp_exe="$(CODEMINER_SCIP_TOOLS_DIR)/gems/gems/ruby-lsp-$(RUBY_LSP_VERSION)/exe/ruby-lsp"; \
+	ruby_lsp_exe="$(CODENIB_SCIP_TOOLS_DIR)/gems/gems/ruby-lsp-$(RUBY_LSP_VERSION)/exe/ruby-lsp"; \
 	test -n "$$ruby_cmd" || { echo "Could not resolve Ruby executable from $(RUBY_GEM)" >&2; exit 1; }; \
 	test -x "$$ruby_cmd" || { echo "Resolved Ruby is not executable: $$ruby_cmd" >&2; exit 1; }; \
 	test -f "$$ruby_lsp_exe" || { echo "Missing ruby-lsp executable: $$ruby_lsp_exe" >&2; exit 1; }; \
@@ -120,12 +124,12 @@ define write-ruby-lsp-wrapper
 		printf '%s\n' "ruby_cmd='$$ruby_cmd'"; \
 		printf '%s\n' "ruby_bindir='$$ruby_bindir'"; \
 		printf '%s\n' "ruby_lsp_exe='$$ruby_lsp_exe'"; \
-		printf '%s\n' 'export GEM_HOME="$${GEM_HOME:-$(CODEMINER_SCIP_TOOLS_DIR)/gems}"'; \
-		printf '%s\n' 'export GEM_PATH="$${GEM_PATH:-$(CODEMINER_SCIP_TOOLS_DIR)/gems}"'; \
+		printf '%s\n' 'export GEM_HOME="$${GEM_HOME:-$(CODENIB_SCIP_TOOLS_DIR)/gems}"'; \
+		printf '%s\n' 'export GEM_PATH="$${GEM_PATH:-$(CODENIB_SCIP_TOOLS_DIR)/gems}"'; \
 		printf '%s\n' 'export PATH="$$ruby_bindir:$$PATH"'; \
 		printf '%s\n' 'exec "$$ruby_cmd" "$$ruby_lsp_exe" "$$@"'; \
-	} > "$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp-bin"; \
-	chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp-bin"
+	} > "$(CODENIB_SCIP_TOOLS_DIR)/ruby-lsp-bin"; \
+	chmod +x "$(CODENIB_SCIP_TOOLS_DIR)/ruby-lsp-bin"
 endef
 
 GRAPH_ALIGNMENT_TOOL_TARGETS :=
@@ -237,19 +241,19 @@ active-lsp-tools: python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-
 	@$(MAKE) --no-print-directory active-scip-env
 
 active-scip-env:
-	@echo "CodeNib tools installed under: $(CODEMINER_SCIP_TOOLS_DIR)"
+	@echo "CodeNib tools installed under: $(CODENIB_SCIP_TOOLS_DIR)"
 	@echo "Use this environment for active SCIP/LSP and cold-start smoke runs:"
-	@echo "  export CODEMINER_SCIP_TOOLS_DIR=$(CODEMINER_SCIP_TOOLS_DIR)"
-	@echo "  export DOTNET_ROOT=$(CODEMINER_SCIP_TOOLS_DIR)/dotnet"
-	@echo "  export GEM_HOME=$(CODEMINER_SCIP_TOOLS_DIR)/gems"
-	@echo "  export GEM_PATH=$(CODEMINER_SCIP_TOOLS_DIR)/gems"
-	@echo "  export GOBIN=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin"
-	@echo "  export GOPATH=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools"
-	@echo "  export CODEMINER_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
-	@echo "  export PATH=$(CODEMINER_TOOL_PATH):\$$PATH"
+	@echo "  export CODENIB_SCIP_TOOLS_DIR=$(CODENIB_SCIP_TOOLS_DIR)"
+	@echo "  export DOTNET_ROOT=$(CODENIB_SCIP_TOOLS_DIR)/dotnet"
+	@echo "  export GEM_HOME=$(CODENIB_SCIP_TOOLS_DIR)/gems"
+	@echo "  export GEM_PATH=$(CODENIB_SCIP_TOOLS_DIR)/gems"
+	@echo "  export GOBIN=$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin"
+	@echo "  export GOPATH=$(CODENIB_SCIP_TOOLS_DIR)/go-tools"
+	@echo "  export CODENIB_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
+	@echo "  export PATH=$(CODENIB_TOOL_PATH):\$$PATH"
 
 toolchain-doctor:
-	@$(CODEMINER_TOOL_ENV) sh -eu -c 'missing=0; \
+	@$(CODENIB_TOOL_ENV) sh -eu -c 'missing=0; \
 		for cmd in scip-python scip-typescript yarn pnpm scip-go scip-clang rust-analyzer go gopls basedpyright-langserver ty typescript-language-server clangd scip-java gradle sbt dotnet scip-dotnet csharp-ls ruby-lsp intelephense kotlin-language-server zoekt-git-index zoekt-webserver; do \
 			if command -v "$$cmd" >/dev/null 2>&1; then \
 				printf "ok %s -> %s\n" "$$cmd" "$$(command -v "$$cmd")"; \
@@ -262,32 +266,32 @@ toolchain-doctor:
 go-tool:
 	$(call require-command,curl)
 	$(call require-command,tar)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
-	@if [ ! -f "$(CODEMINER_SCIP_TOOLS_DIR)/go/.codeminer-version" ] \
-		|| ! grep -qx "$(GO_VERSION)" "$(CODEMINER_SCIP_TOOLS_DIR)/go/.codeminer-version"; then \
-		rm -rf "$(CODEMINER_SCIP_TOOLS_DIR)/go" \
-			"$(CODEMINER_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz"; \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
+	@if [ ! -f "$(CODENIB_SCIP_TOOLS_DIR)/go/.codenib-version" ] \
+		|| ! grep -qx "$(GO_VERSION)" "$(CODENIB_SCIP_TOOLS_DIR)/go/.codenib-version"; then \
+		rm -rf "$(CODENIB_SCIP_TOOLS_DIR)/go" \
+			"$(CODENIB_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz"; \
 		curl -fL "$(GO_URL)" \
-			-o "$(CODEMINER_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz"; \
-		tar -xzf "$(CODEMINER_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz" \
-			-C "$(CODEMINER_SCIP_TOOLS_DIR)"; \
-		echo "$(GO_VERSION)" > "$(CODEMINER_SCIP_TOOLS_DIR)/go/.codeminer-version"; \
+			-o "$(CODENIB_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz"; \
+		tar -xzf "$(CODENIB_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz" \
+			-C "$(CODENIB_SCIP_TOOLS_DIR)"; \
+		echo "$(GO_VERSION)" > "$(CODENIB_SCIP_TOOLS_DIR)/go/.codenib-version"; \
 	fi
 
 scip-go-tool: go-tool
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin"
-	GOBIN="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin" \
-	GOPATH="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools" \
-	PATH="$(CODEMINER_SCIP_TOOLS_DIR)/go/bin:$$PATH" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/go/bin/go" install \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin"
+	GOBIN="$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin" \
+	GOPATH="$(CODENIB_SCIP_TOOLS_DIR)/go-tools" \
+	PATH="$(CODENIB_SCIP_TOOLS_DIR)/go/bin:$$PATH" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/go/bin/go" install \
 		"$(SCIP_GO_MODULE)@$(SCIP_GO_VERSION)"
 
 gopls-tool: go-tool
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin"
-	GOBIN="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin" \
-	GOPATH="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools" \
-	PATH="$(CODEMINER_SCIP_TOOLS_DIR)/go/bin:$$PATH" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/go/bin/go" install \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin"
+	GOBIN="$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin" \
+	GOPATH="$(CODENIB_SCIP_TOOLS_DIR)/go-tools" \
+	PATH="$(CODENIB_SCIP_TOOLS_DIR)/go/bin:$$PATH" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/go/bin/go" install \
 		"golang.org/x/tools/gopls@$(GOPLS_VERSION)"
 
 rust-tool:
@@ -297,48 +301,48 @@ rust-tool:
 	fi
 	PATH="$$HOME/.cargo/bin:$$PATH" rustup toolchain install stable
 	PATH="$$HOME/.cargo/bin:$$PATH" rustup component add rust-analyzer --toolchain stable
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
 	@rust_analyzer="$$(PATH="$$HOME/.cargo/bin:$$PATH" rustup which --toolchain stable rust-analyzer)"; \
-		ln -sf "$$rust_analyzer" "$(CODEMINER_SCIP_TOOLS_DIR)/rust-analyzer"
+		ln -sf "$$rust_analyzer" "$(CODENIB_SCIP_TOOLS_DIR)/rust-analyzer"
 
 scip-python-tool:
 	$(call require-command,npm)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools"
-	npm install --prefix "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/node-tools"
+	npm install --prefix "$(CODENIB_SCIP_TOOLS_DIR)/node-tools" \
 		"@sourcegraph/scip-python@$(SCIP_PYTHON_VERSION)"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/scip-python" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/scip-python"
+	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/scip-python" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/scip-python"
 
 scip-typescript-tool:
 	$(call require-command,npm)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools"
-	npm install --prefix "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/node-tools"
+	npm install --prefix "$(CODENIB_SCIP_TOOLS_DIR)/node-tools" \
 		"@sourcegraph/scip-typescript@$(SCIP_TYPESCRIPT_VERSION)"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/scip-typescript" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/scip-typescript"
+	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/scip-typescript" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/scip-typescript"
 
 node-workspace-tools:
 	$(call require-command,npm)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools"
-	npm install --prefix "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/node-tools"
+	npm install --prefix "$(CODENIB_SCIP_TOOLS_DIR)/node-tools" \
 		"yarn@$(YARN_VERSION)" \
 		"pnpm@$(PNPM_VERSION)"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/yarn" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/yarn"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/pnpm" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/pnpm"
+	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/yarn" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/yarn"
+	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/pnpm" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/pnpm"
 
 zoekt-tool: go-tool
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin"
-	GOBIN="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin" \
-	GOPATH="$(CODEMINER_SCIP_TOOLS_DIR)/go-tools" \
-	PATH="$(CODEMINER_SCIP_TOOLS_DIR)/go/bin:$$PATH" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/go/bin/go" install \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin"
+	GOBIN="$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin" \
+	GOPATH="$(CODENIB_SCIP_TOOLS_DIR)/go-tools" \
+	PATH="$(CODENIB_SCIP_TOOLS_DIR)/go/bin:$$PATH" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/go/bin/go" install \
 		"$(ZOEKT_MODULE)@$(ZOEKT_VERSION)"
 
 scip-clang-tool:
 	$(call require-command,curl)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
 	@os="$$(uname -s | tr '[:upper:]' '[:lower:]')"; \
 	arch="$$(uname -m)"; \
 	if [ "$$arch" != "x86_64" ]; then \
@@ -351,45 +355,45 @@ scip-clang-tool:
 	esac; \
 	bin="scip-clang-x86_64-$$os"; \
 	url="https://github.com/sourcegraph/scip-clang/releases/download/$(SCIP_CLANG_VERSION)/$$bin"; \
-	if [ ! -f "$(CODEMINER_SCIP_TOOLS_DIR)/scip-clang.version" ] \
-		|| ! grep -qx "$(SCIP_CLANG_VERSION)" "$(CODEMINER_SCIP_TOOLS_DIR)/scip-clang.version"; then \
-		curl -fL "$$url" -o "$(CODEMINER_SCIP_TOOLS_DIR)/scip-clang"; \
-		chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/scip-clang"; \
-		echo "$(SCIP_CLANG_VERSION)" > "$(CODEMINER_SCIP_TOOLS_DIR)/scip-clang.version"; \
+	if [ ! -f "$(CODENIB_SCIP_TOOLS_DIR)/scip-clang.version" ] \
+		|| ! grep -qx "$(SCIP_CLANG_VERSION)" "$(CODENIB_SCIP_TOOLS_DIR)/scip-clang.version"; then \
+		curl -fL "$$url" -o "$(CODENIB_SCIP_TOOLS_DIR)/scip-clang"; \
+		chmod +x "$(CODENIB_SCIP_TOOLS_DIR)/scip-clang"; \
+		echo "$(SCIP_CLANG_VERSION)" > "$(CODENIB_SCIP_TOOLS_DIR)/scip-clang.version"; \
 	fi
 
 python-lsp-tool:
 	$(call require-command,npm)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools"
-	npm install --prefix "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/node-tools"
+	npm install --prefix "$(CODENIB_SCIP_TOOLS_DIR)/node-tools" \
 		"basedpyright@$(BASEDPYRIGHT_VERSION)"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/basedpyright-langserver" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/basedpyright-langserver"
+	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/basedpyright-langserver" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/basedpyright-langserver"
 
 ty-tool:
 	$(call require-command,python)
-	python -m venv "$(CODEMINER_SCIP_TOOLS_DIR)/python-tools"
-	"$(CODEMINER_SCIP_TOOLS_DIR)/python-tools/bin/python" -m pip install \
+	python -m venv "$(CODENIB_SCIP_TOOLS_DIR)/python-tools"
+	"$(CODENIB_SCIP_TOOLS_DIR)/python-tools/bin/python" -m pip install \
 		--upgrade pip "ty==$(TY_VERSION)"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/python-tools/bin/ty" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/ty"
+	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/python-tools/bin/ty" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/ty"
 
 typescript-lsp-tool:
 	$(call require-command,npm)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools"
-	npm install --prefix "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/node-tools"
+	npm install --prefix "$(CODENIB_SCIP_TOOLS_DIR)/node-tools" \
 		"typescript-language-server@$(TYPESCRIPT_LANGUAGE_SERVER_VERSION)" \
 		"typescript@$(TYPESCRIPT_VERSION)"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/typescript-language-server" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/typescript-language-server"
+	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/typescript-language-server" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/typescript-language-server"
 
 clangd-tool:
 	@if ! command -v clangd >/dev/null 2>&1; then \
 		echo "Missing clangd. On Ubuntu, run: make active-system-deps-ubuntu" >&2; \
 		exit 1; \
 	fi
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
-	ln -sf "$$(command -v clangd)" "$(CODEMINER_SCIP_TOOLS_DIR)/clangd"
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
+	ln -sf "$$(command -v clangd)" "$(CODENIB_SCIP_TOOLS_DIR)/clangd"
 
 core-python-deps:
 	python -m pip install "pybind11==$(PYBIND11_VERSION)"
@@ -416,21 +420,21 @@ scip-cold-start-tools-all: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool 
 scip-candidates-all: scip-cold-start-tools-all
 
 scip-cold-start-env:
-	@echo "SCIP cold-start tools installed under: $(CODEMINER_SCIP_TOOLS_DIR)"
+	@echo "SCIP cold-start tools installed under: $(CODENIB_SCIP_TOOLS_DIR)"
 	@echo "Use this environment for active Java/Kotlin/Scala/C#/Ruby/PHP smoke runs:"
-	@echo "  export CODEMINER_SCIP_TOOLS_DIR=$(CODEMINER_SCIP_TOOLS_DIR)"
-	@echo "  export DOTNET_ROOT=$(CODEMINER_SCIP_TOOLS_DIR)/dotnet"
-	@echo "  export GEM_HOME=$(CODEMINER_SCIP_TOOLS_DIR)/gems"
-	@echo "  export GEM_PATH=$(CODEMINER_SCIP_TOOLS_DIR)/gems"
-	@echo "  export GOBIN=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin"
-	@echo "  export GOPATH=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools"
-	@echo "  export CODEMINER_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
-	@echo "  export PATH=$(CODEMINER_TOOL_PATH):\$$PATH"
+	@echo "  export CODENIB_SCIP_TOOLS_DIR=$(CODENIB_SCIP_TOOLS_DIR)"
+	@echo "  export DOTNET_ROOT=$(CODENIB_SCIP_TOOLS_DIR)/dotnet"
+	@echo "  export GEM_HOME=$(CODENIB_SCIP_TOOLS_DIR)/gems"
+	@echo "  export GEM_PATH=$(CODENIB_SCIP_TOOLS_DIR)/gems"
+	@echo "  export GOBIN=$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin"
+	@echo "  export GOPATH=$(CODENIB_SCIP_TOOLS_DIR)/go-tools"
+	@echo "  export CODENIB_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
+	@echo "  export PATH=$(CODENIB_TOOL_PATH):\$$PATH"
 
 scip-candidate-env: scip-cold-start-env
 
 scip-cold-start-smoke: scip-cold-start-tools
-	$(CODEMINER_TOOL_ENV) python scripts/smoke_scip_cold_start.py \
+	$(CODENIB_TOOL_ENV) python scripts/smoke_scip_cold_start.py \
 		--languages $(SCIP_SMOKE_LANGUAGES) \
 		--output-dir "$(SCIP_SMOKE_OUTPUT_DIR)" \
 		--timeout "$(SCIP_SMOKE_TIMEOUT)" \
@@ -445,7 +449,7 @@ scip-project-smoke-tools: $(SCIP_PROJECT_TOOL_TARGETS)
 scip-project-smoke: scip-project-smoke-tools
 	@test -n "$(PROJECT_LANGUAGE)" || { echo "Set PROJECT_LANGUAGE=<language>" >&2; exit 1; }
 	@test -n "$(PROJECT_ROOT)" || { echo "Set PROJECT_ROOT=/path/to/project" >&2; exit 1; }
-	$(CODEMINER_TOOL_ENV) python scripts/smoke_scip_cold_start.py \
+	$(CODENIB_TOOL_ENV) python scripts/smoke_scip_cold_start.py \
 		--languages "$(PROJECT_LANGUAGE)" \
 		--project-root "$(PROJECT_ROOT)" \
 		--output-dir "$(SCIP_PROJECT_OUTPUT_DIR)" \
@@ -467,72 +471,72 @@ scip-java-tool:
 		echo "Missing java. On Ubuntu, run: make scip-cold-start-system-deps-ubuntu" >&2; \
 		exit 1; \
 	fi
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
-	@if [ ! -x "$(CODEMINER_SCIP_TOOLS_DIR)/coursier" ]; then \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
+	@if [ ! -x "$(CODENIB_SCIP_TOOLS_DIR)/coursier" ]; then \
 		curl -fL "https://github.com/coursier/coursier/releases/download/v$(COURSIER_VERSION)/cs-x86_64-pc-linux.gz" \
-			| gzip -dc > "$(CODEMINER_SCIP_TOOLS_DIR)/coursier"; \
-		chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/coursier"; \
+			| gzip -dc > "$(CODENIB_SCIP_TOOLS_DIR)/coursier"; \
+		chmod +x "$(CODENIB_SCIP_TOOLS_DIR)/coursier"; \
 	fi
-	COURSIER_CACHE="$(CODEMINER_SCIP_TOOLS_DIR)/coursier-cache" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/coursier" bootstrap \
+	COURSIER_CACHE="$(CODENIB_SCIP_TOOLS_DIR)/coursier-cache" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/coursier" bootstrap \
 		"com.sourcegraph:scip-java_2.13:$(SCIP_JAVA_VERSION)" \
 		-M com.sourcegraph.scip_java.ScipJava \
-		-o "$(CODEMINER_SCIP_TOOLS_DIR)/scip-java" -f
+		-o "$(CODENIB_SCIP_TOOLS_DIR)/scip-java" -f
 
 gradle-tool:
 	$(call require-command,curl)
 	$(call require-command,unzip)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
-	@if [ ! -x "$(CODEMINER_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)/bin/gradle" ]; then \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
+	@if [ ! -x "$(CODENIB_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)/bin/gradle" ]; then \
 		curl -fL "https://services.gradle.org/distributions/gradle-$(GRADLE_VERSION)-bin.zip" \
-			-o "$(CODEMINER_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)-bin.zip"; \
-		unzip -q -o "$(CODEMINER_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)-bin.zip" \
-			-d "$(CODEMINER_SCIP_TOOLS_DIR)"; \
+			-o "$(CODENIB_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)-bin.zip"; \
+		unzip -q -o "$(CODENIB_SCIP_TOOLS_DIR)/gradle-$(GRADLE_VERSION)-bin.zip" \
+			-d "$(CODENIB_SCIP_TOOLS_DIR)"; \
 	fi
 
 sbt-tool: scip-java-tool
-	COURSIER_CACHE="$(CODEMINER_SCIP_TOOLS_DIR)/coursier-cache" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/coursier" install \
+	COURSIER_CACHE="$(CODENIB_SCIP_TOOLS_DIR)/coursier-cache" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/coursier" install \
 		"sbt:$(SBT_VERSION)" \
-		--install-dir "$(CODEMINER_SCIP_TOOLS_DIR)" \
+		--install-dir "$(CODENIB_SCIP_TOOLS_DIR)" \
 		--force
 
 dotnet-tool:
 	$(call require-command,curl)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
-	@if [ ! -x "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-install.sh" ]; then \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
+	@if [ ! -x "$(CODENIB_SCIP_TOOLS_DIR)/dotnet-install.sh" ]; then \
 		curl -fL https://dot.net/v1/dotnet-install.sh \
-			-o "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-install.sh"; \
-		chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-install.sh"; \
+			-o "$(CODENIB_SCIP_TOOLS_DIR)/dotnet-install.sh"; \
+		chmod +x "$(CODENIB_SCIP_TOOLS_DIR)/dotnet-install.sh"; \
 	fi
 	@for channel in $(DOTNET_CHANNELS); do \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-install.sh" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/dotnet-install.sh" \
 			--channel "$$channel" \
-			--install-dir "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet" \
+			--install-dir "$(CODENIB_SCIP_TOOLS_DIR)/dotnet" \
 			--no-path; \
 	done
 
 scip-dotnet-tool: dotnet-tool
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-tools"
-	DOTNET_ROOT="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet" \
-	PATH="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet:$$PATH" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/dotnet/dotnet" tool update \
-		--tool-path "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-tools" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/dotnet-tools"
+	DOTNET_ROOT="$(CODENIB_SCIP_TOOLS_DIR)/dotnet" \
+	PATH="$(CODENIB_SCIP_TOOLS_DIR)/dotnet:$$PATH" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/dotnet/dotnet" tool update \
+		--tool-path "$(CODENIB_SCIP_TOOLS_DIR)/dotnet-tools" \
 		scip-dotnet --version "$(SCIP_DOTNET_VERSION)" \
-		|| DOTNET_ROOT="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet" \
-			PATH="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet:$$PATH" \
-			"$(CODEMINER_SCIP_TOOLS_DIR)/dotnet/dotnet" tool install \
-			--tool-path "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-tools" \
+		|| DOTNET_ROOT="$(CODENIB_SCIP_TOOLS_DIR)/dotnet" \
+			PATH="$(CODENIB_SCIP_TOOLS_DIR)/dotnet:$$PATH" \
+			"$(CODENIB_SCIP_TOOLS_DIR)/dotnet/dotnet" tool install \
+			--tool-path "$(CODENIB_SCIP_TOOLS_DIR)/dotnet-tools" \
 			scip-dotnet --version "$(SCIP_DOTNET_VERSION)"
-	DOTNET_ROOT="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet" \
-	PATH="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet:$$PATH" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/dotnet/dotnet" tool update \
-		--tool-path "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-tools" \
+	DOTNET_ROOT="$(CODENIB_SCIP_TOOLS_DIR)/dotnet" \
+	PATH="$(CODENIB_SCIP_TOOLS_DIR)/dotnet:$$PATH" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/dotnet/dotnet" tool update \
+		--tool-path "$(CODENIB_SCIP_TOOLS_DIR)/dotnet-tools" \
 		csharp-ls --version "$(CSHARP_LS_VERSION)" \
-		|| DOTNET_ROOT="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet" \
-			PATH="$(CODEMINER_SCIP_TOOLS_DIR)/dotnet:$$PATH" \
-			"$(CODEMINER_SCIP_TOOLS_DIR)/dotnet/dotnet" tool install \
-			--tool-path "$(CODEMINER_SCIP_TOOLS_DIR)/dotnet-tools" \
+		|| DOTNET_ROOT="$(CODENIB_SCIP_TOOLS_DIR)/dotnet" \
+			PATH="$(CODENIB_SCIP_TOOLS_DIR)/dotnet:$$PATH" \
+			"$(CODENIB_SCIP_TOOLS_DIR)/dotnet/dotnet" tool install \
+			--tool-path "$(CODENIB_SCIP_TOOLS_DIR)/dotnet-tools" \
 			csharp-ls --version "$(CSHARP_LS_VERSION)"
 
 scip-ruby-system-deps-ubuntu:
@@ -546,18 +550,18 @@ scip-ruby-tool:
 		echo "Missing $(RUBY_GEM). On Ubuntu, run: make scip-ruby-system-deps-ubuntu" >&2; \
 		exit 1; \
 	fi
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/gems"
-	GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
-	GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/gems"
+	GEM_HOME="$(CODENIB_SCIP_TOOLS_DIR)/gems" \
+	GEM_PATH="$(CODENIB_SCIP_TOOLS_DIR)/gems" \
 		"$(RUBY_GEM)" install bundler -v "$(BUNDLER_VERSION)" --no-document
-	GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
-	GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
+	GEM_HOME="$(CODENIB_SCIP_TOOLS_DIR)/gems" \
+	GEM_PATH="$(CODENIB_SCIP_TOOLS_DIR)/gems" \
 		"$(RUBY_GEM)" install scip-ruby -v "$(SCIP_RUBY_VERSION)" --no-document
 	$(write-ruby-bundle-wrapper)
 
 ruby-project-bundle: ruby-lsp-tool scip-ruby-tool
 	@test -n "$(PROJECT_ROOT)" || { echo "Set PROJECT_ROOT=/path/to/ruby/project" >&2; exit 1; }
-	@$(CODEMINER_TOOL_ENV) sh -eu -c 'project_root="$$(cd "$(PROJECT_ROOT)" && pwd)"; \
+	@$(CODENIB_TOOL_ENV) sh -eu -c 'project_root="$$(cd "$(PROJECT_ROOT)" && pwd)"; \
 		gemfile="$(RUBY_PROJECT_GEMFILE)"; \
 		case "$$gemfile" in /*) ;; *) gemfile="$$project_root/$$gemfile";; esac; \
 		mkdir -p "$$(dirname "$$gemfile")"; \
@@ -574,7 +578,7 @@ ruby-project-bundle: ruby-lsp-tool scip-ruby-tool
 		unset GEM_PATH; \
 		BUNDLE_GEMFILE="$$gemfile" bundle config set path "$(RUBY_PROJECT_BUNDLE_PATH)"; \
 		BUNDLE_GEMFILE="$$gemfile" bundle install; \
-		printf "export CODEMINER_RUBY_BUNDLE_GEMFILE=%s\n" "$$gemfile"'
+		printf "export CODENIB_RUBY_BUNDLE_GEMFILE=%s\n" "$$gemfile"'
 
 scip-php-info:
 	@echo "scip-php is project-local. In the target PHP repo, run:"
@@ -585,7 +589,7 @@ scip-php-info:
 	@echo "use php-project-scip-tool only when you intentionally prewarm a disposable checkout."
 	@echo "Generated PHP smoke can also use Docker with:"
 	@echo "  make scip-php-docker-tool"
-	@echo "  CODEMINER_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
+	@echo "  CODENIB_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
 
 scip-php-tool:
 	@if ! command -v php >/dev/null 2>&1; then \
@@ -596,12 +600,12 @@ scip-php-tool:
 		echo "scip-php requires PHP >= 8.2. Override SCIP_PHP_SYSTEM_PACKAGES or use make scip-php-docker-tool." >&2; \
 		exit 1; \
 	}
-	@if ! command -v composer >/dev/null 2>&1 && [ ! -x "$(CODEMINER_SCIP_TOOLS_DIR)/composer" ]; then \
+	@if ! command -v composer >/dev/null 2>&1 && [ ! -x "$(CODENIB_SCIP_TOOLS_DIR)/composer" ]; then \
 		command -v curl >/dev/null 2>&1 || { echo "Missing required command: curl" >&2; exit 1; }; \
-		mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"; \
-		curl -fL https://getcomposer.org/installer -o "$(CODEMINER_SCIP_TOOLS_DIR)/composer-setup.php"; \
-		php "$(CODEMINER_SCIP_TOOLS_DIR)/composer-setup.php" \
-			--install-dir="$(CODEMINER_SCIP_TOOLS_DIR)" \
+		mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"; \
+		curl -fL https://getcomposer.org/installer -o "$(CODENIB_SCIP_TOOLS_DIR)/composer-setup.php"; \
+		php "$(CODENIB_SCIP_TOOLS_DIR)/composer-setup.php" \
+			--install-dir="$(CODENIB_SCIP_TOOLS_DIR)" \
 			--filename=composer; \
 	fi
 	@$(MAKE) --no-print-directory scip-php-info
@@ -614,7 +618,7 @@ scip-php-docker-tool:
 
 php-project-scip-tool:
 	@test -n "$(PROJECT_ROOT)" || { echo "Set PROJECT_ROOT=/path/to/php/project" >&2; exit 1; }
-	@$(CODEMINER_TOOL_ENV) sh -eu -c 'project_root="$$(cd "$(PROJECT_ROOT)" && pwd)"; \
+	@$(CODENIB_TOOL_ENV) sh -eu -c 'project_root="$$(cd "$(PROJECT_ROOT)" && pwd)"; \
 		if command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1; then \
 			cd "$$project_root"; \
 			composer require --dev "$(SCIP_PHP_PACKAGE)" --no-interaction --no-progress --no-security-blocking; \
@@ -641,19 +645,19 @@ lsp-smoke-tools: jdtls-tool csharp-lsp-tool ruby-lsp-tool intelephense-tool kotl
 	@$(MAKE) --no-print-directory lsp-smoke-env
 
 lsp-smoke-env:
-	@echo "LSP smoke tools installed under: $(CODEMINER_SCIP_TOOLS_DIR)"
+	@echo "LSP smoke tools installed under: $(CODENIB_SCIP_TOOLS_DIR)"
 	@echo "Use this environment for Java/C#/Ruby/PHP/Kotlin LSP smoke runs:"
-	@echo "  export CODEMINER_SCIP_TOOLS_DIR=$(CODEMINER_SCIP_TOOLS_DIR)"
-	@echo "  export DOTNET_ROOT=$(CODEMINER_SCIP_TOOLS_DIR)/dotnet"
-	@echo "  export GEM_HOME=$(CODEMINER_SCIP_TOOLS_DIR)/gems"
-	@echo "  export GEM_PATH=$(CODEMINER_SCIP_TOOLS_DIR)/gems"
-	@echo "  export GOBIN=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools/bin"
-	@echo "  export GOPATH=$(CODEMINER_SCIP_TOOLS_DIR)/go-tools"
-	@echo "  export CODEMINER_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
-	@echo "  export PATH=$(CODEMINER_TOOL_PATH):\$$PATH"
+	@echo "  export CODENIB_SCIP_TOOLS_DIR=$(CODENIB_SCIP_TOOLS_DIR)"
+	@echo "  export DOTNET_ROOT=$(CODENIB_SCIP_TOOLS_DIR)/dotnet"
+	@echo "  export GEM_HOME=$(CODENIB_SCIP_TOOLS_DIR)/gems"
+	@echo "  export GEM_PATH=$(CODENIB_SCIP_TOOLS_DIR)/gems"
+	@echo "  export GOBIN=$(CODENIB_SCIP_TOOLS_DIR)/go-tools/bin"
+	@echo "  export GOPATH=$(CODENIB_SCIP_TOOLS_DIR)/go-tools"
+	@echo "  export CODENIB_PHP_COMPOSER_IMAGE=$(COMPOSER_DOCKER_IMAGE)"
+	@echo "  export PATH=$(CODENIB_TOOL_PATH):\$$PATH"
 
 lsp-smoke: lsp-smoke-tools
-	$(CODEMINER_TOOL_ENV) python scripts/smoke_lsp_graph.py \
+	$(CODENIB_TOOL_ENV) python scripts/smoke_lsp_graph.py \
 		--languages $(LSP_SMOKE_LANGUAGES) \
 		--reference-languages $(LSP_SMOKE_REFERENCE_LANGUAGES) \
 		$(foreach item,$(LSP_SMOKE_MIN_REFERENCES),--min-references $(item)) \
@@ -663,7 +667,7 @@ lsp-smoke: lsp-smoke-tools
 lsp-project-smoke: lsp-smoke-tools
 	@test -n "$(PROJECT_LANGUAGE)" || { echo "Set PROJECT_LANGUAGE=<language>" >&2; exit 1; }
 	@test -n "$(PROJECT_ROOT)" || { echo "Set PROJECT_ROOT=/path/to/project" >&2; exit 1; }
-	$(CODEMINER_TOOL_ENV) python scripts/smoke_lsp_graph.py \
+	$(CODENIB_TOOL_ENV) python scripts/smoke_lsp_graph.py \
 		--languages "$(PROJECT_LANGUAGE)" \
 		--project-root "$(PROJECT_ROOT)" \
 		--output-dir "$(LSP_PROJECT_OUTPUT_DIR)" \
@@ -676,7 +680,7 @@ graph-route-alignment-tools: $(GRAPH_ALIGNMENT_TOOL_TARGETS)
 graph-route-alignment: graph-route-alignment-tools
 	@test -n "$(PROJECT_LANGUAGE)" || { echo "Set PROJECT_LANGUAGE=<language>" >&2; exit 1; }
 	@test -n "$(PROJECT_ROOT)" || { echo "Set PROJECT_ROOT=/path/to/project" >&2; exit 1; }
-	$(CODEMINER_TOOL_ENV) python scripts/check_graph_route_alignment.py \
+	$(CODENIB_TOOL_ENV) python scripts/check_graph_route_alignment.py \
 		--project-root "$(PROJECT_ROOT)" \
 		--language "$(PROJECT_LANGUAGE)" \
 		--reference-route "$(GRAPH_ALIGNMENT_REFERENCE_ROUTE)" \
@@ -688,7 +692,7 @@ graph-route-alignment: graph-route-alignment-tools
 		--json $(GRAPH_ALIGNMENT_EXTRA_ARGS)
 
 large-scip-profile:
-	$(CODEMINER_TOOL_ENV) python scripts/profiling/profile_large_scip_repos.py \
+	$(CODENIB_TOOL_ENV) python scripts/profiling/profile_large_scip_repos.py \
 		--manifest "$(LARGE_SCIP_PROFILE_MANIFEST)" \
 		--cache-root "$(LARGE_SCIP_PROFILE_CACHE_ROOT)" \
 		--output-dir "$(LARGE_SCIP_PROFILE_OUTPUT_DIR)" \
@@ -717,28 +721,28 @@ jdtls-tool:
 		echo "Missing java. On Ubuntu, run: make lsp-smoke-system-deps-ubuntu" >&2; \
 		exit 1; \
 	fi
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
-	@if [ ! -f "$(CODEMINER_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)/.codeminer-version" ] \
-		|| ! grep -qx "$(JDTLS_VERSION)-$(JDTLS_BUILD)" "$(CODEMINER_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)/.codeminer-version"; then \
-		rm -rf "$(CODEMINER_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)" \
-			"$(CODEMINER_SCIP_TOOLS_DIR)/jdt-language-server-$(JDTLS_VERSION)-$(JDTLS_BUILD).tar.gz"; \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
+	@if [ ! -f "$(CODENIB_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)/.codenib-version" ] \
+		|| ! grep -qx "$(JDTLS_VERSION)-$(JDTLS_BUILD)" "$(CODENIB_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)/.codenib-version"; then \
+		rm -rf "$(CODENIB_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)" \
+			"$(CODENIB_SCIP_TOOLS_DIR)/jdt-language-server-$(JDTLS_VERSION)-$(JDTLS_BUILD).tar.gz"; \
 		curl -fL "$(JDTLS_URL)" \
-			-o "$(CODEMINER_SCIP_TOOLS_DIR)/jdt-language-server-$(JDTLS_VERSION)-$(JDTLS_BUILD).tar.gz"; \
-		mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)"; \
-		tar -xzf "$(CODEMINER_SCIP_TOOLS_DIR)/jdt-language-server-$(JDTLS_VERSION)-$(JDTLS_BUILD).tar.gz" \
-			-C "$(CODEMINER_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)"; \
-		echo "$(JDTLS_VERSION)-$(JDTLS_BUILD)" > "$(CODEMINER_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)/.codeminer-version"; \
+			-o "$(CODENIB_SCIP_TOOLS_DIR)/jdt-language-server-$(JDTLS_VERSION)-$(JDTLS_BUILD).tar.gz"; \
+		mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)"; \
+		tar -xzf "$(CODENIB_SCIP_TOOLS_DIR)/jdt-language-server-$(JDTLS_VERSION)-$(JDTLS_BUILD).tar.gz" \
+			-C "$(CODENIB_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)"; \
+		echo "$(JDTLS_VERSION)-$(JDTLS_BUILD)" > "$(CODENIB_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)/.codenib-version"; \
 	fi
 	@{ \
 		echo '#!/usr/bin/env sh'; \
 		echo 'set -eu'; \
-		echo 'base="$(CODEMINER_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)"'; \
+		echo 'base="$(CODENIB_SCIP_TOOLS_DIR)/jdtls-$(JDTLS_VERSION)"'; \
 		echo 'launcher=$$(ls "$$base"/plugins/org.eclipse.equinox.launcher_*.jar | head -n 1)'; \
-		echo 'workspace="$${JDTLS_WORKSPACE:-$${TMPDIR:-/tmp}/codeminer-jdtls-workspace}"'; \
+		echo 'workspace="$${JDTLS_WORKSPACE:-$${TMPDIR:-/tmp}/codenib-jdtls-workspace}"'; \
 		echo 'mkdir -p "$$workspace"'; \
 		echo 'exec java -Declipse.application=org.eclipse.jdt.ls.core.id1 -Dosgi.bundles.defaultStartLevel=4 -Declipse.product=org.eclipse.jdt.ls.core.product --add-modules=ALL-SYSTEM --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED -jar "$$launcher" -configuration "$$base/config_linux" -data "$$workspace" "$$@"'; \
-	} > "$(CODEMINER_SCIP_TOOLS_DIR)/jdtls"
-	chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/jdtls"
+	} > "$(CODENIB_SCIP_TOOLS_DIR)/jdtls"
+	chmod +x "$(CODENIB_SCIP_TOOLS_DIR)/jdtls"
 
 csharp-lsp-tool: scip-dotnet-tool
 
@@ -747,61 +751,61 @@ ruby-lsp-tool:
 		echo "Missing $(RUBY_GEM). On Ubuntu, run: make scip-ruby-system-deps-ubuntu" >&2; \
 		exit 1; \
 	fi
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/gems"
-	GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
-	GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/gems"
+	GEM_HOME="$(CODENIB_SCIP_TOOLS_DIR)/gems" \
+	GEM_PATH="$(CODENIB_SCIP_TOOLS_DIR)/gems" \
 		"$(RUBY_GEM)" install bundler -v "$(BUNDLER_VERSION)" --no-document
-	GEM_HOME="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
-	GEM_PATH="$(CODEMINER_SCIP_TOOLS_DIR)/gems" \
+	GEM_HOME="$(CODENIB_SCIP_TOOLS_DIR)/gems" \
+	GEM_PATH="$(CODENIB_SCIP_TOOLS_DIR)/gems" \
 		"$(RUBY_GEM)" install ruby-lsp -v "$(RUBY_LSP_VERSION)" --no-document
-	@rm -f "$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp"
+	@rm -f "$(CODENIB_SCIP_TOOLS_DIR)/ruby-lsp"
 	$(write-ruby-bundle-wrapper)
 	$(write-ruby-lsp-wrapper)
 	{ \
 		printf '%s\n' '#!/usr/bin/env sh'; \
 		printf '%s\n' 'set -eu'; \
-		printf '%s\n' 'ruby_lsp_bin="$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp-bin"'; \
+		printf '%s\n' 'ruby_lsp_bin="$(CODENIB_SCIP_TOOLS_DIR)/ruby-lsp-bin"'; \
 		printf '%s\n' 'if [ -f Gemfile ] && command -v bundle >/dev/null 2>&1; then'; \
 		printf '%s\n' '  unset GEM_PATH'; \
 		printf '%s\n' '  exec bundle exec "$$ruby_lsp_bin" "$$@"'; \
 		printf '%s\n' 'fi'; \
 		printf '%s\n' 'exec "$$ruby_lsp_bin" "$$@"'; \
-	} > "$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp"; \
-	chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/ruby-lsp"
+	} > "$(CODENIB_SCIP_TOOLS_DIR)/ruby-lsp"; \
+	chmod +x "$(CODENIB_SCIP_TOOLS_DIR)/ruby-lsp"
 
 intelephense-tool:
 	$(call require-command,npm)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools"
-	npm install --prefix "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools" \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/node-tools"
+	npm install --prefix "$(CODENIB_SCIP_TOOLS_DIR)/node-tools" \
 		"intelephense@$(INTELEPHENSE_VERSION)"
-	ln -sf "$(CODEMINER_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/intelephense" \
-		"$(CODEMINER_SCIP_TOOLS_DIR)/intelephense"
+	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/intelephense" \
+		"$(CODENIB_SCIP_TOOLS_DIR)/intelephense"
 
 kotlin-lsp-tool:
 	$(call require-command,curl)
 	$(call require-command,unzip)
-	mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)"
-	@if [ ! -f "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)/.codeminer-version" ] \
-		|| ! grep -qx "$(KOTLIN_LSP_VERSION)" "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)/.codeminer-version"; then \
-		rm -rf "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)" \
-			"$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION).vsix"; \
+	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
+	@if [ ! -f "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)/.codenib-version" ] \
+		|| ! grep -qx "$(KOTLIN_LSP_VERSION)" "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)/.codenib-version"; then \
+		rm -rf "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)" \
+			"$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION).vsix"; \
 		curl -fL "$(KOTLIN_LSP_URL)" \
-			-o "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION).vsix"; \
-		mkdir -p "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)"; \
-		unzip -q -o "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION).vsix" \
-			-d "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)"; \
-		echo "$(KOTLIN_LSP_VERSION)" > "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)/.codeminer-version"; \
+			-o "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION).vsix"; \
+		mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)"; \
+		unzip -q -o "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION).vsix" \
+			-d "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)"; \
+		echo "$(KOTLIN_LSP_VERSION)" > "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)/.codenib-version"; \
 	fi
 	@{ \
 		echo '#!/usr/bin/env sh'; \
 		echo 'set -eu'; \
-		echo 'base="$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)"'; \
+		echo 'base="$(CODENIB_SCIP_TOOLS_DIR)/kotlin-lsp-$(KOTLIN_LSP_VERSION)"'; \
 		echo 'server=$$(find "$$base" -type f \( -name intellij-server -o -name kotlin-lsp.sh \) | head -n 1)'; \
 		echo 'if [ -z "$$server" ]; then echo "No Kotlin LSP launcher found under $$base" >&2; exit 1; fi'; \
 		echo 'chmod +x "$$server"'; \
 		echo 'exec "$$server" "$$@"'; \
-	} > "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-language-server"
-	chmod +x "$(CODEMINER_SCIP_TOOLS_DIR)/kotlin-language-server"
+	} > "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-language-server"
+	chmod +x "$(CODENIB_SCIP_TOOLS_DIR)/kotlin-language-server"
 
 dev:
 	pip install -e ".[dev,test]"
@@ -810,10 +814,10 @@ test:
 	pytest
 
 branding-assets:
-	python scripts/check_branding.py --sync-assets
+	python scripts/check_namespace.py --sync-assets
 
 branding-check:
-	python scripts/check_branding.py
+	python scripts/check_namespace.py
 
 # Rerank latency benchmark — measures wall-clock + VRAM across rerank backends.
 # Candidates: 25 50 100  |  Reps: 3  |  Output: scripts/bench_rerank_results.md
@@ -848,7 +852,7 @@ web-restart:
 	./scripts/dev_web.sh restart
 
 web-reclaim:
-	CODEMINER_WEB_RECLAIM_PORTS=1 ./scripts/dev_web.sh restart
+	CODENIB_WEB_RECLAIM_PORTS=1 ./scripts/dev_web.sh restart
 
 web-status:
 	./scripts/dev_web.sh status

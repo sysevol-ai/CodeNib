@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -15,12 +15,12 @@
 #include <unordered_set>
 #include <utility>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
 
 bool debug_enabled() {
-  static const bool enabled = std::getenv("CODEMINER_SCIP_DEBUG") != nullptr;
+  static const bool enabled = std::getenv("CODENIB_SCIP_DEBUG") != nullptr;
   return enabled;
 }
 
@@ -773,4 +773,4 @@ CodeGraph CodeGraph::load_graph(const std::string & /*input_path*/) {
       "CodeGraph::load_graph is not implemented yet for the C++ core");
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

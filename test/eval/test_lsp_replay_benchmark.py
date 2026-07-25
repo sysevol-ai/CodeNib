@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,17 +11,17 @@ from typing import Any, Mapping, Optional, Sequence
 
 import pytest
 
-from codeminer.agent.lsp_provider import StaticLSPProvider
-from codeminer.eval.agent_runner.live_lsp_provider import lsp_locations_to_nodes
-from codeminer.eval.agent_runner.lsp_readiness import wait_for_lsp_provider_readiness
-from codeminer.eval.agent_runner.lsp_replay_benchmark import (
+from codenib.agent.lsp_provider import StaticLSPProvider
+from codenib.eval.agent_runner.live_lsp_provider import lsp_locations_to_nodes
+from codenib.eval.agent_runner.lsp_readiness import wait_for_lsp_provider_readiness
+from codenib.eval.agent_runner.lsp_replay_benchmark import (
     exit_code_for_lsp_replay_benchmark,
     generate_lsp_replay_requests,
     render_lsp_replay_benchmark_markdown,
     run_lsp_replay_benchmark,
 )
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import NODE_TYPE_FUNCTION
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import NODE_TYPE_FUNCTION
 
 
 def _range_graph(tmp_path: Path) -> CodeGraph:

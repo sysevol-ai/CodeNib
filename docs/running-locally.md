@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -24,15 +24,15 @@ The setup has three services running in separate terminals:
 ### Main machine
 - CodeNib installed: `make dev` or `pip install -e ".[dev]"`
 - Node.js + npm: `make web-deps` (once)
-- Conda env `codeminer` active
+- Conda env `codenib` active
 
 ### GPU node
 - Access to a node with CUDA 12.4+ driver and enough VRAM (7B model needs ~5 GB)
-- `llama-cpp-python[server]` with GPU support installed in the `codeminer` env:
+- `llama-cpp-python[server]` with GPU support installed in the `codenib` env:
 
   ```bash
   # Install the pre-built CUDA 12.4 wheel (works with any CUDA 12.4+ driver)
-  conda activate codeminer
+  conda activate codenib
   pip install "llama-cpp-python[server]==0.3.29" \
     --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
   ```
@@ -60,22 +60,22 @@ For any repo you want to explore, build its BM25 index:
 git clone https://github.com/<owner>/<repo> ~/projects/<repo>
 
 # Build indexes
-conda activate codeminer
-cd ~/projects/CodeMiner/CodeMiner
+conda activate codenib
+cd ~/projects/CodeNib/CodeNib
 python - <<'EOF'
-from codeminer.compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.index_builders import IndexBuilderRegistry, register_default_builders
+from codenib.compiler import IndexCompiler, IndexCompilerConfig
+from codenib.compiler.index_builders import IndexBuilderRegistry, register_default_builders
 
 REPO = "/absolute/path/to/your/repo"   # <-- change this
 
 registry = IndexBuilderRegistry()
 register_default_builders(registry, languages=["python"])  # change language if needed
 IndexCompiler(registry, IndexCompilerConfig(index_types=["bm25"])).compile_repo(REPO)
-print("Done! Index at", REPO + "/.codeminer_cache/")
+print("Done! Index at", REPO + "/.codenib_cache/")
 EOF
 ```
 
-Then register the repo in `.codeminer_qa/qa_registry.json` (create the file if
+Then register the repo in `.codenib_qa/qa_registry.json` (create the file if
 it doesn't exist):
 
 ```json
@@ -86,7 +86,7 @@ it doesn't exist):
     "base_commit": "<git rev-parse HEAD of the repo>",
     "language": "python",
     "repo_dir": "/absolute/path/to/your/repo",
-    "manifest_path": "/absolute/path/to/your/repo/.codeminer_cache/repo_manifest.json",
+    "manifest_path": "/absolute/path/to/your/repo/.codenib_cache/repo_manifest.json",
     "problem_statement": ""
   }
 ]
@@ -105,7 +105,7 @@ No tracked config edit is required. `scripts/start_web.sh` points the backend at
 the local OpenAI-compatible endpoint by exporting:
 
 ```bash
-CODEMINER_DEMO_MODEL=openai/qwen2.5-coder
+CODENIB_DEMO_MODEL=openai/qwen2.5-coder
 OPENAI_API_BASE=http://<gpu-node>:8080/v1
 ```
 
@@ -116,7 +116,7 @@ cp qa_config.local.yaml.example qa_config.local.yaml
 ```
 
 When present, `scripts/start_web.sh` automatically uses `qa_config.local.yaml`.
-Override `CODEMINER_DEMO_CONFIG` or `CODEMINER_DEMO_MODEL` before running
+Override `CODENIB_DEMO_CONFIG` or `CODENIB_DEMO_MODEL` before running
 `start_web.sh` if your local server exposes a different model name or config
 path.
 
@@ -127,7 +127,7 @@ path.
 ### Terminal 1 — LLM server (on GPU node)
 
 ```bash
-cd ~/projects/CodeMiner/CodeMiner
+cd ~/projects/CodeNib/CodeNib
 bash scripts/start_llm.sh
 ```
 
@@ -137,7 +137,7 @@ server on port 8080.
 ### Terminal 2 — CodeNib backend (on main machine)
 
 ```bash
-cd ~/projects/CodeMiner/CodeMiner
+cd ~/projects/CodeNib/CodeNib
 bash scripts/start_web.sh
 ```
 
@@ -147,7 +147,7 @@ starts the FastAPI backend on port 8000 pointed at your LLM server.
 ### Terminal 3 — Frontend (on main machine)
 
 ```bash
-cd ~/projects/CodeMiner/CodeMiner/web
+cd ~/projects/CodeNib/CodeNib/web
 npm run dev
 ```
 
@@ -162,7 +162,7 @@ Opens at **http://localhost:3000**.
 3. Click **Refresh this wiki**
 4. Wait ~30–60 seconds — the LLM generates the outline and pages
 
-Wiki pages are cached in `.codeminer_qa/wiki_cache/` so subsequent loads are instant.
+Wiki pages are cached in `.codenib_qa/wiki_cache/` so subsequent loads are instant.
 To regenerate, delete that directory.
 
 ---
@@ -175,9 +175,9 @@ To regenerate, delete that directory.
 | `ContextWindowExceededError` | LLM server started without `--n_ctx 8192`. The start script sets this automatically. |
 | `Connection refused` on port 8080 | LLM server not running, or firewall blocking the GPU node port. Check Terminal 1. |
 | Wiki says "Couldn't load this page" | Check backend terminal for `WARNING outline generation failed`. Usually an LLM connectivity issue. |
-| `repos: 0` at `/api/health` | `qa_registry.json` missing or wrong path. Check `.codeminer_qa/qa_registry.json`. |
+| `repos: 0` at `/api/health` | `qa_registry.json` missing or wrong path. Check `.codenib_qa/qa_registry.json`. |
 | Backend stuck on "Loading repositories…" | Index not built. Run Step 1 again. |
-| Blank wiki after "Refresh" | Wiki cached from a failed run. Delete `.codeminer_qa/wiki_cache/` and retry. |
+| Blank wiki after "Refresh" | Wiki cached from a failed run. Delete `.codenib_qa/wiki_cache/` and retry. |
 
 ---
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from codeminer.agent.skills import _graphnav
+from codenib.agent.skills import _graphnav
 
 
 class _FakeGraph:

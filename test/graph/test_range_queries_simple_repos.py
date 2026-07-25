@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -30,9 +30,9 @@ import pytest
 
 pytestmark = pytest.mark.integration_serial
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.ls_router import LSIndexer
-from codeminer.types import NODE_TYPE_CLASS, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
+from codenib.graph.code_graph import CodeGraph
+from codenib.ls_router import LSIndexer
+from codenib.types import NODE_TYPE_CLASS, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
 
 SIMPLE_REPOS = Path(__file__).resolve().parent.parent / "scip" / "simple_repos"
 

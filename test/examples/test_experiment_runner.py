@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -361,14 +361,14 @@ def test_real_model_dispatch_end_to_end():
             "real-LLM dispatch test requires credentials."
         )
 
-    from codeminer.llm.litellm_chat import LiteLLMChat
+    from codenib.llm.litellm_chat import LiteLLMChat
 
     resolved = resolve_model("haiku")
     llm = LiteLLMChat(model=resolved, temperature=0.0, max_tokens=64)
 
     # One trivial single-rep run: no tools, deterministic at temp=0.
-    from codeminer.agent.runner import AgentRunner
-    from codeminer.agent.skills.registry import SkillRegistry
+    from codenib.agent.runner import AgentRunner
+    from codenib.agent.skills.registry import SkillRegistry
 
     SkillRegistry.reset()
     result = AgentRunner(llm=llm, registry=SkillRegistry(), max_turns=1).run(

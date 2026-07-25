@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.code_chunker import CodeChunker
-from codeminer.index import BM25CodeIndexer
-from codeminer.ls_router import LSIndexer
+from codenib.code_chunker import CodeChunker
+from codenib.index import BM25CodeIndexer
+from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.integration_serial
 
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.integration_serial
 def samplemod_repo():
     """Clone and set up the samplemod repository for testing."""
     test_repo_url = "https://github.com/navdeep-G/samplemod.git"
-    test_repo_path = Path.home() / ".codeminer" / "repos" / "samplemod"
+    test_repo_path = Path.home() / ".codenib" / "repos" / "samplemod"
 
     # Clone the repo if it doesn't exist
     if not test_repo_path.exists():
@@ -37,7 +37,7 @@ def code_graph(samplemod_repo):
     current_dir = Path(os.path.dirname(os.path.abspath(__file__)))
     output_file = str(current_dir / "samplemod_index.json")
     # Use a directory under home to avoid permission issues
-    output_dir = Path.home() / ".codeminer" / "repos" / "scip_output"
+    output_dir = Path.home() / ".codenib" / "repos" / "scip_output"
 
     # Create a new indexer for the samplemod repo
     repo_indexer = LSIndexer(samplemod_repo, output_dir=output_dir)

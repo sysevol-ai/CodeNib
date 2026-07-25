@@ -24,13 +24,13 @@ site/
 results/
 
 # Code-QA demo (dir or symlink to a shared data dir)
-.codeminer_qa
+.codenib_qa
 # Compiled index artifacts (manifest, graph pickles, commit-window snapshots).
-.codeminer_cache
+.codenib_cache
 
 # Cloned repos for local demo (gitignored — add via: python scripts/index_repo.py repos/<name>)
 repos/
-.codeminer_demo/
+.codenib_demo/
 # Local verification evidence / scratch (Playwright screenshots); not source.
 /verification/
 /references/

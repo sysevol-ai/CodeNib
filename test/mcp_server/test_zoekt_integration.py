@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -27,10 +27,10 @@ from typing import Iterator
 
 import pytest
 
-from codeminer.compiler.index_builders import ZoektIndexBuilder
-from codeminer.compiler.manifest import IndexEntry, RepoManifest
-from codeminer.mcp.context import ServerContext
-from codeminer.mcp.tools.search import search_zoekt_impl
+from codenib.compiler.index_builders import ZoektIndexBuilder
+from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.mcp.context import ServerContext
+from codenib.mcp.tools.search import search_zoekt_impl
 
 # Skip the entire module when Zoekt binaries are not installed.
 pytestmark = pytest.mark.skipif(
@@ -92,8 +92,8 @@ def _materialize_repo(repo_dir: Path) -> None:
         path.write_text(content)
 
     _git(repo_dir, "init", "-q", "-b", "main")
-    _git(repo_dir, "config", "user.email", "test@codeminer.local")
-    _git(repo_dir, "config", "user.name", "Codeminer Test")
+    _git(repo_dir, "config", "user.email", "test@codenib.local")
+    _git(repo_dir, "config", "user.name", "CodeNib Test")
     _git(repo_dir, "add", ".")
     _git(repo_dir, "commit", "-q", "-m", "initial")
 

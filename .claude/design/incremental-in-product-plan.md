@@ -22,7 +22,7 @@ the execution layer is stubbed.
 | Graph patcher | ✅ built, 5 languages | `PatcherBase` (1293 lines) + per-language subclasses; measured 13–24x |
 | Graph patcher **wired to compiler** | ❌ | `SymbolGraphBuilder.incremental_update` → `return self.build()` |
 | Vector incremental **called by demo** | ❌ | demo only ever calls `build()` |
-| Exactness guard | ❌ **not in this repo** | searched `codeminer/`, `test/`, `scripts/` — lives in the eval artifact bundle |
+| Exactness guard | ❌ **not in this repo** | searched `codenib/`, `test/`, `scripts/` — lives in the eval artifact bundle |
 | BM25 / Zoekt incremental | ❌ | both `return self.build()` |
 
 **The one thing currently exercising the graph patcher in product code is
@@ -112,11 +112,11 @@ record index paths per commit; thread `commit` through `/api/chat`.
 Serving host needs the language servers, because patching requires live LSP:
 
 ```bash
-make python-lsp-tool CODEMINER_SCIP_TOOLS_DIR=$HOME/.codeminer-tools   # basedpyright
-make typescript-lsp-tool gopls-tool scip-go-tool CODEMINER_SCIP_TOOLS_DIR=...
+make python-lsp-tool CODENIB_SCIP_TOOLS_DIR=$HOME/.codenib-tools   # basedpyright
+make typescript-lsp-tool gopls-tool scip-go-tool CODENIB_SCIP_TOOLS_DIR=...
 ```
 
-`CODEMINER_SCIP_TOOLS_DIR` defaults to `/tmp/codeminer-scip-tools` — **ephemeral
+`CODENIB_SCIP_TOOLS_DIR` defaults to `${CODENIB_TEMP_DIR}/scip-tools` — **ephemeral
 and world-writable on a shared box**. Always override it to a persistent path.
 
 ---

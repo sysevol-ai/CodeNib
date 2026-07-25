@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 # Seed-richness dial on the WEAK model (4B): eager_compact with
 # compact_keep_reads 0/1/2. k0 had a re-read tax (turns up, tokens up vs eager);

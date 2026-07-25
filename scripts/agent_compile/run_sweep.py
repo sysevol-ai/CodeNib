@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Agent-compile cost-arm sweep on ``codeminer_base`` with prebuilt indexes.
+"""Agent-compile cost-arm sweep on ``codenib_base`` with prebuilt indexes.
 
 Sweeps ``{subsets} × {instances} × {reps}`` for one model, reusing the
 offline-built per-instance indexes under ``--prebuilt-dir`` (see
-``codeminer.eval.agent_runner.prebuilt``) instead of cloning + reindexing.
+``codenib.eval.agent_runner.prebuilt``) instead of cloning + reindexing.
 
 Per instance the *full* (union-of-subsets) index set is loaded once and all
 skills are registered; each subset cell then runs ``AgentRunner`` with
@@ -41,7 +41,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Agent-compile cost-arm sweep on codeminer_base (prebuilt indexes).",
+        description="Agent-compile cost-arm sweep on codenib_base (prebuilt indexes).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--config", required=True, type=Path)
@@ -57,8 +57,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    from codeminer.eval.agent_runner.sweep import run_sweep
-    from codeminer.eval.agent_runner.sweep_config import SweepConfig
+    from codenib.eval.agent_runner.sweep import run_sweep
+    from codenib.eval.agent_runner.sweep_config import SweepConfig
 
     cfg = SweepConfig.from_yaml(args.config)
     if args.reps is not None:

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -36,10 +36,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.tool_schema import tool_to_schema
-from codeminer.agent.tools.defaults import (
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.agent.tool_schema import tool_to_schema
+from codenib.agent.tools.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
     DEFAULT_TOOL_IDS,
     _bash,
@@ -49,8 +49,8 @@ from codeminer.agent.tools.defaults import (
     ensure_default_tools_registered,
     get_default_tool_specs,
 )
-from codeminer.agent.tools.spec import ToolRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent.tools.spec import ToolRegistry
+from codenib.llm.litellm_chat import LiteLLMChat
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -214,7 +214,7 @@ class TestGrep:
     def test_multiline_preserves_one_row_per_match(self, tmp_path, monkeypatch):
         (tmp_path / "m.py").write_text("start\nmiddle\nend\n", encoding="utf-8")
         monkeypatch.setattr(
-            "codeminer.agent.tools.defaults.shutil.which", lambda _command: "/bin/rg"
+            "codenib.agent.tools.defaults.shutil.which", lambda _command: "/bin/rg"
         )
 
         result = _grep("start.*end", path=str(tmp_path), multiline=True)
@@ -252,12 +252,10 @@ class TestGrep:
         slow_rg.write_text("#!/bin/sh\nsleep 2\n", encoding="utf-8")
         slow_rg.chmod(0o755)
         monkeypatch.setattr(
-            "codeminer.agent.tools.defaults.shutil.which",
+            "codenib.agent.tools.defaults.shutil.which",
             lambda _command: str(slow_rg),
         )
-        monkeypatch.setattr(
-            "codeminer.agent.tools.defaults._GREP_TIMEOUT_SECONDS", 0.05
-        )
+        monkeypatch.setattr("codenib.agent.tools.defaults._GREP_TIMEOUT_SECONDS", 0.05)
 
         result = _grep("needle", path=str(tmp_path))
 
@@ -273,7 +271,7 @@ class TestGrep:
 
     def test_python_fallback_when_ripgrep_is_unavailable(self, sample_dir, monkeypatch):
         monkeypatch.setattr(
-            "codeminer.agent.tools.defaults.shutil.which", lambda _command: None
+            "codenib.agent.tools.defaults.shutil.which", lambda _command: None
         )
         result = _grep("def foo", path=str(sample_dir))
         assert "a.py:1:" in result and "def foo" in result
@@ -476,7 +474,7 @@ class TestAgentRunnerDefaults:
         assert set(DEFAULT_TOOL_IDS).issubset(names)
 
     def test_non_default_skill_still_excluded(self):
-        from codeminer.agent.skills.core import SkillMetadata, SkillType
+        from codenib.agent.skills.core import SkillMetadata, SkillType
 
         reg = SkillRegistry()
         reg.register(
@@ -494,7 +492,7 @@ class TestAgentRunnerDefaults:
     def test_skill_id_colliding_with_default_tool_raises(self):
         """A skill named like a default tool would emit a duplicate function
         name and shadow the tool — the runner must reject it at construction."""
-        from codeminer.agent.skills.core import SkillMetadata, SkillType
+        from codenib.agent.skills.core import SkillMetadata, SkillType
 
         reg = SkillRegistry()
         reg.register(

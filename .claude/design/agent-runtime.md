@@ -7,7 +7,7 @@ decided — read §0 first, it overrides the speculative parts of §5/§7.
 
 ## 0. Results — what the data decided (runtime_probe, 4 langs, 1328 cells)
 
-Per-query paired-bootstrap on codeminer-synthesis (Go/Rust/TS/C++; Python
+Per-query paired-bootstrap on codenib-synthesis (Go/Rust/TS/C++; Python
 excluded — its sweep hung under 5-way concurrency; reps=1). Headline answer to
 "does our pre-load save tokens at equal accuracy?": **yes, significantly.**
 
@@ -67,8 +67,8 @@ callers?"). Value ∝ task stakes, not query count.
 | layer | what | home in code | status |
 |------|------|------|------|
 | **Compile** | repo → precise typed graph + indexes | `compiler/index_compiler.py`, `compiler/manifest.py` (`RepoManifest`) | done |
-| **Route** | `classify(query, sctx)` → which pre-load recipe | `codeminer/agent/compile.py::classify`, `harness.scenario_for` | done (recipe table thin) |
-| **Pre-load** | run recipe (embedding [+bm25] [+graph expand], NO rerank) → inject `(file,span,snippet)` into the opening prompt | `lib/preload.py::assemble_preload`, wired in `harness.run_cell` (`effective_query = query + preamble`) | done for embedding; **graph supported but unconfigured** (`_PRELOAD_RETRIEVER_SKILL["graph"]="codeminer_context"`) |
+| **Route** | `classify(query, sctx)` → which pre-load recipe | `codenib/agent/compile.py::classify`, `harness.scenario_for` | done (recipe table thin) |
+| **Pre-load** | run recipe (embedding [+bm25] [+graph expand], NO rerank) → inject `(file,span,snippet)` into the opening prompt | `lib/preload.py::assemble_preload`, wired in `harness.run_cell` (`effective_query = query + preamble`) | done for embedding; **graph supported but unconfigured** (`_PRELOAD_RETRIEVER_SKILL["graph"]="codenib_context"`) |
 | **Verify-expand** | after the agent commits, check answer spans/edges against the graph; on miss, deterministically expand pre-load with graph neighbors and re-run; bounded | NEW — wraps `run_cell` / `AgentRunner.run` | **TODO (the runtime's novelty)** |
 
 Layers 1–3 are "a great context engine." Layer 4 is what makes it an *agent
@@ -80,7 +80,7 @@ needs the loop.
 We do **not** ship a new "router paradigm" the ecosystem must adopt. Two faces,
 one codebase:
 
-- **Outside = standard tool-calling / MCP** (`codeminer/mcp/`). Expose at most
+- **Outside = standard tool-calling / MCP** (`codenib/mcp/`). Expose at most
   one coarse `get_context(query)` + one `expand_context`; drops into any host
   (Claude Code, Cursor). Full compatibility — this is the adoption surface.
 - **Inside = the deterministic router over *recipes*** (not a menu of tools the
@@ -131,7 +131,7 @@ Key properties that keep it self-consistent:
 - The metric it must move: **wrong-target rate down** and **hard-category
   answer_rec up**, at acceptable Δcost. If it doesn't, it is cut (see §7).
 
-## 6. Validation — per-category Pareto on codeminer-synthesis (500)
+## 6. Validation — per-category Pareto on codenib-synthesis (500)
 
 Harness already exists: `run_synthesis_sweep.py` (per-query, groups by instance
 so the index amortizes across a repo's ~20 queries — the reuse advantage),
@@ -185,6 +185,6 @@ output (`completion_tokens`) dominates (~5x input), so the win is *fewer turns* 
    against the manifest before any LLM run.
 5. **Full 500 × arms**, per-category Pareto; apply §7 to decide the shipped form.
 
-The product that "appears" at the end = `codeminer serve` (MCP context engine,
-always) + `codeminer agent <task>` (the verify-expand controller, *iff* §7 step 4
+The product that "appears" at the end = `codenib serve` (MCP context engine,
+always) + `codenib agent <task>` (the verify-expand controller, *iff* §7 step 4
 earns it), specialized on resolution / impact / completeness tasks.

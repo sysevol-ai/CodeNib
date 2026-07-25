@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -350,12 +350,12 @@ def test_run_smoke_normalizes_ruby_alias_for_missing_command(monkeypatch):
 
 
 def test_ruby_smoke_env_unsets_gem_path_for_bundler(tmp_path, monkeypatch):
-    monkeypatch.setenv("GEM_HOME", "/tmp/codeminer-tools/gems")
-    monkeypatch.setenv("GEM_PATH", "/tmp/codeminer-tools/gems")
+    monkeypatch.setenv("GEM_HOME", "/tmp/codenib-tools/gems")
+    monkeypatch.setenv("GEM_PATH", "/tmp/codenib-tools/gems")
 
     env = smoke_scip_cold_start._smoke_env("ruby", tmp_path)
 
-    assert env["GEM_HOME"] == "/tmp/codeminer-tools/gems"
+    assert env["GEM_HOME"] == "/tmp/codenib-tools/gems"
     assert "GEM_PATH" not in env
     assert env["BUNDLE_GEMFILE"] == str(tmp_path / "Gemfile")
 

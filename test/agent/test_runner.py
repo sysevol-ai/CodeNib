@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the agent runner (codeminer.agent.runner)."""
+"""Tests for the agent runner (codenib.agent.runner)."""
 
 from __future__ import annotations
 
@@ -12,16 +12,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.agent_types import AgentResult
-from codeminer.agent.runner import AgentRunner, _serialize_result
-from codeminer.agent.skills.core import (
+from codenib.agent.agent_types import AgentResult
+from codenib.agent.runner import AgentRunner, _serialize_result
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.llm.litellm_chat import LiteLLMChat
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -404,7 +404,7 @@ class TestAgentRunner:
         Note: default TOOLS (DEFAULT_TOOL_IDS) are NEVER excluded — they live in
         a separate ToolRegistry, outside the skill exclude/allow funnel.
         """
-        from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
+        from codenib.agent.tools.defaults import DEFAULT_TOOL_IDS
 
         llm = _make_llm()
         llm._call_raw.return_value = _make_response(content="ok")

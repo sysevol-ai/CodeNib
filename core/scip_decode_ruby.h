@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 class SCIPRubyDecoder : public SCIPDecoderBase {
 public:
@@ -111,4 +111,4 @@ private:
   std::unordered_map<std::string, std::size_t> document_order_by_file_;
 };
 
-} // namespace codeminer::core
+} // namespace codenib::core

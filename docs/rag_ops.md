@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -8,8 +8,8 @@ SPDX-License-Identifier: Apache-2.0
 
 CodeNib keeps RAG behavior in two layers:
 
-- `codeminer/ops/` contains small retrieval operators and typed contexts.
-- `codeminer/model/` chooses and executes pipeline policy.
+- `codenib/ops/` contains small retrieval operators and typed contexts.
+- `codenib/model/` chooses and executes pipeline policy.
 
 The ops layer should stay simple. It should normalize, merge, filter, expand, or
 rerank candidates without deciding which retrieval strategy a query deserves.

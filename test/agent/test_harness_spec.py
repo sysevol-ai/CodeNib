@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,16 +12,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.agent_types import AgentResult
-from codeminer.agent.harness import (
+from codenib.agent.agent_types import AgentResult
+from codenib.agent.harness import (
     AgentHarnessSpec,
     AgentRunAccumulator,
     run_agent_in_directory,
 )
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.llm.usage import TokenUsage
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.llm.usage import TokenUsage
 
 
 @pytest.fixture(autouse=True)

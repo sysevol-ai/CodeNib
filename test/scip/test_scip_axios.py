@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
-from codeminer.ls_router import LSIndexer
-from codeminer.types import is_symbol_node
+from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
+from codenib.ls_router import LSIndexer
+from codenib.types import is_symbol_node
 
 pytestmark = pytest.mark.integration_serial
 

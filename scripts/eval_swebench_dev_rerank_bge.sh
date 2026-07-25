@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
+CODENIB_HOME="${CODENIB_HOME:-$HOME/.codenib}"
+CODENIB_PREBUILT_DIR="${CODENIB_PREBUILT_DIR:-${CODENIB_HOME}/prebuilt}"
 
 # Run retrieval + embedding rerank evaluation on SWE-bench Lite dev split using
 # fishmingyu/SweRankEmbed-Large as the reranker.
@@ -12,10 +14,10 @@ set -euo pipefail
 DATASET="swebench_lite"
 SPLIT="dev"
 FILTER_INSTANCE="${FILTER_INSTANCE:-.*}"
-INDEX_CACHE_DIR="${INDEX_CACHE_DIR:-/mnt/data/codeminer}"
-REPO_CACHE_DIR="${REPO_CACHE_DIR:-~/.codeminer}"
+INDEX_CACHE_DIR="${INDEX_CACHE_DIR:-${CODENIB_PREBUILT_DIR}}"
+REPO_CACHE_DIR="${REPO_CACHE_DIR:-${CODENIB_HOME}}"
 RESULT_PATH="${RESULT_PATH:-}"
-EVAL_INSTANCES="${EVAL_INSTANCES:-$HOME/.codeminer/swebench_lite_gt_dev.json}"
+EVAL_INSTANCES="${EVAL_INSTANCES:-${CODENIB_HOME}/swebench_lite_gt_dev.json}"
 PROFILE_DIR="${PROFILE_DIR:-}"
 PROFILE_TAG="${PROFILE_TAG:-dev_dense_embedding_rerank}"
 

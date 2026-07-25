@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.history import (
+from codenib.agent.history import (
     PlainChatHistory,
     TokenBudgetedChatHistory,
     count_message_tokens,

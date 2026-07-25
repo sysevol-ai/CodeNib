@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,11 +19,11 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.compiler.manifest import IndexEntry, RepoManifest
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.index.sparse_idx import BM25CodeIndexer
-from codeminer.mcp.context import ServerContext
-from codeminer.mcp.tools.search import search_bm25_impl, search_regex_impl
+from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.graph.code_graph import CodeGraph
+from codenib.index.sparse_idx import BM25CodeIndexer
+from codenib.mcp.context import ServerContext
+from codenib.mcp.tools.search import search_bm25_impl, search_regex_impl
 
 # Synthetic repo: three small Python files with predictable symbols so that
 # both keyword (BM25) and regex search have something to match.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -23,11 +23,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from codeminer.languages import (
+from codenib.languages import (
     scip_cold_start_command_for_language,
     scip_cold_start_option,
 )
-from codeminer.ls_router import LSIndexer
+from codenib.ls_router import LSIndexer
 
 SCIP_SMOKE_LANGUAGES = ("java", "kotlin", "scala", "csharp", "ruby", "php")
 _SCIP_RUBY_VERSION = "0.4.7"
@@ -300,7 +300,7 @@ end
             root / "composer.json",
             """
 {
-  "name": "codeminer/php-scip-smoke",
+  "name": "codenib/php-scip-smoke",
   "description": "CodeNib scip-php smoke project",
   "type": "project",
   "autoload": {
@@ -402,7 +402,7 @@ def run_smoke(
             timeout=timeout,
         )
 
-    with tempfile.TemporaryDirectory(prefix=f"codeminer-{language}-scip-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=f"codenib-{language}-scip-") as tmp:
         return _run_smoke_in_root(
             language,
             root=Path(tmp),
@@ -489,9 +489,7 @@ def run_project_smoke(
             timeout=timeout,
         )
 
-    with tempfile.TemporaryDirectory(
-        prefix=f"codeminer-{language}-scip-project-"
-    ) as tmp:
+    with tempfile.TemporaryDirectory(prefix=f"codenib-{language}-scip-project-") as tmp:
         return _run_project_smoke_to_output(
             language,
             project_root=project_root,
@@ -810,7 +808,7 @@ def _decode_scip_index(index_path: Path, decoded_path: Path) -> str | None:
     if protoc is None:
         return "protoc is not available to decode SCIP index"
 
-    proto_dir = _PROJECT_ROOT / "codeminer" / "scip_interface"
+    proto_dir = _PROJECT_ROOT / "codenib" / "scip_interface"
     cmd = [
         protoc,
         "--decode=scip.Index",
@@ -839,21 +837,21 @@ def _decode_scip_index(index_path: Path, decoded_path: Path) -> str | None:
 
 def _decode_graph(language: str, decoded_path: Path, root: Path):
     if language in {"java", "kotlin", "scala"}:
-        from codeminer.scip_interface.scip_decode_java import SCIPJavaGraphDecoder
+        from codenib.scip_interface.scip_decode_java import SCIPJavaGraphDecoder
 
         return SCIPJavaGraphDecoder(str(decoded_path), project_root=str(root)).decode()
     if language == "csharp":
-        from codeminer.scip_interface.scip_decode_csharp import SCIPCSharpGraphDecoder
+        from codenib.scip_interface.scip_decode_csharp import SCIPCSharpGraphDecoder
 
         return SCIPCSharpGraphDecoder(
             str(decoded_path), project_root=str(root)
         ).decode()
     if language == "ruby":
-        from codeminer.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
+        from codenib.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
 
         return SCIPRubyGraphDecoder(str(decoded_path), project_root=str(root)).decode()
     if language == "php":
-        from codeminer.scip_interface.scip_decode_php import SCIPPHPGraphDecoder
+        from codenib.scip_interface.scip_decode_php import SCIPPHPGraphDecoder
 
         return SCIPPHPGraphDecoder(str(decoded_path), project_root=str(root)).decode()
     raise ValueError(f"Unsupported SCIP graph decode language: {language}")
@@ -1072,7 +1070,7 @@ def _init_git_smoke_root(root: Path, *, timeout: int) -> str | None:
         return "git is required for scip-php smoke metadata"
     commands = (
         [git, "init"],
-        [git, "config", "user.email", "codeminer@example.invalid"],
+        [git, "config", "user.email", "codenib@example.invalid"],
         [git, "config", "user.name", "CodeNib"],
         [git, "add", "composer.json", "src/Billing/Invoice.php"],
         [git, "commit", "-m", "php scip smoke"],
@@ -1124,7 +1122,7 @@ def _php_docker_compatible(command: list[str]) -> bool:
 
 
 def _php_docker_command(root: Path, *args: str, workdir: str = "/app") -> list[str]:
-    image = os.environ.get("CODEMINER_PHP_COMPOSER_IMAGE", _COMPOSER_DOCKER_IMAGE)
+    image = os.environ.get("CODENIB_PHP_COMPOSER_IMAGE", _COMPOSER_DOCKER_IMAGE)
     return [
         "docker",
         "run",

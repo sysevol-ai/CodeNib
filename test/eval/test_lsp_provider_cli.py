@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 
-from codeminer.eval.agent_runner import lsp_provider_cli
-from codeminer.eval.agent_runner.lsp_provider_validation import (
+from codenib.eval.agent_runner import lsp_provider_cli
+from codenib.eval.agent_runner.lsp_provider_validation import (
     LSPProviderCall,
     LSPProviderComparison,
     LSPProviderRequest,
@@ -27,7 +27,7 @@ def _comparison(verdict: str, *, same_result: bool | None = True):
     return LSPProviderComparison(
         request=request,
         static_call=LSPProviderCall(
-            provider="codeminer_static_index",
+            provider="codenib_static_index",
             capability="definition",
             status="ok",
             duration_ms=1.0,

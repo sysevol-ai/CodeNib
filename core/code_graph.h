@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 constexpr const char *NODE_TYPE_DIRECTORY = "directory";
 constexpr const char *NODE_TYPE_FILE = "file";
@@ -49,7 +49,7 @@ public:
     std::optional<int> selection_line;
     // Cross-language display path: usually `{file}:{SymbolDisplay}`.
     // Matches the `unified_name` vertex attribute produced by the
-    // Python-side decoders in codeminer/scip_interface/.
+    // Python-side decoders in codenib/scip_interface/.
     std::optional<std::string> unified_name;
   };
 
@@ -189,4 +189,4 @@ private:
   std::string current_scope_;
 };
 
-} // namespace codeminer::core
+} // namespace codenib::core

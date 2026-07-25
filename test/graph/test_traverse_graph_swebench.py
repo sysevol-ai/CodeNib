@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.dataset.swebench import SwebenchDataset
+from codenib.dataset.swebench import SwebenchDataset
 
 pytestmark = pytest.mark.integration_serial
-from codeminer.graph.traverse_graph import traverse_tree_structure
-from codeminer.ls_router import LSIndexer
-from codeminer.types import (
+from codenib.graph.traverse_graph import traverse_tree_structure
+from codenib.ls_router import LSIndexer
+from codenib.types import (
     NODE_TYPE_CLASS,
     NODE_TYPE_FILE,
     NODE_TYPE_FUNCTION,
@@ -47,7 +47,7 @@ def indexed_repo(test_instance):
     dataset_obj = SwebenchDataset()
     dataset_obj.process_instance(test_instance)
     repo_path = dataset_obj.get_repo_path(test_instance)
-    output_path = str(Path.home()) + "/.codeminer/" + test_instance["instance_id"]
+    output_path = str(Path.home()) + "/.codenib/" + test_instance["instance_id"]
 
     repo_indexer = LSIndexer(repo_path, output_dir=output_path)
     graph = repo_indexer.run_pipeline(project_name="test_swebench", skip_level="graph")

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 # PAYOFF experiment: re-run compact with the 4B embedding (vs 0.6B). The 0.6B
 # recall@10=56% capped compact's accuracy at ~grep; 4B recall@10=64% should let

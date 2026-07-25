@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,9 +7,9 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codeminer"
+name = "codenib"
 version = "0.1.0"
-description = "A code analysis agent with graph-enhancement"
+description = "Multi-view repository context serving for coding agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -49,23 +49,22 @@ dependencies = [
 ]
 
 [project.scripts]
-codenib-mcp = "codeminer.mcp.server:main"
-codenib-web = "codeminer.web.app:main"
-codeminer-mcp = "codeminer.mcp.server:main"
-codeminer-web = "codeminer.web.app:main"
-codeminer-lsp-provider-validate = "codeminer.eval.agent_runner.lsp_provider_cli:main"
-codeminer-lsp-replay-benchmark = "codeminer.eval.agent_runner.lsp_replay_benchmark:main"
-codeminer-prebuilt-normalize-graphs = "codeminer.eval.agent_runner.prebuilt:main"
-codeminer-lsp-agent-ab = "codeminer.eval.agent_runner.lsp_agent_ab:main"
-codeminer-lsp-provider-protocol-check = "codeminer.eval.agent_runner.lsp_agent_ab:main"
-codeminer-lsp-agent-study-manifest = "codeminer.eval.agent_runner.lsp_agent_study_manifest:main"
-codeminer-lsp-agent-study-artifacts = "codeminer.eval.agent_runner.lsp_agent_study_artifacts:main"
-codeminer-lsp-agent-study-run = "codeminer.eval.agent_runner.lsp_agent_study_runner:main"
-codeminer-artifact-bundle = "codeminer.eval.artifact_bundle:main"
+codenib-mcp = "codenib.mcp.server:main"
+codenib-web = "codenib.web.app:main"
+codenib-lsp-provider-validate = "codenib.eval.agent_runner.lsp_provider_cli:main"
+codenib-lsp-replay-benchmark = "codenib.eval.agent_runner.lsp_replay_benchmark:main"
+codenib-prebuilt-normalize-graphs = "codenib.eval.agent_runner.prebuilt:main"
+codenib-lsp-agent-ab = "codenib.eval.agent_runner.lsp_agent_ab:main"
+codenib-lsp-provider-protocol-check = "codenib.eval.agent_runner.lsp_agent_ab:main"
+codenib-lsp-agent-study-manifest = "codenib.eval.agent_runner.lsp_agent_study_manifest:main"
+codenib-lsp-agent-study-artifacts = "codenib.eval.agent_runner.lsp_agent_study_artifacts:main"
+codenib-lsp-agent-study-run = "codenib.eval.agent_runner.lsp_agent_study_runner:main"
+codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
 
 [project.optional-dependencies]
 dev = [
     "black>=22.3.0",
+    "build>=1.2.0",
     "isort>=5.10.1",
     "mypy>=0.950",
     "flake8>=4.0.1",
@@ -79,11 +78,12 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]  # list of folders that contain the packages (["."] by default)
-include = ["codeminer*"]  # package names should match these glob patterns (["*"] by default)
+include = ["codenib*"]  # package names should match these glob patterns (["*"] by default)
 exclude = ["eval*"]  # exclude packages matching these glob patterns
 
 [tool.setuptools.package-data]
-"codeminer.scip_interface" = ["*.proto", "*.yml", "*.sh", "README.md"]
+"codenib.agent.skills" = ["*/config.yaml", "*/skill.md"]
+"codenib.scip_interface" = ["*.proto", "*.yml", "*.sh", "README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

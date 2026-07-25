@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Build and cache hierarchical embedding indices for SWE-bench or CodeMiner-base instances.
+Build and cache hierarchical embedding indices for SWE-bench or CodeNib-base instances.
 Each instance's embedding will be stored in <storage-dir>/{instance_id}/
 
 Usage:
@@ -14,9 +14,9 @@ Usage:
         --filter-instance "^(astropy__astropy-6938)$" \\
         --force-rebuild
 
-    # CodeMiner-base (multi-language, auto-detects language per instance)
+    # CodeNib-base (multi-language, auto-detects language per instance)
     python scripts/embeddings/build_embeddings.py \\
-        --dataset-class codeminer_base \\
+        --dataset-class codenib_base \\
         --dataset fishmingyu/codeminer-base-dataset \\
         --enable-profiler
 """
@@ -33,17 +33,18 @@ project_root = Path(__file__).resolve().parents[2]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from codeminer.compiler.snapshot_store import ArtifactProfile  # noqa: E402
-from codeminer.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
-from codeminer.index.embedding import build_hierarchical_vector_store  # noqa: E402
-from codeminer.log_utils import get_logger  # noqa: E402
-from codeminer.profiler import Profiler  # noqa: E402
+from codenib.compiler.snapshot_store import ArtifactProfile  # noqa: E402
+from codenib.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
+from codenib.index.embedding import build_hierarchical_vector_store  # noqa: E402
+from codenib.log_utils import get_logger  # noqa: E402
+from codenib.paths import prebuilt_data_dir  # noqa: E402
+from codenib.profiler import Profiler  # noqa: E402
 
 logger = get_logger(__name__)
 
 DEFAULT_MULTILINGUAL_REPO_LANG_CSV = (
     project_root
-    / "codeminer"
+    / "codenib"
     / "dataset"
     / "collect"
     / "data"
@@ -62,11 +63,11 @@ def parse_args():
     parser.add_argument(
         "--dataset-class",
         type=str,
-        choices=["swebench", "swebench_multilingual", "codeminer_base"],
+        choices=["swebench", "swebench_multilingual", "codenib_base"],
         default="swebench",
         help=(
             "Dataset class to use. 'swebench' for SWE-bench Lite/Verified, "
-            "'codeminer_base' for the multi-language CodeMiner-base dataset "
+            "'codenib_base' for the multi-language CodeNib-base dataset "
             "(auto-detects language per instance from 'language_group' column)."
         ),
     )
@@ -77,7 +78,7 @@ def parse_args():
         help=(
             "HuggingFace dataset name. Defaults to "
             "'princeton-nlp/SWE-bench_Lite' for swebench, "
-            "'fishmingyu/codeminer-base-dataset' for codeminer_base."
+            "'fishmingyu/codeminer-base-dataset' for codenib_base."
         ),
     )
     parser.add_argument(
@@ -206,7 +207,7 @@ def parse_args():
     parser.add_argument(
         "--storage-dir",
         type=str,
-        default="/mnt/data/codeminer",
+        default=str(prebuilt_data_dir()),
         help="Base directory to store embeddings",
     )
     parser.add_argument(
@@ -271,7 +272,7 @@ def parse_args():
 _DATASET_DEFAULTS = {
     "swebench": "princeton-nlp/SWE-bench_Lite",
     "swebench_multilingual": "SWE-bench/SWE-bench_Multilingual",
-    "codeminer_base": "fishmingyu/codeminer-base-dataset",
+    "codenib_base": "fishmingyu/codeminer-base-dataset",
 }
 
 
@@ -279,7 +280,7 @@ def _map_language_group(label: Optional[str], fallback: str = "python") -> List[
     """Map a dataset ``language_group`` value to chunker language string(s).
 
     Mirrors ``swebench_graph_index._map_language_label`` with an added Go
-    mapping so the codeminer-base multilingual instances get the right chunker.
+    mapping so the codenib-base multilingual instances get the right chunker.
 
     Returns a list because some language groups (e.g. "TypeScript/JavaScript")
     cover multiple chunker languages with disjoint file extensions.
@@ -334,7 +335,7 @@ def _resolve_languages(
 ) -> List[str]:
     """Return the language list for a single instance.
 
-    If the instance has a ``language_group`` column (codeminer-base), derive
+    If the instance has a ``language_group`` column (codenib-base), derive
     the chunker language from it.  Otherwise fall back to ``cli_languages``.
     """
     lang_group = instance.get("language_group") or (repo_languages or {}).get(
@@ -349,17 +350,17 @@ def _load_dataset(args):
     """Instantiate the dataset object based on ``--dataset-class``."""
     dataset_name = args.dataset or _DATASET_DEFAULTS[args.dataset_class]
 
-    if args.dataset_class == "codeminer_base":
-        from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+    if args.dataset_class == "codenib_base":
+        from codenib.dataset.codenib_base import CodeNibBaseDataset
 
-        return CodeMinerBaseDataset(
+        return CodeNibBaseDataset(
             dataset=dataset_name,
             split=args.split,
             filter_instance=args.filter_instance,
         )
 
     if args.dataset_class == "swebench_multilingual":
-        from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
+        from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
 
         return SwebenchMultilingualDataset(
             dataset=dataset_name,
@@ -367,7 +368,7 @@ def _load_dataset(args):
             filter_instance=args.filter_instance,
         )
 
-    from codeminer.dataset.swebench import SwebenchDataset
+    from codenib.dataset.swebench import SwebenchDataset
 
     return SwebenchDataset(
         dataset=dataset_name,

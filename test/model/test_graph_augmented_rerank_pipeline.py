@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,15 +8,15 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from codeminer.model import (
+from codenib.model import (
     DenseGraphExpandRerankPipeline as ExportedDenseGraphExpandRerankPipeline,
 )
-from codeminer.model.dense_graph_expand_rerank_pipeline import (
+from codenib.model.dense_graph_expand_rerank_pipeline import (
     DenseGraphExpandRerankPipeline,
 )
-from codeminer.model.graph_augmented_rerank_pipeline import GraphAugmentedRerankPipeline
-from codeminer.ops.rerank import RerankContext
-from codeminer.types import EDGE_TYPE_REFERENCE, NodeInfo, QueriedNode
+from codenib.model.graph_augmented_rerank_pipeline import GraphAugmentedRerankPipeline
+from codenib.ops.rerank import RerankContext
+from codenib.types import EDGE_TYPE_REFERENCE, NodeInfo, QueriedNode
 
 
 class _FakeRetriever:

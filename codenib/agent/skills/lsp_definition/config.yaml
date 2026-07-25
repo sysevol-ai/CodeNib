@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+skill_id: lsp_definition
+skill_type: expand
+operator: graph.lsp.definition
+cost: low
+defaults:
+  top_k: 8
+inputs:
+  - name: file_path
+    type: str
+    required: true
+    description: Repo-relative file path from a read/grep result. Provide with line when jumping from a location.
+  - name: line
+    type: int
+    required: true
+    is_line_number: true
+    description: 1-based source line as shown by read/grep output. Internally converted to the graph's 0-based line.
+  - name: character
+    type: int
+    required: true
+    description: 0-based source column selecting the identifier token on the line.
+  - name: top_k
+    type: int
+    required: false
+    description: Maximum number of candidate definitions to return.
+outputs:
+  type: List[QueriedNode]
+  description: Compact definition candidates from the selected LSP provider. No source bodies; read returned files before answering.
+index_requirements:
+  - type: symbol_graph
+    max_age_seconds: 3600
+    scope: current_repo
+resources: []

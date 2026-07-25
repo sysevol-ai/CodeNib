@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.agent import lsp_graph
-from codeminer.agent.lsp_provider import STATIC_LSP_PROVIDER, lsp_result_metadata
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.agent.tool_schema import skill_to_tool_schema
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.ops.expand import ExpandContext
-from codeminer.types import NODE_TYPE_FUNCTION
+from codenib.agent import lsp_graph
+from codenib.agent.lsp_provider import STATIC_LSP_PROVIDER, lsp_result_metadata
+from codenib.agent.skills.loader import SkillLoader
+from codenib.agent.tool_schema import skill_to_tool_schema
+from codenib.graph.code_graph import CodeGraph
+from codenib.ops.expand import ExpandContext
+from codenib.types import NODE_TYPE_FUNCTION
 
 
 def _range_graph(project_root=None) -> CodeGraph:
@@ -275,7 +275,7 @@ def test_lsp_skills_load_and_execute_against_expand_context(tmp_path):
     context = {"expand": ExpandContext(code_graph=graph)}
     loader = SkillLoader()
 
-    meta = loader.load_skill("codeminer/agent/skills/lsp_definition", context)
+    meta = loader.load_skill("codenib/agent/skills/lsp_definition", context)
 
     assert meta is not None
     assert meta.executor_fn is not None
@@ -295,7 +295,7 @@ def test_lsp_skills_use_injected_provider_without_a_graph():
 
     context = {"expand": ExpandContext(lsp_provider=Provider())}
     meta = SkillLoader().load_skill(
-        "codeminer/agent/skills/lsp_definition",
+        "codenib/agent/skills/lsp_definition",
         context,
     )
 
@@ -314,7 +314,7 @@ def test_lsp_route_skill_exposes_static_graph_tool_contract():
     context = {"expand": ExpandContext(code_graph=graph)}
     loader = SkillLoader()
 
-    meta = loader.load_skill("codeminer/agent/skills/lsp_route", context)
+    meta = loader.load_skill("codenib/agent/skills/lsp_route", context)
 
     assert meta is not None
     assert meta.skill_id == "lsp_route"

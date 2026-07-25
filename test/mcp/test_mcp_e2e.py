@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +6,7 @@
 End-to-end MCP server tests with real embedding indexes.
 
 Tests MCP server layer (init_server, semantic_search) using pre-built indexes
-from codeminer-base-dataset at /mnt/data/codeminer.
+from the configured CodeNib prebuilt root.
 """
 
 import asyncio
@@ -15,20 +15,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import codeminer.mcp.server as server_module
-from codeminer.compiler.manifest import IndexEntry, RepoManifest
-from codeminer.mcp.context import ServerContext
+import codenib.mcp.server as server_module
+from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.mcp.context import ServerContext
+from codenib.paths import prebuilt_data_dir
 
-# Test data from codeminer-base-dataset
-CODEMINER_DATA = Path("/mnt/data/codeminer")
+# Test data from codenib-base-dataset
+CODENIB_DATA = prebuilt_data_dir()
 TEST_REPO = "astropy__astropy-12907"
-TEST_REPO_PATH = CODEMINER_DATA / TEST_REPO
+TEST_REPO_PATH = CODENIB_DATA / TEST_REPO
 
 
 @pytest.mark.slow
 @pytest.mark.skipif(
     not TEST_REPO_PATH.exists(),
-    reason="codeminer-base-dataset not available at /mnt/data/codeminer",
+    reason=f"codenib-base-dataset not available at {CODENIB_DATA}",
 )
 class TestMCPServerE2E:
     """End-to-end tests for MCP server with real indexes."""
@@ -145,7 +146,7 @@ class TestMCPServerE2E:
 
         Ensures MCP protocol layer adds no transformation overhead.
         """
-        from codeminer.index.embedding.vector_store import CodeVectorStore
+        from codenib.index.embedding.vector_store import CodeVectorStore
 
         # Direct vector store call
         vector_store = CodeVectorStore(

@@ -1,6 +1,6 @@
 # Evaluation Artifact Bundles
 
-`codeminer-artifact-bundle` stages content-locked evaluation releases from
+`codenib-artifact-bundle` stages content-locked evaluation releases from
 explicit local sources. It is intended for retained experiment records that
 are too large or too environment-specific to keep in Git.
 
@@ -48,7 +48,7 @@ and outputs nested inside selected sources.
 Create a source lock after the experiment inputs are final:
 
 ```bash
-codeminer-artifact-bundle lock \
+codenib-artifact-bundle lock \
   --manifest bundle-manifest.json \
   --root results=/path/to/results \
   --root release=/path/to/release-files \
@@ -62,14 +62,14 @@ Any later input change causes a locked build to fail.
 ## Build And Verify
 
 ```bash
-codeminer-artifact-bundle build \
+codenib-artifact-bundle build \
   --manifest bundle-manifest.json \
   --source-lock source-lock.json \
   --root results=/path/to/results \
   --root release=/path/to/release-files \
   --output /path/to/staged-bundle
 
-codeminer-artifact-bundle verify --bundle /path/to/staged-bundle
+codenib-artifact-bundle verify --bundle /path/to/staged-bundle
 ```
 
 The builder writes to a temporary sibling, copies each selected file while
@@ -82,7 +82,7 @@ Create a portable, deterministic archive only after all release-specific
 checks pass:
 
 ```bash
-codeminer-artifact-bundle archive \
+codenib-artifact-bundle archive \
   --bundle /path/to/staged-bundle \
   --output /path/to/staged-bundle.tar.gz
 ```

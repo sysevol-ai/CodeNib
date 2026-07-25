@@ -2,7 +2,7 @@
 
 Status: **confirmed** (2026-06-05). Supersedes the "offer-a-skill" framing of the
 agent-compile sweep. See also `line-span-eval-harness` memory + the span-eval
-work in `codeminer/eval/retrieval_eval.py`.
+work in `codenib/eval/retrieval_eval.py`.
 
 ## Problem (evidence-backed)
 
@@ -14,7 +14,7 @@ almost never does:
 |------|------|
 | `embedding_search` | 4% / **0%** |
 | `hybrid_search` | 0% / 0% |
-| `codeminer_context` (composer) | ~21% |
+| `codenib_context` (composer) | ~21% |
 | `find_callers/callees/trace` | offered-but-ignored |
 
 It localizes with `read`/`bash`/`grep` instead (a strong pretrain prior —
@@ -50,7 +50,7 @@ rerank on), not a chooser of which tools to offer.
 | capability | home | note |
 |-----------|------|------|
 | `embedding_search` | **pre-load** | semantic candidates (primary) |
-| `codeminer_context` / graph expansion | **pre-load** | orientation map (was an under-adopted tool) |
+| `codenib_context` / graph expansion | **pre-load** | orientation map (was an under-adopted tool) |
 | `hybrid`/fusion | **pre-load stage** | fuse embedding+bm25; drop as a standalone tool |
 | `bm25` | **pre-load stage** (compile may disable) | most redundant with grep |
 | `llm_rerank` | **NOT in the agent** | the LLM reranks candidates itself via reasoning over context; rerank is a RAG-pipeline concern (used only for the `retrieval_rec` RAG baseline, never in the agent pre-load). Double-reranking is pointless. |

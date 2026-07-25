@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -25,7 +25,7 @@ echo "=== Plotting Comparison ==="
 python -c "
 import json
 import matplotlib.pyplot as plt
-from codeminer.eval.retrieval_eval import aggregate_metrics, average_metrics
+from codenib.eval.retrieval_eval import aggregate_metrics, average_metrics
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c']
 MARKERS = ['o', 's', '^']

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.index.trigram.zoekt_searcher import (
+from codenib.index.trigram.zoekt_searcher import (
     ZoektSearcher,
     ZoektUnavailableError,
     _compose_query,

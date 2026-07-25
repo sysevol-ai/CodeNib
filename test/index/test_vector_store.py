@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.code_chunking import create_chunker
-from codeminer.index import create_code_vector_store
+from codenib.code_chunking import create_chunker
+from codenib.index import create_code_vector_store
 
 pytestmark = pytest.mark.slow
 
@@ -34,7 +34,7 @@ def ensure_httpie_repo() -> Path:
     return HTTPIE_REPO_PATH
 
 
-# Add the parent directory to the path to import codeminer modules
+# Add the parent directory to the path to import codenib modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,7 +19,7 @@ from unittest.mock import patch
 import litellm
 import pytest
 
-from codeminer.llm.litellm_chat import (
+from codenib.llm.litellm_chat import (
     LiteLLMChat,
     RetryConfig,
     _no_thinking_kwargs,
@@ -34,7 +34,7 @@ def _make_response(content="ok"):
 
 def _no_sleep():
     """Patch out the backoff sleep so tests don't actually wait."""
-    return patch("codeminer.llm.litellm_chat.time.sleep", return_value=None)
+    return patch("codenib.llm.litellm_chat.time.sleep", return_value=None)
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ class TestCompletionWithRetry:
         ]
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=side_effects,
             ) as mock_completion,
             _no_sleep(),
@@ -139,7 +139,7 @@ class TestCompletionWithRetry:
         )
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=litellm.AuthenticationError("bad key", "gpt-4o", "openai"),
             ) as mock_completion,
             _no_sleep(),
@@ -156,7 +156,7 @@ class TestCompletionWithRetry:
         )
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=litellm.Timeout("slow", "gpt-4o", "openai"),
             ) as mock_completion,
             _no_sleep(),
@@ -172,7 +172,7 @@ class TestCompletionWithRetry:
         chat = LiteLLMChat(model="gpt-4o", retry=RetryConfig(max_retries=0))
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=litellm.RateLimitError("rl", "gpt-4o", "openai"),
             ) as mock_completion,
             _no_sleep(),
@@ -196,10 +196,10 @@ class TestCompletionWithRetry:
         ]
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=side_effects,
             ),
-            patch("codeminer.llm.litellm_chat.time.sleep") as mock_sleep,
+            patch("codenib.llm.litellm_chat.time.sleep") as mock_sleep,
         ):
             resp = chat._call_raw([{"role": "user", "content": "hi"}])
 

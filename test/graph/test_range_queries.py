@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -25,8 +25,8 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph, RangeQueryResult
-from codeminer.types import EDGE_TYPE_REFERENCE
+from codenib.graph.code_graph import _SCHEMA_VERSION, CodeGraph, RangeQueryResult
+from codenib.types import EDGE_TYPE_REFERENCE
 
 # ---------------------------------------------------------------------------
 # Fixture builders

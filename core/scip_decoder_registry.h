@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 std::vector<std::string> canonical_scip_decoder_languages();
 std::vector<std::string> accepted_scip_decoder_languages();
@@ -28,4 +28,4 @@ std::unique_ptr<SCIPDecoderBase>
 make_scip_decoder(std::string_view language, const std::string &index_file,
                   std::optional<std::string> project_root = std::nullopt);
 
-} // namespace codeminer::core
+} // namespace codenib::core

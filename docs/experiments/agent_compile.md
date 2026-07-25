@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -12,7 +12,7 @@ SPDX-License-Identifier: Apache-2.0
 > **`scripts/agent_compile/configs/design_space.yaml`** (9 arms, full split,
 > neutral prompt), driven by the consolidated `run_sweep.py` +
 > `aggregate.py` (reusable harness code lives under
-> `codeminer.eval.agent_runner`; the old `scripts/agent_compile/lib`
+> `codenib.eval.agent_runner`; the old `scripts/agent_compile/lib`
 > compatibility namespace has been removed; the offline retrieval ablations moved to
 > `scripts/retrieval_ablation/`). See
 > [`scripts/agent_compile/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/scripts/agent_compile/README.md).
@@ -20,7 +20,7 @@ SPDX-License-Identifier: Apache-2.0
 
 This is the **sample** instantiation of the #133 Phase-2 experiment: run the
 A0–A6 skill-subset matrix over a small multi-language slice of
-`codeminer_base`, record accuracy / cost / skill-usage per cell, and derive a
+`codenib_base`, record accuracy / cost / skill-usage per cell, and derive a
 v1 `compile_table`. It is a *dry run on 5 instances* to validate the harness,
 the metrics, and the analysis methodology end-to-end — **not** the full
 instance-corpus result (open question §1 below).
@@ -53,7 +53,7 @@ selects which `files@k` / `symbols@k` cutoffs the report folds (default
 | Sample | 5 instances, 4 languages, both Python scenarios (see below) |
 | Agent model | `vertex_ai/claude-haiku-4-5` @ `us-east5`, temp 0.0, max_turns 20 |
 | Embeddings | `Qwen/Qwen3-Embedding-0.6B` (dim 1024), L2 chunks |
-| Indexes | pre-built per-instance under `/mnt/data/codeminer` — vector + symbol graph reused; BM25 built fresh from the prebuilt graph (see `codeminer.eval.agent_runner.prebuilt`) |
+| Indexes | pre-built per-instance under `${CODENIB_PREBUILT_DIR}` — vector + symbol graph reused; BM25 built fresh from the prebuilt graph (see `codenib.eval.agent_runner.prebuilt`) |
 | Reps | 2 — cost = min across reps, accuracy = mean across reps (per #131) |
 | Metric | `files@k` (LocAgent / PR #128 column set); `symbols@k` also recorded |
 
@@ -381,23 +381,23 @@ friendly `find_related_code`, and intent verbs — and **all three are ignored
 whenever grep/read are available.** The tool shape is not the bottleneck; the
 **harness** is. Per the CodeGraph analysis, adoption + token wins come from:
 (a) serving the graph via the warm **MCP server** with host-agent steering
-(CodeNib already has `codeminer/mcp/server.py` + the manifest/compiler), and
-(b) a **one-call context composer** (`codeminer_context`) that runs
+(CodeNib already has `codenib/mcp/server.py` + the manifest/compiler), and
+(b) a **one-call context composer** (`codenib_context`) that runs
 search→graph-expand→snippet-assembly *internally* so the agent makes one call
 instead of choosing graph over grep — and (c) measuring at large-repo scale.
 Building a nicer agent-chosen graph tool has been exhausted.
 
 ---
 
-# The graph-aware harness works: `codeminer_context` (one-call composer)
+# The graph-aware harness works: `codenib_context` (one-call composer)
 
 Since three *agent-chosen* graph tools were all ignored, we moved the graph
-into the **harness**: `codeminer_context(query)` — one call that internally
+into the **harness**: `codenib_context(query)` — one call that internally
 (1) searches for entry-point symbols (bm25 + embedding), (2) **deterministically
 expands** each along the call graph (callers + callees via `_graphnav`), and
 (3) returns a compact, deduped, budget-capped set (name · file:line · kind ·
 relation; no bodies). The agent makes *one* call instead of choosing graph over
-grep. The prompt steers "call codeminer_context FIRST." (Loader change: `custom`
+grep. The prompt steers "call codenib_context FIRST." (Loader change: `custom`
 skills receive the full `contexts` dict so the composer can read both
 `retrieve` and `expand`.)
 
@@ -405,7 +405,7 @@ skills receive the full `contexts` dict so the composer can read both
 
 haiku, defaults (grep/read) also available, vs the FREE grep/read baseline:
 
-| instance | FREE files@5 / tokens | codeminer_context files@5 / tokens | Δtokens | ctx calls |
+| instance | FREE files@5 / tokens | codenib_context files@5 / tokens | Δtokens | ctx calls |
 |---|---|---|---|---|
 | vuejs-11589 (cross-file) | 1.0 / 226 817 | 1.0 / **111 903** | **−51 %** | 1 |
 | micropython-13569 | 1.0 / 140 828 | 1.0 / 137 666 | −2 % | 1 |
@@ -414,7 +414,7 @@ haiku, defaults (grep/read) also available, vs the FREE grep/read baseline:
 
 Two findings:
 
-1. **Adoption is solved by the harness, not the tool.** `codeminer_context`
+1. **Adoption is solved by the harness, not the tool.** `codenib_context`
    was called in **3/3** cells — versus **0** for every standalone graph tool
    (graph_expand, find_related_code, find_callers/callees/trace). Framing the
    graph as a one-call "map this task" composer that the prompt tells the agent
@@ -433,17 +433,17 @@ This validates the project's value proposition on the right axis (**cost at
 equal accuracy**) and via the right mechanism (a **graph-aware harness**, not a
 free wrapper tool). Next: trust the composer more (the agent still did 6–7
 confirming `file_read`s after the one context call — room for further savings),
-benchmark at VS-Code / Next.js scale, and expose `codeminer_context` +
+benchmark at VS-Code / Next.js scale, and expose `codenib_context` +
 `find_callers/callees/trace` over the MCP server (the infra already exists) for
 the host-agent path CodeGraph uses.
 
-## Large-repo check (sympy + matplotlib, codeminer_base)
+## Large-repo check (sympy + matplotlib, codenib_base)
 
-Picked larger Python repos from `codeminer_base`: `sympy-13031`, `sympy-12419`
+Picked larger Python repos from `codenib_base`: `sympy-13031`, `sympy-12419`
 (~1.45k files), `matplotlib-14623` (~4.4k files, 3 GT files). FREE (grep/read)
-vs `codeminer_context`, haiku, reps=1:
+vs `codenib_context`, haiku, reps=1:
 
-| instance | FREE f@5 / tokens | codeminer_context f@5 / tokens | Δtokens | ctx calls |
+| instance | FREE f@5 / tokens | codenib_context f@5 / tokens | Δtokens | ctx calls |
 |---|---|---|---|---|
 | sympy-12419 | 0.0 / 269 264 | 0.0 / **64 258** | **−76 %** | 1 |
 | matplotlib-14623 | 0.0 / 240 370 | 0.0 / **89 098** | **−63 %** | 1 |
@@ -469,7 +469,7 @@ without converging.
 
 **Implication:** the harness delivers the cost win on solvable tasks (and fails
 cheaper on hard ones); raising accuracy on hard tasks needs (a) better
-entry-point retrieval, (b) inheritance/override edges in `codeminer_context`'s
+entry-point retrieval, (b) inheritance/override edges in `codenib_context`'s
 expansion (not just call edges), and (c) better convergence so the agent trusts
 the map instead of grepping to the turn cap.
 
@@ -478,7 +478,7 @@ the map instead of grepping to the turn cap.
 # Headline: comparable accuracy at ~half the tokens (accuracy-first loop)
 
 The cost win only counts if accuracy holds. We reframed the prompt as an
-**accuracy-first EXPAND → READ → EXPAND loop**: `codeminer_context` (search +
+**accuracy-first EXPAND → READ → EXPAND loop**: `codenib_context` (search +
 call-graph) is a *heuristic map* the agent calls first, but grep + file_read
 stay fully in play and are how it *confirms* it reached the implementing file
 (the metric credits any file the agent reads, so keeping read in the loop
@@ -499,7 +499,7 @@ protects accuracy). FREE (grep/read only) vs CONTEXT (grep/read + the composer),
 cross-hierarchy cases unsolved by both) — **zero accuracy regression** — at
 **−47 % tokens** net (−16 % … −71 % per instance, every instance cheaper).
 
-The loop is real: in the CONTEXT cells the agent calls `codeminer_context` once,
+The loop is real: in the CONTEXT cells the agent calls `codenib_context` once,
 then does 8–11 `file_read`s + 2–9 greps to confirm — `expand → read → expand`
 with grep/read doing the reaching and the graph map focusing the search. This
 is the project's value, demonstrated on the axis that matters: **match the pure
@@ -515,7 +515,7 @@ not a harness-vs-grep question.
 
 # Diverse-repo broadening (Rust / TS / Go / C / Python) — what to improve
 
-Ran FREE vs `codeminer_context` on 6 previously-untested repos (haiku, reps=1,
+Ran FREE vs `codenib_context` on 6 previously-untested repos (haiku, reps=1,
 max_turns=16). Accuracy-first read.
 
 | instance (lang) | FREE files@5 / tokens | CONTEXT files@5 / tokens | Δtokens |
@@ -533,7 +533,7 @@ net **−26 % tokens** — but dragged down by one regression.
 ## What to improve (ranked by the evidence)
 
 1. **Composer must never net-harm (redis +165 %).** On redis the
-   `codeminer_context` call returned **0 results** (no error) — so the agent
+   `codenib_context` call returned **0 results** (no error) — so the agent
    paid for the call, got nothing, and fanned out anyway (15 turns vs FREE's 9).
    Root cause: redis (C) symbols are stored as **content-hash node names**, so
    call-graph expansion off the bm25/embedding seeds yields nothing useful.
@@ -547,7 +547,7 @@ net **−26 % tokens** — but dragged down by one regression.
 3. **Routing (this is the original agent-compile / CAR idea, full circle).** The
    composer helps on large/fan-out repos (docusaurus/terraform/xarray −42…−57 %)
    and *hurts* on small ones where grep is already cheap (redis FREE = 98 k).
-   Decision: invoke `codeminer_context` only when the scenario warrants it
+   Decision: invoke `codenib_context` only when the scenario warrants it
    (repo size / expected fan-out), exactly the compile_table selection this RFC
    set out to build.
 4. **Symbol-level accuracy.** Still measuring files@k; symbols@k remains the
@@ -567,7 +567,7 @@ and (ii) hard cross-hierarchy localizations unsolved by both. The next, highest-
 leverage work is **routing** (#3 — only invoke when it pays) and **composer
 robustness** (#1), which together turn the −47 % demo into a dependable win.
 
-> **⚠️ Correction (see next section).** Every `codeminer_context` cell above —
+> **⚠️ Correction (see next section).** Every `codenib_context` cell above —
 > including the "−47 %" headline and the "−26 % / redis +165 %" diverse run —
 > ran with a composer that returned **0 results in every cell** due to a context-
 > packaging bug. Those token deltas measured a *no-op* tool call vs the grep/read
@@ -578,7 +578,7 @@ robustness** (#1), which together turn the −47 % demo into a dependable win.
 
 # Correction + real result: the composer was a no-op; root cause and fix
 
-**The bug.** `codeminer_context` is `skill_type: custom`. `build_skill_contexts`
+**The bug.** `codenib_context` is `skill_type: custom`. `build_skill_contexts`
 correctly loaded bm25 + vector + symbol_graph (its declared
 `index_requirements`), but `_package_contexts` only wrapped them into the
 `retrieve`/`expand` context objects for `RETRIEVAL`/`AGGREGATE`/`EXPAND` skill
@@ -608,7 +608,7 @@ Verified on redis post-fix: composer **0 → 14 readable, on-topic symbols**
 (`RESP2_NULL_BULK_STRING`, `RESP2_NULL_ARRAY`, `parseBulk()` — exactly the RESP
 null-reply path the LPOP fix edits).
 
-## First valid FREE vs `codeminer_context` (haiku, reps=1, max_turns=16, CPU embed)
+## First valid FREE vs `codenib_context` (haiku, reps=1, max_turns=16, CPU embed)
 
 | instance (lang) | FREE f@1 / f@5 / tok | CTX f@1 / f@5 / tok | n_results | Δtok |
 |---|---|---|---|---|
@@ -652,7 +652,7 @@ same 8 repos/queries/indexes, reps=3) and differ in exactly one variable:
 | arm | search seeds | graph expansion | isolates |
 |---|---|---|---|
 | **A** grep/read only (`file_read`+`file_search`) | — | — | baseline agent |
-| **B** composer, `CODEMINER_COMPOSER_NO_GRAPH=1` | ✓ | — | value of *search* |
+| **B** composer, `CODENIB_COMPOSER_NO_GRAPH=1` | ✓ | — | value of *search* |
 | **C** composer, full | ✓ | ✓ | value of *graph* |
 
 Accuracy reduced as MEAN over reps; tokens as MEDIAN over reps (robust to the
@@ -927,7 +927,7 @@ context is not more localized truth; distractors cost both tokens and accuracy.
 The graph fails in the agent loop but the composer (search seeds → call-graph
 expansion) is a legitimate **retrieval pipeline**. Evaluated as a retriever
 (`scripts/agent_compile/graphrag_retrieve.py`, files@k recall vs ground truth,
-no LLM) over all **100 codeminer-base** instances:
+no LLM) over all **100 codenib-base** instances:
 
 | recall@k | search-only | GraphRAG (search+graph) | GraphRAG + identifier seeding |
 |---|---|---|---|
@@ -967,7 +967,7 @@ own contribution is the strictly-additive +5 @10.)
 Our vector store is `IndexFlatIP` (exhaustive). To judge the graph's retrieval
 value fairly you must control for the index — an IVF/ANN index speeds up flat
 search with NO graph. `index_compare.py`, recall@k + query latency over 100
-codeminer-base instances (no LLM):
+codenib-base instances (no LLM):
 
 | method | median ms | p90 ms | files@1 | files@5 | files@10 |
 |---|---|---|---|---|---|

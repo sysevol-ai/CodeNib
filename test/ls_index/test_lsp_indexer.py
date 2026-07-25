@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,13 +9,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from codeminer.ls_index.lsp_graph_decode import (
+from codenib.ls_index.lsp_graph_decode import (
     GenericLSPGraphDecoder,
     iter_lsp_symbol_definitions,
 )
-from codeminer.ls_index.lsp_indexer import GenericLSPIndexer
-from codeminer.ls_router import LSIndexer
-from codeminer.types import (
+from codenib.ls_index.lsp_indexer import GenericLSPIndexer
+from codenib.ls_router import LSIndexer
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
     NODE_TYPE_CLASS,
@@ -305,7 +305,7 @@ def test_generic_lsp_indexer_uses_resolved_lsp_command(tmp_path, monkeypatch):
         def document_symbol(self, file_path):
             return []
 
-    monkeypatch.setattr("codeminer.ls_index.lsp_indexer.LSPClient", FakeLSPClient)
+    monkeypatch.setattr("codenib.ls_index.lsp_indexer.LSPClient", FakeLSPClient)
 
     indexer = GenericLSPIndexer(tmp_path, language="java")
 

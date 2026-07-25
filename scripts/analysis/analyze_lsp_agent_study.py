@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -18,14 +18,14 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from codeminer.eval.agent_runner import (  # noqa: E402
-    CODEMINER_LSP_ARM,
+from codenib.eval.agent_runner import (  # noqa: E402
+    CODENIB_LSP_ARM,
     LIVE_LSP_ARM,
     analyze_lsp_agent_noninferiority,
     collect_live_lsp_replay_bundles,
     summarize_lsp_agent_study,
 )
-from codeminer.eval.agent_runner.metrics import load_cell_jsons  # noqa: E402
+from codenib.eval.agent_runner.metrics import load_cell_jsons  # noqa: E402
 
 
 def _load_cells(roots: Sequence[Path]) -> list[dict[str, Any]]:
@@ -80,15 +80,11 @@ def _complete_metric_cells(cells: Sequence[dict[str, Any]]) -> list[dict[str, An
             or ((cell.get("metrics") or {}).get("answer_blocks") or {}).get("5")
             or {}
         ).get("recall")
-        if arm in {CODEMINER_LSP_ARM, LIVE_LSP_ARM} and isinstance(
-            metric, (int, float)
-        ):
+        if arm in {CODENIB_LSP_ARM, LIVE_LSP_ARM} and isinstance(metric, (int, float)):
             key = (str(cell.get("instance_id") or ""), int(cell.get("rep") or 0))
             grouped.setdefault(key, set()).add(arm)
     complete = {
-        key
-        for key, arms in grouped.items()
-        if arms == {CODEMINER_LSP_ARM, LIVE_LSP_ARM}
+        key for key, arms in grouped.items() if arms == {CODENIB_LSP_ARM, LIVE_LSP_ARM}
     }
     return [
         cell

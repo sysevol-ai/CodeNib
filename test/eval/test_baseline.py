@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -14,14 +14,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from codeminer.eval.agent_runner.baseline import (
+from codenib.eval.agent_runner.baseline import (
     BaselineRunResult,
     BaselineTask,
     build_baseline_result_entry,
     location_symbol_ids,
     unique_location_files,
 )
-from codeminer.eval.agent_runner.loc_baseline import (
+from codenib.eval.agent_runner.loc_baseline import (
     build_result_entry,
     run_agent_baseline,
 )
@@ -66,7 +66,7 @@ def test_baseline_task_from_dataset_instance_builds_agent_call():
         repo_path="/repos/demo",
         target_files=["pkg/parser.py"],
         target_symbols=["pkg/parser.py:Parser.parse()"],
-        metadata={"dataset": "codeminer_base"},
+        metadata={"dataset": "codenib_base"},
     )
 
     assert task.to_agent_call() == {
@@ -79,7 +79,7 @@ def test_baseline_task_from_dataset_instance_builds_agent_call():
         },
     }
     assert task.to_dict()["target_files"] == ["pkg/parser.py"]
-    assert task.to_dict()["metadata"] == {"dataset": "codeminer_base"}
+    assert task.to_dict()["metadata"] == {"dataset": "codenib_base"}
 
 
 def test_baseline_run_result_normalizes_locations_and_predictions():
@@ -168,10 +168,10 @@ def test_loc_agent_runner_build_result_entry_delegates_to_envelope():
 
 
 def test_loc_agent_runner_legacy_import_warns_deprecated():
-    sys.modules.pop("codeminer.eval.loc_agent_runner", None)
+    sys.modules.pop("codenib.eval.loc_agent_runner", None)
 
     with pytest.warns(DeprecationWarning, match="agent_runner.loc_baseline"):
-        module = importlib.import_module("codeminer.eval.loc_agent_runner")
+        module = importlib.import_module("codenib.eval.loc_agent_runner")
 
     assert module.run_agent_baseline is run_agent_baseline
     assert "deprecated" in module._DEPRECATION_MESSAGE
@@ -241,11 +241,11 @@ def test_run_agent_baseline_uses_baseline_task_envelope(monkeypatch, tmp_path):
             return _success_result()
 
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.loc_baseline.build_dataset",
+        "codenib.eval.agent_runner.loc_baseline.build_dataset",
         lambda _args: FakeDataset(),
     )
     args = SimpleNamespace(
-        dataset="codeminer_base",
+        dataset="codenib_base",
         split="test",
         filter_instance=".*",
         repo_cache_dir="",
@@ -348,7 +348,7 @@ def test_run_agent_baseline_resume_skips_processing_done_instances(
             return _success_result()
 
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.loc_baseline.build_dataset",
+        "codenib.eval.agent_runner.loc_baseline.build_dataset",
         lambda _args: dataset,
     )
     result_path = tmp_path / "baseline.jsonl"
@@ -357,7 +357,7 @@ def test_run_agent_baseline_resume_skips_processing_done_instances(
         encoding="utf-8",
     )
     args = SimpleNamespace(
-        dataset="codeminer_base",
+        dataset="codenib_base",
         split="test",
         filter_instance=".*",
         repo_cache_dir="",

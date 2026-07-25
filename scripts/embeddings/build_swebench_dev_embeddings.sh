@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
+CODENIB_HOME="${CODENIB_HOME:-$HOME/.codenib}"
+CODENIB_PREBUILT_DIR="${CODENIB_PREBUILT_DIR:-${CODENIB_HOME}/prebuilt}"
 
-STORAGE_DIR="${STORAGE_DIR:-/mnt/data/codeminer}"
+STORAGE_DIR="${STORAGE_DIR:-${CODENIB_PREBUILT_DIR}}"
 DATASET="princeton-nlp/SWE-bench_Lite"
 SPLIT="dev"
 LANGS=("python")

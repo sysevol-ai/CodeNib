@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,24 +10,24 @@ Embedding-only retrieval baseline script.
 This script retrieves top-K nodes using embedding similarity search over the
 entire codebase, for comparison with the graph-based baseline.
 
-Supports both SWE-bench (Python-only) and CodeMiner-base (multi-language)
-datasets. For CodeMiner-base, ground-truth annotations are read directly from
+Supports both SWE-bench (Python-only) and CodeNib-base (multi-language)
+datasets. For CodeNib-base, ground-truth annotations are read directly from
 the dataset — no external eval JSON is required.
 
 Usage:
     # SWE-bench Lite
     python examples/embedding_retrieve_baseline.py --dataset swebench_lite
 
-    # CodeMiner-base (uses pre-built indices from build_embeddings.py)
+    # CodeNib-base (uses pre-built indices from build_embeddings.py)
     python examples/embedding_retrieve_baseline.py \\
-        --dataset codeminer_base \\
+        --dataset codenib_base \\
         --embedding-model Qwen/Qwen3-Embedding-0.6B \\
         --embedding-dimension 1024 \\
-        --index-cache-dir /mnt/data/codeminer
+        --index-cache-dir ${CODENIB_PREBUILT_DIR}
 
     # With profiling
     python examples/embedding_retrieve_baseline.py \\
-        --dataset codeminer_base \\
+        --dataset codenib_base \\
         --embedding-model Qwen/Qwen3-Embedding-0.6B \\
         --embedding-dimension 1024 \\
         --enable-profiler \\
@@ -43,18 +43,19 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from codeminer.dataset.locbench import LocbenchDataset
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.eval.retrieval_eval import (
+from codenib.dataset.locbench import LocbenchDataset
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
     collect_targets,
     evaluate_predictions,
     extract_predictions,
 )
-from codeminer.log_utils import get_logger
-from codeminer.model.embedding_retrieve_pipeline import EmbeddingRetrievePipeline
-from codeminer.profiler import Profiler
+from codenib.log_utils import get_logger
+from codenib.model.embedding_retrieve_pipeline import EmbeddingRetrievePipeline
+from codenib.paths import prebuilt_data_dir, user_state_dir
+from codenib.profiler import Profiler
 
 logger = get_logger(__name__)
 
@@ -89,7 +90,7 @@ def _map_language_group(label: Optional[str], fallback: str = "python") -> List[
 def _resolve_instance_languages(instance: dict, cli_languages: List[str]) -> List[str]:
     """Return languages for this instance.
 
-    CodeMiner-base instances carry a ``language_group`` column; fall back to
+    CodeNib-base instances carry a ``language_group`` column; fall back to
     the CLI ``--languages`` for datasets that don't have it (SWE-bench).
     """
     lang_group = instance.get("language_group")
@@ -177,7 +178,7 @@ def parse_args():
         "--dataset",
         type=str,
         required=True,
-        choices=["swebench_lite", "locbench_v1", "codeminer_base"],
+        choices=["swebench_lite", "locbench_v1", "codenib_base"],
     )
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--filter-instance", type=str, default=".*")
@@ -200,7 +201,7 @@ def parse_args():
         default=768,
     )
 
-    # Language / chunking (for SWE-bench; codeminer_base auto-detects per instance)
+    # Language / chunking (for SWE-bench; codenib_base auto-detects per instance)
     parser.add_argument(
         "--languages",
         type=str,
@@ -208,7 +209,7 @@ def parse_args():
         default=["python"],
         help=(
             "Chunker languages to use when rebuilding an index. "
-            "Ignored for codeminer_base instances (language is read from "
+            "Ignored for codenib_base instances (language is read from "
             "language_group column)."
         ),
     )
@@ -254,7 +255,7 @@ def parse_args():
         type=str,
         default=None,
         help=(
-            "Path to eval annotations JSON. For codeminer_base this is "
+            "Path to eval annotations JSON. For codenib_base this is "
             "optional — GT is read directly from the dataset."
         ),
     )
@@ -269,12 +270,12 @@ def parse_args():
     parser.add_argument(
         "--index-cache-dir",
         type=str,
-        default="/mnt/data/codeminer",
+        default=str(prebuilt_data_dir()),
     )
     parser.add_argument(
         "--repo-cache-dir",
         type=str,
-        default="~/.codeminer/",
+        default=str(user_state_dir()),
     )
     parser.add_argument("--result-path", type=str, default=None)
 
@@ -326,10 +327,10 @@ def _build_dataset(args):
             filter_instance=args.filter_instance,
             repo_root=args.repo_cache_dir,
         )
-    if args.dataset == "codeminer_base":
-        from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+    if args.dataset == "codenib_base":
+        from codenib.dataset.codenib_base import CodeNibBaseDataset
 
-        return CodeMinerBaseDataset(
+        return CodeNibBaseDataset(
             dataset="fishmingyu/codeminer-base-dataset",
             split=args.split,
             filter_instance=args.filter_instance,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.agent.agent_types import AgentResult
-from codeminer.eval.agent_runner.sweep import (
+from codenib.agent.agent_types import AgentResult
+from codenib.eval.agent_runner.sweep import (
     all_index_skill_ids,
     lsp_route_context_for_subset,
     run_cell,
     validate_sweep_harness,
 )
-from codeminer.eval.agent_runner.sweep_config import SweepConfig
+from codenib.eval.agent_runner.sweep_config import SweepConfig
 
 
 def test_validate_sweep_harness_accepts_registered_tools_and_skills():
@@ -83,7 +83,7 @@ def test_run_cell_passes_lsp_route_context_options_to_harness(monkeypatch, tmp_p
         def run(self, prompt):
             return AgentResult(answer=f"done: {prompt}", total_turns=1)
 
-    from codeminer.agent.harness import AgentHarnessSpec
+    from codenib.agent.harness import AgentHarnessSpec
 
     def fake_create_runner(self, **kwargs):
         captured.append(self)

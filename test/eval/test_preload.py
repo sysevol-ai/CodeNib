@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from codeminer.eval.agent_runner.preload import (
+from codenib.eval.agent_runner.preload import (
     assemble_preload,
     interleave_ranked,
     prepare_preload_query,

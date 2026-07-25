@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.agent.route_context import (
+from codenib.agent.route_context import (
     build_lsp_route_context,
     extract_lsp_symbol_seeds,
     filter_lsp_symbol_seeds,
@@ -16,7 +16,7 @@ from codeminer.agent.route_context import (
     render_lsp_route_context,
     summarize_lsp_route_nodes,
 )
-from codeminer.types import QueriedNode
+from codenib.types import QueriedNode
 
 
 def test_extract_lsp_symbol_seeds_prefers_explicit_and_code_like_tokens():

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from codeminer.eval.agent_runner.lsp_replay_benchmark import (  # noqa: E402
+from codenib.eval.agent_runner.lsp_replay_benchmark import (  # noqa: E402
     summarize_lsp_replay_benchmark,
 )
 

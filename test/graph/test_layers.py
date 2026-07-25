@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,14 +8,14 @@ import importlib.util
 
 import pytest
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.layers import (
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.layers import (
     GraphLayerSpec,
     _classify_edge_layers_python,
     build_graph_layers,
     classify_edge_layers,
 )
-from codeminer.types import (
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_IMPORT,
     EDGE_TYPE_REFERENCE,
@@ -148,8 +148,8 @@ def test_raw_python_classifier_accepts_custom_specs():
 
 
 def test_cpp_classifier_matches_python_when_extension_is_built():
-    if importlib.util.find_spec("codeminer_core") is None:
-        pytest.skip("codeminer_core extension is not built")
+    if importlib.util.find_spec("codenib_core") is None:
+        pytest.skip("codenib_core extension is not built")
 
     edge_types = [
         EDGE_TYPE_CONTAIN,

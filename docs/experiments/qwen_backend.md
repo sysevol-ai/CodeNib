@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
@@ -32,7 +32,7 @@ python -m vllm.entrypoints.openai.api_server \
   --max-model-len 32768 --max-num-seqs 64 --gpu-memory-utilization 0.85 --port 8001
 
 # Qwen3.5 (needs vLLM 0.23 in a separate env: torch 2.11/cu13; driver CUDA 13 OK)
-export QWEN_RUNTIME_ROOT=/mnt/data/codeminer
+export QWEN_RUNTIME_ROOT=${CODENIB_PREBUILT_DIR}
 export TMPDIR=${QWEN_RUNTIME_ROOT}/tmp/vllm
 export VLLM_CACHE_ROOT=${QWEN_RUNTIME_ROOT}/cache/vllm
 export TORCHINDUCTOR_CACHE_DIR=${QWEN_RUNTIME_ROOT}/cache/torchinductor
@@ -63,7 +63,7 @@ python scripts/agent_compile/run_sweep.py \
 `qwen7b_base.yaml` sets `first_turn_tool_choice: required` (Qwen2.5 needs it,
 see below); `qwen35_base.yaml` leaves it null (Qwen3.5 tool-calls under auto).
 
-## codeminer-base — single query / repo (files@5 + span@5)
+## codenib-base — single query / repo (files@5 + span@5)
 
 `span@5` = `answer_blocks@5`, span-overlap recall (see methodology). Paired,
 100 inst/arm, `format_fail=0%` for every cell below.
@@ -97,7 +97,7 @@ candidates add no accuracy (and can mislead — see synthesis). 9B is partial
 **The cross-family story is the whole point:** Qwen2.5 (turns~2, can't explore)
 is rescued by pre-load; Qwen3.5 (turns~14, explores natively) is not.
 
-## codeminer-synthesis — many queries / repo (where reuse is real)
+## codenib-synthesis — many queries / repo (where reuse is real)
 
 base is 1 query/instance, so the index build amortizes over nothing and pre-load
 can't show its reuse value. synthesis (50-80 q/repo) is the right setting.

@@ -5,11 +5,11 @@ DeepWiki-style repo browser: **wiki / codemap / ask**). This is the playbook for
 any agent doing a UI iteration loop. For where the product is *headed* (graph
 overhaul, differentiation), see [`graph-frontend-direction.md`](../design/graph-frontend-direction.md).
 
-> **The demo is on `main`** — FastAPI backend `codeminer/web/`, Next.js frontend
-> `web/`, and the wiki layer `codeminer/wiki/` were merged via PR #166/#167. No
+> **The demo is on `main`** — FastAPI backend `codenib/web/`, Next.js frontend
+> `web/`, and the wiki layer `codenib/wiki/` were merged via PR #166/#167. No
 > branch switch is needed; work from the repo checkout. (The original iteration
 > branch `claude/deepwiki-loop` is now effectively merged — only a 1-line diff in
-> `codeminer/web/repo_registry.py` remains, so don't `git switch` to it.)
+> `codenib/web/repo_registry.py` remains, so don't `git switch` to it.)
 
 ## Run it
 
@@ -18,14 +18,14 @@ Run the backend **from the repo root** (its `data_dir` is relative).
 
 ```bash
 # --- backend (FastAPI / uvicorn) ---
-export CODEMINER_DEMO_MODEL=openai/gpt-4o-mini   # REQUIRED: on-branch qa_config.yaml
+export CODENIB_DEMO_MODEL=openai/gpt-4o-mini   # REQUIRED: on-branch qa_config.yaml
                                                  # defaults to vertex_ai/gemini-2.5-flash,
                                                  # which needs gcloud ADC (not set here).
                                                  # OPENAI_API_KEY is set, so override to it.
-PY=/home/zhongming/anaconda3/envs/codeminer/bin/python   # has litellm; `which python` in the
-                                                         # codeminer conda env resolves here.
+PY="${PY:-python}"   # use the active environment's interpreter
+                                                         # codenib conda env resolves here.
                                                          # System /usr/bin/python3 has NO litellm.
-setsid bash -c "exec $PY -m uvicorn codeminer.web.app:app --host 127.0.0.1 --port 8000" \
+setsid bash -c "exec $PY -m uvicorn codenib.web.app:app --host 127.0.0.1 --port 8000" \
   >/tmp/cm-web.log 2>&1 </dev/null &                # setsid + </dev/null so it survives the
                                                     # background-job wrapper exiting.
 # The port stays CLOSED until indices finish loading (~20s) — the lifespan loads
@@ -41,27 +41,27 @@ npm install            # first time only
 npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
 ```
 
-- The ASGI app is `app = FastAPI(...)` in `codeminer/web/app.py` (target `codeminer.web.app:app`).
-  There is also a `codeminer-web` console script (honors `CODEMINER_DEMO_HOST`/`PORT`).
-- **Repo pool**: 4 repos served from prebuilt vector stores under `/mnt/data/codeminer`
+- The ASGI app is `app = FastAPI(...)` in `codenib/web/app.py` (target `codenib.web.app:app`).
+  There is also a `codenib-web` console script (honors `CODENIB_DEMO_HOST`/`PORT`).
+- **Repo pool**: 4 repos served from prebuilt vector stores under `${CODENIB_PREBUILT_DIR}`
   (~840 per-instance dirs; `qa_config.yaml` sets `prebuilt_dir`, overridable via
-  `CODEMINER_DEMO_PREBUILT_DIR`). Layout: `<dir>/<instance_id>/{repo,l0,l2}/index_<suffix>.faiss`.
+  `CODENIB_DEMO_PREBUILT_DIR`). Layout: `<dir>/<instance_id>/{repo,l0,l2}/index_<suffix>.faiss`.
 - **Frontend → backend** is wired by `NEXT_PUBLIC_API_BASE` (default `http://127.0.0.1:8000`).
-  Don't confuse it with `CODEMINER_DEMO_MODEL`, which only sets the backend's LLM.
+  Don't confuse it with `CODENIB_DEMO_MODEL`, which only sets the backend's LLM.
 - **Over SSH, forward both ports** — API calls run *in the browser*, not server-side:
   `ssh -L 3000:localhost:3000 -L 8000:localhost:8000 <host>`.
 
 ## Performance & caching (why a page can feel slow)
 
 - **Wiki prose is LLM-generated and disk-cached** under `<data_dir>/wiki_cache/`
-  (i.e. `.codeminer_qa/wiki_cache/agentwiki_<sha1(instance@commit/suffix)[:16]>.json`)
-  — NOT under `/mnt/data/codeminer` (that holds the prebuilt graph + vectors).
+  (i.e. `.codenib_qa/wiki_cache/agentwiki_<sha1(instance@commit/suffix)[:16]>.json`)
+  — NOT under `${CODENIB_PREBUILT_DIR}` (that holds the prebuilt graph + vectors).
   The **first** visit to an un-narrated page runs the model (~8–20s); after that
   it's ~2ms. The codemap / wiki-page subgraph is computed **dynamically** per
   request but is fast (~50–115ms), so it isn't cached.
 - **Pre-warm the cache** so navigation is instant (run once per data_dir; ~minutes):
   ```bash
-  B=http://127.0.0.1:8000; PY=<codeminer-conda-python>
+  B=http://127.0.0.1:8000; PY=<codenib-conda-python>
   ids(){ curl -s "$B/api/repos/$1/wiki" | $PY -c "import sys,json
   def w(ps):
    for p in ps:

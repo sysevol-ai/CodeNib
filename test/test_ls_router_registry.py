@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer import ls_router
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.ls_router import LSGraphDecoder, LSIndexer, build_graph_for_languages
+from codenib import ls_router
+from codenib.graph.code_graph import CodeGraph
+from codenib.ls_router import LSGraphDecoder, LSIndexer, build_graph_for_languages
 
 
 @pytest.mark.parametrize(
@@ -182,7 +182,7 @@ def test_ls_indexer_graph_patch_constructs_graph_patcher_without_profiler_kwarg(
     indexer = LSIndexer(tmp_path, language="python", output_dir=tmp_path / "out")
     calls = {}
 
-    from codeminer.graph.incremental import graph_patcher
+    from codenib.graph.incremental import graph_patcher
 
     def fake_detect_changed_files(project_root, base_commit, target_commit, extensions):
         calls["detect"] = (project_root, base_commit, target_commit, extensions)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from codeminer.ops.filter import (
+from codenib.ops.filter import (
     build_candidate_filters,
     drop_test_files,
     exclude_paths,
@@ -17,7 +17,7 @@ from codeminer.ops.filter import (
     is_symbol_candidate,
     is_test_path,
 )
-from codeminer.types import QueriedNode
+from codenib.types import QueriedNode
 
 
 def _node(**kwargs):

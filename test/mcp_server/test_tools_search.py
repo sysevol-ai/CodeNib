@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for codeminer.mcp.tools.search — BM25, regex, zoekt tool impls."""
+"""Unit tests for codenib.mcp.tools.search — BM25, regex, zoekt tool impls."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.index.trigram import ZoektUnavailableError
-from codeminer.mcp.tools.search import (
+from codenib.index.trigram import ZoektUnavailableError
+from codenib.mcp.tools.search import (
     search_bm25_impl,
     search_regex_impl,
     search_zoekt_impl,
 )
-from codeminer.types import NodeInfo
+from codenib.types import NodeInfo
 
 # ------------------------------------------------------------------
 # Fixtures

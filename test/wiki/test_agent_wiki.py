@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +6,7 @@
 
 from types import SimpleNamespace
 
-from codeminer.wiki.agent_wiki import AgentWiki
+from codenib.wiki.agent_wiki import AgentWiki
 
 
 class _FakeVectorStore:

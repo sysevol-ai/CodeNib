@@ -1,9 +1,9 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
 
 
 def test_typed_adjacency_filters_edges_and_deduplicates_multiedges():

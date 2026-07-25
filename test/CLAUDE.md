@@ -1,6 +1,6 @@
 # test/ — rules
 
-Mirrors the `codeminer/` package layout. Loads on top of the project-wide
+Mirrors the `codenib/` package layout. Loads on top of the project-wide
 [`.claude/CLAUDE.md`](../.claude/CLAUDE.md).
 
 ## Marker tiers
@@ -23,8 +23,8 @@ key off exactly these markers.
 
 ## Fixtures & caches
 
-- Repo fixtures cache clones to `/tmp/codeminer-gt-test/` (persists across runs).
-- HuggingFace dataset cache lives at `~/.codeminer/`.
+- Repo fixtures cache clones under `${CODENIB_TEMP_DIR}/gt-test/`.
+- HuggingFace dataset cache lives at `~/.codenib/`.
 
 ## Gotchas
 

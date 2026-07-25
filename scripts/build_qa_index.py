@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Build CodeNib indexes for code-QA demo repos.
 
-Selects a varied set of instances from the **codeminer-base-dataset**, checks
-out each repo at its ``base_commit`` (via ``CodeMinerBaseDataset`` /
+Selects a varied set of instances from the **codenib-base-dataset**, checks
+out each repo at its ``base_commit`` (via ``CodeNibBaseDataset`` /
 ``process_instance``), builds CodeNib indexes with ``IndexCompiler``, and
 writes ``<data_dir>/qa_registry.json`` describing what was indexed. The server
-(``codeminer-web``) reads that registry.
+(``codenib-web``) reads that registry.
 
 Selection: explicit ``instances:`` in ``qa_config.yaml`` if present, otherwise
 ``per_language`` instances from each of ``languages`` (a varied sample).
@@ -35,22 +35,22 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from codeminer.compiler.index_builders import (  # noqa: E402
+from codenib.compiler.index_builders import (  # noqa: E402
     BM25IndexBuilder,
     IndexBuilderRegistry,
     VectorIndexBuilder,
 )
-from codeminer.compiler.index_compiler import (  # noqa: E402
+from codenib.compiler.index_compiler import (  # noqa: E402
     IndexCompiler,
     IndexCompilerConfig,
 )
-from codeminer.compiler.manifest import (  # noqa: E402
+from codenib.compiler.manifest import (  # noqa: E402
     MANIFEST_FILENAME,
     IndexEntry,
     RepoManifest,
 )
-from codeminer.dataset.codeminer_base import CodeMinerBaseDataset  # noqa: E402
-from codeminer.web.config import (  # noqa: E402
+from codenib.dataset.codenib_base import CodeNibBaseDataset  # noqa: E402
+from codenib.web.config import (  # noqa: E402
     CACHE_DIR_NAME,
     RepoEntry,
     load_config,
@@ -278,7 +278,7 @@ def build_one(cfg, row, force: bool) -> RepoEntry:
     base_commit = row["base_commit"]
     language = row.get("language_group", "")
 
-    ds = CodeMinerBaseDataset(dataset=cfg.dataset, split=cfg.split)
+    ds = CodeNibBaseDataset(dataset=cfg.dataset, split=cfg.split)
     repo_root = cfg.repo_dir(instance_id)
     os.makedirs(repo_root, exist_ok=True)
 
@@ -369,7 +369,7 @@ def main() -> None:
     )
 
     print(f"Loading dataset {cfg.dataset} (split={cfg.split})…")
-    dataset = CodeMinerBaseDataset(dataset=cfg.dataset, split=cfg.split).load()
+    dataset = CodeNibBaseDataset(dataset=cfg.dataset, split=cfg.split).load()
     rows = select_rows(dataset, cfg, per_language, instances)
     if not rows:
         print("No instances selected. Check qa_config.yaml.", file=sys.stderr)

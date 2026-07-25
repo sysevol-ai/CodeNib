@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,10 +11,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.lsp_provider import StaticLSPProvider
-from codeminer.compiler.snapshot_store import SourceSnapshot
-from codeminer.eval.agent_runner.lsp_agent_study import (
-    CODEMINER_LSP_ARM,
+from codenib.agent.lsp_provider import StaticLSPProvider
+from codenib.compiler.snapshot_store import SourceSnapshot
+from codenib.eval.agent_runner.lsp_agent_study import (
+    CODENIB_LSP_ARM,
     FILESYSTEM_ARM,
     LIVE_LSP_ARM,
     LSPAgentStudySpec,
@@ -22,28 +22,28 @@ from codeminer.eval.agent_runner.lsp_agent_study import (
     run_lsp_agent_study_arm,
     study_arm_order,
 )
-from codeminer.eval.agent_runner.lsp_agent_study_analysis import (
+from codenib.eval.agent_runner.lsp_agent_study_analysis import (
     analyze_lsp_agent_noninferiority,
     collect_live_lsp_replay_bundles,
     summarize_lsp_agent_study,
 )
-from codeminer.eval.agent_runner.lsp_agent_study_artifacts import (
+from codenib.eval.agent_runner.lsp_agent_study_artifacts import (
     _reuse_scip_artifacts,
     find_source_repository,
     lsp_agent_artifact_profile,
     requires_lsp_occurrence_index,
     static_native_backend_for_language,
 )
-from codeminer.eval.agent_runner.lsp_agent_study_manifest import (
+from codenib.eval.agent_runner.lsp_agent_study_manifest import (
     build_base_lsp_agent_manifest,
     task_from_manifest_subject,
 )
-from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.scip_interface.lsp_occurrence_index import (
+from codenib.graph.code_graph import _SCHEMA_VERSION, CodeGraph
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.scip_interface.lsp_occurrence_index import (
     LSP_OCCURRENCE_INDEX_SCHEMA_VERSION,
 )
-from codeminer.types import NODE_TYPE_FUNCTION
+from codenib.types import NODE_TYPE_FUNCTION
 
 
 def _base_row(instance_id, repo, language_group="Go"):
@@ -168,7 +168,7 @@ def test_reuse_artifacts_allows_shared_repository_ownership(tmp_path, monkeypatc
     run = MagicMock(return_value=SimpleNamespace(stdout="expected-commit\n"))
     monkeypatch.setattr(subprocess, "run", run)
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.lsp_agent_study_artifacts.load_code_graph_artifact",
+        "codenib.eval.agent_runner.lsp_agent_study_artifacts.load_code_graph_artifact",
         MagicMock(return_value=MagicMock()),
     )
 
@@ -239,7 +239,7 @@ def test_arm_order_is_reproducible_and_contains_each_arm_once():
     first = study_arm_order("org__repo-1", 1)
 
     assert first == study_arm_order("org__repo-1", 1)
-    assert set(first) == {FILESYSTEM_ARM, LIVE_LSP_ARM, CODEMINER_LSP_ARM}
+    assert set(first) == {FILESYSTEM_ARM, LIVE_LSP_ARM, CODENIB_LSP_ARM}
     assert len(first) == 3
 
 
@@ -297,7 +297,7 @@ def test_dynamic_lsp_arms_hold_prompt_and_tool_schema_constant(tmp_path):
     graph = _graph(tmp_path)
     task = _study_task(tmp_path)
     rows = []
-    for arm in (CODEMINER_LSP_ARM, LIVE_LSP_ARM):
+    for arm in (CODENIB_LSP_ARM, LIVE_LSP_ARM):
         llm = MagicMock(spec=LiteLLMChat)
         llm.model = "fake-haiku"
         llm.temperature = 0
@@ -367,7 +367,7 @@ def test_noninferiority_uses_complete_repository_clustered_pairs():
     for repo in ("org/one", "org/two"):
         for rep in (1, 2):
             for arm, recall in (
-                (CODEMINER_LSP_ARM, 0.8),
+                (CODENIB_LSP_ARM, 0.8),
                 (LIVE_LSP_ARM, 0.75),
             ):
                 cells.append(
@@ -413,7 +413,7 @@ def test_noninferiority_bounds_keep_missing_live_metric_in_denominator():
             "repo": "org/repo",
             "role": "confirmatory",
             "rep": 1,
-            "arm": CODEMINER_LSP_ARM,
+            "arm": CODENIB_LSP_ARM,
             "metrics": {"answer_blocks": {5: {"recall": 0.25}}},
         },
         {
@@ -479,7 +479,7 @@ def test_collect_live_lsp_replay_bundles_preserves_every_request():
             "snapshot_id": "snapshot",
             "role": "development",
             "rep": 3,
-            "arm": CODEMINER_LSP_ARM,
+            "arm": CODENIB_LSP_ARM,
             "lsp_requests": [{"request_id": "excluded-static-request"}],
         },
     ]

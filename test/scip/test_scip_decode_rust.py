@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Unit tests for SCIPRustGraphDecoder workspace-member handling."""
 
-from codeminer.scip_interface.scip_decode_rust import SCIPRustGraphDecoder
+from codenib.scip_interface.scip_decode_rust import SCIPRustGraphDecoder
 
 
 def _write(path, text):

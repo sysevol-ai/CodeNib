@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,12 +6,12 @@
 
 from __future__ import annotations
 
-from codeminer.graph.backend_alignment import (
+from codenib.graph.backend_alignment import (
     BackendAlignmentTolerances,
     compare_backend_graphs,
 )
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import (
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
     NODE_TYPE_CLASS,

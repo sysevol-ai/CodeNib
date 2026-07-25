@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+skill_id: llm_rerank
+skill_type: rerank
+operator: llm.rerank
+cost: high
+
+defaults:
+  top_k: 5
+  candidate_top_k: 50
+  return_content: false
+
+inputs:
+  - name: query
+    type: str
+    required: true
+    description: Original search query for relevance scoring
+  - name: candidates
+    type: List[QueriedNode]
+    required: true
+    description: Candidate nodes to rerank
+  - name: top_k
+    type: int
+    required: false
+    default: 5
+
+outputs:
+  type: List[QueriedNode]
+
+index_requirements: []
+resources: []

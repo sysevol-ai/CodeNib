@@ -23,8 +23,8 @@ retrieval recall.
 
 - **Models**: Qwen3.5-4B/9B/27B on local vLLM (`qwen3_xml` tool parser); Claude
   Haiku 4.5 on Vertex.
-- **Datasets**: `codeminer_base` (100 multi-language instances) and
-  `codeminer-synthesis` (500 = 100/language × Python/Go/Rust/TS/C++).
+- **Datasets**: `codenib_base` (100 multi-language instances) and
+  `codenib-synthesis` (500 = 100/language × Python/Go/Rust/TS/C++).
 - **Arms**:
   - `grep_only` — plain agent, filesystem tools only (baseline).
   - `preinj_eager` — pre-load ranked candidates, "trust the top hits, read 1–2,
@@ -119,7 +119,7 @@ retrieval cost/performance sweet spot (1.5B matches 4B's flat recall).
 
 ### 6. Graph's value — GraphRAG (search+graph) vs search-only (base n=100)
 
-The `codeminer_context` composer (bm25 ⊕ embedding seeds → call-graph expansion)
+The `codenib_context` composer (bm25 ⊕ embedding seeds → call-graph expansion)
 run as a retriever, with `--no-graph` isolating the graph's contribution:
 
 | k | search-only | search + graph | Δ(graph) |
@@ -160,7 +160,7 @@ Its honest home is relational queries (call-graph traversal), not localization.
 
 ```bash
 # regenerate all tables from the per-cell result dirs
-python scripts/agent_compile/aggregate_compact_results.py /mnt/data/codeminer/results
+python scripts/agent_compile/aggregate_compact_results.py ${CODENIB_RESULTS_DIR}
 ```
 
 Configs: `scripts/agent_compile/configs/{qwen_base_compact,qwen_4b_keepreads,

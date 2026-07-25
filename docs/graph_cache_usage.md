@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -23,7 +23,7 @@ Use the `skip_level` parameter to control which stages are cached:
 Run full pipeline from scratch. Regenerates everything.
 
 ```python
-from codeminer.ls_router import LSIndexer
+from codenib.ls_router import LSIndexer
 
 indexer = LSIndexer(project_root="/path/to/repo")
 graph = indexer.run_pipeline(skip_level=None)  # Full pipeline
@@ -111,17 +111,17 @@ graph = indexer.run_pipeline(skip_level='graph')  # Fast!
 
 ```bash
 # Full pipeline
-python -m codeminer.ls_router \
+python -m codenib.ls_router \
   --project-dir /path/to/repo \
   --output graph.pkl
 
 # Use graph cache
-python -m codeminer.ls_router \
+python -m codenib.ls_router \
   --project-dir /path/to/repo \
   --skip-level graph
 
 # Custom output directory
-python -m codeminer.ls_router \
+python -m codenib.ls_router \
   --project-dir /path/to/repo \
   --output-dir /cache/instance-123 \
   --skip-level graph
@@ -141,7 +141,7 @@ Typical timings for a medium-sized project:
 ## Example: Batch Processing with Cache
 
 ```python
-from codeminer.ls_router import LSIndexer
+from codenib.ls_router import LSIndexer
 
 # Process multiple instances efficiently
 instances = [
@@ -170,7 +170,7 @@ for instance in instances:
 You can also manually save and load graphs using pickle:
 
 ```python
-from codeminer.graph.code_graph import CodeGraph
+from codenib.graph.code_graph import CodeGraph
 
 # Save (uses pickle for fast serialization)
 graph.save_graph("/path/to/graph.pkl")

@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -42,7 +42,7 @@ core decoder parity.
 - [Agent Skills](agent_skills.md) — optional retrieval/rerank/trace skills built on top of the index substrate
 - [RAG Ops And Planner](rag_ops.md) — retrieval operator boundaries, query-aware planner behavior, and graph-plan limits
 - [Collecting SWE-bench Instances](collect_swebench.md) — sample representative instances across languages
-- [Synthesis Pipeline](synthesis_pipeline.md) — synthesize traversal/behavior/multiply queries for the CodeMiner Synthesis benchmark
+- [Synthesis Pipeline](synthesis_pipeline.md) — synthesize traversal/behavior/multiply queries for the CodeNib Synthesis benchmark
 - [Uploading to HuggingFace](upload_dataset_to_huggingface.md) — build and publish the dataset
 - [Diagnose Query Leak](diagnose_query_leak.md) — detect lexical/semantic leakage in synthesized queries
 
@@ -66,7 +66,7 @@ Build a repository manifest with `IndexCompiler`; see [MCP Server](mcp.md) for
 the full example and index options.
 
 ```bash
-codeminer-mcp /path/to/repo/.codeminer_cache/repo_manifest.json
+codenib-mcp /path/to/repo/.codenib_cache/repo_manifest.json
 ```
 
 For the browser UI:

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,12 +10,12 @@ import os
 import pickle
 from pathlib import Path
 
-from codeminer.compiler.snapshot_store import (
+from codenib.compiler.snapshot_store import (
     ArtifactProfile,
     SnapshotArtifactStore,
     SourceSnapshot,
 )
-from codeminer.eval.agent_runner import prebuilt
+from codenib.eval.agent_runner import prebuilt
 
 
 def test_model_suffix():
@@ -37,7 +37,7 @@ def _make_prebuilt(root: Path, iid: str, model: str, *, full=True):
 
 
 def _write_legacy_graph(path: Path, *, schema_version=None):
-    from codeminer.graph.code_graph import CodeGraph
+    from codenib.graph.code_graph import CodeGraph
 
     graph = CodeGraph(project_root="repo")
     graph.add_file_node("pkg/mod.py")
@@ -203,7 +203,7 @@ def test_load_code_graph_artifact_rebinds_project_root(tmp_path):
 
 
 def test_normalize_prebuilt_graphs_dry_run_and_write(tmp_path):
-    from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph
+    from codenib.graph.code_graph import _SCHEMA_VERSION, CodeGraph
 
     model = "org/embed-small"
     src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
@@ -243,7 +243,7 @@ def test_load_prebuilt_code_graph_accepts_schema_three_bundle(tmp_path):
 
 
 def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):
-    from codeminer.graph.code_graph import CodeGraph
+    from codenib.graph.code_graph import CodeGraph
 
     model = "org/embed-small"
     src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)
@@ -260,7 +260,7 @@ def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):
 
 
 def test_stage_normalizes_legacy_graph_for_strict_loader(tmp_path):
-    from codeminer.graph.code_graph import CodeGraph
+    from codenib.graph.code_graph import CodeGraph
 
     model = "org/embed-small"
     src = _make_prebuilt(tmp_path / "prebuilt", "inst", model, full=True)

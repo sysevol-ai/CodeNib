@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,8 +11,8 @@ L0 and L2 chunks as separate layers for the same files.
 
 from __future__ import annotations
 
-from codeminer.code_chunking.base import CodeChunk
-from codeminer.index.incremental.chunk_store import IncrementalChunkStore
+from codenib.code_chunking.base import CodeChunk
+from codenib.index.incremental.chunk_store import IncrementalChunkStore
 
 # ---------------------------------------------------------------------------
 # Helpers

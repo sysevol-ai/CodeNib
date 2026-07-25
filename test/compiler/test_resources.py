@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import time
 
-from codeminer.compiler.resources import (
+from codenib.compiler.resources import (
     FileSystemIndexStateStore,
     IndexRequirement,
     IndexState,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,10 +15,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.history import PlainChatHistory, TokenBudgetedChatHistory
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat, RetryConfig
+from codenib.agent.history import PlainChatHistory, TokenBudgetedChatHistory
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.llm.litellm_chat import LiteLLMChat, RetryConfig
 
 
 def _make_response(content=None, tool_calls=None):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
-from codeminer.ls_router import LSIndexer
+from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
+from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.integration_serial
 
@@ -244,7 +244,7 @@ def _tools_ready(language: str) -> bool:
 @pytest.mark.parametrize("language", ["cpp", "rust", "ts", "go"])
 def test_run_pipeline_swebench_multilingual_instance(language: str) -> None:
     """Serial-backend regression test on a pinned SWE-bench_Multilingual
-    instance. Writes outputs to ``~/.codeminer/<instance_id>/`` so that
+    instance. Writes outputs to ``~/.codenib/<instance_id>/`` so that
     ``test_scip_core.py`` picks up the same ``index.decoded`` on the next run
     (cache shared across CI jobs on self-hosted runner).
     """
@@ -264,7 +264,7 @@ def test_run_pipeline_swebench_multilingual_instance(language: str) -> None:
     if language == "cpp":
         _ensure_cpp_compdb(repo_path)
 
-    output_dir = Path.home() / ".codeminer" / instance["instance_id"]
+    output_dir = Path.home() / ".codenib" / instance["instance_id"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
     kwargs = {"infer_tsconfig": True} if language == "ts" else {}

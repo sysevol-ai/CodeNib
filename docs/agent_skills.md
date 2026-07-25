@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 
 CodeNib's retrieval, reranking, and graph-expansion capabilities are packaged as
 **skills** — self-contained units of metadata + execution logic that an LLM agent can
-select and invoke. Skills live under `codeminer/agent/skills/`.
+select and invoke. Skills live under `codenib/agent/skills/`.
 
 ## How skills are defined
 
@@ -20,13 +20,13 @@ A skill is a package directory containing:
 - `executor.py` — a `create_executor(context) -> Callable` factory returning the
   execution function. `context` is the typed op-context dataclass for the skill's
   type (`RetrieveContext` / `RerankContext` / `TransformContext` / `ExpandContext`);
-  `custom` composer skills (`codeminer_context`, `bm25_search`) instead receive a
-  typed `ComposerContexts` bundle (`codeminer/agent/skills/context.py`).
+  `custom` composer skills (`codenib_context`, `bm25_search`) instead receive a
+  typed `ComposerContexts` bundle (`codenib/agent/skills/context.py`).
 
 `SkillLoader.load_all(skills_dir, contexts)` scans the directory, parses each
 `config.yaml`, reads `skill.md`, imports the executor, and registers a `SkillMetadata`
 in the registry. Skills can also be declared in code with the `@skill` decorator
-(`codeminer/agent/skills/registry.py`), which captures the same metadata and registers
+(`codenib/agent/skills/registry.py`), which captures the same metadata and registers
 the decorated function.
 
 ## Registry API
@@ -34,7 +34,7 @@ the decorated function.
 `SkillRegistry` is a singleton catalogue of `SkillMetadata`:
 
 ```python
-from codeminer.agent.skills.registry import SkillRegistry
+from codenib.agent.skills.registry import SkillRegistry
 
 registry = SkillRegistry()
 registry.list_skills()       # -> {skill_id: SkillMetadata}
@@ -45,17 +45,17 @@ registry.has("llm_rerank")   # -> bool
 ## Exposing skills to an agent
 
 `registry_to_tools(registry, allow=..., exclude=...)`
-(`codeminer/agent/tool_schema.py`) converts registered skills into LLM tool schemas,
+(`codenib/agent/tool_schema.py`) converts registered skills into LLM tool schemas,
 applying an optional `allow` set first, then an `exclude` set.
 
-`AgentRunner` (`codeminer/agent/runner.py`) wraps this. It accepts `allow_skills` and
+`AgentRunner` (`codenib/agent/runner.py`) wraps this. It accepts `allow_skills` and
 `exclude_skills`, and — when given a `manifest` — runs a `ResourceGuard` preflight that
 automatically excludes skills whose required indexes are unavailable and surfaces
 warnings in the system prompt:
 
 ```python
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.registry import SkillRegistry
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.registry import SkillRegistry
 
 runner = AgentRunner(
     model="gpt-4o",
@@ -68,7 +68,7 @@ result = runner.run("How does authentication work in this repo?")
 ## Default tools vs skills
 
 The always-on filesystem primitives — **`read` / `grep` / `glob` / `bash`** — are a
-separate type from skills. They are `ToolSpec` objects (`codeminer/agent/tools/spec.py`)
+separate type from skills. They are `ToolSpec` objects (`codenib/agent/tools/spec.py`)
 in a `ToolRegistry` the runner holds alongside the `SkillRegistry`, registered via
 `ensure_default_tools_registered`. They carry no `index_requirements`, no `operator`,
 and no retrieval `skill_type`, and are **never** narrowed by `allow_skills` /
@@ -82,7 +82,7 @@ exposed, or `include_default_tools=False` to withhold them).
 | `bm25_search` | custom | Fast keyword retrieval (TF-IDF/BM25) over symbol chunks; `names_only=true` returns compact NAME tags (no bodies), with `unified_name` relabeling when a graph is present. |
 | `embedding_search` | retrieval | Semantic vector retrieval that matches code by meaning, not literal tokens. |
 | `hybrid_search` | aggregate | Fuses multiple retrievers (e.g. BM25 + embedding) via weighted score normalization. |
-| `codeminer_context` | custom | One-call GraphRAG composer: search seeds + deterministic call-graph expansion into a compact set (graph step toggle: `CODEMINER_COMPOSER_NO_GRAPH=1`). |
+| `codenib_context` | custom | One-call GraphRAG composer: search seeds + deterministic call-graph expansion into a compact set (graph step toggle: `CODENIB_COMPOSER_NO_GRAPH=1`). |
 | `find_callers` | expand | Incoming call-graph edges of a symbol (who calls X). |
 | `find_callees` | expand | Outgoing call-graph edges of a symbol (what X calls). |
 | `trace` | expand | Shortest call path between two symbols. |
@@ -109,7 +109,7 @@ back from, the LLM are 1-based. This mirrors the `CodeLocation` convention at
 the dataset/HuggingFace boundary (see `_chunk_to_code_block` in
 `dataset/gt_locate.py`).
 
-All conversion lives in one module, `codeminer/agent/boundary.py`, with one
+All conversion lives in one module, `codenib/agent/boundary.py`, with one
 site per direction:
 
 - **Output** — `AgentRunner._serialize_result` runs every line-bearing result

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -48,7 +48,7 @@ jobs:
           cache: "pip"
 
       - name: Check display branding
-        run: python scripts/check_branding.py
+        run: python scripts/check_namespace.py
 
       - name: Install docs dependencies
         run: |

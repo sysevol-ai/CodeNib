@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -21,7 +21,7 @@ served (or actively developed in) is untouched.
 Example::
 
     python scripts/build_commit_window.py \\
-        --repo-dir /home/intern/yashJ/CodeMiner \\
+        --repo-dir /path/to/repo \\
         --n 5 --ref origin/main --language paper
 
 ``--language`` takes a comma-separated list; ``paper`` expands to the languages
@@ -44,7 +44,10 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import List, Optional
+
+from codenib.paths import repo_index_dir
 
 logger = logging.getLogger("build_commit_window")
 
@@ -124,7 +127,7 @@ def ensure_worktree(repo: str, path: str, sha: str) -> None:
         # directory case outright, because the reuse path below runs
         # `checkout --force` and `clean -qfdx`, which against someone's real
         # checkout discards uncommitted work and deletes ignored files (.env,
-        # node_modules, .codeminer_cache). The module contract is that the
+        # node_modules, .codenib_cache). The module contract is that the
         # served or developed tree is never touched -- enforce it here rather
         # than relying on the caller passing a sane --worktree.
         if os.path.isdir(dotgit):
@@ -221,7 +224,7 @@ def build_anchor(worktree: str, out_dir: str, languages: List[str], graph_route:
     touches, so charging them to the cold baseline would inflate every
     cold-vs-patch comparison derived from this window.
     """
-    from codeminer.ls_router import build_graph_for_languages
+    from codenib.ls_router import build_graph_for_languages
 
     os.makedirs(out_dir, exist_ok=True)
     remaining = list(languages)
@@ -286,7 +289,7 @@ def main() -> int:
     ap.add_argument(
         "--out-dir",
         default=None,
-        help="where snapshots land (default <repo>/.codeminer_cache/commit_window)",
+        help="where snapshots land (default <repo>/.codenib_cache/commit_window)",
     )
     ap.add_argument(
         "--worktree",
@@ -311,7 +314,7 @@ def main() -> int:
 
     repo = os.path.abspath(args.repo_dir)
     out_dir = os.path.abspath(
-        args.out_dir or os.path.join(repo, ".codeminer_cache", "commit_window")
+        args.out_dir or str(repo_index_dir(Path(repo)) / "commit_window")
     )
     worktree = os.path.abspath(args.worktree or os.path.join(out_dir, "_worktree"))
     os.makedirs(out_dir, exist_ok=True)
@@ -342,7 +345,7 @@ def main() -> int:
         anchor["short"],
     )
 
-    from codeminer.graph.incremental.graph_patcher import (
+    from codenib.graph.incremental.graph_patcher import (
         LANGUAGE_EXTENSIONS,
         GraphPatcher,
     )

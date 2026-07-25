@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Unit tests for the web codemap payload builder."""
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.web.codemap import build_codemap, build_page_subgraph
+from codenib.graph.code_graph import CodeGraph
+from codenib.web.codemap import build_codemap, build_page_subgraph
 
 
 def _symbol_graph_with_many_call_sites() -> CodeGraph:

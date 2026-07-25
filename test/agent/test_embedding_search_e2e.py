@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,9 +15,9 @@ Run:
 The index is written to /tmp/embedding_e2e_index/ and is reused across runs.
 Delete that directory to force a rebuild.
 
-Environment variable CODEMINER_INDEX_PATH can override the cache location:
+Environment variable CODENIB_INDEX_PATH can override the cache location:
 
-    CODEMINER_INDEX_PATH=/my/path pytest test/agent/test_embedding_search_e2e.py -v
+    CODENIB_INDEX_PATH=/my/path pytest test/agent/test_embedding_search_e2e.py -v
 """
 
 from __future__ import annotations
@@ -53,10 +53,7 @@ EMBEDDING_INDEX_PATH = "/tmp/embedding_e2e_index"
 @pytest.fixture(scope="session")
 def vector_store(httpie_cli_repo):
     """Build or load a CodeVectorStore for the httpie/cli repo."""
-    from codeminer.index.embedding import (
-        CodeVectorStore,
-        build_hierarchical_vector_store,
-    )
+    from codenib.index.embedding import CodeVectorStore, build_hierarchical_vector_store
 
     repo_path = str(httpie_cli_repo)
     store_root = Path(EMBEDDING_INDEX_PATH)
@@ -110,7 +107,7 @@ def vector_store(httpie_cli_repo):
 @pytest.fixture(scope="session")
 def retrieve_context(vector_store):
     """Construct a real RetrieveContext backed by the session-scoped vector store."""
-    from codeminer.ops.retrieve import RetrieveContext
+    from codenib.ops.retrieve import RetrieveContext
 
     return RetrieveContext(vector_store=vector_store)
 
@@ -118,9 +115,9 @@ def retrieve_context(vector_store):
 @pytest.fixture(scope="session")
 def executor_fn(retrieve_context):
     """Load the embedding_search skill and return the bound executor callable."""
-    import codeminer.agent.skills as pkg
-    from codeminer.agent.skills.loader import SkillLoader
-    from codeminer.agent.skills.registry import SkillRegistry
+    import codenib.agent.skills as pkg
+    from codenib.agent.skills.loader import SkillLoader
+    from codenib.agent.skills.registry import SkillRegistry
 
     skill_dir = str(Path(pkg.__file__).parent / "embedding_search")
 

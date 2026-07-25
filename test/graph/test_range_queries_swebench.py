@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -26,9 +26,9 @@ import pytest
 
 pytestmark = pytest.mark.integration_serial_consumer
 
-from codeminer.graph.code_graph import CodeGraph, EdgeRef, NodeRef
-from codeminer.ls_router import LSIndexer
-from codeminer.types import (
+from codenib.graph.code_graph import CodeGraph, EdgeRef, NodeRef
+from codenib.ls_router import LSIndexer
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     NODE_TYPE_CLASS,
     NODE_TYPE_FUNCTION,
@@ -70,7 +70,7 @@ _REPO_KEYWORDS = {
 
 def _pick_python_instance() -> tuple:
     """Return (dataset_obj, instance) for the pinned Python case (astropy)."""
-    from codeminer.dataset.swebench import SwebenchDataset
+    from codenib.dataset.swebench import SwebenchDataset
 
     dataset_obj = SwebenchDataset(
         dataset="princeton-nlp/SWE-bench_Lite",
@@ -83,7 +83,7 @@ def _pick_python_instance() -> tuple:
 
 def _pick_multilingual_instance(language: str) -> tuple:
     """Return (dataset_obj, instance) for a SWE-bench_Multilingual instance."""
-    from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
+    from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
 
     dataset_obj = SwebenchMultilingualDataset(split="test", filter_instance=".*")
     rows = dataset_obj.load()
@@ -163,7 +163,7 @@ def indexed_repo(language) -> CodeGraph:
     if language == "cpp":
         _ensure_cpp_compdb(repo_path)
 
-    output_dir = Path.home() / ".codeminer" / instance["instance_id"]
+    output_dir = Path.home() / ".codenib" / instance["instance_id"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
     kwargs = {"infer_tsconfig": True} if language == "ts" else {}

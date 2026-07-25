@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
@@ -41,7 +41,7 @@ idea is sound, but per-candidate full subagents are the cost mistake.
 
 ## Motivation — diagnosed, not guessed
 
-On codeminer-synthesis (Qwen3.5-27B, span answer_rec), pre-load is a *trade*:
+On codenib-synthesis (Qwen3.5-27B, span answer_rec), pre-load is a *trade*:
 it saves cost (−1.7 turns, −7.6 % tokens) at equal pooled accuracy but
 **REGRESSES `behavioral`** (Δrec −0.167). We diagnosed the 4 losing queries:
 
@@ -122,7 +122,7 @@ Prove the accuracy claim before paying for concurrency.
 
 ## Evaluation
 
-- Dataset: codeminer-synthesis (many-query; reuse is real).
+- Dataset: codenib-synthesis (many-query; reuse is real).
 - Arms: `grep_only` vs `preinj_embed` (current single-context) vs
   `preinj_scatter` (new).
 - Metrics: span answer_rec@k (paired bootstrap, `pareto_ci.py`) + turns + tokens.

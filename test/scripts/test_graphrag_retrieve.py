@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -53,7 +53,7 @@ def test_retrieve_loads_contexts_from_prebuilt_repo_not_staged_cache(
 
     class FakeRegistry:
         def get(self, skill_id):
-            assert skill_id == "codeminer_context"
+            assert skill_id == "codenib_context"
             return SimpleNamespace(
                 executor_fn=lambda query, seeds, max_results: [
                     SimpleNamespace(
@@ -68,26 +68,26 @@ def test_retrieve_loads_contexts_from_prebuilt_repo_not_staged_cache(
             )
 
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.sweep.load_dataset_rows",
+        "codenib.eval.agent_runner.sweep.load_dataset_rows",
         fake_load_dataset_rows,
     )
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.prebuilt.stage_prebuilt_indexes",
+        "codenib.eval.agent_runner.prebuilt.stage_prebuilt_indexes",
         fake_stage_prebuilt_indexes,
     )
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.sweep.load_full_contexts",
+        "codenib.eval.agent_runner.sweep.load_full_contexts",
         fake_load_full_contexts,
     )
     monkeypatch.setattr(
-        "codeminer.eval.retrieval_eval.collect_targets",
+        "codenib.eval.retrieval_eval.collect_targets",
         lambda meta, simplified_symbols=True: (["target.py"], []),
     )
     monkeypatch.setattr(
-        "codeminer.eval.retrieval_eval.collect_target_blocks",
+        "codenib.eval.retrieval_eval.collect_target_blocks",
         lambda meta: [{"file": "target.py", "start": 10, "end": 20}],
     )
-    monkeypatch.setattr("codeminer.agent.skills.registry.SkillRegistry", FakeRegistry)
+    monkeypatch.setattr("codenib.agent.skills.registry.SkillRegistry", FakeRegistry)
 
     (
         nodes,

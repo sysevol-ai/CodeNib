@@ -60,7 +60,7 @@ export default function AskPanel({ repoId, repo }: { repoId: string; repo: strin
           error: true,
           text:
             "Couldn't reach the retrieval backend (or no LLM key is set). " +
-            "Start it with `codeminer-web` and configure a model.",
+            "Start it with `codenib-web` and configure a model.",
         },
       ]);
     } finally {

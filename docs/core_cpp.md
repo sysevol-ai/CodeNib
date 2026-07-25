@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 
 The `core/` directory contains a C++ implementation of the high-traffic pieces
 of the Python graph pipeline. It mirrors the behaviour of
-`codeminer.graph.code_graph.CodeGraph` and the active serial SCIP decoders while
+`codenib.graph.code_graph.CodeGraph` and the active serial SCIP decoders while
 using the libigraph C API for higher throughput on large `.decoded` SCIP index
 files.
 
@@ -29,7 +29,7 @@ files.
 - `bindings/pybind_module.cpp` — exposes `decode_scip(...)` and the optional
   `classify_edge_layers(...)` binding. The binding delegates to the core
   `graph_layers` module; it should not own graph algorithms.
-- `CMakeLists.txt` — builds the static library `codeminer_core`, suitable for wrapping
+- `CMakeLists.txt` — builds the static library `codenib_core`, suitable for wrapping
   with pybind11 or another binding layer.
 
 ## Building
@@ -50,7 +50,7 @@ The resulting static library and pybind module are placed in `build/core`.
 serial/core parity for the active accelerated SCIP backends: Python, Go, Rust,
 Ruby, TypeScript, and the JavaScript/TypeScript aliases.
 The pybind module also exposes the C++ decoder registry so tests can compare it
-directly with `codeminer.languages.core_decoder_languages(...)`.
+directly with `codenib.languages.core_decoder_languages(...)`.
 
 Ruby has a dedicated C++ decoder because real `ruby/rake` profiling showed the
 serial local decode path was the bottleneck after `scip-ruby` produced a large
@@ -138,7 +138,7 @@ Latest local sample:
 #include "scip_decode.h"
 
 int main() {
-    codeminer::core::SCIPGraphDecoder decoder("index.decoded", ".");
+    codenib::core::SCIPGraphDecoder decoder("index.decoded", ".");
     auto graph = decoder.decode();
     graph.save_graph("graph.json");  // JSON snapshot for inspection / downstream load
     return 0;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -61,7 +61,7 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from codeminer.eval.retrieval_eval import (
+from codenib.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
     evaluate_predictions,
@@ -69,8 +69,9 @@ from codeminer.eval.retrieval_eval import (
     normalize_file_path,
     normalize_symbol_identifier,
 )
-from codeminer.log_utils import get_logger
-from codeminer.types import QueriedNode
+from codenib.log_utils import get_logger
+from codenib.paths import prebuilt_data_dir, repo_index_dir, user_state_dir
+from codenib.types import QueriedNode
 
 logger = get_logger(__name__)
 
@@ -254,8 +255,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--filter-instance", type=str, default=".*")
     p.add_argument("--metrics-k", type=int, nargs="+", default=[1, 3, 5, 10, 15, 20])
-    p.add_argument("--index-cache-dir", type=str, default="/mnt/data/codeminer")
-    p.add_argument("--repo-cache-dir", type=str, default="~/.codeminer/")
+    p.add_argument("--index-cache-dir", type=str, default=str(prebuilt_data_dir()))
+    p.add_argument("--repo-cache-dir", type=str, default=str(user_state_dir()))
     p.add_argument("--result-path", type=str, default=None)
 
     # Embedding
@@ -324,7 +325,7 @@ def collect_synthesized_targets(
 def _make_bm25(
     repo_path: str, index_path: str, args: argparse.Namespace, language: str
 ):
-    from codeminer.model.bm25_retrieve_pipeline import BM25RetrievePipeline
+    from codenib.model.bm25_retrieve_pipeline import BM25RetrievePipeline
 
     pipe = BM25RetrievePipeline(
         repo_path=repo_path,
@@ -340,7 +341,7 @@ def _make_bm25(
 def _make_embedding(
     repo_path: str, index_path: str, args: argparse.Namespace, language: str
 ):
-    from codeminer.model.embedding_retrieve_pipeline import EmbeddingRetrievePipeline
+    from codenib.model.embedding_retrieve_pipeline import EmbeddingRetrievePipeline
 
     pipe = EmbeddingRetrievePipeline(
         repo_path=repo_path,
@@ -359,24 +360,24 @@ def _make_agent(
 ):
     import os
 
-    from codeminer.agent.runner import AgentRunner
-    from codeminer.agent.skills.loader import SkillLoader
-    from codeminer.agent.skills.registry import SkillRegistry
-    from codeminer.compiler.index_builders import (
+    from codenib.agent.runner import AgentRunner
+    from codenib.agent.skills.loader import SkillLoader
+    from codenib.agent.skills.registry import SkillRegistry
+    from codenib.compiler.index_builders import (
         BM25IndexBuilder,
         IndexBuilderRegistry,
         VectorIndexBuilder,
     )
-    from codeminer.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
-    from codeminer.compiler.manifest import RepoManifest
-    from codeminer.compiler.params import SessionContext
-    from codeminer.index.embedding import CodeVectorStore
-    from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
-    from codeminer.llm.litellm_chat import LiteLLMChat
-    from codeminer.ops.rerank import RerankContext
-    from codeminer.ops.retrieve import RetrieveContext
+    from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+    from codenib.compiler.manifest import RepoManifest
+    from codenib.compiler.params import SessionContext
+    from codenib.index.embedding import CodeVectorStore
+    from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+    from codenib.llm.litellm_chat import LiteLLMChat
+    from codenib.ops.rerank import RerankContext
+    from codenib.ops.retrieve import RetrieveContext
 
-    cache_dir = os.path.join(index_path, ".codeminer_cache")
+    cache_dir = str(repo_index_dir(index_path))
 
     # Phase 1: compile indexes
     idx_types = []
@@ -433,7 +434,7 @@ def _make_agent(
     if vector_store:
         ctx["rerank"] = RerankContext(embedding_store=vector_store)
 
-    skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
+    skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
     SkillLoader().load_all(skills_dir, contexts=ctx)
 
     runner = AgentRunner(

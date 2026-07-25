@@ -16,7 +16,7 @@ small number of important cross-edges on top.
 
 ## Current API shape
 
-`codeminer.graph.hierarchy` builds a reusable repo-level
+`codenib.graph.hierarchy` builds a reusable repo-level
 `HierarchicalCodeGraph` from the indexed `CodeGraph`. The web codemap response
 projects that repo-level structure onto the current focus window, so existing
 clients still receive compact `nodes`/`edges` plus the relevant containment
@@ -122,7 +122,7 @@ The Cytoscape layer also applies semantic zoom classes:
 
 The backend model now separates containment and dependency edges before any
 view-specific filtering. The separation is backed by the reusable graph-layer
-API in `codeminer.graph.layers`, so callers can query the same indexed
+API in `codenib.graph.layers`, so callers can query the same indexed
 `CodeGraph` as overlapping relation graphs (`all`, `containment`, `dependency`,
 `reference`, `import`, and `type-use`) without changing the persisted graph
 schema:

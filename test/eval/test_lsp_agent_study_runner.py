@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,13 +9,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from codeminer.eval.agent_runner import lsp_agent_study_runner as runner
-from codeminer.eval.agent_runner.lsp_agent_study import LSPAgentStudySpec
+from codenib.eval.agent_runner import lsp_agent_study_runner as runner
+from codenib.eval.agent_runner.lsp_agent_study import LSPAgentStudySpec
 
 
 def _manifest(subjects):
     payload = {
-        "benchmark": "codeminer_base_lsp_agent_ablation",
+        "benchmark": "codenib_base_lsp_agent_ablation",
         "dataset": {
             "fingerprint": "fixture",
             "name": "org/dataset",

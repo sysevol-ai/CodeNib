@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,18 +11,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.agent.resource_guard import PreflightReport
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.core import (
+from codenib.agent.resource_guard import PreflightReport
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.tool_schema import registry_to_tools
-from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.agent.tool_schema import registry_to_tools
+from codenib.agent.tools.defaults import DEFAULT_TOOL_IDS
+from codenib.llm.litellm_chat import LiteLLMChat
 
 
 def _swept(tools) -> set:
@@ -159,7 +159,7 @@ class TestAgentRunnerAllowSkills:
         # The project logger uses propagate=False, so caplog can't see it;
         # attach our own list handler to the runner's logger directly.
         captured: list[logging.LogRecord] = []
-        runner_logger = logging.getLogger("codeminer.agent.runner")
+        runner_logger = logging.getLogger("codenib.agent.runner")
 
         class _ListHandler(logging.Handler):
             def emit(self, record: logging.LogRecord) -> None:
@@ -245,7 +245,7 @@ class TestAgentRunnerAllowSkills:
             compile_table={"scenarios": {}},
         )
 
-        with patch("codeminer.agent.compile.agent_compile", return_value={"a"}):
+        with patch("codenib.agent.compile.agent_compile", return_value={"a"}):
             runner.run("test")
 
         request_prompt = llm._call_raw.call_args.args[0][0]["content"]
@@ -307,7 +307,7 @@ class TestAllowSkillsWithResourceGuard:
         )
 
         with patch(
-            "codeminer.agent.resource_guard.ResourceGuard",
+            "codenib.agent.resource_guard.ResourceGuard",
             return_value=fake_guard,
         ):
             llm = MagicMock(spec=LiteLLMChat)
@@ -335,7 +335,7 @@ class TestAllowSkillsWithResourceGuard:
         )
 
         with patch(
-            "codeminer.agent.resource_guard.ResourceGuard",
+            "codenib.agent.resource_guard.ResourceGuard",
             return_value=fake_guard,
         ):
             llm = MagicMock(spec=LiteLLMChat)
@@ -362,7 +362,7 @@ class TestAllowSkillsWithResourceGuard:
         )
 
         with patch(
-            "codeminer.agent.resource_guard.ResourceGuard",
+            "codenib.agent.resource_guard.ResourceGuard",
             return_value=fake_guard,
         ):
             llm = MagicMock(spec=LiteLLMChat)

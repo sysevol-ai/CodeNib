@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -29,8 +29,8 @@ BM25_INDEX_PATH = "/tmp/bm25_e2e_index"
 @pytest.fixture(scope="session")
 def bm25_indexer(httpie_cli_repo):
     """Build or load a BM25CodeIndexer for the httpie/cli repo."""
-    from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-    from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
+    from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+    from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
 
     repo_path = str(httpie_cli_repo)
     documents_file = Path(BM25_INDEX_PATH) / "documents.json"
@@ -62,7 +62,7 @@ def bm25_indexer(httpie_cli_repo):
 @pytest.fixture(scope="session")
 def bm25_retrieve_context(bm25_indexer):
     """Construct a real RetrieveContext backed by the session-scoped BM25 index."""
-    from codeminer.ops.retrieve import RetrieveContext
+    from codenib.ops.retrieve import RetrieveContext
 
     return RetrieveContext(bm25=bm25_indexer)
 
@@ -70,9 +70,9 @@ def bm25_retrieve_context(bm25_indexer):
 @pytest.fixture(scope="session")
 def bm25_executor_fn(bm25_retrieve_context):
     """Load the bm25_search skill and return the bound executor callable."""
-    import codeminer.agent.skills as pkg
-    from codeminer.agent.skills.loader import SkillLoader
-    from codeminer.agent.skills.registry import SkillRegistry
+    import codenib.agent.skills as pkg
+    from codenib.agent.skills.loader import SkillLoader
+    from codenib.agent.skills.registry import SkillRegistry
 
     skill_dir = str(Path(pkg.__file__).parent / "bm25_search")
 

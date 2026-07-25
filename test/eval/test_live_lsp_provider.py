@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,23 +10,23 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.agent.lsp_provider import (
+from codenib.agent.lsp_provider import (
     JSON_RPC_LSP_PROVIDER,
     StaticLSPProvider,
     lsp_result_metadata,
 )
-from codeminer.eval.agent_runner.live_lsp_provider import (
+from codenib.eval.agent_runner.live_lsp_provider import (
     LiveLSPReferenceProvider,
     compare_static_to_live_lsp_provider,
     lsp_locations_to_nodes,
 )
-from codeminer.eval.agent_runner.lsp_provider_validation import (
+from codenib.eval.agent_runner.lsp_provider_validation import (
     LSPProviderRequest,
     compare_static_lsp_provider,
     fingerprint_lsp_start_locations,
 )
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import NODE_TYPE_FUNCTION
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import NODE_TYPE_FUNCTION
 
 
 def _range_graph() -> CodeGraph:
@@ -378,7 +378,7 @@ def test_compare_static_to_live_lsp_provider_rejects_route_without_lsp_start(
         compare_static_to_live_lsp_provider(
             [
                 LSPProviderRequest(
-                    capability="codeminer/lspRoute",
+                    capability="codenib/lspRoute",
                     arguments={"symbols": ["callee.load_config"]},
                     request_id="route-extension",
                 )

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
+from codenib.code_chunker import CodeChunker, RepoChunkingConfig
 
 pytestmark = pytest.mark.integration
 

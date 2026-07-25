@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 from types import SimpleNamespace
 
-from codeminer.index.regex_idx import RegexNodeIndex
+from codenib.index.regex_idx import RegexNodeIndex
 
 
 class _Vertex:

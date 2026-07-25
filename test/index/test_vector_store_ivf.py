@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -20,7 +20,7 @@ import faiss
 import numpy as np
 import pytest
 
-from codeminer.index.embedding.vector_store import CodeVectorStore
+from codenib.index.embedding.vector_store import CodeVectorStore
 
 _DIM = 16
 

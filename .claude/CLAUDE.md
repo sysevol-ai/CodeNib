@@ -14,7 +14,7 @@ skills and over the Model Context Protocol (MCP). Python 3.10+.
 ## Package structure
 
 ```
-codeminer/
+codenib/
   code_chunking/   # Tree-sitter chunkers: Python, Go, Rust, C++, JS/TS  (CLAUDE.md)
   graph/           # CodeGraph (igraph), ROI subgraph, range queries; graph/incremental/ LSP patchers  (CLAUDE.md)
   dataset/         # SWE-bench loading, ground-truth extraction, query synthesis  (CLAUDE.md)
@@ -55,14 +55,14 @@ rules, but keep these in mind everywhere:
 - **Line numbering**: `CodeChunk.start_line`/`end_line` are **0-based**
   (tree-sitter); `CodeLocation.start_line`/`end_line` are **1-based**
   (output/HuggingFace). `_chunk_to_code_block()` in `dataset/gt_locate.py` does
-  the +1 conversion. See [`codeminer/dataset/CLAUDE.md`](../codeminer/dataset/CLAUDE.md)
-  and [`codeminer/code_chunking/CLAUDE.md`](../codeminer/code_chunking/CLAUDE.md).
+  the +1 conversion. See [`codenib/dataset/CLAUDE.md`](../codenib/dataset/CLAUDE.md)
+  and [`codenib/code_chunking/CLAUDE.md`](../codenib/code_chunking/CLAUDE.md).
 - **`.c` files** use the `cpp` chunker (not a separate C chunker).
 
 ## Frontend / web demo
 
-The DeepWiki-style web demo (FastAPI backend `codeminer/web/` + Next.js frontend
-`web/` + `codeminer/wiki/`) is on `main` (merged via PR #166/#167). To run,
+The DeepWiki-style web demo (FastAPI backend `codenib/web/` + Next.js frontend
+`web/` + `codenib/wiki/`) is on `main` (merged via PR #166/#167). To run,
 screenshot, or iterate the UI:
 
 - **How to run, screenshot (Playwright), and self-critique** the demo:
@@ -110,9 +110,9 @@ Domain rules live next to the code they govern and load on demand:
 
 | Path | Covers |
 |------|--------|
-| [`codeminer/code_chunking/CLAUDE.md`](../codeminer/code_chunking/CLAUDE.md) | Chunk depth (L0/L1/L2), per-language chunk types, line-number origin |
-| [`codeminer/graph/CLAUDE.md`](../codeminer/graph/CLAUDE.md) | CodeGraph (igraph), node/edge types, pickle schema versioning, C++ decoder parity |
-| [`codeminer/dataset/CLAUDE.md`](../codeminer/dataset/CLAUDE.md) | SWE-bench loading, ground-truth extraction, line conversion, test repos |
+| [`codenib/code_chunking/CLAUDE.md`](../codenib/code_chunking/CLAUDE.md) | Chunk depth (L0/L1/L2), per-language chunk types, line-number origin |
+| [`codenib/graph/CLAUDE.md`](../codenib/graph/CLAUDE.md) | CodeGraph (igraph), node/edge types, pickle schema versioning, C++ decoder parity |
+| [`codenib/dataset/CLAUDE.md`](../codenib/dataset/CLAUDE.md) | SWE-bench loading, ground-truth extraction, line conversion, test repos |
 | [`test/CLAUDE.md`](../test/CLAUDE.md) | pytest marker tiers, fixture caches, package-shadow gotcha |
 | [`scripts/agent_compile/CLAUDE.md`](../scripts/agent_compile/CLAUDE.md) | Agent-compile RFC tooling, phase lineage, RepoManifest/IndexCompiler |
 

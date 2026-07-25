@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
 # LSP route synthesis smoke.
 #
 # This is the small feedback slice for agent-level LSP route experiments on the
-# codeminer-synthesis benchmark. It keeps benchmark-specific instance selection
+# codenib-synthesis benchmark. It keeps benchmark-specific instance selection
 # in experiment config, while the reusable sweep can further cap with
 # --max-instances and --max-queries during iteration.
 #

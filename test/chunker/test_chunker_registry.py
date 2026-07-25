@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.code_chunking import create_chunker
+from codenib.code_chunking import create_chunker
 
 
 @pytest.mark.parametrize(

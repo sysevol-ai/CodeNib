@@ -11,7 +11,7 @@
 User types a question in the web UI (http://localhost:3001)
   │
   ▼
-Next.js frontend  →  POST /api/ask  →  FastAPI (codeminer.web.app)
+Next.js frontend  →  POST /api/ask  →  FastAPI (codenib.web.app)
                                               │
                                               ▼
                                        repo_registry.py
@@ -229,7 +229,7 @@ crossencoder_batch_size: 8
 
 Then restart backend:
 ```bash
-pkill -f codeminer.web.app && bash scripts/start_local_yash.sh
+pkill -f codenib.web.app && bash scripts/start_local_yash.sh
 ```
 
 ### Option B: CLI flag (eval script)
@@ -257,7 +257,7 @@ python examples/retrieve_rerank.py --rerank-strategy llm
 ### Option C: Python API (scripts / notebooks)
 
 ```python
-from codeminer.model import RetrieveRerankPipeline
+from codenib.model import RetrieveRerankPipeline
 
 # Fast embedding baseline
 pipeline = RetrieveRerankPipeline(repo_path=..., index_path=..., rerank_strategy="embedding")
@@ -313,12 +313,12 @@ def build_reranker(model_name: str, backend: str | None = None, batch_size: int 
 
 | File | Status | What |
 |------|--------|------|
-| `codeminer/ops/rerank.py` | modified | Added `CrossEncoderContext` dataclass — lazy-loads wrapper, exposes `.score()` / `.close()` |
-| `codeminer/model/retrieve_rerank_pipeline.py` | modified | `rerank_strategy="crossencoder"` branch, `_rerank_crossencoder()` method, `crossencoder_model` param |
-| `codeminer/agent/skills/context.py` | modified | `cross_encoder: Optional[CrossEncoderContext]` field in `ComposerContexts` |
-| `codeminer/web/config.py` | modified | `rerank_strategy`, `crossencoder_model`, `crossencoder_batch_size` fields in `QAConfig` |
-| `codeminer/web/repo_registry.py` | modified (skip-worktree) | Reads config, builds `CrossEncoderContext` when `rerank_strategy="crossencoder"` |
-| `codeminer/agent/skills/crossencoder_rerank/` | **new** | Full skill package — `config.yaml`, `executor.py`, `skill.md` |
+| `codenib/ops/rerank.py` | modified | Added `CrossEncoderContext` dataclass — lazy-loads wrapper, exposes `.score()` / `.close()` |
+| `codenib/model/retrieve_rerank_pipeline.py` | modified | `rerank_strategy="crossencoder"` branch, `_rerank_crossencoder()` method, `crossencoder_model` param |
+| `codenib/agent/skills/context.py` | modified | `cross_encoder: Optional[CrossEncoderContext]` field in `ComposerContexts` |
+| `codenib/web/config.py` | modified | `rerank_strategy`, `crossencoder_model`, `crossencoder_batch_size` fields in `QAConfig` |
+| `codenib/web/repo_registry.py` | modified (skip-worktree) | Reads config, builds `CrossEncoderContext` when `rerank_strategy="crossencoder"` |
+| `codenib/agent/skills/crossencoder_rerank/` | **new** | Full skill package — `config.yaml`, `executor.py`, `skill.md` |
 | `examples/retrieve_rerank.py` | modified | `--rerank-strategy crossencoder`, `--crossencoder-model`, `--crossencoder-batch-size` CLI flags |
 | `scripts/bench_rerank_latency.py` | **new** | Latency benchmark — `embedding`, `embedding_cached`, `st_cross`, `qwen_cross`, `llm_listwise` |
 | `Makefile` | modified | `make bench-rerank` target |
@@ -330,7 +330,7 @@ def build_reranker(model_name: str, backend: str | None = None, batch_size: int 
 
 | Role | Model | Backend | Latency N=25 | Notes |
 |------|-------|---------|--------------|-------|
-| Embedding (current) | `BAAI/bge-base-en-v1.5` | bi-encoder | 16ms (FAISS) | What `.codeminer_cache/` is built with |
+| Embedding (current) | `BAAI/bge-base-en-v1.5` | bi-encoder | 16ms (FAISS) | What `.codenib_cache/` is built with |
 | Embedding (upgrade) | `Qwen/Qwen3-Embedding-0.6B` | bi-encoder | ~20ms | Better code retrieval, needs reindex |
 | **Cross-encoder (recommended)** | `Qwen/Qwen3-Reranker-0.6B` | QwenRerankerWrapper | **108ms** | Best latency/quality balance |
 | Cross-encoder (heavier) | `Qwen/Qwen3-Reranker-4B` | QwenRerankerWrapper | ~400ms | Higher quality, more VRAM |

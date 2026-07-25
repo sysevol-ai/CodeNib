@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -7,19 +7,18 @@ SPDX-License-Identifier: Apache-2.0
 # MCP Server
 
 CodeNib ships a [Model Context Protocol](https://modelcontextprotocol.io/) server
-(`codenib-mcp`, with `codeminer-mcp` retained as a compatibility alias) that
-exposes its search over a **pre-built index** to LLM agents.
+(`codenib-mcp`) that exposes its search over a **pre-built index** to LLM agents.
 It is query-only: build a repository index once, then point the server at the
 resulting manifest.
 
 ## Build the index
 
-Indexes are compiled with `IndexCompiler` (`codeminer.compiler`), which writes
-`<repo>/.codeminer_cache/repo_manifest.json`:
+Indexes are compiled with `IndexCompiler` (`codenib.compiler`), which writes
+`<repo>/.codenib_cache/repo_manifest.json`:
 
 ```python
-from codeminer.compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.index_builders import (
+from codenib.compiler import IndexCompiler, IndexCompilerConfig
+from codenib.compiler.index_builders import (
     IndexBuilderRegistry,
     register_default_builders,
 )
@@ -41,7 +40,7 @@ only that tool returns an error; the others still work.
 ## Run the server
 
 ```bash
-codenib-mcp /path/to/repo/.codeminer_cache/repo_manifest.json
+codenib-mcp /path/to/repo/.codenib_cache/repo_manifest.json
 ```
 
 Transport is stdio; logs go to stderr (`--log-level` to adjust).
@@ -60,9 +59,9 @@ Transport is stdio; logs go to stderr (`--log-level` to adjust).
 | `lsp_route` | `symbol_graph` | locations | compact route anchors for related endpoint / bridge / provider / type symbols |
 | `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
 
-A `codeminer-guide` prompt returns guidance on choosing between these tools.
-The server ID, prompt ID, and tool/skill IDs retain their existing `codeminer`
-spellings so current MCP clients and recorded traces remain compatible.
+A `codenib-guide` prompt returns guidance on choosing between these tools.
+The server ID, prompt ID, and product-owned skill IDs use the `codenib`
+namespace.
 
-See [`codeminer/mcp/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/codeminer/mcp/README.md)
+See [`codenib/mcp/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/codenib/mcp/README.md)
 for full parameter and return-shape details.

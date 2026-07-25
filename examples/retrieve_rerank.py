@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -37,8 +37,8 @@ Usage:
 
     # Override cache directories (one for indices, one for repos)
     python examples/retrieve_rerank.py --dataset swebench_lite \\
-        --index-cache-dir /tmp/codeminer/index \\
-        --repo-cache-dir ~/.codeminer/
+        --index-cache-dir "${CODENIB_PREBUILT_DIR}" \\
+        --repo-cache-dir "${CODENIB_HOME}"
 """
 
 import argparse
@@ -46,19 +46,20 @@ import json
 import logging
 from pathlib import Path
 
-from codeminer.dataset.locbench import LocbenchDataset
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.eval.retrieval_eval import (
+from codenib.dataset.locbench import LocbenchDataset
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
     collect_targets,
     evaluate_predictions,
     extract_predictions,
 )
-from codeminer.log_utils import get_logger
-from codeminer.model import RetrieveRerankPipeline, build_retrieve_plan
-from codeminer.model.retrieve_rerank_pipeline import RETRIEVAL_TOP_K
-from codeminer.profiler import Profiler
+from codenib.log_utils import get_logger
+from codenib.model import RetrieveRerankPipeline, build_retrieve_plan
+from codenib.model.retrieve_rerank_pipeline import RETRIEVAL_TOP_K
+from codenib.paths import prebuilt_data_dir, user_state_dir
+from codenib.profiler import Profiler
 
 logger = get_logger(__name__)
 
@@ -75,7 +76,7 @@ def parse_args():
         "--dataset",
         type=str,
         required=True,
-        choices=["swebench_lite", "locbench_v1", "codeminer_base"],
+        choices=["swebench_lite", "locbench_v1", "codenib_base"],
         help="Type of dataset to run on",
     )
     parser.add_argument(
@@ -139,13 +140,19 @@ def parse_args():
         type=str,
         default="llm",
         choices=["llm", "embedding", "crossencoder"],
-        help="Rerank method: 'llm' (listwise LLM), 'embedding' (dot-product), 'crossencoder' (neural pair scorer).",
+        help=(
+            "Rerank method: 'llm' (listwise LLM), 'embedding' (dot-product), "
+            "'crossencoder' (neural pair scorer)."
+        ),
     )
     parser.add_argument(
         "--crossencoder-model",
         type=str,
         default="Qwen/Qwen3-Reranker-0.6B",
-        help="Model for crossencoder rerank. Qwen3-Reranker-* uses yes/no logit trick; others use sentence-transformers CrossEncoder.",
+        help=(
+            "Model for crossencoder rerank. Qwen3-Reranker-* uses the yes/no "
+            "logit method; others use sentence-transformers CrossEncoder."
+        ),
     )
     parser.add_argument(
         "--crossencoder-batch-size",
@@ -284,7 +291,7 @@ def parse_args():
     )
 
     # Evaluation configuration
-    default_eval_path = Path.home() / ".codeminer" / "swebench_lite_dev_gt.json"
+    default_eval_path = user_state_dir() / "swebench_lite_dev_gt.json"
     parser.add_argument(
         "--eval-instances",
         type=str,
@@ -292,7 +299,7 @@ def parse_args():
         help=(
             "Path to JSON file containing evaluation annotations "
             "(target_files, symbols_*). "
-            "Defaults to ~/.codeminer/swebench_lite_dev_gt.json. "
+            "Defaults to ~/.codenib/swebench_lite_dev_gt.json. "
             "For SWE-bench, the file is generated if missing."
         ),
     )
@@ -308,13 +315,13 @@ def parse_args():
     parser.add_argument(
         "--index-cache-dir",
         type=str,
-        default="/mnt/data/codeminer",
+        default=str(prebuilt_data_dir()),
         help="Directory to store embedding/vector indices",
     )
     parser.add_argument(
         "--repo-cache-dir",
         type=str,
-        default="~/.codeminer/",
+        default=str(user_state_dir()),
         help="Directory to cache cloned repositories for dataset instances",
     )
     parser.add_argument(
@@ -354,7 +361,7 @@ _LANG_FALLBACK = "python"
 
 
 def _map_language_group(label, fallback=_LANG_FALLBACK):
-    """Map codeminer-base ``language_group`` to chunker language list.
+    """Map codenib-base ``language_group`` to chunker language list.
 
     Mirrors ``scripts/embeddings/build_embeddings.py::_map_language_group``.
     """
@@ -468,12 +475,12 @@ def run_pipeline(args):
         dataset_name = "czlll/Loc-Bench_V1"
         dataset_split = "test"
         dataset_class = LocbenchDataset
-    elif dataset == "codeminer_base":
-        from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+    elif dataset == "codenib_base":
+        from codenib.dataset.codenib_base import CodeNibBaseDataset
 
         dataset_name = "fishmingyu/codeminer-base-dataset"
         dataset_split = args.split
-        dataset_class = CodeMinerBaseDataset
+        dataset_class = CodeNibBaseDataset
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
 

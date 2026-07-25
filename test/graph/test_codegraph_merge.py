@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import EDGE_TYPE_CONTAIN, NODE_TYPE_FUNCTION
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import EDGE_TYPE_CONTAIN, NODE_TYPE_FUNCTION
 
 
 def test_merge_from_combines_vertices_edges_and_range_indexes():

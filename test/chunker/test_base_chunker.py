@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 
 import pytest
 
-from codeminer.code_chunking.base import BaseCodeChunker
+from codenib.code_chunking.base import BaseCodeChunker
 
 
 class StubCodeChunker(BaseCodeChunker):
@@ -54,7 +54,7 @@ def test_tree_sitter_language_load_is_cached_per_language(monkeypatch):
         calls.append(language)
         return languages[language]
 
-    monkeypatch.setattr("codeminer.code_chunking.base.get_language", fake_get_language)
+    monkeypatch.setattr("codenib.code_chunking.base.get_language", fake_get_language)
     monkeypatch.setattr(
         BaseCodeChunker,
         "_create_parser",

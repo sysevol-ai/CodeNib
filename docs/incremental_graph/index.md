@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -54,8 +54,8 @@ Cargo, npm-global, .NET global tools, and local user bin directories.
 ## Usage
 
 ```python
-from codeminer.ls_router import LSIndexer
-from codeminer.graph.code_graph import CodeGraph
+from codenib.ls_router import LSIndexer
+from codenib.graph.code_graph import CodeGraph
 
 # Load a graph built at commit v1.0
 graph = CodeGraph.load_graph("/cache/project/graph.pkl")

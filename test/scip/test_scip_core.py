@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,8 +6,8 @@
 
 For each cached integration language with a C++ decoder (python, go, rust, ts):
 
-  1. Locate the serial reference graph at ``~/.codeminer/<instance_id>/graph.pkl``
-     and the decoded SCIP index at ``~/.codeminer/<instance_id>/index.decoded``.
+  1. Locate the serial reference graph at ``~/.codenib/<instance_id>/graph.pkl``
+     and the decoded SCIP index at ``~/.codenib/<instance_id>/index.decoded``.
      Both are produced by the ``integration-serial`` CI job
      (``test_scip_multilingual`` for go/rust/ts, ``test_scip_swebench`` for
      python's sympy instance).
@@ -39,19 +39,19 @@ import pytest
 pytestmark = pytest.mark.integration_serial
 
 
-if importlib.util.find_spec("codeminer_core") is None:
+if importlib.util.find_spec("codenib_core") is None:
     pytest.skip(
-        "codeminer_core pybind module not built. "
+        "codenib_core pybind module not built. "
         "cmake -S core -B build/core && cmake --build build/core && "
         "PYTHONPATH=build/core",
         allow_module_level=True,
     )
 
-# Library load-order ritual: codeminer_core vendors c-igraph and hides its
+# Library load-order ritual: codenib_core vendors c-igraph and hides its
 # archive symbols so it does not fight Python's `igraph` wheel. Load it before
 # any transitive `igraph` import anyway; older local builds may not have the
 # same symbol isolation, and this keeps the optional-extension contract stable.
-import codeminer_core  # noqa: E402, F401
+import codenib_core  # noqa: E402, F401
 
 _COMPARED_ATTRS = (
     "type",
@@ -292,10 +292,10 @@ def _pick_instance(language: str) -> Tuple[object, dict]:
 
     Must match the instance used by ``test_scip_multilingual`` (for
     go/rust/ts) and ``test_scip_swebench`` (for python), since we rely on
-    ``~/.codeminer/<instance_id>/`` outputs produced by those tests.
+    ``~/.codenib/<instance_id>/`` outputs produced by those tests.
     """
     if language == "python":
-        from codeminer.dataset.swebench import SwebenchDataset
+        from codenib.dataset.swebench import SwebenchDataset
 
         args = argparse.Namespace(
             model="gpt-4o",
@@ -311,7 +311,7 @@ def _pick_instance(language: str) -> Tuple[object, dict]:
             )
         return dataset_obj, dict(rows[0])
 
-    from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
+    from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
 
     dataset_obj = SwebenchMultilingualDataset(split="test", filter_instance=".*")
     rows = dataset_obj.load()
@@ -421,7 +421,7 @@ def _run_parity(language: str) -> None:
 
     dataset.process_instance(instance)  # idempotent: no-op if repo already cloned
     repo_path = Path(dataset.get_repo_path(instance))
-    output_dir = Path.home() / ".codeminer" / instance["instance_id"]
+    output_dir = Path.home() / ".codenib" / instance["instance_id"]
 
     graph_pkl = output_dir / "graph.pkl"
     decoded = output_dir / "index.decoded"
@@ -436,7 +436,7 @@ def _run_parity(language: str) -> None:
             pytest.fail(msg)
         pytest.skip(msg)
 
-    from codeminer.graph.code_graph import CodeGraph
+    from codenib.graph.code_graph import CodeGraph
 
     # Rebuild the serial graph in-place if the cached pickle is at an older
     # schema than what we now expect. The expensive ``index.decoded`` file is
@@ -448,7 +448,7 @@ def _run_parity(language: str) -> None:
     except ValueError as exc:
         if "schema_version" not in str(exc):
             raise
-        from codeminer.ls_router import LSIndexer
+        from codenib.ls_router import LSIndexer
 
         rebuild_indexer = LSIndexer(
             project_root=repo_path,
@@ -466,7 +466,7 @@ def _run_parity(language: str) -> None:
         serial_graph = CodeGraph.load_graph(str(graph_pkl))
 
     # Core decoder: reuse index.decoded, don't clobber graph.pkl (serial's).
-    from codeminer.ls_router import LSIndexer
+    from codenib.ls_router import LSIndexer
 
     core_indexer = LSIndexer(
         project_root=repo_path,
@@ -483,8 +483,8 @@ def _run_parity(language: str) -> None:
 def test_core_ruby_synthetic_parity(tmp_path):
     index = _write_ruby_core_parity_project(tmp_path)
 
-    from codeminer.scip_interface.scip_decode_core import SCIPDecoderCore
-    from codeminer.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
 
     serial_graph = SCIPRubyGraphDecoder(str(index), project_root=str(tmp_path)).decode()
     core_graph = SCIPDecoderCore(

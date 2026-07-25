@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -13,10 +13,10 @@ import textwrap
 import pytest
 import yaml
 
-from codeminer.agent.skills.core import Cost, SkillType
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.compiler.resources import IndexRequirement
+from codenib.agent.skills.core import Cost, SkillType
+from codenib.agent.skills.loader import SkillLoader
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.compiler.resources import IndexRequirement
 
 
 @pytest.fixture(autouse=True)

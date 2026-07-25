@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -14,7 +14,7 @@ Tooling that operationalizes the Tier-1 and Tier-3 checks proposed in
 Running `examples/eval_synthesized_queries.py` with `Salesforce/SweRankEmbed-Small`
 against the current 96 synthesized behavioral queries scores file-recall@10 = 0.92
 and symbol-recall@10 = 0.73. The score is saturated relative to the same embedder
-on calibration data (0.39–0.77 on `codeminer-dataset-base`), suggesting the
+on calibration data (0.39–0.77 on `codenib-dataset-base`), suggesting the
 synthesizer prompt is leaking domain vocabulary into the query. The scripts below
 let us measure how much.
 

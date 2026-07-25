@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -45,14 +45,14 @@ def _load_normalized(config_name: str) -> List[Dict[str, Any]]:
     """Load + normalize one synthesis config into common CodeNib rows."""
     from datasets import load_dataset
 
-    from codeminer.dataset.codeminer_synthesis import normalize_synthesis_record
+    from codenib.dataset.codenib_synthesis import normalize_synthesis_record
 
     ds = load_dataset("sysevol-ai/codeminer-synthesis", config_name, split="test")
     return [normalize_synthesis_record(r, config_name) for r in ds]
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    from codeminer.dataset.codeminer_synthesis import ALL_CONFIGS
+    from codenib.dataset.codenib_synthesis import ALL_CONFIGS
 
     p = argparse.ArgumentParser()
     p.add_argument("--config", required=True, type=Path)
@@ -85,8 +85,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     args = p.parse_args(argv)
 
-    from codeminer.eval.agent_runner.query_sweep import run_query_sweep
-    from codeminer.eval.agent_runner.sweep_config import SweepConfig
+    from codenib.eval.agent_runner.query_sweep import run_query_sweep
+    from codenib.eval.agent_runner.sweep_config import SweepConfig
 
     cfg = SweepConfig.from_yaml(args.config)
     if args.reps is not None:

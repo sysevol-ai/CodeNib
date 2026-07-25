@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,22 +7,22 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEB_DIR="$ROOT/web"
-STATE_DIR="${CODEMINER_WEB_STATE_DIR:-$ROOT/.codeminer_demo/server}"
+STATE_DIR="${CODENIB_WEB_STATE_DIR:-$ROOT/.codenib_demo/server}"
 
-BACKEND_HOST="${CODEMINER_DEMO_HOST:-127.0.0.1}"
-BACKEND_PORT="${CODEMINER_DEMO_PORT:-8000}"
-FRONTEND_HOST="${CODEMINER_WEB_FRONTEND_HOST:-0.0.0.0}"
-FRONTEND_PORT="${CODEMINER_WEB_FRONTEND_PORT:-3000}"
-PUBLIC_FRONTEND_HOST="${CODEMINER_WEB_PUBLIC_FRONTEND_HOST:-localhost}"
+BACKEND_HOST="${CODENIB_DEMO_HOST:-127.0.0.1}"
+BACKEND_PORT="${CODENIB_DEMO_PORT:-8000}"
+FRONTEND_HOST="${CODENIB_WEB_FRONTEND_HOST:-0.0.0.0}"
+FRONTEND_PORT="${CODENIB_WEB_FRONTEND_PORT:-3000}"
+PUBLIC_FRONTEND_HOST="${CODENIB_WEB_PUBLIC_FRONTEND_HOST:-localhost}"
 # Backend URL used by Next.js rewrites. Browser code should normally use the
 # same-origin /api path so remote/forwarded browsers don't try to reach their
 # own 127.0.0.1:8000.
-API_BASE="${CODEMINER_API_BASE:-http://${BACKEND_HOST}:${BACKEND_PORT}}"
+API_BASE="${CODENIB_API_BASE:-http://${BACKEND_HOST}:${BACKEND_PORT}}"
 PUBLIC_API_BASE="${NEXT_PUBLIC_API_BASE:-}"
 
-PYTHON_BIN="${CODEMINER_WEB_PYTHON:-python}"
-NODE_BIN="${CODEMINER_WEB_NODE:-node}"
-RECLAIM_PORTS="${CODEMINER_WEB_RECLAIM_PORTS:-0}"
+PYTHON_BIN="${CODENIB_WEB_PYTHON:-python}"
+NODE_BIN="${CODENIB_WEB_NODE:-node}"
+RECLAIM_PORTS="${CODENIB_WEB_RECLAIM_PORTS:-0}"
 
 BACKEND_PID="$STATE_DIR/backend.pid"
 FRONTEND_PID="$STATE_DIR/frontend.pid"
@@ -43,15 +43,15 @@ Commands:
   follow     Follow backend and frontend logs.
 
 Environment:
-  CODEMINER_WEB_PYTHON         Python executable for uvicorn (default: python)
-  CODEMINER_WEB_NODE           node executable for Next.js (default: node)
-  CODEMINER_DEMO_HOST          Backend host (default: 127.0.0.1)
-  CODEMINER_DEMO_PORT          Backend port (default: 8000)
-  CODEMINER_WEB_FRONTEND_HOST  Next.js bind host (default: 0.0.0.0)
-  CODEMINER_WEB_FRONTEND_PORT  Next.js port (default: 3000)
-  CODEMINER_API_BASE           Backend URL for Next.js /api rewrites (default: http://127.0.0.1:8000)
+  CODENIB_WEB_PYTHON         Python executable for uvicorn (default: python)
+  CODENIB_WEB_NODE           node executable for Next.js (default: node)
+  CODENIB_DEMO_HOST          Backend host (default: 127.0.0.1)
+  CODENIB_DEMO_PORT          Backend port (default: 8000)
+  CODENIB_WEB_FRONTEND_HOST  Next.js bind host (default: 0.0.0.0)
+  CODENIB_WEB_FRONTEND_PORT  Next.js port (default: 3000)
+  CODENIB_API_BASE           Backend URL for Next.js /api rewrites (default: http://127.0.0.1:8000)
   NEXT_PUBLIC_API_BASE         Optional direct browser API base; leave unset for same-origin /api proxy.
-  CODEMINER_WEB_RECLAIM_PORTS  If 1, start/restart may stop current-user port owners.
+  CODENIB_WEB_RECLAIM_PORTS  If 1, start/restart may stop current-user port owners.
 EOF
 }
 
@@ -207,7 +207,7 @@ require_port_available() {
     fi
   fi
 
-  printf '%s port %s is already in use. Run status to inspect it, or set CODEMINER_WEB_RECLAIM_PORTS=1.\n' "$label" "$port" >&2
+  printf '%s port %s is already in use. Run status to inspect it, or set CODENIB_WEB_RECLAIM_PORTS=1.\n' "$label" "$port" >&2
   for pid in "${pids[@]}"; do
     print_pid_details "$pid" >&2
   done
@@ -258,7 +258,7 @@ start_backend() {
   setsid -f bash -c '
     echo $$ > "$BACKEND_PID_FILE"
     cd "$ROOT"
-    exec "$PYTHON_BIN" -m uvicorn codeminer.web.app:app --host "$BACKEND_HOST" --port "$BACKEND_PORT"
+    exec "$PYTHON_BIN" -m uvicorn codenib.web.app:app --host "$BACKEND_HOST" --port "$BACKEND_PORT"
   ' >>"$BACKEND_LOG" 2>&1 </dev/null
 
   printf 'Started backend pid=%s log=%s\n' "$(wait_for_pid_file "$BACKEND_PID" backend)" "$BACKEND_LOG"
@@ -296,12 +296,12 @@ start_frontend() {
   NODE_BIN="$NODE_BIN" \
   FRONTEND_HOST="$FRONTEND_HOST" \
   FRONTEND_PORT="$FRONTEND_PORT" \
-  CODEMINER_API_BASE="$API_BASE" \
+  CODENIB_API_BASE="$API_BASE" \
   NEXT_PUBLIC_API_BASE="$PUBLIC_API_BASE" \
   setsid -f bash -c '
     echo $$ > "$FRONTEND_PID_FILE"
     cd "$WEB_DIR"
-    export CODEMINER_API_BASE NEXT_PUBLIC_API_BASE
+    export CODENIB_API_BASE NEXT_PUBLIC_API_BASE
     exec "$NODE_BIN" "$WEB_DIR/node_modules/next/dist/bin/next" dev --hostname "$FRONTEND_HOST" --port "$FRONTEND_PORT"
   ' >>"$FRONTEND_LOG" 2>&1 </dev/null
 

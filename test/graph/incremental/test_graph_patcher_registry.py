@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,13 +10,13 @@ import os
 
 import pytest
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.incremental.graph_patcher import GraphPatcher
-from codeminer.graph.incremental.patcher_cpp import PatcherCpp
-from codeminer.graph.incremental.patcher_go import PatcherGo
-from codeminer.graph.incremental.patcher_python import PatcherPython
-from codeminer.graph.incremental.patcher_rust import PatcherRust
-from codeminer.graph.incremental.patcher_ts import PatcherTS
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.incremental.graph_patcher import GraphPatcher
+from codenib.graph.incremental.patcher_cpp import PatcherCpp
+from codenib.graph.incremental.patcher_go import PatcherGo
+from codenib.graph.incremental.patcher_python import PatcherPython
+from codenib.graph.incremental.patcher_rust import PatcherRust
+from codenib.graph.incremental.patcher_ts import PatcherTS
 
 
 @pytest.mark.parametrize(
@@ -68,7 +68,7 @@ def test_patcher_lsp_metadata_comes_from_language_registry(
 
 
 def test_python_patcher_lsp_command_allows_registry_env_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_PYTHON_LSP_CMD", "ty server")
+    monkeypatch.setenv("CODENIB_PYTHON_LSP_CMD", "ty server")
 
     patcher = PatcherPython(str(tmp_path), CodeGraph(str(tmp_path)))
 
@@ -76,7 +76,7 @@ def test_python_patcher_lsp_command_allows_registry_env_override(tmp_path, monke
 
 
 def test_rust_patcher_lsp_command_uses_registry_factory(tmp_path, monkeypatch):
-    import codeminer.scip_interface.rust_analyzer as rust_analyzer
+    import codenib.scip_interface.rust_analyzer as rust_analyzer
 
     monkeypatch.setattr(
         rust_analyzer,
@@ -96,10 +96,10 @@ def test_rust_patcher_lsp_command_uses_registry_factory(tmp_path, monkeypatch):
 
 
 def test_lsp_client_command_lookup_uses_language_registry(monkeypatch):
-    from codeminer.graph.incremental import lsp_client
+    from codenib.graph.incremental import lsp_client
 
     monkeypatch.setattr(lsp_client, "resolve_lsp_binary", lambda _binary: None)
-    monkeypatch.setenv("CODEMINER_PYTHON_LSP_CMD", "ty server")
+    monkeypatch.setenv("CODENIB_PYTHON_LSP_CMD", "ty server")
 
     assert lsp_client.LSPClient.get_lsp_command("python") == ["ty", "server"]
     assert lsp_client.LSPClient.get_lsp_command("go") == ["gopls", "serve"]
@@ -114,7 +114,7 @@ def test_lsp_client_command_lookup_uses_language_registry(monkeypatch):
 
 
 def test_lsp_binary_resolver_searches_dotnet_global_tools():
-    from codeminer.graph.incremental import lsp_client
+    from codenib.graph.incremental import lsp_client
 
     extra_dirs = {str(dir_fn()) for dir_fn in lsp_client._EXTRA_BIN_DIRS}
 
@@ -122,7 +122,7 @@ def test_lsp_binary_resolver_searches_dotnet_global_tools():
 
 
 def test_lsp_process_env_exposes_user_dotnet_install(tmp_path, monkeypatch):
-    from codeminer.graph.incremental import lsp_client
+    from codenib.graph.incremental import lsp_client
 
     dotnet_root = tmp_path / ".dotnet"
     dotnet_root.mkdir()
@@ -144,12 +144,12 @@ def test_lsp_process_env_exposes_user_dotnet_install(tmp_path, monkeypatch):
 
 
 def test_lsp_process_env_uses_ruby_overlay_bundle_gemfile(tmp_path, monkeypatch):
-    from codeminer.graph.incremental import lsp_client
+    from codenib.graph.incremental import lsp_client
 
-    monkeypatch.setenv("CODEMINER_RUBY_BUNDLE_GEMFILE", ".codeminer/Gemfile")
+    monkeypatch.setenv("CODENIB_RUBY_BUNDLE_GEMFILE", ".codenib/Gemfile")
     monkeypatch.setenv("GEM_PATH", "/tmp/global-gems")
 
     env = lsp_client._lsp_process_env("ruby", tmp_path)
 
-    assert env["BUNDLE_GEMFILE"] == str(tmp_path / ".codeminer/Gemfile")
+    assert env["BUNDLE_GEMFILE"] == str(tmp_path / ".codenib/Gemfile")
     assert "GEM_PATH" not in env

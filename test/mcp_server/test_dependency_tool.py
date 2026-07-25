@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import igraph as ig
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.mcp.tools.dependency import dependency_subgraph_impl
+from codenib.graph.code_graph import CodeGraph
+from codenib.mcp.tools.dependency import dependency_subgraph_impl
 
 
 def _graph() -> CodeGraph:

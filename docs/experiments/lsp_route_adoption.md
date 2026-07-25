@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -44,7 +44,7 @@ python scripts/agent_compile/aggregate.py \
 python scripts/agent_compile/lsp_latency_replay.py \
     --cells-dir results/agent_compile/lsp_route_adoption_dynamic_hint_sanity/cells \
     --output-dir results/agent_compile/lsp_route_adoption_dynamic_hint_sanity \
-    --prebuilt-dir /mnt/data/codeminer
+    --prebuilt-dir ${CODENIB_PREBUILT_DIR}
 ```
 
 The three arms are:
@@ -179,8 +179,8 @@ Compare access paths, not agent brands.
 
 | arm | LSP backend | route exposure |
 | --- | --- | --- |
-| `codeminer_dynamic_lsp` | CodeNib `lsp_route` over the prebuilt `symbol_graph` | tool call inside the agent loop |
-| `codeminer_preload_lsp` | same CodeNib `lsp_route` over the same prebuilt `symbol_graph` | startup context before turn 1 |
+| `codenib_dynamic_lsp` | CodeNib `lsp_route` over the prebuilt `symbol_graph` | tool call inside the agent loop |
+| `codenib_preload_lsp` | same CodeNib `lsp_route` over the same prebuilt `symbol_graph` | startup context before turn 1 |
 | `external_dynamic_same_lsp` | same CodeNib `lsp_route` exposed through a thin external-agent tool wrapper | tool call inside Claude Code/Codex/opencode loop |
 
 If an external agent has native LSP, run it separately as

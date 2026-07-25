@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,9 +19,9 @@ the returned `node_name` stays the raw `name` (graph identity preserved).
 
 from __future__ import annotations
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.index import BM25CodeIndexer
-from codeminer.types import NODE_TYPE_METHOD
+from codenib.graph.code_graph import CodeGraph
+from codenib.index import BM25CodeIndexer
+from codenib.types import NODE_TYPE_METHOD
 
 
 def _build_rust_like_graph() -> CodeGraph:

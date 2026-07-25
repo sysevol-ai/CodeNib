@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -103,7 +103,7 @@ So a PR that touches only docs, scripts, examples, Markdown, `LICENSE`, or
 ### unit
 
 Pure logic with mocks only (~1 min). Sets up a Python 3.12 conda env
-(`codeminer-test`), preinstalls the configured CPU-only `torch` wheel, installs
+(`codenib-test`), preinstalls the configured CPU-only `torch` wheel, installs
 `pip install -e ".[test]"`, then runs (verbatim):
 
 ```bash
@@ -135,8 +135,8 @@ pytest -n auto -m "integration" --tb=short
 
 Tests that **mutate shared repos** — SCIP indexing, `process_instance`,
 `git checkout`/`apply` — so they must run sequentially (~25 min). The job
-symlinks `$HOME/.codeminer` to a persistent runner cache so SCIP outputs at
-`~/.codeminer/<instance_id>/` survive across runs and are visible to the
+symlinks `$HOME/.codenib` to a persistent runner cache so SCIP outputs at
+`~/.codenib/<instance_id>/` survive across runs and are visible to the
 downstream `scip-core` and `graph-consumer` jobs. It runs:
 
 ```bash
@@ -164,7 +164,7 @@ the Python implementation** using the serial graphs persisted by
   ```bash
   cmake -S core -B build/core \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCODEMINER_BUILD_PYBIND=ON \
+    -DCODENIB_BUILD_PYBIND=ON \
     -DPython_EXECUTABLE="$(which python)"
   cmake --build build/core -j "$(nproc)"
   ```
@@ -276,8 +276,8 @@ fires, or the serial chain is gated off) and **explicit** (`should-run=false`).
 `integration`, `integration-serial`, `scip-core`, `graph-consumer`, and `slow`
 use the `./.github/actions/setup-env` composite action, which provisions:
 
-- **conda** env `codeminer-test` (Python 3.12 by default) plus a separate
-  `scip-env` from `codeminer/scip_interface/scip-environment.yml`.
+- **conda** env `codenib-test` (Python 3.12 by default) plus a separate
+  `scip-env` from `codenib/scip_interface/scip-environment.yml`.
 - **CPU torch preinstall** — enabled by default through
   `preinstall-cpu-torch`, `torch-version`, and `torch-index-url`, so non-GPU
   jobs do not accidentally download CUDA wheels through transitive embedding

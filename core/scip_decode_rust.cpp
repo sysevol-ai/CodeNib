@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -9,7 +9,7 @@
 #include <fstream>
 #include <re2/re2.h>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
 
@@ -398,4 +398,4 @@ void SCIPRustDecoder::process_symbol(const std::string &symbol,
   }
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

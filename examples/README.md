@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -22,7 +22,7 @@ double as the evaluation harnesses used in the experiments under
 | `make dev` (editable install) | always |
 | An embedding model (e.g. `nomic-ai/CodeRankEmbed`, GPU recommended) | embedding / rerank / agent retrieval |
 | LLM credentials (`litellm` provider env, e.g. `GOOGLE_APPLICATION_CREDENTIALS` for Vertex) | anything with an LLM (agent loop, rerank, query synthesis) |
-| A dataset — `fishmingyu/codeminer-base-dataset`, SWE-bench, or LocBench (cached under `~/.codeminer/`) | every eval script |
+| A dataset — `fishmingyu/codeminer-base-dataset`, SWE-bench, or LocBench (cached under `~/.codenib/`) | every eval script |
 
 Most scripts accept `--filter-instance <regex>` to run a single instance and
 `--result-path <file.json>` to write metrics. Generated output is **gitignored**
@@ -41,7 +41,7 @@ primitives, …) and iterate to a localization answer.
 |--------|---------------|
 | [`skill_agent_aot.py`](skill_agent_aot.py) | **Start here.** Two-phase AoT (ahead-of-time) flow via the public API: `compile_repo()` writes a `RepoManifest` + indexes, then `query()` runs the agent against it. Self-contained — defaults to indexing CodeNib itself with BM25 only. |
 | [`skill_agent.py`](skill_agent.py) | The same two-phase pattern wired **by hand** (`IndexCompiler` + `BM25CodeIndexer` + `AgentRunner`). Drop down to this for custom builder registries / partial rebuilds. |
-| [`skill_agent_eval.py`](skill_agent_eval.py) | Evaluation driver: runs `AgentRunner` with an arbitrary skill subset (`--skills`) over SWE-bench / codeminer-base, reporting retrieval accuracy + token usage. Supports `--compile-table` for query-time skill selection (CAR). |
+| [`skill_agent_eval.py`](skill_agent_eval.py) | Evaluation driver: runs `AgentRunner` with an arbitrary skill subset (`--skills`) over SWE-bench / codenib-base, reporting retrieval accuracy + token usage. Supports `--compile-table` for query-time skill selection (CAR). |
 
 ```bash
 # Phase 1 only (no LLM credentials needed):
@@ -70,7 +70,7 @@ retrieval floor the agent builds on.
 
 ```bash
 python examples/embedding_retrieve_baseline.py \
-    --dataset codeminer_base --topk 50 \
+    --dataset codenib_base --topk 50 \
     --embedding-model nomic-ai/CodeRankEmbed \
     --result-path results/embedding_baseline.json
 ```
@@ -86,7 +86,7 @@ inverted-file index (`IndexIVFFlat`) — approximate, faster at scale:
 # IVF takes effect at BUILD time, so combine with --force-rebuild
 # (or build the prebuilt indices with --index-type ivf):
 python examples/embedding_retrieve_baseline.py \
-    --dataset codeminer_base --force-rebuild \
+    --dataset codenib_base --force-rebuild \
     --index-type ivf --ivf-nlist 256 --ivf-nprobe 16
 ```
 
@@ -103,11 +103,11 @@ which is where prebuilt indices get their type.
 
 ---
 
-## 3. Third-party agent baselines (`codeminer/clients/`)
+## 3. Third-party agent baselines (`codenib/clients/`)
 
 Read-only localization agents built on **external** vendor SDKs (not CodeNib's
 own agent stack), scored against the same ground truth as the retrieval
-baselines via [`codeminer/eval/loc_agent_runner.py`](../codeminer/eval/loc_agent_runner.py).
+baselines via [`codenib/eval/loc_agent_runner.py`](../codenib/eval/loc_agent_runner.py).
 The vendor SDKs are intentionally **not** declared in `pyproject.toml` — install
 them yourself.
 
@@ -118,12 +118,12 @@ them yourself.
 
 Both lock down writes (read-only sandbox + approval-deny) and emit symbol names
 in the chunker's canonical form, so per-instance scoring is exact `file:name`
-match. Datasets: `codeminer_base`, `swebench_lite`, `locbench_v1`. Runs are
+match. Datasets: `codenib_base`, `swebench_lite`, `locbench_v1`. Runs are
 resumable (`--resume`).
 
 ```bash
 python examples/claude_loc_agent.py \
-    --dataset codeminer_base --model claude-sonnet-4-6 \
+    --dataset codenib_base --model claude-sonnet-4-6 \
     --result-path results/claude_loc.jsonl --resume
 ```
 
@@ -133,7 +133,7 @@ python examples/claude_loc_agent.py \
 
 | File | Purpose |
 |------|---------|
-| [`codeminer_base_rerank_matrix.py`](codeminer_base_rerank_matrix.py) | Cartesian retrieval × rerank matrix sweep over codeminer-base. |
+| [`codenib_base_rerank_matrix.py`](codenib_base_rerank_matrix.py) | Cartesian retrieval × rerank matrix sweep over codenib-base. |
 | [`eval_synthesized_queries.py`](eval_synthesized_queries.py) | Evaluate synthesized behavioral queries against retrieval backends. |
 | [`eval.sh`](eval.sh) | Convenience wrapper around the eval drivers. |
 | [`selected_instance.csv`](selected_instance.csv) | Small fixed instance set used by some sweeps. |

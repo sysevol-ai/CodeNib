@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Unit tests for the demo API response mapping (pure logic, no indexes)."""
 
-from codeminer.agent.agent_types import AgentResult, ToolCallRecord
-from codeminer.types import QueriedNode
-from codeminer.web.schemas import agent_result_to_response
+from codenib.agent.agent_types import AgentResult, ToolCallRecord
+from codenib.types import QueriedNode
+from codenib.web.schemas import agent_result_to_response
 
 
 def _node(file, start, end, name="fn", score=1.0):
@@ -99,12 +99,12 @@ class TestWindowStatsOnRepoInfo:
     """RepoInfo carries commit-window figures for the landing page."""
 
     def test_absent_by_default(self):
-        from codeminer.web.schemas import RepoInfo
+        from codenib.web.schemas import RepoInfo
 
         assert RepoInfo(id="x", name="x").incremental is None
 
     def test_round_trips(self):
-        from codeminer.web.schemas import RepoInfo, WindowStats
+        from codenib.web.schemas import RepoInfo, WindowStats
 
         info = RepoInfo(
             id="x",
@@ -123,7 +123,7 @@ class TestWindowStatsOnRepoInfo:
 
     def test_speedup_may_be_null(self):
         """No defensible ratio must be representable as null, not 0 or NaN."""
-        from codeminer.web.schemas import WindowStats
+        from codenib.web.schemas import WindowStats
 
         s = WindowStats(commit_count=1, patched_count=0)
         assert s.speedup is None

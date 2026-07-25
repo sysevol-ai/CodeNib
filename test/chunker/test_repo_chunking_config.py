@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,8 +6,8 @@
 
 from pathlib import Path
 
-from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-from codeminer.languages import extensions_for_language
+from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+from codenib.languages import extensions_for_language
 
 
 def test_repo_chunking_config_defaults_come_from_language_registry():

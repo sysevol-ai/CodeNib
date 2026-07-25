@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@
 #include <sstream>
 #include <utility>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 std::vector<int> extract_integers(const std::string &text,
                                   const re2::RE2 &pattern) {
@@ -293,4 +293,4 @@ void SubgraphBuilder::reset_scope_to_file(const std::string &file_symbol) {
   current_scope_ = file_symbol;
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,7 +9,7 @@ Measures wall-clock time and GPU memory for every rerank backend that is
 currently available. Candidates are pulled from the local BM25 index so no
 external services are needed. New backends slot in under BACKENDS below.
 
-Usage (from repo root, with codeminer-yash conda env active):
+Usage (from repo root, with codenib-yash conda env active):
 
     python scripts/bench_rerank_latency.py
     python scripts/bench_rerank_latency.py --candidates 50 100
@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -35,12 +34,9 @@ from typing import Callable, List, Optional
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-HF_HOME = "/mnt/conda/huggingface"
-os.environ.setdefault("HF_HOME", HF_HOME)
-os.environ.setdefault("TRANSFORMERS_CACHE", HF_HOME)
-os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", HF_HOME)
+from codenib.paths import repo_index_dir
 
-MANIFEST = ROOT / ".codeminer_cache" / "repo_manifest.json"
+MANIFEST = repo_index_dir(ROOT) / "repo_manifest.json"
 
 # Queries that cover different retrieval patterns in CodeNib itself
 BENCH_QUERIES = [
@@ -60,25 +56,28 @@ REPS = 3
 
 # ── result container ───────────────────────────────────────────────────────────
 
+
 @dataclass
 class BenchResult:
     backend: str
     model: str
     n_candidates: int
     query: str
-    latency_ms: float          # median across reps
+    latency_ms: float  # median across reps
     latency_ms_min: float
     latency_ms_max: float
-    gpu_mem_delta_mb: float    # peak VRAM increase during score()
+    gpu_mem_delta_mb: float  # peak VRAM increase during score()
     scores: List[float] = field(default_factory=list, repr=False)
     error: Optional[str] = None
 
 
 # ── GPU memory helper ──────────────────────────────────────────────────────────
 
+
 def _gpu_mb() -> float:
     try:
         import torch
+
         if torch.cuda.is_available():
             return torch.cuda.memory_allocated() / 1024 / 1024
     except ImportError:
@@ -89,6 +88,7 @@ def _gpu_mb() -> float:
 def _gpu_peak_mb() -> float:
     try:
         import torch
+
         if torch.cuda.is_available():
             return torch.cuda.max_memory_allocated() / 1024 / 1024
     except ImportError:
@@ -99,6 +99,7 @@ def _gpu_peak_mb() -> float:
 def _reset_gpu_peak() -> None:
     try:
         import torch
+
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
     except ImportError:
@@ -107,9 +108,10 @@ def _reset_gpu_peak() -> None:
 
 # ── candidate loader ───────────────────────────────────────────────────────────
 
+
 def load_candidates(query: str, n: int) -> List[str]:
     """Pull top-n BM25 hits from the cached index as plain text strings."""
-    from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
+    from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
 
     manifest = json.loads(MANIFEST.read_text())
     bm25_path = manifest["indexes"]["bm25"]["path"]
@@ -127,11 +129,12 @@ def load_candidates(query: str, n: int) -> List[str]:
         content = getattr(r, "content", None) or ""
         if not content:
             content = str(r)
-        docs.append(content[:2000])   # cap at 2k chars — realistic chunk size
+        docs.append(content[:2000])  # cap at 2k chars — realistic chunk size
     return docs[:n]
 
 
 # ── timing wrapper ─────────────────────────────────────────────────────────────
+
 
 def timed_score(
     score_fn: Callable[[str, List[str]], List[float]],
@@ -169,22 +172,25 @@ def timed_score(
 
 # ── backends ───────────────────────────────────────────────────────────────────
 
+
 def _backend_embedding(query: str, docs: List[str]) -> List[float]:
     """Current fallback: dot-product with the in-process embedding model."""
     model = _backend_embedding._model  # type: ignore[attr-defined]
     q_vec = model.embed_query(query)
     d_vecs = model.embed_documents(docs)
     import numpy as np
+
     q = np.array(q_vec, dtype=np.float32)
     D = np.array(d_vecs, dtype=np.float32)
     return np.dot(D, q).tolist()
 
 
 def _init_embedding(model_name: str) -> None:
-    from codeminer.index.embedding.vector_store import _HuggingFaceEmbeddingWrapper
+    from codenib.index.embedding.vector_store import _HuggingFaceEmbeddingWrapper
+
     _backend_embedding._model = _HuggingFaceEmbeddingWrapper(model_name)  # type: ignore[attr-defined]
-    _backend_embedding_cached._model = _backend_embedding._model          # type: ignore[attr-defined]
-    _backend_embedding_cached._cached_vecs = None                         # type: ignore[attr-defined]
+    _backend_embedding_cached._model = _backend_embedding._model  # type: ignore[attr-defined]
+    _backend_embedding_cached._cached_vecs = None  # type: ignore[attr-defined]
 
 
 # ── cached embedding: pre-index docs once, time only query-encode + dot ───────
@@ -194,9 +200,11 @@ def _init_embedding(model_name: str) -> None:
 # cheap matrix multiply.  The doc embedding cost is NOT timed — it is amortized
 # across all queries in a real deployment.
 
+
 def _pre_embedding_cached(query: str, docs: List[str]) -> None:
     """Pre-embed docs ONCE before the timed loop — populates the module cache."""
     import numpy as np
+
     model = _backend_embedding_cached._model  # type: ignore[attr-defined]
     _backend_embedding_cached._cached_vecs = (  # type: ignore[attr-defined]
         np.array(model.embed_documents(docs), dtype=np.float32)
@@ -206,6 +214,7 @@ def _pre_embedding_cached(query: str, docs: List[str]) -> None:
 def _backend_embedding_cached(query: str, docs: List[str]) -> List[float]:
     """Query-only path: embed_query + np.dot against pre-cached doc vectors."""
     import numpy as np
+
     model = _backend_embedding_cached._model  # type: ignore[attr-defined]
     d_vecs = _backend_embedding_cached._cached_vecs  # type: ignore[attr-defined]
     if d_vecs is None:
@@ -217,22 +226,24 @@ def _backend_embedding_cached(query: str, docs: List[str]) -> List[float]:
 
 
 def _make_st_cross(model_name: str) -> Callable[[str, List[str]], List[float]]:
-    from codeminer.index.rerank.cross_encoder import STCrossEncoderWrapper
+    from codenib.index.rerank.cross_encoder import STCrossEncoderWrapper
+
     wrapper = STCrossEncoderWrapper(model_name, batch_size=16)
     return wrapper.score
 
 
 def _make_qwen_cross(model_name: str) -> Callable[[str, List[str]], List[float]]:
-    from codeminer.index.rerank.cross_encoder import QwenRerankerWrapper
+    from codenib.index.rerank.cross_encoder import QwenRerankerWrapper
+
     wrapper = QwenRerankerWrapper(model_name, batch_size=8)
     return wrapper.score
 
 
 def _make_llm_listwise(base_url: str) -> Callable[[str, List[str]], List[float]]:
     """LLM listwise via RerankAgent (slow — included for baseline comparison)."""
-    from codeminer.llm.litellm_chat import LiteLLMChat
-    from codeminer.agent.rerank_agent import RerankAgent
-    from codeminer.types import NodeInfo
+    from codenib.agent.rerank_agent import RerankAgent
+    from codenib.llm.litellm_chat import LiteLLMChat
+    from codenib.types import NodeInfo
 
     llm = LiteLLMChat(
         model="openai/qwen3:8b",
@@ -282,7 +293,7 @@ BACKENDS = {
         # when the vector store is already loaded.
         "label": "embedding retrieval — query-only + dot-product [PRODUCTION PATH]",
         "model": "BAAI/bge-base-en-v1.5",
-        "init": _init_embedding,        # shares model with "embedding"
+        "init": _init_embedding,  # shares model with "embedding"
         "score_fn": lambda _model: _backend_embedding_cached,
         "pre_fn": _pre_embedding_cached,
         "requires_llm": False,
@@ -318,7 +329,7 @@ BACKENDS = {
         "label": "RerankAgent listwise (qwen3:8b via Ollama)",
         "model": "qwen3:8b",
         "init": None,
-        "score_fn": None,   # built at runtime from --llm-base
+        "score_fn": None,  # built at runtime from --llm-base
         "pre_fn": None,
         "requires_llm": True,
     },
@@ -326,6 +337,7 @@ BACKENDS = {
 
 
 # ── runner ─────────────────────────────────────────────────────────────────────
+
 
 def run_benchmark(
     backend_keys: List[str],
@@ -359,12 +371,19 @@ def run_benchmark(
             print(f"  [LOAD FAIL] {exc}")
             for n in candidate_sizes:
                 for q in BENCH_QUERIES:
-                    results.append(BenchResult(
-                        backend=key, model=cfg["model"], n_candidates=n,
-                        query=q[:40], latency_ms=0, latency_ms_min=0,
-                        latency_ms_max=0, gpu_mem_delta_mb=0,
-                        error=str(exc),
-                    ))
+                    results.append(
+                        BenchResult(
+                            backend=key,
+                            model=cfg["model"],
+                            n_candidates=n,
+                            query=q[:40],
+                            latency_ms=0,
+                            latency_ms_min=0,
+                            latency_ms_max=0,
+                            gpu_mem_delta_mb=0,
+                            error=str(exc),
+                        )
+                    )
             continue
 
         for n in candidate_sizes:
@@ -376,32 +395,46 @@ def run_benchmark(
 
                 try:
                     pre_fn = cfg.get("pre_fn")
-                    med, lo, hi, gpu_delta, scores = timed_score(score_fn, q, docs, pre_fn=pre_fn)
-                    results.append(BenchResult(
-                        backend=key,
-                        model=cfg["model"],
-                        n_candidates=n,
-                        query=q[:40],
-                        latency_ms=med,
-                        latency_ms_min=lo,
-                        latency_ms_max=hi,
-                        gpu_mem_delta_mb=gpu_delta,
-                        scores=scores,
-                    ))
-                    print(f"    q={q[:30]!r}  median={med:.0f}ms  gpu_delta={gpu_delta:.0f}MB")
+                    med, lo, hi, gpu_delta, scores = timed_score(
+                        score_fn, q, docs, pre_fn=pre_fn
+                    )
+                    results.append(
+                        BenchResult(
+                            backend=key,
+                            model=cfg["model"],
+                            n_candidates=n,
+                            query=q[:40],
+                            latency_ms=med,
+                            latency_ms_min=lo,
+                            latency_ms_max=hi,
+                            gpu_mem_delta_mb=gpu_delta,
+                            scores=scores,
+                        )
+                    )
+                    print(
+                        f"    q={q[:30]!r}  median={med:.0f}ms  gpu_delta={gpu_delta:.0f}MB"
+                    )
                 except Exception as exc:
                     print(f"    [SCORE FAIL] {exc}")
-                    results.append(BenchResult(
-                        backend=key, model=cfg["model"], n_candidates=n,
-                        query=q[:40], latency_ms=0, latency_ms_min=0,
-                        latency_ms_max=0, gpu_mem_delta_mb=0,
-                        error=str(exc),
-                    ))
+                    results.append(
+                        BenchResult(
+                            backend=key,
+                            model=cfg["model"],
+                            n_candidates=n,
+                            query=q[:40],
+                            latency_ms=0,
+                            latency_ms_min=0,
+                            latency_ms_max=0,
+                            gpu_mem_delta_mb=0,
+                            error=str(exc),
+                        )
+                    )
 
     return results
 
 
 # ── report ─────────────────────────────────────────────────────────────────────
+
 
 def _avg(vals: List[float]) -> float:
     return sum(vals) / len(vals) if vals else 0.0
@@ -412,6 +445,7 @@ def build_report(results: List[BenchResult]) -> str:
 
     # Group by (backend, n_candidates) and average across queries
     from collections import defaultdict
+
     grouped: dict = defaultdict(list)
     for r in results:
         if r.error:
@@ -421,10 +455,17 @@ def build_report(results: List[BenchResult]) -> str:
     # Summary table
     lines.append("## Summary — median latency averaged across queries")
     lines.append("")
-    lines.append("| Backend | Model | N candidates | Avg latency (ms) | Min (ms) | Max (ms) | GPU delta (MB) |")
-    lines.append("|---------|-------|:------------:|:----------------:|:--------:|:--------:|:--------------:|")
+    lines.append(
+        "| Backend | Model | N candidates | Avg latency (ms) | "
+        "Min (ms) | Max (ms) | GPU delta (MB) |"
+    )
+    lines.append(
+        "|---------|-------|:------------:|:----------------:|:--------:|:--------:|:--------------:|"
+    )
 
-    for (backend, n), rs in sorted(grouped.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+    for (backend, n), rs in sorted(
+        grouped.items(), key=lambda kv: (kv[0][0], kv[0][1])
+    ):
         cfg = BACKENDS.get(backend, {})
         label = cfg.get("label", backend)
         model = rs[0].model
@@ -433,7 +474,8 @@ def build_report(results: List[BenchResult]) -> str:
         max_lat = max(r.latency_ms_max for r in rs)
         gpu = _avg([r.gpu_mem_delta_mb for r in rs])
         lines.append(
-            f"| {label} | `{model}` | {n} | **{avg_lat:.0f}** | {min_lat:.0f} | {max_lat:.0f} | {gpu:.0f} |"
+            f"| {label} | `{model}` | {n} | **{avg_lat:.0f}** | "
+            f"{min_lat:.0f} | {max_lat:.0f} | {gpu:.0f} |"
         )
 
     lines.append("")
@@ -445,8 +487,12 @@ def build_report(results: List[BenchResult]) -> str:
         cfg = BACKENDS.get(backend, {})
         lines.append(f"### {cfg.get('label', backend)}")
         lines.append("")
-        lines.append("| N | Query | Median (ms) | Min (ms) | Max (ms) | GPU delta (MB) | Error |")
-        lines.append("|:-:|-------|:-----------:|:--------:|:--------:|:--------------:|-------|")
+        lines.append(
+            "| N | Query | Median (ms) | Min (ms) | Max (ms) | GPU delta (MB) | Error |"
+        )
+        lines.append(
+            "|:-:|-------|:-----------:|:--------:|:--------:|:--------------:|-------|"
+        )
         for r in results:
             if r.backend != backend:
                 continue
@@ -484,7 +530,9 @@ def build_report(results: List[BenchResult]) -> str:
                 cfg = BACKENDS.get(backend, {})
                 avg_speedup = _avg(speedups)
                 sign = "×faster" if avg_speedup >= 1 else "×slower"
-                lines.append(f"| {cfg.get('label', backend)} | all | {avg_speedup:.2f}{sign} |")
+                lines.append(
+                    f"| {cfg.get('label', backend)} | all | {avg_speedup:.2f}{sign} |"
+                )
         lines.append("")
 
     return "\n".join(lines)
@@ -492,35 +540,49 @@ def build_report(results: List[BenchResult]) -> str:
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     global REPS
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument(
-        "--backends", nargs="+",
-        default=["embedding", "embedding_cached", "st_cross", "qwen_cross"],
-        choices=list(BACKENDS),
-        help="Which backends to benchmark (default: embedding embedding_cached st_cross qwen_cross)",
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "--candidates", nargs="+", type=int,
+        "--backends",
+        nargs="+",
+        default=["embedding", "embedding_cached", "st_cross", "qwen_cross"],
+        choices=list(BACKENDS),
+        help=(
+            "Which backends to benchmark "
+            "(default: embedding embedding_cached st_cross qwen_cross)"
+        ),
+    )
+    parser.add_argument(
+        "--candidates",
+        nargs="+",
+        type=int,
         default=DEFAULT_CANDIDATE_SIZES,
         metavar="N",
         help="Candidate pool sizes to sweep (default: 10 25 50 100)",
     )
     parser.add_argument(
-        "--reps", type=int, default=REPS,
+        "--reps",
+        type=int,
+        default=REPS,
         help=f"Timed repetitions per combination (default: {REPS})",
     )
     parser.add_argument(
-        "--llm-base", default="http://localhost:11434/v1",
+        "--llm-base",
+        default="http://localhost:11434/v1",
         help="Base URL for Ollama/OpenAI-compat LLM (used with --include-llm)",
     )
     parser.add_argument(
-        "--include-llm", action="store_true",
+        "--include-llm",
+        action="store_true",
         help="Also benchmark the slow LLM listwise reranker (needs Ollama running)",
     )
     parser.add_argument(
-        "--out", default="scripts/bench_rerank_results.md",
+        "--out",
+        default="scripts/bench_rerank_results.md",
         help="Output Markdown path (default: scripts/bench_rerank_results.md)",
     )
     args = parser.parse_args()

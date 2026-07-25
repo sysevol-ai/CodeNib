@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,13 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.graph.traverse_graph import (
-    RepoDependencySearcher,
-    traverse_tree_structure,
-)
-from codeminer.log_utils import setup_detailed_logging
-from codeminer.ls_router import LSIndexer
-from codeminer.types import (
+from codenib.graph.traverse_graph import RepoDependencySearcher, traverse_tree_structure
+from codenib.log_utils import setup_detailed_logging
+from codenib.ls_router import LSIndexer
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     NODE_TYPE_CLASS,
     NODE_TYPE_FIELD,

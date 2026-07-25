@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -12,7 +12,7 @@ patching, and optional C++ acceleration later. This guide keeps those steps
 explicit so new language work does not become a scattered edit across chunkers,
 routers, decoders, agent compile, and tests.
 
-The central entry point is `codeminer/languages.py`. Add or update a
+The central entry point is `codenib/languages.py`. Add or update a
 `LanguageSpec` there first, then wire only the layers the language actually
 supports.
 
@@ -20,13 +20,13 @@ supports.
 
 | Layer | Purpose | Current integration point |
 | --- | --- | --- |
-| Language registry | Single declarative metadata record | `codeminer/languages.py::LanguageSpec` |
-| Chunking | Tree-sitter chunks for retrieval, GT, and vector indexes | `codeminer/code_chunking/` and `codeminer/code_chunker.py` |
-| Cold-start graph | Whole-repo symbol graph build | `codeminer/ls_router.py`, `codeminer/scip_interface/`, `codeminer/ls_index/` |
-| Incremental graph | In-place graph patching after a diff | `codeminer/graph/incremental/` |
-| Agent compile | Query-time language scenario normalization | `codeminer/agent/compile.py` |
-| Dataset / GT | Extension-to-language mapping for patch analysis | `codeminer/dataset/gt_locate.py` |
-| Core acceleration | Optional C++ mirror decoder | `core/`, `codeminer/scip_interface/scip_decode_core.py` |
+| Language registry | Single declarative metadata record | `codenib/languages.py::LanguageSpec` |
+| Chunking | Tree-sitter chunks for retrieval, GT, and vector indexes | `codenib/code_chunking/` and `codenib/code_chunker.py` |
+| Cold-start graph | Whole-repo symbol graph build | `codenib/ls_router.py`, `codenib/scip_interface/`, `codenib/ls_index/` |
+| Incremental graph | In-place graph patching after a diff | `codenib/graph/incremental/` |
+| Agent compile | Query-time language scenario normalization | `codenib/agent/compile.py` |
+| Dataset / GT | Extension-to-language mapping for patch analysis | `codenib/dataset/gt_locate.py` |
+| Core acceleration | Optional C++ mirror decoder | `core/`, `codenib/scip_interface/scip_decode_core.py` |
 
 ## Backend Policy
 
@@ -56,7 +56,7 @@ into the CodeGraph schema.
 
 ## Step 1: Register Metadata
 
-Add a `LanguageSpec` in `codeminer/languages.py`.
+Add a `LanguageSpec` in `codenib/languages.py`.
 
 ```python
 LanguageSpec(
@@ -78,16 +78,16 @@ LanguageSpec(
         tool="example-scip",
         status="candidate",
         command=("example-scip", "index"),
-        command_env="CODEMINER_EXAMPLE_SCIP_CMD",
+        command_env="CODENIB_EXAMPLE_SCIP_CMD",
         note="Promote only after SCIP smoke, backend alignment, and parity gates pass.",
     ),
     scip_candidate_indexer=(
-        "codeminer.scip_interface.scip_indexer_example:SCIPExampleIndexer"
+        "codenib.scip_interface.scip_indexer_example:SCIPExampleIndexer"
     ),
     incremental_backend="lsp",
     lsp_language_id="example",
     lsp_command=("example-language-server", "--stdio"),
-    lsp_command_env="CODEMINER_EXAMPLE_LSP_CMD",
+    lsp_command_env="CODENIB_EXAMPLE_LSP_CMD",
     core_decoder=False,
 )
 ```
@@ -122,8 +122,8 @@ per-language indexer/decoder files unless a server-specific backend is needed.
 
 Add a chunker when the language should support retrieval or GT extraction.
 
-1. Create `codeminer/code_chunking/{lang}_chunker.py`.
-2. Export the chunker from `codeminer/code_chunking/__init__.py`.
+1. Create `codenib/code_chunking/{lang}_chunker.py`.
+2. Export the chunker from `codenib/code_chunking/__init__.py`.
 3. Extend `create_chunker()` to instantiate the chunker from the registry
    normalized language key.
 4. Add repository-level tests under `test/chunker/`.
@@ -138,24 +138,24 @@ Chunking-only support is valid. In that state:
 
 Pick one cold-start backend:
 
-- SCIP backend: add `codeminer/scip_interface/scip_indexer_{lang}.py` and
-  `codeminer/scip_interface/scip_decode_{lang}.py`.
+- SCIP backend: add `codenib/scip_interface/scip_indexer_{lang}.py` and
+  `codenib/scip_interface/scip_decode_{lang}.py`.
 - clangd-style backend: add an `ls_index/` indexer/decoder only if the server
   exposes a stable artifact like clangd `.idx`.
 - Generic LSP backend: use a shared LSP driver once it exists, with
   per-language server command, root markers, capabilities, and normalization
   rules coming from the language registry.
 - Generic LSP graph backend: set `graph_indexer` to
-  `codeminer.ls_index.lsp_indexer:GenericLSPIndexer`, `graph_decoder` to
-  `codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder`, and register
+  `codenib.ls_index.lsp_indexer:GenericLSPIndexer`, `graph_decoder` to
+  `codenib.ls_index.lsp_graph_decode:GenericLSPGraphDecoder`, and register
   `lsp_language_id`, `lsp_command`, and an optional `lsp_command_env` override.
 
 Do not drop a known SCIP cold-start path just because the first implementation
 uses LSP. Record it as `scip_cold_start=ScipColdStartOption(...,
 status="candidate")` and `scip_candidate_indexer="module:Class"` until it is
 proven.
-Use `codeminer.languages.scip_cold_start_command_for_language()` to consume the
-registered command and any `CODEMINER_*_SCIP_CMD` override in smoke scripts.
+Use `codenib.languages.scip_cold_start_command_for_language()` to consume the
+registered command and any `CODENIB_*_SCIP_CMD` override in smoke scripts.
 Use `LSIndexer(..., graph_route="scip-candidate")` or
 `build_graph_for_languages(..., graph_route="scip-candidate")` only in explicit
 candidate evaluation flows; the default route must remain the active LSP/SCIP
@@ -216,7 +216,7 @@ make graph-route-alignment \
 ```
 
 The target runs `scripts/check_graph_route_alignment.py` through
-`CODEMINER_TOOL_ENV`, defaulting to `graph_route="lsp"` as reference and
+`CODENIB_TOOL_ENV`, defaulting to `graph_route="lsp"` as reference and
 `graph_route="scip-candidate"` as candidate. Use
 `GRAPH_ALIGNMENT_REFERENCE_ROUTE`, `GRAPH_ALIGNMENT_CANDIDATE_ROUTE`,
 `GRAPH_ALIGNMENT_SKIP_LEVEL`, `GRAPH_ALIGNMENT_TARGET_DIR`,
@@ -241,8 +241,8 @@ make bootstrap
 make toolchain-doctor
 ```
 
-The bootstrap targets install tools under `CODEMINER_SCIP_TOOLS_DIR`, defaulting
-to `/tmp/codeminer-scip-tools`, instead of relying on global npm/go/gem/dotnet
+The bootstrap targets install tools under `CODENIB_SCIP_TOOLS_DIR`, defaulting
+to `${CODENIB_TEMP_DIR}/scip-tools`, instead of relying on global npm/go/gem/dotnet
 state. `make multilang-tools` is the no-sudo toolchain subset used by the smoke
 targets. It installs active SCIP/LSP tools for Python, Go, Rust, Java, C#,
 Ruby, Scala, PHP, JavaScript, TypeScript, and C/C++ plus candidate SCIP/LSP
@@ -270,7 +270,7 @@ python scripts/smoke_lsp_graph.py \
 Use `--skip-unavailable` for developer machines where a server cannot be
 installed without system packages. Drop it in CI or release validation when the
 toolchain image is expected to contain every listed language server. Add
-`--output-dir /tmp/codeminer-lsp-smoke` when you need to keep generated projects
+`--output-dir ${CODENIB_TEMP_DIR}/lsp-smoke` when you need to keep generated projects
 and `graph.pkl` files for `scripts/check_backend_alignment.py`.
 
 For real-repository LSP baselines, run the same script with `--project-root`.
@@ -281,8 +281,8 @@ candidate promotion gates or active-route regression checks:
 ```bash
 make lsp-project-smoke \
   PROJECT_LANGUAGE=java \
-  PROJECT_ROOT=/tmp/codeminer-real-java/maven-simple \
-  LSP_PROJECT_OUTPUT_DIR=/tmp/codeminer-java-real-lsp \
+  PROJECT_ROOT=${CODENIB_TEMP_DIR}/real-java/maven-simple \
+  LSP_PROJECT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/java-real-lsp \
   LSP_PROJECT_EXTRA_ARGS="--expected-symbol App --expected-symbol 'App.greet(String)()' --expected-symbol 'App.main(String[])()' --reference-languages java --min-references java=1"
 ```
 
@@ -302,13 +302,13 @@ make graph-route-alignment \
 ```
 
 `make lsp-smoke-tools` installs the LSP binaries used by the current alignment
-surface under `CODEMINER_SCIP_TOOLS_DIR`: Eclipse JDT LS as `jdtls`, csharp-ls,
+surface under `CODENIB_SCIP_TOOLS_DIR`: Eclipse JDT LS as `jdtls`, csharp-ls,
 ruby-lsp, Intelephense, and a Kotlin LSP wrapper named
 `kotlin-language-server`. The Makefile pins the downloaded package versions and
 prints a PATH export through `make lsp-smoke-env`. Kotlin's official standalone
 LSP distribution currently has a higher JDK requirement than the JDT LS path, so
 Kotlin LSP smoke can still require a newer local JDK even after the wrapper is
-installed. Use `CODEMINER_KOTLIN_LSP_CMD` if a CI image supplies Kotlin LSP
+installed. Use `CODENIB_KOTLIN_LSP_CMD` if a CI image supplies Kotlin LSP
 through a different launcher. Ruby LSP is run through a generated Bundler-shaped
 project and the smoke temporarily starts it as `bundle exec ruby-lsp`; a bare
 loose-file Ruby smoke is not a reliable alignment target. The Makefile installs
@@ -335,7 +335,7 @@ an older JDK such as OpenJDK 11 for legacy Gradle projects.
 
 `make scip-cold-start-tools` installs reproducible local copies of active
 Java/C#/Ruby/Scala SCIP tools and the Kotlin candidate toolchain under
-`CODEMINER_SCIP_TOOLS_DIR`, defaulting to `/tmp/codeminer-scip-tools`. It
+`CODENIB_SCIP_TOOLS_DIR`, defaulting to `${CODENIB_TEMP_DIR}/scip-tools`. It
 installs `scip-java`, Gradle, SBT, .NET SDK channels 8.0 and 10.0,
 `scip-dotnet`, `csharp-ls`, Bundler, and `scip-ruby`. Ruby gem installation uses
 `RUBY_GEM ?= gem`; if the default `/usr/bin/gem` lacks Ruby headers for native
@@ -348,7 +348,7 @@ PHP/Composer packages when sudo is available, then `make scip-php-tool` to verif
 PHP >= 8.2 and print the project-local Composer commands. On machines without
 sudo PHP packages, `make scip-php-docker-tool` verifies the `composer:2` Docker
 image used by generated PHP smoke; override it with
-`CODEMINER_PHP_COMPOSER_IMAGE`. The PHP active hybrid route prepares a
+`CODENIB_PHP_COMPOSER_IMAGE`. The PHP active hybrid route prepares a
 throwaway Composer worktree under its output directory before running
 `vendor/bin/scip-php`, so normal route-alignment gates do not need to mutate the
 target repository. Explicit `graph_route="scip-candidate"` keeps the same pure
@@ -370,12 +370,12 @@ directory. Go-side tools use a pinned local Go SDK because current `scip-go` and
 python scripts/smoke_scip_cold_start.py \
   --languages java kotlin scala csharp ruby php \
   --skip-unavailable \
-  --output-dir /tmp/codeminer-scip-smoke \
+  --output-dir ${CODENIB_TEMP_DIR}/scip-smoke \
   --json
 ```
 
 The SCIP smoke runner uses the registry command from
-`scip_cold_start_command_for_language()`, including `CODEMINER_*_SCIP_CMD`
+`scip_cold_start_command_for_language()`, including `CODENIB_*_SCIP_CMD`
 overrides. For Java, it writes a small Maven project. For Kotlin, it writes a
 small Gradle Kotlin/JVM project because a Maven-shaped Kotlin probe did not
 produce `index.scip` or `.semanticdb` artifacts locally. For Scala, it writes a
@@ -412,7 +412,7 @@ and containment; real-repo alignment is still required before promotion.
 The Scala active SCIP path also uses scip-java. Generated smoke proves a Gradle
 Scala 2.13 project, and the real `sbt/io` gate proves an SBT Scala 2.x project
 after `make scip-cold-start-tools` installs a pinned SBT launcher under
-`CODEMINER_SCIP_TOOLS_DIR`. The shared JVM decoder accepts `.scala` documents
+`CODENIB_SCIP_TOOLS_DIR`. The shared JVM decoder accepts `.scala` documents
 and treats Scala object members as contained by their object symbol. No
 Metals/LSP route is registered for Scala today, so use generated smoke plus
 real-project SCIP smoke as the active-route gate. Scala 3 remains unproven until
@@ -444,9 +444,9 @@ names, and is strict-green against the SCIP route for symbols and containment
 `GEM_PATH` for Bundler commands and filters generated graphs by `target_dir` and
 `exclude_patterns`, so dependency gems under `vendor/bundle` do not pollute
 source-route alignment. For real repositories that should not have their Gemfile
-mutated, create an overlay such as `.codeminer/Gemfile` with `gemspec path: ".."`
+mutated, create an overlay such as `.codenib/Gemfile` with `gemspec path: ".."`
 plus pinned `ruby-lsp` and `scip-ruby`, then export
-`CODEMINER_RUBY_BUNDLE_GEMFILE=/path/to/repo/.codeminer/Gemfile` before running
+`CODENIB_RUBY_BUNDLE_GEMFILE=/path/to/repo/.codenib/Gemfile` before running
 LSP or SCIP route gates. The current `ruby/rake` gate promotes Ruby as an active
 hybrid route with one accepted anonymous-module receiver modeling tolerance; all
 other source definitions and containment align, and scip-ruby contributes
@@ -455,9 +455,9 @@ same `ruby/rake` decoded index, serial/core parity after `lib/` filtering is
 exact with 815 nodes and 3,466 edges, and local `process_index` time drops from
 7.58s serial to 1.04s through the C++ backend.
 Use `make ruby-project-bundle PROJECT_ROOT=/path/to/ruby/repo` for this overlay
-setup. It creates `.codeminer/Gemfile` only when absent, installs the bundle
-under `.codeminer/vendor/bundle`, and prints the
-`CODEMINER_RUBY_BUNDLE_GEMFILE` export consumed by the Ruby LSP and SCIP routes.
+setup. It creates `.codenib/Gemfile` only when absent, installs the bundle
+under `.codenib/vendor/bundle`, and prints the
+`CODENIB_RUBY_BUNDLE_GEMFILE` export consumed by the Ruby LSP and SCIP routes.
 
 The PHP active hybrid path uses project-local `vendor/bin/scip-php` pinned to
 the validated `davidrjenni/scip-php:0.0.2` package for Composer projects and
@@ -488,8 +488,8 @@ outside the target repository:
 ```bash
 python scripts/smoke_scip_cold_start.py \
   --languages java \
-  --project-root /tmp/codeminer-real-java/maven-simple \
-  --output-dir /tmp/codeminer-java-real-scip \
+  --project-root ${CODENIB_TEMP_DIR}/real-java/maven-simple \
+  --output-dir ${CODENIB_TEMP_DIR}/java-real-scip \
   --expected-symbol App \
   --expected-symbol 'App.greet(String)()' \
   --expected-symbol 'App.main(String[])()' \
@@ -502,7 +502,7 @@ than only `App.greet()`.
 
 ## Step 4: Add Incremental Graph Patching
 
-Add `codeminer/graph/incremental/patcher_{lang}.py` only after graph support
+Add `codenib/graph/incremental/patcher_{lang}.py` only after graph support
 exists. Register it in the graph patcher router and add tests under
 `test/graph/incremental/`.
 
@@ -516,8 +516,8 @@ hard-coded tables.
 
 Verify these surfaces:
 
-- `codeminer/agent/compile.py` recognizes the intended scenario key.
-- `codeminer/dataset/gt_locate.py` maps target file extensions correctly.
+- `codenib/agent/compile.py` recognizes the intended scenario key.
+- `codenib/dataset/gt_locate.py` maps target file extensions correctly.
 - repository chunking discovers the intended extensions through
   `RepoChunkingConfig`.
 - synthesis or benchmark-specific language groups are updated only when the

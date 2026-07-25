@@ -1,14 +1,14 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Codeminer Core (C++)
+# CodeNib Core (C++)
 
 This directory contains a C++ implementation of the high-traffic pieces of the
-Python `codeminer` graph pipeline. The goal is to mirror the behaviour of
-`codeminer.graph.code_graph.CodeGraph` and the active serial SCIP decoders while
+Python `codenib` graph pipeline. The goal is to mirror the behaviour of
+`codenib.graph.code_graph.CodeGraph` and the active serial SCIP decoders while
 leveraging the libigraph C API for better throughput on large `.decoded` index
 files.
 
@@ -26,7 +26,7 @@ files.
 - `bindings/pybind_module.cpp` – exposes `decode_scip(...)` and
   `classify_edge_layers(...)`; binding code should delegate algorithms to core
   modules.
-- `CMakeLists.txt` – builds a static library (`codeminer_core`) suitable for later wrapping with pybind11 or another binding layer.
+- `CMakeLists.txt` – builds a static library (`codenib_core`) suitable for later wrapping with pybind11 or another binding layer.
 
 ## Building
 
@@ -74,7 +74,7 @@ New decoders should:
 #include "scip_decode.h"
 
 int main() {
-    codeminer::core::SCIPGraphDecoder decoder("index.decoded", ".");
+    codenib::core::SCIPGraphDecoder decoder("index.decoded", ".");
     auto graph = decoder.decode();
     graph.save_graph("graph.json");
     return 0;

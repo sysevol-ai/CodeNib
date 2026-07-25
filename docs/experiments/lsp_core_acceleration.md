@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -14,9 +14,9 @@ serve the same request shape.
 
 Current implementation:
 
-- `codeminer.agent.lsp_provider.StaticLSPProvider` serves
+- `codenib.agent.lsp_provider.StaticLSPProvider` serves
   `textDocument/definition`, `textDocument/references`, and
-  `codeminer/lspRoute` over the loaded `symbol_graph`.
+  `codenib/lspRoute` over the loaded `symbol_graph`.
 - Agent `lsp_definition`, `lsp_references`, and `lsp_route` skills use that
   provider, so dynamic tool calls get the same list-shaped results plus
   trace-only provider metadata.
@@ -32,7 +32,7 @@ Current implementation:
 - Runtime traces record `lsp_provider`, `lsp_result_fingerprint`, and a compact
   result preview. Route traces also preserve the existing `route_args` and
   `route_fingerprint` fields.
-- `codeminer.eval.agent_runner.LiveLSPReferenceProvider` wraps the existing
+- `codenib.eval.agent_runner.LiveLSPReferenceProvider` wraps the existing
   JSON-RPC `LSPClient` as a reference provider for validation. It normalizes LSP
   `Location` / `LocationLink` results into compact `QueriedNode` rows so the
   static and live paths can be compared by fingerprint.
@@ -67,7 +67,7 @@ payload in both arms.
 Validation entry point:
 
 ```python
-from codeminer.eval.agent_runner import (
+from codenib.eval.agent_runner import (
     LSPProviderRequest,
     compare_static_to_live_lsp_provider,
 )
@@ -98,7 +98,7 @@ cat > /tmp/lsp-provider-requests.jsonl <<'EOF'
 {"request_id":"demo-definition","capability":"textDocument/definition","arguments":{"file_path":"caller.py","line":41,"character":12}}
 EOF
 
-codeminer-lsp-provider-validate \
+codenib-lsp-provider-validate \
   --graph /path/to/graph.pkl \
   --project-root /path/to/repo \
   --language python \
@@ -124,18 +124,18 @@ turn a valid location-set match into a false mismatch. Use
 `--fingerprint-mode ordered-start` only when provider order is part of the
 contract being tested.
 
-The CLI validates native JSON-RPC LSP only. It rejects `codeminer/lspRoute`
+The CLI validates native JSON-RPC LSP only. It rejects `codenib/lspRoute`
 before starting a language server because route is a CodeNib extension, not a
 native LSP request.
 
 The live path requires an installed language server or an override such as
-`CODEMINER_PYTHON_LSP_CMD`. If no server command is available, use the fake
+`CODENIB_PYTHON_LSP_CMD`. If no server command is available, use the fake
 client unit path only; do not claim live equivalence from it.
 
 Provider replay benchmark:
 
 ```bash
-codeminer-lsp-replay-benchmark \
+codenib-lsp-replay-benchmark \
   --graph /path/to/graph.pkl \
   --project-root /path/to/repo \
   --language cpp \
@@ -177,8 +177,8 @@ version and stale `project_root` values from the machine that built them. Audit
 and normalize them before large replay runs:
 
 ```bash
-codeminer-prebuilt-normalize-graphs /mnt/data/codeminer --limit 20
-codeminer-prebuilt-normalize-graphs /mnt/data/codeminer \
+codenib-prebuilt-normalize-graphs ${CODENIB_PREBUILT_DIR} --limit 20
+codenib-prebuilt-normalize-graphs ${CODENIB_PREBUILT_DIR} \
   --write \
   --backup-suffix .legacy \
   --output-json /tmp/prebuilt-graph-normalize.json
@@ -202,7 +202,7 @@ offers conventional extra-warning variables, the indexing-only build appends
 `-Werror` and `-Werror=<warning>` in a derived copy, leaving the repository's
 build configuration unchanged.
 
-Calibration on the 19 C/C++ instances in the 100-instance `codeminer-base`
+Calibration on the 19 C/C++ instances in the 100-instance `codenib-base`
 sample produced graphs for 19/19 and passed the quality gate for 18/19 before
 the fix. The rejected `micropython__micropython-10095` artifact had only 2
 compile commands, 1,075 vertices, and 1,484 edges, versus 8,542 vertices and
@@ -238,7 +238,7 @@ equivalent rows.
 Forced-call provider protocol check:
 
 ```bash
-codeminer-lsp-provider-protocol-check \
+codenib-lsp-provider-protocol-check \
   --graph /path/to/graph.pkl \
   --project-root /path/to/repo \
   --language go \
@@ -255,14 +255,14 @@ This crossover holds the model, prompt, tool name/schema, and model-visible
 result constant; it changes only the injected provider. Prompt caching is off
 by default to avoid an arm-order confound. Use this only as an integration
 guard for arguments, traces, turns, tokens, and answers: the harness supplies
-the request and forces one tool call. The CodeMiner Base agent ablation lets the
+the request and forces one tool call. The CodeNib Base agent ablation lets the
 model adopt tools dynamically and exports live-arm calls for frozen replay.
 Remote model wall time is not the LSP latency metric because API variance is
 orders of magnitude larger than one warm semantic request.
 
 The pinned Base sampling frame is now artifact-ready: 60/60 Go, Rust, and
 TypeScript snapshots pass strict source/profile/graph/occurrence-index identity
-checks under `/mnt/data/codeminer/results/lsp_agent_base_artifacts_v4`. The
+checks under `${CODENIB_RESULTS_DIR}/lsp_agent_base_artifacts_v4`. The
 artifacts contain 10,287,017 exact SCIP occurrences. This readiness result does
 not replace request replay or constitute an agent outcome; it only removes
 artifact drift from the dynamic adoption study.
@@ -275,7 +275,7 @@ mismatch, error, or fallback. Static p50/p95 was 0.19/0.58 ms, live JSON-RPC
 p50/p95 was 2.22/12.65 ms, and paired speedup p50 was 11.43x. Graph load, live
 process start, and behavioral warmup p50 were 2.80 ms, 85.15 ms, and 1.78 s,
 respectively, and remain separate setup metrics. The aggregate report is
-`/mnt/data/codeminer/results/lsp_agent_base_haiku_v2_replay/aggregate.json`.
+`${CODENIB_RESULTS_DIR}/lsp_agent_base_haiku_v2_replay/aggregate.json`.
 
 This natural trace is strong mechanism evidence but a small compatibility
 sample. Generated cross-language requests still expose lower equivalence for
@@ -283,12 +283,12 @@ Rust and TypeScript references, so the system must preserve profile-specific
 promotion and live fallback rather than globally replacing every JSON-RPC LSP
 request.
 
-### CodeMiner Base 100-Snapshot Replay
+### CodeNib Base 100-Snapshot Replay
 
-The full CodeMiner Base replay uses all 100 unique `(repo, base_commit,
+The full CodeNib Base replay uses all 100 unique `(repo, base_commit,
 language)` snapshots: 21 Go, 20 Rust, 19 TypeScript/JavaScript, 20 Python, and
 20 C/C++. The frozen manifest is
-`/mnt/data/codeminer/results/lsp_agent_base_study_manifest_v3.json` with SHA-256
+`${CODENIB_RESULTS_DIR}/lsp_agent_base_study_manifest_v3.json` with SHA-256
 `4a2376ad11e1ff4b54857c8f33e8b83c025e3a9fe7cb0da69cbd778e5078f6d4`.
 All 100 snapshot/profile identities and artifact quality gates pass.
 
@@ -327,20 +327,20 @@ Reviewable aggregate artifacts committed with this experiment are:
 - [aggregate Markdown](artifacts/lsp_replay_base_v3_100/aggregate.md)
 - [single-column figure](artifacts/lsp_replay_base_v3_100/lsp_replay_100_single_column.png)
 
-![CodeMiner Base 100-snapshot LSP replay](artifacts/lsp_replay_base_v3_100/lsp_replay_100_single_column.png)
+![CodeNib Base 100-snapshot LSP replay](artifacts/lsp_replay_base_v3_100/lsp_replay_100_single_column.png)
 
 The full local report set, including all 100 per-snapshot reports and the PDF
 figure, remains at:
 
-- `/mnt/data/codeminer/results/lsp_replay_base_v3_100/aggregate.json`
-- `/mnt/data/codeminer/results/lsp_replay_base_v3_100/aggregate.md`
-- `/mnt/data/codeminer/results/lsp_replay_base_v3_100/lsp_replay_100_single_column.pdf`
+- `${CODENIB_RESULTS_DIR}/lsp_replay_base_v3_100/aggregate.json`
+- `${CODENIB_RESULTS_DIR}/lsp_replay_base_v3_100/aggregate.md`
+- `${CODENIB_RESULTS_DIR}/lsp_replay_base_v3_100/lsp_replay_100_single_column.pdf`
 
 Regenerate the figure from the 100 machine-readable reports with:
 
 ```bash
 python scripts/profiling/plot_lsp_replay_paper.py \
-  --reports-dir /mnt/data/codeminer/results/lsp_replay_base_v3_100/reports \
+  --reports-dir ${CODENIB_RESULTS_DIR}/lsp_replay_base_v3_100/reports \
   --output-prefix /tmp/lsp_replay_100_single_column
 ```
 
@@ -363,7 +363,7 @@ Latest local pilot, using a two-file temporary Python repo and
 
 The pilot exposed three experiment-design constraints:
 
-- Do not include `codeminer/lspRoute` in static-vs-live JSON-RPC equivalence
+- Do not include `codenib/lspRoute` in static-vs-live JSON-RPC equivalence
   gates. It is a CodeNib extension, not a native LSP request.
 - References should usually be gated by unordered start-location set equality;
   otherwise provider ordering differences dominate the result.
@@ -418,7 +418,7 @@ current `core/` backend accelerates SCIP text decoding; it does not reduce
 language-server latency.
 
 Current C++ acceleration for layered graph work is intentionally narrower:
-`codeminer_core.classify_edge_layers(...)` classifies default graph layers for
+`codenib_core.classify_edge_layers(...)` classifies default graph layers for
 the Python `MultiGraphIndex` when the pybind extension is present. This is a
 query/index helper, not a generic LSP graph decoder. The implementation lives
 in `core/graph_layers.{h,cpp}` so it is a real core API rather than binding

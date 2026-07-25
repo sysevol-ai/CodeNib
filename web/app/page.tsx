@@ -167,7 +167,7 @@ export default function Landing() {
         {error && (
           <div className="empty">
             <p>
-              Backend unavailable — start it with <code>codeminer-web</code> after building an index.
+              Backend unavailable — start it with <code>codenib-web</code> after building an index.
             </p>
             <p className="small muted">Request failed: {error}</p>
             <button type="button" className="codegraph-fit" onClick={loadRepos}>

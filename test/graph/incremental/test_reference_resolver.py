@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for LSPDecoderBase location matching logic (used by reference reconnection)."""
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import (
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     NODE_TYPE_CLASS,
     NODE_TYPE_FUNCTION,
@@ -15,7 +15,7 @@ from codeminer.types import (
 
 def _make_decoder():
     """Create a concrete decoder with a mock graph (no actual LSP client needed)."""
-    from codeminer.graph.incremental.patcher_rust import PatcherRust
+    from codenib.graph.incremental.patcher_rust import PatcherRust
 
     g = CodeGraph(project_root="/tmp/test")
 

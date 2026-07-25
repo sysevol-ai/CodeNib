@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,15 +8,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.web.config import (
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.web.config import (
     QAConfig,
     RepoEntry,
     load_config,
     load_registry,
     save_registry,
 )
-from codeminer.web.repo_registry import RepoRegistry, _fresh_registry
+from codenib.web.repo_registry import RepoRegistry, _fresh_registry
 
 
 def test_fresh_registry_is_isolated_from_singleton():
@@ -76,11 +76,11 @@ def test_backend_environment_overrides_yaml(tmp_path, monkeypatch):
         "wiki_model: yaml-wiki\n"
         "embedding_provider: huggingface\n"
     )
-    monkeypatch.setenv("CODEMINER_DEMO_MODEL", "env-ask")
-    monkeypatch.setenv("CODEMINER_DEMO_WIKI_MODEL", "env-wiki")
-    monkeypatch.setenv("CODEMINER_DEMO_API_BASE", "http://ask.local/v1")
-    monkeypatch.setenv("CODEMINER_EMBEDDING_PROVIDER", "OPENAI")
-    monkeypatch.setenv("CODEMINER_EMBEDDING_BASE_URL", "http://embed.local/v1")
+    monkeypatch.setenv("CODENIB_DEMO_MODEL", "env-ask")
+    monkeypatch.setenv("CODENIB_DEMO_WIKI_MODEL", "env-wiki")
+    monkeypatch.setenv("CODENIB_DEMO_API_BASE", "http://ask.local/v1")
+    monkeypatch.setenv("CODENIB_EMBEDDING_PROVIDER", "OPENAI")
+    monkeypatch.setenv("CODENIB_EMBEDDING_BASE_URL", "http://embed.local/v1")
 
     cfg = load_config(str(cfg_file))
 
@@ -112,7 +112,7 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
         def load(self, path):
             self.loaded = path
 
-    monkeypatch.setattr("codeminer.web.repo_registry.CodeVectorStore", FakeVectorStore)
+    monkeypatch.setattr("codenib.web.repo_registry.CodeVectorStore", FakeVectorStore)
     cfg = QAConfig(
         embedding_provider="openai",
         embedding_model="embed-model",
@@ -141,7 +141,7 @@ def test_ask_model_receives_its_own_endpoint(monkeypatch):
         captured.update(kwargs)
         return object()
 
-    monkeypatch.setattr("codeminer.web.repo_registry.LiteLLMChat", fake_chat)
+    monkeypatch.setattr("codenib.web.repo_registry.LiteLLMChat", fake_chat)
     registry = RepoRegistry(
         QAConfig(
             model="openai/ask-model",

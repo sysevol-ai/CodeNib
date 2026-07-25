@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Build the codeminer-synthesis v2 (multi-repo) generation plan.
+"""Build the codenib-synthesis v2 (multi-repo) generation plan.
 
 v1 used ONE repo per language (5 repos total) → "Go graph wins" could be "this
 one Go repo's graph is clean", not a language property. v2 spans ALL 5 repos per
-language available in codeminer-base (25 repos, prebuilt indexes already on
+language available in codenib-base (25 repos, prebuilt indexes already on
 disk), keeping per-repo DEPTH (a query floor) while adding multi-repo BREADTH.
 
 This planner is deterministic + read-only (reads the base dataset + each
 instance's prebuilt graph). It:
-  1. groups codeminer-base by (language, repo),
+  1. groups codenib-base by (language, repo),
   2. picks ONE instance per repo — the one whose prebuilt graph has the most
      symbol nodes (richest graph → most reliable GT spans + graph expansion),
   3. attaches a fixed per-category query budget (the v1 60-split scaled to ~20),
 and emits a plan JSON consumed by the generation driver
-(generate_codeminer_synthesis_config.py per instance, then
-rebuild_codeminer_synthesis_dataset.py to assemble).
+(generate_codenib_synthesis_config.py per instance, then
+rebuild_codenib_synthesis_dataset.py to assemble).
 
 Importance sampling note: at Tier-1 every language has exactly 5 base repos and
 we take all of them, so repo SELECTION is moot and per-repo counts are EQUAL
@@ -41,6 +41,8 @@ from typing import Any, Dict, List, Optional
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+
+from codenib.paths import prebuilt_data_dir  # noqa: E402
 
 # base language_group -> synthesis HF config name
 _LANG_TO_CONFIG = {
@@ -77,8 +79,8 @@ def _graph_symbol_count(prebuilt_dir: str, instance_id: str) -> int:
 
 
 def build_plan(prebuilt_dir: str, repos_per_lang: int) -> List[Dict[str, Any]]:
-    from codeminer.eval.agent_runner.sweep import load_dataset_rows
-    from codeminer.eval.agent_runner.sweep_config import SweepConfig
+    from codenib.eval.agent_runner.sweep import load_dataset_rows
+    from codenib.eval.agent_runner.sweep_config import SweepConfig
 
     cfg = SweepConfig.from_yaml(
         str(_PROJECT_ROOT / "scripts/agent_compile/configs/design_space.yaml")
@@ -121,7 +123,7 @@ def build_plan(prebuilt_dir: str, repos_per_lang: int) -> List[Dict[str, Any]]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--prebuilt-dir", default="/mnt/data/codeminer")
+    p.add_argument("--prebuilt-dir", default=str(prebuilt_data_dir()))
     p.add_argument("--repos-per-lang", type=int, default=5)
     p.add_argument("--out", type=Path, default=Path("synthesis_v2_plan.json"))
     args = p.parse_args(argv)

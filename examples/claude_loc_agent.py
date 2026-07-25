@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,21 +11,21 @@ Setup:
     export ANTHROPIC_API_KEY=...   # or use a logged-in `claude` CLI
 
 Usage:
-    # Full codeminer-base corpus (100 instances), append-only JSONL
+    # Full codenib-base corpus (100 instances), append-only JSONL
     python examples/claude_loc_agent.py \\
-        --dataset codeminer_base \\
-        --result-path .ttmp/baselines/claude_codeminer_base.jsonl
+        --dataset codenib_base \\
+        --result-path .ttmp/baselines/claude_codenib_base.jsonl
 
     # Filter to a single instance (smoke):
     python examples/claude_loc_agent.py \\
-        --dataset codeminer_base \\
+        --dataset codenib_base \\
         --filter-instance "^fmtlib__fmt-2317$" \\
         --result-path .ttmp/baselines/claude_smoke.jsonl
 
     # Resume after a crash -- skip instance_ids already in the result file:
     python examples/claude_loc_agent.py \\
-        --dataset codeminer_base \\
-        --result-path .ttmp/baselines/claude_codeminer_base.jsonl \\
+        --dataset codenib_base \\
+        --result-path .ttmp/baselines/claude_codenib_base.jsonl \\
         --resume
 
 Output: JSONL, one record per instance with retrieve_rerank-compatible
@@ -36,9 +36,9 @@ and ``usage``.
 import argparse
 import asyncio
 
-from codeminer.clients.claude_agent import ClaudeLocAgent
-from codeminer.eval.agent_runner.loc_baseline import add_common_args, run_agent_baseline
-from codeminer.log_utils import get_logger
+from codenib.clients.claude_agent import ClaudeLocAgent
+from codenib.eval.agent_runner.loc_baseline import add_common_args, run_agent_baseline
+from codenib.log_utils import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -60,8 +60,8 @@ repos:
 
   - repo: local
     hooks:
-      - id: codenib-branding
-        name: (Brand) Check CodeNib display names and assets
-        entry: python scripts/check_branding.py
+      - id: codenib-namespace
+        name: Check CodeNib namespace and assets
+        entry: python scripts/check_namespace.py
         language: system
         pass_filenames: false

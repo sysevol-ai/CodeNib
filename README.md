@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -23,11 +23,10 @@ to agents, web UIs, and evaluation harnesses. The core surfaces are:
 - a stdio **Model Context Protocol** server for agent tools;
 - a DeepWiki-style web UI for browsing indexed repositories.
 
-> **Naming compatibility:** CodeNib is the product name. The Python package,
-> existing `codeminer-*` commands, `CODEMINER_*` environment variables,
-> `.codeminer*` state paths, repository URL, and published dataset identities
-> remain stable during this migration. See
-> [Naming and Compatibility](docs/branding.md) for the complete contract.
+> **Naming:** CodeNib is the product and programmatic namespace. The frozen
+> artifact branch preserves earlier experiments; the GitHub repository and
+> published dataset URLs remain external resource identities. See
+> [CodeNib Naming](docs/branding.md) for the complete contract.
 
 Language coverage varies by surface. See the generated
 [Language Capabilities](docs/language_capabilities.md) matrix for the current
@@ -42,24 +41,22 @@ pip install -e .
 Build an index for a repository:
 
 ```python
-from codeminer.compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.index_builders import IndexBuilderRegistry, register_default_builders
+from codenib.compiler import IndexCompiler, IndexCompilerConfig
+from codenib.compiler.index_builders import IndexBuilderRegistry, register_default_builders
 
 registry = IndexBuilderRegistry()
 register_default_builders(registry, languages=["python"])
 IndexCompiler(
     registry,
     IndexCompilerConfig(index_types=["bm25", "vector", "symbol_graph", "zoekt"]),
-).compile_repo("/path/to/repo")  # writes <repo>/.codeminer_cache/repo_manifest.json
+).compile_repo("/path/to/repo")  # writes <repo>/.codenib_cache/repo_manifest.json
 ```
 
 Serve that manifest to any MCP-capable agent:
 
 ```bash
-codenib-mcp /path/to/repo/.codeminer_cache/repo_manifest.json   # stdio MCP server
+codenib-mcp /path/to/repo/.codenib_cache/repo_manifest.json   # stdio MCP server
 ```
-
-The compatibility alias `codeminer-mcp` reaches the same implementation.
 
 For the browser UI, start the managed backend and frontend:
 

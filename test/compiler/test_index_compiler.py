@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.compiler.index_builders import (
+from codenib.compiler.index_builders import (
     BM25IndexBuilder,
     IndexBuilderRegistry,
     SymbolGraphBuilder,
@@ -22,13 +22,13 @@ from codeminer.compiler.index_builders import (
     ZoektIndexBuilder,
     register_default_builders,
 )
-from codeminer.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.manifest import (
+from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+from codenib.compiler.manifest import (
     MANIFEST_FILENAME,
     ManifestIndexStateStore,
     RepoManifest,
 )
-from codeminer.compiler.resources import (
+from codenib.compiler.resources import (
     IndexRequirement,
     IndexState,
     IndexStatus,
@@ -82,8 +82,8 @@ def _failing_builder():
 
 
 class TestBM25IndexBuilder:
-    @patch("codeminer.index.sparse_idx.bm25_index.BM25CodeIndexer")
-    @patch("codeminer.code_chunker.CodeChunker")
+    @patch("codenib.index.sparse_idx.bm25_index.BM25CodeIndexer")
+    @patch("codenib.code_chunker.CodeChunker")
     def test_build_returns_fresh_status(self, MockChunker, MockIndexer, tmp_path):
         # Mock chunker returns fake chunks
         mock_chunker_instance = MagicMock()
@@ -130,7 +130,7 @@ class TestBM25IndexBuilder:
 
 
 class TestVectorIndexBuilder:
-    @patch("codeminer.index.embedding.builders.build_hierarchical_vector_store")
+    @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
     def test_build_returns_status_with_stats(self, mock_build_fn, tmp_path):
         mock_vs = MagicMock()
         mock_vs.l0_documents = ["d1", "d2"]
@@ -185,7 +185,7 @@ class TestVectorIndexBuilder:
 
 class TestSymbolGraphBuilder:
     def test_build_returns_status(self, monkeypatch, tmp_path):
-        from codeminer import ls_router
+        from codenib import ls_router
 
         mock_graph = MagicMock()
         mock_graph.graph.vs = list(range(50))  # 50 nodes
@@ -227,7 +227,7 @@ class TestSymbolGraphBuilder:
         ]
 
     def test_build_rejects_none_graph(self, monkeypatch, tmp_path):
-        from codeminer import ls_router
+        from codenib import ls_router
 
         monkeypatch.setattr(
             ls_router,
@@ -245,7 +245,7 @@ class TestSymbolGraphBuilder:
             )
 
     def test_build_forwards_multiple_languages(self, monkeypatch, tmp_path):
-        from codeminer import ls_router
+        from codenib import ls_router
 
         mock_graph = MagicMock()
         mock_graph.graph.vs = [MagicMock()]
@@ -275,7 +275,7 @@ class TestSymbolGraphBuilder:
         assert calls[0][1]["languages"] == ["python", "go"]
 
     def test_build_forwards_graph_route(self, monkeypatch, tmp_path):
-        from codeminer import ls_router
+        from codenib import ls_router
 
         mock_graph = MagicMock()
         mock_graph.graph.vs = [MagicMock()]
@@ -368,11 +368,11 @@ class TestZoektIndexBuilder:
 
         with (
             patch(
-                "codeminer.compiler.index_builders.shutil.which",
+                "codenib.compiler.index_builders.shutil.which",
                 return_value="/fake/zoekt-git-index",
             ),
             patch(
-                "codeminer.compiler.index_builders.subprocess.run",
+                "codenib.compiler.index_builders.subprocess.run",
                 return_value=completed,
             ) as mock_run,
         ):
@@ -396,7 +396,7 @@ class TestZoektIndexBuilder:
         builder = ZoektIndexBuilder(binary="this-binary-does-not-exist-12345")
 
         with patch(
-            "codeminer.compiler.index_builders.shutil.which",
+            "codenib.compiler.index_builders.shutil.which",
             return_value=None,
         ):
             try:
@@ -416,11 +416,11 @@ class TestZoektIndexBuilder:
         builder = ZoektIndexBuilder()
         with (
             patch(
-                "codeminer.compiler.index_builders.shutil.which",
+                "codenib.compiler.index_builders.shutil.which",
                 return_value="/fake/zoekt-git-index",
             ),
             patch(
-                "codeminer.compiler.index_builders.subprocess.run",
+                "codenib.compiler.index_builders.subprocess.run",
                 side_effect=subprocess.CalledProcessError(
                     returncode=2, cmd=["zoekt-git-index"], stderr="boom"
                 ),
@@ -730,7 +730,7 @@ class TestUpdateRepo:
         calls: list = []
         compiler = self._compiler(calls)
         compiler.compile_repo(str(tmp_path))
-        cache = tmp_path / ".codeminer_cache"
+        cache = tmp_path / ".codenib_cache"
         (cache / "repo_manifest.json").write_text("{not json")
 
         calls.clear()
@@ -827,7 +827,7 @@ class TestUpdateRepo:
 
 class TestSymbolGraphIncremental:
     def _builder(self, **kw):
-        from codeminer.compiler.index_builders import SymbolGraphBuilder
+        from codenib.compiler.index_builders import SymbolGraphBuilder
 
         return SymbolGraphBuilder(languages=["python"], **kw)
 
@@ -868,7 +868,7 @@ class TestSymbolGraphIncremental:
         """The cache dir lives inside the repo; untracked paths must not block."""
         first = _git_repo(tmp_path)
         _commit(tmp_path, "b.py")
-        out = tmp_path / ".codeminer_cache" / "symbol_graph"
+        out = tmp_path / ".codenib_cache" / "symbol_graph"
         out.mkdir(parents=True)
         (out / "graph.pkl").write_bytes(b"x")
         assert (
@@ -949,7 +949,7 @@ class TestSymbolGraphIncremental:
 
     def test_admitted_update_is_kept(self, tmp_path, monkeypatch):
         """An explicitly-admitting verifier keeps the patched result."""
-        from codeminer.compiler.verification import AlwaysAdmitVerifier
+        from codenib.compiler.verification import AlwaysAdmitVerifier
 
         builder = self._builder(verifier=AlwaysAdmitVerifier())
         sentinel = object()
@@ -977,8 +977,8 @@ class TestSymbolGraphIncremental:
         self, tmp_path, monkeypatch
     ):
         """A docs-only transition leaves the configured graph unchanged."""
-        from codeminer.graph.code_graph import CodeGraph
-        from codeminer.graph.incremental.graph_patcher import GraphPatcher
+        from codenib.graph.code_graph import CodeGraph
+        from codenib.graph.incremental.graph_patcher import GraphPatcher
 
         first = _git_repo(tmp_path)
         _commit(tmp_path, "README.md")

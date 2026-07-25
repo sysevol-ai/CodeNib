@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 # ===========================================================================
 # Runtime probe — does graph pre-load beat embedding pre-load beat plain grep,
-# on the codeminer-synthesis per-category Pareto?  (see .claude/design/agent-runtime.md)
+# on the codenib-synthesis per-category Pareto?  (see .claude/design/agent-runtime.md)
 # ===========================================================================
 # Extends preload_probe.yaml with a GRAPH pre-load arm. Same model / scorer /
 # prebuilt indexes as the canonical sweep (inherited via base:). Run through

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from codeminer.eval.agent_runner.query_sweep import (
+from codenib.eval.agent_runner.query_sweep import (
     filter_query_rows,
     group_query_rows_by_instance,
     language_key_for_query_row,
@@ -19,7 +19,7 @@ from codeminer.eval.agent_runner.query_sweep import (
     run_query_sweep,
     select_query_rows,
 )
-from codeminer.eval.agent_runner.sweep_config import SweepConfig
+from codenib.eval.agent_runner.sweep_config import SweepConfig
 
 
 def test_sweep_config_rejects_non_json_run_metadata(tmp_path):
@@ -186,21 +186,21 @@ def test_run_query_sweep_stages_only_declared_indexes(monkeypatch, tmp_path):
         raise AssertionError("vector-only sweeps must not load the symbol graph")
 
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.prebuilt.has_required_indexes", has_required
+        "codenib.eval.agent_runner.prebuilt.has_required_indexes", has_required
     )
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.prebuilt.repo_path_for",
+        "codenib.eval.agent_runner.prebuilt.repo_path_for",
         lambda _root, _instance: "/snapshots/repo",
     )
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.prebuilt.stage_prebuilt_indexes", stage
+        "codenib.eval.agent_runner.prebuilt.stage_prebuilt_indexes", stage
     )
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.sweep.load_full_contexts",
+        "codenib.eval.agent_runner.sweep.load_full_contexts",
         lambda _cfg, _repo, _cache: {},
     )
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.sweep.run_cell",
+        "codenib.eval.agent_runner.sweep.run_cell",
         lambda *_args, **_kwargs: {
             "answer": "",
             "file_read_paths": [],
@@ -217,21 +217,21 @@ def test_run_query_sweep_stages_only_declared_indexes(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.symbols.build_prebuilt_symbol_span_index",
+        "codenib.eval.agent_runner.symbols.build_prebuilt_symbol_span_index",
         unexpected_symbol_graph,
     )
     monkeypatch.setattr(
-        "codeminer.eval.agent_runner.scoring.evaluate_agent_localization",
+        "codenib.eval.agent_runner.scoring.evaluate_agent_localization",
         lambda **_kwargs: SimpleNamespace(
             metrics={"answer_blocks": {5: {"recall": 0.0}}},
             to_record_fields=lambda: {},
         ),
     )
     monkeypatch.setattr(
-        "codeminer.eval.retrieval_eval.collect_target_blocks", lambda _row: []
+        "codenib.eval.retrieval_eval.collect_target_blocks", lambda _row: []
     )
     monkeypatch.setattr(
-        "codeminer.llm.litellm_chat.LiteLLMChat", lambda **_kwargs: object()
+        "codenib.llm.litellm_chat.LiteLLMChat", lambda **_kwargs: object()
     )
 
     cfg = SweepConfig(

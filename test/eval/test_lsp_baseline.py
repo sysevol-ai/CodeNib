@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,15 +6,15 @@
 
 from __future__ import annotations
 
-from codeminer.eval.agent_runner.baseline import BaselineTask
-from codeminer.eval.agent_runner.lsp_baseline import (
+from codenib.eval.agent_runner.baseline import BaselineTask
+from codenib.eval.agent_runner.lsp_baseline import (
     LSPRouteBaselineConfig,
     build_lsp_route_result_entry,
     extract_lsp_symbol_seeds,
     locations_from_lsp_nodes,
     run_lsp_route_baseline,
 )
-from codeminer.types import QueriedNode
+from codenib.types import QueriedNode
 
 
 class _RouteGraph:

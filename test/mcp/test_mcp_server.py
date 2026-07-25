@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -18,10 +18,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Import server module components
-import codeminer.mcp.server as server_module
-from codeminer.index.embedding.vector_store import CodeVectorStore
-from codeminer.mcp.context import ServerContext
-from codeminer.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
+import codenib.mcp.server as server_module
+from codenib.index.embedding.vector_store import CodeVectorStore
+from codenib.mcp.context import ServerContext
+from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
 
 
 @pytest.fixture
@@ -151,13 +151,11 @@ def test_lsp_definition_tool_no_symbol_graph():
 def test_lsp_definition_tool_serializes_one_based_lines():
     """Test MCP serialization converts internal graph lines to 1-based lines."""
     mock_graph = MagicMock()
-    from codeminer.types import QueriedNode
+    from codenib.types import QueriedNode
 
     mock_graph.query_range.side_effect = ValueError("should not be called")
     ctx = MagicMock(symbol_graph=mock_graph)
-    with patch(
-        "codeminer.mcp.tools.lsp.StaticLSPProvider.definition"
-    ) as mock_definition:
+    with patch("codenib.mcp.tools.lsp.StaticLSPProvider.definition") as mock_definition:
         mock_definition.return_value = [
             QueriedNode(
                 node_name="load_config",
@@ -175,12 +173,10 @@ def test_lsp_definition_tool_serializes_one_based_lines():
 
 def test_lsp_references_tool_delegates_to_core():
     """Test lsp_references wrapper calls the core graph helper."""
-    from codeminer.types import QueriedNode
+    from codenib.types import QueriedNode
 
     ctx = MagicMock(symbol_graph=MagicMock())
-    with patch(
-        "codeminer.mcp.tools.lsp.StaticLSPProvider.references"
-    ) as mock_references:
+    with patch("codenib.mcp.tools.lsp.StaticLSPProvider.references") as mock_references:
         mock_references.return_value = [
             QueriedNode(
                 node_name="caller",
@@ -204,9 +200,7 @@ def test_lsp_references_tool_delegates_to_core():
 def test_lsp_tools_reuse_agent_line_boundary():
     """MCP LSP tools share the agent 1-based input boundary."""
     ctx = MagicMock(symbol_graph=MagicMock())
-    with patch(
-        "codeminer.mcp.tools.lsp.StaticLSPProvider.definition"
-    ) as mock_definition:
+    with patch("codenib.mcp.tools.lsp.StaticLSPProvider.definition") as mock_definition:
         mock_definition.return_value = []
 
         lsp_definition_impl(ctx, file_path="caller.py", line=0)

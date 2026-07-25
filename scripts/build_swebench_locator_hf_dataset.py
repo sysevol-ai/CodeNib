@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -16,7 +16,7 @@ from typing import Any, Dict, List
 import datasets
 import pyarrow as pa
 
-from codeminer.log_utils import get_logger
+from codenib.log_utils import get_logger
 
 logger = get_logger(__name__)
 

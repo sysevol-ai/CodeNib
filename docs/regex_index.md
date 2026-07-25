@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -29,10 +29,10 @@ The `RegexNodeIndex` provides grep-like functionality for searching code content
 ### Basic Usage
 
 ```python
-from codeminer import CodeGraph, RegexNodeIndex
+from codenib import CodeGraph, RegexNodeIndex
 
 # Load existing CodeGraph
-code_graph = CodeGraph.load_graph("~/.codeminer/xxx/graph.pkl")
+code_graph = CodeGraph.load_graph("~/.codenib/xxx/graph.pkl")
 
 # Build index from CodeGraph
 idx = RegexNodeIndex(code_graph=code_graph)

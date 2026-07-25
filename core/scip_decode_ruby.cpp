@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +11,7 @@
 #include <re2/re2.h>
 #include <utility>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
 
@@ -719,4 +719,4 @@ SCIPRubyDecoder::read_source_lines(const std::string &file_path) const {
   return lines;
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

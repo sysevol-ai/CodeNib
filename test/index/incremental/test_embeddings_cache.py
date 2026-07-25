@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from codeminer.index.incremental.embeddings_cache import EmbeddingsCache
+from codenib.index.incremental.embeddings_cache import EmbeddingsCache
 
 
 def make_vec(val: float = 1.0, dim: int = 4) -> np.ndarray:

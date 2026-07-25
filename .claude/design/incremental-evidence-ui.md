@@ -79,7 +79,7 @@ except the node delta below, which is per-commit rather than aggregate.
 
 ## API
 
-`WindowStats` is a new pydantic model in `codeminer/web/schemas.py` mirroring the
+`WindowStats` is a new pydantic model in `codenib/web/schemas.py` mirroring the
 `stats` block above. `RepoInfo` (same module) gains one optional field:
 
 ```python

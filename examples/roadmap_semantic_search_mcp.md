@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -14,7 +14,7 @@ This only covers the embedding/vector part. Graph tools and manifest schema chan
 
 ### `search_semantic`
 
-**`codeminer/mcp/tools/search.py`**
+**`codenib/mcp/tools/search.py`**
 
 ```python
 async def search_semantic(
@@ -51,7 +51,7 @@ if ctx.vector is None:
 
 ### `ServerContext` — FAISS load
 
-**`codeminer/mcp/context.py`** (overall structure from RFC, I own the `vector` load path)
+**`codenib/mcp/context.py`** (overall structure from RFC, I own the `vector` load path)
 
 **Key constraint:** `CodeVectorStore` requires embedding model info at `__init__` time, not during `.load()`.
 
@@ -134,7 +134,7 @@ Populated by indexing stage. `CodeVectorStore.save()` already writes this to `co
   - assert top_k and level forwarding
   - ctx.vector = None → error returned, no exception
 
-✓ Integration test (real index from /mnt/data/codeminer)
+✓ Integration test (real index from ${CODENIB_PREBUILT_DIR})
   - Use Turquoise-T's pre-built indexes (8 embedding models available)
   - Test with jinaai/jina-code-embeddings-1.5b (1536-dim, IP metric)
   - Sample repo: astropy__astropy-12907 (6870 l2 documents)

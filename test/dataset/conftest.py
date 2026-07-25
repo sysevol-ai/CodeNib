@@ -1,33 +1,25 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Pytest fixtures for dataset tests using real SWE-bench Multilingual data."""
 
-import os
 from pathlib import Path
 
 import pytest
 from filelock import FileLock
 
-from codeminer.dataset.gt_locate import GTLocator
-from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
+from codenib.dataset.gt_locate import GTLocator
+from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
+from codenib.paths import temp_state_dir
 
 
 def _gt_work_dir() -> Path:
-    """Per-job dir on a CI runner, persistent /tmp dir locally.
+    """Use the configured disposable-state root for cloned test repos."""
 
-    On GitHub Actions ``RUNNER_TEMP`` points at a directory the runner
-    cleans up between jobs, so cross-run ownership drift on a self-hosted
-    runner can't accumulate. Locally we keep a persistent path under
-    ``/tmp`` so iterating on dataset tests doesn't re-clone every repo.
-    """
-    runner_temp = os.environ.get("RUNNER_TEMP")
-    if runner_temp:
-        return Path(runner_temp) / "codeminer-gt-test"
-    return Path("/tmp/codeminer-gt-test")
+    return temp_state_dir() / "gt-test"
 
 
 GT_TEST_WORK_DIR = _gt_work_dir()

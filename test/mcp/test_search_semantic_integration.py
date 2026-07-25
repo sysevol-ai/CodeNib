@@ -1,32 +1,32 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """
 Integration tests for search_semantic with real embedding indexes.
 
-Uses pre-built indexes from /mnt/data/codeminer (Turquoise-T's dataset).
+Uses pre-built indexes from the configured CodeNib prebuilt root.
 """
 
 import asyncio
-from pathlib import Path
 
 import pytest
 
-from codeminer.compiler.manifest import IndexEntry, RepoManifest
-from codeminer.mcp.context import ServerContext
-from codeminer.mcp.tools.search import search_semantic
+from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.mcp.context import ServerContext
+from codenib.mcp.tools.search import search_semantic
+from codenib.paths import prebuilt_data_dir
 
 # Test data directory
-CODEMINER_DATA = Path("/mnt/data/codeminer")
+CODENIB_DATA = prebuilt_data_dir()
 TEST_REPO = "astropy__astropy-12907"
-TEST_REPO_PATH = CODEMINER_DATA / TEST_REPO
+TEST_REPO_PATH = CODENIB_DATA / TEST_REPO
 
 
 @pytest.mark.slow
 @pytest.mark.skipif(
     not TEST_REPO_PATH.exists(),
-    reason="Test data not available at /mnt/data/codeminer",
+    reason=f"Test data not available at {CODENIB_DATA}",
 )
 class TestSearchSemanticIntegration:
     """Integration tests with real FAISS indexes."""
@@ -59,7 +59,7 @@ class TestSearchSemanticIntegration:
         # Manually load vector store (since we're bypassing ServerContext.load)
         ctx = ServerContext(manifest=manifest)
 
-        from codeminer.index.embedding.vector_store import CodeVectorStore
+        from codenib.index.embedding.vector_store import CodeVectorStore
 
         ctx.vector = CodeVectorStore(
             embedding_model="jinaai/jina-code-embeddings-1.5b",

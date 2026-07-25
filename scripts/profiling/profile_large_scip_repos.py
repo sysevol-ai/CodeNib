@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -37,9 +37,11 @@ _CORE = _PROJECT_ROOT / "build" / "core"
 if _CORE.exists() and str(_CORE) not in sys.path:
     sys.path.insert(0, str(_CORE))
 
+from codenib.paths import temp_state_dir  # noqa: E402
+
 DEFAULT_MANIFEST = Path(__file__).with_name("large_scip_repos.yml")
-DEFAULT_CACHE_ROOT = Path("/tmp/codeminer-large-scip-repos")
-DEFAULT_OUTPUT_DIR = Path("/tmp/codeminer-large-scip-profile")
+DEFAULT_CACHE_ROOT = temp_state_dir() / "large-scip-repos"
+DEFAULT_OUTPUT_DIR = temp_state_dir() / "large-scip-profile"
 DEFAULT_TIMEOUT_S = 1800
 DEFAULT_ACCELERATION_THRESHOLD = 0.20
 
@@ -352,7 +354,7 @@ def run_serial_profile(
     *,
     timeout: int,
 ) -> BackendProfile:
-    from codeminer.profiler import Profiler
+    from codenib.profiler import Profiler
 
     profile = BackendProfile(backend="serial", status="failed")
     serial_output = repo_output / "serial"
@@ -400,15 +402,15 @@ def run_core_profile(
     serial: BackendProfile,
     timeout: int,
 ) -> BackendProfile:
-    from codeminer.languages import core_decoder_languages
-    from codeminer.profiler import Profiler
+    from codenib.languages import core_decoder_languages
+    from codenib.profiler import Profiler
 
     profile = BackendProfile(backend="core", status="skipped")
     if repo.language not in core_decoder_languages(include_aliases=True):
         profile.error = f"{repo.language} has no accepted C++ core decoder"
         return profile
-    if importlib.util.find_spec("codeminer_core") is None:
-        profile.error = "codeminer_core pybind module is not importable"
+    if importlib.util.find_spec("codenib_core") is None:
+        profile.error = "codenib_core pybind module is not importable"
         return profile
     if serial.status != "ok":
         profile.error = "serial profile did not complete; no decoded file to reuse"
@@ -462,7 +464,7 @@ def create_profile_indexer(
 ) -> Any:
     """Create the SCIP route whose decoder backend is being measured."""
 
-    from codeminer.ls_router import SCIP_CANDIDATE_GRAPH_ROUTE, LSIndexer
+    from codenib.ls_router import SCIP_CANDIDATE_GRAPH_ROUTE, LSIndexer
 
     return LSIndexer(
         repo_root,

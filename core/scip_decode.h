@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -18,7 +18,7 @@
 #include "scip_decode_ts.h"
 #include "scip_decoder_registry.h"
 
-namespace codeminer::core {
+namespace codenib::core {
 // Backward-compat alias (old tests may still reference this name).
 using SCIPGraphDecoder = SCIPPythonDecoder;
-} // namespace codeminer::core
+} // namespace codenib::core

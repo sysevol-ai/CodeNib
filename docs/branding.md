@@ -1,55 +1,64 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeNib Naming and Compatibility
+# CodeNib Naming
 
-CodeNib is the product name. The CodeMiner compatibility namespace remains in
-place for existing installations, clients, caches, and published artifacts.
-The display-name migration does not require users to rebuild indexes or change
-imports, configuration, or artifact URLs.
+CodeNib is both the product name and the maintained programmatic namespace on
+`main`. The frozen artifact branch preserves earlier experiments; current
+installations use the CodeNib package, commands, environment variables, and
+state paths directly.
 
 ## Preferred Commands
 
 New installations may use the product-facing commands:
 
 ```bash
-codenib-mcp /path/to/repo/.codeminer_cache/repo_manifest.json
+codenib-mcp /path/to/repo/.codenib_cache/repo_manifest.json
 codenib-web
 ```
 
-`codeminer-mcp` and `codeminer-web` remain supported aliases backed by the same
-Python functions. The other existing `codeminer-*` evaluation and artifact
-commands are unchanged.
-
-Python continues to use the `codeminer` distribution and import package.
-Agent callers may use either spelling below; both names refer to the same class
-object:
+Python uses the `codenib` distribution and import package:
 
 ```python
-from codeminer.agent import CodeMinerAgentOptions, CodeNibAgentOptions
+from codenib.agent import CodeNibAgentOptions
 ```
 
-## Stable Compatibility Inputs
+## Stable Inputs
 
 The following identifiers remain canonical:
 
-- `CODEMINER_*` environment variables;
-- `~/.codeminer`, `.codeminer_cache`, and `.codeminer_qa` state roots;
-- the `codeminer` package and every existing `codeminer-*` command;
-- MCP server ID `codeminer`, prompt ID `codeminer-guide`, tool names, and
-  `codeminer_context` skill ID;
+- `CODENIB_*` environment variables;
+- `~/.codenib`, `.codenib_cache`, and `.codenib_qa` state roots;
+- the `codenib` package and every existing `codenib-*` command;
+- MCP server ID `codenib`, prompt ID `codenib-guide`, tool names, and
+  `codenib_context` skill ID;
 - manifest, graph, vector, and incremental-cache formats, including the
   `repo_manifest.json`, `graph.pkl`, `incremental_state.json`,
   `chunk_store.pkl`, `embeddings_cache.pkl`, and `qa_registry.json` entry
   filenames;
 - repository URL `https://github.com/sysevol-ai/CodeMiner`;
-- CodeMiner Base, CodeMiner Synthesis, their Hub IDs, and artifact paths;
-- public classes such as `CodeMinerAgentOptions`, `CodeMinerBaseDataset`, and
-  `CodeMinerSynthesisDataset`.
+- CodeNib Base, CodeNib Synthesis, their Hub IDs, and artifact paths;
+- public classes such as `CodeNibAgentOptions`, `CodeNibBaseDataset`, and
+  `CodeNibSynthesisDataset`.
 
-CodeNib branding alone does not bump a schema or rewrite an artifact. A future
-change to any stable identifier requires an explicit migration decision,
-dual-read or alias behavior where applicable, and compatibility tests.
+The GitHub and Hub values above are immutable external addresses, not aliases
+for executable CodeNib interfaces. Schemas change only when their serialized
+structure or declared identity changes.
+
+## Filesystem Roots
+
+CodeNib resolves machine-dependent locations through four environment
+variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CODENIB_HOME` | `~/.codenib` | User-owned datasets, checkouts, and state |
+| `CODENIB_PREBUILT_DIR` | `$CODENIB_HOME/prebuilt` | Reusable repository artifacts |
+| `CODENIB_RESULTS_DIR` | `$CODENIB_HOME/results` | Benchmark and experiment outputs |
+| `CODENIB_TEMP_DIR` | `$TMPDIR/codenib` | Disposable indexer and tool work |
+
+Repository-owned indexes remain under `<repo>/.codenib_cache`; this is a
+portable layout contract rather than a machine-specific absolute path.

@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -52,14 +52,14 @@ end:
 A candidate SCIP language can become `active` only when all of these are true:
 
 - Tool discovery works through `scip_cold_start_command_for_language()` and any
-  `CODEMINER_*_SCIP_CMD` override.
+  `CODENIB_*_SCIP_CMD` override.
 - A minimal real-project smoke test can produce `index.scip`, decode it, and
   write a CodeGraph.
 - The serial Python decoder maps symbols, files, ranges, definition nodes,
   containment edges, and reference anchors into the existing CodeGraph schema.
 - Backend alignment against the existing LSP graph is measured where an LSP
   backend exists. Any accepted reference/call-edge tolerance is documented.
-- `docs/language_capabilities.md` and `codeminer/languages.py` agree.
+- `docs/language_capabilities.md` and `codenib/languages.py` agree.
 - Tests cover the registry metadata, command override, smoke behavior, and
   decoder parity surface.
 - CI or an equivalent local validation run is recorded before merge.
@@ -148,11 +148,11 @@ Real-repo Java smoke status: `jitpack/maven-simple` at commit
 `App`, `App.greet(String)()`, and `App.main(String[])()`.
 
 Route-level Java gate status: `make graph-route-alignment
-PROJECT_LANGUAGE=java PROJECT_ROOT=/tmp/codeminer-real-java/maven-simple
-GRAPH_ALIGNMENT_OUTPUT_DIR=/tmp/codeminer-java-route-alignment
+PROJECT_LANGUAGE=java PROJECT_ROOT=${CODENIB_TEMP_DIR}/real-java/maven-simple
+GRAPH_ALIGNMENT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/java-route-alignment
 GRAPH_ALIGNMENT_EXTRA_ARGS=--reference-include-references` builds both routes
 from the registry and writes isolated artifacts under
-`/tmp/codeminer-java-route-alignment/maven-simple-java/`. The current JDT LS
+`${CODENIB_TEMP_DIR}/java-route-alignment/maven-simple-java/`. The current JDT LS
 reference graph has 21 vertices and 25 edges; the SCIP candidate graph has 29
 vertices and 37 edges. Alignment is strict-green for symbols and containment:
 `missing_symbols=[]`, `extra_symbols=[]`, `missing_containment=[]`,
@@ -306,9 +306,9 @@ and `Helpers.normalize()`.
 Real-repo Scala gate status: `sbt/io` at commit
 `ca47d04466174ccf69adb16433b1b0f3f2521f05` was validated as the first active
 Scala gate after adding a pinned Makefile SBT install under
-`CODEMINER_SCIP_TOOLS_DIR`. The command
+`CODENIB_SCIP_TOOLS_DIR`. The command
 `scripts/smoke_scip_cold_start.py --languages scala --project-root
-/tmp/codeminer-real-scala-sbtio --output-dir /tmp/codeminer-scala-sbtio-smoke
+${CODENIB_TEMP_DIR}/real-scala-sbtio --output-dir ${CODENIB_TEMP_DIR}/scala-sbtio-smoke
 --expected-symbol IO --expected-symbol Path --json` produced `index.scip`,
 `index.decoded`, and `graph.pkl` with 3,571 vertices, 18,611 edges, and 15,995
 reference edges. `scip-java` indexing took about 74.527s, protoc decode took
@@ -355,8 +355,8 @@ Real-repo C# smoke status: `dotnet/samples` at commit
 `Program`; the SCIP graph found `Program` and `Program.Main(string[] args)()`.
 Route-level promotion gate
 `make graph-route-alignment PROJECT_LANGUAGE=csharp
-PROJECT_ROOT=/tmp/codeminer-real-csharp/samples/core/console-apps/HelloMsBuild
-GRAPH_ALIGNMENT_OUTPUT_DIR=/tmp/codeminer-csharp-route-alignment
+PROJECT_ROOT=${CODENIB_TEMP_DIR}/real-csharp/samples/core/console-apps/HelloMsBuild
+GRAPH_ALIGNMENT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/csharp-route-alignment
 GRAPH_ALIGNMENT_EXTRA_ARGS=--reference-include-references` is strict-green for
 definition symbols and containment:
 `missing_symbols=[]`, `extra_symbols=[]`, `missing_containment=[]`,
@@ -399,7 +399,7 @@ graph quality, not tool existence alone.
 
 Current Ruby active hybrid status: the registry routes Ruby through
 `RubyHybridIndexer`. Explicit overlay bundles selected with
-`CODEMINER_RUBY_BUNDLE_GEMFILE` or `BUNDLE_GEMFILE`, and project Gemfiles that
+`CODENIB_RUBY_BUNDLE_GEMFILE` or `BUNDLE_GEMFILE`, and project Gemfiles that
 declare `scip-ruby`, prefer `SCIPRubyIndexer`. Loose Ruby projects and ordinary
 Gemfiles without `scip-ruby` keep the generic ruby-lsp route, and active SCIP
 failures fall back to ruby-lsp. The explicit `graph_route="lsp"` path remains
@@ -433,13 +433,13 @@ source-route alignment. Reference counts remain informational in this gate
 
 Real-repo Ruby gate status: `ruby/rake` at commit
 `2dce6007988b302e07049f36d8528459ecf7ff01` was validated with a non-invasive
-`.codeminer/Gemfile` overlay selected through `CODEMINER_RUBY_BUNDLE_GEMFILE`;
+`.codenib/Gemfile` overlay selected through `CODENIB_RUBY_BUNDLE_GEMFILE`;
 the overlay uses `gemspec path: ".."` and adds pinned `ruby-lsp` 0.26.9 plus
 `scip-ruby` 0.4.7. The generic LSP client now maps that overlay variable into
 `BUNDLE_GEMFILE` for Ruby and removes `GEM_PATH`, matching the Ruby SCIP
 indexer environment so ruby-lsp does not accidentally resolve the target
 project's own Gemfile. Route alignment on `lib/` with `vendor/**` and
-`.codeminer/**` excluded now runs end-to-end with one accepted source-modeling
+`.codenib/**` excluded now runs end-to-end with one accepted source-modeling
 difference:
 `symbols ref=598 cand=598 missing=1 extra=1`, `contain ref=598 cand=598
 missing=1 extra=1`, and references differ (`ruby-lsp`: 0, `scip-ruby`: 2770).
@@ -487,7 +487,7 @@ pure SCIP route for smoke, alignment, and profiling gates.
 
 Local PHP/Composer are not required for the generated smoke when Docker is
 available; the smoke uses the `composer:2` image, runs as the host UID/GID, and
-can be overridden with `CODEMINER_PHP_COMPOSER_IMAGE`. The pure SCIP route
+can be overridden with `CODENIB_PHP_COMPOSER_IMAGE`. The pure SCIP route
 prepares a throwaway Composer worktree under the route output directory before
 running `vendor/bin/scip-php`, so Composer install/require operations and
 `index.scip` generation do not mutate the source checkout. If the source
@@ -511,11 +511,11 @@ Generated PHP alignment status: source-only Intelephense alignment on the same
 tiny smoke is strict-green for namespace, class, method, and top-level function
 symbols/containment after namespace synthesis and source-AST function
 supplementation. `scripts/smoke_scip_cold_start.py --languages php
---output-dir /tmp/codeminer-php-normalize-smoke --json` produced 8 vertices, 9
+--output-dir ${CODENIB_TEMP_DIR}/php-normalize-smoke --json` produced 8 vertices, 9
 edges, 2 references, and no missing expected symbols. `scripts/check_graph_route_alignment.py
---project-root /tmp/codeminer-php-normalize-smoke/php --language php
+--project-root ${CODENIB_TEMP_DIR}/php-normalize-smoke/php --language php
 --reference-route lsp --candidate-route scip-candidate --target-dir src
---exclude-pattern 'vendor/**' --output-dir /tmp/codeminer-php-normalize-alignment
+--exclude-pattern 'vendor/**' --output-dir ${CODENIB_TEMP_DIR}/php-normalize-alignment
 --json --clean` is strict-green: symbols `ref=4 cand=4 missing=0 extra=0`,
 containment `ref=4 cand=4 missing=0 extra=0`, references `ref=0 cand=2`.
 A full-root Intelephense run that includes `vendor/` scans thousands of
@@ -527,14 +527,14 @@ the active hybrid route because Composer projects use SCIP and explicit
 
 Real-repo PHP gate status: `php-fig/container` at commit
 `707984727bd5b2b670e59559d3ed2500240cf875` was prepared in
-`/tmp/codeminer-real-php-container`. The pure SCIP route copies that
+`${CODENIB_TEMP_DIR}/real-php-container`. The pure SCIP route copies that
 checkout to an output-local worktree before indexing, and the source checkout
 does not receive a new `index.scip` artifact. Source-only route alignment on
 `src/` with `vendor/**` excluded is strict-green:
 `scripts/check_graph_route_alignment.py --project-root
-/tmp/codeminer-real-php-container --language php --reference-route lsp
+${CODENIB_TEMP_DIR}/real-php-container --language php --reference-route lsp
 --candidate-route scip-candidate --target-dir src --exclude-pattern 'vendor/**'
---output-dir /tmp/codeminer-php-container-alignment-noninvasive --json --clean`
+--output-dir ${CODENIB_TEMP_DIR}/php-container-alignment-noninvasive --json --clean`
 reports
 symbols `ref=8 cand=8 missing=0 extra=0`, containment
 `ref=8 cand=8 missing=0 extra=0`, references `ref=0 cand=1`. This validation
@@ -550,12 +550,12 @@ active route was rechecked against explicit LSP on the same project:
 ```bash
 make graph-route-alignment \
   PROJECT_LANGUAGE=php \
-  PROJECT_ROOT=/tmp/codeminer-real-php-container \
+  PROJECT_ROOT=${CODENIB_TEMP_DIR}/real-php-container \
   GRAPH_ALIGNMENT_REFERENCE_ROUTE=active \
   GRAPH_ALIGNMENT_CANDIDATE_ROUTE=lsp \
   GRAPH_ALIGNMENT_TARGET_DIR=src \
   GRAPH_ALIGNMENT_EXCLUDE_PATTERNS='vendor/**' \
-  GRAPH_ALIGNMENT_OUTPUT_DIR=/tmp/codeminer-php-active-vs-lsp-alignment \
+  GRAPH_ALIGNMENT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/php-active-vs-lsp-alignment \
   GRAPH_ALIGNMENT_EXTRA_ARGS='--clean'
 ```
 
@@ -617,7 +617,7 @@ requires an index-quality report before latency measurement. The shared gate
 checks compile DB size and resolved files, repository translation-unit coverage,
 graph-to-compile-DB translation-unit coverage, range/unified metadata, and
 optional old/new vertex and edge ratios. A
-19-instance `codeminer-base` calibration found one false-success artifact:
+19-instance `codenib-base` calibration found one false-success artifact:
 `micropython__micropython-10095` had only 2 compile commands and a graph at
 12.6% of baseline vertices. The corrected `ports/unix` capture produced 286
 compile commands and a graph with 9,151 vertices and 72,207 edges. clangd and
@@ -628,7 +628,7 @@ Python indexing harness, not in the C++ decoder layer.
 
 Python SCIP decoders now share descriptor extraction, descriptor suffix
 normalization, and `unified_name` formatting helpers in
-`codeminer.scip_interface.scip_decode_utils` where symbol shapes are compatible.
+`codenib.scip_interface.scip_decode_utils` where symbol shapes are compatible.
 Language-specific handling, such as Ruby singleton-class descriptors and Kotlin
 synthetic symbol filters, stays in the owning decoder.
 
@@ -742,27 +742,27 @@ make lsp-smoke
 make multilang-registry-check
 make scip-project-smoke \
   PROJECT_LANGUAGE=java \
-  PROJECT_ROOT=/tmp/codeminer-real-java/maven-simple \
-  SCIP_PROJECT_OUTPUT_DIR=/tmp/codeminer-java-real-scip \
+  PROJECT_ROOT=${CODENIB_TEMP_DIR}/real-java/maven-simple \
+  SCIP_PROJECT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/java-real-scip \
   SCIP_PROJECT_EXTRA_ARGS="--expected-symbol App --expected-symbol 'App.greet(String)()' --expected-symbol 'App.main(String[])()'"
 make lsp-project-smoke \
   PROJECT_LANGUAGE=java \
-  PROJECT_ROOT=/tmp/codeminer-real-java/maven-simple \
-  LSP_PROJECT_OUTPUT_DIR=/tmp/codeminer-java-real-lsp \
+  PROJECT_ROOT=${CODENIB_TEMP_DIR}/real-java/maven-simple \
+  LSP_PROJECT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/java-real-lsp \
   LSP_PROJECT_EXTRA_ARGS="--expected-symbol App --expected-symbol 'App.greet(String)()' --expected-symbol 'App.main(String[])()' --reference-languages java --min-references java=1"
 make graph-route-alignment \
   PROJECT_LANGUAGE=java \
-  PROJECT_ROOT=/tmp/codeminer-real-java/maven-simple \
+  PROJECT_ROOT=${CODENIB_TEMP_DIR}/real-java/maven-simple \
   GRAPH_ALIGNMENT_REFERENCE_ROUTE=active \
   GRAPH_ALIGNMENT_CANDIDATE_ROUTE=lsp \
-  GRAPH_ALIGNMENT_OUTPUT_DIR=/tmp/codeminer-java-active-route-alignment \
+  GRAPH_ALIGNMENT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/java-active-route-alignment \
   GRAPH_ALIGNMENT_EXTRA_ARGS=--candidate-include-references
 make graph-route-alignment \
   PROJECT_LANGUAGE=csharp \
-  PROJECT_ROOT=/tmp/codeminer-real-csharp/samples/core/console-apps/HelloMsBuild \
+  PROJECT_ROOT=${CODENIB_TEMP_DIR}/real-csharp/samples/core/console-apps/HelloMsBuild \
   GRAPH_ALIGNMENT_REFERENCE_ROUTE=active \
   GRAPH_ALIGNMENT_CANDIDATE_ROUTE=lsp \
-  GRAPH_ALIGNMENT_OUTPUT_DIR=/tmp/codeminer-csharp-active-route-alignment \
+  GRAPH_ALIGNMENT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/csharp-active-route-alignment \
   GRAPH_ALIGNMENT_EXTRA_ARGS=--candidate-include-references
 python -m mkdocs build --strict
 ```
@@ -771,7 +771,7 @@ When touching SCIP decoders or C++ acceleration, add the relevant decoder,
 profile, and parity commands from `docs/core_cpp.md` and
 `docs/experiments/lsp_core_acceleration.md`.
 
-The provider-level acceleration gate now has a complete CodeMiner Base run over
+The provider-level acceleration gate now has a complete CodeNib Base run over
 100 unique snapshots and five languages. All artifact quality checks and live
 warmup gates passed. Of 1,000 deterministic native requests, 632 were
 agent-visible equivalent; the admitted measured rows had 0.62 ms static p50,
@@ -781,5 +781,5 @@ language/capability guarded with explicit live fallback. C/C++ replay must bind
 clangd to each artifact profile's compilation database and use a ten-second
 idle grace. Reviewable aggregate artifacts are committed under
 `docs/experiments/artifacts/lsp_replay_base_v3_100/`; the full per-snapshot report
-set remains under `/mnt/data/codeminer/results/lsp_replay_base_v3_100/`. Full
+set remains under `${CODENIB_RESULTS_DIR}/lsp_replay_base_v3_100/`. Full
 protocol details are in `docs/experiments/lsp_core_acceleration.md`.

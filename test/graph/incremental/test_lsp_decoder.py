@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -13,11 +13,11 @@ Tests the full decode pipeline for each LSP message format:
 Uses mock LSP responses (no actual LSP server needed).
 """
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.incremental.patcher_go import PatcherGo
-from codeminer.graph.incremental.patcher_python import PatcherPython
-from codeminer.graph.incremental.patcher_rust import PatcherRust
-from codeminer.graph.incremental.patcher_ts import PatcherTS
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.incremental.patcher_go import PatcherGo
+from codenib.graph.incremental.patcher_python import PatcherPython
+from codenib.graph.incremental.patcher_rust import PatcherRust
+from codenib.graph.incremental.patcher_ts import PatcherTS
 
 # ═══════════════════════════════════════════════════════════════
 # Helpers: mock LSP responses
@@ -244,7 +244,7 @@ class _MockClient:
         return p
 
     def decode_semantic_tokens(self, response, file_path):
-        from codeminer.graph.incremental.lsp_client import LSPClient
+        from codenib.graph.incremental.lsp_client import LSPClient
 
         return LSPClient.decode_semantic_tokens(self, response, file_path)
 

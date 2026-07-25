@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from codeminer.eval.agent_runner.format_diagnostics import (
+from codenib.eval.agent_runner.format_diagnostics import (
     load_format_diagnostics,
     load_meaningful_cells,
     summarize_format_cells,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,27 +9,27 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from codeminer.agent.lsp_provider import (
+from codenib.agent.lsp_provider import (
     STATIC_LSP_PROVIDER,
     LSPProviderNodes,
     StaticLSPProvider,
     normalize_native_lsp_nodes,
 )
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.core import (
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.scip_interface.lsp_occurrence_index import (
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.graph.code_graph import CodeGraph
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.scip_interface.lsp_occurrence_index import (
     SCIPOccurrence,
     SCIPOccurrenceIndex,
 )
-from codeminer.types import NODE_TYPE_FUNCTION
+from codenib.types import NODE_TYPE_FUNCTION
 
 
 def _range_graph() -> CodeGraph:

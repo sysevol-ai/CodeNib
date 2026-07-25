@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Aggregate a codeminer-synthesis per-query sweep, broken down by CATEGORY.
+"""Aggregate a codenib-synthesis per-query sweep, broken down by CATEGORY.
 
 The synthesis ``category`` is the axis that discriminates grep vs retrieval:
 ``behavioral`` queries name no identifiers (grep must explore the repo blind),
@@ -36,7 +36,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from codeminer.eval.agent_runner.metrics import (
+from codenib.eval.agent_runner.metrics import (
     load_cell_jsons,
     metric_at_k,
     safe_mean,
@@ -185,7 +185,7 @@ def render(agg: Dict[str, Any]) -> str:
     rows = agg["by_cat_arm"]
     cats = sorted({c for (c, _a) in rows})
     arms = sorted({a for (_c, a) in rows})
-    L = ["# CodeMiner-synthesis per-category localization", ""]
+    L = ["# CodeNib-synthesis per-category localization", ""]
     L.append(
         "Headline = `answer_rec@5` (the agent's committed-answer span recall). "
         "`retr_rec@10` is the retriever ceiling. `contrib` = fraction of answer "

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,12 +6,12 @@
 
 from __future__ import annotations
 
-from codeminer.ops.rerank import (
+from codenib.ops.rerank import (
     rerank_by_cross_encoder,
     rerank_by_embedding,
     rerank_by_indexed_embedding,
 )
-from codeminer.types import NodeInfo, QueriedNode
+from codenib.types import NodeInfo, QueriedNode
 
 
 class _FakeEmbedding:

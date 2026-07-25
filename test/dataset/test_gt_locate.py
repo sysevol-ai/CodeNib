@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Tests for codeminer.dataset.gt_locate.
+Tests for codenib.dataset.gt_locate.
 
 Unit tests run without network access (patch parsing, helpers).
 Integration tests pull real repos from SWE-bench Multilingual and exercise
@@ -14,8 +14,8 @@ the full analyze_instance pipeline.
 
 import pytest
 
-from codeminer.code_chunking.base import CodeChunk
-from codeminer.dataset.gt_locate import (
+from codenib.code_chunking.base import CodeChunk
+from codenib.dataset.gt_locate import (
     SYMBOL_CHUNK_TYPES,
     GTLocator,
     _chunk_to_code_block,

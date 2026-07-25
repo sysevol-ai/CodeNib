@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Profile Python vs C++ graph-layer edge classification.
 
 This isolates the shared ``MultiGraphIndex`` classifier from graph decoding and
-language-server time. The C++ path is optional; when ``codeminer_core`` is not
+language-server time. The C++ path is optional; when ``codenib_core`` is not
 available the report records ``core_available=false``.
 """
 
@@ -27,8 +27,8 @@ _CORE = _PROJECT_ROOT / "build" / "core"
 if _CORE.exists() and str(_CORE) not in sys.path:
     sys.path.insert(0, str(_CORE))
 
-from codeminer.graph.layers import classify_edge_layers
-from codeminer.types import (
+from codenib.graph.layers import classify_edge_layers
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_IMPORT,
     EDGE_TYPE_REFERENCE,
@@ -62,7 +62,7 @@ def profile_layers(edge_count: int, reps: int) -> dict:
     edge_types = build_edge_types(edge_count)
     python_times, python_result = _run_reps(edge_types, reps, use_core=False)
 
-    core_available = importlib.util.find_spec("codeminer_core") is not None
+    core_available = importlib.util.find_spec("codenib_core") is not None
     core_times = []
     core_result = None
     if core_available:

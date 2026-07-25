@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for ``codeminer.agent.compile`` (issue #133, Phase 1)."""
+"""Tests for ``codenib.agent.compile`` (issue #133, Phase 1)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.agent.compile import (
+from codenib.agent.compile import (
     SUPPORTED_LANGUAGES,
     Scenario,
     agent_compile,
@@ -21,7 +21,7 @@ from codeminer.agent.compile import (
     load_compile_table,
     normalize_language,
 )
-from codeminer.compiler.params import SessionContext
+from codenib.compiler.params import SessionContext
 
 # ---------------------------------------------------------------------------
 # detect_stacktrace

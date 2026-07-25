@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -52,12 +52,12 @@ if _PROJECT_ROOT not in sys.path:
 
 from pydantic import BaseModel, Field  # noqa: E402
 
-from codeminer.llm.litellm_chat import (  # noqa: E402
+from codenib.llm.litellm_chat import (  # noqa: E402
     LiteLLMChat,
     human_message,
     system_message,
 )
-from codeminer.log_utils import get_logger  # noqa: E402
+from codenib.log_utils import get_logger  # noqa: E402
 
 logger = get_logger(__name__)
 

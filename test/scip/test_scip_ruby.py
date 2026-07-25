@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,13 +6,10 @@
 
 from __future__ import annotations
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
-from codeminer.scip_interface.scip_indexer_ruby import (
-    RubyHybridIndexer,
-    SCIPRubyIndexer,
-)
-from codeminer.types import (
+from codenib.graph.code_graph import CodeGraph
+from codenib.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
+from codenib.scip_interface.scip_indexer_ruby import RubyHybridIndexer, SCIPRubyIndexer
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
     NODE_TYPE_CLASS,
@@ -474,7 +471,7 @@ documents {
 
 
 def test_scip_ruby_indexer_builds_registered_command(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_RUBY_SCIP_CMD", "bundle exec scip-ruby")
+    monkeypatch.setenv("CODENIB_RUBY_SCIP_CMD", "bundle exec scip-ruby")
 
     indexer = SCIPRubyIndexer(tmp_path, output_dir=tmp_path / "out")
 
@@ -509,13 +506,13 @@ def test_ruby_hybrid_indexer_prefers_scip_for_overlay_bundle(
     tmp_path,
     monkeypatch,
 ):
-    overlay = tmp_path / ".codeminer/Gemfile"
+    overlay = tmp_path / ".codenib/Gemfile"
     overlay.parent.mkdir()
     overlay.write_text(
         'source "https://rubygems.org"\ngem "scip-ruby"\n',
         encoding="utf-8",
     )
-    monkeypatch.setenv("CODEMINER_RUBY_BUNDLE_GEMFILE", ".codeminer/Gemfile")
+    monkeypatch.setenv("CODENIB_RUBY_BUNDLE_GEMFILE", ".codenib/Gemfile")
 
     indexer = RubyHybridIndexer(tmp_path, output_dir=tmp_path / "out")
 
@@ -537,13 +534,13 @@ def test_ruby_hybrid_indexer_falls_back_to_lsp_when_scip_fails(
     tmp_path,
     monkeypatch,
 ):
-    overlay = tmp_path / ".codeminer/Gemfile"
+    overlay = tmp_path / ".codenib/Gemfile"
     overlay.parent.mkdir()
     overlay.write_text(
         'source "https://rubygems.org"\ngem "scip-ruby"\n',
         encoding="utf-8",
     )
-    monkeypatch.setenv("CODEMINER_RUBY_BUNDLE_GEMFILE", ".codeminer/Gemfile")
+    monkeypatch.setenv("CODENIB_RUBY_BUNDLE_GEMFILE", ".codenib/Gemfile")
     calls = []
 
     def fake_scip_run_pipeline(self, **kwargs):
@@ -558,7 +555,7 @@ def test_ruby_hybrid_indexer_falls_back_to_lsp_when_scip_fails(
 
     monkeypatch.setattr(SCIPRubyIndexer, "run_pipeline", fake_scip_run_pipeline)
     monkeypatch.setattr(
-        "codeminer.ls_index.lsp_indexer.GenericLSPIndexer.run_pipeline",
+        "codenib.ls_index.lsp_indexer.GenericLSPIndexer.run_pipeline",
         fake_lsp_run_pipeline,
     )
 
@@ -573,24 +570,24 @@ def test_ruby_hybrid_indexer_falls_back_to_lsp_when_scip_fails(
 
 
 def test_scip_ruby_indexer_unsets_gem_path_for_project_bundle(tmp_path, monkeypatch):
-    monkeypatch.setenv("GEM_HOME", "/tmp/codeminer-tools/gems")
-    monkeypatch.setenv("GEM_PATH", "/tmp/codeminer-tools/gems")
+    monkeypatch.setenv("GEM_HOME", "/tmp/codenib-tools/gems")
+    monkeypatch.setenv("GEM_PATH", "/tmp/codenib-tools/gems")
     (tmp_path / "Gemfile").write_text(
         'source "https://rubygems.org"\n', encoding="utf-8"
     )
 
     env = SCIPRubyIndexer(tmp_path, output_dir=tmp_path / "out")._ruby_env()
 
-    assert env["GEM_HOME"] == "/tmp/codeminer-tools/gems"
+    assert env["GEM_HOME"] == "/tmp/codenib-tools/gems"
     assert "GEM_PATH" not in env
     assert env["BUNDLE_GEMFILE"] == str(tmp_path / "Gemfile")
 
 
 def test_scip_ruby_indexer_uses_overlay_bundle_gemfile(tmp_path, monkeypatch):
-    overlay = tmp_path / ".codeminer/Gemfile"
+    overlay = tmp_path / ".codenib/Gemfile"
     overlay.parent.mkdir()
     overlay.write_text('source "https://rubygems.org"\n', encoding="utf-8")
-    monkeypatch.setenv("CODEMINER_RUBY_BUNDLE_GEMFILE", ".codeminer/Gemfile")
+    monkeypatch.setenv("CODENIB_RUBY_BUNDLE_GEMFILE", ".codenib/Gemfile")
 
     env = SCIPRubyIndexer(tmp_path, output_dir=tmp_path / "out")._ruby_env()
 

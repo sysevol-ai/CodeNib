@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 from types import SimpleNamespace
 
-from codeminer.index.embedding import builders
+from codenib.index.embedding import builders
 
 
 def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path):

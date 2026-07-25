@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,10 +11,10 @@ by source/target alone. Severance reporting must surface one record per
 anchor so the remap path can re-create one edge per call site.
 """
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.incremental.patcher_base import PatcherBase
-from codeminer.graph.incremental.subgraph_mgr import SubgraphMgr
-from codeminer.types import EDGE_TYPE_REFERENCE
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.incremental.patcher_base import PatcherBase
+from codenib.graph.incremental.subgraph_mgr import SubgraphMgr
+from codenib.types import EDGE_TYPE_REFERENCE
 
 
 class _StubPatcher(PatcherBase):
@@ -337,7 +337,7 @@ def test_delete_outgoing_in_anchor_ranges_only_reference():
             "unified_name": "a.py:Foo.helper",
         },
     )
-    from codeminer.types import EDGE_TYPE_CONTAIN
+    from codenib.types import EDGE_TYPE_CONTAIN
 
     g._add_edge("a.py:Foo", "a.py:Foo.helper", EDGE_TYPE_CONTAIN)
 
@@ -444,7 +444,7 @@ def test_shift_outgoing_anchor_lines_only_reference():
             "unified_name": "a.py:Foo.helper",
         },
     )
-    from codeminer.types import EDGE_TYPE_CONTAIN
+    from codenib.types import EDGE_TYPE_CONTAIN
 
     g._add_edge("a.py:Foo", "a.py:Foo.helper", EDGE_TYPE_CONTAIN)
 
@@ -1182,7 +1182,7 @@ def test_edge_batch_flush_invalidates_edge_index():
     a stale _edge_index in place, a follow-up _add_edge for one of the
     flushed keys will think the edge doesn't exist and create a duplicate.
     """
-    from codeminer.graph.incremental.subgraph_mgr import EdgeBatch
+    from codenib.graph.incremental.subgraph_mgr import EdgeBatch
 
     g = CodeGraph(project_root="/tmp/x")
     g.add_file_node("a.py")

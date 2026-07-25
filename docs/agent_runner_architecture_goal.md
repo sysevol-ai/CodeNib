@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -47,8 +47,8 @@ These are explicitly out of scope for core runtime promotion:
   scored output.
 - Model-specific prompt tricks promoted as core behavior before they pass a
   cross-model or external-agent comparison.
-- Moving experiment policy from `scripts/agent_compile` into `codeminer/agent`.
-  Experiment policy belongs in `codeminer/eval/agent_runner` or stays in the
+- Moving experiment policy from `scripts/agent_compile` into `codenib/agent`.
+  Experiment policy belongs in `codenib/eval/agent_runner` or stays in the
   experiment configuration.
 
 ## Layer Ownership
@@ -62,10 +62,10 @@ These are explicitly out of scope for core runtime promotion:
 Allowed import direction:
 
 ```text
-scripts/agent_compile -> codeminer.eval.agent_runner -> codeminer.agent
+scripts/agent_compile -> codenib.eval.agent_runner -> codenib.agent
 ```
 
-`codeminer/*` must not import `scripts.agent_compile`.
+`codenib/*` must not import `scripts.agent_compile`.
 
 ## Feedback Contract
 
@@ -91,7 +91,7 @@ would catch regressions independent of a single scorer result.
 | Milestone | State | Scope | Exit Signal |
 | --- | --- | --- | --- |
 | M0: CI fast-feedback ordering | Landed in #284 | Slow CI waits for fast lanes; cancelled checks are treated as incomplete | Fast lanes fail before expensive slow jobs start |
-| M1: Core/eval/script boundary | Landed before this plan and guarded by tests | Import boundaries and `codeminer.eval.agent_runner` package skeleton | Boundary tests fail if reusable packages import scripts |
+| M1: Core/eval/script boundary | Landed before this plan and guarded by tests | Import boundaries and `codenib.eval.agent_runner` package skeleton | Boundary tests fail if reusable packages import scripts |
 | M2: Sweep harness package extraction | Landed in #285 | Sweep config, cell execution, prebuilt staging, preload helpers move out of scripts | Scripts call package APIs; config defaults are not hard-coded model lore |
 | M3: Graph/LSP line-boundary contract | Landed in #286 | LSP-facing routes share agent line-boundary conversion | MCP and agent tests cover the shared contract |
 | M4: Deterministic feedback slices | Landed in #287 | Smoke plus seed-rotated holdout planning | A small run can be selected without hand-picking project names |
@@ -108,12 +108,12 @@ The next work should be ordered by architecture leverage, not by whichever
 benchmark cell is currently easiest to improve.
 
 1. **M7a: Context ledger primitives.**
-   Add a small `codeminer/agent/runtime` contract for context entries,
+   Add a small `codenib/agent/runtime` contract for context entries,
    provenance, token/cost estimates, freshness, and consumption status. This PR
    should not change model prompts or scorer behavior.
 
 2. **M8a: Trace replay summary.**
-   Move run-diagnosis logic into `codeminer.eval.agent_runner` so reports can
+   Move run-diagnosis logic into `codenib.eval.agent_runner` so reports can
    explain tool calls, skipped reads, repeated searches, injected context, and
    final answer spans from structured records.
 
@@ -129,7 +129,7 @@ benchmark cell is currently easiest to improve.
 5. **M9c: Generic baseline batch runner.**
    Landed in #295. Reusable task iteration, resume, exception capture, JSONL
    writing, and aggregate metric accounting now live in
-   `codeminer.eval.agent_runner`.
+   `codenib.eval.agent_runner`.
 
 6. **M9d: External loc baseline driver migration.**
    Landed in #296. The existing Codex/Claude localization baseline driver now
@@ -143,8 +143,8 @@ benchmark cell is currently easiest to improve.
 
 8. **M10b: External LOC baseline ownership.**
    Landed in #298. Reusable external localization baseline helpers live in
-   `codeminer.eval.agent_runner.loc_baseline`; maintained examples import that
-   package API, and `codeminer.eval.loc_agent_runner` is a deprecated
+   `codenib.eval.agent_runner.loc_baseline`; maintained examples import that
+   package API, and `codenib.eval.loc_agent_runner` is a deprecated
    compatibility wrapper only.
 
 9. **M10c: Promotion evidence contract.**
@@ -168,17 +168,17 @@ benchmark cell is currently easiest to improve.
 12. **M10e: Legacy shim namespace removal.**
     Remove `scripts/agent_compile/lib` after the migration window so experiment
     scripts no longer expose a core-looking library namespace. Reusable
-    agent-runner code must be imported from `codeminer.eval.agent_runner`.
+    agent-runner code must be imported from `codenib.eval.agent_runner`.
 
 13. **M10f: Sweep execution ownership.**
     Move reusable sweep execution semantics — harness validation, resume,
     prebuilt index loading, per-cell scoring, JSON record construction, and
-    transient failure persistence — into `codeminer.eval.agent_runner.sweep`.
+    transient failure persistence — into `codenib.eval.agent_runner.sweep`.
     `scripts/agent_compile/run_sweep.py` should remain CLI/config override glue.
 
 14. **M10g: Per-query sweep execution ownership.**
     Move reusable many-queries-per-repo execution semantics into
-    `codeminer.eval.agent_runner.query_sweep`. Dataset-specific scripts may
+    `codenib.eval.agent_runner.query_sweep`. Dataset-specific scripts may
     load and normalize rows, but context reuse, per-query scoring, resume, and
     transient failure persistence belong to the package layer.
 
@@ -203,34 +203,34 @@ benchmark cell is currently easiest to improve.
   runtime default. `AgentRunner` and `AgentHarnessSpec` default to no forced
   schema turn; `SweepConfig` opts in explicitly so localization evaluations stay
   comparable while non-benchmark agent use is not shaped by scorer formatting.
-- Sweep cell scoring lives in `codeminer.eval.agent_runner.scoring`. Scripts may
+- Sweep cell scoring lives in `codenib.eval.agent_runner.scoring`. Scripts may
   write the resulting fields to JSON, but they should not reimplement format
   failure, span metrics, or preload contribution logic.
 - Small feedback slices are selected by deterministic smoke plus rotated
   holdout plans, not by hand-picking named project instances.
 - Small-run feedback summaries live in
-  `codeminer.eval.agent_runner.feedback_summary`. Scripts may render or persist
+  `codenib.eval.agent_runner.feedback_summary`. Scripts may render or persist
   them, but arm grouping, baseline deltas, context-source counts, and runtime
   failure grouping should remain package APIs.
 - The old `scripts/agent_compile/lib` compatibility namespace has been removed.
-  New code must import reusable helpers from `codeminer.eval.agent_runner`.
+  New code must import reusable helpers from `codenib.eval.agent_runner`.
 - External localization baseline helpers live under
-  `codeminer.eval.agent_runner.loc_baseline`; the old
-  `codeminer.eval.loc_agent_runner` module is deprecated compatibility only.
-- Promotion evidence records live under `codeminer.eval.agent_runner` and must
+  `codenib.eval.agent_runner.loc_baseline`; the old
+  `codenib.eval.loc_agent_runner` module is deprecated compatibility only.
+- Promotion evidence records live under `codenib.eval.agent_runner` and must
   keep scorer dependencies and named benchmark dependencies explicit. Runtime
   defaults should not be promoted when either dependency set is non-empty.
 - `scripts/agent_compile` owns experiment CLIs, configs, and report glue only;
   it must not grow a reusable `lib` namespace again.
-- Sweep execution semantics live in `codeminer.eval.agent_runner.sweep`;
+- Sweep execution semantics live in `codenib.eval.agent_runner.sweep`;
   experiment scripts may parse arguments and select configs, but should not own
   reusable cell lifecycle, scoring, or resume behavior.
 - Per-query sweep execution semantics live in
-  `codeminer.eval.agent_runner.query_sweep`; experiment scripts may select a
+  `codenib.eval.agent_runner.query_sweep`; experiment scripts may select a
   dataset/config but should not own query cell lifecycle, scoring, or context
   reuse behavior.
 - External-agent and LSP baseline task/result envelopes live in
-  `codeminer.eval.agent_runner`. Client wrappers and examples may adapt their
+  `codenib.eval.agent_runner`. Client wrappers and examples may adapt their
   SDK-specific inputs to that envelope, but they should not own reusable scoring
   or JSONL record construction.
 - Static graph LSP baselines should route from explicit symbol seeds or
@@ -238,7 +238,7 @@ benchmark cell is currently easiest to improve.
   truth targets, mutate answer order for a scorer, or hide graph-display gaps
   with benchmark-specific normalization.
 - Initial `lsp_route` prompt context is a core opt-in harness feature. Seed
-  extraction and route rendering live under `codeminer.agent`; eval baselines
+  extraction and route rendering live under `codenib.agent`; eval baselines
   may reuse them, but benchmark-specific context fields stay in eval adapters.
 - Route-context seed gating is harness policy. The default stays `all` for
   compatibility, while `specific` gives sweeps a cheap feedback path for
@@ -270,7 +270,7 @@ evaluation diagnostics, and overfit-risk logic. The extraction rule remains:
   from experiment harness code.
 - Runtime events should describe what happened, not encode benchmark promotion
   logic.
-- Evaluation-only normalization belongs under `codeminer/eval/agent_runner`.
+- Evaluation-only normalization belongs under `codenib/eval/agent_runner`.
 - Answer reordering, required-anchor correction, and route lifecycle gates tied
   to a tiny fixed query surface must be deleted, quarantined, or rewritten as
   explicit experiment policy.
