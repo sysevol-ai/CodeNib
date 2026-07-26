@@ -1,189 +1,335 @@
 # Guardian + Coding Agent — Concurrent Architecture
 
-## Overview
+## Purpose
 
-Two agents run concurrently inside a single Pier task container: the **coding agent**
-(claude-code, codex, etc.) solves the DeepSWE task; the **Guardian MCP server** runs
-alongside it, watching the repo and answering tool calls from the coding agent on demand.
+Repository Guardian is a read-only review sidecar for a DeepSWE coding agent.
+The coding agent owns the task, edits the repository, runs tests, and creates
+commits. Guardian observes those commits and investigates possible regressions
+in parallel.
 
-From Pier's perspective there is one agent (a custom `GuardianCodingAgent`). Internally
-it orchestrates both processes.
+Pier still sees one agent, `GuardianCodingAgent`. That wrapper delegates coding
+to the selected solver and makes exactly one Guardian transport available:
 
----
+- MCP-native solvers, currently Claude Code, use `query_guardian`.
+- Codex uses filesystem actions, `guardian-start` and
+  `guardian-checkpoint`.
 
-## Container layout
+Codex deliberately does not receive the MCP transport as well. Running both
+transports for one solver could analyze the same commit twice and double model
+spend.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Pier task container                                     │
-│                                                          │
-│  ┌─────────────────────┐    MCP tool call (stdio)       │
-│  │  Coding agent       │ ──► guardian.query_guardian()  │
-│  │  (claude-code/codex)│                           │    │
-│  └─────────────────────┘ ◄── findings JSON         │    │
-│         reads/edits /app                            │    │
-│         commits changes                      ┌──────┘   │
-│                                              │           │
-│                                   ┌──────────▼────────┐ │
-│                                   │  Guardian MCP     │ │
-│                                   │  server (stdio)   │ │
-│                                   │                   │ │
-│                                   │  codeminer/       │ │
-│                                   │  guardian/        │ │
-│                                   │  mcp_server.py    │ │
-│                                   │                   │ │
-│                                   │  watches /app,    │ │
-│                                   │  runs cycles,     │ │
-│                                   │  returns findings │ │
-│                                   └───────────────────┘ │
-│                                                          │
-│  shared filesystem: /app  (the task repo)                │
-└─────────────────────────────────────────────────────────┘
-```
+Guardian has four architectural invariants:
 
----
+1. The checkout present at setup is the **baseline**, or cycle 0. It is never
+   analyzed as coding-agent work.
+2. Guardian starts lazily when the coding agent first uses its Guardian action.
+3. Only a commit after the baseline triggers cycle 1.
+4. Guardian never edits the task checkout. Dynamic probes run in disposable
+   snapshots.
 
-## Transport: MCP stdio (no port needed)
-
-Guardian is exposed as an MCP server over **stdin/stdout**. The coding agent spawns it as
-a child process via its MCP config — no HTTP server, no port to manage. Claude Code
-supports this natively:
-
-```json
-{
-  "mcpServers": {
-    "guardian": {
-      "command": "python",
-      "args": ["-m", "codeminer.guardian.mcp_server", "--repo", "/app"]
-    }
-  }
-}
-```
-
-The Guardian process shares the container filesystem (`/app`), so it sees the same repo
-state the coding agent is editing in real time.
-
-## Codex transport: MCP plus filesystem bridge
-
-Pier's Codex harness writes MCP server entries into Codex's `config.toml`, so the
-same stdio MCP server remains registered for Codex.  To make the integration robust
-and visible through Codex's normal shell workflow, `GuardianCodingAgent` also starts a
-Codex-only filesystem bridge:
+## Runtime topology
 
 ```text
-python -m codeminer.guardian.codex_bridge --repo /app --out-dir ~/.guardian ...
+Pier task container
+│
+├── GuardianCodingAgent
+│   ├── setup: record /app HEAD as /app/.guardian/base_commit
+│   └── selected coding solver
+│
+├── Codex transport (Codex only)
+│   ├── /app/.guardian/bin/guardian-start
+│   ├── /app/.guardian/bin/guardian-checkpoint
+│   └── deepsweguardian.codex_bridge
+│
+├── MCP transport (MCP-native solvers only)
+│   └── codeminer.guardian.mcp_server
+│       └── query_guardian(...)
+│
+└── one active Guardian watcher
+    └── run_cycle(commit)
+        ├── L1: deterministic signal collection
+        ├── L2: hypothesis and investigation controller
+        ├── L3: typed evidence investigation
+        └── report cache and optional cross-cycle memory
 ```
 
-The bridge runs Guardian with `use_llm=True`, analyzes the initial checkout and every
-new commit, and writes the latest report to:
+The coding process and Guardian watcher become concurrent only after the coding
+agent starts Guardian. Before then, the wrapper has recorded the baseline and
+installed or registered the appropriate action, but no Guardian model work is
+running.
+
+## Lifecycle
+
+### 1. Setup records cycle 0
+
+Before the inner coding solver starts, `GuardianCodingAgent.setup()` records
+the task repository's current `HEAD` in:
 
 ```text
-~/.guardian/findings.md
-~/.guardian/findings.json
-~/.guardian/status.json
+/app/.guardian/base_commit
 ```
 
-The Codex task preamble tells Codex to read `findings.md` at concrete checkpoints:
-early in the task, after substantial refactors or commits, when tests fail
-unexpectedly, and before finalizing risky changes.  This makes Guardian's findings
-reach Codex even if a specific Codex/Pier MCP path is unavailable, while preserving
-the MCP path for Claude Code and any Codex build that supports it.
+This commit is the repository supplied by the benchmark, not work produced by
+the coding agent. Recording it before solver setup also prevents solver startup
+hooks from being mistaken for a new coding cycle.
 
-For Pier environments where Vertex AI is unavailable, `guardian_model=codex:<model>`
-uses the Codex Python SDK as Guardian's model transport. The SDK talks to the local
-Codex app-server with the same subscription-backed auth used by the Codex CLI. The
-adapter keeps Guardian in control of retrieval, probes, memory, and stopping; Codex
-only supplies completions. If the SDK/app-server path is unavailable, the adapter
-falls back to `codex exec`.
+### 2. The wrapper exposes one lazy-start action
 
----
+For Codex, the wrapper installs `guardian-start` and
+`guardian-checkpoint` scripts under `/app/.guardian/bin` and describes them in
+the coding prompt.
 
-## Guardian MCP server (`codeminer/guardian/mcp_server.py`)
+For an MCP-native solver, the wrapper registers the Guardian MCP server. The
+server process may exist as an MCP child, but its watcher and model loop do not
+start until the first `query_guardian` call.
 
-Implements the MCP protocol over stdio and exposes one tool:
+### 3. The coding agent starts Guardian
 
-```
+The first Guardian action is idempotent:
+
+- `guardian-start` acquires a lock, validates any recorded PID, and starts the
+  Codex bridge only when no healthy bridge is already running.
+- `query_guardian` starts the MCP watcher only when it has not already started.
+
+Repeated actions reuse the same watcher.
+
+### 4. Baseline calls do no model work
+
+Immediately after startup, observed `HEAD` still equals `base_commit`. Guardian
+reports a baseline or unchanged state and waits. It does not spend an LLM cycle
+reviewing the benchmark's initial checkout.
+
+A Codex checkpoint at this point exits with status 8 to distinguish “no
+post-baseline commit exists” from a completed review.
+
+### 5. Each later commit triggers one cycle
+
+The watcher polls the task repository. When it observes a commit different
+from both the baseline and the last processed commit, it runs one commit-scoped
+Guardian cycle.
+
+The first coding-agent commit is cycle 1, the next is cycle 2, and so on.
+Working-tree edits alone do not trigger cycles.
+
+### 6. Coding and review proceed concurrently
+
+After a commit, Guardian can investigate it while the coding agent continues
+working. During a running cycle:
+
+- the MCP tool can return the most recently cached findings together with
+  `cycle_running: true`;
+- the Codex bridge keeps the last complete report available and exposes the
+  running state in `status.json`.
+
+Reports are advisory. The coding agent decides whether and how to respond.
+
+### 7. Final checkpoint and teardown
+
+The Codex prompt requires `guardian-checkpoint` before finalizing. The
+checkpoint starts the bridge if necessary, verifies that a post-baseline commit
+exists, waits for the report for the current `HEAD`, and prints its summary.
+
+When the coding solver exits, the wrapper waits only for a bridge that was
+actually started, stops it, and writes the Codex token summary. MCP-native
+solver teardown is handled through its MCP process lifecycle.
+
+## Solver transports
+
+### MCP-native transport
+
+`codeminer/guardian/mcp_server.py` exposes:
+
+```text
 query_guardian(
-    hypothesis: str,          # what the agent suspects / wants checked
-    region: list[str] | None  # optional focus: ["path/to/file.py:function_name"]
-) -> {
-    "findings": [...],        # Guardian's current findings for this region
-    "memory_unique": [...],   # findings only visible with cross-cycle memory
-    "confidence": float
-}
+    hypothesis: str,
+    region: list[str] | None
+)
 ```
 
-Internally calls Guardian's existing `hypothesize` + `investigate` logic from
-`codeminer/guardian/`. Watches `/app` for new commits (git hook or polling) and fires
-a cycle per commit, caching findings between calls so repeated queries are cheap.
+The query both ensures lazy startup and reads the current cached report.
+`hypothesis` and `region` filter the returned findings; they do not create a
+second cycle. The result includes lifecycle information as well as findings:
 
----
+```text
+commit
+cycle_no
+cycle_running
+guardian_started
+started_by_this_action
+baseline_commit
+observed_head
+status
+total_findings
+returned_findings
+findings
+```
 
-## Custom Pier agent (`codeminer/guardian/pier_agent.py`)
+`status` is one of `running`, `baseline_unchanged`, `pending`, or `ready`.
+Queries are traced to `/logs/agent/guardian_queries.jsonl`.
 
-Registered via Pier's `--agent-import-path`. Orchestrates both processes:
+### Codex filesystem transport
 
-1. Start Guardian MCP server subprocess (`python -m codeminer.guardian.mcp_server --repo /app`)
-2. Build the coding agent's MCP config pointing at the Guardian subprocess
-3. Launch the coding agent (claude-code / codex) with that MCP config injected
-4. Wait for the coding agent to finish
-5. Kill Guardian server; container exits normally
+Codex uses shell-visible actions because they integrate reliably with its
+normal task workflow and make lifecycle state easy to inspect:
+
+```text
+/app/.guardian/bin/guardian-start
+/app/.guardian/bin/guardian-checkpoint
+```
+
+The lazy-start script launches:
+
+```text
+python -m deepsweguardian.codex_bridge
+```
+
+The bridge writes atomically replaced outputs under:
+
+```text
+/app/.guardian/out/findings.md
+/app/.guardian/out/findings.json
+/app/.guardian/out/status.json
+```
+
+Per-cycle evidence and diagnostics are retained under:
+
+```text
+/logs/agent/guardian_episodes/<cycle>_<commit>/
+```
+
+The bridge runs with the mounted CodeMiner source at `/codeminer` and the
+mounted environment at `/opt/codeminer-env`. Its PID, process marker, and
+startup lock prevent duplicate bridge processes.
+
+## Per-commit Guardian cycle
+
+### L1: deterministic context
+
+`codeminer/guardian/cycle.py` compiles the repository index, collects
+deterministic change signals, opens Guardian memory for the selected arm, and
+prepares prior/current disposable snapshots. L1 supplies grounded context; it
+does not decide that a signal is a defect.
+
+### L2: hypothesis controller
+
+`codeminer/guardian/loop/` owns the outer reasoning cycle. Its tools let the
+model:
+
+- inspect signals and recall prior memory;
+- search and read code;
+- create and revise hypotheses;
+- dispatch an L3 investigation;
+- submit the cycle report.
+
+Hypotheses end as `conjecture`, `supported`, `finding`, `refuted`, or
+`deferred`. Claims promoted to `supported`, `finding`, or `refuted` require a
+probe-valid evidence reference. L2 state is checkpointed so a partially
+completed cycle can be diagnosed.
+
+### L3: evidence investigator
+
+`codeminer/guardian/investigator/` implements the current typed inner loop.
+An investigation uses structured tasks, commands, process outcomes, test
+outcomes, and an evidence ledger. This separates:
+
+- whether a command ran successfully;
+- whether a test passed, failed, or could not be classified;
+- whether the result actually supports or refutes the hypothesis.
+
+Before hypothesis-specific probes, L3 performs a deterministic environment
+prelude and discovers a repository test recipe. Probes run against disposable
+current and prior snapshots, never the coding agent's working checkout.
+
+`codeminer/guardian/investigator/runner.py` remains a compatibility path for
+the older narrative investigator; the typed inner loop is the active design.
+
+## Concurrency and consistency
+
+Guardian is asynchronous, but commit processing is serialized:
+
+- one transport and one watcher are active for a solver;
+- lazy startup is lock-protected and idempotent;
+- a commit is not scheduled again after it becomes the last processed commit;
+- readers see the last complete cached report while a new cycle is running;
+- filesystem reports are replaced atomically;
+- each investigation receives commit-scoped snapshots and artifacts.
+
+This gives the coding agent useful overlap without allowing two Guardian cycles
+to mutate shared investigation state at once.
+
+## Evaluation arms
+
+The ablation keeps the coding task and solver fixed while changing Guardian
+availability and memory:
+
+| Arm | Pier agent | Guardian | Cross-cycle memory |
+| --- | --- | --- | --- |
+| A: solo | normal coding agent | absent | absent |
+| B: memoryless | `GuardianCodingAgent` | lazy, per-commit | disabled/empty |
+| C: memory | `GuardianCodingAgent` | lazy, per-commit | enabled |
+
+- C − A measures the full Guardian contribution.
+- C − B isolates the contribution of persistent memory.
+- B − A measures the contribution of a second, evidence-seeking reviewer
+  without memory.
+
+The ablation launcher runs the solo arm and the selected Guardian arm; selecting
+an arm does not implicitly schedule all three.
+
+## Model and budget controls
+
+Guardian controls retrieval, tool use, evidence collection, memory, and stopping.
+For `guardian_model=codex:<model>`, model completions use the Codex
+SDK/app-server when available and fall back to `codex exec`.
+
+Two budget modes are supported:
+
+- `--guardian-budget-tokens N` enforces a finite Guardian token budget.
+- `--guardian-no-budget-limit` disables the token ceiling for profiling.
+
+Unlimited mode is recorded as `budget_total: null`; token accounting remains
+enabled so the run still reports actual outer-loop, inner-loop, and total use.
+Turn and wall-clock limits remain safety boundaries even without a token limit.
+
+## Implementation map
+
+| Responsibility | Current implementation |
+| --- | --- |
+| Pier wrapper and solver routing | `deepsweguardian/guardian_coding_agent.py` |
+| Codex lazy-start action | `deepsweguardian/lazy_start.py` |
+| Codex final checkpoint | `deepsweguardian/checkpoint.py` |
+| Codex watcher and report bridge | `deepsweguardian/codex_bridge.py` |
+| MCP tool and watcher | `codeminer/guardian/mcp_server.py` |
+| Commit-scoped cycle composition | `codeminer/guardian/cycle.py` |
+| L2 outer loop | `codeminer/guardian/loop/` |
+| L3 typed investigation | `codeminer/guardian/investigator/` |
+| Persistent memory | `codeminer/guardian/memory/store.py` |
+
+The concurrency and lazy-start paths are implemented. The main remaining
+reliability issue is environmental: recent Pier runs have reached L3 but
+reported `environment_unavailable` during its deterministic prelude, even
+though local integration tests pass. That should be treated as a container
+toolchain or runtime-integration failure until the same probe can be reproduced
+as a code-level L3 defect.
+
+## Pier invocation shape
+
+The exact task, model, mounts, and budget vary by experiment. A Guardian run
+uses this integration shape:
 
 ```bash
 pier run \
   -p deep-swe/tasks/<task> \
-  --agent-import-path codeminer.guardian.guardian_coding_agent:GuardianCodingAgent \
-  --model gpt-5.6-luna \
-  --ae "CODEX_FORCE_AUTH_JSON=1" \
+  --agent-import-path \
+    deepsweguardian.guardian_coding_agent:GuardianCodingAgent \
   --ak solver=codex \
-  --ak reasoning_effort=high \
   --ak guardian_arm=memory \
-  --mounts-json '[{"type":"bind","source":"/home/xiangye/CodeMiner","target":"/codeminer"},{"type":"bind","source":"/tmp/pier-agent-logs","target":"/logs/agent"}]' \
-  --jobs-dir deep-swe/jobs \
+  --ak guardian_model=codex:<model> \
+  --ak guardian_budget_tokens=200000 \
+  --mounts-json '<CodeMiner source, environment, and log mounts>' \
   -y
 ```
 
----
-
-## A/B/C evaluation arms
-
-Same Pier invocation for all three arms; only the Guardian config varies:
-
-| Arm | Coding agent | Guardian server | Memory |
-|-----|-------------|-----------------|--------|
-| **A** | solo (no MCP tool) | not started | — |
-| **B** | + `query_guardian` tool | running, `--arm memoryless` | disabled |
-| **C** | + `query_guardian` tool | running, `--arm memory` | enabled (pre-mined) |
-
-- **C − A**: does Guardian help the coding agent at all? *(headline product claim)*
-- **C − B**: does cross-cycle memory add value over a memoryless Guardian? *(research question)*
-- **B − A**: how much is just a second agent, no memory? *(decomposes the gain)*
-
----
-
-## When the coding agent calls `query_guardian`
-
-The agent decides when to invoke the tool — Guardian only responds when asked (pull, not
-push). Natural call sites in the agent's workflow:
-
-- After a significant refactor: "did I break any contracts?"
-- When tests start failing unexpectedly: "what changed in this region?"
-- Before committing a risky change: "what does Guardian know about this module?"
-- When the task instruction references a complex existing behaviour to preserve
-
-The system prompt for the coding agent instructs it to use `query_guardian` at these
-moments and to treat findings as advisory context, not instructions to follow blindly.
-
----
-
-## What still needs to be built
-
-| Component | File | Status |
-|-----------|------|--------|
-| Guardian MCP server | `codeminer/guardian/mcp_server.py` | **built** |
-| Guardian per-commit watcher | background thread in `mcp_server.py` | **built** |
-| GuardianCodingAgent | `codeminer/guardian/guardian_coding_agent.py` | **built** |
-| MCP config injection logic | via Pier's `MCPServerConfig` in `guardian_coding_agent.py` | **built** |
-| System prompt for coding agent | `codeminer/guardian/prompts/coding_agent.md` | **built** |
-| Codex findings file bridge | `codeminer/guardian/codex_bridge.py` + `prompts/codex_file_bridge.md` | **built** |
-| Codex SDK model transport | `codeminer/llm/codex_cli_chat.py` | **built** |
+Use the normal Pier coding agent, without `GuardianCodingAgent`, for the solo
+arm. Replace the finite budget setting with `guardian_no_budget_limit=true`
+when measuring uncapped consumption.
