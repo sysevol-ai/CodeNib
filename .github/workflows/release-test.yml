@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: TestPyPI Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release artifacts
+    uses: ./.github/workflows/release-verify.yml
+    permissions:
+      contents: read
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: verify
+    runs-on: self-hosted
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/codenib
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/

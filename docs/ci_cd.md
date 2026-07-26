@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # CI/CD
 
-GitHub Actions has five workflows:
+GitHub Actions has seven workflow files:
 
 - `.github/workflows/ci.yml` runs the Python, graph, SCIP, slow, and C++ parity
   test tiers.
@@ -21,9 +21,13 @@ GitHub Actions has five workflows:
   `main` that touch that file or the workflow file itself, or on manual
   dispatch (with an optional `delete_unused` input that removes labels absent
   from `labels.yml`).
-- `.github/workflows/release.yml` builds and verifies distributions, exercises
-  installed CLI, Wiki, and MCP surfaces on supported Python versions, and
-  publishes through trusted PyPI environments. See [Releasing](releasing.md).
+- `.github/workflows/release-verify.yml` is the reusable distribution, Python
+  compatibility, installed CLI, Wiki, and MCP verification pipeline.
+- `.github/workflows/release-test.yml` manually verifies and publishes a
+  candidate through the trusted TestPyPI environment.
+- `.github/workflows/release.yml` invokes the same verification pipeline and
+  publishes version tags through the trusted production PyPI environment
+  before creating a GitHub Release. See [Releasing](releasing.md).
 
 ## Triggers
 
