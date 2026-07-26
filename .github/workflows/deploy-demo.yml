@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Deploy the live demo (demo.codenib.ai + codenib.ai landing) whenever main
+# changes something it serves. The SSH key is command-restricted on the
+# serving box: it can only run scripts/serve/deploy_demo.sh, and the command
+# sent here merely selects the deploy mode.
+name: Deploy demo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "codenib/**"
+      - "web/**"
+      - "landing/**"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "qa_config.yaml"
+      - "scripts/serve/**"
+      - ".github/workflows/deploy-demo.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Deploy mode
+        type: choice
+        options: [normal, force, dry]
+        default: normal
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.DEMO_DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEMO_DEPLOY_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEMO_DEPLOY_SSH_USER }}
+          MODE: ${{ inputs.mode || 'normal' }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "$SSH_USER@$SSH_HOST" "$MODE"
