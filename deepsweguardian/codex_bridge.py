@@ -183,12 +183,22 @@ def run_bridge(
     out_dir: str,
     poll_interval: int,
     once: bool = False,
+    baseline_commit: Optional[str] = None,
 ) -> None:
-    """Run Guardian on initial HEAD and on every subsequent commit."""
+    """Run Guardian only after HEAD moves beyond the recorded baseline."""
     output = Path(out_dir)
     output.mkdir(parents=True, exist_ok=True)
-    last_commit: Optional[str] = None
+    if baseline_commit is None:
+        baseline_commit = _head(config.repo_path)
+    last_commit = baseline_commit
     cycle_idx = 0
+    _write_status(
+        output,
+        commit=baseline_commit,
+        running=False,
+        llm_model=config.llm_model,
+        llm_backend="not_started",
+    )
 
     while True:
         commit = _head(config.repo_path)
@@ -265,10 +275,30 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--budget-tokens", type=int, default=50_000)
     parser.add_argument("--poll-interval", type=int, default=10)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument(
+        "--baseline-commit",
+        default=None,
+        help="Cycle-0 commit to observe without analyzing.",
+    )
+    parser.add_argument(
+        "--baseline-file",
+        default=None,
+        help="File containing the cycle-0 commit recorded during agent setup.",
+    )
     args = parser.parse_args(argv)
 
     out_dir = os.path.expanduser(args.out_dir)
     memory_dir = os.path.expanduser(args.memory_dir)
+    baseline_commit = args.baseline_commit
+    if args.baseline_file:
+        try:
+            baseline_commit = (
+                Path(os.path.expanduser(args.baseline_file))
+                .read_text(encoding="utf-8")
+                .strip()
+            )
+        except OSError as exc:
+            parser.error(f"cannot read --baseline-file: {exc}")
 
     if args.model.startswith(("vertex_ai/", "gemini/")):
         _apply_vertex_token_patch()
@@ -285,7 +315,13 @@ def main(argv: Optional[list[str]] = None) -> None:
         budget_tokens=args.budget_tokens,
         episode_dir="/logs/agent/guardian_episode",
     )
-    run_bridge(cfg, out_dir=out_dir, poll_interval=args.poll_interval, once=args.once)
+    run_bridge(
+        cfg,
+        out_dir=out_dir,
+        poll_interval=args.poll_interval,
+        once=args.once,
+        baseline_commit=baseline_commit,
+    )
 
 
 if __name__ == "__main__":

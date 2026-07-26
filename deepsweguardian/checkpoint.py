@@ -7,9 +7,13 @@
 from __future__ import annotations
 
 
-def guardian_checkpoint_script() -> str:
+def guardian_checkpoint_script(
+    *,
+    start_command: str = "",
+    baseline_file: str = "",
+) -> str:
     """Return the executable script Codex runs before final handoff."""
-    return r'''#!/usr/bin/env python3
+    return r"""#!/usr/bin/env python3
 import argparse
 import json
 import os
@@ -17,6 +21,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+DEFAULT_START_COMMAND = %r
+DEFAULT_BASELINE_FILE = %r
 
 
 def _head(repo: str) -> str:
@@ -45,6 +52,8 @@ def main() -> int:
     parser.add_argument("--guardian-dir", default="/app/.guardian/out")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--interval", type=float, default=2.0)
+    parser.add_argument("--start-command", default=DEFAULT_START_COMMAND)
+    parser.add_argument("--baseline-file", default=DEFAULT_BASELINE_FILE)
     args = parser.parse_args()
 
     repo = os.path.abspath(args.repo)
@@ -52,11 +61,49 @@ def main() -> int:
     status_path = guardian_dir / "status.json"
     findings_path = guardian_dir / "findings.md"
 
+    if args.start_command:
+        started = subprocess.run(
+            [os.path.expanduser(args.start_command)],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if started.stdout:
+            print(started.stdout, end="")
+        if started.returncode != 0:
+            if started.stderr:
+                print(started.stderr, end="", file=sys.stderr)
+            print(
+                "Guardian checkpoint: could not start Guardian",
+                file=sys.stderr,
+            )
+            return 6
+
     try:
         head = _head(repo)
     except Exception as exc:
         print(f"Guardian checkpoint: cannot resolve HEAD: {exc}", file=sys.stderr)
         return 2
+
+    if args.baseline_file:
+        try:
+            baseline = Path(
+                os.path.expanduser(args.baseline_file)
+            ).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            print(
+                f"Guardian checkpoint: cannot read baseline: {exc}",
+                file=sys.stderr,
+            )
+            return 7
+        if baseline == head:
+            print(
+                "Guardian checkpoint: current HEAD is the repository baseline; "
+                "no coding-agent commit is available to analyze.",
+                file=sys.stderr,
+            )
+            return 8
 
     print(f"Guardian checkpoint: waiting for commit {head[:12]}...", flush=True)
     deadline = time.time() + max(1, args.timeout)
@@ -130,4 +177,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-'''
+""" % (start_command, baseline_file)

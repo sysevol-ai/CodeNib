@@ -19,14 +19,18 @@ Registers with Pier via::
 Architecture (single Pier container):
 
     GuardianCodingAgent (this class)
-    ├── setup(): installs codeminer in container, then delegates to inner solver's setup()
-    │           (inner solver's setup() writes Guardian MCP config for the agent)
-    └── run():  delegates to inner solver's run()
-               (coding agent spawns Guardian MCP server via stdio on first tool call)
+    ├── setup(): records cycle-0 HEAD, delegates to the inner solver, and
+    │            installs the solver-specific lazy Guardian action
+    └── run():   delegates to the inner solver's run()
 
-Guardian MCP server is registered as a stdio MCPServerConfig injected into the
-inner solver's ``mcp_servers``.  The inner solver (e.g. ClaudeCode) handles
-writing that config to ~/.claude.json in its own setup().
+MCP-native solvers receive ``query_guardian``. Codex receives filesystem
+``guardian-start`` and ``guardian-checkpoint`` actions because that bridge also
+provides a synchronized final report. Only one Guardian transport is registered
+per solver, avoiding duplicate analysis cycles and model spend.
+
+For MCP-native solvers, the Guardian server is registered as a stdio
+MCPServerConfig injected into the inner solver's ``mcp_servers``. The inner
+solver (e.g. ClaudeCode) writes that config in its own setup().
 
 A/B/C arms are controlled via ``--ak guardian_arm=<arm>``:
     A: pass ``--agent codex`` (no GuardianCodingAgent)
@@ -54,6 +58,7 @@ from pier.models.agent.network import NetworkAllowlist
 from pier.models.task.config import MCPServerConfig
 
 from .checkpoint import guardian_checkpoint_script
+from .lazy_start import guardian_start_script
 
 if TYPE_CHECKING:
     from pier.models.agent.install import AgentInstallSpec
@@ -145,6 +150,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_findings_dir = guardian_findings_dir
         self._guardian_checkpoint_dir = guardian_checkpoint_dir
         self._guardian_bridge_pidfile = f"{guardian_findings_dir}/codex_bridge.pid"
+        self._guardian_baseline_file = "/app/.guardian/base_commit"
+        self._guardian_start_path = f"{guardian_checkpoint_dir}/guardian-start"
         self._guardian_codex_home = "/tmp/guardian-codex-home"
         self._guardian_codex_secrets_dir = "/tmp/guardian-codex-secrets"
 
@@ -173,11 +180,16 @@ class GuardianCodingAgent(BaseInstalledAgent):
                 str(guardian_poll_interval),
                 "--trace-log",
                 "/logs/agent/guardian_queries.jsonl",
+                "--baseline-file",
+                self._guardian_baseline_file,
             ],
         )
 
-        # Merge caller-supplied MCP servers with Guardian's entry
-        combined_mcp = list(mcp_servers or []) + [guardian_mcp]
+        # Codex uses the synchronized filesystem bridge below. Registering both
+        # transports would run duplicate Guardian cycles for the same commit.
+        combined_mcp = list(mcp_servers or [])
+        if solver != "codex":
+            combined_mcp.append(guardian_mcp)
 
         # Instantiate the inner solver, forwarding all remaining kwargs
         # so that solver-specific flags (e.g. reasoning_effort for codex) pass through.
@@ -251,7 +263,23 @@ class GuardianCodingAgent(BaseInstalledAgent):
         # Delegate to inner solver — it handles MCP config registration, skills, etc.
         # Guardian runs via a mounted host Python env (self._codeminer_python) that
         # already has codeminer's deps installed; no container pip install needed.
+        await self._record_guardian_baseline(environment)
         await self._inner.setup(environment)
+        if self._solver_name == "codex":
+            await self._install_codex_bridge_actions(environment)
+
+    async def _record_guardian_baseline(self, environment: BaseEnvironment) -> None:
+        """Persist cycle-0 HEAD without starting a Guardian model cycle."""
+
+        baseline = shlex.quote(self._guardian_baseline_file)
+        repo = shlex.quote(self._guardian_repo)
+        checkpoint_dir = _quote_shell_path(self._guardian_checkpoint_dir)
+        findings_dir = _quote_shell_path(self._guardian_findings_dir)
+        await environment.exec(
+            f"mkdir -p {checkpoint_dir} {findings_dir} && "
+            f"git -C {repo} rev-parse HEAD > {baseline}.tmp && "
+            f"mv {baseline}.tmp {baseline}"
+        )
 
     def _resolve_codex_auth_json_path(self) -> Path | None:
         """Resolve the host Codex auth.json path for Guardian's nested Codex calls."""
@@ -293,8 +321,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         secrets_dir = self._guardian_codex_secrets_dir
         remote_auth_path = f"{secrets_dir}/auth.json"
         await environment.exec(
-            "mkdir -p "
-            f"{shlex.quote(codex_home)} {shlex.quote(secrets_dir)}"
+            "mkdir -p " f"{shlex.quote(codex_home)} {shlex.quote(secrets_dir)}"
         )
         await environment.upload_file(auth_json_path, remote_auth_path)
         default_user = getattr(environment, "default_user", None)
@@ -308,23 +335,24 @@ class GuardianCodingAgent(BaseInstalledAgent):
             f"{shlex.quote(codex_home)}/auth.json"
         )
 
-    async def _start_codex_bridge(self, environment: BaseEnvironment) -> None:
-        """Start Guardian's Codex filesystem bridge inside the Pier container."""
+    async def _install_codex_bridge_actions(self, environment: BaseEnvironment) -> None:
+        """Install lazy, idempotent start and checkpoint actions."""
+
         findings_dir = _quote_shell_path(self._guardian_findings_dir)
         checkpoint_bin_dir = _quote_shell_path(self._guardian_checkpoint_dir)
         checkpoint_path = _quote_shell_path(
             f"{self._guardian_checkpoint_dir}/guardian-checkpoint"
         )
-        checkpoint_script = shlex.quote(guardian_checkpoint_script())
-        pidfile = _quote_shell_path(self._guardian_bridge_pidfile)
-        repo = shlex.quote(self._guardian_repo)
-        memory_dir = shlex.quote(self._guardian_memory_dir)
-        model = shlex.quote(self._guardian_model)
-        arm = shlex.quote(self._guardian_arm)
+        start_path = _quote_shell_path(self._guardian_start_path)
+        checkpoint_script = shlex.quote(
+            guardian_checkpoint_script(
+                start_command=self._guardian_start_path,
+                baseline_file=self._guardian_baseline_file,
+            )
+        )
 
-        # Bake the auth/proxy vars directly into the nohup env command. exec()
-        # calls only inherit _persistent_env, not _egress_proxy_env (which Pier
-        # applies to the agent's main process via agent_process_env()).
+        # The launcher runs later as an agent action, so bake the sidecar-only
+        # credentials and Pier proxy settings into its child environment now.
         _persistent = getattr(environment, "_persistent_env", {})
         gtoken = _persistent.get("GOOGLE_OAUTH_ACCESS_TOKEN", "")
         auth_json_path = self._resolve_codex_auth_json_path()
@@ -342,57 +370,61 @@ class GuardianCodingAgent(BaseInstalledAgent):
                 codex_home=codex_home,
             )
         _egress = getattr(environment, "_egress_proxy_env", {})
-        https_proxy = _egress.get("HTTPS_PROXY", "")
-        http_proxy = _egress.get("HTTP_PROXY", "")
-        no_proxy = _egress.get("NO_PROXY", "")
-        codex_env = ""
+        bridge_environment = {
+            "PYTHONPATH": self._codeminer_path,
+            "GOOGLE_OAUTH_ACCESS_TOKEN": gtoken,
+            "HTTPS_PROXY": _egress.get("HTTPS_PROXY", ""),
+            "HTTP_PROXY": _egress.get("HTTP_PROXY", ""),
+            "https_proxy": _egress.get("HTTPS_PROXY", ""),
+            "http_proxy": _egress.get("HTTP_PROXY", ""),
+            "NO_PROXY": _egress.get("NO_PROXY", ""),
+            "no_proxy": _egress.get("NO_PROXY", ""),
+        }
         if codex_home:
-            codex_env += f"CODEX_HOME={shlex.quote(codex_home)} "
+            bridge_environment["CODEX_HOME"] = codex_home
         if codex_force_auth:
-            codex_env += f"CODEX_FORCE_AUTH_JSON={shlex.quote(codex_force_auth)} "
-        auth_probe = ""
-        if codex_home:
-            quoted_home = shlex.quote(codex_home)
-            auth_probe = (
-                f"if [ -s {quoted_home}/auth.json ]; then "
-                "echo guardian-codex-auth-ready >> /logs/agent/codex_bridge.log; "
-                "else "
-                "echo guardian-codex-auth-missing >> /logs/agent/codex_bridge.log; "
-                "fi && "
-            )
+            bridge_environment["CODEX_FORCE_AUTH_JSON"] = codex_force_auth
 
-        cmd = (
-            f"mkdir -p {findings_dir} {checkpoint_bin_dir} && "
-            f"printf %s {checkpoint_script} > {checkpoint_path} && "
-            f"chmod +x {checkpoint_path} && "
-            "echo guardian-bridge-starting > /logs/agent/codex_bridge.log && "
-            f"{auth_probe}"
-            "if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi && "
-            "CODEMINER_CODEX_BIN=$(command -v codex || true) && "
-            f"nohup env PYTHONPATH=/codeminer "
-            'PATH="$PATH" '
-            'CODEMINER_CODEX_BIN="$CODEMINER_CODEX_BIN" '
-            f"GOOGLE_OAUTH_ACCESS_TOKEN={shlex.quote(gtoken)} "
-            f"{codex_env}"
-            f"HTTPS_PROXY={shlex.quote(https_proxy)} "
-            f"HTTP_PROXY={shlex.quote(http_proxy)} "
-            f"https_proxy={shlex.quote(https_proxy)} "
-            f"http_proxy={shlex.quote(http_proxy)} "
-            f"NO_PROXY={shlex.quote(no_proxy)} "
-            f"no_proxy={shlex.quote(no_proxy)} "
-            f"{self._codeminer_python} -m deepsweguardian.codex_bridge "
-            f"--repo {repo} "
-            f"--arm {arm} "
-            f"--memory-dir {memory_dir} "
-            f"--model {model} "
-            f"--top-n {self._guardian_top_n} "
-            f"--budget-tokens {self._guardian_budget_tokens} "
-            f"--poll-interval {self._guardian_poll_interval} "
-            f"--out-dir {findings_dir} "
-            f">> /logs/agent/codex_bridge.log 2>&1 & "
-            f"echo $! | tee {pidfile} > /logs/agent/codex_bridge.pid"
+        bridge_command = [
+            self._codeminer_python,
+            "-m",
+            "deepsweguardian.codex_bridge",
+            "--repo",
+            self._guardian_repo,
+            "--arm",
+            self._guardian_arm,
+            "--memory-dir",
+            self._guardian_memory_dir,
+            "--model",
+            self._guardian_model,
+            "--top-n",
+            str(self._guardian_top_n),
+            "--budget-tokens",
+            str(self._guardian_budget_tokens),
+            "--poll-interval",
+            str(self._guardian_poll_interval),
+            "--out-dir",
+            self._guardian_findings_dir,
+            "--baseline-file",
+            self._guardian_baseline_file,
+        ]
+        start_script = shlex.quote(
+            guardian_start_script(
+                command=bridge_command,
+                environment=bridge_environment,
+                repo=self._guardian_repo,
+                baseline_file=self._guardian_baseline_file,
+                pid_file=self._guardian_bridge_pidfile,
+                log_file="/logs/agent/codex_bridge.log",
+            )
         )
-        await environment.exec(cmd)
+        await environment.exec(
+            f"mkdir -p {findings_dir} {checkpoint_bin_dir} && "
+            f"printf %s {start_script} > {start_path} && "
+            f"chmod +x {start_path} && "
+            f"printf %s {checkpoint_script} > {checkpoint_path} && "
+            f"chmod +x {checkpoint_path}"
+        )
 
     async def _stop_codex_bridge(self, environment: BaseEnvironment) -> None:
         pidfile = _quote_shell_path(self._guardian_bridge_pidfile)
@@ -416,6 +448,14 @@ import sys
 import time
 
 path = os.path.expanduser({status_path!r})
+pidfile = os.path.expanduser({self._guardian_bridge_pidfile!r})
+try:
+    with open(pidfile, encoding="utf-8") as f:
+        pid = int(f.read().strip())
+    os.kill(pid, 0)
+except (FileNotFoundError, OSError, ValueError):
+    print("guardian bridge was not started")
+    raise SystemExit(0)
 deadline = time.time() + {int(timeout_sec)}
 while time.time() < deadline:
     try:
@@ -446,12 +486,10 @@ print("guardian bridge still running after wait", file=sys.stderr)
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        guardian_preamble = _PROMPT_PATH.read_text()
         if self._solver_name == "codex":
-            await self._start_codex_bridge(environment)
-            guardian_preamble = (
-                f"{guardian_preamble}\n\n{_CODEX_PROMPT_PATH.read_text()}"
-            )
+            guardian_preamble = _CODEX_PROMPT_PATH.read_text()
+        else:
+            guardian_preamble = _PROMPT_PATH.read_text()
         augmented = f"{guardian_preamble}\n\n---\n\n{instruction}"
         try:
             await self._inner.run(augmented, environment, context)

@@ -5,17 +5,16 @@
 """Guardian MCP server — stdio transport.
 
 Implements the Model Context Protocol (MCP) over stdin/stdout so that coding
-agents (claude-code, codex, etc.) can call ``query_guardian`` as a tool while
-Guardian monitors the repo autonomously in the background.
+agents (claude-code, codex, etc.) can start and query Guardian with one
+``query_guardian`` action.
 
 Two concurrently-running pieces:
 
-- **Guardian watcher (background thread)**: polls ``git HEAD`` every
-  ``POLL_INTERVAL`` seconds; on each new commit runs a full Guardian cycle and
-  caches the findings.  Starts immediately on process launch.
+- **Guardian watcher (background thread)**: starts on the first
+  ``query_guardian`` action, treats the setup-time commit as cycle 0, and runs
+  full cycles only for later commits.
 - **MCP stdio loop (main thread)**: handles JSON-RPC 2.0 requests from the
-  coding agent.  ``query_guardian`` is a pure read from the cache — it never
-  triggers a cycle.
+  coding agent.
 
 Usage::
 
@@ -74,7 +73,14 @@ _cache: Dict[str, Any] = {
     "commit": "",  # SHA of the commit that produced them
     "cycle_no": 0,  # how many cycles have completed
     "running": False,  # True while a cycle is in progress
+    "started": False,
+    "baseline_commit": "",
+    "observed_head": "",
 }
+_start_lock = threading.Lock()
+_watcher_config: Optional[GuardianConfig] = None
+_watcher_baseline = ""
+_watcher_thread: Optional[threading.Thread] = None
 
 # Trace log — set by main() from --trace-log arg; None disables tracing.
 _trace_log_path: Optional[str] = None
@@ -144,43 +150,78 @@ def _stderr(msg: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _watcher(config: GuardianConfig) -> None:
-    """Poll for new commits and run a Guardian cycle on each one.
+def _poll_once(config: GuardianConfig, last_commit: str) -> str:
+    """Observe HEAD once, analyzing it only when it follows ``last_commit``."""
 
-    Runs an initial cycle immediately so findings are available as soon as the
-    coding agent starts working, then polls every POLL_INTERVAL seconds.
-    """
-    last_commit = ""
+    commit = _head(config.repo_path)
+    with _lock:
+        _cache["observed_head"] = commit
 
+    if not commit or commit == last_commit:
+        return last_commit
+
+    with _lock:
+        _cache["running"] = True
+        next_cycle = _cache["cycle_no"] + 1
+
+    _stderr(f"guardian: new commit {commit[:8]} — starting cycle {next_cycle}")
+    try:
+        report = run_cycle(config)
+        findings = [_finding_to_dict(f) for f in report.findings]
+        with _lock:
+            _cache["findings"] = findings
+            _cache["commit"] = commit
+            _cache["cycle_no"] += 1
+            _cache["running"] = False
+            cycle_no = _cache["cycle_no"]
+        _stderr(
+            f"guardian: cycle {cycle_no} done — " f"{len(findings)} finding(s) cached"
+        )
+        return commit
+    except Exception as exc:  # noqa: BLE001
+        with _lock:
+            _cache["running"] = False
+        _stderr(f"guardian: cycle failed for {commit[:8]}: {exc}")
+        return last_commit
+
+
+def _watcher(config: GuardianConfig, baseline_commit: str) -> None:
+    """Poll for new commits; the baseline is observed but never analyzed."""
+
+    last_commit = baseline_commit
     while True:
-        commit = _head(config.repo_path)
-
-        if commit and commit != last_commit:
-            with _lock:
-                _cache["running"] = True
-
-            _stderr(
-                f"guardian: new commit {commit[:8]} — starting cycle {_cache['cycle_no'] + 1}"
-            )
-            try:
-                report = run_cycle(config)
-                findings = [_finding_to_dict(f) for f in report.findings]
-                with _lock:
-                    _cache["findings"] = findings
-                    _cache["commit"] = commit
-                    _cache["cycle_no"] += 1
-                    _cache["running"] = False
-                last_commit = commit
-                _stderr(
-                    f"guardian: cycle {_cache['cycle_no']} done — "
-                    f"{len(findings)} finding(s) cached"
-                )
-            except Exception as exc:  # noqa: BLE001
-                with _lock:
-                    _cache["running"] = False
-                _stderr(f"guardian: cycle failed for {commit[:8]}: {exc}")
+        last_commit = _poll_once(config, last_commit)
 
         time.sleep(POLL_INTERVAL)
+
+
+def _ensure_watcher_started() -> bool:
+    """Start monitoring once, in response to the coding agent's action."""
+
+    global _watcher_thread
+    with _start_lock:
+        if _watcher_thread is not None and _watcher_thread.is_alive():
+            return False
+        if _watcher_config is None:
+            raise RuntimeError("Guardian watcher is not configured")
+        watcher = threading.Thread(
+            target=_watcher,
+            args=(_watcher_config, _watcher_baseline),
+            daemon=True,
+            name="guardian-commit-watcher",
+        )
+        _watcher_thread = watcher
+        with _lock:
+            _cache["started"] = True
+            _cache["baseline_commit"] = _watcher_baseline
+            _cache["commit"] = _watcher_baseline
+            _cache["observed_head"] = _head(_watcher_config.repo_path)
+        watcher.start()
+        _stderr(
+            "guardian: monitoring started by query_guardian "
+            f"(baseline={_watcher_baseline[:8]})"
+        )
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +264,7 @@ def _filter_findings(
 
 def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
     global _call_counter
+    started_now = _ensure_watcher_started()
     hypothesis: str = arguments.get("hypothesis", "")
     region: Optional[List[str]] = arguments.get("region")
 
@@ -231,6 +273,9 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
         commit = _cache["commit"]
         running = _cache["running"]
         cycle_no = _cache["cycle_no"]
+        started = _cache["started"]
+        baseline_commit = _cache["baseline_commit"]
+        observed_head = _cache["observed_head"]
 
     relevant = _filter_findings(findings, hypothesis, region)
 
@@ -242,6 +287,19 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
         "commit": commit,
         "cycle_no": cycle_no,
         "cycle_running": running,
+        "guardian_started": started,
+        "started_by_this_action": started_now,
+        "baseline_commit": baseline_commit,
+        "observed_head": observed_head,
+        "status": (
+            "running"
+            if running
+            else (
+                "baseline_unchanged"
+                if cycle_no == 0 and observed_head == baseline_commit
+                else ("pending" if cycle_no == 0 else "ready")
+            )
+        ),
         "total_findings": len(findings),
         "returned_findings": len(relevant),
         "findings": relevant,
@@ -255,6 +313,8 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
             "region": region,
             "commit": commit,
             "cycle_no": cycle_no,
+            "guardian_started": started,
+            "started_by_this_action": started_now,
             "total_findings": len(findings),
             "returned_findings": len(relevant),
             "finding_titles": [f.get("title", "") for f in relevant],
@@ -274,8 +334,9 @@ _TOOL_SCHEMA = {
     "name": "query_guardian",
     "description": (
         "Ask the Repository Guardian for its latest findings about the repo. "
-        "Guardian runs continuously in the background, firing a new analysis "
-        "cycle on each commit. Call this when you are about to make a risky "
+        "This action starts Guardian if needed. The setup-time HEAD is retained "
+        "as cycle 0 without an LLM analysis; later coding-agent commits trigger "
+        "analysis cycles. Call this when you are about to make a risky "
         "change, when tests start failing unexpectedly, or when you want a "
         "second opinion on whether a refactor might break existing contracts."
     ),
@@ -394,7 +455,7 @@ def _stdio_loop() -> None:
 
 
 def main(argv: Optional[List[str]] = None) -> None:
-    global POLL_INTERVAL, _trace_log_path
+    global POLL_INTERVAL, _trace_log_path, _watcher_config, _watcher_baseline
     parser = argparse.ArgumentParser(
         description="Repository Guardian MCP server (stdio transport)"
     )
@@ -449,6 +510,16 @@ def main(argv: Optional[List[str]] = None) -> None:
         default=None,
         help="Path to append one JSON line per query_guardian call",
     )
+    parser.add_argument(
+        "--baseline-commit",
+        default=None,
+        help="Cycle-0 commit to observe without analyzing.",
+    )
+    parser.add_argument(
+        "--baseline-file",
+        default=None,
+        help="File containing the setup-time cycle-0 commit.",
+    )
     args = parser.parse_args(argv)
 
     POLL_INTERVAL = args.poll_interval
@@ -465,13 +536,33 @@ def main(argv: Optional[List[str]] = None) -> None:
         top_n=args.top_n,
         budget_tokens=args.budget_tokens,
     )
-
-    watcher = threading.Thread(target=_watcher, args=(config,), daemon=True)
-    watcher.start()
+    baseline_commit = args.baseline_commit
+    if args.baseline_file:
+        try:
+            with open(args.baseline_file, encoding="utf-8") as handle:
+                baseline_commit = handle.read().strip()
+        except OSError as exc:
+            parser.error(f"cannot read --baseline-file: {exc}")
+    if not baseline_commit:
+        baseline_commit = _head(args.repo)
+    _watcher_config = config
+    _watcher_baseline = baseline_commit
+    with _lock:
+        _cache.update(
+            {
+                "findings": [],
+                "commit": baseline_commit,
+                "cycle_no": 0,
+                "running": False,
+                "started": False,
+                "baseline_commit": baseline_commit,
+                "observed_head": _head(args.repo),
+            }
+        )
 
     _stderr(
-        f"guardian: MCP server ready "
-        f"(repo={args.repo}, arm={args.arm}, poll={POLL_INTERVAL}s)"
+        f"guardian: MCP server ready; waiting for query_guardian "
+        f"(repo={args.repo}, baseline={baseline_commit[:8]}, arm={args.arm})"
     )
 
     _stdio_loop()

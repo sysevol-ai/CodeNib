@@ -1,13 +1,14 @@
 # Repository Guardian
 
-You have access to a `query_guardian` tool. The Repository Guardian is a
-separate analysis agent running in the background. It monitors the repository
-for risky changes — high-churn code with low test coverage, drift between
-implementations and their contracts, and functions that break when their
-callers are refactored.
+You have access to a `query_guardian` action. Repository Guardian starts lazily
+the first time you use this action. It monitors the repository for risky
+changes — high-churn code with low test coverage, drift between implementations
+and their contracts, and functions that break when their callers are
+refactored.
 
-Guardian runs a fresh analysis cycle on every commit you make. Its findings
-reflect the state of the repo as of the most recent commit.
+The checkout's initial commit is cycle 0 and is never analyzed with an LLM.
+After Guardian has been started, it runs a fresh analysis cycle on every commit
+you make. Its findings reflect the most recently analyzed coding-agent commit.
 
 ## When to call `query_guardian`
 
@@ -59,6 +60,8 @@ query_guardian(
 
 ## How to interpret the results
 
+- `status: "baseline_unchanged"` means Guardian has started, but you have not
+  made a commit for it to analyze yet.
 - `cycle_running: true` means a cycle is in progress for your latest commit.
   The findings returned are from the previous commit. You can proceed — the
   findings will be updated shortly.
