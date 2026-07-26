@@ -64,6 +64,20 @@ class CommandResult:
 
 
 @dataclass(frozen=True)
+class ProbeRunResult:
+    """One model-designed probe executed in current and/or prior snapshots."""
+
+    current: Optional[CommandResult] = None
+    prior: Optional[CommandResult] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "current": self.current.to_dict() if self.current is not None else None,
+            "prior": self.prior.to_dict() if self.prior is not None else None,
+        }
+
+
+@dataclass(frozen=True)
 class ToolResult:
     """Bounded result returned to the model for one tool call."""
 
@@ -137,6 +151,9 @@ class InvestigationRunResult:
     source_spans: List[SourceExcerpt] = field(default_factory=list)
     usage: TokenUsage = field(default_factory=TokenUsage)
     budget: BudgetLedger = field(default_factory=lambda: BudgetLedger(0))
+    capabilities: Dict[str, bool] = field(default_factory=dict)
+    capability_warning: str = ""
+    degraded: bool = False
 
     @property
     def tokens_used(self) -> int:
@@ -181,6 +198,9 @@ class InvestigationRunResult:
             "usage": self.usage.to_dict(),
             "budget": self.budget.to_dict(),
             "tokens_used": self.tokens_used,
+            "capabilities": dict(self.capabilities),
+            "capability_warning": self.capability_warning,
+            "degraded": self.degraded,
         }
 
 

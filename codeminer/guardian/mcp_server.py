@@ -70,6 +70,9 @@ SERVER_VERSION = "1.0.0"
 _lock = threading.Lock()
 _cache: Dict[str, Any] = {
     "findings": [],  # List[Dict] — last cycle's findings
+    "backlog": [],
+    "degraded": False,
+    "analysis_status": "pending",
     "commit": "",  # SHA of the commit that produced them
     "cycle_no": 0,  # how many cycles have completed
     "running": False,  # True while a cycle is in progress
@@ -168,8 +171,14 @@ def _poll_once(config: GuardianConfig, last_commit: str) -> str:
     try:
         report = run_cycle(config)
         findings = [_finding_to_dict(f) for f in report.findings]
+        backlog = [asdict(item) for item in getattr(report, "backlog", [])]
         with _lock:
             _cache["findings"] = findings
+            _cache["backlog"] = backlog
+            _cache["degraded"] = bool(getattr(report, "degraded", False))
+            _cache["analysis_status"] = str(
+                getattr(report, "analysis_status", "complete")
+            )
             _cache["commit"] = commit
             _cache["cycle_no"] += 1
             _cache["running"] = False
@@ -181,6 +190,8 @@ def _poll_once(config: GuardianConfig, last_commit: str) -> str:
     except Exception as exc:  # noqa: BLE001
         with _lock:
             _cache["running"] = False
+            _cache["degraded"] = True
+            _cache["analysis_status"] = "failed"
         _stderr(f"guardian: cycle failed for {commit[:8]}: {exc}")
         return last_commit
 
@@ -270,6 +281,9 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
 
     with _lock:
         findings = list(_cache["findings"])
+        backlog = list(_cache["backlog"])
+        degraded = bool(_cache["degraded"])
+        analysis_status = str(_cache["analysis_status"])
         commit = _cache["commit"]
         running = _cache["running"]
         cycle_no = _cache["cycle_no"]
@@ -303,6 +317,12 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
         "total_findings": len(findings),
         "returned_findings": len(relevant),
         "findings": relevant,
+        "backlog": backlog,
+        "high_confidence_backlog": sum(
+            float(item.get("confidence", 0.0) or 0.0) >= 0.8 for item in backlog
+        ),
+        "degraded": degraded,
+        "analysis_status": analysis_status,
     }
 
     _trace(
@@ -446,7 +466,7 @@ def _stdio_loop() -> None:
         try:
             _handle_request(msg)
         except Exception as exc:  # noqa: BLE001
-            _stderr(f"guardian: error handling '{msg.get('method')}': {exc}")
+            _stderr(f"guardian: error handling {msg.get('method')!r}: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -503,6 +523,12 @@ def main(argv: Optional[List[str]] = None) -> None:
         ),
     )
     parser.add_argument(
+        "--max-context-tokens",
+        type=int,
+        default=200_000,
+        help="Model context window allocated to the L2 agent loop",
+    )
+    parser.add_argument(
         "--no-llm",
         action="store_true",
         help="Heuristic signals only — no LLM calls (faster)",
@@ -543,6 +569,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         since=args.since,
         top_n=args.top_n,
         budget_tokens=None if args.no_budget_limit else args.budget_tokens,
+        max_context_tokens=args.max_context_tokens,
     )
     baseline_commit = args.baseline_commit
     if args.baseline_file:

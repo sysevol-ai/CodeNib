@@ -58,6 +58,10 @@ def test_guardian_checkpoint_prints_fresh_report(tmp_path):
                 "commit": head,
                 "running": False,
                 "findings": 1,
+                "backlog": 1,
+                "high_confidence_backlog": 1,
+                "degraded": True,
+                "analysis_status": "degraded",
                 "llm_model": "codex:gpt-5.6-luna",
                 "llm_backend": "codex-sdk",
                 "llm_tokens": {"total": 123},
@@ -91,8 +95,12 @@ def test_guardian_checkpoint_prints_fresh_report(tmp_path):
 
     assert "Guardian checkpoint: report ready" in result.stdout
     assert "backend: codex-sdk" in result.stdout
+    assert "backlog: 1" in result.stdout
+    assert "high-confidence backlog: 1" in result.stdout
+    assert "analysis status: degraded" in result.stdout
     assert "tokens: 123" in result.stdout
     assert "Risk found." in result.stdout
+    assert "must not be treated as a complete clean review" in result.stderr
 
 
 def test_guardian_checkpoint_times_out_on_stale_report(tmp_path):

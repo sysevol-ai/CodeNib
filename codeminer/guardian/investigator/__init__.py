@@ -12,16 +12,36 @@ The generic narrative investigator remains in ``runner.py``.  The Repository
 Guardian L3 contract is implemented by ``inner_loop.py``.
 """
 
-from .runner import (LLMUsage, _parse_verdict, _run_search,
-                     build_test_failure_context, investigate_signal)
 from .inner_loop import TOOLS, run_investigation, run_investigator
 from .probes import hotspot_query, investigate_hotspot, read_file
+from .runner import (
+    LLMUsage,
+    _parse_verdict,
+    _run_search,
+    build_test_failure_context,
+    investigate_signal,
+)
+
 # sandbox.py — no guardian-level imports
-from .sandbox import (CurrentSnapshotSandbox, PriorSnapshotSandbox,
-                      ReadOnlySourceHandle, SandboxHandle, WorktreeSandbox)
-from .types import (BudgetLedger, CommandResult, InvestigationRunResult,
-                    InvestigationTask, InvestigatorResult, ProcessStatus,
-                    SourceExcerpt, TestStatus, ToolResult)
+from .sandbox import (
+    CurrentSnapshotSandbox,
+    PriorSnapshotSandbox,
+    ReadOnlySourceHandle,
+    SandboxHandle,
+    WorktreeSandbox,
+)
+from .types import (
+    BudgetLedger,
+    CommandResult,
+    InvestigationRunResult,
+    InvestigationTask,
+    InvestigatorResult,
+    ProbeRunResult,
+    ProcessStatus,
+    SourceExcerpt,
+    TestStatus,
+    ToolResult,
+)
 
 __all__ = [
     # From runner.py
@@ -32,6 +52,7 @@ __all__ = [
     "BudgetLedger",
     "CommandResult",
     "ProcessStatus",
+    "ProbeRunResult",
     "TestStatus",
     "ToolResult",
     "SourceExcerpt",

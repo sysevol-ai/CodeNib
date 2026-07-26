@@ -69,11 +69,14 @@ query_guardian(
   how many match your query. If they differ, Guardian filtered to what is most
   relevant to your hypothesis.
 - Every item in `findings` is a hypothesis at grade `finding`: Guardian
-  verified the behavioral claim with a probe and recorded an actionable
-  remedy. Treat these as high-priority, but verify the cited evidence.
+  grounded the claim in validated source or an executed probe and recorded an
+  actionable remedy. Treat these as high-priority, but verify the cited evidence.
 - `backlog` contains conjectures, supported claims that still lack an
   actionable remedy, and deferred work. These are context, not confirmed
-  defects.
+  defects. Review high-confidence backlog items before finalizing.
+- `degraded: true` means Guardian could not complete some intended analysis.
+  Zero findings in a degraded cycle is not a clean review; perform the missing
+  validation yourself and explain the limitation.
 - `retractions` records earlier claims that a later probe refuted. Do not act
   on a superseded finding.
 

@@ -18,6 +18,7 @@ import re
 import subprocess
 import tempfile
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -141,13 +142,17 @@ def _usage_from_sdk(result: object) -> SimpleNamespace:
         )
     total = getattr(usage, "total", None)
     last = getattr(usage, "last", None)
-    breakdown = total or last
+    # A persistent agent-loop thread reports both cumulative and most-recent
+    # usage. Guardian accounts per call, so prefer ``last`` to avoid counting
+    # the same earlier turns again.
+    breakdown = last or total
     input_tokens = getattr(breakdown, "input_tokens", 0) or 0
     output_tokens = getattr(breakdown, "output_tokens", 0) or 0
     reasoning = getattr(breakdown, "reasoning_output_tokens", 0) or 0
-    total_tokens = getattr(breakdown, "total_tokens", 0) or (
-        input_tokens + output_tokens + reasoning
-    )
+    # Some Codex SDK versions report ``total_tokens`` without reasoning output
+    # even though they expose reasoning separately.  Normalize the public
+    # OpenAI-compatible fields so total always equals prompt + completion.
+    total_tokens = input_tokens + output_tokens + reasoning
     return SimpleNamespace(
         prompt_tokens=input_tokens,
         completion_tokens=output_tokens + reasoning,
@@ -186,6 +191,17 @@ def _parse_tool_response(content: str, tools: list, usage: object) -> Any:
     return _response(content.strip(), usage=usage)
 
 
+def _parse_text_response(content: str, usage: object) -> Any:
+    """Accept either plain text or the adapter's normal JSON final envelope."""
+
+    data = _extract_json_object(content)
+    if data and str(data.get("type", "")).lower() == "final":
+        return _response(str(data.get("content", "")).strip(), usage=usage)
+    if data and str(data.get("type", "")).lower() == "tool_call":
+        return _response("", usage=usage)
+    return _response(content.strip(), usage=usage)
+
+
 @dataclass(slots=True)
 class CodexSdkChat:
     """Small OpenAI-compatible facade over the Codex Python SDK.
@@ -220,8 +236,14 @@ class CodexSdkChat:
         ]
         return self._call_raw(raw_messages).choices[0].message.content
 
+    def start_agent_loop(self) -> "_CodexSdkAgentLoop":
+        """Return a persistent SDK thread owned by one L2 or L3 agent loop."""
+
+        return _CodexSdkAgentLoop(self)
+
     def _call_raw(self, messages: List[Dict[str, Any]], **overrides: Any) -> Any:
         tools = overrides.pop("tools", None) or []
+        text_response = bool(overrides.pop("_guardian_text_response", False))
         overrides.pop("tool_choice", None)
         prompt = self._build_prompt(messages, tools)
         try:
@@ -239,11 +261,17 @@ class CodexSdkChat:
                 timeout=self.timeout,
             )
             try:
-                return fallback._call_raw(messages, tools=tools)
+                return fallback._call_raw(
+                    messages,
+                    tools=tools,
+                    _guardian_text_response=text_response,
+                )
             except Exception:
                 self.backend_name = "codex-unavailable"
                 self.transport_history.append("codex-unavailable")
                 raise
+        if text_response:
+            return _parse_text_response(content, usage)
         if not tools:
             return _response(content.strip(), usage=usage)
         return _parse_tool_response(content, tools, usage)
@@ -301,6 +329,172 @@ class CodexSdkChat:
         return (result.final_response or ""), _usage_from_sdk(result)
 
 
+class _CodexSdkAgentLoop:
+    """Persistent Codex SDK conversation for one Guardian agent loop.
+
+    Guardian still owns tool execution.  The first call sends the complete
+    Guardian transcript; later calls send only newly appended tool results.
+    If history compaction rewrites the prefix, ``reset`` starts a fresh thread
+    and the next call seeds it from the compacted transcript.
+    """
+
+    def __init__(self, adapter: CodexSdkChat) -> None:
+        self.adapter = adapter
+        self._tmp: Optional[tempfile.TemporaryDirectory] = None
+        self._codex: object = None
+        self._thread: object = None
+        self._prior_input: List[Dict[str, Any]] = []
+        self._tools_key = ""
+        self._fallback: Optional[CodexCliChat] = None
+        try:
+            self._open()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Persistent Codex SDK loop unavailable; using codex exec: %s", exc
+            )
+            self._mark_fallback()
+
+    def _open(self) -> None:
+        from openai_codex import ApprovalMode, Codex, CodexConfig, Sandbox
+
+        self._approval_mode = ApprovalMode
+        self._sandbox = Sandbox
+        self._tmp = tempfile.TemporaryDirectory(prefix="codeminer-codex-loop-")
+        work_dir = os.path.join(self._tmp.name, "work")
+        os.makedirs(work_dir, exist_ok=True)
+        config = CodexConfig(
+            codex_bin=self.adapter.codex_bin,
+            cwd=work_dir,
+            env=dict(os.environ),
+        )
+        try:
+            codex = Codex(config)
+            self._codex = codex.__enter__()
+            self._thread = self._codex.thread_start(
+                model=self.adapter.model,
+                sandbox=Sandbox.workspace_write,
+                cwd=work_dir,
+                ephemeral=True,
+            )
+        except Exception:
+            self.close()
+            raise
+
+    def _mark_fallback(self) -> None:
+        self.adapter.backend_name = "codex-cli-fallback"
+        if "codex-cli-fallback" not in self.adapter.transport_history:
+            self.adapter.transport_history.append("codex-cli-fallback")
+        self._fallback = CodexCliChat(
+            model=self.adapter.model,
+            cwd=self.adapter.cwd,
+            codex_bin=os.environ.get("CODEMINER_CODEX_BIN") or "codex",
+            reasoning_effort=self.adapter.reasoning_effort,
+            timeout=self.adapter.timeout,
+        )
+
+    def _is_append_only(self, messages: List[Dict[str, Any]], tools_key: str) -> bool:
+        return (
+            bool(self._prior_input)
+            and tools_key == self._tools_key
+            and len(messages) >= len(self._prior_input)
+            and messages[: len(self._prior_input)] == self._prior_input
+        )
+
+    @staticmethod
+    def _incremental_prompt(messages: List[Dict[str, Any]]) -> str:
+        delta = list(messages)
+        # The SDK thread already contains its own preceding JSON response.
+        if delta and delta[0].get("role") == "assistant":
+            delta = delta[1:]
+        return (
+            "Guardian executed your requested tool calls. Continue the same "
+            "Guardian task from these new results:\n\n"
+            f"{_render_messages(delta)}"
+        )
+
+    def _run(self, prompt: str) -> tuple[str, SimpleNamespace]:
+        kwargs: Dict[str, Any] = {
+            "approval_mode": self._approval_mode.deny_all,
+            "sandbox": self._sandbox.workspace_write,
+            "cwd": os.path.join(self._tmp.name, "work"),
+            "model": self.adapter.model,
+        }
+        if self.adapter.reasoning_effort:
+            kwargs["effort"] = self.adapter.reasoning_effort
+        result = self._thread.run(prompt, **kwargs)
+        return (result.final_response or ""), _usage_from_sdk(result)
+
+    def _call_raw(self, messages: List[Dict[str, Any]], **overrides: Any) -> Any:
+        tools = overrides.pop("tools", None) or []
+        text_response = bool(overrides.pop("_guardian_text_response", False))
+        overrides.pop("tool_choice", None)
+        tools_key = json.dumps(tools, sort_keys=True, default=str)
+        if self._fallback is not None:
+            return self._fallback._call_raw(
+                messages,
+                tools=tools,
+                _guardian_text_response=text_response,
+                **overrides,
+            )
+
+        append_only = self._is_append_only(messages, tools_key)
+        if self._prior_input and not append_only:
+            self.reset()
+        if append_only:
+            delta = messages[len(self._prior_input) :]
+            prompt = self._incremental_prompt(delta)
+        else:
+            prompt = self.adapter._build_prompt(messages, tools)
+
+        try:
+            content, usage = self._run(prompt)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Persistent Codex SDK loop failed; falling back to codex exec: %s",
+                exc,
+            )
+            self.close()
+            self._mark_fallback()
+            return self._fallback._call_raw(
+                messages,
+                tools=tools,
+                _guardian_text_response=text_response,
+                **overrides,
+            )
+
+        self._prior_input = deepcopy(messages)
+        self._tools_key = tools_key
+        if text_response:
+            return _parse_text_response(content, usage)
+        if not tools:
+            return _response(content.strip(), usage=usage)
+        return _parse_tool_response(content, tools, usage)
+
+    def reset(self) -> None:
+        """Discard provider history after a local transcript compaction."""
+
+        self.close()
+        self._fallback = None
+        self._prior_input = []
+        self._tools_key = ""
+        try:
+            self._open()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Codex SDK loop reset failed; using codex exec: %s", exc)
+            self._mark_fallback()
+
+    def close(self) -> None:
+        if self._codex is not None:
+            try:
+                self._codex.__exit__(None, None, None)
+            finally:
+                self._codex = None
+                self._thread = None
+        if self._tmp is not None:
+            self._tmp.cleanup()
+            self._tmp = None
+
+
 @dataclass(slots=True)
 class CodexCliChat:
     """Small OpenAI-compatible facade over ``codex exec``.
@@ -337,10 +531,13 @@ class CodexCliChat:
 
     def _call_raw(self, messages: List[Dict[str, Any]], **overrides: Any) -> Any:
         tools = overrides.pop("tools", None) or []
+        text_response = bool(overrides.pop("_guardian_text_response", False))
         overrides.pop("tool_choice", None)
         prompt = self._build_prompt(messages, tools)
         stdout, content = self._run_codex(prompt)
         usage = _usage_from_stdout(stdout)
+        if text_response:
+            return _parse_text_response(content, usage)
         if not tools:
             return _response(content.strip(), usage=usage)
         return self._parse_tool_response(content, tools, usage)

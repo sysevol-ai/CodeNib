@@ -29,6 +29,7 @@ class LLMUsage:
     """Token counts accumulated across Guardian model calls."""
 
     prompt_tokens: int = 0
+    cached_input_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
 
@@ -37,6 +38,7 @@ class LLMUsage:
         if usage is None:
             return
         self.prompt_tokens += getattr(usage, "prompt_tokens", 0) or 0
+        self.cached_input_tokens += getattr(usage, "cached_input_tokens", 0) or 0
         self.completion_tokens += getattr(usage, "completion_tokens", 0) or 0
         self.total_tokens += getattr(usage, "total_tokens", 0) or 0
 
@@ -76,9 +78,7 @@ def _node_content(node: object, repo_path: str) -> str:
     if not path or start is None:
         return ""
     full_path = (
-        os.path.join(repo_path, path)
-        if repo_path and not os.path.isabs(path)
-        else path
+        os.path.join(repo_path, path) if repo_path and not os.path.isabs(path) else path
     )
     try:
         with open(full_path, encoding="utf-8", errors="replace") as handle:
@@ -91,9 +91,7 @@ def _node_content(node: object, repo_path: str) -> str:
     return "".join(selected).strip()
 
 
-def _run_search(
-    query: str, retriever: object, top_k: int, repo_path: str = ""
-) -> str:
+def _run_search(query: str, retriever: object, top_k: int, repo_path: str = "") -> str:
     try:
         nodes = retriever.query(query, top_k=top_k)  # type: ignore[union-attr]
     except Exception as exc:  # noqa: BLE001 - narrative search degrades gracefully

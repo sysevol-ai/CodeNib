@@ -254,6 +254,8 @@ def _build_pier_command(
                 f"guardian_arm={args.guardian_arm}",
                 "--ak",
                 f"guardian_model={args.guardian_model}",
+                "--ak",
+                f"guardian_max_context_tokens={args.guardian_max_context_tokens}",
                 "--mounts-json",
                 json.dumps(_guardian_mounts(args, logs_dir)),
             ]
@@ -361,6 +363,9 @@ def _run_trial(
         "guardian_no_budget_limit": (
             args.guardian_no_budget_limit if baseline == "guardian" else False
         ),
+        "guardian_max_context_tokens": (
+            args.guardian_max_context_tokens if baseline == "guardian" else None
+        ),
         "repeat_index": repeat_index,
         "returncode": proc.returncode,
         "output_dir": str(base_dir),
@@ -375,12 +380,24 @@ def _run_trial(
         ),
         "guardian_llm_backend": (guardian_status or {}).get("llm_backend"),
         "guardian_findings": (guardian_status or {}).get("findings"),
+        "guardian_backlog": (guardian_status or {}).get("backlog"),
+        "guardian_high_confidence_backlog": (guardian_status or {}).get(
+            "high_confidence_backlog"
+        ),
+        "guardian_degraded": (guardian_status or {}).get("degraded"),
+        "guardian_analysis_status": (guardian_status or {}).get("analysis_status"),
         "guardian_prompt_tokens": ((guardian_status or {}).get("llm_tokens") or {}).get(
             "prompt"
         ),
+        "guardian_cached_input_tokens": (
+            (guardian_status or {}).get("llm_tokens") or {}
+        ).get("cached_input"),
         "guardian_completion_tokens": (
             (guardian_status or {}).get("llm_tokens") or {}
         ).get("completion"),
+        "guardian_total_tokens": ((guardian_status or {}).get("llm_tokens") or {}).get(
+            "total"
+        ),
     }
     row.update(metrics)
     _write_json(base_dir / "metadata.json", row)
@@ -431,6 +448,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Disable Guardian's cycle token limit while retaining turn and "
             "wall-clock limits"
         ),
+    )
+    parser.add_argument(
+        "--guardian-max-context-tokens",
+        type=int,
+        default=200_000,
+        help="Model context window allocated to Guardian's L2 loop",
     )
     parser.add_argument("--codeminer-root", type=Path, default=DEFAULT_CODEMINER_ROOT)
     parser.add_argument("--deepswe-root", type=Path, default=DEFAULT_DEEPSWE_ROOT)
@@ -518,7 +541,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         for baseline, idx in plan:
-            row = _run_trial(
+            _run_trial(
                 args,
                 task=task,
                 baseline=baseline,

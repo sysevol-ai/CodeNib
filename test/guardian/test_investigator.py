@@ -10,15 +10,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from codeminer.guardian.investigator import (
-    InvestigationTask,
-    run_investigation,
-)
+from codeminer.guardian.investigator import InvestigationTask, run_investigation
 from codeminer.guardian.investigator.environment import TestRecipe as Recipe
-from codeminer.guardian.investigator.types import (
-    CommandResult,
-    ProcessStatus,
-)
+from codeminer.guardian.investigator.types import CommandResult, ProcessStatus
 from codeminer.guardian.loop import Hypothesis
 
 RECIPE = Recipe(("python", "-m", "pytest"), "test")
@@ -62,9 +56,7 @@ class FakeSandbox:
         self.statuses = list(statuses or ["passed"])
         self.files = {"pkg/mod.py": "def target():\n    return 1\n"}
         (root / "pkg").mkdir(parents=True, exist_ok=True)
-        (root / "pkg" / "mod.py").write_text(
-            self.files["pkg/mod.py"], encoding="utf-8"
-        )
+        (root / "pkg" / "mod.py").write_text(self.files["pkg/mod.py"], encoding="utf-8")
 
     def read_file(self, path):
         return self.files.get(path, "")
@@ -132,6 +124,21 @@ class UnavailableSandbox(FakeSandbox):
         )
 
 
+class ProbeSandbox(FakeSandbox):
+    def run_command(self, command, *, timeout=60, env=None):
+        if command[-1] == "_guardian_probe.py":
+            return CommandResult(
+                ProcessStatus.EXITED,
+                0,
+                None,
+                list(command),
+                self.repo_path,
+                "abc",
+                stdout="contract mismatch reproduced",
+            )
+        return super().run_command(command, timeout=timeout, env=env)
+
+
 def _task(grant=20_000):
     hypothesis = Hypothesis.create(
         claim="pkg.mod.target violates its contract",
@@ -171,7 +178,25 @@ def test_budget_reservation_prevents_unaffordable_call(tmp_path):
     assert llm.calls == []
 
 
-def test_unavailable_test_environment_costs_zero_model_tokens(tmp_path):
+def test_model_backend_failure_is_explicitly_degraded(tmp_path):
+    llm = MagicMock()
+    llm.max_tokens = 1_024
+    llm._call_raw.side_effect = RuntimeError("backend unavailable")
+
+    result = run_investigation(
+        _task(),
+        llm,
+        MagicMock(),
+        FakeSandbox(tmp_path),
+        recipe=RECIPE,
+    )
+
+    assert result.exit_status == "environment_unavailable"
+    assert result.evidence_status == "environment"
+    assert result.degraded is True
+
+
+def test_unavailable_test_environment_does_not_block_investigator(tmp_path):
     llm = ScriptedLLM([])
     result = run_investigation(
         _task(),
@@ -183,15 +208,155 @@ def test_unavailable_test_environment_costs_zero_model_tokens(tmp_path):
     )
     assert result.exit_status == "environment_unavailable"
     assert result.evidence_status == "environment"
+    assert result.degraded is True
     assert result.budget.actual == 0
-    assert llm.calls == []
+    assert len(llm.calls) == 1
+    offered = {tool["function"]["name"] for tool in llm.calls[0][1]["tools"]}
+    assert "read_code" in offered
+    assert "run_probe" in offered
+    assert "run_existing_test" not in offered
+
+
+def test_source_grounded_static_verdict_needs_no_pytest(tmp_path):
+    llm = ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "read",
+                    "read_code",
+                    path="pkg/mod.py",
+                    start_line=1,
+                    end_line=2,
+                )
+            ),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="confirmed",
+                    reasoning=(
+                        "The exact source returns the value forbidden by the "
+                        "stated contract."
+                    ),
+                    cites=["read"],
+                )
+            ),
+        ]
+    )
+
+    result = run_investigation(
+        _task(),
+        llm,
+        MagicMock(),
+        UnavailableSandbox(tmp_path),
+        repo_identity=str(tmp_path),
+        commit="abc",
+    )
+
+    assert result.exit_status == "submitted"
+    assert result.evidence_status == "source"
+    assert result.degraded is True
+    assert result.capabilities["pytest"] is False
+    assert result.verdict == "confirmed"
+    assert result.cites == ["read"]
+
+
+def test_failed_retrieval_cannot_be_cited_as_source_evidence(tmp_path):
+    retriever = MagicMock()
+    retriever.query.side_effect = RuntimeError("index unavailable")
+    llm = ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "retrieve",
+                    "retrieve_evidence",
+                    query="target contract",
+                )
+            ),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="confirmed",
+                    reasoning="The retrieval proves the mismatch.",
+                    cites=["retrieve"],
+                )
+            ),
+        ]
+    )
+
+    result = run_investigation(
+        _task(),
+        llm,
+        retriever,
+        FakeSandbox(tmp_path),
+        recipe=RECIPE,
+        max_rounds=2,
+    )
+
+    assert result.verdict == "inconclusive"
+    assert result.evidence_status == "invalid"
+    assert result.tool_calls[-1].result.is_error is True
+    assert "source span" in result.tool_calls[-1].result.content
+
+
+def test_model_designed_probe_can_confirm_without_specialized_probe_type(tmp_path):
+    llm = ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "read",
+                    "read_code",
+                    path="pkg/mod.py",
+                    start_line=1,
+                    end_line=2,
+                )
+            ),
+            _response(
+                _call(
+                    "probe",
+                    "run_probe",
+                    source=(
+                        "from pathlib import Path\n"
+                        "print(Path('pkg/mod.py').read_text())\n"
+                    ),
+                    snapshot="current",
+                )
+            ),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="confirmed",
+                    reasoning="The source and executed probe establish the mismatch.",
+                    cites=["read", "probe"],
+                )
+            ),
+        ]
+    )
+
+    result = run_investigation(
+        _task(),
+        llm,
+        MagicMock(),
+        ProbeSandbox(tmp_path),
+        recipe=RECIPE,
+    )
+
+    assert result.verdict == "confirmed"
+    assert result.evidence_status == "valid"
+    assert result.tool_calls[1].skill_id == "run_probe"
 
 
 def test_refuted_verdict_requires_source_and_parsed_pass(tmp_path):
     llm = ScriptedLLM(
         [
-            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
-            _response(_call("test", "run_existing_test", node_id="test_mod.py::test_target")),
+            _response(
+                _call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)
+            ),
+            _response(
+                _call("test", "run_existing_test", node_id="test_mod.py::test_target")
+            ),
             _response(
                 _call(
                     "submit",
@@ -217,7 +382,9 @@ def test_bound_fix_transition_can_confirm(tmp_path):
     source = "def test_target():\n    assert False"
     llm = ScriptedLLM(
         [
-            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
+            _response(
+                _call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)
+            ),
             _response(
                 _call(
                     "synth",
@@ -265,7 +432,9 @@ def test_fix_for_uncited_test_cannot_confirm(tmp_path):
     source = "def test_target():\n    assert False"
     llm = ScriptedLLM(
         [
-            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
+            _response(
+                _call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)
+            ),
             _response(
                 _call(
                     "synth",
@@ -312,8 +481,12 @@ def test_fix_for_uncited_test_cannot_confirm(tmp_path):
 def test_error_only_test_cannot_be_submitted_as_behavioural_verdict(tmp_path):
     llm = ScriptedLLM(
         [
-            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
-            _response(_call("test", "run_existing_test", node_id="test_mod.py::test_target")),
+            _response(
+                _call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)
+            ),
+            _response(
+                _call("test", "run_existing_test", node_id="test_mod.py::test_target")
+            ),
             _response(
                 _call(
                     "submit",
@@ -341,7 +514,9 @@ def test_each_tool_call_is_checkpointed(tmp_path):
     checkpoint = tmp_path / "out" / "investigation.json"
     llm = ScriptedLLM(
         [
-            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
+            _response(
+                _call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)
+            ),
             _response(
                 _call(
                     "submit",

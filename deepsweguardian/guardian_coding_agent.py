@@ -125,6 +125,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         guardian_top_n: int = 5,
         guardian_budget_tokens: int = 50_000,
         guardian_no_budget_limit: bool = False,
+        guardian_max_context_tokens: int = 200_000,
         guardian_poll_interval: int = 10,
         guardian_findings_dir: str = "/app/.guardian/out",
         guardian_checkpoint_dir: str = "/app/.guardian/bin",
@@ -154,6 +155,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_top_n = int(guardian_top_n)
         self._guardian_budget_tokens = int(guardian_budget_tokens)
         self._guardian_no_budget_limit = _as_bool(guardian_no_budget_limit)
+        self._guardian_max_context_tokens = int(guardian_max_context_tokens)
         self._guardian_poll_interval = int(guardian_poll_interval)
         self._guardian_findings_dir = guardian_findings_dir
         self._guardian_checkpoint_dir = guardian_checkpoint_dir
@@ -178,6 +180,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
             guardian_model,
             "--top-n",
             str(guardian_top_n),
+            "--max-context-tokens",
+            str(self._guardian_max_context_tokens),
             "--poll-interval",
             str(guardian_poll_interval),
             "--trace-log",
@@ -412,6 +416,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
             self._guardian_model,
             "--top-n",
             str(self._guardian_top_n),
+            "--max-context-tokens",
+            str(self._guardian_max_context_tokens),
             "--poll-interval",
             str(self._guardian_poll_interval),
             "--out-dir",

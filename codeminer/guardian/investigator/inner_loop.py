@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 from ...agent.agent_types import ToolCallRecord
 from ...llm.usage import TokenUsage, _extract_token_usage
 from ...log_utils import get_logger
+from ..llm import agent_loop_session
 from .environment import TestRecipe, run_prelude
 from .probes import (
     behavioural_tests,
@@ -24,6 +25,7 @@ from .probes import (
     corroborate_fix,
     retrieve_evidence,
     run_existing_test,
+    run_python_probe,
     run_synthesized_test,
     synthesize_test,
     transition,
@@ -31,8 +33,10 @@ from .probes import (
 from .sandbox import ReadOnlySourceHandle, SandboxHandle
 from .types import (
     BudgetLedger,
+    CommandResult,
     InvestigationRunResult,
     InvestigationTask,
+    ProbeRunResult,
     ProcessStatus,
     SourceExcerpt,
     TestStatus,
@@ -73,6 +77,29 @@ TOOLS = [
                     "top_k": {"type": "integer"},
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_probe",
+            "description": (
+                "Run a dependency-light Python probe designed by you in the "
+                "current snapshot, prior snapshot, or both. The exact source "
+                "and typed process results are retained; interpret them yourself."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string"},
+                    "snapshot": {
+                        "type": "string",
+                        "enum": ["current", "prior", "both"],
+                    },
+                    "timeout": {"type": "integer"},
+                },
+                "required": ["source", "snapshot"],
             },
         },
     },
@@ -165,21 +192,36 @@ TOOLS = [
     },
 ]
 _TOOL_NAMES = {item["function"]["name"] for item in TOOLS}
+_PYTEST_TOOLS = frozenset(
+    {
+        "run_existing_test",
+        "synthesize_test",
+        "run_synthesized_test",
+        "corroborate",
+    }
+)
 
 SYSTEM_PROMPT = """\
 You are Repository Guardian's investigator. Answer exactly one falsifiable
 obligation using only Guardian tools. Guardian owns all file and command
 execution; never attempt execution yourself.
 
-Read source before making a behavioural judgment. Test outcomes come only from
-the structured report returned by a test tool. A process error, collection
-error, timeout, or empty test set is not a test failure. A synthesized failing
-test needs corroboration bound to that exact run. Finish only by calling
-submit_verdict as the sole tool call in its turn. Use refuted, not rejected.
+Read source before making a behavioural judgment. You may establish a direct
+static argument from exact source spans or design a small Python probe. Test
+outcomes come only from the structured report returned by a test tool. A
+process error, collection error, timeout, or empty test set is not a test
+failure. A synthesized failing test needs corroboration bound to that exact
+run. Finish only by calling submit_verdict as the sole tool call in its turn.
+Use refuted, not rejected.
 """
 
 
-def _opening_context(task: InvestigationTask, recipe: TestRecipe) -> str:
+def _opening_context(
+    task: InvestigationTask,
+    recipe: Optional[TestRecipe],
+    capabilities: dict[str, bool],
+    capability_warning: str,
+) -> str:
     hypothesis = task.hypothesis
     payload = {
         "hypothesis": {
@@ -193,7 +235,11 @@ def _opening_context(task: InvestigationTask, recipe: TestRecipe) -> str:
         "prior_attempts": task.prior_attempts,
         "grant_tokens": task.grant_tokens,
         "deadline_s": task.deadline_s,
-        "validated_test_recipe": list(recipe.command_prefix),
+        "capabilities": capabilities,
+        "validated_test_recipe": (
+            list(recipe.command_prefix) if recipe is not None else None
+        ),
+        "capability_warning": capability_warning,
     }
     return json.dumps(payload, sort_keys=True, default=str)
 
@@ -202,8 +248,16 @@ def _estimate_call(messages: List[dict], llm: object, grant: int) -> Tuple[int, 
     prompt_chars = len(json.dumps(messages, sort_keys=True, default=str))
     prompt_tokens = max(1, (prompt_chars + 2) // 3)
     configured = int(getattr(llm, "max_tokens", 8_192) or 8_192)
-    max_completion = min(configured, 8_192, max(1_024, grant // 2))
+    max_completion = min(configured, 8_192, max(128, grant // 3))
     return prompt_tokens + max_completion, max_completion
+
+
+def _available_tools(recipe: Optional[TestRecipe]) -> list[dict]:
+    """Expose pytest tools only when the prelude validated a recipe."""
+
+    if recipe is not None:
+        return TOOLS
+    return [item for item in TOOLS if item["function"]["name"] not in _PYTEST_TOOLS]
 
 
 def _bounded(result: ToolResult) -> ToolResult:
@@ -253,7 +307,7 @@ def _dispatch(
     sandbox: SandboxHandle,
     prior_sandbox: Optional[SandboxHandle],
     retriever: object,
-    recipe: TestRecipe,
+    recipe: Optional[TestRecipe],
     source_handle: ReadOnlySourceHandle,
 ) -> Tuple[ToolResult, Optional[str], Optional[SourceExcerpt], str]:
     """Return result, parent id, source span, and evidence diff."""
@@ -273,7 +327,56 @@ def _dispatch(
             None,
             "",
         )
+    if name == "run_probe":
+        source = str(args.get("source", ""))
+        snapshot = str(args.get("snapshot", "current"))
+        timeout = int(args.get("timeout", 60))
+        if snapshot not in {"current", "prior", "both"}:
+            return (
+                ToolResult("snapshot must be current, prior, or both", True),
+                None,
+                None,
+                "",
+            )
+        if snapshot in {"prior", "both"} and prior_sandbox is None:
+            return ToolResult("prior snapshot is unavailable", True), None, None, ""
+
+        current = (
+            run_python_probe(source, sandbox, timeout=timeout)
+            if snapshot in {"current", "both"}
+            else None
+        )
+        prior = (
+            run_python_probe(source, prior_sandbox, timeout=timeout)
+            if snapshot in {"prior", "both"} and prior_sandbox is not None
+            else None
+        )
+        current_command = command_result(current) if current is not None else None
+        prior_command = command_result(prior) if prior is not None else None
+        parts = []
+        if current is not None:
+            parts.append("CURRENT\n" + current.content)
+        if prior is not None:
+            parts.append("PRIOR\n" + prior.content)
+        return (
+            ToolResult(
+                "\n\n".join(parts),
+                is_error=bool(
+                    (current is not None and current.is_error)
+                    or (prior is not None and prior.is_error)
+                ),
+                structured_content=ProbeRunResult(
+                    current=current_command,
+                    prior=prior_command,
+                ),
+            ),
+            None,
+            None,
+            "",
+        )
     if name == "run_existing_test":
+        if recipe is None:
+            return ToolResult("pytest capability is unavailable", True), None, None, ""
         result = run_existing_test(
             str(args.get("node_id", "")),
             sandbox,
@@ -291,6 +394,8 @@ def _dispatch(
             "",
         )
     if name == "run_synthesized_test":
+        if recipe is None:
+            return ToolResult("pytest capability is unavailable", True), None, None, ""
         parent_id = str(args.get("tool_call_id", ""))
         parent = records.get(parent_id)
         if parent is None or parent.skill_id != "synthesize_test":
@@ -302,7 +407,12 @@ def _dispatch(
             )
         source = _source_from_synthesis(parent)
         if not source:
-            return ToolResult("referenced synthesis has no source", True), parent_id, None, ""
+            return (
+                ToolResult("referenced synthesis has no source", True),
+                parent_id,
+                None,
+                "",
+            )
         return (
             run_synthesized_test(
                 source,
@@ -315,13 +425,13 @@ def _dispatch(
             "",
         )
     if name == "corroborate":
+        if recipe is None:
+            return ToolResult("pytest capability is unavailable", True), None, None, ""
         parent_id = str(args.get("tool_call_id", ""))
         parent = records.get(parent_id)
         if parent is None or parent.skill_id != "run_synthesized_test":
             return (
-                ToolResult(
-                    "tool_call_id must name a run_synthesized_test call", True
-                ),
+                ToolResult("tool_call_id must name a run_synthesized_test call", True),
                 parent_id or None,
                 None,
                 "",
@@ -330,11 +440,21 @@ def _dispatch(
         source = _source_from_synthesis(synthesis) if synthesis else ""
         method = str(args.get("method", ""))
         if not source:
-            return ToolResult("parent test source is unavailable", True), parent_id, None, ""
+            return (
+                ToolResult("parent test source is unavailable", True),
+                parent_id,
+                None,
+                "",
+            )
         if method == "fix":
             diff = str(args.get("diff", ""))
             if not diff:
-                return ToolResult("fix corroboration requires diff", True), parent_id, None, ""
+                return (
+                    ToolResult("fix corroboration requires diff", True),
+                    parent_id,
+                    None,
+                    "",
+                )
             result, applied_diff = corroborate_fix(
                 diff,
                 source,
@@ -374,7 +494,12 @@ def _dispatch(
                     structured_content=result.structured_content,
                 )
             return result, parent_id, None, ""
-        return ToolResult("method must be fix or differential", True), parent_id, None, ""
+        return (
+            ToolResult("method must be fix or differential", True),
+            parent_id,
+            None,
+            "",
+        )
     return ToolResult(f"unknown tool: {name}", is_error=True), None, None, ""
 
 
@@ -382,8 +507,35 @@ def _record_result(record: ToolCallRecord) -> Optional[ToolResult]:
     return record.result if isinstance(record.result, ToolResult) else None
 
 
+def _probe_commands(record: ToolCallRecord) -> List[CommandResult]:
+    result = _record_result(record)
+    structured = result.structured_content if result is not None else None
+    if isinstance(structured, CommandResult):
+        return [structured]
+    if isinstance(structured, ProbeRunResult):
+        return [
+            item for item in (structured.current, structured.prior) if item is not None
+        ]
+    return []
+
+
 def _has_source(source_spans: List[SourceExcerpt]) -> bool:
     return any(item.content.strip() for item in source_spans)
+
+
+def _record_has_source(record: ToolCallRecord) -> bool:
+    result = _record_result(record)
+    if result is None or result.is_error:
+        return False
+    structured = result.structured_content
+    if record.skill_id == "read_code" and isinstance(structured, dict):
+        return bool(str(structured.get("content", "")).strip())
+    if record.skill_id == "retrieve_evidence" and isinstance(structured, dict):
+        return any(
+            isinstance(span, dict) and bool(str(span.get("content", "")).strip())
+            for span in structured.get("spans", [])
+        )
+    return False
 
 
 def _shared_transition(
@@ -417,11 +569,7 @@ def _existing_failure_matches_locus(
     if command is None or TestStatus.FAILED not in command.tests.values():
         return False
     haystack = (
-        " ".join(command.tests)
-        + "\n"
-        + command.stdout
-        + "\n"
-        + command.stderr
+        " ".join(command.tests) + "\n" + command.stdout + "\n" + command.stderr
     ).lower()
     for locus in getattr(task.hypothesis, "locus", []) or []:
         normalized = str(locus).split(":", 1)[0]
@@ -457,13 +605,33 @@ def _validate_submission(
         return False, "behavioural verdicts require cites", verdict, cites
     if not _has_source(source_spans):
         return False, "behavioural verdicts require a source span", verdict, cites
+    source_cited = any(_record_has_source(record) for record in cited)
+    executable = [
+        record
+        for record in cited
+        if record.skill_id == "run_probe"
+        and any(
+            command.status is ProcessStatus.EXITED
+            for command in _probe_commands(record)
+        )
+    ]
     behavioural = []
     for record in cited:
         result = _record_result(record)
         if result is not None and behavioural_tests(result):
             behavioural.append(record)
+    # Trust the investigator to judge a closed-form static argument grounded in
+    # exact source, or a model-designed probe whose process actually ran.  The
+    # runtime guarantees provenance and process status, not semantic truth.
+    if source_cited and (executable or not behavioural):
+        return True, "", verdict, cites
     if not behavioural:
-        return False, "cites contain no parsed PASSED/FAILED test", verdict, cites
+        return (
+            False,
+            "cites require validated source, an executed probe, or parsed tests",
+            verdict,
+            cites,
+        )
     if verdict == "refuted":
         for record in behavioural:
             result = _record_result(record)
@@ -500,11 +668,36 @@ def _validate_submission(
     return False, "confirmation lacks bound corroboration", verdict, cites
 
 
+def _submitted_evidence_status(
+    verdict: str, cites: List[str], records: Dict[str, ToolCallRecord]
+) -> str:
+    if verdict == "inconclusive":
+        return "invalid"
+    cited = [records[item] for item in cites if item in records]
+    if any(
+        record.skill_id == "run_probe"
+        and any(
+            command.status is ProcessStatus.EXITED
+            for command in _probe_commands(record)
+        )
+        for record in cited
+    ):
+        return "valid"
+    if any(
+        behavioural_tests(result)
+        for record in cited
+        if (result := _record_result(record)) is not None
+    ):
+        return "valid"
+    return "source"
+
+
 def _derive_non_submitted_evidence(records: List[ToolCallRecord]) -> str:
     test_records = [
         record
         for record in records
-        if record.skill_id in {
+        if record.skill_id
+        in {
             "run_existing_test",
             "run_synthesized_test",
             "corroborate",
@@ -513,8 +706,7 @@ def _derive_non_submitted_evidence(records: List[ToolCallRecord]) -> str:
     if not test_records:
         return "invalid"
     if all(
-        (result := _record_result(record)) is None
-        or not behavioural_tests(result)
+        (result := _record_result(record)) is None or not behavioural_tests(result)
         for record in test_records
     ):
         return "environment"
@@ -571,6 +763,9 @@ def _result(
     ledger: BudgetLedger,
     evidence_test: str = "",
     evidence_diff: str = "",
+    capabilities: Optional[dict[str, bool]] = None,
+    capability_warning: str = "",
+    degraded: bool = False,
 ) -> InvestigationRunResult:
     return InvestigationRunResult(
         verdict=verdict,
@@ -584,6 +779,9 @@ def _result(
         source_spans=source_spans,
         usage=usage,
         budget=ledger,
+        capabilities=dict(capabilities or {}),
+        capability_warning=capability_warning,
+        degraded=degraded,
     )
 
 
@@ -606,15 +804,19 @@ def run_investigation(
 
     ledger = BudgetLedger(task.grant_tokens)
     usage = TokenUsage()
+    capabilities = {"source": True, "python_probe": True, "pytest": recipe is not None}
+    capability_warning = ""
     if recipe is None:
         prelude = run_prelude(
             sandbox,
             memory_store=memory_store,
             commit=commit,
             repo_identity=repo_identity,
-            timeout=min(60, max(1, int(task.deadline_s))),
+            timeout=min(15, max(1, int(task.deadline_s))),
         )
-        if prelude.blocked or prelude.recipe is None:
+        capabilities = prelude.capabilities
+        capability_warning = prelude.reason
+        if prelude.blocked:
             return _result(
                 verdict="inconclusive",
                 exit_status="environment_unavailable",
@@ -625,12 +827,20 @@ def run_investigation(
                 source_spans=list(task.excerpts),
                 usage=usage,
                 ledger=ledger,
+                capabilities=capabilities,
+                capability_warning=capability_warning,
+                degraded=True,
             )
         recipe = prelude.recipe
 
+    available_tools = _available_tools(recipe)
+    available_names = {item["function"]["name"] for item in available_tools}
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": _opening_context(task, recipe)},
+        {
+            "role": "user",
+            "content": _opening_context(task, recipe, capabilities, capability_warning),
+        },
     ]
     records: List[ToolCallRecord] = []
     by_id: Dict[str, ToolCallRecord] = {}
@@ -639,23 +849,23 @@ def run_investigation(
     evidence_test = ""
     evidence_diff = ""
     started = time.monotonic()
+    session_manager = agent_loop_session(llm)
+    loop_llm = session_manager.__enter__()
 
     for _round in range(max_rounds):
         if time.monotonic() - started >= task.deadline_s:
             exit_status = "wall_clock_exceeded"
             reasoning = "Investigation deadline elapsed."
             break
-        estimate, max_completion = _estimate_call(
-            messages, llm, task.grant_tokens
-        )
+        estimate, max_completion = _estimate_call(messages, llm, task.grant_tokens)
         if not ledger.reserve(estimate):
             exit_status = "budget_exceeded"
             reasoning = "Token reservation would exceed the investigation grant."
             break
         try:
-            response = llm._call_raw(
+            response = loop_llm._call_raw(
                 messages,
-                tools=TOOLS,
+                tools=available_tools,
                 tool_choice="auto",
                 max_tokens=max_completion,
             )
@@ -742,7 +952,7 @@ def run_investigation(
                     parent_id = None
                     excerpt = None
                     call_diff = ""
-                elif name not in _TOOL_NAMES:
+                elif name not in available_names:
                     tool_result = ToolResult(f"unknown tool: {name}", True)
                     parent_id = None
                     excerpt = None
@@ -782,9 +992,8 @@ def run_investigation(
             by_id[record.tool_call_id] = record
             if excerpt is not None:
                 source_spans.append(excerpt)
-            if (
-                name == "retrieve_evidence"
-                and isinstance(tool_result.structured_content, dict)
+            if name == "retrieve_evidence" and isinstance(
+                tool_result.structured_content, dict
             ):
                 for span in tool_result.structured_content.get("spans", []):
                     if not isinstance(span, dict) or not span.get("content"):
@@ -816,13 +1025,15 @@ def run_investigation(
                 and isinstance(tool_result.structured_content, dict)
                 and tool_result.structured_content.get("accepted")
             ):
-                return _result(
+                result = _result(
                     verdict=str(tool_result.structured_content["verdict"]),
                     exit_status="submitted",
                     evidence_status=(
-                        "invalid"
-                        if tool_result.structured_content["verdict"] == "inconclusive"
-                        else "valid"
+                        _submitted_evidence_status(
+                            str(tool_result.structured_content["verdict"]),
+                            list(tool_result.structured_content["cites"]),
+                            by_id,
+                        )
                     ),
                     reasoning=str(arguments.get("reasoning", "")).strip(),
                     records=records,
@@ -832,12 +1043,21 @@ def run_investigation(
                     ledger=ledger,
                     evidence_test=evidence_test,
                     evidence_diff=evidence_diff,
+                    capabilities=capabilities,
+                    capability_warning=capability_warning,
+                    degraded=bool(capability_warning),
                 )
+                session_manager.__exit__(None, None, None)
+                return result
     else:
         exit_status = "no_progress"
         reasoning = "Investigation round limit reached without submit_verdict."
 
-    evidence_status = _derive_non_submitted_evidence(records)
+    evidence_status = (
+        "environment"
+        if exit_status == "environment_unavailable"
+        else _derive_non_submitted_evidence(records)
+    )
     result = _result(
         verdict="inconclusive",
         exit_status=exit_status,
@@ -850,8 +1070,14 @@ def run_investigation(
         ledger=ledger,
         evidence_test=evidence_test,
         evidence_diff=evidence_diff,
+        capabilities=capabilities,
+        capability_warning=capability_warning,
+        degraded=bool(capability_warning)
+        or evidence_status == "environment"
+        or exit_status == "environment_unavailable",
     )
     _checkpoint(checkpoint_path, task, records, messages, ledger)
+    session_manager.__exit__(None, None, None)
     return result
 
 

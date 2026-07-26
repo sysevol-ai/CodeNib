@@ -3,7 +3,6 @@
 
 """Behavioral tests for Guardian's agent-owned L2 loop."""
 
-import hashlib
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -253,7 +252,7 @@ def test_investigation_grade_is_agent_written_not_derived(tmp_path):
                 _call(
                     "c1",
                     "investigate",
-                    {"hypothesis_id": hypothesis.id, "budget_tokens": 500},
+                    {"hypothesis_id": hypothesis.id, "budget_tokens": 8_000},
                 )
             ),
             _response(_call("c2", "submit_report", {"summary": "Probe complete."})),
@@ -279,14 +278,254 @@ def test_investigation_grade_is_agent_written_not_derived(tmp_path):
     )
 
 
-def test_externalized_observation_is_rereadable_by_agent(tmp_path):
+def test_source_grounded_investigation_can_be_promoted_by_agent(tmp_path):
+    from codeminer.guardian.loop import Hypothesis
+
+    state = _state()
+    state.budget_total = None
+    hypothesis = Hypothesis.create(
+        claim="mod.parse returns values in the wrong contract order",
+        consequence="callers bind the wrong values",
+        remedy="restore the documented return order",
+        origin="exploration",
+        locus=["mod.py:parse"],
+        cycle_no=1,
+    )
+    state.hypotheses.append(hypothesis)
+    fake_result = SimpleNamespace(
+        evidence_status="source",
+        exit_status="submitted",
+        budget=SimpleNamespace(actual=20),
+        to_dict=lambda: {
+            "verdict": "confirmed",
+            "evidence_status": "source",
+            "exit_status": "submitted",
+        },
+    )
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "c1",
+                    "investigate",
+                    {
+                        "hypothesis_id": hypothesis.id,
+                        "budget_tokens": 8_000,
+                        "obligation": "Check the return contract.",
+                    },
+                )
+            ),
+            _response(
+                _call(
+                    "c2",
+                    "update_hypothesis",
+                    {
+                        "id": hypothesis.id,
+                        "grade": "finding",
+                        "reason": "Exact source establishes the mismatch.",
+                    },
+                )
+            ),
+            _response(_call("c3", "submit_report", {"summary": "One finding."})),
+        ]
+    )
+
+    with patch(
+        "codeminer.guardian.investigator.run_investigator",
+        return_value=fake_result,
+    ):
+        result = run_cycle_loop(
+            state,
+            LoopContext(
+                repo_path=str(tmp_path),
+                arm="memory",
+                llm=llm,
+                retriever=None,
+                sandbox=SimpleNamespace(repo_path=str(tmp_path)),
+            ),
+        )
+
+    assert result.hypotheses[0].grade == "finding"
+    assert "source-valid:1:1" in result.hypotheses[0].evidence
+
+
+def test_investigator_receives_obligation_diff_and_locus_excerpt(tmp_path):
+    from codeminer.guardian.loop import Hypothesis
+
+    (tmp_path / "mod.py").write_text(
+        "def parse(value):\n    return value\n",
+        encoding="utf-8",
+    )
+    state = _state()
+    state.budget_total = None
+    hypothesis = Hypothesis.create(
+        claim="mod.parse returns an invalid value",
+        consequence="callers receive invalid state",
+        remedy="restore the return contract",
+        origin="exploration",
+        locus=["mod.py:1-2"],
+        cycle_no=1,
+    )
+    state.hypotheses.append(hypothesis)
+    fake_result = SimpleNamespace(
+        evidence_status="invalid",
+        exit_status="submitted",
+        budget=SimpleNamespace(actual=20),
+        to_dict=lambda: {
+            "verdict": "inconclusive",
+            "evidence_status": "invalid",
+            "exit_status": "submitted",
+        },
+    )
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "c1",
+                    "investigate",
+                    {
+                        "hypothesis_id": hypothesis.id,
+                        "budget_tokens": 8_000,
+                        "obligation": "Check the changed return contract.",
+                    },
+                )
+            ),
+            _response(_call("c2", "submit_report", {"summary": "Investigated."})),
+        ]
+    )
+
+    with (
+        patch(
+            "codeminer.guardian.investigator.run_investigator",
+            return_value=fake_result,
+        ) as investigator,
+        patch(
+            "codeminer.guardian.loop.runtime._commit_diff",
+            return_value="diff --git a/mod.py b/mod.py",
+        ),
+    ):
+        run_cycle_loop(
+            state,
+            LoopContext(
+                repo_path=str(tmp_path),
+                arm="memory",
+                llm=llm,
+                retriever=None,
+                sandbox=SimpleNamespace(repo_path=str(tmp_path)),
+            ),
+        )
+
+    kwargs = investigator.call_args.kwargs
+    assert kwargs["obligation"] == "Check the changed return contract."
+    assert kwargs["commit_diff"].startswith("diff --git")
+    assert kwargs["excerpts"][0].path == "mod.py"
+    assert "return value" in kwargs["excerpts"][0].content
+    assert kwargs["prior_attempts"] == []
+
+
+def test_environment_failed_investigation_marks_cycle_degraded(tmp_path):
+    from codeminer.guardian.loop import Hypothesis
+
+    state = _state()
+    state.budget_total = None
+    hypothesis = Hypothesis.create(
+        claim="mod.parse accepts invalid input",
+        consequence="invalid state reaches callers",
+        remedy="validate before parsing",
+        origin="exploration",
+        locus=["mod.py:parse"],
+        cycle_no=1,
+    )
+    state.hypotheses.append(hypothesis)
+    fake_result = SimpleNamespace(
+        evidence_status="environment",
+        exit_status="environment_unavailable",
+        budget=SimpleNamespace(actual=0),
+        to_dict=lambda: {
+            "evidence_status": "environment",
+            "exit_status": "environment_unavailable",
+        },
+    )
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "c1",
+                    "investigate",
+                    {
+                        "hypothesis_id": hypothesis.id,
+                        "budget_tokens": 8_000,
+                        "obligation": "Check invalid input.",
+                    },
+                )
+            ),
+            _response(_call("c2", "submit_report", {"summary": "Degraded."})),
+        ]
+    )
+
+    with patch(
+        "codeminer.guardian.investigator.run_investigator",
+        return_value=fake_result,
+    ):
+        result = run_cycle_loop(
+            state,
+            LoopContext(
+                repo_path=str(tmp_path),
+                arm="memory",
+                llm=llm,
+                retriever=None,
+                sandbox=SimpleNamespace(repo_path=str(tmp_path)),
+            ),
+        )
+
+    assert result.degraded is True
+    investigate = next(
+        row for row in result.decision_log if row.get("tool") == "investigate"
+    )
+    assert investigate["state_after"]["grade_counts"]["finding"] == 0
+    assert "admissible_grades" in investigate["observation"]
+
+
+def test_agent_can_inspect_reviewed_commit_diff(tmp_path):
+    llm = _ScriptedLLM(
+        [
+            _response(_call("c1", "read_commit_diff", {})),
+            _response(_call("c2", "submit_report", {"summary": "Reviewed diff."})),
+        ]
+    )
+
+    with patch(
+        "codeminer.guardian.loop.runtime._commit_diff",
+        return_value="diff --git a/mod.py b/mod.py",
+    ):
+        result = run_cycle_loop(
+            _state(),
+            LoopContext(
+                repo_path=str(tmp_path),
+                arm="memory",
+                llm=llm,
+                retriever=None,
+            ),
+        )
+
+    observation = next(
+        row for row in result.decision_log if row.get("tool") == "read_commit_diff"
+    )["observation"]
+    assert observation.startswith("diff --git")
+
+
+def test_long_context_is_summarized_as_one_coherent_history(tmp_path):
     observation = "X" * 5_000
-    ref = hashlib.sha256(observation.encode("utf-8")).hexdigest()[:20] + ".txt"
     llm = _ScriptedLLM(
         [
             _response(_call("c1", "search_code", {"query": "contract", "top_k": 1})),
-            _response(_call("c2", "read_observation", {"ref": ref})),
-            _response(_call("c3", "submit_report", {"summary": "recovered"})),
+            _response(
+                content=(
+                    "The contract search returned one large source observation; "
+                    "no hypothesis has been written yet."
+                )
+            ),
+            _response(_call("c2", "submit_report", {"summary": "recovered"})),
         ]
     )
     retriever = SimpleNamespace(query=lambda query, top_k=None: [observation])
@@ -298,13 +537,12 @@ def test_externalized_observation_is_rereadable_by_agent(tmp_path):
             llm=llm,
             retriever=retriever,
             observation_dir=tmp_path / "observations",
-            max_context_chars=2_500,
+            max_context_tokens=1_500,
+            context_reserve_tokens=300,
         ),
     )
-    reread = next(
-        row
-        for row in result.decision_log
-        if row.get("event") == "tool_call" and row.get("tool") == "read_observation"
-    )
-    assert reread["observation"] == observation[:2_000]
-    assert result.compaction_events >= 1
+    assert result.exit_reason == "ReportSubmitted"
+    assert result.compaction_events == 1
+    assert observation in str(llm.seen_messages[1])
+    assert "large source observation" in str(llm.seen_messages[2])
+    assert observation not in str(llm.seen_messages[2])

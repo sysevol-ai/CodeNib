@@ -101,14 +101,17 @@ class Hypothesis:
         return self.origin
 
 
-def _has_valid_probe(hypothesis: Hypothesis) -> bool:
-    return any(item.startswith("probe-valid:") for item in hypothesis.evidence)
+def _has_valid_evidence(hypothesis: Hypothesis) -> bool:
+    return any(
+        item.startswith(("probe-valid:", "source-valid:"))
+        for item in hypothesis.evidence
+    )
 
 
 GRADE_RULES: Dict[str, Callable[[Hypothesis], bool]] = {
-    "finding": lambda h: bool(h.remedy) and _has_valid_probe(h),
-    "supported": _has_valid_probe,
-    "refuted": _has_valid_probe,
+    "finding": lambda h: bool(h.remedy) and _has_valid_evidence(h),
+    "supported": _has_valid_evidence,
+    "refuted": _has_valid_evidence,
     "conjecture": lambda h: bool(h.claim and h.consequence and h.remedy),
     "deferred": lambda h: True,
 }
@@ -131,7 +134,8 @@ def validate_hypothesis(hypothesis: Hypothesis) -> None:
     if not GRADE_RULES[hypothesis.grade](hypothesis):
         if hypothesis.grade in {"finding", "supported", "refuted"}:
             raise ValueError(
-                f"grade={hypothesis.grade!r} requires a probe-valid: evidence reference"
+                f"grade={hypothesis.grade!r} requires a probe-valid: or "
+                "source-valid: evidence reference"
                 + (" and a remedy" if hypothesis.grade == "finding" else "")
             )
         raise ValueError(f"hypothesis is not admissible at grade={hypothesis.grade!r}")

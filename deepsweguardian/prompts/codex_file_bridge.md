@@ -53,10 +53,12 @@ Use it at these checkpoints:
    /app/.guardian/bin/guardian-checkpoint
    ```
 
-   If it reports findings for the current commit, address them with another
-   edit/commit or explicitly explain why no code change is needed. Do not give
-   your final answer until this checkpoint has succeeded for the current
-   `HEAD`.
+   Address verified findings and high-confidence backlog items with another
+   edit/commit, or explicitly explain why no code change is needed. If
+   `analysis status` is degraded, do not describe zero findings as a clean
+   review: perform the missing validation yourself and explain the limitation.
+   Do not give your final answer until this checkpoint has succeeded for the
+   current `HEAD`.
 
 If `/app/.guardian/out/status.json` says `"running": true`, use the current report
 as the last completed analysis and continue during normal work. At final

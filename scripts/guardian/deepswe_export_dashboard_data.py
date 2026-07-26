@@ -62,9 +62,15 @@ def _trial_row(row: dict[str, Any]) -> dict[str, Any]:
         "main_output_tokens": row.get("main_output_tokens"),
         "main_reasoning_output_tokens": row.get("main_reasoning_output_tokens"),
         "guardian_findings": row.get("guardian_findings"),
+        "guardian_backlog": row.get("guardian_backlog"),
+        "guardian_high_confidence_backlog": row.get("guardian_high_confidence_backlog"),
+        "guardian_degraded": row.get("guardian_degraded"),
+        "guardian_analysis_status": row.get("guardian_analysis_status"),
         "guardian_llm_backend": row.get("guardian_llm_backend"),
         "guardian_prompt_tokens": row.get("guardian_prompt_tokens"),
+        "guardian_cached_input_tokens": row.get("guardian_cached_input_tokens"),
         "guardian_completion_tokens": row.get("guardian_completion_tokens"),
+        "guardian_total_tokens": row.get("guardian_total_tokens"),
         "main_cost_usd": row.get("main_cost_usd"),
         "guardian_cost_usd": row.get("guardian_cost_usd"),
         "total_cost_usd": row.get("total_cost_usd"),
@@ -127,6 +133,9 @@ def _summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "avg_main_output_tokens": _metric_mean(group, "main_output_tokens"),
                 "avg_guardian_prompt_tokens": _metric_mean(
                     group, "guardian_prompt_tokens"
+                ),
+                "avg_guardian_cached_input_tokens": _metric_mean(
+                    group, "guardian_cached_input_tokens"
                 ),
                 "avg_guardian_completion_tokens": _metric_mean(
                     group, "guardian_completion_tokens"

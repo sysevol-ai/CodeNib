@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import uuid
 from dataclasses import replace
 from typing import Optional, Protocol, Sequence, Tuple
@@ -22,6 +23,7 @@ from .types import CommandResult, ProcessStatus, TestStatus, ToolResult
 logger = get_logger(__name__)
 FILE_CONTENT_MAX_LINES = 150
 _SYNTH_TEST_FILENAME = "_guardian_synth_test.py"
+_PROBE_FILENAME = "_guardian_probe.py"
 _PATCH_FILENAME = "_guardian_fix.patch"
 _OUTPUT_LIMIT = 2_000
 
@@ -138,10 +140,10 @@ def _test_result(
         summary = f"report unavailable: {parsed.error}"
     elif statuses:
         is_error = False
-        counts = {
-            status.value: statuses.count(status) for status in set(statuses)
-        }
-        summary = ", ".join(f"{count} {status}" for status, count in sorted(counts.items()))
+        counts = {status.value: statuses.count(status) for status in set(statuses)}
+        summary = ", ".join(
+            f"{count} {status}" for status, count in sorted(counts.items())
+        )
     elif command_result.exit_code in {2, 3, 4}:
         is_error = True
         summary = f"pytest infrastructure exit {command_result.exit_code}"
@@ -166,9 +168,49 @@ def _run_pytest(
 ) -> ToolResult:
     report_rel = f".guardian/reports/run-{uuid.uuid4().hex}.xml"
     report_abs = os.path.join(sandbox.repo_path, report_rel)
+    os.makedirs(os.path.dirname(report_abs), exist_ok=True)
     command = recipe.command(target, report_rel)
     command_result = sandbox.run_command(command, timeout=timeout)
     return _test_result(command_result, report_abs, label=label)
+
+
+def run_python_probe(
+    source: str,
+    sandbox: SandboxHandle,
+    *,
+    timeout: int = 60,
+    filename: str = _PROBE_FILENAME,
+) -> ToolResult:
+    """Run a model-designed, dependency-light Python probe.
+
+    The runtime validates syntax, retains the exact source, and returns the
+    typed process outcome.  It deliberately does not interpret the probe's
+    conclusion; that remains the investigator model's responsibility.
+    """
+
+    if not source.strip():
+        return ToolResult("probe source is required", is_error=True)
+    if len(source.splitlines()) > 80:
+        return ToolResult("probe source exceeds 80 lines", is_error=True)
+    try:
+        compile(source, filename, "exec")
+    except SyntaxError as exc:
+        return ToolResult(f"invalid Python probe: {exc}", is_error=True)
+    sandbox.write_file(filename, source)
+    command = sandbox.run_command(
+        [sys.executable, filename],
+        timeout=max(1, min(int(timeout), 300)),
+    )
+    output = (command.stdout + "\n" + command.stderr).strip()
+    summary = (
+        f"process={command.status.value} exit_code={command.exit_code}\n"
+        f"{output[-_OUTPUT_LIMIT:]}"
+    ).strip()
+    return ToolResult(
+        summary,
+        is_error=command.status is not ProcessStatus.EXITED,
+        structured_content=command,
+    )
 
 
 def run_existing_test(
@@ -180,9 +222,7 @@ def run_existing_test(
 ) -> ToolResult:
     """Run an existing test; parsed report statuses are the sole authority."""
 
-    return _run_pytest(
-        node_id, sandbox, recipe, timeout=timeout, label="existing test"
-    )
+    return _run_pytest(node_id, sandbox, recipe, timeout=timeout, label="existing test")
 
 
 def _check_self_mocking(test_src: str) -> bool:
@@ -195,9 +235,7 @@ def synthesize_test(target_symbol: str, body: str) -> ToolResult:
     """Validate and retain model-authored pytest source without executing it."""
 
     if not target_symbol.strip() or not body.strip():
-        return ToolResult(
-            "target_symbol and body are required", is_error=True
-        )
+        return ToolResult("target_symbol and body are required", is_error=True)
     if len(body.splitlines()) > 40:
         return ToolResult("synthesized test exceeds 40 lines", is_error=True)
     try:
@@ -249,11 +287,14 @@ def corroborate_fix(
     )
     if patch.status is not ProcessStatus.EXITED or patch.exit_code != 0:
         detail = (patch.stdout + "\n" + patch.stderr)[-_OUTPUT_LIMIT:]
-        return ToolResult(
-            f"fix patch could not be applied\n{detail}",
-            is_error=True,
-            structured_content=patch,
-        ), ""
+        return (
+            ToolResult(
+                f"fix patch could not be applied\n{detail}",
+                is_error=True,
+                structured_content=patch,
+            ),
+            "",
+        )
     return (
         run_synthesized_test(test_src, sandbox, recipe, timeout=timeout),
         diff,
@@ -269,9 +310,7 @@ def corroborate_differential(
 ) -> ToolResult:
     """Run the same synthesized test on the prior snapshot."""
 
-    return run_synthesized_test(
-        test_src, prior_sandbox, recipe, timeout=timeout
-    )
+    return run_synthesized_test(test_src, prior_sandbox, recipe, timeout=timeout)
 
 
 def command_result(result: ToolResult) -> Optional[CommandResult]:
@@ -290,9 +329,7 @@ def behavioural_tests(result: ToolResult) -> dict[str, TestStatus]:
     }
 
 
-def transition(
-    parent: ToolResult, child: ToolResult
-) -> Optional[Tuple[str, str]]:
+def transition(parent: ToolResult, child: ToolResult) -> Optional[Tuple[str, str]]:
     """Return a named SWE-bench transition shared by parent and child."""
 
     parent_command = command_result(parent)

@@ -119,6 +119,7 @@ class GuardianReport:
     exit_reason: str = ""
     report_summary: str = ""
     degraded: bool = False
+    analysis_status: str = "complete"
     decision_log: List[dict] = field(default_factory=list)
     compaction_events: int = 0
     trace_metrics: Dict[str, Any] = field(default_factory=dict)
@@ -194,13 +195,12 @@ def render_markdown(report: GuardianReport) -> str:
         f"- **Generated:** {report.generated_at}",
         f"- **Cycle:** {report.cycle_no or '—'}",
         f"- **Exit:** {report.exit_reason or '—'}",
+        f"- **Analysis status:** {report.analysis_status}",
         f"- **Churn window:** {report.churn_window}",
         f"- **Indexed files:** {report.file_count}",
     ]
     if report.degraded:
-        lines.append(
-            "- **Ablation eligibility:** excluded (degraded model/fallback path)"
-        )
+        lines.append("- **Ablation eligibility:** excluded (analysis was degraded)")
     if report.retriever:
         lines.append(f"- **Retriever:** {report.retriever}")
     if report.llm_model:
@@ -222,6 +222,7 @@ def render_markdown(report: GuardianReport) -> str:
         lines.append(
             f"- **LLM tokens:** {usage.total_tokens:,} total "
             f"(prompt: {usage.prompt_tokens:,} / "
+            f"cached input: {usage.cached_input_tokens:,} / "
             f"completion: {usage.completion_tokens:,})"
         )
     lines.extend(

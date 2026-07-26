@@ -11,7 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
-from codeminer.guardian.cycle import GuardianConfig, run_cycle
+from codeminer.guardian.cycle import GuardianConfig, _merge_llm_usage, run_cycle
+from codeminer.guardian.investigator.runner import LLMUsage
 from codeminer.guardian.memory import MemoryStore
 from codeminer.guardian.report import render_markdown
 
@@ -131,8 +132,29 @@ def test_no_model_is_explicitly_degraded_and_signals_do_not_become_findings(tmp_
     assert report.commit == "deadbeefcafebabe"
     assert report.findings == []
     assert report.degraded is True
+    assert report.analysis_status == "degraded"
     assert report.exit_reason == "Degraded"
     assert "No verified actionable findings" in render_markdown(report)
+
+
+def test_merged_usage_total_is_the_sum_of_rendered_components():
+    outer = SimpleNamespace(
+        prompt_tokens=11,
+        completion_tokens=7,
+        total_tokens=12,
+    )
+    inner = SimpleNamespace(
+        prompt_tokens=13,
+        completion_tokens=5,
+        total_tokens=14,
+    )
+    merged = LLMUsage()
+
+    _merge_llm_usage(merged, outer, inner)
+
+    assert merged.prompt_tokens == 24
+    assert merged.completion_tokens == 12
+    assert merged.total_tokens == 36
 
 
 def test_agent_cycle_projects_only_graded_finding(tmp_path):

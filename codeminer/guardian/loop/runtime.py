@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -13,7 +14,14 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from ...log_utils import get_logger
-from .context import compact_messages, initial_messages
+from ..llm import agent_loop_session
+from .context import (
+    compact_messages,
+    context_tokens,
+    initial_messages,
+    needs_compaction,
+    summarization_messages,
+)
 from .exceptions import (
     BudgetExceeded,
     CycleInterrupt,
@@ -49,7 +57,10 @@ class LoopContext:
     prior_sandbox: object = None
     checkpoint_path: Optional[Path] = None
     observation_dir: Optional[Path] = None
-    max_context_chars: int = 120_000
+    max_context_tokens: int = 200_000
+    context_reserve_tokens: int = 20_000
+    # Compatibility for older callers and intentionally tiny unit-test limits.
+    max_context_chars: Optional[int] = None
     max_turns: int = 40
     wall_clock_seconds: int = 1_800
     investigator_deadline_seconds: int = 300
@@ -78,7 +89,7 @@ def _find_hypothesis(state: CycleState, hypothesis_id: str) -> Hypothesis:
     raise ValueError(f"unknown hypothesis id: {hypothesis_id}")
 
 
-def _bounded_observation(value: Any, max_chars: int = 30_000) -> str:
+def _bounded_observation(value: Any, max_chars: int = 16_000) -> str:
     if isinstance(value, str):
         rendered = value
     else:
@@ -94,19 +105,34 @@ def _investigation_excerpts(hypothesis: Hypothesis, repo_path: str) -> list:
     from ..investigator import SourceExcerpt
 
     excerpts = []
-    for locus in hypothesis.locus[:8]:
-        path = str(locus).split(":", 1)[0]
+    seen = set()
+    for locus in hypothesis.locus[:6]:
+        text = str(locus)
+        match = re.match(r"^(.*?):(\d+)(?:-(\d+))?$", text)
+        if match:
+            path = match.group(1)
+            locus_start = int(match.group(2))
+            locus_end = int(match.group(3) or locus_start)
+            start = max(1, locus_start - 40)
+            end = locus_end + 40
+        else:
+            path = text.split(":", 1)[0]
+            start, end = 1, 120
+        key = (path, start, end)
+        if key in seen:
+            continue
+        seen.add(key)
         try:
             content = read_code(
-                repo_path, path, start_line=1, end_line=200, max_chars=12_000
+                repo_path, path, start_line=start, end_line=end, max_chars=8_000
             )
         except (OSError, ValueError):
             continue
         excerpts.append(
             SourceExcerpt(
                 path=path,
-                start_line=1,
-                end_line=min(200, len(content.splitlines())),
+                start_line=start,
+                end_line=start + max(0, len(content.splitlines()) - 1),
                 content=content,
             )
         )
@@ -165,6 +191,9 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
                 retriever=ctx.retriever,
                 top_k=int(args.get("top_k", 8)),
             )
+
+        if call_name == "read_commit_diff":
+            return _commit_diff(ctx.repo_path) or "(empty commit diff)"
 
         if call_name == "read_code":
             return read_code(
@@ -240,8 +269,8 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
         if call_name == "investigate":
             hypothesis = _find_hypothesis(state, str(args.get("hypothesis_id", "")))
             grant = int(args.get("budget_tokens", 0))
-            if grant <= 0:
-                raise ValueError("budget_tokens must be positive")
+            if grant < 8_000:
+                raise ValueError("budget_tokens must be at least 8000")
             remaining = (
                 None
                 if state.budget_total is None
@@ -278,7 +307,12 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
                         }
                         for index, evidence in enumerate(hypothesis.evidence)
                         if evidence.startswith(
-                            ("probe-valid:", "probe-invalid:", "env:")
+                            (
+                                "probe-valid:",
+                                "source-valid:",
+                                "probe-invalid:",
+                                "env:",
+                            )
                         )
                     ],
                     deadline_s=ctx.investigator_deadline_seconds,
@@ -305,18 +339,31 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
             hypothesis.last_touched_cycle = state.cycle_no
             prefix = {
                 "valid": "probe-valid",
+                "source": "source-valid",
                 "invalid": "probe-invalid",
                 "environment": "env",
             }.get(getattr(result, "evidence_status", "invalid"), "probe-invalid")
+            if (
+                bool(getattr(result, "degraded", False))
+                or getattr(result, "evidence_status", "") == "environment"
+                or getattr(result, "exit_status", "") == "environment_unavailable"
+            ):
+                state.degraded = True
             probe_ref = f"{prefix}:{state.cycle_no}:{hypothesis.attempts}"
             hypothesis.evidence.append(probe_ref)
+            admissible_grades = (
+                ["conjecture", "deferred"]
+                if prefix in {"probe-invalid", "env"}
+                else ["conjecture", "supported", "finding", "refuted", "deferred"]
+            )
             return _bounded_observation(
                 {
                     **result.to_dict(),
                     "probe_ref": probe_ref,
+                    "admissible_grades": admissible_grades,
                     "instruction": (
-                        "Judge the evidence and call update_hypothesis; "
-                        "the runtime does not derive a grade from this verdict."
+                        "Judge the evidence and call update_hypothesis using one "
+                        "of admissible_grades; the runtime does not derive a grade."
                     ),
                 }
             )
@@ -368,6 +415,8 @@ def run_cycle_loop(
     )
     started = time.monotonic()
     turn = 0
+    session_manager = agent_loop_session(ctx.llm)
+    loop_llm = session_manager.__enter__()
     try:
         while True:
             check_invariants(state)
@@ -392,28 +441,81 @@ def run_cycle_loop(
                     decision_log_tail=state.decision_log[-5:],
                 )
 
-            compacted, events = compact_messages(
-                transcript,
-                max_chars=ctx.max_context_chars,
-                output_dir=ctx.observation_dir or Path(".guardian_observations"),
+            max_context_tokens = (
+                max(1, ctx.max_context_chars // 4)
+                if ctx.max_context_chars is not None
+                else ctx.max_context_tokens
             )
-            transcript = compacted
-            if events:
+            reserve_tokens = min(
+                max(0, ctx.context_reserve_tokens),
+                max(0, max_context_tokens // 5),
+            )
+            model = getattr(ctx.llm, "model", None)
+            if needs_compaction(
+                transcript,
+                max_tokens=max_context_tokens,
+                reserve_tokens=reserve_tokens,
+                model=model,
+            ):
+                try:
+                    summary_response = loop_llm._call_raw(
+                        summarization_messages(transcript, state),
+                        tools=TOOLS,
+                        tool_choice="auto",
+                        _guardian_text_response=True,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    state.degraded = True
+                    raise Degraded(
+                        f"context summarization failed: {exc}",
+                        decision_log_tail=state.decision_log[-5:],
+                    ) from exc
+                summary_usage = getattr(summary_response, "usage", None)
+                state.budget_spent += int(
+                    getattr(summary_usage, "total_tokens", 0) or 0
+                )
+                if ctx.outer_usage is not None:
+                    ctx.outer_usage.add(summary_response)
+                if (
+                    state.budget_total is not None
+                    and state.budget_spent >= state.budget_total
+                ):
+                    raise BudgetExceeded(
+                        "cycle token budget exhausted during context summarization "
+                        f"({state.budget_spent}/{state.budget_total})",
+                        decision_log_tail=state.decision_log[-5:],
+                    )
+                summary = (
+                    getattr(summary_response.choices[0].message, "content", "") or ""
+                ).strip()
+                if not summary:
+                    raise Degraded(
+                        "context summarization returned an empty summary",
+                        decision_log_tail=state.decision_log[-5:],
+                    )
+                transcript, events = compact_messages(
+                    transcript,
+                    summary=summary,
+                    state=state,
+                    output_dir=ctx.observation_dir or Path(".guardian_observations"),
+                )
                 state.compaction_events += len(events)
                 state.decision_log.extend(events)
-            context_chars = sum(
-                len(json.dumps(message, sort_keys=True, default=str))
-                for message in transcript
-            )
-            if context_chars > ctx.max_context_chars:
+                reset = getattr(loop_llm, "reset", None)
+                if callable(reset):
+                    reset()
+
+            transcript_tokens = context_tokens(transcript, model=model)
+            usable_tokens = max(1, max_context_tokens - reserve_tokens)
+            if transcript_tokens > usable_tokens:
                 raise BudgetExceeded(
-                    "immutable frame plus active working set exceeds the "
-                    f"context budget ({context_chars}/{ctx.max_context_chars} chars)",
+                    "immutable frame plus compacted working set exceeds the "
+                    f"context budget ({transcript_tokens}/{usable_tokens} tokens)",
                     decision_log_tail=state.decision_log[-5:],
                 )
 
             try:
-                response = ctx.llm._call_raw(
+                response = loop_llm._call_raw(
                     transcript, tools=TOOLS, tool_choice="auto"
                 )
             except Exception as exc:  # noqa: BLE001
@@ -480,3 +582,4 @@ def run_cycle_loop(
     finally:
         if ctx.checkpoint_path is not None:
             save_checkpoint(ctx.checkpoint_path, state, transcript)
+        session_manager.__exit__(None, None, None)

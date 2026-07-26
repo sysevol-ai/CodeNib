@@ -7,10 +7,10 @@
 import json
 from unittest.mock import Mock
 
-from deepsweguardian import codex_bridge
 from codeminer.guardian.cycle import GuardianConfig
 from codeminer.guardian.loop import Hypothesis
 from codeminer.guardian.report import GuardianReport, report_views
+from deepsweguardian import codex_bridge
 
 
 def _report() -> GuardianReport:
@@ -61,6 +61,9 @@ def test_run_bridge_once_writes_markdown_json_and_status(tmp_path, monkeypatch):
     assert data["llm_backend"] == "codex-sdk"
     assert status["commit"] == "abc123def456"
     assert status["findings"] == 1
+    assert status["backlog"] == 0
+    assert status["degraded"] is False
+    assert status["analysis_status"] == "complete"
     assert status["llm_model"] == "codex:gpt-5.6-luna"
     assert status["llm_backend"] == "codex-sdk"
     assert status["llm_transport_history"] == ["codex-sdk"]

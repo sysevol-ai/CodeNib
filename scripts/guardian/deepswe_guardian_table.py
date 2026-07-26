@@ -151,9 +151,17 @@ def _cost_from_guardian_tokens(row: dict[str, Any], pricing: Pricing) -> float |
     if row.get("guardian_prompt_tokens") is None:
         return None
     prompt = float(row.get("guardian_prompt_tokens") or 0)
+    cached = float(row.get("guardian_cached_input_tokens") or 0)
     completion = float(row.get("guardian_completion_tokens") or 0)
+    uncached = max(0.0, prompt - cached)
+    cached_rate = (
+        pricing.cached_input_usd_per_mtok
+        if pricing.cached_input_usd_per_mtok is not None
+        else pricing.input_usd_per_mtok
+    )
     return (
-        prompt / 1_000_000 * pricing.input_usd_per_mtok
+        uncached / 1_000_000 * pricing.input_usd_per_mtok
+        + cached / 1_000_000 * cached_rate
         + completion / 1_000_000 * pricing.output_usd_per_mtok
     )
 
@@ -229,6 +237,7 @@ def write_summary(rows: list[dict[str, Any]], summary_csv: Path) -> None:
         "avg_main_output_tokens",
         "avg_main_reasoning_output_tokens",
         "avg_guardian_prompt_tokens",
+        "avg_guardian_cached_input_tokens",
         "avg_guardian_completion_tokens",
         "avg_main_cost_usd",
         "avg_guardian_cost_usd",
@@ -268,6 +277,9 @@ def write_summary(rows: list[dict[str, Any]], summary_csv: Path) -> None:
                 ),
                 "avg_guardian_prompt_tokens": _metric_mean(
                     group, "guardian_prompt_tokens"
+                ),
+                "avg_guardian_cached_input_tokens": _metric_mean(
+                    group, "guardian_cached_input_tokens"
                 ),
                 "avg_guardian_completion_tokens": _metric_mean(
                     group, "guardian_completion_tokens"

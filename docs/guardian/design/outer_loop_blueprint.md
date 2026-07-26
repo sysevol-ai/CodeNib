@@ -821,8 +821,8 @@ agent can react to. This is the contract from the sandbox blueprint §5, and
 `WorktreeSandbox.run_command` already honours it by returning `(1, "(command
 timed out after {timeout}s)")` instead of raising (`investigator/sandbox.py`). A
 rejected `update_hypothesis` is the interesting case: the observation says *why*
-(`"grade='finding' requires a probe: ref in evidence"`), so the validation rule
-teaches rather than merely blocks.
+(`"grade='finding' requires a probe-valid: or source-valid: evidence
+reference"`), so the validation rule teaches rather than merely blocks.
 
 **Limits are checked in one place**, including from inside `query()` so token
 accounting cannot be bypassed by a tool that happens to be expensive. Scattering
@@ -920,7 +920,7 @@ Every record carries `hypothesis_id`, `cycle_no`, and `grade`, so a memory-deriv
 claim in a report can be traced to the rows that produced it. That is the
 attribution constraint, satisfied by the record format rather than by bookkeeping.
 
-### 4.4 Compaction: the part that is genuinely unsolved
+### 4.4 Compaction: preserve a coherent working memory
 
 When the working set approaches the window, something must go, and *how* that
 choice is made is the least-settled question in this blueprint.
@@ -929,21 +929,23 @@ choice is made is the least-settled question in this blueprint.
   is wrong here: the earliest turns often contain the hypothesis-forming
   reasoning, and dropping it silently converts a persistent agent into a
   short-horizon one mid-cycle.
-- **Summarize-and-replace** (compress old turns into a synopsis) preserves the
-  thread but is lossy in an *unmeasured* way, and it interacts badly with the
-  ablation: if the summarizer drops memory-derived content, arm C degrades toward
-  arm B as the cycle lengthens, and the effect grows with cycle length — exactly
-  the axis the persistence claim is measured on.
 - **Externalize-and-reference** — write the full observation to `/out`, keep a
-  one-line reference the agent can re-read — is the option most consistent with
-  §4.2, because it turns eviction into another pull. It costs a tool call to
-  recover anything, so the agent must be told this is happening; a silent
-  eviction it cannot detect is worse than an explicit one it can undo.
+  one-line reference the agent can re-read — appears lossless, but makes the
+  agent pay another turn to reconstruct its own working memory. In the July
+  2026 replay this produced a context-thrashing loop: the same externalized
+  observation was recovered nine times without a state transition.
+- **Summarize-and-replace** compresses the completed conversation into a
+  structured working-memory synopsis. It is lossy, but preserves the reasoning
+  thread in one place and avoids observation-by-observation reconstruction.
 
-**Recommendation:** externalize-and-reference, with compaction events recorded in
-the decision log so a cycle's context history is reconstructible. Add a
-`compaction_events` count to per-cycle metrics: if it correlates with arm, the
-comparison is confounded and must be reported.
+**Decision:** keep raw tool results in the append-only conversation until the
+model's token boundary is genuinely approached, then summarize and replace the
+old conversation as one unit. The summary request appends to the existing
+conversation so the provider can reuse its cached prefix. The immutable frame
+and canonical `CycleState` are re-injected; the full pre-compaction transcript
+is archived for audit, and the compaction event records the archive and summary
+sizes. Cached-input tokens and compaction counts are reported so the cost and
+ablation interaction remain measurable.
 
 Two mechanical requirements follow. Compaction must be **arm-blind** — the same
 policy, thresholds, and code path in B and C — or it becomes a second
@@ -1071,7 +1073,7 @@ whose type is currently wrong.
 | 2 | Typed exits | new `guardian/loop/exceptions.py`, `guardian_replay.py` | a failed cycle is distinguishable from an empty one | 3 |
 | 3 | The tool-use loop | `cycle.py` (`_run_cycle_inner`) | a cycle reaches `ReportSubmitted` through ≥3 turns; decision log replays | 4, 5, 6 |
 | 4 | `recall` as a tool | new `guardian/memory/queries.py` | `--arm memoryless` returns empty and the loop still reports | the research question |
-| 5 | Context management | `guardian/loop/context.py` | a cycle past the window keeps its frame; externalized observations re-readable | long cycles |
+| 5 | Context management | `guardian/loop/context.py`, `guardian/llm/` | each L2/L3 agent loop owns one transport session; raw results remain until a token boundary; compaction retains frame and canonical state in one summary | long cycles |
 | 6 | Code exploration tools | new `guardian/loop/tools_code.py` | ≥1 hypothesis per replay carries no `"signal:"` evidence | the proactivity metric |
 | 7 | Grading and resolution discipline | `report.py`, prompt, `GRADE_RULES` | a re-derived claim supersedes rather than duplicates | credible C−B |
 
@@ -1127,9 +1129,11 @@ detail for each step follows.
    with `--arm memoryless` the tool is present and returns empty, and the loop
    still reaches a report.
 5. **Context management.** The frame/working-set split of §4.2 and
-   externalize-and-reference compaction (§4.4), with `compaction_events` logged.
-   Test: a cycle forced past the window boundary keeps its frame intact, and its
-   externalized observations are re-readable by the agent.
+   summary-and-replace compaction (§4.4), with `compaction_events` and cached
+   input tokens logged. L2 and each L3 investigation own separate transport
+   sessions. Test: a cycle forced past the token boundary keeps its frame and
+   canonical state, archives the old transcript, and continues from one
+   structured summary.
 6. **Code exploration tools.** `search_code` / `read_code` over the sandbox
    views. This is what makes `origin = "exploration"` reachable — until it lands,
    the proactivity metric of §7 has a structural ceiling. Test: at least one
@@ -1262,14 +1266,11 @@ built a real loop.
    loses interpretability. Mitigation: measure sequence entropy over tool calls
    in step 3, before memory is in play. Low entropy is diagnostic of a prompt
    that over-specifies procedure, not of an agent that does not need freedom.
-10. **Compaction is the least-designed part of the design.** §4.4 recommends
-   externalize-and-reference on principle but has no empirical basis, and
-   compaction interacts with the ablation in a direction that inflates the
-   result: if summarization drops memory-derived content, arm C degrades toward
-   arm B as cycles lengthen. Mitigation: arm-blind policy, `compaction_events`
-   as a reported covariate, and an early check on whether long cycles even reach
-   the window boundary — if they do not, this risk is deferred rather than
-   solved.
+10. **Summarization can distort the memory ablation.** If compaction drops
+   memory-derived content, arm C degrades toward arm B as cycles lengthen.
+   Mitigation: one arm-blind policy, canonical state re-injection, archived raw
+   transcripts, cached-token and `compaction_events` metrics, and replay tests
+   that compare pre/post-summary hypothesis state.
 
 ---
 
@@ -1302,7 +1303,7 @@ starting.
 | Open | Blocks | Options on the table |
 |---|---|---|
 | Whether `GRADE_RULES` should require an enumerated change class in the remedy | step 7 | form-only floor (current) · locus-must-exist · locus + change class from {consolidate, add guard, add test, revert} (§8 risk 6) |
-| Compaction policy | step 5 | externalize-and-reference (recommended, §4.4) · summarize-and-replace · no compaction until a cycle actually hits the window |
+| Compaction summary quality | step 5 | replay exact hypothesis state across the boundary; inspect archived transcript when a summary loses evidence |
 | Whether steps 1–4 of the terminology migration land as one commit | step 0 | one commit (the tree is incoherent between them) · four commits with a temporarily broken tree |
 | Frame budget | step 5 | ~1–2k tokens is a guess, not a measurement; calibrate on a real cycle |
 | Whether the campaign level (L1) is in scope at all | after step 7 | out of scope for the prototype · a thin cross-cycle budget carry |

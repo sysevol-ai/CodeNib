@@ -141,6 +141,18 @@ def main() -> int:
             print(f"model: {status.get('llm_model', '')}")
             print(f"backend: {status.get('llm_backend', '')}")
             print(f"findings: {status.get('findings', 0)}")
+            print(f"backlog: {status.get('backlog', 0)}")
+            print(
+                "high-confidence backlog: "
+                f"{status.get('high_confidence_backlog', 0)}"
+            )
+            print(f"analysis status: {status.get('analysis_status', 'unknown')}")
+            if status.get("degraded"):
+                print(
+                    "WARNING: Guardian analysis was degraded; this report must "
+                    "not be treated as a complete clean review.",
+                    file=sys.stderr,
+                )
             tokens = status.get("llm_tokens")
             if isinstance(tokens, dict):
                 print(f"tokens: {tokens.get('total', 0)}")

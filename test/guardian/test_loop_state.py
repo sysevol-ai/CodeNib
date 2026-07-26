@@ -85,6 +85,15 @@ def test_finding_grade_requires_probe_evidence():
             _hypothesis(grade="finding", evidence=[non_admissible])
 
 
+def test_source_grounded_evidence_can_support_a_finding():
+    finding = _hypothesis(
+        grade="finding",
+        evidence=["source-valid:3:1"],
+    )
+
+    assert finding.grade == "finding"
+
+
 def test_checkpoint_round_trip_is_reconstructible(tmp_path):
     state = _state()
     messages = [

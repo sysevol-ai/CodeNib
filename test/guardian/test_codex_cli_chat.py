@@ -220,14 +220,152 @@ def test_cycle_usage_merge_combines_outer_and_inner_usage():
     from codeminer.guardian.investigator import LLMUsage
 
     total = LLMUsage()
-    outer = LLMUsage(prompt_tokens=10, completion_tokens=2, total_tokens=12)
-    inner = LLMUsage(prompt_tokens=30, completion_tokens=8, total_tokens=38)
+    outer = LLMUsage(
+        prompt_tokens=10,
+        cached_input_tokens=6,
+        completion_tokens=2,
+        total_tokens=12,
+    )
+    inner = LLMUsage(
+        prompt_tokens=30,
+        cached_input_tokens=20,
+        completion_tokens=8,
+        total_tokens=38,
+    )
 
     _merge_llm_usage(total, outer, inner)
 
     assert total.prompt_tokens == 40
+    assert total.cached_input_tokens == 26
     assert total.completion_tokens == 10
     assert total.total_tokens == 50
+
+
+def test_sdk_agent_loop_reuses_one_thread_and_sends_incremental_results(
+    monkeypatch,
+):
+    from codeminer.guardian.llm import agent_loop_session
+
+    seen = {"thread_starts": 0, "prompts": [], "closed": 0}
+
+    class FakeSandbox:
+        workspace_write = "workspace-write"
+
+    class FakeApprovalMode:
+        deny_all = "deny-all"
+
+    class FakeConfig:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeThread:
+        def run(self, prompt, **kwargs):
+            seen["prompts"].append(prompt)
+            answer = (
+                {
+                    "type": "tool_call",
+                    "name": "read_code",
+                    "arguments": {"path": "mod.py"},
+                }
+                if len(seen["prompts"]) == 1
+                else {"type": "final", "content": "done"}
+            )
+            return SimpleNamespace(final_response=json.dumps(answer), usage=None)
+
+    class FakeCodex:
+        def __init__(self, config):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            seen["closed"] += 1
+
+        def thread_start(self, **kwargs):
+            seen["thread_starts"] += 1
+            return FakeThread()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "openai_codex",
+        SimpleNamespace(
+            ApprovalMode=FakeApprovalMode,
+            Codex=FakeCodex,
+            CodexConfig=FakeConfig,
+            Sandbox=FakeSandbox,
+        ),
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "read_code", "parameters": {}},
+        }
+    ]
+    initial = [{"role": "user", "content": "inspect the commit"}]
+    llm = CodexSdkChat(model="gpt-5.6-luna", cwd="/repo")
+
+    with agent_loop_session(llm) as session:
+        first = session._call_raw(initial, tools=tools)
+        call = first.choices[0].message.tool_calls[0]
+        continued = [
+            *initial,
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.function.name,
+                            "arguments": call.function.arguments,
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": "def parse(): pass",
+            },
+        ]
+        second = session._call_raw(continued, tools=tools)
+
+    assert second.choices[0].message.content == "done"
+    assert seen["thread_starts"] == 1
+    assert seen["closed"] == 1
+    assert "inspect the commit" in seen["prompts"][0]
+    assert "def parse(): pass" in seen["prompts"][1]
+    assert "inspect the commit" not in seen["prompts"][1]
+
+
+def test_sdk_usage_prefers_last_turn_over_cumulative_total():
+    from codeminer.guardian.llm.codex_cli_chat import _usage_from_sdk
+
+    result = SimpleNamespace(
+        usage=SimpleNamespace(
+            total=SimpleNamespace(
+                input_tokens=100,
+                cached_input_tokens=70,
+                output_tokens=20,
+                reasoning_output_tokens=10,
+            ),
+            last=SimpleNamespace(
+                input_tokens=30,
+                cached_input_tokens=20,
+                output_tokens=4,
+                reasoning_output_tokens=2,
+            ),
+        )
+    )
+
+    usage = _usage_from_sdk(result)
+
+    assert usage.prompt_tokens == 30
+    assert usage.cached_input_tokens == 20
+    assert usage.completion_tokens == 6
+    assert usage.total_tokens == 36
 
 
 def test_sdk_call_raw_uses_codex_sdk(monkeypatch):
@@ -253,7 +391,8 @@ def test_sdk_call_raw_uses_codex_sdk(monkeypatch):
                     cached_input_tokens=4,
                     output_tokens=6,
                     reasoning_output_tokens=8,
-                    total_tokens=27,
+                    # Older SDKs can omit reasoning from this aggregate.
+                    total_tokens=19,
                 )
             )
             return SimpleNamespace(final_response="answer\n", usage=usage)
@@ -346,9 +485,7 @@ def test_sdk_default_uses_bundled_runtime(monkeypatch):
         ),
     )
 
-    CodexSdkChat(model="gpt-5.6-luna")._call_raw(
-        [{"role": "user", "content": "hello"}]
-    )
+    CodexSdkChat(model="gpt-5.6-luna")._call_raw([{"role": "user", "content": "hello"}])
 
     assert seen["config"]["codex_bin"] is None
 
@@ -461,9 +598,7 @@ def test_sdk_call_raw_falls_back_to_cli(monkeypatch):
     )
 
     llm = CodexSdkChat(model="gpt-5.6-luna")
-    response = llm._call_raw(
-        [{"role": "user", "content": "hello"}]
-    )
+    response = llm._call_raw([{"role": "user", "content": "hello"}])
 
     assert response.choices[0].message.content == "fallback answer"
     assert llm.backend_name == "codex-cli-fallback"

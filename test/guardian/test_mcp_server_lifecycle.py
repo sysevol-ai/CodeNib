@@ -25,6 +25,9 @@ def _reset_server_state(monkeypatch):
         mcp_server._cache.update(
             {
                 "findings": [],
+                "backlog": [],
+                "degraded": False,
+                "analysis_status": "pending",
                 "commit": "",
                 "cycle_no": 0,
                 "running": False,
@@ -67,6 +70,8 @@ def test_query_action_starts_watcher_once(monkeypatch):
     assert first["started_by_this_action"] is True
     assert first["status"] == "baseline_unchanged"
     assert first["cycle_no"] == 0
+    assert first["degraded"] is False
+    assert first["backlog"] == []
     assert second["started_by_this_action"] is False
 
 

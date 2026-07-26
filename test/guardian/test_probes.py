@@ -11,19 +11,18 @@ from pathlib import Path
 import pytest
 
 from codeminer.guardian.investigator.environment import TestRecipe as Recipe
+from codeminer.guardian.investigator.environment import validate_recipe
 from codeminer.guardian.investigator.probes import (
     behavioural_tests,
     run_existing_test,
+    run_python_probe,
     run_synthesized_test,
     synthesize_test,
 )
 from codeminer.guardian.investigator.report_parser import parse_pytest_junit
 from codeminer.guardian.investigator.sandbox import WorktreeSandbox
-from codeminer.guardian.investigator.types import (
-    CommandResult,
-    ProcessStatus,
-    TestStatus as Status,
-)
+from codeminer.guardian.investigator.types import CommandResult, ProcessStatus
+from codeminer.guardian.investigator.types import TestStatus as Status
 
 
 def _junit(path: Path, body: str = "") -> None:
@@ -106,9 +105,7 @@ def test_error_only_report_is_not_behavioural_evidence(tmp_path):
     result = run_existing_test("test/bad.py", sandbox, RECIPE)
     assert result.is_error is False
     assert behavioural_tests(result) == {}
-    assert result.structured_content.tests == {
-        "test_bad::test_import": Status.ERROR
-    }
+    assert result.structured_content.tests == {"test_bad::test_import": Status.ERROR}
 
 
 def test_generic_exit_one_without_report_is_not_a_failed_test(tmp_path):
@@ -118,8 +115,27 @@ def test_generic_exit_one_without_report_is_not_a_failed_test(tmp_path):
     assert behavioural_tests(result) == {}
 
 
+def test_recipe_validation_creates_report_directory_before_execution(tmp_path):
+    class DirectoryCheckingSandbox(ReportSandbox):
+        def run_command(self, command, *, timeout=60, env=None):
+            report_arg = next(
+                item for item in command if item.startswith("--junitxml=")
+            )
+            assert (Path(self.repo_path) / report_arg.split("=", 1)[1]).parent.is_dir()
+            return super().run_command(command, timeout=timeout, env=env)
+
+    valid, reason = validate_recipe(
+        RECIPE, DirectoryCheckingSandbox(tmp_path, "", exit_code=0)
+    )
+
+    assert valid is True
+    assert reason == ""
+
+
 def test_synthesized_source_is_validated_before_execution(tmp_path):
-    accepted = synthesize_test("pkg.mod.target", "def test_contract():\n    assert True")
+    accepted = synthesize_test(
+        "pkg.mod.target", "def test_contract():\n    assert True"
+    )
     rejected = synthesize_test("pkg.mod.target", "def broken(:")
     assert accepted.is_error is False
     assert accepted.structured_content["source"].startswith("def test_contract")
@@ -132,11 +148,23 @@ def test_synthesized_run_writes_source_and_parses_failure(tmp_path):
         "<failure>contract</failure></testcase>"
     )
     sandbox = ReportSandbox(tmp_path, body, exit_code=1)
-    result = run_synthesized_test(
-        "def test_contract(): assert False", sandbox, RECIPE
-    )
+    result = run_synthesized_test("def test_contract(): assert False", sandbox, RECIPE)
     assert sandbox.writes["_guardian_synth_test.py"].startswith("def test_contract")
     assert list(behavioural_tests(result).values()) == [Status.FAILED]
+
+
+def test_generic_python_probe_runs_without_pytest(tmp_path):
+    (tmp_path / "module.py").write_text("def target():\n    return 1\n")
+    result = run_python_probe(
+        "from pathlib import Path\n"
+        "text = Path('module.py').read_text()\n"
+        "print('contract-present' if 'return' in text else 'missing')\n",
+        WorktreeSandbox(str(tmp_path)),
+    )
+
+    # The probe ran successfully even though it made no pytest assumptions.
+    assert result.structured_content.status is ProcessStatus.EXITED
+    assert "contract-present" in result.content
 
 
 def test_worktree_sandbox_distinguishes_spawn_failure(tmp_path):
@@ -165,9 +193,7 @@ def test_probe_subprocess_has_no_network_or_credentials(tmp_path, monkeypatch):
         "except OSError:\n"
         "    print('network-blocked')\n"
     )
-    result = WorktreeSandbox(str(tmp_path)).run_command(
-        [sys.executable, "-c", source]
-    )
+    result = WorktreeSandbox(str(tmp_path)).run_command([sys.executable, "-c", source])
     assert result.status is ProcessStatus.EXITED
     assert "scrubbed" in result.stdout
     assert "network-blocked" in result.stdout

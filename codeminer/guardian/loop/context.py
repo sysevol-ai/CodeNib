@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Frame construction and arm-blind context compaction for the L2 loop."""
+"""Frame construction and coherent context compaction for the L2 loop."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
+from ...agent.history import count_message_tokens
 from .state import CycleState
 
 SYSTEM_PROMPT = """\
@@ -31,6 +31,13 @@ and update their grades. New evidence may lead to new hypotheses. Only grade
 "finding" means verified and actionable. Use "supported" when the claim holds
 but the remedy is not yet actionable, "refuted" when a probe contradicts it,
 and "deferred" when more work is not worth this cycle's budget.
+L3 may return probe-valid evidence from execution or source-valid evidence from
+a closed-form argument over exact source spans. Judge either on its merits.
+
+This is a commit review. Inspect read_commit_diff before broad exploration and
+prioritize contracts changed by this commit. Distinguish defects introduced or
+exposed by HEAD from pre-existing repository problems; do not spend the cycle
+on an unrelated pre-existing issue while changed-surface hypotheses remain.
 
 Resolve repeated claims through update_hypothesis and supersedes instead of
 creating duplicate findings. When further work is not worth its cost, call
@@ -83,53 +90,144 @@ def initial_messages(state: CycleState, *, repo_path: str, arm: str) -> List[dic
     ]
 
 
-def _message_size(message: dict) -> int:
-    return len(json.dumps(message, sort_keys=True, default=str))
+SUMMARY_PROMPT = """\
+Summarize the Guardian work so this same agent can continue after its old
+conversation is replaced. Preserve concrete facts, not general advice:
+- the reviewed commit and changed contracts;
+- source spans and tool results that materially constrain the review;
+- every hypothesis considered and its current evidentiary status;
+- approaches ruled out and why;
+- unresolved questions and the next intended checks.
+Do not invent evidence. Return only the working-memory summary.
+"""
+
+
+def context_tokens(messages: List[dict], *, model: Optional[str] = None) -> int:
+    """Estimate transcript tokens using the model tokenizer when available."""
+
+    return count_message_tokens(messages, model=model)
+
+
+def needs_compaction(
+    messages: List[dict],
+    *,
+    max_tokens: int,
+    reserve_tokens: int,
+    model: Optional[str] = None,
+) -> bool:
+    """Return whether history has reached the model-output reserve boundary."""
+
+    usable = max(1, max_tokens - max(0, reserve_tokens))
+    return context_tokens(messages, model=model) > usable
+
+
+def summarization_messages(messages: List[dict], state: CycleState) -> List[dict]:
+    """Append a cache-friendly summarization request to the current history."""
+
+    snapshot = {
+        "cycle": state.cycle_no,
+        "commit": state.commit,
+        "current_hypothesis": state.current,
+        "hypotheses": [
+            {
+                "id": item.id,
+                "claim": item.claim,
+                "grade": item.grade,
+                "locus": item.locus,
+                "evidence": item.evidence,
+                "confidence": item.confidence,
+            }
+            for item in state.hypotheses
+        ],
+    }
+    return [
+        *messages,
+        {
+            "role": "user",
+            "content": (
+                f"{SUMMARY_PROMPT}\nCanonical state at compaction:\n"
+                f"{json.dumps(snapshot, sort_keys=True, default=str)}"
+            ),
+        },
+    ]
+
+
+def _recent_complete_turns(messages: List[dict], keep_turns: int) -> List[dict]:
+    if keep_turns <= 0:
+        return []
+    assistant_positions = [
+        index
+        for index, message in enumerate(messages[2:], start=2)
+        if message.get("role") == "assistant"
+    ]
+    if not assistant_positions:
+        return []
+    start = assistant_positions[-keep_turns]
+    return list(messages[start:])
 
 
 def compact_messages(
     messages: List[dict],
     *,
-    max_chars: int,
+    summary: str,
+    state: CycleState,
     output_dir: Path,
+    keep_recent_turns: int = 0,
 ) -> Tuple[List[dict], List[dict]]:
-    """Externalize old tool observations while preserving the immutable frame.
+    """Replace old history with one summary plus a small recent working set.
 
-    The first two messages are never compacted. The policy depends only on
-    serialized message size, so it is identical in memory and memoryless arms.
+    The complete pre-compaction transcript is archived for auditability, but
+    raw tool observations are not individually evicted and rehydrated.
     """
-    if max_chars <= 0 or sum(_message_size(item) for item in messages) <= max_chars:
-        return messages, []
 
+    if len(messages) <= 2:
+        return messages, []
     output_dir.mkdir(parents=True, exist_ok=True)
-    compacted = list(messages)
-    events: List[dict] = []
-    for index in range(2, len(compacted)):
-        if sum(_message_size(item) for item in compacted) <= max_chars:
-            break
-        message = compacted[index]
-        if message.get("role") != "tool":
-            continue
-        content = str(message.get("content", ""))
-        if len(content) < 256:
-            continue
-        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:20]
-        target = output_dir / f"{digest}.txt"
-        if not target.exists():
-            target.write_text(content, encoding="utf-8")
-        compacted[index] = {
-            **message,
-            "content": (
-                f"[observation externalized: {target.name}; "
-                "use read_observation to recover it]"
-            ),
-        }
-        events.append(
+    archives = sorted(output_dir.glob("transcript_before_compaction_*.json"))
+    target = output_dir / f"transcript_before_compaction_{len(archives) + 1:04d}.json"
+    target.write_text(
+        json.dumps(messages, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8",
+    )
+    recent = _recent_complete_turns(messages, keep_recent_turns)
+    snapshot = {
+        "cycle": state.cycle_no,
+        "commit": state.commit,
+        "current_hypothesis": state.current,
+        "hypotheses": [
             {
-                "event": "compaction",
-                "message_index": index,
-                "observation_ref": target.name,
-                "original_chars": len(content),
+                "id": item.id,
+                "claim": item.claim,
+                "grade": item.grade,
+                "locus": item.locus,
+                "evidence": item.evidence,
+                "confidence": item.confidence,
             }
-        )
-    return compacted, events
+            for item in state.hypotheses
+        ],
+    }
+    compacted = [
+        messages[0],
+        messages[1],
+        {
+            "role": "user",
+            "content": (
+                "=== COMPACTED WORKING MEMORY ===\n"
+                f"{summary.strip()}\n\n"
+                "Canonical Guardian state:\n"
+                f"{json.dumps(snapshot, sort_keys=True, default=str)}\n"
+                "=== END COMPACTED WORKING MEMORY ==="
+            ),
+        },
+        *recent,
+    ]
+    event = {
+        "event": "compaction",
+        "strategy": "structured_summary",
+        "archive": target.name,
+        "messages_before": len(messages),
+        "messages_after": len(compacted),
+        "recent_turns_retained": keep_recent_turns,
+        "summary_chars": len(summary),
+    }
+    return compacted, [event]

@@ -52,12 +52,23 @@ TOOLS = [
     ),
     _function(
         "search_code",
-        "Search compiled repository views for symbols, behavior, callers, or tests.",
+        (
+            "Search symbol names and ranked source lines for files, identifiers, "
+            "callers, tests, or behavior. Multi-term queries match individual terms."
+        ),
         {
             "query": {"type": "string"},
             "top_k": {"type": "integer", "minimum": 1, "maximum": 30},
         },
         required=["query"],
+    ),
+    _function(
+        "read_commit_diff",
+        (
+            "Read the bounded patch introduced by the reviewed HEAD commit. "
+            "Use it before exploring unrelated repository-wide problems."
+        ),
+        {},
     ),
     _function(
         "read_code",
@@ -71,7 +82,10 @@ TOOLS = [
     ),
     _function(
         "read_observation",
-        "Recover a tool observation externalized during context compaction.",
+        (
+            "Recover a legacy observation reference from a resumed checkpoint. "
+            "New cycles retain results until whole-history summarization."
+        ),
         {"ref": {"type": "string"}},
         required=["ref"],
     ),
@@ -121,7 +135,11 @@ TOOLS = [
         "Delegate one hypothesis to the L3 probe loop with an explicit token grant.",
         {
             "hypothesis_id": {"type": "string"},
-            "budget_tokens": {"type": "integer", "minimum": 1},
+            "budget_tokens": {
+                "type": "integer",
+                "minimum": 8000,
+                "description": "L3 grants below 8000 cannot fund its tool protocol.",
+            },
             "obligation": {
                 "type": "string",
                 "description": "One narrow falsifiable question for this L3 run.",

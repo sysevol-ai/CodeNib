@@ -49,7 +49,9 @@ class GuardianConfig:
     hypotheses_only: bool = False
     max_outer_turns: int = 40
     wall_clock_seconds: int = 1_800
-    max_context_chars: int = 120_000
+    max_context_tokens: int = 200_000
+    context_reserve_tokens: int = 20_000
+    max_context_chars: Optional[int] = None
     checkpoint_path: Optional[str] = None
     resume: bool = False
 
@@ -206,10 +208,15 @@ def _llm_report_metadata(config: GuardianConfig, llm: object) -> dict:
 def _merge_llm_usage(total: object, *parts: object) -> None:
     """Merge LLM usage accumulators for compatibility consumers."""
     total.prompt_tokens = sum(getattr(part, "prompt_tokens", 0) or 0 for part in parts)
+    total.cached_input_tokens = sum(
+        getattr(part, "cached_input_tokens", 0) or 0 for part in parts
+    )
     total.completion_tokens = sum(
         getattr(part, "completion_tokens", 0) or 0 for part in parts
     )
-    total.total_tokens = sum(getattr(part, "total_tokens", 0) or 0 for part in parts)
+    # Keep the rendered accounting identity exact even when a provider reports
+    # a legacy total that omits separately reported reasoning tokens.
+    total.total_tokens = total.prompt_tokens + total.completion_tokens
 
 
 def _build_retriever(config: GuardianConfig, manifest: object) -> object:
@@ -370,6 +377,8 @@ def _run_cycle_inner(
                     prior_sandbox=prior_sandbox,
                     checkpoint_path=checkpoint,
                     observation_dir=output_root / "observations",
+                    max_context_tokens=config.max_context_tokens,
+                    context_reserve_tokens=config.context_reserve_tokens,
                     max_context_chars=config.max_context_chars,
                     max_turns=(1 if config.hypotheses_only else config.max_outer_turns),
                     wall_clock_seconds=config.wall_clock_seconds,
@@ -389,8 +398,6 @@ def _run_cycle_inner(
     # report fields for dashboards while the decision log remains authoritative.
     total_usage = LLMUsage()
     _merge_llm_usage(total_usage, outer_usage, inner_usage)
-    total_usage.total_tokens = state.budget_spent
-
     findings, backlog, retractions = report_views(state.hypotheses)
     tool_calls = [row for row in state.decision_log if row.get("event") == "tool_call"]
     investigation_budgets = [
@@ -404,6 +411,17 @@ def _run_cycle_inner(
         if not any(ref.startswith("signal:") for ref in hypothesis.evidence)
     ]
     trace_metrics = {
+        "budget_spent": state.budget_spent,
+        "environment_failures": sum(
+            "environment_unavailable" in str(row.get("observation", ""))
+            for row in tool_calls
+            if row.get("tool") == "investigate"
+        ),
+        "degraded_investigations": sum(
+            '"degraded": true' in str(row.get("observation", "")).lower()
+            for row in tool_calls
+            if row.get("tool") == "investigate"
+        ),
         "tool_calls": len(tool_calls),
         "recall_calls": sum(row.get("tool") == "recall" for row in tool_calls),
         "investigation_budgets": investigation_budgets,
@@ -436,6 +454,7 @@ def _run_cycle_inner(
         exit_reason=state.exit_reason or "",
         report_summary=state.report_summary,
         degraded=state.degraded,
+        analysis_status=("degraded" if state.degraded else "complete"),
         decision_log=state.decision_log,
         compaction_events=state.compaction_events,
         trace_metrics=trace_metrics,

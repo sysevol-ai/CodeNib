@@ -10,7 +10,7 @@ import os
 import shutil
 import sys
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional, Tuple
 
@@ -44,11 +44,12 @@ class TestRecipe:
 
 @dataclass(frozen=True)
 class PreludeResult:
-    """Outcome of health checking and test recipe discovery."""
+    """Available investigation capabilities in one disposable snapshot."""
 
     blocked: bool
     reason: str
     recipe: Optional[TestRecipe] = None
+    capabilities: dict[str, bool] = field(default_factory=dict)
 
 
 def _repo_key(repo_path: str, commit: str) -> str:
@@ -118,6 +119,7 @@ def validate_recipe(
 
     report_rel = f".guardian/reports/collect-{uuid.uuid4().hex}.xml"
     report_abs = os.path.join(sandbox.repo_path, report_rel)
+    Path(report_abs).parent.mkdir(parents=True, exist_ok=True)
     command = recipe.command(None, report_rel, collect_only=True)
     result = sandbox.run_command(command, timeout=timeout)
     parsed = parse_pytest_junit(report_abs)
@@ -143,7 +145,11 @@ def run_prelude(
 
     root = Path(sandbox.repo_path)
     if not root.is_dir():
-        return PreludeResult(True, "disposable snapshot is not materialized")
+        return PreludeResult(
+            True,
+            "disposable snapshot is not materialized",
+            capabilities={"source": False, "python_probe": False, "pytest": False},
+        )
     try:
         health_dir = root / ".guardian" / "tmp"
         health_dir.mkdir(parents=True, exist_ok=True)
@@ -151,7 +157,11 @@ def run_prelude(
         marker.write_text("ok", encoding="utf-8")
         marker.unlink()
     except OSError as exc:
-        return PreludeResult(True, f"disposable snapshot is not writable: {exc}")
+        return PreludeResult(
+            True,
+            f"disposable snapshot is not writable: {exc}",
+            capabilities={"source": True, "python_probe": False, "pytest": False},
+        )
 
     candidates = []
     identity = repo_identity or sandbox.repo_path
@@ -169,7 +179,20 @@ def run_prelude(
         valid, reason = validate_recipe(recipe, sandbox, timeout=timeout)
         if valid:
             _save_recipe(memory_store, identity, commit, recipe)
-            return PreludeResult(False, "", recipe)
+            return PreludeResult(
+                False,
+                "",
+                recipe,
+                {"source": True, "python_probe": True, "pytest": True},
+            )
         failures.append(f"{' '.join(recipe.command_prefix)}: {reason}")
     detail = "; ".join(failures) if failures else "no Python test recipe candidates"
-    return PreludeResult(True, detail)
+    # Pytest discovery is advisory.  Source inspection and generic Python
+    # probes remain useful and must not be disabled by a missing project test
+    # environment.
+    return PreludeResult(
+        False,
+        detail,
+        None,
+        {"source": True, "python_probe": True, "pytest": False},
+    )

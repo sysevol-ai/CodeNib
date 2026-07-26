@@ -4,8 +4,7 @@
 """Tests for grade-filtered Guardian report rendering."""
 
 from codeminer.guardian.loop import Hypothesis
-from codeminer.guardian.report import (GuardianReport, render_markdown,
-                                       report_views)
+from codeminer.guardian.report import GuardianReport, render_markdown, report_views
 
 
 def _hypothesis(*, grade, suffix="", supersedes=None):
@@ -63,6 +62,18 @@ def test_render_includes_metadata_and_actionable_finding():
     assert "parse accepts invalid input" in markdown
     assert "Remedy:** validate input" in markdown
     assert "agent/runner.py:parse" in markdown
+    assert "Analysis status:** complete" in markdown
+
+
+def test_render_makes_degraded_analysis_explicit():
+    report = _sample_report()
+    report.degraded = True
+    report.analysis_status = "degraded"
+
+    markdown = render_markdown(report)
+
+    assert "Analysis status:** degraded" in markdown
+    assert "excluded (analysis was degraded)" in markdown
 
 
 def test_only_finding_grade_reaches_findings_section():

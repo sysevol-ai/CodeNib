@@ -222,9 +222,11 @@ model:
 - submit the cycle report.
 
 Hypotheses end as `conjecture`, `supported`, `finding`, `refuted`, or
-`deferred`. Claims promoted to `supported`, `finding`, or `refuted` require a
-probe-valid evidence reference. L2 state is checkpointed so a partially
-completed cycle can be diagnosed.
+`deferred`. Claims promoted to `supported`, `finding`, or `refuted` require
+either `source-valid` evidence for a closed-form claim grounded in exact source
+or `probe-valid` evidence from an executed generic probe or classified test
+result. L2 state is checkpointed so a partially completed cycle can be
+diagnosed.
 
 ### L3: evidence investigator
 
@@ -236,12 +238,41 @@ outcomes, and an evidence ledger. This separates:
 - whether a test passed, failed, or could not be classified;
 - whether the result actually supports or refutes the hypothesis.
 
-Before hypothesis-specific probes, L3 performs a deterministic environment
-prelude and discovers a repository test recipe. Probes run against disposable
-current and prior snapshots, never the coding agent's working checkout.
+Before hypothesis-specific work, L3 performs a deterministic environment
+prelude. A materialized writable disposable snapshot is required; pytest is an
+optional capability. If a test recipe cannot be validated, L3 still exposes
+source inspection and a generic model-authored Python probe, records the
+capability loss, and marks the investigation degraded. Probes run against
+disposable current and prior snapshots, never the coding agent's working
+checkout.
+
+L3 deliberately does not expose a growing catalog of defect-specific static
+analyzers. The model chooses how to inspect source and may write one small
+dependency-light probe when execution would add confidence. Runtime code owns
+provenance, process classification, isolation, and evidence labels; the model
+owns the semantic judgment.
 
 `codeminer/guardian/investigator/runner.py` remains a compatibility path for
 the older narrative investigator; the typed inner loop is the active design.
+
+### Agent-loop sessions and context
+
+Transport sessions follow agent ownership rather than cycle ownership. L2 keeps
+one model session across its outer turns. Every L3 investigation opens its own
+independent session and closes it with that investigation; multiple L3 agents
+therefore never share conversational state merely because they belong to one
+Guardian cycle.
+
+Within either kind of agent loop, messages and tool results append to a stable
+conversation so provider prompt caching can reuse the preceding prefix. L3 is
+short and grant-bounded, so it retains its complete investigation history. In
+the longer L2 loop, raw tool results stay in working context until the configured
+model-token boundary is approached. At that boundary Guardian requests one
+structured working-memory summary, archives the full prior transcript,
+re-injects the immutable frame and canonical cycle state, and continues in a
+fresh provider session. It does not evict individual observations during
+ordinary turns. Reports retain prompt, cached-input, completion, and total-token
+counts alongside compaction events.
 
 ## Concurrency and consistency
 
@@ -305,12 +336,11 @@ Turn and wall-clock limits remain safety boundaries even without a token limit.
 | L3 typed investigation | `codeminer/guardian/investigator/` |
 | Persistent memory | `codeminer/guardian/memory/store.py` |
 
-The concurrency and lazy-start paths are implemented. The main remaining
-reliability issue is environmental: recent Pier runs have reached L3 but
-reported `environment_unavailable` during its deterministic prelude, even
-though local integration tests pass. That should be treated as a container
-toolchain or runtime-integration failure until the same probe can be reproduced
-as a code-level L3 defect.
+The concurrency and lazy-start paths are implemented. Reports and checkpoints
+also carry `analysis_status`, `degraded`, backlog counts, and high-confidence
+backlog counts. A zero-finding degraded report is not a clean review: the coding
+agent must inspect the backlog and perform the missing validation before
+finishing.
 
 ## Pier invocation shape
 

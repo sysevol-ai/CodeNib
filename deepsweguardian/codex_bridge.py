@@ -112,6 +112,7 @@ def _write_report(out_dir: Path, report: GuardianReport) -> None:
     def _tok(usage: object) -> dict:
         return {
             "prompt": getattr(usage, "prompt_tokens", 0) or 0,
+            "cached_input": getattr(usage, "cached_input_tokens", 0) or 0,
             "completion": getattr(usage, "completion_tokens", 0) or 0,
             "total": getattr(usage, "total_tokens", 0) or 0,
         }
@@ -122,6 +123,12 @@ def _write_report(out_dir: Path, report: GuardianReport) -> None:
             "commit": report.commit,
             "generated_at": report.generated_at,
             "findings": len(report.findings),
+            "backlog": len(report.backlog),
+            "high_confidence_backlog": sum(
+                item.confidence >= 0.8 for item in report.backlog
+            ),
+            "degraded": report.degraded,
+            "analysis_status": report.analysis_status,
             "llm_model": report.llm_model,
             "llm_backend": report.llm_backend,
             "llm_transport_history": report.llm_transport_history,
@@ -167,6 +174,12 @@ def _write_status(
             "commit": commit,
             "generated_at": "",
             "findings": 0,
+            "backlog": 0,
+            "high_confidence_backlog": 0,
+            "degraded": bool(error),
+            "analysis_status": (
+                "failed" if error else ("running" if running else "pending")
+            ),
             "llm_model": llm_model,
             "llm_backend": llm_backend,
             "llm_transport_history": [llm_backend] if llm_backend else [],
@@ -281,6 +294,12 @@ def main(argv: Optional[list[str]] = None) -> None:
             "Disable the cycle token limit while retaining turn and wall-clock limits"
         ),
     )
+    parser.add_argument(
+        "--max-context-tokens",
+        type=int,
+        default=200_000,
+        help="Model context window allocated to the L2 agent loop",
+    )
     parser.add_argument("--poll-interval", type=int, default=10)
     parser.add_argument("--once", action="store_true")
     parser.add_argument(
@@ -321,6 +340,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         since=args.since,
         top_n=args.top_n,
         budget_tokens=None if args.no_budget_limit else args.budget_tokens,
+        max_context_tokens=args.max_context_tokens,
         episode_dir="/logs/agent/guardian_episode",
     )
     run_bridge(
