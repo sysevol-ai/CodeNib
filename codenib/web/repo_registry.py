@@ -458,6 +458,9 @@ class RepoRegistry:
             # Keep prose answers: the Files:/Symbols:/Locations: schema turn is
             # for the localization eval and would replace the explanation.
             force_localization_contract=False,
+            # A capped exploration should still end in a usable answer (one
+            # extra tool-free turn) instead of mid-search chatter.
+            force_final_answer=True,
         )
         bundle.runner = runner
 

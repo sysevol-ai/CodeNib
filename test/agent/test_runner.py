@@ -231,6 +231,54 @@ class TestAgentRunner:
         # 3 loop turns + 1 forced summary turn.
         assert llm._call_raw.call_count == 4
 
+    def test_force_final_answer_on_max_turns(self, echo_registry):
+        """Chat opt-in: exhausted budget ends in one tool-free prose turn."""
+        llm = _make_llm()
+        tc = _make_tool_call("call_x", "echo", '{"text": "loop"}')
+        llm._call_raw.side_effect = [
+            _make_response(tool_calls=[tc]),
+            _make_response(tool_calls=[tc]),
+            _make_response(content="Grounded final answer."),
+        ]
+
+        runner = AgentRunner(llm, echo_registry, max_turns=2, force_final_answer=True)
+        result = runner.run("loop forever")
+
+        assert result.answer == "Grounded final answer."
+        assert llm._call_raw.call_count == 3
+        forced_kwargs = llm._call_raw.call_args.kwargs
+        assert forced_kwargs.get("tool_choice") == "none"
+        assert forced_kwargs.get("usage_turn") == 3
+
+    def test_force_final_answer_empty_result_raises(self, echo_registry):
+        """An empty forced answer is an error, not a silent fallback."""
+        llm = _make_llm()
+        tc = _make_tool_call("call_x", "echo", '{"text": "loop"}')
+        llm._call_raw.side_effect = [
+            _make_response(tool_calls=[tc]),
+            _make_response(tool_calls=[tc]),
+            _make_response(content=None),
+        ]
+
+        runner = AgentRunner(llm, echo_registry, max_turns=2, force_final_answer=True)
+        with pytest.raises(RuntimeError, match="max_turns"):
+            runner.run("loop forever")
+
+    def test_force_final_answer_leaves_normal_termination_alone(self, echo_registry):
+        """A run that ends in prose on its own never gets an extra turn."""
+        llm = _make_llm()
+        tc = _make_tool_call("call_1", "echo", '{"text": "hello"}')
+        llm._call_raw.side_effect = [
+            _make_response(tool_calls=[tc]),
+            _make_response(content="Done."),
+        ]
+
+        runner = AgentRunner(llm, echo_registry, max_turns=5, force_final_answer=True)
+        result = runner.run("test")
+
+        assert result.answer == "Done."
+        assert llm._call_raw.call_count == 2
+
     def test_unknown_skill_returns_error(self):
         """Tool call for unregistered skill records an error."""
         llm = _make_llm()

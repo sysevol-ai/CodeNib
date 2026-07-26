@@ -154,6 +154,7 @@ class AgentRunner:
         default_tool_ids: Optional[Set[str]] = None,
         retry: Optional[RetryConfig] = None,
         force_localization_contract: bool = False,
+        force_final_answer: bool = False,
         first_turn_tool_choice: Optional[str] = None,
         force_first_turn_only: bool = False,
         compact_after_read: bool = False,
@@ -224,6 +225,12 @@ class AgentRunner:
         # Locations: contract; QA callers (web demo) keep prose, so they turn
         # this off and skip the schema-forcing final turn entirely.
         self._force_contract = force_localization_contract
+        # Chat callers (the web demo) want a usable prose answer even when the
+        # exploration budget runs out: one extra tool-free turn asks the model
+        # to commit to an answer from what it already read. Opt-in so eval
+        # behaviour is untouched; an empty forced answer raises instead of
+        # silently returning mid-exploration chatter.
+        self._final_answer = force_final_answer
         self.first_turn_tool_choice = first_turn_tool_choice
         # When True, only turn 0 is forced (legacy single-turn behaviour);
         # default False = force until the agent reads a file.
@@ -842,6 +849,21 @@ limited tool budget, so converge once the implementing location is confirmed.
                 or last_content
             )
             answer_source = "forced_schema"
+        elif self._final_answer:
+            trace.add(
+                "final_answer_forced",
+                max_turns,
+                reason="max_turns_exhausted",
+            )
+            last_content = self._force_final_answer(
+                history, usage_tracker, max_turns + 1
+            )
+            if not last_content.strip():
+                raise RuntimeError(
+                    f"agent exhausted max_turns={max_turns} without producing "
+                    "a final answer"
+                )
+            answer_source = "forced_answer"
 
         return _finish_result(
             answer=last_content,
@@ -1028,6 +1050,38 @@ limited tool budget, so converge once the implementing location is confirmed.
             ):
                 break
         return out
+
+    def _force_final_answer(self, history, usage_tracker, usage_turn: int) -> str:
+        """One tool-free turn that turns an exhausted exploration into an answer.
+
+        The chat path has no schema to force; the model just needs to stop
+        searching and commit to prose grounded in what it already read.
+        Anthropic rejects a tool-history conversation unless ``tools=`` is
+        passed, so pass it with ``tool_choice="none"`` to forbid further
+        calls. Errors propagate to the caller — the serving layer surfaces
+        them instead of shipping a truncated answer.
+        """
+        history.add_message(
+            {
+                "role": "user",
+                "content": (
+                    "Stop searching. Using what you have already read, give "
+                    "your complete final answer now, citing the relevant "
+                    "files and symbols."
+                ),
+            }
+        )
+        overrides: Dict[str, Any] = {
+            "usage_tracker": usage_tracker,
+            "usage_turn": usage_turn,
+        }
+        if self.tools:
+            overrides["tools"] = self.tools
+            overrides["tool_choice"] = "none"
+        final = self.llm._call_raw(history.get_messages(), **overrides)
+        forced_msg = final.choices[0].message
+        history.add_message(_message_to_dict(forced_msg))
+        return getattr(forced_msg, "content", None) or ""
 
     def _new_history(self):
         """Build the chat-history container for one ``run()``.
