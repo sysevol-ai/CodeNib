@@ -165,5 +165,3 @@ package, import namespace, commands, and repository use `CodeNib`. See
 
 CodeNib is licensed under the
 [Apache License, Version 2.0](https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE).
-Contributions previously made under the MIT License are retained under the
-terms of Section 4 of Apache 2.0.
