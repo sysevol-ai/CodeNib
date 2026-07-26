@@ -11,6 +11,8 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-26
+
 ### Added
 
 - A unified `codenib` CLI with `index`, `wiki`, `mcp`, and `doctor` commands.
@@ -36,4 +38,5 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Prepared secretless PyPI publishing through a dedicated GitHub Actions OIDC
   workflow.
 
-[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/main...HEAD
+[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/sysevol-ai/CodeNib/releases/tag/v0.1.0

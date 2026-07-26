@@ -3,6 +3,7 @@ message: "If you use CodeNib in research, please cite this software."
 title: "CodeNib"
 type: software
 version: 0.1.0
+date-released: 2026-07-26
 abstract: >-
   CodeNib compiles repositories into reusable lexical, semantic, and
   structural views and serves source-linked context to coding agents and
