@@ -14,7 +14,9 @@ from codeminer.types import EDGE_TYPE_REFERENCE
 
 def _hypothesis(cycle_no=1, *, grade="finding", suffix=""):
     evidence = (
-        [f"probe:{cycle_no}:1"] if grade in {"finding", "supported", "refuted"} else []
+        [f"probe-valid:{cycle_no}:1"]
+        if grade in {"finding", "supported", "refuted"}
+        else []
     )
     return Hypothesis.create(
         claim=f"parse{suffix} accepts invalid input",
@@ -115,7 +117,7 @@ def test_load_latest_snapshot_of_carried_hypothesis(tmp_path):
     first = _hypothesis(1, grade="conjecture")
     state1 = _state(1, hypotheses=[first])
     store.persist_state(state1, _report(state1))
-    first.evidence.append("probe:2:1")
+    first.evidence.append("probe-valid:2:1")
     first.grade = "supported"
     first.last_touched_cycle = 2
     state2 = _state(2, hypotheses=[first])
@@ -229,7 +231,7 @@ def test_two_cycle_rederived_claim_supersedes_instead_of_duplicates(tmp_path):
         remedy="validate both paths and add a parameterized regression test",
         origin="memory",
         locus=["mod.py:parse"],
-        evidence=["cycle:1", "probe:2:1"],
+        evidence=["cycle:1", "probe-valid:2:1"],
         grade="finding",
         cycle_no=2,
         supersedes=[old.id],

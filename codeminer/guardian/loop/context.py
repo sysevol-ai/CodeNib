@@ -60,7 +60,11 @@ def opening_context(state: CycleState, *, repo_path: str, arm: str) -> str:
             f"Commit: {state.commit}",
             f"Cycle: {state.cycle_no}",
             f"Memory arm: {arm} (the recall tool is present in every arm)",
-            f"Token budget: {state.budget_total}",
+            (
+                "Token budget: unlimited"
+                if state.budget_total is None
+                else f"Token budget: {state.budget_total}"
+            ),
             "Open carried hypotheses:",
             json.dumps(open_hypotheses, sort_keys=True),
             "The full signal set is available through list_signals.",

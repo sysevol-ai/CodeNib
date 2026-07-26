@@ -82,6 +82,12 @@ def _quote_shell_path(path: str) -> str:
     return shlex.quote(path)
 
 
+def _as_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _load_solver_class(name: str) -> type[BaseAgent]:
     try:
         module_path, class_name = _SOLVER_REGISTRY[name]
@@ -118,6 +124,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         guardian_model: str = "codex:gpt-5.6-luna",
         guardian_top_n: int = 5,
         guardian_budget_tokens: int = 50_000,
+        guardian_no_budget_limit: bool = False,
         guardian_poll_interval: int = 10,
         guardian_findings_dir: str = "/app/.guardian/out",
         guardian_checkpoint_dir: str = "/app/.guardian/bin",
@@ -146,6 +153,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_model = guardian_model
         self._guardian_top_n = int(guardian_top_n)
         self._guardian_budget_tokens = int(guardian_budget_tokens)
+        self._guardian_no_budget_limit = _as_bool(guardian_no_budget_limit)
         self._guardian_poll_interval = int(guardian_poll_interval)
         self._guardian_findings_dir = guardian_findings_dir
         self._guardian_checkpoint_dir = guardian_checkpoint_dir
@@ -157,32 +165,37 @@ class GuardianCodingAgent(BaseInstalledAgent):
 
         # Build the Guardian MCPServerConfig (stdio transport).
         # The inner solver's setup() writes this to its MCP config file.
+        guardian_mcp_args = [
+            "-m",
+            "codeminer.guardian.mcp_server",
+            "--repo",
+            guardian_repo,
+            "--arm",
+            guardian_arm,
+            "--memory-dir",
+            guardian_memory_dir,
+            "--model",
+            guardian_model,
+            "--top-n",
+            str(guardian_top_n),
+            "--poll-interval",
+            str(guardian_poll_interval),
+            "--trace-log",
+            "/logs/agent/guardian_queries.jsonl",
+            "--baseline-file",
+            self._guardian_baseline_file,
+        ]
+        if self._guardian_no_budget_limit:
+            guardian_mcp_args.append("--no-budget-limit")
+        else:
+            guardian_mcp_args.extend(
+                ["--budget-tokens", str(self._guardian_budget_tokens)]
+            )
         guardian_mcp = MCPServerConfig(
             name="guardian",
             transport="stdio",
             command="python",
-            args=[
-                "-m",
-                "codeminer.guardian.mcp_server",
-                "--repo",
-                guardian_repo,
-                "--arm",
-                guardian_arm,
-                "--memory-dir",
-                guardian_memory_dir,
-                "--model",
-                guardian_model,
-                "--top-n",
-                str(guardian_top_n),
-                "--budget-tokens",
-                str(guardian_budget_tokens),
-                "--poll-interval",
-                str(guardian_poll_interval),
-                "--trace-log",
-                "/logs/agent/guardian_queries.jsonl",
-                "--baseline-file",
-                self._guardian_baseline_file,
-            ],
+            args=guardian_mcp_args,
         )
 
         # Codex uses the synchronized filesystem bridge below. Registering both
@@ -399,8 +412,6 @@ class GuardianCodingAgent(BaseInstalledAgent):
             self._guardian_model,
             "--top-n",
             str(self._guardian_top_n),
-            "--budget-tokens",
-            str(self._guardian_budget_tokens),
             "--poll-interval",
             str(self._guardian_poll_interval),
             "--out-dir",
@@ -408,6 +419,12 @@ class GuardianCodingAgent(BaseInstalledAgent):
             "--baseline-file",
             self._guardian_baseline_file,
         ]
+        if self._guardian_no_budget_limit:
+            bridge_command.append("--no-budget-limit")
+        else:
+            bridge_command.extend(
+                ["--budget-tokens", str(self._guardian_budget_tokens)]
+            )
         start_script = shlex.quote(
             guardian_start_script(
                 command=bridge_command,

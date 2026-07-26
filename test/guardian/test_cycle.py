@@ -102,7 +102,10 @@ def _finding_script(signal_id):
                             "remedy": "validate input and add a regression test",
                             "origin": "signal",
                             "locus": ["mod.py:parse"],
-                            "evidence": [f"signal:{signal_id}", "probe:fixture:1"],
+                            "evidence": [
+                                f"signal:{signal_id}",
+                                "probe-valid:fixture:1",
+                            ],
                             "confidence": 0.8,
                         },
                     )
@@ -296,7 +299,7 @@ def test_exploration_finding_without_signal_evidence_is_measured(tmp_path):
                         ),
                         "origin": "exploration",
                         "locus": ["mod.py:parse", "mod.py:caller"],
-                        "evidence": ["probe:fixture:exploration"],
+                        "evidence": ["probe-valid:fixture:exploration"],
                         "confidence": 0.7,
                     },
                 )

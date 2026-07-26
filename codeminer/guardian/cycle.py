@@ -44,7 +44,7 @@ class GuardianConfig:
     memory_dir: Optional[str] = None
     arm: str = "memory"
     graph_snapshot: bool = True
-    budget_tokens: int = 100_000
+    budget_tokens: Optional[int] = 100_000
     max_investigator_rounds: int = 8
     hypotheses_only: bool = False
     max_outer_turns: int = 40
@@ -102,8 +102,10 @@ def _episode_log_handler(
 
 def _compile_index(config: GuardianConfig):
     from ..compiler import IndexCompiler, IndexCompilerConfig
-    from ..compiler.index_builders import (IndexBuilderRegistry,
-                                           register_default_builders)
+    from ..compiler.index_builders import (
+        IndexBuilderRegistry,
+        register_default_builders,
+    )
 
     registry = IndexBuilderRegistry()
     register_default_builders(
@@ -236,17 +238,13 @@ def _collect_signals(
     signals: list[Signal] = []
     edge_changes: list = []
     signals.extend(
-        churn_hotspots(
-            config.repo_path, since=config.since, top_n=config.top_n
-        )
+        churn_hotspots(config.repo_path, since=config.since, top_n=config.top_n)
     )
     if prior_graph is not None and current_graph is not None:
         from .signals.graph_diff import compute_drift_signals, diff_graphs
 
         edge_changes = diff_graphs(prior_graph, current_graph)
-        signals.extend(
-            compute_drift_signals(edge_changes, current_graph, prior_graph)
-        )
+        signals.extend(compute_drift_signals(edge_changes, current_graph, prior_graph))
     return signals, edge_changes
 
 
@@ -299,15 +297,16 @@ def _run_cycle_inner(
         hypotheses=carried_hypotheses,
         signals=signals,
         current=None,
-        budget_total=max(0, config.budget_tokens),
+        budget_total=(
+            None if config.budget_tokens is None else max(0, config.budget_tokens)
+        ),
         budget_spent=0,
         decision_log=[],
         exit_reason=None,
         carried_from=(cycle_no - 1 if cycle_no > 1 else None),
     )
 
-    from .investigator import (CurrentSnapshotSandbox, LLMUsage,
-                               PriorSnapshotSandbox)
+    from .investigator import CurrentSnapshotSandbox, LLMUsage, PriorSnapshotSandbox
 
     outer_usage = LLMUsage()
     inner_usage = LLMUsage()

@@ -10,7 +10,7 @@ from codeminer.guardian.report import (GuardianReport, render_markdown,
 
 def _hypothesis(*, grade, suffix="", supersedes=None):
     evidence = (
-        [f"probe:1:{suffix or '1'}"]
+        [f"probe-valid:1:{suffix or '1'}"]
         if grade in {"finding", "supported", "refuted"}
         else []
     )
@@ -112,7 +112,7 @@ def test_superseded_hypothesis_is_not_reported_twice():
         remedy="validate input and add a regression test",
         origin="memory",
         locus=["agent/runner.py:parse_old"],
-        evidence=["probe:2:1"],
+        evidence=["probe-valid:2:1"],
         grade="finding",
         cycle_no=2,
         supersedes=[old.id],

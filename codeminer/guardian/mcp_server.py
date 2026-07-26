@@ -488,11 +488,19 @@ def main(argv: Optional[List[str]] = None) -> None:
         "--since", default="90 days ago", help="Churn window for git log"
     )
     parser.add_argument("--top-n", type=int, default=5, help="Max findings per cycle")
-    parser.add_argument(
+    budget_group = parser.add_mutually_exclusive_group()
+    budget_group.add_argument(
         "--budget-tokens",
         type=int,
         default=50_000,
         help="Token budget per Guardian cycle",
+    )
+    budget_group.add_argument(
+        "--no-budget-limit",
+        action="store_true",
+        help=(
+            "Disable the cycle token limit while retaining turn and wall-clock limits"
+        ),
     )
     parser.add_argument(
         "--no-llm",
@@ -534,7 +542,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         arm=args.arm,
         since=args.since,
         top_n=args.top_n,
-        budget_tokens=args.budget_tokens,
+        budget_tokens=None if args.no_budget_limit else args.budget_tokens,
     )
     baseline_commit = args.baseline_commit
     if args.baseline_file:

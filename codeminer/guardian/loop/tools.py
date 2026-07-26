@@ -122,8 +122,12 @@ TOOLS = [
         {
             "hypothesis_id": {"type": "string"},
             "budget_tokens": {"type": "integer", "minimum": 1},
+            "obligation": {
+                "type": "string",
+                "description": "One narrow falsifiable question for this L3 run.",
+            },
         },
-        required=["hypothesis_id", "budget_tokens"],
+        required=["hypothesis_id", "budget_tokens", "obligation"],
     ),
     _function(
         "submit_report",

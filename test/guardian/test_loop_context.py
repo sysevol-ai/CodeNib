@@ -75,3 +75,12 @@ def test_compaction_policy_is_arm_blind(tmp_path):
     assert events_memory[0]["original_chars"] == events_memoryless[0]["original_chars"]
     assert "externalized" in compacted_memory[-1]["content"]
     assert "externalized" in compacted_memoryless[-1]["content"]
+
+
+def test_unlimited_budget_is_explicit_in_immutable_frame():
+    state = _state()
+    state.budget_total = None
+
+    messages = initial_messages(state, repo_path="/repo", arm="memory")
+
+    assert "Token budget: unlimited" in messages[1]["content"]

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,10 +14,22 @@ from typing import Any, List, Optional
 
 from ...log_utils import get_logger
 from .context import compact_messages, initial_messages
-from .exceptions import (BudgetExceeded, CycleInterrupt, Degraded, NoProgress,
-                         ReportSubmitted, WallClockExceeded)
-from .state import (GRADE_RULES, CycleState, Hypothesis, check_invariants,
-                    save_checkpoint, validate_hypothesis)
+from .exceptions import (
+    BudgetExceeded,
+    CycleInterrupt,
+    Degraded,
+    NoProgress,
+    ReportSubmitted,
+    WallClockExceeded,
+)
+from .state import (
+    GRADE_RULES,
+    CycleState,
+    Hypothesis,
+    check_invariants,
+    save_checkpoint,
+    validate_hypothesis,
+)
 from .tools import TOOL_NAMES, TOOLS
 from .tools_code import read_code, search_code
 
@@ -39,6 +52,7 @@ class LoopContext:
     max_context_chars: int = 120_000
     max_turns: int = 40
     wall_clock_seconds: int = 1_800
+    investigator_deadline_seconds: int = 300
     max_investigator_rounds: int = 8
     inner_usage: object = None
     outer_usage: object = None
@@ -72,6 +86,48 @@ def _bounded_observation(value: Any, max_chars: int = 30_000) -> str:
     if len(rendered) > max_chars:
         return rendered[:max_chars] + "\n[truncated]"
     return rendered
+
+
+def _investigation_excerpts(hypothesis: Hypothesis, repo_path: str) -> list:
+    """Materialize bounded source already named by the hypothesis."""
+
+    from ..investigator import SourceExcerpt
+
+    excerpts = []
+    for locus in hypothesis.locus[:8]:
+        path = str(locus).split(":", 1)[0]
+        try:
+            content = read_code(
+                repo_path, path, start_line=1, end_line=200, max_chars=12_000
+            )
+        except (OSError, ValueError):
+            continue
+        excerpts.append(
+            SourceExcerpt(
+                path=path,
+                start_line=1,
+                end_line=min(200, len(content.splitlines())),
+                content=content,
+            )
+        )
+    return excerpts
+
+
+def _commit_diff(repo_path: str) -> str:
+    """Return the bounded diff introduced by HEAD."""
+
+    try:
+        result = subprocess.run(
+            ["git", "show", "--format=", "--no-ext-diff", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout[:30_000] if result.returncode == 0 else ""
 
 
 def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -> str:
@@ -184,10 +240,14 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
         if call_name == "investigate":
             hypothesis = _find_hypothesis(state, str(args.get("hypothesis_id", "")))
             grant = int(args.get("budget_tokens", 0))
-            remaining = max(0, state.budget_total - state.budget_spent)
             if grant <= 0:
                 raise ValueError("budget_tokens must be positive")
-            if grant > remaining:
+            remaining = (
+                None
+                if state.budget_total is None
+                else max(0, state.budget_total - state.budget_spent)
+            )
+            if remaining is not None and grant > remaining:
                 raise ValueError(
                     f"requested {grant} tokens but only {remaining} remain"
                 )
@@ -203,20 +263,52 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
                     ctx.llm,
                     ctx.retriever,
                     ctx.sandbox,
-                    budget_tokens=before + grant,
+                    budget_tokens=grant,
                     max_rounds=ctx.max_investigator_rounds,
                     usage_acc=ctx.inner_usage,
                     prior_sandbox=ctx.prior_sandbox,
+                    memory_store=ctx.memory_store,
+                    obligation=str(args.get("obligation", "")).strip(),
+                    excerpts=_investigation_excerpts(hypothesis, ctx.repo_path),
+                    commit_diff=_commit_diff(ctx.repo_path),
+                    prior_attempts=[
+                        {
+                            "attempt": index + 1,
+                            "evidence_ref": evidence,
+                        }
+                        for index, evidence in enumerate(hypothesis.evidence)
+                        if evidence.startswith(
+                            ("probe-valid:", "probe-invalid:", "env:")
+                        )
+                    ],
+                    deadline_s=ctx.investigator_deadline_seconds,
+                    checkpoint_path=(
+                        ctx.checkpoint_path.with_name(
+                            f"investigation_{hypothesis.id}.json"
+                        )
+                        if ctx.checkpoint_path is not None
+                        else None
+                    ),
+                    repo_identity=ctx.repo_path,
+                    commit=state.commit,
                 )
             finally:
                 state.current = None
             after = int(getattr(ctx.inner_usage, "total_tokens", before) or before)
-            spent = max(int(getattr(result, "tokens_used", 0) or 0), after - before)
+            spent = max(
+                int(getattr(getattr(result, "budget", None), "actual", 0) or 0),
+                after - before,
+            )
             state.budget_spent += spent
             hypothesis.spent_tokens += spent
             hypothesis.attempts += 1
             hypothesis.last_touched_cycle = state.cycle_no
-            probe_ref = f"probe:{state.cycle_no}:{hypothesis.attempts}"
+            prefix = {
+                "valid": "probe-valid",
+                "invalid": "probe-invalid",
+                "environment": "env",
+            }.get(getattr(result, "evidence_status", "invalid"), "probe-invalid")
+            probe_ref = f"{prefix}:{state.cycle_no}:{hypothesis.attempts}"
             hypothesis.evidence.append(probe_ref)
             return _bounded_observation(
                 {
@@ -279,7 +371,10 @@ def run_cycle_loop(
     try:
         while True:
             check_invariants(state)
-            if state.budget_spent >= state.budget_total:
+            if (
+                state.budget_total is not None
+                and state.budget_spent >= state.budget_total
+            ):
                 raise BudgetExceeded(
                     f"cycle token budget exhausted "
                     f"({state.budget_spent}/{state.budget_total})",

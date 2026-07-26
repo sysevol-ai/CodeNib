@@ -101,14 +101,14 @@ class Hypothesis:
         return self.origin
 
 
-def _has_probe(hypothesis: Hypothesis) -> bool:
-    return any(item.startswith("probe:") for item in hypothesis.evidence)
+def _has_valid_probe(hypothesis: Hypothesis) -> bool:
+    return any(item.startswith("probe-valid:") for item in hypothesis.evidence)
 
 
 GRADE_RULES: Dict[str, Callable[[Hypothesis], bool]] = {
-    "finding": lambda h: bool(h.remedy) and _has_probe(h),
-    "supported": _has_probe,
-    "refuted": _has_probe,
+    "finding": lambda h: bool(h.remedy) and _has_valid_probe(h),
+    "supported": _has_valid_probe,
+    "refuted": _has_valid_probe,
     "conjecture": lambda h: bool(h.claim and h.consequence and h.remedy),
     "deferred": lambda h: True,
 }
@@ -131,7 +131,7 @@ def validate_hypothesis(hypothesis: Hypothesis) -> None:
     if not GRADE_RULES[hypothesis.grade](hypothesis):
         if hypothesis.grade in {"finding", "supported", "refuted"}:
             raise ValueError(
-                f"grade={hypothesis.grade!r} requires a probe: evidence reference"
+                f"grade={hypothesis.grade!r} requires a probe-valid: evidence reference"
                 + (" and a remedy" if hypothesis.grade == "finding" else "")
             )
         raise ValueError(f"hypothesis is not admissible at grade={hypothesis.grade!r}")
@@ -146,7 +146,7 @@ class CycleState:
     hypotheses: List[Hypothesis]
     signals: List[Signal]
     current: Optional[str]
-    budget_total: int
+    budget_total: Optional[int]
     budget_spent: int
     decision_log: List[dict]
     exit_reason: Optional[str]
@@ -160,13 +160,14 @@ class CycleState:
 
     @classmethod
     def from_dict(cls, raw: Dict[str, Any]) -> "CycleState":
+        raw_budget_total = raw.get("budget_total", 0)
         return cls(
             cycle_no=int(raw["cycle_no"]),
             commit=str(raw.get("commit", "")),
             hypotheses=[Hypothesis(**item) for item in raw.get("hypotheses", [])],
             signals=[Signal(**item) for item in raw.get("signals", [])],
             current=raw.get("current"),
-            budget_total=int(raw.get("budget_total", 0)),
+            budget_total=(None if raw_budget_total is None else int(raw_budget_total)),
             budget_spent=int(raw.get("budget_spent", 0)),
             decision_log=list(raw.get("decision_log", [])),
             exit_reason=raw.get("exit_reason"),
@@ -180,7 +181,9 @@ class CycleState:
 def check_invariants(state: CycleState) -> None:
     """Validate the iteration-boundary invariants or raise a typed exit."""
     problems: List[str] = []
-    if state.budget_total < 0 or state.budget_spent < 0:
+    if state.budget_spent < 0 or (
+        state.budget_total is not None and state.budget_total < 0
+    ):
         problems.append("budget values must be non-negative")
     ids = [hypothesis.id for hypothesis in state.hypotheses]
     if len(ids) != len(set(ids)):

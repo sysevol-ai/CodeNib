@@ -164,6 +164,35 @@ class MemoryStore:
             row = connection.execute("SELECT MAX(cycle_no) FROM cycles").fetchone()
         return int(row[0] or 0) + 1
 
+    def get_test_recipe(self, key: str) -> Optional[dict]:
+        """Return a validated L3 test recipe cached in repository memory."""
+
+        if self.readonly or not os.path.exists(self._db_path):
+            return None
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM metadata WHERE key = ?", (f"test_recipe:{key}",)
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            value = json.loads(row["value"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    def set_test_recipe(self, key: str, recipe: dict) -> None:
+        """Persist a validated L3 test recipe for later cycles."""
+
+        if self.readonly:
+            return
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO metadata (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (f"test_recipe:{key}", json.dumps(recipe, sort_keys=True)),
+            )
+
     def load_hypotheses(self) -> list:
         """Load the latest snapshot of every carried hypothesis."""
         if self.readonly or not os.path.exists(self._db_path):

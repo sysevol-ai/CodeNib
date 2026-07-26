@@ -1,562 +1,369 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
-#
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for codeminer.guardian.investigator."""
+"""Load-bearing tests for the Repository Guardian L3 loop."""
+
+from __future__ import annotations
 
 import json
-import os
-import subprocess
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from codeminer.guardian.investigator import (
-    InvestigatorResult,
-    CurrentSnapshotSandbox,
-    ProbeRecord,
-    SandboxHandle,
-    WorktreeSandbox,
-    PriorSnapshotSandbox,
-    _parse_verdict,
-    run_investigator,
+    InvestigationTask,
+    run_investigation,
 )
+from codeminer.guardian.investigator.environment import TestRecipe as Recipe
+from codeminer.guardian.investigator.types import (
+    CommandResult,
+    ProcessStatus,
+)
+from codeminer.guardian.loop import Hypothesis
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+RECIPE = Recipe(("python", "-m", "pytest"), "test")
 
 
-def _make_hypothesis(
-    target="mod.py",
-    statement="mod.py may break dependents after the recent arity change.",
-    kind="churn",
-    rank=1,
-    confidence=0.75,
-):
-    from codeminer.guardian.loop import Hypothesis
-
-    del kind, rank
-    return Hypothesis.create(
-        claim=statement,
-        consequence="dependent behavior may regress",
-        remedy="restore the contract and add a regression test",
-        origin="signal",
-        locus=[target],
-        confidence=confidence,
+def _call(call_id, name, **arguments):
+    return SimpleNamespace(
+        id=call_id,
+        function=SimpleNamespace(name=name, arguments=json.dumps(arguments)),
     )
 
 
-def _resp(content, tool_calls=None):
-    """Build a mock litellm response."""
-    msg = MagicMock()
-    msg.content = content
-    msg.tool_calls = tool_calls or []
-    choice = MagicMock()
-    choice.message = msg
-    r = MagicMock()
-    r.choices = [choice]
-    r.usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15)
-    return r
-
-
-def _make_tool_call(call_id, name, **kwargs):
-    tc = MagicMock()
-    tc.id = call_id
-    tc.function.name = name
-    tc.function.arguments = json.dumps(kwargs)
-    return tc
-
-
-def _make_llm(side_effects):
-    llm = MagicMock()
-    llm._call_raw.side_effect = side_effects
-    return llm
-
-
-def _fake_retriever(results=None):
-    r = MagicMock()
-    r.query.return_value = results or []
-    return r
-
-
-def _fake_sandbox(repo_path="/tmp/repo", run_rc=0, run_output="ok"):
-    sb = MagicMock(spec=WorktreeSandbox)
-    sb.repo_path = repo_path
-    sb.run_command.return_value = (run_rc, run_output)
-    return sb
-
-
-def test_prior_snapshot_sandbox_materializes_parent_and_is_disposable(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "T",
-        "GIT_AUTHOR_EMAIL": "t@example.com",
-        "GIT_COMMITTER_NAME": "T",
-        "GIT_COMMITTER_EMAIL": "t@example.com",
-    }
-    (repo / "mod.py").write_text("VALUE = 'prior'\n")
-    subprocess.run(["git", "add", "mod.py"], cwd=repo, check=True, env=env)
-    subprocess.run(
-        ["git", "commit", "-m", "prior"],
-        cwd=repo,
-        check=True,
-        env=env,
-        capture_output=True,
+def _response(*calls, total=15, content=""):
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=content, tool_calls=list(calls))
+            )
+        ],
+        usage=SimpleNamespace(
+            prompt_tokens=10, completion_tokens=total - 10, total_tokens=total
+        ),
     )
-    (repo / "mod.py").write_text("VALUE = 'current'\n")
-    subprocess.run(["git", "add", "mod.py"], cwd=repo, check=True, env=env)
-    subprocess.run(
-        ["git", "commit", "-m", "current"],
-        cwd=repo,
-        check=True,
-        env=env,
-        capture_output=True,
+
+
+class ScriptedLLM:
+    max_tokens = 1_024
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def _call_raw(self, messages, **kwargs):
+        self.calls.append((messages, kwargs))
+        return self.responses.pop(0)
+
+
+class FakeSandbox:
+    def __init__(self, root: Path, statuses=None):
+        self.repo_path = str(root)
+        self.statuses = list(statuses or ["passed"])
+        self.files = {"pkg/mod.py": "def target():\n    return 1\n"}
+        (root / "pkg").mkdir(parents=True, exist_ok=True)
+        (root / "pkg" / "mod.py").write_text(
+            self.files["pkg/mod.py"], encoding="utf-8"
+        )
+
+    def read_file(self, path):
+        return self.files.get(path, "")
+
+    def write_file(self, path, content):
+        self.files[path] = content
+
+    def run_command(self, command, *, timeout=60, env=None):
+        if command[0] == "patch":
+            return CommandResult(
+                ProcessStatus.EXITED,
+                0,
+                None,
+                list(command),
+                self.repo_path,
+                "abc",
+            )
+        status = self.statuses.pop(0)
+        report_arg = next(item for item in command if item.startswith("--junitxml="))
+        report = Path(self.repo_path) / report_arg.split("=", 1)[1]
+        report.parent.mkdir(parents=True, exist_ok=True)
+        child = {
+            "passed": "",
+            "failed": "<failure>pkg/mod.py target contract</failure>",
+            "error": "<error>ImportError</error>",
+            "skipped": "<skipped />",
+            "empty": None,
+        }[status]
+        body = (
+            ""
+            if child is None
+            else (
+                '<testcase classname="pkg.mod" name="test_target">'
+                f"{child}</testcase>"
+            )
+        )
+        report.write_text(
+            f"<testsuites><testsuite>{body}</testsuite></testsuites>",
+            encoding="utf-8",
+        )
+        exit_code = {"passed": 0, "failed": 1, "error": 2, "skipped": 0, "empty": 5}[
+            status
+        ]
+        return CommandResult(
+            ProcessStatus.EXITED,
+            exit_code,
+            None,
+            list(command),
+            self.repo_path,
+            "abc",
+            stdout="pkg/mod.py target contract",
+        )
+
+
+class UnavailableSandbox(FakeSandbox):
+    def run_command(self, command, *, timeout=60, env=None):
+        return CommandResult(
+            ProcessStatus.SPAWN_FAILED,
+            None,
+            None,
+            list(command),
+            self.repo_path,
+            "abc",
+            stderr="interpreter unavailable",
+        )
+
+
+def _task(grant=20_000):
+    hypothesis = Hypothesis.create(
+        claim="pkg.mod.target violates its contract",
+        consequence="callers receive invalid results",
+        remedy="restore the contract",
+        origin="exploration",
+        locus=["pkg/mod.py"],
     )
-    sandbox = PriorSnapshotSandbox(str(repo))
-    temp_path = sandbox.repo_path
-    try:
-        assert "prior" in sandbox.read_file("mod.py")
-        sandbox.write_file("probe.py", "assert True\n")
-        assert "current" in (repo / "mod.py").read_text()
-    finally:
-        sandbox.close()
-    assert not os.path.exists(temp_path)
-
-
-def test_current_snapshot_sandbox_never_writes_source_checkout(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "T",
-        "GIT_AUTHOR_EMAIL": "t@example.com",
-        "GIT_COMMITTER_NAME": "T",
-        "GIT_COMMITTER_EMAIL": "t@example.com",
-    }
-    (repo / "mod.py").write_text("VALUE = 'source'\n")
-    subprocess.run(["git", "add", "mod.py"], cwd=repo, check=True, env=env)
-    subprocess.run(
-        ["git", "commit", "-m", "source"],
-        cwd=repo,
-        check=True,
-        env=env,
-        capture_output=True,
+    return InvestigationTask(
+        hypothesis=hypothesis,
+        obligation="Does pkg.mod.target return the invalid value at HEAD?",
+        excerpts=[],
+        commit_diff="diff --git a/pkg/mod.py b/pkg/mod.py",
+        prior_attempts=[],
+        grant_tokens=grant,
+        deadline_s=30,
     )
-    with CurrentSnapshotSandbox(str(repo)) as sandbox:
-        sandbox.write_file("mod.py", "VALUE = 'overlay'\n")
-        assert "overlay" in sandbox.read_file("mod.py")
-        assert "source" in (repo / "mod.py").read_text()
 
 
-# ---------------------------------------------------------------------------
-# ProbeRecord
-# ---------------------------------------------------------------------------
+def test_every_model_call_keeps_the_tool_protocol(tmp_path):
+    llm = ScriptedLLM([_response(content="plain answer")])
+    result = run_investigation(
+        _task(), llm, MagicMock(), FakeSandbox(tmp_path), recipe=RECIPE
+    )
+    assert result.exit_status == "no_progress"
+    assert llm.calls
+    assert all(call[1]["tools"] for call in llm.calls)
 
 
-class TestProbeRecord:
-    def test_defaults(self):
-        p = ProbeRecord(tool="retrieve_evidence", input_summary="q", output_summary="r")
-        assert p.passed is None
-
-    def test_with_passed(self):
-        p = ProbeRecord(
-            tool="run_existing_test",
-            input_summary="t",
-            output_summary="PASS",
-            passed=True,
-        )
-        assert p.passed is True
+def test_budget_reservation_prevents_unaffordable_call(tmp_path):
+    llm = ScriptedLLM([])
+    result = run_investigation(
+        _task(grant=100), llm, MagicMock(), FakeSandbox(tmp_path), recipe=RECIPE
+    )
+    assert result.exit_status == "budget_exceeded"
+    assert result.budget.actual == 0
+    assert llm.calls == []
 
 
-# ---------------------------------------------------------------------------
-# InvestigatorResult
-# ---------------------------------------------------------------------------
+def test_unavailable_test_environment_costs_zero_model_tokens(tmp_path):
+    llm = ScriptedLLM([])
+    result = run_investigation(
+        _task(),
+        llm,
+        MagicMock(),
+        UnavailableSandbox(tmp_path),
+        repo_identity=str(tmp_path),
+        commit="abc",
+    )
+    assert result.exit_status == "environment_unavailable"
+    assert result.evidence_status == "environment"
+    assert result.budget.actual == 0
+    assert llm.calls == []
 
 
-class TestInvestigatorResult:
-    def test_defaults(self):
-        r = InvestigatorResult(verdict="inconclusive", reasoning="not sure")
-        assert r.evidence_test == ""
-        assert r.evidence_diff == ""
-        assert r.probe_trace == []
-        assert r.tokens_used == 0
-
-    def test_to_dict(self):
-        probe = ProbeRecord(
-            tool="retrieve_evidence", input_summary="q", output_summary="r"
-        )
-        r = InvestigatorResult(
-            verdict="confirmed",
-            reasoning="risk is real",
-            evidence_test="def test_x(): ...",
-            probe_trace=[probe],
-            tokens_used=42,
-        )
-        d = r.to_dict()
-        assert d["verdict"] == "confirmed"
-        assert d["tokens_used"] == 42
-        assert len(d["probe_trace"]) == 1
-        assert d["probe_trace"][0]["tool"] == "retrieve_evidence"
-
-
-# ---------------------------------------------------------------------------
-# _parse_verdict
-# ---------------------------------------------------------------------------
-
-
-class TestParseVerdict:
-    def test_confirmed(self):
-        verdict, reasoning = _parse_verdict("verdict: confirmed\nThe risk is real.")
-        assert verdict == "confirmed"
-        assert "risk" in reasoning
-
-    def test_rejected(self):
-        verdict, _ = _parse_verdict("Some analysis.\nverdict: rejected")
-        assert verdict == "rejected"
-
-    def test_inconclusive_explicit(self):
-        verdict, _ = _parse_verdict("verdict: inconclusive")
-        assert verdict == "inconclusive"
-
-    def test_no_verdict_line_defaults_inconclusive(self):
-        verdict, reasoning = _parse_verdict("I found nothing conclusive.")
-        assert verdict == "inconclusive"
-        assert "nothing" in reasoning
-
-    def test_invalid_verdict_value_ignored(self):
-        verdict, _ = _parse_verdict("verdict: maybe")
-        assert verdict == "inconclusive"
-
-    def test_verdict_case_insensitive(self):
-        verdict, _ = _parse_verdict("VERDICT: Confirmed\nRisk.")
-        assert verdict == "confirmed"
-
-
-# ---------------------------------------------------------------------------
-# WorktreeSandbox
-# ---------------------------------------------------------------------------
-
-
-class TestWorktreeSandbox:
-    def test_run_command_pass(self, tmp_path):
-        sb = WorktreeSandbox(str(tmp_path))
-        rc, out = sb.run_command(["python", "-c", "print('hello')"])
-        assert rc == 0
-        assert "hello" in out
-
-    def test_run_command_fail(self, tmp_path):
-        sb = WorktreeSandbox(str(tmp_path))
-        rc, out = sb.run_command(["python", "-c", "raise SystemExit(1)"])
-        assert rc != 0
-
-    def test_run_command_timeout(self, tmp_path):
-        sb = WorktreeSandbox(str(tmp_path))
-        rc, out = sb.run_command(
-            ["python", "-c", "import time; time.sleep(5)"], timeout=1
-        )
-        assert rc != 0
-        assert "timed out" in out
-
-    def test_write_and_read_file(self, tmp_path):
-        sb = WorktreeSandbox(str(tmp_path))
-        sb.write_file("sub/test_x.py", "# content\n")
-        content = sb.read_file("sub/test_x.py")
-        assert "content" in content
-
-    def test_read_missing_file_returns_empty(self, tmp_path):
-        sb = WorktreeSandbox(str(tmp_path))
-        assert sb.read_file("no_such_file.py") == ""
-
-    def test_sandbox_handle_protocol(self, tmp_path):
-        sb = WorktreeSandbox(str(tmp_path))
-        assert isinstance(sb, SandboxHandle)
-
-
-# ---------------------------------------------------------------------------
-# run_investigator — budget / no-op paths
-# ---------------------------------------------------------------------------
-
-
-class TestRunInvestigatorBudget:
-    def test_budget_already_exhausted_returns_inconclusive(self):
-        from codeminer.guardian.investigator import LLMUsage
-
-        hyp = _make_hypothesis()
-        llm = MagicMock()
-        sandbox = _fake_sandbox()
-        usage = LLMUsage(total_tokens=999_999)
-
-        result = run_investigator(
-            hyp,
-            llm,
-            _fake_retriever(),
-            sandbox,
-            budget_tokens=100,
-            usage_acc=usage,
-        )
-
-        llm._call_raw.assert_not_called()
-        assert result.verdict == "inconclusive"
-        assert "exhausted" in result.reasoning.lower()
-
-    def test_budget_exhausted_mid_loop_forces_final_answer(self):
-        hyp = _make_hypothesis()
-        tc = _make_tool_call("c1", "retrieve_evidence", query="mod.py callers")
-        # First call returns a tool call (consumes tokens); second call is the
-        # forced final answer after the budget check fires.
-        side_effects = [
-            _resp("", tool_calls=[tc]),
-            _resp("verdict: inconclusive\nRan out of budget."),
+def test_refuted_verdict_requires_source_and_parsed_pass(tmp_path):
+    llm = ScriptedLLM(
+        [
+            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
+            _response(_call("test", "run_existing_test", node_id="test_mod.py::test_target")),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="refuted",
+                    reasoning="The existing contract test passes.",
+                    cites=["test"],
+                )
+            ),
         ]
-        llm = _make_llm(side_effects)
-        sandbox = _fake_sandbox()
-
-        result = run_investigator(
-            hyp,
-            llm,
-            _fake_retriever(),
-            sandbox,
-            budget_tokens=15,  # exactly one round of 15 tokens
-            max_rounds=5,
-        )
-
-        assert result.verdict == "inconclusive"
+    )
+    result = run_investigation(
+        _task(), llm, MagicMock(), FakeSandbox(tmp_path, ["passed"]), recipe=RECIPE
+    )
+    assert result.verdict == "refuted"
+    assert result.exit_status == "submitted"
+    assert result.evidence_status == "valid"
+    assert result.cites == ["test"]
+    assert result.source_spans[0].path == "pkg/mod.py"
 
 
-# ---------------------------------------------------------------------------
-# run_investigator — tool-use loop
-# ---------------------------------------------------------------------------
-
-
-class TestRunInvestigatorToolLoop:
-    def test_single_retrieve_then_verdict(self):
-        hyp = _make_hypothesis()
-        tc = _make_tool_call("c1", "retrieve_evidence", query="parse_config callers")
-        side_effects = [
-            _resp("", tool_calls=[tc]),
-            _resp("verdict: rejected\nNo evidence of a contract break."),
+def test_bound_fix_transition_can_confirm(tmp_path):
+    source = "def test_target():\n    assert False"
+    llm = ScriptedLLM(
+        [
+            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
+            _response(
+                _call(
+                    "synth",
+                    "synthesize_test",
+                    target_symbol="pkg.mod.target",
+                    body=source,
+                )
+            ),
+            _response(_call("run", "run_synthesized_test", tool_call_id="synth")),
+            _response(
+                _call(
+                    "fix",
+                    "corroborate",
+                    tool_call_id="run",
+                    method="fix",
+                    diff="--- a/pkg/mod.py\n+++ b/pkg/mod.py\n",
+                )
+            ),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="confirmed",
+                    reasoning="The exact failing test passes after the minimal reversal.",
+                    cites=["run", "fix"],
+                )
+            ),
         ]
-        llm = _make_llm(side_effects)
+    )
+    result = run_investigation(
+        _task(),
+        llm,
+        MagicMock(),
+        FakeSandbox(tmp_path, ["failed", "passed"]),
+        recipe=RECIPE,
+    )
+    assert result.verdict == "confirmed"
+    assert result.evidence_status == "valid"
+    assert result.evidence_diff.startswith("--- a/pkg/mod.py")
+    assert result.tool_calls[3].parent_tool_call_id == "run"
+    assert "FAIL_TO_PASS" in result.tool_calls[3].result.content
 
-        result = run_investigator(
-            hyp, llm, _fake_retriever(), _fake_sandbox(), budget_tokens=100_000
-        )
 
-        assert result.verdict == "rejected"
-        assert len(result.probe_trace) == 1
-        assert result.probe_trace[0].tool == "retrieve_evidence"
-
-    def test_two_probes_then_verdict_confirmed(self):
-        hyp = _make_hypothesis()
-        tc1 = _make_tool_call("c1", "retrieve_evidence", query="parse_config")
-        tc2 = _make_tool_call(
-            "c2", "run_existing_test", test_pattern="test/test_config.py"
-        )
-        side_effects = [
-            _resp("", tool_calls=[tc1]),
-            _resp("", tool_calls=[tc2]),
-            _resp("verdict: confirmed\nExisting test fails on the symbol."),
+def test_fix_for_uncited_test_cannot_confirm(tmp_path):
+    source = "def test_target():\n    assert False"
+    llm = ScriptedLLM(
+        [
+            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
+            _response(
+                _call(
+                    "synth",
+                    "synthesize_test",
+                    target_symbol="pkg.mod.target",
+                    body=source,
+                )
+            ),
+            _response(_call("run", "run_synthesized_test", tool_call_id="synth")),
+            _response(
+                _call(
+                    "fix",
+                    "corroborate",
+                    tool_call_id="run",
+                    method="fix",
+                    diff="--- a/pkg/mod.py\n+++ b/pkg/mod.py\n",
+                )
+            ),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="confirmed",
+                    reasoning="Unsupported citation set.",
+                    cites=["fix"],
+                )
+            ),
         ]
-        llm = _make_llm(side_effects)
-        sandbox = _fake_sandbox(
-            run_rc=1, run_output="FAILED test_config.py::test_parse"
-        )
+    )
+    result = run_investigation(
+        _task(),
+        llm,
+        MagicMock(),
+        FakeSandbox(tmp_path, ["failed", "passed"]),
+        recipe=RECIPE,
+        max_rounds=5,
+    )
+    assert result.verdict == "inconclusive"
+    assert result.exit_status == "no_progress"
+    assert result.evidence_status == "invalid"
+    assert result.tool_calls[-1].result.is_error is True
 
-        result = run_investigator(
-            hyp, llm, _fake_retriever(), sandbox, budget_tokens=100_000
-        )
 
-        assert result.verdict == "confirmed"
-        assert len(result.probe_trace) == 2
-        assert result.probe_trace[1].tool == "run_existing_test"
-        assert result.probe_trace[1].passed is False
-
-    def test_red_synthesized_test_without_corroboration_is_downgraded(self):
-        hyp = _make_hypothesis()
-        source = "def test_contract(): assert False"
-        tc = _make_tool_call("c1", "run_synthesized_test", test_source=source)
-        llm = _make_llm(
-            [
-                _resp("", tool_calls=[tc]),
-                _resp("The test is red.\nverdict: confirmed"),
-            ]
-        )
-        result = run_investigator(
-            hyp,
-            llm,
-            _fake_retriever(),
-            _fake_sandbox(run_rc=1, run_output="1 failed"),
-            budget_tokens=100_000,
-        )
-        assert result.verdict == "inconclusive"
-        assert "Corroboration policy" in result.reasoning
-
-    def test_fix_probe_flip_allows_confirmation(self):
-        hyp = _make_hypothesis()
-        source = "def test_contract(): assert False"
-        synth = _make_tool_call("c1", "run_synthesized_test", test_source=source)
-        fix = _make_tool_call(
-            "c2",
-            "fix_probe",
-            diff="--- a/mod.py\n+++ b/mod.py\n",
-            test_source=source,
-        )
-        llm = _make_llm(
-            [
-                _resp("", tool_calls=[synth]),
-                _resp("", tool_calls=[fix]),
-                _resp("The flip corroborates the claim.\nverdict: confirmed"),
-            ]
-        )
-        sandbox = _fake_sandbox()
-        sandbox.run_command.side_effect = [
-            (1, "1 failed"),
-            (0, "patch applied"),
-            (0, "1 passed"),
+def test_error_only_test_cannot_be_submitted_as_behavioural_verdict(tmp_path):
+    llm = ScriptedLLM(
+        [
+            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
+            _response(_call("test", "run_existing_test", node_id="test_mod.py::test_target")),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="confirmed",
+                    reasoning="Import failed.",
+                    cites=["test"],
+                )
+            ),
         ]
-        result = run_investigator(
-            hyp,
-            llm,
-            _fake_retriever(),
-            sandbox,
-            budget_tokens=100_000,
-        )
-        assert result.verdict == "confirmed"
+    )
+    result = run_investigation(
+        _task(),
+        llm,
+        MagicMock(),
+        FakeSandbox(tmp_path, ["error"]),
+        recipe=RECIPE,
+        max_rounds=3,
+    )
+    assert result.verdict == "inconclusive"
+    assert result.evidence_status == "environment"
 
-    def test_probe_trace_entries_correct(self):
-        hyp = _make_hypothesis()
-        tc = _make_tool_call("c1", "retrieve_evidence", query="my_function")
-        side_effects = [
-            _resp("", tool_calls=[tc]),
-            _resp("verdict: inconclusive\nNot enough evidence."),
+
+def test_each_tool_call_is_checkpointed(tmp_path):
+    checkpoint = tmp_path / "out" / "investigation.json"
+    llm = ScriptedLLM(
+        [
+            _response(_call("read", "read_code", path="pkg/mod.py", start_line=1, end_line=2)),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="inconclusive",
+                    reasoning="More evidence is needed.",
+                    cites=[],
+                )
+            ),
         ]
-        llm = _make_llm(side_effects)
-
-        result = run_investigator(
-            hyp, llm, _fake_retriever(), _fake_sandbox(), budget_tokens=100_000
-        )
-
-        assert result.probe_trace[0].input_summary.startswith("retrieve_evidence(")
-
-    def test_stub_probe_returns_inconclusive_note(self):
-        """synthesize_test is not yet in probes.py — should stub gracefully."""
-        hyp = _make_hypothesis()
-        tc = _make_tool_call(
-            "c1",
-            "synthesize_test",
-            description="test arity break",
-            target_symbol="codeminer.guardian.cycle.run_cycle",
-        )
-        side_effects = [
-            _resp("", tool_calls=[tc]),
-            _resp("verdict: inconclusive\nTool not available."),
-        ]
-        llm = _make_llm(side_effects)
-
-        result = run_investigator(
-            hyp, llm, _fake_retriever(), _fake_sandbox(), budget_tokens=100_000
-        )
-
-        # Stub should not crash the loop.
-        assert result.verdict == "inconclusive"
-        assert result.probe_trace[0].tool == "synthesize_test"
-
-    def test_unknown_tool_name_handled_gracefully(self):
-        hyp = _make_hypothesis()
-        tc = _make_tool_call("c1", "nonexistent_tool", foo="bar")
-        side_effects = [
-            _resp("", tool_calls=[tc]),
-            _resp("verdict: inconclusive\nTool not recognised."),
-        ]
-        llm = _make_llm(side_effects)
-
-        result = run_investigator(
-            hyp, llm, _fake_retriever(), _fake_sandbox(), budget_tokens=100_000
-        )
-
-        assert result.verdict == "inconclusive"
-        assert result.probe_trace[0].tool == "nonexistent_tool"
-
-
-# ---------------------------------------------------------------------------
-# run_investigator — error handling
-# ---------------------------------------------------------------------------
-
-
-class TestRunInvestigatorErrors:
-    def test_llm_exception_returns_inconclusive(self):
-        hyp = _make_hypothesis()
-        llm = MagicMock()
-        llm._call_raw.side_effect = RuntimeError("API down")
-
-        result = run_investigator(
-            hyp, llm, _fake_retriever(), _fake_sandbox(), budget_tokens=100_000
-        )
-
-        assert result.verdict == "inconclusive"
-        assert "API down" in result.reasoning
-
-    def test_malformed_tool_arguments_handled(self):
-        hyp = _make_hypothesis()
-        tc = MagicMock()
-        tc.id = "c1"
-        tc.function.name = "retrieve_evidence"
-        tc.function.arguments = "NOT JSON {"
-
-        side_effects = [
-            _resp("", tool_calls=[tc]),
-            _resp("verdict: inconclusive\nBad args."),
-        ]
-        llm = _make_llm(side_effects)
-
-        result = run_investigator(
-            hyp, llm, _fake_retriever(), _fake_sandbox(), budget_tokens=100_000
-        )
-
-        # Should complete without crashing.
-        assert result.verdict == "inconclusive"
-
-    def test_tokens_used_accumulated(self):
-        hyp = _make_hypothesis()
-        tc = _make_tool_call("c1", "retrieve_evidence", query="q")
-        side_effects = [
-            _resp("", tool_calls=[tc]),
-            _resp("verdict: rejected\nNo risk."),
-        ]
-        llm = _make_llm(side_effects)
-
-        result = run_investigator(
-            hyp, llm, _fake_retriever(), _fake_sandbox(), budget_tokens=100_000
-        )
-
-        # Two LLM calls × 15 tokens each = 30.
-        assert result.tokens_used == 30
-
-    def test_usage_acc_shared_across_calls(self):
-        from codeminer.guardian.investigator import LLMUsage
-
-        hyp = _make_hypothesis()
-        tc = _make_tool_call("c1", "retrieve_evidence", query="q")
-        side_effects = [
-            _resp("", tool_calls=[tc]),
-            _resp("verdict: confirmed\nRisk confirmed."),
-        ]
-        llm = _make_llm(side_effects)
-        usage = LLMUsage()
-
-        run_investigator(
-            hyp,
-            llm,
-            _fake_retriever(),
-            _fake_sandbox(),
-            budget_tokens=100_000,
-            usage_acc=usage,
-        )
-
-        assert usage.total_tokens == 30
+    )
+    result = run_investigation(
+        _task(),
+        llm,
+        MagicMock(),
+        FakeSandbox(tmp_path),
+        recipe=RECIPE,
+        checkpoint_path=checkpoint,
+    )
+    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert result.exit_status == "submitted"
+    assert [item["tool_call_id"] for item in saved["run"]["tool_calls"]] == [
+        "read",
+        "submit",
+    ]

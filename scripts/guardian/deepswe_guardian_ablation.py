@@ -16,6 +16,9 @@ The script runs two baselines for each task:
 * ``solo``: Pier's regular Codex agent, no Guardian.
 * ``guardian``: GuardianCodingAgent wrapping Codex with the Guardian sidecar.
 
+Pass ``--guardian-no-budget-limit`` to measure Guardian's natural token cost.
+This disables only the cycle token ceiling; turn and wall-clock limits remain.
+
 Each requested baseline is run ``--runs`` times.  Results are stored in fixed
 slots keyed by model setting:
 
@@ -251,12 +254,19 @@ def _build_pier_command(
                 f"guardian_arm={args.guardian_arm}",
                 "--ak",
                 f"guardian_model={args.guardian_model}",
-                "--ak",
-                f"guardian_budget_tokens={args.guardian_budget_tokens}",
                 "--mounts-json",
                 json.dumps(_guardian_mounts(args, logs_dir)),
             ]
         )
+        if args.guardian_no_budget_limit:
+            cmd.extend(["--ak", "guardian_no_budget_limit=true"])
+        else:
+            cmd.extend(
+                [
+                    "--ak",
+                    f"guardian_budget_tokens={args.guardian_budget_tokens}",
+                ]
+            )
         if str(args.codeminer_root) not in env_pythonpath.split(os.pathsep):
             os.environ["PYTHONPATH"] = (
                 str(args.codeminer_root)
@@ -343,6 +353,14 @@ def _run_trial(
         "reasoning_effort": args.reasoning_effort,
         "guardian_model": args.guardian_model if baseline == "guardian" else "",
         "guardian_arm": args.guardian_arm if baseline == "guardian" else "",
+        "guardian_budget_tokens": (
+            None
+            if baseline == "guardian" and args.guardian_no_budget_limit
+            else args.guardian_budget_tokens if baseline == "guardian" else None
+        ),
+        "guardian_no_budget_limit": (
+            args.guardian_no_budget_limit if baseline == "guardian" else False
+        ),
         "repeat_index": repeat_index,
         "returncode": proc.returncode,
         "output_dir": str(base_dir),
@@ -400,7 +418,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--runs", type=int, default=4)
     parser.add_argument("--guardian-arm", default="memory")
     parser.add_argument("--guardian-model", default=None)
-    parser.add_argument("--guardian-budget-tokens", type=int, default=50_000)
+    guardian_budget = parser.add_mutually_exclusive_group()
+    guardian_budget.add_argument(
+        "--guardian-budget-tokens",
+        type=int,
+        default=50_000,
+    )
+    guardian_budget.add_argument(
+        "--guardian-no-budget-limit",
+        action="store_true",
+        help=(
+            "Disable Guardian's cycle token limit while retaining turn and "
+            "wall-clock limits"
+        ),
+    )
     parser.add_argument("--codeminer-root", type=Path, default=DEFAULT_CODEMINER_ROOT)
     parser.add_argument("--deepswe-root", type=Path, default=DEFAULT_DEEPSWE_ROOT)
     parser.add_argument("--jobs-dir", type=Path, default=DEFAULT_JOBS_DIR)

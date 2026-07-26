@@ -121,6 +121,35 @@ def test_cycle_reaches_submission_after_three_agent_turns(tmp_path):
     assert [message["role"] for message in transcript].count("tool") == 2
 
 
+def test_unlimited_budget_runs_until_agent_submission(tmp_path):
+    state = _state()
+    state.budget_total = None
+    llm = _ScriptedLLM(
+        [
+            _response(_call("c1", "list_signals", {}), tokens=150_000),
+            _response(
+                _call("c2", "submit_report", {"summary": "Natural stop."}),
+                tokens=150_000,
+            ),
+        ]
+    )
+
+    result = run_cycle_loop(
+        state,
+        LoopContext(
+            repo_path=str(tmp_path),
+            arm="memory",
+            llm=llm,
+            retriever=None,
+        ),
+    )
+
+    assert result.exit_reason == "ReportSubmitted"
+    assert result.budget_total is None
+    assert result.budget_spent == 300_000
+    assert "Token budget: unlimited" in llm.seen_messages[0][1]["content"]
+
+
 def test_grade_rejection_is_observation_and_loop_can_recover(tmp_path):
     state = _state()
     signal_id = state.signals[0].id
@@ -196,6 +225,7 @@ def test_model_failure_is_explicitly_degraded(tmp_path):
 
 def test_investigation_grade_is_agent_written_not_derived(tmp_path):
     state = _state()
+    state.budget_total = None
     # Seed through the canonical constructor so the L3 compatibility properties
     # are exercised by the mocked investigator path.
     from codeminer.guardian.loop import Hypothesis
@@ -244,7 +274,9 @@ def test_investigation_grade_is_agent_written_not_derived(tmp_path):
             ),
         )
     assert result.hypotheses[0].grade == "conjecture"
-    assert any(ref.startswith("probe:") for ref in result.hypotheses[0].evidence)
+    assert any(
+        ref.startswith("probe-invalid:") for ref in result.hypotheses[0].evidence
+    )
 
 
 def test_externalized_observation_is_rereadable_by_agent(tmp_path):

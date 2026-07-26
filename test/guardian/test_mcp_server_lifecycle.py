@@ -83,10 +83,12 @@ def test_mcp_server_startup_does_not_start_guardian(monkeypatch):
             "--baseline-commit",
             "base000",
             "--no-llm",
+            "--no-budget-limit",
         ]
     )
 
     thread.assert_not_called()
+    assert mcp_server._watcher_config.budget_tokens is None
     assert mcp_server._cache["started"] is False
     assert mcp_server._cache["cycle_no"] == 0
 

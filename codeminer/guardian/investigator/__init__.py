@@ -8,39 +8,47 @@ Re-exports everything that was previously exported from the flat
 ``codeminer.guardian.investigator`` and ``codeminer.guardian.llm_investigator``
 modules so existing imports continue to work.
 
-Import order matters here to avoid circular imports:
-1. runner.py is imported first (defines LLMUsage and other primitives)
-2. probes.py is imported after (imports from runner.py and from ..report)
+The generic narrative investigator remains in ``runner.py``.  The Repository
+Guardian L3 contract is implemented by ``inner_loop.py``.
 """
 
-# probes.py last — imports from ..report (which imports from this package)
-from .probes import (dispatch_advanced_probe, hotspot_query,
-                     investigate_hotspot, read_file)
-# runner.py first — it defines LLMUsage which report.py needs
-from .runner import (InvestigatorResult, LLMUsage, ProbeRecord, _parse_verdict,
-                     _run_search, build_test_failure_context,
-                     investigate_signal, run_investigator)
+from .runner import (LLMUsage, _parse_verdict, _run_search,
+                     build_test_failure_context, investigate_signal)
+from .inner_loop import TOOLS, run_investigation, run_investigator
+from .probes import hotspot_query, investigate_hotspot, read_file
 # sandbox.py — no guardian-level imports
 from .sandbox import (CurrentSnapshotSandbox, PriorSnapshotSandbox,
-                      SandboxHandle, WorktreeSandbox)
+                      ReadOnlySourceHandle, SandboxHandle, WorktreeSandbox)
+from .types import (BudgetLedger, CommandResult, InvestigationRunResult,
+                    InvestigationTask, InvestigatorResult, ProcessStatus,
+                    SourceExcerpt, TestStatus, ToolResult)
 
 __all__ = [
     # From runner.py
     "LLMUsage",
     "InvestigatorResult",
-    "ProbeRecord",
+    "InvestigationRunResult",
+    "InvestigationTask",
+    "BudgetLedger",
+    "CommandResult",
+    "ProcessStatus",
+    "TestStatus",
+    "ToolResult",
+    "SourceExcerpt",
     "_parse_verdict",
     "_run_search",
     "build_test_failure_context",
     "investigate_signal",
     "run_investigator",
+    "run_investigation",
+    "TOOLS",
     # From sandbox.py
     "SandboxHandle",
+    "ReadOnlySourceHandle",
     "CurrentSnapshotSandbox",
     "PriorSnapshotSandbox",
     "WorktreeSandbox",
     # From probes.py
-    "dispatch_advanced_probe",
     "hotspot_query",
     "investigate_hotspot",
     "read_file",

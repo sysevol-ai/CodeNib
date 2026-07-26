@@ -141,7 +141,7 @@ def _fake_report(commit="abc12345"):
         remedy="validate input and add a regression test",
         origin="exploration",
         locus=["mod.py:parse"],
-        evidence=["probe:fixture:1"],
+        evidence=["probe-valid:fixture:1"],
         grade="finding",
     )
     findings, backlog, retractions = report_views([hypothesis])

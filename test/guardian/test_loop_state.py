@@ -7,9 +7,15 @@ import json
 
 import pytest
 
-from codeminer.guardian.loop import (CycleState, Hypothesis, Signal,
-                                     StateInconsistent, check_invariants,
-                                     load_checkpoint, save_checkpoint)
+from codeminer.guardian.loop import (
+    CycleState,
+    Hypothesis,
+    Signal,
+    StateInconsistent,
+    check_invariants,
+    load_checkpoint,
+    save_checkpoint,
+)
 
 
 def _hypothesis(**overrides):
@@ -70,9 +76,13 @@ def test_finding_grade_requires_probe_evidence():
 
     finding = _hypothesis(
         grade="finding",
-        evidence=["probe:pytest:test_config_empty"],
+        evidence=["probe-valid:pytest:test_config_empty"],
     )
     assert finding.grade == "finding"
+
+    for non_admissible in ("probe-invalid:3:1", "env:3:1"):
+        with pytest.raises(ValueError, match="probe-valid"):
+            _hypothesis(grade="finding", evidence=[non_admissible])
 
 
 def test_checkpoint_round_trip_is_reconstructible(tmp_path):
@@ -89,6 +99,19 @@ def test_checkpoint_round_trip_is_reconstructible(tmp_path):
     assert restored == state
     assert restored_messages == messages
     assert json.loads(checkpoint.read_text())["state"]["budget_spent"] == 125
+
+
+def test_checkpoint_round_trip_preserves_unlimited_budget(tmp_path):
+    state = _state()
+    state.budget_total = None
+    checkpoint = tmp_path / "cycle_state.json"
+
+    save_checkpoint(checkpoint, state, [])
+    restored, _messages = load_checkpoint(checkpoint)
+
+    assert restored.budget_total is None
+    assert json.loads(checkpoint.read_text())["state"]["budget_total"] is None
+    check_invariants(restored)
 
 
 def test_checkpoint_replaces_existing_file_atomically(tmp_path):

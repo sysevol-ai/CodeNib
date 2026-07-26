@@ -272,7 +272,15 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--index-types", nargs="+", default=["bm25"])
     parser.add_argument("--since", default="90 days ago")
     parser.add_argument("--top-n", type=int, default=5)
-    parser.add_argument("--budget-tokens", type=int, default=50_000)
+    budget_group = parser.add_mutually_exclusive_group()
+    budget_group.add_argument("--budget-tokens", type=int, default=50_000)
+    budget_group.add_argument(
+        "--no-budget-limit",
+        action="store_true",
+        help=(
+            "Disable the cycle token limit while retaining turn and wall-clock limits"
+        ),
+    )
     parser.add_argument("--poll-interval", type=int, default=10)
     parser.add_argument("--once", action="store_true")
     parser.add_argument(
@@ -312,7 +320,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         arm=args.arm,
         since=args.since,
         top_n=args.top_n,
-        budget_tokens=args.budget_tokens,
+        budget_tokens=None if args.no_budget_limit else args.budget_tokens,
         episode_dir="/logs/agent/guardian_episode",
     )
     run_bridge(

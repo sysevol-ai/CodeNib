@@ -136,6 +136,30 @@ def test_main_builds_llm_enabled_guardian_config(tmp_path, monkeypatch):
     assert seen["baseline_commit"] is None
 
 
+def test_main_can_disable_cycle_token_limit(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run_bridge(
+        config, *, out_dir, poll_interval, once=False, baseline_commit=None
+    ):
+        seen["config"] = config
+
+    monkeypatch.setattr(codex_bridge, "run_bridge", fake_run_bridge)
+
+    codex_bridge.main(
+        [
+            "--repo",
+            "/repo",
+            "--out-dir",
+            str(tmp_path),
+            "--no-budget-limit",
+            "--once",
+        ]
+    )
+
+    assert seen["config"].budget_tokens is None
+
+
 def test_main_defaults_out_dir_to_home_guardian(monkeypatch):
     seen = {}
 

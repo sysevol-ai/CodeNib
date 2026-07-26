@@ -24,6 +24,7 @@ class ToolCallRecord:
     result: Any = None
     duration_ms: float = 0.0
     error: Optional[str] = None
+    parent_tool_call_id: Optional[str] = None
 
 
 @dataclass
