@@ -43,9 +43,31 @@ Set the environment to `pypi` for PyPI and `testpypi` for TestPyPI. These
 values must match exactly; an unregistered or mismatched publisher fails the
 OIDC exchange with `invalid-publisher`.
 
+PyPI and TestPyPI are separate registries: configuring one does not configure
+the other. A GitHub `pypi` or `testpypi` deployment environment scopes the
+workflow job but does not register a publisher with either registry. Confirm
+that each pending publisher appears on the corresponding registry account page
+before dispatching a publish workflow.
+
 The corresponding GitHub environments should restrict deployments to trusted
 maintainers. The workflow receives `id-token: write` only in publishing jobs;
 no long-lived PyPI token is stored in GitHub.
+
+## Public Surface Gate
+
+Before the production tag, make the repository public and manually dispatch
+the Docs workflow from `main`. Confirm that the documentation site and the two
+README assets are anonymously reachable:
+
+```text
+https://sysevol-ai.github.io/CodeNib/
+https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_logo.svg
+https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_wiki.png
+```
+
+The README uses absolute asset URLs because it is also the PyPI project
+description; repository-relative images have no repository base when rendered
+on PyPI.
 
 ## Release Checklist
 
@@ -54,10 +76,13 @@ no long-lived PyPI token is stored in GitHub.
 2. Confirm `CITATION.cff` and `pyproject.toml` use the release version.
 3. Run `pre-commit run --all-files` and the local package smoke.
 4. Merge the release commit to `main` and confirm its package gates pass.
-5. Dispatch the Release workflow from `main` with target `testpypi`.
+5. Confirm the TestPyPI pending publisher is visible, then dispatch the Release
+   workflow from `main` with target `testpypi`.
 6. Install and test the TestPyPI artifact in a clean environment.
-7. Create and push an annotated `v<version>` tag.
-8. Confirm the PyPI deployment and generated GitHub Release.
+7. Complete the public-surface gate above.
+8. Confirm the PyPI pending publisher is visible.
+9. Create and push an annotated `v<version>` tag.
+10. Confirm the PyPI deployment and generated GitHub Release.
 
 Do not reuse a published version. If publication partially succeeds, increment
 the version and produce new artifacts.

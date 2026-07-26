@@ -60,14 +60,16 @@ jobs:
 
       - name: Configure GitHub Pages
         if: >-
-          github.event_name == 'push' &&
+          (github.event_name == 'push' ||
+          github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/main' &&
           github.event.repository.private == false
         uses: actions/configure-pages@v5
 
       - name: Upload GitHub Pages artifact
         if: >-
-          github.event_name == 'push' &&
+          (github.event_name == 'push' ||
+          github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/main' &&
           github.event.repository.private == false
         uses: actions/upload-pages-artifact@v4
@@ -76,7 +78,8 @@ jobs:
 
   deploy:
     if: >-
-      github.event_name == 'push' &&
+      (github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/main' &&
       github.event.repository.private == false
     needs: build
