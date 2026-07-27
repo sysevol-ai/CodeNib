@@ -7,6 +7,7 @@
 import json
 from types import SimpleNamespace
 
+from codenib.graph.code_graph import CodeGraph
 from codenib.wiki.agent_wiki import (
     AgentWiki,
     _candidate_score,
@@ -15,13 +16,18 @@ from codenib.wiki.agent_wiki import (
     _fact_plan_markdown,
     _format_supported_literals,
     _normalize_plan_support,
+    _overview_symbol_role_score,
     _page_planning_guidance,
     _page_quality_report,
+    _plan_evidence_constraints,
     _plan_quality_warnings,
+    _plan_repair_score,
     _prepare_evidence_content,
     _prune_uncited_blocks,
     _readme_intro,
     _remove_orphan_headings,
+    _renderable_plan,
+    _supplement_topic_relation_flows,
 )
 from codenib.wiki.builder import Symbol
 from codenib.wiki.evidence import EvidenceItem, RelationItem, candidate_key
@@ -103,6 +109,41 @@ def test_candidate_score_prefers_fewer_style_warnings():
     assert _candidate_score(cleaner, quality) > _candidate_score(noisy, quality)
 
 
+def test_plan_repair_score_keeps_richer_progress_under_the_same_warning():
+    warning = ["Overview needs at least 8 supported claims"]
+    sparse = {
+        "sections": [
+            {
+                "title": "Runtime",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "The runtime handles requests",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ]
+    }
+    richer = {
+        "sections": [
+            *sparse["sections"],
+            {
+                "title": "Serving",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "The server calls the runtime",
+                        "evidence": ["E2", "R1"],
+                    }
+                ],
+            },
+        ]
+    }
+
+    assert _plan_repair_score(richer, warning) < _plan_repair_score(sparse, warning)
+
+
 def test_markdown_cleanup_removes_empty_sections_but_keeps_parent_sections():
     markdown = (
         "## Runtime\n\n"
@@ -149,6 +190,138 @@ def test_parent_page_guidance_reserves_child_implementation_details():
 
     assert "This is a parent page" in guidance
     assert "BM25 Indexing, Vector Indexing" in guidance
+
+
+def test_overview_guidance_uses_the_outline_as_a_breadth_check():
+    guidance = _page_planning_guidance(
+        {
+            "id": "overview",
+            "major_topics": [
+                {"title": "Indexing"},
+                {"title": "Wiki Serving"},
+                {"title": "Agent Runtime"},
+            ],
+        }
+    )
+
+    assert "Indexing, Wiki Serving, Agent Runtime" in guidance
+    assert "Do not spend multiple sections on one area" in guidance
+
+
+def test_overview_meta_uses_parent_level_files_from_each_major_topic():
+    meta = {
+        "id": "overview",
+        "title": "Overview",
+        "files": [
+            "README.md",
+            "src/cli.py",
+            "src/mcp/__main__.py",
+            "src/web/app.py",
+            "web/src/main.tsx",
+            "web/lib/router.tsx",
+        ],
+    }
+    topics = [
+        {
+            "id": "indexing",
+            "title": "Indexing",
+            "files": ["src/index/bm25.py", "src/compiler/index_builders.py"],
+            "children": [
+                {
+                    "title": "BM25",
+                    "files": ["src/index/bm25.py"],
+                }
+            ],
+        },
+        {
+            "id": "agent-runtime",
+            "title": "Agent Runtime",
+            "files": ["src/agent/runner.py", "src/agent/rerank.py"],
+            "children": [
+                {
+                    "title": "Reranking",
+                    "files": ["src/agent/rerank.py"],
+                }
+            ],
+        },
+        {
+            "id": "graph-navigation",
+            "title": "Graph Navigation",
+            "files": ["src/graph/code_graph.py"],
+            "children": [],
+        },
+    ]
+
+    result = AgentWiki._overview_page_meta(meta, topics)
+
+    assert result["major_topics"][0]["files"] == ["src/compiler/index_builders.py"]
+    assert result["major_topics"][1]["files"] == ["src/agent/runner.py"]
+    assert "src/graph/code_graph.py" in result["files"]
+    assert "src/agent/rerank.py" not in result["files"]
+    assert result["files"][0] == "README.md"
+
+
+def test_overview_symbol_roles_prefer_runtime_entrypoints_over_helpers():
+    assert _overview_symbol_role_score("AgentRunner.run") > (
+        _overview_symbol_role_score("compile_repo")
+    )
+    assert _overview_symbol_role_score("Server.dispatch_request") > (
+        _overview_symbol_role_score("format_metadata")
+    )
+    assert _overview_symbol_role_score("AgentWiki.page") > (
+        _overview_symbol_role_score("AgentWiki.outline")
+    )
+
+
+def test_overview_constraints_bind_topics_to_retrieved_evidence():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=5,
+            symbol="README.md",
+            kind="file",
+            content="The repository builds indexes and serves a local Wiki.",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/compiler/index_builders.py",
+            start_line=1,
+            end_line=10,
+            symbol="IndexBuilderRegistry",
+            kind="class",
+            content="class IndexBuilderRegistry: pass",
+        ),
+    ]
+
+    constraints = _plan_evidence_constraints(
+        {
+            "id": "overview",
+            "major_topics": [
+                {
+                    "title": "Indexing",
+                    "files": ["src/compiler/index_builders.py"],
+                }
+            ],
+        },
+        evidence,
+        [
+            RelationItem(
+                id="R1",
+                source="src/compiler/index_builders.py:IndexBuilderRegistry.build()",
+                target="src/compiler/manifest.py:RepoManifest.save()",
+                anchors=("src/compiler/index_builders.py:8",),
+            )
+        ],
+    )
+
+    assert "Indexing=E2" in constraints
+    assert "E2 (`IndexBuilderRegistry`)" in constraints
+    assert "R1 (`IndexBuilderRegistry.build()` -> `RepoManifest.save()`)" in constraints
+    assert "use it for that topic's concrete flow claim" in constraints
+    assert "do not shorten a method to its owner class" in constraints
+    assert "must cite its allocated evidence" in constraints
 
 
 def test_page_quality_requires_supported_plan_coverage():
@@ -229,8 +402,7 @@ def test_overview_quality_rejects_thin_sections():
         "The compiler builds repository views. The runtime loads those views "
         "for incoming requests. [E3] [E4]\n\n"
         "## Subsystems\n\n"
-        "The repository contains several subsystems with distinct "
-        "responsibilities. [E5] [E6]"
+        "The repository has subsystems. [E5] [E6]"
     )
 
     report = _page_quality_report(markdown, plan, require_dense_sections=True)
@@ -356,7 +528,11 @@ def test_fact_plan_renderer_drops_unsupported_claims():
             end_line=8,
             symbol="Indexer",
             kind="class",
-            content="class Indexer: pass",
+            content=(
+                "class Indexer:\n"
+                "    def build(self, repository):\n"
+                "        return repository.records()"
+            ),
         ),
     ]
     markdown = _fact_plan_markdown(
@@ -391,6 +567,113 @@ def test_fact_plan_renderer_drops_unsupported_claims():
     assert "`MagicIndex`" not in markdown
 
 
+def test_fact_plan_rejects_behavior_not_supported_by_the_cited_body():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/wiki.py",
+            start_line=10,
+            end_line=18,
+            symbol="AgentWiki._find",
+            kind="method",
+            content=(
+                "def _find(self, page_identifier):\n"
+                "    return next(page for page in self.pages "
+                "if page.id == page_identifier)"
+            ),
+        )
+    ]
+    false_statement = "`AgentWiki._find()` identifies relevant repository evidence"
+    true_statement = "`AgentWiki._find()` returns a page by its page identifier"
+    plan = {
+        "thesis": {
+            "statement": "Wiki page lookup uses page identifiers",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Lookup",
+                "claims": [
+                    {"statement": false_statement, "evidence": ["E1"]},
+                    {"statement": true_statement, "evidence": ["E1"]},
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "wiki-agent", "title": "Wiki Agent"},
+        plan,
+        evidence,
+    )
+    markdown = _fact_plan_markdown(plan, evidence, [])
+
+    assert any(
+        false_statement in warning and "not supported by concrete terms" in warning
+        for warning in warnings
+    )
+    assert false_statement not in markdown
+    assert true_statement in markdown
+
+
+def test_plan_support_promotes_an_admitted_claim_when_thesis_is_unsupported():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/wiki.py",
+            start_line=10,
+            end_line=18,
+            symbol="AgentWiki.page",
+            kind="method",
+            content=(
+                "def page(self, page_identifier):\n"
+                "    return next(page for page in self.pages "
+                "if page.id == page_identifier)"
+            ),
+        )
+    ]
+    supported = "`AgentWiki.page()` returns a page by its page identifier"
+    plan = {
+        "thesis": {
+            "statement": "This page documents intelligent repository search",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Lookup",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": supported,
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "component",
+                        "statement": "`AgentWiki.page()` returns the matching page",
+                        "evidence": ["E1"],
+                    },
+                ],
+            }
+        ],
+    }
+
+    normalized = _normalize_plan_support(plan, evidence, [])
+    markdown = _fact_plan_markdown(normalized, evidence, [])
+    warnings = _plan_quality_warnings(
+        {"id": "wiki-agent", "title": "Wiki Agent"},
+        normalized,
+        evidence,
+    )
+
+    assert normalized["thesis"] == {
+        "statement": supported,
+        "evidence": ["E1"],
+    }
+    assert markdown.startswith(f"{supported}. [E1]")
+    assert markdown.count(supported) == 1
+    assert not any("thesis" in warning for warning in warnings)
+
+
 def test_fact_plan_renderer_drops_claims_repeated_by_readme_intro():
     evidence = [
         EvidenceItem(
@@ -412,7 +695,7 @@ def test_fact_plan_renderer_drops_claims_repeated_by_readme_intro():
             end_line=8,
             symbol="main",
             kind="function",
-            content="def main(): pass",
+            content="def main(): return launch_cli()",
         ),
     ]
     markdown = _fact_plan_markdown(
@@ -459,7 +742,7 @@ def test_fact_plan_renderer_deduplicates_fallback_intro():
             end_line=8,
             symbol="run",
             kind="function",
-            content="def run(): pass",
+            content="def run(): return Runtime.start()",
         ),
         EvidenceItem(
             id="E2",
@@ -468,7 +751,7 @@ def test_fact_plan_renderer_deduplicates_fallback_intro():
             end_line=18,
             symbol="load_config",
             kind="function",
-            content="def load_config(): pass",
+            content="def load_config(): return read_runtime_configuration()",
         ),
     ]
     first = "The `run` function starts the runtime."
@@ -499,6 +782,76 @@ def test_fact_plan_renderer_deduplicates_fallback_intro():
     assert "`load_config`" in markdown
 
 
+def test_renderable_plan_aligns_intro_deduplication_with_quality_gate():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/runtime.py",
+            start_line=1,
+            end_line=8,
+            symbol="run",
+            kind="function",
+            content="def run(): return Runtime.start()",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/runtime.py",
+            start_line=10,
+            end_line=18,
+            symbol="load_config",
+            kind="function",
+            content="def load_config(): return read_runtime_configuration()",
+        ),
+    ]
+    thesis = "The `run` function returns `Runtime.start()` to start the runtime"
+    plan = {
+        "thesis": {"statement": thesis, "evidence": ["E1"]},
+        "sections": [
+            {
+                "title": "Startup",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": thesis,
+                        "evidence": ["E1"],
+                    }
+                ],
+            },
+            {
+                "title": "Configuration",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "The `load_config` function reads the runtime "
+                            "configuration"
+                        ),
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+        ],
+    }
+
+    render_plan = _renderable_plan(plan, evidence, [])
+    markdown = _fact_plan_markdown(render_plan, evidence, [])
+    quality = _page_quality_report(
+        markdown,
+        render_plan,
+        require_cited_intro=True,
+        require_grounded_thesis=True,
+        evidence_items=evidence,
+    )
+
+    assert [section["title"] for section in render_plan["sections"]] == [
+        "Configuration"
+    ]
+    assert markdown.count(thesis) == 1
+    assert quality["planned_sections"] == quality["rendered_sections"] == 1
+    assert quality["planned_claims"] == quality["covered_claims"] == 1
+    assert quality["valid"] is True
+
+
 def test_overview_plan_requires_dense_page_wide_evidence():
     evidence = [
         EvidenceItem(
@@ -517,7 +870,11 @@ def test_overview_plan_requires_dense_page_wide_evidence():
             end_line=None,
             symbol="main",
             kind="function",
-            content="def main(): pass",
+            content=(
+                "def main(repository_path):\n"
+                "    request = RepositoryRequest(repository_path)\n"
+                "    return CLI(request)"
+            ),
         ),
         EvidenceItem(
             id="E3",
@@ -526,7 +883,11 @@ def test_overview_plan_requires_dense_page_wide_evidence():
             end_line=None,
             symbol="Compiler",
             kind="class",
-            content="class Compiler: pass",
+            content=(
+                "class Compiler:\n"
+                "    def record(self, repository_indexes):\n"
+                "        return repository_indexes"
+            ),
         ),
         EvidenceItem(
             id="E4",
@@ -535,7 +896,11 @@ def test_overview_plan_requires_dense_page_wide_evidence():
             end_line=None,
             symbol="Server",
             kind="class",
-            content="class Server: pass",
+            content=(
+                "class Server:\n"
+                "    def page(self, wiki_request):\n"
+                "        return SourceLinkedWikiPage(wiki_request)"
+            ),
         ),
     ]
     sparse = {
@@ -576,9 +941,9 @@ def test_overview_plan_requires_dense_page_wide_evidence():
                 "title": "Flow",
                 "claims": [
                     {
-                        "role": "flow",
-                        "statement": "`main` invokes `Compiler`",
-                        "evidence": ["E2", "E3"],
+                        "role": "component",
+                        "statement": "The CLI accepts repository requests",
+                        "evidence": ["E2"],
                     },
                     {
                         "role": "responsibility",
@@ -610,6 +975,117 @@ def test_overview_plan_requires_dense_page_wide_evidence():
     assert _plan_quality_warnings(meta, dense, evidence) == []
 
 
+def test_overview_density_counts_the_rendered_thesis():
+    evidence = [
+        EvidenceItem(
+            id=f"E{index}",
+            file=file,
+            start_line=None,
+            end_line=None,
+            symbol=file,
+            kind="file",
+            content=content,
+        )
+        for index, file, content in [
+            (
+                1,
+                "README.md",
+                "The command builds a source-linked Wiki for a repository.",
+            ),
+            (
+                2,
+                "src/index.py",
+                "The indexer records searchable source units and returns them.",
+            ),
+            (
+                3,
+                "src/wiki.py",
+                "The Wiki serves generated pages and preserves source links.",
+            ),
+            (
+                4,
+                "src/runtime.py",
+                "The runtime executes requests and returns bounded context.",
+            ),
+            (
+                5,
+                "src/graph.py",
+                "The graph resolves symbols and returns source locations.",
+            ),
+        ]
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The command builds a source-linked Wiki for a repository",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Indexing",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "The indexer records searchable source units",
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+            {
+                "title": "Wiki Serving",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "The Wiki serves generated pages",
+                        "evidence": ["E3"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "The Wiki preserves source links",
+                        "evidence": ["E3"],
+                    },
+                ],
+            },
+            {
+                "title": "Agent Runtime",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "The runtime executes requests",
+                        "evidence": ["E4"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "The runtime returns bounded context",
+                        "evidence": ["E4"],
+                    },
+                ],
+            },
+            {
+                "title": "Graph Navigation",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "The graph resolves symbols",
+                        "evidence": ["E5"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "The graph returns source locations",
+                        "evidence": ["E5"],
+                    },
+                ],
+            },
+        ],
+    }
+
+    warnings = _plan_quality_warnings({"id": "overview"}, plan, evidence)
+
+    assert not any(
+        warning.startswith("Overview needs at least 8 supported narrative facts")
+        for warning in warnings
+    )
+
+
 def test_overview_plan_allows_one_source_for_a_cohesive_section():
     evidence = [
         EvidenceItem(
@@ -627,7 +1103,7 @@ def test_overview_plan_allows_one_source_for_a_cohesive_section():
                 "docs/workflow.md",
                 "The Wiki accepts a repository path and builds indexes.",
             ),
-            (2, "src/cli.py", "The CLI starts the compiler."),
+            (2, "src/cli.py", "The CLI starts command execution through the compiler."),
             (3, "src/compiler.py", "The compiler writes a manifest."),
             (4, "src/server.py", "The server returns Wiki pages."),
         ]
@@ -657,9 +1133,9 @@ def test_overview_plan_allows_one_source_for_a_cohesive_section():
                 "title": "Execution",
                 "claims": [
                     {
-                        "role": "flow",
-                        "statement": "The CLI starts the compiler",
-                        "evidence": ["E2", "E3"],
+                        "role": "component",
+                        "statement": "The CLI starts command execution",
+                        "evidence": ["E2"],
                     },
                     {
                         "role": "responsibility",
@@ -678,7 +1154,7 @@ def test_overview_plan_allows_one_source_for_a_cohesive_section():
                     },
                     {
                         "role": "contract",
-                        "statement": "Wiki requests receive pages from the server",
+                        "statement": "Wiki requests return Markdown pages",
                         "evidence": ["E4"],
                     },
                 ],
@@ -737,9 +1213,9 @@ def test_overview_plan_allows_distinct_readme_facts():
                 "title": "Execution",
                 "claims": [
                     {
-                        "role": "flow",
-                        "statement": "The CLI starts the compiler",
-                        "evidence": ["E2", "E3"],
+                        "role": "component",
+                        "statement": "The CLI accepts repository paths",
+                        "evidence": ["E2"],
                     },
                     {
                         "role": "responsibility",
@@ -784,7 +1260,7 @@ def test_overview_plan_allows_core_source_reuse_for_distinct_claims():
         )
         for index, file, content in [
             (1, "docs/workflow.md", "The Wiki accepts and indexes a repository."),
-            (2, "src/cli.py", "The CLI starts the compiler."),
+            (2, "src/cli.py", "The CLI starts command execution through the compiler."),
             (3, "src/compiler.py", "The compiler writes a manifest."),
             (4, "src/server.py", "The server returns Wiki pages."),
         ]
@@ -814,9 +1290,9 @@ def test_overview_plan_allows_core_source_reuse_for_distinct_claims():
                 "title": "Execution",
                 "claims": [
                     {
-                        "role": "flow",
-                        "statement": "The CLI starts the compiler",
-                        "evidence": ["E2", "E3"],
+                        "role": "component",
+                        "statement": "The CLI starts command execution",
+                        "evidence": ["E2"],
                     },
                     {
                         "role": "responsibility",
@@ -830,7 +1306,7 @@ def test_overview_plan_allows_core_source_reuse_for_distinct_claims():
                 "claims": [
                     {
                         "role": "responsibility",
-                        "statement": "The CLI owns the entry point",
+                        "statement": "The CLI starts the compiler",
                         "evidence": ["E2"],
                     },
                     {
@@ -846,6 +1322,294 @@ def test_overview_plan_allows_core_source_reuse_for_distinct_claims():
     warnings = _plan_quality_warnings({"id": "overview"}, plan, evidence)
 
     assert warnings == []
+
+
+def test_overview_plan_requires_each_major_topic_to_use_its_evidence():
+    evidence = [
+        EvidenceItem(
+            id=f"E{index}",
+            file=file,
+            start_line=None,
+            end_line=None,
+            symbol=file,
+            kind="file",
+            content=content,
+        )
+        for index, file, content in [
+            (1, "README.md", "The project serves indexed source."),
+            (2, "src/index.py", "The index builder stores source units."),
+            (3, "src/wiki.py", "The Wiki returns source-linked pages."),
+            (4, "src/agent.py", "The agent runtime processes queries."),
+        ]
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The project serves indexed source",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Indexing",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "The command accepts a repository",
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": "The index builder stores source units",
+                        "evidence": ["E2"],
+                    },
+                ],
+            },
+            {
+                "title": "Wiki Serving",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "The Wiki returns source-linked pages",
+                        "evidence": ["E3"],
+                    }
+                ],
+            },
+            {
+                "title": "Workflow Integration",
+                "claims": [
+                    {
+                        "role": "component",
+                        "statement": "The project includes an agent runtime",
+                        "evidence": ["E4"],
+                    }
+                ],
+            },
+        ],
+    }
+    meta = {
+        "id": "overview",
+        "major_topics": [
+            {"title": "Indexing", "files": ["src/index.py"]},
+            {"title": "Wiki Serving", "files": ["src/wiki.py"]},
+            {"title": "Agent Runtime", "files": ["src/agent.py"]},
+        ],
+    }
+
+    warnings = _plan_quality_warnings(meta, plan, evidence)
+
+    assert (
+        "Overview needs a 'Agent Runtime' section grounded in its allocated "
+        "evidence" in warnings
+    )
+
+
+def test_overview_plan_requires_each_topic_to_use_its_allocated_relation():
+    evidence = [
+        EvidenceItem(
+            id=f"E{index}",
+            file=file,
+            start_line=1,
+            end_line=10,
+            symbol=symbol,
+            kind="function",
+            content=content,
+        )
+        for index, file, symbol, content in [
+            (1, "README.md", "README.md", "The project serves indexed source."),
+            (
+                2,
+                "src/index.py",
+                "search",
+                "def search(query): return retrieve(query)",
+            ),
+            (
+                3,
+                "src/wiki.py",
+                "page",
+                "def page(page_id): return generate_page(page_id)",
+            ),
+            (
+                4,
+                "src/agent.py",
+                "run",
+                "def run(query): return compile_query(query)",
+            ),
+        ]
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The project serves indexed source",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Indexing",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "The search function accepts a query",
+                        "evidence": ["E2"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": "The search function returns results",
+                        "evidence": ["E2"],
+                    },
+                ],
+            },
+            {
+                "title": "Wiki Serving",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "The page function accepts a page ID",
+                        "evidence": ["E3"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": "The page function returns content",
+                        "evidence": ["E3"],
+                    },
+                ],
+            },
+            {
+                "title": "Agent Runtime",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "The run function accepts a query",
+                        "evidence": ["E4"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": "The run function compiles the query",
+                        "evidence": ["E4"],
+                    },
+                ],
+            },
+        ],
+    }
+    relations = [
+        RelationItem(
+            id="R0",
+            source="examples/agent.py:run_agent()",
+            target="src/index.py:Registry.register()",
+        ),
+        RelationItem(
+            id="R1",
+            source="src/agent.py:run()",
+            target="src/agent.py:compile_query()",
+            anchors=("src/agent.py:2",),
+        ),
+    ]
+    meta = {
+        "id": "overview",
+        "major_topics": [
+            {"title": "Agent Runtime", "files": ["src/agent.py"]},
+        ],
+    }
+
+    warnings = _plan_quality_warnings(meta, plan, evidence, relations)
+
+    assert (
+        "Overview 'Agent Runtime' must use an allocated relation (R1) for its "
+        "concrete flow claim" in warnings
+    )
+
+
+def test_overview_supplements_an_allocated_callable_relation():
+    plan = {
+        "sections": [
+            {
+                "title": "Agent Runtime",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "`run()` accepts a query",
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": "`run()` processes the query",
+                        "evidence": ["E1"],
+                    },
+                ],
+            }
+        ]
+    }
+    relation = RelationItem(
+        id="R1",
+        source="src/agent.py:run()",
+        target="src/agent.py:compile_query()",
+        anchors=("src/agent.py:2",),
+    )
+
+    supplemented = _supplement_topic_relation_flows(
+        {
+            "id": "overview",
+            "major_topics": [
+                {
+                    "title": "Agent Runtime",
+                    "files": ["src/agent.py"],
+                }
+            ],
+        },
+        plan,
+        [relation],
+    )
+
+    flow = supplemented["sections"][0]["claims"][2]
+    assert flow == {
+        "role": "flow",
+        "statement": "`run()` calls `compile_query()`",
+        "evidence": ["R1"],
+    }
+
+
+def test_overview_supplements_a_missing_topic_with_two_callable_relations():
+    relations = [
+        RelationItem(
+            id="R1",
+            source="src/index.py:register_builders()",
+            target="src/index.py:Registry.register()",
+        ),
+        RelationItem(
+            id="R2",
+            source="src/index.py:register_builders()",
+            target="src/index.py:default_filters()",
+        ),
+    ]
+
+    supplemented = _supplement_topic_relation_flows(
+        {
+            "id": "overview",
+            "major_topics": [
+                {
+                    "title": "Indexing",
+                    "files": ["src/index.py"],
+                }
+            ],
+        },
+        {"sections": []},
+        relations,
+    )
+
+    assert supplemented["sections"] == [
+        {
+            "title": "Indexing",
+            "claims": [
+                {
+                    "role": "flow",
+                    "statement": "`register_builders()` calls `Registry.register()`",
+                    "evidence": ["R1"],
+                },
+                {
+                    "role": "flow",
+                    "statement": "`register_builders()` calls `default_filters()`",
+                    "evidence": ["R2"],
+                },
+            ],
+        }
+    ]
 
 
 def test_overview_plan_rejects_private_helper_as_user_entrypoint():
@@ -915,7 +1679,11 @@ def test_page_plan_rejects_private_helper_as_public_entrypoint():
             end_line=20,
             symbol="AgentWiki._retrieve",
             kind="method",
-            content="def _retrieve(self): pass",
+            content=(
+                "def _retrieve(self):\n"
+                '    """Obtain indexed source candidates for Wiki page planning."""\n'
+                "    return self.candidates"
+            ),
         )
     ]
     plan = {
@@ -957,7 +1725,9 @@ def test_page_plan_allows_a_public_entry_to_delegate_to_a_private_helper():
             end_line=20,
             symbol="main",
             kind="function",
-            content="def main(): return _prepare()",
+            content=(
+                "def main(repository_state):\n" "    return _prepare(repository_state)"
+            ),
         ),
         EvidenceItem(
             id="E2",
@@ -966,7 +1736,7 @@ def test_page_plan_allows_a_public_entry_to_delegate_to_a_private_helper():
             end_line=30,
             symbol="_prepare",
             kind="function",
-            content="def _prepare(): pass",
+            content="def _prepare(repository_state): return repository_state",
         ),
     ]
     relations = [
@@ -989,7 +1759,19 @@ def test_page_plan_allows_a_public_entry_to_delegate_to_a_private_helper():
                         "evidence": ["E1", "E2", "R1"],
                     }
                 ],
-            }
+            },
+            {
+                "title": "Preparation",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`_prepare(repository_state)` returns " "`repository_state`"
+                        ),
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
         ],
     }
 
@@ -1001,6 +1783,62 @@ def test_page_plan_allows_a_public_entry_to_delegate_to_a_private_helper():
     )
 
     assert warnings == []
+
+
+def test_page_plan_requires_two_claims_when_multiple_sources_are_available():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/worker.py",
+            start_line=1,
+            end_line=5,
+            symbol="Worker.run",
+            kind="method",
+            content=(
+                "def run(self):\n"
+                '    """Return the worker queue."""\n'
+                "    return self.queue"
+            ),
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/queue.py",
+            start_line=1,
+            end_line=5,
+            symbol="Queue",
+            kind="class",
+            content="class Queue: pass",
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "`Worker.run()` returns the worker queue",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Execution",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "`Worker.run()` returns the worker queue",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "worker", "title": "Worker"},
+        plan,
+        evidence,
+    )
+
+    assert warnings == [
+        "page needs at least two supported claims when multiple source "
+        "evidence items are available"
+    ]
 
 
 def test_page_plan_rejects_a_flow_label_without_a_component_handoff():
@@ -1067,6 +1905,237 @@ def test_page_plan_rejects_a_flow_label_without_a_component_handoff():
     )
 
 
+def test_page_plan_rejects_describing_a_method_as_a_command():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/runner.py",
+            start_line=10,
+            end_line=20,
+            symbol="AgentRunner.run",
+            kind="method",
+            content="def run(self, query): return query",
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The runtime processes user queries",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Runtime",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": (
+                            "The command `AgentRunner.run` processes a query"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "runtime", "title": "Runtime"},
+        plan,
+        evidence,
+    )
+
+    assert (
+        "claim 'The command `AgentRunner.run` processes a query' describes a "
+        "code callable as a CLI command" in warnings
+    )
+
+
+def test_plan_admission_normalizes_a_function_mislabeled_as_a_command():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/api.py",
+            start_line=10,
+            end_line=20,
+            symbol="query",
+            kind="function",
+            content=(
+                "def query(repository):\n"
+                '    """Run an agent turn over a repository and return the result."""\n'
+                "    return run_agent(repository)"
+            ),
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The command `query()` returns an agent result",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Request",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": (
+                            "The command `query()` runs an agent turn over a "
+                            "repository and returns the result"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    admitted = _normalize_plan_support(plan, evidence, [])
+    rendered = _renderable_plan(admitted, evidence, [])
+
+    assert rendered["thesis"]["statement"].startswith("The function `query()`")
+    assert rendered["sections"][0]["claims"][0]["statement"].startswith(
+        "The function `query()`"
+    )
+    assert (
+        _plan_quality_warnings(
+            {"id": "request", "title": "Request"},
+            rendered,
+            evidence,
+        )
+        == []
+    )
+
+
+def test_page_plan_rejects_generalizing_method_evidence_to_its_class():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/wiki.py",
+            start_line=10,
+            end_line=20,
+            symbol="AgentWiki.outline",
+            kind="method",
+            content="def outline(self): return self._indexed_source_outline",
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The Wiki organizes indexed source",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Wiki",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": ("`AgentWiki` manages repository presentation"),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "wiki", "title": "Wiki"},
+        plan,
+        evidence,
+    )
+
+    assert (
+        "claim '`AgentWiki` manages repository presentation' generalizes method "
+        "evidence `AgentWiki.outline` to its owner class" in warnings
+    )
+
+
+def test_page_plan_allows_method_behavior_from_method_evidence():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/wiki.py",
+            start_line=10,
+            end_line=20,
+            symbol="AgentWiki.outline",
+            kind="method",
+            content="def outline(self): return self._indexed_source_outline",
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The Wiki organizes indexed source",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Wiki",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": ("`AgentWiki.outline` returns the Wiki outline"),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    assert (
+        _plan_quality_warnings(
+            {"id": "wiki", "title": "Wiki"},
+            plan,
+            evidence,
+        )
+        == []
+    )
+
+
+def test_page_plan_rejects_labeling_a_function_as_a_method():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/builders.py",
+            start_line=10,
+            end_line=20,
+            symbol="register_default_builders",
+            kind="function",
+            content="def register_default_builders(registry): pass",
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The compiler registers index builders",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Indexing",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "The `register_default_builders` method registers "
+                            "builders"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "indexing", "title": "Indexing"},
+        plan,
+        evidence,
+    )
+
+    assert (
+        "claim 'The `register_default_builders` method registers builders' "
+        "labels `register_default_builders` as method, but cited evidence "
+        "records function" in warnings
+    )
+
+
 def test_plan_support_drops_an_unrelated_relation_when_source_proves_flow():
     evidence = [
         EvidenceItem(
@@ -1114,6 +2183,129 @@ def test_plan_support_drops_an_unrelated_relation_when_source_proves_flow():
         )
         == []
     )
+
+
+def test_plan_support_drops_an_unproved_flow_but_keeps_local_facts():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=3,
+            symbol="README.md",
+            kind="file",
+            content="Users run codenib wiki to index a repository.",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="codenib/compiler/index_builders.py",
+            start_line=1,
+            end_line=3,
+            symbol="register_default_builders",
+            kind="function",
+            content=(
+                "def register_default_builders(registry):\n"
+                "    registry.register(IndexBuilder)"
+            ),
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The command indexes repositories",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Indexing",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": ("`codenib` invokes `register_default_builders`"),
+                        "evidence": ["E1", "E2"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`register_default_builders` registers index builders"
+                        ),
+                        "evidence": ["E2"],
+                    },
+                ],
+            }
+        ],
+    }
+
+    normalized = _normalize_plan_support(plan, evidence, [])
+
+    assert normalized["sections"][0]["claims"] == [
+        {
+            "role": "responsibility",
+            "statement": "`register_default_builders` registers index builders",
+            "evidence": ["E2"],
+        }
+    ]
+
+
+def test_plan_support_drops_method_to_owner_generalization():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/wiki.py",
+            start_line=10,
+            end_line=20,
+            symbol="AgentWiki._find",
+            kind="method",
+            content=(
+                "def _find(self, page_identifier):\n"
+                "    return PageMetadata(page_identifier)"
+            ),
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/wiki.py",
+            start_line=22,
+            end_line=30,
+            symbol="AgentWiki.page",
+            kind="method",
+            content=(
+                "def page(self, page_identifier):\n"
+                "    return PageMetadata(page_identifier)"
+            ),
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "Wiki pages expose page metadata",
+            "evidence": ["E2"],
+        },
+        "sections": [
+            {
+                "title": "Lookup",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": ("The `AgentWiki` class searches page metadata"),
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": ("`AgentWiki.page()` returns page metadata"),
+                        "evidence": ["E2"],
+                    },
+                ],
+            }
+        ],
+    }
+
+    normalized = _normalize_plan_support(plan, evidence, [])
+
+    assert normalized["sections"][0]["claims"] == [
+        {
+            "role": "contract",
+            "statement": "`AgentWiki.page()` returns page metadata",
+            "evidence": ["E2"],
+        }
+    ]
 
 
 def test_page_plan_rejects_sections_that_only_inventory_operations():
@@ -1178,12 +2370,24 @@ def test_page_plan_rejects_incidental_helper_section():
             end_line=10,
             symbol=symbol,
             kind="method",
-            content="def method(): pass",
+            content=content,
         )
-        for index, symbol in [
-            (1, "AgentRunner.run"),
-            (2, "AgentRunner.configure"),
-            (3, "AgentRunner._serialize"),
+        for index, symbol, content in [
+            (
+                1,
+                "AgentRunner.run",
+                "def run(self): return execute_configured_request_loop()",
+            ),
+            (
+                2,
+                "AgentRunner.configure",
+                "def configure(self, request): self.request = request",
+            ),
+            (
+                3,
+                "AgentRunner._serialize",
+                "def _serialize(self, state): return format_state(state)",
+            ),
         ]
     ]
     plan = {
@@ -1390,9 +2594,9 @@ def test_overview_fact_plan_repairs_sparse_plan():
                 "title": "Flow",
                 "claims": [
                     {
-                        "role": "flow",
-                        "statement": "`main` invokes `Compiler`",
-                        "evidence": ["E2", "E3"],
+                        "role": "component",
+                        "statement": "The CLI accepts repository requests",
+                        "evidence": ["E2"],
                     },
                     {
                         "role": "responsibility",
@@ -1411,7 +2615,7 @@ def test_overview_fact_plan_repairs_sparse_plan():
                     },
                     {
                         "role": "contract",
-                        "statement": "Wiki requests receive pages from the server",
+                        "statement": "Wiki requests return Markdown pages",
                         "evidence": ["E4"],
                     },
                 ],
@@ -1446,9 +2650,27 @@ def test_overview_fact_plan_repairs_sparse_plan():
                 "README.md",
                 "The repository serves indexed source through a local Wiki.",
             ),
-            (2, "src/cli.py", "def main(): pass"),
-            (3, "src/compiler.py", "class Compiler: pass"),
-            (4, "src/server.py", "class Server: pass"),
+            (
+                2,
+                "src/cli.py",
+                "def main(repository_path):\n"
+                "    request = RepositoryRequest(repository_path)\n"
+                "    return CLI(request)",
+            ),
+            (
+                3,
+                "src/compiler.py",
+                "class Compiler:\n"
+                "    def record(self, repository_indexes):\n"
+                "        return repository_indexes",
+            ),
+            (
+                4,
+                "src/server.py",
+                "class Server:\n"
+                "    def page(self, wiki_request):\n"
+                "        return SourceLinkedWikiPage(wiki_request)",
+            ),
         ]
     ]
     llm = LLM()
@@ -1469,6 +2691,279 @@ def test_overview_fact_plan_repairs_sparse_plan():
     assert llm.calls == 2
     assert warnings == []
     assert len(plan["sections"][2]["claims"]) == 2
+
+
+def test_overview_fact_plan_merges_complementary_repairs():
+    initial = {
+        "thesis": {
+            "statement": "The repository serves indexed source through a local Wiki",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Workflow",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "`main()` returns `CLI(request)`",
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+            {
+                "title": "Build",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`Compiler.record()` uses " "`Manifest(repository_indexes)`"
+                        ),
+                        "evidence": ["E3"],
+                    }
+                ],
+            },
+            {
+                "title": "Runtime",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "`Server.page()` returns `PageResponse(page)`",
+                        "evidence": ["E4"],
+                    }
+                ],
+            },
+        ],
+    }
+    complementary = {
+        "thesis": initial["thesis"],
+        "sections": [
+            {
+                "title": "Workflow",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`main()` uses `RepositoryRequest(repository_path)`"
+                        ),
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+            {
+                "title": "Build",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": "`Compiler.record()` returns `self.manifest`",
+                        "evidence": ["E3"],
+                    }
+                ],
+            },
+            {
+                "title": "Runtime",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "`Server.page()` uses "
+                            "`SourceLinkedWikiPage(wiki_request)`"
+                        ),
+                        "evidence": ["E4"],
+                    }
+                ],
+            },
+        ],
+    }
+
+    class LLM:
+        cache_identity = "fake"
+
+        def __init__(self):
+            self.responses = iter((json.dumps(initial), json.dumps(complementary)))
+            self.calls = 0
+
+        def complete(self, _messages, **_kwargs):
+            self.calls += 1
+            return next(self.responses)
+
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=None,
+            end_line=None,
+            symbol="README.md",
+            kind="file",
+            content="The repository serves indexed source through a local Wiki.",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/cli.py",
+            start_line=None,
+            end_line=None,
+            symbol="main",
+            kind="function",
+            content=(
+                "def main(repository_path):\n"
+                "    request = RepositoryRequest(repository_path)\n"
+                "    return CLI(request)"
+            ),
+        ),
+        EvidenceItem(
+            id="E3",
+            file="src/compiler.py",
+            start_line=None,
+            end_line=None,
+            symbol="Compiler.record",
+            kind="method",
+            content=(
+                "class Compiler:\n"
+                "    def record(self, repository_indexes):\n"
+                "        self.manifest = Manifest(repository_indexes)\n"
+                "        return self.manifest"
+            ),
+        ),
+        EvidenceItem(
+            id="E4",
+            file="src/server.py",
+            start_line=None,
+            end_line=None,
+            symbol="Server.page",
+            kind="method",
+            content=(
+                "class Server:\n"
+                "    def page(self, wiki_request):\n"
+                "        page = SourceLinkedWikiPage(wiki_request)\n"
+                "        return PageResponse(page)"
+            ),
+        ),
+    ]
+    llm = LLM()
+    wiki = AgentWiki(
+        SimpleNamespace(
+            entry=SimpleNamespace(repo="owner/repo", language="python"),
+        ),
+        model="fake-model",
+        llm=llm,
+    )
+
+    plan, warnings = wiki._fact_plan(
+        {"id": "overview", "title": "Overview", "summary": "Repository architecture"},
+        evidence,
+        [],
+    )
+
+    assert llm.calls == 2, warnings
+    assert [len(section["claims"]) for section in plan["sections"]] == [2, 2, 2]
+    assert not any(warning.startswith("Overview needs") for warning in warnings)
+
+
+def test_fact_plan_replans_when_no_claim_survives_source_admission():
+    unsupported = {
+        "thesis": {
+            "statement": "`AgentRunner.run()` deploys a distributed scheduler",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Execution",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`AgentRunner.run()` deploys a distributed scheduler"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+    supported = {
+        "thesis": {
+            "statement": ("`AgentRunner.run()` returns `self.execute(query)`"),
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Execution",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": ("`load_config()` returns `read_config()`"),
+                        "evidence": ["E2"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "`AgentRunner.run()` rejects an empty query",
+                        "evidence": ["E1"],
+                    },
+                ],
+            }
+        ],
+    }
+
+    class LLM:
+        cache_identity = "fake"
+
+        def __init__(self):
+            self.responses = iter((json.dumps(unsupported), json.dumps(supported)))
+            self.calls = 0
+
+        def complete(self, _messages, **_kwargs):
+            self.calls += 1
+            return next(self.responses)
+
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/runner.py",
+            start_line=10,
+            end_line=14,
+            symbol="AgentRunner.run",
+            kind="method",
+            content=(
+                "def run(self, query):\n"
+                '    """Reject an empty query before execution."""\n'
+                "    if not query:\n"
+                "        raise ValueError('empty query')\n"
+                "    return self.execute(query)"
+            ),
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/config.py",
+            start_line=1,
+            end_line=3,
+            symbol="load_config",
+            kind="function",
+            content="def load_config():\n    return read_config()",
+        ),
+    ]
+    llm = LLM()
+    wiki = AgentWiki(
+        SimpleNamespace(
+            entry=SimpleNamespace(repo="owner/repo", language="python"),
+        ),
+        model="fake-model",
+        llm=llm,
+    )
+
+    plan, warnings = wiki._fact_plan(
+        {
+            "id": "agent-runtime",
+            "title": "Agent Runtime",
+            "summary": "Agent execution",
+        },
+        evidence,
+        [],
+    )
+
+    assert llm.calls == 2
+    assert plan["sections"][0]["claims"][0]["statement"] == (
+        "`load_config()` returns `read_config()`"
+    )
+    assert not any("no claims" in warning for warning in warnings)
 
 
 def test_readme_intro_skips_logo_markup():
@@ -1675,6 +3170,368 @@ def test_agent_wiki_fuses_dense_and_bm25_routes(tmp_path):
         "bm25",
     )
     assert bm25.calls[0][2]["return_code_content"] is True
+
+
+def test_wiki_relations_exclude_fields_and_constants_from_narrative(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "codenib.web.codemap.build_page_subgraph",
+        lambda *args, **kwargs: {
+            "available": True,
+            "nodes": [
+                {
+                    "id": "run",
+                    "label": "src/runner.py:AgentRunner.run()",
+                    "kind": "method",
+                },
+                {
+                    "id": "trace",
+                    "label": "src/trace.py:AgentRunTrace.add()",
+                    "kind": "method",
+                },
+                {
+                    "id": "logger",
+                    "label": "src/runner.py:logger",
+                    "kind": "function",
+                },
+                {
+                    "id": "constant",
+                    "label": "src/types.py:EDGE_TYPE_REFERENCE",
+                    "kind": "class",
+                },
+                {
+                    "id": "private",
+                    "label": "src/runner.py:AgentRunner._prepare()",
+                    "kind": "method",
+                },
+            ],
+            "edges": [
+                {
+                    "source": "run",
+                    "target": "trace",
+                    "anchors": [{"file": "src/runner.py", "line": 40}],
+                },
+                {
+                    "source": "run",
+                    "target": "logger",
+                    "anchors": [{"file": "src/runner.py", "line": 41}],
+                },
+                {
+                    "source": "run",
+                    "target": "constant",
+                    "anchors": [{"file": "src/runner.py", "line": 42}],
+                },
+                {
+                    "source": "run",
+                    "target": "private",
+                    "anchors": [{"file": "src/runner.py", "line": 43}],
+                },
+            ],
+        },
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), language="python"),
+        code_graph=lambda: object(),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/runner.py",
+            start_line=1,
+            end_line=50,
+            symbol="AgentRunner.run",
+            kind="method",
+            content="def run(): pass",
+        )
+    ]
+
+    relations = wiki._relation_items(evidence)
+
+    assert relations == [
+        RelationItem(
+            id="R1",
+            source="src/runner.py:AgentRunner.run()",
+            target="src/trace.py:AgentRunTrace.add()",
+            anchors=("src/runner.py:40",),
+        )
+    ]
+
+
+def test_parent_wiki_adds_one_anchored_callable_handoff_per_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "codenib.web.codemap.build_page_subgraph",
+        lambda *args, **kwargs: {
+            "available": True,
+            "nodes": [],
+            "edges": [],
+        },
+    )
+    graph = CodeGraph()
+    graph._add_vertex(
+        "src/wiki.py:AgentWiki.page()",
+        {
+            "type": "method",
+            "file": "src/wiki.py",
+            "start_line": 0,
+            "end_line": 9,
+            "unified_name": "src/wiki.py:AgentWiki.page()",
+        },
+    )
+    graph._add_vertex(
+        "src/wiki.py:AgentWiki._generate_page()",
+        {
+            "type": "method",
+            "file": "src/wiki.py",
+            "start_line": 20,
+            "end_line": 29,
+            "unified_name": "src/wiki.py:AgentWiki._generate_page()",
+        },
+    )
+    graph._add_vertex(
+        "src/wiki.py:AgentWiki.outline()",
+        {
+            "type": "method",
+            "file": "src/wiki.py",
+            "start_line": 31,
+            "end_line": 39,
+            "unified_name": "src/wiki.py:AgentWiki.outline()",
+        },
+    )
+    graph._add_edge(
+        "src/wiki.py:AgentWiki.page()",
+        "src/wiki.py:AgentWiki._generate_page()",
+        "reference",
+        anchor_file="src/wiki.py",
+        anchor_line=3,
+    )
+    graph._add_edge(
+        "src/wiki.py:AgentWiki.page()",
+        "src/wiki.py:AgentWiki.outline()",
+        "reference",
+        anchor_file="src/wiki.py",
+        anchor_line=4,
+    )
+    graph.build_range_indexes()
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), language="python"),
+        code_graph=lambda: graph,
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/wiki.py",
+            start_line=1,
+            end_line=10,
+            symbol="AgentWiki.page",
+            kind="method",
+            content=(
+                "def page(self, page_id):\n" "    return self._generate_page(page_id)"
+            ),
+        )
+    ]
+
+    relations = wiki._relation_items(evidence, {"id": "overview"})
+
+    assert relations == [
+        RelationItem(
+            id="R1",
+            source="src/wiki.py:AgentWiki.page()",
+            target="src/wiki.py:AgentWiki._generate_page()",
+            anchors=("src/wiki.py:4",),
+        )
+    ]
+
+
+def test_parent_page_retrieval_keeps_one_child_boundary_file():
+    meta = {
+        "id": "agent-runtime",
+        "title": "Agent Runtime",
+        "keywords": ["agent", "runtime"],
+        "files": ["src/runner.py", "src/rerank_agent.py"],
+        "children": [
+            {
+                "id": "rerank-agent",
+                "title": "Rerank Agent",
+                "keywords": ["rerank", "agent"],
+                "files": ["src/rerank_agent.py"],
+            }
+        ],
+    }
+
+    assert AgentWiki._page_retrieval_files(meta) == [
+        "src/runner.py",
+        "src/rerank_agent.py",
+    ]
+    assert AgentWiki._child_specific_terms(meta) == {"rerank"}
+
+
+def test_parent_page_retrieval_keeps_child_boundary_and_excludes_global(tmp_path):
+    parent = {
+        "file": "src/runner.py",
+        "node_name": "AgentRunner",
+        "start_line": 0,
+        "end_line": 20,
+        "content": "class AgentRunner: pass",
+    }
+    child = {
+        "file": "src/rerank_agent.py",
+        "node_name": "RerankAgent",
+        "start_line": 0,
+        "end_line": 20,
+        "content": "class RerankAgent: pass",
+    }
+    global_match = {
+        "file": "src/context.py",
+        "node_name": "ContextLedger",
+        "start_line": 0,
+        "end_line": 20,
+        "content": "class ContextLedger: pass",
+    }
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), language="python"),
+        vector_store=None,
+        bm25=_FakeBM25([child, global_match, parent]),
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+
+    result = wiki._retrieve(
+        {
+            "id": "agent-runtime",
+            "title": "Agent Runtime",
+            "summary": "Agent execution and context handling",
+            "keywords": ["agent", "runtime"],
+            "files": ["src/runner.py", "src/rerank_agent.py"],
+            "children": [
+                {
+                    "id": "rerank-agent",
+                    "title": "Rerank Agent",
+                    "keywords": ["rerank", "agent"],
+                    "files": ["src/rerank_agent.py"],
+                }
+            ],
+        },
+        top_k=4,
+    )
+
+    assert [node["file"] for node in result] == [
+        "src/runner.py",
+        "src/rerank_agent.py",
+    ]
+
+
+def test_parent_without_core_files_selects_one_boundary_per_child(tmp_path):
+    nodes = [
+        {
+            "file": "src/runner.py",
+            "node_name": "AgentRunner.run",
+            "type": "method",
+            "start_line": 20,
+            "end_line": 40,
+            "content": "def run(self): pass",
+        },
+        {
+            "file": "src/rerank_agent.py",
+            "node_name": "RerankAgent.__init__",
+            "type": "method",
+            "start_line": 10,
+            "end_line": 18,
+            "content": "def __init__(self): pass",
+        },
+        {
+            "file": "src/runner.py",
+            "node_name": "AgentRunner",
+            "type": "class",
+            "start_line": 0,
+            "end_line": 80,
+            "content": "class AgentRunner: pass",
+        },
+        {
+            "file": "src/rerank_agent.py",
+            "node_name": "RerankAgent",
+            "type": "class",
+            "start_line": 0,
+            "end_line": 60,
+            "content": "class RerankAgent: pass",
+        },
+    ]
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), language="python"),
+        vector_store=None,
+        bm25=_FakeBM25(nodes),
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+
+    result = wiki._retrieve(
+        {
+            "id": "agent-runtime",
+            "title": "Agent Runtime",
+            "summary": "Agent execution",
+            "keywords": ["agent", "runtime"],
+            "files": ["src/runner.py", "src/rerank_agent.py"],
+            "children": [
+                {
+                    "id": "agent-runner",
+                    "title": "Agent Runner",
+                    "files": ["src/runner.py"],
+                },
+                {
+                    "id": "rerank-agent",
+                    "title": "Rerank Agent",
+                    "files": ["src/rerank_agent.py"],
+                },
+            ],
+        },
+        top_k=8,
+    )
+
+    assert [node["node_name"] for node in result] == [
+        "AgentRunner",
+        "RerankAgent",
+    ]
+
+
+def test_parent_boundary_prefers_request_actions_over_long_helpers(tmp_path):
+    wiki = AgentWiki(
+        SimpleNamespace(
+            entry=SimpleNamespace(repo_dir=str(tmp_path), language="python"),
+        ),
+        model="fake-model",
+    )
+    meta = {
+        "id": "graph-navigation",
+        "title": "Graph Navigation",
+        "keywords": ["graph", "navigation"],
+        "children": [{"id": "graph", "title": "Graph"}],
+        "_parent_boundary_fallback": True,
+    }
+    visualize = {
+        "node_name": "CodeGraph.visualize_graph",
+        "type": "method",
+        "start_line": 1,
+        "end_line": 150,
+        "content": "def visualize_graph(self): pass",
+    }
+    query = {
+        "node_name": "CodeGraph.query_range",
+        "type": "method",
+        "start_line": 1,
+        "end_line": 40,
+        "content": "def query_range(self, file, start, end): pass",
+    }
+
+    assert wiki._outline_anchor_rank(meta, query) > wiki._outline_anchor_rank(
+        meta,
+        visualize,
+    )
 
 
 def test_page_retrieval_promotes_two_symbols_per_outline_file(tmp_path):
@@ -1961,6 +3818,62 @@ def test_overview_retrieval_reserves_space_for_architecture_anchors(tmp_path):
     )
 
 
+def test_overview_retrieval_keeps_two_anchors_per_major_topic(tmp_path):
+    readme = tmp_path / "README.md"
+    readme.write_text("Repository overview.\n")
+    runtime_path = tmp_path / "src/runtime.py"
+    runtime_path.parent.mkdir(parents=True)
+    runtime_path.write_text(
+        "class AgentRunner:\n"
+        "    def run(self):\n"
+        "        return execute_agent_loop()\n"
+    )
+    runtime_class = {
+        "file": "src/runtime.py",
+        "node_name": "AgentRunner",
+        "type": "class",
+        "start_line": 0,
+        "end_line": 2,
+        "content": runtime_path.read_text(),
+    }
+    runtime_entry = {
+        "file": "src/runtime.py",
+        "node_name": "AgentRunner.run",
+        "type": "method",
+        "start_line": 1,
+        "end_line": 2,
+        "content": "def run(self):\n    return execute_agent_loop()",
+    }
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), language="python"),
+        vector_store=None,
+        bm25=_FakeBM25([runtime_entry, runtime_class]),
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+
+    result = wiki._retrieve(
+        {
+            "id": "overview",
+            "title": "Overview",
+            "summary": "Repository architecture",
+            "keywords": ["runtime"],
+            "files": ["README.md", "src/runtime.py"],
+            "major_topics": [
+                {
+                    "title": "Agent Runtime",
+                    "files": ["src/runtime.py"],
+                }
+            ],
+        },
+        top_k=4,
+    )
+
+    names = [wiki._node_attr(node, "node_name") for node in result]
+    assert "AgentRunner" in names
+    assert "AgentRunner.run" in names
+
+
 def test_overview_uses_validated_fact_plan_without_narration(tmp_path):
     source = {
         "README.md": (
@@ -1971,11 +3884,15 @@ def test_overview_uses_validated_fact_plan_without_narration(tmp_path):
             "languages and starts the local Wiki."
         ),
         "src/cli.py": "def main():\n    return compile_repository()",
-        "src/compiler.py": "class Compiler:\n    def build(self): pass",
+        "src/compiler.py": (
+            "class Compiler:\n"
+            "    def build(self, repository):\n"
+            "        return repository.views()"
+        ),
         "src/server.py": (
             "class Server:\n"
-            "    def page(self, page_id: str) -> str:\n"
-            "        return '# Page'"
+            "    def page(self, page_identifier: str) -> MarkdownContent:\n"
+            "        return SourceLinkedWikiPage(page_identifier)"
         ),
     }
     for file, content in source.items():
@@ -2015,15 +3932,12 @@ def test_overview_uses_validated_fact_plan_without_narration(tmp_path):
                     "claims": [
                         {
                             "role": "flow",
-                            "statement": "`main` invokes `Compiler`",
-                            "evidence": ["E2", "E3"],
+                            "statement": "`main` invokes `compile_repository`",
+                            "evidence": ["E2"],
                         },
                         {
                             "role": "responsibility",
-                            "statement": (
-                                "The `Compiler` builds repository views for later "
-                                "requests"
-                            ),
+                            "statement": "The `Compiler` builds repository views",
                             "evidence": ["E3"],
                         },
                     ],
@@ -2134,7 +4048,11 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
         "type": "class",
         "start_line": 0,
         "end_line": 6,
-        "content": "class Router:\n    def dispatch(self):\n        return handle()",
+        "content": (
+            "class Router:\n"
+            "    def dispatch(self, repository_request):\n"
+            "        return handle(repository_request)"
+        ),
     }
     llm = LLM()
     bundle = SimpleNamespace(
@@ -2171,14 +4089,99 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
     assert page["evidence"]["items"][0]["routes"] == ("outline", "dense")
 
 
-def test_final_page_quality_is_canonical_when_plan_diagnostics_are_stale(tmp_path):
+def test_structured_page_does_not_use_free_form_markdown_repair(tmp_path):
+    node = {
+        "file": "src/core.py",
+        "node_name": "Router",
+        "type": "class",
+        "start_line": 0,
+        "end_line": 8,
+        "content": (
+            "class Router:\n"
+            '    """Repository request boundary."""\n'
+            "    def dispatch(self, repository_request):\n"
+            "        return handle(repository_request)"
+        ),
+    }
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=_FakeVectorStore([node]),
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+        code_graph=lambda: None,
+    )
+    wiki = AgentWiki(bundle, model="fake-model", llm=SimpleNamespace())
+    wiki._fact_plan = lambda *_args: (
+        {
+            "thesis": {
+                "statement": "`Router` defines the repository request boundary",
+                "evidence": ["E1"],
+            },
+            "sections": [
+                {
+                    "title": "Dispatch",
+                    "claims": [
+                        {
+                            "role": "responsibility",
+                            "statement": (
+                                "`Router` dispatches repository requests through "
+                                "`handle`"
+                            ),
+                            "evidence": ["E1"],
+                        },
+                        {
+                            "role": "responsibility",
+                            "statement": (
+                                "`Router` dispatches the repository request by "
+                                "calling `handle`"
+                            ),
+                            "evidence": ["E1"],
+                        },
+                    ],
+                }
+            ],
+        },
+        [],
+    )
+
+    def reject_free_form_repair(*_args, **_kwargs):
+        raise AssertionError("structured pages must not use free-form repair")
+
+    wiki._repair_markdown = reject_free_form_repair
+    page = wiki._generate_page(
+        {
+            "id": "routing",
+            "title": "Request Routing",
+            "summary": "How requests move through the repository",
+            "keywords": ["dispatch"],
+            "files": ["src/core.py"],
+        }
+    )
+
+    assert page["quality"]["valid"] is False
+    assert page["generation"]["mode"] == "degraded"
+    assert page["generation"]["repaired"] is False
+    assert page["generation"]["renderer"] == "fact_plan"
+
+
+def test_generation_distinguishes_soft_and_semantic_plan_diagnostics(tmp_path):
     node = {
         "file": "src/core.py",
         "node_name": "Router",
         "type": "class",
         "start_line": 0,
         "end_line": 6,
-        "content": "class Router:\n    def handle(self):\n        return 'ok'",
+        "content": (
+            "class Router:\n"
+            "    def handle(self, source_backed_request):\n"
+            "        return source_backed_request"
+        ),
     }
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
@@ -2196,7 +4199,7 @@ def test_final_page_quality_is_canonical_when_plan_diagnostics_are_stale(tmp_pat
     wiki = AgentWiki(bundle, model="fake-model", llm=SimpleNamespace())
     plan = {
         "thesis": {
-            "statement": "The `Router` owns repository request handling",
+            "statement": ("The `Router` handles source-backed repository requests"),
             "evidence": ["E1"],
         },
         "sections": [
@@ -2209,12 +4212,20 @@ def test_final_page_quality_is_canonical_when_plan_diagnostics_are_stale(tmp_pat
                             "The `Router` handles source-backed repository requests"
                         ),
                         "evidence": ["E1"],
-                    }
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "`handle` returns the source-backed request",
+                        "evidence": ["E1"],
+                    },
                 ],
             }
         ],
     }
-    wiki._fact_plan = lambda *_args: (plan, ["superseded plan diagnostic"])
+    soft_warning = (
+        "page plan is dominated by isolated operation sections: Responsibility"
+    )
+    wiki._fact_plan = lambda *_args: (plan, [soft_warning])
 
     page = wiki._generate_page(
         {
@@ -2229,8 +4240,30 @@ def test_final_page_quality_is_canonical_when_plan_diagnostics_are_stale(tmp_pat
     assert page["grounding"]["valid"] is True
     assert page["quality"]["valid"] is True
     assert page["generation"]["mode"] == "generated"
-    assert page["generation"]["plan_warnings"] == ["superseded plan diagnostic"]
+    assert page["generation"]["plan_warnings"] == [soft_warning]
     assert page["generation"]["reason"] is None
+
+    semantic_warning = (
+        "claim 'The Router handles requests' is not supported by concrete terms "
+        "in its cited source evidence"
+    )
+    wiki._fact_plan = lambda *_args: (plan, [semantic_warning])
+
+    guarded = wiki._generate_page(
+        {
+            "id": "routing",
+            "title": "Request Routing",
+            "summary": "How repository requests are handled",
+            "keywords": ["router"],
+            "files": ["src/core.py"],
+        }
+    )
+
+    assert guarded["grounding"]["valid"] is True
+    assert guarded["quality"]["valid"] is True
+    assert guarded["generation"]["mode"] == "degraded"
+    assert guarded["generation"]["reason"] == "quality_guard"
+    assert guarded["generation"]["plan_warnings"] == [semantic_warning]
 
 
 def test_page_reports_model_unavailable_when_fact_planning_falls_back(tmp_path):
@@ -2310,6 +4343,53 @@ def test_agent_wiki_cache_key_tracks_view_rebuild_identity(tmp_path):
     view.config = {"builder_schema": 2}
 
     assert wiki._key("outline") != before
+
+
+def test_agent_wiki_cache_key_tracks_view_source_identity(tmp_path):
+    view = SimpleNamespace(
+        status="fresh",
+        commit="abc123",
+        source_fingerprint="sha256:first",
+        built_at_epoch=1.0,
+        config={"builder_schema": 1},
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={"bm25": view}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    before = wiki._key("outline")
+    view.source_fingerprint = "sha256:second"
+
+    assert wiki._key("outline") != before
+
+
+def test_agent_wiki_cache_key_is_stable_across_lazy_client_creation(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    before = wiki._key("outline")
+    wiki._llm = SimpleNamespace(cache_identity="created-lazily")
+
+    assert wiki._key("outline") == before
 
 
 def test_agent_wiki_page_cache_key_tracks_outline_metadata():

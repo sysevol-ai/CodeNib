@@ -73,7 +73,7 @@ _PROMOTIONAL_RE = re.compile(
     r"intuitive|invaluable|"
     r"important (?:for|to)|key functionalit(?:y|ies)|making it|"
     r"powerful|provid(?:e|es|ing) (?:easy|quick)|quickly|responsive|significantly|"
-    r"supports? (?:interactions?|management)|vital|"
+    r"sensible|supports? (?:interactions?|management)|vital|"
     r"optimiz(?:e|es|ing)|sophisticated|user-friendly|versatile)\b",
     re.IGNORECASE,
 )
@@ -83,6 +83,8 @@ _FLOW_RE = re.compile(
     r"interact(?:s|ed|ing)?\s+with|invok(?:e|es|ed|ing)|"
     r"load(?:s|ed|ing)?\s+.+\s+from|pass(?:es|ed|ing)?\s+.+\s+to|"
     r"publish(?:es|ed)?|read(?:s)?\s+.+\s+from|"
+    r"quer(?:y|ies|ied|ying)\s+.+\s+(?:through|via)|"
+    r"receiv(?:e|es|ed|ing)\s+.+\s+from|"
     r"retriev(?:e|es|ed|ing)\s+.+\s+from|rout(?:e|es|ed|ing)|"
     r"send(?:s|ing)?\s+.+\s+to|us(?:e|es|ed|ing)|"
     r"utiliz(?:e|es|ed|ing)|"
@@ -91,6 +93,28 @@ _FLOW_RE = re.compile(
 )
 _RETURN_FLOW_RE = re.compile(
     r"\breturn(?:s|ed|ing)?\s+.+?\s+to\s+`[^`\n]+`",
+    re.IGNORECASE,
+)
+_STRONG_HANDOFF_RE = re.compile(
+    r"\b(?:"
+    r"dispatch(?:es|ed|ing)?\s+.+\s+to|hand(?:s|ed)?\s+(?:off|to)|"
+    r"interact(?:s|ed|ing)?\s+with|"
+    r"load(?:s|ed|ing)?\s+.+\s+from|pass(?:es|ed|ing)?\s+.+\s+to|"
+    r"provid(?:e|es|ed|ing)\s+.+\s+to|"
+    r"quer(?:y|ies|ied|ying)\s+.+\s+(?:through|via)|"
+    r"read(?:s)?\s+.+\s+from|receiv(?:e|es|ed|ing)\s+.+\s+from|"
+    r"retriev(?:e|es|ed|ing)\s+.+\s+from|"
+    r"rout(?:e|es|ed|ing)\s+.+\s+to|send(?:s|ing)?\s+.+\s+to|"
+    r"us(?:e|es|ed|ing)\s+.+\s+from|"
+    r"utiliz(?:e|es|ed|ing)\s+.+\s+from|"
+    r"writ(?:e|es|ten|ing)\s+.+\s+to"
+    r")\b",
+    re.IGNORECASE,
+)
+_COMPONENT_TERM_RE = re.compile(
+    r"\b(?:(?:[A-Za-z][\w.-]*\s+)?"
+    r"(?:client|compiler|indexer|process|runtime|server|service|subsystem)|"
+    r"(?<!local\s)wiki)\b",
     re.IGNORECASE,
 )
 _ENTRY_RE = re.compile(
@@ -108,8 +132,10 @@ _PRIVATE_IDENTIFIER_RE = re.compile(
     r"`(?:[^`\n]*[:.])?_[A-Za-z]\w*(?:\([^`\n]*\))?`",
 )
 _RESPONSIBILITY_RE = re.compile(
-    r"\b(build(?:s)?|compile(?:s)?|coordinate(?:s)?|manage(?:s)?|"
-    r"own(?:s)?|persist(?:s)?|responsib(?:le|ility)|serve(?:s)?|"
+    r"\b(build(?:s)?|compile(?:s)?|coordinate(?:s)?|execut(?:e|es)|"
+    r"handle(?:s)?|manage(?:s)?|organize(?:s)?|own(?:s)?|persist(?:s)?|"
+    r"process(?:es)?|"
+    r"quer(?:y|ies)|register(?:s)?|responsib(?:le|ility)|serve(?:s)?|"
     r"rout(?:e|es|ing)|store(?:s)?|validat(?:e|es))\b",
     re.IGNORECASE,
 )
@@ -162,24 +188,50 @@ def _endpoint_symbol(endpoint: str) -> str:
     return re.sub(r"\([^)]*\)$", "", symbol).strip().lower()
 
 
-def relation_matches_claim(statement: str, relation: RelationItem) -> bool:
-    """Whether a claim names both endpoints of a cited static relation."""
-
-    identifiers = {
+def _claim_identifiers(statement: str) -> List[str]:
+    return [
         re.sub(r"\([^)]*\)$", "", item.strip()).lower()
         for item in _CODE_RE.findall(statement or "")
-    }
+    ]
 
-    def named(endpoint: str) -> bool:
-        symbol = _endpoint_symbol(endpoint)
-        if not symbol:
-            return False
-        return any(
-            identifier == symbol or identifier.endswith(":" + symbol)
-            for identifier in identifiers
-        )
 
-    return named(relation.source) and named(relation.target)
+def _identifier_names_endpoint(identifier: str, endpoint: str) -> bool:
+    symbol = _endpoint_symbol(endpoint)
+    return bool(symbol and (identifier == symbol or identifier.endswith(":" + symbol)))
+
+
+def relation_endpoints_named(statement: str, relation: RelationItem) -> bool:
+    """Whether a claim names both endpoints, independent of direction."""
+
+    identifiers = _claim_identifiers(statement)
+    return any(
+        _identifier_names_endpoint(identifier, relation.source)
+        for identifier in identifiers
+    ) and any(
+        _identifier_names_endpoint(identifier, relation.target)
+        for identifier in identifiers
+    )
+
+
+def relation_matches_claim(statement: str, relation: RelationItem) -> bool:
+    """Whether a direct flow claim states the cited source-to-target relation."""
+
+    identifiers = _claim_identifiers(statement)
+    source_positions = [
+        index
+        for index, identifier in enumerate(identifiers)
+        if _identifier_names_endpoint(identifier, relation.source)
+    ]
+    target_positions = [
+        index
+        for index, identifier in enumerate(identifiers)
+        if _identifier_names_endpoint(identifier, relation.target)
+    ]
+    return any(
+        source_index < target_index
+        for source_index in source_positions
+        for target_index in target_positions
+    )
 
 
 def evidence_matches_claim(statement: str, evidence: EvidenceItem) -> bool:
@@ -191,20 +243,25 @@ def evidence_matches_claim(statement: str, evidence: EvidenceItem) -> bool:
     }
     if len(identifiers) < 2:
         return False
-    corpus = "\n".join((evidence.file, evidence.symbol, evidence.content)).lower()
+    source_corpus = "\n".join((evidence.symbol, evidence.content)).lower()
+    file_corpus = evidence.file.lower()
 
     def present(identifier: str) -> bool:
-        if identifier in corpus:
+        if identifier in source_corpus:
             return True
         if "/" in identifier or re.search(
             r"\.(?:py|go|rs|ts|tsx|js|jsx|c|h|cc|cpp|java|rb|php|cs|kt|kts)$",
             identifier,
         ):
-            return False
+            return identifier in file_corpus
         symbol = identifier.rsplit(":", 1)[-1]
         leaf = symbol.rsplit(".", 1)[-1]
         return bool(
-            len(leaf) >= 3 and re.search(rf"(?<!\w){re.escape(leaf)}(?!\w)", corpus)
+            len(leaf) >= 3
+            and re.search(
+                rf"(?<!\w){re.escape(leaf)}(?!\w)",
+                source_corpus,
+            )
         )
 
     return all(present(identifier) for identifier in identifiers)
@@ -222,11 +279,31 @@ def is_interaction_claim(statement: str) -> bool:
     )
 
 
+def _describes_handoff(statement: str) -> bool:
+    """Whether prose asserts a handoff that must name verifiable endpoints."""
+
+    text = statement or ""
+    if is_interaction_claim(text):
+        return True
+    if not _STRONG_HANDOFF_RE.search(text):
+        return False
+    identifiers = {
+        re.sub(r"\([^)]*\)$", "", item.strip()).lower()
+        for item in _CODE_RE.findall(text)
+    }
+    prose = _CODE_RE.sub(" ", text)
+    components = {
+        re.sub(r"\s+", " ", match.group(0)).strip().lower()
+        for match in _COMPONENT_TERM_RE.finditer(prose)
+    }
+    return len(identifiers) + len(components) >= 2
+
+
 def infer_claim_role(statement: str) -> str:
     """Infer a conservative role for plans from older prompts."""
 
     text = statement or ""
-    if is_interaction_claim(text):
+    if _describes_handoff(text):
         return "flow"
     if _ENTRY_RE.search(text):
         return "entry"
@@ -387,10 +464,17 @@ def parse_fact_plan(
             )
             if statement and evidence:
                 role = str(claim.get("role") or "").strip().lower()
+                inferred_role = infer_claim_role(statement)
                 if role not in FACT_CLAIM_ROLES:
-                    role = infer_claim_role(statement)
-                elif role == "flow" and not is_interaction_claim(statement):
-                    role = infer_claim_role(statement)
+                    role = inferred_role
+                elif inferred_role == "flow":
+                    role = "flow"
+                elif role == "flow":
+                    role = inferred_role
+                elif (
+                    role in {"entry", "component"} and inferred_role == "responsibility"
+                ):
+                    role = inferred_role
                 claims.append(
                     {
                         "role": role,
@@ -541,6 +625,7 @@ __all__ = [
     "grounding_report",
     "parse_fact_plan",
     "promotional_phrases",
+    "relation_endpoints_named",
     "relation_matches_claim",
     "reciprocal_rank_fuse",
     "remove_promotional_sentences",

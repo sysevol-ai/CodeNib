@@ -16,6 +16,7 @@ a separate stage so the outline can be reviewed first.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -34,6 +35,7 @@ logger = get_logger(__name__)
 _README_NAMES = ("README.md", "README.rst", "README.txt", "README", "readme.md")
 _MAX_OUTLINE_PAGES = 10
 _MAX_CHILDREN = 3
+_MAX_OUTLINE_PLAN_REPAIRS = 3
 _MAX_OUTLINE_STYLE_REPAIRS = 2
 _SOURCE_SUFFIXES = {
     ".c",
@@ -136,8 +138,8 @@ def _is_supporting_file(file: str) -> bool:
 
 def _page_allows_supporting_files(page: Dict[str, Any]) -> bool:
     values = [
+        str(page.get("id") or ""),
         str(page.get("title") or ""),
-        *[str(value) for value in page.get("keywords") or []],
     ]
     terms = set(re.findall(r"[a-z0-9_]{4,}", " ".join(values).lower()))
     return bool(terms & _SUPPORTING_PAGE_TOKENS)
@@ -156,8 +158,27 @@ def _read_readme(repo_dir: str, limit: int = 3500) -> str:
 
 
 def _top_symbols(symbols: List[Symbol], limit: int = 70) -> List[Symbol]:
-    """Rank symbols by API surface (line count), keeping the largest."""
-    return sorted(symbols, key=lambda s: s.lines, reverse=True)[:limit]
+    """Rank symbols by API surface with deterministic ties."""
+
+    return sorted(
+        symbols,
+        key=lambda symbol: (-symbol.lines, symbol.file, symbol.name),
+    )[:limit]
+
+
+def _top_files(symbols: List[Symbol], limit: int) -> List[str]:
+    """Rank files by indexed symbol surface."""
+
+    weights: Counter[str] = Counter()
+    for symbol in symbols:
+        weights[symbol.file] += symbol.lines
+    return [
+        file
+        for file, _ in sorted(
+            weights.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:limit]
+    ]
 
 
 def _repository_structure(repo_dir: str, limit: int = 16) -> str:
@@ -285,14 +306,20 @@ Repository: {repo}   (languages: {languages})
 README (excerpt):
 {readme}
 
-Salient files:
-{files}
+Core implementation files:
+{core_files}
+
+Supporting evaluation, test, example, script, and documentation files:
+{supporting_files}
 
 Repository structure:
 {structure}
 
-Top symbols (name — file — kind):
-{symbols}
+Core symbols (name — file — kind):
+{core_symbols}
+
+Supporting symbols (name — file — kind):
+{supporting_symbols}
 
 Central dependency communities:
 {communities}
@@ -324,6 +351,9 @@ names and implements that concern.
   efficient, easy, or flexible.
 - keywords drive a code search, so make them specific symbol/feature terms.
 - Every page and child MUST name 1-4 exact files from the supplied evidence.
+- Keep supporting evaluation, test, example, script, and documentation files
+  out of core subsystem pages. Use them only for a page whose title explicitly
+  names that supporting concern.
 - At least one named file or symbol must lexically anchor the page title. A real \
 but unrelated file does not make an invented concept valid.
 - Make Overview a product mental model: purpose, user entry points, the main
@@ -404,7 +434,15 @@ def generate_outline(
     """
     wb = WikiBuilder(bundle)
     symbols = list(wb._symbols())
-    files = wb._salient_files(limit=40)
+    core_symbols = [
+        symbol for symbol in symbols if not _is_supporting_file(symbol.file)
+    ]
+    supporting_symbols = [
+        symbol for symbol in symbols if _is_supporting_file(symbol.file)
+    ]
+    core_files = _top_files(core_symbols, limit=40)
+    supporting_files = _top_files(supporting_symbols, limit=12)
+    files = [*core_files, *supporting_files]
     readme = _read_readme(getattr(bundle.entry, "repo_dir", "") or "")
     languages = ", ".join(getattr(bundle.manifest, "languages", []) or [])
 
@@ -412,9 +450,12 @@ def generate_outline(
         repo=getattr(bundle.entry, "repo", "this repository"),
         languages=languages or "unknown",
         readme=readme or "(no README found)",
-        files="\n".join(f"- {f}" for f in files) or "(none)",
+        core_files="\n".join(f"- {f}" for f in core_files) or "(none)",
+        supporting_files=("\n".join(f"- {f}" for f in supporting_files) or "(none)"),
         structure=_repository_structure(getattr(bundle.entry, "repo_dir", "") or ""),
-        symbols=_format_symbols(_top_symbols(symbols)) or "(none)",
+        core_symbols=_format_symbols(_top_symbols(core_symbols, limit=60)) or "(none)",
+        supporting_symbols=_format_symbols(_top_symbols(supporting_symbols, limit=10))
+        or "(none)",
         communities=_graph_communities(bundle),
         views=_view_summary(bundle),
     )
@@ -449,7 +490,11 @@ def generate_outline(
         initial_pages < required_pages or len(files) > 12 or bool(initial_warnings)
     )
     refined = False
-    plan_repairs = 2 if initial_pages < required_pages else int(should_retry)
+    plan_repairs = (
+        _MAX_OUTLINE_PLAN_REPAIRS
+        if initial_pages < required_pages
+        else int(should_retry)
+    )
     for _ in range(plan_repairs):
         current_pages = len(data.get("pages") or [])
         current_warnings = _outline_quality_warnings(data)
@@ -479,10 +524,21 @@ def generate_outline(
                 symbols=symbols,
                 fallback_files=files,
             )
-            if _outline_score(repaired, required_pages) > _outline_score(
-                data, required_pages
+            merged = _validate_outline(
+                _merge_outlines(data, repaired),
+                repo_dir,
+                symbols=symbols,
+                fallback_files=files,
+            )
+            best_candidate = max(
+                (repaired, merged),
+                key=lambda candidate: _outline_score(candidate, required_pages),
+            )
+            if _outline_score(best_candidate, required_pages) > _outline_score(
+                data,
+                required_pages,
             ):
-                data = repaired
+                data = best_candidate
                 refined = True
         except Exception as exc:  # noqa: BLE001 - keep the first valid outline
             logger.debug("outline repair unavailable: %s", exc)
@@ -565,6 +621,93 @@ def _outline_score(
         len(files),
         children,
     )
+
+
+def _outline_page_keys(page: Dict[str, Any]) -> set[str]:
+    """Return stable identities used to merge independently valid outlines."""
+
+    values = (
+        str(page.get("id") or ""),
+        str(page.get("title") or ""),
+    )
+    return {
+        re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        for value in values
+        if value.strip()
+    }
+
+
+def _merge_outline_page(
+    base: Dict[str, Any],
+    candidate: Dict[str, Any],
+) -> Dict[str, Any]:
+    merged = copy.deepcopy(base)
+    if len(
+        _summary_quality_warnings(
+            str(candidate.get("title") or ""),
+            str(candidate.get("summary") or ""),
+        )
+    ) < len(
+        _summary_quality_warnings(
+            str(base.get("title") or ""),
+            str(base.get("summary") or ""),
+        )
+    ):
+        merged["summary"] = candidate.get("summary", "")
+    merged["keywords"] = list(
+        dict.fromkeys(
+            [
+                *(base.get("keywords") or []),
+                *(candidate.get("keywords") or []),
+            ]
+        )
+    )[:10]
+    merged["files"] = list(
+        dict.fromkeys(
+            [
+                *(base.get("files") or []),
+                *(candidate.get("files") or []),
+            ]
+        )
+    )[:12]
+
+    children = copy.deepcopy(base.get("children") or [])
+    for incoming in candidate.get("children") or []:
+        incoming_keys = _outline_page_keys(incoming)
+        existing = next(
+            (child for child in children if incoming_keys & _outline_page_keys(child)),
+            None,
+        )
+        if existing is None:
+            if len(children) < _MAX_CHILDREN:
+                children.append(copy.deepcopy(incoming))
+            continue
+        replacement = _merge_outline_page(existing, incoming)
+        children[children.index(existing)] = replacement
+    merged["children"] = children[:_MAX_CHILDREN]
+    return merged
+
+
+def _merge_outlines(
+    base: Dict[str, Any],
+    candidate: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Union distinct source-validated concepts from bounded repair attempts."""
+
+    pages = copy.deepcopy(base.get("pages") or [])
+    for incoming in candidate.get("pages") or []:
+        incoming_keys = _outline_page_keys(incoming)
+        existing = next(
+            (page for page in pages if incoming_keys & _outline_page_keys(page)),
+            None,
+        )
+        if existing is None:
+            if len(pages) < _MAX_OUTLINE_PAGES:
+                pages.append(copy.deepcopy(incoming))
+            continue
+        replacement = _merge_outline_page(existing, incoming)
+        pages[pages.index(existing)] = replacement
+    return {**base, "pages": pages[:_MAX_OUTLINE_PAGES]}
 
 
 def _summary_quality_warnings(title: str, summary: str) -> List[str]:

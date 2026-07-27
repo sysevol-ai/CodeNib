@@ -9,8 +9,10 @@ from codenib.wiki.outline import (
     _apply_outline_summary_rewrites,
     _fallback_outline,
     _flagged_outline_summaries,
+    _merge_outlines,
     _outline_quality_warnings,
     _outline_score,
+    _page_allows_supporting_files,
     _required_top_level_pages,
     _validate_outline,
 )
@@ -138,6 +140,68 @@ def test_outline_breadth_scales_with_available_repository_evidence():
     assert _outline_score(broad, 5) > _outline_score(sparse, 5)
 
 
+def test_outline_repairs_merge_distinct_valid_concepts():
+    base = {
+        "pages": [
+            {
+                "id": "overview",
+                "title": "Overview",
+                "summary": "Repository entry paths and major subsystems.",
+                "keywords": ["entry"],
+                "files": ["README.md"],
+                "children": [],
+            },
+            {
+                "id": "indexing",
+                "title": "Indexing",
+                "summary": "The compiler builds repository indexes.",
+                "keywords": ["compiler"],
+                "files": ["src/compiler.py"],
+                "children": [],
+            },
+        ]
+    }
+    candidate = {
+        "pages": [
+            {
+                "id": "overview",
+                "title": "Overview",
+                "summary": "Repository entry paths and runtime components.",
+                "keywords": ["runtime"],
+                "files": ["src/cli.py"],
+                "children": [],
+            },
+            {
+                "id": "agent-runtime",
+                "title": "Agent Runtime",
+                "summary": "The runtime dispatches requests to tools.",
+                "keywords": ["runtime"],
+                "files": ["src/runner.py"],
+                "children": [],
+            },
+            {
+                "id": "graph-navigation",
+                "title": "Graph Navigation",
+                "summary": "The graph resolves symbols to source locations.",
+                "keywords": ["graph"],
+                "files": ["src/graph.py"],
+                "children": [],
+            },
+        ]
+    }
+
+    merged = _merge_outlines(base, candidate)
+
+    assert [page["id"] for page in merged["pages"]] == [
+        "overview",
+        "indexing",
+        "agent-runtime",
+        "graph-navigation",
+    ]
+    assert merged["pages"][0]["files"] == ["README.md", "src/cli.py"]
+    assert merged["pages"][0]["keywords"] == ["entry", "runtime"]
+
+
 def test_outline_requires_real_source_anchors(tmp_path):
     (tmp_path / "codenib").mkdir()
     (tmp_path / "codenib" / "config.py").write_text("class RuntimeConfig: pass\n")
@@ -244,7 +308,7 @@ def test_non_evaluation_page_drops_supporting_eval_files(tmp_path):
                     "id": "agent-runtime",
                     "title": "Agent Runtime",
                     "summary": "Agent execution and context handling.",
-                    "keywords": ["AgentRunner", "runtime"],
+                    "keywords": ["AgentRunner", "runtime", "evaluation"],
                     "files": files,
                     "children": [],
                 }
@@ -257,6 +321,23 @@ def test_non_evaluation_page_drops_supporting_eval_files(tmp_path):
 
     runtime = next(page for page in result["pages"] if page["id"] == "agent-runtime")
     assert runtime["files"] == ["src/agent/runner.py"]
+
+
+def test_supporting_file_access_follows_page_identity_not_search_keywords():
+    assert not _page_allows_supporting_files(
+        {
+            "id": "agent-runtime",
+            "title": "Agent Runtime",
+            "keywords": ["evaluation", "benchmark"],
+        }
+    )
+    assert _page_allows_supporting_files(
+        {
+            "id": "evaluation",
+            "title": "Evaluation Framework",
+            "keywords": ["AgentRunner"],
+        }
+    )
 
 
 def test_evaluation_page_retains_explicit_eval_files(tmp_path):

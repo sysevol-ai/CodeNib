@@ -514,13 +514,19 @@ class WikiBuilder:
         }
 
     def _salient_files(self, limit: int = 12) -> List[str]:
-        """Rank files by indexed API surface (total symbol lines), so the
-        overview surfaces real entry points rather than an alphabetical slice
-        of `__init__.py`/`conftest.py`."""
+        """Rank core files before supporting files, then by symbol surface."""
+
         weight: Dict[str, int] = {}
         for s in self._symbols():
             weight[s.file] = weight.get(s.file, 0) + s.lines
-        return sorted(weight, key=lambda f: weight[f], reverse=True)[:limit]
+        return sorted(
+            weight,
+            key=lambda file: (
+                _is_supporting_area(_top_module(file)),
+                -weight[file],
+                file,
+            ),
+        )[:limit]
 
     def _overview_diagram(self, facts: List[ModuleFacts]) -> str:
         diagram = ["graph TD", '  ROOT["{}"]'.format(self._entry.repo)]

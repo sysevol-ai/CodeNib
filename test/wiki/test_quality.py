@@ -209,6 +209,32 @@ def test_sentence_redundancy_rejects_formulaic_restatement_in_a_section():
     assert report["sentence_redundancy_valid"] is False
 
 
+def test_sentence_redundancy_rejects_near_duplicate_registration_claims():
+    report = section_sentence_redundancy_report(
+        "# Indexing\n\n"
+        "## Registration\n\n"
+        "`register_default_builders()` registers index builders with "
+        "`IndexBuilderRegistry.register()` to create a reusable index. "
+        "This function also calls `IndexBuilderRegistry.register()` to "
+        "register the index builders."
+    )
+
+    assert len(report["redundant_sentence_pairs"]) == 1
+    assert report["sentence_redundancy_valid"] is False
+
+
+def test_sentence_redundancy_allows_one_source_to_call_distinct_targets():
+    report = section_sentence_redundancy_report(
+        "# Indexing\n\n"
+        "## Registration\n\n"
+        "`register_default_builders()` calls `IndexBuilderRegistry.register()`. "
+        "`register_default_builders()` calls `default_exclude_patterns()`."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
 def test_prose_integrity_rejects_internal_ids_and_private_user_entries():
     report = prose_integrity_report(
         "# Runtime\n\n"
@@ -217,6 +243,18 @@ def test_prose_integrity_rejects_internal_ids_and_private_user_entries():
 
     assert report["narrated_evidence_ids"] == ["R2"]
     assert report["private_entry_sentences"]
+    assert report["prose_integrity_valid"] is False
+
+
+def test_prose_integrity_rejects_citation_only_paragraphs():
+    report = prose_integrity_report(
+        "# Runtime\n\n"
+        "## Query\n\n"
+        "`query()` calls `run()`. [E1] [R1]\n\n"
+        "[E2](#evidence-E2)"
+    )
+
+    assert report["citation_only_blocks"] == ["[E2](#evidence-E2)"]
     assert report["prose_integrity_valid"] is False
 
 
@@ -229,6 +267,15 @@ def test_prose_integrity_rejects_narrated_relation_anchors():
 
     assert report["reference_narration_sentences"]
     assert report["prose_integrity_valid"] is False
+
+
+def test_prose_integrity_does_not_treat_a_url_port_as_a_source_anchor():
+    report = prose_integrity_report(
+        "# Runtime\n\n" "The local server listens at `http://localhost:3000`. [E1]"
+    )
+
+    assert report["reference_narration_sentences"] == []
+    assert report["prose_integrity_valid"] is True
 
 
 def test_prose_integrity_allows_a_public_entry_to_delegate_to_a_helper():
@@ -409,6 +456,50 @@ def test_plan_narrative_rejects_a_citation_with_different_relation_endpoints():
     assert report["plan_role_integrity_valid"] is False
 
 
+def test_plan_narrative_rejects_a_reversed_static_relation():
+    statement = "`AgentRunner.run` invokes `query` to process a request"
+    report = plan_narrative_report(
+        {
+            "thesis": {"statement": "The runtime serves requests", "evidence": ["E1"]},
+            "sections": [
+                {
+                    "title": "Flow",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": statement,
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        },
+        require_relation_backing=True,
+        relations=[
+            RelationItem(
+                id="R1",
+                source="codenib/agent/runner.py:query()",
+                target="codenib/agent/runner.py:AgentRunner.run()",
+            )
+        ],
+        evidence_items=[
+            EvidenceItem(
+                id="E1",
+                file="codenib/agent/runner.py",
+                start_line=1,
+                end_line=4,
+                symbol="query",
+                kind="function",
+                content="def query():\n    return AgentRunner().run()",
+            )
+        ],
+    )
+
+    assert report["supported_interaction_claims"] == 0
+    assert report["invalid_flow_claims"] == [statement]
+    assert report["plan_role_integrity_valid"] is False
+
+
 def test_plan_narrative_accepts_a_flow_supported_by_one_source_body():
     statement = "`wiki_page_graph` calls `_bundle` to access the code graph"
     report = plan_narrative_report(
@@ -451,6 +542,51 @@ def test_plan_narrative_accepts_a_flow_supported_by_one_source_body():
     assert report["supported_interaction_claims"] == 1
     assert report["invalid_flow_claims"] == []
     assert report["plan_role_integrity_valid"] is True
+
+
+def test_plan_narrative_rejects_a_flow_spliced_across_unrelated_sources():
+    statement = "`WikiPage` receives indexed records from `IndexBuilderRegistry`"
+    report = plan_narrative_report(
+        {
+            "thesis": {"statement": "The Wiki serves pages", "evidence": ["E1"]},
+            "sections": [
+                {
+                    "title": "Flow",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": statement,
+                            "evidence": ["E1", "E2"],
+                        }
+                    ],
+                }
+            ],
+        },
+        evidence_items=[
+            EvidenceItem(
+                id="E1",
+                file="src/wiki.py",
+                start_line=1,
+                end_line=2,
+                symbol="WikiPage",
+                kind="class",
+                content="class WikiPage: pass",
+            ),
+            EvidenceItem(
+                id="E2",
+                file="src/index.py",
+                start_line=1,
+                end_line=2,
+                symbol="IndexBuilderRegistry",
+                kind="class",
+                content="class IndexBuilderRegistry: pass",
+            ),
+        ],
+    )
+
+    assert report["supported_interaction_claims"] == 0
+    assert report["invalid_flow_claims"] == [statement]
+    assert report["plan_role_integrity_valid"] is False
 
 
 def test_plan_narrative_rejects_multi_sentence_claims():

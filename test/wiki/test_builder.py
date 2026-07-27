@@ -13,6 +13,7 @@ import pytest
 
 from codenib.repository_summary import readme_summary
 from codenib.wiki.builder import (
+    Symbol,
     WikiBuilder,
     _is_supporting_area,
     _module_label,
@@ -117,6 +118,33 @@ def test_top_module_depth_two_and_slug():
     assert _is_supporting_area("pkg/eval")
     assert not _is_supporting_area("pkg/runtime")
     assert _slug("astropy/IO Fits") == "astropy-io-fits"
+
+
+def test_salient_files_rank_core_code_before_large_evaluation_helpers(repo_dir):
+    builder = WikiBuilder(_make_bundle(repo_dir))
+    builder._symbols_cache = (
+        Symbol(
+            file="pkg/runtime.py",
+            name="run",
+            type="function",
+            start_line=0,
+            end_line=9,
+            content="def run(): pass",
+        ),
+        Symbol(
+            file="pkg/eval/study.py",
+            name="run_study",
+            type="function",
+            start_line=0,
+            end_line=999,
+            content="def run_study(): pass",
+        ),
+    )
+
+    assert builder._salient_files(limit=2) == [
+        "pkg/runtime.py",
+        "pkg/eval/study.py",
+    ]
 
 
 def test_page_tree_has_overview_and_modules(repo_dir):

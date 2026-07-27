@@ -16,6 +16,7 @@ from codenib.wiki.evidence import (
     is_interaction_claim,
     parse_fact_plan,
     reciprocal_rank_fuse,
+    relation_endpoints_named,
     relation_matches_claim,
     remove_promotional_sentences,
 )
@@ -47,6 +48,9 @@ def test_interaction_claim_recognizes_an_explicit_utilizes_handoff():
     assert is_interaction_claim(
         "`build_hierarchy` utilizes `CodeGraph.get_graph` to read graph state"
     )
+    assert is_interaction_claim(
+        "`WikiPage` receives indexed records from `IndexBuilderRegistry`"
+    )
 
 
 def test_relation_claim_must_name_the_cited_source_and_target():
@@ -60,6 +64,11 @@ def test_relation_claim_must_name_the_cited_source_and_target():
         "`index_repository` calls `IndexCompiler.compile_repo` to build views",
         relation,
     )
+    reversed_claim = (
+        "`IndexCompiler.compile_repo` calls `index_repository` to build views"
+    )
+    assert relation_endpoints_named(reversed_claim, relation)
+    assert not relation_matches_claim(reversed_claim, relation)
     assert not relation_matches_claim(
         "`wiki_page_graph` calls `compile_repo` to render a page",
         relation,
@@ -83,6 +92,26 @@ def test_source_body_can_support_a_flow_missing_from_static_relations():
     )
     assert not evidence_matches_claim(
         "`wiki_page_graph` calls `compile_repo` to access the code graph",
+        evidence,
+    )
+
+
+def test_source_path_prefix_does_not_prove_a_flow_endpoint():
+    evidence = EvidenceItem(
+        id="E1",
+        file="codenib/compiler/index_builders.py",
+        start_line=1,
+        end_line=3,
+        symbol="register_default_builders",
+        kind="function",
+        content=(
+            "def register_default_builders(registry):\n"
+            "    registry.register(GraphBuilder())"
+        ),
+    )
+
+    assert not evidence_matches_claim(
+        "`codenib` invokes `register_default_builders`",
         evidence,
     )
 
@@ -164,6 +193,22 @@ def test_fact_plan_normalizes_legacy_claim_roles_conservatively():
     ]
 
 
+def test_fact_plan_reclassifies_interactions_declared_as_components():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"Requests pass through a router","evidence":["E1"]},
+         "sections":[{"title":"Flow","claims":[
+          {"role":"component","statement":"`Router` calls `Handler`",
+           "evidence":["E1"]}
+         ]}]}
+        """,
+        {"E1"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] == "flow"
+
+
 def test_fact_plan_normalizes_a_single_endpoint_flow_label():
     plan, errors = parse_fact_plan(
         """
@@ -179,6 +224,125 @@ def test_fact_plan_normalizes_a_single_endpoint_flow_label():
 
     assert errors == []
     assert plan["sections"][0]["claims"][0]["role"] != "flow"
+
+
+def test_fact_plan_keeps_single_component_retrieval_as_a_responsibility():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The Wiki serves pages","evidence":["E1"]},
+         "sections":[{"title":"Serving","claims":[
+          {"role":"responsibility",
+           "statement":"`AgentWiki.page` retrieves pages from the local Wiki",
+           "evidence":["E1"]}
+        ]}]}
+        """,
+        {"E1"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] == "responsibility"
+
+
+def test_fact_plan_keeps_public_invocation_as_an_entry():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The runtime answers queries","evidence":["E1"]},
+         "sections":[{"title":"Entry","claims":[
+          {"role":"entry",
+           "statement":"Users initiate the runtime by calling `AgentRunner.run`",
+           "evidence":["E1"]}
+        ]}]}
+        """,
+        {"E1"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] == "entry"
+
+
+def test_fact_plan_reclassifies_unquoted_cross_component_handoff_as_flow():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The Wiki serves indexed source","evidence":["E1"]},
+         "sections":[{"title":"Runtime","claims":[
+          {"role":"component",
+           "statement":"The Wiki subsystem receives indexed data from the compiler",
+           "evidence":["E1","E2"]}
+        ]}]}
+        """,
+        {"E1", "E2"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] == "flow"
+
+
+def test_fact_plan_reclassifies_runtime_interaction_with_wiki_as_flow():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The runtime answers queries","evidence":["E1"]},
+         "sections":[{"title":"Runtime","claims":[
+          {"role":"responsibility",
+           "statement":"The agent runtime interacts with the Wiki",
+           "evidence":["E1","E2"]}
+        ]}]}
+        """,
+        {"E1", "E2"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] == "flow"
+
+
+def test_fact_plan_reclassifies_unquoted_cross_component_data_use_as_flow():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The runtime answers queries","evidence":["E1"]},
+         "sections":[{"title":"Runtime","claims":[
+          {"role":"entry",
+           "statement":"`AgentRunner.run` utilizes data from the Wiki subsystem",
+           "evidence":["E1","E2"]}
+        ]}]}
+        """,
+        {"E1", "E2"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] == "flow"
+
+
+def test_fact_plan_reclassifies_query_through_component_as_flow():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The runtime answers queries","evidence":["E1"]},
+         "sections":[{"title":"Runtime","claims":[
+          {"role":"component",
+           "statement":"`AgentRunner.run` queries graph data through `CodeGraph.query_range`",
+           "evidence":["E1","E2"]}
+        ]}]}
+        """,
+        {"E1", "E2"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] == "flow"
+
+
+def test_fact_plan_normalizes_mislabeled_component_responsibility():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The graph serves navigation","evidence":["E1"]},
+         "sections":[{"title":"Navigation","claims":[
+          {"role":"entry",
+           "statement":"`CodeGraph.query_range` queries source ranges",
+           "evidence":["E1"]}
+        ]}]}
+        """,
+        {"E1"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] == "responsibility"
 
 
 def test_interaction_claim_requires_named_endpoints_and_a_handoff():

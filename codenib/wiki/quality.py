@@ -17,6 +17,7 @@ from .evidence import (
     infer_claim_role,
     is_interaction_claim,
     promotional_phrases,
+    relation_endpoints_named,
     relation_matches_claim,
 )
 
@@ -38,7 +39,9 @@ _SOURCE_FILE_SUBSYSTEM = re.compile(
 )
 _REFERENCE_NARRATION = re.compile(
     r"\b(?:as (?:shown|indicated) by|according to) (?:the )?"
-    r"(?:reference|relation)|`[^`\n]+:\d+(?:-\d+)?`",
+    r"(?:reference|relation)|"
+    r"`[^`\n]+\.(?:py|pyi|go|rs|ts|tsx|js|jsx|c|h|cc|cpp|hpp|java|rb|php|"
+    r"cs|kt|kts|swift|scala):\d+(?:-\d+)?`",
     re.IGNORECASE,
 )
 
@@ -273,6 +276,20 @@ def section_synthesis_report(markdown: str) -> dict[str, Any]:
 def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
     """Find near-duplicate explanatory sentences inside one section."""
 
+    def redundancy_terms(sentence: str) -> set[str]:
+        terms = set()
+        for token in prose_terms(sentence) - {"also", "function", "method"}:
+            if token.endswith("ies") and len(token) > 4:
+                token = token[:-3] + "y"
+            elif token.endswith("ing") and len(token) > 6:
+                token = token[:-3]
+            elif token.endswith("ed") and len(token) > 5:
+                token = token[:-2]
+            elif token.endswith("s") and not token.endswith("ss") and len(token) > 4:
+                token = token[:-1]
+            terms.add(token)
+        return terms
+
     without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
     section_matches = list(
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
@@ -285,14 +302,28 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
             else len(without_fences)
         )
         sentences = _prose_sentences(without_fences[match.end() : end])
-        terms = [prose_terms(sentence) for sentence in sentences]
+        terms = [redundancy_terms(sentence) for sentence in sentences]
+        identifiers = [
+            {
+                re.sub(r"\([^)]*\)$", "", item).casefold()
+                for item in re.findall(r"`([^`\n]+)`", sentence)
+            }
+            for sentence in sentences
+        ]
         for left in range(len(sentences)):
             for right in range(left + 1, len(sentences)):
                 smaller = min(len(terms[left]), len(terms[right]))
                 overlap = (
                     len(terms[left] & terms[right]) / smaller if smaller >= 5 else 0.0
                 )
-                if overlap >= 0.8:
+                distinct_handoffs = bool(
+                    is_interaction_claim(sentences[left])
+                    and is_interaction_claim(sentences[right])
+                    and len(identifiers[left]) >= 2
+                    and len(identifiers[right]) >= 2
+                    and identifiers[left] != identifiers[right]
+                )
+                if overlap >= 0.7 and not distinct_handoffs:
                     repetitions.append(
                         {
                             "section": match.group(1).strip(),
@@ -311,6 +342,14 @@ def prose_integrity_report(markdown: str) -> dict[str, Any]:
     """Detect prose artifacts that should never reach a published Wiki page."""
 
     without_citations = _EVIDENCE_MARKER.sub("", markdown)
+    citation_only_blocks = []
+    for raw in re.split(r"\n\s*\n", markdown):
+        if not _EVIDENCE_MARKER.search(raw):
+            continue
+        plain = _EVIDENCE_MARKER.sub("", raw)
+        plain = re.sub(r"[`*_[\]()#>-]", " ", plain)
+        if not re.sub(r"\s+", " ", plain).strip():
+            citation_only_blocks.append(raw.strip())
     narrated_ids = sorted(set(_RAW_EVIDENCE_ID.findall(without_citations)))
     private_entries = [
         sentence
@@ -350,12 +389,17 @@ def prose_integrity_report(markdown: str) -> dict[str, Any]:
         if _REFERENCE_NARRATION.search(sentence)
     ]
     return {
+        "citation_only_blocks": citation_only_blocks,
         "narrated_evidence_ids": narrated_ids,
         "private_entry_sentences": private_entries,
         "file_subsystem_sentences": file_subsystems,
         "reference_narration_sentences": reference_narration,
         "prose_integrity_valid": not (
-            narrated_ids or private_entries or file_subsystems or reference_narration
+            citation_only_blocks
+            or narrated_ids
+            or private_entries
+            or file_subsystems
+            or reference_narration
         ),
     }
 
@@ -414,11 +458,25 @@ def plan_narrative_report(
             source_stated = any(
                 evidence_matches_claim(statement, item) for item in cited_evidence
             )
-            if explicit and (
-                not require_relation_backing
-                or (relation_backed and relation_stated)
-                or (not relation_backed and source_stated)
-            ):
+            known_relation_pair = any(
+                relation_endpoints_named(statement, item)
+                for item in relations_by_id.values()
+            )
+            support_catalog_available = bool(relations_by_id or evidence_by_id)
+            if support_catalog_available:
+                supported = explicit and (
+                    (relation_backed and relation_stated)
+                    or (
+                        not relation_backed
+                        and not known_relation_pair
+                        and source_stated
+                    )
+                )
+            else:
+                supported = explicit and (
+                    not require_relation_backing or relation_backed
+                )
+            if supported:
                 supported_interactions += 1
             else:
                 invalid_flow_claims.append(statement)
@@ -475,7 +533,6 @@ def page_quality_report(
     require_narrative_density: bool = False,
     require_interaction: bool = False,
     require_grounded_thesis: bool = False,
-    exact_section_count: int | None = None,
     minimum_source_evidence: int = 0,
     required_claim_roles: Iterable[str] = (),
     relations: Iterable[Any] = (),
@@ -547,10 +604,9 @@ def page_quality_report(
             plain = re.sub(r"\[(?:E|R)\d+\](?:\([^)]*\))?", " ", body)
             plain = re.sub(r"[`*_[\]()#>-]", " ", plain)
             plain = re.sub(r"\s+", " ", plain).strip()
-            sentence_count = len(re.findall(r"[.!?](?=\s|$)", plain))
-            if len(plain) < 80 or sentence_count < 2:
+            if len(plain) < 60:
                 thin_sections.append(match.group(1).strip())
-    required_sections = min(3, len(sections))
+    required_sections = 3 if require_dense_sections else min(3, len(sections))
     required_blocks = required_sections + int(require_cited_intro)
     valid = (
         bool(sections)
@@ -571,7 +627,6 @@ def page_quality_report(
         and sentence_report["sentence_redundancy_valid"]
         and plan_report["plan_role_integrity_valid"]
         and (not require_grounded_thesis or plan_report["thesis_grounded"])
-        and (exact_section_count is None or rendered_sections == exact_section_count)
         and source_evidence_count >= minimum_source_evidence
         and not missing_claim_roles
         and (
@@ -600,7 +655,6 @@ def page_quality_report(
         "require_narrative_density": require_narrative_density,
         "require_interaction": require_interaction,
         "require_grounded_thesis": require_grounded_thesis,
-        "exact_section_count": exact_section_count,
         "minimum_source_evidence": minimum_source_evidence,
         "source_evidence_count": source_evidence_count,
         "required_claim_roles": list(required_roles),
