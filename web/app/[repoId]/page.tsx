@@ -4,6 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
+import { AppLink } from "@/lib/router";
 import {
   fetchCommits,
   fetchRepos,
@@ -288,8 +289,20 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
   };
 
   return (
-    <div className="wiki">
+    <div className="wiki wiki-reading">
       <Header
+        actions={
+          repo?.capabilities?.chat ? (
+            <AppLink
+              className="icon-btn header-ask"
+              href={`/${encodeURIComponent(repoId)}/ask`}
+              aria-label={`Ask a question about ${repo.repo}`}
+              title="Ask this repository"
+            >
+              <span aria-hidden>✦</span>
+            </AppLink>
+          ) : null
+        }
         center={
           <nav className="breadcrumb" aria-label="Breadcrumb">
             <button
@@ -630,6 +643,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                   repoId={repoId}
                   initialSymbol={graphSeed}
                   commit={selectedCommit}
+                  coverage={repo?.graph_coverage}
                 />
               </Suspense>
             </div>
@@ -693,7 +707,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
       )}
 
       {repo?.capabilities?.chat && (
-        <AskBar repoId={repoId} repo={repo.repo} />
+        <AskBar repoId={repoId} repo={repo.repo} collapsible />
       )}
     </div>
   );

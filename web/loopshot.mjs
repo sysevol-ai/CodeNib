@@ -1,13 +1,18 @@
 // Loop screenshot helper — capture a repo page in a given mode (wiki|codemap).
-// Usage: node loopshot.mjs <repoId> <mode> <outName> [width=1440] [height=1000]
-// Writes ../verification/<outName>.png and prints a JSON report.
+// Usage: node loopshot.mjs <repoId> <mode> <outName|out.png> [width=1440] [height=1000]
+// Writes an explicit .png path or ../verification/<outName>.png and prints JSON.
 // Run from inside web/ (resolves playwright from web/node_modules).
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { chromium } from "playwright";
 
 const [, , repoId, mode = "wiki", outName = "shot", w = "1440", h = "1000"] = process.argv;
 const base = process.env.WEB_BASE || "http://127.0.0.1:3000";
 const url = `${base}/${encodeURIComponent(repoId)}`;
-const out = `../verification/${outName}.png`;
+const out = outName.endsWith(".png")
+  ? resolve(outName)
+  : resolve("../verification", `${outName}.png`);
+mkdirSync(dirname(out), { recursive: true });
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: +w, height: +h } });
@@ -25,19 +30,25 @@ try {
   report.httpStatus = resp ? resp.status() : null;
 
   if (mode === "codemap") {
-    // Click the graph/codemap mode tab (labeled "Graph"; role=tab in .wiki-modeswitch).
-    const tab = page.locator('.mode-tab', { hasText: /graph|codemap/i });
-    if (await tab.count()) {
-      await tab.first().click();
-      // Wait for the dependency graph (mermaid svg) or the "no codemap" message.
+    const launch = page.locator(".codegraph-launch");
+    if (await launch.count()) {
+      await launch.first().click();
       await page
-        .waitForSelector(".codemap .mermaid-diagram svg, .codemap .muted", { timeout: 20000 })
+        .waitForSelector(
+          ".graph-modal .codegraph-canvas, .graph-modal .codemap-unavailable",
+          { timeout: 30000 }
+        )
         .catch(() => {});
-      report.hasGraphSvg = (await page.locator(".codemap .mermaid-diagram svg").count()) > 0;
+      report.hasGraphCanvas =
+        (await page.locator(".graph-modal .codegraph-canvas").count()) > 0;
+      report.graphUnavailable =
+        (await page.locator(".graph-modal .codemap-unavailable").count()) > 0;
       report.codemapMeta = (await page.locator(".codemap-meta").first().textContent().catch(() => null)) || null;
+      report.graphCoverage =
+        (await page.locator(".codemap-coverage").first().textContent().catch(() => null)) || null;
       report.chipCount = await page.locator(".codemap-chip").count();
     } else {
-      report.codemapTab = "absent (capabilities.codemap false)";
+      report.codemapLaunch = "absent";
     }
   } else {
     await page.waitForSelector(".wiki-content, .markdown, article", { timeout: 15000 }).catch(() => {});

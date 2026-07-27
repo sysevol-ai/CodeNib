@@ -32,8 +32,15 @@ export interface RepoInfo {
   languages: string[];
   file_count: number;
   capabilities: Record<string, boolean>;
+  graph_coverage?: GraphCoverage | null;
   /** Commit-window cost figures; absent for repos without a prebuilt window. */
   incremental?: WindowStats | null;
+}
+
+export interface GraphCoverage {
+  available_languages: string[];
+  unavailable_languages: string[];
+  partial: boolean;
 }
 
 export interface Citation {

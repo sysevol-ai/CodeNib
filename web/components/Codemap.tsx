@@ -2,10 +2,33 @@
 
 import { useEffect, useState } from "react";
 import GraphView from "@/components/GraphView";
-import { fetchCodemap, type CodemapResponse } from "@/lib/api";
+import {
+  fetchCodemap,
+  type CodemapResponse,
+  type GraphCoverage,
+} from "@/lib/api";
 
 type Direction = "both" | "callees" | "callers";
 type Depth = 1 | 2;
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  cpp: "C / C++",
+  csharp: "C#",
+  go: "Go",
+  java: "Java",
+  javascript: "JavaScript",
+  kotlin: "Kotlin",
+  php: "PHP",
+  python: "Python",
+  ruby: "Ruby",
+  rust: "Rust",
+  ts: "TypeScript / JavaScript",
+  typescript: "TypeScript",
+};
+
+function languageNames(languages: string[]): string {
+  return languages.map((language) => LANGUAGE_NAMES[language] ?? language).join(", ");
+}
 
 /**
  * Codemap mode: an interactive dependency (call-graph) map for the repo.
@@ -17,12 +40,14 @@ export default function Codemap({
   repoId,
   initialSymbol,
   commit,
+  coverage,
 }: {
   repoId: string;
   initialSymbol?: string;
   // Commit snapshot to render. Undefined = the window's newest commit (or the
   // repo's single indexed graph when no window exists).
   commit?: string;
+  coverage?: GraphCoverage | null;
 }) {
   const [symbol, setSymbol] = useState(initialSymbol ?? "");
   const [query, setQuery] = useState(initialSymbol ?? ""); // last submitted focus symbol
@@ -156,6 +181,18 @@ export default function Codemap({
         </select>
         <button type="submit">Map</button>
       </form>
+
+      {coverage?.partial && (
+        <div className="codemap-coverage" role="status">
+          <span className="codemap-coverage-title">Partial language coverage</span>
+          <span>
+            Indexed: {languageNames(coverage.available_languages) || "none"}
+          </span>
+          <span>
+            Unavailable: {languageNames(coverage.unavailable_languages) || "none"}
+          </span>
+        </div>
+      )}
 
       {loading && <p className="muted">Updating dependency map…</p>}
       {err && <p className="muted">Couldn&apos;t load the dependency map.</p>}
