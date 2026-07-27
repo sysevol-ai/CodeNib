@@ -67,6 +67,7 @@ codenib wiki /path/to/repository --rebuild
 |---|---|---|
 | `fast` | `codenib` | BM25 |
 | `semantic` | `codenib[semantic]` | BM25 and dense vectors |
+| `graph` | `codenib[graph]` | BM25 and symbol graph |
 | `full` | `codenib[full]` | BM25, dense vectors, symbol graph, and Zoekt |
 
 For natural-language search:
@@ -77,7 +78,8 @@ codenib wiki /path/to/repository --preset semantic
 ```
 
 The semantic preset downloads its embedding model on first use. The full
-preset also requires language-specific SCIP/LSP tools and Zoekt binaries;
+and graph presets require language-specific SCIP/LSP tools; full also needs
+Zoekt binaries;
 follow [SCIP Indexing](scip_index.md) and check the
 [Language Capabilities](language_capabilities.md) matrix before using it.
 

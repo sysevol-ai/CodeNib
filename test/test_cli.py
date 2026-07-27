@@ -201,6 +201,32 @@ def test_semantic_preset_reports_required_extra(
     assert "codenib[semantic]" in capsys.readouterr().err
 
 
+def test_graph_preset_selects_bm25_and_symbol_graph(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    captured = {}
+
+    def fake_index(repo_path, *, languages, views, rebuild):
+        captured["views"] = views
+        entries = {view: SimpleNamespace(status="fresh", metadata={}) for view in views}
+        return (
+            SimpleNamespace(
+                repo_path=str(repo_path),
+                languages=list(languages),
+                indexes=entries,
+            ),
+            [],
+        )
+
+    monkeypatch.setattr(cli, "_check_view_dependencies", lambda _views: None)
+    monkeypatch.setattr(cli, "index_repository", fake_index)
+
+    assert cli.run(["index", str(tmp_path), "--preset", "graph"]) == 0
+    assert captured["views"] == ["bm25", "symbol_graph"]
+
+
 def test_mcp_command_reports_required_extra(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

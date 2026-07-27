@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import igraph as ig
-import matplotlib.pyplot as plt
 
 from ..types import (
     EDGE_TYPE_CONTAIN,
@@ -1075,6 +1074,13 @@ class CodeGraph:
         if self.graph.vcount() == 0:
             print("Graph is empty. Nothing to visualize.")
             return None
+
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError as exc:
+            raise RuntimeError(
+                "static graph rendering requires matplotlib; install it separately"
+            ) from exc
 
         # Define color schemes
         node_type_colors = {

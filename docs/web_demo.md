@@ -218,14 +218,15 @@ diagram entirely. The `<Mermaid>` component still loads lazily in
 `web/components/Markdown.tsx` for any stray fence, but wiki pages no longer
 emit one.
 
-### The full-screen CodeGraph explorer
+### The full-screen Dependency Map
 
-The wiki header shows a **⌗ CodeGraph** button when the repo advertises the
-`codemap` capability (`repo.capabilities.codemap`). Clicking it opens a
+The wiki header shows a **Dependency Map** button. Clicking it opens a
 full-screen modal (`graph-modal`, Esc to close) hosting `Codemap`
-(`web/components/Codemap.tsx`), the standalone explorer. The same component is
-reachable *seeded on a symbol* via **"Focus here"** in the wiki subsystem map's
-node peek — that re-roots the explorer on the chosen symbol.
+(`web/components/Codemap.tsx`), the standalone explorer. Repositories without
+the `codemap` capability get setup commands for the optional graph profile
+instead of an empty canvas. When the capability is present, the same component
+is reachable *seeded on a symbol* via **"Focus here"** in the wiki subsystem
+map's node peek — that re-roots the explorer on the chosen symbol.
 
 `Codemap` calls `GET /api/repos/{id}/codemap`, backed by `build_codemap()`
 (`codenib/web/codemap.py:277`):
@@ -399,5 +400,5 @@ re-fetches `POST /api/chat`; every submit is its own answer.
 | Stuck on "Loading repositories…" | Backend unreachable from the Vite proxy or production runtime configuration. Confirm `:8000` is up (`curl 127.0.0.1:8000/api/health`); over SSH only `:3000` needs forwarding in source-development mode. Hard-refresh after the backend finishes loading. |
 | Ask returns an empty answer | No usable LLM credentials, or a thinking model exhausting its token budget on hidden reasoning. The demo disables thinking for `gemini-2.5*` automatically; for other reasoning models raise `max_tokens`. |
 | Wiki prose looks generic/templated | Narrator had no usable creds and fell back to templates. Wiki cache is keyed without the model, so clear `<data_dir>/wiki_cache` after changing models. |
-| No graph / no ⌗ CodeGraph button | The repo has no usable symbol graph, so the `codemap` capability is off. The subsystem map and explorer only appear when the graph resolves symbols. |
+| Dependency Map shows setup commands | The repo has no usable symbol graph, so the `codemap` capability is off. Install `codenib[graph]` and rebuild with `codenib wiki . --preset graph`. |
 | `repos: 0` at `/api/health` | No registry. Run `scripts/build_qa_index.py` (or fix `data_dir`/`prebuilt_dir`). |

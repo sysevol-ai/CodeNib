@@ -21,6 +21,7 @@ from .repository_filters import DEFAULT_IGNORED_DIRS
 _PRESET_VIEWS = {
     "fast": ("bm25",),
     "semantic": ("bm25", "vector"),
+    "graph": ("bm25", "symbol_graph"),
     "full": ("bm25", "vector", "symbol_graph", "zoekt"),
 }
 
@@ -302,7 +303,7 @@ def _check_view_dependencies(views: Sequence[str]) -> None:
         )
     if "symbol_graph" in views:
         _require_modules(
-            ("igraph", "matplotlib"),
+            ("igraph",),
             extra="graph",
             feature="the symbol graph view",
         )

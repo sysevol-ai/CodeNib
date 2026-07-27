@@ -26,6 +26,13 @@ pip install "codenib[mcp,semantic]"
 codenib index /path/to/repository --preset semantic
 ```
 
+Add static navigation and dependency tools without the embedding download:
+
+```bash
+pip install "codenib[graph,mcp]"
+codenib index /path/to/repository --preset graph
+```
+
 Each build writes
 `<repo>/.codenib_cache/repo_manifest.json`. A failed optional view is recorded
 in the manifest without invalidating successful independent views.

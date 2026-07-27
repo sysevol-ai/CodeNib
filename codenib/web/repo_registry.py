@@ -229,8 +229,8 @@ class RepoBundle:
         entry = self.manifest.indexes.get("symbol_graph")
         if entry is None:
             return (
-                "Dependency graph is not built. Install codenib[graph], then "
-                "add --view symbol_graph when indexing."
+                "Dependency graph is not built. Use the graph profile to add "
+                "a language-aware symbol graph for this repository."
             )
         if entry.status == "stale":
             return "Dependency graph is stale for this commit and must be updated."

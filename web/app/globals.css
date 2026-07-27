@@ -714,8 +714,17 @@ pre {
     overflow: hidden;
   }
   .breadcrumb .crumb-sep,
-  .breadcrumb .crumb-page,
+  .breadcrumb .crumb-page {
+    display: none;
+  }
   .breadcrumb .codegraph-launch {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    justify-content: center;
+    padding: 0;
+  }
+  .breadcrumb .codegraph-launch span {
     display: none;
   }
   .breadcrumb .crumb-repo {
@@ -1351,6 +1360,94 @@ pre {
 .codemap {
   /* bottom room so the last chips clear the fixed Ask bar */
   padding: 4px 0 96px;
+}
+.codemap-loading {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.codemap-unavailable {
+  min-height: min(68vh, 640px);
+  padding: clamp(48px, 9vh, 96px) clamp(20px, 7vw, 96px);
+  display: grid;
+  grid-template-columns: 52px minmax(260px, 520px) minmax(320px, 520px);
+  align-content: center;
+  justify-content: center;
+  gap: 18px 30px;
+}
+.codemap-unavailable-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.codemap-unavailable-icon svg {
+  width: 28px;
+  height: 28px;
+}
+.codemap-unavailable-copy {
+  align-self: center;
+}
+.codemap-unavailable-kicker {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.codemap-unavailable h2 {
+  margin: 5px 0 10px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+.codemap-unavailable p {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.codemap-setup {
+  align-self: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+.codemap-setup-head {
+  min-height: 38px;
+  padding: 7px 9px 7px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.codemap-setup-head button {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+}
+.codemap-setup-head button:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.codemap-setup pre {
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.7;
 }
 .rail-graphnote p {
   margin: 0 0 8px;
@@ -1989,6 +2086,9 @@ pre {
   color: var(--accent);
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .codegraph-launch:hover {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--accent-border));
@@ -1998,11 +2098,6 @@ pre {
   border-color: var(--border);
   background: var(--bg-subtle);
   color: var(--text-secondary);
-}
-.codegraph-launch.unavailable::after {
-  content: " unavailable";
-  font-size: 10px;
-  color: var(--text-tertiary);
 }
 
 /* Full-screen graph-explorer modal (the single CodeGraph surface). */
@@ -2036,6 +2131,17 @@ pre {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+.graph-modal-head > b,
+.graph-modal-head > [aria-hidden] {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.graph-modal-repo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .graph-modal-hint {
   margin-left: auto;
 }
@@ -2064,6 +2170,22 @@ pre {
 .graph-modal-body .codegraph[data-mode="files"] .codegraph-canvas,
 .graph-modal-body .codegraph[data-mode="symbols"] .codegraph-canvas {
   height: min(74vh, 800px);
+}
+@media (max-width: 900px) {
+  .codemap-unavailable {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+  .codemap-setup {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 600px) {
+  .graph-modal-hint {
+    display: none;
+  }
+  .graph-modal-close {
+    margin-left: auto;
+  }
 }
 .codegraph-loading {
   display: grid;

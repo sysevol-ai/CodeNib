@@ -275,11 +275,25 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
               }
               aria-label={
                 hasGraph
-                  ? "Open code dependency graph"
-                  : "Code dependency graph unavailable"
+                  ? "Open dependency map"
+                  : "Set up dependency map"
               }
             >
-              ⌗ CodeGraph
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden
+              >
+                <circle cx="5" cy="6" r="2" />
+                <circle cx="19" cy="7" r="2" />
+                <circle cx="12" cy="19" r="2" />
+                <path d="m7 6.2 10 .6M6.5 8l4.4 9.2m6.5-8.3-4.3 8.4" />
+              </svg>
+              <span>Dependency Map</span>
             </button>
             {page && <span className="crumb-sep">/</span>}
             {page && <span className="crumb-page">{page.title}</span>}
@@ -516,15 +530,17 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
           onClick={() => setGraphOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="Code dependency graph"
+          aria-label="Repository dependency map"
         >
           <div className="graph-modal" onClick={(e) => e.stopPropagation()}>
             <div className="graph-modal-head">
-              <span className="mono">
-                <b>CodeGraph</b> · {repo ? repo.repo : repoId}
+              <b>Dependency Map</b>
+              <span aria-hidden>·</span>
+              <span className="graph-modal-repo mono">
+                {repo ? repo.repo : repoId}
               </span>
               <span className="graph-modal-hint muted small">
-                top-down dependency graph — every edge is a real LSP/SCIP reference. Esc to close.
+                Symbol references at the indexed commit · Esc to close
               </span>
               <button
                 className="graph-modal-close"
