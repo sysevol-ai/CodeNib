@@ -119,7 +119,7 @@ class TestBM25IndexBuilder:
         assert status.metadata["file_count"] == 3
         assert status.metadata["chunk_count"] == 3
         assert status.metadata["source_file_count"] == 2
-        assert status.metadata["builder_schema"] == 3
+        assert status.metadata["builder_schema"] == 4
         assert status.metadata["max_k"] == 64
         assert status.path == output
         mock_indexer_instance.save_index.assert_called_once_with(output)
