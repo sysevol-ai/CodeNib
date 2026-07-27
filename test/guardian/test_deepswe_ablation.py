@@ -59,6 +59,38 @@ def test_finite_budget_remains_the_default(tmp_path):
     assert "guardian_budget_tokens=50000" in command
 
 
+def test_task_virtualenv_profile_is_mounted_in_both_arms(tmp_path):
+    args = ablation.parse_args(
+        [
+            "--model",
+            "gpt-5.6-terra",
+            "--reasoning-effort",
+            "medium",
+            "--tasks",
+            "fixture-task",
+            "--codeminer-root",
+            str(tmp_path),
+        ]
+    )
+
+    for baseline in ("solo", "guardian"):
+        command = ablation._build_pier_command(
+            args,
+            task="fixture-task",
+            baseline=baseline,
+            logs_dir=tmp_path / baseline,
+        )
+        mounts = json.loads(command[command.index("--mounts-json") + 1])
+        profile = next(
+            item
+            for item in mounts
+            if item["target"] == "/etc/profile.d/zz-deepswe-task-venv.sh"
+        )
+        assert profile["source"] == str(
+            tmp_path / "deepsweguardian" / "task_venv_profile.sh"
+        )
+
+
 def test_guardian_run_status_aggregates_every_cycle(tmp_path):
     episodes = tmp_path / "guardian_episodes"
     rows = [

@@ -153,6 +153,7 @@ class InvestigationRunResult:
     budget: BudgetLedger = field(default_factory=lambda: BudgetLedger(0))
     capabilities: Dict[str, bool] = field(default_factory=dict)
     capability_warning: str = ""
+    environment_diagnostics: Dict[str, str] = field(default_factory=dict)
     degraded: bool = False
 
     @property
@@ -200,6 +201,7 @@ class InvestigationRunResult:
             "tokens_used": self.tokens_used,
             "capabilities": dict(self.capabilities),
             "capability_warning": self.capability_warning,
+            "environment_diagnostics": dict(self.environment_diagnostics),
             "degraded": self.degraded,
         }
 

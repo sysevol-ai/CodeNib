@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -38,6 +39,23 @@ if "codeminer" not in sys.modules:
 
 from codeminer.guardian.cycle import GuardianConfig, run_cycle
 from codeminer.guardian.report import GuardianReport, render_markdown
+
+
+def _interpreter_diagnostics() -> dict[str, str]:
+    """Describe Guardian's runtime separately from the task test runtime."""
+    task_virtualenv = os.environ.get("VIRTUAL_ENV", "")
+    task_interpreter = os.environ.get("GUARDIAN_TASK_PYTHON", "")
+    if not task_interpreter and task_virtualenv:
+        task_interpreter = str(Path(task_virtualenv) / "bin" / "python")
+    return {
+        "guardian_interpreter": sys.executable,
+        "guardian_runtime_python": os.environ.get(
+            "GUARDIAN_RUNTIME_PYTHON", sys.executable
+        ),
+        "task_virtualenv": task_virtualenv,
+        "task_interpreter": task_interpreter,
+        "path_interpreter": shutil.which("python") or "",
+    }
 
 
 def _apply_vertex_token_patch() -> None:
@@ -140,6 +158,7 @@ def _write_report(out_dir: Path, report: GuardianReport) -> None:
             "inner_llm_tokens": (
                 _tok(report.inner_llm_usage) if report.inner_llm_usage else _tok(None)
             ),
+            "interpreters": _interpreter_diagnostics(),
             "running": False,
             "error": "",
         },
@@ -186,6 +205,7 @@ def _write_status(
             "llm_backend": llm_backend,
             "llm_transport_history": [llm_backend] if llm_backend else [],
             "llm_tokens": 0,
+            "interpreters": _interpreter_diagnostics(),
             "running": running,
             "error": error,
         },

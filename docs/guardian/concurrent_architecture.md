@@ -271,6 +271,16 @@ loop outcomes. They do not inherit from a common semantic loop. Their prompts,
 tools, canonical state, evidence validation, and stopping policies remain
 separate.
 
+Guardian and the observed project deliberately use separate Python
+interpreters in DeepSWE. The Guardian bridge runs from the mounted
+`/opt/codeminer-env`, while solver commands and L3 probes use the task image's
+declared virtual environment. The ablation runner mounts a profile fragment in
+both solo and Guardian arms so `bash -lc` cannot discard `$VIRTUAL_ENV/bin`
+from `PATH`. L3 records the Guardian interpreter, task interpreter, PATH
+interpreter, and selected pytest recipe in its checkpoint; task-environment
+discovery prefers `$GUARDIAN_TASK_PYTHON`, then `$VIRTUAL_ENV/bin/python`,
+without changing Guardian's own runtime.
+
 Within either kind of agent loop, messages and tool results append to a stable
 conversation so provider prompt caching can reuse the preceding prefix. L2
 externalizes an individual tool result only when it exceeds the inline

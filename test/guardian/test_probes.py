@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from codeminer.guardian.investigator.environment import TestRecipe as Recipe
-from codeminer.guardian.investigator.environment import validate_recipe
+from codeminer.guardian.investigator.environment import run_prelude, validate_recipe
 from codeminer.guardian.investigator.probes import (
     behavioural_tests,
     run_existing_test,
@@ -130,6 +130,36 @@ def test_recipe_validation_creates_report_directory_before_execution(tmp_path):
 
     assert valid is True
     assert reason == ""
+
+
+def test_prelude_prefers_task_virtualenv_and_records_interpreters(
+    tmp_path, monkeypatch
+):
+    task_venv = tmp_path / "task-venv"
+    task_python = task_venv / "bin" / "python"
+    task_python.parent.mkdir(parents=True)
+    task_python.write_text("#!/bin/sh\n", encoding="utf-8")
+    task_python.chmod(0o755)
+    monkeypatch.setenv("VIRTUAL_ENV", str(task_venv))
+    monkeypatch.delenv("GUARDIAN_TASK_PYTHON", raising=False)
+    monkeypatch.setenv("GUARDIAN_RUNTIME_PYTHON", "/opt/codeminer-env/bin/python")
+
+    prelude = run_prelude(
+        ReportSandbox(tmp_path, "", exit_code=0),
+        repo_identity=str(tmp_path),
+        commit="abc",
+    )
+
+    assert prelude.recipe is not None
+    assert prelude.recipe.command_prefix == (str(task_python), "-m", "pytest")
+    assert prelude.recipe.source == "task-virtualenv"
+    assert prelude.diagnostics["guardian_interpreter"] == sys.executable
+    assert (
+        prelude.diagnostics["guardian_runtime_python"]
+        == "/opt/codeminer-env/bin/python"
+    )
+    assert prelude.diagnostics["task_interpreter"] == str(task_python)
+    assert prelude.diagnostics["selected_test_interpreter"] == str(task_python)
 
 
 def test_synthesized_source_is_validated_before_execution(tmp_path):

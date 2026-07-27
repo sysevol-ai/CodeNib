@@ -17,7 +17,7 @@ from ...agent.agent_types import ToolCallRecord
 from ...llm.usage import TokenUsage, _extract_token_usage
 from ...log_utils import get_logger
 from ..llm import AgentLoopSession, ContextManager, LoopOutcome
-from .environment import TestRecipe, run_prelude
+from .environment import TestRecipe, interpreter_diagnostics, run_prelude
 from .probes import (
     behavioural_tests,
     command_result,
@@ -777,6 +777,7 @@ def _result(
     evidence_diff: str = "",
     capabilities: Optional[dict[str, bool]] = None,
     capability_warning: str = "",
+    environment_diagnostics: Optional[Dict[str, str]] = None,
     degraded: bool = False,
 ) -> InvestigationRunResult:
     return InvestigationRunResult(
@@ -793,6 +794,7 @@ def _result(
         budget=ledger,
         capabilities=dict(capabilities or {}),
         capability_warning=capability_warning,
+        environment_diagnostics=dict(environment_diagnostics or {}),
         degraded=degraded,
     )
 
@@ -821,6 +823,10 @@ def run_investigation(
     usage = TokenUsage()
     capabilities = {"source": True, "python_probe": True, "pytest": recipe is not None}
     capability_warning = ""
+    environment_diagnostics = interpreter_diagnostics()
+    if recipe is not None:
+        environment_diagnostics["selected_test_interpreter"] = recipe.command_prefix[0]
+        environment_diagnostics["selected_recipe_source"] = recipe.source
     if recipe is None:
         prelude = run_prelude(
             sandbox,
@@ -831,6 +837,7 @@ def run_investigation(
         )
         capabilities = prelude.capabilities
         capability_warning = prelude.reason
+        environment_diagnostics = prelude.diagnostics
         if prelude.blocked:
             result = _result(
                 verdict="inconclusive",
@@ -844,6 +851,7 @@ def run_investigation(
                 ledger=ledger,
                 capabilities=capabilities,
                 capability_warning=capability_warning,
+                environment_diagnostics=environment_diagnostics,
                 degraded=True,
             )
             _checkpoint(
@@ -1191,6 +1199,7 @@ def run_investigation(
                     evidence_diff=evidence_diff,
                     capabilities=capabilities,
                     capability_warning=capability_warning,
+                    environment_diagnostics=environment_diagnostics,
                     degraded=bool(capability_warning),
                 )
                 _checkpoint(
@@ -1228,6 +1237,7 @@ def run_investigation(
         evidence_diff=evidence_diff,
         capabilities=capabilities,
         capability_warning=capability_warning,
+        environment_diagnostics=environment_diagnostics,
         degraded=bool(capability_warning)
         or evidence_status == "environment"
         or outcome.status == "environment_unavailable",

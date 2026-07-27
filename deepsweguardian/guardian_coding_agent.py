@@ -387,8 +387,13 @@ class GuardianCodingAgent(BaseInstalledAgent):
                 codex_home=codex_home,
             )
         _egress = getattr(environment, "_egress_proxy_env", {})
+        task_virtualenv = str(_persistent.get("VIRTUAL_ENV", "") or "").strip()
         bridge_environment = {
             "PYTHONPATH": self._codeminer_path,
+            "GUARDIAN_RUNTIME_PYTHON": self._codeminer_python,
+            "GUARDIAN_TASK_PYTHON": (
+                f"{task_virtualenv.rstrip('/')}/bin/python" if task_virtualenv else ""
+            ),
             "GOOGLE_OAUTH_ACCESS_TOKEN": gtoken,
             "HTTPS_PROXY": _egress.get("HTTPS_PROXY", ""),
             "HTTP_PROXY": _egress.get("HTTP_PROXY", ""),

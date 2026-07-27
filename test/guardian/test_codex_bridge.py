@@ -43,6 +43,9 @@ def _report() -> GuardianReport:
 def test_run_bridge_once_writes_markdown_json_and_status(tmp_path, monkeypatch):
     monkeypatch.setattr(codex_bridge, "_head", lambda _repo: "abc123def456")
     monkeypatch.setattr(codex_bridge, "run_cycle", lambda _cfg: _report())
+    monkeypatch.setenv("GUARDIAN_RUNTIME_PYTHON", "/opt/codeminer-env/bin/python")
+    monkeypatch.setenv("GUARDIAN_TASK_PYTHON", "/opt/venv/bin/python")
+    monkeypatch.setenv("VIRTUAL_ENV", "/opt/venv")
 
     cfg = GuardianConfig(repo_path="/repo", use_llm=True)
     codex_bridge.run_bridge(
@@ -70,6 +73,11 @@ def test_run_bridge_once_writes_markdown_json_and_status(tmp_path, monkeypatch):
     assert status["llm_model"] == "codex:gpt-5.6-luna"
     assert status["llm_backend"] == "codex-sdk"
     assert status["llm_transport_history"] == ["codex-sdk"]
+    assert status["interpreters"]["guardian_runtime_python"] == (
+        "/opt/codeminer-env/bin/python"
+    )
+    assert status["interpreters"]["task_interpreter"] == "/opt/venv/bin/python"
+    assert status["interpreters"]["task_virtualenv"] == "/opt/venv"
     assert status["running"] is False
 
 

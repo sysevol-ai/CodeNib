@@ -50,6 +50,7 @@ class PreludeResult:
     reason: str
     recipe: Optional[TestRecipe] = None
     capabilities: dict[str, bool] = field(default_factory=dict)
+    diagnostics: dict[str, str] = field(default_factory=dict)
 
 
 def _repo_key(repo_path: str, commit: str) -> str:
@@ -57,8 +58,24 @@ def _repo_key(repo_path: str, commit: str) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
+def interpreter_diagnostics() -> dict[str, str]:
+    task_python = os.environ.get("GUARDIAN_TASK_PYTHON", "").strip()
+    virtualenv = os.environ.get("VIRTUAL_ENV", "").strip()
+    if not task_python and virtualenv:
+        task_python = str(Path(virtualenv) / "bin" / "python")
+    return {
+        "guardian_interpreter": sys.executable,
+        "guardian_runtime_python": os.environ.get(
+            "GUARDIAN_RUNTIME_PYTHON", sys.executable
+        ),
+        "task_virtualenv": virtualenv,
+        "task_interpreter": task_python,
+        "path_interpreter": shutil.which("python") or "",
+    }
+
+
 def _candidate_recipes(repo_path: str) -> Iterable[TestRecipe]:
-    """Yield conservative candidates with Guardian's interpreter first."""
+    """Yield task-aware candidates without conflating task and Guardian envs."""
 
     seen = set()
 
@@ -67,6 +84,13 @@ def _candidate_recipes(repo_path: str) -> Iterable[TestRecipe]:
             return None
         seen.add(parts)
         return TestRecipe(parts, source)
+
+    diagnostics = interpreter_diagnostics()
+    task_python = diagnostics["task_interpreter"]
+    if task_python and Path(task_python).is_file() and os.access(task_python, os.X_OK):
+        first = emit((task_python, "-m", "pytest"), "task-virtualenv")
+        if first:
+            yield first
 
     first = emit((sys.executable, "-m", "pytest"), "guardian-interpreter")
     if first:
@@ -143,12 +167,14 @@ def run_prelude(
 ) -> PreludeResult:
     """Check the disposable root and select a validated pytest recipe."""
 
+    diagnostics = interpreter_diagnostics()
     root = Path(sandbox.repo_path)
     if not root.is_dir():
         return PreludeResult(
             True,
             "disposable snapshot is not materialized",
             capabilities={"source": False, "python_probe": False, "pytest": False},
+            diagnostics=diagnostics,
         )
     try:
         health_dir = root / ".guardian" / "tmp"
@@ -161,14 +187,14 @@ def run_prelude(
             True,
             f"disposable snapshot is not writable: {exc}",
             capabilities={"source": True, "python_probe": False, "pytest": False},
+            diagnostics=diagnostics,
         )
 
-    candidates = []
+    candidates = list(_candidate_recipes(sandbox.repo_path))
     identity = repo_identity or sandbox.repo_path
     cached = _load_cached_recipe(memory_store, identity, commit)
     if cached is not None:
         candidates.append(cached)
-    candidates.extend(_candidate_recipes(sandbox.repo_path))
 
     failures = []
     seen = set()
@@ -179,11 +205,14 @@ def run_prelude(
         valid, reason = validate_recipe(recipe, sandbox, timeout=timeout)
         if valid:
             _save_recipe(memory_store, identity, commit, recipe)
+            diagnostics["selected_test_interpreter"] = recipe.command_prefix[0]
+            diagnostics["selected_recipe_source"] = recipe.source
             return PreludeResult(
                 False,
                 "",
                 recipe,
                 {"source": True, "python_probe": True, "pytest": True},
+                diagnostics,
             )
         failures.append(f"{' '.join(recipe.command_prefix)}: {reason}")
     detail = "; ".join(failures) if failures else "no Python test recipe candidates"
@@ -195,4 +224,5 @@ def run_prelude(
         detail,
         None,
         {"source": True, "python_probe": True, "pytest": False},
+        diagnostics,
     )

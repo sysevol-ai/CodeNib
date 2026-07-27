@@ -188,6 +188,13 @@ def _find_result_path(stdout: str, jobs_dir: Path, started_at: float) -> Path | 
 def _common_mounts(args: argparse.Namespace, logs_dir: Path) -> list[dict[str, str]]:
     return [
         {"type": "bind", "source": str(logs_dir), "target": "/logs/agent"},
+        {
+            "type": "bind",
+            "source": str(
+                args.codeminer_root / "deepsweguardian" / "task_venv_profile.sh"
+            ),
+            "target": "/etc/profile.d/zz-deepswe-task-venv.sh",
+        },
     ]
 
 
@@ -195,9 +202,8 @@ def _guardian_mounts(
     args: argparse.Namespace,
     logs_dir: Path,
 ) -> list[dict[str, str]]:
-    return [
+    return _common_mounts(args, logs_dir) + [
         {"type": "bind", "source": str(args.codeminer_root), "target": "/codeminer"},
-        {"type": "bind", "source": str(logs_dir), "target": "/logs/agent"},
         {"type": "bind", "source": str(args.conda_env), "target": "/opt/codeminer-env"},
         {
             "type": "bind",

@@ -257,6 +257,8 @@ def test_source_grounded_static_verdict_needs_no_pytest(tmp_path):
     assert result.evidence_status == "source"
     assert result.degraded is True
     assert result.capabilities["pytest"] is False
+    assert result.environment_diagnostics["guardian_interpreter"]
+    assert "task_interpreter" in result.environment_diagnostics
     assert result.verdict == "confirmed"
     assert result.cites == ["read"]
 
