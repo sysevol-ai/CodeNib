@@ -372,6 +372,53 @@ def _assert_mcp(
     asyncio.run(_assert_mcp_async(root, repo, executable=executable, env=env))
 
 
+def _assert_stale_snapshot_rejected(
+    root: Path,
+    repo: Path,
+    *,
+    executable: str,
+    env: dict[str, str],
+) -> None:
+    """Advance the checkout and prove that the installed Wiki rejects the index."""
+
+    source_path = repo / "calculator.py"
+    source_path.write_text(
+        source_path.read_text(encoding="utf-8") + "\ndef release_marker() -> str:\n"
+        '    return "new checkout"\n',
+        encoding="utf-8",
+    )
+    _run(["git", "add", "calculator.py"], cwd=repo, env=env)
+    _run(["git", "commit", "--quiet", "-m", "advance fixture"], cwd=repo, env=env)
+
+    missing_frontend = root / "intentionally-missing-frontend"
+    command = [
+        executable,
+        "wiki",
+        str(repo),
+        "--no-index",
+        "--no-open",
+        "--frontend-dir",
+        str(missing_frontend),
+        "--no-install-frontend",
+    ]
+    print("+", " ".join(command), flush=True)
+    result = subprocess.run(
+        command,
+        cwd=root,
+        env=env,
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    expected = "repository checkout does not match the indexed snapshot"
+    if result.returncode != 2 or expected not in result.stderr:
+        raise RuntimeError(
+            "installed Wiki accepted a stale repository snapshot "
+            f"(status {result.returncode}, stderr={result.stderr!r})"
+        )
+
+
 def smoke(root: Path, *, executable: str = "codenib") -> None:
     root.mkdir(parents=True, exist_ok=True)
     repo = _fixture_repository(root)
@@ -398,6 +445,12 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
         raise RuntimeError(f"indexing modified the target repository: {status!r}")
     _assert_wiki(root, repo, executable=executable, env=env)
     _assert_mcp(root, repo, executable=executable, env=env)
+    _assert_stale_snapshot_rejected(
+        root,
+        repo,
+        executable=executable,
+        env=env,
+    )
     print("Installed Wiki and MCP service smoke passed")
 
 
