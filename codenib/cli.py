@@ -314,16 +314,19 @@ def _run_wiki(args: argparse.Namespace) -> int:
     from .web.launcher import launch_local_wiki
     from .web.local import prepare_local_wiki
 
-    local = prepare_local_wiki(
-        repo_path,
-        manifest_path,
-        frontend_port=args.port,
-        agent_wiki=args.agent_wiki,
-        model=args.model,
-        api_base=args.api_base,
-        api_key_env=args.api_key_env,
-        model_options=_model_options_for_args(args),
-    )
+    try:
+        local = prepare_local_wiki(
+            repo_path,
+            manifest_path,
+            frontend_port=args.port,
+            agent_wiki=args.agent_wiki,
+            model=args.model,
+            api_base=args.api_base,
+            api_key_env=args.api_key_env,
+            model_options=_model_options_for_args(args),
+        )
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
     try:
         return launch_local_wiki(
             local,

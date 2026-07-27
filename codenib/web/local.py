@@ -47,6 +47,31 @@ def _origin_url(repo_path: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def _checkout_commit(repo_path: Path) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(repo_path), "rev-parse", "HEAD"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _validate_checkout_identity(repo_path: Path, manifest: RepoManifest) -> None:
+    expected = (manifest.commit or "").strip()
+    actual = _checkout_commit(repo_path)
+    if not expected or not actual:
+        return
+    if actual.startswith(expected) or expected.startswith(actual):
+        return
+    raise ValueError(
+        "repository checkout does not match the indexed snapshot: "
+        f"HEAD is {actual[:12]}, manifest is {expected[:12]}. "
+        "Rebuild the index or check out the manifest commit before starting "
+        "the Wiki."
+    )
+
+
 def _repository_slug(repo_path: Path) -> str:
     origin = _origin_url(repo_path)
     if origin:
@@ -74,6 +99,7 @@ def prepare_local_wiki(
     repo_path = repo_path.expanduser().resolve()
     manifest_path = manifest_path.expanduser().resolve()
     manifest = RepoManifest.load(str(manifest_path))
+    _validate_checkout_identity(repo_path, manifest)
 
     data_dir = manifest_path.parent / "wiki"
     data_dir.mkdir(parents=True, exist_ok=True)

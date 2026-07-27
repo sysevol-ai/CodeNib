@@ -366,6 +366,35 @@ def test_prepare_local_wiki_writes_single_repo_registry(
     assert local.repo_id == tmp_path.name.lower()
 
 
+def test_prepare_local_wiki_rejects_mismatched_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import RepoManifest
+
+    manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
+    manifest_path.parent.mkdir()
+    RepoManifest(
+        repo_path=str(tmp_path),
+        commit="a" * 40,
+        languages=["python"],
+    ).save(str(manifest_path))
+    monkeypatch.setattr(
+        "codenib.web.local._checkout_commit",
+        lambda _repo_path: "b" * 40,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="repository checkout does not match the indexed snapshot",
+    ):
+        prepare_local_wiki(
+            tmp_path,
+            manifest_path,
+            frontend_port=3000,
+        )
+
+
 def test_prepare_local_wiki_uses_github_origin_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
