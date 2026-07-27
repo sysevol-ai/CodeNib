@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Iterator
 
-REPOSITORY_FILTER_POLICY_VERSION = 1
+REPOSITORY_FILTER_POLICY_VERSION = 2
 
 DEFAULT_IGNORED_DIRS = frozenset(
     {
@@ -43,7 +43,11 @@ DEFAULT_IGNORED_DIRS = frozenset(
 def default_exclude_patterns() -> list[str]:
     """Return backend-neutral glob patterns for generated or vendored trees."""
 
-    return [f"{name}/**" for name in sorted(DEFAULT_IGNORED_DIRS)]
+    return [
+        pattern
+        for name in sorted(DEFAULT_IGNORED_DIRS)
+        for pattern in (f"{name}/**", f"**/{name}/**")
+    ]
 
 
 def walk_repository_files(root: str | Path) -> Iterator[Path]:

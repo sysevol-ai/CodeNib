@@ -307,8 +307,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
     _PATCHED_TSCONFIG_NAME = ".tsconfig.scip.json"
 
     def _ensure_allow_js(self) -> Optional[Path]:
-        """Create a patched tsconfig that includes ``allowJs: true`` so that
-        scip-typescript indexes JavaScript source files as well.
+        """Create a temporary tsconfig with JS and repository-filter settings.
 
         The patched config is written to ``.tsconfig.scip.json`` in the
         project root — the original ``tsconfig.json`` is never modified.
@@ -393,6 +392,27 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     "Broadened tsconfig include with %d JS patterns (e.g. %s)",
                     len(extra),
                     extra[0],
+                )
+
+        # 3. Apply the shared repository policy before scip-typescript scans
+        # source. Post-decode filtering keeps graph semantics correct, but it
+        # cannot recover time spent indexing generated or vendored trees.
+        exclude = config.get("exclude")
+        if exclude is None or isinstance(exclude, list):
+            existing_excludes = [
+                str(pattern)
+                for pattern in (exclude or [])
+                if isinstance(pattern, str) and pattern.strip()
+            ]
+            merged_excludes = list(
+                dict.fromkeys([*existing_excludes, *self.exclude_patterns])
+            )
+            if merged_excludes != existing_excludes:
+                config["exclude"] = merged_excludes
+                needs_patch = True
+                logger.info(
+                    "Added %d repository exclusion patterns to temporary tsconfig",
+                    len(merged_excludes) - len(existing_excludes),
                 )
 
         if not needs_patch and not created_from_jsconfig:
