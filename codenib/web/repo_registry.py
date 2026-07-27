@@ -385,6 +385,7 @@ class RepoRegistry:
             max_tokens=self._config.max_tokens,
             api_base=self._config.model_api_base,
             api_key=self._config.model_api_key,
+            extra_kwargs=self._config.model_options,
         )
 
     def _load_repo_views(self, bundle: RepoBundle) -> None:

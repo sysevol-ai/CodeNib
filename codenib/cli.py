@@ -240,12 +240,50 @@ def _run_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def _model_options_for_args(
+    args: argparse.Namespace,
+    *,
+    include_wiki_environment: bool = False,
+) -> dict[str, object]:
+    """Resolve provider options from environment and repeatable CLI flags."""
+
+    from .llm.options import (
+        merge_model_options,
+        parse_model_option_assignments,
+        parse_model_options_json,
+    )
+
+    try:
+        environment = parse_model_options_json(
+            os.environ.get("CODENIB_DEMO_MODEL_OPTIONS"),
+            source="CODENIB_DEMO_MODEL_OPTIONS",
+        )
+        wiki_environment = {}
+        if include_wiki_environment:
+            wiki_environment = parse_model_options_json(
+                os.environ.get("CODENIB_DEMO_WIKI_MODEL_OPTIONS"),
+                source="CODENIB_DEMO_WIKI_MODEL_OPTIONS",
+            )
+        command_line = parse_model_option_assignments(
+            getattr(args, "model_option", None)
+        )
+        return merge_model_options(environment, wiki_environment, command_line)
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+
+
 def _run_wiki(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
     views = _selected_views(args.preset, args.view)
     _check_view_dependencies(views)
-    if args.agent_wiki or args.model or args.api_base or args.api_key_env:
+    if (
+        args.agent_wiki
+        or args.model
+        or args.api_base
+        or args.api_key_env
+        or args.model_option
+    ):
         _require_modules(
             ("litellm",),
             extra="agent",
@@ -284,6 +322,7 @@ def _run_wiki(args: argparse.Namespace) -> int:
         model=args.model,
         api_base=args.api_base,
         api_key_env=args.api_key_env,
+        model_options=_model_options_for_args(args),
     )
     try:
         return launch_local_wiki(
@@ -368,6 +407,13 @@ def _doctor_model_config(
         )
     if not _check_module("litellm"):
         return ("Model configuration", False, f"{model}; LiteLLM is missing")
+    options = _model_options_for_args(
+        args,
+        include_wiki_environment=(
+            not getattr(args, "model", None)
+            and bool(os.environ.get("CODENIB_DEMO_WIKI_MODEL"))
+        ),
+    )
     try:
         from .llm import litellm_chat
 
@@ -383,6 +429,19 @@ def _doctor_model_config(
     ok = bool(result.get("keys_in_environment")) and not missing
     endpoint = f"; endpoint={api_base}" if api_base else ""
     detail = f"{model}{endpoint}"
+    try:
+        _resolved_model, provider, _dynamic_key, _dynamic_base = (
+            litellm_chat.litellm.get_llm_provider(
+                model=model,
+                api_base=api_base,
+                api_key=api_key,
+            )
+        )
+        detail += f"; provider={provider}"
+    except Exception:  # provider discovery is advisory for custom gateways
+        detail += "; provider=unresolved"
+    if options:
+        detail += "; options=" + ",".join(sorted(options))
     if missing:
         detail += "; missing " + ", ".join(str(key) for key in missing)
     return ("Model configuration", ok, detail)
@@ -539,6 +598,13 @@ def _probe_doctor_model(args: argparse.Namespace) -> tuple[bool, str]:
         else os.environ.get("CODENIB_DEMO_WIKI_API_KEY")
         or os.environ.get("CODENIB_DEMO_API_KEY")
     )
+    options = _model_options_for_args(
+        args,
+        include_wiki_environment=(
+            not getattr(args, "model", None)
+            and bool(os.environ.get("CODENIB_DEMO_WIKI_MODEL"))
+        ),
+    )
     try:
         from .llm.litellm_chat import LiteLLMChat, RetryConfig
 
@@ -548,6 +614,7 @@ def _probe_doctor_model(args: argparse.Namespace) -> tuple[bool, str]:
             max_tokens=8,
             api_base=api_base,
             api_key=api_key,
+            extra_kwargs=options,
             retry=RetryConfig(max_retries=0),
         ).complete(
             [{"role": "user", "content": "Reply with OK."}],
@@ -649,6 +716,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--api-key-env",
         help="name of the environment variable containing the model API key",
     )
+    wiki_parser.add_argument(
+        "--model-option",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "provider-specific LiteLLM option; repeat as needed and use dotted "
+            "keys for nested values"
+        ),
+    )
     wiki_parser.add_argument("--host", default="127.0.0.1")
     wiki_parser.add_argument("--port", type=int, default=3000)
     wiki_parser.add_argument("--api-host", default="127.0.0.1")
@@ -705,6 +782,15 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument(
         "--api-key-env",
         help="name of the environment variable containing the model API key",
+    )
+    doctor_parser.add_argument(
+        "--model-option",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "provider-specific LiteLLM option to validate or probe; repeat as " "needed"
+        ),
     )
     doctor_parser.add_argument(
         "--probe-model",

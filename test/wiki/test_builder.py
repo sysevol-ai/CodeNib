@@ -228,10 +228,11 @@ def test_architecture_reports_area_facts_and_source_citations(repo_dir):
 
 # -- Critique #8: LLM-authored content layer ---------------------------------
 
-from codenib.wiki.narrator import Narrator, _no_thinking_kwargs  # noqa: E402
+from codenib.llm.litellm_chat import _no_thinking_kwargs  # noqa: E402
+from codenib.wiki.narrator import Narrator  # noqa: E402
 
 
-def test_narrator_gemini_25_uses_litellm_thinking_zero_budget():
+def test_shared_litellm_adapter_disables_gemini_25_thinking():
     assert _no_thinking_kwargs("vertex_ai/gemini-2.5-flash") == {
         "thinking": {"type": "disabled", "budget_tokens": 0}
     }

@@ -110,11 +110,22 @@ class TestIsTransientError:
 
 
 class TestCompletionWithRetry:
+    def test_chat_rejects_extra_kwargs_that_replace_managed_fields(self):
+        with pytest.raises(ValueError, match="cannot override.*model"):
+            LiteLLMChat(
+                model="openai/local",
+                extra_kwargs={"model": "anthropic/other"},
+            )
+
     def test_complete_returns_stripped_text_and_forwards_endpoint(self):
         chat = LiteLLMChat(
             model="openai/local",
             api_base="http://localhost:4000/v1",
             api_key="secret",
+            extra_kwargs={
+                "api_version": "2025-01-01",
+                "extra_body": {"reasoning": {"enabled": False}},
+            },
             retry=RetryConfig(max_retries=0),
         )
         with patch(
@@ -128,6 +139,8 @@ class TestCompletionWithRetry:
         assert kwargs["api_base"] == "http://localhost:4000/v1"
         assert kwargs["api_key"] == "secret"
         assert kwargs["max_tokens"] == 12
+        assert kwargs["api_version"] == "2025-01-01"
+        assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
 
     def test_cache_identity_excludes_secret_but_tracks_endpoint(self):
         first = LiteLLMChat(
@@ -145,9 +158,20 @@ class TestCompletionWithRetry:
             api_base="http://two/v1",
             api_key="first-secret",
         )
+        configured = LiteLLMChat(
+            model="openai/local",
+            api_base="http://one/v1",
+            extra_kwargs={"api_version": "2025-01-01"},
+        )
+        reconfigured = LiteLLMChat(
+            model="openai/local",
+            api_base="http://one/v1",
+            extra_kwargs={"api_version": "2026-01-01"},
+        )
 
         assert first.cache_identity == rotated.cache_identity
         assert first.cache_identity != moved.cache_identity
+        assert configured.cache_identity != reconfigured.cache_identity
         assert "secret" not in first.cache_identity
 
     def test_transient_then_success_is_retried(self):

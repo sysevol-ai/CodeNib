@@ -174,6 +174,16 @@ def test_load_config_from_yaml(tmp_path):
         "wiki_model: wiki-model\n"
         "wiki_api_base: http://wiki.example/v1\n"
         "model_api_base: http://ask.example/v1\n"
+        "model_options:\n"
+        "  timeout: 20\n"
+        "  extra_body:\n"
+        "    reasoning:\n"
+        "      enabled: true\n"
+        "wiki_model_options:\n"
+        "  timeout: 45\n"
+        "  extra_body:\n"
+        "    reasoning:\n"
+        "      enabled: false\n"
         "mode: hybrid\n"
         "embedding_provider: openai\n"
         "embedding_base_url: http://embed.example/v1\n"
@@ -187,6 +197,11 @@ def test_load_config_from_yaml(tmp_path):
     assert cfg.wiki_generation_model == "wiki-model"
     assert cfg.wiki_generation_api_base == "http://wiki.example/v1"
     assert cfg.model_api_base == "http://ask.example/v1"
+    assert cfg.model_options["timeout"] == 20
+    assert cfg.wiki_generation_options == {
+        "timeout": 45,
+        "extra_body": {"reasoning": {"enabled": False}},
+    }
     assert cfg.mode == "hybrid"
     assert cfg.embedding_provider == "openai"
     assert cfg.embedding_base_url == "http://embed.example/v1"
@@ -208,6 +223,14 @@ def test_backend_environment_overrides_yaml(tmp_path, monkeypatch):
     monkeypatch.setenv("CODENIB_DEMO_WIKI_API_BASE", "http://wiki.local/v1")
     monkeypatch.setenv("CODENIB_DEMO_WIKI_API_KEY", "wiki-secret")
     monkeypatch.setenv("CODENIB_DEMO_API_BASE", "http://ask.local/v1")
+    monkeypatch.setenv(
+        "CODENIB_DEMO_MODEL_OPTIONS",
+        '{"timeout":30,"extra_body":{"reasoning":{"enabled":true}}}',
+    )
+    monkeypatch.setenv(
+        "CODENIB_DEMO_WIKI_MODEL_OPTIONS",
+        '{"extra_body":{"reasoning":{"enabled":false}}}',
+    )
     monkeypatch.setenv("CODENIB_EMBEDDING_PROVIDER", "OPENAI")
     monkeypatch.setenv("CODENIB_EMBEDDING_BASE_URL", "http://embed.local/v1")
 
@@ -218,6 +241,14 @@ def test_backend_environment_overrides_yaml(tmp_path, monkeypatch):
     assert cfg.wiki_generation_api_base == "http://wiki.local/v1"
     assert cfg.wiki_generation_api_key == "wiki-secret"
     assert cfg.model_api_base == "http://ask.local/v1"
+    assert cfg.model_options == {
+        "timeout": 30,
+        "extra_body": {"reasoning": {"enabled": True}},
+    }
+    assert cfg.wiki_generation_options == {
+        "timeout": 30,
+        "extra_body": {"reasoning": {"enabled": False}},
+    }
     assert cfg.embedding_provider == "openai"
     assert cfg.embedding_base_url == "http://embed.local/v1"
 
@@ -293,6 +324,7 @@ def test_ask_model_receives_its_own_endpoint(monkeypatch):
             model_api_base="http://ask.local/v1",
             model_api_key="ask-secret",
             max_tokens=2048,
+            model_options={"api_version": "2025-01-01"},
         )
     )
 
@@ -304,7 +336,51 @@ def test_ask_model_receives_its_own_endpoint(monkeypatch):
         "max_tokens": 2048,
         "api_base": "http://ask.local/v1",
         "api_key": "ask-secret",
+        "extra_kwargs": {"api_version": "2025-01-01"},
     }
+
+
+@pytest.mark.parametrize(
+    ("model", "api_base", "options"),
+    [
+        ("anthropic/claude-sonnet-4-5", None, {"timeout": 60}),
+        (
+            "vertex_ai/gemini-2.5-flash",
+            None,
+            {"vertex_project": "project", "vertex_location": "us-central1"},
+        ),
+        ("ollama/qwen3", "http://localhost:11434", {}),
+        (
+            "openrouter/qwen/qwen3-coder",
+            None,
+            {"extra_headers": {"HTTP-Referer": "https://codenib.ai"}},
+        ),
+    ],
+)
+def test_ask_model_preserves_litellm_provider_configuration(
+    monkeypatch,
+    model,
+    api_base,
+    options,
+):
+    captured = {}
+
+    def fake_chat(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr("codenib.web.repo_registry._ask_llm_type", lambda: fake_chat)
+    RepoRegistry(
+        QAConfig(
+            model=model,
+            model_api_base=api_base,
+            model_options=options,
+        )
+    )._create_ask_llm()
+
+    assert captured["model"] == model
+    assert captured["api_base"] == api_base
+    assert captured["extra_kwargs"] == options
 
 
 def test_registry_round_trip(tmp_path):

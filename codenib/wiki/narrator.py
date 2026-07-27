@@ -21,6 +21,8 @@ import logging
 import os
 from typing import Any, List, Optional
 
+from ..llm.options import validate_model_options
+
 logger = logging.getLogger(__name__)
 
 # Keep prose terse and on-brand; the structural facts come from the builder.
@@ -35,21 +37,6 @@ _SYSTEM = (
 _PROMPT_VERSION = "2"
 
 
-def _no_thinking_kwargs(model: str) -> dict:
-    """litellm kwargs that disable hidden reasoning for thinking models.
-
-    Gemini 2.5 models spend the ``max_tokens`` budget on hidden reasoning
-    tokens first; with the small prose budgets here that leaves ``content``
-    empty (``finish_reason="length"``). LiteLLM maps Anthropic-style
-    ``thinking`` to Gemini's ``thinkingConfig``; a zero budget turns thinking off
-    so the budget goes to the answer. No-op for other providers.
-    """
-    m = model.lower()
-    if "gemini-2.5" in m or "gemini-2-5" in m:
-        return {"thinking": {"type": "disabled", "budget_tokens": 0}}
-    return {}
-
-
 class Narrator:
     """Cached, fail-soft LLM prose generator."""
 
@@ -61,6 +48,7 @@ class Narrator:
         llm: Optional[Any] = None,
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
+        model_options: Optional[dict[str, Any]] = None,
     ) -> None:
         self.model = (
             model
@@ -71,6 +59,10 @@ class Narrator:
         self._llm = llm
         self.api_base = api_base
         self.api_key = api_key
+        self.model_options = validate_model_options(
+            model_options,
+            source="Narrator.model_options",
+        )
         self.cache_dir = cache_dir
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
@@ -104,6 +96,7 @@ class Narrator:
         llm_identity = getattr(self._llm, "cache_identity", "")
         identity = (
             f"{_PROMPT_VERSION}\0{self.model}\0{self.api_base or ''}\0"
+            f"{json.dumps(self.model_options, sort_keys=True)}\0"
             f"{llm_identity}\0{key}"
         )
         h = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:20]
@@ -142,6 +135,7 @@ class Narrator:
                 max_tokens=500,
                 api_base=self.api_base,
                 api_key=self.api_key,
+                extra_kwargs=self.model_options,
             )
         return self._llm
 

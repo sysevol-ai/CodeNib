@@ -37,6 +37,10 @@ def test_doctor_parser_accepts_model_backend_options() -> None:
             "http://localhost:4000/v1",
             "--api-key-env",
             "LOCAL_LLM_KEY",
+            "--model-option",
+            "api_version=2025-01-01",
+            "--model-option",
+            "extra_body.reasoning.enabled=false",
             "--probe-model",
         ]
     )
@@ -44,6 +48,10 @@ def test_doctor_parser_accepts_model_backend_options() -> None:
     assert args.model == "openai/local-model"
     assert args.api_base == "http://localhost:4000/v1"
     assert args.api_key_env == "LOCAL_LLM_KEY"
+    assert args.model_option == [
+        "api_version=2025-01-01",
+        "extra_body.reasoning.enabled=false",
+    ]
     assert args.probe_model is True
 
 
@@ -92,6 +100,41 @@ def test_doctor_model_config_uses_litellm_validation(
         "model": "openai/local-model",
         "api_base": "http://localhost:4000/v1",
         "api_key": "secret",
+    }
+
+
+def test_cli_model_options_layer_environment_and_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "CODENIB_DEMO_MODEL_OPTIONS",
+        '{"timeout":20,"extra_body":{"reasoning":{"enabled":true}}}',
+    )
+    monkeypatch.setenv(
+        "CODENIB_DEMO_WIKI_MODEL_OPTIONS",
+        '{"timeout":90,"extra_body":{"wiki_only":true}}',
+    )
+    args = SimpleNamespace(
+        model="openai/local-model",
+        model_option=[
+            "timeout=45",
+            "extra_body.reasoning.enabled=false",
+        ],
+    )
+
+    assert cli._model_options_for_args(args) == {
+        "timeout": 45,
+        "extra_body": {"reasoning": {"enabled": False}},
+    }
+    assert cli._model_options_for_args(
+        args,
+        include_wiki_environment=True,
+    ) == {
+        "timeout": 45,
+        "extra_body": {
+            "reasoning": {"enabled": False},
+            "wiki_only": True,
+        },
     }
 
 
@@ -384,14 +427,30 @@ def test_prepare_generated_wiki_keeps_secret_out_of_config(
         model="openai/local-model",
         api_base="http://localhost:4000/v1",
         api_key_env="LOCAL_LLM_KEY",
+        model_options={
+            "api_version": "2025-01-01",
+            "extra_body": {"reasoning": {"enabled": False}},
+        },
     )
 
     config = yaml.safe_load(local.config_path.read_text())
     assert config["wiki_agent"] is True
     assert config["model"] == "openai/local-model"
     assert config["model_api_base"] == "http://localhost:4000/v1"
+    assert config["model_options"] == {
+        "api_version": "2025-01-01",
+        "extra_body": {"reasoning": {"enabled": False}},
+    }
     assert "key" not in local.config_path.read_text().lower()
-    assert local.runtime_env == {"CODENIB_DEMO_API_KEY": "super-secret"}
+    assert local.runtime_env == {
+        "CODENIB_DEMO_MODEL": "openai/local-model",
+        "CODENIB_DEMO_API_BASE": "http://localhost:4000/v1",
+        "CODENIB_DEMO_MODEL_OPTIONS": (
+            '{"api_version":"2025-01-01","extra_body":'
+            '{"reasoning":{"enabled":false}}}'
+        ),
+        "CODENIB_DEMO_API_KEY": "super-secret",
+    }
 
 
 def test_installed_package_frontend_is_prebuilt(

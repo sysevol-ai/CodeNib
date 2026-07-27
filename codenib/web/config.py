@@ -17,10 +17,15 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ..llm.options import (
+    merge_model_options,
+    parse_model_options_json,
+    validate_model_options,
+)
 from ..paths import QA_DATA_DIRNAME, REPO_INDEX_DIRNAME
 
 DEFAULT_CONFIG_PATH = "qa_config.yaml"
@@ -60,6 +65,12 @@ class QAConfig:
     # models (for example Vertex or Anthropic) normally leave these unset.
     model_api_base: Optional[str] = None
     model_api_key: Optional[str] = field(default=None, repr=False)
+    # Provider-specific LiteLLM completion options. Core fields such as model,
+    # endpoint, credentials, token budget, and tools remain managed separately.
+    model_options: Dict[str, Any] = field(default_factory=dict)
+    # Wiki generation inherits ``model_options`` and may override individual
+    # values (including nested ``extra_body`` fields).
+    wiki_model_options: Dict[str, Any] = field(default_factory=dict)
     # "sparse" (BM25 only) or "hybrid" (BM25 + vector embeddings).
     mode: str = "sparse"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
@@ -114,6 +125,16 @@ class QAConfig:
     )
     per_language: int = 1
 
+    def __post_init__(self) -> None:
+        self.model_options = validate_model_options(
+            self.model_options,
+            source="model_options",
+        )
+        self.wiki_model_options = validate_model_options(
+            self.wiki_model_options,
+            source="wiki_model_options",
+        )
+
     def index_types(self) -> List[str]:
         return ["bm25", "vector"] if self.mode == "hybrid" else ["bm25"]
 
@@ -141,6 +162,12 @@ class QAConfig:
 
         return self.wiki_api_key or self.model_api_key
 
+    @property
+    def wiki_generation_options(self) -> Dict[str, Any]:
+        """Provider options for Wiki calls, layered over the Ask defaults."""
+
+        return merge_model_options(self.model_options, self.wiki_model_options)
+
 
 def load_config(path: Optional[str] = None) -> QAConfig:
     """Load demo config from YAML, applying env overrides."""
@@ -158,6 +185,14 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         wiki_api_key=data.get("wiki_api_key"),
         model_api_base=data.get("model_api_base"),
         model_api_key=data.get("model_api_key"),
+        model_options=validate_model_options(
+            data.get("model_options"),
+            source="model_options",
+        ),
+        wiki_model_options=validate_model_options(
+            data.get("wiki_model_options"),
+            source="wiki_model_options",
+        ),
         mode=data.get("mode", defaults.mode),
         embedding_model=data.get("embedding_model", defaults.embedding_model),
         embedding_dimension=data.get(
@@ -204,6 +239,22 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.model_api_base = os.environ["CODENIB_DEMO_API_BASE"]
     if os.environ.get("CODENIB_DEMO_API_KEY"):
         cfg.model_api_key = os.environ["CODENIB_DEMO_API_KEY"]
+    if os.environ.get("CODENIB_DEMO_MODEL_OPTIONS"):
+        cfg.model_options = merge_model_options(
+            cfg.model_options,
+            parse_model_options_json(
+                os.environ["CODENIB_DEMO_MODEL_OPTIONS"],
+                source="CODENIB_DEMO_MODEL_OPTIONS",
+            ),
+        )
+    if os.environ.get("CODENIB_DEMO_WIKI_MODEL_OPTIONS"):
+        cfg.wiki_model_options = merge_model_options(
+            cfg.wiki_model_options,
+            parse_model_options_json(
+                os.environ["CODENIB_DEMO_WIKI_MODEL_OPTIONS"],
+                source="CODENIB_DEMO_WIKI_MODEL_OPTIONS",
+            ),
+        )
     if os.environ.get("CODENIB_DEMO_DATA_DIR"):
         cfg.data_dir = os.environ["CODENIB_DEMO_DATA_DIR"]
     if os.environ.get("CODENIB_DEMO_PREBUILT_DIR"):

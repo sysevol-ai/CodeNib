@@ -85,6 +85,10 @@ def test_wiki_llm_receives_provider_configuration(monkeypatch):
         wiki_generation_model="openai/local-model",
         wiki_generation_api_base="http://localhost:4000/v1",
         wiki_generation_api_key="secret",
+        wiki_generation_options={
+            "api_version": "2025-01-01",
+            "extra_body": {"reasoning": {"enabled": False}},
+        },
     )
 
     web_app._wiki_llm(config, max_tokens=123)
@@ -95,4 +99,8 @@ def test_wiki_llm_receives_provider_configuration(monkeypatch):
         "max_tokens": 123,
         "api_base": "http://localhost:4000/v1",
         "api_key": "secret",
+        "extra_kwargs": {
+            "api_version": "2025-01-01",
+            "extra_body": {"reasoning": {"enabled": False}},
+        },
     }

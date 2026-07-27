@@ -121,6 +121,35 @@ codenib wiki . --generate \
   --api-key-env LOCAL_LLM_KEY
 ```
 
+Provider-native LiteLLM routes use their normal model prefix and credentials:
+
+```bash
+export ANTHROPIC_API_KEY=...
+codenib wiki . --generate --model anthropic/claude-sonnet-4-5
+
+gcloud auth application-default login
+codenib wiki . --generate \
+  --model vertex_ai/gemini-2.5-flash \
+  --model-option vertex_project=my-project \
+  --model-option vertex_location=us-central1
+```
+
+Repeat `--model-option KEY=VALUE` for provider-specific LiteLLM parameters.
+Values are JSON-decoded and dotted keys create nested payloads:
+
+```bash
+codenib wiki . --generate \
+  --model openai/qwen3 \
+  --api-base http://127.0.0.1:8000/v1 \
+  --model-option extra_body.chat_template_kwargs.enable_thinking=false
+```
+
+CodeNib manages `model`, credentials, token budgets, messages, and tools;
+those fields cannot be overridden through `--model-option`. Keep secrets in
+provider environment variables or `--api-key-env`, not option values. Run the
+same model arguments through `codenib doctor --probe-model` before generating
+pages.
+
 Provider and model configuration is documented in
 [Web UI](web_demo.md). Search, source links, and deterministic pages remain
 available without this extra.

@@ -43,6 +43,7 @@ with warnings.catch_warnings():
 from pydantic import BaseModel
 
 from ..log_utils import get_logger
+from .options import validate_model_options
 
 logger = get_logger(__name__)
 
@@ -247,6 +248,12 @@ class LiteLLMChat:
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     retry: RetryConfig = field(default_factory=RetryConfig)
 
+    def __post_init__(self) -> None:
+        self.extra_kwargs = validate_model_options(
+            self.extra_kwargs,
+            source="LiteLLMChat.extra_kwargs",
+        )
+
     def invoke(self, messages: List[ChatMessage]) -> str:
         """Send messages and return the assistant content string."""
         response = self._call(messages)
@@ -269,9 +276,9 @@ class LiteLLMChat:
         payload = {
             "model": self.model,
             "api_base": self.api_base or "",
-            "extra_keys": sorted(self.extra_kwargs),
+            "extra_kwargs": self.extra_kwargs,
         }
-        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
 
     def with_structured_output(self, schema: Type[BaseModel]) -> _StructuredLLM:

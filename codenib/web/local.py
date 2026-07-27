@@ -6,16 +6,19 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Mapping
 
 import yaml
 
 from ..compiler.manifest import RepoManifest
 from ..compiler.snapshot_store import normalize_repo
+from ..llm.options import validate_model_options
 from .config import RepoEntry, save_registry
 
 
@@ -65,6 +68,7 @@ def prepare_local_wiki(
     model: str | None = None,
     api_base: str | None = None,
     api_key_env: str | None = None,
+    model_options: Mapping[str, Any] | None = None,
 ) -> LocalWiki:
     """Write the registry and config consumed by the existing Wiki service."""
     repo_path = repo_path.expanduser().resolve()
@@ -110,10 +114,23 @@ def prepare_local_wiki(
         config["model"] = model
     if api_base:
         config["model_api_base"] = api_base
+    options = validate_model_options(model_options)
+    if options:
+        config["model_options"] = options
     with config_path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(config, handle, sort_keys=True)
 
     runtime_env: dict[str, str] = {}
+    if model:
+        runtime_env["CODENIB_DEMO_MODEL"] = model
+    if api_base:
+        runtime_env["CODENIB_DEMO_API_BASE"] = api_base
+    if options:
+        runtime_env["CODENIB_DEMO_MODEL_OPTIONS"] = json.dumps(
+            options,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
     if api_key_env:
         api_key = os.environ.get(api_key_env)
         if not api_key:

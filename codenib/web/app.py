@@ -51,6 +51,7 @@ def _wiki_llm(config, *, model=None, max_tokens=4096):
         max_tokens=max_tokens,
         api_base=getattr(config, "wiki_generation_api_base", None),
         api_key=getattr(config, "wiki_generation_api_key", None),
+        extra_kwargs=getattr(config, "wiki_generation_options", {}),
     )
 
 
@@ -62,6 +63,7 @@ def _wiki_narrator(config):
         enabled=None if config.wiki_agent else False,
         api_base=getattr(config, "wiki_generation_api_base", None),
         api_key=getattr(config, "wiki_generation_api_key", None),
+        model_options=getattr(config, "wiki_generation_options", {}),
     )
 
 
