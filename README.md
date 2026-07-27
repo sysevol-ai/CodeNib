@@ -6,9 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_logo.svg" alt="CodeNib" width="560">
-  <h1>Repository context, ready for agents and humans</h1>
+  <h1>Incremental repository context for coding agents</h1>
   <p>
-    Build a source-linked Wiki and reusable search indexes from any local repository.
+    Compile once. Update what changed. Serve source-linked context through agent-native tools.
   </p>
   <p>
     <a href="#quickstart">Quickstart</a>
@@ -29,10 +29,38 @@ SPDX-License-Identifier: Apache-2.0
   </p>
 </div>
 
-CodeNib compiles a repository into aligned lexical, semantic, and structural
-views, then serves source-linked context through a local Wiki, a Python API,
-and Model Context Protocol (MCP) tools. The default installation stays small:
-it can build a deterministic Wiki with BM25 search and no API key.
+CodeNib is a native repository-context compiler and serving runtime for coding
+agents. It turns a checkout into manifest-linked lexical, semantic, structural,
+and static-navigation views, updates supported views as the repository evolves,
+and serves bounded source evidence through MCP, LSP-shaped providers, Python,
+and HTTP APIs.
+
+The Wiki, Ask view, and Dependency Map are inspection clients of that same
+runtime, not the system boundary. The core implementation lives in CodeNib;
+optional model endpoints and language servers are providers rather than a host
+agent or code-Wiki framework.
+
+## Runtime Model
+
+| Layer | Native responsibility |
+|---|---|
+| Incremental compiler | Chunk source and materialize BM25, dense, graph, and navigation views; reuse or repair supported artifacts and rebuild when an update cannot be admitted |
+| View manifest | Record repository identity, source fingerprint, builder profile, capabilities, status, and artifact location independently for each view |
+| Context serving | Execute lexical, semantic, hybrid, reranked, and structural query plans while preserving repository-relative source locations |
+| Agent runtime | Expose capability-aware MCP and LSP-shaped tools, assemble bounded evidence, and return citations that agents and humans can inspect |
+
+```text
+repository change
+  -> materialize or repair affected views
+  -> publish a capability-bearing manifest
+  -> plan repository queries
+  -> deliver bounded, source-linked context
+```
+
+On a later commit, CodeNib can reuse unchanged vector content and patch
+supported graph transitions at file or symbol granularity. Unsupported,
+inconsistent, or unverified transitions fall back to a fresh build instead of
+publishing a partially updated view.
 
 ## Quickstart
 
@@ -47,7 +75,8 @@ CodeNib detects the repository languages, builds a reusable index under
 `~/.codenib/repositories`, launches the local Wiki, and opens
 [http://localhost:3000](http://localhost:3000). The wheel includes the
 production Wiki frontend, so normal use does not require Node.js or npm and
-the target repository stays untouched. Set `CODENIB_HOME` to relocate state.
+the target repository stays untouched. This command exercises the same compiler
+and serving runtime used by agents. Set `CODENIB_HOME` to relocate state.
 
 Check the environment or index without opening the Wiki:
 
@@ -89,7 +118,7 @@ consult the
 matrix and
 [SCIP setup](https://github.com/sysevol-ai/CodeNib/blob/main/docs/scip_index.md).
 
-## Connect An Agent
+## Serve An Agent
 
 Install the MCP extra, build once, and serve the same repository manifest over
 stdio:
@@ -100,8 +129,12 @@ codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```
 
-The MCP server exposes BM25, semantic, regex, Zoekt, dependency, and static
-navigation tools when their backing views are available. See
+The MCP server derives its advertised capabilities from the compiled manifest,
+so an agent can reuse repository work instead of rebuilding context through
+unbounded `grep` and `read` loops. It exposes BM25, semantic, regex, Zoekt,
+dependency, and static-navigation operations when their backing views are
+available; all results retain source locations for follow-up reads and
+citations. See
 [MCP Server](https://github.com/sysevol-ai/CodeNib/blob/main/docs/mcp.md)
 for client configuration and tool contracts.
 
@@ -109,11 +142,12 @@ for client configuration and tool contracts.
 
 | Surface | Purpose |
 |---|---|
-| Local Wiki | Browse deterministic, source-linked repository pages; optionally enable LLM-authored conceptual pages |
-| Index compiler | Build and update a manifest of independently managed repository views |
+| Incremental compiler | Build independently managed views, reuse unchanged content, repair supported transitions, and conservatively rebuild outside those boundaries |
+| Agent context runtime | Plan capability-aware retrieval and navigation, then assemble bounded source-linked evidence |
 | Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths |
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
-| MCP server | Reuse one manifest from MCP-capable coding agents |
+| MCP and LSP-shaped tools | Serve one manifest to coding agents without tying the runtime to one agent framework |
+| Local inspection | Audit the same context through Wiki pages, Ask answers, citations, and the Dependency Map |
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 
 Language support varies by surface. The generated
@@ -162,8 +196,6 @@ package, import namespace, commands, and repository use `CodeNib`. See
 [Changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md)
 &nbsp;&middot;&nbsp;
 [Contributing](https://github.com/sysevol-ai/CodeNib/blob/main/CONTRIBUTING.md)
-&nbsp;&middot;&nbsp;
-[Security](https://github.com/sysevol-ai/CodeNib/blob/main/SECURITY.md)
 &nbsp;&middot;&nbsp;
 [Citation](https://github.com/sysevol-ai/CodeNib/blob/main/CITATION.cff)
 

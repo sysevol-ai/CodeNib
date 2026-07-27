@@ -6,7 +6,6 @@ graft web
 include CHANGELOG.md
 include CITATION.cff
 include CONTRIBUTING.md
-include SECURITY.md
 prune web/.next
 prune web/node_modules
 prune web/playwright-report

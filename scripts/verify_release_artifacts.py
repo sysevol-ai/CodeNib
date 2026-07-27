@@ -117,7 +117,6 @@ def _validate_sdist(sdist: Path, name: str, version: str) -> None:
         f"{root}/CITATION.cff",
         f"{root}/LICENSE",
         f"{root}/README.md",
-        f"{root}/SECURITY.md",
         f"{root}/pyproject.toml",
         f"{root}/web/package-lock.json",
     }

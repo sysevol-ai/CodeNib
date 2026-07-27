@@ -22,7 +22,6 @@ on:
       - "LICENSE"
       - "MANIFEST.in"
       - "README.md"
-      - "SECURITY.md"
       - "pyproject.toml"
       - "setup.py"
   push:
