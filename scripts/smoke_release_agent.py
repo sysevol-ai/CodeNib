@@ -26,6 +26,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Sequence
 
+_SEARCH_SKILL_ID = "repository_search"
+
 
 def _run(
     command: Sequence[str],
@@ -140,7 +142,7 @@ def _stop_process_group(process: subprocess.Popen[Any]) -> None:
 
 
 class _FakeOpenAIHandler(BaseHTTPRequestHandler):
-    """Two-turn endpoint: request BM25 once, then answer from its result."""
+    """Grounded endpoint: request repository evidence, then answer from it."""
 
     requests: list[dict[str, Any]] = []
 
@@ -169,8 +171,11 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
                 for tool in request.get("tools") or []
                 if isinstance(tool, dict)
             }
-            if "bm25_search" not in names:
-                self.send_error(400, f"bm25_search missing from tools: {sorted(names)}")
+            if _SEARCH_SKILL_ID not in names:
+                self.send_error(
+                    400,
+                    f"{_SEARCH_SKILL_ID} missing from tools: {sorted(names)}",
+                )
                 return
             message = {
                 "role": "assistant",
@@ -180,7 +185,7 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
                         "id": "call_release_search",
                         "type": "function",
                         "function": {
-                            "name": "bm25_search",
+                            "name": _SEARCH_SKILL_ID,
                             "arguments": json.dumps(
                                 {"query": "release_signature", "top_k": 5}
                             ),
@@ -224,17 +229,22 @@ def _assert_chat_response(response: Any) -> None:
         raise RuntimeError(f"Ask returned a non-object response: {response!r}")
     if "returns the sum" not in response.get("answer", ""):
         raise RuntimeError(f"Ask returned an unexpected answer: {response!r}")
-    if response.get("total_turns") != 2:
-        raise RuntimeError(f"Ask did not complete in two turns: {response!r}")
+    if response.get("total_turns") != 3:
+        raise RuntimeError(
+            "Ask did not complete retrieval, drafting, and grounded review: "
+            f"{response!r}"
+        )
 
     calls = response.get("tool_calls") or []
     if (
         len(calls) != 1
-        or calls[0].get("skill_id") != "bm25_search"
+        or calls[0].get("skill_id") != _SEARCH_SKILL_ID
         or calls[0].get("result_count", 0) < 1
         or calls[0].get("error") is not None
     ):
-        raise RuntimeError(f"Ask did not execute grounded BM25 retrieval: {calls!r}")
+        raise RuntimeError(
+            f"Ask did not execute grounded repository retrieval: {calls!r}"
+        )
 
     citations = response.get("citations") or []
     if (
@@ -341,10 +351,21 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
                     timeout=60,
                 )
                 _assert_chat_response(response)
-                if len(_FakeOpenAIHandler.requests) != 2:
+                if len(_FakeOpenAIHandler.requests) != 3:
                     raise RuntimeError(
-                        "Ask did not make exactly one tool-selection and one "
-                        f"final-answer request: {len(_FakeOpenAIHandler.requests)}"
+                        "Ask did not make exactly one tool-selection, one draft, "
+                        "and one grounded-review request: "
+                        f"{len(_FakeOpenAIHandler.requests)}"
+                    )
+                review_messages = _FakeOpenAIHandler.requests[-1].get("messages") or []
+                if not any(
+                    message.get("role") == "user"
+                    and "audit it against the retrieved implementation"
+                    in str(message.get("content") or "")
+                    for message in review_messages
+                ):
+                    raise RuntimeError(
+                        "Ask did not audit its draft against repository evidence"
                     )
             except Exception:
                 service_log.flush()
