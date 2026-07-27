@@ -79,7 +79,10 @@ def test_outline_requires_real_source_anchors(tmp_path):
         "overview",
         "configuration",
     ]
-    assert result["pages"][0]["files"] == ["codenib/runner.py"]
+    assert result["pages"][0]["files"] == [
+        "codenib/runner.py",
+        "codenib/config.py",
+    ]
     assert result["pages"][1]["files"] == ["codenib/config.py"]
     assert result["pages"][1]["children"] == []
 
@@ -129,3 +132,49 @@ def test_overview_prefers_repository_root_readme(tmp_path):
     )
 
     assert result["pages"][0]["files"][0] == "README.md"
+
+
+def test_overview_prioritizes_product_entrypoints_over_backend_details(tmp_path):
+    files = [
+        "README.md",
+        "src/cli.py",
+        "src/compiler/index_compiler.py",
+        "src/runtime/app.py",
+        "src/api/server.py",
+        "src/wiki/builder.py",
+        "src/languages/decoder.py",
+        "tests/test_cli.py",
+    ]
+    for file in files:
+        path = tmp_path / file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"# {file}\n")
+
+    result = _validate_outline(
+        {
+            "pages": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "summary": "Repository purpose and architecture",
+                    "keywords": ["architecture", "runtime"],
+                    "files": [
+                        "src/languages/decoder.py",
+                        "tests/test_cli.py",
+                    ],
+                    "children": [],
+                }
+            ]
+        },
+        str(tmp_path),
+        symbols=[],
+        fallback_files=files[1:],
+    )
+
+    selected = result["pages"][0]["files"]
+    assert selected[0] == "README.md"
+    assert selected.index("src/cli.py") < selected.index("src/languages/decoder.py")
+    assert selected.index("src/runtime/app.py") < selected.index(
+        "src/languages/decoder.py"
+    )
+    assert "tests/test_cli.py" not in selected

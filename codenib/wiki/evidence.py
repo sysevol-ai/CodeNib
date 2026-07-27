@@ -49,13 +49,13 @@ _COMMON_CODE_TERMS = frozenset(
 _PROMOTIONAL_RE = re.compile(
     r"\b(adapt(?:s|ing)?|advanced|aids?|"
     r"allows(?: for| the system| developers| users)|"
-    r"allowing (?:developers|users)|comprehensive|crucial|dynamic(?:ally)?|"
+    r"allowing (?:for|developers|users)|comprehensive|crucial|dynamic(?:ally)?|"
     r"easy to use|easier|effectively|efficient|efficiently|"
     r"enabl(?:e|es|ing)(?: developers| users)?|"
     r"enhanc(?:e|es|ing)(?: productivity)?|essential|"
     r"facilitat(?:e|es|ing)|gain insights?|helps? users|intuitive|invaluable|"
     r"key functionalit(?:y|ies)|making it|powerful|quickly|significantly|"
-    r"sophisticated|user-friendly|versatile)\b",
+    r"optimiz(?:e|es|ing)|sophisticated|user-friendly|versatile)\b",
     re.IGNORECASE,
 )
 
@@ -271,6 +271,7 @@ def grounding_report(
             path
             for path in _PATH_RE.findall(without_fences)
             if path.lower().lstrip("./") not in known_files
+            and path.lower() not in corpus
             and not any(file.endswith("/" + path.lower()) for file in known_files)
         }
     )

@@ -147,6 +147,29 @@ def test_grounding_report_rejects_unknown_names_and_citations():
     assert report["unknown_files"] == ["src/magic.py"]
 
 
+def test_grounding_report_accepts_path_like_terms_present_in_evidence():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=8,
+            symbol="README.md",
+            kind="file",
+            content="The frontend requires Node.js when developing from source.",
+        )
+    ]
+
+    report = grounding_report(
+        "Source development uses Node.js for the frontend toolchain. [E1]",
+        evidence,
+        [],
+    )
+
+    assert report["valid"] is True
+    assert report["unknown_files"] == []
+
+
 def test_grounding_report_rejects_promotional_prose():
     evidence = [
         EvidenceItem(
@@ -162,14 +185,17 @@ def test_grounding_report_rejects_promotional_prose():
 
     report = grounding_report(
         "The powerful `Router` significantly enhances productivity for "
-        "developers working with requests. [E1]",
+        "developers while optimizing resource use, allowing for rapid "
+        "dispatch. [E1]",
         evidence,
         [],
     )
 
     assert report["valid"] is False
     assert report["promotional_phrases"] == [
+        "allowing for",
         "enhances productivity",
+        "optimizing",
         "powerful",
         "significantly",
     ]

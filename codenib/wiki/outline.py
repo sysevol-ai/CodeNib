@@ -20,6 +20,7 @@ import json
 import os
 import re
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any, Dict, List
 
 from ..log_utils import get_logger
@@ -32,6 +33,66 @@ logger = get_logger(__name__)
 _README_NAMES = ("README.md", "README.rst", "README.txt", "README", "readme.md")
 _MAX_OUTLINE_PAGES = 10
 _MAX_CHILDREN = 3
+_SOURCE_SUFFIXES = {
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cs",
+    ".go",
+    ".h",
+    ".hpp",
+    ".java",
+    ".js",
+    ".jsx",
+    ".kt",
+    ".kts",
+    ".php",
+    ".py",
+    ".rb",
+    ".rs",
+    ".scala",
+    ".swift",
+    ".ts",
+    ".tsx",
+}
+_SUPPORTING_SEGMENTS = {
+    "benchmark",
+    "benchmarks",
+    "docs",
+    "eval",
+    "evaluation",
+    "examples",
+    "fixtures",
+    "scripts",
+    "test",
+    "tests",
+}
+_OVERVIEW_ROLE_WEIGHTS = {
+    "__main__": 14,
+    "cli": 14,
+    "main": 12,
+    "app": 12,
+    "server": 12,
+    "service": 11,
+    "index_compiler": 11,
+    "compiler": 10,
+    "manifest": 10,
+    "runtime": 9,
+    "router": 9,
+    "runner": 8,
+    "orchestrator": 8,
+    "builder": 7,
+    "api": 7,
+    "config": 5,
+}
+_LOW_LEVEL_OVERVIEW_TOKENS = {
+    "decode",
+    "decoder",
+    "generated",
+    "patch",
+    "patcher",
+    "protocol",
+}
 
 
 def _read_readme(repo_dir: str, limit: int = 3500) -> str:
@@ -63,6 +124,29 @@ def _repository_structure(repo_dir: str, limit: int = 16) -> str:
     return "\n".join(
         f"- {area}: {count} files" for area, count in counts.most_common(limit)
     )
+
+
+def _overview_file_score(file: str) -> int:
+    """Rank files that explain a repository's public execution path."""
+
+    path = Path(file)
+    segments = {segment.lower() for segment in path.parts[:-1]}
+    if segments & _SUPPORTING_SEGMENTS or path.suffix.lower() not in _SOURCE_SUFFIXES:
+        return -100
+
+    stem = path.stem.lower()
+    tokens = set(re.findall(r"[a-z0-9]+", stem))
+    score = _OVERVIEW_ROLE_WEIGHTS.get(stem, 0)
+    score += max(
+        (_OVERVIEW_ROLE_WEIGHTS.get(token, 0) for token in tokens),
+        default=0,
+    )
+    score += max(0, 4 - len(path.parts))
+    if stem.startswith("_") and stem != "__main__":
+        score -= 5
+    if tokens & _LOW_LEVEL_OVERVIEW_TOKENS:
+        score -= 8
+    return score
 
 
 def _view_summary(bundle: Any) -> str:
@@ -187,6 +271,9 @@ Configuration, Testing, Extensibility / Plugins.
 - Titles are CONCEPTS, not paths (no "lib/core", no file names as titles).
 - keywords drive a code search, so make them specific symbol/feature terms.
 - Every page and child MUST name 1-4 exact files from the supplied evidence.
+- Make Overview a product mental model: purpose, user entry points, the main
+  execution/data flow, and the major subsystems. Do not elevate one language
+  backend, decoder, patcher, or private helper unless it defines the repository.
 - Omit generic sections that lack concrete evidence. Do not add installation,
   testing, plugins, communication, or error-handling merely because most
   projects have them.
@@ -363,9 +450,17 @@ def _validate_outline(
         return list(dict.fromkeys(result))[:12]
 
     def overview_files(existing: List[str]) -> List[str]:
-        candidates = [
-            file for file in [*existing, *fallback_files] if file in known_files
-        ]
+        role_files = sorted(
+            known_files,
+            key=lambda file: (-_overview_file_score(file), file),
+        )
+        candidates = list(
+            dict.fromkeys(
+                file
+                for file in [*existing, *role_files, *fallback_files]
+                if file in known_files
+            )
+        )
         readme_names = {name.lower() for name in _README_NAMES}
         readmes = sorted(
             (
@@ -375,12 +470,10 @@ def _validate_outline(
             ),
             key=lambda file: (file.count("/"), file.lower()),
         )
-        preferred = [
-            file
-            for file in candidates
-            if file.startswith("codenib/") or file.startswith("web/")
-            if not file.startswith(("codenib/eval/", "codenib/dataset/"))
-        ]
+        preferred = sorted(
+            (file for file in candidates if _overview_file_score(file) > -100),
+            key=lambda file: (-_overview_file_score(file), candidates.index(file)),
+        )
         chosen = list(dict.fromkeys(readmes))[:1]
         areas = set()
         for file in preferred:
@@ -393,6 +486,8 @@ def _validate_outline(
             if len(chosen) >= 8:
                 break
         for file in candidates:
+            if preferred and _overview_file_score(file) <= -100:
+                continue
             if file not in chosen:
                 chosen.append(file)
             if len(chosen) >= 8:
