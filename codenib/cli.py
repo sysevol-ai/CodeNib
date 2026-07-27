@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import os
+import re
 import shutil
 import sys
 from collections import Counter
@@ -414,39 +415,29 @@ def _doctor_model_config(
         ),
     )
     try:
-        from .llm import litellm_chat
+        from .llm.diagnostics import diagnose_model_backend
 
-        result = litellm_chat.litellm.validate_environment(
+        report = diagnose_model_backend(
             model=model,
             api_base=api_base,
             api_key=api_key,
+            auth_source=(
+                key_env
+                or (
+                    "CODENIB_DEMO_WIKI_API_KEY"
+                    if os.environ.get("CODENIB_DEMO_WIKI_API_KEY")
+                    else (
+                        "CODENIB_DEMO_API_KEY"
+                        if os.environ.get("CODENIB_DEMO_API_KEY")
+                        else None
+                    )
+                )
+            ),
+            options=options,
         )
     except Exception as exc:  # noqa: BLE001 - diagnostic must report, not crash
         return ("Model configuration", False, f"{model}; {exc}")
-
-    missing = result.get("missing_keys") or []
-    ok = bool(result.get("keys_in_environment")) and not missing
-    endpoint = f"; endpoint={api_base}" if api_base else ""
-    detail = f"{model}{endpoint}"
-    try:
-        (
-            _resolved_model,
-            provider,
-            _dynamic_key,
-            _dynamic_base,
-        ) = litellm_chat.litellm.get_llm_provider(
-            model=model,
-            api_base=api_base,
-            api_key=api_key,
-        )
-        detail += f"; provider={provider}"
-    except Exception:  # provider discovery is advisory for custom gateways
-        detail += "; provider=unresolved"
-    if options:
-        detail += "; options=" + ",".join(sorted(options))
-    if missing:
-        detail += "; missing " + ", ".join(str(key) for key in missing)
-    return ("Model configuration", ok, detail)
+    return ("Model configuration", report.configured, report.detail())
 
 
 def _doctor_rows(
@@ -574,14 +565,28 @@ def _doctor_rows(
     return rows
 
 
-def _probe_doctor_model(args: argparse.Namespace) -> tuple[bool, str]:
+def _model_probe_error(exc: BaseException, *, api_key: str | None) -> str:
+    detail = " ".join(str(exc).split())
+    detail = re.sub(r"\x1b\[[0-9;]*m", "", detail)
+    if api_key:
+        detail = detail.replace(api_key, "***")
+    return detail[:240] or type(exc).__name__
+
+
+def _probe_doctor_model(
+    args: argparse.Namespace,
+) -> list[tuple[str, bool, str]]:
     model = (
         args.model
         or os.environ.get("CODENIB_DEMO_WIKI_MODEL")
         or os.environ.get("CODENIB_DEMO_MODEL")
     )
     if not model:
-        return False, "set --model or CODENIB_DEMO_MODEL"
+        return [
+            ("Model text probe", False, "set --model or CODENIB_DEMO_MODEL"),
+            ("Model tool probe", False, "skipped: model is not configured"),
+            ("Model structured probe", False, "skipped: model is not configured"),
+        ]
     api_base = (
         args.api_base
         or os.environ.get("CODENIB_DEMO_WIKI_API_BASE")
@@ -600,24 +605,131 @@ def _probe_doctor_model(args: argparse.Namespace) -> tuple[bool, str]:
             and bool(os.environ.get("CODENIB_DEMO_WIKI_MODEL"))
         ),
     )
+    if args.api_key_env and not api_key:
+        detail = f"{args.api_key_env} is unset or empty"
+        return [
+            ("Model text probe", False, detail),
+            ("Model tool probe", False, "skipped: credentials are missing"),
+            ("Model structured probe", False, "skipped: credentials are missing"),
+        ]
     try:
-        from .llm.litellm_chat import LiteLLMChat, RetryConfig
+        from pydantic import BaseModel
 
-        response = LiteLLMChat(
+        from .llm.litellm_chat import LiteLLMChat, RetryConfig, human_message
+
+        probe_options = dict(options)
+        probe_options.setdefault("timeout", 20)
+        llm = LiteLLMChat(
             model=model,
             temperature=0.0,
-            max_tokens=8,
+            max_tokens=32,
             api_base=api_base,
             api_key=api_key,
-            extra_kwargs=options,
+            extra_kwargs=probe_options,
             retry=RetryConfig(max_retries=0),
-        ).complete(
+        )
+        response = llm.complete(
             [{"role": "user", "content": "Reply with OK."}],
-            timeout=20,
         )
     except Exception as exc:  # noqa: BLE001 - diagnostic result
-        return False, str(exc)
-    return bool(response), "response received" if response else "empty response"
+        detail = _model_probe_error(exc, api_key=api_key)
+        return [
+            ("Model text probe", False, detail),
+            ("Model tool probe", False, "skipped: text completion failed"),
+            ("Model structured probe", False, "skipped: text completion failed"),
+        ]
+
+    checks = [
+        (
+            "Model text probe",
+            bool(response),
+            "response received" if response else "empty response",
+        )
+    ]
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "report_backend_ready",
+            "description": "Report that function calling is available.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["ok"],
+                    }
+                },
+                "required": ["status"],
+                "additionalProperties": False,
+            },
+        },
+    }
+    try:
+        tool_response = llm._call_raw(
+            [
+                {
+                    "role": "user",
+                    "content": "Call report_backend_ready with status ok.",
+                }
+            ],
+            tools=[tool],
+            tool_choice={
+                "type": "function",
+                "function": {"name": "report_backend_ready"},
+            },
+        )
+        tool_calls = getattr(tool_response.choices[0].message, "tool_calls", None)
+        function = getattr(tool_calls[0], "function", None) if tool_calls else None
+        function_name = (
+            function.get("name")
+            if isinstance(function, dict)
+            else getattr(function, "name", "")
+        )
+        tool_ok = bool(tool_calls and function_name == "report_backend_ready")
+        checks.append(
+            (
+                "Model tool probe",
+                tool_ok,
+                "function call received" if tool_ok else "no function call returned",
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - diagnostic result
+        checks.append(
+            (
+                "Model tool probe",
+                False,
+                _model_probe_error(exc, api_key=api_key),
+            )
+        )
+
+    class ProbeResponse(BaseModel):
+        status: str
+
+    try:
+        structured = llm.with_structured_output(ProbeResponse).invoke(
+            [human_message("Return status ok.")]
+        )
+        structured_ok = structured.status.strip().lower() == "ok"
+        checks.append(
+            (
+                "Model structured probe",
+                structured_ok,
+                (
+                    "schema response received"
+                    if structured_ok
+                    else f"unexpected status={structured.status!r}"
+                ),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - diagnostic result
+        checks.append(
+            (
+                "Model structured probe",
+                False,
+                _model_probe_error(exc, api_key=api_key),
+            )
+        )
+    return checks
 
 
 def _run_doctor(args: argparse.Namespace) -> int:
@@ -631,7 +743,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
         languages = _selected_languages(repo_path, args.language)
         graph_report = diagnose_graph_setup(repo_path, languages)
     if args.probe_model:
-        rows["agent"].append(("Model probe", *_probe_doctor_model(args)))
+        rows["agent"].extend(_probe_doctor_model(args))
     failed_required = False
     print(f"CodeNib {package_version()}")
     for group, checks in rows.items():
@@ -835,7 +947,10 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument(
         "--probe-model",
         action="store_true",
-        help="send one minimal model request after validating configuration",
+        help=(
+            "send minimal text, tool-calling, and structured-output requests "
+            "after validating configuration"
+        ),
     )
     doctor_parser.set_defaults(handler=_run_doctor)
 

@@ -156,6 +156,92 @@ def test_doctor_model_config_uses_litellm_validation(
     }
 
 
+def test_doctor_model_probe_checks_product_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.llm.litellm_chat as chat_module
+
+    class FakeStructured:
+        def __init__(self, schema):
+            self.schema = schema
+
+        def invoke(self, _messages):
+            return self.schema(status="ok")
+
+    class FakeLLM:
+        def __init__(self, **_kwargs):
+            pass
+
+        def complete(self, _messages):
+            return "OK"
+
+        def _call_raw(self, _messages, **_kwargs):
+            call = SimpleNamespace(
+                function=SimpleNamespace(name="report_backend_ready")
+            )
+            message = SimpleNamespace(tool_calls=[call])
+            return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+        def with_structured_output(self, schema):
+            return FakeStructured(schema)
+
+    monkeypatch.setattr(chat_module, "LiteLLMChat", FakeLLM)
+    args = cli.build_parser().parse_args(
+        [
+            "doctor",
+            "--model",
+            "ollama/qwen3:8b",
+            "--api-base",
+            "http://localhost:11434",
+            "--probe-model",
+        ]
+    )
+
+    checks = cli._probe_doctor_model(args)
+
+    assert checks == [
+        ("Model text probe", True, "response received"),
+        ("Model tool probe", True, "function call received"),
+        ("Model structured probe", True, "schema response received"),
+    ]
+
+
+def test_doctor_model_probe_stops_after_text_failure_and_redacts_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.llm.litellm_chat as chat_module
+
+    class FailingLLM:
+        def __init__(self, **_kwargs):
+            pass
+
+        def complete(self, _messages):
+            raise RuntimeError("authentication failed for secret-value")
+
+    monkeypatch.setattr(chat_module, "LiteLLMChat", FailingLLM)
+    monkeypatch.setenv("MODEL_KEY", "secret-value")
+    args = cli.build_parser().parse_args(
+        [
+            "doctor",
+            "--model",
+            "openai/model",
+            "--api-key-env",
+            "MODEL_KEY",
+            "--probe-model",
+        ]
+    )
+
+    checks = cli._probe_doctor_model(args)
+
+    assert checks[0] == (
+        "Model text probe",
+        False,
+        "authentication failed for ***",
+    )
+    assert checks[1][2] == "skipped: text completion failed"
+    assert checks[2][2] == "skipped: text completion failed"
+
+
 def test_cli_model_options_layer_environment_and_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

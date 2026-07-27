@@ -143,6 +143,21 @@ codenib wiki . --generate \
   --model-option vertex_location=us-central1
 ```
 
+Choose the route that matches the server actually receiving the request:
+
+| Backend | `--model` shape | Endpoint and authentication |
+| --- | --- | --- |
+| OpenAI | `openai/<model>` | `OPENAI_API_KEY` |
+| Anthropic | `anthropic/<model>` | `ANTHROPIC_API_KEY` |
+| OpenAI-compatible gateway or vLLM | `openai/<served-model>` | `--api-base .../v1`; add `--api-key-env` only when the gateway requires it |
+| Ollama | `ollama/<model>` | `--api-base http://localhost:11434` |
+| Azure OpenAI | `azure/<deployment>` | API base and key, plus `--model-option api_version=...` |
+| Vertex AI | `vertex_ai/<model>` | `vertex_project`, `vertex_location`, and Google Application Default Credentials |
+
+The provider prefix is required even when `--api-base` points to a custom
+gateway. For example, use `openai/qwen3`, not bare `qwen3`, for an
+OpenAI-compatible Qwen endpoint.
+
 Repeat `--model-option KEY=VALUE` for provider-specific LiteLLM parameters.
 Values are JSON-decoded and dotted keys create nested payloads:
 
@@ -157,11 +172,16 @@ CodeNib manages `model`, credentials, token budgets, messages, and tools;
 those fields cannot be overridden through `--model-option`. Keep secrets in
 provider environment variables or `--api-key-env`, not option values. Run the
 same model arguments through `codenib doctor --probe-model` before generating
-pages.
+pages. The static doctor validates provider routing, endpoint shape, explicit
+options, and known environment requirements. The probe then sends three tiny
+requests to verify plain completion, tool calling for Ask, and structured output
+for generated Wiki pages.
 
 Provider and model configuration is documented in
-[Web UI](web_demo.md). Search, source links, and deterministic pages remain
-available without this extra.
+[Web UI](web_demo.md) and the
+[LiteLLM provider documentation](https://docs.litellm.ai/docs/providers).
+Search, source links, and deterministic pages remain available without this
+extra.
 
 ## Serve The Index Over MCP
 
