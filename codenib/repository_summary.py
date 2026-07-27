@@ -74,27 +74,45 @@ def _descriptive_heading(line: str) -> str:
 def readme_summary(text: str, limit: int = 160) -> str:
     """Return the first descriptive sentence, excluding README boilerplate."""
 
+    candidates: list[str] = []
+    paragraph: list[str] = []
+
+    def flush_paragraph() -> None:
+        if paragraph:
+            candidates.append(" ".join(paragraph))
+            paragraph.clear()
+
     in_fence = False
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
+            flush_paragraph()
             continue
         if line.startswith("```"):
+            flush_paragraph()
             in_fence = not in_fence
             continue
         if in_fence:
             continue
         if line.startswith("#"):
+            flush_paragraph()
             if re.match(r"^#(?!#)\s+", line):
                 heading = _descriptive_heading(line)
                 if heading:
-                    return heading[:limit] + "…" if len(heading) > limit else heading
+                    candidates.append(heading)
             continue
         if line.startswith((">", "<", "---", "===", "|", "- ", "* ")):
+            flush_paragraph()
             continue
         if line.startswith(("![", "[![")) or line.startswith("["):
+            flush_paragraph()
             continue
         line = _plain_text(line)
+        if line:
+            paragraph.append(line)
+    flush_paragraph()
+
+    for line in candidates:
         if line.endswith(":") or len(line.split()) < 6 or _README_SKIP.search(line):
             continue
         prefix_text = re.sub(r"^[^a-z0-9$]+", "", line.lower())

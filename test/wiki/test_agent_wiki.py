@@ -256,9 +256,35 @@ def test_overview_meta_uses_parent_level_files_from_each_major_topic():
 
     assert result["major_topics"][0]["files"] == ["src/compiler/index_builders.py"]
     assert result["major_topics"][1]["files"] == ["src/agent/runner.py"]
+    assert result["major_topics"][0]["keywords"] == []
     assert "src/graph/code_graph.py" in result["files"]
     assert "src/agent/rerank.py" not in result["files"]
     assert result["files"][0] == "README.md"
+
+
+def test_overview_meta_prefers_public_child_file_over_internal_parent_file():
+    result = AgentWiki._overview_page_meta(
+        {
+            "id": "overview",
+            "title": "Overview",
+            "files": ["README.md"],
+        },
+        [
+            {
+                "id": "formatting",
+                "title": "Formatting",
+                "files": ["include/fmt/format.h", "include/fmt/format-inl.h"],
+                "children": [
+                    {
+                        "title": "Floating Point Formatting",
+                        "files": ["include/fmt/format.h"],
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert result["major_topics"][0]["files"] == ["include/fmt/format.h"]
 
 
 def test_overview_meta_keeps_readme_documented_workflow_entry():
@@ -1171,6 +1197,69 @@ def test_overview_fact_minimum_tracks_allocated_topic_coverage():
     assert any(
         warning.startswith("Overview needs at least 5 supported narrative facts")
         for warning in sparse_warnings
+    )
+
+
+def test_overview_requires_two_facts_for_a_topic_with_multiple_sources():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=4,
+            symbol="README.md",
+            kind="file",
+            content="The project formats text.",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="include/fmt/chrono.h",
+            start_line=10,
+            end_line=15,
+            symbol="run",
+            kind="function",
+            content="run calls handle",
+        ),
+        EvidenceItem(
+            id="E3",
+            file="include/fmt/chrono.h",
+            start_line=20,
+            end_line=25,
+            symbol="fallback",
+            kind="function",
+            content="fallback calls gmtime_s",
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The project formats text",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Chrono Support",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "`run` calls `handle`",
+                        "evidence": ["E2"],
+                    }
+                ],
+            }
+        ],
+    }
+    meta = {
+        "id": "overview",
+        "major_topics": [
+            {"title": "Chrono Support", "files": ["include/fmt/chrono.h"]}
+        ],
+    }
+
+    warnings = _plan_quality_warnings(meta, plan, evidence)
+
+    assert (
+        "Overview 'Chrono Support' needs two complementary supported facts "
+        "when multiple source items are allocated" in warnings
     )
 
 
@@ -3131,6 +3220,35 @@ def test_overview_uses_canonical_readme_intro():
     assert "## Workflow" in rendered
 
 
+def test_overview_truncates_promotional_readme_tail_at_complete_clause():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=20,
+            symbol="README.md",
+            kind="file",
+            content=(
+                "# {fmt}\n\n"
+                "**{fmt}** is an open-source formatting library providing a "
+                "fast and safe\nalternative to C stdio and C++ iostreams."
+            ),
+        )
+    ]
+    draft = "## Workflow\n\nThe `format` function formats text. [E1]"
+
+    rendered = _ensure_cited_intro(
+        draft,
+        evidence,
+        canonical_readme=True,
+        repository_name="fmt",
+    )
+
+    assert rendered.startswith("{fmt} is an open-source formatting library. [E1]")
+    assert "providing a and" not in rendered
+
+
 def test_readme_evidence_drops_chrome_and_keeps_complete_paragraphs():
     content = (
         "<!-- license -->\n"
@@ -3609,6 +3727,67 @@ def test_parent_without_core_files_selects_one_boundary_per_child(tmp_path):
     ]
 
 
+def test_parent_with_one_shared_file_keeps_multiple_broad_symbols(tmp_path):
+    nodes = [
+        {
+            "file": "include/fmt/chrono.h",
+            "node_name": "duration_cast",
+            "type": "function",
+            "start_line": 10,
+            "end_line": 20,
+            "content": "duration duration duration",
+        },
+        {
+            "file": "include/fmt/chrono.h",
+            "node_name": "parse_chrono_format",
+            "type": "function",
+            "start_line": 30,
+            "end_line": 50,
+            "content": "parse chrono format",
+        },
+        {
+            "file": "include/fmt/chrono.h",
+            "node_name": "write_tm_str",
+            "type": "function",
+            "start_line": 60,
+            "end_line": 70,
+            "content": "write chrono time string",
+        },
+    ]
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), language="cpp"),
+        vector_store=None,
+        bm25=_FakeBM25(nodes),
+        manifest=SimpleNamespace(languages=["cpp"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+
+    result = wiki._retrieve(
+        {
+            "id": "chrono-support",
+            "title": "Chrono Support",
+            "summary": "Chrono parsing and formatting",
+            "keywords": ["chrono", "format"],
+            "files": ["include/fmt/chrono.h"],
+            "children": [
+                {
+                    "id": "duration-casting",
+                    "title": "Duration Casting",
+                    "keywords": ["duration", "cast"],
+                    "files": ["include/fmt/chrono.h"],
+                }
+            ],
+        },
+        top_k=8,
+    )
+
+    assert [node["node_name"] for node in result] == [
+        "parse_chrono_format",
+        "write_tm_str",
+        "duration_cast",
+    ]
+
+
 def test_parent_boundary_prefers_request_actions_over_long_helpers(tmp_path):
     wiki = AgentWiki(
         SimpleNamespace(
@@ -3642,6 +3821,39 @@ def test_parent_boundary_prefers_request_actions_over_long_helpers(tmp_path):
         meta,
         visualize,
     )
+
+
+def test_overview_topic_terms_outrank_generic_handler_names(tmp_path):
+    wiki = AgentWiki(
+        SimpleNamespace(
+            entry=SimpleNamespace(repo_dir=str(tmp_path), language="cpp"),
+        ),
+        model="fake-model",
+    )
+    meta = {
+        "id": "overview",
+        "title": "Chrono Support",
+        "keywords": ["chrono", "parse_chrono_format", "duration_cast"],
+    }
+    topic_symbol = {
+        "node_name": "parse_chrono_format",
+        "type": "function",
+        "start_line": 10,
+        "end_line": 80,
+        "content": "parse chrono format",
+    }
+    generic_handler = {
+        "node_name": "handle_nan_inf",
+        "type": "function",
+        "start_line": 90,
+        "end_line": 110,
+        "content": "handle nan and infinity values",
+    }
+
+    assert wiki._outline_anchor_rank(
+        meta,
+        topic_symbol,
+    ) > wiki._outline_anchor_rank(meta, generic_handler)
 
 
 def test_page_retrieval_promotes_two_symbols_per_outline_file(tmp_path):

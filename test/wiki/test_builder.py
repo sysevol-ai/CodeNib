@@ -125,6 +125,20 @@ def test_readme_summary_uses_descriptive_heading_over_setup_commands():
     assert readme_summary(readme) == "Efficient ASE Framework based on SGLang"
 
 
+def test_readme_summary_joins_wrapped_markdown_paragraph():
+    readme = (
+        "# {fmt}\n\n"
+        "**{fmt}** is an open-source formatting library providing a fast and safe\n"
+        "alternative to C stdio and C++ iostreams.\n\n"
+        "## Documentation\n"
+    )
+
+    assert readme_summary(readme, limit=600) == (
+        "{fmt} is an open-source formatting library providing a fast and safe "
+        "alternative to C stdio and C++ iostreams."
+    )
+
+
 def test_top_module_depth_two_and_slug():
     assert _top_module("pkg/mod/a.py") == "pkg/mod"
     assert _top_module("pkg/a.py") == "pkg"

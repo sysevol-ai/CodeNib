@@ -78,7 +78,7 @@ _EXT_LANG = {
 }
 _MAX_CONTEXT_CHARS = 14000
 _OUTLINE_PROMPT_VERSION = "12"
-_PAGE_PROMPT_VERSION = "82"
+_PAGE_PROMPT_VERSION = "85"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 _OVERVIEW_RETRIEVAL_LIMIT = 12
@@ -960,8 +960,50 @@ def _canonical_readme_sentence(text: str, repository_name: str = "") -> str:
     if not value:
         return ""
     phrases = promotional_phrases(value)
+    complete_clause = re.compile(
+        r"\b(?:is|are|provides?|implements?|builds?|compiles?|serves?|"
+        r"manages?|contains?|offers?|uses?)\b",
+        re.IGNORECASE,
+    )
+
+    def is_complete_clause(candidate: str) -> bool:
+        words = re.findall(r"[A-Za-z0-9][A-Za-z0-9+{}_.-]*", candidate)
+        return bool(
+            len(words) >= 4
+            and complete_clause.search(candidate)
+            and not re.search(
+                r"\b(?:a|an|and|are|is|or|providing|offering|featuring|with)\s*$",
+                candidate,
+                re.IGNORECASE,
+            )
+        )
+
+    if phrases and is_complete_clause(value):
+        starts = [
+            match.start()
+            for phrase in phrases
+            for match in [re.search(rf"\b{re.escape(phrase)}\b", value, re.IGNORECASE)]
+            if match is not None
+        ]
+        if starts:
+            prefix = value[: min(starts)].rstrip(" ,;:-")
+            previous = None
+            while prefix != previous:
+                previous = prefix
+                prefix = re.sub(
+                    r"(?:\b(?:a|an|and|or|providing|offering|featuring|with)\b"
+                    r"|[\s,;:-])+$",
+                    "",
+                    prefix,
+                    flags=re.IGNORECASE,
+                ).rstrip()
+            if is_complete_clause(prefix):
+                return prefix.rstrip(".!?") + "."
+        return ""
     if re.search(r"[.!?]\s*$", value):
-        return "" if phrases else value
+        return value
+    if is_complete_clause(value):
+        return value.rstrip(".!?") + "."
 
     for phrase in sorted(phrases, key=len, reverse=True):
         value = re.sub(rf"\b{re.escape(phrase)}\b", " ", value, flags=re.IGNORECASE)
@@ -1723,6 +1765,16 @@ def _plan_quality_warnings(
                 f"({', '.join(sorted(topic_relation_ids))}) for its concrete "
                 "flow claim"
             )
+        topic_claims = [
+            claim
+            for section in matching_sections
+            for claim in section.get("claims") or []
+        ]
+        if len(allocated_ids) >= 2 and len(topic_claims) < 2:
+            warnings.append(
+                f"Overview {topic_title!r} needs two complementary supported "
+                "facts when multiple source items are allocated"
+            )
     required_roles = ["flow"] if relations else []
     for role in required_roles:
         if role_counts.get(role, 0) == 0:
@@ -2286,10 +2338,13 @@ class AgentWiki:
         if overview:
             anchor_limit = min(_OVERVIEW_RETRIEVAL_LIMIT, top_k)
         elif parent_page:
-            anchor_limit = min(
-                top_k,
-                min(4, len(files) * (2 if parent_has_core_files else 1)),
-            )
+            if not parent_has_core_files and len(files) == 1:
+                anchor_limit = min(top_k, 4)
+            else:
+                anchor_limit = min(
+                    top_k,
+                    min(4, len(files) * (2 if parent_has_core_files else 1)),
+                )
         else:
             anchor_limit = min(4, max(1, top_k // 2))
         for raw_file in files:
@@ -2298,16 +2353,40 @@ class AgentWiki:
                 continue
             matches = selected_by_file.get(file) or []
             if matches:
+                anchor_meta = retrieval_meta
+                if overview:
+                    topic = next(
+                        (
+                            item
+                            for item in retrieval_meta.get("major_topics") or []
+                            if isinstance(item, dict)
+                            and file
+                            in {
+                                self._norm_hint_path(str(topic_file))
+                                for topic_file in item.get("files") or []
+                            }
+                        ),
+                        None,
+                    )
+                    if topic is not None:
+                        anchor_meta = {
+                            **retrieval_meta,
+                            "title": topic.get("title", ""),
+                            "summary": topic.get("summary", ""),
+                            "keywords": topic.get("keywords") or [],
+                        }
                 matches = sorted(
                     matches,
                     key=lambda item: self._outline_anchor_rank(
-                        retrieval_meta,
+                        anchor_meta,
                         item[0],
                     ),
                     reverse=True,
                 )
                 if overview:
                     per_file_limit = 2 if file in overview_topic_files else 1
+                elif parent_page and not parent_has_core_files and len(files) == 1:
+                    per_file_limit = 4
                 else:
                     per_file_limit = 1 if file in parent_boundary_files else 2
                 for node, route_names in matches[:per_file_limit]:
@@ -2406,25 +2485,56 @@ class AgentWiki:
     ) -> Dict[str, Any]:
         """Bind each top-level outline area to one representative core file."""
 
+        def representative_file(page: Dict[str, Any]) -> str | None:
+            page_files = [
+                file
+                for file in page.get("files") or []
+                if isinstance(file, str)
+                and (
+                    not _is_supporting_file(file) or _page_allows_supporting_files(page)
+                )
+            ]
+            child_files = {
+                file
+                for child in page.get("children") or []
+                if isinstance(child, dict)
+                for file in child.get("files") or []
+                if isinstance(file, str)
+            }
+
+            def internal_implementation(file: str) -> bool:
+                return bool(
+                    re.search(
+                        r"(?:^|[/_.-])(?:detail|impl|inl|internal|private)"
+                        r"(?:[/_.-]|$)",
+                        file,
+                        re.IGNORECASE,
+                    )
+                )
+
+            ranked = sorted(
+                enumerate(page_files),
+                key=lambda item: (
+                    internal_implementation(item[1]),
+                    item[1] in child_files,
+                    -_overview_file_score(item[1]),
+                    item[0],
+                ),
+            )
+            return ranked[0][1] if ranked else None
+
         major_topics = []
         topic_files = []
         for page in topic_pages:
             if not isinstance(page, dict):
                 continue
-            allows_supporting = _page_allows_supporting_files(page)
-            representative = next(
-                (
-                    file
-                    for file in cls._page_retrieval_files(page)
-                    if not _is_supporting_file(file) or allows_supporting
-                ),
-                None,
-            )
+            representative = representative_file(page)
             files = [representative] if representative else []
             major_topics.append(
                 {
                     "title": page.get("title", page.get("id", "")),
                     "summary": page.get("summary", ""),
+                    "keywords": page.get("keywords") or [],
                     "files": files,
                 }
             )
@@ -2513,7 +2623,7 @@ class AgentWiki:
         self,
         meta: Dict[str, Any],
         node: Any,
-    ) -> tuple[int, int, int, int, int, int, int]:
+    ) -> tuple[int, int, int, int, int, int, int, int]:
         raw_name = str(
             self._node_attr(node, "node_name") or self._node_attr(node, "name") or ""
         ).lower()
@@ -2526,11 +2636,7 @@ class AgentWiki:
         )
         name_hits = sum(term in raw_name for term in terms)
         content_hits = sum(term in content for term in terms)
-        child_hits = (
-            0
-            if meta.get("_parent_boundary_fallback")
-            else sum(term in raw_name for term in self._child_specific_terms(meta))
-        )
+        child_hits = sum(term in raw_name for term in self._child_specific_terms(meta))
         overview_role = (
             _overview_symbol_role_score(raw_name) if meta.get("id") == "overview" else 0
         )
@@ -2546,11 +2652,15 @@ class AgentWiki:
             if isinstance(start, int) and isinstance(end, int)
             else 1
         )
+        substantive_body = int(
+            bool(meta.get("id") == "overview" or meta.get("children")) and span >= 3
+        )
         return (
             -child_hits,
+            substantive_body,
+            name_hits,
             overview_role,
             self._outline_anchor_score(node),
-            name_hits,
             parent_role,
             content_hits,
             min(span, 500),
