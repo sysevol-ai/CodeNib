@@ -79,6 +79,14 @@ export default function Header({
       {center}
       <div className="header-right">
         <span className="header-note">Source-linked repository docs</span>
+        <a
+          className="header-link"
+          href="https://docs.codenib.ai"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Docs
+        </a>
         {actions}
         <ShareButton />
         <ThemeToggle />

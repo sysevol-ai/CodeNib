@@ -159,6 +159,15 @@ pre {
   font-weight: 500;
   color: var(--muted);
 }
+.site-header .header-link {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--text-secondary);
+  transition: color 0.15s;
+}
+.site-header .header-link:hover {
+  color: var(--text);
+}
 .btn-primary {
   display: inline-flex;
   align-items: center;
