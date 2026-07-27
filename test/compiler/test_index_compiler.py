@@ -133,6 +133,9 @@ class TestBM25IndexBuilder:
             mock_build.assert_called_once_with("repo", repo_path="/x", output_dir="/y")
             assert result == "result"
 
+    def test_artifact_identity_tracks_source_body_indexing(self):
+        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 3
+
 
 # ---------------------------------------------------------------------------
 # VectorIndexBuilder
@@ -169,6 +172,7 @@ class TestVectorIndexBuilder:
         assert status.metadata["index_metric"] == "ip"
         assert status.metadata["document_count"] == {"l0": 2, "l2": 3}
         mock_build_fn.assert_called_once()
+        assert mock_build_fn.call_args.kwargs["force_rebuild"] is True
 
     def test_artifact_identity_is_shared_by_full_and_incremental_statuses(self):
         builder = VectorIndexBuilder(

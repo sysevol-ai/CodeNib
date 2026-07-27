@@ -168,6 +168,9 @@ class BM25CodeIndexer:
                 if existing is None:
                     documents_by_node[node_id] = doc
                     continue
+                existing.page_content = (
+                    f"{existing.page_content} {doc.page_content}".strip()
+                )
                 existing.metadata["start_line"] = min(
                     existing.metadata["start_line"],
                     doc.metadata["start_line"],
@@ -198,6 +201,13 @@ class BM25CodeIndexer:
                 "start_line": int(chunk.start_line),
                 "end_line": int(chunk.end_line),
             }
+        )
+        # Sparse retrieval must search implementation text, not only the
+        # ``file:symbol`` identity. Keep the identity in-band so exact symbol
+        # queries remain strong while natural-language questions can match
+        # docstrings, literals, calls, and control-flow vocabulary.
+        doc.page_content = self._apply_stemming(
+            f"{chunk.node_id} {chunk.content or ''}"
         )
         return doc
 
@@ -357,10 +367,10 @@ class BM25CodeIndexer:
             # Remove parentheses from function calls first (e.g., "get_hmm()" -> "get_hmm")
             text = re.sub(r"\(\)", "", text)
 
-            # Split on code-specific delimiters: '/', ':', '.', '_'
-            # Handles paths ("test/test_bas.py") and qualified method names
-            # like "sample/core.py:get_hmm".
-            tokens = re.split(r"[/:._ ]+", text)
+            # Split on every non-alphanumeric delimiter. This covers paths,
+            # qualified identifiers, punctuation, string literals, and source
+            # newlines while preserving stable lowercase code tokens.
+            tokens = re.split(r"[^A-Za-z0-9]+", text)
 
             processed_tokens = []
             for token in tokens:
@@ -511,6 +521,129 @@ class BM25CodeIndexer:
 
         return processed_results
 
+    def search_identifier_occurrences(
+        self,
+        identifier: str,
+        *,
+        context_query: Optional[str] = None,
+        top_k: int = 20,
+        wrap_with_ln: bool = True,
+        filter_test: bool = False,
+    ) -> List[NodeInfo]:
+        """Find source chunks that reference an exact code identifier.
+
+        BM25 ranks lexical relevance, but it does not guarantee exhaustive
+        exact-symbol coverage. This complementary path scans persisted chunk
+        ranges so a symbol query can return callers/usages without requiring a
+        graph index.
+        """
+        symbol = str(identifier or "").strip().removesuffix("()")
+        symbol = symbol.rsplit(".", 1)[-1]
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", symbol):
+            raise ValueError("identifier must be a single code identifier")
+        if top_k <= 0:
+            return []
+
+        occurrence = re.compile(
+            rf"(?<![A-Za-z0-9_]){re.escape(symbol)}(?![A-Za-z0-9_])"
+        )
+        invocation = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(symbol)}\s*\(")
+        context_terms = set(self._apply_stemming(context_query or "").split())
+        context_terms -= set(self._apply_stemming(symbol).split())
+        context_terms -= {
+            "call",
+            "caller",
+            "calls",
+            "current",
+            "site",
+            "sites",
+            "usage",
+            "use",
+            "used",
+            "where",
+        }
+        files: dict[str, List[str]] = {}
+        matches: List[tuple[int, int, int, NodeInfo]] = []
+
+        for position, doc in enumerate(self.documents):
+            metadata = doc.metadata
+            file_path = metadata.get("file")
+            start_line = metadata.get("start_line")
+            end_line = metadata.get("end_line")
+            if (
+                not file_path
+                or not isinstance(start_line, int)
+                or not isinstance(end_line, int)
+            ):
+                continue
+            node_name = str(metadata.get("node_id") or metadata.get("name") or "")
+            if filter_test and is_test_file(node_name or file_path):
+                continue
+
+            declared_name = str(metadata.get("name") or "").removesuffix("()")
+            if declared_name.rsplit(".", 1)[-1] == symbol:
+                continue
+
+            full_path = file_path
+            if self.project_root and not os.path.isabs(file_path):
+                full_path = os.path.join(self.project_root, file_path)
+            if full_path not in files:
+                try:
+                    with open(
+                        full_path,
+                        "r",
+                        encoding="utf-8",
+                        errors="replace",
+                    ) as source:
+                        files[full_path] = source.readlines()
+                except OSError:
+                    files[full_path] = []
+            lines = files[full_path]
+            if not lines:
+                continue
+
+            start_idx = max(0, start_line)
+            end_idx = min(len(lines), end_line + 1)
+            selected = lines[start_idx:end_idx]
+            code_content = "".join(selected)
+            if not occurrence.search(code_content):
+                continue
+
+            call_count = len(invocation.findall(code_content))
+            searchable = self._apply_stemming(f"{node_name} {file_path} {code_content}")
+            context_score = sum(
+                searchable.count(term) for term in context_terms if len(term) >= 3
+            )
+            content = (
+                wrap_code_snippet(
+                    code_content,
+                    start_idx + 1,
+                    start_idx + len(selected),
+                )
+                if wrap_with_ln
+                else code_content
+            )
+            matches.append(
+                (
+                    -context_score,
+                    -call_count,
+                    position,
+                    NodeInfo(
+                        score=float(call_count or 1),
+                        node_name=node_name,
+                        node_id=node_name,
+                        type=metadata.get("type", "unknown"),
+                        file=file_path,
+                        start_line=start_line,
+                        end_line=end_line,
+                        content=content,
+                    ),
+                )
+            )
+
+        matches.sort(key=lambda item: (item[0], item[1], item[2]))
+        return [node for _, _, _, node in matches[:top_k]]
+
     def save_index(self, directory_path: str):
         """
         Save the index to a directory.
@@ -579,9 +712,6 @@ class BM25CodeIndexer:
             if node_name:
                 self.nodes.append(node_name)
 
-        # Recreate BM25Retriever
-        self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)
-
         # Load additional metadata including project_root
         metadata_file = os.path.join(directory_path, "bm25_metadata.json")
         if os.path.exists(metadata_file):
@@ -593,3 +723,8 @@ class BM25CodeIndexer:
         else:
             # For backward compatibility with indices saved without metadata
             self.project_root = None
+
+        # Recreate only after restoring ``max_k``. Reversing this order silently
+        # capped loaded artifacts at the constructor default (15), even when
+        # the persisted compiler contract requested 128 candidates.
+        self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)

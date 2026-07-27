@@ -93,6 +93,7 @@ class BM25IndexBuilder:
 
     def artifact_identity(self) -> Dict[str, Any]:
         return {
+            # v3 indexes normalized source bodies in addition to symbol names.
             "builder_schema": 3,
             "languages": list(self.languages),
             "max_k": self.max_k,
@@ -200,6 +201,11 @@ class VectorIndexBuilder:
             embedding_dimension=self.embedding_dimension,
             embedding_kwargs=self.embedding_kwargs,
             index_metric=self.index_metric,
+            # ``build`` is the compiler's full-materialization path. Reusing an
+            # artifact merely because its model config exists would let stale
+            # vectors be stamped with the current source fingerprint. Cross-
+            # commit reuse belongs to ``incremental_update`` instead.
+            force_rebuild=True,
         )
 
         doc_count = {}
