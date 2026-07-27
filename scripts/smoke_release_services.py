@@ -150,6 +150,8 @@ def _assert_wiki(
     executable: str,
     env: dict[str, str],
 ) -> None:
+    """Prove that one Wiki command indexes and serves a fresh repository."""
+
     frontend_port = _free_port()
     api_port = _free_port()
     log_path = root / "wiki-service.log"
@@ -157,7 +159,6 @@ def _assert_wiki(
         executable,
         "wiki",
         str(repo),
-        "--no-index",
         "--no-open",
         "--host",
         "0.0.0.0",
@@ -411,10 +412,15 @@ def _assert_stale_snapshot_rejected(
         capture_output=True,
         timeout=30,
     )
-    expected = "repository checkout does not match the indexed snapshot"
-    if result.returncode != 2 or expected not in result.stderr:
+    stale_messages = (
+        "repository checkout does not match the indexed snapshot",
+        "repository source files do not match the indexed content",
+    )
+    if result.returncode != 2 or not any(
+        message in result.stderr for message in stale_messages
+    ):
         raise RuntimeError(
-            "installed Wiki accepted a stale repository snapshot "
+            "installed Wiki did not reject a stale repository snapshot "
             f"(status {result.returncode}, stderr={result.stderr!r})"
         )
 
@@ -439,11 +445,12 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
         cwd=root,
         env=env,
     )
-    _run([executable, "index", str(repo)], cwd=root, env=env)
+    _assert_wiki(root, repo, executable=executable, env=env)
     status = _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
     if status:
-        raise RuntimeError(f"indexing modified the target repository: {status!r}")
-    _assert_wiki(root, repo, executable=executable, env=env)
+        raise RuntimeError(
+            f"one-command Wiki startup modified the target repository: {status!r}"
+        )
     _assert_mcp(root, repo, executable=executable, env=env)
     _assert_stale_snapshot_rejected(
         root,
@@ -451,7 +458,7 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
         executable=executable,
         env=env,
     )
-    print("Installed Wiki and MCP service smoke passed")
+    print("Installed one-command Wiki and MCP service smoke passed")
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
