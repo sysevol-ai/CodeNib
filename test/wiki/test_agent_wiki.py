@@ -12,6 +12,7 @@ from codenib.wiki.agent_wiki import (
     AgentWiki,
     _candidate_score,
     _clean_markdown,
+    _condense_relation_free_overview,
     _ensure_cited_intro,
     _fact_plan_markdown,
     _format_supported_literals,
@@ -142,6 +143,90 @@ def test_plan_repair_score_keeps_richer_progress_under_the_same_warning():
     }
 
     assert _plan_repair_score(richer, warning) < _plan_repair_score(sparse, warning)
+
+
+def test_plan_repair_score_never_trades_a_required_topic_for_style_progress():
+    plan = {
+        "sections": [
+            {
+                "title": "Core Formatting",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "`format_value()` applies rounding rules",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ]
+    }
+    catalog_warnings = [
+        "page plan is dominated by isolated operation sections: Core Formatting",
+        "Overview reads as a callable catalog",
+    ]
+    missing_topic = [
+        "Overview needs a 'Core Formatting' section grounded in its allocated "
+        "evidence"
+    ]
+
+    assert _plan_repair_score(plan, catalog_warnings) < _plan_repair_score(
+        plan,
+        missing_topic,
+    )
+
+
+def test_relation_free_overview_keeps_one_explanatory_fact_per_topic():
+    plan = {
+        "sections": [
+            {
+                "title": "Formatting",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "`format_value()` formats a value",
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "`format_value()` rejects precision for integral "
+                            "presentation types"
+                        ),
+                        "evidence": ["E2"],
+                    },
+                ],
+            },
+            {
+                "title": "Output",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "`write()` writes formatted output",
+                        "evidence": ["E3"],
+                    },
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`write_file()` calls `write()` before flushing "
+                            "the output buffer"
+                        ),
+                        "evidence": ["E4"],
+                    },
+                ],
+            },
+        ]
+    }
+
+    condensed = _condense_relation_free_overview(plan)
+
+    assert plan["sections"][0]["claims"][0]["statement"].startswith(
+        "`format_value()` formats"
+    )
+    assert [section["claims"][0]["role"] for section in condensed["sections"]] == [
+        "contract",
+        "flow",
+    ]
+    assert [len(section["claims"]) for section in condensed["sections"]] == [1, 1]
 
 
 def test_markdown_cleanup_removes_empty_sections_but_keeps_parent_sections():
@@ -372,6 +457,80 @@ def test_overview_constraints_bind_topics_to_retrieved_evidence():
     assert "use it for that topic's concrete flow claim" in constraints
     assert "do not shorten a method to its owner class" in constraints
     assert "must cite its allocated evidence" in constraints
+
+
+def test_overview_constraints_guide_relation_free_topics_away_from_catalogs():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=5,
+            symbol="README.md",
+            kind="file",
+            content="The repository formats values.",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="include/format.h",
+            start_line=1,
+            end_line=20,
+            symbol="format_value",
+            kind="function",
+            content="format_value applies precision and rounding rules",
+        ),
+    ]
+
+    constraints = _plan_evidence_constraints(
+        {
+            "id": "overview",
+            "major_topics": [{"title": "Formatting", "files": ["include/format.h"]}],
+        },
+        evidence,
+        [],
+    )
+
+    assert "No static relation facts are available" in constraints
+    assert "mechanism, contract, or responsibility" in constraints
+    assert "leave callable inventories to child pages" in constraints
+
+
+def test_parent_constraints_allocate_source_evidence_to_each_child():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/trace.py",
+            start_line=1,
+            end_line=10,
+            symbol="WorkflowTracer.start_turn",
+            kind="method",
+            content="start_turn records a workflow turn",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/logging.py",
+            start_line=1,
+            end_line=10,
+            symbol="LoggingManager.get_logger",
+            kind="method",
+            content="get_logger returns a configured logger",
+        ),
+    ]
+
+    constraints = _plan_evidence_constraints(
+        {
+            "id": "logging-and-tracing",
+            "children": [
+                {"title": "Workflow Tracing", "files": ["src/trace.py"]},
+                {"title": "Logging Management", "files": ["src/logging.py"]},
+            ],
+        },
+        evidence,
+    )
+
+    assert "Workflow Tracing=E1 (`WorkflowTracer.start_turn`)" in constraints
+    assert "Logging Management=E2 (`LoggingManager.get_logger`)" in constraints
+    assert "intro evidence alone does not count" in constraints
 
 
 def test_page_quality_requires_supported_plan_coverage():
@@ -902,6 +1061,103 @@ def test_renderable_plan_aligns_intro_deduplication_with_quality_gate():
     assert quality["valid"] is True
 
 
+def test_renderable_plan_keeps_specific_claims_for_distinct_named_scripts():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="bash/run_sgl_fe_bc_eval.sh",
+            start_line=1,
+            end_line=20,
+            symbol="bash/run_sgl_fe_bc_eval.sh",
+            kind="file",
+            content=(
+                "python generate_task_strings.py\n" "python sgl_test_bigcodebench.py"
+            ),
+        ),
+        EvidenceItem(
+            id="E2",
+            file="bash/run_lc_bc_eval.sh",
+            start_line=1,
+            end_line=20,
+            symbol="bash/run_lc_bc_eval.sh",
+            kind="file",
+            content=(
+                "python generate_task_strings.py\n" "python lc_test_bigcodebench.py"
+            ),
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The evaluation scripts generate and execute tasks",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "SGL Evaluation",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "The `bash/run_sgl_fe_bc_eval.sh` script generates "
+                            "task IDs and runs the SGL BigCodeBench experiment"
+                        ),
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "The `bash/run_sgl_fe_bc_eval.sh` script generates "
+                            "task IDs using `generate_task_strings.py` and "
+                            "executes them with `sgl_test_bigcodebench.py`"
+                        ),
+                        "evidence": ["E1"],
+                    },
+                ],
+            },
+            {
+                "title": "LangChain Evaluation",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "The `bash/run_lc_bc_eval.sh` script generates task "
+                            "IDs and runs the LangChain BigCodeBench experiment"
+                        ),
+                        "evidence": ["E2"],
+                    },
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "The `bash/run_lc_bc_eval.sh` script generates task "
+                            "IDs using `generate_task_strings.py` and executes "
+                            "them with `lc_test_bigcodebench.py`"
+                        ),
+                        "evidence": ["E2"],
+                    },
+                ],
+            },
+        ],
+    }
+
+    rendered = _renderable_plan(plan, evidence, [])
+
+    assert [
+        [claim["statement"] for claim in section["claims"]]
+        for section in rendered["sections"]
+    ] == [
+        [
+            "The `bash/run_sgl_fe_bc_eval.sh` script generates task IDs using "
+            "`generate_task_strings.py` and executes them with "
+            "`sgl_test_bigcodebench.py`"
+        ],
+        [
+            "The `bash/run_lc_bc_eval.sh` script generates task IDs using "
+            "`generate_task_strings.py` and executes them with "
+            "`lc_test_bigcodebench.py`"
+        ],
+    ]
+
+
 def test_overview_plan_requires_dense_page_wide_evidence():
     evidence = [
         EvidenceItem(
@@ -1260,6 +1516,69 @@ def test_overview_requires_two_facts_for_a_topic_with_multiple_sources():
     assert (
         "Overview 'Chrono Support' needs two complementary supported facts "
         "when multiple source items are allocated" in warnings
+    )
+
+
+def test_overview_accepts_one_substantive_fact_for_an_allocated_topic():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=4,
+            symbol="README.md",
+            kind="file",
+            content="The project records workflow traces.",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/trace.py",
+            start_line=10,
+            end_line=20,
+            symbol="WorkflowTracer.start_turn",
+            kind="method",
+            content="start_turn records a prompt for the new tracing turn",
+        ),
+        EvidenceItem(
+            id="E3",
+            file="src/trace.py",
+            start_line=30,
+            end_line=35,
+            symbol="create_tracer",
+            kind="function",
+            content="create_tracer returns WorkflowTracer",
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The project records workflow traces",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Logging and Tracing",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`WorkflowTracer.start_turn` begins a new tracing "
+                            "turn and records the prompt used"
+                        ),
+                        "evidence": ["E2"],
+                    }
+                ],
+            }
+        ],
+    }
+    meta = {
+        "id": "overview",
+        "major_topics": [{"title": "Logging and Tracing", "files": ["src/trace.py"]}],
+    }
+
+    warnings = _plan_quality_warnings(meta, plan, evidence)
+
+    assert not any(
+        "needs two complementary supported facts" in item for item in warnings
     )
 
 
@@ -2013,9 +2332,63 @@ def test_page_plan_requires_two_claims_when_multiple_sources_are_available():
     )
 
     assert warnings == [
-        "page needs at least two supported claims when multiple source "
+        "page needs at least two supported facts when multiple source "
         "evidence items are available"
     ]
+
+
+def test_page_plan_counts_a_distinct_supported_thesis_as_a_fact():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="include/fmt/chrono.h",
+            start_line=1,
+            end_line=20,
+            symbol="parse_chrono_format",
+            kind="function",
+            content="parse_chrono_format uses Handler to parse chrono fields",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="include/fmt/chrono.h",
+            start_line=21,
+            end_line=45,
+            symbol="format",
+            kind="function",
+            content="format converts sys_time and casts subseconds",
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": (
+                "`parse_chrono_format()` delegates chrono field parsing to " "`Handler`"
+            ),
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Formatting",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`format()` converts `sys_time` and casts its "
+                            "subsecond duration"
+                        ),
+                        "evidence": ["E2"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "chrono-support", "title": "Chrono Support"},
+        plan,
+        evidence,
+    )
+
+    assert not any("two supported facts" in warning for warning in warnings)
 
 
 def test_page_plan_rejects_a_flow_label_without_a_component_handoff():
@@ -2538,6 +2911,104 @@ def test_page_plan_rejects_sections_that_only_inventory_operations():
     )
 
 
+def test_page_plan_rejects_a_thesis_repeated_by_a_richer_section_fact():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/container.py",
+            start_line=1,
+            end_line=20,
+            symbol="copy_file_to_container",
+            kind="function",
+            content=(
+                "def copy_file_to_container(container, content, path):\n"
+                "    archive = make_tar(content)\n"
+                "    container.put_archive(path, archive)"
+            ),
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": (
+                "`copy_file_to_container` transfers a string into a Docker "
+                "container at a specified path"
+            ),
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "File Management",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`copy_file_to_container` writes a string to a "
+                            "temporary file, creates a TAR archive, and "
+                            "transfers it to the specified path in the Docker "
+                            "container using `container.put_archive`"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "containers", "title": "Containers"},
+        plan,
+        evidence,
+    )
+
+    assert any("thesis or sections substantially repeat" in item for item in warnings)
+
+
+def test_page_plan_rejects_a_page_wide_callable_catalog():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/trace.py",
+            start_line=1,
+            end_line=40,
+            symbol="WorkflowTracer",
+            kind="class",
+            content="class WorkflowTracer: pass",
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The page documents workflow tracing operations",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Trace",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": f"`{symbol}` {verb} workflow trace data",
+                        "evidence": ["E1"],
+                    }
+                    for symbol, verb in (
+                        ("start_turn", "creates"),
+                        ("end_turn", "sets"),
+                        ("get_trace", "retrieves"),
+                        ("save_trace", "saves"),
+                    )
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "tracing", "title": "Tracing"},
+        plan,
+        evidence,
+    )
+
+    assert any("page reads as a callable catalog" in item for item in warnings)
+
+
 def test_page_plan_rejects_incidental_helper_section():
     evidence = [
         EvidenceItem(
@@ -2604,6 +3075,115 @@ def test_page_plan_rejects_incidental_helper_section():
         "section 'Internal Helpers' elevates incidental helpers over the page's "
         "core responsibility"
     ]
+
+
+def test_page_plan_allows_a_declared_utility_child_section():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/editor.py",
+            start_line=0,
+            end_line=20,
+            symbol="Editor.create_patch",
+            kind="method",
+            content="create_patch returns a git diff patch",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/edit_utils.py",
+            start_line=0,
+            end_line=20,
+            symbol="run_cmd",
+            kind="function",
+            content="run_cmd returns stdout and stderr",
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "`Editor.create_patch` returns a git diff patch",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Edit Utilities",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": "`run_cmd` returns stdout and stderr",
+                        "evidence": ["E2"],
+                    }
+                ],
+            }
+        ],
+    }
+    meta = {
+        "id": "editing-tools",
+        "title": "Editing Tools",
+        "children": [{"id": "edit-utilities", "title": "Edit Utilities"}],
+    }
+
+    warnings = _plan_quality_warnings(meta, plan, evidence)
+
+    assert not any("elevates incidental helpers" in item for item in warnings)
+
+
+def test_parent_page_requires_section_level_evidence_from_each_child():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/trace.py",
+            start_line=1,
+            end_line=10,
+            symbol="WorkflowTracer.get_summary",
+            kind="method",
+            content="get_summary returns workflow trace totals",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/logging.py",
+            start_line=1,
+            end_line=10,
+            symbol="LoggingManager.get_logger",
+            kind="method",
+            content="get_logger returns a configured logger",
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": ("`WorkflowTracer.get_summary` returns workflow trace totals"),
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Logging Management",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`LoggingManager.get_logger` returns a configured " "logger"
+                        ),
+                        "evidence": ["E2"],
+                    }
+                ],
+            }
+        ],
+    }
+    meta = {
+        "id": "logging-and-tracing",
+        "title": "Logging and Tracing",
+        "children": [
+            {"title": "Workflow Tracing", "files": ["src/trace.py"]},
+            {"title": "Logging Management", "files": ["src/logging.py"]},
+        ],
+    }
+
+    warnings = _plan_quality_warnings(meta, plan, evidence)
+
+    assert (
+        "parent page needs a section-level 'Workflow Tracing' fact grounded in "
+        "its allocated evidence" in warnings
+    )
+    assert not any("'Logging Management'" in item for item in warnings)
 
 
 def test_page_plan_rejects_evidence_ids_narrated_as_prose():
@@ -3655,7 +4235,7 @@ def test_parent_page_retrieval_keeps_child_boundary_and_excludes_global(tmp_path
     ]
 
 
-def test_parent_without_core_files_selects_one_boundary_per_child(tmp_path):
+def test_parent_without_core_files_selects_two_anchors_per_child(tmp_path):
     nodes = [
         {
             "file": "src/runner.py",
@@ -3723,7 +4303,9 @@ def test_parent_without_core_files_selects_one_boundary_per_child(tmp_path):
 
     assert [node["node_name"] for node in result] == [
         "AgentRunner",
+        "AgentRunner.run",
         "RerankAgent",
+        "RerankAgent.__init__",
     ]
 
 
@@ -4411,7 +4993,7 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
     assert page["evidence"]["items"][0]["routes"] == ("outline", "dense")
 
 
-def test_structured_page_does_not_use_free_form_markdown_repair(tmp_path):
+def test_structured_page_deduplicates_without_free_form_markdown_repair(tmp_path):
     node = {
         "file": "src/core.py",
         "node_name": "Router",
@@ -4486,10 +5068,11 @@ def test_structured_page_does_not_use_free_form_markdown_repair(tmp_path):
         }
     )
 
-    assert page["quality"]["valid"] is False
-    assert page["generation"]["mode"] == "degraded"
+    assert page["quality"]["valid"] is True
+    assert page["generation"]["mode"] == "generated"
     assert page["generation"]["repaired"] is False
     assert page["generation"]["renderer"] == "fact_plan"
+    assert page["markdown"].count("`Router` dispatches") == 1
 
 
 def test_generation_distinguishes_soft_and_semantic_plan_diagnostics(tmp_path):
@@ -4544,9 +5127,7 @@ def test_generation_distinguishes_soft_and_semantic_plan_diagnostics(tmp_path):
             }
         ],
     }
-    soft_warning = (
-        "page plan is dominated by isolated operation sections: Responsibility"
-    )
+    soft_warning = "page thesis must contain exactly one sentence"
     wiki._fact_plan = lambda *_args: (plan, [soft_warning])
 
     page = wiki._generate_page(
@@ -4564,6 +5145,27 @@ def test_generation_distinguishes_soft_and_semantic_plan_diagnostics(tmp_path):
     assert page["generation"]["mode"] == "generated"
     assert page["generation"]["plan_warnings"] == [soft_warning]
     assert page["generation"]["reason"] is None
+
+    isolated_warning = (
+        "page plan is dominated by isolated operation sections: Responsibility"
+    )
+    wiki._fact_plan = lambda *_args: (plan, [isolated_warning])
+
+    isolated = wiki._generate_page(
+        {
+            "id": "routing",
+            "title": "Request Routing",
+            "summary": "How repository requests are handled",
+            "keywords": ["router"],
+            "files": ["src/core.py"],
+        }
+    )
+
+    assert isolated["grounding"]["valid"] is True
+    assert isolated["quality"]["valid"] is True
+    assert isolated["generation"]["mode"] == "degraded"
+    assert isolated["generation"]["reason"] == "quality_guard"
+    assert isolated["generation"]["plan_warnings"] == [isolated_warning]
 
     semantic_warning = (
         "claim 'The Router handles requests' is not supported by concrete terms "

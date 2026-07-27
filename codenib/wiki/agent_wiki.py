@@ -51,9 +51,12 @@ from .outline import (
     _page_allows_supporting_files,
     generate_outline,
 )
+from .quality import duplicate_prose_blocks as _duplicate_prose_blocks
+from .quality import leading_code_subject as _leading_code_subject
 from .quality import narrative_density_report as _narrative_density_report
 from .quality import page_quality_report as _page_quality_report
 from .quality import prose_terms as _prose_terms
+from .quality import redundancy_terms as _redundancy_terms
 from .quality import section_synthesis_report as _section_synthesis_report
 
 logger = get_logger(__name__)
@@ -78,15 +81,11 @@ _EXT_LANG = {
 }
 _MAX_CONTEXT_CHARS = 14000
 _OUTLINE_PROMPT_VERSION = "12"
-_PAGE_PROMPT_VERSION = "85"
+_PAGE_PROMPT_VERSION = "98"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 _OVERVIEW_RETRIEVAL_LIMIT = 12
-_SOFT_PLAN_WARNING_PREFIXES = (
-    "page is dominated by isolated component facts",
-    "page plan is dominated by isolated operation sections:",
-    "page thesis must contain exactly one sentence",
-)
+_SOFT_PLAN_WARNING_PREFIXES = ("page thesis must contain exactly one sentence",)
 _NARRATIVE_CALLABLE_KINDS = frozenset({"function", "method"})
 _NARRATIVE_TYPE_KINDS = frozenset(
     {
@@ -566,7 +565,7 @@ def _hard_plan_warnings(warnings: Sequence[str]) -> List[str]:
 def _plan_repair_score(
     plan: dict[str, Any],
     warnings: Sequence[str],
-) -> tuple[int, int, int, int, int, int]:
+) -> tuple[int, int, int, int, int, int, int]:
     """Rank admitted plans while preserving grounding warnings as hard priority."""
 
     sections = plan.get("sections") or []
@@ -575,14 +574,58 @@ def _plan_repair_score(
         str(claim.get("role") or infer_claim_role(str(claim.get("statement") or "")))
         for claim in claims
     }
+    coverage_gaps = sum(
+        (
+            warning.startswith("Overview needs a ")
+            and " section grounded in its allocated evidence" in warning
+        )
+        or warning.startswith("parent page needs a section-level ")
+        for warning in warnings
+    )
     return (
         int(not bool(sections)),
+        coverage_gaps,
         len(_hard_plan_warnings(warnings)),
         len(warnings),
         -min(len(roles), 6),
         -min(len(sections), 5),
         -min(len(claims), 12),
     )
+
+
+def _condense_relation_free_overview(
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep one admitted boundary fact per overview topic without relations."""
+
+    condensed = copy.deepcopy(plan)
+    role_priority = {
+        "flow": 0,
+        "contract": 1,
+        "responsibility": 2,
+        "purpose": 3,
+        "entry": 4,
+        "component": 5,
+    }
+    for section in condensed.get("sections") or []:
+        claims = list(section.get("claims") or [])
+        if len(claims) < 2:
+            continue
+
+        def rank(claim: dict[str, Any]) -> tuple[int, int, int, int, int]:
+            statement = str(claim.get("statement") or "")
+            density = _narrative_density_report(statement)
+            role = str(claim.get("role") or infer_claim_role(statement))
+            return (
+                int(bool(density["catalog_sentence_count"])),
+                int(not is_interaction_claim(statement)),
+                role_priority.get(role, 6),
+                -len(_redundancy_terms(statement)),
+                -len(statement),
+            )
+
+        section["claims"] = [min(claims, key=rank)]
+    return condensed
 
 
 def _merge_fact_plans(
@@ -643,7 +686,7 @@ def _merge_fact_plans(
             if not statement:
                 continue
             role = str(claim.get("role") or infer_claim_role(statement))
-            terms = _prose_terms(statement)
+            terms = _redundancy_terms(statement)
             duplicate = False
             for index, existing in enumerate(claims):
                 existing_statement = re.sub(
@@ -654,7 +697,7 @@ def _merge_fact_plans(
                 existing_role = str(
                     existing.get("role") or infer_claim_role(existing_statement)
                 )
-                existing_terms = _prose_terms(existing_statement)
+                existing_terms = _redundancy_terms(existing_statement)
                 semantic_duplicate = bool(
                     terms
                     and existing_terms
@@ -866,9 +909,49 @@ def _renderable_plan(
             rendered_claim["evidence"] = ids
             rendered_claim["role"] = role
             rendered_claims.append(rendered_claim)
-        if rendered_claims:
+        deduplicated_claims = []
+        for claim in rendered_claims:
+            statement = str(claim.get("statement") or "")
+            subject = _leading_code_subject(statement)
+            terms = _redundancy_terms(statement)
+            duplicate_index = None
+            for index, existing in enumerate(deduplicated_claims):
+                existing_statement = str(existing.get("statement") or "")
+                existing_subject = _leading_code_subject(existing_statement)
+                existing_terms = _redundancy_terms(existing_statement)
+                smaller = min(len(terms), len(existing_terms))
+                contained = (
+                    len(terms & existing_terms) / smaller if smaller >= 5 else 0.0
+                )
+                if subject and subject == existing_subject and contained >= 0.7:
+                    duplicate_index = index
+                    break
+            if duplicate_index is None:
+                deduplicated_claims.append(claim)
+                continue
+            existing = deduplicated_claims[duplicate_index]
+            existing_terms = _redundancy_terms(str(existing.get("statement") or ""))
+            role_priority = {
+                "flow": 0,
+                "contract": 1,
+                "responsibility": 2,
+                "entry": 3,
+                "purpose": 4,
+                "component": 5,
+            }
+            candidate_score = (
+                len(terms),
+                -role_priority.get(str(claim.get("role") or ""), 6),
+            )
+            existing_score = (
+                len(existing_terms),
+                -role_priority.get(str(existing.get("role") or ""), 6),
+            )
+            if candidate_score > existing_score:
+                deduplicated_claims[duplicate_index] = claim
+        if deduplicated_claims:
             rendered_section = copy.deepcopy(section)
-            rendered_section["claims"] = rendered_claims
+            rendered_section["claims"] = deduplicated_claims
             rendered_sections.append(rendered_section)
     rendered["sections"] = rendered_sections
     return rendered
@@ -1200,9 +1283,10 @@ def _page_planning_guidance(meta: Dict[str, Any]) -> str:
         guidance += (
             " This is a parent page: explain orchestration, shared contracts, "
             "and boundaries across its child topics instead of repeating each "
-            "child's implementation inventory. Reserve detailed mechanics for: "
-            + ", ".join(children)
-            + "."
+            "child's implementation inventory. Give every child topic at least "
+            "one section-level boundary or responsibility fact; mentioning it "
+            "only in the intro does not establish coverage. Reserve detailed "
+            "mechanics for: " + ", ".join(children) + "."
         )
     return guidance
 
@@ -1215,7 +1299,35 @@ def _plan_evidence_constraints(
     """Describe evidence allocation rules before the model writes claims."""
 
     if meta.get("id") != "overview":
-        return "Match each claim to the source item that directly supports it."
+        constraint = "Match each claim to the source item that directly supports it."
+        child_allocations = []
+        for child in meta.get("children") or []:
+            if not isinstance(child, dict):
+                continue
+            title = str(child.get("title") or "").strip()
+            files = {
+                AgentWiki._norm_hint_path(str(file))
+                for file in child.get("files") or []
+                if str(file).strip()
+            }
+            child_items = [
+                item
+                for item in evidence
+                if AgentWiki._norm_hint_path(item.file) in files
+            ]
+            if title and child_items:
+                child_allocations.append(
+                    f"{title}="
+                    + ", ".join(f"{item.id} (`{item.symbol}`)" for item in child_items)
+                )
+        if child_allocations:
+            constraint += (
+                " Child-topic evidence allocation: "
+                + "; ".join(child_allocations)
+                + ". Every child topic must contribute at least one allocated "
+                "source fact in a section; intro evidence alone does not count."
+            )
+        return constraint
 
     intro = _readme_intro(list(evidence))
     intro_id = intro[1] if intro is not None else None
@@ -1273,6 +1385,18 @@ def _plan_evidence_constraints(
         if topic_allocations
         else ""
     )
+    relation_guidance = (
+        ""
+        if relations
+        else (
+            " No static relation facts are available. Do not fabricate a "
+            "workflow between separate source items. For each major topic, "
+            "prefer one substantial source-supported mechanism, contract, or "
+            "responsibility over multiple sentences that only say what "
+            "individual callables do; leave callable inventories to child "
+            "pages."
+        )
+    )
     reserved = f"{intro_id} supplies the intro; " if intro_id else ""
     return (
         f"{reserved}a section may reuse an evidence item only for a different "
@@ -1281,7 +1405,7 @@ def _plan_evidence_constraints(
         "source when they make distinct claims about it. Keep sections semantically "
         "distinct and assign sources by their actual responsibility. "
         f"Implementation source catalog: "
-        f"{catalog or '(none)'}.{allocation}"
+        f"{catalog or '(none)'}.{allocation}{relation_guidance}"
     )
 
 
@@ -1406,6 +1530,11 @@ def _plan_quality_warnings(
     page_is_about_helpers = bool(
         re.search(r"\b(?:helpers?|utilit(?:y|ies))\b", page_title, re.IGNORECASE)
     )
+    declared_child_terms = [
+        _prose_terms(str(child.get("title") or ""))
+        for child in meta.get("children") or []
+        if isinstance(child, dict)
+    ]
     public_evidence = sum(
         not re.search(
             r"(?:^|[:.])_[A-Za-z]\w*(?:\(\))?$",
@@ -1425,6 +1554,10 @@ def _plan_quality_warnings(
                 r"\b(?:helpers?|utilit(?:y|ies))\b",
                 title,
                 re.IGNORECASE,
+            )
+            and not any(
+                terms and len(terms & _prose_terms(title)) / len(terms) >= 0.6
+                for terms in declared_child_terms
             )
         ):
             warnings.append(
@@ -1657,6 +1790,31 @@ def _plan_quality_warnings(
             "relations; purpose, responsibility, contract, entry, and component "
             "claims require E# source evidence"
         )
+    section_evidence_ids = {
+        str(item)
+        for claim in claims
+        for item in claim.get("evidence") or []
+        if str(item).startswith("E")
+    }
+    for child in meta.get("children") or []:
+        if not isinstance(child, dict):
+            continue
+        child_title = str(child.get("title") or "").strip()
+        child_files = {
+            AgentWiki._norm_hint_path(str(file))
+            for file in child.get("files") or []
+            if str(file).strip()
+        }
+        child_ids = {
+            item.id
+            for item in evidence
+            if AgentWiki._norm_hint_path(item.file) in child_files
+        }
+        if child_title and child_ids and not child_ids & section_evidence_ids:
+            warnings.append(
+                f"parent page needs a section-level {child_title!r} fact "
+                "grounded in its allocated evidence"
+            )
     component_claims = role_counts.get("component", 0)
     if len(claims) >= 4 and component_claims / len(claims) > 0.65:
         warnings.append(
@@ -1674,6 +1832,20 @@ def _plan_quality_warnings(
             if section.get("title") and section.get("claims")
         ]
     )
+    supported_thesis = _supported_thesis(
+        plan.get("thesis"),
+        evidence,
+        relations,
+    )
+    thesis_markdown = supported_thesis[0] if supported_thesis is not None else ""
+    full_plan_markdown = "\n\n".join(
+        item for item in (thesis_markdown, plan_markdown) if item
+    )
+    if _duplicate_prose_blocks(full_plan_markdown):
+        warnings.append(
+            "page thesis or sections substantially repeat an admitted fact; "
+            "keep the richer fact once and use a distinct thesis"
+        )
     synthesis = _section_synthesis_report(plan_markdown)
     if not synthesis["section_synthesis_valid"]:
         warnings.append(
@@ -1683,9 +1855,37 @@ def _plan_quality_warnings(
         )
 
     if meta.get("id") != "overview":
-        if len(evidence) >= 2 and len(claims) < 2:
+        density = _narrative_density_report(full_plan_markdown)
+        if not density["narrative_density_valid"]:
             warnings.append(
-                "page needs at least two supported claims when multiple source "
+                "page reads as a callable catalog; combine related operations "
+                "around shared state, lifecycle, or request handoffs"
+            )
+        distinct_thesis = supported_thesis is not None
+        if supported_thesis is not None:
+            thesis_statement = supported_thesis[0]
+            thesis_subject = _leading_code_subject(thesis_statement)
+            thesis_terms = _redundancy_terms(thesis_statement)
+            for claim in claims:
+                claim_statement = str(claim.get("statement") or "")
+                claim_terms = _redundancy_terms(claim_statement)
+                smaller = min(len(thesis_terms), len(claim_terms))
+                repeats_thesis = (
+                    thesis_statement.strip().casefold()
+                    == claim_statement.strip().casefold()
+                ) or bool(
+                    thesis_subject
+                    and thesis_subject == _leading_code_subject(claim_statement)
+                    and smaller >= 5
+                    and len(thesis_terms & claim_terms) / smaller >= 0.8
+                )
+                if repeats_thesis:
+                    distinct_thesis = False
+                    break
+        supported_facts = len(claims) + int(distinct_thesis)
+        if len(evidence) >= 2 and supported_facts < 2:
+            warnings.append(
+                "page needs at least two supported facts when multiple source "
                 "evidence items are available"
             )
         return warnings
@@ -1696,11 +1896,6 @@ def _plan_quality_warnings(
         if isinstance(topic, dict) and str(topic.get("title") or "").strip()
     ]
     required_facts = max(4, len(sections) + 1, len(major_topics) + 1)
-    supported_thesis = _supported_thesis(
-        plan.get("thesis"),
-        evidence,
-        relations,
-    )
     narrative_facts = len(claims) + int(supported_thesis is not None)
     if narrative_facts < required_facts:
         warnings.append(
@@ -1770,7 +1965,17 @@ def _plan_quality_warnings(
             for section in matching_sections
             for claim in section.get("claims") or []
         ]
-        if len(allocated_ids) >= 2 and len(topic_claims) < 2:
+        topic_body = " ".join(
+            str(claim.get("statement") or "") for claim in topic_claims
+        )
+        topic_plain = re.sub(r"[`*_[\]()#>-]", " ", topic_body)
+        topic_plain = re.sub(r"\s+", " ", topic_plain).strip()
+        if (
+            matching_sections
+            and len(allocated_ids) >= 2
+            and len(topic_claims) < 2
+            and len(topic_plain) < 60
+        ):
             warnings.append(
                 f"Overview {topic_title!r} needs two complementary supported "
                 "facts when multiple source items are allocated"
@@ -1889,11 +2094,14 @@ Return ONLY JSON with the same grounded thesis and
 sections/claims/role/evidence shape. Resolve every listed problem without
 inventing files, symbols, APIs, relationships, or behavior. Keep every claim
 already admitted by the current plan unless a listed problem identifies that
-claim as invalid. For missing breadth, roles, evidence, or relation use, add
-complementary claims instead of deleting or merging valid claims; count the
-claims in the returned JSON before responding. Keep every claim concrete, use
-exactly one sentence per thesis or claim statement, and cite only provided
-evidence IDs. A flow claim must explicitly name at least two components,
+claim or its section as repetitive, catalog-like, or component-dominated. For
+missing breadth, roles, evidence, or relation use, add complementary claims
+instead of deleting valid claims. For repetition or catalog-density problems,
+consolidate related claims into a richer sentence while preserving their
+supported facts and evidence IDs. Count the claims in the returned JSON before
+responding. Keep every claim concrete, use exactly one sentence per thesis or
+claim statement, and cite only provided evidence IDs. A flow claim must
+explicitly name at least two components,
 describe their handoff in the listed source-to-target direction, and cite its
 matching R# relation. Only when no static relation exists for that endpoint
 pair may it cite one E# source body that contains both endpoints. Use
@@ -1906,6 +2114,13 @@ explanation rather than an inventory of isolated symbols. Never mention E# or
 R# IDs, relation anchors, source line numbers, or phrases such as "as indicated
 by the reference" inside a statement; record evidence only in the evidence
 array.
+When a problem reports isolated operation sections or component-dominated
+facts, reorganize related calls around the state or lifecycle they implement.
+Prefer one richer supported claim that connects sequential operations over
+separate sentences that only list what each method does. Do not invent a call
+edge when the evidence does not show one. When the thesis repeats a section
+fact, keep the richer fact in its section and replace the thesis with a distinct
+supported statement that scopes the whole page.
 """
 
 
@@ -2338,12 +2553,12 @@ class AgentWiki:
         if overview:
             anchor_limit = min(_OVERVIEW_RETRIEVAL_LIMIT, top_k)
         elif parent_page:
-            if not parent_has_core_files and len(files) == 1:
-                anchor_limit = min(top_k, 4)
+            if not parent_has_core_files:
+                anchor_limit = min(top_k, min(6, max(4, len(files) * 2)))
             else:
                 anchor_limit = min(
                     top_k,
-                    min(4, len(files) * (2 if parent_has_core_files else 1)),
+                    min(4, len(files) * 2),
                 )
         else:
             anchor_limit = min(4, max(1, top_k // 2))
@@ -2375,6 +2590,28 @@ class AgentWiki:
                             "summary": topic.get("summary", ""),
                             "keywords": topic.get("keywords") or [],
                         }
+                elif parent_page and len(files) > 1:
+                    child = next(
+                        (
+                            item
+                            for item in retrieval_meta.get("children") or []
+                            if isinstance(item, dict)
+                            and file
+                            in {
+                                self._norm_hint_path(str(child_file))
+                                for child_file in item.get("files") or []
+                            }
+                        ),
+                        None,
+                    )
+                    if child is not None:
+                        anchor_meta = {
+                            **retrieval_meta,
+                            "title": child.get("title", ""),
+                            "summary": child.get("summary", ""),
+                            "keywords": child.get("keywords") or [],
+                            "children": [],
+                        }
                 matches = sorted(
                     matches,
                     key=lambda item: self._outline_anchor_rank(
@@ -2385,8 +2622,8 @@ class AgentWiki:
                 )
                 if overview:
                     per_file_limit = 2 if file in overview_topic_files else 1
-                elif parent_page and not parent_has_core_files and len(files) == 1:
-                    per_file_limit = 4
+                elif parent_page and not parent_has_core_files:
+                    per_file_limit = 4 if len(files) == 1 else 2
                 else:
                     per_file_limit = 1 if file in parent_boundary_files else 2
                 for node, route_names in matches[:per_file_limit]:
@@ -3066,6 +3303,36 @@ class AgentWiki:
         best_plan = plan
         best_warnings = warnings
         best_score = _plan_repair_score(plan, warnings)
+        catalog_warnings = (
+            "page reads as a callable catalog",
+            "page plan is dominated by isolated operation sections:",
+            "Overview reads as a callable catalog",
+        )
+        if (
+            meta.get("id") == "overview"
+            and not relations
+            and any(warning.startswith(catalog_warnings) for warning in best_warnings)
+        ):
+            condensed_plan = _condense_relation_free_overview(best_plan)
+            condensed_warnings = [
+                *errors,
+                *_plan_quality_warnings(
+                    meta,
+                    condensed_plan,
+                    evidence,
+                    relations,
+                ),
+            ]
+            condensed_score = _plan_repair_score(
+                condensed_plan,
+                condensed_warnings,
+            )
+            if condensed_score < best_score:
+                best_plan = condensed_plan
+                best_warnings = condensed_warnings
+                best_score = condensed_score
+                plan = best_plan
+                warnings = best_warnings
         supplemented_plan = _supplement_topic_relation_flows(
             meta,
             best_plan,
@@ -3398,7 +3665,7 @@ class AgentWiki:
             "require_dense_sections": dense_sections,
             "require_cited_intro": True,
             "require_narrative_novelty": dense_sections,
-            "require_narrative_density": dense_sections,
+            "require_narrative_density": True,
             "require_interaction": bool(relations and len(evidence) >= 2),
             "require_grounded_thesis": True,
             "minimum_source_evidence": (min(4, len(evidence)) if dense_sections else 0),
@@ -3523,7 +3790,12 @@ class AgentWiki:
             ):
                 best = (repaired_markdown, repaired_report, repaired_quality)
 
-        fallback_used = False
+        fallback_used = any(
+            warning.startswith(
+                "page plan has no claims that survived source-support admission"
+            )
+            for warning in plan_warnings
+        )
         if not best[1]["valid"] or not best[2]["valid"]:
             fallback = _fact_plan_markdown(plan, evidence, relations)
             if fallback:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -269,13 +270,88 @@ def _model_options_for_args(
         raise CLIError(str(exc)) from exc
 
 
+def _audit_local_wiki(local) -> dict[str, object]:
+    """Load the prepared local runtime and audit its current generated pages."""
+
+    from .llm.litellm_chat import LiteLLMChat
+    from .web.config import load_config
+    from .web.repo_registry import RepoRegistry
+    from .wiki.agent_wiki import AgentWiki
+    from .wiki.quality import audit_wiki
+
+    config = load_config(str(local.config_path))
+    if local.runtime_env.get("CODENIB_DEMO_MODEL"):
+        config.model = local.runtime_env["CODENIB_DEMO_MODEL"]
+    if local.runtime_env.get("CODENIB_DEMO_API_BASE"):
+        config.model_api_base = local.runtime_env["CODENIB_DEMO_API_BASE"]
+    if local.runtime_env.get("CODENIB_DEMO_API_KEY"):
+        config.model_api_key = local.runtime_env["CODENIB_DEMO_API_KEY"]
+
+    registry = RepoRegistry(config)
+    registry.load_all()
+    bundle = registry.get(local.repo_id)
+    if bundle is None:
+        raise CLIError(
+            f"prepared repository {local.repo_id!r} was not loaded for auditing"
+        )
+    model = config.wiki_generation_model
+    client = LiteLLMChat(
+        model=model,
+        temperature=0.2,
+        max_tokens=4096,
+        api_base=config.wiki_generation_api_base,
+        api_key=config.wiki_generation_api_key,
+        extra_kwargs=config.wiki_generation_options,
+    )
+    builder = AgentWiki(
+        bundle,
+        model,
+        cache_dir=str(local.data_dir / "wiki_cache"),
+        llm=client,
+        api_base=config.wiki_generation_api_base,
+        api_key=config.wiki_generation_api_key,
+    )
+    report = audit_wiki(builder)
+    return {
+        "repository": bundle.entry.repo,
+        "commit": bundle.entry.base_commit,
+        "model": model,
+        **report,
+    }
+
+
+def _print_wiki_audit(report: dict[str, object], *, as_json: bool = False) -> None:
+    if as_json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return
+
+    expected = int(report.get("expected_pages") or 0)
+    print(f"Wiki quality audit: {report.get('repository') or 'repository'}")
+    print(f"  Ready:      {int(report.get('ready_pages') or 0)}/{expected}")
+    print(f"  Generated:  {int(report.get('generated_pages') or 0)}/{expected}")
+    print(f"  Grounded:   {int(report.get('grounding_valid') or 0)}/{expected}")
+    print(f"  Structured: {int(report.get('structural_valid') or 0)}/{expected}")
+    print(f"  Narrative:  {int(report.get('narrative_valid') or 0)}/{expected}")
+    print(f"  Fallbacks:  {int(report.get('fallbacks') or 0)}")
+    for detail in report.get("details") or []:
+        if not isinstance(detail, dict) or detail.get("ready"):
+            continue
+        failures = ", ".join(str(item) for item in detail.get("failures") or [])
+        error = str(detail.get("error") or "").strip()
+        suffix = f": {error}" if error else ""
+        print(f"  FAIL {detail.get('id')}: {failures}{suffix}")
+    print("Result: PASS" if report.get("passed") else "Result: FAIL")
+
+
 def _run_wiki(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
     views = _selected_views(args.preset, args.view)
     _check_view_dependencies(views)
+    audit = bool(args.audit or args.audit_json)
     if (
         args.agent_wiki
+        or audit
         or args.model
         or args.api_base
         or args.api_key_env
@@ -316,7 +392,7 @@ def _run_wiki(args: argparse.Namespace) -> int:
             repo_path,
             manifest_path,
             frontend_port=args.port,
-            agent_wiki=args.agent_wiki,
+            agent_wiki=args.agent_wiki or audit,
             model=args.model,
             api_base=args.api_base,
             api_key_env=args.api_key_env,
@@ -324,6 +400,10 @@ def _run_wiki(args: argparse.Namespace) -> int:
         )
     except ValueError as exc:
         raise CLIError(str(exc)) from exc
+    if audit:
+        report = _audit_local_wiki(local)
+        _print_wiki_audit(report, as_json=args.audit_json)
+        return 0 if report.get("passed") else 1
     try:
         return launch_local_wiki(
             local,
@@ -880,6 +960,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-install-frontend",
         action="store_true",
         help="do not install missing dependencies for a source frontend",
+    )
+    wiki_parser.add_argument(
+        "--audit",
+        action="store_true",
+        help=(
+            "generate every page, run deterministic publication-quality gates, "
+            "and exit without starting the frontend"
+        ),
+    )
+    wiki_parser.add_argument(
+        "--audit-json",
+        action="store_true",
+        help="run the Wiki audit and print its complete JSON report",
     )
     wiki_parser.set_defaults(handler=_run_wiki)
 

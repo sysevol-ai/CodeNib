@@ -10,6 +10,8 @@ from codenib.wiki.evidence import EvidenceItem, RelationItem
 from codenib.wiki.quality import (
     audit_cache,
     audit_page,
+    audit_wiki,
+    duplicate_prose_blocks,
     narrative_density_report,
     page_quality_report,
     plan_narrative_report,
@@ -65,6 +67,28 @@ def test_section_narrative_report_detects_repeated_prose():
 
     assert repeated["redundant_sections"] == ["Workflow"]
     assert distinct["redundant_sections"] == []
+
+
+def test_duplicate_blocks_preserve_parallel_named_scripts():
+    markdown = (
+        "## SGL\n\n"
+        "The `bash/run_sgl_fe_bc_eval.sh` script generates task IDs using "
+        "`generate_task_strings.py` and executes the SGL test using "
+        "`sgl_test_bigcodebench.py`.\n\n"
+        "## LangChain\n\n"
+        "The `bash/run_lc_bc_eval.sh` script generates task IDs using "
+        "`generate_task_strings.py` and executes the LangChain test using "
+        "`lc_test_bigcodebench.py`."
+    )
+    repeated = markdown + (
+        "\n\n## SGL again\n\n"
+        "The `bash/run_sgl_fe_bc_eval.sh` script generates task IDs with "
+        "`generate_task_strings.py` and executes the SGL test with "
+        "`sgl_test_bigcodebench.py`."
+    )
+
+    assert duplicate_prose_blocks(markdown) == []
+    assert duplicate_prose_blocks(repeated) == [[1, 3]]
 
 
 def test_section_evidence_report_detects_section_source_reuse():
@@ -686,3 +710,66 @@ def test_cache_audit_ignores_outline_records_and_summarizes_pages(tmp_path):
     assert report["pages"] == 2
     assert report["publishable"] == 1
     assert report["narrative_valid"] == 1
+
+
+def test_wiki_audit_generates_nested_pages_and_requires_generated_mode():
+    ready = _page(repeated_prose=False)
+    ready["id"] = "overview"
+    degraded = _page(repeated_prose=False)
+    degraded["id"] = "runtime"
+    degraded["title"] = "Runtime"
+    degraded["generation"]["mode"] = "degraded"
+
+    class Builder:
+        def page_tree(self):
+            return [
+                {
+                    "id": "overview",
+                    "children": [{"id": "runtime", "children": []}],
+                }
+            ]
+
+        def page(self, page_id):
+            return {"overview": ready, "runtime": degraded}[page_id]
+
+    report = audit_wiki(Builder())
+
+    assert report["expected_pages"] == report["generated_pages"] == 2
+    assert report["ready_pages"] == 1
+    assert report["passed"] is False
+    assert report["details"][1]["failures"] == ["generation:degraded"]
+
+
+def test_wiki_audit_reports_missing_and_failed_pages_without_stopping():
+    class Builder:
+        def page_tree(self):
+            return [
+                {"id": "missing", "children": []},
+                {"id": "failed", "children": []},
+            ]
+
+        def page(self, page_id):
+            if page_id == "failed":
+                raise RuntimeError("backend unavailable")
+            return None
+
+    report = audit_wiki(Builder())
+
+    assert report["generated_pages"] == report["ready_pages"] == 0
+    assert report["passed"] is False
+    assert report["details"] == [
+        {
+            "id": "missing",
+            "title": "missing",
+            "ready": False,
+            "failures": ["generation:missing"],
+            "error": "page builder returned no page",
+        },
+        {
+            "id": "failed",
+            "title": "failed",
+            "ready": False,
+            "failures": ["generation:error"],
+            "error": "RuntimeError: backend unavailable",
+        },
+    ]

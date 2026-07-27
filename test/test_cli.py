@@ -25,6 +25,13 @@ def test_parser_exposes_release_commands() -> None:
         assert args.command == command
 
 
+def test_wiki_parser_accepts_headless_quality_audit() -> None:
+    args = cli.build_parser().parse_args(["wiki", ".", "--audit", "--audit-json"])
+
+    assert args.audit is True
+    assert args.audit_json is True
+
+
 def test_doctor_parser_accepts_model_backend_options() -> None:
     args = cli.build_parser().parse_args(
         [
@@ -651,6 +658,50 @@ def test_prepare_generated_wiki_keeps_secret_out_of_config(
         ),
         "CODENIB_DEMO_API_KEY": "super-secret",
     }
+
+
+def test_wiki_audit_exits_without_starting_frontend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    manifest = tmp_path / "repo_manifest.json"
+    manifest.write_text("{}")
+    prepared = SimpleNamespace(repo_id="sample")
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest)
+    monkeypatch.setattr(
+        "codenib.web.local.prepare_local_wiki",
+        lambda *_args, **_kwargs: prepared,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_audit_local_wiki",
+        lambda _local: {
+            "repository": "owner/sample",
+            "passed": True,
+            "expected_pages": 2,
+            "generated_pages": 2,
+            "ready_pages": 2,
+            "grounding_valid": 2,
+            "structural_valid": 2,
+            "narrative_valid": 2,
+            "fallbacks": 0,
+            "details": [],
+        },
+    )
+    monkeypatch.setattr(
+        "codenib.web.launcher.launch_local_wiki",
+        lambda *_args, **_kwargs: pytest.fail("frontend should not start"),
+    )
+
+    result = cli.run(["wiki", str(tmp_path), "--no-index", "--audit"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "Ready:      2/2" in output
+    assert "Result: PASS" in output
 
 
 def test_installed_package_frontend_is_prebuilt(

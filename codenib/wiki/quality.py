@@ -102,11 +102,38 @@ def prose_terms(text: str) -> set[str]:
     }
 
 
+def redundancy_terms(sentence: str) -> set[str]:
+    """Normalize light inflections for same-subject redundancy checks."""
+
+    terms = set()
+    for token in prose_terms(sentence) - {"also", "function", "method"}:
+        if token.endswith("ies") and len(token) > 4:
+            token = token[:-3] + "y"
+        elif token.endswith("ing") and len(token) > 6:
+            token = token[:-3]
+        elif token.endswith("ed") and len(token) > 5:
+            token = token[:-2]
+        elif token.endswith("s") and not token.endswith("ss") and len(token) > 4:
+            token = token[:-1]
+        terms.add(token)
+    return terms
+
+
+def leading_code_subject(text: str) -> str:
+    """Return the first explicit code subject used by a prose block."""
+
+    match = re.match(r"^\s*(?:the\s+)?`([^`\n]+)`", text, re.IGNORECASE)
+    if not match:
+        return ""
+    return re.sub(r"\([^)]*\)$", "", match.group(1)).casefold()
+
+
 def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
     """Find paragraph pairs where one largely restates the other."""
 
     without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
     terms = []
+    subjects = []
     for raw in re.split(r"\n\s*\n", without_fences):
         block = raw.strip()
         if not block or block.startswith("#"):
@@ -114,13 +141,17 @@ def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
         block_terms = prose_terms(block)
         if len(block_terms) >= 6:
             terms.append(block_terms)
+            subjects.append(leading_code_subject(block))
 
     duplicates: List[List[int]] = []
     for left in range(len(terms)):
         for right in range(left + 1, len(terms)):
             smaller = min(len(terms[left]), len(terms[right]))
             overlap = len(terms[left] & terms[right]) / smaller
-            if overlap >= 0.85:
+            distinct_named_subjects = bool(
+                subjects[left] and subjects[right] and subjects[left] != subjects[right]
+            )
+            if overlap >= 0.85 and not distinct_named_subjects:
                 duplicates.append([left + 1, right + 1])
     return duplicates
 
@@ -276,26 +307,6 @@ def section_synthesis_report(markdown: str) -> dict[str, Any]:
 def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
     """Find near-duplicate explanatory sentences inside one section."""
 
-    def leading_identifier(sentence: str) -> str:
-        match = re.match(r"^\s*(?:the\s+)?`([^`\n]+)`", sentence, re.IGNORECASE)
-        if not match:
-            return ""
-        return re.sub(r"\([^)]*\)$", "", match.group(1)).casefold()
-
-    def redundancy_terms(sentence: str) -> set[str]:
-        terms = set()
-        for token in prose_terms(sentence) - {"also", "function", "method"}:
-            if token.endswith("ies") and len(token) > 4:
-                token = token[:-3] + "y"
-            elif token.endswith("ing") and len(token) > 6:
-                token = token[:-3]
-            elif token.endswith("ed") and len(token) > 5:
-                token = token[:-2]
-            elif token.endswith("s") and not token.endswith("ss") and len(token) > 4:
-                token = token[:-1]
-            terms.add(token)
-        return terms
-
     without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
     section_matches = list(
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
@@ -316,7 +327,7 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
             }
             for sentence in sentences
         ]
-        subjects = [leading_identifier(sentence) for sentence in sentences]
+        subjects = [leading_code_subject(sentence) for sentence in sentences]
         for left in range(len(sentences)):
             for right in range(left + 1, len(sentences)):
                 smaller = min(len(terms[left]), len(terms[right]))
@@ -785,6 +796,107 @@ def summarize_page_audits(pages: Iterable[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _wiki_page_ids(tree: Iterable[dict[str, Any]]) -> list[str]:
+    """Flatten a Wiki page tree while preserving its visible order."""
+
+    result: list[str] = []
+    seen = set()
+
+    def visit(items: Iterable[dict[str, Any]]) -> None:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            page_id = str(item.get("id") or "").strip()
+            if page_id and page_id not in seen:
+                seen.add(page_id)
+                result.append(page_id)
+            children = item.get("children") or []
+            if isinstance(children, list):
+                visit(children)
+
+    visit(tree)
+    return result
+
+
+def _readiness_failures(detail: dict[str, Any]) -> list[str]:
+    failures = []
+    if not detail.get("grounding_valid"):
+        failures.append("grounding")
+    if not detail.get("style_valid"):
+        failures.append("style")
+    if not detail.get("structural_valid"):
+        failures.append("structure")
+    if not detail.get("narrative_valid"):
+        failures.append("narrative")
+    mode = str(detail.get("generation_mode") or "")
+    if mode != "generated":
+        failures.append(f"generation:{mode or 'missing'}")
+    if detail.get("fallback"):
+        failures.append("fallback")
+    return failures
+
+
+def audit_wiki(builder: Any) -> dict[str, Any]:
+    """Generate and audit every page in the builder's current page tree."""
+
+    page_ids = _wiki_page_ids(builder.page_tree())
+    details = []
+    generated_pages = 0
+    for page_id in page_ids:
+        try:
+            page = builder.page(page_id)
+        except Exception as exc:  # noqa: BLE001 - report all page failures
+            details.append(
+                {
+                    "id": page_id,
+                    "title": page_id,
+                    "ready": False,
+                    "failures": ["generation:error"],
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            continue
+        if not isinstance(page, dict):
+            details.append(
+                {
+                    "id": page_id,
+                    "title": page_id,
+                    "ready": False,
+                    "failures": ["generation:missing"],
+                    "error": "page builder returned no page",
+                }
+            )
+            continue
+        generated_pages += 1
+        detail = audit_page(page)
+        failures = _readiness_failures(detail)
+        details.append(
+            {
+                **detail,
+                "ready": not failures,
+                "failures": failures,
+            }
+        )
+
+    expected_pages = len(page_ids)
+    ready_pages = sum(bool(item.get("ready")) for item in details)
+    return {
+        "passed": bool(
+            expected_pages
+            and generated_pages == expected_pages
+            and ready_pages == expected_pages
+        ),
+        "expected_pages": expected_pages,
+        "generated_pages": generated_pages,
+        "ready_pages": ready_pages,
+        "grounding_valid": sum(bool(item.get("grounding_valid")) for item in details),
+        "structural_valid": sum(bool(item.get("structural_valid")) for item in details),
+        "narrative_valid": sum(bool(item.get("narrative_valid")) for item in details),
+        "fallbacks": sum(bool(item.get("fallback")) for item in details),
+        "details": details,
+    }
+
+
 def audit_cache(cache_dir: str | Path) -> dict[str, Any]:
     """Load and summarize generated page records from an AgentWiki cache."""
 
@@ -803,12 +915,15 @@ def audit_cache(cache_dir: str | Path) -> dict[str, Any]:
 __all__ = [
     "audit_cache",
     "audit_page",
+    "audit_wiki",
     "duplicate_prose_blocks",
+    "leading_code_subject",
     "narrative_density_report",
     "page_quality_report",
     "plan_narrative_report",
     "prose_integrity_report",
     "prose_terms",
+    "redundancy_terms",
     "section_evidence_report",
     "section_narrative_report",
     "section_sentence_redundancy_report",
