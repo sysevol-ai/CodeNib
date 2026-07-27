@@ -11,6 +11,7 @@ behavior to patcher_lang subclasses.
 
 from __future__ import annotations
 
+import time
 from abc import abstractmethod
 from typing import Optional
 
@@ -67,6 +68,8 @@ class PatcherBase(SubgraphMgr):
         }
     )
     REGISTRY_LANGUAGE: str | None = None
+    DOCUMENT_SYMBOL_ATTEMPTS = 10
+    DOCUMENT_SYMBOL_RETRY_DELAY_S = 1.0
 
     def __init__(
         self,
@@ -559,10 +562,14 @@ class PatcherBase(SubgraphMgr):
             return None
 
         abs_file = str(self.project_root / file_path)
-        with self.profiler.section("lsp_document_symbol"):
-            raw_symbols = self.lsp_client.document_symbol(abs_file)
-            new_symbols = self.flatten_symbols(file_path, raw_symbols)
         old_symbols = self.get_old_symbols(file_path)
+        with self.profiler.section("lsp_document_symbol"):
+            new_symbols = self._read_incremental_symbols(
+                file_path=file_path,
+                abs_file=abs_file,
+                old_symbols=old_symbols,
+                hunks=hunks,
+            )
 
         if not old_symbols:
             # No old symbols (SCIP didn't index this file) — fall back to
@@ -655,6 +662,53 @@ class PatcherBase(SubgraphMgr):
             "added_vnames": added_vnames,
             "hunks": hunks,
         }
+
+    def _read_incremental_symbols(
+        self,
+        *,
+        file_path: str,
+        abs_file: str,
+        old_symbols: dict[str, dict],
+        hunks: list[tuple[int, int, int, int]],
+    ) -> dict[str, dict]:
+        """Read a coherent post-change ``documentSymbol`` snapshot.
+
+        Large language servers can briefly return an empty list after a
+        checkout even though unchanged indexed definitions remain in the
+        file. Treating that transient response as authoritative deletes every
+        old symbol touched by the diff. Retry that one inconsistent state and
+        fail closed so the compiler can fall back to a fresh graph build.
+        """
+
+        has_untouched_old_symbol = any(
+            not any(
+                old["start_line"] <= old_end
+                and old.get("end_line", old["start_line"]) >= old_start
+                for old_start, old_end, _new_start, _new_end in hunks
+            )
+            for old in old_symbols.values()
+        )
+
+        for attempt in range(1, self.DOCUMENT_SYMBOL_ATTEMPTS + 1):
+            raw_symbols = self.lsp_client.document_symbol(abs_file)
+            new_symbols = self.flatten_symbols(file_path, raw_symbols)
+            if new_symbols or not has_untouched_old_symbol:
+                return new_symbols
+
+            if attempt < self.DOCUMENT_SYMBOL_ATTEMPTS:
+                logger.warning(
+                    "documentSymbol returned no symbols for %s while unchanged "
+                    "indexed definitions remain; retrying (%d/%d)",
+                    file_path,
+                    attempt,
+                    self.DOCUMENT_SYMBOL_ATTEMPTS,
+                )
+                time.sleep(self.DOCUMENT_SYMBOL_RETRY_DELAY_S)
+
+        raise RuntimeError(
+            f"documentSymbol remained empty for {file_path} while unchanged "
+            "indexed definitions remain"
+        )
 
     def _incremental_connect_edges(self, file_path: str, ctx: dict) -> dict:
         """Round 2: connect reference edges using LSP queries.
