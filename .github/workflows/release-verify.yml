@@ -169,3 +169,54 @@ jobs:
       - name: Exercise installed services
         working-directory: ${{ runner.temp }}
         run: python "$GITHUB_WORKSPACE/scripts/smoke_release_services.py"
+
+  agent-smoke:
+    name: Installed sparse Ask service
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Checkout agent harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install wheel with agent support
+        run: |
+          AGENT_VENV="$RUNNER_TEMP/codenib-release-agent-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$AGENT_VENV"
+          echo "$AGENT_VENV/bin" >> "$GITHUB_PATH"
+          "$AGENT_VENV/bin/python" -m pip install --upgrade pip
+          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL"
+          "$AGENT_VENV/bin/python" -m pip install "${WHEEL}[agent]"
+
+      - name: Verify sparse agent dependency boundary
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          unexpected = [
+              name
+              for name in ("faiss", "igraph", "sentence_transformers")
+              if importlib.util.find_spec(name) is not None
+          ]
+          if unexpected:
+              raise SystemExit(f"unexpected retrieval runtimes: {unexpected}")
+          if importlib.util.find_spec("litellm") is None:
+              raise SystemExit("LiteLLM is missing from the agent extra")
+          PY
+
+      - name: Exercise installed Ask service
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/scripts/smoke_release_agent.py"

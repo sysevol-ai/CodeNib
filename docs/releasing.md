@@ -21,6 +21,9 @@ workflows. It:
 4. Installs the wheel on every supported Python minor version.
 5. Builds a real BM25 index through the installed `codenib` command.
 6. Exercises the installed Wiki and MCP services end to end.
+7. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
+   real BM25 tool call, final answer, and source citation, without installing
+   semantic or graph extras.
 
 Manually dispatching the TestPyPI Release workflow from `main` runs these gates
 and then publishes to TestPyPI. Production publishing remains in the separate

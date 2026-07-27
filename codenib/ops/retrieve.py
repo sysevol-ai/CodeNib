@@ -5,13 +5,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
-from ..index.embedding.vector_store import CodeVectorStore
-from ..index.regex_idx.regex_idx import RegexNodeIndex
-from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..log_utils import get_logger
 from ..types import NodeInfo, QueriedNode
+
+if TYPE_CHECKING:
+    from ..index.embedding.vector_store import CodeVectorStore
+    from ..index.regex_idx.regex_idx import RegexNodeIndex
+    from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 
 logger = get_logger(__name__)
 

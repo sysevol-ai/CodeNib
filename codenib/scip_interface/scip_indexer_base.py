@@ -7,18 +7,22 @@
 """
 Base class for SCIP indexers across different languages.
 """
+from __future__ import annotations
+
 import fnmatch
 import os
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
-from ..graph.code_graph import CodeGraph
 from ..log_utils import get_logger
 from ..paths import temp_state_dir
 from ..profiler import Profiler
 from ..types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, ROOT_NODE, is_symbol_node
+
+if TYPE_CHECKING:
+    from ..graph.code_graph import CodeGraph
 
 logger = get_logger("scip_indexer_base")
 
@@ -496,6 +500,8 @@ class SCIPIndexerBase(ABC):
         if skip_level == "graph" and self.graph_file.exists():
             logger.info(f"Loading cached graph from {self.graph_file}")
             try:
+                from ..graph.code_graph import CodeGraph
+
                 graph = CodeGraph.load_graph(str(self.graph_file))
                 if self.lsp_index_file.is_file():
                     from .lsp_occurrence_index import SCIPOccurrenceIndex

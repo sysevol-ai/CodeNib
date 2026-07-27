@@ -413,7 +413,6 @@ class RepoRegistry:
         from ..agent.runner import AgentRunner
         from ..agent.skills.loader import SkillLoader
         from ..compiler.params import SessionContext
-        from ..ops.rerank import RerankContext
         from ..ops.retrieve import RetrieveContext
 
         entry = bundle.entry
@@ -429,6 +428,8 @@ class RepoRegistry:
         )
         contexts: Dict[str, object] = {"retrieve": retrieve_ctx}
         if vector_store is not None:
+            from ..ops.rerank import RerankContext
+
             contexts["rerank"] = RerankContext(embedding_store=vector_store)
 
         registry = _fresh_registry()
