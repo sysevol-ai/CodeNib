@@ -112,9 +112,11 @@ def _build_graph_with_scip(
 ) -> CodeGraph:
     """Build a CodeGraph via SCIP cold-start (LSIndexer.run_pipeline).
 
-    Uses skip_level="graph" to reuse cached graph.pkl if available,
-    falling back to full pipeline if not.
+    Reuses a cached graph only for the same language and source commit,
+    falling back to a full pipeline when that exact cache is absent.
     """
+    source_commit = _git("rev-parse", "HEAD", cwd=project_root)
+    output_dir = output_dir / language / source_commit
     indexer = LSIndexer(
         project_root=project_root,
         output_dir=output_dir,
