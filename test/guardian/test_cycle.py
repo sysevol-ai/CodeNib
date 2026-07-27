@@ -87,8 +87,6 @@ class _ScriptedLLM:
 
 def _finding_script(signal_id):
     claim = "mod.parse accepts invalid input without validation"
-    # The synthetic probe ref exercises the grade floor independently of L3;
-    # investigation behavior is covered in test_outer_loop.py.
     return (
         _ScriptedLLM(
             [
@@ -103,10 +101,7 @@ def _finding_script(signal_id):
                             "remedy": "validate input and add a regression test",
                             "origin": "signal",
                             "locus": ["mod.py:parse"],
-                            "evidence": [
-                                f"signal:{signal_id}",
-                                "probe-valid:fixture:1",
-                            ],
+                            "evidence": [f"signal:{signal_id}"],
                             "confidence": 0.8,
                         },
                     )
@@ -184,7 +179,18 @@ def test_agent_cycle_projects_only_graded_finding(tmp_path):
                     {
                         "id": hypothesis_id,
                         "grade": "finding",
-                        "reason": "the probe verified the contract violation",
+                        "source_evidence": [
+                            {
+                                "path": "mod.py",
+                                "start_line": 1,
+                                "end_line": 2,
+                                "description": (
+                                    "parse returns a constant without validating "
+                                    "its input."
+                                ),
+                            }
+                        ],
+                        "reason": "the exact source establishes the violation",
                     },
                 )
             ),
@@ -269,6 +275,17 @@ def test_memory_cycle_persists_hypothesis_trajectory(tmp_path):
                     {
                         "id": hypothesis_id,
                         "grade": "finding",
+                        "source_evidence": [
+                            {
+                                "path": "mod.py",
+                                "start_line": 1,
+                                "end_line": 2,
+                                "description": (
+                                    "parse returns a constant without validating "
+                                    "its input."
+                                ),
+                            }
+                        ],
                         "reason": "verified",
                     },
                 )
@@ -321,7 +338,7 @@ def test_exploration_finding_without_signal_evidence_is_measured(tmp_path):
                         ),
                         "origin": "exploration",
                         "locus": ["mod.py:parse", "mod.py:caller"],
-                        "evidence": ["probe-valid:fixture:exploration"],
+                        "evidence": [],
                         "confidence": 0.7,
                     },
                 )
@@ -333,7 +350,17 @@ def test_exploration_finding_without_signal_evidence_is_measured(tmp_path):
                     {
                         "id": hypothesis_id,
                         "grade": "finding",
-                        "reason": "probe verified the mismatch",
+                        "source_evidence": [
+                            {
+                                "path": "mod.py",
+                                "start_line": 1,
+                                "end_line": 2,
+                                "description": (
+                                    "parse ignores its input and returns a constant."
+                                ),
+                            }
+                        ],
+                        "reason": "the exact source verifies the mismatch",
                     },
                 )
             ),

@@ -35,8 +35,22 @@ a new commit, reconcile every carried hypothesis whose locus or contract may
 have changed. Mark it "resolved" when the new commit addressed the previously
 real problem; cite the fixing diff, source span, or test in the reason. Do not
 use "refuted" for a defect that was real in an earlier commit and is now fixed.
-L3 may return probe-valid evidence from execution or source-valid evidence from
-a closed-form argument over exact source spans. Judge either on its merits.
+
+When several independent source reads are known up front, request them together
+as one batch. The runtime executes explicitly parallel-safe reads concurrently
+and returns their observations in request order. Keep dependent reads and all
+state-changing calls ordered. A large result may be represented by an
+observation ref and preview; call read_observation with an offset and limit only
+when the omitted portion is material.
+
+You own the decision whether a hypothesis needs L3 investigation. Do not invoke
+L3 by default. If a simple claim follows conclusively from exact source spans,
+call update_hypothesis with structured source_evidence and grade it directly;
+the runtime validates those spans and records source-valid evidence. Invoke L3
+when the claim depends on execution, integration behavior, environment state,
+historical comparison, or evidence not closed over the inspected source. L3 may
+return probe-valid evidence from execution or source-valid evidence from its own
+closed-form argument. Judge either on its merits.
 
 This is a commit review. Inspect read_commit_diff before broad exploration and
 prioritize contracts changed by this commit. Distinguish defects introduced or

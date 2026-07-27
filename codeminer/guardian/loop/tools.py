@@ -83,10 +83,23 @@ TOOLS = [
     _function(
         "read_observation",
         (
-            "Recover a legacy observation reference from a resumed checkpoint. "
-            "New cycles retain results until whole-history summarization."
+            "Read a bounded slice of a full tool observation that was replaced "
+            "in context by a compact observation reference."
         ),
-        {"ref": {"type": "string"}},
+        {
+            "ref": {"type": "string"},
+            "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Zero-based character offset. Defaults to 0.",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16000,
+                "description": "Maximum characters to return. Defaults to 4000.",
+            },
+        },
         required=["ref"],
     ),
     _function(
@@ -109,7 +122,11 @@ TOOLS = [
     ),
     _function(
         "update_hypothesis",
-        "Update one hypothesis after evidence or resolution work.",
+        (
+            "Update one hypothesis after evidence or resolution work. For a "
+            "simple closed-form source claim, source_evidence lets L2 cite exact "
+            "spans directly without invoking L3."
+        ),
         {
             "id": {"type": "string"},
             "grade": {
@@ -124,6 +141,36 @@ TOOLS = [
                 ],
             },
             "evidence": {"type": "array", "items": {"type": "string"}},
+            "source_evidence": {
+                "type": "array",
+                "description": (
+                    "Exact spans that conclusively establish a simple claim. "
+                    "The runtime validates these spans and creates admissible "
+                    "source-valid evidence references."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "start_line": {"type": "integer", "minimum": 1},
+                        "end_line": {"type": "integer", "minimum": 1},
+                        "description": {
+                            "type": "string",
+                            "description": (
+                                "Closed-form explanation of what the cited span "
+                                "establishes."
+                            ),
+                        },
+                    },
+                    "required": [
+                        "path",
+                        "start_line",
+                        "end_line",
+                        "description",
+                    ],
+                    "additionalProperties": False,
+                },
+            },
             "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
             "remedy": {"type": "string"},
             "supersedes": {"type": "array", "items": {"type": "string"}},
@@ -133,7 +180,11 @@ TOOLS = [
     ),
     _function(
         "investigate",
-        "Delegate one hypothesis to the L3 probe loop with an explicit token grant.",
+        (
+            "Optionally delegate one hypothesis to L3 when source inspection "
+            "alone cannot establish or refute it, such as runtime, integration, "
+            "historical, or environment-dependent behavior."
+        ),
         {
             "hypothesis_id": {"type": "string"},
             "budget_tokens": {
@@ -158,4 +209,16 @@ TOOLS = [
 
 TOOL_NAMES = frozenset(item["function"]["name"] for item in TOOLS)
 
-__all__ = ["TOOLS", "TOOL_NAMES"]
+# Only tools whose dispatch is side-effect free and independent of mutable
+# Guardian collaborators may share a worker batch. In particular, retrieval,
+# memory access, hypothesis state, L3, and submission remain ordering barriers.
+PARALLEL_SAFE_TOOL_NAMES = frozenset(
+    {
+        "list_signals",
+        "read_code",
+        "read_commit_diff",
+        "read_observation",
+    }
+)
+
+__all__ = ["TOOLS", "TOOL_NAMES", "PARALLEL_SAFE_TOOL_NAMES"]

@@ -935,23 +935,28 @@ choice is made is the least-settled question in this blueprint.
   is wrong here: the earliest turns often contain the hypothesis-forming
   reasoning, and dropping it silently converts a persistent agent into a
   short-horizon one mid-cycle.
-- **Externalize-and-reference** — write the full observation to `/out`, keep a
-  one-line reference the agent can re-read — appears lossless, but makes the
-  agent pay another turn to reconstruct its own working memory. In the July
-  2026 replay this produced a context-thrashing loop: the same externalized
-  observation was recovered nine times without a state transition.
+- **Externalize-and-reference** — write a large full observation to `/out`, keep
+  a bounded preview and a reference the agent can re-read by slice. A reference
+  without a useful preview makes the agent pay another turn to reconstruct its
+  own working memory; in the July 2026 replay that older design produced a
+  context-thrashing loop in which the same observation was recovered nine
+  times without a state transition.
 - **Summarize-and-replace** compresses the completed conversation into a
   structured working-memory synopsis. It is lossy, but preserves the reasoning
   thread in one place and avoids observation-by-observation reconstruction.
 
-**Decision:** keep raw tool results in the append-only conversation until the
-model's token boundary is genuinely approached, then summarize and replace the
-old conversation as one unit. The summary request appends to the existing
-conversation so the provider can reuse its cached prefix. The immutable frame
-and canonical `CycleState` are re-injected; the full pre-compaction transcript
-is archived for audit, and the compaction event records the archive and summary
-sizes. Cached-input tokens and compaction counts are reported so the cost and
-ablation interaction remain measurable.
+**Decision:** keep ordinary tool results in the append-only conversation. When
+an individual result exceeds the inline limit, store its full text in the
+episode and keep a useful preview plus a stable observation reference in the
+conversation. The agent can retrieve only a material slice with
+`read_observation(ref, offset, limit)`. When the whole conversation reaches the
+model's token boundary, summarize and replace it as one coherent unit. The
+summary request appends to the existing conversation so the provider can reuse
+its cached prefix. The immutable frame and canonical `CycleState` are
+re-injected; the full pre-compaction transcript is archived for audit, and the
+compaction event records the archive and summary sizes. Cached-input tokens and
+compaction counts are reported so the cost and ablation interaction remain
+measurable.
 
 Two mechanical requirements follow. Compaction must be **arm-blind** — the same
 policy, thresholds, and code path in B and C — or it becomes a second

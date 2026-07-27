@@ -75,6 +75,21 @@ def _completion_instruction(max_tokens: Optional[int]) -> str:
 
 
 def _extract_json_object(text: str) -> Optional[dict]:
+    def decode(
+        candidate: str, *, tolerate_closing_braces: bool = False
+    ) -> Optional[dict]:
+        candidate = candidate.strip()
+        try:
+            value, end = json.JSONDecoder().raw_decode(candidate)
+        except json.JSONDecodeError:
+            return None
+        remainder = candidate[end:].strip()
+        if remainder and not (
+            tolerate_closing_braces and not remainder.strip("}").strip()
+        ):
+            return None
+        return value if isinstance(value, dict) else None
+
     try:
         value = json.loads(text)
         return value if isinstance(value, dict) else None
@@ -83,20 +98,14 @@ def _extract_json_object(text: str) -> Optional[dict]:
 
     match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
     if match:
-        try:
-            value = json.loads(match.group(1).strip())
-            return value if isinstance(value, dict) else None
-        except json.JSONDecodeError:
-            return None
+        return decode(match.group(1), tolerate_closing_braces=True)
 
     start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            value = json.loads(text[start : end + 1])
-            return value if isinstance(value, dict) else None
-        except json.JSONDecodeError:
-            return None
+    if start >= 0:
+        # Codex occasionally appends one redundant closing brace to an otherwise
+        # valid tool envelope.  Recover that unambiguous object without accepting
+        # arbitrary prose or a second JSON value after it.
+        return decode(text[start:], tolerate_closing_braces=True)
     return None
 
 
@@ -223,8 +232,49 @@ def _parse_tool_response(
     if kind == "final":
         return _response(str(data.get("content", "")).strip(), usage=usage)
 
-    if kind == "tool_call":
-        name = str(data.get("name", ""))
+    if kind == "tool_calls":
+        raw_calls = data.get("calls")
+        if not isinstance(raw_calls, list) or not raw_calls:
+            if strict:
+                raise _ToolResponseParseError(
+                    "tool_calls requires a non-empty calls array"
+                )
+            return _response(content.strip(), usage=usage)
+        tool_calls = []
+        for index, raw_call in enumerate(raw_calls):
+            if not isinstance(raw_call, dict):
+                if strict:
+                    raise _ToolResponseParseError(
+                        f"tool_calls item {index} is not an object"
+                    )
+                return _response(content.strip(), usage=usage)
+            name = str(raw_call.get("name", ""))
+            if name not in allowed:
+                if strict:
+                    raise _ToolResponseParseError(
+                        f"unknown Guardian tool {name!r}; allowed tools: "
+                        + ", ".join(sorted(allowed))
+                    )
+                return _response(content.strip(), usage=usage)
+            args = raw_call.get("arguments")
+            if not isinstance(args, dict):
+                args = {}
+            tool_calls.append(
+                SimpleNamespace(
+                    id=f"call_{uuid.uuid4().hex[:12]}",
+                    function=SimpleNamespace(
+                        name=name,
+                        arguments=json.dumps(args, ensure_ascii=False),
+                    ),
+                )
+            )
+        return _response("", tool_calls=tool_calls, usage=usage)
+
+    if kind == "tool_call" or (kind in allowed and "name" not in data):
+        # Also accept the compact shape Codex sometimes emits:
+        # {"type":"read_code","arguments":{...}}.  Restrict this recovery to
+        # an exact allowed tool name so arbitrary response types stay invalid.
+        name = str(data.get("name", "")) if kind == "tool_call" else kind
         if name in allowed:
             args = data.get("arguments")
             if not isinstance(args, dict):
@@ -256,7 +306,7 @@ def _parse_tool_response_with_retry(
     usage: object,
     retry: Any,
 ) -> Any:
-    """Parse one tool envelope, asking the same model session to repair once."""
+    """Parse one response envelope, asking the same model session to repair once."""
 
     try:
         return _parse_tool_response(content, tools, usage, strict=True)
@@ -401,7 +451,12 @@ class CodexSdkChat:
             "Do not inspect files or run commands yourself; Guardian owns all "
             "tool execution. Respond with exactly one JSON object.\n\n"
             "If you need a Guardian tool, return:\n"
-            '{"type":"tool_call","name":"<tool name>","arguments":{...}}\n'
+            '{"type":"tool_call","name":"<tool name>",'
+            '"arguments":{"key":"value"}}\n'
+            "For independent tool calls known at the same time, return:\n"
+            '{"type":"tool_calls","calls":[{"name":"<tool name>",'
+            '"arguments":{"key":"value"}},{"name":"<tool name>",'
+            '"arguments":{"key":"value"}}]}\n'
             "If you are ready to answer, return:\n"
             '{"type":"final","content":"<plain text answer>"}\n\n'
             f"Available Guardian tool names: {names}\n"
@@ -563,9 +618,7 @@ class _CodexSdkAgentLoop:
             delta = messages[len(self._prior_input) :]
             prompt = self._incremental_prompt(delta, max_tokens=max_tokens)
         else:
-            prompt = self.adapter._build_prompt(
-                messages, tools, max_tokens=max_tokens
-            )
+            prompt = self.adapter._build_prompt(messages, tools, max_tokens=max_tokens)
 
         try:
             content, usage = self._run(prompt)
@@ -696,7 +749,12 @@ class CodexCliChat:
             "Do not inspect files or run commands yourself; Guardian owns all "
             "tool execution. Respond with exactly one JSON object.\n\n"
             "If you need a Guardian tool, return:\n"
-            '{"type":"tool_call","name":"<tool name>","arguments":{...}}\n'
+            '{"type":"tool_call","name":"<tool name>",'
+            '"arguments":{"key":"value"}}\n'
+            "For independent tool calls known at the same time, return:\n"
+            '{"type":"tool_calls","calls":[{"name":"<tool name>",'
+            '"arguments":{"key":"value"}},{"name":"<tool name>",'
+            '"arguments":{"key":"value"}}]}\n'
             "If you are ready to answer, return:\n"
             '{"type":"final","content":"<plain text answer>"}\n\n'
             f"Available Guardian tool names: {names}\n"

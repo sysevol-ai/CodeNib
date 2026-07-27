@@ -29,6 +29,27 @@ def test_codex_prompt_preserves_requested_completion_allowance():
     assert "within approximately 321 tokens" in prompt
 
 
+def test_codex_tool_prompt_uses_a_valid_json_example():
+    prompt = CodexSdkChat(model="gpt-5.6-luna")._build_prompt(
+        [{"role": "user", "content": "inspect"}],
+        [
+            {
+                "type": "function",
+                "function": {"name": "read_code", "parameters": {}},
+            }
+        ],
+    )
+
+    example = prompt.split("If you need a Guardian tool, return:\n", 1)[1].split(
+        "\n", 1
+    )[0]
+    assert json.loads(example) == {
+        "type": "tool_call",
+        "name": "<tool name>",
+        "arguments": {"key": "value"},
+    }
+
+
 def test_call_raw_returns_last_message_and_usage(monkeypatch):
     seen = {}
 
@@ -108,6 +129,53 @@ def test_call_raw_maps_json_tool_call(monkeypatch):
     tool_call = response.choices[0].message.tool_calls[0]
     assert tool_call.function.name == "retrieve_evidence"
     assert json.loads(tool_call.function.arguments) == {"query": "runner", "top_k": 2}
+
+
+def test_call_raw_maps_batched_json_tool_calls_in_order(monkeypatch):
+    def fake_run(cmd, *, input, capture_output, text, timeout):
+        out = cmd[cmd.index("--output-last-message") + 1]
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "type": "tool_calls",
+                        "calls": [
+                            {
+                                "name": "read_code",
+                                "arguments": {"path": "a.py"},
+                            },
+                            {
+                                "name": "read_code",
+                                "arguments": {"path": "b.py"},
+                            },
+                        ],
+                    }
+                )
+            )
+        return _fake_completed()
+
+    monkeypatch.setattr(
+        "codeminer.guardian.llm.codex_cli_chat.subprocess.run",
+        fake_run,
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "read_code", "parameters": {}},
+        }
+    ]
+
+    response = CodexCliChat(model="gpt-5.6-luna")._call_raw(
+        [{"role": "user", "content": "inspect both"}],
+        tools=tools,
+    )
+
+    calls = response.choices[0].message.tool_calls
+    assert [call.function.name for call in calls] == ["read_code", "read_code"]
+    assert [json.loads(call.function.arguments)["path"] for call in calls] == [
+        "a.py",
+        "b.py",
+    ]
 
 
 def test_call_raw_maps_json_final_when_tools_are_available(monkeypatch):
@@ -352,7 +420,7 @@ def test_sdk_agent_loop_reuses_one_thread_and_sends_incremental_results(
     assert "inspect the commit" not in seen["prompts"][1]
 
 
-def test_sdk_agent_loop_repairs_malformed_tool_json_in_same_thread(monkeypatch):
+def test_sdk_agent_loop_accepts_redundant_closing_brace_without_retry(monkeypatch):
     from codeminer.guardian.llm import agent_loop_session
 
     seen = {"prompts": [], "closed": 0}
@@ -373,14 +441,6 @@ def test_sdk_agent_loop_repairs_malformed_tool_json_in_same_thread(monkeypatch):
             content = (
                 '{"type":"tool_call","name":"read_code",'
                 '"arguments":{"path":"mod.py"}}}'
-                if len(seen["prompts"]) == 1
-                else json.dumps(
-                    {
-                        "type": "tool_call",
-                        "name": "read_code",
-                        "arguments": {"path": "mod.py"},
-                    }
-                )
             )
             usage = SimpleNamespace(
                 last=SimpleNamespace(
@@ -431,11 +491,83 @@ def test_sdk_agent_loop_repairs_malformed_tool_json_in_same_thread(monkeypatch):
     call = response.choices[0].message.tool_calls[0]
     assert call.function.name == "read_code"
     assert json.loads(call.function.arguments) == {"path": "mod.py"}
-    assert len(seen["prompts"]) == 2
-    assert "could not be parsed" in seen["prompts"][1]
-    assert response.usage.total_tokens == 24
-    assert response.usage.cached_input_tokens == 12
+    assert len(seen["prompts"]) == 1
+    assert response.usage.total_tokens == 12
+    assert response.usage.cached_input_tokens == 6
     assert seen["closed"] == 1
+
+
+def test_sdk_agent_loop_accepts_allowed_tool_name_as_response_type(monkeypatch):
+    from codeminer.guardian.llm import agent_loop_session
+
+    seen = {"prompts": 0}
+
+    class FakeSandbox:
+        workspace_write = "workspace-write"
+
+    class FakeApprovalMode:
+        deny_all = "deny-all"
+
+    class FakeConfig:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeThread:
+        def run(self, prompt, **kwargs):
+            seen["prompts"] += 1
+            return SimpleNamespace(
+                final_response=json.dumps(
+                    {
+                        "type": "update_hypothesis",
+                        "arguments": {"id": "hyp-1", "grade": "resolved"},
+                    }
+                ),
+                usage=None,
+            )
+
+    class FakeCodex:
+        def __init__(self, config):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def thread_start(self, **kwargs):
+            return FakeThread()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "openai_codex",
+        SimpleNamespace(
+            ApprovalMode=FakeApprovalMode,
+            Codex=FakeCodex,
+            CodexConfig=FakeConfig,
+            Sandbox=FakeSandbox,
+        ),
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "update_hypothesis", "parameters": {}},
+        }
+    ]
+
+    with agent_loop_session(CodexSdkChat(model="gpt-5.6-luna")) as session:
+        response = session._call_raw(
+            [{"role": "user", "content": "reconcile"}],
+            tools=tools,
+        )
+
+    call = response.choices[0].message.tool_calls[0]
+    assert call.function.name == "update_hypothesis"
+    assert json.loads(call.function.arguments) == {
+        "id": "hyp-1",
+        "grade": "resolved",
+    }
+    assert seen["prompts"] == 1
 
 
 def test_sdk_usage_prefers_last_turn_over_cumulative_total():

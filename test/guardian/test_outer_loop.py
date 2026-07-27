@@ -4,6 +4,7 @@
 """Behavioral tests for Guardian's agent-owned L2 loop."""
 
 import json
+import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -201,6 +202,178 @@ def test_grade_rejection_is_observation_and_loop_can_recover(tmp_path):
     )
     assert "tool_error" in update["observation"]
     assert result.exit_reason == "ReportSubmitted"
+
+
+def test_l2_can_promote_simple_source_finding_without_investigator(tmp_path):
+    (tmp_path / "mod.py").write_text(
+        "def parse(value):\n"
+        "    if value is None:\n"
+        "        return None\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    hypothesis = Hypothesis.create(
+        claim="mod.parse returns None for a required input",
+        consequence="callers dereference None",
+        remedy="reject missing values before returning",
+        origin="exploration",
+        locus=["mod.py:1-4"],
+        cycle_no=1,
+    )
+    state = _state()
+    state.hypotheses = [hypothesis]
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "c1",
+                    "update_hypothesis",
+                    {
+                        "id": hypothesis.id,
+                        "grade": "finding",
+                        "source_evidence": [
+                            {
+                                "path": "mod.py",
+                                "start_line": 1,
+                                "end_line": 3,
+                                "description": (
+                                    "The None branch directly returns None "
+                                    "without rejecting the required input."
+                                ),
+                            }
+                        ],
+                        "confidence": 0.99,
+                        "reason": "The defect is closed over the cited branch.",
+                    },
+                )
+            ),
+            _response(_call("c2", "submit_report", {"summary": "One finding."})),
+        ]
+    )
+
+    result = run_cycle_loop(
+        state,
+        LoopContext(
+            repo_path=str(tmp_path),
+            arm="memory",
+            llm=llm,
+            retriever=None,
+        ),
+    )
+
+    assert hypothesis.grade == "finding"
+    assert "source-valid:l2:abc123:mod.py:1-3" in hypothesis.evidence
+    assert any(
+        item.startswith("source-note:mod.py:1-3:") for item in hypothesis.evidence
+    )
+    assert [
+        row["tool"] for row in result.decision_log if row["event"] == "tool_call"
+    ] == ["update_hypothesis", "submit_report"]
+
+
+def test_l2_direct_finding_rejects_nonexistent_source_span(tmp_path):
+    hypothesis = Hypothesis.create(
+        claim="mod.parse returns None for a required input",
+        consequence="callers dereference None",
+        remedy="reject missing values before returning",
+        origin="exploration",
+        locus=["missing.py:1-2"],
+        cycle_no=1,
+    )
+    state = _state()
+    state.hypotheses = [hypothesis]
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "c1",
+                    "update_hypothesis",
+                    {
+                        "id": hypothesis.id,
+                        "grade": "finding",
+                        "source_evidence": [
+                            {
+                                "path": "missing.py",
+                                "start_line": 1,
+                                "end_line": 2,
+                                "description": "This file does not exist.",
+                            }
+                        ],
+                        "reason": "invalid citation",
+                    },
+                )
+            ),
+            _response(_call("c2", "submit_report", {"summary": "Deferred."})),
+        ]
+    )
+
+    result = run_cycle_loop(
+        state,
+        LoopContext(
+            repo_path=str(tmp_path),
+            arm="memory",
+            llm=llm,
+            retriever=None,
+        ),
+    )
+
+    update = next(
+        row
+        for row in result.decision_log
+        if row.get("event") == "tool_call" and row.get("tool") == "update_hypothesis"
+    )
+    assert "not a regular file" in update["observation"]
+    assert hypothesis.grade == "conjecture"
+    assert not any(item.startswith("source-valid:") for item in hypothesis.evidence)
+
+
+def test_l2_cannot_forge_reserved_evidence_reference(tmp_path):
+    hypothesis = Hypothesis.create(
+        claim="mod.parse returns None for a required input",
+        consequence="callers dereference None",
+        remedy="reject missing values before returning",
+        origin="exploration",
+        locus=["mod.py:1-2"],
+        cycle_no=1,
+    )
+    state = _state()
+    state.hypotheses = [hypothesis]
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "c1",
+                    "update_hypothesis",
+                    {
+                        "id": hypothesis.id,
+                        "grade": "finding",
+                        "evidence": ["source-valid:l2:forged:mod.py:1-2"],
+                        "reason": "forged citation",
+                    },
+                )
+            ),
+            _response(_call("c2", "submit_report", {"summary": "Deferred."})),
+        ]
+    )
+
+    result = run_cycle_loop(
+        state,
+        LoopContext(
+            repo_path=str(tmp_path),
+            arm="memory",
+            llm=llm,
+            retriever=None,
+        ),
+    )
+
+    update = next(
+        row
+        for row in result.decision_log
+        if row.get("event") == "tool_call" and row.get("tool") == "update_hypothesis"
+    )
+    assert "runtime-generated" in update["observation"]
+    assert hypothesis.grade == "conjecture"
+    assert hypothesis.evidence == []
 
 
 def test_agent_resolves_hypothesis_carried_to_fixed_commit(tmp_path):
@@ -624,6 +797,118 @@ def test_agent_can_inspect_reviewed_commit_diff(tmp_path):
     assert observation.startswith("diff --git")
 
 
+def test_independent_source_reads_execute_in_parallel_and_keep_request_order(tmp_path):
+    barrier = threading.Barrier(2)
+
+    def synchronized_read(repo_path, path, **kwargs):
+        barrier.wait(timeout=2)
+        return f"source:{path}"
+
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call("read-a", "read_code", {"path": "a.py"}),
+                _call("read-b", "read_code", {"path": "b.py"}),
+            ),
+            _response(_call("submit", "submit_report", {"summary": "Reviewed."})),
+        ]
+    )
+
+    with patch(
+        "codeminer.guardian.loop.runtime.read_code",
+        side_effect=synchronized_read,
+    ):
+        result = run_cycle_loop(
+            _state(),
+            LoopContext(
+                repo_path=str(tmp_path),
+                arm="memory",
+                llm=llm,
+                retriever=None,
+            ),
+        )
+
+    reads = [row for row in result.decision_log if row.get("tool") == "read_code"]
+    assert [row["tool_call_id"] for row in reads] == ["read-a", "read-b"]
+    assert [row["observation"] for row in reads] == [
+        "source:a.py",
+        "source:b.py",
+    ]
+    tool_results = [
+        message for message in llm.seen_messages[1] if message.get("role") == "tool"
+    ]
+    assert [message["tool_call_id"] for message in tool_results] == [
+        "read-a",
+        "read-b",
+    ]
+
+
+def test_large_observation_is_externalized_with_bounded_rereads(tmp_path):
+    full_result = "prefix-" + ("X" * 2_000)
+    observation_dir = tmp_path / "observations"
+    llm = _ScriptedLLM(
+        [
+            _response(_call("search", "search_code", {"query": "contract"})),
+            _response(_call("submit", "submit_report", {"summary": "Reviewed."})),
+        ]
+    )
+    retriever = SimpleNamespace(query=lambda query, top_k=None: [full_result])
+
+    result = run_cycle_loop(
+        _state(),
+        LoopContext(
+            repo_path=str(tmp_path),
+            arm="memory",
+            llm=llm,
+            retriever=retriever,
+            observation_dir=observation_dir,
+            max_inline_observation_chars=100,
+        ),
+    )
+
+    assert result.exit_reason == "ReportSubmitted"
+    search_result = [
+        message for message in llm.seen_messages[1] if message.get("role") == "tool"
+    ][0]["content"]
+    assert "[observation ref=obs_" in search_result
+    assert full_result not in search_result
+    stored = list(observation_dir.glob("obs_*.txt"))
+    assert len(stored) == 1
+    assert full_result in stored[0].read_text(encoding="utf-8")
+
+    reread_llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "reread",
+                    "read_observation",
+                    {"ref": stored[0].name, "offset": 7, "limit": 50},
+                )
+            ),
+            _response(_call("submit", "submit_report", {"summary": "Done."})),
+        ]
+    )
+    run_cycle_loop(
+        _state(),
+        LoopContext(
+            repo_path=str(tmp_path),
+            arm="memory",
+            llm=reread_llm,
+            retriever=None,
+            observation_dir=observation_dir,
+            max_inline_observation_chars=10,
+        ),
+    )
+    reread = [
+        message
+        for message in reread_llm.seen_messages[1]
+        if message.get("role") == "tool"
+    ][0]["content"]
+    assert reread.startswith("X" * 50)
+    assert "chars 7-57" in reread
+    assert "[observation ref=" not in reread
+
+
 def test_long_context_is_summarized_as_one_coherent_history(tmp_path):
     observation = "X" * 5_000
     llm = _ScriptedLLM(
@@ -647,6 +932,7 @@ def test_long_context_is_summarized_as_one_coherent_history(tmp_path):
             llm=llm,
             retriever=retriever,
             observation_dir=tmp_path / "observations",
+            max_inline_observation_chars=10_000,
             max_context_tokens=1_500,
             context_reserve_tokens=300,
         ),

@@ -272,21 +272,25 @@ tools, canonical state, evidence validation, and stopping policies remain
 separate.
 
 Within either kind of agent loop, messages and tool results append to a stable
-conversation so provider prompt caching can reuse the preceding prefix. Raw
-tool results stay in working context until the configured model-token boundary
-is approached. At that boundary the owning agent requests one structured
+conversation so provider prompt caching can reuse the preceding prefix. L2
+externalizes an individual tool result only when it exceeds the inline
+observation limit: the full result is stored with the episode, while the
+conversation keeps a bounded preview and a `read_observation` reference. At the
+model-token boundary the owning agent still requests one structured
 working-memory summary, archives the full prior transcript, re-injects its
 immutable frame and canonical state, resets only its own provider session, and
-continues. It does not evict individual observations during ordinary turns.
-L3 includes its tool schemas in request-size and grant estimates and writes the
-actual terminal outcome to its checkpoint. Reports retain prompt, cached-input,
-completion, and total-token counts alongside compaction events.
+continues. L3 includes its tool schemas in request-size and grant estimates and
+writes the actual terminal outcome to its checkpoint. Reports retain prompt,
+cached-input, completion, and total-token counts alongside compaction events.
 
 ## Concurrency and consistency
 
 Guardian is asynchronous, but commit processing is serialized:
 
 - one transport and one watcher are active for a solver;
+- one L2 response may contain several tool calls; contiguous filesystem and
+  immutable-state reads execute concurrently, return in request order, and all
+  retrieval, memory, mutation, L3, and submission calls remain barriers;
 - lazy startup is lock-protected and idempotent;
 - a commit is not scheduled again after it becomes the last processed commit;
 - readers see the last complete cached report while a new cycle is running;

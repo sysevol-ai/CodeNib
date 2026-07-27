@@ -9,7 +9,9 @@ import json
 import re
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -36,7 +38,7 @@ from .state import (
     save_checkpoint,
     validate_hypothesis,
 )
-from .tools import TOOL_NAMES, TOOLS
+from .tools import PARALLEL_SAFE_TOOL_NAMES, TOOL_NAMES, TOOLS
 from .tools_code import read_code, search_code
 
 logger = get_logger(__name__)
@@ -65,6 +67,8 @@ class LoopContext:
     max_investigator_rounds: int = 8
     inner_usage: object = None
     outer_usage: object = None
+    max_inline_observation_chars: int = 4_000
+    max_observation_read_chars: int = 16_000
 
 
 def _state_summary(state: CycleState) -> dict:
@@ -161,6 +165,78 @@ def _commit_diff(repo_path: str) -> str:
     return result.stdout[:30_000] if result.returncode == 0 else ""
 
 
+def _validated_l2_source_evidence(
+    raw_evidence: object,
+    *,
+    repo_path: str,
+    commit: str,
+) -> List[str]:
+    """Validate exact L2 source citations and mint admissible evidence refs."""
+
+    if not isinstance(raw_evidence, list) or not raw_evidence:
+        raise ValueError("source_evidence must be a non-empty list")
+    validated: List[str] = []
+    for item in raw_evidence:
+        if not isinstance(item, dict):
+            raise ValueError("each source_evidence item must be an object")
+        path = str(item.get("path", "")).strip()
+        description = str(item.get("description", "")).strip()
+        start_line = int(item.get("start_line", 0))
+        end_line = int(item.get("end_line", 0))
+        if not path or not description:
+            raise ValueError("source_evidence path and description must be non-empty")
+        if Path(path).is_absolute():
+            raise ValueError("source_evidence path must be repository-relative")
+        if start_line < 1 or end_line < start_line:
+            raise ValueError("source_evidence must name a valid positive line range")
+        if end_line - start_line > 200:
+            raise ValueError("source_evidence spans may not exceed 201 lines")
+        excerpt = read_code(
+            repo_path,
+            path,
+            start_line=start_line,
+            end_line=end_line,
+            max_chars=1_000_000,
+        )
+        last_line = re.match(r"^\s*(\d+)\s", excerpt.splitlines()[-1])
+        if (
+            excerpt == "(empty range)"
+            or not last_line
+            or int(last_line.group(1)) < end_line
+        ):
+            raise ValueError(
+                f"source_evidence range does not exist: "
+                f"{path}:{start_line}-{end_line}"
+            )
+        locus = f"{path}:{start_line}-{end_line}"
+        validated.extend(
+            [
+                f"source-valid:l2:{commit}:{locus}",
+                f"source-note:{locus}: {description}",
+            ]
+        )
+    return validated
+
+
+def _model_evidence(raw_evidence: object) -> List[str]:
+    """Accept model-authored notes but reserve runtime evidence namespaces."""
+
+    if raw_evidence is None:
+        return []
+    if not isinstance(raw_evidence, list):
+        raise ValueError("evidence must be a list")
+    evidence = [str(item).strip() for item in raw_evidence]
+    reserved = ("probe-valid:", "source-valid:", "source-note:", "resolved:")
+    forged = [item for item in evidence if item.startswith(reserved)]
+    if forged:
+        raise ValueError(
+            "evidence references beginning with probe-valid:, source-valid:, "
+            "source-note:, or resolved: are runtime-generated; use "
+            "source_evidence for direct L2 source citations"
+        )
+    return evidence
+
+
 def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -> str:
     """Dispatch one call. Tool failures become observations; only submit exits."""
     try:
@@ -215,7 +291,18 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
             target = ctx.observation_dir / ref
             if target.parent != ctx.observation_dir or not target.is_file():
                 raise ValueError(f"unknown observation ref: {ref}")
-            return target.read_text(encoding="utf-8", errors="replace")
+            offset = max(0, int(args.get("offset", 0) or 0))
+            limit = min(
+                max(1, int(args.get("limit", 4_000) or 4_000)),
+                max(1, ctx.max_observation_read_chars),
+            )
+            content = target.read_text(encoding="utf-8", errors="replace")
+            selected = content[offset : offset + limit]
+            suffix = (
+                f"\n[observation {ref}: chars {offset}-{offset + len(selected)} "
+                f"of {len(content)}]"
+            )
+            return (selected or "(empty observation range)") + suffix
 
         if call_name == "write_hypothesis":
             hypothesis = Hypothesis.create(
@@ -224,7 +311,7 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
                 remedy=str(args.get("remedy", "")),
                 origin=str(args.get("origin", "")),
                 locus=args.get("locus") or [],
-                evidence=args.get("evidence") or [],
+                evidence=_model_evidence(args.get("evidence")),
                 confidence=float(args.get("confidence", 0.5)),
                 cycle_no=state.cycle_no,
                 supersedes=args.get("supersedes") or [],
@@ -246,7 +333,22 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
             try:
                 if "evidence" in args:
                     hypothesis.evidence = list(
-                        dict.fromkeys(hypothesis.evidence + list(args["evidence"]))
+                        dict.fromkeys(
+                            hypothesis.evidence + _model_evidence(args["evidence"])
+                        )
+                    )
+                if "source_evidence" in args:
+                    hypothesis.evidence = list(
+                        dict.fromkeys(
+                            [
+                                *hypothesis.evidence,
+                                *_validated_l2_source_evidence(
+                                    args["source_evidence"],
+                                    repo_path=ctx.repo_path,
+                                    commit=state.commit,
+                                ),
+                            ]
+                        )
                     )
                 if "confidence" in args:
                     hypothesis.confidence = float(args["confidence"])
@@ -434,6 +536,54 @@ def _assistant_message(message: object) -> dict:
     }
 
 
+def _compact_observation(
+    observation: str,
+    *,
+    ctx: LoopContext,
+    state: CycleState,
+    turn: int,
+    index: int,
+    call_id: str,
+    call_name: str,
+) -> str:
+    """Persist a large result and return a bounded preview with a stable ref."""
+
+    limit = max(1, ctx.max_inline_observation_chars)
+    if (
+        call_name == "read_observation"
+        or len(observation) <= limit
+        or ctx.observation_dir is None
+    ):
+        return observation
+    ctx.observation_dir.mkdir(parents=True, exist_ok=True)
+    digest = sha256(
+        f"{state.cycle_no}\0{turn}\0{index}\0{call_id}\0{observation}".encode(
+            "utf-8", errors="replace"
+        )
+    ).hexdigest()[:12]
+    ref = f"obs_{state.cycle_no:04d}_{turn:03d}_{index:02d}_{digest}.txt"
+    target = ctx.observation_dir / ref
+    target.write_text(observation, encoding="utf-8")
+    return (
+        f"[observation ref={ref} chars={len(observation)} "
+        f"preview_chars={limit}]\n"
+        f"{observation[:limit]}\n"
+        f"[preview ended; use read_observation(ref={json.dumps(ref)}, "
+        f"offset={limit}, limit=4000) if more is material]"
+    )
+
+
+def _parsed_call(call: object) -> tuple[str, dict]:
+    name = call.function.name
+    try:
+        args = json.loads(call.function.arguments or "{}")
+        if not isinstance(args, dict):
+            args = {}
+    except json.JSONDecodeError:
+        args = {}
+    return name, args
+
+
 def run_cycle_loop(
     state: CycleState,
     ctx: LoopContext,
@@ -574,37 +724,77 @@ def run_cycle_loop(
                     decision_log_tail=state.decision_log[-5:],
                 )
 
-            for call in calls:
-                name = call.function.name
-                try:
-                    args = json.loads(call.function.arguments or "{}")
-                    if not isinstance(args, dict):
-                        args = {}
-                except json.JSONDecodeError:
-                    args = {}
-                before = _state_summary(state)
-                record = {
-                    "event": "tool_call",
-                    "turn": turn,
-                    "tool_call_id": call.id,
-                    "tool": name,
-                    "arguments": args,
-                    "state_before": before,
-                }
-                state.decision_log.append(record)
-                if name not in TOOL_NAMES:
-                    observation = f"(unknown tool: {name!r})"
-                else:
-                    observation = _dispatch(name, args, state, ctx)
-                record["observation"] = observation[:2_000]
-                record["state_after"] = _state_summary(state)
-                transcript.append(
-                    {
-                        "role": "tool",
+            parsed_calls = [(call, *_parsed_call(call)) for call in calls]
+            cursor = 0
+            while cursor < len(parsed_calls):
+                end = cursor + 1
+                if parsed_calls[cursor][1] in PARALLEL_SAFE_TOOL_NAMES:
+                    while (
+                        end < len(parsed_calls)
+                        and parsed_calls[end][1] in PARALLEL_SAFE_TOOL_NAMES
+                    ):
+                        end += 1
+                batch = parsed_calls[cursor:end]
+                records = []
+                for call, name, args in batch:
+                    record = {
+                        "event": "tool_call",
+                        "turn": turn,
                         "tool_call_id": call.id,
-                        "content": observation,
+                        "tool": name,
+                        "arguments": args,
+                        "state_before": _state_summary(state),
                     }
-                )
+                    state.decision_log.append(record)
+                    records.append(record)
+
+                if len(batch) > 1:
+                    with ThreadPoolExecutor(
+                        max_workers=min(len(batch), 8),
+                        thread_name_prefix="guardian-read",
+                    ) as executor:
+                        futures = [
+                            executor.submit(_dispatch, name, args, state, ctx)
+                            for _, name, args in batch
+                        ]
+                        observations = [future.result() for future in futures]
+                else:
+                    call, name, args = batch[0]
+                    observations = [
+                        (
+                            f"(unknown tool: {name!r})"
+                            if name not in TOOL_NAMES
+                            else _dispatch(name, args, state, ctx)
+                        )
+                    ]
+
+                for batch_index, (
+                    (call, _name, _args),
+                    record,
+                    observation,
+                ) in enumerate(
+                    zip(batch, records, observations, strict=True),
+                    start=cursor,
+                ):
+                    compact_observation = _compact_observation(
+                        observation,
+                        ctx=ctx,
+                        state=state,
+                        turn=turn,
+                        index=batch_index,
+                        call_id=call.id,
+                        call_name=_name,
+                    )
+                    record["observation"] = compact_observation[:2_000]
+                    record["state_after"] = _state_summary(state)
+                    transcript.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.id,
+                            "content": compact_observation,
+                        }
+                    )
+                cursor = end
             turn += 1
             if ctx.checkpoint_path is not None:
                 save_checkpoint(ctx.checkpoint_path, state, transcript)
