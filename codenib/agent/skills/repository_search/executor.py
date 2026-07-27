@@ -30,14 +30,6 @@ _SUPPORTING_DIRECTORIES = frozenset(
         "samples",
     }
 )
-_VALIDATION_SCRIPT_PREFIXES = (
-    "bench_",
-    "benchmark_",
-    "demo_",
-    "example_",
-    "smoke_",
-    "test_",
-)
 _DOCUMENT_SUFFIXES = frozenset({".adoc", ".md", ".rst"})
 _MAX_TOP_K = 20
 _CODE_IDENTIFIER_RE = re.compile(
@@ -132,9 +124,7 @@ def _is_supporting_evidence(node: "QueriedNode") -> bool:
         return True
     if path.suffix.lower() in _DOCUMENT_SUFFIXES:
         return True
-    return "scripts" in parts[:-1] and path.name.lower().startswith(
-        _VALIDATION_SCRIPT_PREFIXES
-    )
+    return "scripts" in parts[:-1]
 
 
 def _bounded_top_k(value: int) -> int:

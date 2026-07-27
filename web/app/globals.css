@@ -2991,6 +2991,16 @@ a.evidence-row:hover {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-height: calc(100vh - var(--top-h));
 }
+.ask-page .ask-codemap.empty {
+  grid-template-columns: minmax(0, 760px);
+  justify-content: center;
+  min-height: calc(100vh - var(--top-h) - var(--askbar-h));
+}
+.ask-page .ask-codemap.empty .ask-explain {
+  width: 100%;
+  border-right: 0;
+  padding-top: 64px;
+}
 .ask-explain {
   padding: 26px 30px 120px;
   border-right: 1px solid var(--border);
@@ -3000,6 +3010,18 @@ a.evidence-row:hover {
   font-size: 22px;
   line-height: 1.35;
   margin: 10px 0 18px;
+}
+.askbar-inline {
+  position: static;
+  width: 100%;
+  margin-top: 28px;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+.askbar-inline .askbar-inner {
+  width: 100%;
 }
 .ask-refs {
   margin-top: 24px;

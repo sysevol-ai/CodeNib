@@ -154,7 +154,7 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
       />
 
       {/* DeepWiki-style codemap: hierarchical explanation (left) + code (right). */}
-      <div className="ask-codemap">
+      <div className={`ask-codemap ${turns.length === 0 ? "empty" : ""}`}>
         <section className="ask-explain">
           <AppLink className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
             ← Back to wiki
@@ -162,8 +162,14 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
 
           {turns.length === 0 && (
             <>
-              <h1 className="ask-q">Ask a question</h1>
-              <p className="muted">Type a question in the bar below.</p>
+              <h1 className="ask-q">Ask about {repoName}</h1>
+              <AskBar
+                repoId={repoId}
+                repo={repoName}
+                onSubmit={followUp}
+                disabled={loading}
+                inline
+              />
             </>
           )}
 
@@ -215,20 +221,24 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
           <div ref={endRef} />
         </section>
 
-        <aside className="ask-code">
-          <CodePanel
-            repoId={repoId}
-            citations={turnRefs[activeTurn] ?? []}
-            repo={repo?.repo}
-            commit={repo?.base_commit}
-            active={active}
-            onSelect={(i) => selectCitation(activeTurn, i)}
-            scrollSignal={scrollSignal}
-          />
-        </aside>
+        {turns.length > 0 && (
+          <aside className="ask-code">
+            <CodePanel
+              repoId={repoId}
+              citations={turnRefs[activeTurn] ?? []}
+              repo={repo?.repo}
+              commit={repo?.base_commit}
+              active={active}
+              onSelect={(i) => selectCitation(activeTurn, i)}
+              scrollSignal={scrollSignal}
+            />
+          </aside>
+        )}
       </div>
 
-      <AskBar repoId={repoId} repo={repoName} onSubmit={followUp} disabled={loading} />
+      {turns.length > 0 && (
+        <AskBar repoId={repoId} repo={repoName} onSubmit={followUp} disabled={loading} />
+      )}
     </div>
   );
 }

@@ -128,6 +128,7 @@ def test_omits_supporting_evidence_by_default():
             _node("docs", "docs/runtime.md"),
             _node("evaluation", "codenib/eval/runtime_benchmark.py"),
             _node("smoke", "scripts/smoke_release.py"),
+            _node("script", "scripts/build_qa_index.py"),
             _node("generated", "dist/runtime.js"),
             _node("runtime", "codenib/runtime.py"),
         ]

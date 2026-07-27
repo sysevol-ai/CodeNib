@@ -16,6 +16,7 @@ export default function AskBar({
   onSubmit,
   disabled = false,
   collapsible = false,
+  inline = false,
 }: {
   repoId: string;
   repo: string;
@@ -23,6 +24,7 @@ export default function AskBar({
   onSubmit?: (query: string) => void;
   disabled?: boolean;
   collapsible?: boolean;
+  inline?: boolean;
 }) {
   const [q, setQ] = useState(defaultValue);
   const [expanded, setExpanded] = useState(!collapsible);
@@ -74,7 +76,9 @@ export default function AskBar({
 
   return (
     <form
-      className={`askbar ${collapsible ? "askbar-expanded" : ""}`}
+      className={`askbar ${collapsible ? "askbar-expanded" : ""} ${
+        inline ? "askbar-inline" : ""
+      }`}
       onSubmit={submit}
       role="search"
     >
@@ -88,7 +92,11 @@ export default function AskBar({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={
-            onSubmit ? `Ask a follow-up about ${repo}…` : `Ask anything about ${repo}…`
+            inline
+              ? `Ask about ${repo}…`
+              : onSubmit
+                ? `Ask a follow-up about ${repo}…`
+                : `Ask anything about ${repo}…`
           }
           aria-label={`Ask a question about ${repo}`}
         />
