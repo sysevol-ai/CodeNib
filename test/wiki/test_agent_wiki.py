@@ -261,6 +261,30 @@ def test_overview_meta_uses_parent_level_files_from_each_major_topic():
     assert result["files"][0] == "README.md"
 
 
+def test_overview_meta_keeps_readme_documented_workflow_entry():
+    result = AgentWiki._overview_page_meta(
+        {
+            "id": "overview",
+            "title": "Overview",
+            "files": ["README.md", "tests/test_edit_iterate.py"],
+        },
+        [
+            {
+                "id": "evaluation-workflows",
+                "title": "Evaluation Workflows",
+                "files": ["bash/run_eval.sh"],
+                "children": [],
+            }
+        ],
+    )
+
+    assert result["files"][:3] == [
+        "README.md",
+        "tests/test_edit_iterate.py",
+        "bash/run_eval.sh",
+    ]
+
+
 def test_overview_symbol_roles_prefer_runtime_entrypoints_over_helpers():
     assert _overview_symbol_role_score("AgentRunner.run") > (
         _overview_symbol_role_score("compile_repo")

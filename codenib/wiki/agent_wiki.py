@@ -76,7 +76,7 @@ _EXT_LANG = {
     "kts": "kotlin",
 }
 _MAX_CONTEXT_CHARS = 14000
-_OUTLINE_PROMPT_VERSION = "10"
+_OUTLINE_PROMPT_VERSION = "12"
 _PAGE_PROMPT_VERSION = "79"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
@@ -2363,11 +2363,12 @@ class AgentWiki:
         for page in topic_pages:
             if not isinstance(page, dict):
                 continue
+            allows_supporting = _page_allows_supporting_files(page)
             representative = next(
                 (
                     file
                     for file in cls._page_retrieval_files(page)
-                    if not _is_supporting_file(file)
+                    if not _is_supporting_file(file) or allows_supporting
                 ),
                 None,
             )
@@ -2387,6 +2388,11 @@ class AgentWiki:
             for file in base_files
             if os.path.basename(file).lower().startswith("readme")
         ][:1]
+        documented_entries = [
+            file
+            for file in base_files
+            if file not in readmes and _is_supporting_file(file)
+        ][:2]
         topic_file_set = set(topic_files)
         entry_files = sorted(
             (
@@ -2394,11 +2400,14 @@ class AgentWiki:
                 for file in base_files
                 if file not in readmes
                 and file not in topic_file_set
+                and file not in documented_entries
                 and _overview_file_score(file) > 0
             ),
             key=lambda file: (-_overview_file_score(file), base_files.index(file)),
         )[:3]
-        files = list(dict.fromkeys([*readmes, *topic_files, *entry_files]))[:8]
+        files = list(
+            dict.fromkeys([*readmes, *documented_entries, *topic_files, *entry_files])
+        )[:8]
         if not files:
             files = base_files[:8]
         return {

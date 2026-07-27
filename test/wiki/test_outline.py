@@ -10,9 +10,11 @@ from codenib.wiki.outline import (
     _fallback_outline,
     _flagged_outline_summaries,
     _merge_outlines,
+    _outline_plan_warnings,
     _outline_quality_warnings,
     _outline_score,
     _page_allows_supporting_files,
+    _readme_entry_files,
     _required_top_level_pages,
     _validate_outline,
 )
@@ -202,6 +204,71 @@ def test_outline_repairs_merge_distinct_valid_concepts():
     assert merged["pages"][0]["keywords"] == ["entry", "runtime"]
 
 
+def test_outline_repairs_merge_synonymous_file_backed_concepts():
+    base = {
+        "pages": [
+            {
+                "id": "overview",
+                "title": "Overview",
+                "files": ["README.md"],
+                "children": [],
+            },
+            {
+                "id": "evaluation-workflows",
+                "title": "Evaluation Workflows",
+                "files": ["bash/run_all.sh", "bash/run_lc.sh"],
+                "children": [],
+            },
+        ]
+    }
+    candidate = {
+        "pages": [
+            {
+                "id": "overview",
+                "title": "Overview",
+                "files": ["README.md"],
+                "children": [],
+            },
+            {
+                "id": "evaluation-processes",
+                "title": "Evaluation Processes",
+                "files": ["bash/run_lc.sh", "bash/run_sgl.sh"],
+                "children": [],
+            },
+        ]
+    }
+
+    merged = _merge_outlines(base, candidate)
+
+    assert [page["id"] for page in merged["pages"]] == [
+        "overview",
+        "evaluation-workflows",
+    ]
+    assert merged["pages"][1]["files"] == [
+        "bash/run_all.sh",
+        "bash/run_lc.sh",
+        "bash/run_sgl.sh",
+    ]
+
+
+def test_outline_requires_primary_readme_workflow_coverage():
+    warnings = _outline_plan_warnings(
+        {
+            "pages": [
+                {"id": "overview", "files": ["README.md"], "children": []},
+                {
+                    "id": "evaluation",
+                    "files": ["bash/run_eval.sh"],
+                    "children": [],
+                },
+            ]
+        },
+        ["tests/test_edit_iterate.py", "bash/run_eval.sh"],
+    )
+
+    assert any("primary README quickstart entry" in warning for warning in warnings)
+
+
 def test_outline_requires_real_source_anchors(tmp_path):
     (tmp_path / "codenib").mkdir()
     (tmp_path / "codenib" / "config.py").write_text("class RuntimeConfig: pass\n")
@@ -338,6 +405,67 @@ def test_supporting_file_access_follows_page_identity_not_search_keywords():
             "keywords": ["AgentRunner"],
         }
     )
+    assert _page_allows_supporting_files(
+        {
+            "id": "edit-workflow",
+            "title": "Edit Iteration Workflow",
+            "keywords": ["Editor"],
+        }
+    )
+
+
+def test_readme_entry_files_resolve_documented_workflows(tmp_path):
+    files = [
+        "tests/test_edit_iterate.py",
+        "bash/run_eval.sh",
+        "src/runtime.py",
+    ]
+    for file in files:
+        path = tmp_path / file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# source\n")
+    readme = (
+        "Run `python tests/test_edit_iterate.py` for the minimum workflow.\n"
+        "Use ./bash/run_eval.sh for the full evaluation.\n"
+        "The missing path is examples/not_present.py.\n"
+    )
+
+    assert _readme_entry_files(str(tmp_path), readme) == files[:2]
+
+
+def test_readme_documented_workflow_retains_supporting_source(tmp_path):
+    file = "tests/test_edit_iterate.py"
+    path = tmp_path / file
+    path.parent.mkdir(parents=True)
+    path.write_text("def edit_iterate(): pass\n")
+
+    result = _validate_outline(
+        {
+            "pages": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "summary": "Repository purpose and execution flow.",
+                    "keywords": ["workflow"],
+                    "files": [file],
+                    "children": [],
+                },
+                {
+                    "id": "edit-iteration",
+                    "title": "Edit Iteration Workflow",
+                    "summary": "The workflow iterates edits against a task.",
+                    "keywords": ["edit", "iterate"],
+                    "files": [file],
+                    "children": [],
+                },
+            ]
+        },
+        str(tmp_path),
+        fallback_files=[file],
+        documented_files=[file],
+    )
+
+    assert result["pages"][1]["files"] == [file]
 
 
 def test_evaluation_page_retains_explicit_eval_files(tmp_path):

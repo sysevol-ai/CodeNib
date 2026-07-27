@@ -59,6 +59,15 @@ _SOURCE_SUFFIXES = {
     ".ts",
     ".tsx",
 }
+_DOCUMENTED_ENTRY_SUFFIXES = _SOURCE_SUFFIXES | {".bash", ".sh"}
+_README_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_.@+-])"
+    r"(?:\.{0,2}/)?(?:[A-Za-z0-9_.@+-]+/)*[A-Za-z0-9_.@+-]+"
+    r"\.(?:bash|c|cc|cpp|cs|go|h|hpp|java|js|jsx|kt|kts|php|py|rb|rs|"
+    r"scala|sh|swift|ts|tsx)"
+    r"(?=$|[^A-Za-z0-9_.@+/-])",
+    re.IGNORECASE,
+)
 _SUPPORTING_SEGMENTS = {
     "benchmark",
     "benchmarks",
@@ -114,6 +123,8 @@ _SUPPORTING_PAGE_TOKENS = {
     "test",
     "testing",
     "tests",
+    "workflow",
+    "workflows",
 }
 _META_SUMMARY_RE = re.compile(
     r"^(?:this\s+(?:page|section|chapter)\s+)?"
@@ -155,6 +166,46 @@ def _read_readme(repo_dir: str, limit: int = 3500) -> str:
             except OSError:
                 return ""
     return ""
+
+
+def _readme_entry_files(
+    repo_dir: str,
+    readme: str,
+    *,
+    limit: int = 12,
+) -> List[str]:
+    """Resolve source paths explicitly named by a repository README."""
+
+    known = {
+        path.relative_to(repo_dir).as_posix()
+        for path in walk_repository_files(repo_dir)
+        if path.suffix.lower() in _DOCUMENTED_ENTRY_SUFFIXES
+    }
+    by_basename: dict[str, List[str]] = defaultdict(list)
+    for file in known:
+        by_basename[Path(file).name].append(file)
+
+    resolved = []
+    for match in _README_PATH_RE.finditer(readme):
+        candidate = match.group(0).replace("\\", "/").lstrip("./")
+        file = candidate if candidate in known else ""
+        if not file:
+            suffix_matches = [
+                known_file
+                for known_file in known
+                if known_file.endswith("/" + candidate)
+            ]
+            if len(suffix_matches) == 1:
+                file = suffix_matches[0]
+        if not file and "/" not in candidate:
+            basename_matches = by_basename.get(candidate, [])
+            if len(basename_matches) == 1:
+                file = basename_matches[0]
+        if file and file not in resolved:
+            resolved.append(file)
+            if len(resolved) >= limit:
+                break
+    return resolved
 
 
 def _top_symbols(symbols: List[Symbol], limit: int = 70) -> List[Symbol]:
@@ -312,6 +363,9 @@ Core implementation files:
 Supporting evaluation, test, example, script, and documentation files:
 {supporting_files}
 
+README-declared source entrypoints:
+{documented_files}
+
 Repository structure:
 {structure}
 
@@ -351,9 +405,13 @@ names and implements that concern.
   efficient, easy, or flexible.
 - keywords drive a code search, so make them specific symbol/feature terms.
 - Every page and child MUST name 1-4 exact files from the supplied evidence.
+- A README-declared source entrypoint is a real user-facing workflow even when
+  it lives under tests, examples, or scripts. Group such files under a concrete
+  workflow title grounded in their path or symbols, rather than treating them
+  as generic test infrastructure.
 - Keep supporting evaluation, test, example, script, and documentation files
   out of core subsystem pages. Use them only for a page whose title explicitly
-  names that supporting concern.
+  names that supporting concern or a README-declared workflow.
 - At least one named file or symbol must lexically anchor the page title. A real \
 but unrelated file does not make an invented concept valid.
 - Make Overview a product mental model: purpose, user entry points, the main
@@ -442,8 +500,10 @@ def generate_outline(
     ]
     core_files = _top_files(core_symbols, limit=40)
     supporting_files = _top_files(supporting_symbols, limit=12)
-    files = [*core_files, *supporting_files]
-    readme = _read_readme(getattr(bundle.entry, "repo_dir", "") or "")
+    repo_dir = getattr(bundle.entry, "repo_dir", "") or ""
+    readme = _read_readme(repo_dir)
+    documented_files = _readme_entry_files(repo_dir, readme)
+    files = list(dict.fromkeys([*core_files, *documented_files, *supporting_files]))
     languages = ", ".join(getattr(bundle.manifest, "languages", []) or [])
 
     prompt = _OUTLINE_PROMPT.format(
@@ -452,7 +512,14 @@ def generate_outline(
         readme=readme or "(no README found)",
         core_files="\n".join(f"- {f}" for f in core_files) or "(none)",
         supporting_files=("\n".join(f"- {f}" for f in supporting_files) or "(none)"),
-        structure=_repository_structure(getattr(bundle.entry, "repo_dir", "") or ""),
+        documented_files=(
+            "\n".join(
+                f"- {file}" + (" (primary quickstart entry)" if index == 0 else "")
+                for index, file in enumerate(documented_files)
+            )
+            or "(none)"
+        ),
+        structure=_repository_structure(repo_dir),
         core_symbols=_format_symbols(_top_symbols(core_symbols, limit=60)) or "(none)",
         supporting_symbols=_format_symbols(_top_symbols(supporting_symbols, limit=10))
         or "(none)",
@@ -476,16 +543,16 @@ def generate_outline(
         fallback["error"] = str(exc)
         return fallback
 
-    repo_dir = getattr(bundle.entry, "repo_dir", "") or ""
     data = _validate_outline(
         _parse_outline(text),
         repo_dir,
         symbols=symbols,
         fallback_files=files,
+        documented_files=documented_files,
     )
     required_pages = _required_top_level_pages(len(files))
     initial_pages = len(data.get("pages") or [])
-    initial_warnings = _outline_quality_warnings(data)
+    initial_warnings = _outline_plan_warnings(data, documented_files)
     should_retry = (
         initial_pages < required_pages or len(files) > 12 or bool(initial_warnings)
     )
@@ -497,7 +564,7 @@ def generate_outline(
     )
     for _ in range(plan_repairs):
         current_pages = len(data.get("pages") or [])
-        current_warnings = _outline_quality_warnings(data)
+        current_warnings = _outline_plan_warnings(data, documented_files)
         if current_pages < required_pages:
             retry_prompt = _OUTLINE_REPAIR_PROMPT.format(
                 original_prompt=prompt,
@@ -523,20 +590,31 @@ def generate_outline(
                 repo_dir,
                 symbols=symbols,
                 fallback_files=files,
+                documented_files=documented_files,
             )
             merged = _validate_outline(
                 _merge_outlines(data, repaired),
                 repo_dir,
                 symbols=symbols,
                 fallback_files=files,
+                documented_files=documented_files,
             )
             best_candidate = max(
                 (repaired, merged),
-                key=lambda candidate: _outline_score(candidate, required_pages),
+                key=lambda candidate: _outline_score(
+                    candidate,
+                    required_pages,
+                    documented_files=documented_files,
+                ),
             )
-            if _outline_score(best_candidate, required_pages) > _outline_score(
+            if _outline_score(
+                best_candidate,
+                required_pages,
+                documented_files=documented_files,
+            ) > _outline_score(
                 data,
                 required_pages,
+                documented_files=documented_files,
             ):
                 data = best_candidate
                 refined = True
@@ -579,7 +657,7 @@ def generate_outline(
         fallback["raw"] = data.get("raw")
         return fallback
     data["mode"] = "generated"
-    warnings = _outline_quality_warnings(data)
+    warnings = _outline_plan_warnings(data, documented_files)
     data["quality"] = {
         "required_top_level_pages": required_pages,
         "top_level_pages": len(data["pages"]),
@@ -603,7 +681,9 @@ def _required_top_level_pages(salient_file_count: int) -> int:
 def _outline_score(
     data: Dict[str, Any],
     required_pages: int,
-) -> tuple[int, int, int, int, int]:
+    *,
+    documented_files: List[str] | None = None,
+) -> tuple[int, int, int, int, int, int, int]:
     """Prefer broad, source-diverse outlines without overriding validation."""
 
     pages = data.get("pages") or []
@@ -614,10 +694,21 @@ def _outline_score(
         for file in page.get("files") or []
         if isinstance(file, str)
     }
+    documented = set(documented_files or ())
+    workflow_files = {
+        file
+        for page in pages[1:]
+        for item in [page, *(page.get("children") or [])]
+        if isinstance(item, dict)
+        for file in item.get("files") or []
+        if file in documented
+    }
     return (
         int(len(pages) >= required_pages),
-        -len(_outline_quality_warnings(data)),
+        -len(_outline_plan_warnings(data, documented_files or [])),
         min(len(pages), required_pages),
+        int(bool(documented_files) and documented_files[0] in workflow_files),
+        len(workflow_files),
         len(files),
         children,
     )
@@ -635,6 +726,68 @@ def _outline_page_keys(page: Dict[str, Any]) -> set[str]:
         for value in values
         if value.strip()
     }
+
+
+def _concept_terms(value: str) -> set[str]:
+    generic = {
+        "code",
+        "component",
+        "components",
+        "process",
+        "system",
+        "tool",
+        "tools",
+    }
+    terms = set()
+    for raw in re.findall(r"[a-z0-9]+", value.lower()):
+        if raw in generic:
+            continue
+        variants = {raw}
+        for suffix in (
+            "ations",
+            "ation",
+            "ments",
+            "ment",
+            "ings",
+            "ing",
+            "ers",
+            "er",
+            "s",
+        ):
+            if raw.endswith(suffix) and len(raw) - len(suffix) >= 4:
+                variants.add(raw[: -len(suffix)])
+                break
+        terms.update(variants)
+    return terms
+
+
+def _outline_page_files(page: Dict[str, Any]) -> set[str]:
+    return {
+        file
+        for item in [page, *(page.get("children") or [])]
+        if isinstance(item, dict)
+        for file in item.get("files") or []
+        if isinstance(file, str)
+    }
+
+
+def _same_outline_concept(
+    left: Dict[str, Any],
+    right: Dict[str, Any],
+) -> bool:
+    if _outline_page_keys(left) & _outline_page_keys(right):
+        return True
+    left_files = _outline_page_files(left)
+    right_files = _outline_page_files(right)
+    if not left_files or not right_files:
+        return False
+    overlap = len(left_files & right_files) / min(len(left_files), len(right_files))
+    if overlap < 0.5:
+        return False
+    return bool(
+        _concept_terms(str(left.get("title") or ""))
+        & _concept_terms(str(right.get("title") or ""))
+    )
 
 
 def _merge_outline_page(
@@ -673,9 +826,8 @@ def _merge_outline_page(
 
     children = copy.deepcopy(base.get("children") or [])
     for incoming in candidate.get("children") or []:
-        incoming_keys = _outline_page_keys(incoming)
         existing = next(
-            (child for child in children if incoming_keys & _outline_page_keys(child)),
+            (child for child in children if _same_outline_concept(child, incoming)),
             None,
         )
         if existing is None:
@@ -696,9 +848,8 @@ def _merge_outlines(
 
     pages = copy.deepcopy(base.get("pages") or [])
     for incoming in candidate.get("pages") or []:
-        incoming_keys = _outline_page_keys(incoming)
         existing = next(
-            (page for page in pages if incoming_keys & _outline_page_keys(page)),
+            (page for page in pages if _same_outline_concept(page, incoming)),
             None,
         )
         if existing is None:
@@ -745,6 +896,41 @@ def _outline_quality_warnings(data: Dict[str, Any]) -> List[str]:
             visit(page.get("children"))
 
     visit(data.get("pages"))
+    return warnings
+
+
+def _outline_plan_warnings(
+    data: Dict[str, Any],
+    documented_files: List[str],
+) -> List[str]:
+    """Combine prose checks with coverage of README-declared workflows."""
+
+    warnings = _outline_quality_warnings(data)
+    documented = set(documented_files)
+    if not documented:
+        return warnings
+    pages = data.get("pages") or []
+    covered = {
+        file
+        for page in pages[1:]
+        for item in [page, *(page.get("children") or [])]
+        if isinstance(item, dict)
+        for file in item.get("files") or []
+        if file in documented
+    }
+    required = min(2, len(documented))
+    primary = documented_files[0]
+    if primary not in covered:
+        warnings.append(
+            "the primary README quickstart entry needs a dedicated workflow page: "
+            f"{primary}"
+        )
+    if len(covered) < required:
+        missing = [file for file in documented_files if file not in covered]
+        warnings.append(
+            "README-declared execution workflows need dedicated source coverage; "
+            f"cover at least {required} of: {', '.join(missing[:6])}"
+        )
     return warnings
 
 
@@ -846,6 +1032,7 @@ def _validate_outline(
     *,
     symbols: List[Symbol] | None = None,
     fallback_files: List[str] | None = None,
+    documented_files: List[str] | None = None,
 ) -> Dict[str, Any]:
     known_files = {
         path.relative_to(repo_dir).as_posix()
@@ -853,6 +1040,15 @@ def _validate_outline(
     }
     symbols = symbols or []
     fallback_files = fallback_files or []
+    documented_order = list(
+        dict.fromkeys(
+            str(file).replace("\\", "/").strip().lstrip("./")
+            for file in documented_files or []
+        )
+    )
+    documented = {
+        str(file).replace("\\", "/").strip().lstrip("./") for file in documented_order
+    }
     by_basename: dict[str, List[str]] = defaultdict(list)
     for file in known_files:
         by_basename[file.rsplit("/", 1)[-1]].append(file)
@@ -973,7 +1169,12 @@ def _validate_outline(
         candidates = list(
             dict.fromkeys(
                 file
-                for file in [*existing, *role_files, *fallback_files]
+                for file in [
+                    *existing,
+                    *documented_order,
+                    *role_files,
+                    *fallback_files,
+                ]
                 if file in known_files
             )
         )
@@ -987,8 +1188,16 @@ def _validate_outline(
             key=lambda file: (file.count("/"), file.lower()),
         )
         preferred = sorted(
-            (file for file in candidates if _overview_file_score(file) > -100),
-            key=lambda file: (-_overview_file_score(file), candidates.index(file)),
+            (
+                file
+                for file in candidates
+                if file in documented or _overview_file_score(file) > -100
+            ),
+            key=lambda file: (
+                file not in documented,
+                -_overview_file_score(file),
+                candidates.index(file),
+            ),
         )
         chosen = list(dict.fromkeys(readmes))[:1]
         areas = set()
@@ -1035,13 +1244,21 @@ def _validate_outline(
         )
         files = valid_files(page.get("files"))
         if not overview and not allows_supporting_files:
-            files = [file for file in files if not _is_supporting_file(file)]
+            files = [
+                file
+                for file in files
+                if not _is_supporting_file(file) or file in documented
+            ]
         if overview:
             files = overview_files(files)
         if not files:
             files = inferred_files(page)
             if not overview and not allows_supporting_files:
-                files = [file for file in files if not _is_supporting_file(file)]
+                files = [
+                    file
+                    for file in files
+                    if not _is_supporting_file(file) or file in documented
+                ]
         if not files and overview:
             files = [file for file in fallback_files if file in known_files][:8]
         if not files and child and parent_files:
@@ -1050,7 +1267,9 @@ def _validate_outline(
             ]
             if not allows_supporting_files:
                 parent_matches = [
-                    file for file in parent_matches if not _is_supporting_file(file)
+                    file
+                    for file in parent_matches
+                    if not _is_supporting_file(file) or file in documented
                 ]
             files = parent_matches[:4]
         if not files:
@@ -1103,8 +1322,17 @@ def _validate_outline(
     pages = []
     for candidate, is_overview in ordered[:_MAX_OUTLINE_PAGES]:
         page = normalize(candidate, overview=is_overview)
-        if page is not None:
+        if page is None:
+            continue
+        existing = next(
+            (accepted for accepted in pages if _same_outline_concept(accepted, page)),
+            None,
+        )
+        if existing is None:
             pages.append(page)
+            continue
+        replacement = _merge_outline_page(existing, page)
+        pages[pages.index(existing)] = replacement
     if pages:
         promoted = pages[0].get("children", [])
         pages[0]["children"] = []
