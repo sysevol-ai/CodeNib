@@ -48,18 +48,20 @@ def test_chunk_index_persists_source_location_and_content(tmp_path: Path) -> Non
     loaded.load_index(str(index_dir))
     results = loaded.search(
         "release_signature",
-        top_k=1,
+        top_k=2,
         return_code_content=True,
         wrap_with_ln=False,
     )
 
-    assert len(loaded.documents) == 1
+    assert len(loaded.documents) == 2
     assert loaded.project_root == str(repo)
-    assert results[0].file == "pkg/calculator.py"
-    assert results[0].start_line == 0
-    assert results[0].end_line == 2
-    assert results[0].type == "function"
-    assert "return left + right" in results[0].content
+    assert {result.file for result in results} == {"pkg/calculator.py"}
+    assert {(result.start_line, result.end_line) for result in results} == {
+        (0, 1),
+        (2, 2),
+    }
+    assert {result.type for result in results} == {"function"}
+    assert any("return left + right" in result.content for result in results)
 
 
 def test_chunk_index_ranks_terms_from_implementation_body(tmp_path: Path) -> None:
