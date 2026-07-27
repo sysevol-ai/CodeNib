@@ -433,12 +433,15 @@ def _doctor_model_config(
     endpoint = f"; endpoint={api_base}" if api_base else ""
     detail = f"{model}{endpoint}"
     try:
-        _resolved_model, provider, _dynamic_key, _dynamic_base = (
-            litellm_chat.litellm.get_llm_provider(
-                model=model,
-                api_base=api_base,
-                api_key=api_key,
-            )
+        (
+            _resolved_model,
+            provider,
+            _dynamic_key,
+            _dynamic_base,
+        ) = litellm_chat.litellm.get_llm_provider(
+            model=model,
+            api_base=api_base,
+            api_key=api_key,
         )
         detail += f"; provider={provider}"
     except Exception:  # provider discovery is advisory for custom gateways
@@ -540,24 +543,9 @@ def _doctor_rows(
                 "installed" if _check_module("igraph") else "missing",
             ),
             (
-                "SCIP or clangd",
-                any(
-                    shutil.which(tool)
-                    for tool in ("scip-python", "scip-go", "rust-analyzer", "clangd")
-                ),
-                next(
-                    (
-                        tool
-                        for tool in (
-                            "scip-python",
-                            "scip-go",
-                            "rust-analyzer",
-                            "clangd",
-                        )
-                        if shutil.which(tool)
-                    ),
-                    "missing",
-                ),
+                "protobuf",
+                _check_module("google.protobuf"),
+                "installed" if _check_module("google.protobuf") else "missing",
             ),
         ],
         "agent": [
@@ -576,6 +564,14 @@ def _doctor_rows(
         ],
     }
     if args is not None:
+        if not getattr(args, "repo", None):
+            rows["graph"].append(
+                (
+                    "Repository toolchain",
+                    True,
+                    "pass a repository path for language-specific checks",
+                )
+            )
         model_check = _doctor_model_config(args)
         if model_check is not None:
             rows["agent"].append(model_check)
@@ -631,6 +627,13 @@ def _probe_doctor_model(args: argparse.Namespace) -> tuple[bool, str]:
 def _run_doctor(args: argparse.Namespace) -> int:
     required = set(args.require or ["core"])
     rows = _doctor_rows(args)
+    graph_report = None
+    if args.repo:
+        from .graph.setup import diagnose_graph_setup
+
+        repo_path = resolve_repo_path(args.repo)
+        languages = _selected_languages(repo_path, args.language)
+        graph_report = diagnose_graph_setup(repo_path, languages)
     if args.probe_model:
         rows["agent"].append(("Model probe", *_probe_doctor_model(args)))
     failed_required = False
@@ -642,6 +645,33 @@ def _run_doctor(args: argparse.Namespace) -> int:
             status = "OK" if ok else "MISSING"
             print(f"  [{status:<7}] {label}: {detail}")
             if group in required and not ok:
+                failed_required = True
+        if group == "graph" and graph_report is not None:
+            for setup in graph_report.languages:
+                if setup.state == "ready":
+                    status = "OK"
+                elif setup.state == "missing":
+                    status = "MISSING"
+                else:
+                    status = "N/A"
+                backend = setup.backend or "no provider"
+                command = " ".join(setup.command) if setup.command else "none"
+                detail = f"{backend}; command={command}"
+                if setup.resolved_command:
+                    detail += f"; resolved={setup.resolved_command}"
+                if setup.missing:
+                    detail += f"; missing={', '.join(setup.missing)}"
+                if setup.note:
+                    detail += f"; {setup.note}"
+                print(
+                    f"  [{status:<7}] {setup.display_name} ({setup.language}): "
+                    f"{detail}"
+                )
+            if graph_report.install_hints:
+                print("\n  Setup:")
+                for hint in graph_report.install_hints:
+                    print(f"    - {hint}")
+            if group in required and not graph_report.ready:
                 failed_required = True
     return 1 if failed_required else 0
 
@@ -767,6 +797,17 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help="check local runtime capabilities",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    doctor_parser.add_argument(
+        "repo",
+        nargs="?",
+        help="repository used for language-specific graph checks",
+    )
+    doctor_parser.add_argument(
+        "--language",
+        action="append",
+        default=[],
+        help="source language override; repeat or use a comma-separated list",
     )
     doctor_parser.add_argument(
         "--require",

@@ -104,3 +104,35 @@ def test_wiki_llm_receives_provider_configuration(monkeypatch):
             "extra_body": {"reasoning": {"enabled": False}},
         },
     }
+
+
+def test_unavailable_codemap_returns_repository_setup_report(monkeypatch):
+    class Window:
+        available = False
+
+    class Setup:
+        def to_dict(self):
+            return {
+                "ready": False,
+                "languages": [
+                    {
+                        "language": "python",
+                        "backend": "scip",
+                        "missing": ["scip-python"],
+                    }
+                ],
+            }
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="abc123"),
+        code_graph=lambda: None,
+        graph_unavailable_note=lambda: "Dependency graph is not built.",
+        graph_setup=lambda: Setup(),
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+
+    result = asyncio.run(web_app.codemap("repo"))
+
+    assert result["available"] is False
+    assert result["setup"]["languages"][0]["missing"] == ["scip-python"]

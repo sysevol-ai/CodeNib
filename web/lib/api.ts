@@ -270,6 +270,28 @@ export interface CodemapHierarchy {
   source_root?: string;
 }
 
+export interface GraphSetupLanguage {
+  language: string;
+  display_name: string;
+  state: "ready" | "missing" | "unsupported";
+  backend: string | null;
+  command: string[];
+  resolved_command: string | null;
+  missing: string[];
+  note: string;
+}
+
+export interface GraphSetupReport {
+  ready: boolean;
+  partial_ready: boolean;
+  languages: GraphSetupLanguage[];
+  buildable_languages: string[];
+  unavailable_languages: string[];
+  unsupported_languages: string[];
+  install_hints: string[];
+  commands: string[];
+}
+
 export interface CodemapResponse {
   available: boolean;
   root?: string;
@@ -282,6 +304,7 @@ export interface CodemapResponse {
   hierarchy?: CodemapHierarchy;
   mermaid: string;
   note?: string;
+  setup?: GraphSetupReport;
   // Which commit snapshot this payload was built from.
   commit?: string | null;
   // True when the selected snapshot could not be loaded and the API served

@@ -1612,6 +1612,59 @@ pre {
   border-color: var(--accent-border);
   color: var(--accent);
 }
+.codemap-setup-languages {
+  padding: 8px 13px;
+  display: grid;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.codemap-setup-language {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.codemap-setup-language strong,
+.codemap-setup-language span {
+  display: block;
+}
+.codemap-setup-language strong {
+  color: var(--text);
+  font-size: 12px;
+}
+.codemap-setup-language div > span {
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.codemap-setup-state {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.codemap-setup-state.ready {
+  background: #238636;
+}
+.codemap-setup-state.missing {
+  background: #d97706;
+}
+.codemap-setup-state.unsupported {
+  background: #8b949e;
+}
+.codemap-setup-hints {
+  margin: 0;
+  padding: 11px 16px 10px 31px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.codemap-setup-hints li + li {
+  margin-top: 4px;
+}
 .codemap-setup pre {
   margin: 0;
   padding: 14px;

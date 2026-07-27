@@ -178,6 +178,19 @@ class RepoBundle:
             partial=bool(metadata.get("partial") or unavailable),
         )
 
+    def graph_setup(self):
+        """Return repository-aware setup diagnostics for Dependency Map."""
+
+        from ..graph.setup import diagnose_graph_setup
+
+        languages = list(self.manifest.languages)
+        if not languages and self.entry.language:
+            languages = [self.entry.language]
+        return diagnose_graph_setup(
+            self.entry.repo_dir,
+            languages,
+        )
+
     def _graph_path(self) -> Optional[str]:
         """Locate this repo's prebuilt symbol-graph pickle, if any.
 

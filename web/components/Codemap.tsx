@@ -99,11 +99,8 @@ export default function Codemap({
   }
 
   if (data && !data.available) {
-    const setup = [
-      'pip install "codenib[graph]"',
-      "codenib doctor --require graph",
-      "codenib wiki . --preset graph",
-    ].join("\n");
+    const setup = data.setup;
+    const commands = setup?.commands.join("\n") ?? "";
     const reason = data.note?.replace(/\.\s*$/, "");
     return (
       <div className="codemap codemap-unavailable">
@@ -124,23 +121,54 @@ export default function Codemap({
           </p>
           {reason && <p className="small muted">{reason}.</p>}
         </div>
-        <div className="codemap-setup">
+        <div className="codemap-setup" aria-label="Dependency Map setup status">
           <div className="codemap-setup-head">
-            <span>Run from the repository root</span>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(setup);
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1200);
-                } catch {}
-              }}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
+            <span>Repository-specific setup</span>
+            {commands && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(commands);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1200);
+                  } catch {}
+                }}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            )}
           </div>
-          <pre>{setup}</pre>
+          {setup?.languages.length ? (
+            <div className="codemap-setup-languages">
+              {setup.languages.map((language) => (
+                <div className="codemap-setup-language" key={language.language}>
+                  <span
+                    className={`codemap-setup-state ${language.state}`}
+                    aria-label={language.state}
+                  />
+                  <div>
+                    <strong>{language.display_name}</strong>
+                    <span>
+                      {language.state === "ready"
+                        ? `${language.backend} provider ready`
+                        : language.state === "unsupported"
+                          ? "Symbol graph not supported"
+                          : `Missing ${language.missing.join(", ")}`}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {setup?.install_hints.length ? (
+            <ul className="codemap-setup-hints">
+              {setup.install_hints.map((hint) => (
+                <li key={hint}>{hint}</li>
+              ))}
+            </ul>
+          ) : null}
+          {commands && <pre>{commands}</pre>}
         </div>
       </div>
     );

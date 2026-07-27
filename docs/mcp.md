@@ -100,7 +100,7 @@ Graph and Zoekt construction also require external backend binaries. Check
 their availability before building:
 
 ```bash
-codenib doctor --require graph
+codenib doctor /path/to/repository --require graph
 ```
 
 See [SCIP Indexing](scip_index.md) and

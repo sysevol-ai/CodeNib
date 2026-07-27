@@ -83,11 +83,18 @@ pip install "codenib[semantic]"
 codenib wiki /path/to/repository --preset semantic
 ```
 
-The semantic preset downloads its embedding model on first use. The full
-and graph presets require language-specific SCIP/LSP tools; full also needs
-Zoekt binaries;
-follow [SCIP Indexing](scip_index.md) and check the
-[Language Capabilities](language_capabilities.md) matrix before using it.
+The semantic preset downloads its embedding model on first use. The `graph`
+extra supplies the Python graph and protobuf runtimes, while each repository
+language still needs its own SCIP/LSP executable. Check the exact repository
+instead of testing for an unrelated tool:
+
+```bash
+codenib doctor /path/to/repository --require graph
+```
+
+The full preset also needs Zoekt binaries. Follow
+[SCIP Indexing](scip_index.md) and check the
+[Language Capabilities](language_capabilities.md) matrix for backend setup.
 
 Override individual views or language detection:
 
@@ -172,7 +179,7 @@ Run the capability report first:
 
 ```bash
 codenib doctor
-codenib doctor --require semantic --require graph
+codenib doctor . --require semantic --require graph
 ```
 
 Common fixes:

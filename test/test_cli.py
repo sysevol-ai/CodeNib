@@ -55,6 +55,59 @@ def test_doctor_parser_accepts_model_backend_options() -> None:
     assert args.probe_model is True
 
 
+def test_doctor_parser_accepts_repository_graph_context() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "doctor",
+            ".",
+            "--require",
+            "graph",
+            "--language",
+            "python,typescript",
+        ]
+    )
+
+    assert args.repo == "."
+    assert args.require == ["graph"]
+    assert args.language == ["python,typescript"]
+
+
+@pytest.mark.parametrize(
+    ("tools", "expected_code", "expected_status"),
+    [
+        ({"scip-go": "/tools/scip-go"}, 1, "[MISSING] Python (python)"),
+        ({"scip-python": "/tools/scip-python"}, 0, "[OK     ] Python (python)"),
+    ],
+)
+def test_doctor_requires_the_repository_language_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tools: dict[str, str],
+    expected_code: int,
+    expected_status: str,
+) -> None:
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    monkeypatch.setattr(cli, "_check_module", lambda _name: True)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: tools.get(command))
+
+    code = cli.run(
+        [
+            "doctor",
+            str(tmp_path),
+            "--require",
+            "graph",
+            "--language",
+            "python",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert code == expected_code
+    assert expected_status in output
+    assert "scip; command=scip-python index" in output
+
+
 def test_doctor_model_config_reports_missing_named_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -339,6 +339,7 @@ async def codemap(
             "hierarchy": {"root": "hier::root", "nodes": [], "open_files": []},
             "mermaid": "",
             "note": bundle.graph_unavailable_note(),
+            "setup": bundle.graph_setup().to_dict(),
         }
     from .codemap import build_codemap
 
