@@ -143,6 +143,41 @@ def test_module_page_surfaces_classes_and_links(repo_dir):
     assert c["start_line"] >= 1  # 0-based -> 1-based
 
 
+def test_symbol_content_is_hydrated_from_source(repo_dir):
+    source = (
+        "# module docs\n"
+        "\n"
+        "def run():\n"
+        '    """Return the runtime status."""\n'
+        '    return "ready"\n'
+    )
+    with open(f"{repo_dir}/pkg/mod/runtime.py", "w", encoding="utf-8") as handle:
+        handle.write(source)
+    document = _Doc(
+        "pkg mod runtime py run normalized retrieval tokens",
+        {
+            "file": f"{repo_dir}/pkg/mod/runtime.py",
+            "name": "run",
+            "chunk_type": "function",
+            "start_line": 2,
+            "end_line": 4,
+        },
+    )
+    bundle = _make_bundle(repo_dir)
+    bundle.vector_store = None
+    bundle.bm25 = SimpleNamespace(documents=[document])
+
+    builder = WikiBuilder(bundle)
+    symbol = builder._symbols()[0]
+    page = builder.page("mod__pkg-mod")
+
+    assert symbol.content == (
+        "def run():\n" '    """Return the runtime status."""\n' '    return "ready"'
+    )
+    assert "normalized retrieval tokens" not in page["markdown"]
+    assert "def run():" in page["citations"][0]["content"]
+
+
 def test_source_traversal_guard(repo_dir):
     wb = WikiBuilder(_make_bundle(repo_dir))
     assert wb.source("../../../etc/passwd") is None

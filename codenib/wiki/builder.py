@@ -233,6 +233,41 @@ class WikiBuilder:
             self._symbols_cache = self._compute_symbols()
         return self._symbols_cache
 
+    def _source_excerpt(
+        self,
+        file: str,
+        start_line: int,
+        end_line: int,
+        fallback: str,
+        cache: Dict[str, Optional[tuple[str, ...]]],
+    ) -> str:
+        """Read a bounded indexed span from the current repository checkout."""
+
+        repo_root = os.path.realpath(self._entry.repo_dir)
+        source_path = os.path.realpath(os.path.join(repo_root, file))
+        try:
+            if os.path.commonpath((repo_root, source_path)) != repo_root:
+                return fallback
+        except ValueError:
+            return fallback
+
+        if source_path not in cache:
+            try:
+                with open(
+                    source_path, "r", encoding="utf-8", errors="replace"
+                ) as handle:
+                    cache[source_path] = tuple(handle.read().splitlines())
+            except OSError:
+                cache[source_path] = None
+
+        lines = cache[source_path]
+        if not lines or start_line < 0 or start_line >= len(lines):
+            return fallback
+
+        stop = min(len(lines), max(start_line + 1, end_line + 1))
+        excerpt = "\n".join(lines[start_line:stop][:_MAX_SNIPPET_LINES])
+        return excerpt if excerpt.strip() else fallback
+
     def _compute_symbols(self) -> tuple:
         ensure_views = getattr(self._bundle, "ensure_views", None)
         if callable(ensure_views):
@@ -273,21 +308,28 @@ class WikiBuilder:
             return tuple()
         root = self._index_root(raw[0][0])
         prefix = (root + "/") if root else ""
-        syms = [
-            Symbol(
-                file=(
-                    f[len(prefix) :]
-                    if prefix and f.startswith(prefix)
-                    else f.lstrip("/")
-                ),
-                name=n,
-                type=t,
-                start_line=s,
-                end_line=e,
-                content=c,
+        source_cache: Dict[str, Optional[tuple[str, ...]]] = {}
+        syms = []
+        for f, name, symbol_type, start, end, content in raw:
+            relative_file = (
+                f[len(prefix) :] if prefix and f.startswith(prefix) else f.lstrip("/")
             )
-            for (f, n, t, s, e, c) in raw
-        ]
+            syms.append(
+                Symbol(
+                    file=relative_file,
+                    name=name,
+                    type=symbol_type,
+                    start_line=start,
+                    end_line=end,
+                    content=self._source_excerpt(
+                        relative_file,
+                        start,
+                        end,
+                        content,
+                        source_cache,
+                    ),
+                )
+            )
         return tuple(syms)
 
     def _modules(self) -> Dict[str, List[Symbol]]:
