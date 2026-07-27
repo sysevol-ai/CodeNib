@@ -18,6 +18,7 @@ plugin, which postdates this branch) — it walks the graph through the
 from __future__ import annotations
 
 import os
+import re
 from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -161,8 +162,17 @@ def _is_external(a: Dict[str, Any], repo_dir: Optional[str] = None) -> bool:
     if not isinstance(s, int) or not isinstance(f, str) or not f:
         return True
     if repo_dir:
-        safe = os.path.normpath(f).lstrip(os.sep).lstrip("/")
-        return not os.path.isfile(os.path.join(repo_dir, safe))
+        root = os.path.realpath(repo_dir)
+        candidate = (
+            os.path.realpath(f)
+            if os.path.isabs(f)
+            else os.path.realpath(os.path.join(root, f))
+        )
+        try:
+            in_repo = os.path.commonpath((root, candidate)) == root
+        except ValueError:
+            in_repo = False
+        return not in_repo or not os.path.isfile(candidate)
     return ("/" not in f) and (os.path.splitext(f)[1].lower() not in _SOURCE_EXTS)
 
 
@@ -450,6 +460,7 @@ def _resolve_citation(
     cit: Dict[str, Any],
     by_loc: Dict[Tuple[str, int], str],
     by_file: Dict[str, List[Tuple[int, str]]],
+    repo_dir: Optional[str] = None,
 ) -> Optional[str]:
     """Map a wiki citation (file + 1-based line, or node_name) to a graph identity.
 
@@ -457,7 +468,43 @@ def _resolve_citation(
     in that file (small tolerance), then a readable-name match.
     """
     f = cit.get("file")
+    if isinstance(f, str) and repo_dir and os.path.isabs(f):
+        try:
+            relative = os.path.relpath(f, repo_dir)
+            if relative != ".." and not relative.startswith("../"):
+                f = relative.replace("\\", "/")
+        except ValueError:
+            pass
     sl = cit.get("start_line")
+    candidates = by_file.get(f, []) if isinstance(f, str) else []
+    if candidates and (
+        cit.get("type") == "file"
+        or (cit.get("node_name") or "").replace("\\", "/") == f
+    ):
+        stem_terms = [
+            term
+            for term in re.split(
+                r"[^a-z0-9]+",
+                os.path.splitext(os.path.basename(f))[0].lower(),
+            )
+            if len(term) >= 3
+        ]
+
+        def representative_score(item: Tuple[int, str]) -> Tuple[int, int, int]:
+            start, name = item
+            attrs = _attrs(graph, name)
+            label = _label(attrs, name).lower()
+            symbol_label = label.partition(":")[2] or label
+            matches = sum(term in symbol_label for term in stem_terms)
+            kind_rank = {
+                "class": 0,
+                "function": 1,
+                "interface": 2,
+                "method": 3,
+            }.get(attrs.get("type"), 4)
+            return (-matches, kind_rank, start)
+
+        return min(candidates, key=representative_score)[1]
     if f and isinstance(sl, int):
         s0 = sl - 1  # citations are 1-based (CodeLocation); the graph is 0-based
         if (f, s0) in by_loc:
@@ -501,13 +548,21 @@ def build_page_subgraph(
         s = a.get("start_line")
         if not f or not isinstance(s, int) or not a.get("unified_name"):
             continue
-        by_loc.setdefault((f, s), a["name"])
-        by_file.setdefault(f, []).append((s, a["name"]))
+        normalized_file = f
+        if repo_dir and os.path.isabs(f):
+            try:
+                relative = os.path.relpath(f, repo_dir)
+                if relative != ".." and not relative.startswith("../"):
+                    normalized_file = relative.replace("\\", "/")
+            except ValueError:
+                pass
+        by_loc.setdefault((normalized_file, s), a["name"])
+        by_file.setdefault(normalized_file, []).append((s, a["name"]))
 
     names: List[str] = []
     chosen: Set[str] = set()
     for cit in citations:
-        nm = _resolve_citation(graph, cit, by_loc, by_file)
+        nm = _resolve_citation(graph, cit, by_loc, by_file, repo_dir)
         if nm and nm not in chosen:
             chosen.add(nm)
             names.append(nm)
@@ -636,6 +691,14 @@ def build_page_subgraph(
         a = _attrs(graph, name)
         label = _label(a, name)
         start = a.get("start_line")
+        file = a.get("file")
+        if repo_dir and isinstance(file, str) and os.path.isabs(file):
+            try:
+                relative = os.path.relpath(file, repo_dir)
+                if relative != ".." and not relative.startswith("../"):
+                    file = relative.replace("\\", "/")
+            except ValueError:
+                pass
         nid = f"n{i}"
         id_of[name] = nid
         nodes.append(
@@ -644,7 +707,7 @@ def build_page_subgraph(
                 "name": name,
                 "label": label,
                 "short": _short(label),
-                "file": a.get("file"),
+                "file": file,
                 "line": (start + 1) if isinstance(start, int) else None,
                 "end_line": (
                     (a.get("end_line") + 1)

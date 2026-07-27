@@ -42,12 +42,26 @@ from .schemas import (
 logger = get_logger(__name__)
 
 
+def _wiki_llm(config, *, model=None, max_tokens=4096):
+    from ..llm.litellm_chat import LiteLLMChat
+
+    return LiteLLMChat(
+        model=model or config.wiki_generation_model,
+        temperature=0.2,
+        max_tokens=max_tokens,
+        api_base=getattr(config, "wiki_generation_api_base", None),
+        api_key=getattr(config, "wiki_generation_api_key", None),
+    )
+
+
 def _wiki_narrator(config):
     wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
     return Narrator(
         model=config.wiki_generation_model,
         cache_dir=wiki_cache if config.wiki_agent else None,
         enabled=None if config.wiki_agent else False,
+        api_base=getattr(config, "wiki_generation_api_base", None),
+        api_key=getattr(config, "wiki_generation_api_key", None),
     )
 
 
@@ -111,6 +125,9 @@ def _wiki(repo_id: str):
                 _bundle(repo_id),
                 config.wiki_generation_model,
                 cache_dir=wiki_cache,
+                llm=_wiki_llm(config),
+                api_base=config.wiki_generation_api_base,
+                api_key=config.wiki_generation_api_key,
             )
         else:
             cache[repo_id] = WikiBuilder(
@@ -129,11 +146,15 @@ def _edge_labeler(repo_id: str):
         bundle = _bundle(repo_id)
         wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
         namespace = f"{bundle.entry.instance_id}@{bundle.entry.commit_short}"
+        model = config.edge_label_model or config.wiki_generation_model
         cache[repo_id] = EdgeLabeler(
             source_fn=_wiki(repo_id).source,
-            model=config.edge_label_model or config.wiki_generation_model,
+            model=model,
             cache_dir=wiki_cache,
             cache_namespace=namespace,
+            llm=_wiki_llm(config, model=model, max_tokens=1024),
+            api_base=config.wiki_generation_api_base,
+            api_key=config.wiki_generation_api_key,
         )
     return cache[repo_id]
 
@@ -201,6 +222,22 @@ async def wiki_page(repo_id: str, page_id: str) -> dict:
     page = await asyncio.to_thread(_wiki(repo_id).page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail=f"Unknown wiki page: {page_id!r}")
+    if "generation" not in page:
+        page = {
+            **page,
+            "generation": {
+                "mode": "offline",
+                "model": None,
+                "repaired": False,
+            },
+            "grounding": {
+                "valid": True,
+                "citation_coverage": 1.0,
+                "cited_evidence": len(page.get("citations") or []),
+                "evidence_count": len(page.get("citations") or []),
+                "relation_count": 0,
+            },
+        }
     return page
 
 
@@ -299,7 +336,7 @@ async def codemap(
             "edges": [],
             "hierarchy": {"root": "hier::root", "nodes": [], "open_files": []},
             "mermaid": "",
-            "note": "This repo has no symbol graph.",
+            "note": bundle.graph_unavailable_note(),
         }
     from .codemap import build_codemap
 

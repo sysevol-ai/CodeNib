@@ -207,3 +207,64 @@ def test_page_subgraph_keeps_only_cited_symbols_and_multi_seed_bridges():
     assert labels["src/bridge.py:bridge()"]["is_root"] is False
     assert len(result["edges"]) == 2
     assert {edge["weight"] for edge in result["edges"]} == {1}
+
+
+def test_page_subgraph_maps_file_citation_to_representative_symbol(tmp_path):
+    source = tmp_path / "src" / "worker.py"
+    source.parent.mkdir()
+    source.write_text("class Worker:\n    pass\n")
+    graph = CodeGraph()
+    graph._add_vertex(
+        "src/worker.py",
+        {
+            "type": "file",
+            "unified_name": "src/worker.py",
+        },
+    )
+    graph._add_vertex(
+        "src/worker.py:CompileInput",
+        {
+            "type": "class",
+            "file": str(source),
+            "start_line": 1,
+            "end_line": 2,
+            "unified_name": "src/worker.py:CompileInput",
+        },
+    )
+    graph._add_vertex(
+        "src/worker.py:helper()",
+        {
+            "type": "function",
+            "file": str(source),
+            "start_line": 2,
+            "end_line": 3,
+            "unified_name": "src/worker.py:helper()",
+        },
+    )
+    graph._add_vertex(
+        "src/worker.py:Worker",
+        {
+            "type": "class",
+            "file": str(source),
+            "start_line": 20,
+            "end_line": 40,
+            "unified_name": "src/worker.py:Worker",
+        },
+    )
+
+    result = build_page_subgraph(
+        graph,
+        [
+            {
+                "file": "src/worker.py",
+                "start_line": 1,
+                "node_name": "src/worker.py",
+                "type": "file",
+            }
+        ],
+        repo_dir=str(tmp_path),
+    )
+
+    assert [node["label"] for node in result["nodes"]] == ["src/worker.py:Worker"]
+    assert result["nodes"][0]["file"] == "src/worker.py"
+    assert result["nodes"][0]["external"] is False

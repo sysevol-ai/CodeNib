@@ -133,7 +133,9 @@ export default function Codemap({
       )}
 
       {data && !data.available && (
-        <p className="muted">This repo has no symbol graph, so no codemap is available.</p>
+        <p className="muted">
+          {data.note || "This repository has no usable dependency graph."}
+        </p>
       )}
     </div>
   );

@@ -38,9 +38,16 @@ function stripGeneratedDiagrams(md: string): string {
 }
 
 // Link a repo-relative source path to the exact blob on GitHub at the indexed commit.
-function ghFileUrl(repo: string | undefined, commit: string | undefined, file: string): string | null {
+function ghFileUrl(
+  repo: string | undefined,
+  commit: string | undefined,
+  file: string,
+  start?: number | null,
+  end?: number | null
+): string | null {
   if (!repo) return null;
-  return `https://github.com/${repo}/blob/${commit || "HEAD"}/${file}`;
+  const lines = start ? `#L${start}${end && end !== start ? `-L${end}` : ""}` : "";
+  return `https://github.com/${repo}/blob/${commit || "HEAD"}/${file}${lines}`;
 }
 
 function TocTree({
@@ -237,6 +244,11 @@ export default function WikiPageView() {
   }, [graphOpen]);
 
   const hasGraph = !!repo?.capabilities?.codemap;
+  const generationMode = page?.generation?.mode ?? "offline";
+  const sourceChecked = !!page?.grounding?.valid && page?.quality?.valid !== false;
+  const evidenceRoutes = [
+    ...new Set(page?.evidence?.items.flatMap((item) => item.routes) ?? []),
+  ];
   const openGraph = (seed?: string) => {
     setGraphSeed(seed);
     setGraphOpen(true);
@@ -256,15 +268,22 @@ export default function WikiPageView() {
             </button>
             <span className="crumb-sep">/</span>
             <span className="crumb-repo mono">{repo ? repo.repo : repoId}</span>
-            {hasGraph && (
-              <button
-                className="codegraph-launch"
-                onClick={() => openGraph()}
-                title="Open the interactive code dependency graph"
-              >
-                ⌗ CodeGraph
-              </button>
-            )}
+            <button
+              className={`codegraph-launch ${hasGraph ? "" : "unavailable"}`}
+              onClick={() => openGraph()}
+              title={
+                hasGraph
+                  ? "Open the interactive code dependency graph"
+                  : "Dependency graph is not indexed for this repository"
+              }
+              aria-label={
+                hasGraph
+                  ? "Open code dependency graph"
+                  : "Code dependency graph unavailable"
+              }
+            >
+              ⌗ CodeGraph
+            </button>
             {page && <span className="crumb-sep">/</span>}
             {page && <span className="crumb-page">{page.title}</span>}
           </nav>
@@ -317,8 +336,37 @@ export default function WikiPageView() {
 
         <main className="wiki-main">
           <div className="wiki-content" ref={contentRef}>
+              {page && (
+                <div
+                  className={`page-provenance ${
+                    sourceChecked ? "source-checked" : "needs-review"
+                  }`}
+                  role="status"
+                >
+                  <span className="provenance-state">
+                    {generationMode === "offline"
+                      ? "Index-derived page"
+                      : sourceChecked
+                        ? "Evidence-linked generation"
+                        : generationMode === "degraded"
+                          ? "Index-derived fallback"
+                          : "Generated, evidence review needed"}
+                  </span>
+                  {page.grounding && (
+                    <span className="provenance-detail">
+                      {page.grounding.evidence_count} source symbols
+                      {page.grounding.relation_count > 0 &&
+                        ` · ${page.grounding.relation_count} static relations`}
+                      {evidenceRoutes.length > 0 && ` · ${evidenceRoutes.join(" + ")}`}
+                    </span>
+                  )}
+                  {page.generation?.model && (
+                    <span className="provenance-model mono">{page.generation.model}</span>
+                  )}
+                </div>
+              )}
               {pageGraph && pageGraph.available && pageGraph.nodes.length > 0 && (
-                <details className="subsystem-map" open>
+                <details className="subsystem-map">
                   <summary className="subsystem-summary">
                     <span className="subsystem-title">Subsystem map</span>
                     <span className="subsystem-count">{pageGraph.nodes.length} symbols</span>
@@ -336,7 +384,59 @@ export default function WikiPageView() {
                   />
                 </details>
               )}
-              {page && page.citations.length > 0 && (
+              {page?.evidence && page.evidence.items.length > 0 ? (
+                <details className="evidence-ledger">
+                  <summary>
+                    Source evidence ({page.evidence.items.length})
+                  </summary>
+                  <div className="evidence-list">
+                    {page.evidence.items.map((item) => {
+                      const url = ghFileUrl(
+                        repo?.repo,
+                        repo?.base_commit,
+                        item.file,
+                        item.start_line,
+                        item.end_line
+                      );
+                      return (
+                        <a
+                          id={`evidence-${item.id}`}
+                          key={item.id}
+                          className="evidence-row"
+                          href={url ?? undefined}
+                          target={url ? "_blank" : undefined}
+                          rel={url ? "noreferrer" : undefined}
+                        >
+                          <span className="evidence-id mono">{item.id}</span>
+                          <span className="evidence-symbol mono">{item.symbol}</span>
+                          <span className="evidence-location mono">
+                            {item.file}
+                            {item.start_line ? `:${item.start_line}` : ""}
+                          </span>
+                          {item.routes.length > 0 && (
+                            <span className="evidence-route">{item.routes.join(" + ")}</span>
+                          )}
+                        </a>
+                      );
+                    })}
+                    {page.evidence.relations.map((item) => (
+                      <div
+                        id={`evidence-${item.id}`}
+                        key={item.id}
+                        className="evidence-row relation"
+                      >
+                        <span className="evidence-id mono">{item.id}</span>
+                        <span className="evidence-symbol mono">
+                          {item.source} → {item.target}
+                        </span>
+                        <span className="evidence-location mono">
+                          {item.anchors[0] ?? "static reference"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : page && page.citations.length > 0 ? (
                 <details className="relevant-files-wiki">
                   {(() => {
                     const wikiFiles = [
@@ -372,7 +472,7 @@ export default function WikiPageView() {
                     );
                   })()}
                 </details>
-              )}
+              ) : null}
               {page ? (
                 <Markdown>{stripGeneratedDiagrams(page.markdown)}</Markdown>
               ) : pageError ? (

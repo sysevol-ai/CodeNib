@@ -1992,6 +1992,16 @@ pre {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--accent-border));
   box-shadow: none;
 }
+.codegraph-launch.unavailable {
+  border-color: var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+}
+.codegraph-launch.unavailable::after {
+  content: " unavailable";
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
 
 /* Full-screen graph-explorer modal (the single CodeGraph surface). */
 .graph-modal-scrim {
@@ -2325,6 +2335,102 @@ pre {
   background: var(--bg-muted);
   color: var(--text);
   text-decoration: none;
+}
+
+/* Wiki page provenance and source-evidence ledger. */
+.page-provenance {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 2px 0 16px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.page-provenance.source-checked {
+  border-left-color: #2f855a;
+}
+.page-provenance.needs-review {
+  border-left-color: #d97706;
+}
+.provenance-state {
+  color: var(--text);
+  font-weight: 650;
+}
+.provenance-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provenance-model {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.evidence-ledger {
+  margin: 0 0 20px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.evidence-ledger > summary {
+  cursor: pointer;
+  padding: 10px 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.evidence-list {
+  border-top: 1px solid var(--border);
+}
+.evidence-row {
+  display: grid;
+  grid-template-columns: 34px minmax(120px, 0.7fr) minmax(180px, 1.3fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-decoration: none;
+  scroll-margin-top: calc(var(--top-h) + 12px);
+}
+.evidence-row:last-child {
+  border-bottom: 0;
+}
+a.evidence-row:hover {
+  color: var(--text);
+  background: var(--bg-muted);
+  text-decoration: none;
+}
+.evidence-row:target {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.evidence-id {
+  color: var(--accent);
+  font-weight: 650;
+}
+.evidence-symbol {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-location {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-route {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.evidence-row.relation {
+  grid-template-columns: 34px minmax(220px, 1fr) minmax(150px, 0.8fr);
 }
 
 /* Wiki page rendered as a view over the graph: its symbols' subsystem map. */
@@ -2661,6 +2767,24 @@ pre {
 .relevant-files-wiki .relevant-file:hover {
   border-color: var(--border);
   color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .page-provenance {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .provenance-detail {
+    white-space: normal;
+  }
+  .evidence-row,
+  .evidence-row.relation {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .evidence-location,
+  .evidence-route {
+    grid-column: 2;
+  }
 }
 
 /* Code window header file path -> GitHub link */

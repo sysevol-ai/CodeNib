@@ -88,6 +88,56 @@ export interface WikiPage {
   markdown: string;
   citations: Citation[];
   diagram: string;
+  evidence?: {
+    items: WikiEvidenceItem[];
+    relations: WikiRelationItem[];
+  };
+  generation?: {
+    mode: "generated" | "offline" | "degraded";
+    model: string | null;
+    repaired?: boolean;
+    fallback?: "fact_plan" | null;
+    reason?: string;
+    plan_warnings?: string[];
+  };
+  grounding?: {
+    valid: boolean;
+    citation_coverage: number;
+    cited_evidence?: number;
+    evidence_count: number;
+    relation_count: number;
+    unknown_citations?: string[];
+    unknown_files?: string[];
+    unsupported_identifiers?: string[];
+  };
+  quality?: {
+    valid: boolean;
+    planned_sections: number;
+    required_sections: number;
+    rendered_sections: number;
+    substantive_blocks: number;
+    required_blocks: number;
+    covered_claims: number;
+    planned_claims: number;
+    claim_coverage: number;
+  };
+}
+
+export interface WikiEvidenceItem {
+  id: string;
+  file: string;
+  start_line: number | null;
+  end_line: number | null;
+  symbol: string;
+  kind: string;
+  routes: string[];
+}
+
+export interface WikiRelationItem {
+  id: string;
+  source: string;
+  target: string;
+  anchors: string[];
 }
 
 export interface SourceSlice {
