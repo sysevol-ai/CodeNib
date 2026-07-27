@@ -532,7 +532,7 @@ def load_contexts_from_manifest(
             continue
         for req in meta.index_requirements or []:
             entry = manifest.indexes.get(req.index_type)
-            fresh = entry is not None and entry.status == "fresh"
+            fresh = entry is not None and manifest.index_is_current(req.index_type)
             if fresh:
                 needed.add(req.index_type)
             elif getattr(req, "required", True):

@@ -230,7 +230,12 @@ class RepoBundle:
             return False
         view_commit = str(getattr(entry, "commit", "") or "")
         manifest_commit = str(getattr(self.manifest, "commit", "") or "")
-        return not view_commit or not manifest_commit or view_commit == manifest_commit
+        if view_commit and manifest_commit and view_commit != manifest_commit:
+            return False
+        manifest_source = str(getattr(self.manifest, "source_fingerprint", "") or "")
+        if not manifest_source:
+            return True
+        return str(getattr(entry, "source_fingerprint", "") or "") == manifest_source
 
     def code_graph(self) -> Optional[CodeGraph]:
         """Lazily load + cache the repo's symbol graph (None if unavailable)."""
@@ -424,12 +429,12 @@ class RepoRegistry:
         vector_store: Optional["CodeVectorStore"] = None
 
         bm25_entry = manifest.indexes.get("bm25")
-        if bm25_entry is not None and bm25_entry.status == "fresh":
+        if bm25_entry is not None and manifest.index_is_current("bm25"):
             bm25_index = BM25CodeIndexer()
             bm25_index.load_index(bm25_entry.path)
 
         vec_entry = manifest.indexes.get("vector")
-        if vec_entry is not None and vec_entry.status == "fresh":
+        if vec_entry is not None and manifest.index_is_current("vector"):
             vector_store = self._load_vector_store(vec_entry)
 
         bundle.vector_store = vector_store

@@ -78,7 +78,7 @@ class ServerContext:
 
     def _load_symbol_graph(self) -> None:
         entry = self.manifest.indexes.get("symbol_graph")
-        if not entry or entry.status != "fresh":
+        if not entry or not self.manifest.index_is_current("symbol_graph"):
             return
         try:
             from ..graph.code_graph import CodeGraph
@@ -93,7 +93,7 @@ class ServerContext:
 
     def _load_bm25(self) -> None:
         entry = self.manifest.indexes.get("bm25")
-        if not entry or entry.status != "fresh":
+        if not entry or not self.manifest.index_is_current("bm25"):
             return
         try:
             indexer = BM25CodeIndexer()
@@ -126,7 +126,7 @@ class ServerContext:
         ``search_zoekt`` MCP tool can return a clear error.
         """
         entry = self.manifest.indexes.get("zoekt")
-        if not entry or entry.status != "fresh":
+        if not entry or not self.manifest.index_is_current("zoekt"):
             return
         try:
             from ..index.trigram import ZoektSearcher, ZoektUnavailableError
@@ -154,7 +154,7 @@ class ServerContext:
     def _load_vector(self) -> None:
         """Load vector embedding index if available."""
         entry = self.manifest.indexes.get("vector")
-        if not entry or entry.status != "fresh":
+        if not entry or not self.manifest.index_is_current("vector"):
             return
 
         try:

@@ -448,6 +448,38 @@ def test_prepare_local_wiki_rejects_mismatched_checkout(
         )
 
 
+def test_prepare_local_wiki_rejects_changed_source_at_same_commit(
+    tmp_path: Path,
+) -> None:
+    from codenib.compiler.manifest import RepoManifest
+    from codenib.source_fingerprint import fingerprint_repository
+
+    source = tmp_path / "module.py"
+    source.write_text("VALUE = 1\n")
+    manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
+    manifest_path.parent.mkdir()
+    fingerprint = fingerprint_repository(
+        tmp_path,
+        exclude_roots=(manifest_path.parent,),
+    ).value
+    RepoManifest(
+        repo_path=str(tmp_path),
+        source_fingerprint=fingerprint,
+        languages=["python"],
+    ).save(str(manifest_path))
+    source.write_text("VALUE = 2\n")
+
+    with pytest.raises(
+        ValueError,
+        match="repository source files do not match the indexed content",
+    ):
+        prepare_local_wiki(
+            tmp_path,
+            manifest_path,
+            frontend_port=3000,
+        )
+
+
 def test_prepare_local_wiki_uses_github_origin_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

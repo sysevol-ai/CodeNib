@@ -26,6 +26,7 @@ from codenib.compiler.index_builders import (
 from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
 from codenib.compiler.manifest import (
     MANIFEST_FILENAME,
+    MANIFEST_VERSION,
     ManifestIndexStateStore,
     RepoManifest,
 )
@@ -582,8 +583,12 @@ class TestIndexCompiler:
 
         with open(manifest_path) as f:
             data = json.load(f)
-        assert data["version"] == "1.0"
+        assert data["version"] == MANIFEST_VERSION
         assert "bm25" in data["indexes"]
+        assert data["repo"]["source_fingerprint"].startswith("sha256:")
+        assert data["indexes"]["bm25"]["source_fingerprint"] == (
+            data["repo"]["source_fingerprint"]
+        )
 
     def test_manifest_can_be_loaded(self, tmp_path):
         registry = IndexBuilderRegistry()
@@ -771,6 +776,33 @@ class TestUpdateRepo:
         compiler.update_repo(str(tmp_path))
         # HEAD did not move, so no builder should run again.
         assert len(calls) == 1
+
+    def test_rebuilds_when_source_changes_at_same_head(self, tmp_path):
+        _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        first = compiler.compile_repo(str(tmp_path))
+        first_source = first.source_fingerprint
+
+        (tmp_path / "a.py").write_text("def changed():\n    return 2\n")
+        updated = compiler.update_repo(str(tmp_path))
+
+        assert calls == [("build", None), ("build", None)]
+        assert updated.source_fingerprint != first_source
+        assert updated.indexes["rec"].source_fingerprint == (updated.source_fingerprint)
+        assert updated.indexes["rec"].status == "fresh"
+
+    def test_dirty_new_head_uses_full_build(self, tmp_path):
+        _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        compiler.compile_repo(str(tmp_path))
+        _commit(tmp_path, "b.py")
+        (tmp_path / "a.py").write_text("def dirty():\n    return 3\n")
+
+        compiler.update_repo(str(tmp_path))
+
+        assert calls == [("build", None), ("build", None)]
 
     def test_rebuilds_only_view_with_outdated_builder_identity(self, tmp_path):
         _git_repo(tmp_path)
@@ -1082,6 +1114,56 @@ class TestUpdateRepo:
         assert manifest.capabilities["sparse_search"] is True
         assert manifest.capabilities["symbol_navigation"] is False
         assert manifest.last_indexed_commit == first
+
+    def test_partial_update_marks_same_head_old_source_view_stale(self, tmp_path):
+        _git_repo(tmp_path)
+        registry = IndexBuilderRegistry()
+        registry.register("bm25", _mock_builder("bm25"))
+        registry.register("symbol_graph", _mock_builder("symbol_graph"))
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(
+                index_types=["bm25", "symbol_graph"],
+                languages=["python"],
+            ),
+        )
+        initial = compiler.compile_repo(str(tmp_path))
+        old_source = initial.source_fingerprint
+        (tmp_path / "a.py").write_text("def changed():\n    return 4\n")
+
+        manifest = compiler.update_repo(str(tmp_path), index_types=["bm25"])
+
+        assert manifest.source_fingerprint != old_source
+        assert manifest.indexes["bm25"].status == "fresh"
+        assert manifest.indexes["symbol_graph"].status == "stale"
+        assert manifest.capabilities["sparse_search"] is True
+        assert manifest.capabilities["symbol_navigation"] is False
+
+    def test_source_change_during_build_never_publishes_fresh_view(self, tmp_path):
+        _git_repo(tmp_path)
+
+        class MutatingBuilder:
+            def build(self, scope: str, **kwargs) -> IndexStatus:
+                (tmp_path / "late.py").write_text("VALUE = 1\n")
+                return _mock_builder("bm25").build(scope, **kwargs)
+
+            def incremental_update(self, scope: str, **kwargs) -> IndexStatus:
+                return self.build(scope, **kwargs)
+
+        registry = IndexBuilderRegistry()
+        registry.register("bm25", MutatingBuilder())
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(index_types=["bm25"], languages=["python"]),
+        )
+
+        manifest = compiler.compile_repo(str(tmp_path))
+
+        assert manifest.indexes["bm25"].status == "stale"
+        assert "changed during index compilation" in (
+            manifest.indexes["bm25"].metadata["stale_reason"]
+        )
+        assert manifest.capabilities["sparse_search"] is False
 
 
 # ---------------------------------------------------------------------------

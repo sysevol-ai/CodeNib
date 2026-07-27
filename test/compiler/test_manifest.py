@@ -58,6 +58,7 @@ class TestIndexEntry:
             config={"embedding_model": "nomic-ai/CodeRankEmbed"},
             metadata={"document_count": {"l0": 42, "l2": 350}},
             commit="abc123",
+            source_fingerprint="sha256:source",
         )
         d = original.to_dict()
         restored = IndexEntry.from_dict(d)
@@ -68,6 +69,7 @@ class TestIndexEntry:
         assert restored.config == original.config
         assert restored.metadata == original.metadata
         assert restored.commit == original.commit
+        assert restored.source_fingerprint == original.source_fingerprint
 
     def test_from_dict_defaults(self):
         data = {
@@ -81,6 +83,7 @@ class TestIndexEntry:
         assert entry.config == {}
         assert entry.metadata == {}
         assert entry.commit == ""
+        assert entry.source_fingerprint == ""
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +242,45 @@ class TestRepoManifest:
         )
         m.derive_capabilities()
         assert m.capabilities["sparse_search"] is False
+
+    def test_derive_capabilities_stale_source_excluded(self):
+        m = RepoManifest(
+            source_fingerprint="sha256:current",
+            indexes={
+                "bm25": IndexEntry(
+                    index_type="bm25",
+                    path="/tmp/bm25",
+                    built_at="2024-01-15T10:30:00+00:00",
+                    built_at_epoch=time.time(),
+                    status="fresh",
+                    source_fingerprint="sha256:old",
+                ),
+            },
+        )
+        m.derive_capabilities()
+        assert m.capabilities["sparse_search"] is False
+
+    def test_source_identity_roundtrip(self):
+        m = RepoManifest(
+            source_fingerprint="sha256:current",
+            last_indexed_source_fingerprint="sha256:complete",
+            indexes={
+                "bm25": IndexEntry(
+                    index_type="bm25",
+                    path="/tmp/bm25",
+                    built_at="2024-01-15T10:30:00+00:00",
+                    built_at_epoch=time.time(),
+                    status="fresh",
+                    source_fingerprint="sha256:current",
+                )
+            },
+        )
+
+        restored = RepoManifest.from_dict(m.to_dict())
+
+        assert restored.source_fingerprint == "sha256:current"
+        assert restored.last_indexed_source_fingerprint == "sha256:complete"
+        assert restored.index_is_current("bm25") is True
 
     def test_empty_manifest(self):
         m = RepoManifest()

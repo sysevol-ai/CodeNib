@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional
 from .resources import IndexState, IndexStatus
 
 MANIFEST_FILENAME = "repo_manifest.json"
-MANIFEST_VERSION = "1.0"
+MANIFEST_VERSION = "1.1"
 
 
 @dataclass(slots=True)
@@ -39,6 +39,7 @@ class IndexEntry:
     config: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
     commit: str = ""
+    source_fingerprint: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -50,6 +51,7 @@ class IndexEntry:
             "config": dict(self.config),
             "metadata": dict(self.metadata),
             "commit": self.commit,
+            "source_fingerprint": self.source_fingerprint,
         }
 
     @classmethod
@@ -63,6 +65,7 @@ class IndexEntry:
             config=data.get("config", {}),
             metadata=data.get("metadata", {}),
             commit=data.get("commit", ""),
+            source_fingerprint=data.get("source_fingerprint", ""),
         )
 
 
@@ -79,6 +82,8 @@ class RepoManifest:
     repo_path: str = ""
     commit: str = ""
     last_indexed_commit: str = ""
+    source_fingerprint: str = ""
+    last_indexed_source_fingerprint: str = ""
     languages: List[str] = field(default_factory=list)
     file_count: int = 0
     indexes: Dict[str, IndexEntry] = field(default_factory=dict)
@@ -93,6 +98,10 @@ class RepoManifest:
                 "path": self.repo_path,
                 "commit": self.commit,
                 "last_indexed_commit": self.last_indexed_commit,
+                "source_fingerprint": self.source_fingerprint,
+                "last_indexed_source_fingerprint": (
+                    self.last_indexed_source_fingerprint
+                ),
                 "languages": list(self.languages),
                 "file_count": self.file_count,
             },
@@ -116,6 +125,11 @@ class RepoManifest:
             repo_path=repo.get("path", ""),
             commit=repo.get("commit", ""),
             last_indexed_commit=repo.get("last_indexed_commit", repo.get("commit", "")),
+            source_fingerprint=repo.get("source_fingerprint", ""),
+            last_indexed_source_fingerprint=repo.get(
+                "last_indexed_source_fingerprint",
+                repo.get("source_fingerprint", ""),
+            ),
             languages=repo.get("languages", []),
             file_count=repo.get("file_count", 0),
             indexes=indexes,
@@ -140,9 +154,9 @@ class RepoManifest:
 
     def derive_capabilities(self) -> None:
         """Compute capabilities from the set of available indexes."""
-        has_bm25 = self._index_is_fresh("bm25")
-        has_vector = self._index_is_fresh("vector")
-        has_graph = self._index_is_fresh("symbol_graph")
+        has_bm25 = self.index_is_current("bm25")
+        has_vector = self.index_is_current("vector")
+        has_graph = self.index_is_current("symbol_graph")
 
         self.capabilities = {
             "sparse_search": has_bm25,
@@ -151,13 +165,17 @@ class RepoManifest:
             "symbol_navigation": has_graph,
         }
 
-    def _index_is_fresh(self, index_type: str) -> bool:
+    def index_is_current(self, index_type: str) -> bool:
+        """Whether a view was built for the manifest's current source state."""
+
         entry = self.indexes.get(index_type)
-        return (
-            entry is not None
-            and entry.status == "fresh"
-            and (not self.commit or not entry.commit or entry.commit == self.commit)
-        )
+        if entry is None or entry.status != "fresh":
+            return False
+        if self.commit and entry.commit and entry.commit != self.commit:
+            return False
+        if self.source_fingerprint:
+            return entry.source_fingerprint == self.source_fingerprint
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -182,11 +200,7 @@ class ManifestIndexStateStore:
         if entry is None:
             return None
 
-        if entry.status != "fresh" or (
-            entry.commit
-            and self._manifest.commit
-            and entry.commit != self._manifest.commit
-        ):
+        if not self._manifest.index_is_current(index_type):
             return None  # treat failed builds as missing
 
         age = time.time() - entry.built_at_epoch

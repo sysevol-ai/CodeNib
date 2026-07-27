@@ -174,11 +174,7 @@ def index_repository(
             cache_dir=str(cache_dir),
         )
 
-    failed = [
-        view
-        for view in views
-        if view not in manifest.indexes or manifest.indexes[view].status != "fresh"
-    ]
+    failed = [view for view in views if not manifest.index_is_current(view)]
     return manifest, failed
 
 

@@ -30,7 +30,11 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from ..paths import REPO_INDEX_DIRNAME
-from ..repository_filters import count_repository_files
+from ..source_fingerprint import (
+    SourceFingerprint,
+    fingerprint_repository,
+    repository_source_is_dirty,
+)
 from .index_builders import IndexBuilderRegistry
 from .manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 from .resources import IndexStatus
@@ -146,23 +150,24 @@ class IndexCompiler:
 
         types_to_update = index_types or self._config.index_types
         head_commit = self._get_head_commit(repo_path)
+        source = fingerprint_repository(repo_path, exclude_roots=(cache,))
         incomplete = [
             idx_type
             for idx_type in types_to_update
             if idx_type not in existing.indexes
-            or existing.indexes[idx_type].status != "fresh"
+            or not self._entry_matches_source(
+                existing.indexes[idx_type],
+                commit=head_commit,
+                source_fingerprint=source.value,
+            )
             or not self._entry_matches_builder(
                 existing.indexes[idx_type],
                 self._builders.get(idx_type),
             )
-            or (
-                bool(head_commit)
-                and bool(existing.indexes[idx_type].commit)
-                and existing.indexes[idx_type].commit != head_commit
-            )
         ]
-        if head_commit and not incomplete:
-            logger.info("Indexes already at %s; nothing to update", head_commit[:8])
+        if not incomplete:
+            identity = head_commit[:8] if head_commit else source.value[:19]
+            logger.info("Indexes already at %s; nothing to update", identity)
             return existing
         if head_commit and existing.commit == head_commit:
             logger.info(
@@ -181,6 +186,7 @@ class IndexCompiler:
             index_types=index_types,
             cache_dir=cache_dir,
             existing_manifest=existing,
+            source=source,
         )
 
     def _compile(
@@ -190,6 +196,7 @@ class IndexCompiler:
         index_types: Optional[List[str]],
         cache_dir: Optional[str],
         existing_manifest: Optional[RepoManifest],
+        source: Optional[SourceFingerprint] = None,
     ) -> RepoManifest:
         """Build requested views while preserving independent manifest entries."""
         repo_path = os.path.abspath(repo_path)
@@ -199,6 +206,11 @@ class IndexCompiler:
         types_to_build = index_types or self._config.index_types
 
         head_commit = self._get_head_commit(repo_path)
+        source = source or fingerprint_repository(repo_path, exclude_roots=(cache,))
+        source_is_dirty = repository_source_is_dirty(
+            repo_path,
+            exclude_roots=(cache,),
+        )
         existing = existing_manifest
         languages = list(self._config.languages)
         if existing is not None:
@@ -209,16 +221,21 @@ class IndexCompiler:
             last_indexed_commit=(
                 existing.last_indexed_commit if existing is not None else head_commit
             ),
+            source_fingerprint=source.value,
+            last_indexed_source_fingerprint=(
+                existing.last_indexed_source_fingerprint
+                if existing is not None
+                else source.value
+            ),
             languages=languages,
-            file_count=self._count_files(repo_path),
+            file_count=source.file_count,
             indexes=(copy.deepcopy(existing.indexes) if existing is not None else {}),
         )
         for entry in manifest.indexes.values():
-            if (
-                entry.status == "fresh"
-                and entry.commit
-                and head_commit
-                and entry.commit != head_commit
+            if entry.status == "fresh" and not self._entry_matches_source(
+                entry,
+                commit=head_commit,
+                source_fingerprint=source.value,
             ):
                 entry.status = "stale"
 
@@ -242,10 +259,10 @@ class IndexCompiler:
                     current_entry,
                     builder,
                 )
-                and (
-                    not head_commit
-                    or not current_entry.commit
-                    or current_entry.commit == head_commit
+                and self._entry_matches_source(
+                    current_entry,
+                    commit=head_commit,
+                    source_fingerprint=source.value,
                 )
             ):
                 continue
@@ -262,7 +279,12 @@ class IndexCompiler:
                     previous_commit = existing.last_indexed_commit
             incremental_from = (
                 previous_commit
-                if previous_commit and head_commit and previous_commit != head_commit
+                if (
+                    previous_commit
+                    and head_commit
+                    and previous_commit != head_commit
+                    and not source_is_dirty
+                )
                 else None
             )
 
@@ -303,6 +325,15 @@ class IndexCompiler:
                     "build_duration_seconds": round(result.duration_seconds, 2),
                 },
                 commit=head_commit if result.success else previous_commit,
+                source_fingerprint=(
+                    source.value
+                    if result.success
+                    else (
+                        previous_entry.source_fingerprint
+                        if previous_entry is not None
+                        else ""
+                    )
+                ),
             )
             if not result.success and result.error:
                 entry.metadata["error"] = result.error
@@ -311,21 +342,46 @@ class IndexCompiler:
             if not result.success:
                 requested_succeeded = False
 
+        final_head_commit = self._get_head_commit(repo_path)
+        final_source = fingerprint_repository(repo_path, exclude_roots=(cache,))
+        source_changed_during_build = (
+            final_head_commit != head_commit or final_source.value != source.value
+        )
+        if source_changed_during_build:
+            requested_succeeded = False
+            for entry in manifest.indexes.values():
+                if entry.status == "fresh":
+                    entry.status = "stale"
+                    entry.metadata["stale_reason"] = (
+                        "repository source changed during index compilation"
+                    )
+            logger.error(
+                "Repository source changed during index compilation; "
+                "no view will be published as fresh"
+            )
+
         all_views_at_head = bool(manifest.indexes) and all(
-            entry.status == "fresh"
-            and (not head_commit or not entry.commit or entry.commit == head_commit)
+            self._entry_matches_source(
+                entry,
+                commit=head_commit,
+                source_fingerprint=source.value,
+            )
             for entry in manifest.indexes.values()
         )
         if requested_succeeded and all_views_at_head:
             manifest.last_indexed_commit = head_commit
+            manifest.last_indexed_source_fingerprint = source.value
         else:
             manifest.last_indexed_commit = (
                 existing.last_indexed_commit if existing is not None else ""
             )
+            manifest.last_indexed_source_fingerprint = (
+                existing.last_indexed_source_fingerprint if existing is not None else ""
+            )
             logger.warning(
-                "Not all indexes reached %s; last_indexed_commit left at %r",
-                (head_commit or "HEAD")[:8],
-                manifest.last_indexed_commit[:8] or "(none)",
+                "Not all indexes reached source %s; "
+                "last indexed identity was preserved",
+                (head_commit or source.value)[:12],
             )
 
         manifest.derive_capabilities()
@@ -352,6 +408,23 @@ class IndexCompiler:
             logger.warning("Could not inspect builder identity: %s", exc)
             return False
         return all(entry.config.get(key) == value for key, value in expected.items())
+
+    @staticmethod
+    def _entry_matches_source(
+        entry: IndexEntry,
+        *,
+        commit: str,
+        source_fingerprint: str,
+    ) -> bool:
+        """Whether an entry was built from the exact current repository source."""
+
+        if entry.status != "fresh":
+            return False
+        if commit and entry.commit != commit:
+            return False
+        return (
+            bool(source_fingerprint) and entry.source_fingerprint == source_fingerprint
+        )
 
     @staticmethod
     def _build_one(
@@ -413,7 +486,3 @@ class IndexCompiler:
             return result.stdout.strip() if result.returncode == 0 else ""
         except Exception:
             return ""
-
-    @staticmethod
-    def _count_files(repo_path: str) -> int:
-        return count_repository_files(repo_path)

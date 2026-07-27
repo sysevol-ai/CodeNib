@@ -19,6 +19,7 @@ import yaml
 from ..compiler.manifest import RepoManifest
 from ..compiler.snapshot_store import normalize_repo
 from ..llm.options import validate_model_options
+from ..source_fingerprint import fingerprint_repository
 from .config import RepoEntry, save_registry
 
 
@@ -57,7 +58,25 @@ def _checkout_commit(repo_path: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _validate_checkout_identity(repo_path: Path, manifest: RepoManifest) -> None:
+def _validate_checkout_identity(
+    repo_path: Path,
+    manifest: RepoManifest,
+    *,
+    artifact_root: Path,
+) -> None:
+    expected_source = (manifest.source_fingerprint or "").strip()
+    if expected_source:
+        actual_source = fingerprint_repository(
+            repo_path,
+            exclude_roots=(artifact_root,),
+        ).value
+        if actual_source != expected_source:
+            raise ValueError(
+                "repository source files do not match the indexed content. "
+                "Rebuild the index for the current working tree before starting "
+                "the Wiki."
+            )
+
     expected = (manifest.commit or "").strip()
     actual = _checkout_commit(repo_path)
     if not expected or not actual:
@@ -99,7 +118,11 @@ def prepare_local_wiki(
     repo_path = repo_path.expanduser().resolve()
     manifest_path = manifest_path.expanduser().resolve()
     manifest = RepoManifest.load(str(manifest_path))
-    _validate_checkout_identity(repo_path, manifest)
+    _validate_checkout_identity(
+        repo_path,
+        manifest,
+        artifact_root=manifest_path.parent,
+    )
 
     data_dir = manifest_path.parent / "wiki"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -120,12 +143,7 @@ def prepare_local_wiki(
         ],
     )
 
-    vector_entry = manifest.indexes.get("vector")
-    mode = (
-        "hybrid"
-        if vector_entry is not None and vector_entry.status == "fresh"
-        else "sparse"
-    )
+    mode = "hybrid" if manifest.index_is_current("vector") else "sparse"
     config_path = data_dir / "config.yaml"
     config = {
         "data_dir": str(data_dir),
