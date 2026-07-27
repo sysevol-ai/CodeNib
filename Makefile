@@ -193,7 +193,7 @@ endef
 .PHONY: scip-php-info scip-php-tool scip-php-docker-tool scip-php-system-deps-ubuntu php-project-scip-tool
 .PHONY: lsp-smoke-tools lsp-smoke-env lsp-smoke-system-deps-ubuntu
 .PHONY: jdtls-tool csharp-lsp-tool ruby-lsp-tool intelephense-tool kotlin-lsp-tool
-.PHONY: dev test branding-assets branding-check
+.PHONY: dev test ask-quality branding-assets branding-check
 .PHONY: web-deps web-start web-stop web-restart web-reclaim web-status web-logs web-follow
 
 install:
@@ -812,6 +812,12 @@ dev:
 
 test:
 	pytest
+
+ASK_REPO ?= .
+ASK_QUALITY_ARGS ?=
+
+ask-quality:
+	python scripts/check_ask_retrieval.py --repo "$(ASK_REPO)" $(ASK_QUALITY_ARGS)
 
 branding-assets:
 	python scripts/check_namespace.py --sync-assets

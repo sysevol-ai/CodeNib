@@ -49,6 +49,7 @@ make lsp-smoke-tools # install Java/C#/Ruby/PHP/Kotlin LSP smoke tools
 make ruby-project-bundle PROJECT_ROOT=/path/to/ruby/repo # prepare Ruby overlay Gemfile/bundle
 make php-project-scip-tool PROJECT_ROOT=/path/to/php/repo # optionally prewarm project-local scip-php
 make core-build   # build the C++ core/ pybind acceleration module
+make ask-quality  # run the deterministic Ask retrieval gate for this checkout
 make scip-cold-start-smoke # run generated SCIP cold-start smoke
 make scip-project-smoke # run SCIP smoke on PROJECT_ROOT/PROJECT_LANGUAGE
 make lsp-smoke    # run generated Java/C#/Ruby/PHP/Kotlin LSP graph smoke
