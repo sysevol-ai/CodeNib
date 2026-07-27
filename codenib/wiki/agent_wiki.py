@@ -25,6 +25,7 @@ import re
 from typing import Any, Dict, List, Optional, Sequence
 
 from ..log_utils import get_logger
+from ..repository_summary import readme_summary
 from .builder import WikiBuilder
 from .evidence import (
     EvidenceItem,
@@ -76,7 +77,7 @@ _EXT_LANG = {
 }
 _MAX_CONTEXT_CHARS = 14000
 _OUTLINE_PROMPT_VERSION = "10"
-_PAGE_PROMPT_VERSION = "78"
+_PAGE_PROMPT_VERSION = "79"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 _OVERVIEW_RETRIEVAL_LIMIT = 12
@@ -945,18 +946,9 @@ def _readme_intro(evidence: List[EvidenceItem]) -> tuple[str, str] | None:
     for item in evidence:
         if not os.path.basename(item.file).lower().startswith("readme"):
             continue
-        text = re.sub(r"<!--[\s\S]*?-->", "", item.content)
-        for paragraph in re.split(r"\n\s*\n", text):
-            lines = [line.strip() for line in paragraph.splitlines() if line.strip()]
-            if not lines or any(
-                line.startswith(("<", "#", "```", "|", "![", "[![")) for line in lines
-            ):
-                continue
-            prose = " ".join(lines)
-            prose = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", prose)
-            prose = re.sub(r"[*_`]", "", prose).strip()
-            if len(prose.split()) >= 8:
-                return _prepare_evidence_content("", prose, limit=600), item.id
+        summary = readme_summary(item.content, limit=600)
+        if summary:
+            return summary, item.id
     return None
 
 

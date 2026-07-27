@@ -110,6 +110,21 @@ def test_readme_summary_skips_labels_and_short_lines():
     assert readme_summary("Requirements:\nGo 1.21\n") == ""  # label + short line
 
 
+def test_readme_summary_uses_descriptive_heading_over_setup_commands():
+    readme = (
+        "# Efficient ASE Framework based on SGLang\n\n"
+        "## Setup\n\n"
+        "```bash\n"
+        "conda create -n flashcoder python=3.10 -y\n"
+        "```\n\n"
+        "This command will deploy a backend inference server.\n\n"
+        "You can choose any model from the catalog.\n\n"
+        "Warning: Do not interrupt the cleanup process.\n"
+    )
+
+    assert readme_summary(readme) == "Efficient ASE Framework based on SGLang"
+
+
 def test_top_module_depth_two_and_slug():
     assert _top_module("pkg/mod/a.py") == "pkg/mod"
     assert _top_module("pkg/a.py") == "pkg"

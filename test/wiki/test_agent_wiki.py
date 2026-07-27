@@ -2990,6 +2990,31 @@ def test_readme_intro_skips_logo_markup():
     )
 
 
+def test_readme_intro_skips_commands_and_warning_chrome():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=20,
+            symbol="README.md",
+            kind="file",
+            content=(
+                "# Efficient ASE Framework based on SGLang\n\n"
+                "```bash\n"
+                "conda create -n flashcoder python=3.10 -y\n"
+                "```\n\n"
+                "Warning: Do not interrupt the cleanup process.\n"
+            ),
+        )
+    ]
+
+    assert _readme_intro(evidence) == (
+        "Efficient ASE Framework based on SGLang",
+        "E1",
+    )
+
+
 def test_overview_uses_canonical_readme_intro():
     evidence = [
         EvidenceItem(
