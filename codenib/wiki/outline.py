@@ -27,12 +27,14 @@ from ..log_utils import get_logger
 from ..repository_filters import walk_repository_files
 from ..types import is_symbol_node
 from .builder import Symbol, WikiBuilder
+from .evidence import promotional_phrases
 
 logger = get_logger(__name__)
 
 _README_NAMES = ("README.md", "README.rst", "README.txt", "README", "readme.md")
 _MAX_OUTLINE_PAGES = 10
 _MAX_CHILDREN = 3
+_MAX_OUTLINE_STYLE_REPAIRS = 2
 _SOURCE_SUFFIXES = {
     ".c",
     ".cc",
@@ -111,6 +113,19 @@ _SUPPORTING_PAGE_TOKENS = {
     "testing",
     "tests",
 }
+_META_SUMMARY_RE = re.compile(
+    r"^(?:this\s+(?:page|section|chapter)\s+)?"
+    r"(?:covers?|describes?|details?|explains?|focuses?\s+on|outlines?)\b",
+    re.IGNORECASE,
+)
+_GENERIC_BENEFIT_RE = re.compile(
+    r"\b(?:aid(?:s|ed|ing)?|allow(?:s|ed|ing)|ensur(?:e|es|ed|ing)|"
+    r"improv(?:e|es|ed|ing)|"
+    r"provid(?:e|es|ed|ing)\s+[^.]{0,80}\b"
+    r"(?:capabilit(?:y|ies)|effectiveness|insights?)|"
+    r"support(?:s|ed|ing)\s+[^.]{0,80}\bunderstanding)\b",
+    re.IGNORECASE,
+)
 
 
 def _is_supporting_file(file: str) -> bool:
@@ -303,6 +318,10 @@ the supplied repository evidence supports them.
 - Include a cross-cutting page only when a supplied path or symbol explicitly \
 names and implements that concern.
 - Titles are CONCEPTS, not paths (no "lib/core", no file names as titles).
+- Each summary must state a concrete responsibility, entry path, handoff, or
+  boundary. Do not write "this page/section explains/covers/describes", and do
+  not use marketing adjectives such as comprehensive, advanced, powerful,
+  efficient, easy, or flexible.
 - keywords drive a code search, so make them specific symbol/feature terms.
 - Every page and child MUST name 1-4 exact files from the supplied evidence.
 - At least one named file or symbol must lexically anchor the page title. A real \
@@ -325,6 +344,9 @@ outline, not a patch. Keep the accepted concepts when useful, add distinct
 major subsystems from the supplied paths and symbols, and do not attach a real
 but unrelated file to justify a generic category.
 
+Quality problems:
+{problems}
+
 Previously retained outline:
 {outline}
 """
@@ -338,8 +360,29 @@ representing distinct major user-facing and implementation areas from the
 supplied paths and symbols. Do not add generic categories, duplicate an
 existing responsibility under another name, or attach unrelated real files.
 
+Quality problems:
+{problems}
+
 Previous outline:
 {outline}
+"""
+
+_OUTLINE_STYLE_REPAIR_PROMPT = """\
+Rewrite only the flagged summary strings below. Each path is an opaque tree
+address and must be copied unchanged. A repaired summary must state the
+component's concrete responsibility, input/output, or handoff using only the
+title, keywords, and files in its record. Delete an unsupported benefit clause
+instead of replacing it with a synonym.
+
+Do not use "this page/section explains/covers/describes" or benefit language
+such as allows, enables, facilitates, improves, aids, ensures, comprehensive,
+advanced, powerful, efficient, easy, or flexible.
+
+Flagged summaries:
+{summaries}
+
+Return ONLY this JSON shape:
+{{"summaries":[{{"path":"0/1","summary":"concrete replacement"}}]}}
 """
 
 
@@ -401,19 +444,27 @@ def generate_outline(
     )
     required_pages = _required_top_level_pages(len(files))
     initial_pages = len(data.get("pages") or [])
-    should_retry = initial_pages < required_pages or len(files) > 12
+    initial_warnings = _outline_quality_warnings(data)
+    should_retry = (
+        initial_pages < required_pages or len(files) > 12 or bool(initial_warnings)
+    )
     refined = False
-    if should_retry:
-        if initial_pages < required_pages:
+    plan_repairs = 2 if initial_pages < required_pages else int(should_retry)
+    for _ in range(plan_repairs):
+        current_pages = len(data.get("pages") or [])
+        current_warnings = _outline_quality_warnings(data)
+        if current_pages < required_pages:
             retry_prompt = _OUTLINE_REPAIR_PROMPT.format(
                 original_prompt=prompt,
-                accepted=initial_pages,
+                accepted=current_pages,
                 required=required_pages,
+                problems=json.dumps(current_warnings, indent=2),
                 outline=json.dumps(data.get("pages") or [], indent=2),
             )
         else:
             retry_prompt = _OUTLINE_REFINEMENT_PROMPT.format(
                 original_prompt=prompt,
+                problems=json.dumps(current_warnings, indent=2),
                 outline=json.dumps(data.get("pages") or [], indent=2),
             )
         try:
@@ -435,17 +486,50 @@ def generate_outline(
                 refined = True
         except Exception as exc:  # noqa: BLE001 - keep the first valid outline
             logger.debug("outline repair unavailable: %s", exc)
+            break
+        if len(data.get("pages") or []) >= required_pages:
+            break
+    for _ in range(_MAX_OUTLINE_STYLE_REPAIRS):
+        flagged = _flagged_outline_summaries(data)
+        if not flagged:
+            break
+        retry_prompt = _OUTLINE_STYLE_REPAIR_PROMPT.format(
+            summaries=json.dumps(flagged, indent=2),
+        )
+        try:
+            repaired_text = llm.complete(
+                [{"role": "user", "content": retry_prompt}],
+                max_tokens=max_tokens,
+                temperature=0.0,
+            )
+            repaired = _apply_outline_summary_rewrites(
+                data,
+                repaired_text,
+                allowed_paths={item["path"] for item in flagged},
+            )
+            if repaired is not None and _outline_score(
+                repaired, required_pages
+            ) > _outline_score(data, required_pages):
+                data = repaired
+                refined = True
+            else:
+                break
+        except Exception as exc:  # noqa: BLE001 - keep the best usable outline
+            logger.debug("outline quality repair unavailable: %s", exc)
+            break
     if not data.get("pages"):
         fallback = _fallback_outline(files)
         fallback["error"] = data.get("error") or "model returned no usable pages"
         fallback["raw"] = data.get("raw")
         return fallback
     data["mode"] = "generated"
+    warnings = _outline_quality_warnings(data)
     data["quality"] = {
         "required_top_level_pages": required_pages,
         "top_level_pages": len(data["pages"]),
-        "valid": len(data["pages"]) >= required_pages,
+        "valid": len(data["pages"]) >= required_pages and not warnings,
         "refined": refined,
+        "warnings": warnings,
     }
     return data
 
@@ -463,7 +547,7 @@ def _required_top_level_pages(salient_file_count: int) -> int:
 def _outline_score(
     data: Dict[str, Any],
     required_pages: int,
-) -> tuple[int, int, int, int]:
+) -> tuple[int, int, int, int, int]:
     """Prefer broad, source-diverse outlines without overriding validation."""
 
     pages = data.get("pages") or []
@@ -476,10 +560,124 @@ def _outline_score(
     }
     return (
         int(len(pages) >= required_pages),
+        -len(_outline_quality_warnings(data)),
         min(len(pages), required_pages),
         len(files),
         children,
     )
+
+
+def _summary_quality_warnings(title: str, summary: str) -> List[str]:
+    warnings = []
+    if not summary:
+        warnings.append(f"{title!r} needs a concrete summary")
+    elif _META_SUMMARY_RE.search(summary):
+        warnings.append(
+            f"{title!r} summary describes the document instead of the subsystem"
+        )
+    phrases = promotional_phrases(summary)
+    phrases.extend(
+        match.group(0).lower() for match in _GENERIC_BENEFIT_RE.finditer(summary)
+    )
+    phrases = sorted(set(phrases))
+    if phrases:
+        warnings.append(
+            f"{title!r} summary uses promotional language: " + ", ".join(phrases)
+        )
+    return warnings
+
+
+def _outline_quality_warnings(data: Dict[str, Any]) -> List[str]:
+    """Find vague or promotional page summaries before they steer retrieval."""
+
+    warnings = []
+
+    def visit(pages: Any) -> None:
+        for page in pages or []:
+            if not isinstance(page, dict):
+                continue
+            title = str(page.get("title") or page.get("id") or "untitled")
+            summary = str(page.get("summary") or "").strip()
+            warnings.extend(_summary_quality_warnings(title, summary))
+            visit(page.get("children"))
+
+    visit(data.get("pages"))
+    return warnings
+
+
+def _flagged_outline_summaries(data: Dict[str, Any]) -> List[dict[str, Any]]:
+    """Return only summary records that need a bounded style repair."""
+
+    flagged = []
+
+    def visit(pages: Any, prefix: str = "") -> None:
+        for index, page in enumerate(pages or []):
+            if not isinstance(page, dict):
+                continue
+            path = f"{prefix}/{index}".lstrip("/")
+            title = str(page.get("title") or page.get("id") or "untitled")
+            summary = str(page.get("summary") or "").strip()
+            problems = _summary_quality_warnings(title, summary)
+            if problems:
+                flagged.append(
+                    {
+                        "path": path,
+                        "title": title,
+                        "summary": summary,
+                        "keywords": page.get("keywords") or [],
+                        "files": page.get("files") or [],
+                        "problems": problems,
+                    }
+                )
+            visit(page.get("children"), path)
+
+    visit(data.get("pages"))
+    return flagged
+
+
+def _apply_outline_summary_rewrites(
+    current: Dict[str, Any],
+    text: str,
+    *,
+    allowed_paths: set[str],
+) -> Dict[str, Any] | None:
+    """Apply model-written summaries without admitting any structural edits."""
+
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\n?|\n?```$", "", cleaned).strip()
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    if not match:
+        return None
+    try:
+        payload = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+    rewrites = {}
+    for item in payload.get("summaries") or []:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "")
+        summary = re.sub(r"\s+", " ", str(item.get("summary") or "")).strip()
+        if path in allowed_paths and summary:
+            rewrites[path] = summary[:400]
+    if not rewrites:
+        return None
+
+    def apply(pages: Any, prefix: str = "") -> List[dict[str, Any]]:
+        result = []
+        for index, page in enumerate(pages or []):
+            path = f"{prefix}/{index}".lstrip("/")
+            result.append(
+                {
+                    **page,
+                    "summary": rewrites.get(path, page.get("summary", "")),
+                    "children": apply(page.get("children"), path),
+                }
+            )
+        return result
+
+    return {**current, "pages": apply(current.get("pages"))}
 
 
 def _parse_outline(text: str) -> Dict[str, Any]:

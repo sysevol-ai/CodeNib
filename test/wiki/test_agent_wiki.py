@@ -4,6 +4,7 @@
 
 """Fast unit tests for the agent wiki retrieval guardrails."""
 
+import json
 from types import SimpleNamespace
 
 from codenib.wiki.agent_wiki import (
@@ -13,6 +14,8 @@ from codenib.wiki.agent_wiki import (
     _ensure_cited_intro,
     _fact_plan_markdown,
     _format_supported_literals,
+    _normalize_plan_support,
+    _page_planning_guidance,
     _page_quality_report,
     _plan_quality_warnings,
     _prepare_evidence_content,
@@ -21,7 +24,7 @@ from codenib.wiki.agent_wiki import (
     _remove_orphan_headings,
 )
 from codenib.wiki.builder import Symbol
-from codenib.wiki.evidence import EvidenceItem, candidate_key
+from codenib.wiki.evidence import EvidenceItem, RelationItem, candidate_key
 
 
 class _FakeVectorStore:
@@ -131,6 +134,21 @@ def test_supported_literals_render_as_inline_code():
     assert "`codenib wiki /path/to/repository`" in rendered
     assert "`codenib/cli.py`" in rendered
     assert "'stable behavior'" in rendered
+
+
+def test_parent_page_guidance_reserves_child_implementation_details():
+    guidance = _page_planning_guidance(
+        {
+            "id": "indexing",
+            "children": [
+                {"title": "BM25 Indexing"},
+                {"title": "Vector Indexing"},
+            ],
+        }
+    )
+
+    assert "This is a parent page" in guidance
+    assert "BM25 Indexing, Vector Indexing" in guidance
 
 
 def test_page_quality_requires_supported_plan_coverage():
@@ -534,15 +552,21 @@ def test_overview_plan_requires_dense_page_wide_evidence():
         ]
     }
     dense = {
+        "thesis": {
+            "statement": "The repository serves indexed source through a local Wiki",
+            "evidence": ["E1"],
+        },
         "sections": [
             {
                 "title": "Workflow",
                 "claims": [
                     {
+                        "role": "entry",
                         "statement": "The CLI accepts a repository path",
                         "evidence": ["E2"],
                     },
                     {
+                        "role": "purpose",
                         "statement": "The Wiki exposes indexed source",
                         "evidence": ["E1"],
                     },
@@ -552,10 +576,12 @@ def test_overview_plan_requires_dense_page_wide_evidence():
                 "title": "Flow",
                 "claims": [
                     {
-                        "statement": "The compiler creates repository indexes",
-                        "evidence": ["E3"],
+                        "role": "flow",
+                        "statement": "`main` invokes `Compiler`",
+                        "evidence": ["E2", "E3"],
                     },
                     {
+                        "role": "responsibility",
                         "statement": "The compiler records repository indexes",
                         "evidence": ["E3"],
                     },
@@ -564,14 +590,19 @@ def test_overview_plan_requires_dense_page_wide_evidence():
             {
                 "title": "Subsystems",
                 "claims": [
-                    {"statement": "The server returns Wiki pages", "evidence": ["E4"]},
                     {
-                        "statement": "The CLI invokes the compiler",
-                        "evidence": ["E2", "E3"],
+                        "role": "responsibility",
+                        "statement": "The server returns Wiki pages",
+                        "evidence": ["E4"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "Wiki requests return source-linked pages",
+                        "evidence": ["E4"],
                     },
                 ],
             },
-        ]
+        ],
     }
     meta = {"id": "overview"}
 
@@ -602,15 +633,21 @@ def test_overview_plan_allows_one_source_for_a_cohesive_section():
         ]
     ]
     plan = {
+        "thesis": {
+            "statement": "The Wiki builds indexes for repository requests",
+            "evidence": ["E1"],
+        },
         "sections": [
             {
                 "title": "Workflow",
                 "claims": [
                     {
+                        "role": "entry",
                         "statement": "The Wiki accepts a repository path",
                         "evidence": ["E1"],
                     },
                     {
+                        "role": "purpose",
                         "statement": "The Wiki builds repository indexes",
                         "evidence": ["E1"],
                     },
@@ -619,8 +656,13 @@ def test_overview_plan_allows_one_source_for_a_cohesive_section():
             {
                 "title": "Execution",
                 "claims": [
-                    {"statement": "The CLI starts the compiler", "evidence": ["E2"]},
                     {
+                        "role": "flow",
+                        "statement": "The CLI starts the compiler",
+                        "evidence": ["E2", "E3"],
+                    },
+                    {
+                        "role": "responsibility",
                         "statement": "The compiler writes a manifest",
                         "evidence": ["E3"],
                     },
@@ -629,14 +671,19 @@ def test_overview_plan_allows_one_source_for_a_cohesive_section():
             {
                 "title": "Runtime",
                 "claims": [
-                    {"statement": "The server returns Wiki pages", "evidence": ["E4"]},
                     {
-                        "statement": "The CLI starts repository processing",
-                        "evidence": ["E2"],
+                        "role": "responsibility",
+                        "statement": "The server returns Wiki pages",
+                        "evidence": ["E4"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "Wiki requests receive pages from the server",
+                        "evidence": ["E4"],
                     },
                 ],
             },
-        ]
+        ],
     }
 
     assert _plan_quality_warnings({"id": "overview"}, plan, evidence) == []
@@ -666,12 +713,21 @@ def test_overview_plan_allows_distinct_readme_facts():
         ]
     ]
     plan = {
+        "thesis": {
+            "statement": "The project builds a source-linked repository Wiki",
+            "evidence": ["E1"],
+        },
         "sections": [
             {
                 "title": "Workflow",
                 "claims": [
-                    {"statement": "The project builds a Wiki", "evidence": ["E1"]},
                     {
+                        "role": "entry",
+                        "statement": "The CLI accepts a path",
+                        "evidence": ["E2"],
+                    },
+                    {
+                        "role": "purpose",
                         "statement": "The Wiki contains source links",
                         "evidence": ["E1"],
                     },
@@ -680,8 +736,13 @@ def test_overview_plan_allows_distinct_readme_facts():
             {
                 "title": "Execution",
                 "claims": [
-                    {"statement": "The CLI accepts a path", "evidence": ["E2"]},
                     {
+                        "role": "flow",
+                        "statement": "The CLI starts the compiler",
+                        "evidence": ["E2", "E3"],
+                    },
+                    {
+                        "role": "responsibility",
                         "statement": "The compiler writes a manifest",
                         "evidence": ["E3"],
                     },
@@ -690,14 +751,19 @@ def test_overview_plan_allows_distinct_readme_facts():
             {
                 "title": "Runtime",
                 "claims": [
-                    {"statement": "The server returns pages", "evidence": ["E4"]},
                     {
-                        "statement": "The CLI starts compilation",
-                        "evidence": ["E2", "E3"],
+                        "role": "responsibility",
+                        "statement": "The server returns pages",
+                        "evidence": ["E4"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "Wiki requests receive server pages",
+                        "evidence": ["E4"],
                     },
                 ],
             },
-        ]
+        ],
     }
 
     warnings = _plan_quality_warnings({"id": "overview"}, plan, evidence)
@@ -705,7 +771,7 @@ def test_overview_plan_allows_distinct_readme_facts():
     assert warnings == []
 
 
-def test_overview_plan_requires_new_sources_after_public_workflow():
+def test_overview_plan_allows_core_source_reuse_for_distinct_claims():
     evidence = [
         EvidenceItem(
             id=f"E{index}",
@@ -724,15 +790,21 @@ def test_overview_plan_requires_new_sources_after_public_workflow():
         ]
     ]
     plan = {
+        "thesis": {
+            "statement": "The Wiki accepts and indexes a repository",
+            "evidence": ["E1"],
+        },
         "sections": [
             {
                 "title": "Workflow",
                 "claims": [
                     {
+                        "role": "entry",
                         "statement": "The Wiki accepts a repository",
                         "evidence": ["E1"],
                     },
                     {
+                        "role": "purpose",
                         "statement": "The Wiki indexes the repository",
                         "evidence": ["E1"],
                     },
@@ -741,32 +813,39 @@ def test_overview_plan_requires_new_sources_after_public_workflow():
             {
                 "title": "Execution",
                 "claims": [
-                    {"statement": "The CLI starts the compiler", "evidence": ["E2"]},
                     {
-                        "statement": "The compiler writes a manifest",
-                        "evidence": ["E3"],
+                        "role": "flow",
+                        "statement": "The CLI starts the compiler",
+                        "evidence": ["E2", "E3"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": "The server returns Wiki pages",
+                        "evidence": ["E4"],
                     },
                 ],
             },
             {
                 "title": "Subsystems",
                 "claims": [
-                    {"statement": "The CLI owns the entry point", "evidence": ["E2"]},
                     {
+                        "role": "responsibility",
+                        "statement": "The CLI owns the entry point",
+                        "evidence": ["E2"],
+                    },
+                    {
+                        "role": "contract",
                         "statement": "The compiler owns the manifest",
                         "evidence": ["E3"],
                     },
                 ],
             },
-        ]
+        ],
     }
 
     warnings = _plan_quality_warnings({"id": "overview"}, plan, evidence)
 
-    assert (
-        "section 'Subsystems' must introduce an implementation source not used "
-        "by earlier sections" in warnings
-    )
+    assert warnings == []
 
 
 def test_overview_plan_rejects_private_helper_as_user_entrypoint():
@@ -840,6 +919,10 @@ def test_page_plan_rejects_private_helper_as_public_entrypoint():
         )
     ]
     plan = {
+        "thesis": {
+            "statement": "Wiki pages are planned from indexed source evidence",
+            "evidence": ["E1"],
+        },
         "sections": [
             {
                 "title": "Public Entry Points",
@@ -850,7 +933,7 @@ def test_page_plan_rejects_private_helper_as_public_entrypoint():
                     }
                 ],
             }
-        ]
+        ],
     }
 
     warnings = _plan_quality_warnings(
@@ -863,6 +946,227 @@ def test_page_plan_rejects_private_helper_as_public_entrypoint():
         "section 'Public Entry Points' describes a private helper as a user "
         "entry point"
     ]
+
+
+def test_page_plan_allows_a_public_entry_to_delegate_to_a_private_helper():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/cli.py",
+            start_line=10,
+            end_line=20,
+            symbol="main",
+            kind="function",
+            content="def main(): return _prepare()",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/cli.py",
+            start_line=22,
+            end_line=30,
+            symbol="_prepare",
+            kind="function",
+            content="def _prepare(): pass",
+        ),
+    ]
+    relations = [
+        RelationItem(
+            id="R1", source="main", target="_prepare", anchors=("src/cli.py:11",)
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The command prepares repository state",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Public Workflow",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "`main` calls `_prepare` before serving",
+                        "evidence": ["E1", "E2", "R1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "runtime", "title": "Runtime"},
+        plan,
+        evidence,
+        relations,
+    )
+
+    assert warnings == []
+
+
+def test_page_plan_rejects_a_flow_label_without_a_component_handoff():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/graph.py",
+            start_line=10,
+            end_line=20,
+            symbol="query_range",
+            kind="function",
+            content="def query_range(): return graph",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/graph.py",
+            start_line=1,
+            end_line=2,
+            symbol="graph",
+            kind="field",
+            content="graph = {}",
+        ),
+    ]
+    relations = [RelationItem(id="R1", source="query_range", target="graph")]
+    plan = {
+        "thesis": {
+            "statement": "The graph answers range queries",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Query",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "`query_range` retrieves graph nodes",
+                        "evidence": ["E1", "E2", "R1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "graph", "title": "Graph"},
+        plan,
+        evidence,
+        relations,
+    )
+
+    assert any(
+        warning.startswith(
+            "page has static relations but no supported component handoff"
+        )
+        for warning in warnings
+    )
+    assert any(
+        warning.startswith(
+            "flow claim '`query_range` retrieves graph nodes' is not an explicit "
+            "component handoff"
+        )
+        and "R1: `query_range` -> `graph`" in warning
+        for warning in warnings
+    )
+
+
+def test_plan_support_drops_an_unrelated_relation_when_source_proves_flow():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/store.py",
+            start_line=1,
+            end_line=3,
+            symbol="CodeStore.rebuild",
+            kind="method",
+            content="def rebuild(self):\n    self.clear()",
+        )
+    ]
+    relations = [RelationItem(id="R1", source="search", target="documents")]
+    plan = {
+        "thesis": {
+            "statement": "The store rebuilds its index",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Rebuild",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`CodeStore.rebuild` calls `CodeStore.clear` before "
+                            "rebuilding"
+                        ),
+                        "evidence": ["E1", "R1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    normalized = _normalize_plan_support(plan, evidence, relations)
+
+    assert normalized["sections"][0]["claims"][0]["evidence"] == ["E1"]
+    assert (
+        _plan_quality_warnings(
+            {"id": "store", "title": "Store"},
+            normalized,
+            evidence,
+            relations,
+        )
+        == []
+    )
+
+
+def test_page_plan_rejects_sections_that_only_inventory_operations():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/graph.py",
+            start_line=1,
+            end_line=20,
+            symbol="CodeGraph",
+            kind="class",
+            content="class CodeGraph: pass",
+        )
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The graph stores repository structure",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": title,
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": f"`{left}` retrieves graph state",
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": f"`{right}` requires a graph path",
+                        "evidence": ["E1"],
+                    },
+                ],
+            }
+            for title, left, right in (
+                ("Load", "load_graph", "load_graph"),
+                ("Query", "query_graph", "query_graph"),
+                ("Save", "save_graph", "save_graph"),
+            )
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "graph", "title": "Graph"},
+        plan,
+        evidence,
+    )
+
+    assert any(
+        warning.startswith("page plan is dominated by isolated operation sections:")
+        for warning in warnings
+    )
 
 
 def test_page_plan_rejects_incidental_helper_section():
@@ -883,6 +1187,10 @@ def test_page_plan_rejects_incidental_helper_section():
         ]
     ]
     plan = {
+        "thesis": {
+            "statement": "The agent runtime executes a configured request loop",
+            "evidence": ["E1"],
+        },
         "sections": [
             {
                 "title": "Agent Execution",
@@ -902,7 +1210,7 @@ def test_page_plan_rejects_incidental_helper_section():
                     }
                 ],
             },
-        ]
+        ],
     }
 
     warnings = _plan_quality_warnings(
@@ -915,6 +1223,61 @@ def test_page_plan_rejects_incidental_helper_section():
         "section 'Internal Helpers' elevates incidental helpers over the page's "
         "core responsibility"
     ]
+
+
+def test_page_plan_rejects_evidence_ids_narrated_as_prose():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/worker.py",
+            start_line=0,
+            end_line=5,
+            symbol="Worker",
+            kind="class",
+            content="class Worker: pass",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/store.py",
+            start_line=0,
+            end_line=5,
+            symbol="Store",
+            kind="class",
+            content="class Store: pass",
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The worker persists results through a store",
+            "evidence": ["E1", "E2"],
+        },
+        "sections": [
+            {
+                "title": "Result flow",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`Worker` calls `Store`, as indicated by relation R1"
+                        ),
+                        "evidence": ["E1", "E2", "R1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "result-flow", "title": "Result Flow"},
+        plan,
+        evidence,
+        [RelationItem(id="R1", source="Worker", target="Store")],
+    )
+
+    assert (
+        "claim statements must not narrate evidence IDs; use only the "
+        "evidence array" in warnings
+    )
 
 
 def test_overview_plan_rejects_filename_as_subsystem_name():
@@ -970,33 +1333,97 @@ def test_overview_plan_rejects_filename_as_subsystem_name():
 
 
 def test_overview_fact_plan_repairs_sparse_plan():
-    sparse = (
-        '{"thesis":"indexed source","sections":['
-        '{"title":"Workflow","claims":[{"statement":"The CLI accepts a path",'
-        '"evidence":["E2"]}]},'
-        '{"title":"Flow","claims":[{"statement":"The compiler builds indexes",'
-        '"evidence":["E3"]}]},'
-        '{"title":"Subsystems","claims":[{"statement":"The server returns pages",'
-        '"evidence":["E4"]}]}]}'
-    )
-    dense = (
-        '{"thesis":"indexed source","sections":['
-        '{"title":"Workflow","claims":['
-        '{"statement":"The CLI accepts a repository path","evidence":["E2"]},'
-        '{"statement":"The Wiki exposes indexed source","evidence":["E1"]}]},'
-        '{"title":"Flow","claims":['
-        '{"statement":"The compiler creates repository indexes","evidence":["E3"]},'
-        '{"statement":"The compiler records repository indexes","evidence":["E3"]}]},'
-        '{"title":"Subsystems","claims":['
-        '{"statement":"The server returns Wiki pages","evidence":["E4"]},'
-        '{"statement":"The CLI invokes the compiler","evidence":["E2","E3"]}]}]}'
-    )
+    sparse = {
+        "thesis": "indexed source",
+        "sections": [
+            {
+                "title": "Workflow",
+                "claims": [
+                    {
+                        "statement": "The CLI accepts a path",
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+            {
+                "title": "Flow",
+                "claims": [
+                    {
+                        "statement": "The compiler builds indexes",
+                        "evidence": ["E3"],
+                    }
+                ],
+            },
+            {
+                "title": "Subsystems",
+                "claims": [
+                    {
+                        "statement": "The server returns pages",
+                        "evidence": ["E4"],
+                    }
+                ],
+            },
+        ],
+    }
+    dense = {
+        "thesis": {
+            "statement": "The repository serves indexed source through a local Wiki",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Workflow",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": "The CLI accepts a repository path",
+                        "evidence": ["E2"],
+                    },
+                    {
+                        "role": "purpose",
+                        "statement": "The Wiki exposes indexed source",
+                        "evidence": ["E1"],
+                    },
+                ],
+            },
+            {
+                "title": "Flow",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "`main` invokes `Compiler`",
+                        "evidence": ["E2", "E3"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": "The compiler records repository indexes",
+                        "evidence": ["E3"],
+                    },
+                ],
+            },
+            {
+                "title": "Subsystems",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "The server returns Wiki pages",
+                        "evidence": ["E4"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": "Wiki requests receive pages from the server",
+                        "evidence": ["E4"],
+                    },
+                ],
+            },
+        ],
+    }
 
     class LLM:
         cache_identity = "fake"
 
         def __init__(self):
-            self.responses = iter((sparse, dense))
+            self.responses = iter((json.dumps(sparse), json.dumps(dense)))
             self.calls = 0
 
         def complete(self, _messages, **_kwargs):
@@ -1545,29 +1972,85 @@ def test_overview_uses_validated_fact_plan_without_narration(tmp_path):
         ),
         "src/cli.py": "def main():\n    return compile_repository()",
         "src/compiler.py": "class Compiler:\n    def build(self): pass",
-        "src/server.py": "class Server:\n    def page(self): pass",
+        "src/server.py": (
+            "class Server:\n"
+            "    def page(self, page_id: str) -> str:\n"
+            "        return '# Page'"
+        ),
     }
     for file, content in source.items():
         path = tmp_path / file
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
 
-    plan = (
-        '{"thesis":"repository context","sections":['
-        '{"title":"Workflow","claims":['
-        '{"statement":"Users run `codenib wiki` with a repository path",'
-        '"evidence":["E1"]},'
-        '{"statement":"The command detects repository languages","evidence":["E1"]}]},'
-        '{"title":"Execution","claims":['
-        '{"statement":"The CLI starts repository compilation from parsed command arguments",'
-        '"evidence":["E2"]},'
-        '{"statement":"The `Compiler` builds repository views for later requests",'
-        '"evidence":["E3"]}]},'
-        '{"title":"Subsystems","claims":['
-        '{"statement":"The `Server` returns source-linked Wiki pages to callers",'
-        '"evidence":["E4"]},'
-        '{"statement":"The CLI owns the public command and dispatches compilation",'
-        '"evidence":["E2"]}]}]}'
+    plan = json.dumps(
+        {
+            "thesis": {
+                "statement": (
+                    "The repository compiles local source into lexical, semantic, "
+                    "and structural views"
+                ),
+                "evidence": ["E1"],
+            },
+            "sections": [
+                {
+                    "title": "Workflow",
+                    "claims": [
+                        {
+                            "role": "entry",
+                            "statement": (
+                                "Users run `codenib wiki` with a repository path"
+                            ),
+                            "evidence": ["E1"],
+                        },
+                        {
+                            "role": "contract",
+                            "statement": ("The command detects repository languages"),
+                            "evidence": ["E1"],
+                        },
+                    ],
+                },
+                {
+                    "title": "Execution",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": "`main` invokes `Compiler`",
+                            "evidence": ["E2", "E3"],
+                        },
+                        {
+                            "role": "responsibility",
+                            "statement": (
+                                "The `Compiler` builds repository views for later "
+                                "requests"
+                            ),
+                            "evidence": ["E3"],
+                        },
+                    ],
+                },
+                {
+                    "title": "Subsystems",
+                    "claims": [
+                        {
+                            "role": "responsibility",
+                            "statement": (
+                                "The `Server` returns source-linked Wiki pages "
+                                "to callers"
+                            ),
+                            "evidence": ["E4"],
+                        },
+                        {
+                            "role": "contract",
+                            "statement": (
+                                "The page method accepts a page identifier and "
+                                "returns Markdown content"
+                            ),
+                            "evidence": ["E4"],
+                        },
+                    ],
+                },
+            ],
+        }
     )
 
     class LLM:
@@ -1621,10 +2104,28 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
 
         def complete(self, messages, **kwargs):
             self.calls.append((messages, kwargs))
-            return (
-                '{"thesis":"request routing","sections":[{"title":"Flow",'
-                '"claims":[{"statement":"The `Router` dispatches source-backed '
-                'repository requests through `dispatch`","evidence":["E1"]}]}]}'
+            return json.dumps(
+                {
+                    "thesis": {
+                        "statement": "The `Router` owns repository request dispatch",
+                        "evidence": ["E1"],
+                    },
+                    "sections": [
+                        {
+                            "title": "Flow",
+                            "claims": [
+                                {
+                                    "role": "responsibility",
+                                    "statement": (
+                                        "`dispatch` invokes `handle` for "
+                                        "source-backed repository requests"
+                                    ),
+                                    "evidence": ["E1"],
+                                }
+                            ],
+                        }
+                    ],
+                }
             )
 
     node = {
@@ -1668,6 +2169,68 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
     assert page["generation"]["renderer"] == "fact_plan"
     assert page["citations"][0]["start_line"] == 1
     assert page["evidence"]["items"][0]["routes"] == ("outline", "dense")
+
+
+def test_final_page_quality_is_canonical_when_plan_diagnostics_are_stale(tmp_path):
+    node = {
+        "file": "src/core.py",
+        "node_name": "Router",
+        "type": "class",
+        "start_line": 0,
+        "end_line": 6,
+        "content": "class Router:\n    def handle(self):\n        return 'ok'",
+    }
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=_FakeVectorStore([node]),
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+        code_graph=lambda: None,
+    )
+    wiki = AgentWiki(bundle, model="fake-model", llm=SimpleNamespace())
+    plan = {
+        "thesis": {
+            "statement": "The `Router` owns repository request handling",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Responsibility",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "The `Router` handles source-backed repository requests"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+    wiki._fact_plan = lambda *_args: (plan, ["superseded plan diagnostic"])
+
+    page = wiki._generate_page(
+        {
+            "id": "routing",
+            "title": "Request Routing",
+            "summary": "How repository requests are handled",
+            "keywords": ["router"],
+            "files": ["src/core.py"],
+        }
+    )
+
+    assert page["grounding"]["valid"] is True
+    assert page["quality"]["valid"] is True
+    assert page["generation"]["mode"] == "generated"
+    assert page["generation"]["plan_warnings"] == ["superseded plan diagnostic"]
+    assert page["generation"]["reason"] is None
 
 
 def test_page_reports_model_unavailable_when_fact_planning_falls_back(tmp_path):
@@ -1747,3 +2310,23 @@ def test_agent_wiki_cache_key_tracks_view_rebuild_identity(tmp_path):
     view.config = {"builder_schema": 2}
 
     assert wiki._key("outline") != before
+
+
+def test_agent_wiki_page_cache_key_tracks_outline_metadata():
+    original = {
+        "id": "runtime",
+        "title": "Runtime",
+        "summary": "Requests enter through the command router.",
+        "keywords": ["router"],
+        "files": ["src/router.py"],
+        "children": [],
+    }
+    revised = {
+        **original,
+        "summary": "The command router passes requests to the runtime.",
+        "files": ["src/router.py", "src/runtime.py"],
+    }
+
+    assert AgentWiki._page_cache_suffix(original) != AgentWiki._page_cache_suffix(
+        revised
+    )

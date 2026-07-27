@@ -6,11 +6,125 @@ from __future__ import annotations
 
 from codenib.wiki.builder import Symbol
 from codenib.wiki.outline import (
+    _apply_outline_summary_rewrites,
     _fallback_outline,
+    _flagged_outline_summaries,
+    _outline_quality_warnings,
     _outline_score,
     _required_top_level_pages,
     _validate_outline,
 )
+
+
+def test_outline_quality_rejects_marketing_and_document_meta_summaries():
+    weak = {
+        "pages": [
+            {
+                "id": "overview",
+                "title": "Overview",
+                "summary": "This section explains the advanced repository system.",
+                "children": [],
+            }
+        ]
+    }
+    concrete = {
+        "pages": [
+            {
+                "id": "overview",
+                "title": "Overview",
+                "summary": (
+                    "The command compiles repository views and serves them "
+                    "through a local Wiki."
+                ),
+                "children": [],
+            }
+        ]
+    }
+
+    warnings = _outline_quality_warnings(weak)
+
+    assert len(warnings) == 2
+    assert _outline_quality_warnings(concrete) == []
+    assert _outline_quality_warnings(
+        {
+            "pages": [
+                {
+                    "title": "Vector Indexing",
+                    "summary": (
+                        "Vector embeddings rank code chunks, improving retrieval "
+                        "capabilities beyond lexical search."
+                    ),
+                    "children": [],
+                }
+            ]
+        }
+    )
+
+
+def test_outline_style_repair_applies_only_summary_text():
+    original = {
+        "pages": [
+            {
+                "id": "runtime",
+                "title": "Runtime",
+                "summary": "The runtime handles requests.",
+                "keywords": ["runtime"],
+                "files": ["src/runtime.py"],
+                "children": [],
+            }
+        ]
+    }
+    repaired = _apply_outline_summary_rewrites(
+        original,
+        """
+        {"summaries":[
+          {"path":"0","summary":"The runtime dispatches requests to registered tools."},
+          {"path":"9","summary":"This path is not allowed."}
+        ]}
+        """,
+        allowed_paths={"0"},
+    )
+
+    assert repaired is not None
+    assert (
+        repaired["pages"][0]["summary"]
+        == "The runtime dispatches requests to registered tools."
+    )
+    assert repaired["pages"][0]["files"] == ["src/runtime.py"]
+    assert (
+        _apply_outline_summary_rewrites(
+            original,
+            '{"summaries":[{"path":"9","summary":"Not admitted."}]}',
+            allowed_paths={"0"},
+        )
+        is None
+    )
+
+
+def test_outline_style_repair_targets_only_flagged_summaries():
+    data = {
+        "pages": [
+            {
+                "title": "Runtime",
+                "summary": "This section explains an advanced runtime.",
+                "keywords": ["runtime"],
+                "files": ["src/runtime.py"],
+                "children": [
+                    {
+                        "title": "Dispatch",
+                        "summary": "The dispatcher passes requests to tools.",
+                        "keywords": ["dispatch"],
+                        "files": ["src/dispatch.py"],
+                        "children": [],
+                    }
+                ],
+            }
+        ]
+    }
+
+    flagged = _flagged_outline_summaries(data)
+
+    assert [item["path"] for item in flagged] == ["0"]
 
 
 def test_outline_breadth_scales_with_available_repository_evidence():

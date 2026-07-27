@@ -11,6 +11,16 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, List, Sequence
 
+FACT_CLAIM_ROLES = frozenset(
+    {
+        "purpose",
+        "entry",
+        "flow",
+        "responsibility",
+        "contract",
+        "component",
+    }
+)
 _CITATION_RE = re.compile(r"\[((?:E|R)\d+)\]")
 _CITATION_TAIL_RE = re.compile(
     r"(?:\s*\[(?:E|R)\d+\])+\s*[.!?]?\s*$",
@@ -47,20 +57,60 @@ _COMMON_CODE_TERMS = frozenset(
     }
 )
 _PROMOTIONAL_RE = re.compile(
-    r"\b(adapt(?:s|ing)?|adaptable|advanced|aids?|"
+    r"\b(accurate(?:ly)?|adapt(?:s|ing)?|adaptable|advanced|aids?|better|"
     r"allows(?: for| the system| developers| users)|"
-    r"allowing (?:for|developers|users)|comprehensive|crucial|dynamic(?:ally)?|"
+    r"allowing (?:for|developers|users)|allow(?:s|ed|ing)?|"
+    r"comprehensive|crucial|dynamic(?:ally)?|"
     r"cater(?:s|ing)?|easy access|easy to use|easier|effectively|"
-    r"efficient|efficiently|"
+    r"efficient|efficiently|fast|"
     r"enabl(?:e|es|ing)(?: developers| users)?|"
     r"enhanc(?:e|es|ing)(?: productivity)?|"
     r"ensur(?:e|es|ing) (?:that )?(?:all relevant|everything|resources?)|"
+    r"ensur(?:e|es|ing)|"
     r"essential|flexible|"
-    r"facilitat(?:e|es|ing)|gain insights?|helps? users|intuitive|invaluable|"
+    r"facilitat(?:e|es|ing)|for clarity|gain insights?|"
+    r"help(?:s|ed|ing)? (?:developers|users)|improv(?:e|es|ing)|"
+    r"intuitive|invaluable|"
     r"important (?:for|to)|key functionalit(?:y|ies)|making it|"
     r"powerful|provid(?:e|es|ing) (?:easy|quick)|quickly|responsive|significantly|"
-    r"supports? (?:interactions?|management)|"
+    r"supports? (?:interactions?|management)|vital|"
     r"optimiz(?:e|es|ing)|sophisticated|user-friendly|versatile)\b",
+    re.IGNORECASE,
+)
+_FLOW_RE = re.compile(
+    r"\b(call(?:s|ed|ing)?|delegat(?:e|es|ed|ing)|dispatch(?:es|ed|ing)?|"
+    r"feed(?:s|ing)?|hand(?:s|ed)?\s+(?:off|to)|"
+    r"interact(?:s|ed|ing)?\s+with|invok(?:e|es|ed|ing)|"
+    r"load(?:s|ed|ing)?\s+.+\s+from|pass(?:es|ed|ing)?\s+.+\s+to|"
+    r"publish(?:es|ed)?|read(?:s)?\s+.+\s+from|"
+    r"retriev(?:e|es|ed|ing)\s+.+\s+from|rout(?:e|es|ed|ing)|"
+    r"send(?:s|ing)?\s+.+\s+to|us(?:e|es|ed|ing)|"
+    r"utiliz(?:e|es|ed|ing)|"
+    r"writ(?:e|es|ten|ing)\s+.+\s+to)\b",
+    re.IGNORECASE,
+)
+_RETURN_FLOW_RE = re.compile(
+    r"\breturn(?:s|ed|ing)?\s+.+?\s+to\s+`[^`\n]+`",
+    re.IGNORECASE,
+)
+_ENTRY_RE = re.compile(
+    r"\b(command|entry\s*point|endpoint|public|request|users?)\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_ENTRY_RE = re.compile(
+    r"\b(?:"
+    r"entry\s*point|public\s+(?:api|callable|command|endpoint|function|method)|"
+    r"users?\s+(?:call|execute|invoke|run)"
+    r")\b",
+    re.IGNORECASE,
+)
+_PRIVATE_IDENTIFIER_RE = re.compile(
+    r"`(?:[^`\n]*[:.])?_[A-Za-z]\w*(?:\([^`\n]*\))?`",
+)
+_RESPONSIBILITY_RE = re.compile(
+    r"\b(build(?:s)?|compile(?:s)?|coordinate(?:s)?|manage(?:s)?|"
+    r"own(?:s)?|persist(?:s)?|responsib(?:le|ility)|serve(?:s)?|"
+    r"rout(?:e|es|ing)|store(?:s)?|validat(?:e|es))\b",
     re.IGNORECASE,
 )
 
@@ -105,6 +155,116 @@ class RelationItem:
     def prompt_line(self) -> str:
         anchors = f" at {', '.join(self.anchors)}" if self.anchors else ""
         return f"- [{self.id}] `{self.source}` references `{self.target}`{anchors}"
+
+
+def _endpoint_symbol(endpoint: str) -> str:
+    symbol = (endpoint or "").rsplit(":", 1)[-1].strip()
+    return re.sub(r"\([^)]*\)$", "", symbol).strip().lower()
+
+
+def relation_matches_claim(statement: str, relation: RelationItem) -> bool:
+    """Whether a claim names both endpoints of a cited static relation."""
+
+    identifiers = {
+        re.sub(r"\([^)]*\)$", "", item.strip()).lower()
+        for item in _CODE_RE.findall(statement or "")
+    }
+
+    def named(endpoint: str) -> bool:
+        symbol = _endpoint_symbol(endpoint)
+        if not symbol:
+            return False
+        return any(
+            identifier == symbol or identifier.endswith(":" + symbol)
+            for identifier in identifiers
+        )
+
+    return named(relation.source) and named(relation.target)
+
+
+def evidence_matches_claim(statement: str, evidence: EvidenceItem) -> bool:
+    """Whether one cited source body contains every named claim endpoint."""
+
+    identifiers = {
+        re.sub(r"\([^)]*\)$", "", item.strip()).lower()
+        for item in _CODE_RE.findall(statement or "")
+    }
+    if len(identifiers) < 2:
+        return False
+    corpus = "\n".join((evidence.file, evidence.symbol, evidence.content)).lower()
+
+    def present(identifier: str) -> bool:
+        if identifier in corpus:
+            return True
+        if "/" in identifier or re.search(
+            r"\.(?:py|go|rs|ts|tsx|js|jsx|c|h|cc|cpp|java|rb|php|cs|kt|kts)$",
+            identifier,
+        ):
+            return False
+        symbol = identifier.rsplit(":", 1)[-1]
+        leaf = symbol.rsplit(".", 1)[-1]
+        return bool(
+            len(leaf) >= 3 and re.search(rf"(?<!\w){re.escape(leaf)}(?!\w)", corpus)
+        )
+
+    return all(present(identifier) for identifier in identifiers)
+
+
+def is_interaction_claim(statement: str) -> bool:
+    """Whether a claim explicitly describes a component-to-component handoff."""
+
+    identifiers = re.findall(r"`([^`\n]+)`", statement or "")
+    return bool(
+        len(set(identifiers)) >= 2
+        and (
+            _FLOW_RE.search(statement or "") or _RETURN_FLOW_RE.search(statement or "")
+        )
+    )
+
+
+def infer_claim_role(statement: str) -> str:
+    """Infer a conservative role for plans from older prompts."""
+
+    text = statement or ""
+    if is_interaction_claim(text):
+        return "flow"
+    if _ENTRY_RE.search(text):
+        return "entry"
+    if _RESPONSIBILITY_RE.search(text):
+        return "responsibility"
+    return "component"
+
+
+def describes_private_entry(statement: str, *, role: str = "") -> bool:
+    """Whether prose presents a private identifier as a public/user entry."""
+
+    text = statement or ""
+    return bool(
+        _PRIVATE_IDENTIFIER_RE.search(text)
+        and (role == "entry" or _EXPLICIT_ENTRY_RE.search(text))
+    )
+
+
+def promotional_phrases(text: str) -> List[str]:
+    """Return deterministic marketing or unsupported benefit language."""
+
+    return sorted(
+        {match.group(0).lower() for match in _PROMOTIONAL_RE.finditer(text or "")}
+    )
+
+
+def _supported_evidence_ids(
+    raw: Any,
+    allowed: set[str],
+    *,
+    label: str,
+    errors: List[str],
+) -> list[str]:
+    requested = [str(item) for item in raw or []]
+    unknown = [item for item in requested if item not in allowed]
+    if unknown:
+        errors.append(f"{label} references unknown evidence: {', '.join(unknown)}")
+    return [item for item in requested if item in allowed]
 
 
 def candidate_key(node: Any, get: Callable[[Any, str, Any], Any]) -> tuple:
@@ -184,11 +344,30 @@ def parse_fact_plan(
         cleaned = re.sub(r"^```[a-zA-Z]*\n?|\n?```$", "", cleaned).strip()
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if not match:
-        return {"thesis": "", "sections": []}, ["plan is not a JSON object"]
+        return {
+            "thesis": {"statement": "", "evidence": []},
+            "sections": [],
+        }, ["plan is not a JSON object"]
     try:
         raw = json.loads(match.group(0))
     except json.JSONDecodeError as exc:
-        return {"thesis": "", "sections": []}, [f"invalid plan JSON: {exc}"]
+        return {
+            "thesis": {"statement": "", "evidence": []},
+            "sections": [],
+        }, [f"invalid plan JSON: {exc}"]
+
+    raw_thesis = raw.get("thesis")
+    if isinstance(raw_thesis, dict):
+        thesis_statement = str(raw_thesis.get("statement") or "").strip()
+        thesis_evidence = _supported_evidence_ids(
+            raw_thesis.get("evidence"),
+            allowed,
+            label="thesis",
+            errors=errors,
+        )
+    else:
+        thesis_statement = str(raw_thesis or "").strip()
+        thesis_evidence = []
 
     sections = []
     for section in raw.get("sections") or []:
@@ -200,28 +379,34 @@ def parse_fact_plan(
             if not isinstance(claim, dict):
                 continue
             statement = str(claim.get("statement") or "").strip()
-            evidence = [
-                str(item)
-                for item in claim.get("evidence") or []
-                if str(item) in allowed
-            ]
-            unknown = [
-                str(item)
-                for item in claim.get("evidence") or []
-                if str(item) not in allowed
-            ]
-            if unknown:
-                errors.append(
-                    f"claim references unknown evidence: {', '.join(unknown)}"
-                )
+            evidence = _supported_evidence_ids(
+                claim.get("evidence"),
+                allowed,
+                label="claim",
+                errors=errors,
+            )
             if statement and evidence:
-                claims.append({"statement": statement, "evidence": evidence})
+                role = str(claim.get("role") or "").strip().lower()
+                if role not in FACT_CLAIM_ROLES:
+                    role = infer_claim_role(statement)
+                elif role == "flow" and not is_interaction_claim(statement):
+                    role = infer_claim_role(statement)
+                claims.append(
+                    {
+                        "role": role,
+                        "statement": statement,
+                        "evidence": evidence,
+                    }
+                )
         if title and claims:
             sections.append({"title": title, "claims": claims})
     if not sections:
         errors.append("plan has no supported sections")
     return {
-        "thesis": str(raw.get("thesis") or "").strip(),
+        "thesis": {
+            "statement": thesis_statement,
+            "evidence": thesis_evidence,
+        },
         "sections": sections,
     }, errors
 
@@ -286,9 +471,7 @@ def grounding_report(
         }
     )
     unsupported_identifiers = sorted(set(unsupported_identifiers))
-    promotional_phrases = sorted(
-        {match.group(0).lower() for match in _PROMOTIONAL_RE.finditer(without_fences)}
-    )
+    promotional = promotional_phrases(without_fences)
     valid = (
         bool(blocks)
         and coverage == 1.0
@@ -305,7 +488,7 @@ def grounding_report(
         "unknown_citations": unknown_citations,
         "unknown_files": unknown_files,
         "unsupported_identifiers": unsupported_identifiers,
-        "promotional_phrases": promotional_phrases,
+        "promotional_phrases": promotional,
     }
 
 
@@ -351,10 +534,14 @@ __all__ = [
     "EvidenceItem",
     "RelationItem",
     "candidate_key",
+    "describes_private_entry",
     "diversify_by_file",
     "evidence_metadata",
+    "evidence_matches_claim",
     "grounding_report",
     "parse_fact_plan",
+    "promotional_phrases",
+    "relation_matches_claim",
     "reciprocal_rank_fuse",
     "remove_promotional_sentences",
 ]

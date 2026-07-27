@@ -8,11 +8,15 @@ from types import SimpleNamespace
 
 from codenib.wiki.evidence import (
     EvidenceItem,
+    RelationItem,
     candidate_key,
     diversify_by_file,
+    evidence_matches_claim,
     grounding_report,
+    is_interaction_claim,
     parse_fact_plan,
     reciprocal_rank_fuse,
+    relation_matches_claim,
     remove_promotional_sentences,
 )
 
@@ -39,6 +43,67 @@ def test_reciprocal_rank_fusion_tracks_routes_and_deduplicates():
     assert {item[0]["node_name"] for item in fused} == {"run", "Model", "main"}
 
 
+def test_interaction_claim_recognizes_an_explicit_utilizes_handoff():
+    assert is_interaction_claim(
+        "`build_hierarchy` utilizes `CodeGraph.get_graph` to read graph state"
+    )
+
+
+def test_relation_claim_must_name_the_cited_source_and_target():
+    relation = RelationItem(
+        id="R1",
+        source="codenib/cli.py:index_repository()",
+        target=("codenib/compiler/index_compiler.py:" "IndexCompiler.compile_repo()"),
+    )
+
+    assert relation_matches_claim(
+        "`index_repository` calls `IndexCompiler.compile_repo` to build views",
+        relation,
+    )
+    assert not relation_matches_claim(
+        "`wiki_page_graph` calls `compile_repo` to render a page",
+        relation,
+    )
+
+
+def test_source_body_can_support_a_flow_missing_from_static_relations():
+    evidence = EvidenceItem(
+        id="E1",
+        file="src/wiki.py",
+        start_line=1,
+        end_line=3,
+        symbol="wiki_page_graph",
+        kind="function",
+        content="def wiki_page_graph():\n    return _bundle().code_graph()",
+    )
+
+    assert evidence_matches_claim(
+        "`wiki_page_graph` calls `_bundle` to access the code graph",
+        evidence,
+    )
+    assert not evidence_matches_claim(
+        "`wiki_page_graph` calls `compile_repo` to access the code graph",
+        evidence,
+    )
+
+
+def test_source_body_matches_a_class_qualified_self_call():
+    evidence = EvidenceItem(
+        id="E1",
+        file="src/store.py",
+        start_line=1,
+        end_line=3,
+        symbol="CodeStore.rebuild",
+        kind="method",
+        content="def rebuild(self):\n    self.clear()",
+    )
+
+    assert evidence_matches_claim(
+        "`CodeStore.rebuild` calls `CodeStore.clear` before rebuilding",
+        evidence,
+    )
+
+
 def test_diversification_bounds_candidates_from_one_file():
     ranked = [
         (SimpleNamespace(file="a.py", name=f"a{i}"), ("dense",), 1.0 / (i + 1))
@@ -59,15 +124,88 @@ def test_diversification_bounds_candidates_from_one_file():
 def test_fact_plan_drops_unknown_evidence_ids():
     plan, errors = parse_fact_plan(
         """
-        {"thesis":"routing","sections":[{"title":"Flow","claims":[
-          {"statement":"Router calls validate","evidence":["E1","E99"]}
+        {"thesis":{"statement":"Requests pass through Router","evidence":["E1"]},
+         "sections":[{"title":"Flow","claims":[
+          {"role":"flow","statement":"`Router` calls `validate`",
+           "evidence":["E1","E99"]}
         ]}]}
         """,
         {"E1"},
     )
 
+    assert plan["thesis"] == {
+        "statement": "Requests pass through Router",
+        "evidence": ["E1"],
+    }
+    assert plan["sections"][0]["claims"][0]["role"] == "flow"
     assert plan["sections"][0]["claims"][0]["evidence"] == ["E1"]
     assert errors == ["claim references unknown evidence: E99"]
+
+
+def test_fact_plan_normalizes_legacy_claim_roles_conservatively():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":"legacy thesis","sections":[{"title":"Runtime","claims":[
+          {"statement":"Users send a request","evidence":["E1"]},
+          {"statement":"`Router` calls `Handler`","evidence":["E1","R1"]},
+          {"role":"invented","statement":"The cache stores results",
+           "evidence":["E2"]}
+        ]}]}
+        """,
+        {"E1", "E2", "R1"},
+    )
+
+    assert errors == []
+    assert plan["thesis"] == {"statement": "legacy thesis", "evidence": []}
+    assert [claim["role"] for claim in plan["sections"][0]["claims"]] == [
+        "entry",
+        "flow",
+        "responsibility",
+    ]
+
+
+def test_fact_plan_normalizes_a_single_endpoint_flow_label():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The frontend routes pages","evidence":["E1"]},
+         "sections":[{"title":"Routing","claims":[
+          {"role":"flow",
+           "statement":"The frontend uses `currentLocation` to select a page",
+           "evidence":["E1"]}
+        ]}]}
+        """,
+        {"E1"},
+    )
+
+    assert errors == []
+    assert plan["sections"][0]["claims"][0]["role"] != "flow"
+
+
+def test_interaction_claim_requires_named_endpoints_and_a_handoff():
+    assert is_interaction_claim("`Router` dispatches requests to `Handler`") is True
+    assert (
+        is_interaction_claim(
+            "`AgentWiki.source` retrieves content by calling `WikiBuilder.source`"
+        )
+        is True
+    )
+    assert (
+        is_interaction_claim(
+            "`AgentRunner.run` executes requests and interacts with `Trace.add`"
+        )
+        is True
+    )
+    assert is_interaction_claim("`Router` dispatches requests") is False
+    assert is_interaction_claim("`Router` and `Handler` process requests") is False
+
+
+def test_return_contract_is_not_confused_with_a_handoff_recipient():
+    assert not is_interaction_claim(
+        "`query_range` returns a `RangeQueryResult` relevant to the source range"
+    )
+    assert is_interaction_claim(
+        "`compile_repo` returns a `RepoManifest` to `index_repository`"
+    )
 
 
 def test_grounding_report_accepts_cited_source_backed_markdown():
@@ -254,6 +392,36 @@ def test_grounding_report_finds_generic_benefit_synonyms():
         "provides easy",
         "responsive",
     ]
+
+
+def test_grounding_report_flags_unmeasured_clarity_and_speed_claims():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/core.py",
+            start_line=1,
+            end_line=8,
+            symbol="Router",
+            kind="class",
+            content="class Router: pass",
+        )
+    ]
+
+    report = grounding_report(
+        "The `Router` ensures accurate and fast dispatch, improving clarity and "
+        "helping developers identify issues in this vital path. [E1]",
+        evidence,
+        [],
+    )
+
+    assert set(report["promotional_phrases"]) >= {
+        "accurate",
+        "ensures",
+        "fast",
+        "helping developers",
+        "improving",
+        "vital",
+    }
 
 
 def test_promotional_sentence_removal_preserves_support_marker():

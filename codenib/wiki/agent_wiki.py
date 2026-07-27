@@ -29,11 +29,17 @@ from .evidence import (
     EvidenceItem,
     RelationItem,
     candidate_key,
+    describes_private_entry,
     diversify_by_file,
+    evidence_matches_claim,
     evidence_metadata,
     grounding_report,
+    infer_claim_role,
+    is_interaction_claim,
     parse_fact_plan,
     reciprocal_rank_fuse,
+    relation_matches_claim,
+    remove_promotional_sentences,
 )
 from .outline import (
     _is_supporting_file,
@@ -42,6 +48,7 @@ from .outline import (
 )
 from .quality import page_quality_report as _page_quality_report
 from .quality import prose_terms as _prose_terms
+from .quality import section_synthesis_report as _section_synthesis_report
 
 logger = get_logger(__name__)
 
@@ -64,8 +71,8 @@ _EXT_LANG = {
     "kts": "kotlin",
 }
 _MAX_CONTEXT_CHARS = 14000
-_OUTLINE_PROMPT_VERSION = "3"
-_PAGE_PROMPT_VERSION = "43"
+_OUTLINE_PROMPT_VERSION = "9"
+_PAGE_PROMPT_VERSION = "55"
 _MAX_PLAN_REPAIRS = 2
 _MAX_STYLE_REPAIRS = 2
 
@@ -212,11 +219,30 @@ def _fact_plan_markdown(
     """Render an admitted fact plan as citation-stable Markdown."""
 
     allowed = {item.id for item in evidence} | {item.id for item in relations}
-    intro = _readme_intro(evidence)
+    thesis = plan.get("thesis") or {}
+    intro: tuple[str, list[str]] | None = None
+    if isinstance(thesis, dict):
+        statement = re.sub(
+            r"\s+",
+            " ",
+            str(thesis.get("statement") or ""),
+        ).strip()
+        ids = [
+            str(item) for item in thesis.get("evidence") or [] if str(item) in allowed
+        ]
+        candidate = f"{statement.rstrip('.')}." + "".join(f" [{item}]" for item in ids)
+        report = grounding_report(candidate, evidence, relations)
+        if statement and ids and report["valid"]:
+            intro = (_format_supported_literals(statement).rstrip(".") + ".", ids)
+    if intro is None:
+        readme_intro = _readme_intro(evidence)
+        if readme_intro is not None:
+            intro = (readme_intro[0], [readme_intro[1]])
     intro_terms = _prose_terms(intro[0]) if intro is not None else set()
     rendered_sections: List[tuple[str, str]] = []
     for section in plan.get("sections") or []:
         sentences = []
+        section_ids: list[str] = []
         for claim in section.get("claims") or []:
             statement = re.sub(r"\s+", " ", str(claim.get("statement") or "")).strip()
             ids = [
@@ -248,21 +274,21 @@ def _fact_plan_markdown(
                 )
             ):
                 continue
-            rendered_claim = (
-                rendered_statement.rstrip(".")
-                + ". "
-                + " ".join(f"[{item}]" for item in ids)
-            )
+            rendered_claim = rendered_statement.rstrip(".") + "."
             sentences.append(rendered_claim)
+            section_ids.extend(item for item in ids if item not in section_ids)
         title = re.sub(r"\s+", " ", str(section.get("title") or "")).strip()
         if title and sentences:
-            rendered_sections.append((title, " ".join(sentences)))
+            paragraph = " ".join(sentences)
+            if section_ids:
+                paragraph += " " + " ".join(f"[{item}]" for item in section_ids)
+            rendered_sections.append((title, paragraph))
 
     if not rendered_sections:
         return ""
     blocks = []
     if intro is not None:
-        blocks.append(f"{intro[0]} [{intro[1]}]")
+        blocks.append(intro[0] + " " + " ".join(f"[{item}]" for item in intro[1]))
     for title, paragraph in rendered_sections:
         blocks.extend((f"## {title}", paragraph))
     return "\n\n".join(blocks)
@@ -348,16 +374,45 @@ Static reference relations:
 {relations}
 
 Return ONLY JSON with this shape:
-{{"thesis":"one concise supported thesis","sections":[{{"title":"Section title",
-"claims":[{{"statement":"one concrete claim","evidence":["E1","R1"]}}]}}]}}
+{{"thesis":{{"statement":"one concise supported thesis","evidence":["E1"]}},
+"sections":[{{"title":"Section title","claims":[{{"role":"flow",
+"statement":"one concrete claim","evidence":["E1","E2","R1"]}}]}}]}}
 
-Use 2-5 sections and 1-3 claims per section. Every claim must cite one or more
-provided evidence IDs. Do not invent files, symbols, APIs, relationships, or
+Use 2-5 sections and 1-3 claims per section. Every thesis and claim statement
+must be exactly one sentence, and every claim must cite one or more provided
+evidence IDs. Do not invent files, symbols, APIs, relationships, or
 behavior. State implementation facts, not expected benefits or marketing
 judgments. Write direct subject-verb-object claims. Avoid benefit language such
 as allows, enables, facilitates, efficient, optimize, quick, flexible, easy, or
 powerful. Put commands, paths, and code identifiers in backticks. Omit a desired
 topic when the evidence does not support it.
+
+Assign each claim exactly one role:
+- purpose: the page or component's source-supported responsibility;
+- entry: a real public command, endpoint, class, or callable;
+- flow: an explicit handoff between at least two named components. A flow claim
+  must cite either the matching R# relation or one E# source body that contains
+  both endpoints and the handoff;
+- responsibility: state or work owned by one component;
+- contract: an input, output, invariant, failure, or compatibility boundary;
+- component: a supporting implementation fact that fits none of the above.
+
+Write a system explanation, not a symbol catalog. Organize sections around a
+request path, lifecycle stage, state transition, decision boundary, or shared
+contract; do not mirror one method per section. When several operations access
+the same object or state, explain that shared lifecycle instead of listing the
+operations independently. Every section must combine facts into one
+responsibility or flow. When static relations are provided, include
+relation-backed flow claims that name both endpoints and say how work or data
+moves between them. A flow may instead cite one source body that contains both
+named endpoints and the handoff. Every claim labeled flow must satisfy one of
+those rules; do not label an isolated "X does Y" sentence as flow. Use
+responsibility or contract for a local behavior when neither a relation nor one
+source body supports a handoff; never attach an unrelated R# relation. Never
+mention E# or R# IDs,
+relation anchors, source line numbers, or phrases such as "as indicated by the
+reference" inside a thesis or claim statement; record evidence only in the
+corresponding evidence array.
 """
 
 
@@ -381,15 +436,33 @@ def _page_planning_guidance(meta: Dict[str, Any]) -> str:
             "patchers, and private helpers as implementation details unless they "
             "define the repository."
         )
-    return (
-        "Explain the page's concrete responsibility and interactions supported "
-        "by the supplied evidence. Include a public entry point only when the "
-        "evidence shows a command, route, class, or non-underscore callable that "
-        "serves that role. Otherwise describe the internal control or data flow "
-        "without relabeling private helpers as APIs. Attribute behavior only to "
-        "the function or class whose cited body implements it; a nearby field, "
-        "constructor argument, or static relation does not establish purpose."
+    guidance = (
+        "Start from the page's source-supported purpose, then explain the path "
+        "from a real entry point through the components that own the work and "
+        "state. Use static relations for explicit handoffs when available. "
+        "Include a public entry point only when the evidence shows a command, "
+        "route, class, or non-underscore callable that serves that role. "
+        "Otherwise describe the internal control or data flow without relabeling "
+        "private helpers as APIs. Attribute behavior only to the function or "
+        "class whose cited body implements it; a nearby field, constructor "
+        "argument, or static relation does not establish purpose. Group related "
+        "symbols by lifecycle, state, or request boundary; do not write one "
+        "section per symbol or enumerate unrelated methods."
     )
+    children = [
+        str(child.get("title") or "").strip()
+        for child in meta.get("children") or []
+        if isinstance(child, dict) and str(child.get("title") or "").strip()
+    ]
+    if children:
+        guidance += (
+            " This is a parent page: explain orchestration, shared contracts, "
+            "and boundaries across its child topics instead of repeating each "
+            "child's implementation inventory. Reserve detailed mechanics for: "
+            + ", ".join(children)
+            + "."
+        )
+    return guidance
 
 
 def _plan_evidence_constraints(
@@ -413,13 +486,57 @@ def _plan_evidence_constraints(
     return (
         f"{reserved}a section may reuse an evidence item only for a different "
         "supported fact. Use at least four source evidence IDs across the page "
-        "when four are available. The public-workflow section may reuse README "
-        "evidence; each later section must introduce at least one implementation "
-        "source not used by an earlier section. Keep the three sections "
+        "when four are available. Sections may reuse a core implementation "
+        "source when they make distinct claims about it. Keep the three sections "
         "semantically distinct and assign sources by their actual responsibility. "
         f"Implementation source catalog: "
         f"{catalog or '(none)'}."
     )
+
+
+def _normalize_plan_support(
+    plan: dict[str, Any],
+    evidence: Sequence[EvidenceItem],
+    relations: Sequence[RelationItem],
+) -> dict[str, Any]:
+    """Drop relation citations that do not support the claim they are attached to."""
+
+    evidence_by_id = {item.id: item for item in evidence}
+    relations_by_id = {item.id: item for item in relations}
+    for section in plan.get("sections") or []:
+        for claim in section.get("claims") or []:
+            ids = [str(item) for item in claim.get("evidence") or []]
+            source_ids = [item for item in ids if item in evidence_by_id]
+            relation_ids = [item for item in ids if item in relations_by_id]
+            role = str(
+                claim.get("role") or infer_claim_role(str(claim.get("statement") or ""))
+            )
+            if not relation_ids:
+                continue
+            if role != "flow":
+                if source_ids:
+                    claim["evidence"] = [
+                        item for item in ids if item not in relations_by_id
+                    ]
+                continue
+
+            statement = str(claim.get("statement") or "")
+            matching_relations = {
+                item
+                for item in relation_ids
+                if relation_matches_claim(statement, relations_by_id[item])
+            }
+            source_supported = any(
+                evidence_matches_claim(statement, evidence_by_id[item])
+                for item in source_ids
+            )
+            if matching_relations or source_supported:
+                claim["evidence"] = [
+                    item
+                    for item in ids
+                    if item not in relations_by_id or item in matching_relations
+                ]
+    return plan
 
 
 def _plan_quality_warnings(
@@ -445,6 +562,9 @@ def _plan_quality_warnings(
     )
     for section in sections:
         title = str(section.get("title") or "untitled")
+        entry_section = bool(
+            re.search(r"\b(?:public|entry\s+points?)\b", title, re.IGNORECASE)
+        )
         if (
             not page_is_about_helpers
             and public_evidence >= 2
@@ -458,13 +578,13 @@ def _plan_quality_warnings(
                 f"section {title!r} elevates incidental helpers over the page's "
                 "core responsibility"
             )
-        if not re.search(r"\b(?:public|entry\s+points?)\b", title, re.IGNORECASE):
-            continue
         for claim in section.get("claims") or []:
             statement = str(claim.get("statement") or "")
-            if re.search(
-                r"(?:\b[A-Za-z]\w*\.)?_[A-Za-z]\w*\s*\(",
-                statement,
+            role = str(claim.get("role") or infer_claim_role(statement))
+            if describes_private_entry(statement, role=role) or (
+                entry_section
+                and not is_interaction_claim(statement)
+                and describes_private_entry(statement, role="entry")
             ):
                 warning = (
                     f"section {title!r} describes a private helper as a user "
@@ -473,22 +593,176 @@ def _plan_quality_warnings(
                 if warning not in warnings:
                     warnings.append(warning)
 
+    thesis = plan.get("thesis") or {}
+    source_ids = {item.id for item in evidence}
+    if not (
+        isinstance(thesis, dict)
+        and str(thesis.get("statement") or "").strip()
+        and any(str(item) in source_ids for item in thesis.get("evidence") or [])
+    ):
+        warnings.append("page thesis must be a source-grounded claim")
+    elif (
+        len(
+            re.findall(
+                r"[.!?](?=\s|$)",
+                str(thesis.get("statement") or ""),
+            )
+        )
+        > 1
+    ):
+        warnings.append("page thesis must contain exactly one sentence")
+
+    claims = [claim for section in sections for claim in section.get("claims") or []]
+    role_counts: dict[str, int] = {}
+    supported_flows = []
+    invalid_flows: list[tuple[str, list[str]]] = []
+    invalid_source_claims: list[str] = []
+    multi_sentence_claims = []
+    narrates_evidence_ids = False
+    narrates_relation_anchors = False
+    relations_by_id = {item.id: item for item in relations}
+    evidence_by_id = {item.id: item for item in evidence}
+    for claim in claims:
+        statement = str(claim.get("statement") or "")
+        if len(re.findall(r"[.!?](?=\s|$)", statement)) > 1:
+            multi_sentence_claims.append(statement)
+        narrates_evidence_ids |= bool(re.search(r"(?<!\[)\b[ER]\d+\b", statement))
+        narrates_relation_anchors |= bool(
+            re.search(
+                r"\b(?:as (?:shown|indicated) by|according to) (?:the )?"
+                r"(?:reference|relation)|`[^`\n]+:\d+(?:-\d+)?`",
+                statement,
+                re.IGNORECASE,
+            )
+        )
+        role = str(claim.get("role") or infer_claim_role(statement))
+        role_counts[role] = role_counts.get(role, 0) + 1
+        claim_evidence = [str(item) for item in claim.get("evidence") or []]
+        if role != "flow" and not any(item in source_ids for item in claim_evidence):
+            invalid_source_claims.append(statement)
+        if role == "flow" and relations:
+            cited_relations = [
+                relations_by_id[item]
+                for item in claim_evidence
+                if item in relations_by_id
+            ]
+            cited_evidence = [
+                evidence_by_id[item]
+                for item in claim_evidence
+                if item in evidence_by_id
+            ]
+            if is_interaction_claim(statement) and (
+                (
+                    bool(cited_relations)
+                    and any(
+                        relation_matches_claim(statement, item)
+                        for item in cited_relations
+                    )
+                )
+                or (
+                    not cited_relations
+                    and any(
+                        evidence_matches_claim(statement, item)
+                        for item in cited_evidence
+                    )
+                )
+            ):
+                supported_flows.append(claim)
+            else:
+                invalid_flows.append((statement, claim_evidence))
+
+    if narrates_evidence_ids:
+        warnings.append(
+            "claim statements must not narrate evidence IDs; use only the "
+            "evidence array"
+        )
+    if narrates_relation_anchors:
+        warnings.append(
+            "claim statements must not narrate relation anchors or source line "
+            "references"
+        )
+    if multi_sentence_claims:
+        warnings.append(
+            f"{len(multi_sentence_claims)} claim statement(s) contain multiple "
+            "sentences; keep each claim to one sentence"
+        )
+    if relations and len(evidence) >= 2 and not supported_flows:
+        examples = "; ".join(
+            f"{item.id}: `{item.source}` -> `{item.target}`" for item in relations[:3]
+        )
+        warnings.append(
+            "page has static relations but no supported component handoff"
+            + (f"; use a real pair such as {examples}" if examples else "")
+        )
+    if invalid_flows:
+        for statement, ids in invalid_flows:
+            cited_relations = [
+                relations_by_id[item] for item in ids if item in relations_by_id
+            ]
+            endpoints = "; ".join(
+                f"{item.id}: `{item.source}` -> `{item.target}`"
+                for item in cited_relations
+            )
+            detail = (
+                f"; name both endpoints from {endpoints}"
+                if endpoints
+                else (
+                    "; cite one matching R# relation or one E# source body that "
+                    "contains both named endpoints"
+                )
+            )
+            warnings.append(
+                f"flow claim {statement!r} is not an explicit component "
+                f"handoff{detail}"
+            )
+    if invalid_source_claims:
+        warnings.append(
+            f"{len(invalid_source_claims)} non-flow claim(s) cite only static "
+            "relations; purpose, responsibility, contract, entry, and component "
+            "claims require E# source evidence"
+        )
+    component_claims = role_counts.get("component", 0)
+    if len(claims) >= 4 and component_claims / len(claims) > 0.65:
+        warnings.append(
+            "page is dominated by isolated component facts instead of a system "
+            "explanation"
+        )
+    plan_markdown = "\n\n".join(
+        [
+            f"## {section.get('title', '')}\n\n"
+            + " ".join(
+                str(claim.get("statement") or "").rstrip(".") + "."
+                for claim in section.get("claims") or []
+            )
+            for section in sections
+            if section.get("title") and section.get("claims")
+        ]
+    )
+    synthesis = _section_synthesis_report(plan_markdown)
+    if not synthesis["section_synthesis_valid"]:
+        warnings.append(
+            "page plan is dominated by isolated operation sections: "
+            + ", ".join(synthesis["isolated_catalog_sections"])
+            + "; reorganize around shared state, lifecycle, or request handoffs"
+        )
+
     if meta.get("id") != "overview":
         return warnings
 
     if len(sections) != 3:
         warnings.append("Overview must have exactly three complementary sections")
+    for role in ("entry", "flow", "responsibility"):
+        if role_counts.get(role, 0) == 0:
+            warnings.append(f"Overview needs at least one {role} claim")
 
     intro = _readme_intro(evidence)
     intro_terms = _prose_terms(intro[0]) if intro is not None else set()
     require_source_diversity = sum(item.id.startswith("E") for item in evidence) >= 4
     page_sources = set()
     prior_section_terms: List[tuple[str, set[str]]] = []
-    seen_section_sources: set[str] = set()
-    for section_index, section in enumerate(sections):
+    for section in sections:
         title = str(section.get("title") or "untitled")
         useful_claims = []
-        section_sources = set()
         for claim in section.get("claims") or []:
             statement = _format_supported_literals(
                 str(claim.get("statement") or "").strip()
@@ -501,11 +775,8 @@ def _plan_quality_warnings(
             )
             if redundant:
                 continue
-            if re.search(
-                r"\busers?\b[^.]{0,120}`_[A-Za-z]\w*(?:\([^`]*\))?`",
-                statement,
-                flags=re.IGNORECASE,
-            ):
+            role = str(claim.get("role") or infer_claim_role(statement))
+            if describes_private_entry(statement, role=role):
                 warning = f"section {title!r} describes a private helper as a user entry point"
                 if warning not in warnings:
                     warnings.append(warning)
@@ -539,22 +810,11 @@ def _plan_quality_warnings(
                 for item in claim.get("evidence") or []
                 if str(item).startswith("E")
             }
-            section_sources.update(source_ids)
             page_sources.update(source_ids)
         if len(useful_claims) < 2:
             warnings.append(
                 f"section {title!r} needs two publishable, non-redundant claims"
             )
-        if (
-            section_index > 0
-            and section_sources
-            and not (section_sources - seen_section_sources)
-        ):
-            warnings.append(
-                f"section {title!r} must introduce an implementation source "
-                "not used by earlier sections"
-            )
-        seen_section_sources.update(section_sources)
         section_terms = set().union(
             *(
                 _prose_terms(str(claim.get("statement") or ""))
@@ -596,12 +856,22 @@ Source evidence:
 Static reference relations:
 {relations}
 
-Return ONLY JSON with the same thesis/sections/claims/evidence shape. Resolve
-every listed problem without inventing files, symbols, APIs, relationships, or
-behavior. Keep every claim concrete and cite only provided evidence IDs. Use
+Return ONLY JSON with the same grounded thesis and
+sections/claims/role/evidence shape. Resolve every listed problem without
+inventing files, symbols, APIs, relationships, or behavior. Keep every claim
+concrete, use exactly one sentence per thesis or claim statement, and cite only
+provided evidence IDs. A flow claim must explicitly name at least two
+components, describe their handoff, and cite either its matching R# relation or
+one E# source body that contains both endpoints. Use responsibility or contract
+when neither form of evidence supports a component handoff; do not force such a
+claim into flow or attach an unrelated relation. Use
 direct subject-verb-object facts; do not use allows, enables, facilitates,
 efficient, optimize, quick, flexible, easy, powerful, or other benefit claims.
-Put commands, paths, and code identifiers in backticks.
+Put commands, paths, and code identifiers in backticks. Build a system
+explanation rather than an inventory of isolated symbols. Never mention E# or
+R# IDs, relation anchors, source line numbers, or phrases such as "as indicated
+by the reference" inside a statement; record evidence only in the evidence
+array.
 """
 
 
@@ -771,6 +1041,20 @@ class AgentWiki:
         os.makedirs(self._cache_dir, exist_ok=True)
         return os.path.join(self._cache_dir, f"agentwiki_{self._key(suffix)}.json")
 
+    @staticmethod
+    def _page_cache_suffix(meta: Dict[str, Any]) -> str:
+        """Bind a cached page to the outline metadata that steered retrieval."""
+
+        identity = hashlib.sha1(
+            json.dumps(
+                meta,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()[:12]
+        return f"page_{meta.get('id', 'page')}_{identity}"
+
     def _read_cache(self, suffix: str) -> Optional[Any]:
         path = self._cache_path(suffix)
         if path and os.path.isfile(path):
@@ -852,16 +1136,17 @@ class AgentWiki:
     def page(self, page_id: str) -> Optional[dict]:
         if page_id in self._pages:
             return self._pages[page_id]
-        cached = self._read_cache(f"page_{page_id}")
-        if cached:
-            self._pages[page_id] = cached
-            return cached
         meta = self._find(page_id)
         if meta is None:
             return None
+        cache_suffix = self._page_cache_suffix(meta)
+        cached = self._read_cache(cache_suffix)
+        if cached:
+            self._pages[page_id] = cached
+            return cached
         page = self._generate_page(meta)
         self._pages[page_id] = page
-        self._write_cache(f"page_{page_id}", page)
+        self._write_cache(cache_suffix, page)
         return page
 
     def _retrieve(self, meta: Dict[str, Any], top_k: int = 8) -> List[Any]:
@@ -1318,13 +1603,19 @@ class AgentWiki:
                 temperature=0.1,
             )
             plan, errors = parse_fact_plan(text, allowed)
+            plan = _normalize_plan_support(plan, evidence, relations)
         except Exception as exc:  # noqa: BLE001 - use structural fallback
             logger.warning("wiki fact planning failed: %s", exc)
-            plan = {"thesis": "", "sections": []}
+            plan = {
+                "thesis": {"statement": "", "evidence": []},
+                "sections": [],
+            }
             errors = ["model planning unavailable"]
         if plan.get("sections"):
             quality_warnings = _plan_quality_warnings(meta, plan, evidence, relations)
             warnings = [*errors, *quality_warnings]
+            best_plan = plan
+            best_warnings = warnings
             repairs = 0
             while quality_warnings and repairs < _MAX_PLAN_REPAIRS:
                 repairs += 1
@@ -1346,29 +1637,42 @@ class AgentWiki:
                     repaired_plan, repaired_errors = parse_fact_plan(
                         repaired_text, allowed
                     )
+                    repaired_plan = _normalize_plan_support(
+                        repaired_plan,
+                        evidence,
+                        relations,
+                    )
                     repaired_warnings = [
                         *repaired_errors,
                         *_plan_quality_warnings(
                             meta, repaired_plan, evidence, relations
                         ),
                     ]
-                    if repaired_plan.get("sections") and (
-                        len(repaired_warnings) < len(warnings)
-                    ):
-                        plan = repaired_plan
-                        warnings = repaired_warnings
-                        quality_warnings = _plan_quality_warnings(
-                            meta, plan, evidence, relations
-                        )
-                    else:
+                    if not repaired_plan.get("sections"):
                         break
+                    if len(repaired_warnings) < len(best_warnings):
+                        best_plan = repaired_plan
+                        best_warnings = repaired_warnings
+                    changed = repaired_plan != plan
+                    improved = len(repaired_warnings) < len(warnings)
+                    if not changed or (not improved and repairs >= _MAX_PLAN_REPAIRS):
+                        break
+                    plan = repaired_plan
+                    warnings = repaired_warnings
+                    quality_warnings = _plan_quality_warnings(
+                        meta,
+                        plan,
+                        evidence,
+                        relations,
+                    )
                 except Exception as exc:  # noqa: BLE001 - retain usable first plan
                     logger.debug("wiki fact-plan repair unavailable: %s", exc)
                     break
-            return plan, warnings
+            return best_plan, best_warnings
 
         claims = [
             {
+                "role": "component",
                 "statement": (
                     f"`{item.symbol}` is indexed from `{item.file}`"
                     + (
@@ -1382,8 +1686,12 @@ class AgentWiki:
             }
             for item in evidence[:6]
         ]
+        thesis_evidence = [evidence[0].id] if evidence else []
         fallback = {
-            "thesis": meta.get("summary", ""),
+            "thesis": {
+                "statement": meta.get("summary", ""),
+                "evidence": thesis_evidence,
+            },
             "sections": [{"title": "Source-backed components", "claims": claims}],
         }
         return fallback, errors
@@ -1554,6 +1862,21 @@ class AgentWiki:
         relations = self._relation_items(evidence)
         plan, plan_warnings = self._fact_plan(meta, evidence, relations)
         dense_sections = meta.get("id") == "overview"
+        quality_requirements = {
+            "require_dense_sections": dense_sections,
+            "require_cited_intro": True,
+            "require_narrative_novelty": dense_sections,
+            "require_narrative_density": len(evidence) >= 3,
+            "require_interaction": bool(relations and len(evidence) >= 2),
+            "require_grounded_thesis": True,
+            "exact_section_count": 3 if dense_sections else None,
+            "minimum_source_evidence": (min(4, len(evidence)) if dense_sections else 0),
+            "required_claim_roles": (
+                ("entry", "flow", "responsibility") if dense_sections else ()
+            ),
+            "relations": relations,
+            "evidence_items": evidence,
+        }
         structured_render = True
         if structured_render:
             markdown = _fact_plan_markdown(plan, evidence, relations)
@@ -1573,19 +1896,16 @@ class AgentWiki:
                 relations,
                 plan,
             )
-        if dense_sections:
-            markdown = _ensure_cited_intro(
-                markdown,
-                evidence,
-                canonical_readme=True,
-            )
+        markdown = _ensure_cited_intro(
+            markdown,
+            evidence,
+            canonical_readme=dense_sections,
+        )
         report = grounding_report(markdown, evidence, relations)
         quality = _page_quality_report(
             markdown,
             plan,
-            require_dense_sections=dense_sections,
-            require_cited_intro=dense_sections,
-            require_narrative_novelty=dense_sections,
+            **quality_requirements,
         )
         logger.debug(
             "wiki page candidate %s: grounding=%s quality=%s",
@@ -1629,12 +1949,11 @@ class AgentWiki:
                     relations,
                     plan,
                 )
-            if dense_sections:
-                repaired_markdown = _ensure_cited_intro(
-                    repaired_markdown,
-                    evidence,
-                    canonical_readme=True,
-                )
+            repaired_markdown = _ensure_cited_intro(
+                repaired_markdown,
+                evidence,
+                canonical_readme=dense_sections,
+            )
             repaired = True
             repaired_report = grounding_report(repaired_markdown, evidence, relations)
             if (
@@ -1653,9 +1972,7 @@ class AgentWiki:
             repaired_quality = _page_quality_report(
                 repaired_markdown,
                 plan,
-                require_dense_sections=dense_sections,
-                require_cited_intro=dense_sections,
-                require_narrative_novelty=dense_sections,
+                **quality_requirements,
             )
             logger.debug(
                 "wiki page repaired candidate %s: grounding=%s quality=%s",
@@ -1676,9 +1993,7 @@ class AgentWiki:
                 fallback_quality = _page_quality_report(
                     fallback,
                     plan,
-                    require_dense_sections=dense_sections,
-                    require_cited_intro=dense_sections,
-                    require_narrative_novelty=dense_sections,
+                    **quality_requirements,
                 )
                 if _candidate_score(
                     fallback_report, fallback_quality
@@ -1689,27 +2004,92 @@ class AgentWiki:
         markdown, report, quality = best
         markdown = _remove_orphan_headings(markdown)
         report = grounding_report(markdown, evidence, relations)
-        if dense_sections:
-            markdown = _ensure_cited_intro(
-                markdown,
-                evidence,
-                canonical_readme=True,
-            )
+        markdown = _ensure_cited_intro(
+            markdown,
+            evidence,
+            canonical_readme=dense_sections,
+        )
         report = grounding_report(markdown, evidence, relations)
         quality = _page_quality_report(
             markdown,
             plan,
-            require_dense_sections=dense_sections,
-            require_cited_intro=dense_sections,
-            require_narrative_novelty=dense_sections,
+            **quality_requirements,
         )
+        if report["promotional_phrases"] and not model_failed:
+            remaining_phrases = list(report["promotional_phrases"])
+            for _ in range(_MAX_STYLE_REPAIRS):
+                candidate = self._repair_style(markdown, remaining_phrases)
+                candidate = _remove_orphan_headings(
+                    _ensure_cited_intro(
+                        candidate,
+                        evidence,
+                        canonical_readme=dense_sections,
+                    )
+                )
+                candidate_report = grounding_report(
+                    candidate,
+                    evidence,
+                    relations,
+                )
+                candidate_quality = _page_quality_report(
+                    candidate,
+                    plan,
+                    **quality_requirements,
+                )
+                candidate_phrases = list(candidate_report["promotional_phrases"])
+                if (
+                    candidate_report["valid"]
+                    and candidate_quality["valid"]
+                    and len(candidate_phrases) < len(remaining_phrases)
+                ):
+                    markdown = candidate
+                    report = candidate_report
+                    quality = candidate_quality
+                    remaining_phrases = candidate_phrases
+                    repaired = True
+                    if not remaining_phrases:
+                        break
+                else:
+                    break
+
+            if report["promotional_phrases"]:
+                candidate = remove_promotional_sentences(markdown)
+                candidate = _remove_orphan_headings(
+                    _ensure_cited_intro(
+                        candidate,
+                        evidence,
+                        canonical_readme=dense_sections,
+                    )
+                )
+                candidate_report = grounding_report(
+                    candidate,
+                    evidence,
+                    relations,
+                )
+                candidate_quality = _page_quality_report(
+                    candidate,
+                    plan,
+                    **quality_requirements,
+                )
+                if (
+                    candidate_report["valid"]
+                    and candidate_quality["valid"]
+                    and len(candidate_report["promotional_phrases"])
+                    < len(report["promotional_phrases"])
+                ):
+                    markdown = candidate
+                    report = candidate_report
+                    quality = candidate_quality
+                    repaired = True
         markdown = _link_evidence_markers(markdown)
-        publishable = bool(report["valid"] and quality["valid"])
-        planning_failed = "model planning unavailable" in plan_warnings
-        generated = publishable and not model_failed and not planning_failed
+        publishable = bool(
+            report["valid"] and not report["promotional_phrases"] and quality["valid"]
+        )
+        model_planning_failed = "model planning unavailable" in plan_warnings
+        generated = publishable and not model_failed and not model_planning_failed
         if generated:
             generation_reason = None
-        elif model_failed or planning_failed:
+        elif model_failed or model_planning_failed:
             generation_reason = "model_unavailable"
         else:
             generation_reason = "quality_guard"
@@ -1737,7 +2117,9 @@ class AgentWiki:
                 "mode": "generated" if generated else "degraded",
                 "model": self._model,
                 "repaired": repaired,
-                "fallback": ("fact_plan" if fallback_used or planning_failed else None),
+                "fallback": (
+                    "fact_plan" if fallback_used or model_planning_failed else None
+                ),
                 "renderer": "fact_plan" if structured_render else "narrative",
                 "plan_warnings": plan_warnings,
                 "reason": generation_reason,

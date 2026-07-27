@@ -6,11 +6,18 @@ from __future__ import annotations
 
 import json
 
+from codenib.wiki.evidence import EvidenceItem, RelationItem
 from codenib.wiki.quality import (
     audit_cache,
     audit_page,
+    narrative_density_report,
+    page_quality_report,
+    plan_narrative_report,
+    prose_integrity_report,
     section_evidence_report,
     section_narrative_report,
+    section_sentence_redundancy_report,
+    section_synthesis_report,
     summarize_page_audits,
 )
 
@@ -87,6 +94,415 @@ def test_page_audit_adds_narrative_validity_to_legacy_quality():
     assert old_gate["narrative_valid"] is False
     assert old_gate["publishable"] is False
     assert improved["publishable"] is True
+
+
+def test_page_audit_never_publishes_flagged_promotional_prose():
+    page = _page(repeated_prose=False)
+    page["markdown"] += (
+        "\n\n## Benefit\n\n"
+        "This efficient runtime improves repository navigation. [E3]"
+    )
+
+    report = audit_page(page)
+
+    assert report["grounding_valid"] is True
+    assert report["style_valid"] is False
+    assert report["promotional_phrases"] == ["efficient", "improves"]
+    assert report["publishable"] is False
+
+
+def test_page_audit_respects_an_explicit_failed_quality_gate():
+    page = _page(repeated_prose=False)
+    page["quality"]["valid"] = False
+
+    report = audit_page(page)
+
+    assert report["structural_valid"] is False
+    assert report["publishable"] is False
+
+
+def test_narrative_density_rejects_a_source_grounded_symbol_catalog():
+    markdown = (
+        "# Graph Exploration\n\n"
+        "This page lists source-grounded graph operations from the repository. [E1]\n\n"
+        "## Operations\n\n"
+        "`visualize_graph` visualizes graph dependencies. "
+        "`query_range` queries a selected source range. "
+        "`build_hierarchical_code_graph` builds hierarchy levels. "
+        "`load_graph` loads a persisted graph artifact. "
+        "`save_graph` saves the graph artifact. [E1] [E2] [E3]"
+    )
+
+    report = narrative_density_report(markdown)
+
+    assert report["catalog_sentence_count"] == 5
+    assert report["catalog_sentence_ratio"] > 0.65
+    assert report["narrative_density_valid"] is False
+
+
+def test_narrative_density_does_not_count_a_handoff_as_an_isolated_api_fact():
+    report = narrative_density_report(
+        "`AgentRunner.run` executes requests and interacts with "
+        "`AgentRunTrace.add` to record each event."
+    )
+
+    assert report["interaction_sentence_count"] == 1
+    assert report["catalog_sentence_count"] == 0
+
+
+def test_section_synthesis_rejects_a_page_dominated_by_operation_inventories():
+    markdown = (
+        "# Graph Navigation\n\n"
+        "The graph view exposes persisted dependency state. [E1]\n\n"
+        "## Visualization\n\n"
+        "`visualize_graph` generates a graph image. "
+        "`visualize_graph` requires an output path. [E1]\n\n"
+        "## Querying\n\n"
+        "`query_range` retrieves nodes in a source range. "
+        "`query_range` requires depth one. [E2]\n\n"
+        "## Persistence\n\n"
+        "`load_graph` loads a graph artifact. "
+        "`save_graph` serializes a graph artifact. [E3]"
+    )
+
+    report = section_synthesis_report(markdown)
+
+    assert report["isolated_catalog_sections"] == [
+        "Visualization",
+        "Querying",
+        "Persistence",
+    ]
+    assert report["section_synthesis_valid"] is False
+
+
+def test_section_synthesis_admits_a_state_lifecycle():
+    markdown = (
+        "# Graph Navigation\n\n"
+        "The graph view exposes persisted dependency state. [E1]\n\n"
+        "## Load and Query\n\n"
+        "`load_graph` writes restored state to `CodeGraph.graph`. "
+        "`query_range` reads candidate nodes from `CodeGraph.graph`. [E1] [R1]\n\n"
+        "## Derive and Persist\n\n"
+        "`build_hierarchy` reads the base state from `CodeGraph.graph`. "
+        "`save_graph` writes `CodeGraph.graph` to an artifact. [E2] [R2]\n\n"
+        "## Boundary\n\n"
+        "`load_graph` rejects an incompatible schema. "
+        "Callers receive a reconstructed `CodeGraph`. [E3]"
+    )
+
+    report = section_synthesis_report(markdown)
+
+    assert report["isolated_catalog_sections"] == []
+    assert report["section_synthesis_valid"] is True
+
+
+def test_sentence_redundancy_rejects_formulaic_restatement_in_a_section():
+    report = section_sentence_redundancy_report(
+        "# Hierarchy\n\n"
+        "## Derivation\n\n"
+        "The function organizes nodes and dependencies into a hierarchical graph. "
+        "The hierarchical graph organizes the same nodes and dependencies for "
+        "visualization."
+    )
+
+    assert len(report["redundant_sentence_pairs"]) == 1
+    assert report["sentence_redundancy_valid"] is False
+
+
+def test_prose_integrity_rejects_internal_ids_and_private_user_entries():
+    report = prose_integrity_report(
+        "# Runtime\n\n"
+        "Users run `_prepare()` before serving a request according to R2. [E1]"
+    )
+
+    assert report["narrated_evidence_ids"] == ["R2"]
+    assert report["private_entry_sentences"]
+    assert report["prose_integrity_valid"] is False
+
+
+def test_prose_integrity_rejects_narrated_relation_anchors():
+    report = prose_integrity_report(
+        "# Runtime\n\n"
+        "`main` calls `compile_repo`, as indicated by the reference at "
+        "`src/cli.py:42`. [R1]"
+    )
+
+    assert report["reference_narration_sentences"]
+    assert report["prose_integrity_valid"] is False
+
+
+def test_prose_integrity_allows_a_public_entry_to_delegate_to_a_helper():
+    report = prose_integrity_report(
+        "# Runtime\n\n"
+        "## Public Workflow\n\n"
+        "`codenib wiki` calls `_prepare()` before serving indexed pages. [E1]"
+    )
+
+    assert report["private_entry_sentences"] == []
+    assert report["prose_integrity_valid"] is True
+
+
+def test_page_audit_requires_a_flow_when_static_relations_are_available():
+    page = {
+        "id": "agent-runtime",
+        "title": "Agent Runtime",
+        "markdown": (
+            "# Agent Runtime\n\n"
+            "The runtime executes repository requests from indexed source. "
+            "[E1](#evidence-E1)\n\n"
+            "## Methods\n\n"
+            "The method `AgentRunner.run` executes the agent loop. "
+            "[E1](#evidence-E1) The function `_role` determines a graph role. "
+            "[E2](#evidence-E2)"
+        ),
+        "evidence": {
+            "items": [{"id": "E1"}, {"id": "E2"}],
+            "relations": [{"id": "R1"}],
+        },
+        "generation": {"mode": "generated"},
+        "grounding": {"valid": True, "citation_coverage": 1.0},
+        "quality": {"valid": True, "claim_coverage": 1.0},
+    }
+
+    report = audit_page(page)
+
+    assert report["require_interaction"] is True
+    assert report["interaction_valid"] is False
+    assert report["publishable"] is False
+
+
+def test_architecture_narrative_admits_a_grounded_component_flow():
+    plan = {
+        "thesis": {
+            "statement": "Wiki requests are resolved against compiled views",
+            "evidence": ["E1", "E2"],
+        },
+        "sections": [
+            {
+                "title": "Request path",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`wiki_page` passes the requested page identifier "
+                            "to `AgentWiki.page`"
+                        ),
+                        "evidence": ["E1", "E2", "R1"],
+                    },
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`AgentWiki.page` returns source-linked Markdown "
+                            "to `wiki_page`"
+                        ),
+                        "evidence": ["E1", "E2", "R2"],
+                    },
+                ],
+            },
+            {
+                "title": "Ownership",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`AgentWiki` owns page planning and evidence selection"
+                        ),
+                        "evidence": ["E2"],
+                    },
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`WikiBundle` owns the loaded repository index handles"
+                        ),
+                        "evidence": ["E3"],
+                    },
+                ],
+            },
+        ],
+    }
+    markdown = (
+        "Wiki requests enter through `wiki_page` and are resolved against "
+        "compiled repository views. [E1] [E2]\n\n"
+        "## Request path\n\n"
+        "`wiki_page` passes the requested page identifier to `AgentWiki.page`. "
+        "`AgentWiki.page` returns source-linked Markdown to `wiki_page`. "
+        "[E1] [E2] [R1] [R2]\n\n"
+        "## Ownership\n\n"
+        "`AgentWiki` owns page planning and evidence selection. "
+        "`WikiBundle` owns the loaded repository index handles. [E2] [E3]"
+    )
+
+    plan_report = plan_narrative_report(plan)
+    quality = page_quality_report(
+        markdown,
+        plan,
+        require_cited_intro=True,
+        require_narrative_density=True,
+        require_interaction=True,
+    )
+
+    assert plan_report["thesis_grounded"] is True
+    assert plan_report["supported_interaction_claims"] == 2
+    assert quality["interaction_sentence_count"] == 2
+    assert quality["valid"] is True
+
+
+def test_plan_narrative_rejects_flow_labels_without_a_relation_handoff():
+    report = plan_narrative_report(
+        {
+            "thesis": {"statement": "A graph is served", "evidence": ["E1"]},
+            "sections": [
+                {
+                    "title": "Query",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": "`query_range` retrieves graph nodes",
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        },
+        require_relation_backing=True,
+    )
+
+    assert report["supported_interaction_claims"] == 0
+    assert report["invalid_flow_claims"] == ["`query_range` retrieves graph nodes"]
+    assert report["plan_role_integrity_valid"] is False
+
+
+def test_plan_narrative_rejects_a_citation_with_different_relation_endpoints():
+    report = plan_narrative_report(
+        {
+            "thesis": {"statement": "A wiki serves graph data", "evidence": ["E1"]},
+            "sections": [
+                {
+                    "title": "Flow",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": (
+                                "`wiki_page_graph` calls `compile_repo` to render "
+                                "a page"
+                            ),
+                            "evidence": ["E1", "R1"],
+                        }
+                    ],
+                }
+            ],
+        },
+        require_relation_backing=True,
+        relations=[
+            RelationItem(
+                id="R1",
+                source="codenib/cli.py:index_repository()",
+                target=(
+                    "codenib/compiler/index_compiler.py:" "IndexCompiler.compile_repo()"
+                ),
+            )
+        ],
+    )
+
+    assert report["supported_interaction_claims"] == 0
+    assert report["invalid_flow_claims"]
+    assert report["plan_role_integrity_valid"] is False
+
+
+def test_plan_narrative_accepts_a_flow_supported_by_one_source_body():
+    statement = "`wiki_page_graph` calls `_bundle` to access the code graph"
+    report = plan_narrative_report(
+        {
+            "thesis": {"statement": "A wiki serves graph data", "evidence": ["E1"]},
+            "sections": [
+                {
+                    "title": "Flow",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": statement,
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        },
+        require_relation_backing=True,
+        relations=[
+            RelationItem(
+                id="R1",
+                source="unrelated",
+                target="component",
+            )
+        ],
+        evidence_items=[
+            EvidenceItem(
+                id="E1",
+                file="src/wiki.py",
+                start_line=1,
+                end_line=3,
+                symbol="wiki_page_graph",
+                kind="function",
+                content="def wiki_page_graph():\n    return _bundle().code_graph()",
+            )
+        ],
+    )
+
+    assert report["supported_interaction_claims"] == 1
+    assert report["invalid_flow_claims"] == []
+    assert report["plan_role_integrity_valid"] is True
+
+
+def test_plan_narrative_rejects_multi_sentence_claims():
+    report = plan_narrative_report(
+        {
+            "thesis": {"statement": "The runtime serves requests", "evidence": ["E1"]},
+            "sections": [
+                {
+                    "title": "Runtime",
+                    "claims": [
+                        {
+                            "role": "responsibility",
+                            "statement": (
+                                "The runtime loads an index. It then serves queries."
+                            ),
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert report["multi_sentence_claims"]
+    assert report["plan_role_integrity_valid"] is False
+
+
+def test_plan_narrative_rejects_relation_only_non_flow_claims():
+    report = plan_narrative_report(
+        {
+            "thesis": {
+                "statement": "The runtime serves repository context",
+                "evidence": ["R1"],
+            },
+            "sections": [
+                {
+                    "title": "Runtime",
+                    "claims": [
+                        {
+                            "role": "responsibility",
+                            "statement": "The runtime owns repository context",
+                            "evidence": ["R1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert report["thesis_grounded"] is False
+    assert report["invalid_source_claims"] == ["The runtime owns repository context"]
+    assert report["plan_role_integrity_valid"] is False
 
 
 def test_cache_audit_ignores_outline_records_and_summarizes_pages(tmp_path):
