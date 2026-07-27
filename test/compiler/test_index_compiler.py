@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -92,9 +93,9 @@ class TestBM25IndexBuilder:
         # Mock chunker returns fake chunks
         mock_chunker_instance = MagicMock()
         mock_chunker_instance.chunk_repository.return_value = [
-            "chunk1",
-            "chunk2",
-            "chunk3",
+            SimpleNamespace(file="src/a.py"),
+            SimpleNamespace(file="src/a.py"),
+            SimpleNamespace(file="src/b.py"),
         ]
         MockChunker.return_value = mock_chunker_instance
 
@@ -114,6 +115,9 @@ class TestBM25IndexBuilder:
         assert status.index_type == "bm25"
         assert status.state == IndexState.FRESH
         assert status.metadata["file_count"] == 3
+        assert status.metadata["chunk_count"] == 3
+        assert status.metadata["source_file_count"] == 2
+        assert status.metadata["builder_schema"] == 3
         assert status.metadata["max_k"] == 64
         assert status.path == output
         mock_indexer_instance.save_index.assert_called_once_with(output)

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import threading
 import urllib.request
@@ -31,6 +32,12 @@ def test_static_server_uses_same_origin_api_and_falls_back_to_spa(tmp_path):
             assert response.headers["Cache-Control"] == "no-store"
         with urllib.request.urlopen(f"{base}/owner/repo") as response:
             page = response.read().decode()
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+        connection.request("HEAD", "/owner/repo")
+        head_response = connection.getresponse()
+        head_status = head_response.status
+        head_length = int(head_response.headers["Content-Length"])
+        connection.close()
         with urllib.request.urlopen(f"{base}/assets/app.js") as response:
             asset = response.read().decode()
             assert "immutable" in response.headers["Cache-Control"]
@@ -41,6 +48,8 @@ def test_static_server_uses_same_origin_api_and_falls_back_to_spa(tmp_path):
 
     assert config == 'window.__CODENIB_API_BASE__ = "";\n'
     assert "CodeNib Wiki" in page
+    assert head_status == 200
+    assert head_length == len("<title>CodeNib Wiki</title>")
     assert "ready" in asset
 
 

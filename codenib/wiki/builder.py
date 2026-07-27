@@ -360,10 +360,16 @@ class WikiBuilder:
 
     def _indexed_file_count(self) -> int:
         symbol_files = len({symbol.file for symbol in self._symbols()})
-        manifest_count = int(
-            getattr(getattr(self._bundle, "manifest", None), "file_count", 0) or 0
-        )
-        return max(symbol_files, manifest_count)
+        manifest = getattr(self._bundle, "manifest", None)
+        indexes = getattr(manifest, "indexes", {}) or {}
+        bm25 = indexes.get("bm25")
+        metadata = getattr(bm25, "metadata", {}) or {}
+        source_files = int(metadata.get("source_file_count") or 0)
+        if source_files:
+            return source_files
+        if symbol_files:
+            return symbol_files
+        return int(getattr(manifest, "file_count", 0) or 0)
 
     def _project_summary(self) -> str:
         if self._project_summary_cache is not None:

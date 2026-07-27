@@ -933,6 +933,9 @@ pre {
   margin: 12px 0;
   overflow-x: auto;
 }
+.markdown .table-cards {
+  display: none;
+}
 .markdown table {
   border-collapse: collapse;
   margin: 0;
@@ -944,8 +947,38 @@ pre {
   padding: 6px 12px;
 }
 @media (max-width: 680px) {
-  .markdown .table-scroll table {
-    min-width: 620px;
+  .markdown .table-scroll {
+    display: none;
+  }
+  .markdown .table-cards {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .markdown .table-card {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-2);
+  }
+  .markdown .table-card-field {
+    display: grid;
+    grid-template-columns: minmax(92px, 0.42fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 8px 10px;
+  }
+  .markdown .table-card-field + .table-card-field {
+    border-top: 1px solid var(--border);
+  }
+  .markdown .table-card-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .markdown .table-card-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 }
 

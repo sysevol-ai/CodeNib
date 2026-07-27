@@ -195,6 +195,22 @@ def test_overview_links_modules(repo_dir):
     assert "```mermaid" not in page["markdown"]
 
 
+def test_overview_uses_indexed_source_file_count(repo_dir):
+    bundle = _make_bundle(repo_dir)
+    bundle.manifest = SimpleNamespace(
+        languages=["python"],
+        file_count=99,
+        indexes={
+            "bm25": SimpleNamespace(metadata={"source_file_count": 3}),
+        },
+    )
+
+    markdown = WikiBuilder(bundle).page("overview")["markdown"]
+
+    assert "| python | 3 | 4 |" in markdown
+    assert "| python | 99 |" not in markdown
+
+
 def test_overview_uses_readme_purpose_without_a_model(repo_dir):
     with open(f"{repo_dir}/README.md", "w", encoding="utf-8") as handle:
         handle.write(

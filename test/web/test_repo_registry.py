@@ -16,7 +16,12 @@ from codenib.web.config import (
     load_registry,
     save_registry,
 )
-from codenib.web.repo_registry import RepoBundle, RepoRegistry, _fresh_registry
+from codenib.web.repo_registry import (
+    _DEMO_SYSTEM_PROMPT,
+    RepoBundle,
+    RepoRegistry,
+    _fresh_registry,
+)
 
 
 def test_fresh_registry_is_isolated_from_singleton():
@@ -29,6 +34,12 @@ def test_fresh_registry_is_isolated_from_singleton():
     assert reg_a is not reg_b
     assert reg_a._skills is not reg_b._skills
     assert reg_a._skills is not singleton._skills
+
+
+def test_ask_prompt_requires_resolving_discovered_identifiers():
+    assert "targeted search" in _DEMO_SYSTEM_PROMPT
+    assert "exact identifier and defining file" in _DEMO_SYSTEM_PROMPT
+    assert "unresolved candidate identifier" in _DEMO_SYSTEM_PROMPT
 
 
 def test_bundle_loads_views_without_constructing_agent_runtime():
@@ -50,6 +61,20 @@ def test_bundle_loads_views_without_constructing_agent_runtime():
     bundle.ensure_runtime()
 
     assert calls == [("views", bundle), ("runtime", bundle)]
+
+
+def test_bundle_reports_indexed_source_files_instead_of_repository_files():
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(
+            file_count=99,
+            indexes={
+                "bm25": SimpleNamespace(metadata={"source_file_count": 3}),
+            },
+        ),
+    )
+
+    assert bundle._file_count() == 3
 
 
 def test_bundle_reports_partial_graph_language_coverage():

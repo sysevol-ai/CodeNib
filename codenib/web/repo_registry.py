@@ -47,8 +47,16 @@ _DEMO_SYSTEM_PROMPT = (
     "Use the search tools (hybrid_search / embedding_search / bm25_search) to "
     "find the relevant code, then write a clear, well-structured explanation. "
     "Ground every claim in the retrieved code and name the key files and symbols "
-    "you found so the reader can open them. If a search returns nothing useful, "
-    "try a different query or tool before concluding."
+    "you found so the reader can open them. Follow identifiers discovered in a "
+    "call site with a targeted search when the question asks for a definition, "
+    "owner, implementation, or control flow; do not claim that a symbol is "
+    "missing while an unresolved candidate identifier remains in the evidence. "
+    "When a call site names several candidates, distinguish registries and "
+    "configuration objects from the component whose method performs the "
+    "requested operation, then resolve that component's definition. "
+    "Answer definition questions with the exact identifier and defining file, "
+    "and use call sites only to explain how it is reached. If a search returns "
+    "nothing useful, try a different query or tool before concluding."
 )
 
 
@@ -286,7 +294,12 @@ class RepoBundle:
         cached = getattr(self, "_file_count_cache", None)
         if cached is not None:
             return cached
-        n = self.manifest.file_count or 0
+        indexes = getattr(self.manifest, "indexes", {}) or {}
+        bm25 = indexes.get("bm25")
+        metadata = getattr(bm25, "metadata", {}) or {}
+        n = int(metadata.get("source_file_count") or 0)
+        if not n:
+            n = self.manifest.file_count or 0
         vs = self.vector_store
         if vs is not None:
             docs = getattr(vs, "l0_documents", None)

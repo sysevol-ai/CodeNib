@@ -11,6 +11,7 @@ flat, UI-friendly ``ChatResponse`` the Wiki frontend renders.
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -206,6 +207,69 @@ def _node_to_citation(node: Any, repo_path: str = "") -> Optional[Citation]:
     )
 
 
+def _answer_citations(
+    answer: str,
+    citations: List[Citation],
+    *,
+    limit: int = 8,
+) -> List[Citation]:
+    """Prefer retrieved locations that the final answer actually names."""
+
+    normalized_answer = (answer or "").replace("\\", "/").lower()
+    ranked: list[tuple[int, int, Citation]] = []
+    generic_symbols = {
+        "build",
+        "class",
+        "function",
+        "index",
+        "main",
+        "method",
+        "query",
+        "run",
+        "search",
+    }
+    for position, citation in enumerate(citations):
+        score = 0
+        file = (citation.file or "").replace("\\", "/").lower()
+        if file and file in normalized_answer:
+            score += 8
+        elif file:
+            basename = file.rsplit("/", 1)[-1]
+            if basename and basename in normalized_answer:
+                score += 2
+
+        raw_symbol = (citation.node_name or "").rsplit(":", 1)[-1]
+        symbol = re.sub(r"\([^)]*\)$", "", raw_symbol).strip()
+        if symbol and symbol.lower() in normalized_answer:
+            score += 6
+        for part in symbol.split("."):
+            candidate = part.strip()
+            if len(candidate) < 4 or candidate.lower() in generic_symbols:
+                continue
+            if re.search(
+                rf"(?<![\w]){re.escape(candidate.lower())}(?![\w])",
+                normalized_answer,
+            ):
+                score += 4
+        if score:
+            ranked.append((-score, position, citation))
+
+    if not ranked:
+        return citations[: min(5, limit)]
+
+    selected: List[Citation] = []
+    per_file: dict[str, int] = {}
+    for _, _, citation in sorted(ranked):
+        file_key = citation.file or ""
+        if per_file.get(file_key, 0) >= 3:
+            continue
+        selected.append(citation)
+        per_file[file_key] = per_file.get(file_key, 0) + 1
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
     """Flatten an ``AgentResult`` into the API response.
 
@@ -240,7 +304,7 @@ def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
 
     return ChatResponse(
         answer=result.answer or "",
-        citations=citations,
+        citations=_answer_citations(result.answer or "", citations),
         tool_calls=tool_calls,
         total_turns=result.total_turns,
         total_duration_ms=result.total_duration_ms,

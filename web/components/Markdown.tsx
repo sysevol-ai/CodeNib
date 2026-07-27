@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Children,
+  isValidElement,
   lazy,
   Suspense,
   type ReactElement,
@@ -17,6 +19,15 @@ import type { Citation } from "@/lib/api";
 const Mermaid = lazy(() => import("./Mermaid"));
 const HighlightedBlock = lazy(() => import("./HighlightedBlock"));
 
+type ChildElement = ReactElement<{ children?: ReactNode }>;
+
+function childElements(children: ReactNode): ChildElement[] {
+  return Children.toArray(children).filter(
+    (child): child is ChildElement =>
+      isValidElement<{ children?: ReactNode }>(child),
+  );
+}
+
 // Recursively collect plain text from React children (to recover raw code).
 function nodeText(n: ReactNode): string {
   if (n == null || n === false) return "";
@@ -25,6 +36,49 @@ function nodeText(n: ReactNode): string {
   // @ts-expect-error - runtime prop access on element
   if (n.props?.children) return nodeText(n.props.children);
   return "";
+}
+
+function ResponsiveTable({ children }: { children: ReactNode }) {
+  const sections = childElements(children);
+  const head = sections.find((section) => section.type === "thead");
+  const body = sections.find((section) => section.type === "tbody");
+  const headerRow = head
+    ? childElements(head.props.children).find((row) => row.type === "tr")
+    : undefined;
+  const headers = headerRow
+    ? childElements(headerRow.props.children).map((cell) =>
+        nodeText(cell.props.children),
+      )
+    : [];
+  const rows = body
+    ? childElements(body.props.children)
+        .filter((row) => row.type === "tr")
+        .map((row) => childElements(row.props.children))
+    : [];
+
+  return (
+    <>
+      <div className="table-scroll">
+        <table>{children}</table>
+      </div>
+      {headers.length > 0 && rows.length > 0 && (
+        <div className="table-cards" role="list">
+          {rows.map((cells, rowIndex) => (
+            <div className="table-card" role="listitem" key={rowIndex}>
+              {cells.map((cell, cellIndex) => (
+                <div className="table-card-field" key={cellIndex}>
+                  <div className="table-card-label">
+                    {headers[cellIndex] || `Column ${cellIndex + 1}`}
+                  </div>
+                  <div className="table-card-value">{cell.props.children}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 /** Inline `code` span that names a cited symbol/file: click to jump the code pane. */
@@ -75,11 +129,7 @@ export default function Markdown({
         rehypePlugins={[rehypeSlug]}
         components={{
           table({ children }) {
-            return (
-              <div className="table-scroll">
-                <table>{children}</table>
-              </div>
-            );
+            return <ResponsiveTable>{children}</ResponsiveTable>;
           },
           pre({ children }) {
             const codeEl = (Array.isArray(children) ? children[0] : children) as

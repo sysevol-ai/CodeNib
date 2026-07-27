@@ -88,7 +88,7 @@ class BM25IndexBuilder:
 
     def artifact_identity(self) -> Dict[str, Any]:
         return {
-            "builder_schema": 2,
+            "builder_schema": 3,
             "languages": list(self.languages),
             "max_k": self.max_k,
             "max_lines_per_chunk": self.max_lines_per_chunk,
@@ -127,6 +127,11 @@ class BM25IndexBuilder:
             path=output_dir,
             metadata={
                 **self.artifact_identity(),
+                "chunk_count": len(chunks),
+                "source_file_count": len(
+                    {chunk.file for chunk in chunks if getattr(chunk, "file", "")}
+                ),
+                # Retain the legacy field for existing manifest consumers.
                 "file_count": len(chunks),
             },
         )

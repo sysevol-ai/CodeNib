@@ -65,6 +65,10 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
         if request_path == "/api" or request_path.startswith("/api/"):
             self._proxy_api_request()
             return
+        relative = request_path.lstrip("/")
+        candidate = Path(self.directory, relative)
+        if request_path != "/" and not candidate.is_file():
+            self.path = "/index.html"
         super().do_HEAD()
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract

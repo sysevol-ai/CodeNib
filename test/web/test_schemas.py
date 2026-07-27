@@ -64,6 +64,49 @@ def test_citations_are_deduplicated_across_tool_calls():
     assert len(resp.tool_calls) == 2
 
 
+def test_citations_prefer_files_and_symbols_named_in_the_answer():
+    result = AgentResult(
+        answer=("`AuthService` is defined in `src/auth.py` and owns authentication."),
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "bm25_search",
+                {},
+                result=[
+                    _node("src/bootstrap.py", 0, 9, "bootstrap"),
+                    _node("src/auth.py", 10, 30, "AuthService.login"),
+                    _node("src/config.py", 0, 9, "Config"),
+                ],
+            )
+        ],
+    )
+
+    response = agent_result_to_response(result)
+
+    assert [citation.file for citation in response.citations] == ["src/auth.py"]
+
+
+def test_citations_bound_unnamed_retrieval_candidates():
+    result = AgentResult(
+        answer="The repository has several relevant components.",
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "bm25_search",
+                {},
+                result=[_node(f"src/{index}.py", 0, 9) for index in range(10)],
+            )
+        ],
+    )
+
+    response = agent_result_to_response(result)
+
+    assert len(response.citations) == 5
+    assert [citation.file for citation in response.citations] == [
+        f"src/{index}.py" for index in range(5)
+    ]
+
+
 def test_error_tool_call_has_no_citations():
     result = AgentResult(
         answer="ans",
