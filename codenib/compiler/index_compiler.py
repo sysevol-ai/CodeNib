@@ -225,6 +225,12 @@ class IndexCompiler:
         requested_succeeded = True
 
         for idx_type in types_to_build:
+            builder = self._builders.get(idx_type)
+            if builder is None:
+                logger.warning("No builder registered for '%s', skipping", idx_type)
+                requested_succeeded = False
+                continue
+
             previous_entry = (
                 existing.indexes.get(idx_type) if existing is not None else None
             )
@@ -234,7 +240,7 @@ class IndexCompiler:
                 and current_entry.status == "fresh"
                 and self._entry_matches_builder(
                     current_entry,
-                    self._builders.get(idx_type),
+                    builder,
                 )
                 and (
                     not head_commit
@@ -244,20 +250,16 @@ class IndexCompiler:
             ):
                 continue
 
-            builder = self._builders.get(idx_type)
-            if builder is None:
-                logger.warning("No builder registered for '%s', skipping", idx_type)
-                requested_succeeded = False
-                continue
-
             previous_commit = ""
-            if previous_entry is not None and previous_entry.status in {
-                "fresh",
-                "stale",
-            }:
+            previous_entry_compatible = (
+                previous_entry is not None
+                and previous_entry.status in {"fresh", "stale"}
+                and self._entry_matches_builder(previous_entry, builder)
+            )
+            if previous_entry_compatible:
                 previous_commit = previous_entry.commit
-            if not previous_commit and existing is not None:
-                previous_commit = existing.last_indexed_commit
+                if not previous_commit and existing is not None:
+                    previous_commit = existing.last_indexed_commit
             incremental_from = (
                 previous_commit
                 if previous_commit and head_commit and previous_commit != head_commit
@@ -272,6 +274,21 @@ class IndexCompiler:
                 output_dir,
                 last_commit=incremental_from,
             )
+            if (
+                idx_type == "symbol_graph"
+                and result.success
+                and result.status is not None
+                and result.status.metadata.get("update_mode") == "incremental"
+                and previous_entry is not None
+            ):
+                for key in ("available_languages", "failed_languages", "partial"):
+                    if (
+                        key not in result.status.metadata
+                        and key in previous_entry.metadata
+                    ):
+                        result.status.metadata[key] = copy.deepcopy(
+                            previous_entry.metadata[key]
+                        )
 
             now = datetime.now(timezone.utc)
             entry = IndexEntry(

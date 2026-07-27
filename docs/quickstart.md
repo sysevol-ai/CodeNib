@@ -38,9 +38,13 @@ CodeNib performs four steps:
    [http://localhost:3000](http://localhost:3000).
 
 The release wheel contains the compiled frontend, so this path does not need
-Node.js, npm, or a source checkout. Indexing does not write into the target
-repository. Set `CODENIB_HOME` to relocate all user-owned state. Press
-`Ctrl-C` once to stop both services.
+Node.js, npm, or a source checkout. CodeNib-owned indexes and manifests stay
+outside the target repository; set `CODENIB_HOME` to relocate that state. The
+`fast` and `semantic` presets leave the checkout unchanged. Some language-aware
+graph backends must invoke the repository's build or package manager and may
+prepare project-local dependencies such as `node_modules`; run those profiles
+from a clean checkout when that distinction matters. Press `Ctrl-C` once to
+stop both services.
 
 Use different ports or keep the browser closed when needed:
 

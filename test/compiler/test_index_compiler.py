@@ -808,6 +808,53 @@ class TestUpdateRepo:
         assert calls == [1, 2]
         assert manifest.indexes["rec"].config["builder_schema"] == 2
 
+    def test_builder_identity_change_at_new_head_forces_full_build(self, tmp_path):
+        _git_repo(tmp_path)
+        calls = []
+
+        class VersionedBuilder:
+            version = 1
+
+            def artifact_identity(self):
+                return {"builder_schema": self.version}
+
+            def _status(self, scope: str, output_dir: str) -> IndexStatus:
+                return IndexStatus(
+                    index_type="rec",
+                    state=IndexState.FRESH,
+                    last_built=time.time(),
+                    age_seconds=0.0,
+                    scope=scope,
+                    path=output_dir,
+                    metadata=self.artifact_identity(),
+                )
+
+            def build(self, scope: str, **kwargs) -> IndexStatus:
+                calls.append(("build", self.version, kwargs.get("last_commit")))
+                return self._status(scope, kwargs["output_dir"])
+
+            def incremental_update(self, scope: str, **kwargs) -> IndexStatus:
+                calls.append(
+                    ("incremental_update", self.version, kwargs.get("last_commit"))
+                )
+                return self._status(scope, kwargs["output_dir"])
+
+        builder = VersionedBuilder()
+        registry = IndexBuilderRegistry()
+        registry.register("rec", builder)
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(index_types=["rec"], languages=["python"]),
+        )
+        compiler.compile_repo(str(tmp_path))
+        _commit(tmp_path, "b.py")
+        builder.version = 2
+
+        manifest = compiler.update_repo(str(tmp_path))
+
+        assert calls == [("build", 1, None), ("build", 2, None)]
+        assert manifest.indexes["rec"].config["builder_schema"] == 2
+
     def test_uses_incremental_path_when_head_moved(self, tmp_path):
         first = _git_repo(tmp_path)
         calls: list = []
@@ -818,6 +865,65 @@ class TestUpdateRepo:
 
         compiler.update_repo(str(tmp_path))
         assert calls[-2] == ("incremental_update", first)
+
+    def test_incremental_graph_preserves_partial_language_coverage(self, tmp_path):
+        first = _git_repo(tmp_path)
+        calls = []
+
+        class PartialGraphBuilder:
+            def artifact_identity(self):
+                return {"builder_schema": 1, "languages": ["python", "cpp"]}
+
+            def _status(self, scope: str, output_dir: str, metadata) -> IndexStatus:
+                return IndexStatus(
+                    index_type="symbol_graph",
+                    state=IndexState.FRESH,
+                    last_built=time.time(),
+                    age_seconds=0.0,
+                    scope=scope,
+                    path=output_dir,
+                    metadata={**self.artifact_identity(), **metadata},
+                )
+
+            def build(self, scope: str, **kwargs) -> IndexStatus:
+                calls.append(("build", None))
+                return self._status(
+                    scope,
+                    kwargs["output_dir"],
+                    {
+                        "available_languages": ["python"],
+                        "failed_languages": {"cpp": "compile database unavailable"},
+                        "partial": True,
+                    },
+                )
+
+            def incremental_update(self, scope: str, **kwargs) -> IndexStatus:
+                calls.append(("incremental_update", kwargs["last_commit"]))
+                return self._status(
+                    scope,
+                    kwargs["output_dir"],
+                    {"update_mode": "incremental"},
+                )
+
+        registry = IndexBuilderRegistry()
+        registry.register("symbol_graph", PartialGraphBuilder())
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(
+                index_types=["symbol_graph"],
+                languages=["python", "cpp"],
+            ),
+        )
+        compiler.compile_repo(str(tmp_path))
+        _commit(tmp_path, "notes.md")
+
+        manifest = compiler.update_repo(str(tmp_path))
+        metadata = manifest.indexes["symbol_graph"].metadata
+
+        assert calls == [("build", None), ("incremental_update", first)]
+        assert metadata["available_languages"] == ["python"]
+        assert metadata["failed_languages"] == {"cpp": "compile database unavailable"}
+        assert metadata["partial"] is True
 
     def test_manifest_records_new_commit_after_update(self, tmp_path):
         _git_repo(tmp_path)

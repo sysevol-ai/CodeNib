@@ -293,7 +293,10 @@ def main() -> int:
     ap.add_argument(
         "--out-dir",
         default=None,
-        help="where snapshots land (default <repo>/.codenib_cache/commit_window)",
+        help=(
+            "where snapshots land "
+            "(default $CODENIB_HOME/repositories/<repo>-<id>/indexes/commit_window)"
+        ),
     )
     ap.add_argument(
         "--worktree",

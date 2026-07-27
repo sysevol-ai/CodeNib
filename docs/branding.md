@@ -66,6 +66,8 @@ variables:
 
 User-facing commands keep repository indexes under
 `$CODENIB_HOME/repositories/<repo>-<id>/indexes` (default
-`~/.codenib/repositories/...`) so indexing does not modify the target checkout.
-The lower-level compiler still accepts an explicit `cache_dir`, and CLI
-manifest discovery can read the legacy `<repo>/.codenib_cache` layout.
+`~/.codenib/repositories/...`) instead of storing CodeNib artifacts in the
+target checkout. Language-aware graph builders may still invoke project
+toolchains that prepare dependencies in the checkout. The lower-level compiler
+accepts an explicit `cache_dir`, and CLI manifest discovery can read the legacy
+`<repo>/.codenib_cache` layout.

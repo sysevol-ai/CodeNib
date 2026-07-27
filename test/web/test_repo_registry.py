@@ -79,6 +79,83 @@ def test_bundle_reports_partial_graph_language_coverage():
     assert coverage.partial is True
 
 
+@pytest.mark.parametrize(
+    ("status", "view_commit"),
+    [
+        ("stale", "old-commit"),
+        ("failed", "new-commit"),
+        ("fresh", "old-commit"),
+    ],
+)
+def test_bundle_rejects_graphs_outside_the_manifest_snapshot(
+    tmp_path,
+    status,
+    view_commit,
+):
+    graph_dir = tmp_path / "symbol_graph"
+    graph_dir.mkdir()
+    (graph_dir / "graph.pkl").write_bytes(b"stale graph")
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(
+            commit="new-commit",
+            indexes={
+                "symbol_graph": SimpleNamespace(
+                    status=status,
+                    commit=view_commit,
+                    path=str(graph_dir),
+                )
+            },
+        ),
+    )
+
+    assert bundle._graph_path() is None
+
+
+def test_bundle_accepts_fresh_graph_for_manifest_snapshot(tmp_path):
+    graph_dir = tmp_path / "symbol_graph"
+    graph_dir.mkdir()
+    graph_path = graph_dir / "graph.pkl"
+    graph_path.write_bytes(b"current graph")
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(
+            commit="new-commit",
+            indexes={
+                "symbol_graph": SimpleNamespace(
+                    status="fresh",
+                    commit="new-commit",
+                    path=str(graph_dir),
+                )
+            },
+        ),
+    )
+
+    assert bundle._graph_path() == str(graph_path)
+
+
+def test_bundle_accepts_legacy_graph_beside_current_vector_view(tmp_path):
+    vector_dir = tmp_path / "vector"
+    vector_dir.mkdir()
+    graph_path = vector_dir / "graph.pkl"
+    graph_path.write_bytes(b"legacy current graph")
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(
+            commit="new-commit",
+            indexes={
+                "vector": SimpleNamespace(
+                    status="fresh",
+                    commit="new-commit",
+                    path=str(vector_dir),
+                )
+            },
+        ),
+    )
+
+    assert bundle._graph_path() == str(graph_path)
+
+
 def test_config_index_types_for_mode():
     assert QAConfig(mode="sparse").index_types() == ["bm25"]
     assert QAConfig(mode="hybrid").index_types() == ["bm25", "vector"]

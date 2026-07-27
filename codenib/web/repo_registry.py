@@ -175,25 +175,41 @@ class RepoBundle:
 
         The manifest only declares bm25/vector, but the prebuilt tree ships a
         ``graph.pkl`` alongside the vector store (and, when present, via a
-        ``symbol_graph`` entry), so probe both. Result is cached.
+        ``symbol_graph`` entry), so probe the legacy vector location only when
+        there is no explicit graph entry. Result is cached.
         """
         cached = getattr(self, "_graph_path_cache", "?")
         if cached != "?":
             return cached
         candidates: List[str] = []
         sg = self.manifest.indexes.get("symbol_graph")
-        if sg is not None and getattr(sg, "path", None):
-            candidates.append(
-                sg.path
-                if sg.path.endswith(".pkl")
-                else os.path.join(sg.path, "graph.pkl")
-            )
-        vec = self.manifest.indexes.get("vector")
-        if vec is not None and getattr(vec, "path", None):
-            candidates.append(os.path.join(vec.path, "graph.pkl"))
+        if sg is not None:
+            if self._view_is_current(sg) and getattr(sg, "path", None):
+                candidates.append(
+                    sg.path
+                    if sg.path.endswith(".pkl")
+                    else os.path.join(sg.path, "graph.pkl")
+                )
+        else:
+            vec = self.manifest.indexes.get("vector")
+            if (
+                vec is not None
+                and self._view_is_current(vec)
+                and getattr(vec, "path", None)
+            ):
+                candidates.append(os.path.join(vec.path, "graph.pkl"))
         found = next((p for p in candidates if p and os.path.isfile(p)), None)
         self._graph_path_cache = found
         return found
+
+    def _view_is_current(self, entry: Any) -> bool:
+        """Whether a persisted view is eligible for the manifest's snapshot."""
+
+        if getattr(entry, "status", None) != "fresh":
+            return False
+        view_commit = str(getattr(entry, "commit", "") or "")
+        manifest_commit = str(getattr(self.manifest, "commit", "") or "")
+        return not view_commit or not manifest_commit or view_commit == manifest_commit
 
     def code_graph(self) -> Optional[CodeGraph]:
         """Lazily load + cache the repo's symbol graph (None if unavailable)."""

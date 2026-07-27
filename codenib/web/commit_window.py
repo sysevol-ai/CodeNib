@@ -21,21 +21,30 @@ import os
 import threading
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from ..paths import REPO_INDEX_DIRNAME
+from ..paths import legacy_repo_index_dir, repo_index_dir
 
 if TYPE_CHECKING:
     from ..graph.code_graph import CodeGraph
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIRNAME = REPO_INDEX_DIRNAME
 WINDOW_DIRNAME = "commit_window"
 MANIFEST_NAME = "commit_window.json"
 
 
 def window_dir(repo_dir: str) -> str:
-    """Directory holding a repo's commit-window artifacts."""
-    return os.path.join(os.path.abspath(repo_dir), CACHE_DIRNAME, WINDOW_DIRNAME)
+    """Directory holding a repo's commit-window artifacts.
+
+    New windows live with the repository's other user-owned state. A legacy
+    repository-local window remains readable until it is rebuilt in the new
+    location.
+    """
+
+    primary = repo_index_dir(repo_dir) / WINDOW_DIRNAME
+    legacy = legacy_repo_index_dir(repo_dir) / WINDOW_DIRNAME
+    if (primary / MANIFEST_NAME).is_file() or not (legacy / MANIFEST_NAME).is_file():
+        return str(primary)
+    return str(legacy)
 
 
 def manifest_path(repo_dir: str) -> str:
@@ -99,6 +108,7 @@ class CommitWindow:
     def __init__(self, repo_dir: str) -> None:
         self.repo_dir = os.path.abspath(repo_dir)
         self._manifest: Optional[dict] = None
+        self._manifest_path: Optional[str] = None
         self._mtime: Optional[float] = None
         self._graphs: Dict[str, Optional["CodeGraph"]] = {}
         self._lock = threading.RLock()
@@ -125,9 +135,14 @@ class CommitWindow:
             mtime = None
 
         with self._lock:
-            if mtime is not None and mtime == self._mtime:
+            if (
+                mtime is not None
+                and path == self._manifest_path
+                and mtime == self._mtime
+            ):
                 return self._manifest
 
+            self._manifest_path = path
             self._mtime = mtime
             self._graphs.clear()
             if mtime is None:
@@ -208,13 +223,16 @@ class CommitWindow:
             path = entry.get("graph_path")
             # Manifests record absolute paths at build time; tolerate a moved
             # cache directory by also probing the expected filename.
+            artifact_dir = (
+                os.path.dirname(self._manifest_path)
+                if self._manifest_path
+                else window_dir(self.repo_dir)
+            )
             candidates = [
                 p
                 for p in (
                     path,
-                    os.path.join(
-                        window_dir(self.repo_dir), f"graph_{entry.get('short')}.pkl"
-                    ),
+                    os.path.join(artifact_dir, f"graph_{entry.get('short')}.pkl"),
                 )
                 if p
             ]

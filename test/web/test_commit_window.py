@@ -7,7 +7,15 @@
 import json
 import os
 
+import pytest
+
+from codenib.paths import legacy_repo_index_dir, repo_index_dir
 from codenib.web.commit_window import CommitWindow, window_dir
+
+
+@pytest.fixture(autouse=True)
+def _isolated_codenib_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "user-state"))
 
 
 def _write_manifest(repo_dir, commits, **extra) -> str:
@@ -35,6 +43,20 @@ def _commit(sha: str, short: str, method: str = "patched", **extra) -> dict:
     }
 
 
+class TestWindowPath:
+    def test_uses_user_owned_repository_state(self, tmp_path):
+        expected = repo_index_dir(tmp_path) / "commit_window"
+
+        assert window_dir(str(tmp_path)) == str(expected)
+
+    def test_falls_back_to_legacy_repository_local_window(self, tmp_path):
+        legacy = legacy_repo_index_dir(tmp_path) / "commit_window"
+        legacy.mkdir(parents=True)
+        (legacy / "commit_window.json").write_text('{"commits": []}')
+
+        assert window_dir(str(tmp_path)) == str(legacy)
+
+
 class TestAvailability:
     def test_absent_manifest_is_unavailable(self, tmp_path):
         assert CommitWindow(str(tmp_path)).available is False
@@ -53,6 +75,34 @@ class TestAvailability:
 
 class TestManifestInvalidation:
     """A rebuilt window must take effect without restarting the server."""
+
+    def test_migration_from_legacy_to_user_state_is_picked_up(self, tmp_path):
+        legacy = legacy_repo_index_dir(tmp_path) / "commit_window"
+        legacy.mkdir(parents=True)
+        legacy_manifest = legacy / "commit_window.json"
+        legacy_manifest.write_text(
+            json.dumps({"commits": [_commit("a" * 40, "aaaaaaa", method="cold")]})
+        )
+        window = CommitWindow(str(tmp_path))
+        assert len(window.commits()) == 1
+
+        primary = repo_index_dir(tmp_path) / "commit_window"
+        primary.mkdir(parents=True)
+        primary_manifest = primary / "commit_window.json"
+        primary_manifest.write_text(
+            json.dumps(
+                {
+                    "commits": [
+                        _commit("b" * 40, "bbbbbbb"),
+                        _commit("a" * 40, "aaaaaaa", method="cold"),
+                    ]
+                }
+            )
+        )
+        legacy_mtime = legacy_manifest.stat().st_mtime
+        os.utime(primary_manifest, (legacy_mtime, legacy_mtime))
+
+        assert len(window.commits()) == 2
 
     def test_rebuild_is_picked_up(self, tmp_path):
         _write_manifest(tmp_path, [_commit("a" * 40, "aaaaaaa", method="cold")])

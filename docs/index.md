@@ -66,8 +66,8 @@ codenib wiki /path/to/repository
 
 The default Wiki is deterministic, uses BM25, and needs no API key. CodeNib
 detects repository languages, writes a reusable manifest under
-`~/.codenib/repositories`, and opens the browser UI without modifying the
-target checkout. Read the
+`~/.codenib/repositories`, and opens the browser UI. This default `fast` profile
+leaves the target checkout unchanged. Read the
 [Quickstart](quickstart.md) for profiles and troubleshooting.
 
 ```bash
