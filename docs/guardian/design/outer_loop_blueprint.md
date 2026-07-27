@@ -791,7 +791,7 @@ emits tool calls, gets observations. There is no `select`-then-`investigate`
 sequence in the code, because the sequence is what the agent is for.
 
 ```python
-def run_cycle_loop(state: CycleState, ctx) -> CycleState:
+def run_cycle_agent(state: CycleState, ctx) -> CycleState:
     messages = [system_prompt(ctx), opening_context(state, ctx)]   # §4
     while True:
         try:
@@ -1084,7 +1084,7 @@ whose type is currently wrong.
 | 2 | Typed exits | new `guardian/loop/exceptions.py`, `guardian_replay.py` | a failed cycle is distinguishable from an empty one | 3 |
 | 3 | The tool-use loop | `cycle.py` (`_run_cycle_inner`) | a cycle reaches `ReportSubmitted` through ≥3 turns; decision log replays | 4, 5, 6 |
 | 4 | `recall` as a tool | new `guardian/memory/queries.py` | `--arm memoryless` returns empty and the loop still reports | the research question |
-| 5 | Context management | `guardian/loop/context.py`, `guardian/llm/`, `guardian/investigator/inner_loop.py` | each L2/L3 agent loop owns one transport session; both compose the same token-aware context mechanics; raw results remain until a token boundary; compaction retains the loop's frame and canonical state in one summary | long cycles |
+| 5 | Context management | `guardian/loop/prompts.py`, `guardian/llm/`, `guardian/investigator/agent.py` | each L2/L3 agent loop owns one transport session; both compose the same token-aware context mechanics; raw results remain until a token boundary; compaction retains the loop's frame and canonical state in one summary | long cycles |
 | 6 | Code exploration tools | new `guardian/loop/tools_code.py` | ≥1 hypothesis per replay carries no `"signal:"` evidence | the proactivity metric |
 | 7 | Grading and resolution discipline | `report.py`, prompt, `GRADE_RULES` | a re-derived claim supersedes rather than duplicates | credible C−B |
 

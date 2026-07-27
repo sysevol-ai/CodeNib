@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from codeminer.guardian.loop import CycleState, Hypothesis, Signal, load_checkpoint
-from codeminer.guardian.loop.runtime import LoopContext, run_cycle_loop
+from codeminer.guardian.loop.agent import LoopContext, run_cycle_agent
 
 
 def _call(call_id, name, arguments):
@@ -93,7 +93,7 @@ def test_cycle_reaches_submission_after_three_agent_turns(tmp_path):
     )
     checkpoint = tmp_path / "out" / "cycle_state.json"
     state = _state()
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         state,
         LoopContext(
             repo_path=str(tmp_path),
@@ -134,7 +134,7 @@ def test_unlimited_budget_runs_until_agent_submission(tmp_path):
         ]
     )
 
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         state,
         LoopContext(
             repo_path=str(tmp_path),
@@ -185,7 +185,7 @@ def test_grade_rejection_is_observation_and_loop_can_recover(tmp_path):
             _response(_call("c3", "submit_report", {"summary": "Deferred."})),
         ]
     )
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         state,
         LoopContext(
             repo_path=str(tmp_path),
@@ -251,7 +251,7 @@ def test_l2_can_promote_simple_source_finding_without_investigator(tmp_path):
         ]
     )
 
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         state,
         LoopContext(
             repo_path=str(tmp_path),
@@ -307,7 +307,7 @@ def test_l2_direct_finding_rejects_nonexistent_source_span(tmp_path):
         ]
     )
 
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         state,
         LoopContext(
             repo_path=str(tmp_path),
@@ -356,7 +356,7 @@ def test_l2_cannot_forge_reserved_evidence_reference(tmp_path):
         ]
     )
 
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         state,
         LoopContext(
             repo_path=str(tmp_path),
@@ -417,10 +417,10 @@ def test_agent_resolves_hypothesis_carried_to_fixed_commit(tmp_path):
     )
 
     with patch(
-        "codeminer.guardian.loop.runtime._commit_diff",
+        "codeminer.guardian.loop.agent._commit_diff",
         return_value="diff --git a/mod.py b/mod.py",
     ):
-        result = run_cycle_loop(
+        result = run_cycle_agent(
             state,
             LoopContext(
                 repo_path=str(tmp_path),
@@ -466,7 +466,7 @@ def test_agent_cannot_resolve_hypothesis_created_in_same_cycle(tmp_path):
         ]
     )
 
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         state,
         LoopContext(
             repo_path=str(tmp_path),
@@ -491,7 +491,7 @@ def test_model_failure_is_explicitly_degraded(tmp_path):
         def _call_raw(self, messages, **kwargs):
             raise RuntimeError("offline")
 
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         _state(),
         LoopContext(
             repo_path=str(tmp_path),
@@ -545,7 +545,7 @@ def test_investigation_grade_is_agent_written_not_derived(tmp_path):
         "codeminer.guardian.investigator.run_investigator",
         return_value=fake_result,
     ):
-        result = run_cycle_loop(
+        result = run_cycle_agent(
             state,
             LoopContext(
                 repo_path=str(tmp_path),
@@ -617,7 +617,7 @@ def test_source_grounded_investigation_can_be_promoted_by_agent(tmp_path):
         "codeminer.guardian.investigator.run_investigator",
         return_value=fake_result,
     ):
-        result = run_cycle_loop(
+        result = run_cycle_agent(
             state,
             LoopContext(
                 repo_path=str(tmp_path),
@@ -683,11 +683,11 @@ def test_investigator_receives_obligation_diff_and_locus_excerpt(tmp_path):
             return_value=fake_result,
         ) as investigator,
         patch(
-            "codeminer.guardian.loop.runtime._commit_diff",
+            "codeminer.guardian.loop.agent._commit_diff",
             return_value="diff --git a/mod.py b/mod.py",
         ),
     ):
-        run_cycle_loop(
+        run_cycle_agent(
             state,
             LoopContext(
                 repo_path=str(tmp_path),
@@ -750,7 +750,7 @@ def test_environment_failed_investigation_marks_cycle_degraded(tmp_path):
         "codeminer.guardian.investigator.run_investigator",
         return_value=fake_result,
     ):
-        result = run_cycle_loop(
+        result = run_cycle_agent(
             state,
             LoopContext(
                 repo_path=str(tmp_path),
@@ -778,10 +778,10 @@ def test_agent_can_inspect_reviewed_commit_diff(tmp_path):
     )
 
     with patch(
-        "codeminer.guardian.loop.runtime._commit_diff",
+        "codeminer.guardian.loop.agent._commit_diff",
         return_value="diff --git a/mod.py b/mod.py",
     ):
-        result = run_cycle_loop(
+        result = run_cycle_agent(
             _state(),
             LoopContext(
                 repo_path=str(tmp_path),
@@ -815,10 +815,10 @@ def test_independent_source_reads_execute_in_parallel_and_keep_request_order(tmp
     )
 
     with patch(
-        "codeminer.guardian.loop.runtime.read_code",
+        "codeminer.guardian.loop.agent.read_code",
         side_effect=synchronized_read,
     ):
-        result = run_cycle_loop(
+        result = run_cycle_agent(
             _state(),
             LoopContext(
                 repo_path=str(tmp_path),
@@ -854,7 +854,7 @@ def test_large_observation_is_externalized_with_bounded_rereads(tmp_path):
     )
     retriever = SimpleNamespace(query=lambda query, top_k=None: [full_result])
 
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         _state(),
         LoopContext(
             repo_path=str(tmp_path),
@@ -888,7 +888,7 @@ def test_large_observation_is_externalized_with_bounded_rereads(tmp_path):
             _response(_call("submit", "submit_report", {"summary": "Done."})),
         ]
     )
-    run_cycle_loop(
+    run_cycle_agent(
         _state(),
         LoopContext(
             repo_path=str(tmp_path),
@@ -924,7 +924,7 @@ def test_long_context_is_summarized_as_one_coherent_history(tmp_path):
         ]
     )
     retriever = SimpleNamespace(query=lambda query, top_k=None: [observation])
-    result = run_cycle_loop(
+    result = run_cycle_agent(
         _state(),
         LoopContext(
             repo_path=str(tmp_path),

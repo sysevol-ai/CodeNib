@@ -212,8 +212,8 @@ does not decide that a signal is a defect.
 
 ### L2: hypothesis controller
 
-`codeminer/guardian/loop/` owns the outer reasoning cycle. Its tools let the
-model:
+`codeminer/guardian/loop/agent.py` implements the cycle agent. Its tools let
+the model:
 
 - inspect signals and recall prior memory;
 - search and read code;
@@ -232,7 +232,7 @@ diagnosed.
 
 ### L3: evidence investigator
 
-`codeminer/guardian/investigator/` implements the current typed inner loop.
+`codeminer/guardian/investigator/agent.py` implements the investigation agent.
 An investigation uses structured tasks, commands, process outcomes, test
 outcomes, and an evidence ledger. This separates:
 
@@ -255,9 +255,24 @@ provenance, process classification, isolation, and evidence labels; the model
 owns the semantic judgment.
 
 `codeminer/guardian/investigator/runner.py` remains a compatibility path for
-the older narrative investigator; the typed inner loop is the active design.
+the older narrative investigator; `investigator/agent.py` is the active design.
 
-### Agent-loop sessions and context
+### Shared agent runtime, sessions, and context
+
+The cycle and investigation agents are peer domain implementations over
+`codeminer/guardian/agent/runtime.py`. `ToolAgentRuntime` owns their common
+model/tool mechanics:
+
+- one provider session per agent;
+- provider-independent assistant and tool-call normalization;
+- JSON argument parsing and malformed-call classification;
+- transcript updates for assistant turns and tool observations;
+- ordered grouping of explicitly parallel-safe tool calls.
+
+The domain agents deliberately retain their own prompts, tools, canonical
+state, budgets, evidence validation, checkpoint payloads, and stopping
+policies. The common runtime therefore shares mechanics without pretending
+that hypothesis grading and probe validation are the same problem.
 
 Transport sessions follow agent ownership rather than cycle ownership. L2 keeps
 one model session across its outer turns. Every L3 investigation opens its own
@@ -265,11 +280,10 @@ independent session and closes it with that investigation; multiple L3 agents
 therefore never share conversational state merely because they belong to one
 Guardian cycle.
 
-L2 and L3 compose the same small mechanical layer in `guardian/llm/`: session
-ownership, token-aware transcript accounting, coherent compaction, and typed
-loop outcomes. They do not inherit from a common semantic loop. Their prompts,
-tools, canonical state, evidence validation, and stopping policies remain
-separate.
+`guardian/llm/session.py` owns provider-session adaptation and
+`guardian/llm/context.py` contains the single shared `ContextManager`.
+`guardian/loop/prompts.py` contains only cycle-specific prompts and canonical
+snapshot construction; it is not another context manager.
 
 Guardian and the observed project deliberately use separate Python
 interpreters in DeepSWE. The Guardian bridge runs from the mounted
@@ -354,8 +368,12 @@ Turn and wall-clock limits remain safety boundaries even without a token limit.
 | Codex watcher and report bridge | `deepsweguardian/codex_bridge.py` |
 | MCP tool and watcher | `codeminer/guardian/mcp_server.py` |
 | Commit-scoped cycle composition | `codeminer/guardian/cycle.py` |
-| L2 outer loop | `codeminer/guardian/loop/` |
-| L3 typed investigation | `codeminer/guardian/investigator/` |
+| Shared tool-agent mechanics | `codeminer/guardian/agent/runtime.py` |
+| Shared model session | `codeminer/guardian/llm/session.py` |
+| Shared transcript context | `codeminer/guardian/llm/context.py` |
+| L2 cycle agent | `codeminer/guardian/loop/agent.py` |
+| L2 prompts and snapshots | `codeminer/guardian/loop/prompts.py` |
+| L3 investigation agent | `codeminer/guardian/investigator/agent.py` |
 | Persistent memory | `codeminer/guardian/memory/store.py` |
 
 The concurrency and lazy-start paths are implemented. Reports and checkpoints

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Agent-owned tool-use runtime for one Guardian L2 cycle."""
+"""Domain policy and tools for Repository Guardian's cycle agent."""
 
 from __future__ import annotations
 
@@ -16,8 +16,9 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from ...log_utils import get_logger
-from ..llm import AgentLoopSession, ContextManager, LoopOutcome
-from .context import (
+from ..agent import AgentExit, ToolAgentRuntime, execution_batches
+from ..llm import ContextManager
+from .prompts import (
     compact_messages,
     initial_messages,
     summarization_messages,
@@ -517,25 +518,6 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
         return f"(tool_error {type(exc).__name__}: {exc})"
 
 
-def _assistant_message(message: object) -> dict:
-    tool_calls = getattr(message, "tool_calls", None) or []
-    return {
-        "role": "assistant",
-        "content": getattr(message, "content", "") or "",
-        "tool_calls": [
-            {
-                "id": call.id,
-                "type": "function",
-                "function": {
-                    "name": call.function.name,
-                    "arguments": call.function.arguments,
-                },
-            }
-            for call in tool_calls
-        ],
-    }
-
-
 def _compact_observation(
     observation: str,
     *,
@@ -573,24 +555,13 @@ def _compact_observation(
     )
 
 
-def _parsed_call(call: object) -> tuple[str, dict]:
-    name = call.function.name
-    try:
-        args = json.loads(call.function.arguments or "{}")
-        if not isinstance(args, dict):
-            args = {}
-    except json.JSONDecodeError:
-        args = {}
-    return name, args
-
-
-def run_cycle_loop(
+def run_cycle_agent(
     state: CycleState,
     ctx: LoopContext,
     *,
     messages: Optional[List[dict]] = None,
 ) -> CycleState:
-    """Run model turns until a typed exit, checkpointing every boundary."""
+    """Run the cycle agent until a typed exit, checkpointing every boundary."""
     transcript = list(
         messages
         if messages is not None
@@ -598,8 +569,8 @@ def run_cycle_loop(
     )
     started = time.monotonic()
     turn = 0
-    session_manager = AgentLoopSession(ctx.llm)
-    loop_llm = session_manager.__enter__()
+    agent = ToolAgentRuntime(ctx.llm, transcript)
+    agent.__enter__()
     try:
         while True:
             check_invariants(state)
@@ -642,7 +613,7 @@ def run_cycle_loop(
             )
             if context.needs_compaction():
                 try:
-                    summary_response = loop_llm._call_raw(
+                    summary_response = agent.call_raw(
                         summarization_messages(transcript, state),
                         tools=TOOLS,
                         tool_choice="auto",
@@ -685,7 +656,8 @@ def run_cycle_loop(
                 )
                 state.compaction_events += len(events)
                 state.decision_log.extend(events)
-                session_manager.reset()
+                agent.replace_messages(transcript)
+                transcript = agent.messages
 
             context.messages = transcript
             transcript_tokens = context.token_count()
@@ -698,9 +670,7 @@ def run_cycle_loop(
                 )
 
             try:
-                response = loop_llm._call_raw(
-                    transcript, tools=TOOLS, tool_choice="auto"
-                )
+                agent_turn = agent.request(tools=TOOLS)
             except Exception as exc:  # noqa: BLE001
                 state.degraded = True
                 raise Degraded(
@@ -708,40 +678,32 @@ def run_cycle_loop(
                     decision_log_tail=state.decision_log[-5:],
                 ) from exc
 
+            response = agent_turn.response
             usage = getattr(response, "usage", None)
             state.budget_spent += int(getattr(usage, "total_tokens", 0) or 0)
             if ctx.outer_usage is not None:
                 ctx.outer_usage.add(response)
-            message = response.choices[0].message
-            assistant = _assistant_message(message)
-            transcript.append(assistant)
-            calls = getattr(message, "tool_calls", None) or []
+            transcript = agent.messages
+            calls = agent_turn.tool_calls
             if not calls:
                 raise NoProgress(
                     (
-                        getattr(message, "content", "") or "model made no tool call"
+                        getattr(agent_turn.message, "content", "")
+                        or "model made no tool call"
                     ).strip(),
                     decision_log_tail=state.decision_log[-5:],
                 )
 
-            parsed_calls = [(call, *_parsed_call(call)) for call in calls]
             cursor = 0
-            while cursor < len(parsed_calls):
-                end = cursor + 1
-                if parsed_calls[cursor][1] in PARALLEL_SAFE_TOOL_NAMES:
-                    while (
-                        end < len(parsed_calls)
-                        and parsed_calls[end][1] in PARALLEL_SAFE_TOOL_NAMES
-                    ):
-                        end += 1
-                batch = parsed_calls[cursor:end]
+            for batch in execution_batches(calls, PARALLEL_SAFE_TOOL_NAMES):
                 records = []
-                for call, name, args in batch:
+                for call in batch:
+                    args = dict(call.arguments)
                     record = {
                         "event": "tool_call",
                         "turn": turn,
                         "tool_call_id": call.id,
-                        "tool": name,
+                        "tool": call.name,
                         "arguments": args,
                         "state_before": _state_summary(state),
                     }
@@ -754,22 +716,28 @@ def run_cycle_loop(
                         thread_name_prefix="guardian-read",
                     ) as executor:
                         futures = [
-                            executor.submit(_dispatch, name, args, state, ctx)
-                            for _, name, args in batch
+                            executor.submit(
+                                _dispatch,
+                                call.name,
+                                dict(call.arguments),
+                                state,
+                                ctx,
+                            )
+                            for call in batch
                         ]
                         observations = [future.result() for future in futures]
                 else:
-                    call, name, args = batch[0]
+                    call = batch[0]
                     observations = [
                         (
-                            f"(unknown tool: {name!r})"
-                            if name not in TOOL_NAMES
-                            else _dispatch(name, args, state, ctx)
+                            f"(unknown tool: {call.name!r})"
+                            if call.name not in TOOL_NAMES
+                            else _dispatch(call.name, dict(call.arguments), state, ctx)
                         )
                     ]
 
                 for batch_index, (
-                    (call, _name, _args),
+                    call,
                     record,
                     observation,
                 ) in enumerate(
@@ -783,27 +751,22 @@ def run_cycle_loop(
                         turn=turn,
                         index=batch_index,
                         call_id=call.id,
-                        call_name=_name,
+                        call_name=call.name,
                     )
                     record["observation"] = compact_observation[:2_000]
                     record["state_after"] = _state_summary(state)
-                    transcript.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": call.id,
-                            "content": compact_observation,
-                        }
-                    )
-                cursor = end
+                    agent.observe(call, compact_observation)
+                cursor += len(batch)
+                transcript = agent.messages
             turn += 1
             if ctx.checkpoint_path is not None:
                 save_checkpoint(ctx.checkpoint_path, state, transcript)
     except CycleInterrupt as exc:
-        outcome = LoopOutcome(type(exc).__name__, str(exc))
+        outcome = AgentExit(type(exc).__name__, str(exc))
         state.exit_reason = outcome.status
         state.decision_log.append(exc.as_record())
         return state
     finally:
         if ctx.checkpoint_path is not None:
             save_checkpoint(ctx.checkpoint_path, state, transcript)
-        session_manager.__exit__(None, None, None)
+        agent.__exit__(None, None, None)

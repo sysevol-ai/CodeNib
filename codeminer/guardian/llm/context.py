@@ -1,18 +1,11 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared mechanics for model-owned Guardian loops.
-
-L2 and L3 intentionally keep separate prompts, tools, state, and stopping
-policies.  This module only owns the conversation mechanics that both loops
-need: transport-session lifetime, token-aware transcript management, and a
-typed terminal outcome.
-"""
+"""Token-aware transcript management shared by Guardian agents."""
 
 from __future__ import annotations
 
 import json
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -20,44 +13,9 @@ from typing import List, Optional
 from ...agent.history import count_message_tokens
 
 
-class AgentLoopSession(AbstractContextManager):
-    """Own exactly one transport session for exactly one model agent loop."""
-
-    def __init__(self, llm: object) -> None:
-        self.llm = llm
-        self.session: object = llm
-
-    def __enter__(self) -> object:
-        # Inspect the class so mocks/proxies cannot fabricate this attribute.
-        factory = getattr(type(self.llm), "start_agent_loop", None)
-        self.session = factory(self.llm) if callable(factory) else self.llm
-        return self.session
-
-    def reset(self) -> None:
-        """Reset provider-side history after local transcript compaction."""
-
-        reset = getattr(self.session, "reset", None)
-        if callable(reset):
-            reset()
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        if self.session is not self.llm:
-            close = getattr(self.session, "close", None)
-            if callable(close):
-                close()
-
-
-@dataclass(frozen=True)
-class LoopOutcome:
-    """Mechanical reason a model-owned loop stopped."""
-
-    status: str
-    reasoning: str = ""
-
-
 @dataclass
 class ContextManager:
-    """Token-aware transcript shared by L2 and each independent L3 loop."""
+    """Token-aware transcript shared by the cycle and investigation agents."""
 
     messages: List[dict]
     max_tokens: int
@@ -85,9 +43,7 @@ class ContextManager:
         return self.token_count(include_tools=True) > self.usable_tokens
 
     def estimated_call_tokens(self, max_completion_tokens: int) -> int:
-        return self.token_count(include_tools=True) + max(
-            0, int(max_completion_tokens)
-        )
+        return self.token_count(include_tools=True) + max(0, int(max_completion_tokens))
 
     def summarization_messages(
         self, prompt: str, canonical_snapshot: object
@@ -119,8 +75,7 @@ class ContextManager:
         output_dir.mkdir(parents=True, exist_ok=True)
         archives = sorted(output_dir.glob("transcript_before_compaction_*.json"))
         target = (
-            output_dir
-            / f"transcript_before_compaction_{len(archives) + 1:04d}.json"
+            output_dir / f"transcript_before_compaction_{len(archives) + 1:04d}.json"
         )
         target.write_text(
             json.dumps(self.messages, indent=2, sort_keys=True, default=str) + "\n",

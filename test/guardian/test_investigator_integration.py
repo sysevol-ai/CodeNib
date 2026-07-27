@@ -14,7 +14,7 @@ import pytest
 from codeminer.guardian.investigator import (
     CurrentSnapshotSandbox,
     InvestigationTask,
-    run_investigation,
+    run_investigation_agent,
 )
 from codeminer.guardian.loop import Hypothesis
 
@@ -29,13 +29,9 @@ def _tool_call(call_id, name, arguments):
 def _response(call):
     return SimpleNamespace(
         choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content="", tool_calls=[call])
-            )
+            SimpleNamespace(message=SimpleNamespace(content="", tool_calls=[call]))
         ],
-        usage=SimpleNamespace(
-            prompt_tokens=10, completion_tokens=5, total_tokens=15
-        ),
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15),
     )
 
 
@@ -132,7 +128,7 @@ def test_real_probe_in_disposable_snapshot_parses_report_and_stays_in_grant(
     )
     model = DeterministicInvestigatorModel()
     with CurrentSnapshotSandbox(str(repo)) as sandbox:
-        result = run_investigation(
+        result = run_investigation_agent(
             task,
             model,
             retriever=None,

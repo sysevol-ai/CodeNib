@@ -3,7 +3,7 @@
 
 """Generic narrative investigation helpers.
 
-Repository Guardian's typed L3 loop lives in :mod:`.inner_loop`.  This module
+Repository Guardian's typed L3 agent lives in :mod:`.agent`. This module
 retains the older, generic ``search_code`` narrative utility used for explaining
 already-observed test failures.
 """

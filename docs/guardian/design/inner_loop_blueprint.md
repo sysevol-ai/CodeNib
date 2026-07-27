@@ -141,7 +141,7 @@ citation and the section that fixes it. This replaces a rationale chapter.
 | I-3 | **L3 is starved of context.** It receives claim, `locus[0]` via the compat `target` property, confidence, and `origin` disguised as `kind` — not consequence, remedy, full locus, or the evidence L2 already gathered. It re-discovers everything and its retrieval returns nothing | `runner.py:884-893`; compat shims at `loop/state.py:83-101` | §3.1 (the task), §4 (`read_code`) |
 | I-4 | **Test outcomes are read off the process exit code instead of parsed from the report.** Every pytest rc ∉ {0, 2} becomes `FAIL (test confirms the risk)`. Timeout, missing interpreter, missing dependency, internal error, usage error, permission failure, sandbox failure and "no tests collected" all become *confirming evidence*. The sandbox makes it worse by returning `1` for both a timeout and a spawn error, so the two most common environment failures reach the classifier already disguised as a test failure | `probes.py:168-176`, `probes.py:308-317`; `investigator/sandbox.py:58-61` | §3.2 (`CommandResult`), §5.1 |
 | I-5 | **The test environment is never discovered.** `["python", "-m", "pytest", …]` is hard-coded and takes whatever `python` is on `PATH`; Guardian itself runs under `/opt/codeminer-env/bin/python`, and the DeepSWE image's default python has neither pytest nor joblib | `probes.py:164`, `probes.py:304` | §5.2 (prelude + recipe discovery) |
-| I-6 | **Failed investigations mint admissible evidence.** L2 appends `probe:<cycle>:<attempt>` after *any* `run_investigator` return, and `GRADE_RULES` only requires a `probe:`-prefixed string plus a remedy — so the Bubblewrap failure was one model turn away from becoming a finding | `loop/runtime.py:219-220`; `loop/state.py:104-112` | §8.1 |
+| I-6 | **Failed investigations mint admissible evidence.** L2 appends `probe:<cycle>:<attempt>` after *any* `run_investigator` return, and `GRADE_RULES` only requires a `probe:`-prefixed string plus a remedy — so the Bubblewrap failure was one model turn away from becoming a finding | `loop/agent.py:219-220`; `loop/state.py:104-112` | §8.1 |
 | I-7 | **Corroboration is inconsistent and unbound.** The prompt allows an existing failing test to corroborate; the code accepts only fix-probe or differential. If a synthesized test exists, an existing failure is ignored; if none exists, any `confirmed` passes with no mechanical check. The "latest" synth/fix/differential records are combined without proving they concern the same test | `runner.py:685-736`; `probes.py:446-487`; prompt at `runner.py:626-631` | §8.3 (transitions bound by `parent_tool_call_id`) |
 | I-8 | **Disposable ≠ isolated.** Snapshots are throwaway (a real improvement — `investigator/sandbox.py:78`), but `WorktreeSandbox.run_command` executes model-authored Python as the bridge user with inherited environment and network | `investigator/sandbox.py:46-60` | §5.3 |
 | I-9 | **The run record is incomplete.** `evidence_diff` is never populated; existing-test calls drop their structured result; retrieval calls lose provenance; records carry no commit, duration, command, cwd, or `ProcessStatus`; there is no per-call checkpoint | `runner.py:423-451`, `runner.py:752-771` | §3.2, §7 |
@@ -455,7 +455,7 @@ class BudgetLedger:
    `evidence_status` derived from whatever calls completed.
 4. **Report all four numbers** to L2, always. L2 adds `actual` to
    `state.budget_spent`; today it takes `max(tokens_used, after - before)`
-   (`loop/runtime.py:212-215`), which cannot see an overshoot it was never told
+   (`loop/agent.py:212-215`), which cannot see an overshoot it was never told
    about.
 5. **Overshoot > 0 is a budget-health failure**, logged and surfaced in the cycle
    report — not silently absorbed. It is a property of the provider, and the
@@ -469,7 +469,7 @@ estimator wastes grant; an under-reserving one reproduces I-2.
 ## 7 · The loop body and exit statuses
 
 ```python
-def run_investigation(task: InvestigationTask, ctx) -> InvestigationRunResult:
+def run_investigation_agent(task: InvestigationTask, ctx) -> InvestigationRunResult:
     prelude = run_prelude(task, ctx)               # §5.2 — no model calls
     if prelude.blocked:
         return unavailable_result(prelude)         # typed, zero tokens
@@ -535,7 +535,7 @@ tool error is part of I-9.
 
 ### 8.1 The L2 boundary
 
-`loop/runtime.py:219-220` currently appends `probe:<cycle>:<attempt>`
+`loop/agent.py:219-220` currently appends `probe:<cycle>:<attempt>`
 unconditionally. Replace with a conditional emission keyed on `evidence_status`:
 
 ```python
@@ -635,12 +635,12 @@ contract which keeps each area complete.
 
 | # | Work item | Files | Done when |
 |---|---|---|---|
-| 1 | `submit_verdict` replaces forced finalization; normalize `rejected` → `refuted` | `investigator/inner_loop.py`, `llm/codex_cli_chat.py` | no L3 model call is ever made with empty `tools`; budget exhaustion returns a typed result with zero further calls; L3 and L2 use the same negative-verdict spelling |
+| 1 | `submit_verdict` replaces forced finalization; normalize `rejected` → `refuted` | `investigator/agent.py`, `llm/codex_cli_chat.py` | no L3 model call is ever made with empty `tools`; budget exhaustion returns a typed result with zero further calls; L3 and L2 use the same negative-verdict spelling |
 | 2 | `ToolResult` / `CommandResult` + report parser | `investigator/sandbox.py`, `probes.py`, new `investigator/report_parser.py` | the §3.2 table holds; timeout, empty collection, and missing interpreter produce no behavioural test status |
-| 3 | `InvestigationTask` + `read_code` | `loop/runtime.py`, `investigator/inner_loop.py` | L3 receives consequence, remedy, full locus, L2's excerpts and the commit diff; a behavioural verdict without a source span is rejected |
+| 3 | `InvestigationTask` + `read_code` | `loop/agent.py`, `investigator/agent.py` | L3 receives consequence, remedy, full locus, L2's excerpts and the commit diff; a behavioural verdict without a source span is rejected |
 | 4 | Prelude: health check + optional recipe discovery | `investigator/environment.py` | a missing snapshot blocks L3; a repo with no runnable pytest continues with source and generic probes while recording degraded capability |
-| 5 | Conditional evidence references | `loop/runtime.py`, `loop/state.py` | source and executed evidence receive distinct admissible references; an environment-failed investigation cannot produce a finding |
-| 6 | Transitions bound by `parent_tool_call_id` | `probes.py`, `investigator/inner_loop.py` | a fix probe on test A cannot corroborate a failure of test B; an existing failing test corroborates even when a synthesized test exists |
+| 5 | Conditional evidence references | `loop/agent.py`, `loop/state.py` | source and executed evidence receive distinct admissible references; an environment-failed investigation cannot produce a finding |
+| 6 | Transitions bound by `parent_tool_call_id` | `probes.py`, `investigator/agent.py` | a fix probe on test A cannot corroborate a failure of test B; an existing failing test corroborates even when a synthesized test exists |
 | 7 | Harden and instrument the probe sandbox | `investigator/sandbox.py` | model-authored code runs with no network and scrubbed env; every call record carries duration and every command result carries commit, command, cwd, and `ProcessStatus`; per-call checkpoint exists |
 | 8 | One real Pier integration test | `test/guardian/` | a post-commit cycle reaches a parsed test report in the disposable snapshot with no mocks |
 
@@ -719,7 +719,7 @@ Language-specific test integrations attach at §5.2's recipe discovery and
 current generic executable probe is Python-specific.
 
 **Check first if picking this up cold.** Start at
-`investigator/inner_loop.py` (`TOOLS`, `_validate_submission`, and
-`run_investigation`), `investigator/probes.py` (`run_python_probe` and report
-parsing), `loop/runtime.py` (L2/L3 evidence mapping), and `loop/state.py`
+`investigator/agent.py` (`TOOLS`, `_validate_submission`, and
+`run_investigation_agent`), `investigator/probes.py` (`run_python_probe` and report
+parsing), `loop/agent.py` (L2/L3 evidence mapping), and `loop/state.py`
 (`GRADE_RULES`). Those are the current policy seams.

@@ -4,9 +4,17 @@
 
 """Repository Guardian — persistent, proactive, non-modifying codebase monitor.
 
-Phase 1 (this package) is the single-cycle skeleton: ``sync → index → observe →
-investigate → report``. No repository memory, graph-diff, or candidate patches
-yet (RFC Phases 2-5). See ``Repository_Guardian/repository_guardian_issue.md``.
+The package has two peer tool agents over one shared runtime:
+
+* :mod:`.loop.agent` is the cycle agent. It owns hypotheses, evidence grades,
+  memory decisions, and report submission.
+* :mod:`.investigator.agent` is the investigation agent. It investigates one
+  delegated hypothesis and returns a typed evidence result.
+* :mod:`.agent.runtime` owns their common model/tool turn mechanics.
+* :mod:`.llm.session` and :mod:`.llm.context` own the provider session and the
+  single shared transcript context manager.
+* :mod:`.cycle` composes repository signals, snapshots, memory, and both agents
+  for one commit.
 """
 
 from .cycle import GuardianConfig, run_cycle

@@ -4,7 +4,7 @@
 """Tests for token-aware, summary-based Guardian context compaction."""
 
 from codeminer.guardian.loop import CycleState, Hypothesis
-from codeminer.guardian.loop.context import (
+from codeminer.guardian.loop.prompts import (
     compact_messages,
     initial_messages,
     needs_compaction,

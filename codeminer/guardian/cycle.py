@@ -16,7 +16,7 @@ from typing import Generator, Optional, Sequence
 
 from ..log_utils import get_logger
 from .loop import CycleState, Signal, StateInconsistent
-from .loop.runtime import LoopContext, run_cycle_loop
+from .loop.agent import LoopContext, run_cycle_agent
 from .report import GuardianReport, report_views
 from .signals import churn_hotspots, run_test_suite
 
@@ -377,7 +377,7 @@ def _run_cycle_inner(
             )
         try:
             current_sandbox = CurrentSnapshotSandbox(config.repo_path)
-            state = run_cycle_loop(
+            state = run_cycle_agent(
                 state,
                 LoopContext(
                     repo_path=config.repo_path,

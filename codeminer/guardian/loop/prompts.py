@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Frame construction and coherent context compaction for the L2 loop."""
+"""Prompts, frames, and compaction snapshots for the cycle agent."""
 
 from __future__ import annotations
 

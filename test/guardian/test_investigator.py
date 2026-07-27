@@ -10,7 +10,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from codeminer.guardian.investigator import InvestigationTask, run_investigation
+from codeminer.guardian.investigator import (
+    InvestigationTask,
+    run_investigation_agent,
+)
 from codeminer.guardian.investigator.environment import TestRecipe as Recipe
 from codeminer.guardian.investigator.types import CommandResult, ProcessStatus
 from codeminer.guardian.loop import Hypothesis
@@ -160,7 +163,7 @@ def _task(grant=20_000):
 
 def test_every_model_call_keeps_the_tool_protocol(tmp_path):
     llm = ScriptedLLM([_response(content="plain answer")])
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(), llm, MagicMock(), FakeSandbox(tmp_path), recipe=RECIPE
     )
     assert result.exit_status == "no_progress"
@@ -170,7 +173,7 @@ def test_every_model_call_keeps_the_tool_protocol(tmp_path):
 
 def test_budget_reservation_prevents_unaffordable_call(tmp_path):
     llm = ScriptedLLM([])
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(grant=100), llm, MagicMock(), FakeSandbox(tmp_path), recipe=RECIPE
     )
     assert result.exit_status == "budget_exceeded"
@@ -183,7 +186,7 @@ def test_model_backend_failure_is_explicitly_degraded(tmp_path):
     llm.max_tokens = 1_024
     llm._call_raw.side_effect = RuntimeError("backend unavailable")
 
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         MagicMock(),
@@ -198,7 +201,7 @@ def test_model_backend_failure_is_explicitly_degraded(tmp_path):
 
 def test_unavailable_test_environment_does_not_block_investigator(tmp_path):
     llm = ScriptedLLM([])
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         MagicMock(),
@@ -244,7 +247,7 @@ def test_source_grounded_static_verdict_needs_no_pytest(tmp_path):
         ]
     )
 
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         MagicMock(),
@@ -287,7 +290,7 @@ def test_failed_retrieval_cannot_be_cited_as_source_evidence(tmp_path):
         ]
     )
 
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         retriever,
@@ -337,7 +340,7 @@ def test_model_designed_probe_can_confirm_without_specialized_probe_type(tmp_pat
         ]
     )
 
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         MagicMock(),
@@ -370,7 +373,7 @@ def test_refuted_verdict_requires_source_and_parsed_pass(tmp_path):
             ),
         ]
     )
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(), llm, MagicMock(), FakeSandbox(tmp_path, ["passed"]), recipe=RECIPE
     )
     assert result.verdict == "refuted"
@@ -416,7 +419,7 @@ def test_bound_fix_transition_can_confirm(tmp_path):
             ),
         ]
     )
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         MagicMock(),
@@ -466,7 +469,7 @@ def test_fix_for_uncited_test_cannot_confirm(tmp_path):
             ),
         ]
     )
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         MagicMock(),
@@ -500,7 +503,7 @@ def test_error_only_test_cannot_be_submitted_as_behavioural_verdict(tmp_path):
             ),
         ]
     )
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         MagicMock(),
@@ -530,7 +533,7 @@ def test_each_tool_call_is_checkpointed(tmp_path):
             ),
         ]
     )
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         llm,
         MagicMock(),
@@ -550,7 +553,7 @@ def test_each_tool_call_is_checkpointed(tmp_path):
 
 def test_non_submitted_terminal_outcome_replaces_running_checkpoint(tmp_path):
     checkpoint = tmp_path / "investigation.json"
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(),
         ScriptedLLM([_response(content="plain answer")]),
         MagicMock(),
@@ -625,7 +628,7 @@ def test_l3_compacts_its_own_transcript_and_resets_session(tmp_path):
     )
     checkpoint = tmp_path / "investigation.json"
 
-    result = run_investigation(
+    result = run_investigation_agent(
         _task(grant=100_000),
         SessionLLM(session),
         MagicMock(),

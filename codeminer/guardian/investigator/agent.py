@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed L3 tool-use loop for investigating one Guardian hypothesis."""
+"""Domain policy and tools for Repository Guardian's investigation agent."""
 
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ from typing import Dict, List, Optional, Tuple
 from ...agent.agent_types import ToolCallRecord
 from ...llm.usage import TokenUsage, _extract_token_usage
 from ...log_utils import get_logger
-from ..llm import AgentLoopSession, ContextManager, LoopOutcome
+from ..agent import AgentExit, ToolAgentRuntime
+from ..llm import ContextManager
 from .environment import TestRecipe, interpreter_diagnostics, run_prelude
 from .probes import (
     behavioural_tests,
@@ -799,7 +800,7 @@ def _result(
     )
 
 
-def run_investigation(
+def run_investigation_agent(
     task: InvestigationTask,
     llm: object,
     retriever: object,
@@ -817,7 +818,7 @@ def run_investigation(
     context_reserve_tokens: int = 20_000,
     observation_dir: Optional[Path] = None,
 ) -> InvestigationRunResult:
-    """Run the deterministic prelude and typed probe/observe/submit loop."""
+    """Run one investigation agent through probe/observe/submit."""
 
     ledger = BudgetLedger(task.grant_tokens)
     usage = TokenUsage()
@@ -892,19 +893,21 @@ def run_investigation(
     evidence_test = ""
     evidence_diff = ""
     started = time.monotonic()
-    session_manager = AgentLoopSession(llm)
-    loop_llm = session_manager.__enter__()
-    outcome = LoopOutcome("no_progress", "Investigation did not start.")
+    agent = ToolAgentRuntime(llm, messages)
+    agent.__enter__()
+    messages = agent.messages
+    context.messages = messages
+    outcome = AgentExit("no_progress", "Investigation did not start.")
 
     for _round in range(max_rounds):
         if time.monotonic() - started >= task.deadline_s:
-            outcome = LoopOutcome(
+            outcome = AgentExit(
                 "wall_clock_exceeded", "Investigation deadline elapsed."
             )
             break
         if context.needs_compaction():
             if len(context.messages) <= 2:
-                outcome = LoopOutcome(
+                outcome = AgentExit(
                     "budget_exceeded",
                     "The immutable investigation frame and tool schemas exceed "
                     "the context window.",
@@ -932,9 +935,7 @@ def run_investigation(
                     for item in source_spans
                 ],
             }
-            summary_messages = context.summarization_messages(
-                SUMMARY_PROMPT, snapshot
-            )
+            summary_messages = context.summarization_messages(SUMMARY_PROMPT, snapshot)
             summary_context = ContextManager(
                 summary_messages,
                 max_tokens=context.max_tokens,
@@ -942,17 +943,15 @@ def run_investigation(
                 model=context.model,
                 tools=available_tools,
             )
-            summary_estimate = summary_context.estimated_call_tokens(
-                summary_completion
-            )
+            summary_estimate = summary_context.estimated_call_tokens(summary_completion)
             if not ledger.reserve(summary_estimate):
-                outcome = LoopOutcome(
+                outcome = AgentExit(
                     "budget_exceeded",
                     "Context compaction would exceed the investigation grant.",
                 )
                 break
             try:
-                summary_response = loop_llm._call_raw(
+                summary_response = agent.call_raw(
                     summary_messages,
                     tools=available_tools,
                     tool_choice="auto",
@@ -961,7 +960,7 @@ def run_investigation(
                 )
             except Exception as exc:  # noqa: BLE001
                 ledger.reconcile(summary_estimate, 0)
-                outcome = LoopOutcome(
+                outcome = AgentExit(
                     "environment_unavailable",
                     f"Context summarization failed: {exc}",
                 )
@@ -975,7 +974,7 @@ def run_investigation(
                 getattr(summary_response.choices[0].message, "content", "") or ""
             ).strip()
             if not summary:
-                outcome = LoopOutcome(
+                outcome = AgentExit(
                     "no_progress", "Context summarization returned no working memory."
                 )
                 break
@@ -992,14 +991,15 @@ def run_investigation(
                 ),
                 memory_heading="COMPACTED INVESTIGATION MEMORY",
             )
-            messages = context.messages
-            session_manager.reset()
+            agent.replace_messages(context.messages)
+            messages = agent.messages
+            context.messages = messages
             logger.info(
                 "investigator context compacted: %s",
                 events[0] if events else {},
             )
             if context.needs_compaction():
-                outcome = LoopOutcome(
+                outcome = AgentExit(
                     "budget_exceeded",
                     "Compacted investigation memory still exceeds the context "
                     "window.",
@@ -1009,24 +1009,23 @@ def run_investigation(
         remaining = max(0, ledger.granted - ledger.actual - ledger.reserved)
         estimate, max_completion = _estimate_call(context, llm, remaining)
         if not ledger.reserve(estimate):
-            outcome = LoopOutcome(
+            outcome = AgentExit(
                 "budget_exceeded",
                 "Token reservation would exceed the investigation grant.",
             )
             break
         try:
-            response = loop_llm._call_raw(
-                messages,
+            agent_turn = agent.request(
                 tools=available_tools,
-                tool_choice="auto",
                 max_tokens=max_completion,
             )
         except Exception as exc:  # noqa: BLE001 - provider failure is typed exit
             ledger.reconcile(estimate, 0)
-            outcome = LoopOutcome(
+            outcome = AgentExit(
                 "environment_unavailable", f"Model backend unavailable: {exc}"
             )
             break
+        response = agent_turn.response
         call_usage = _extract_token_usage(response)
         usage = usage.add(call_usage)
         ledger.reconcile(estimate, call_usage.total_tokens)
@@ -1039,45 +1038,20 @@ def run_investigation(
             )
         if usage_acc is not None:
             usage_acc.add(response)
-        message = response.choices[0].message
-        tool_calls = list(getattr(message, "tool_calls", None) or [])
-        messages.append(
-            {
-                "role": "assistant",
-                "content": getattr(message, "content", "") or "",
-                "tool_calls": [
-                    {
-                        "id": call.id,
-                        "type": "function",
-                        "function": {
-                            "name": call.function.name,
-                            "arguments": call.function.arguments,
-                        },
-                    }
-                    for call in tool_calls
-                ],
-            }
-        )
+        messages = agent.messages
+        tool_calls = list(agent_turn.tool_calls)
         if not tool_calls:
-            outcome = LoopOutcome(
-                "no_progress", "Model returned no Guardian tool call."
-            )
+            outcome = AgentExit("no_progress", "Model returned no Guardian tool call.")
             break
 
-        submit_calls = [
-            call for call in tool_calls if call.function.name == "submit_verdict"
-        ]
+        submit_calls = [call for call in tool_calls if call.name == "submit_verdict"]
         submit_is_sole = len(tool_calls) == 1 and bool(submit_calls)
         for call in tool_calls:
             call_started = time.monotonic()
-            name = str(call.function.name)
-            try:
-                arguments = json.loads(call.function.arguments)
-                if not isinstance(arguments, dict):
-                    raise ValueError("arguments must be an object")
-            except (json.JSONDecodeError, TypeError, ValueError) as exc:
-                arguments = {}
-                tool_result = ToolResult(f"malformed tool arguments: {exc}", True)
+            name = call.name
+            arguments = dict(call.arguments)
+            if call.argument_error:
+                tool_result = ToolResult(call.argument_error, True)
                 parent_id = None
                 excerpt = None
                 call_diff = ""
@@ -1164,14 +1138,8 @@ def run_investigation(
                 evidence_test = _source_from_synthesis(record)
             if call_diff:
                 evidence_diff = call_diff
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call.id,
-                    "content": tool_result.content,
-                    "is_error": tool_result.is_error,
-                }
-            )
+            agent.observe(call, tool_result.content, is_error=tool_result.is_error)
+            messages = agent.messages
             _checkpoint(checkpoint_path, task, records, messages, ledger)
             if (
                 name == "submit_verdict"
@@ -1210,10 +1178,10 @@ def run_investigation(
                     ledger,
                     result=result,
                 )
-                session_manager.__exit__(None, None, None)
+                agent.__exit__(None, None, None)
                 return result
     else:
-        outcome = LoopOutcome(
+        outcome = AgentExit(
             "no_progress",
             "Investigation round limit reached without submit_verdict.",
         )
@@ -1250,7 +1218,7 @@ def run_investigation(
         ledger,
         result=result,
     )
-    session_manager.__exit__(None, None, None)
+    agent.__exit__(None, None, None)
     return result
 
 
@@ -1287,7 +1255,7 @@ def run_investigator(
         grant_tokens=max(0, int(budget_tokens)),
         deadline_s=max(0.1, float(deadline_s)),
     )
-    return run_investigation(
+    return run_investigation_agent(
         task,
         llm,
         retriever,

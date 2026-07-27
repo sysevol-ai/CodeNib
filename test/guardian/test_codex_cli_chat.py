@@ -324,7 +324,7 @@ def test_cycle_usage_merge_combines_outer_and_inner_usage():
 def test_sdk_agent_loop_reuses_one_thread_and_sends_incremental_results(
     monkeypatch,
 ):
-    from codeminer.guardian.llm import agent_loop_session
+    from codeminer.guardian.llm import AgentLoopSession
 
     seen = {"thread_starts": 0, "prompts": [], "closed": 0}
 
@@ -385,7 +385,7 @@ def test_sdk_agent_loop_reuses_one_thread_and_sends_incremental_results(
     initial = [{"role": "user", "content": "inspect the commit"}]
     llm = CodexSdkChat(model="gpt-5.6-luna", cwd="/repo")
 
-    with agent_loop_session(llm) as session:
+    with AgentLoopSession(llm) as session:
         first = session._call_raw(initial, tools=tools)
         call = first.choices[0].message.tool_calls[0]
         continued = [
@@ -421,7 +421,7 @@ def test_sdk_agent_loop_reuses_one_thread_and_sends_incremental_results(
 
 
 def test_sdk_agent_loop_accepts_redundant_closing_brace_without_retry(monkeypatch):
-    from codeminer.guardian.llm import agent_loop_session
+    from codeminer.guardian.llm import AgentLoopSession
 
     seen = {"prompts": [], "closed": 0}
 
@@ -482,7 +482,7 @@ def test_sdk_agent_loop_accepts_redundant_closing_brace_without_retry(monkeypatc
         }
     ]
 
-    with agent_loop_session(CodexSdkChat(model="gpt-5.6-luna")) as session:
+    with AgentLoopSession(CodexSdkChat(model="gpt-5.6-luna")) as session:
         response = session._call_raw(
             [{"role": "user", "content": "inspect"}],
             tools=tools,
@@ -498,7 +498,7 @@ def test_sdk_agent_loop_accepts_redundant_closing_brace_without_retry(monkeypatc
 
 
 def test_sdk_agent_loop_accepts_allowed_tool_name_as_response_type(monkeypatch):
-    from codeminer.guardian.llm import agent_loop_session
+    from codeminer.guardian.llm import AgentLoopSession
 
     seen = {"prompts": 0}
 
@@ -555,7 +555,7 @@ def test_sdk_agent_loop_accepts_allowed_tool_name_as_response_type(monkeypatch):
         }
     ]
 
-    with agent_loop_session(CodexSdkChat(model="gpt-5.6-luna")) as session:
+    with AgentLoopSession(CodexSdkChat(model="gpt-5.6-luna")) as session:
         response = session._call_raw(
             [{"role": "user", "content": "reconcile"}],
             tools=tools,

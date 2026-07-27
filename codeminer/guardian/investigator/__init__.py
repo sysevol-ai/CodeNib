@@ -8,11 +8,11 @@ Re-exports everything that was previously exported from the flat
 ``codeminer.guardian.investigator`` and ``codeminer.guardian.llm_investigator``
 modules so existing imports continue to work.
 
-The generic narrative investigator remains in ``runner.py``.  The Repository
-Guardian L3 contract is implemented by ``inner_loop.py``.
+The generic narrative investigator remains in ``runner.py``. The Repository
+Guardian investigation agent is implemented by ``agent.py``.
 """
 
-from .inner_loop import TOOLS, run_investigation, run_investigator
+from .agent import TOOLS, run_investigation_agent, run_investigator
 from .probes import hotspot_query, investigate_hotspot, read_file
 from .runner import (
     LLMUsage,
@@ -61,7 +61,7 @@ __all__ = [
     "build_test_failure_context",
     "investigate_signal",
     "run_investigator",
-    "run_investigation",
+    "run_investigation_agent",
     "TOOLS",
     # From sandbox.py
     "SandboxHandle",
