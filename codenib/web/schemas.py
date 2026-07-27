@@ -35,6 +35,14 @@ class WindowStats(BaseModel):
     speedup: float | None = None
 
 
+class GraphCoverage(BaseModel):
+    """Language providers represented by the current symbol graph artifact."""
+
+    available_languages: List[str] = Field(default_factory=list)
+    unavailable_languages: List[str] = Field(default_factory=list)
+    partial: bool = False
+
+
 class RepoInfo(BaseModel):
     """A repository the demo can answer questions about.
 
@@ -53,6 +61,7 @@ class RepoInfo(BaseModel):
     languages: List[str] = Field(default_factory=list)
     file_count: int = 0
     capabilities: dict[str, bool] = Field(default_factory=dict)
+    graph_coverage: GraphCoverage | None = None
     # Present only for repos with a prebuilt commit window; absent otherwise, so
     # the landing page keeps its single-commit label.
     incremental: WindowStats | None = None

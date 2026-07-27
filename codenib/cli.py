@@ -147,7 +147,11 @@ def index_repository(
     from .paths import repo_index_dir
 
     registry = IndexBuilderRegistry()
-    register_default_builders(registry, languages=list(languages))
+    register_default_builders(
+        registry,
+        languages=list(languages),
+        allow_partial_graph_languages=True,
+    )
     compiler = IndexCompiler(
         registry,
         IndexCompilerConfig(
@@ -194,6 +198,15 @@ def _print_index_summary(manifest, views: Sequence[str]) -> None:
             continue
         duration = entry.metadata.get("build_duration_seconds")
         suffix = f" ({duration:.2f}s)" if isinstance(duration, (int, float)) else ""
+        if entry.metadata.get("partial"):
+            available = ", ".join(entry.metadata.get("available_languages") or ())
+            unavailable = ", ".join(
+                (entry.metadata.get("failed_languages") or {}).keys()
+            )
+            suffix += (
+                f" [partial: {available or 'none'}; "
+                f"unavailable: {unavailable or 'none'}]"
+            )
         print(f"  {view:<14} {entry.status}{suffix}")
 
 

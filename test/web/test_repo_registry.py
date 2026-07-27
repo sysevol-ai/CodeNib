@@ -52,6 +52,33 @@ def test_bundle_loads_views_without_constructing_agent_runtime():
     assert calls == [("views", bundle), ("runtime", bundle)]
 
 
+def test_bundle_reports_partial_graph_language_coverage():
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(
+            indexes={
+                "symbol_graph": SimpleNamespace(
+                    metadata={
+                        "available_languages": ["python", "ts"],
+                        "failed_languages": {
+                            "cpp": "compile database unavailable",
+                            "rust": "manifest unavailable",
+                        },
+                        "partial": True,
+                    }
+                )
+            }
+        ),
+    )
+
+    coverage = bundle.graph_coverage()
+
+    assert coverage is not None
+    assert coverage.available_languages == ["python", "ts"]
+    assert coverage.unavailable_languages == ["cpp", "rust"]
+    assert coverage.partial is True
+
+
 def test_config_index_types_for_mode():
     assert QAConfig(mode="sparse").index_types() == ["bm25"]
     assert QAConfig(mode="hybrid").index_types() == ["bm25", "vector"]

@@ -23,7 +23,7 @@ from ..compiler.manifest import RepoManifest
 from ..log_utils import get_logger
 from ..repository_summary import read_repository_summary
 from .config import QAConfig, RepoEntry, load_registry
-from .schemas import RepoInfo
+from .schemas import GraphCoverage, RepoInfo
 
 if TYPE_CHECKING:
     from ..agent.runner import AgentRunner
@@ -141,6 +141,33 @@ class RepoBundle:
             languages=self.manifest.languages,
             file_count=self._file_count(),
             capabilities=capabilities,
+            graph_coverage=self.graph_coverage(),
+        )
+
+    def graph_coverage(self) -> GraphCoverage | None:
+        """Describe partial multi-language graph coverage when metadata exists."""
+
+        entry = self.manifest.indexes.get("symbol_graph")
+        if entry is None:
+            return None
+        metadata = entry.metadata or {}
+        available = [
+            str(language)
+            for language in metadata.get("available_languages") or ()
+            if str(language).strip()
+        ]
+        failures = metadata.get("failed_languages") or {}
+        unavailable = (
+            [str(language) for language in failures if str(language).strip()]
+            if isinstance(failures, dict)
+            else []
+        )
+        if not available and not unavailable:
+            return None
+        return GraphCoverage(
+            available_languages=available,
+            unavailable_languages=unavailable,
+            partial=bool(metadata.get("partial") or unavailable),
         )
 
     def _graph_path(self) -> Optional[str]:

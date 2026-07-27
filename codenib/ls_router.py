@@ -23,9 +23,10 @@ Example:
     decoder = LSGraphDecoder(index_file_path="/path/to/index.decoded", language="rust")
     graph = decoder.decode()
 """
+from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
-from typing import List, Optional, Sequence, Type, Union
+from typing import Dict, List, Optional, Sequence, Type, Union
 
 from .graph.code_graph import CodeGraph
 from .languages import (
@@ -49,6 +50,20 @@ ACTIVE_GRAPH_ROUTE = "active"
 SCIP_CANDIDATE_GRAPH_ROUTE = "scip-candidate"
 LSP_GRAPH_ROUTE = "lsp"
 LSP_GRAPH_INDEXER_PATH = "codenib.ls_index.lsp_indexer:GenericLSPIndexer"
+
+
+@dataclass(frozen=True)
+class GraphBuildResult:
+    """A multi-language graph plus the languages it could actually cover."""
+
+    graph: Optional[CodeGraph]
+    requested_languages: List[str]
+    available_languages: List[str]
+    failed_languages: Dict[str, str]
+
+    @property
+    def partial(self) -> bool:
+        return bool(self.graph is not None and self.failed_languages)
 
 
 def _normalize_language(
@@ -281,6 +296,133 @@ class LSIndexer:
         return patcher.patch_files(changed)
 
 
+def build_graph_for_languages_with_report(
+    project_root: Union[str, Path],
+    output_dir: Union[str, Path],
+    *,
+    languages: Optional[Sequence[str]] = None,
+    project_name: Optional[str] = None,
+    skip_level: Optional[str] = "graph",
+    target_dir: Optional[str] = None,
+    include_references: bool = False,
+    exclude_patterns: Optional[List] = None,
+    profiler: Optional[Profiler] = None,
+    decoder_backend: Optional[str] = None,
+    graph_route: str = ACTIVE_GRAPH_ROUTE,
+    allow_partial: bool = False,
+) -> GraphBuildResult:
+    """Build a graph and report per-language availability.
+
+    Single-language builds preserve the historical cache layout by delegating
+    directly to ``LSIndexer(output_dir=output_dir)``. Multi-language builds use
+    ``<output_dir>/graphs/<language>/`` for per-language artifacts, then merge
+    the resulting graphs and save the combined graph at
+    ``<output_dir>/graph.pkl``. ``graph_route="active"`` preserves the public
+    language route; ``graph_route="lsp"`` forces the generic LSP graph route
+    for backend comparison; ``graph_route="scip-candidate"`` is an explicit
+    opt-in for evaluating candidate SCIP cold-start backends without promoting
+    them. With ``allow_partial=True``, a failed language does not discard graphs
+    already built for other languages.
+    """
+    normalized = _normalize_language_sequence(languages, graph_route=graph_route)
+    base_output = Path(output_dir)
+    pname = project_name or base_output.name
+    failures: Dict[str, str] = {}
+
+    indexer_kwargs = {}
+    if exclude_patterns is not None:
+        indexer_kwargs["exclude_patterns"] = exclude_patterns
+
+    pipeline_kwargs = {}
+    if target_dir is not None:
+        pipeline_kwargs["target_dir"] = target_dir
+    if include_references:
+        pipeline_kwargs["include_references"] = True
+
+    def run_language(language: str, language_output: Path, language_project: str):
+        indexer = LSIndexer(
+            project_root,
+            output_dir=language_output,
+            language=language,
+            profiler=profiler,
+            decoder_backend=decoder_backend,
+            graph_route=graph_route,
+            **indexer_kwargs,
+        )
+        return indexer.run_pipeline(
+            project_name=language_project,
+            skip_level=skip_level,
+            **pipeline_kwargs,
+        )
+
+    if len(normalized) == 1:
+        language = normalized[0]
+        try:
+            graph = run_language(language, base_output, pname)
+        except Exception as exc:
+            if not allow_partial:
+                raise
+            failures[language] = str(exc)
+            logger.warning("Graph build unavailable for %s: %s", language, exc)
+            graph = None
+        if graph is None and language not in failures:
+            failures[language] = "indexer returned no graph"
+        return GraphBuildResult(
+            graph=graph,
+            requested_languages=normalized,
+            available_languages=[language] if graph is not None else [],
+            failed_languages=failures,
+        )
+
+    combined = CodeGraph(str(Path(project_root).absolute()))
+    available: List[str] = []
+    for language in normalized:
+        language_output = base_output / "graphs" / language
+        language_project = f"{pname}-{language}"
+        try:
+            graph = run_language(language, language_output, language_project)
+        except Exception as exc:
+            if not allow_partial:
+                raise
+            failures[language] = str(exc)
+            logger.warning("Graph build unavailable for %s: %s", language, exc)
+            continue
+        if graph is None:
+            message = (
+                f"Failed to build code graph for language {language!r} "
+                f"under {project_root!r}"
+            )
+            if not allow_partial:
+                raise RuntimeError(message)
+            failures[language] = message
+            logger.warning("%s", message)
+            continue
+        combined.merge_from(graph)
+        available.append(language)
+
+    if not available:
+        return GraphBuildResult(
+            graph=None,
+            requested_languages=normalized,
+            available_languages=[],
+            failed_languages=failures,
+        )
+
+    base_output.mkdir(parents=True, exist_ok=True)
+    combined.save_graph(base_output / "graph.pkl")
+    logger.info(
+        "Built combined graph for %s at %s",
+        ", ".join(available),
+        base_output,
+    )
+    return GraphBuildResult(
+        graph=combined,
+        requested_languages=normalized,
+        available_languages=available,
+        failed_languages=failures,
+    )
+
+
 def build_graph_for_languages(
     project_root: Union[str, Path],
     output_dir: Union[str, Path],
@@ -295,81 +437,21 @@ def build_graph_for_languages(
     decoder_backend: Optional[str] = None,
     graph_route: str = ACTIVE_GRAPH_ROUTE,
 ) -> Union[CodeGraph, None]:
-    """Build a CodeGraph for one or more graph languages.
+    """Build a strict CodeGraph for one or more graph languages."""
 
-    Single-language builds preserve the historical cache layout by delegating
-    directly to ``LSIndexer(output_dir=output_dir)``. Multi-language builds use
-    ``<output_dir>/graphs/<language>/`` for per-language artifacts, then merge
-    the resulting graphs and save the combined graph at
-    ``<output_dir>/graph.pkl``. ``graph_route="active"`` preserves the public
-    language route; ``graph_route="lsp"`` forces the generic LSP graph route
-    for backend comparison; ``graph_route="scip-candidate"`` is an explicit
-    opt-in for evaluating candidate SCIP cold-start backends without promoting
-    them.
-    """
-    normalized = _normalize_language_sequence(languages, graph_route=graph_route)
-    base_output = Path(output_dir)
-    pname = project_name or base_output.name
-
-    indexer_kwargs = {}
-    if exclude_patterns is not None:
-        indexer_kwargs["exclude_patterns"] = exclude_patterns
-
-    pipeline_kwargs = {}
-    if target_dir is not None:
-        pipeline_kwargs["target_dir"] = target_dir
-    if include_references:
-        pipeline_kwargs["include_references"] = True
-
-    if len(normalized) == 1:
-        indexer = LSIndexer(
-            project_root,
-            output_dir=base_output,
-            language=normalized[0],
-            profiler=profiler,
-            decoder_backend=decoder_backend,
-            graph_route=graph_route,
-            **indexer_kwargs,
-        )
-        return indexer.run_pipeline(
-            project_name=pname,
-            skip_level=skip_level,
-            **pipeline_kwargs,
-        )
-
-    combined = CodeGraph(str(Path(project_root).absolute()))
-    for language in normalized:
-        language_output = base_output / "graphs" / language
-        language_project = f"{pname}-{language}"
-        indexer = LSIndexer(
-            project_root,
-            output_dir=language_output,
-            language=language,
-            profiler=profiler,
-            decoder_backend=decoder_backend,
-            graph_route=graph_route,
-            **indexer_kwargs,
-        )
-        graph = indexer.run_pipeline(
-            project_name=language_project,
-            skip_level=skip_level,
-            **pipeline_kwargs,
-        )
-        if graph is None:
-            raise RuntimeError(
-                f"Failed to build code graph for language {language!r} "
-                f"under {project_root!r}"
-            )
-        combined.merge_from(graph)
-
-    base_output.mkdir(parents=True, exist_ok=True)
-    combined.save_graph(base_output / "graph.pkl")
-    logger.info(
-        "Built combined graph for %s languages at %s",
-        ", ".join(normalized),
-        base_output,
-    )
-    return combined
+    return build_graph_for_languages_with_report(
+        project_root,
+        output_dir,
+        languages=languages,
+        project_name=project_name,
+        skip_level=skip_level,
+        target_dir=target_dir,
+        include_references=include_references,
+        exclude_patterns=exclude_patterns,
+        profiler=profiler,
+        decoder_backend=decoder_backend,
+        graph_route=graph_route,
+    ).graph
 
 
 # ── LSGraphDecoder ─────────────────────────────────────────────────────────

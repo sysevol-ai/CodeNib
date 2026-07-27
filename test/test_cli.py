@@ -250,6 +250,35 @@ def test_graph_preset_selects_bm25_and_symbol_graph(
     assert captured["views"] == ["bm25", "symbol_graph"]
 
 
+def test_index_summary_reports_partial_graph_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    entry = SimpleNamespace(
+        status="fresh",
+        metadata={
+            "build_duration_seconds": 1.25,
+            "partial": True,
+            "available_languages": ["python", "typescript"],
+            "failed_languages": {"cpp": "compilation database missing"},
+        },
+    )
+    manifest = SimpleNamespace(
+        repo_path=str(tmp_path),
+        languages=["python", "typescript", "cpp"],
+        indexes={"symbol_graph": entry},
+    )
+
+    cli._print_index_summary(manifest, ["symbol_graph"])
+
+    output = capsys.readouterr().out
+    assert "symbol_graph" in output
+    assert "partial: python, typescript" in output
+    assert "unavailable: cpp" in output
+
+
 def test_mcp_command_reports_required_extra(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

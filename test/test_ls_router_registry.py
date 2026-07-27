@@ -10,7 +10,12 @@ import pytest
 
 from codenib import ls_router
 from codenib.graph.code_graph import CodeGraph
-from codenib.ls_router import LSGraphDecoder, LSIndexer, build_graph_for_languages
+from codenib.ls_router import (
+    LSGraphDecoder,
+    LSIndexer,
+    build_graph_for_languages,
+    build_graph_for_languages_with_report,
+)
 
 
 @pytest.mark.parametrize(
@@ -314,6 +319,55 @@ def test_build_graph_for_languages_merges_alias_deduped_graphs(tmp_path, monkeyp
     saved = CodeGraph.load_graph(tmp_path / "out" / "graph.pkl")
     assert saved.graph.vcount() == 4
     assert saved.graph.ecount() == 2
+
+
+def test_build_graph_for_languages_can_preserve_successful_language_graphs(
+    tmp_path, monkeypatch
+):
+    calls = []
+
+    class FakeIndexer:
+        def __init__(
+            self,
+            project_root,
+            *,
+            output_dir=None,
+            profiler=None,
+            language=None,
+            decoder_backend=None,
+            graph_route="active",
+        ):
+            self.project_root = project_root
+            self.output_dir = output_dir
+            self.language = language
+            calls.append(language)
+
+        def run_pipeline(self, *, project_name=None, skip_level=None):
+            if self.language == "cpp":
+                raise RuntimeError("compilation database missing")
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node(f"{self.language}.txt")
+            graph.build_range_indexes()
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    result = build_graph_for_languages_with_report(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["python", "cpp", "go"],
+        allow_partial=True,
+    )
+
+    assert result.graph is not None
+    assert result.requested_languages == ["python", "cpp", "go"]
+    assert result.available_languages == ["python", "go"]
+    assert result.failed_languages == {"cpp": "compilation database missing"}
+    assert result.partial
+    assert calls == ["python", "cpp", "go"]
+
+    saved = CodeGraph.load_graph(tmp_path / "out" / "graph.pkl")
+    assert saved.graph.vcount() == 2
 
 
 def test_build_graph_for_languages_can_use_scip_candidate_route(tmp_path, monkeypatch):

@@ -524,6 +524,7 @@ class SymbolGraphBuilder:
     languages: Optional[List[str]] = None
     graph_route: str = "active"
     exclude_patterns: List[str] = field(default_factory=default_exclude_patterns)
+    allow_partial_languages: bool = False
     # Admission control for incremental updates. The default proves nothing and
     # says so, which combined with require_verification=True means the builder
     # behaves exactly like a full rebuild until a real verifier is configured.
@@ -541,6 +542,7 @@ class SymbolGraphBuilder:
             "languages": list(graph_languages),
             "graph_route": self.graph_route,
             "exclude_patterns": sorted(self.exclude_patterns),
+            "allow_partial_languages": self.allow_partial_languages,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
 
@@ -548,22 +550,49 @@ class SymbolGraphBuilder:
         repo_path: str = kwargs["repo_path"]
         output_dir: str = kwargs["output_dir"]
 
-        from ..ls_router import build_graph_for_languages
+        from ..ls_router import (
+            GraphBuildResult,
+            build_graph_for_languages,
+            build_graph_for_languages_with_report,
+        )
 
         os.makedirs(output_dir, exist_ok=True)
         graph_languages = self.languages or [self.language]
-        graph = build_graph_for_languages(
-            repo_path,
-            output_dir,
-            languages=graph_languages,
-            project_name=os.path.basename(os.path.abspath(repo_path)),
-            skip_level=None,
-            exclude_patterns=self.exclude_patterns,
-            graph_route=self.graph_route,
-        )
+        build_kwargs = {
+            "languages": graph_languages,
+            "project_name": os.path.basename(os.path.abspath(repo_path)),
+            "skip_level": None,
+            "exclude_patterns": self.exclude_patterns,
+            "graph_route": self.graph_route,
+        }
+        if self.allow_partial_languages:
+            result = build_graph_for_languages_with_report(
+                repo_path,
+                output_dir,
+                allow_partial=True,
+                **build_kwargs,
+            )
+        else:
+            graph = build_graph_for_languages(
+                repo_path,
+                output_dir,
+                **build_kwargs,
+            )
+            result = GraphBuildResult(
+                graph=graph,
+                requested_languages=list(graph_languages),
+                available_languages=list(graph_languages) if graph is not None else [],
+                failed_languages={},
+            )
 
+        graph = result.graph
         if graph is None or not hasattr(graph, "graph"):
-            raise RuntimeError("symbol graph builder returned no graph")
+            detail = "; ".join(
+                f"{language}: {error}"
+                for language, error in result.failed_languages.items()
+            )
+            suffix = f" ({detail})" if detail else ""
+            raise RuntimeError(f"symbol graph builder returned no graph{suffix}")
         node_count = len(graph.graph.vs)
         if node_count == 0:
             raise RuntimeError("symbol graph builder returned an empty graph")
@@ -578,7 +607,10 @@ class SymbolGraphBuilder:
             metadata={
                 **self.artifact_identity(),
                 "node_count": node_count,
-                "language": graph_languages[0],
+                "language": result.available_languages[0],
+                "available_languages": result.available_languages,
+                "failed_languages": result.failed_languages,
+                "partial": result.partial,
             },
         )
 
@@ -770,6 +802,7 @@ def register_default_builders(
     embedding_batch_size: Optional[int] = None,
     embedding_max_seq_length: Optional[int] = None,
     exclude_patterns: Optional[List[str]] = None,
+    allow_partial_graph_languages: bool = False,
 ) -> None:
     """Register all standard index builders with sensible defaults."""
     langs = languages or ["python"]
@@ -801,6 +834,7 @@ def register_default_builders(
             language=langs[0],
             languages=list(langs),
             graph_route=graph_route,
+            allow_partial_languages=allow_partial_graph_languages,
             exclude_patterns=(
                 list(exclude_patterns)
                 if exclude_patterns is not None

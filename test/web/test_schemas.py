@@ -128,3 +128,24 @@ class TestWindowStatsOnRepoInfo:
         s = WindowStats(commit_count=1, patched_count=0)
         assert s.speedup is None
         assert s.cold_seconds is None
+
+
+def test_repo_info_graph_coverage_is_optional_and_structured():
+    from codenib.web.schemas import GraphCoverage, RepoInfo
+
+    assert RepoInfo(id="x", name="x").graph_coverage is None
+    info = RepoInfo(
+        id="x",
+        name="x",
+        graph_coverage=GraphCoverage(
+            available_languages=["python", "ts"],
+            unavailable_languages=["cpp"],
+            partial=True,
+        ),
+    )
+
+    assert info.model_dump()["graph_coverage"] == {
+        "available_languages": ["python", "ts"],
+        "unavailable_languages": ["cpp"],
+        "partial": True,
+    }

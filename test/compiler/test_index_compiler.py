@@ -312,6 +312,48 @@ class TestSymbolGraphBuilder:
         assert status.metadata["graph_route"] == "scip-candidate"
         assert calls[0][1]["graph_route"] == "scip-candidate"
 
+    def test_build_records_partial_language_coverage(self, monkeypatch, tmp_path):
+        from codenib import ls_router
+        from codenib.ls_router import GraphBuildResult
+
+        mock_graph = MagicMock()
+        mock_graph.graph.vs = list(range(25))
+        calls = []
+
+        def fake_build(*args, **kwargs):
+            calls.append((args, kwargs))
+            return GraphBuildResult(
+                graph=mock_graph,
+                requested_languages=["python", "cpp"],
+                available_languages=["python"],
+                failed_languages={"cpp": "compilation database missing"},
+            )
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages_with_report",
+            fake_build,
+        )
+
+        builder = SymbolGraphBuilder(
+            languages=["python", "cpp"],
+            allow_partial_languages=True,
+        )
+        status = builder.build(
+            scope="current_repo",
+            repo_path="/fake/repo",
+            output_dir=str(tmp_path / "graph"),
+        )
+
+        assert status.state == IndexState.FRESH
+        assert status.metadata["languages"] == ["python", "cpp"]
+        assert status.metadata["available_languages"] == ["python"]
+        assert status.metadata["failed_languages"] == {
+            "cpp": "compilation database missing"
+        }
+        assert status.metadata["partial"] is True
+        assert calls[0][1]["allow_partial"] is True
+
 
 # ---------------------------------------------------------------------------
 # register_default_builders
@@ -360,6 +402,19 @@ class TestRegisterDefaultBuilders:
         assert symbol_graph.language == "rust"
         assert symbol_graph.languages == ["rust", "python"]
         assert symbol_graph.graph_route == "scip-candidate"
+        assert symbol_graph.allow_partial_languages is False
+
+    def test_can_register_partial_multi_language_graph_builder(self):
+        registry = IndexBuilderRegistry()
+        register_default_builders(
+            registry,
+            languages=["python", "cpp"],
+            allow_partial_graph_languages=True,
+        )
+
+        symbol_graph = registry.get("symbol_graph")
+        assert isinstance(symbol_graph, SymbolGraphBuilder)
+        assert symbol_graph.allow_partial_languages is True
 
 
 # ---------------------------------------------------------------------------
