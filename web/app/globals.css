@@ -91,6 +91,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.route-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.route-loading img {
+  width: 22px;
+  height: 22px;
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
@@ -2710,6 +2724,14 @@ a.evidence-row:hover {
   font-size: 12px;
   font-weight: 500;
   padding: 2px 8px;
+}
+.subsystem-loading {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 .callsite-close {
   width: 28px;

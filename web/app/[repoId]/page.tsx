@@ -4,8 +4,6 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
-import Codemap from "@/components/Codemap";
-import GraphView from "@/components/GraphView";
 import {
   fetchCommits,
   fetchRepos,
@@ -22,6 +20,8 @@ import {
 } from "@/lib/api";
 
 const CodePanel = lazy(() => import("@/components/CodePanel"));
+const Codemap = lazy(() => import("@/components/Codemap"));
+const GraphView = lazy(() => import("@/components/GraphView"));
 
 interface Heading {
   id: string;
@@ -116,6 +116,9 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
   const [activeId, setActiveId] = useState<string>("overview");
   const [page, setPage] = useState<WikiPage | null>(null);
   const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
+  const [pageGraphOpen, setPageGraphOpen] = useState(false);
+  const [pageGraphLoading, setPageGraphLoading] = useState(false);
+  const [pageGraphError, setPageGraphError] = useState(false);
   // The graph explorer opens as a full-screen modal, optionally seeded on a
   // symbol when launched via "Focus here" from a wiki subsystem map.
   const [graphSeed, setGraphSeed] = useState<string | undefined>(undefined);
@@ -178,18 +181,37 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
     setPage(null);
     setPageError(null);
     setPageGraph(null);
+    setPageGraphOpen(false);
+    setPageGraphLoading(false);
+    setPageGraphError(false);
     setSourceCitation(null);
     fetchWikiPage(repoId, activeId)
       .then((p) => !cancelled && setPage(p))
       .catch((e) => !cancelled && setPageError(String(e)));
-    // The page's symbols as a view over the graph (rendered atop the narrative).
-    fetchWikiGraph(repoId, activeId)
-      .then((g) => !cancelled && setPageGraph(g))
-      .catch(() => !cancelled && setPageGraph(null));
     return () => {
       cancelled = true;
     };
   }, [repoId, activeId]);
+
+  useEffect(() => {
+    if (!pageGraphOpen || pageGraph) return;
+    let cancelled = false;
+    setPageGraphLoading(true);
+    setPageGraphError(false);
+    fetchWikiGraph(repoId, activeId)
+      .then((graph) => {
+        if (!cancelled) setPageGraph(graph);
+      })
+      .catch(() => {
+        if (!cancelled) setPageGraphError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setPageGraphLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId, activeId, pageGraphOpen, pageGraph]);
 
   // Build "On this page" from the actually-rendered heading ids (matches rehype-slug).
   const rescanHeadings = useCallback(() => {
@@ -390,23 +412,50 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                   )}
                 </div>
               )}
-              {pageGraph && pageGraph.available && pageGraph.nodes.length > 0 && (
-                <details className="subsystem-map">
+              {hasGraph && (
+                <details
+                  className="subsystem-map"
+                  open={pageGraphOpen}
+                  onToggle={(event) =>
+                    setPageGraphOpen(event.currentTarget.open)
+                  }
+                >
                   <summary className="subsystem-summary">
                     <span className="subsystem-title">Subsystem map</span>
-                    <span className="subsystem-count">{pageGraph.nodes.length} symbols</span>
+                    <span className="subsystem-count">
+                      {pageGraph?.available && pageGraph.nodes.length > 0
+                        ? `${pageGraph.nodes.length} symbols`
+                        : "Indexed graph"}
+                    </span>
                     {repo?.commit_short && (
                       <span className="subsystem-index mono">Last indexed {repo.commit_short}</span>
                     )}
                   </summary>
-                  <GraphView
-                    repoId={repoId}
-                    data={pageGraph}
-                    variant="wiki"
-                    onFocus={(label) => openGraph(label)}
-                    repoFullName={repo?.repo}
-                    commit={repo?.base_commit}
-                  />
+                  {pageGraphOpen &&
+                    (pageGraphLoading ? (
+                      <div className="subsystem-loading">Loading subsystem map…</div>
+                    ) : pageGraphError ||
+                      !pageGraph?.available ||
+                      pageGraph.nodes.length === 0 ? (
+                      <div className="subsystem-loading">
+                        No source-linked graph is available for this page.
+                      </div>
+                    ) : (
+                      <Suspense
+                        fallback={
+                          <div className="subsystem-loading">Loading graph view…</div>
+                        }
+                      >
+                        <GraphView
+                          repoId={repoId}
+                          data={pageGraph}
+                          variant="wiki"
+                          onFocus={(label) => openGraph(label)}
+                          repoFullName={repo?.repo}
+                          commit={repo?.base_commit}
+                        />
+                      </Suspense>
+                    ))}
                 </details>
               )}
               {page?.evidence && page.evidence.items.length > 0 ? (
@@ -572,7 +621,17 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
               </button>
             </div>
             <div className="graph-modal-body">
-              <Codemap repoId={repoId} initialSymbol={graphSeed} commit={selectedCommit} />
+              <Suspense
+                fallback={
+                  <div className="codemap-loading">Loading dependency map…</div>
+                }
+              >
+                <Codemap
+                  repoId={repoId}
+                  initialSymbol={graphSeed}
+                  commit={selectedCommit}
+                />
+              </Suspense>
             </div>
           </div>
         </div>

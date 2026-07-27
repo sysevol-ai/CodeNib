@@ -1,28 +1,6 @@
 "use client";
 
-import hljs from "highlight.js";
-
-const EXT_LANG: Record<string, string> = {
-  py: "python",
-  pyx: "python",
-  go: "go",
-  rs: "rust",
-  ts: "typescript",
-  tsx: "typescript",
-  js: "javascript",
-  jsx: "javascript",
-  mjs: "javascript",
-  c: "c",
-  h: "cpp",
-  cc: "cpp",
-  cpp: "cpp",
-  hpp: "cpp",
-  java: "java",
-  rb: "ruby",
-  json: "json",
-  yml: "yaml",
-  yaml: "yaml",
-};
+import { highlightSource, languageForFile } from "@/lib/highlight";
 
 /**
  * A syntax-highlighted code fragment with a left line-number gutter. The gutter
@@ -44,16 +22,7 @@ export default function HighlightedCode({
   /** 1-based end of the spotlight; defaults to highlightLine (a single line). */
   highlightEnd?: number | null;
 }) {
-  const ext = (file || "").split(".").pop()?.toLowerCase() || "";
-  const lang = EXT_LANG[ext];
-  let html = "";
-  try {
-    html = lang
-      ? hljs.highlight(code, { language: lang }).value
-      : hljs.highlightAuto(code).value;
-  } catch {
-    html = code.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
-  }
+  const html = highlightSource(code, languageForFile(file));
   const lineCount = code ? code.split("\n").length : 0;
   const hlA = highlightLine ?? null;
   const hlB = highlightEnd ?? highlightLine ?? null;

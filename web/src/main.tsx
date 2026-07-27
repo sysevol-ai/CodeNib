@@ -1,11 +1,21 @@
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
-import AskPage from "@/app/[repoId]/ask/page";
-import WikiPageView from "@/app/[repoId]/page";
-import Landing from "@/app/page";
 import "@/app/globals.css";
 import { routeSegments, useBrowserLocation } from "@/lib/router";
+
+const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
+const WikiPageView = lazy(() => import("@/app/[repoId]/page"));
+const Landing = lazy(() => import("@/app/page"));
+
+function RouteLoading() {
+  return (
+    <div className="route-loading" role="status">
+      <img src="/codenib-icon.svg" alt="" />
+      <span>Loading CodeNib…</span>
+    </div>
+  );
+}
 
 function App() {
   const location = useBrowserLocation();
@@ -28,6 +38,8 @@ if (!root) {
 }
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <Suspense fallback={<RouteLoading />}>
+      <App />
+    </Suspense>
   </StrictMode>
 );

@@ -3,21 +3,19 @@
 import {
   lazy,
   Suspense,
-  useState,
   type ReactElement,
   type ReactNode,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
-import rehypeHighlight from "rehype-highlight";
-import "highlight.js/styles/github.css";
 import { matchCitation, lineLabel } from "@/lib/citations";
 import type { Citation } from "@/lib/api";
 
 // Mermaid (~1MB) is only needed when a diagram actually appears; load it on
 // demand so it never weighs down pages that have none (wiki strips diagrams).
 const Mermaid = lazy(() => import("./Mermaid"));
+const HighlightedBlock = lazy(() => import("./HighlightedBlock"));
 
 // Recursively collect plain text from React children (to recover raw code).
 function nodeText(n: ReactNode): string {
@@ -27,31 +25,6 @@ function nodeText(n: ReactNode): string {
   // @ts-expect-error - runtime prop access on element
   if (n.props?.children) return nodeText(n.props.children);
   return "";
-}
-
-function CodeBlock({ text, lang, children }: { text: string; lang: string; children: ReactNode }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="code-block">
-      <div className="code-block-header">
-        <span className="code-lang">{lang || "code"}</span>
-        <button
-          className="copy-btn"
-          aria-label="Copy code"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(text);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1200);
-            } catch {}
-          }}
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
-      <pre>{children}</pre>
-    </div>
-  );
 }
 
 /** Inline `code` span that names a cited symbol/file: click to jump the code pane. */
@@ -99,7 +72,7 @@ export default function Markdown({
     <div className="markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeSlug, [rehypeHighlight, { ignoreMissing: true }]]}
+        rehypePlugins={[rehypeSlug]}
         components={{
           table({ children }) {
             return (
@@ -122,7 +95,19 @@ export default function Markdown({
               );
             }
             const lang = (className.match(/language-(\w+)/) || [])[1] || "";
-            return <CodeBlock text={text} lang={lang}>{children}</CodeBlock>;
+            return (
+              <Suspense
+                fallback={
+                  <div className="code-block">
+                    <pre>
+                      <code>{text}</code>
+                    </pre>
+                  </div>
+                }
+              >
+                <HighlightedBlock text={text} language={lang} />
+              </Suspense>
+            );
           },
           code({ className, children }) {
             // Inline code only; block code has a language-* class or newlines.
