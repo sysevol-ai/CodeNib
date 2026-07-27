@@ -93,6 +93,39 @@ _LOW_LEVEL_OVERVIEW_TOKENS = {
     "patcher",
     "protocol",
 }
+_SUPPORTING_PAGE_TOKENS = {
+    "benchmark",
+    "benchmarks",
+    "docs",
+    "documentation",
+    "eval",
+    "evaluation",
+    "evaluations",
+    "example",
+    "examples",
+    "fixture",
+    "fixtures",
+    "script",
+    "scripts",
+    "test",
+    "testing",
+    "tests",
+}
+
+
+def _is_supporting_file(file: str) -> bool:
+    return bool(
+        {segment.lower() for segment in Path(file).parts[:-1]} & _SUPPORTING_SEGMENTS
+    )
+
+
+def _page_allows_supporting_files(page: Dict[str, Any]) -> bool:
+    values = [
+        str(page.get("title") or ""),
+        *[str(value) for value in page.get("keywords") or []],
+    ]
+    terms = set(re.findall(r"[a-z0-9_]{4,}", " ".join(values).lower()))
+    return bool(terms & _SUPPORTING_PAGE_TOKENS)
 
 
 def _read_readme(repo_dir: str, limit: int = 3500) -> str:
@@ -227,10 +260,10 @@ _OUTLINE_PROMPT = """\
 You are documenting the {repo} codebase like a senior engineer writing a \
 developer wiki for new contributors.
 
-Propose a HIGH-LEVEL, CONCEPTUAL table of contents — organized by \
-SUBSYSTEM / CAPABILITY, never by directory or file. Think titles like \
-"Request Pipeline", "Interceptors", "Adapters & Transports", "Configuration", \
-"Error Handling" — the mental model someone needs to understand the system.
+Propose a HIGH-LEVEL, CONCEPTUAL table of contents organized by real subsystem \
+or capability, never by directory or file. Derive every concept from the \
+supplied file paths or symbol names; do not copy categories from a generic \
+software-architecture template.
 
 Repository: {repo}   (languages: {languages})
 
@@ -252,7 +285,7 @@ Central dependency communities:
 Available repository views:
 {views}
 
-Return ONLY JSON, no prose, of exactly this shape. Aim for 6-10 top-level pages \
+Return ONLY JSON, no prose, of exactly this shape. Aim for 5-8 top-level pages \
 that together cover the WHOLE system, and give the major subsystems 1-3 children \
 so the tree is genuinely TWO LEVELS deep — not a flat list. Start with "Overview".
 {{"pages":[{{"id":"kebab-case-id","title":"Concept Title","summary":"1-2 \
@@ -263,14 +296,17 @@ feature","search","terms"],"files":["likely/relevant/path.ext"],"children":[\
 
 Rules:
 - Structure it like a senior engineer's onboarding docs: top-level = major areas; \
-children = specific capabilities or flows inside them (e.g. an "I/O" page with \
-"FITS", "ASCII", "Registry" children; a "Table System" page with "Operations").
-- Cover not only domain subsystems but the cross-cutting pages a new contributor \
-needs, WHEN APPLICABLE: Getting Started / Installation, Project Structure, \
-Configuration, Testing, Extensibility / Plugins.
+children = specific capabilities or flows inside them.
+- Overview is the landing page and must have no children. Major subsystems such \
+as indexing, serving, navigation, or agent runtime belong at the top level when \
+the supplied repository evidence supports them.
+- Include a cross-cutting page only when a supplied path or symbol explicitly \
+names and implements that concern.
 - Titles are CONCEPTS, not paths (no "lib/core", no file names as titles).
 - keywords drive a code search, so make them specific symbol/feature terms.
 - Every page and child MUST name 1-4 exact files from the supplied evidence.
+- At least one named file or symbol must lexically anchor the page title. A real \
+but unrelated file does not make an invented concept valid.
 - Make Overview a product mental model: purpose, user entry points, the main
   execution/data flow, and the major subsystems. Do not elevate one language
   backend, decoder, patcher, or private helper unless it defines the repository.
@@ -278,6 +314,32 @@ Configuration, Testing, Extensibility / Plugins.
   testing, plugins, communication, or error-handling merely because most
   projects have them.
 - Cover the whole system, not just a few files; prefer depth over a flat list.
+"""
+
+_OUTLINE_REPAIR_PROMPT = """\
+{original_prompt}
+
+The previous attempt retained only {accepted} source-anchored top-level pages,
+but this repository needs at least {required}. Return a COMPLETE replacement
+outline, not a patch. Keep the accepted concepts when useful, add distinct
+major subsystems from the supplied paths and symbols, and do not attach a real
+but unrelated file to justify a generic category.
+
+Previously retained outline:
+{outline}
+"""
+
+_OUTLINE_REFINEMENT_PROMPT = """\
+{original_prompt}
+
+Produce one alternative COMPLETE outline for the same repository. The previous
+outline already passed the minimum breadth check; improve source coverage by
+representing distinct major user-facing and implementation areas from the
+supplied paths and symbols. Do not add generic categories, duplicate an
+existing responsibility under another name, or attach unrelated real files.
+
+Previous outline:
+{outline}
 """
 
 
@@ -322,7 +384,7 @@ def generate_outline(
         text = llm.complete(
             [{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
-            temperature=0.2,
+            temperature=0.1,
         )
     except Exception as exc:  # noqa: BLE001 - surface a clean failure to caller
         logger.warning("outline generation failed (%s): %s", model, exc)
@@ -330,20 +392,94 @@ def generate_outline(
         fallback["error"] = str(exc)
         return fallback
 
-    data = _parse_outline(text)
+    repo_dir = getattr(bundle.entry, "repo_dir", "") or ""
     data = _validate_outline(
-        data,
-        getattr(bundle.entry, "repo_dir", "") or "",
+        _parse_outline(text),
+        repo_dir,
         symbols=symbols,
         fallback_files=files,
     )
+    required_pages = _required_top_level_pages(len(files))
+    initial_pages = len(data.get("pages") or [])
+    should_retry = initial_pages < required_pages or len(files) > 12
+    refined = False
+    if should_retry:
+        if initial_pages < required_pages:
+            retry_prompt = _OUTLINE_REPAIR_PROMPT.format(
+                original_prompt=prompt,
+                accepted=initial_pages,
+                required=required_pages,
+                outline=json.dumps(data.get("pages") or [], indent=2),
+            )
+        else:
+            retry_prompt = _OUTLINE_REFINEMENT_PROMPT.format(
+                original_prompt=prompt,
+                outline=json.dumps(data.get("pages") or [], indent=2),
+            )
+        try:
+            repaired_text = llm.complete(
+                [{"role": "user", "content": retry_prompt}],
+                max_tokens=max_tokens,
+                temperature=0.1,
+            )
+            repaired = _validate_outline(
+                _parse_outline(repaired_text),
+                repo_dir,
+                symbols=symbols,
+                fallback_files=files,
+            )
+            if _outline_score(repaired, required_pages) > _outline_score(
+                data, required_pages
+            ):
+                data = repaired
+                refined = True
+        except Exception as exc:  # noqa: BLE001 - keep the first valid outline
+            logger.debug("outline repair unavailable: %s", exc)
     if not data.get("pages"):
         fallback = _fallback_outline(files)
         fallback["error"] = data.get("error") or "model returned no usable pages"
         fallback["raw"] = data.get("raw")
         return fallback
     data["mode"] = "generated"
+    data["quality"] = {
+        "required_top_level_pages": required_pages,
+        "top_level_pages": len(data["pages"]),
+        "valid": len(data["pages"]) >= required_pages,
+        "refined": refined,
+    }
     return data
+
+
+def _required_top_level_pages(salient_file_count: int) -> int:
+    """Scale the minimum table-of-contents breadth with repository evidence."""
+
+    if salient_file_count <= 5:
+        return 2
+    if salient_file_count <= 12:
+        return 3
+    return 5
+
+
+def _outline_score(
+    data: Dict[str, Any],
+    required_pages: int,
+) -> tuple[int, int, int, int]:
+    """Prefer broad, source-diverse outlines without overriding validation."""
+
+    pages = data.get("pages") or []
+    children = sum(len(page.get("children") or []) for page in pages)
+    files = {
+        file
+        for page in pages
+        for file in page.get("files") or []
+        if isinstance(file, str)
+    }
+    return (
+        int(len(pages) >= required_pages),
+        min(len(pages), required_pages),
+        len(files),
+        children,
+    )
 
 
 def _parse_outline(text: str) -> Dict[str, Any]:
@@ -403,6 +539,45 @@ def _validate_outline(
         "system",
         "types",
     }
+
+    def tokens(value: str) -> set[str]:
+        return set(re.findall(r"[a-z0-9_]{4,}", value.lower()))
+
+    def variants(value: str) -> set[str]:
+        values = {value}
+        for suffix in ("ing", "ed", "es", "s"):
+            if value.endswith(suffix) and len(value) - len(suffix) >= 4:
+                values.add(value[: -len(suffix)])
+        return values
+
+    def matches(term: str, document_tokens: set[str]) -> bool:
+        return any(
+            left == right
+            or (
+                min(len(left), len(right)) >= 4
+                and (left.startswith(right) or right.startswith(left))
+            )
+            for left in variants(term)
+            for token in document_tokens
+            for right in variants(token)
+        )
+
+    def title_is_anchored(
+        title: str,
+        files: List[str],
+        *,
+        overview: bool = False,
+    ) -> bool:
+        if overview:
+            return True
+        title_terms = tokens(title) - generic_terms
+        if not title_terms:
+            return False
+        return any(
+            matches(term, set(searchable.get(file, "").split()))
+            for file in files
+            for term in title_terms
+        )
 
     def inferred_files(page: Dict[str, Any]) -> List[str]:
         raw_terms = [
@@ -499,31 +674,47 @@ def _validate_outline(
         *,
         child: bool = False,
         parent_files: List[str] | None = None,
+        overview: bool = False,
     ) -> Dict[str, Any] | None:
         if not isinstance(page, dict):
             return None
         title = re.sub(r"\s+", " ", str(page.get("title") or "")).strip()
         if not title:
             return None
+        if overview:
+            title = "Overview"
         summary = re.sub(r"\s+", " ", str(page.get("summary") or "")).strip()
         keywords = [
             re.sub(r"\s+", " ", str(value)).strip()
             for value in page.get("keywords") or []
             if str(value).strip()
         ]
+        allows_supporting_files = _page_allows_supporting_files(
+            {"title": title, "keywords": keywords}
+        )
         files = valid_files(page.get("files"))
-        if title.lower() == "overview":
+        if not overview and not allows_supporting_files:
+            files = [file for file in files if not _is_supporting_file(file)]
+        if overview:
             files = overview_files(files)
         if not files:
             files = inferred_files(page)
-        if not files and title.lower() == "overview":
+            if not overview and not allows_supporting_files:
+                files = [file for file in files if not _is_supporting_file(file)]
+        if not files and overview:
             files = [file for file in fallback_files if file in known_files][:8]
         if not files and child and parent_files:
             parent_matches = [
                 file for file in inferred_files(page) if file in parent_files
             ]
+            if not allows_supporting_files:
+                parent_matches = [
+                    file for file in parent_matches if not _is_supporting_file(file)
+                ]
             files = parent_matches[:4]
         if not files:
+            return None
+        if not title_is_anchored(title, files, overview=overview):
             return None
 
         children = []
@@ -541,11 +732,48 @@ def _validate_outline(
             "children": children,
         }
 
+    candidates = list((data.get("pages") or [])[:_MAX_OUTLINE_PAGES])
+    overview_index = next(
+        (
+            index
+            for index, candidate in enumerate(candidates)
+            if isinstance(candidate, dict)
+            and (
+                str(candidate.get("id") or "").strip().lower() == "overview"
+                or "overview" in str(candidate.get("title") or "").lower()
+            )
+        ),
+        None,
+    )
+    if overview_index is None:
+        overview_candidate = {
+            "id": "overview",
+            "title": "Overview",
+            "summary": "Repository purpose, public workflow, and major subsystems.",
+            "keywords": ["entry point", "runtime", "compiler"],
+            "files": fallback_files,
+            "children": [],
+        }
+        ordered = [(overview_candidate, True), *[(item, False) for item in candidates]]
+    else:
+        overview_candidate = candidates.pop(overview_index)
+        ordered = [(overview_candidate, True), *[(item, False) for item in candidates]]
+
     pages = []
-    for candidate in (data.get("pages") or [])[:_MAX_OUTLINE_PAGES]:
-        page = normalize(candidate)
+    for candidate, is_overview in ordered[:_MAX_OUTLINE_PAGES]:
+        page = normalize(candidate, overview=is_overview)
         if page is not None:
             pages.append(page)
+    if pages:
+        promoted = pages[0].get("children", [])
+        pages[0]["children"] = []
+        existing = {str(page.get("title") or "").lower() for page in pages}
+        promoted = [
+            page
+            for page in promoted
+            if str(page.get("title") or "").lower() not in existing
+        ]
+        pages[1:1] = promoted[: max(0, _MAX_OUTLINE_PAGES - len(pages))]
     return {**data, "pages": pages}
 
 

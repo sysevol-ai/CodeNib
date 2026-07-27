@@ -47,14 +47,19 @@ _COMMON_CODE_TERMS = frozenset(
     }
 )
 _PROMOTIONAL_RE = re.compile(
-    r"\b(adapt(?:s|ing)?|advanced|aids?|"
+    r"\b(adapt(?:s|ing)?|adaptable|advanced|aids?|"
     r"allows(?: for| the system| developers| users)|"
     r"allowing (?:for|developers|users)|comprehensive|crucial|dynamic(?:ally)?|"
-    r"easy to use|easier|effectively|efficient|efficiently|"
+    r"cater(?:s|ing)?|easy access|easy to use|easier|effectively|"
+    r"efficient|efficiently|"
     r"enabl(?:e|es|ing)(?: developers| users)?|"
-    r"enhanc(?:e|es|ing)(?: productivity)?|essential|"
+    r"enhanc(?:e|es|ing)(?: productivity)?|"
+    r"ensur(?:e|es|ing) (?:that )?(?:all relevant|everything|resources?)|"
+    r"essential|flexible|"
     r"facilitat(?:e|es|ing)|gain insights?|helps? users|intuitive|invaluable|"
-    r"key functionalit(?:y|ies)|making it|powerful|quickly|significantly|"
+    r"important (?:for|to)|key functionalit(?:y|ies)|making it|"
+    r"powerful|provid(?:e|es|ing) (?:easy|quick)|quickly|responsive|significantly|"
+    r"supports? (?:interactions?|management)|"
     r"optimiz(?:e|es|ing)|sophisticated|user-friendly|versatile)\b",
     re.IGNORECASE,
 )
@@ -256,11 +261,16 @@ def grounding_report(
     for identifier in _CODE_RE.findall(without_fences):
         normalized = identifier.strip()
         source_name = re.sub(r":\d+(?:-\d+)?$", "", normalized)
+        call_name_match = re.match(r"([A-Za-z_][\w.]*)\s*\(", source_name)
+        call_name = call_name_match.group(1) if call_name_match else ""
+        call_leaf = call_name.rsplit(".", 1)[-1]
         if (
             not normalized
             or normalized.lower() in _COMMON_CODE_TERMS
             or normalized.lower() in corpus
             or source_name.lower() in corpus
+            or (call_name and call_name.lower() in corpus)
+            or (call_leaf and call_leaf.lower() in corpus)
         ):
             continue
         unsupported_identifiers.append(normalized)
@@ -285,7 +295,6 @@ def grounding_report(
         and not unknown_citations
         and not unknown_files
         and not unsupported_identifiers
-        and not promotional_phrases
     )
     return {
         "valid": valid,

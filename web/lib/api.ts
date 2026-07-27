@@ -102,6 +102,7 @@ export interface WikiPage {
     model: string | null;
     repaired?: boolean;
     fallback?: "fact_plan" | null;
+    renderer?: "fact_plan" | "narrative";
     reason?: string;
     plan_warnings?: string[];
   };

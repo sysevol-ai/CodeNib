@@ -5,7 +5,23 @@
 from __future__ import annotations
 
 from codenib.wiki.builder import Symbol
-from codenib.wiki.outline import _fallback_outline, _validate_outline
+from codenib.wiki.outline import (
+    _fallback_outline,
+    _outline_score,
+    _required_top_level_pages,
+    _validate_outline,
+)
+
+
+def test_outline_breadth_scales_with_available_repository_evidence():
+    assert _required_top_level_pages(4) == 2
+    assert _required_top_level_pages(8) == 3
+    assert _required_top_level_pages(40) == 5
+
+    sparse = {"pages": [{"files": ["src/a.py"], "children": []}] * 3}
+    broad = {"pages": [{"files": [f"src/{i}.py"], "children": []} for i in range(5)]}
+
+    assert _outline_score(broad, 5) > _outline_score(sparse, 5)
 
 
 def test_outline_requires_real_source_anchors(tmp_path):
@@ -87,6 +103,86 @@ def test_outline_requires_real_source_anchors(tmp_path):
     assert result["pages"][1]["children"] == []
 
 
+def test_non_evaluation_page_drops_supporting_eval_files(tmp_path):
+    files = [
+        "src/agent/runner.py",
+        "src/eval/agent_study_runner.py",
+    ]
+    for file in files:
+        path = tmp_path / file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# source\n")
+    symbols = [
+        Symbol(
+            file="src/agent/runner.py",
+            name="AgentRunner",
+            type="class",
+            start_line=0,
+            end_line=0,
+            content="class AgentRunner: pass",
+        )
+    ]
+
+    result = _validate_outline(
+        {
+            "pages": [
+                {
+                    "id": "agent-runtime",
+                    "title": "Agent Runtime",
+                    "summary": "Agent execution and context handling.",
+                    "keywords": ["AgentRunner", "runtime"],
+                    "files": files,
+                    "children": [],
+                }
+            ]
+        },
+        str(tmp_path),
+        symbols=symbols,
+        fallback_files=files,
+    )
+
+    runtime = next(page for page in result["pages"] if page["id"] == "agent-runtime")
+    assert runtime["files"] == ["src/agent/runner.py"]
+
+
+def test_evaluation_page_retains_explicit_eval_files(tmp_path):
+    file = "src/eval/agent_study_runner.py"
+    path = tmp_path / file
+    path.parent.mkdir(parents=True)
+    path.write_text("class EvaluationRunner: pass\n")
+    symbols = [
+        Symbol(
+            file=file,
+            name="EvaluationRunner",
+            type="class",
+            start_line=0,
+            end_line=0,
+            content="class EvaluationRunner: pass",
+        )
+    ]
+
+    result = _validate_outline(
+        {
+            "pages": [
+                {
+                    "id": "evaluation",
+                    "title": "Evaluation Framework",
+                    "summary": "Evaluation studies and measurements.",
+                    "keywords": ["evaluation", "EvaluationRunner"],
+                    "files": [file],
+                    "children": [],
+                }
+            ]
+        },
+        str(tmp_path),
+        symbols=symbols,
+        fallback_files=[file],
+    )
+
+    evaluation = next(page for page in result["pages"] if page["id"] == "evaluation")
+    assert evaluation["files"] == [file]
+
+
 def test_fallback_outline_remains_navigable_without_model():
     result = _fallback_outline(
         [
@@ -134,6 +230,79 @@ def test_overview_prefers_repository_root_readme(tmp_path):
     assert result["pages"][0]["files"][0] == "README.md"
 
 
+def test_first_outline_page_is_canonical_overview(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "README.md").write_text("Repository overview.\n")
+    (tmp_path / "src" / "cli.py").write_text("def main(): pass\n")
+
+    result = _validate_outline(
+        {
+            "pages": [
+                {
+                    "id": "codenib-overview",
+                    "title": "CodeNib Overview",
+                    "summary": "Repository purpose and workflow",
+                    "keywords": ["workflow"],
+                    "files": ["src/cli.py"],
+                    "children": [],
+                }
+            ]
+        },
+        str(tmp_path),
+        symbols=[],
+        fallback_files=["src/cli.py"],
+    )
+
+    assert result["pages"][0]["title"] == "Overview"
+    assert result["pages"][0]["files"][0] == "README.md"
+
+
+def test_overview_children_are_promoted_to_top_level(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "README.md").write_text("Repository overview.\n")
+    (tmp_path / "src" / "compiler.py").write_text("class IndexCompiler: pass\n")
+    symbols = [
+        Symbol(
+            file="src/compiler.py",
+            name="IndexCompiler",
+            type="class",
+            start_line=0,
+            end_line=0,
+            content="class IndexCompiler: pass",
+        )
+    ]
+
+    result = _validate_outline(
+        {
+            "pages": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "summary": "Repository purpose",
+                    "keywords": ["architecture"],
+                    "files": ["README.md", "src/compiler.py"],
+                    "children": [
+                        {
+                            "id": "indexing",
+                            "title": "Indexing",
+                            "summary": "Repository index construction",
+                            "keywords": ["index", "compiler"],
+                            "files": ["src/compiler.py"],
+                            "children": [],
+                        }
+                    ],
+                }
+            ]
+        },
+        str(tmp_path),
+        symbols=symbols,
+        fallback_files=["src/compiler.py"],
+    )
+
+    assert [page["id"] for page in result["pages"]] == ["overview", "indexing"]
+    assert result["pages"][0]["children"] == []
+
+
 def test_overview_prioritizes_product_entrypoints_over_backend_details(tmp_path):
     files = [
         "README.md",
@@ -178,3 +347,70 @@ def test_overview_prioritizes_product_entrypoints_over_backend_details(tmp_path)
         "src/languages/decoder.py"
     )
     assert "tests/test_cli.py" not in selected
+
+
+def test_outline_rejects_generic_concepts_with_unrelated_real_files(tmp_path):
+    files = [
+        "src/agent/runner.py",
+        "src/index/compiler.py",
+        "src/graph/code_graph.py",
+    ]
+    symbols = [
+        Symbol(
+            file=file,
+            name=name,
+            type="class",
+            start_line=0,
+            end_line=0,
+            content=f"class {name}: pass",
+        )
+        for file, name in [
+            ("src/agent/runner.py", "AgentRunner"),
+            ("src/index/compiler.py", "IndexCompiler"),
+            ("src/graph/code_graph.py", "CodeGraph"),
+        ]
+    ]
+    for file in files:
+        path = tmp_path / file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# source\n")
+
+    result = _validate_outline(
+        {
+            "pages": [
+                {
+                    "id": "interceptors",
+                    "title": "Interceptors",
+                    "summary": "Generic middleware around requests.",
+                    "keywords": ["middleware", "request"],
+                    "files": ["src/agent/runner.py"],
+                    "children": [],
+                },
+                {
+                    "id": "indexing",
+                    "title": "Indexing",
+                    "summary": "Repository index construction.",
+                    "keywords": ["index", "compiler"],
+                    "files": ["src/index/compiler.py"],
+                    "children": [],
+                },
+                {
+                    "id": "graph",
+                    "title": "Graph Structure",
+                    "summary": "Repository dependency graph.",
+                    "keywords": ["graph", "dependencies"],
+                    "files": ["src/graph/code_graph.py"],
+                    "children": [],
+                },
+            ]
+        },
+        str(tmp_path),
+        symbols=symbols,
+        fallback_files=files,
+    )
+
+    assert [page["id"] for page in result["pages"]] == [
+        "overview",
+        "indexing",
+        "graph",
+    ]

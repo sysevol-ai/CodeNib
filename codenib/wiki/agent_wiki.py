@@ -34,9 +34,14 @@ from .evidence import (
     grounding_report,
     parse_fact_plan,
     reciprocal_rank_fuse,
-    remove_promotional_sentences,
 )
-from .outline import generate_outline
+from .outline import (
+    _is_supporting_file,
+    _page_allows_supporting_files,
+    generate_outline,
+)
+from .quality import page_quality_report as _page_quality_report
+from .quality import prose_terms as _prose_terms
 
 logger = get_logger(__name__)
 
@@ -59,7 +64,10 @@ _EXT_LANG = {
     "kts": "kotlin",
 }
 _MAX_CONTEXT_CHARS = 14000
-_PROMPT_VERSION = "24"
+_OUTLINE_PROMPT_VERSION = "3"
+_PAGE_PROMPT_VERSION = "43"
+_MAX_PLAN_REPAIRS = 2
+_MAX_STYLE_REPAIRS = 2
 
 
 def _slug(text: str) -> str:
@@ -171,143 +179,6 @@ def _remove_orphan_headings(markdown: str) -> str:
     return "\n\n".join(kept)
 
 
-def _prose_terms(text: str) -> set[str]:
-    """Return stable content terms for conservative duplicate detection."""
-
-    stopwords = {
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "by",
-        "for",
-        "from",
-        "in",
-        "into",
-        "is",
-        "it",
-        "of",
-        "on",
-        "or",
-        "that",
-        "the",
-        "then",
-        "this",
-        "through",
-        "to",
-        "with",
-    }
-    plain = re.sub(r"\[((?:E|R)\d+)\](?:\([^)]*\))?", " ", text)
-    plain = re.sub(r"[`*_[\]()#>/-]", " ", plain.lower())
-    return {
-        token
-        for token in re.findall(r"[a-z0-9]+", plain)
-        if len(token) > 1 and token not in stopwords
-    }
-
-
-def _duplicate_prose_blocks(markdown: str) -> List[List[int]]:
-    """Find paragraph pairs where one largely restates the other."""
-
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
-    terms = []
-    for raw in re.split(r"\n\s*\n", without_fences):
-        block = raw.strip()
-        if not block or block.startswith("#"):
-            continue
-        block_terms = _prose_terms(block)
-        if len(block_terms) >= 6:
-            terms.append(block_terms)
-
-    duplicates: List[List[int]] = []
-    for left in range(len(terms)):
-        for right in range(left + 1, len(terms)):
-            smaller = min(len(terms[left]), len(terms[right]))
-            overlap = len(terms[left] & terms[right]) / smaller
-            if overlap >= 0.85:
-                duplicates.append([left + 1, right + 1])
-    return duplicates
-
-
-def _page_quality_report(
-    markdown: str,
-    plan: dict[str, Any],
-    *,
-    require_dense_sections: bool = False,
-) -> dict[str, Any]:
-    """Measure whether a page represents the supported fact plan."""
-
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
-    rendered_sections = len(
-        re.findall(r"^#{2,6}\s+\S", without_fences, flags=re.MULTILINE)
-    )
-    substantive_blocks = 0
-    for raw in re.split(r"\n\s*\n", without_fences):
-        block = raw.strip()
-        if block and not block.startswith("#"):
-            plain = re.sub(r"[`*_[\]()#>-]", "", block).strip()
-            if len(plain) >= 40:
-                substantive_blocks += 1
-
-    sections = plan.get("sections") or []
-    claims = [
-        claim
-        for section in sections
-        for claim in section.get("claims") or []
-        if claim.get("evidence")
-    ]
-    cited = set(re.findall(r"\[((?:E|R)\d+)\]", without_fences))
-    covered_claims = sum(
-        1 for claim in claims if cited.intersection(claim.get("evidence") or [])
-    )
-    claim_coverage = covered_claims / len(claims) if claims else 0.0
-    duplicate_blocks = _duplicate_prose_blocks(markdown)
-    thin_sections = []
-    if require_dense_sections:
-        section_matches = list(
-            re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
-        )
-        for index, match in enumerate(section_matches):
-            end = (
-                section_matches[index + 1].start()
-                if index + 1 < len(section_matches)
-                else len(without_fences)
-            )
-            body = without_fences[match.end() : end]
-            plain = re.sub(r"\[(?:E|R)\d+\](?:\([^)]*\))?", " ", body)
-            plain = re.sub(r"[`*_[\]()#>-]", " ", plain)
-            plain = re.sub(r"\s+", " ", plain).strip()
-            sentence_count = len(re.findall(r"[.!?](?=\s|$)", plain))
-            if len(plain) < 80 or sentence_count < 2:
-                thin_sections.append(match.group(1).strip())
-    required_sections = min(3, len(sections))
-    required_blocks = 1 + required_sections
-    valid = (
-        bool(sections)
-        and rendered_sections >= required_sections
-        and substantive_blocks >= required_blocks
-        and claim_coverage >= 0.6
-        and not duplicate_blocks
-        and not thin_sections
-    )
-    return {
-        "valid": valid,
-        "planned_sections": len(sections),
-        "required_sections": required_sections,
-        "rendered_sections": rendered_sections,
-        "substantive_blocks": substantive_blocks,
-        "required_blocks": required_blocks,
-        "covered_claims": covered_claims,
-        "planned_claims": len(claims),
-        "claim_coverage": round(claim_coverage, 3),
-        "duplicate_blocks": duplicate_blocks,
-        "thin_sections": thin_sections,
-    }
-
-
 def _format_supported_literals(text: str) -> str:
     """Render quoted commands, paths, and identifiers as inline code."""
 
@@ -338,13 +209,12 @@ def _fact_plan_markdown(
     evidence: List[EvidenceItem],
     relations: List[RelationItem],
 ) -> str:
-    """Render an admitted fact plan when free-form narration is incomplete."""
+    """Render an admitted fact plan as citation-stable Markdown."""
 
     allowed = {item.id for item in evidence} | {item.id for item in relations}
     intro = _readme_intro(evidence)
     intro_terms = _prose_terms(intro[0]) if intro is not None else set()
     rendered_sections: List[tuple[str, str]] = []
-    first_claim: tuple[str, List[str], str] | None = None
     for section in plan.get("sections") or []:
         sentences = []
         for claim in section.get("claims") or []:
@@ -383,12 +253,6 @@ def _fact_plan_markdown(
                 + ". "
                 + " ".join(f"[{item}]" for item in ids)
             )
-            if first_claim is None:
-                first_claim = (
-                    rendered_statement.rstrip(".") + ".",
-                    ids,
-                    rendered_claim,
-                )
             sentences.append(rendered_claim)
         title = re.sub(r"\s+", " ", str(section.get("title") or "")).strip()
         if title and sentences:
@@ -396,20 +260,9 @@ def _fact_plan_markdown(
 
     if not rendered_sections:
         return ""
+    blocks = []
     if intro is not None:
-        intro_text = f"{intro[0]} [{intro[1]}]"
-    elif first_claim is not None:
-        statement, ids, rendered_claim = first_claim
-        intro_text = statement + " " + " ".join(f"[{item}]" for item in ids)
-        title, paragraph = rendered_sections[0]
-        if paragraph.startswith(rendered_claim):
-            remainder = paragraph[len(rendered_claim) :].lstrip()
-            prose = re.sub(r"\[(?:E|R)\d+\]", "", remainder).strip()
-            if len(prose) >= 40:
-                rendered_sections[0] = (title, remainder)
-    else:
-        return ""
-    blocks = [intro_text]
+        blocks.append(f"{intro[0]} [{intro[1]}]")
     for title, paragraph in rendered_sections:
         blocks.extend((f"## {title}", paragraph))
     return "\n\n".join(blocks)
@@ -418,12 +271,13 @@ def _fact_plan_markdown(
 def _candidate_score(
     report: dict[str, Any],
     quality: dict[str, Any],
-) -> tuple[int, int, int, int, float]:
+) -> tuple[int, int, int, int, int, float]:
     """Rank publishable page candidates with grounding as the hard boundary."""
 
     return (
         int(bool(report.get("valid"))),
         int(bool(quality.get("valid"))),
+        -len(report.get("promotional_phrases") or []),
         int(quality.get("rendered_sections") or 0),
         int(quality.get("substantive_blocks") or 0),
         float(quality.get("claim_coverage") or 0.0),
@@ -451,6 +305,33 @@ def _readme_intro(evidence: List[EvidenceItem]) -> tuple[str, str] | None:
     return None
 
 
+def _ensure_cited_intro(
+    markdown: str,
+    evidence: List[EvidenceItem],
+    *,
+    canonical_readme: bool = False,
+) -> str:
+    """Prepend the README synopsis when a model starts directly with a section."""
+
+    first_section = re.search(r"^##\s+\S", markdown, flags=re.MULTILINE)
+    intro = _readme_intro(evidence)
+    if canonical_readme and intro is not None:
+        text, evidence_id = intro
+        sections = markdown[first_section.start() :] if first_section else ""
+        return f"{text} [{evidence_id}]\n\n{sections.lstrip()}".rstrip()
+
+    intro_body = markdown[: first_section.start()] if first_section else markdown
+    intro_plain = re.sub(r"^#\s+.*$", "", intro_body, flags=re.MULTILINE)
+    intro_plain = re.sub(r"\[(?:E|R)\d+\](?:\([^)]*\))?", " ", intro_plain)
+    intro_plain = re.sub(r"[`*_[\]()#>-]", " ", intro_plain)
+    if len(re.sub(r"\s+", " ", intro_plain).strip()) >= 40:
+        return markdown
+    if intro is None:
+        return markdown
+    text, evidence_id = intro
+    return f"{text} [{evidence_id}]\n\n{markdown.lstrip()}"
+
+
 _PLAN_PROMPT = """\
 You are planning one source-grounded page of a developer wiki for the {repo}
 codebase.
@@ -458,6 +339,7 @@ codebase.
 Page title: {title}
 What it should cover: {summary}
 Planning guidance: {guidance}
+Evidence allocation: {constraints}
 
 Source evidence:
 {evidence}
@@ -487,16 +369,56 @@ def _page_planning_guidance(meta: Dict[str, Any]) -> str:
             "result, (2) the main execution or data-flow handoffs, and (3) the "
             "responsibilities of at least two major subsystems. The intro thesis "
             "already states the repository purpose, so do not repeat its channel "
-            "list. Pair README claims with implementation evidence, use at least "
+            "list. README evidence may support a distinct public command, while "
+            "implementation claims should use source evidence. Use at least "
             "four distinct evidence IDs across the plan when available, and "
             "prefer concrete actions and handoffs over generic 'provides' or "
-            "'includes' claims. Treat single-language backends, decoders, "
+            "'includes' claims. Describe the public workflow with an actual "
+            "command, route, or API from the evidence; never say that users call "
+            "a private underscore-prefixed helper. Name major components by "
+            "their class, service, or responsibility, never as a filename "
+            "subsystem. Treat single-language backends, decoders, "
             "patchers, and private helpers as implementation details unless they "
             "define the repository."
         )
     return (
-        "Explain the page's subsystem responsibility, its public entry points, "
-        "and interactions supported by the supplied evidence."
+        "Explain the page's concrete responsibility and interactions supported "
+        "by the supplied evidence. Include a public entry point only when the "
+        "evidence shows a command, route, class, or non-underscore callable that "
+        "serves that role. Otherwise describe the internal control or data flow "
+        "without relabeling private helpers as APIs. Attribute behavior only to "
+        "the function or class whose cited body implements it; a nearby field, "
+        "constructor argument, or static relation does not establish purpose."
+    )
+
+
+def _plan_evidence_constraints(
+    meta: Dict[str, Any],
+    evidence: Sequence[EvidenceItem],
+) -> str:
+    """Describe evidence allocation rules before the model writes claims."""
+
+    if meta.get("id") != "overview":
+        return "Match each claim to the source item that directly supports it."
+
+    intro = _readme_intro(list(evidence))
+    intro_id = intro[1] if intro is not None else None
+    implementation = [
+        item for item in evidence if item.id != intro_id and item.id.startswith("E")
+    ]
+    catalog = ", ".join(
+        f"{item.id}=`{item.file}`::{item.symbol}" for item in implementation
+    )
+    reserved = f"{intro_id} supplies the intro; " if intro_id else ""
+    return (
+        f"{reserved}a section may reuse an evidence item only for a different "
+        "supported fact. Use at least four source evidence IDs across the page "
+        "when four are available. The public-workflow section may reuse README "
+        "evidence; each later section must introduce at least one implementation "
+        "source not used by an earlier section. Keep the three sections "
+        "semantically distinct and assign sources by their actual responsibility. "
+        f"Implementation source catalog: "
+        f"{catalog or '(none)'}."
     )
 
 
@@ -508,11 +430,52 @@ def _plan_quality_warnings(
 ) -> List[str]:
     """Validate whether a fact plan is dense enough for its page role."""
 
-    if meta.get("id") != "overview":
-        return []
-
     sections = plan.get("sections") or []
     warnings = []
+    page_title = str(meta.get("title") or "")
+    page_is_about_helpers = bool(
+        re.search(r"\b(?:helpers?|utilit(?:y|ies))\b", page_title, re.IGNORECASE)
+    )
+    public_evidence = sum(
+        not re.search(
+            r"(?:^|[:.])_[A-Za-z]\w*(?:\(\))?$",
+            item.symbol,
+        )
+        for item in evidence
+    )
+    for section in sections:
+        title = str(section.get("title") or "untitled")
+        if (
+            not page_is_about_helpers
+            and public_evidence >= 2
+            and re.search(
+                r"\b(?:helpers?|utilit(?:y|ies))\b",
+                title,
+                re.IGNORECASE,
+            )
+        ):
+            warnings.append(
+                f"section {title!r} elevates incidental helpers over the page's "
+                "core responsibility"
+            )
+        if not re.search(r"\b(?:public|entry\s+points?)\b", title, re.IGNORECASE):
+            continue
+        for claim in section.get("claims") or []:
+            statement = str(claim.get("statement") or "")
+            if re.search(
+                r"(?:\b[A-Za-z]\w*\.)?_[A-Za-z]\w*\s*\(",
+                statement,
+            ):
+                warning = (
+                    f"section {title!r} describes a private helper as a user "
+                    "entry point"
+                )
+                if warning not in warnings:
+                    warnings.append(warning)
+
+    if meta.get("id") != "overview":
+        return warnings
+
     if len(sections) != 3:
         warnings.append("Overview must have exactly three complementary sections")
 
@@ -520,9 +483,12 @@ def _plan_quality_warnings(
     intro_terms = _prose_terms(intro[0]) if intro is not None else set()
     require_source_diversity = sum(item.id.startswith("E") for item in evidence) >= 4
     page_sources = set()
-    for section in sections:
+    prior_section_terms: List[tuple[str, set[str]]] = []
+    seen_section_sources: set[str] = set()
+    for section_index, section in enumerate(sections):
         title = str(section.get("title") or "untitled")
         useful_claims = []
+        section_sources = set()
         for claim in section.get("claims") or []:
             statement = _format_supported_literals(
                 str(claim.get("statement") or "").strip()
@@ -534,6 +500,23 @@ def _plan_quality_warnings(
                 and len(terms & intro_terms) / len(terms) >= 0.8
             )
             if redundant:
+                continue
+            if re.search(
+                r"\busers?\b[^.]{0,120}`_[A-Za-z]\w*(?:\([^`]*\))?`",
+                statement,
+                flags=re.IGNORECASE,
+            ):
+                warning = f"section {title!r} describes a private helper as a user entry point"
+                if warning not in warnings:
+                    warnings.append(warning)
+                continue
+            if re.search(
+                r"`?[\w./-]+\.(?:py|go|rs|ts|tsx|js|jsx|c|h|cc|cpp|java|rb|"
+                r"php|cs|kt|kts)`?\s+(?:file\s+)?subsystem\b",
+                statement,
+                flags=re.IGNORECASE,
+            ):
+                warnings.append(f"section {title!r} names a source file as a subsystem")
                 continue
             ids = [str(item) for item in claim.get("evidence") or []]
             candidate = f"{statement.rstrip('.')}." + "".join(
@@ -556,11 +539,39 @@ def _plan_quality_warnings(
                 for item in claim.get("evidence") or []
                 if str(item).startswith("E")
             }
+            section_sources.update(source_ids)
             page_sources.update(source_ids)
         if len(useful_claims) < 2:
             warnings.append(
                 f"section {title!r} needs two publishable, non-redundant claims"
             )
+        if (
+            section_index > 0
+            and section_sources
+            and not (section_sources - seen_section_sources)
+        ):
+            warnings.append(
+                f"section {title!r} must introduce an implementation source "
+                "not used by earlier sections"
+            )
+        seen_section_sources.update(section_sources)
+        section_terms = set().union(
+            *(
+                _prose_terms(str(claim.get("statement") or ""))
+                for claim in useful_claims
+            )
+        )
+        for prior_title, prior_terms in prior_section_terms:
+            smaller = min(len(section_terms), len(prior_terms))
+            overlap = (
+                len(section_terms & prior_terms) / smaller if smaller >= 6 else 0.0
+            )
+            if overlap >= 0.8:
+                warnings.append(
+                    f"section {title!r} substantially repeats section {prior_title!r}"
+                )
+                break
+        prior_section_terms.append((title, section_terms))
     if require_source_diversity and len(page_sources) < 4:
         warnings.append("Overview must use at least four source evidence IDs")
     return warnings
@@ -571,6 +582,7 @@ Revise the source-grounded fact plan below.
 
 Page title: {title}
 Planning guidance: {guidance}
+Evidence allocation: {constraints}
 
 Problems:
 {problems}
@@ -609,14 +621,25 @@ Static reference relations:
 {relations}
 
 Write the page as GitHub-flavored Markdown:
-- Start with a short, cited intro paragraph (no H1 title; the app adds it).
+- Start with a short, cited intro paragraph that states only the repository
+  purpose and page scope (no H1 title; the app adds it). Leave commands,
+  execution steps, and subsystem details to their planned sections.
 - Follow the approved fact plan. Explain the subsystem, its key pieces, and
   their interactions in clear prose with ## / ### subheadings.
+- Render every planned claim exactly once as one concrete sentence. Use one
+  paragraph per section and do not add transition, implication, justification,
+  or benefit sentences that are not themselves planned claims.
 - Put an evidence marker such as [E1] or [R1] in every substantive paragraph.
+- End each intro or section paragraph with its combined evidence markers; do
+  not place citations only in the middle of a paragraph.
 - Use `inline code` only for identifiers and paths present in the evidence.
 - Do not invent files, symbols, APIs, relationships, or behavior.
 - Use factual engineering language. Do not call anything powerful, efficient,
-  comprehensive, crucial, user-friendly, invaluable, or productivity-enhancing.
+  comprehensive, crucial, flexible, responsive, user-friendly, invaluable, or
+  productivity-enhancing. End a sentence after the supported mechanism instead
+  of adding a generic benefit or justification clause.
+- Name a subsystem by its concrete component or responsibility, not by appending
+  "subsystem" to a source filename. Avoid "this page/document explains" prose.
 - Do not draw a diagram; the application renders the static graph separately.
 Return only the Markdown (no JSON, no commentary)."""
 
@@ -642,14 +665,32 @@ Draft:
 Keep useful explanations, but remove unsupported names and paths. Put [E#] or
 [R#] evidence markers in every substantive paragraph, including the intro.
 Preserve the supported fact plan: write an intro and a prose section for every
-planned section instead of deleting sections to fix wording. Rephrase benefit
-claims as neutral implementation facts. Remove paragraphs that merely restate
-the intro or another section.
+planned section instead of deleting sections to fix wording. Render every
+planned claim exactly once as one concrete sentence. Remove unplanned benefit
+or justification clauses instead of paraphrasing them. Remove paragraphs that
+merely restate the intro or another section. Reusing an evidence item is valid
+when the paragraph states a different supported fact.
 The revision must contain at least {required_sections} H2 sections and
 {required_blocks} substantive evidence-cited paragraphs. End every substantive
 paragraph with its evidence marker(s); do not append unsupported sentences
 after a citation.
 Do not wrap the response in a Markdown code fence. Return only Markdown.
+"""
+
+_STYLE_REPAIR_PROMPT = """\
+Make a minimal style edit to the Markdown below.
+
+Flagged phrases:
+{phrases}
+
+Draft:
+{draft}
+
+Remove a flagged clause or sentence when it contains only a generic benefit;
+do not replace it with a synonym. Otherwise replace only the flagged wording
+and minimum surrounding grammar needed for factual prose. Preserve every
+heading, paragraph, identifier, path, concrete mechanism, and evidence marker.
+Do not merge or reorder technical claims. Return only Markdown.
 """
 
 
@@ -701,8 +742,11 @@ class AgentWiki:
                 f"{getattr(view, 'built_at_epoch', '')}:{config_hash}"
             )
         view_identity = ",".join(view_parts)
+        prompt_version = (
+            _OUTLINE_PROMPT_VERSION if suffix == "outline" else _PAGE_PROMPT_VERSION
+        )
         raw = (
-            f"{_PROMPT_VERSION}/{getattr(entry, 'instance_id', 'repo')}@{commit}/"
+            f"{prompt_version}/{getattr(entry, 'instance_id', 'repo')}@{commit}/"
             f"{self._model}/{self._api_base or ''}/{llm_identity}/"
             f"{view_identity}/{suffix}"
         )
@@ -868,6 +912,16 @@ class AgentWiki:
             routes,
             key=lambda node: candidate_key(node, self._node_attr),
         )
+        if not _page_allows_supporting_files(meta):
+            fused = [
+                item
+                for item in fused
+                if not _is_supporting_file(
+                    self._norm_hint_path(
+                        self._rel(self._node_attr(item[0], "file")) or ""
+                    )
+                )
+            ]
         by_key = {
             candidate_key(node, self._node_attr): (route_names, score)
             for node, route_names, score in fused
@@ -898,34 +952,62 @@ class AgentWiki:
         # reaches the writer even when lexical/semantic ranking favors generic
         # symbols elsewhere in the repository. This also admits README content,
         # which code-only indexes intentionally omit.
-        selected_by_file: Dict[str, List[Any]] = {}
-        for node in selected_nodes:
+        selected_by_file: Dict[str, List[tuple[Any, tuple[str, ...]]]] = {}
+        for node, route_names, _ in reranked_with_routes:
             selected_file = self._norm_hint_path(
                 self._rel(self._node_attr(node, "file")) or ""
             )
-            selected_by_file.setdefault(selected_file, []).append(node)
+            selected_by_file.setdefault(selected_file, []).append(
+                (node, tuple(route_names))
+            )
+        outline_files = {self._norm_hint_path(file) for file in files}
+        selected_keys_by_file = {
+            file: {self._source_span_key(candidate) for candidate, _ in candidates}
+            for file, candidates in selected_by_file.items()
+        }
+        try:
+            for node in self._wb._symbols():
+                selected_file = self._norm_hint_path(
+                    self._rel(self._node_attr(node, "file")) or ""
+                )
+                if selected_file not in outline_files:
+                    continue
+                key = self._source_span_key(node)
+                existing = selected_keys_by_file.setdefault(selected_file, set())
+                if key not in existing:
+                    selected_by_file.setdefault(selected_file, []).append(
+                        (node, ("outline",))
+                    )
+                    existing.add(key)
+        except Exception as exc:  # noqa: BLE001 - ranked retrieval remains usable
+            logger.debug("wiki outline symbol enumeration unavailable: %s", exc)
         anchors = []
-        promoted_node_ids = set()
+        promoted_source_keys = set()
         anchored_files = set()
-        anchor_limit = (
-            min(6, max(1, top_k - 2))
-            if meta.get("id") == "overview"
-            else min(4, max(1, top_k // 2))
-        )
+        overview = meta.get("id") == "overview"
+        anchor_limit = min(8, top_k) if overview else min(4, max(1, top_k // 2))
         for raw_file in files:
             file = self._norm_hint_path(raw_file)
             if not file or file in anchored_files:
                 continue
             matches = selected_by_file.get(file) or []
             if matches:
-                node = matches[0]
-                promoted_node_ids.add(id(node))
-                existing_routes = self._retrieval_routes.get(
-                    candidate_key(node, self._node_attr), ()
+                matches = sorted(
+                    matches,
+                    key=lambda item: self._outline_anchor_rank(meta, item[0]),
+                    reverse=True,
                 )
-                self._retrieval_routes[candidate_key(node, self._node_attr)] = tuple(
-                    dict.fromkeys(("outline", *existing_routes))
-                )
+                per_file_limit = 1 if overview else 2
+                for node, route_names in matches[:per_file_limit]:
+                    promoted_source_keys.add(self._source_span_key(node))
+                    key = candidate_key(node, self._node_attr)
+                    existing_routes = self._retrieval_routes.get(key, route_names)
+                    self._retrieval_routes[key] = tuple(
+                        dict.fromkeys(("outline", *existing_routes))
+                    )
+                    anchors.append(node)
+                    if len(anchors) >= anchor_limit:
+                        break
             else:
                 source = self._wb.source(file)
                 if not source or not source.get("content"):
@@ -941,19 +1023,76 @@ class AgentWiki:
                 self._retrieval_routes[candidate_key(node, self._node_attr)] = (
                     "outline",
                 )
-            anchors.append(node)
+                anchors.append(node)
             anchored_files.add(file)
             if len(anchors) >= anchor_limit:
                 break
         if anchors:
-            selected_nodes = anchors + [
-                node for node in selected_nodes if id(node) not in promoted_node_ids
+            remaining = [
+                node
+                for node in selected_nodes
+                if self._source_span_key(node) not in promoted_source_keys
             ]
+            remaining.sort(
+                key=lambda node: self._outline_anchor_rank(meta, node),
+                reverse=True,
+            )
+            selected_nodes = anchors + remaining
         return selected_nodes[:top_k]
 
     @staticmethod
     def _norm_hint_path(path: str) -> str:
         return path.replace("\\", "/").strip().strip("/")
+
+    def _outline_anchor_score(self, node: Any) -> int:
+        """Prefer repository-facing symbols when anchoring an outline file."""
+
+        raw_name = str(
+            self._node_attr(node, "node_name") or self._node_attr(node, "name") or ""
+        )
+        terminal = re.split(r"[:.]", raw_name)[-1].split("(", 1)[0]
+        if terminal.startswith("_") and not terminal.startswith("__"):
+            return 0
+        kind = str(self._node_attr(node, "type") or "").lower()
+        return 2 if kind in {"class", "interface", "module"} else 1
+
+    def _source_span_key(self, node: Any) -> tuple[str, Any, Any]:
+        return (
+            self._norm_hint_path(self._rel(self._node_attr(node, "file")) or ""),
+            self._node_attr(node, "start_line"),
+            self._node_attr(node, "end_line"),
+        )
+
+    def _outline_anchor_rank(
+        self,
+        meta: Dict[str, Any],
+        node: Any,
+    ) -> tuple[int, int, int, int]:
+        raw_name = str(
+            self._node_attr(node, "node_name") or self._node_attr(node, "name") or ""
+        ).lower()
+        content = str(self._node_attr(node, "content") or "").lower()
+        terms = self._keyword_terms(
+            [
+                str(meta.get("title") or ""),
+                *[str(value) for value in meta.get("keywords") or []],
+            ]
+        )
+        name_hits = sum(term in raw_name for term in terms)
+        content_hits = sum(term in content for term in terms)
+        start = self._node_attr(node, "start_line")
+        end = self._node_attr(node, "end_line")
+        span = (
+            max(1, end - start + 1)
+            if isinstance(start, int) and isinstance(end, int)
+            else 1
+        )
+        return (
+            self._outline_anchor_score(node),
+            name_hits,
+            content_hits,
+            min(span, 500),
+        )
 
     @staticmethod
     def _path_matches_hint(file: str, hint: str) -> bool:
@@ -1166,6 +1305,7 @@ class AgentWiki:
             title=meta.get("title", ""),
             summary=meta.get("summary", ""),
             guidance=_page_planning_guidance(meta),
+            constraints=_plan_evidence_constraints(meta, evidence),
             evidence=self._evidence_context(evidence),
             relations=self._relations_context(relations),
         )
@@ -1185,10 +1325,13 @@ class AgentWiki:
         if plan.get("sections"):
             quality_warnings = _plan_quality_warnings(meta, plan, evidence, relations)
             warnings = [*errors, *quality_warnings]
-            if quality_warnings:
+            repairs = 0
+            while quality_warnings and repairs < _MAX_PLAN_REPAIRS:
+                repairs += 1
                 repair_prompt = _PLAN_REPAIR_PROMPT.format(
                     title=meta.get("title", ""),
                     guidance=_page_planning_guidance(meta),
+                    constraints=_plan_evidence_constraints(meta, evidence),
                     problems=json.dumps(warnings, indent=2),
                     plan=json.dumps(plan, indent=2),
                     evidence=self._evidence_context(evidence),
@@ -1209,13 +1352,19 @@ class AgentWiki:
                             meta, repaired_plan, evidence, relations
                         ),
                     ]
-                    if repaired_plan.get("sections") and len(repaired_warnings) < len(
-                        warnings
+                    if repaired_plan.get("sections") and (
+                        len(repaired_warnings) < len(warnings)
                     ):
                         plan = repaired_plan
                         warnings = repaired_warnings
+                        quality_warnings = _plan_quality_warnings(
+                            meta, plan, evidence, relations
+                        )
+                    else:
+                        break
                 except Exception as exc:  # noqa: BLE001 - retain usable first plan
                     logger.debug("wiki fact-plan repair unavailable: %s", exc)
+                    break
             return plan, warnings
 
         claims = [
@@ -1304,7 +1453,7 @@ class AgentWiki:
                     self._client().complete(
                         [{"role": "user", "content": prompt}],
                         max_tokens=2200,
-                        temperature=0.2,
+                        temperature=0.1,
                     )
                 ),
                 False,
@@ -1346,12 +1495,34 @@ class AgentWiki:
                 self._client().complete(
                     [{"role": "user", "content": prompt}],
                     max_tokens=2200,
-                    temperature=0.1,
+                    temperature=0.0,
                 )
             )
             return repaired or draft
         except Exception as exc:  # noqa: BLE001 - retain the first usable draft
             logger.warning("wiki grounding repair failed: %s", exc)
+            return draft
+
+    def _repair_style(
+        self,
+        draft: str,
+        phrases: Sequence[str],
+    ) -> str:
+        prompt = _STYLE_REPAIR_PROMPT.format(
+            phrases=json.dumps(list(phrases), indent=2),
+            draft=draft,
+        )
+        try:
+            repaired = _clean_markdown(
+                self._client().complete(
+                    [{"role": "user", "content": prompt}],
+                    max_tokens=2200,
+                    temperature=0.0,
+                )
+            )
+            return repaired or draft
+        except Exception as exc:  # noqa: BLE001 - style is a soft constraint
+            logger.debug("wiki style repair unavailable: %s", exc)
             return draft
 
     def _generate_page(self, meta: Dict[str, Any]) -> dict:
@@ -1382,11 +1553,39 @@ class AgentWiki:
 
         relations = self._relation_items(evidence)
         plan, plan_warnings = self._fact_plan(meta, evidence, relations)
-        markdown, model_failed = self._narrate(meta, evidence, relations, plan)
-        report = grounding_report(markdown, evidence, relations)
         dense_sections = meta.get("id") == "overview"
+        structured_render = True
+        if structured_render:
+            markdown = _fact_plan_markdown(plan, evidence, relations)
+            model_failed = not bool(markdown)
+            if model_failed:
+                markdown, model_failed = self._narrate(
+                    meta,
+                    evidence,
+                    relations,
+                    plan,
+                )
+                structured_render = False
+        else:
+            markdown, model_failed = self._narrate(
+                meta,
+                evidence,
+                relations,
+                plan,
+            )
+        if dense_sections:
+            markdown = _ensure_cited_intro(
+                markdown,
+                evidence,
+                canonical_readme=True,
+            )
+        report = grounding_report(markdown, evidence, relations)
         quality = _page_quality_report(
-            markdown, plan, require_dense_sections=dense_sections
+            markdown,
+            plan,
+            require_dense_sections=dense_sections,
+            require_cited_intro=dense_sections,
+            require_narrative_novelty=dense_sections,
         )
         logger.debug(
             "wiki page candidate %s: grounding=%s quality=%s",
@@ -1396,21 +1595,48 @@ class AgentWiki:
         )
         best = (markdown, report, quality)
         repaired = False
-        if (not report["valid"] or not quality["valid"]) and not model_failed:
-            repaired_markdown = self._repair_markdown(
-                markdown,
-                {"grounding": report, "coverage": quality},
-                evidence,
-                relations,
-                plan,
+        if (
+            not report["valid"] or not quality["valid"] or report["promotional_phrases"]
+        ) and not model_failed:
+            style_only = bool(
+                report["valid"] and quality["valid"] and report["promotional_phrases"]
             )
+            if style_only:
+                repaired_markdown = markdown
+                remaining_phrases = list(report["promotional_phrases"])
+                for _ in range(_MAX_STYLE_REPAIRS):
+                    candidate = self._repair_style(
+                        repaired_markdown,
+                        remaining_phrases,
+                    )
+                    candidate_report = grounding_report(
+                        candidate,
+                        evidence,
+                        relations,
+                    )
+                    candidate_phrases = list(candidate_report["promotional_phrases"])
+                    if len(candidate_phrases) >= len(remaining_phrases):
+                        break
+                    repaired_markdown = candidate
+                    remaining_phrases = candidate_phrases
+                    if not remaining_phrases:
+                        break
+            else:
+                repaired_markdown = self._repair_markdown(
+                    markdown,
+                    {"grounding": report, "coverage": quality},
+                    evidence,
+                    relations,
+                    plan,
+                )
+            if dense_sections:
+                repaired_markdown = _ensure_cited_intro(
+                    repaired_markdown,
+                    evidence,
+                    canonical_readme=True,
+                )
             repaired = True
             repaired_report = grounding_report(repaired_markdown, evidence, relations)
-            if repaired_report["promotional_phrases"]:
-                repaired_markdown = remove_promotional_sentences(repaired_markdown)
-                repaired_report = grounding_report(
-                    repaired_markdown, evidence, relations
-                )
             if (
                 not repaired_report["valid"]
                 and repaired_report["citation_coverage"] < 1.0
@@ -1428,6 +1654,8 @@ class AgentWiki:
                 repaired_markdown,
                 plan,
                 require_dense_sections=dense_sections,
+                require_cited_intro=dense_sections,
+                require_narrative_novelty=dense_sections,
             )
             logger.debug(
                 "wiki page repaired candidate %s: grounding=%s quality=%s",
@@ -1449,6 +1677,8 @@ class AgentWiki:
                     fallback,
                     plan,
                     require_dense_sections=dense_sections,
+                    require_cited_intro=dense_sections,
+                    require_narrative_novelty=dense_sections,
                 )
                 if _candidate_score(
                     fallback_report, fallback_quality
@@ -1459,21 +1689,27 @@ class AgentWiki:
         markdown, report, quality = best
         markdown = _remove_orphan_headings(markdown)
         report = grounding_report(markdown, evidence, relations)
-        if markdown.lstrip().startswith("#"):
-            intro = _readme_intro(evidence)
-            if intro is not None:
-                text, evidence_id = intro
-                markdown = f"{text} [{evidence_id}]\n\n{markdown}"
-                report = grounding_report(markdown, evidence, relations)
+        if dense_sections:
+            markdown = _ensure_cited_intro(
+                markdown,
+                evidence,
+                canonical_readme=True,
+            )
+        report = grounding_report(markdown, evidence, relations)
         quality = _page_quality_report(
-            markdown, plan, require_dense_sections=dense_sections
+            markdown,
+            plan,
+            require_dense_sections=dense_sections,
+            require_cited_intro=dense_sections,
+            require_narrative_novelty=dense_sections,
         )
         markdown = _link_evidence_markers(markdown)
         publishable = bool(report["valid"] and quality["valid"])
-        generated = publishable and not model_failed
+        planning_failed = "model planning unavailable" in plan_warnings
+        generated = publishable and not model_failed and not planning_failed
         if generated:
             generation_reason = None
-        elif model_failed:
+        elif model_failed or planning_failed:
             generation_reason = "model_unavailable"
         else:
             generation_reason = "quality_guard"
@@ -1501,7 +1737,8 @@ class AgentWiki:
                 "mode": "generated" if generated else "degraded",
                 "model": self._model,
                 "repaired": repaired,
-                "fallback": "fact_plan" if fallback_used else None,
+                "fallback": ("fact_plan" if fallback_used or planning_failed else None),
+                "renderer": "fact_plan" if structured_render else "narrative",
                 "plan_warnings": plan_warnings,
                 "reason": generation_reason,
             },

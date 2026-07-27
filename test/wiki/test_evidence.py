@@ -170,7 +170,33 @@ def test_grounding_report_accepts_path_like_terms_present_in_evidence():
     assert report["unknown_files"] == []
 
 
-def test_grounding_report_rejects_promotional_prose():
+def test_grounding_report_accepts_call_without_source_type_annotations():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/server.py",
+            start_line=1,
+            end_line=8,
+            symbol="src/server.py:wiki_page()",
+            kind="function",
+            content=(
+                "async def wiki_page(repo_id: str, page_id: str) -> dict:\n"
+                "    return await load_page(repo_id, page_id)"
+            ),
+        )
+    ]
+
+    report = grounding_report(
+        "The server dispatches `wiki_page(repo_id, page_id)` for a page request. [E1]",
+        evidence,
+        [],
+    )
+
+    assert report["valid"] is True
+    assert report["unsupported_identifiers"] == []
+
+
+def test_grounding_report_reports_promotional_prose_without_conflating_sources():
     evidence = [
         EvidenceItem(
             id="E1",
@@ -191,13 +217,42 @@ def test_grounding_report_rejects_promotional_prose():
         [],
     )
 
-    assert report["valid"] is False
+    assert report["valid"] is True
     assert report["promotional_phrases"] == [
         "allowing for",
         "enhances productivity",
         "optimizing",
         "powerful",
         "significantly",
+    ]
+
+
+def test_grounding_report_finds_generic_benefit_synonyms():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/core.py",
+            start_line=1,
+            end_line=8,
+            symbol="Router",
+            kind="class",
+            content="class Router: pass",
+        )
+    ]
+
+    report = grounding_report(
+        "The responsive and adaptable `Router` provides easy access while "
+        "ensuring that all relevant state is retained. [E1]",
+        evidence,
+        [],
+    )
+
+    assert report["valid"] is True
+    assert report["promotional_phrases"] == [
+        "adaptable",
+        "ensuring that all relevant",
+        "provides easy",
+        "responsive",
     ]
 
 
