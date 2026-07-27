@@ -159,6 +159,8 @@ def _assert_wiki(
         str(repo),
         "--no-index",
         "--no-open",
+        "--host",
+        "0.0.0.0",
         "--port",
         str(frontend_port),
         "--api-port",
@@ -177,17 +179,28 @@ def _assert_wiki(
             start_new_session=True,
         )
         try:
-            api_base = f"http://127.0.0.1:{api_port}"
-            health = _wait_for_json(
-                f"{api_base}/api/health",
+            frontend_base = f"http://127.0.0.1:{frontend_port}"
+            runtime_config = _wait_for_page(
+                f"{frontend_base}/runtime-config.js",
                 process=process,
                 timeout=240,
+            )
+            if 'window.__CODENIB_API_BASE__ = "";' not in runtime_config:
+                raise RuntimeError(
+                    "packaged Wiki did not retain the same-origin API contract: "
+                    f"{runtime_config!r}"
+                )
+
+            health = _wait_for_json(
+                f"{frontend_base}/api/health",
+                process=process,
+                timeout=30,
             )
             if health != {"status": "ok", "repos": 1}:
                 raise RuntimeError(f"unexpected Wiki health response: {health!r}")
 
             repos = _wait_for_json(
-                f"{api_base}/api/repos",
+                f"{frontend_base}/api/repos",
                 process=process,
                 timeout=30,
             )
@@ -198,7 +211,7 @@ def _assert_wiki(
                 raise RuntimeError(f"Wiki did not expose sparse search: {repos[0]!r}")
 
             tree = _wait_for_json(
-                f"{api_base}/api/repos/{urllib.parse.quote(repo_id)}/wiki",
+                f"{frontend_base}/api/repos/{urllib.parse.quote(repo_id)}/wiki",
                 process=process,
                 timeout=30,
             )
@@ -207,7 +220,8 @@ def _assert_wiki(
                 raise RuntimeError(f"Wiki tree has no overview page: {tree!r}")
 
             page = _wait_for_json(
-                f"{api_base}/api/repos/{urllib.parse.quote(repo_id)}/wiki/overview",
+                f"{frontend_base}/api/repos/"
+                f"{urllib.parse.quote(repo_id)}/wiki/overview",
                 process=process,
                 timeout=30,
             )
@@ -217,7 +231,7 @@ def _assert_wiki(
                 )
 
             source_url = (
-                f"{api_base}/api/repos/{urllib.parse.quote(repo_id)}/source?"
+                f"{frontend_base}/api/repos/{urllib.parse.quote(repo_id)}/source?"
                 + urllib.parse.urlencode({"file": "calculator.py"})
             )
             source = _wait_for_json(source_url, process=process, timeout=30)
@@ -227,9 +241,9 @@ def _assert_wiki(
                 )
 
             frontend = _wait_for_page(
-                f"http://127.0.0.1:{frontend_port}/{urllib.parse.quote(repo_id)}",
+                f"{frontend_base}/{urllib.parse.quote(repo_id)}",
                 process=process,
-                timeout=240,
+                timeout=30,
             )
             if "CodeNib" not in frontend:
                 raise RuntimeError("Wiki frontend response did not identify CodeNib")

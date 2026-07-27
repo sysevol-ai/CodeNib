@@ -168,8 +168,11 @@ Open [http://localhost:3000](http://localhost:3000). With the default or a
 loopback configuration, browser requests stay **same-origin** on `:3000`: the
 Vite server proxies `/api/*` to the backend at `http://127.0.0.1:8000`
 (`web/vite.config.ts`). Override that server-side target with
-`CODENIB_API_BASE`. The production Python server instead writes the selected
-backend URL into `/runtime-config.js`.
+`CODENIB_API_BASE`. The production Python server follows the same same-origin
+contract: it proxies `/api/*` to the local FastAPI process and leaves
+`/runtime-config.js` relative by default. This also keeps a Wiki bound to
+`0.0.0.0` usable from another machine without exposing a loopback API URL to
+that browser.
 
 ## Running over SSH
 
