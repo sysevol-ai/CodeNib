@@ -16,7 +16,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 from ..signals.types import Signal
 from .exceptions import StateInconsistent
 
-VALID_GRADES = frozenset({"conjecture", "supported", "finding", "refuted", "deferred"})
+VALID_GRADES = frozenset(
+    {"conjecture", "supported", "finding", "refuted", "deferred", "resolved"}
+)
 VALID_ORIGINS = frozenset({"signal", "memory", "exploration", "human"})
 
 
@@ -114,6 +116,7 @@ GRADE_RULES: Dict[str, Callable[[Hypothesis], bool]] = {
     "refuted": _has_valid_evidence,
     "conjecture": lambda h: bool(h.claim and h.consequence and h.remedy),
     "deferred": lambda h: True,
+    "resolved": lambda h: any(item.startswith("resolved:") for item in h.evidence),
 }
 
 

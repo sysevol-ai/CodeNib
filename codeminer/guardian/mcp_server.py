@@ -73,6 +73,7 @@ _cache: Dict[str, Any] = {
     "backlog": [],
     "degraded": False,
     "analysis_status": "pending",
+    "exit_reason": "",
     "commit": "",  # SHA of the commit that produced them
     "cycle_no": 0,  # how many cycles have completed
     "running": False,  # True while a cycle is in progress
@@ -177,8 +178,9 @@ def _poll_once(config: GuardianConfig, last_commit: str) -> str:
             _cache["backlog"] = backlog
             _cache["degraded"] = bool(getattr(report, "degraded", False))
             _cache["analysis_status"] = str(
-                getattr(report, "analysis_status", "complete")
+                getattr(report, "analysis_status", "incomplete")
             )
+            _cache["exit_reason"] = str(getattr(report, "exit_reason", ""))
             _cache["commit"] = commit
             _cache["cycle_no"] += 1
             _cache["running"] = False
@@ -192,6 +194,7 @@ def _poll_once(config: GuardianConfig, last_commit: str) -> str:
             _cache["running"] = False
             _cache["degraded"] = True
             _cache["analysis_status"] = "failed"
+            _cache["exit_reason"] = "UnhandledError"
         _stderr(f"guardian: cycle failed for {commit[:8]}: {exc}")
         return last_commit
 
@@ -284,6 +287,7 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
         backlog = list(_cache["backlog"])
         degraded = bool(_cache["degraded"])
         analysis_status = str(_cache["analysis_status"])
+        exit_reason = str(_cache["exit_reason"])
         commit = _cache["commit"]
         running = _cache["running"]
         cycle_no = _cache["cycle_no"]
@@ -311,7 +315,16 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
             else (
                 "baseline_unchanged"
                 if cycle_no == 0 and observed_head == baseline_commit
-                else ("pending" if cycle_no == 0 else "ready")
+                else (
+                    "pending"
+                    if cycle_no == 0
+                    else (
+                        "ready"
+                        if exit_reason == "ReportSubmitted"
+                        and analysis_status in {"complete", "degraded"}
+                        else analysis_status
+                    )
+                )
             )
         ),
         "total_findings": len(findings),
@@ -323,6 +336,7 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
         ),
         "degraded": degraded,
         "analysis_status": analysis_status,
+        "exit_reason": exit_reason,
     }
 
     _trace(

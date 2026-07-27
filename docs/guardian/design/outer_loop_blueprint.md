@@ -3,7 +3,8 @@
 **Scope.** This document specifies **L2, the cycle loop** — the level the design
 calls "the outer agent loop" and the level that does not currently exist as a
 loop. It also fixes the contract with the level above (L1, the campaign) and the
-level below (L3, the investigation loop, which is implemented and stays as-is).
+level below (L3, the investigation loop, whose evidence semantics remain
+separate even though it shares session and context mechanics with L2).
 
 **Companion documents.** `design/sandbox_runtime_blueprint.md` (v3) fixes *where*
 the loop's actions execute and who may write what. This document fixes *what the
@@ -152,13 +153,17 @@ epistemic state, not a scheduling state.
 | `finding` | Verified **and** actionable. | **yes** |
 | `refuted` | An experiment contradicted the claim. | retraction, if previously reported |
 | `deferred` | Not worth further budget now; may be revived. | backlog only |
+| `resolved` | The claim held on an earlier commit and a later commit fixed it. | no; trajectory memory only |
 
 The grade is the *only* lifecycle field. "Open" reads as
-`grade ∈ {conjecture, supported}`; "in progress" is one hypothesis at a time and
+`grade ∈ {conjecture, supported, finding, deferred}`; `refuted` and `resolved`
+are closed. "In progress" is one hypothesis at a time and
 so belongs to the loop's state (`CycleState.current`) rather than being
 replicated on every record. A `supported` hypothesis can be picked up again when a remedy becomes
 apparent; a `refuted` one is retained, because refutations are what stop the loop
-re-deriving the same wrong claim every cycle.
+re-deriving the same wrong claim every cycle. A `resolved` one records that the
+diagnosis was correct on its original commit while keeping the fixed problem
+out of later backlogs.
 
 The grade is **written by the agent and validated by code** — `GRADE_RULES`
 (§3.1) makes `finding` unreachable without a remedy and a probe, but which grade
@@ -558,9 +563,9 @@ class Hypothesis:
     consequence: str            # what breaks / degrades if the claim holds
     remedy: str                 # the engineering change that would resolve it
 
-    # --- lifecycle: one field, five values (§0.2) ---
+    # --- lifecycle: one field, six values (§0.2) ---
     grade: str                  # conjecture | supported | finding
-                                #   | refuted | deferred
+                                #   | refuted | deferred | resolved
 
     # --- provenance and subject ---
     origin: str                 # signal | memory | exploration | human
@@ -620,6 +625,7 @@ GRADE_RULES = {
     "refuted":   lambda h: any(e.startswith("probe:") for e in h.evidence),
     "conjecture": lambda h: bool(h.claim and h.consequence and h.remedy),
     "deferred":  lambda h: True,
+    "resolved":  lambda h: any(e.startswith("resolved:") for e in h.evidence),
 }
 ```
 
@@ -687,8 +693,8 @@ become a tool instead.
 5. **Report rendering** from whatever `submit_report` was given, filtered by
    `grade`. The filter is the §0 definition, not an editorial judgement: only
    `grade == "finding"` reaches the findings section, `supported`/`deferred` go
-   to a backlog section, and `refuted` appears only to retract something
-   previously reported.
+   to a backlog section, `refuted` appears only to retract something previously
+   reported, and `resolved` remains only in trajectory memory.
 
 Two consequences worth stating, because both are currently violated in code.
 `perceive` no longer exists as a producer of anything but `Signal`s, which rules
@@ -1073,7 +1079,7 @@ whose type is currently wrong.
 | 2 | Typed exits | new `guardian/loop/exceptions.py`, `guardian_replay.py` | a failed cycle is distinguishable from an empty one | 3 |
 | 3 | The tool-use loop | `cycle.py` (`_run_cycle_inner`) | a cycle reaches `ReportSubmitted` through ≥3 turns; decision log replays | 4, 5, 6 |
 | 4 | `recall` as a tool | new `guardian/memory/queries.py` | `--arm memoryless` returns empty and the loop still reports | the research question |
-| 5 | Context management | `guardian/loop/context.py`, `guardian/llm/` | each L2/L3 agent loop owns one transport session; raw results remain until a token boundary; compaction retains frame and canonical state in one summary | long cycles |
+| 5 | Context management | `guardian/loop/context.py`, `guardian/llm/`, `guardian/investigator/inner_loop.py` | each L2/L3 agent loop owns one transport session; both compose the same token-aware context mechanics; raw results remain until a token boundary; compaction retains the loop's frame and canonical state in one summary | long cycles |
 | 6 | Code exploration tools | new `guardian/loop/tools_code.py` | ≥1 hypothesis per replay carries no `"signal:"` evidence | the proactivity metric |
 | 7 | Grading and resolution discipline | `report.py`, prompt, `GRADE_RULES` | a re-derived claim supersedes rather than duplicates | credible C−B |
 
@@ -1131,9 +1137,10 @@ detail for each step follows.
 5. **Context management.** The frame/working-set split of §4.2 and
    summary-and-replace compaction (§4.4), with `compaction_events` and cached
    input tokens logged. L2 and each L3 investigation own separate transport
-   sessions. Test: a cycle forced past the token boundary keeps its frame and
-   canonical state, archives the old transcript, and continues from one
-   structured summary.
+   sessions while composing the same context/session implementation. Test: an
+   L2 cycle and an L3 investigation forced past their token boundaries each
+   keep their own frame and canonical state, archive the old transcript, reset
+   only their own session, and continue from one structured summary.
 6. **Code exploration tools.** `search_code` / `read_code` over the sandbox
    views. This is what makes `origin = "exploration"` reachable — until it lands,
    the proactivity metric of §7 has a structural ceiling. Test: at least one

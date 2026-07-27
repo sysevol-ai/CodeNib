@@ -4,6 +4,7 @@
 
 """Tests for Guardian DeepSWE ablation command construction."""
 
+import json
 from pathlib import Path
 
 from scripts.guardian import deepswe_export_dashboard_data as dashboard
@@ -58,6 +59,86 @@ def test_finite_budget_remains_the_default(tmp_path):
     assert "guardian_budget_tokens=50000" in command
 
 
+def test_guardian_run_status_aggregates_every_cycle(tmp_path):
+    episodes = tmp_path / "guardian_episodes"
+    rows = [
+        {
+            "commit": "first",
+            "findings": 1,
+            "backlog": 2,
+            "degraded": True,
+            "analysis_status": "degraded",
+            "exit_reason": "ReportSubmitted",
+            "llm_tokens": {
+                "prompt": 100,
+                "cached_input": 60,
+                "completion": 10,
+                "total": 110,
+            },
+        },
+        {
+            "commit": "second",
+            "findings": 0,
+            "backlog": 0,
+            "degraded": False,
+            "analysis_status": "complete",
+            "exit_reason": "ReportSubmitted",
+            "llm_tokens": {
+                "prompt": 200,
+                "cached_input": 150,
+                "completion": 20,
+                "total": 220,
+            },
+        },
+    ]
+    for index, row in enumerate(rows, 1):
+        path = episodes / f"{index:04d}_commit" / "status.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(row), encoding="utf-8")
+
+    status = ablation._guardian_run_status(tmp_path)
+
+    assert status["commit"] == "second"
+    assert status["findings"] == 0
+    assert status["backlog"] == 0
+    assert status["cycle_count"] == 2
+    assert status["exit_reasons"] == ["ReportSubmitted", "ReportSubmitted"]
+    assert status["degraded"] is True
+    assert status["analysis_status"] == "degraded"
+    assert status["llm_tokens"] == {
+        "prompt": 300,
+        "cached_input": 210,
+        "completion": 30,
+        "total": 330,
+    }
+
+
+def test_guardian_run_status_preserves_incomplete_cycle_health(tmp_path):
+    episodes = tmp_path / "guardian_episodes"
+    for index, analysis_status in enumerate(("complete", "incomplete"), 1):
+        path = episodes / f"{index:04d}_commit" / "status.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "analysis_status": analysis_status,
+                    "exit_reason": (
+                        "ReportSubmitted"
+                        if analysis_status == "complete"
+                        else "NoProgress"
+                    ),
+                    "llm_tokens": {"total": index},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    status = ablation._guardian_run_status(tmp_path)
+
+    assert status["analysis_status"] == "incomplete"
+    assert status["llm_tokens"]["total"] == 3
+
+
 def test_dashboard_preserves_guardian_analysis_health_fields():
     row = dashboard._trial_row(
         {
@@ -67,6 +148,8 @@ def test_dashboard_preserves_guardian_analysis_health_fields():
             "guardian_high_confidence_backlog": 2,
             "guardian_degraded": True,
             "guardian_analysis_status": "degraded",
+            "guardian_cycle_count": 3,
+            "guardian_exit_reasons": ["ReportSubmitted"] * 3,
             "guardian_total_tokens": 291_925,
         }
     )
@@ -76,4 +159,6 @@ def test_dashboard_preserves_guardian_analysis_health_fields():
     assert row["guardian_high_confidence_backlog"] == 2
     assert row["guardian_degraded"] is True
     assert row["guardian_analysis_status"] == "degraded"
+    assert row["guardian_cycle_count"] == 3
+    assert row["guardian_exit_reasons"] == ["ReportSubmitted"] * 3
     assert row["guardian_total_tokens"] == 291_925

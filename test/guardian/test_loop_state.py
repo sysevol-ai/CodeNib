@@ -94,6 +94,18 @@ def test_source_grounded_evidence_can_support_a_finding():
     assert finding.grade == "finding"
 
 
+def test_resolved_grade_requires_fixing_commit_record():
+    with pytest.raises(ValueError, match="resolved"):
+        _hypothesis(grade="resolved")
+
+    resolved = _hypothesis(
+        grade="resolved",
+        evidence=["resolved:def456:prediction guard added"],
+    )
+
+    assert resolved.grade == "resolved"
+
+
 def test_checkpoint_round_trip_is_reconstructible(tmp_path):
     state = _state()
     messages = [

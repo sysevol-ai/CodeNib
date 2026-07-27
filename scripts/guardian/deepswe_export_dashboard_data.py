@@ -66,6 +66,8 @@ def _trial_row(row: dict[str, Any]) -> dict[str, Any]:
         "guardian_high_confidence_backlog": row.get("guardian_high_confidence_backlog"),
         "guardian_degraded": row.get("guardian_degraded"),
         "guardian_analysis_status": row.get("guardian_analysis_status"),
+        "guardian_cycle_count": row.get("guardian_cycle_count"),
+        "guardian_exit_reasons": row.get("guardian_exit_reasons"),
         "guardian_llm_backend": row.get("guardian_llm_backend"),
         "guardian_prompt_tokens": row.get("guardian_prompt_tokens"),
         "guardian_cached_input_tokens": row.get("guardian_cached_input_tokens"),

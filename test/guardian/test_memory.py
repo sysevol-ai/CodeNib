@@ -13,11 +13,11 @@ from codeminer.types import EDGE_TYPE_REFERENCE
 
 
 def _hypothesis(cycle_no=1, *, grade="finding", suffix=""):
-    evidence = (
-        [f"probe-valid:{cycle_no}:1"]
-        if grade in {"finding", "supported", "refuted"}
-        else []
-    )
+    evidence = []
+    if grade in {"finding", "supported", "refuted"}:
+        evidence = [f"probe-valid:{cycle_no}:1"]
+    elif grade == "resolved":
+        evidence = [f"resolved:commit{cycle_no}:fixed"]
     return Hypothesis.create(
         claim=f"parse{suffix} accepts invalid input",
         consequence="invalid state reaches callers",
@@ -126,6 +126,24 @@ def test_load_latest_snapshot_of_carried_hypothesis(tmp_path):
     assert len(loaded) == 1
     assert loaded[0].grade == "supported"
     assert loaded[0].first_seen_cycle == 1
+
+
+def test_resolved_hypothesis_persists_but_is_no_longer_open(tmp_path):
+    store = MemoryStore(str(tmp_path))
+    hypothesis = _hypothesis(1, grade="deferred")
+    first = _state(1, hypotheses=[hypothesis])
+    store.persist_state(first, _report(first))
+    hypothesis.grade = "resolved"
+    hypothesis.evidence.append("resolved:commit2:guard added and regression passes")
+    hypothesis.last_touched_cycle = 2
+    state = _state(2, hypotheses=[hypothesis])
+
+    store.persist_state(state, _report(state))
+
+    loaded = store.load_hypotheses()
+    assert len(loaded) == 1
+    assert loaded[0].grade == "resolved"
+    assert report_views(loaded) == ([], [], [])
 
 
 def test_recall_supports_locus_and_trajectory_queries(tmp_path):

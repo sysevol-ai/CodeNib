@@ -129,6 +129,7 @@ def _write_report(out_dir: Path, report: GuardianReport) -> None:
             ),
             "degraded": report.degraded,
             "analysis_status": report.analysis_status,
+            "exit_reason": report.exit_reason,
             "llm_model": report.llm_model,
             "llm_backend": report.llm_backend,
             "llm_transport_history": report.llm_transport_history,
@@ -180,6 +181,7 @@ def _write_status(
             "analysis_status": (
                 "failed" if error else ("running" if running else "pending")
             ),
+            "exit_reason": "",
             "llm_model": llm_model,
             "llm_backend": llm_backend,
             "llm_transport_history": [llm_backend] if llm_backend else [],

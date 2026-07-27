@@ -107,11 +107,39 @@ def _extract_metrics(result: dict[str, Any] | None) -> dict[str, float | None]:
     return empty
 
 
-def _latest_guardian_status(logs_dir: Path) -> dict[str, Any] | None:
-    statuses = sorted((logs_dir / "guardian_episodes").glob("*/status.json"))
+def _guardian_run_status(logs_dir: Path) -> dict[str, Any] | None:
+    """Combine run-wide health and usage with the final cycle's state."""
+
+    paths = sorted((logs_dir / "guardian_episodes").glob("*/status.json"))
+    statuses = [status for path in paths if (status := _load_json(path)) is not None]
     if not statuses:
         return None
-    return _load_json(statuses[-1])
+
+    summary = dict(statuses[-1])
+    token_fields = ("prompt", "cached_input", "completion", "total")
+    summary["llm_tokens"] = {
+        field: sum(
+            int((status.get("llm_tokens") or {}).get(field, 0) or 0)
+            for status in statuses
+        )
+        for field in token_fields
+    }
+    summary["cycle_count"] = len(statuses)
+    summary["exit_reasons"] = [
+        str(status.get("exit_reason") or "") for status in statuses
+    ]
+    summary["degraded"] = any(bool(status.get("degraded")) for status in statuses)
+
+    health = {str(status.get("analysis_status") or "") for status in statuses}
+    if "failed" in health:
+        summary["analysis_status"] = "failed"
+    elif health - {"complete", "degraded"}:
+        summary["analysis_status"] = "incomplete"
+    elif summary["degraded"] or "degraded" in health:
+        summary["analysis_status"] = "degraded"
+    else:
+        summary["analysis_status"] = "complete"
+    return summary
 
 
 def _codex_tokens_from_log(log_path: Path) -> dict[str, int] | None:
@@ -342,9 +370,7 @@ def _run_trial(
     codex_tokens = _load_json(logs_dir / "codex_tokens.json") or _codex_tokens_from_log(
         logs_dir / "codex.txt"
     )
-    guardian_status = (
-        _latest_guardian_status(logs_dir) if baseline == "guardian" else None
-    )
+    guardian_status = _guardian_run_status(logs_dir) if baseline == "guardian" else None
 
     row: dict[str, Any] = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -386,6 +412,8 @@ def _run_trial(
         ),
         "guardian_degraded": (guardian_status or {}).get("degraded"),
         "guardian_analysis_status": (guardian_status or {}).get("analysis_status"),
+        "guardian_cycle_count": (guardian_status or {}).get("cycle_count"),
+        "guardian_exit_reasons": (guardian_status or {}).get("exit_reasons"),
         "guardian_prompt_tokens": ((guardian_status or {}).get("llm_tokens") or {}).get(
             "prompt"
         ),

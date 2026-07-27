@@ -221,8 +221,10 @@ model:
 - dispatch an L3 investigation;
 - submit the cycle report.
 
-Hypotheses end as `conjecture`, `supported`, `finding`, `refuted`, or
-`deferred`. Claims promoted to `supported`, `finding`, or `refuted` require
+Hypotheses end as `conjecture`, `supported`, `finding`, `refuted`, `deferred`,
+or `resolved`. `resolved` means a claim that held on an earlier commit was fixed
+by a later commit; it remains in trajectory memory but leaves the active
+backlog. Claims promoted to `supported`, `finding`, or `refuted` require
 either `source-valid` evidence for a closed-form claim grounded in exact source
 or `probe-valid` evidence from an executed generic probe or classified test
 result. L2 state is checkpointed so a partially completed cycle can be
@@ -263,16 +265,22 @@ independent session and closes it with that investigation; multiple L3 agents
 therefore never share conversational state merely because they belong to one
 Guardian cycle.
 
+L2 and L3 compose the same small mechanical layer in `guardian/llm/`: session
+ownership, token-aware transcript accounting, coherent compaction, and typed
+loop outcomes. They do not inherit from a common semantic loop. Their prompts,
+tools, canonical state, evidence validation, and stopping policies remain
+separate.
+
 Within either kind of agent loop, messages and tool results append to a stable
-conversation so provider prompt caching can reuse the preceding prefix. L3 is
-short and grant-bounded, so it retains its complete investigation history. In
-the longer L2 loop, raw tool results stay in working context until the configured
-model-token boundary is approached. At that boundary Guardian requests one
-structured working-memory summary, archives the full prior transcript,
-re-injects the immutable frame and canonical cycle state, and continues in a
-fresh provider session. It does not evict individual observations during
-ordinary turns. Reports retain prompt, cached-input, completion, and total-token
-counts alongside compaction events.
+conversation so provider prompt caching can reuse the preceding prefix. Raw
+tool results stay in working context until the configured model-token boundary
+is approached. At that boundary the owning agent requests one structured
+working-memory summary, archives the full prior transcript, re-injects its
+immutable frame and canonical state, resets only its own provider session, and
+continues. It does not evict individual observations during ordinary turns.
+L3 includes its tool schemas in request-size and grant estimates and writes the
+actual terminal outcome to its checkpoint. Reports retain prompt, cached-input,
+completion, and total-token counts alongside compaction events.
 
 ## Concurrency and consistency
 

@@ -62,6 +62,7 @@ def test_guardian_checkpoint_prints_fresh_report(tmp_path):
                 "high_confidence_backlog": 1,
                 "degraded": True,
                 "analysis_status": "degraded",
+                "exit_reason": "ReportSubmitted",
                 "llm_model": "codex:gpt-5.6-luna",
                 "llm_backend": "codex-sdk",
                 "llm_tokens": {"total": 123},
@@ -169,6 +170,8 @@ def test_guardian_checkpoint_starts_guardian_before_waiting(tmp_path):
                 "commit": head,
                 "running": False,
                 "findings": 0,
+                "analysis_status": "complete",
+                "exit_reason": "ReportSubmitted",
                 "llm_backend": "codex-sdk",
                 "error": "",
             }
@@ -201,6 +204,54 @@ def test_guardian_checkpoint_starts_guardian_before_waiting(tmp_path):
 
     assert marker.read_text(encoding="utf-8") == "started"
     assert "Guardian checkpoint: report ready" in result.stdout
+
+
+def test_guardian_checkpoint_rejects_no_progress_as_incomplete(tmp_path):
+    repo, head = _init_repo(tmp_path)
+    guardian_dir = tmp_path / "guardian"
+    guardian_dir.mkdir()
+    (guardian_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "commit": head,
+                "running": False,
+                "findings": 0,
+                "backlog": 0,
+                "degraded": False,
+                "analysis_status": "incomplete",
+                "exit_reason": "NoProgress",
+                "llm_backend": "codex-sdk",
+                "error": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (guardian_dir / "findings.md").write_text(
+        "# Incomplete report\n\nNo findings were verified.\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(_write_script(tmp_path)),
+            "--repo",
+            str(repo),
+            "--guardian-dir",
+            str(guardian_dir),
+            "--timeout",
+            "1",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 9
+    assert "Guardian checkpoint: report incomplete" in result.stdout
+    assert "analysis status: incomplete" in result.stdout
+    assert "exit reason: NoProgress" in result.stdout
+    assert "absence of findings is not a clean review" in result.stderr
 
 
 def test_guardian_checkpoint_rejects_unchanged_baseline_without_waiting(tmp_path):

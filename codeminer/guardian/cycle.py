@@ -23,6 +23,18 @@ from .signals import churn_hotspots, run_test_suite
 logger = get_logger(__name__)
 
 
+def _analysis_status(exit_reason: Optional[str], *, degraded: bool) -> str:
+    """Map a typed loop exit to the public review-completion contract."""
+
+    if degraded:
+        return "degraded"
+    if exit_reason == "ReportSubmitted":
+        return "complete"
+    if exit_reason == "StateInconsistent":
+        return "failed"
+    return "incomplete"
+
+
 @dataclass
 class GuardianConfig:
     """Configuration for one commit-scoped L2 cycle."""
@@ -424,6 +436,9 @@ def _run_cycle_inner(
         ),
         "tool_calls": len(tool_calls),
         "recall_calls": sum(row.get("tool") == "recall" for row in tool_calls),
+        "resolved_hypotheses": sum(
+            hypothesis.grade == "resolved" for hypothesis in state.hypotheses
+        ),
         "investigation_budgets": investigation_budgets,
         "no_signal_hypothesis_fraction": (
             len(no_signal) / len(state.hypotheses) if state.hypotheses else 0.0
@@ -454,7 +469,10 @@ def _run_cycle_inner(
         exit_reason=state.exit_reason or "",
         report_summary=state.report_summary,
         degraded=state.degraded,
-        analysis_status=("degraded" if state.degraded else "complete"),
+        analysis_status=_analysis_status(
+            state.exit_reason,
+            degraded=state.degraded,
+        ),
         decision_log=state.decision_log,
         compaction_events=state.compaction_events,
         trace_metrics=trace_metrics,

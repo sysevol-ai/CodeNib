@@ -7,7 +7,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from codeminer.guardian.loop import CycleState, Signal, load_checkpoint
+from codeminer.guardian.loop import CycleState, Hypothesis, Signal, load_checkpoint
 from codeminer.guardian.loop.runtime import LoopContext, run_cycle_loop
 
 
@@ -201,6 +201,116 @@ def test_grade_rejection_is_observation_and_loop_can_recover(tmp_path):
     )
     assert "tool_error" in update["observation"]
     assert result.exit_reason == "ReportSubmitted"
+
+
+def test_agent_resolves_hypothesis_carried_to_fixed_commit(tmp_path):
+    carried = Hypothesis.create(
+        claim="prediction requires target columns",
+        consequence="feature-only prediction raises before inference",
+        remedy="skip target selection during prediction",
+        origin="exploration",
+        locus=["mod.py:predict"],
+        grade="deferred",
+        confidence=0.98,
+        cycle_no=1,
+    )
+    state = _state()
+    state.cycle_no = 2
+    state.commit = "fixed456"
+    state.carried_from = 1
+    state.hypotheses = [carried]
+    llm = _ScriptedLLM(
+        [
+            _response(_call("c1", "read_commit_diff", {})),
+            _response(
+                _call(
+                    "c2",
+                    "update_hypothesis",
+                    {
+                        "id": carried.id,
+                        "grade": "resolved",
+                        "confidence": 0.99,
+                        "reason": (
+                            "fixed456 guards target selection when target == "
+                            "'predict'; the feature-only regression test passes"
+                        ),
+                    },
+                )
+            ),
+            _response(
+                _call("c3", "submit_report", {"summary": "Carried defect resolved."})
+            ),
+        ]
+    )
+
+    with patch(
+        "codeminer.guardian.loop.runtime._commit_diff",
+        return_value="diff --git a/mod.py b/mod.py",
+    ):
+        result = run_cycle_loop(
+            state,
+            LoopContext(
+                repo_path=str(tmp_path),
+                arm="memory",
+                llm=llm,
+                retriever=None,
+            ),
+        )
+
+    assert result.exit_reason == "ReportSubmitted"
+    assert carried.grade == "resolved"
+    assert carried.last_touched_cycle == 2
+    assert any(
+        evidence.startswith("resolved:fixed456:") for evidence in carried.evidence
+    )
+
+
+def test_agent_cannot_resolve_hypothesis_created_in_same_cycle(tmp_path):
+    current = Hypothesis.create(
+        claim="prediction requires target columns",
+        consequence="feature-only prediction raises before inference",
+        remedy="skip target selection during prediction",
+        origin="exploration",
+        locus=["mod.py:predict"],
+        cycle_no=1,
+    )
+    state = _state()
+    state.hypotheses = [current]
+    llm = _ScriptedLLM(
+        [
+            _response(
+                _call(
+                    "c1",
+                    "update_hypothesis",
+                    {
+                        "id": current.id,
+                        "grade": "resolved",
+                        "reason": "not actually carried",
+                    },
+                )
+            ),
+            _response(_call("c2", "submit_report", {"summary": "done"})),
+        ]
+    )
+
+    result = run_cycle_loop(
+        state,
+        LoopContext(
+            repo_path=str(tmp_path),
+            arm="memory",
+            llm=llm,
+            retriever=None,
+        ),
+    )
+
+    update = next(
+        row
+        for row in result.decision_log
+        if row.get("event") == "tool_call" and row.get("tool") == "update_hypothesis"
+    )
+    assert "only valid for a hypothesis carried" in update["observation"]
+    assert current.grade == "conjecture"
+    assert not any(item.startswith("resolved:") for item in current.evidence)
 
 
 def test_model_failure_is_explicitly_degraded(tmp_path):

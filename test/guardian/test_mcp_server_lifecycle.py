@@ -28,6 +28,7 @@ def _reset_server_state(monkeypatch):
                 "backlog": [],
                 "degraded": False,
                 "analysis_status": "pending",
+                "exit_reason": "",
                 "commit": "",
                 "cycle_no": 0,
                 "running": False,
@@ -113,7 +114,13 @@ def test_baseline_poll_does_not_run_a_guardian_cycle(monkeypatch):
 
 
 def test_first_post_baseline_commit_is_cycle_one(monkeypatch):
-    report = SimpleNamespace(findings=[])
+    report = SimpleNamespace(
+        findings=[],
+        backlog=[],
+        degraded=False,
+        analysis_status="complete",
+        exit_reason="ReportSubmitted",
+    )
     run_cycle = Mock(return_value=report)
     monkeypatch.setattr(mcp_server, "_head", lambda _repo: "agent001")
     monkeypatch.setattr(mcp_server, "run_cycle", run_cycle)
@@ -125,4 +132,27 @@ def test_first_post_baseline_commit_is_cycle_one(monkeypatch):
     assert mcp_server._cache["commit"] == "agent001"
     assert mcp_server._cache["cycle_no"] == 1
     assert mcp_server._cache["running"] is False
+    assert mcp_server._cache["analysis_status"] == "complete"
+    assert mcp_server._cache["exit_reason"] == "ReportSubmitted"
     run_cycle.assert_called_once_with(config)
+
+
+def test_query_does_not_describe_incomplete_cycle_as_ready(monkeypatch):
+    monkeypatch.setattr(mcp_server, "_ensure_watcher_started", lambda: False)
+    with mcp_server._lock:
+        mcp_server._cache.update(
+            {
+                "analysis_status": "incomplete",
+                "exit_reason": "NoProgress",
+                "commit": "agent001",
+                "cycle_no": 1,
+                "running": False,
+                "started": True,
+            }
+        )
+
+    result = json.loads(mcp_server._handle_query_guardian({}))
+
+    assert result["status"] == "incomplete"
+    assert result["analysis_status"] == "incomplete"
+    assert result["exit_reason"] == "NoProgress"

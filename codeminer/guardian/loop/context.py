@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ...agent.history import count_message_tokens
+from ..llm import ContextManager
 from .state import CycleState
 
 SYSTEM_PROMPT = """\
@@ -30,7 +30,11 @@ recall prior trajectories, explore code, write hypotheses, investigate them,
 and update their grades. New evidence may lead to new hypotheses. Only grade
 "finding" means verified and actionable. Use "supported" when the claim holds
 but the remedy is not yet actionable, "refuted" when a probe contradicts it,
-and "deferred" when more work is not worth this cycle's budget.
+and "deferred" when more work is not worth this cycle's budget. At the start of
+a new commit, reconcile every carried hypothesis whose locus or contract may
+have changed. Mark it "resolved" when the new commit addressed the previously
+real problem; cite the fixing diff, source span, or test in the reason. Do not
+use "refuted" for a defect that was real in an earlier commit and is now fixed.
 L3 may return probe-valid evidence from execution or source-valid evidence from
 a closed-form argument over exact source spans. Judge either on its merits.
 
@@ -58,7 +62,7 @@ def opening_context(state: CycleState, *, repo_path: str, arm: str) -> str:
             "last_touched_cycle": item.last_touched_cycle,
         }
         for item in state.hypotheses
-        if item.grade in {"conjecture", "supported"}
+        if item.grade in {"conjecture", "supported", "finding", "deferred"}
     ]
     return "\n".join(
         [
@@ -105,7 +109,7 @@ Do not invent evidence. Return only the working-memory summary.
 def context_tokens(messages: List[dict], *, model: Optional[str] = None) -> int:
     """Estimate transcript tokens using the model tokenizer when available."""
 
-    return count_message_tokens(messages, model=model)
+    return ContextManager(messages, 1, 0, model=model).token_count()
 
 
 def needs_compaction(
@@ -117,8 +121,12 @@ def needs_compaction(
 ) -> bool:
     """Return whether history has reached the model-output reserve boundary."""
 
-    usable = max(1, max_tokens - max(0, reserve_tokens))
-    return context_tokens(messages, model=model) > usable
+    return ContextManager(
+        messages,
+        max_tokens=max_tokens,
+        reserve_tokens=reserve_tokens,
+        model=model,
+    ).needs_compaction()
 
 
 def summarization_messages(messages: List[dict], state: CycleState) -> List[dict]:
@@ -140,30 +148,9 @@ def summarization_messages(messages: List[dict], state: CycleState) -> List[dict
             for item in state.hypotheses
         ],
     }
-    return [
-        *messages,
-        {
-            "role": "user",
-            "content": (
-                f"{SUMMARY_PROMPT}\nCanonical state at compaction:\n"
-                f"{json.dumps(snapshot, sort_keys=True, default=str)}"
-            ),
-        },
-    ]
-
-
-def _recent_complete_turns(messages: List[dict], keep_turns: int) -> List[dict]:
-    if keep_turns <= 0:
-        return []
-    assistant_positions = [
-        index
-        for index, message in enumerate(messages[2:], start=2)
-        if message.get("role") == "assistant"
-    ]
-    if not assistant_positions:
-        return []
-    start = assistant_positions[-keep_turns]
-    return list(messages[start:])
+    return ContextManager(messages, 1, 0).summarization_messages(
+        SUMMARY_PROMPT, snapshot
+    )
 
 
 def compact_messages(
@@ -180,16 +167,6 @@ def compact_messages(
     raw tool observations are not individually evicted and rehydrated.
     """
 
-    if len(messages) <= 2:
-        return messages, []
-    output_dir.mkdir(parents=True, exist_ok=True)
-    archives = sorted(output_dir.glob("transcript_before_compaction_*.json"))
-    target = output_dir / f"transcript_before_compaction_{len(archives) + 1:04d}.json"
-    target.write_text(
-        json.dumps(messages, indent=2, sort_keys=True, default=str) + "\n",
-        encoding="utf-8",
-    )
-    recent = _recent_complete_turns(messages, keep_recent_turns)
     snapshot = {
         "cycle": state.cycle_no,
         "commit": state.commit,
@@ -206,28 +183,16 @@ def compact_messages(
             for item in state.hypotheses
         ],
     }
-    compacted = [
-        messages[0],
-        messages[1],
-        {
-            "role": "user",
-            "content": (
-                "=== COMPACTED WORKING MEMORY ===\n"
-                f"{summary.strip()}\n\n"
-                "Canonical Guardian state:\n"
-                f"{json.dumps(snapshot, sort_keys=True, default=str)}\n"
-                "=== END COMPACTED WORKING MEMORY ==="
-            ),
-        },
-        *recent,
-    ]
-    event = {
-        "event": "compaction",
-        "strategy": "structured_summary",
-        "archive": target.name,
-        "messages_before": len(messages),
-        "messages_after": len(compacted),
-        "recent_turns_retained": keep_recent_turns,
-        "summary_chars": len(summary),
-    }
-    return compacted, [event]
+    manager = ContextManager(messages, 1, 0)
+    events = manager.compact(
+        summary=summary,
+        canonical_snapshot=snapshot,
+        output_dir=output_dir,
+        memory_heading="COMPACTED WORKING MEMORY",
+        keep_recent_turns=keep_recent_turns,
+    )
+    if manager.messages and len(manager.messages) > 2:
+        manager.messages[2]["content"] = manager.messages[2]["content"].replace(
+            "Canonical state:", "Canonical Guardian state:"
+        )
+    return manager.messages, events

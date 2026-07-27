@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple
 from ...agent.agent_types import ToolCallRecord
 from ...llm.usage import TokenUsage, _extract_token_usage
 from ...log_utils import get_logger
-from ..llm import agent_loop_session
+from ..llm import AgentLoopSession, ContextManager, LoopOutcome
 from .environment import TestRecipe, run_prelude
 from .probes import (
     behavioural_tests,
@@ -215,6 +215,13 @@ run. Finish only by calling submit_verdict as the sole tool call in its turn.
 Use refuted, not rejected.
 """
 
+SUMMARY_PROMPT = """\
+Summarize this investigation so the same investigator can continue after its
+old conversation is replaced. Preserve the exact obligation, source spans and
+tool results that constrain it, cited tool-call ids, failed approaches, and the
+next intended check. Do not invent evidence. Return only working memory.
+"""
+
 
 def _opening_context(
     task: InvestigationTask,
@@ -244,12 +251,12 @@ def _opening_context(
     return json.dumps(payload, sort_keys=True, default=str)
 
 
-def _estimate_call(messages: List[dict], llm: object, grant: int) -> Tuple[int, int]:
-    prompt_chars = len(json.dumps(messages, sort_keys=True, default=str))
-    prompt_tokens = max(1, (prompt_chars + 2) // 3)
+def _estimate_call(
+    context: ContextManager, llm: object, remaining_grant: int
+) -> Tuple[int, int]:
     configured = int(getattr(llm, "max_tokens", 8_192) or 8_192)
-    max_completion = min(configured, 8_192, max(128, grant // 3))
-    return prompt_tokens + max_completion, max_completion
+    max_completion = min(configured, 8_192, max(128, remaining_grant // 3))
+    return context.estimated_call_tokens(max_completion), max_completion
 
 
 def _available_tools(recipe: Optional[TestRecipe]) -> list[dict]:
@@ -719,18 +726,23 @@ def _checkpoint(
     records: List[ToolCallRecord],
     messages: List[dict],
     ledger: BudgetLedger,
+    result: Optional[InvestigationRunResult] = None,
 ) -> None:
     if path is None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    projection = InvestigationRunResult(
-        verdict="inconclusive",
-        exit_status="running",
-        evidence_status=_derive_non_submitted_evidence(records),
-        reasoning="",
-        tool_calls=records,
-        budget=ledger,
-    ).to_dict()
+    projection = (
+        result.to_dict()
+        if result is not None
+        else InvestigationRunResult(
+            verdict="inconclusive",
+            exit_status="running",
+            evidence_status=_derive_non_submitted_evidence(records),
+            reasoning="",
+            tool_calls=records,
+            budget=ledger,
+        ).to_dict()
+    )
     payload = {
         "hypothesis_id": getattr(task.hypothesis, "id", ""),
         "run": projection,
@@ -799,6 +811,9 @@ def run_investigation(
     recipe: Optional[TestRecipe] = None,
     repo_identity: str = "",
     commit: str = "",
+    max_context_tokens: int = 200_000,
+    context_reserve_tokens: int = 20_000,
+    observation_dir: Optional[Path] = None,
 ) -> InvestigationRunResult:
     """Run the deterministic prelude and typed probe/observe/submit loop."""
 
@@ -817,7 +832,7 @@ def run_investigation(
         capabilities = prelude.capabilities
         capability_warning = prelude.reason
         if prelude.blocked:
-            return _result(
+            result = _result(
                 verdict="inconclusive",
                 exit_status="environment_unavailable",
                 evidence_status="environment",
@@ -831,6 +846,15 @@ def run_investigation(
                 capability_warning=capability_warning,
                 degraded=True,
             )
+            _checkpoint(
+                checkpoint_path,
+                task,
+                [],
+                [],
+                ledger,
+                result=result,
+            )
+            return result
         recipe = prelude.recipe
 
     available_tools = _available_tools(recipe)
@@ -842,6 +866,17 @@ def run_investigation(
             "content": _opening_context(task, recipe, capabilities, capability_warning),
         },
     ]
+    reserve_tokens = min(
+        max(0, int(context_reserve_tokens)),
+        max(0, int(max_context_tokens) // 5),
+    )
+    context = ContextManager(
+        messages,
+        max_tokens=max(1, int(max_context_tokens)),
+        reserve_tokens=reserve_tokens,
+        model=getattr(llm, "model", None),
+        tools=available_tools,
+    )
     records: List[ToolCallRecord] = []
     by_id: Dict[str, ToolCallRecord] = {}
     source_spans = list(task.excerpts)
@@ -849,18 +884,127 @@ def run_investigation(
     evidence_test = ""
     evidence_diff = ""
     started = time.monotonic()
-    session_manager = agent_loop_session(llm)
+    session_manager = AgentLoopSession(llm)
     loop_llm = session_manager.__enter__()
+    outcome = LoopOutcome("no_progress", "Investigation did not start.")
 
     for _round in range(max_rounds):
         if time.monotonic() - started >= task.deadline_s:
-            exit_status = "wall_clock_exceeded"
-            reasoning = "Investigation deadline elapsed."
+            outcome = LoopOutcome(
+                "wall_clock_exceeded", "Investigation deadline elapsed."
+            )
             break
-        estimate, max_completion = _estimate_call(messages, llm, task.grant_tokens)
+        if context.needs_compaction():
+            if len(context.messages) <= 2:
+                outcome = LoopOutcome(
+                    "budget_exceeded",
+                    "The immutable investigation frame and tool schemas exceed "
+                    "the context window.",
+                )
+                break
+            remaining = max(0, ledger.granted - ledger.actual - ledger.reserved)
+            summary_completion = min(4_096, max(128, remaining // 4))
+            snapshot = {
+                "hypothesis_id": getattr(task.hypothesis, "id", ""),
+                "obligation": task.obligation,
+                "tool_calls": [
+                    {
+                        "tool_call_id": item.tool_call_id,
+                        "skill_id": item.skill_id,
+                        "error": item.error,
+                    }
+                    for item in records
+                ],
+                "source_spans": [
+                    {
+                        "path": item.path,
+                        "start_line": item.start_line,
+                        "end_line": item.end_line,
+                    }
+                    for item in source_spans
+                ],
+            }
+            summary_messages = context.summarization_messages(
+                SUMMARY_PROMPT, snapshot
+            )
+            summary_context = ContextManager(
+                summary_messages,
+                max_tokens=context.max_tokens,
+                reserve_tokens=context.reserve_tokens,
+                model=context.model,
+                tools=available_tools,
+            )
+            summary_estimate = summary_context.estimated_call_tokens(
+                summary_completion
+            )
+            if not ledger.reserve(summary_estimate):
+                outcome = LoopOutcome(
+                    "budget_exceeded",
+                    "Context compaction would exceed the investigation grant.",
+                )
+                break
+            try:
+                summary_response = loop_llm._call_raw(
+                    summary_messages,
+                    tools=available_tools,
+                    tool_choice="auto",
+                    max_tokens=summary_completion,
+                    _guardian_text_response=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                ledger.reconcile(summary_estimate, 0)
+                outcome = LoopOutcome(
+                    "environment_unavailable",
+                    f"Context summarization failed: {exc}",
+                )
+                break
+            summary_usage = _extract_token_usage(summary_response)
+            usage = usage.add(summary_usage)
+            ledger.reconcile(summary_estimate, summary_usage.total_tokens)
+            if usage_acc is not None:
+                usage_acc.add(summary_response)
+            summary = (
+                getattr(summary_response.choices[0].message, "content", "") or ""
+            ).strip()
+            if not summary:
+                outcome = LoopOutcome(
+                    "no_progress", "Context summarization returned no working memory."
+                )
+                break
+            events = context.compact(
+                summary=summary,
+                canonical_snapshot=snapshot,
+                output_dir=(
+                    observation_dir
+                    or (
+                        checkpoint_path.parent / "context"
+                        if checkpoint_path is not None
+                        else Path(".guardian_observations") / "investigator"
+                    )
+                ),
+                memory_heading="COMPACTED INVESTIGATION MEMORY",
+            )
+            messages = context.messages
+            session_manager.reset()
+            logger.info(
+                "investigator context compacted: %s",
+                events[0] if events else {},
+            )
+            if context.needs_compaction():
+                outcome = LoopOutcome(
+                    "budget_exceeded",
+                    "Compacted investigation memory still exceeds the context "
+                    "window.",
+                )
+                break
+
+        remaining = max(0, ledger.granted - ledger.actual - ledger.reserved)
+        estimate, max_completion = _estimate_call(context, llm, remaining)
         if not ledger.reserve(estimate):
-            exit_status = "budget_exceeded"
-            reasoning = "Token reservation would exceed the investigation grant."
+            outcome = LoopOutcome(
+                "budget_exceeded",
+                "Token reservation would exceed the investigation grant.",
+            )
             break
         try:
             response = loop_llm._call_raw(
@@ -871,8 +1015,9 @@ def run_investigation(
             )
         except Exception as exc:  # noqa: BLE001 - provider failure is typed exit
             ledger.reconcile(estimate, 0)
-            exit_status = "environment_unavailable"
-            reasoning = f"Model backend unavailable: {exc}"
+            outcome = LoopOutcome(
+                "environment_unavailable", f"Model backend unavailable: {exc}"
+            )
             break
         call_usage = _extract_token_usage(response)
         usage = usage.add(call_usage)
@@ -906,8 +1051,9 @@ def run_investigation(
             }
         )
         if not tool_calls:
-            exit_status = "no_progress"
-            reasoning = "Model returned no Guardian tool call."
+            outcome = LoopOutcome(
+                "no_progress", "Model returned no Guardian tool call."
+            )
             break
 
         submit_calls = [
@@ -1047,22 +1193,32 @@ def run_investigation(
                     capability_warning=capability_warning,
                     degraded=bool(capability_warning),
                 )
+                _checkpoint(
+                    checkpoint_path,
+                    task,
+                    records,
+                    messages,
+                    ledger,
+                    result=result,
+                )
                 session_manager.__exit__(None, None, None)
                 return result
     else:
-        exit_status = "no_progress"
-        reasoning = "Investigation round limit reached without submit_verdict."
+        outcome = LoopOutcome(
+            "no_progress",
+            "Investigation round limit reached without submit_verdict.",
+        )
 
     evidence_status = (
         "environment"
-        if exit_status == "environment_unavailable"
+        if outcome.status == "environment_unavailable"
         else _derive_non_submitted_evidence(records)
     )
     result = _result(
         verdict="inconclusive",
-        exit_status=exit_status,
+        exit_status=outcome.status,
         evidence_status=evidence_status,
-        reasoning=reasoning,
+        reasoning=outcome.reasoning,
         records=records,
         cites=[],
         source_spans=source_spans,
@@ -1074,9 +1230,16 @@ def run_investigation(
         capability_warning=capability_warning,
         degraded=bool(capability_warning)
         or evidence_status == "environment"
-        or exit_status == "environment_unavailable",
+        or outcome.status == "environment_unavailable",
     )
-    _checkpoint(checkpoint_path, task, records, messages, ledger)
+    _checkpoint(
+        checkpoint_path,
+        task,
+        records,
+        messages,
+        ledger,
+        result=result,
+    )
     session_manager.__exit__(None, None, None)
     return result
 

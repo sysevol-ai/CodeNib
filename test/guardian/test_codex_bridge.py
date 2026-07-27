@@ -35,6 +35,8 @@ def _report() -> GuardianReport:
         findings=findings,
         backlog=backlog,
         retractions=retractions,
+        exit_reason="ReportSubmitted",
+        analysis_status="complete",
     )
 
 
@@ -64,6 +66,7 @@ def test_run_bridge_once_writes_markdown_json_and_status(tmp_path, monkeypatch):
     assert status["backlog"] == 0
     assert status["degraded"] is False
     assert status["analysis_status"] == "complete"
+    assert status["exit_reason"] == "ReportSubmitted"
     assert status["llm_model"] == "codex:gpt-5.6-luna"
     assert status["llm_backend"] == "codex-sdk"
     assert status["llm_transport_history"] == ["codex-sdk"]

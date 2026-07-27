@@ -370,7 +370,44 @@ def test_zero_budget_is_typed_exit(tmp_path):
             manifest=_FakeManifest(),
         )
     assert report.exit_reason == "BudgetExceeded"
+    assert report.analysis_status == "incomplete"
     assert report.findings == []
+
+
+def test_no_progress_is_an_incomplete_review(tmp_path):
+    repo = _make_repo(tmp_path)
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content="malformed Guardian tool response",
+                    tool_calls=[],
+                )
+            )
+        ],
+        usage=SimpleNamespace(
+            prompt_tokens=10,
+            completion_tokens=2,
+            total_tokens=12,
+        ),
+    )
+    with patch(
+        "codeminer.guardian.cycle._make_llm",
+        return_value=_ScriptedLLM([response]),
+    ):
+        report = run_cycle(
+            GuardianConfig(
+                repo_path=str(repo),
+                use_llm=True,
+                checkpoint_path=str(tmp_path / "cycle.json"),
+            ),
+            manifest=_FakeManifest(),
+        )
+
+    assert report.exit_reason == "NoProgress"
+    assert report.analysis_status == "incomplete"
+    assert report.degraded is False
+    assert "absence of findings is not a clean" in render_markdown(report)
 
 
 @pytest.mark.integration

@@ -14,12 +14,10 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from ...log_utils import get_logger
-from ..llm import agent_loop_session
+from ..llm import AgentLoopSession, ContextManager, LoopOutcome
 from .context import (
     compact_messages,
-    context_tokens,
     initial_messages,
-    needs_compaction,
     summarization_messages,
 )
 from .exceptions import (
@@ -77,7 +75,14 @@ def _state_summary(state: CycleState) -> dict:
         "hypothesis_count": len(state.hypotheses),
         "grade_counts": {
             grade: sum(item.grade == grade for item in state.hypotheses)
-            for grade in ("conjecture", "supported", "finding", "refuted", "deferred")
+            for grade in (
+                "conjecture",
+                "supported",
+                "finding",
+                "refuted",
+                "deferred",
+                "resolved",
+            )
         },
     }
 
@@ -252,7 +257,27 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
                         dict.fromkeys(hypothesis.supersedes + list(args["supersedes"]))
                     )
                 if "grade" in args:
-                    hypothesis.grade = str(args["grade"])
+                    new_grade = str(args["grade"])
+                    if new_grade == "resolved":
+                        reason = str(args.get("reason", "")).strip()
+                        if hypothesis.first_seen_cycle >= state.cycle_no:
+                            raise ValueError(
+                                "grade='resolved' is only valid for a hypothesis "
+                                "carried from an earlier cycle"
+                            )
+                        if not reason:
+                            raise ValueError(
+                                "grade='resolved' requires a non-empty reason"
+                            )
+                        hypothesis.evidence = list(
+                            dict.fromkeys(
+                                [
+                                    *hypothesis.evidence,
+                                    f"resolved:{state.commit}:{reason}",
+                                ]
+                            )
+                        )
+                    hypothesis.grade = new_grade
                 hypothesis.last_touched_cycle = state.cycle_no
                 validate_hypothesis(hypothesis)
             except Exception:
@@ -354,8 +379,16 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
             admissible_grades = (
                 ["conjecture", "deferred"]
                 if prefix in {"probe-invalid", "env"}
-                else ["conjecture", "supported", "finding", "refuted", "deferred"]
+                else [
+                    "conjecture",
+                    "supported",
+                    "finding",
+                    "refuted",
+                    "deferred",
+                ]
             )
+            if hypothesis.first_seen_cycle < state.cycle_no:
+                admissible_grades.append("resolved")
             return _bounded_observation(
                 {
                     **result.to_dict(),
@@ -415,7 +448,7 @@ def run_cycle_loop(
     )
     started = time.monotonic()
     turn = 0
-    session_manager = agent_loop_session(ctx.llm)
+    session_manager = AgentLoopSession(ctx.llm)
     loop_llm = session_manager.__enter__()
     try:
         while True:
@@ -451,12 +484,13 @@ def run_cycle_loop(
                 max(0, max_context_tokens // 5),
             )
             model = getattr(ctx.llm, "model", None)
-            if needs_compaction(
+            context = ContextManager(
                 transcript,
                 max_tokens=max_context_tokens,
                 reserve_tokens=reserve_tokens,
                 model=model,
-            ):
+            )
+            if context.needs_compaction():
                 try:
                     summary_response = loop_llm._call_raw(
                         summarization_messages(transcript, state),
@@ -501,16 +535,15 @@ def run_cycle_loop(
                 )
                 state.compaction_events += len(events)
                 state.decision_log.extend(events)
-                reset = getattr(loop_llm, "reset", None)
-                if callable(reset):
-                    reset()
+                session_manager.reset()
 
-            transcript_tokens = context_tokens(transcript, model=model)
-            usable_tokens = max(1, max_context_tokens - reserve_tokens)
-            if transcript_tokens > usable_tokens:
+            context.messages = transcript
+            transcript_tokens = context.token_count()
+            if transcript_tokens > context.usable_tokens:
                 raise BudgetExceeded(
                     "immutable frame plus compacted working set exceeds the "
-                    f"context budget ({transcript_tokens}/{usable_tokens} tokens)",
+                    f"context budget "
+                    f"({transcript_tokens}/{context.usable_tokens} tokens)",
                     decision_log_tail=state.decision_log[-5:],
                 )
 
@@ -576,7 +609,8 @@ def run_cycle_loop(
             if ctx.checkpoint_path is not None:
                 save_checkpoint(ctx.checkpoint_path, state, transcript)
     except CycleInterrupt as exc:
-        state.exit_reason = type(exc).__name__
+        outcome = LoopOutcome(type(exc).__name__, str(exc))
+        state.exit_reason = outcome.status
         state.decision_log.append(exc.as_record())
         return state
     finally:

@@ -8,11 +8,11 @@ from codeminer.guardian.report import GuardianReport, render_markdown, report_vi
 
 
 def _hypothesis(*, grade, suffix="", supersedes=None):
-    evidence = (
-        [f"probe-valid:1:{suffix or '1'}"]
-        if grade in {"finding", "supported", "refuted"}
-        else []
-    )
+    evidence = []
+    if grade in {"finding", "supported", "refuted"}:
+        evidence = [f"probe-valid:1:{suffix or '1'}"]
+    elif grade == "resolved":
+        evidence = [f"resolved:commit2:{suffix or 'fixed by regression guard'}"]
     return Hypothesis.create(
         claim=f"parse{suffix} accepts invalid input",
         consequence="invalid state reaches callers",
@@ -51,6 +51,7 @@ def _sample_report():
         cycle_no=1,
         exit_reason="ReportSubmitted",
         report_summary="One verified issue and one supported hypothesis.",
+        analysis_status="complete",
     )
 
 
@@ -85,6 +86,16 @@ def test_only_finding_grade_reaches_findings_section():
     assert "## Findings (1)" in markdown
     assert "## Backlog (1)" in markdown
     assert "## Retractions (1)" in markdown
+
+
+def test_resolved_hypothesis_is_closed_not_left_in_backlog():
+    resolved = _hypothesis(grade="resolved", suffix="_fixed")
+
+    findings, backlog, retractions = report_views([resolved])
+
+    assert findings == []
+    assert backlog == []
+    assert retractions == []
 
 
 def test_render_states_non_modifying_and_has_no_patches():

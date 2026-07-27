@@ -542,3 +542,102 @@ def test_each_tool_call_is_checkpointed(tmp_path):
         "read",
         "submit",
     ]
+    assert saved["run"]["exit_status"] == "submitted"
+    assert saved["run"]["verdict"] == result.verdict
+
+
+def test_non_submitted_terminal_outcome_replaces_running_checkpoint(tmp_path):
+    checkpoint = tmp_path / "investigation.json"
+    result = run_investigation(
+        _task(),
+        ScriptedLLM([_response(content="plain answer")]),
+        MagicMock(),
+        FakeSandbox(tmp_path),
+        recipe=RECIPE,
+        checkpoint_path=checkpoint,
+    )
+
+    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert result.exit_status == "no_progress"
+    assert saved["run"]["exit_status"] == "no_progress"
+    assert saved["run"]["reasoning"] == "Model returned no Guardian tool call."
+
+
+def test_l3_compacts_its_own_transcript_and_resets_session(tmp_path):
+    class Session:
+        def __init__(self, responses):
+            self.responses = list(responses)
+            self.calls = []
+            self.reset_count = 0
+            self.closed = False
+
+        def _call_raw(self, messages, **kwargs):
+            self.calls.append((list(messages), kwargs))
+            return self.responses.pop(0)
+
+        def reset(self):
+            self.reset_count += 1
+
+        def close(self):
+            self.closed = True
+
+    class SessionLLM:
+        model = "test-model"
+        max_tokens = 1_024
+
+        def __init__(self, session):
+            self.session = session
+
+        def start_agent_loop(self):
+            return self.session
+
+    sandbox = FakeSandbox(tmp_path)
+    large_source = "\n".join(
+        " ".join(f"value_{index}_{column}" for column in range(12))
+        for index in range(200)
+    )
+    sandbox.files["pkg/mod.py"] = large_source
+    (tmp_path / "pkg" / "mod.py").write_text(large_source, encoding="utf-8")
+    session = Session(
+        [
+            _response(
+                _call(
+                    "read",
+                    "read_code",
+                    path="pkg/mod.py",
+                    start_line=1,
+                    end_line=200,
+                )
+            ),
+            _response(content="The source span is retained; submit inconclusive."),
+            _response(
+                _call(
+                    "submit",
+                    "submit_verdict",
+                    verdict="inconclusive",
+                    reasoning="The source alone does not establish behaviour.",
+                    cites=[],
+                )
+            ),
+        ]
+    )
+    checkpoint = tmp_path / "investigation.json"
+
+    result = run_investigation(
+        _task(grant=100_000),
+        SessionLLM(session),
+        MagicMock(),
+        sandbox,
+        recipe=RECIPE,
+        checkpoint_path=checkpoint,
+        max_context_tokens=6_000,
+        context_reserve_tokens=1_000,
+    )
+
+    assert result.exit_status == "submitted"
+    assert session.reset_count == 1
+    assert session.closed
+    assert session.calls[1][1]["_guardian_text_response"] is True
+    archives = list((tmp_path / "context").glob("*.json"))
+    assert len(archives) == 1
+    assert "value_100" in archives[0].read_text(encoding="utf-8")

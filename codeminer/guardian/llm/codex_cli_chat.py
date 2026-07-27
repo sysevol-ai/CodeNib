@@ -65,6 +65,15 @@ def _tool_names(tools: List[Dict[str, Any]]) -> List[str]:
     return names
 
 
+def _completion_instruction(max_tokens: Optional[int]) -> str:
+    if max_tokens is None:
+        return ""
+    return (
+        "Keep this response, including private reasoning, within approximately "
+        f"{max(1, int(max_tokens))} tokens.\n\n"
+    )
+
+
 def _extract_json_object(text: str) -> Optional[dict]:
     try:
         value = json.loads(text)
@@ -129,6 +138,39 @@ def _response(content: str, *, tool_calls: Optional[list] = None, usage: object 
     return SimpleNamespace(choices=[SimpleNamespace(message=message)], usage=usage)
 
 
+class _ToolResponseParseError(ValueError):
+    """The model did not return a valid Guardian tool-protocol envelope."""
+
+
+def _merge_usage(left: object, right: object) -> SimpleNamespace:
+    """Add usage from an initial response and its single repair attempt."""
+
+    fields = (
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+    )
+    return SimpleNamespace(
+        **{
+            field: int(getattr(left, field, 0) or 0)
+            + int(getattr(right, field, 0) or 0)
+            for field in fields
+        }
+    )
+
+
+def _repair_prompt(content: str, error: Exception) -> str:
+    return (
+        "Your preceding response could not be parsed as a Guardian JSON "
+        f"envelope: {error}. Reissue the same intended response as exactly one "
+        "valid JSON object. Do not add Markdown or commentary.\n\n"
+        f"Invalid response:\n{content}"
+    )
+
+
 def _usage_from_sdk(result: object) -> SimpleNamespace:
     usage = getattr(result, "usage", None)
     if usage is None:
@@ -163,10 +205,18 @@ def _usage_from_sdk(result: object) -> SimpleNamespace:
     )
 
 
-def _parse_tool_response(content: str, tools: list, usage: object) -> Any:
+def _parse_tool_response(
+    content: str,
+    tools: list,
+    usage: object,
+    *,
+    strict: bool = False,
+) -> Any:
     data = _extract_json_object(content)
     allowed = set(_tool_names(tools))
     if not data:
+        if strict:
+            raise _ToolResponseParseError("response is not one valid JSON object")
         return _response(content.strip(), usage=usage)
 
     kind = str(data.get("type", "")).lower()
@@ -187,8 +237,57 @@ def _parse_tool_response(content: str, tools: list, usage: object) -> Any:
                 ),
             )
             return _response("", tool_calls=[tc], usage=usage)
+        if strict:
+            raise _ToolResponseParseError(
+                f"unknown Guardian tool {name!r}; allowed tools: "
+                + ", ".join(sorted(allowed))
+            )
 
+    if strict:
+        raise _ToolResponseParseError(
+            f"unsupported Guardian response type {data.get('type')!r}"
+        )
     return _response(content.strip(), usage=usage)
+
+
+def _parse_tool_response_with_retry(
+    content: str,
+    tools: list,
+    usage: object,
+    retry: Any,
+) -> Any:
+    """Parse one tool envelope, asking the same model session to repair once."""
+
+    try:
+        return _parse_tool_response(content, tools, usage, strict=True)
+    except _ToolResponseParseError as first_error:
+        logger.warning(
+            "Malformed Guardian tool response; requesting one repair: %s; raw=%r",
+            first_error,
+            content,
+        )
+        correction = _repair_prompt(content, first_error)
+
+    repaired_content, repaired_usage = retry(correction)
+    combined_usage = _merge_usage(usage, repaired_usage)
+    try:
+        return _parse_tool_response(
+            repaired_content,
+            tools,
+            combined_usage,
+            strict=True,
+        )
+    except _ToolResponseParseError as second_error:
+        logger.warning(
+            "Guardian tool response remained malformed after repair: %s; raw=%r",
+            second_error,
+            repaired_content,
+        )
+        return _response(
+            "Guardian model returned malformed tool JSON after one repair: "
+            f"{second_error}; raw response: {repaired_content!r}",
+            usage=combined_usage,
+        )
 
 
 def _parse_text_response(content: str, usage: object) -> Any:
@@ -244,8 +343,9 @@ class CodexSdkChat:
     def _call_raw(self, messages: List[Dict[str, Any]], **overrides: Any) -> Any:
         tools = overrides.pop("tools", None) or []
         text_response = bool(overrides.pop("_guardian_text_response", False))
+        max_tokens = overrides.pop("max_tokens", None)
         overrides.pop("tool_choice", None)
-        prompt = self._build_prompt(messages, tools)
+        prompt = self._build_prompt(messages, tools, max_tokens=max_tokens)
         try:
             content, usage = self._run_codex(prompt)
         except Exception as exc:  # noqa: BLE001
@@ -265,6 +365,7 @@ class CodexSdkChat:
                     messages,
                     tools=tools,
                     _guardian_text_response=text_response,
+                    max_tokens=max_tokens,
                 )
             except Exception:
                 self.backend_name = "codex-unavailable"
@@ -274,13 +375,25 @@ class CodexSdkChat:
             return _parse_text_response(content, usage)
         if not tools:
             return _response(content.strip(), usage=usage)
-        return _parse_tool_response(content, tools, usage)
+        return _parse_tool_response_with_retry(
+            content,
+            tools,
+            usage,
+            lambda repair: self._run_codex(f"{prompt}\n\n{repair}"),
+        )
 
-    def _build_prompt(self, messages: List[Dict[str, Any]], tools: list) -> str:
+    def _build_prompt(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: list,
+        *,
+        max_tokens: Optional[int] = None,
+    ) -> str:
         rendered = _render_messages(messages)
         repo_note = f"Repository checkout path: {self.cwd}\n\n" if self.cwd else ""
+        completion_note = _completion_instruction(max_tokens)
         if not tools:
-            return f"{repo_note}{rendered}"
+            return f"{completion_note}{repo_note}{rendered}"
 
         names = ", ".join(_tool_names(tools))
         return (
@@ -294,6 +407,7 @@ class CodexSdkChat:
             f"Available Guardian tool names: {names}\n"
             "Tool schemas:\n"
             f"{json.dumps(tools, ensure_ascii=False, indent=2)}\n\n"
+            f"{completion_note}"
             f"{repo_note}"
             "Conversation:\n"
             f"{rendered}"
@@ -401,12 +515,15 @@ class _CodexSdkAgentLoop:
         )
 
     @staticmethod
-    def _incremental_prompt(messages: List[Dict[str, Any]]) -> str:
+    def _incremental_prompt(
+        messages: List[Dict[str, Any]], max_tokens: Optional[int] = None
+    ) -> str:
         delta = list(messages)
         # The SDK thread already contains its own preceding JSON response.
         if delta and delta[0].get("role") == "assistant":
             delta = delta[1:]
         return (
+            f"{_completion_instruction(max_tokens)}"
             "Guardian executed your requested tool calls. Continue the same "
             "Guardian task from these new results:\n\n"
             f"{_render_messages(delta)}"
@@ -427,6 +544,7 @@ class _CodexSdkAgentLoop:
     def _call_raw(self, messages: List[Dict[str, Any]], **overrides: Any) -> Any:
         tools = overrides.pop("tools", None) or []
         text_response = bool(overrides.pop("_guardian_text_response", False))
+        max_tokens = overrides.pop("max_tokens", None)
         overrides.pop("tool_choice", None)
         tools_key = json.dumps(tools, sort_keys=True, default=str)
         if self._fallback is not None:
@@ -434,6 +552,7 @@ class _CodexSdkAgentLoop:
                 messages,
                 tools=tools,
                 _guardian_text_response=text_response,
+                max_tokens=max_tokens,
                 **overrides,
             )
 
@@ -442,9 +561,11 @@ class _CodexSdkAgentLoop:
             self.reset()
         if append_only:
             delta = messages[len(self._prior_input) :]
-            prompt = self._incremental_prompt(delta)
+            prompt = self._incremental_prompt(delta, max_tokens=max_tokens)
         else:
-            prompt = self.adapter._build_prompt(messages, tools)
+            prompt = self.adapter._build_prompt(
+                messages, tools, max_tokens=max_tokens
+            )
 
         try:
             content, usage = self._run(prompt)
@@ -459,6 +580,7 @@ class _CodexSdkAgentLoop:
                 messages,
                 tools=tools,
                 _guardian_text_response=text_response,
+                max_tokens=max_tokens,
                 **overrides,
             )
 
@@ -468,7 +590,12 @@ class _CodexSdkAgentLoop:
             return _parse_text_response(content, usage)
         if not tools:
             return _response(content.strip(), usage=usage)
-        return _parse_tool_response(content, tools, usage)
+        return _parse_tool_response_with_retry(
+            content,
+            tools,
+            usage,
+            self._run,
+        )
 
     def reset(self) -> None:
         """Discard provider history after a local transcript compaction."""
@@ -532,21 +659,36 @@ class CodexCliChat:
     def _call_raw(self, messages: List[Dict[str, Any]], **overrides: Any) -> Any:
         tools = overrides.pop("tools", None) or []
         text_response = bool(overrides.pop("_guardian_text_response", False))
+        max_tokens = overrides.pop("max_tokens", None)
         overrides.pop("tool_choice", None)
-        prompt = self._build_prompt(messages, tools)
+        prompt = self._build_prompt(messages, tools, max_tokens=max_tokens)
         stdout, content = self._run_codex(prompt)
         usage = _usage_from_stdout(stdout)
         if text_response:
             return _parse_text_response(content, usage)
         if not tools:
             return _response(content.strip(), usage=usage)
-        return self._parse_tool_response(content, tools, usage)
+        return _parse_tool_response_with_retry(
+            content,
+            tools,
+            usage,
+            lambda repair: (lambda result: (result[1], _usage_from_stdout(result[0])))(
+                self._run_codex(f"{prompt}\n\n{repair}")
+            ),
+        )
 
-    def _build_prompt(self, messages: List[Dict[str, Any]], tools: list) -> str:
+    def _build_prompt(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: list,
+        *,
+        max_tokens: Optional[int] = None,
+    ) -> str:
         rendered = _render_messages(messages)
         repo_note = f"Repository checkout path: {self.cwd}\n\n" if self.cwd else ""
+        completion_note = _completion_instruction(max_tokens)
         if not tools:
-            return f"{repo_note}{rendered}"
+            return f"{completion_note}{repo_note}{rendered}"
 
         names = ", ".join(_tool_names(tools))
         return (
@@ -560,6 +702,7 @@ class CodexCliChat:
             f"Available Guardian tool names: {names}\n"
             "Tool schemas:\n"
             f"{json.dumps(tools, ensure_ascii=False, indent=2)}\n\n"
+            f"{completion_note}"
             f"{repo_note}"
             "Conversation:\n"
             f"{rendered}"

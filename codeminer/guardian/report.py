@@ -119,7 +119,7 @@ class GuardianReport:
     exit_reason: str = ""
     report_summary: str = ""
     degraded: bool = False
-    analysis_status: str = "complete"
+    analysis_status: str = "pending"
     decision_log: List[dict] = field(default_factory=list)
     compaction_events: int = 0
     trace_metrics: Dict[str, Any] = field(default_factory=dict)
@@ -201,6 +201,11 @@ def render_markdown(report: GuardianReport) -> str:
     ]
     if report.degraded:
         lines.append("- **Ablation eligibility:** excluded (analysis was degraded)")
+    elif report.analysis_status != "complete":
+        lines.append(
+            "- **Ablation eligibility:** excluded "
+            f"(analysis was {report.analysis_status})"
+        )
     if report.retriever:
         lines.append(f"- **Retriever:** {report.retriever}")
     if report.llm_model:
@@ -234,6 +239,14 @@ def render_markdown(report: GuardianReport) -> str:
             "",
         ]
     )
+    if report.exit_reason != "ReportSubmitted":
+        lines.extend(
+            [
+                "> **Incomplete review:** absence of findings is not a clean "
+                "Guardian result because the cycle did not submit a report.",
+                "",
+            ]
+        )
     if report.trace_metrics:
         lines.extend(
             [

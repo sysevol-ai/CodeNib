@@ -3,11 +3,12 @@
 
 """Tests for token-aware, summary-based Guardian context compaction."""
 
-from codeminer.guardian.loop import CycleState
+from codeminer.guardian.loop import CycleState, Hypothesis
 from codeminer.guardian.loop.context import (
     compact_messages,
     initial_messages,
     needs_compaction,
+    opening_context,
     summarization_messages,
 )
 
@@ -52,6 +53,37 @@ def test_tool_results_stay_in_context_before_token_boundary():
         reserve_tokens=1_000,
     )
     assert messages[-1]["content"].startswith("important source")
+
+
+def test_opening_context_exposes_deferred_and_finding_for_reconciliation():
+    state = _state()
+    state.cycle_no = 2
+    state.carried_from = 1
+    state.hypotheses = [
+        Hypothesis.create(
+            claim=f"{grade} carried claim",
+            consequence="callers fail",
+            remedy="fix the changed contract",
+            origin="exploration",
+            locus=[f"{grade}.py"],
+            evidence=(
+                ["probe-valid:1:1"]
+                if grade in {"supported", "finding", "refuted"}
+                else (["resolved:commit2:fixed"] if grade == "resolved" else [])
+            ),
+            grade=grade,
+            cycle_no=1,
+        )
+        for grade in ("conjecture", "supported", "finding", "deferred", "resolved")
+    ]
+
+    context = opening_context(state, repo_path="/repo", arm="memory")
+
+    assert "conjecture carried claim" in context
+    assert "supported carried claim" in context
+    assert "finding carried claim" in context
+    assert "deferred carried claim" in context
+    assert "resolved carried claim" not in context
 
 
 def test_compaction_preserves_frame_summary_and_recent_turns(tmp_path):

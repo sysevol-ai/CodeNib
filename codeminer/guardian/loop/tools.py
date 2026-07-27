@@ -120,6 +120,7 @@ TOOLS = [
                     "finding",
                     "refuted",
                     "deferred",
+                    "resolved",
                 ],
             },
             "evidence": {"type": "array", "items": {"type": "string"}},

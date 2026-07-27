@@ -137,7 +137,16 @@ def main() -> int:
                 )
                 return 4
 
-            print("Guardian checkpoint: report ready")
+            analysis_status = str(status.get("analysis_status") or "unknown")
+            exit_reason = str(status.get("exit_reason") or "")
+            submitted = (
+                exit_reason == "ReportSubmitted"
+                and analysis_status in {"complete", "degraded"}
+            )
+            print(
+                "Guardian checkpoint: "
+                + ("report ready" if submitted else "report incomplete")
+            )
             print(f"model: {status.get('llm_model', '')}")
             print(f"backend: {status.get('llm_backend', '')}")
             print(f"findings: {status.get('findings', 0)}")
@@ -146,7 +155,8 @@ def main() -> int:
                 "high-confidence backlog: "
                 f"{status.get('high_confidence_backlog', 0)}"
             )
-            print(f"analysis status: {status.get('analysis_status', 'unknown')}")
+            print(f"analysis status: {analysis_status}")
+            print(f"exit reason: {exit_reason or 'unknown'}")
             if status.get("degraded"):
                 print(
                     "WARNING: Guardian analysis was degraded; this report must "
@@ -160,6 +170,13 @@ def main() -> int:
                 print(f"tokens: {tokens or 0}")
             print("")
             print(findings_path.read_text(encoding="utf-8"), end="")
+            if not submitted:
+                print(
+                    "Guardian checkpoint: cycle did not submit a report; "
+                    "absence of findings is not a clean review.",
+                    file=sys.stderr,
+                )
+                return 9
             return 0
 
         time.sleep(max(0.1, args.interval))

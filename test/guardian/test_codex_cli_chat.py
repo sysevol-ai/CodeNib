@@ -17,6 +17,18 @@ def _fake_completed(stdout: str = "") -> SimpleNamespace:
     return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
 
 
+def test_codex_prompt_preserves_requested_completion_allowance():
+    llm = CodexSdkChat(model="gpt-5.6-luna")
+
+    prompt = llm._build_prompt(
+        [{"role": "user", "content": "inspect"}],
+        [],
+        max_tokens=321,
+    )
+
+    assert "within approximately 321 tokens" in prompt
+
+
 def test_call_raw_returns_last_message_and_usage(monkeypatch):
     seen = {}
 
@@ -338,6 +350,92 @@ def test_sdk_agent_loop_reuses_one_thread_and_sends_incremental_results(
     assert "inspect the commit" in seen["prompts"][0]
     assert "def parse(): pass" in seen["prompts"][1]
     assert "inspect the commit" not in seen["prompts"][1]
+
+
+def test_sdk_agent_loop_repairs_malformed_tool_json_in_same_thread(monkeypatch):
+    from codeminer.guardian.llm import agent_loop_session
+
+    seen = {"prompts": [], "closed": 0}
+
+    class FakeSandbox:
+        workspace_write = "workspace-write"
+
+    class FakeApprovalMode:
+        deny_all = "deny-all"
+
+    class FakeConfig:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeThread:
+        def run(self, prompt, **kwargs):
+            seen["prompts"].append(prompt)
+            content = (
+                '{"type":"tool_call","name":"read_code",'
+                '"arguments":{"path":"mod.py"}}}'
+                if len(seen["prompts"]) == 1
+                else json.dumps(
+                    {
+                        "type": "tool_call",
+                        "name": "read_code",
+                        "arguments": {"path": "mod.py"},
+                    }
+                )
+            )
+            usage = SimpleNamespace(
+                last=SimpleNamespace(
+                    input_tokens=10,
+                    cached_input_tokens=6,
+                    output_tokens=2,
+                    reasoning_output_tokens=0,
+                )
+            )
+            return SimpleNamespace(final_response=content, usage=usage)
+
+    class FakeCodex:
+        def __init__(self, config):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            seen["closed"] += 1
+
+        def thread_start(self, **kwargs):
+            return FakeThread()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "openai_codex",
+        SimpleNamespace(
+            ApprovalMode=FakeApprovalMode,
+            Codex=FakeCodex,
+            CodexConfig=FakeConfig,
+            Sandbox=FakeSandbox,
+        ),
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "read_code", "parameters": {}},
+        }
+    ]
+
+    with agent_loop_session(CodexSdkChat(model="gpt-5.6-luna")) as session:
+        response = session._call_raw(
+            [{"role": "user", "content": "inspect"}],
+            tools=tools,
+        )
+
+    call = response.choices[0].message.tool_calls[0]
+    assert call.function.name == "read_code"
+    assert json.loads(call.function.arguments) == {"path": "mod.py"}
+    assert len(seen["prompts"]) == 2
+    assert "could not be parsed" in seen["prompts"][1]
+    assert response.usage.total_tokens == 24
+    assert response.usage.cached_input_tokens == 12
+    assert seen["closed"] == 1
 
 
 def test_sdk_usage_prefers_last_turn_over_cumulative_total():
