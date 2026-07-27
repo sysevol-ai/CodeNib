@@ -31,7 +31,8 @@ from codenib.agent import CodeNibAgentOptions
 The following identifiers remain canonical:
 
 - `CODENIB_*` environment variables;
-- `~/.codenib`, `.codenib_cache`, and `.codenib_qa` state roots;
+- `~/.codenib` and `.codenib_qa` state roots, plus the legacy
+  `.codenib_cache` layout;
 - the `codenib` package and every existing `codenib-*` command;
 - MCP server ID `codenib`, prompt ID `codenib-guide`, tool names, and
   `codenib_context` skill ID;
@@ -63,5 +64,8 @@ variables:
 | `CODENIB_RESULTS_DIR` | `$CODENIB_HOME/results` | Benchmark and experiment outputs |
 | `CODENIB_TEMP_DIR` | `$TMPDIR/codenib` | Disposable indexer and tool work |
 
-Repository-owned indexes remain under `<repo>/.codenib_cache`; this is a
-portable layout contract rather than a machine-specific absolute path.
+User-facing commands keep repository indexes under
+`$CODENIB_HOME/repositories/<repo>-<id>/indexes` (default
+`~/.codenib/repositories/...`) so indexing does not modify the target checkout.
+The lower-level compiler still accepts an explicit `cache_dir`, and CLI
+manifest discovery can read the legacy `<repo>/.codenib_cache` layout.

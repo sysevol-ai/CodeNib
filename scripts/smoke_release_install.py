@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -18,15 +19,43 @@ from pathlib import Path
 from typing import Sequence
 
 
-def _run(command: Sequence[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(command))
     return subprocess.run(
         list(command),
         cwd=cwd,
+        env=env,
         check=True,
         text=True,
         capture_output=True,
     )
+
+
+def _installed_manifest_path(
+    repo: Path,
+    *,
+    root: Path,
+    env: dict[str, str],
+) -> Path:
+    command = (
+        "import sys\n"
+        "from codenib.paths import repo_index_dir\n"
+        "print(repo_index_dir(sys.argv[1]) / 'repo_manifest.json')\n"
+    )
+    result = _run(
+        [sys.executable, "-c", command, str(repo)],
+        cwd=root,
+        env=env,
+    )
+    path = result.stdout.strip()
+    if not path:
+        raise RuntimeError("installed package returned an empty manifest path")
+    return Path(path)
 
 
 def smoke(root: Path, *, executable: str = "codenib") -> None:
@@ -47,16 +76,19 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
     _run(["git", "add", "."], cwd=repo)
     _run(["git", "commit", "--quiet", "-m", "initial fixture"], cwd=repo)
 
-    version = _run([executable, "--version"], cwd=root).stdout.strip()
+    env = os.environ.copy()
+    env["CODENIB_HOME"] = str(root / "user-state")
+    version = _run([executable, "--version"], cwd=root, env=env).stdout.strip()
     if not version.startswith("codenib "):
         raise RuntimeError(f"unexpected version output: {version!r}")
     _run(
         [executable, "doctor", "--require", "core"],
         cwd=root,
+        env=env,
     )
-    _run([executable, "index", str(repo)], cwd=root)
+    _run([executable, "index", str(repo)], cwd=root, env=env)
 
-    manifest_path = repo / ".codenib_cache" / "repo_manifest.json"
+    manifest_path = _installed_manifest_path(repo, root=root, env=env)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     bm25 = payload.get("indexes", {}).get("bm25", {})
     if bm25.get("status") != "fresh":
@@ -64,6 +96,9 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
     languages = payload.get("repo", {}).get("languages")
     if languages != ["python"]:
         raise RuntimeError(f"language auto-detection was unexpected: {languages!r}")
+    status = _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
+    if status:
+        raise RuntimeError(f"indexing modified the target repository: {status!r}")
     print(f"Installed CLI smoke passed with {version}")
 
 

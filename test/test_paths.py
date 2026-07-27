@@ -9,8 +9,11 @@ from codenib.paths import (
     CODENIB_PREBUILT_DIR_ENV,
     CODENIB_RESULTS_DIR_ENV,
     CODENIB_TEMP_DIR_ENV,
+    legacy_repo_index_dir,
     prebuilt_data_dir,
     repo_index_dir,
+    repo_state_dir,
+    repository_state_key,
     results_dir,
     temp_state_dir,
     user_state_dir,
@@ -64,5 +67,20 @@ def test_former_home_variable_is_not_read(monkeypatch, tmp_path: Path) -> None:
     assert user_state_dir() == tmp_path / ".codenib"
 
 
-def test_repo_index_dir_is_repository_relative(tmp_path: Path) -> None:
-    assert repo_index_dir(tmp_path) == tmp_path.resolve() / ".codenib_cache"
+def test_repo_index_dir_is_user_owned_and_repository_specific(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    first = tmp_path / "work" / "project"
+    second = tmp_path / "other" / "project"
+    monkeypatch.setenv(CODENIB_HOME_ENV, str(home))
+
+    assert repo_state_dir(first).parent == home / "repositories"
+    assert repo_index_dir(first) == repo_state_dir(first) / "indexes"
+    assert repo_index_dir(first) != repo_index_dir(second)
+    assert repository_state_key(first).startswith("project-")
+
+
+def test_legacy_repo_index_dir_remains_discoverable(tmp_path: Path) -> None:
+    assert legacy_repo_index_dir(tmp_path) == tmp_path.resolve() / ".codenib_cache"

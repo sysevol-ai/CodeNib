@@ -124,7 +124,7 @@ Observed on the TestPyPI 0.1.0 candidate:
   that mode sufficiently clear.
 
 The production frontend migration removes the first-run npm installation:
-release wheel and sdist artifacts are about 2.2 MB each, and an isolated wheel
+release wheel and sdist artifacts are about 1.9 MB each, and an isolated wheel
 completed index, Wiki, source-link, and MCP service smoke with Node/npm absent
 from `PATH`.
 
@@ -162,7 +162,9 @@ remains part of M6 acceptance.
 
 ### M4: Product interaction
 
-Status: in progress.
+Status: substantially complete for the Developer Preview. Index build progress
+is currently explicit in the CLI before the Wiki opens; in-page progress is a
+post-preview enhancement.
 
 - Present build and generation progress in the Wiki.
 - Integrate Dependency Map, page-local graph snapshots, search, and source
@@ -172,8 +174,8 @@ Status: in progress.
 
 ### M5: Distribution
 
-Status: in progress. The Python-only production frontend path is complete;
-Docker and public documentation remain.
+Status: wheel path complete for the Developer Preview. Docker remains a
+post-preview distribution path.
 
 - Ship prebuilt frontend assets instead of installing a frontend development
   tree on first use.
@@ -183,6 +185,8 @@ Docker and public documentation remain.
 
 ### M6: Release acceptance
 
+Status: local acceptance complete; PR reconciliation and publication remain.
+
 - Run the packaged product against representative Python, TypeScript, and
   mixed-language repositories.
 - Exercise at least one provider-native backend and one OpenAI-compatible
@@ -190,6 +194,22 @@ Docker and public documentation remain.
 - Review generated content with the source-grounding and subsystem-coverage
   rubric.
 - Reconcile related issues and PRs, then publish the accepted artifact.
+
+Acceptance evidence on 2026-07-26:
+
+- A fresh wheel with the MCP extra completed CLI, Wiki, source-link, and MCP
+  stdio smoke tests from outside the source checkout.
+- Python, TypeScript, and mixed TypeScript/Python repositories built fresh BM25
+  views while leaving `git status --porcelain` empty; a second unchanged build
+  reused the manifest without changing its mtime.
+- The packaged frontend served without Node/npm and the default entry bundle
+  was reduced to about 146 KB (47 KB gzip); graph, source highlighting, and
+  page code highlighting load on demand.
+- LiteLLM validated both an OpenAI-compatible custom endpoint and a
+  provider-native `openai/gpt-4o-mini` probe.
+- A generated mixed-language Overview covered all eight planned claims with
+  1.0 citation coverage, cited all three source files, and published no unknown
+  files, identifiers, or citations.
 
 ## Completion Rule
 

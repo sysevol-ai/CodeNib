@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -17,6 +19,7 @@ CODENIB_TEMP_DIR_ENV = "CODENIB_TEMP_DIR"
 
 USER_STATE_DIRNAME = ".codenib"
 REPO_INDEX_DIRNAME = ".codenib_cache"
+REPOSITORIES_DIRNAME = "repositories"
 QA_DATA_DIRNAME = ".codenib_qa"
 CLANGD_INDEX_DIRNAME = ".codenib-index"
 PROJECT_INSTALL_SENTINEL = ".codenib_install_cache"
@@ -60,7 +63,29 @@ def temp_state_dir() -> Path:
     )
 
 
+def repository_state_key(repo_root: str | Path) -> str:
+    """Return a readable, collision-resistant key for one local checkout."""
+
+    root = Path(repo_root).expanduser().resolve()
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", root.name).strip("-").lower()
+    digest_input = os.path.normcase(str(root)).encode("utf-8", errors="surrogatepass")
+    digest = hashlib.sha256(digest_input).hexdigest()[:12]
+    return f"{slug or 'repository'}-{digest}"
+
+
+def repo_state_dir(repo_root: str | Path) -> Path:
+    """Return the user-owned state directory for one repository checkout."""
+
+    return user_state_dir() / REPOSITORIES_DIRNAME / repository_state_key(repo_root)
+
+
 def repo_index_dir(repo_root: str | Path) -> Path:
-    """Return the default index directory for one repository checkout."""
+    """Return the default user-owned index directory for one repository."""
+
+    return repo_state_dir(repo_root) / "indexes"
+
+
+def legacy_repo_index_dir(repo_root: str | Path) -> Path:
+    """Return the pre-0.1 repository-local index location."""
 
     return Path(repo_root).resolve() / REPO_INDEX_DIRNAME

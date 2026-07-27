@@ -122,7 +122,23 @@ def test_normalize_languages_accepts_aliases_and_commas() -> None:
 
 def test_resolve_manifest_path_accepts_repository_directory(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from codenib.paths import repo_index_dir
+
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    manifest = repo_index_dir(tmp_path) / "repo_manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("{}")
+
+    assert cli.resolve_manifest_path(str(tmp_path)) == manifest
+
+
+def test_resolve_manifest_path_falls_back_to_legacy_repository_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
     manifest = tmp_path / ".codenib_cache" / "repo_manifest.json"
     manifest.parent.mkdir()
     manifest.write_text("{}")
@@ -166,7 +182,13 @@ def test_index_command_uses_fast_preset_by_default(
     }
 
 
-def test_fast_index_builds_fresh_bm25_manifest(tmp_path: Path) -> None:
+def test_fast_index_builds_fresh_bm25_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.paths import repo_index_dir
+
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
     (tmp_path / "sample.py").write_text(
         "def greet(name: str) -> str:\n"
         '    """Return a greeting."""\n'
@@ -182,7 +204,8 @@ def test_fast_index_builds_fresh_bm25_manifest(tmp_path: Path) -> None:
     assert failed == []
     assert manifest.languages == ["python"]
     assert manifest.indexes["bm25"].status == "fresh"
-    assert (tmp_path / ".codenib_cache" / "repo_manifest.json").is_file()
+    assert (repo_index_dir(tmp_path) / "repo_manifest.json").is_file()
+    assert not (tmp_path / ".codenib_cache").exists()
 
 
 def test_semantic_preset_reports_required_extra(

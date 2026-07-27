@@ -71,7 +71,7 @@ def prepare_local_wiki(
     manifest_path = manifest_path.expanduser().resolve()
     manifest = RepoManifest.load(str(manifest_path))
 
-    data_dir = repo_path / ".codenib_cache" / "wiki"
+    data_dir = manifest_path.parent / "wiki"
     data_dir.mkdir(parents=True, exist_ok=True)
     repo_name = _repository_slug(repo_path)
     repo_id = _repo_id(repo_name.rsplit("/", 1)[-1])

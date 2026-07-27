@@ -336,9 +336,10 @@ leaves that language's prior facts in the saved graph. The resulting window is
 therefore a demo artifact, not a commit-exact or fresh-rebuild-validated index;
 operators should inspect warnings and per-language `patch_stats` before using
 it for comparisons. Snapshots plus a `commit_window.json` manifest land under
-`<repo>/.codenib_cache/commit_window/` by default (`--out-dir` overrides), and
-the backend picks them up per repo — no registry change needed. With a window
-present:
+the repository's CodeNib state directory below
+`$CODENIB_HOME/repositories/.../indexes/commit_window/` by default
+(`--out-dir` overrides), and the backend picks them up per repo — no registry
+change needed. With a window present:
 
 - **The graph-snapshot selector.** The wiki's left rail swaps its static *"Last
   indexed \<sha\>"* label for a **"Graph snapshot"** dropdown fed by

@@ -69,7 +69,7 @@ python scripts/index_repo.py /absolute/path/to/your/repo
 The script auto-detects the language from file extensions (override with
 `--language go` — comma- or slash-separated values such as
 `javascript/typescript` also work), builds the BM25 index under
-`<repo>/.codenib_cache/`, and registers the repo in
+`~/.codenib/repositories/<repo>-<id>/indexes`, and registers the repo in
 `.codenib_qa/qa_registry.json` (change the path with `--registry`). Restart
 the backend afterwards to pick up the new repo.
 
@@ -84,13 +84,17 @@ cd ~/projects/CodeNib/CodeNib
 python - <<'EOF'
 from codenib.compiler import IndexCompiler, IndexCompilerConfig
 from codenib.compiler.index_builders import IndexBuilderRegistry, register_default_builders
+from codenib.paths import repo_index_dir
 
 REPO = "/absolute/path/to/your/repo"   # <-- change this
+CACHE = repo_index_dir(REPO)
 
 registry = IndexBuilderRegistry()
 register_default_builders(registry, languages=["python"])  # change language if needed
-IndexCompiler(registry, IndexCompilerConfig(index_types=["bm25"])).compile_repo(REPO)
-print("Done! Index at", REPO + "/.codenib_cache/")
+IndexCompiler(registry, IndexCompilerConfig(index_types=["bm25"])).compile_repo(
+    REPO, cache_dir=str(CACHE)
+)
+print("Done! Index at", CACHE)
 EOF
 ```
 
@@ -105,7 +109,7 @@ it doesn't exist):
     "base_commit": "<git rev-parse HEAD of the repo>",
     "language": "python",
     "repo_dir": "/absolute/path/to/your/repo",
-    "manifest_path": "/absolute/path/to/your/repo/.codenib_cache/repo_manifest.json",
+    "manifest_path": "/home/you/.codenib/repositories/repo-id/indexes/repo_manifest.json",
     "problem_statement": ""
   }
 ]

@@ -161,10 +161,11 @@ def main() -> None:
     # Build BM25 index
     reg = IndexBuilderRegistry()
     register_default_builders(reg, languages=languages)
+    cache_dir = str(repo_index_dir(repo_dir))
     manifest = IndexCompiler(
         reg,
         IndexCompilerConfig(index_types=["bm25"], languages=languages),
-    ).compile_repo(repo_dir)
+    ).compile_repo(repo_dir, cache_dir=cache_dir)
 
     print("\nIndexes built:")
     for name, idx in manifest.indexes.items():
@@ -188,7 +189,7 @@ def main() -> None:
     github_repo = f"{owner}/{repo}"
     instance_id = f"{owner}__{repo}"
     base_commit = get_base_commit(repo_dir)
-    manifest_path = str(repo_index_dir(repo_dir) / "repo_manifest.json")
+    manifest_path = str(Path(cache_dir) / "repo_manifest.json")
 
     entry = {
         "instance_id": instance_id,

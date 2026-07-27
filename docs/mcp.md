@@ -33,9 +33,11 @@ pip install "codenib[graph,mcp]"
 codenib index /path/to/repository --preset graph
 ```
 
-Each build writes
-`<repo>/.codenib_cache/repo_manifest.json`. A failed optional view is recorded
-in the manifest without invalidating successful independent views.
+Each build writes a manifest below
+`$CODENIB_HOME/repositories/<repo>-<id>/indexes` (default
+`~/.codenib/repositories/...`) and prints its exact path. A failed optional
+view is recorded in the manifest without invalidating successful independent
+views.
 
 ## Run The Server
 
@@ -46,7 +48,7 @@ codenib mcp /path/to/repository
 The command also accepts the manifest path directly:
 
 ```bash
-codenib mcp /path/to/repository/.codenib_cache/repo_manifest.json
+codenib mcp ~/.codenib/repositories/<repo>-<id>/indexes/repo_manifest.json
 ```
 
 Transport is stdio and logs go to stderr. A typical client configuration is:

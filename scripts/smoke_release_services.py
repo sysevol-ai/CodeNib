@@ -379,6 +379,9 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
         env=env,
     )
     _run([executable, "index", str(repo)], cwd=root, env=env)
+    status = _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
+    if status:
+        raise RuntimeError(f"indexing modified the target repository: {status!r}")
     _assert_wiki(root, repo, executable=executable, env=env)
     _assert_mcp(root, repo, executable=executable, env=env)
     print("Installed Wiki and MCP service smoke passed")

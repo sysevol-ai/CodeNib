@@ -44,9 +44,10 @@ codenib wiki /path/to/repository
 ```
 
 CodeNib detects the repository languages, builds a reusable index under
-`<repo>/.codenib_cache`, launches the local Wiki, and opens
+`~/.codenib/repositories`, launches the local Wiki, and opens
 [http://localhost:3000](http://localhost:3000). The wheel includes the
-production Wiki frontend, so normal use does not require Node.js or npm.
+production Wiki frontend, so normal use does not require Node.js or npm and
+the target repository stays untouched. Set `CODENIB_HOME` to relocate state.
 
 Check the environment or index without opening the Wiki:
 

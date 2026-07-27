@@ -91,11 +91,18 @@ def resolve_repo_path(value: str) -> Path:
 def resolve_manifest_path(value: str) -> Path:
     """Resolve either a repository directory or a manifest path."""
     from .compiler.manifest import MANIFEST_FILENAME
-    from .paths import REPO_INDEX_DIRNAME
+    from .paths import legacy_repo_index_dir, repo_index_dir
 
     path = Path(value).expanduser().resolve()
     if path.is_dir():
-        path = path / REPO_INDEX_DIRNAME / MANIFEST_FILENAME
+        candidates = (
+            repo_index_dir(path) / MANIFEST_FILENAME,
+            legacy_repo_index_dir(path) / MANIFEST_FILENAME,
+        )
+        path = next(
+            (candidate for candidate in candidates if candidate.is_file()),
+            candidates[0],
+        )
     if not path.is_file():
         raise CLIError(
             f"manifest not found: {path}\n"
@@ -137,7 +144,7 @@ def index_repository(
     from .compiler.index_builders import IndexBuilderRegistry, register_default_builders
     from .compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from .compiler.manifest import MANIFEST_FILENAME
-    from .paths import REPO_INDEX_DIRNAME
+    from .paths import repo_index_dir
 
     registry = IndexBuilderRegistry()
     register_default_builders(registry, languages=list(languages))
@@ -148,11 +155,20 @@ def index_repository(
             languages=list(languages),
         ),
     )
-    manifest_path = repo_path / REPO_INDEX_DIRNAME / MANIFEST_FILENAME
+    cache_dir = repo_index_dir(repo_path)
+    manifest_path = cache_dir / MANIFEST_FILENAME
     if manifest_path.is_file() and not rebuild:
-        manifest = compiler.update_repo(str(repo_path), index_types=list(views))
+        manifest = compiler.update_repo(
+            str(repo_path),
+            index_types=list(views),
+            cache_dir=str(cache_dir),
+        )
     else:
-        manifest = compiler.compile_repo(str(repo_path), index_types=list(views))
+        manifest = compiler.compile_repo(
+            str(repo_path),
+            index_types=list(views),
+            cache_dir=str(cache_dir),
+        )
 
     failed = [
         view
@@ -164,9 +180,9 @@ def index_repository(
 
 def _print_index_summary(manifest, views: Sequence[str]) -> None:
     from .compiler.manifest import MANIFEST_FILENAME
-    from .paths import REPO_INDEX_DIRNAME
+    from .paths import repo_index_dir
 
-    manifest_path = Path(manifest.repo_path) / REPO_INDEX_DIRNAME / MANIFEST_FILENAME
+    manifest_path = repo_index_dir(manifest.repo_path) / MANIFEST_FILENAME
     print(f"Repository: {manifest.repo_path}")
     print(f"Languages:  {', '.join(manifest.languages)}")
     print(f"Manifest:   {manifest_path}")

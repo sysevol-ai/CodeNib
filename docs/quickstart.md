@@ -31,14 +31,16 @@ codenib wiki /path/to/repository
 CodeNib performs four steps:
 
 1. Detects supported source languages.
-2. Builds or updates the repository views under
-   `<repo>/.codenib_cache`.
+2. Builds or updates repository views under
+   `~/.codenib/repositories/<repo>-<id>/indexes`.
 3. Registers the repository with a local FastAPI service.
 4. Serves the packaged production frontend and opens
    [http://localhost:3000](http://localhost:3000).
 
 The release wheel contains the compiled frontend, so this path does not need
-Node.js, npm, or a source checkout. Press `Ctrl-C` once to stop both services.
+Node.js, npm, or a source checkout. Indexing does not write into the target
+repository. Set `CODENIB_HOME` to relocate all user-owned state. Press
+`Ctrl-C` once to stop both services.
 
 Use different ports or keep the browser closed when needed:
 
@@ -100,7 +102,19 @@ through a LiteLLM-supported provider:
 ```bash
 pip install "codenib[agent]"
 export OPENAI_API_KEY=...
+codenib doctor --require agent \
+  --model openai/gpt-4o-mini --api-key-env OPENAI_API_KEY --probe-model
 codenib wiki . --generate --model openai/gpt-4o-mini
+```
+
+For an OpenAI-compatible local or hosted endpoint:
+
+```bash
+export LOCAL_LLM_KEY=...
+codenib wiki . --generate \
+  --model openai/local-model \
+  --api-base http://127.0.0.1:8000/v1 \
+  --api-key-env LOCAL_LLM_KEY
 ```
 
 Provider and model configuration is documented in
