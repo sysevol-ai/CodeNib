@@ -16,34 +16,13 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from ._version import package_version
+from .repository_filters import DEFAULT_IGNORED_DIRS
 
 _PRESET_VIEWS = {
     "fast": ("bm25",),
     "semantic": ("bm25", "vector"),
     "full": ("bm25", "vector", "symbol_graph", "zoekt"),
 }
-
-_SKIP_DIRS = frozenset(
-    {
-        ".codenib_cache",
-        ".git",
-        ".hg",
-        ".mypy_cache",
-        ".next",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".tox",
-        ".venv",
-        "__pycache__",
-        "build",
-        "dist",
-        "htmlcov",
-        "node_modules",
-        "site",
-        "target",
-        "venv",
-    }
-)
 
 
 class CLIError(RuntimeError):
@@ -69,7 +48,8 @@ def detect_languages(repo_path: str | os.PathLike[str]) -> list[str]:
         dirs[:] = sorted(
             directory
             for directory in dirs
-            if directory not in _SKIP_DIRS and not directory.startswith(".codenib")
+            if directory not in DEFAULT_IGNORED_DIRS
+            and not directory.startswith(".codenib")
         )
         for filename in files:
             language = extension_map.get(Path(filename).suffix.lower())
@@ -235,11 +215,15 @@ def _run_wiki(args: argparse.Namespace) -> int:
     languages = _selected_languages(repo_path, args.language)
     views = _selected_views(args.preset, args.view)
     _check_view_dependencies(views)
-    if args.agent_wiki:
+    if args.agent_wiki or args.model or args.api_base or args.api_key_env:
         _require_modules(
             ("litellm",),
             extra="agent",
-            feature="agent-authored Wiki pages",
+            feature="model-backed Wiki features",
+        )
+    if args.api_key_env and not os.environ.get(args.api_key_env):
+        raise CLIError(
+            "API key environment variable is unset or empty: " f"{args.api_key_env}"
         )
 
     if args.no_index:
@@ -267,6 +251,9 @@ def _run_wiki(args: argparse.Namespace) -> int:
         manifest_path,
         frontend_port=args.port,
         agent_wiki=args.agent_wiki,
+        model=args.model,
+        api_base=args.api_base,
+        api_key_env=args.api_key_env,
     )
     try:
         return launch_local_wiki(
@@ -315,19 +302,71 @@ def _check_view_dependencies(views: Sequence[str]) -> None:
         )
     if "symbol_graph" in views:
         _require_modules(
-            ("igraph",),
+            ("igraph", "matplotlib"),
             extra="graph",
             feature="the symbol graph view",
         )
 
 
-def _doctor_rows() -> dict[str, list[tuple[str, bool, str]]]:
+def _doctor_model_config(
+    args: argparse.Namespace,
+) -> tuple[str, bool, str] | None:
+    model = (
+        getattr(args, "model", None)
+        or os.environ.get("CODENIB_DEMO_WIKI_MODEL")
+        or os.environ.get("CODENIB_DEMO_MODEL")
+    )
+    if not model:
+        return None
+    api_base = (
+        getattr(args, "api_base", None)
+        or os.environ.get("CODENIB_DEMO_WIKI_API_BASE")
+        or os.environ.get("CODENIB_DEMO_API_BASE")
+    )
+    key_env = getattr(args, "api_key_env", None)
+    api_key = (
+        os.environ.get(key_env)
+        if key_env
+        else os.environ.get("CODENIB_DEMO_WIKI_API_KEY")
+        or os.environ.get("CODENIB_DEMO_API_KEY")
+    )
+    if key_env and not api_key:
+        return (
+            "Model configuration",
+            False,
+            f"{model}; {key_env} is unset or empty",
+        )
+    if not _check_module("litellm"):
+        return ("Model configuration", False, f"{model}; LiteLLM is missing")
+    try:
+        from .llm import litellm_chat
+
+        result = litellm_chat.litellm.validate_environment(
+            model=model,
+            api_base=api_base,
+            api_key=api_key,
+        )
+    except Exception as exc:  # noqa: BLE001 - diagnostic must report, not crash
+        return ("Model configuration", False, f"{model}; {exc}")
+
+    missing = result.get("missing_keys") or []
+    ok = bool(result.get("keys_in_environment")) and not missing
+    endpoint = f"; endpoint={api_base}" if api_base else ""
+    detail = f"{model}{endpoint}"
+    if missing:
+        detail += "; missing " + ", ".join(str(key) for key in missing)
+    return ("Model configuration", ok, detail)
+
+
+def _doctor_rows(
+    args: argparse.Namespace | None = None,
+) -> dict[str, list[tuple[str, bool, str]]]:
     from .web.launcher import find_frontend_dir, node_runtime_status
 
     py_ok = sys.version_info >= (3, 10)
     frontend = find_frontend_dir()
     node_ok, node_detail = node_runtime_status()
-    return {
+    rows = {
         "core": [
             ("Python >= 3.10", py_ok, sys.version.split()[0]),
             ("git", shutil.which("git") is not None, shutil.which("git") or "missing"),
@@ -428,11 +467,56 @@ def _doctor_rows() -> dict[str, list[tuple[str, bool, str]]]:
             ),
         ],
     }
+    if args is not None:
+        model_check = _doctor_model_config(args)
+        if model_check is not None:
+            rows["agent"].append(model_check)
+    return rows
+
+
+def _probe_doctor_model(args: argparse.Namespace) -> tuple[bool, str]:
+    model = (
+        args.model
+        or os.environ.get("CODENIB_DEMO_WIKI_MODEL")
+        or os.environ.get("CODENIB_DEMO_MODEL")
+    )
+    if not model:
+        return False, "set --model or CODENIB_DEMO_MODEL"
+    api_base = (
+        args.api_base
+        or os.environ.get("CODENIB_DEMO_WIKI_API_BASE")
+        or os.environ.get("CODENIB_DEMO_API_BASE")
+    )
+    api_key = (
+        os.environ.get(args.api_key_env)
+        if args.api_key_env
+        else os.environ.get("CODENIB_DEMO_WIKI_API_KEY")
+        or os.environ.get("CODENIB_DEMO_API_KEY")
+    )
+    try:
+        from .llm.litellm_chat import LiteLLMChat, RetryConfig
+
+        response = LiteLLMChat(
+            model=model,
+            temperature=0.0,
+            max_tokens=8,
+            api_base=api_base,
+            api_key=api_key,
+            retry=RetryConfig(max_retries=0),
+        ).complete(
+            [{"role": "user", "content": "Reply with OK."}],
+            timeout=20,
+        )
+    except Exception as exc:  # noqa: BLE001 - diagnostic result
+        return False, str(exc)
+    return bool(response), "response received" if response else "empty response"
 
 
 def _run_doctor(args: argparse.Namespace) -> int:
     required = set(args.require or ["core"])
-    rows = _doctor_rows()
+    rows = _doctor_rows(args)
+    if args.probe_model:
+        rows["agent"].append(("Model probe", *_probe_doctor_model(args)))
     failed_required = False
     print(f"CodeNib {package_version()}")
     for group, checks in rows.items():
@@ -501,9 +585,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="reuse an existing manifest without updating it",
     )
     wiki_parser.add_argument(
+        "--generate",
         "--agent-wiki",
+        dest="agent_wiki",
         action="store_true",
-        help="generate conceptual pages with the configured LLM",
+        help="generate conceptual, source-grounded pages with the configured LLM",
+    )
+    wiki_parser.add_argument(
+        "--model",
+        help="LiteLLM model string used for Wiki generation and Ask",
+    )
+    wiki_parser.add_argument(
+        "--api-base",
+        help="optional OpenAI-compatible API base for the configured model",
+    )
+    wiki_parser.add_argument(
+        "--api-key-env",
+        help="name of the environment variable containing the model API key",
     )
     wiki_parser.add_argument("--host", default="127.0.0.1")
     wiki_parser.add_argument("--port", type=int, default=3000)
@@ -549,6 +647,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         choices=("core", "wiki", "semantic", "graph", "agent", "mcp"),
         help="capability group that must pass; repeat as needed",
+    )
+    doctor_parser.add_argument(
+        "--model",
+        help="LiteLLM model string to validate",
+    )
+    doctor_parser.add_argument(
+        "--api-base",
+        help="optional OpenAI-compatible API base to validate",
+    )
+    doctor_parser.add_argument(
+        "--api-key-env",
+        help="name of the environment variable containing the model API key",
+    )
+    doctor_parser.add_argument(
+        "--probe-model",
+        action="store_true",
+        help="send one minimal model request after validating configuration",
     )
     doctor_parser.set_defaults(handler=_run_doctor)
 

@@ -62,7 +62,12 @@ def _patch_llm(monkeypatch, fake: _FakeLLM) -> None:
 # --- helpers -------------------------------------------------------------------
 
 
-def _make_labeler(tmp_path, sources: Optional[Dict[str, str]] = None, model="test/m"):
+def _make_labeler(
+    tmp_path,
+    sources: Optional[Dict[str, str]] = None,
+    model="test/m",
+    **kwargs,
+):
     sources = sources or {}
 
     def source_fn(file, start, end):
@@ -75,6 +80,7 @@ def _make_labeler(tmp_path, sources: Optional[Dict[str, str]] = None, model="tes
         model=model,
         cache_dir=str(tmp_path),
         cache_namespace="inst@abc123",
+        **kwargs,
     )
 
 
@@ -206,3 +212,37 @@ def test_persists_to_disk_and_reloads(tmp_path, monkeypatch):
     assert label == "loads db config"
     assert cached is True
     assert fake2.calls == 0
+
+
+def test_cache_is_scoped_to_model(tmp_path, monkeypatch):
+    first = _FakeLLM("first model")
+    _patch_llm(monkeypatch, first)
+    _label(_make_labeler(tmp_path, _SRC, model="test/first"))
+    assert first.calls == 1
+
+    second = _FakeLLM("second model")
+    _patch_llm(monkeypatch, second)
+    label, cached = _label(_make_labeler(tmp_path, _SRC, model="test/second"))
+
+    assert label == "second model"
+    assert cached is False
+    assert second.calls == 1
+
+
+def test_injected_client_is_used(tmp_path):
+    class Client:
+        cache_identity = "provider-a"
+
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, messages, **kwargs):
+            self.calls.append((messages, kwargs))
+            return "routes request"
+
+    client = Client()
+    label, cached = _label(_make_labeler(tmp_path, _SRC, llm=client))
+
+    assert label == "routes request"
+    assert cached is False
+    assert client.calls[0][1]["timeout"] == 30

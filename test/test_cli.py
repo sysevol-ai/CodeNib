@@ -4,11 +4,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from codenib import cli
 from codenib.web import launcher
@@ -21,6 +23,76 @@ def test_parser_exposes_release_commands() -> None:
     for command in ("index", "wiki", "mcp", "doctor"):
         args = parser.parse_args([command])
         assert args.command == command
+
+
+def test_doctor_parser_accepts_model_backend_options() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "doctor",
+            "--require",
+            "agent",
+            "--model",
+            "openai/local-model",
+            "--api-base",
+            "http://localhost:4000/v1",
+            "--api-key-env",
+            "LOCAL_LLM_KEY",
+            "--probe-model",
+        ]
+    )
+
+    assert args.model == "openai/local-model"
+    assert args.api_base == "http://localhost:4000/v1"
+    assert args.api_key_env == "LOCAL_LLM_KEY"
+    assert args.probe_model is True
+
+
+def test_doctor_model_config_reports_missing_named_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MISSING_LLM_KEY", raising=False)
+    args = SimpleNamespace(
+        model="openai/local-model",
+        api_base="http://localhost:4000/v1",
+        api_key_env="MISSING_LLM_KEY",
+    )
+
+    label, ok, detail = cli._doctor_model_config(args)
+
+    assert label == "Model configuration"
+    assert ok is False
+    assert "MISSING_LLM_KEY is unset" in detail
+
+
+def test_doctor_model_config_uses_litellm_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import litellm
+
+    captured = {}
+
+    def validate_environment(**kwargs):
+        captured.update(kwargs)
+        return {"keys_in_environment": True, "missing_keys": []}
+
+    monkeypatch.setenv("LOCAL_LLM_KEY", "secret")
+    monkeypatch.setattr(cli, "_check_module", lambda _name: True)
+    monkeypatch.setattr(litellm, "validate_environment", validate_environment)
+    args = SimpleNamespace(
+        model="openai/local-model",
+        api_base="http://localhost:4000/v1",
+        api_key_env="LOCAL_LLM_KEY",
+    )
+
+    _, ok, detail = cli._doctor_model_config(args)
+
+    assert ok is True
+    assert "endpoint=http://localhost:4000/v1" in detail
+    assert captured == {
+        "model": "openai/local-model",
+        "api_base": "http://localhost:4000/v1",
+        "api_key": "secret",
+    }
 
 
 def test_detect_languages_orders_by_file_count_and_skips_generated_dirs(
@@ -171,6 +243,77 @@ def test_prepare_local_wiki_writes_single_repo_registry(
     assert local.config_path.is_file()
     assert (local.data_dir / "qa_registry.json").is_file()
     assert local.repo_id == tmp_path.name.lower()
+
+
+def test_prepare_local_wiki_uses_github_origin_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import RepoManifest
+
+    manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
+    manifest_path.parent.mkdir()
+    RepoManifest(
+        repo_path=str(tmp_path),
+        commit="abc123",
+        languages=["python"],
+    ).save(str(manifest_path))
+    monkeypatch.setattr(
+        "codenib.web.local._origin_url",
+        lambda _repo_path: "git@github.com:Example/Project.git",
+    )
+
+    local = prepare_local_wiki(
+        tmp_path,
+        manifest_path,
+        frontend_port=3000,
+    )
+
+    registry = json.loads((local.data_dir / "qa_registry.json").read_text())
+    assert local.repo_id == "project"
+    assert registry[0]["repo"] == "example/project"
+
+
+def test_prepare_generated_wiki_keeps_secret_out_of_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import IndexEntry, RepoManifest
+
+    manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
+    manifest_path.parent.mkdir()
+    RepoManifest(
+        repo_path=str(tmp_path),
+        commit="abc123",
+        languages=["python"],
+        indexes={
+            "bm25": IndexEntry(
+                index_type="bm25",
+                path=str(manifest_path.parent / "bm25"),
+                built_at="2026-07-25T00:00:00+00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+            )
+        },
+    ).save(str(manifest_path))
+    monkeypatch.setenv("LOCAL_LLM_KEY", "super-secret")
+
+    local = prepare_local_wiki(
+        tmp_path,
+        manifest_path,
+        frontend_port=3000,
+        agent_wiki=True,
+        model="openai/local-model",
+        api_base="http://localhost:4000/v1",
+        api_key_env="LOCAL_LLM_KEY",
+    )
+
+    config = yaml.safe_load(local.config_path.read_text())
+    assert config["wiki_agent"] is True
+    assert config["model"] == "openai/local-model"
+    assert config["model_api_base"] == "http://localhost:4000/v1"
+    assert "key" not in local.config_path.read_text().lower()
+    assert local.runtime_env == {"CODENIB_DEMO_API_KEY": "super-secret"}
 
 
 def test_packaged_frontend_is_materialized_in_user_state(

@@ -28,10 +28,9 @@ import json
 import os
 import re
 import threading
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..log_utils import get_logger
-from ..wiki.narrator import _no_thinking_kwargs
 
 logger = get_logger(__name__)
 
@@ -50,6 +49,7 @@ _LLM_TIMEOUT_S = 30
 _MAX_CODE_CHARS = 1500  # per symbol body fed to the LLM
 _MAX_ANCHORS = 3
 _UNIT_SEP = "\x1f"
+_PROMPT_VERSION = "2"
 
 # source_fn(file, start_1based, end_1based) -> {"content": str, ...} | None
 SourceFn = Callable[[str, Optional[int], Optional[int]], Optional[dict]]
@@ -83,6 +83,10 @@ class EdgeLabeler:
         model: str,
         cache_dir: Optional[str],
         cache_namespace: str,
+        *,
+        llm: Any = None,
+        api_base: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> None:
         """
         Args:
@@ -95,6 +99,10 @@ class EdgeLabeler:
         """
         self._source = source_fn
         self._model = model
+        self._llm = llm
+        self._llm_identity = getattr(llm, "cache_identity", "")
+        self._api_base = api_base
+        self._api_key = api_key
         self._cache_dir = cache_dir
         self._lock = threading.Lock()
         self._cache: Optional[Dict[str, str]] = None  # loaded lazily
@@ -183,6 +191,19 @@ class EdgeLabeler:
 
     # -- LLM ---------------------------------------------------------------
 
+    def _client(self):
+        if self._llm is None:
+            from ..llm.litellm_chat import LiteLLMChat
+
+            self._llm = LiteLLMChat(
+                model=self._model,
+                temperature=0.0,
+                max_tokens=_MAX_TOKENS,
+                api_base=self._api_base,
+                api_key=self._api_key,
+            )
+        return self._llm
+
     def _generate(
         self,
         src_name: str,
@@ -204,17 +225,12 @@ class EdgeLabeler:
             anchor_block=anchor_block,
         )
         try:
-            import litellm
-
-            resp = litellm.completion(
-                model=self._model,
-                messages=[{"role": "user", "content": prompt}],
+            text = self._client().complete(
+                [{"role": "user", "content": prompt}],
                 max_tokens=_MAX_TOKENS,
                 temperature=0.0,
                 timeout=_LLM_TIMEOUT_S,
-                **_no_thinking_kwargs(self._model),
             )
-            text = resp.choices[0].message.content or ""
         except Exception as exc:  # noqa: BLE001 - transient/model errors degrade to ""
             logger.warning("edge-label generation failed (%s): %s", self._model, exc)
             return ""
@@ -223,8 +239,18 @@ class EdgeLabeler:
     # -- cache -------------------------------------------------------------
 
     def _key(self, src_code: str, tgt_code: str, anchor_block: str = "") -> str:
-        raw = (src_code + _UNIT_SEP + tgt_code + _UNIT_SEP + anchor_block).encode(
-            "utf-8"
+        raw = _UNIT_SEP.join(
+            (
+                _PROMPT_VERSION,
+                self._model,
+                self._api_base or "",
+                self._llm_identity,
+                src_code,
+                tgt_code,
+                anchor_block,
+            )
+        ).encode(
+            "utf-8",
         )
         return hashlib.sha1(raw).hexdigest()
 

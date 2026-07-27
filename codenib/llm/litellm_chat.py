@@ -15,19 +15,40 @@ with a single thin wrapper that provides the same two-method interface:
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import os
 import random
 import re
 import time
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Type
 
-import litellm
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+warnings.filterwarnings(
+    "ignore",
+    message=r"Pydantic serializer warnings",
+    category=UserWarning,
+    module=r"pydantic\.main",
+)
+with warnings.catch_warnings():
+    # Some LiteLLM integrations still attach Pydantic v1-style field metadata
+    # during import. It is an upstream compatibility warning, not a CodeNib
+    # configuration failure, and otherwise overwhelms one-command CLI output.
+    warnings.simplefilter("ignore")
+    import litellm
 from pydantic import BaseModel
 
 from ..log_utils import get_logger
 
 logger = get_logger(__name__)
+
+# Keep provider internals behind CodeNib's concise retry/error reporting.
+litellm.suppress_debug_info = True
+litellm.turn_off_message_logging = True
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +252,28 @@ class LiteLLMChat:
         response = self._call(messages)
         return response.choices[0].message.content
 
+    def complete(
+        self,
+        messages: List[Dict[str, Any]],
+        **overrides: Any,
+    ) -> str:
+        """Complete raw LiteLLM message dictionaries and return text content."""
+
+        response = self._call_raw(messages, **overrides)
+        return (response.choices[0].message.content or "").strip()
+
+    @property
+    def cache_identity(self) -> str:
+        """Stable non-secret identity for model-dependent artifact caches."""
+
+        payload = {
+            "model": self.model,
+            "api_base": self.api_base or "",
+            "extra_keys": sorted(self.extra_kwargs),
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
+
     def with_structured_output(self, schema: Type[BaseModel]) -> _StructuredLLM:
         """Return a callable that parses LLM responses into *schema*."""
         return _StructuredLLM(chat=self, schema=schema)
@@ -304,7 +347,13 @@ class LiteLLMChat:
         last_exc: Optional[BaseException] = None
         for attempt in range(max_retries + 1):
             try:
-                return litellm.completion(**kwargs)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=r"Pydantic serializer warnings",
+                        category=UserWarning,
+                    )
+                    return litellm.completion(**kwargs)
             except Exception as exc:  # noqa: BLE001 -- classified below
                 last_exc = exc
                 if attempt >= max_retries or not is_transient_error(exc):

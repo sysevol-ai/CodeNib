@@ -198,6 +198,7 @@ def launch_local_wiki(
     env["CODENIB_DEMO_CONFIG"] = str(local.config_path)
     env["CODENIB_API_BASE"] = f"http://{_loopback_host(api_host)}:{api_port}"
     env.pop("NEXT_PUBLIC_API_BASE", None)
+    env.update(local.runtime_env)
 
     backend: subprocess.Popen | None = None
     frontend_process: subprocess.Popen | None = None

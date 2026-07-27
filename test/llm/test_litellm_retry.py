@@ -110,6 +110,46 @@ class TestIsTransientError:
 
 
 class TestCompletionWithRetry:
+    def test_complete_returns_stripped_text_and_forwards_endpoint(self):
+        chat = LiteLLMChat(
+            model="openai/local",
+            api_base="http://localhost:4000/v1",
+            api_key="secret",
+            retry=RetryConfig(max_retries=0),
+        )
+        with patch(
+            "codenib.llm.litellm_chat.litellm.completion",
+            return_value=_make_response("  answer  "),
+        ) as mock_completion:
+            text = chat.complete([{"role": "user", "content": "hi"}], max_tokens=12)
+
+        assert text == "answer"
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs["api_base"] == "http://localhost:4000/v1"
+        assert kwargs["api_key"] == "secret"
+        assert kwargs["max_tokens"] == 12
+
+    def test_cache_identity_excludes_secret_but_tracks_endpoint(self):
+        first = LiteLLMChat(
+            model="openai/local",
+            api_base="http://one/v1",
+            api_key="first-secret",
+        )
+        rotated = LiteLLMChat(
+            model="openai/local",
+            api_base="http://one/v1",
+            api_key="rotated-secret",
+        )
+        moved = LiteLLMChat(
+            model="openai/local",
+            api_base="http://two/v1",
+            api_key="first-secret",
+        )
+
+        assert first.cache_identity == rotated.cache_identity
+        assert first.cache_identity != moved.cache_identity
+        assert "secret" not in first.cache_identity
+
     def test_transient_then_success_is_retried(self):
         """A transient error once, then success → retried and returns success."""
         chat = LiteLLMChat(

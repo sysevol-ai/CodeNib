@@ -68,6 +68,7 @@ def test_load_config_from_yaml(tmp_path):
     cfg_file.write_text(
         "model: my-model\n"
         "wiki_model: wiki-model\n"
+        "wiki_api_base: http://wiki.example/v1\n"
         "model_api_base: http://ask.example/v1\n"
         "mode: hybrid\n"
         "embedding_provider: openai\n"
@@ -80,6 +81,7 @@ def test_load_config_from_yaml(tmp_path):
     cfg = load_config(str(cfg_file))
     assert cfg.model == "my-model"
     assert cfg.wiki_generation_model == "wiki-model"
+    assert cfg.wiki_generation_api_base == "http://wiki.example/v1"
     assert cfg.model_api_base == "http://ask.example/v1"
     assert cfg.mode == "hybrid"
     assert cfg.embedding_provider == "openai"
@@ -99,6 +101,8 @@ def test_backend_environment_overrides_yaml(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("CODENIB_DEMO_MODEL", "env-ask")
     monkeypatch.setenv("CODENIB_DEMO_WIKI_MODEL", "env-wiki")
+    monkeypatch.setenv("CODENIB_DEMO_WIKI_API_BASE", "http://wiki.local/v1")
+    monkeypatch.setenv("CODENIB_DEMO_WIKI_API_KEY", "wiki-secret")
     monkeypatch.setenv("CODENIB_DEMO_API_BASE", "http://ask.local/v1")
     monkeypatch.setenv("CODENIB_EMBEDDING_PROVIDER", "OPENAI")
     monkeypatch.setenv("CODENIB_EMBEDDING_BASE_URL", "http://embed.local/v1")
@@ -107,9 +111,21 @@ def test_backend_environment_overrides_yaml(tmp_path, monkeypatch):
 
     assert cfg.model == "env-ask"
     assert cfg.wiki_generation_model == "env-wiki"
+    assert cfg.wiki_generation_api_base == "http://wiki.local/v1"
+    assert cfg.wiki_generation_api_key == "wiki-secret"
     assert cfg.model_api_base == "http://ask.local/v1"
     assert cfg.embedding_provider == "openai"
     assert cfg.embedding_base_url == "http://embed.local/v1"
+
+
+def test_wiki_backend_falls_back_to_ask_backend():
+    cfg = QAConfig(
+        model_api_base="http://ask.local/v1",
+        model_api_key="ask-secret",
+    )
+
+    assert cfg.wiki_generation_api_base == "http://ask.local/v1"
+    assert cfg.wiki_generation_api_key == "ask-secret"
 
 
 def test_rejects_unknown_embedding_provider(tmp_path):

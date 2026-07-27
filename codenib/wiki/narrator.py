@@ -19,7 +19,7 @@ import hashlib
 import json
 import logging
 import os
-from typing import List, Optional
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ _SYSTEM = (
     "code. Do NOT include code blocks, headings, file paths, or line numbers — "
     "prose only. Be specific and avoid filler; no marketing language."
 )
+_PROMPT_VERSION = "2"
 
 
 def _no_thinking_kwargs(model: str) -> dict:
@@ -57,6 +58,9 @@ class Narrator:
         model: Optional[str] = None,
         cache_dir: Optional[str] = None,
         enabled: Optional[bool] = None,
+        llm: Optional[Any] = None,
+        api_base: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> None:
         self.model = (
             model
@@ -64,6 +68,9 @@ class Narrator:
             or os.environ.get("CODENIB_DEMO_MODEL")
             or "openai/gpt-4o-mini"
         )
+        self._llm = llm
+        self.api_base = api_base
+        self.api_key = api_key
         self.cache_dir = cache_dir
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
@@ -71,9 +78,13 @@ class Narrator:
         self.enabled = self._usable() if auto_enabled else enabled
         if not self.enabled:
             reason = "no usable credentials" if auto_enabled else "configuration"
-            logger.info("Wiki narrator disabled by %s for %s", reason, self.model)
+            logger.debug("Wiki narrator disabled by %s for %s", reason, self.model)
 
     def _usable(self) -> bool:
+        if self._llm is not None:
+            return True
+        if self.api_key or self.api_base:
+            return True
         m = self.model.lower()
         if m.startswith("openai/") or m.startswith("gpt-"):
             return bool(os.environ.get("OPENAI_API_KEY"))
@@ -90,7 +101,12 @@ class Narrator:
     def _cache_file(self, key: str) -> Optional[str]:
         if not self.cache_dir:
             return None
-        h = hashlib.sha1(key.encode("utf-8")).hexdigest()[:20]
+        llm_identity = getattr(self._llm, "cache_identity", "")
+        identity = (
+            f"{_PROMPT_VERSION}\0{self.model}\0{self.api_base or ''}\0"
+            f"{llm_identity}\0{key}"
+        )
+        h = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:20]
         return os.path.join(self.cache_dir, f"{h}.json")
 
     def _read_cache(self, key: str) -> Optional[str]:
@@ -116,6 +132,19 @@ class Narrator:
 
     # -- core call ---------------------------------------------------------
 
+    def _client(self):
+        if self._llm is None:
+            from ..llm.litellm_chat import LiteLLMChat
+
+            self._llm = LiteLLMChat(
+                model=self.model,
+                temperature=0.2,
+                max_tokens=500,
+                api_base=self.api_base,
+                api_key=self.api_key,
+            )
+        return self._llm
+
     def _complete(self, key: str, prompt: str, max_tokens: int = 400) -> Optional[str]:
         cached = self._read_cache(key)
         if cached is not None:
@@ -123,21 +152,15 @@ class Narrator:
         if not self.enabled:
             return None
         try:
-            import litellm
-
-            extra = _no_thinking_kwargs(self.model)
-            resp = litellm.completion(
-                model=self.model,
-                messages=[
+            text = self._client().complete(
+                [
                     {"role": "system", "content": _SYSTEM},
                     {"role": "user", "content": prompt},
                 ],
                 max_tokens=max_tokens,
                 temperature=0.2,
                 timeout=40,
-                **extra,
             )
-            text = (resp.choices[0].message.content or "").strip()
             if text:
                 self._write_cache(key, text)
                 return text

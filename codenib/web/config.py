@@ -54,6 +54,8 @@ class QAConfig:
     # Wiki prose and edge labels may use a separate provider/model. When unset,
     # they use ``model``.
     wiki_model: Optional[str] = None
+    wiki_api_base: Optional[str] = None
+    wiki_api_key: Optional[str] = field(default=None, repr=False)
     # Optional OpenAI-compatible endpoint for the Ask agent. Provider-native
     # models (for example Vertex or Anthropic) normally leave these unset.
     model_api_base: Optional[str] = None
@@ -127,6 +129,18 @@ class QAConfig:
         """Model used by wiki and edge-label generation."""
         return self.wiki_model or self.model
 
+    @property
+    def wiki_generation_api_base(self) -> Optional[str]:
+        """Endpoint used by wiki generation, falling back to the Ask endpoint."""
+
+        return self.wiki_api_base or self.model_api_base
+
+    @property
+    def wiki_generation_api_key(self) -> Optional[str]:
+        """Credential used by wiki generation, falling back to the Ask key."""
+
+        return self.wiki_api_key or self.model_api_key
+
 
 def load_config(path: Optional[str] = None) -> QAConfig:
     """Load demo config from YAML, applying env overrides."""
@@ -140,6 +154,8 @@ def load_config(path: Optional[str] = None) -> QAConfig:
     cfg = QAConfig(
         model=data.get("model", defaults.model),
         wiki_model=data.get("wiki_model"),
+        wiki_api_base=data.get("wiki_api_base"),
+        wiki_api_key=data.get("wiki_api_key"),
         model_api_base=data.get("model_api_base"),
         model_api_key=data.get("model_api_key"),
         mode=data.get("mode", defaults.mode),
@@ -180,6 +196,10 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.model = os.environ["CODENIB_DEMO_MODEL"]
     if os.environ.get("CODENIB_DEMO_WIKI_MODEL"):
         cfg.wiki_model = os.environ["CODENIB_DEMO_WIKI_MODEL"]
+    if os.environ.get("CODENIB_DEMO_WIKI_API_BASE"):
+        cfg.wiki_api_base = os.environ["CODENIB_DEMO_WIKI_API_BASE"]
+    if os.environ.get("CODENIB_DEMO_WIKI_API_KEY"):
+        cfg.wiki_api_key = os.environ["CODENIB_DEMO_WIKI_API_KEY"]
     if os.environ.get("CODENIB_DEMO_API_BASE"):
         cfg.model_api_base = os.environ["CODENIB_DEMO_API_BASE"]
     if os.environ.get("CODENIB_DEMO_API_KEY"):

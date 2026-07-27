@@ -223,6 +223,24 @@ class RepoBundle:
             self._code_graph = None
         return self._code_graph
 
+    def graph_unavailable_note(self) -> str:
+        """Return an actionable reason when the dependency graph cannot load."""
+
+        entry = self.manifest.indexes.get("symbol_graph")
+        if entry is None:
+            return (
+                "Dependency graph is not built. Install codenib[graph], then "
+                "add --view symbol_graph when indexing."
+            )
+        if entry.status == "stale":
+            return "Dependency graph is stale for this commit and must be updated."
+        if entry.status == "failed":
+            detail = str(entry.metadata.get("error") or "").strip()
+            if detail:
+                return f"Dependency graph build failed: {detail[:240]}"
+            return "Dependency graph build failed; inspect the index build output."
+        return "Dependency graph artifact could not be loaded; rebuild symbol_graph."
+
     def hierarchical_graph(self):
         """Lazily build + cache the repo-level compound graph for CodeGraph UI."""
         if getattr(self, "_hierarchical_graph_loaded", False):
