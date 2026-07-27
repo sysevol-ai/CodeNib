@@ -149,6 +149,55 @@ def test_fact_plan_renderer_drops_unsupported_claims():
     assert "`MagicIndex`" not in markdown
 
 
+def test_fact_plan_renderer_deduplicates_fallback_intro():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/runtime.py",
+            start_line=1,
+            end_line=8,
+            symbol="run",
+            kind="function",
+            content="def run(): pass",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/runtime.py",
+            start_line=10,
+            end_line=18,
+            symbol="load_config",
+            kind="function",
+            content="def load_config(): pass",
+        ),
+    ]
+    first = "The `run` function starts the runtime."
+    markdown = _fact_plan_markdown(
+        {
+            "sections": [
+                {
+                    "title": "Runtime",
+                    "claims": [
+                        {"statement": first, "evidence": ["E1"]},
+                        {
+                            "statement": (
+                                "The `load_config` function reads the runtime "
+                                "configuration before requests are served"
+                            ),
+                            "evidence": ["E2"],
+                        },
+                    ],
+                }
+            ]
+        },
+        evidence,
+        [],
+    )
+
+    assert markdown.count(first) == 1
+    assert "## Runtime" in markdown
+    assert "`load_config`" in markdown
+
+
 def test_readme_intro_skips_logo_markup():
     evidence = [
         EvidenceItem(

@@ -58,7 +58,7 @@ _EXT_LANG = {
     "kts": "kotlin",
 }
 _MAX_CONTEXT_CHARS = 14000
-_PROMPT_VERSION = "12"
+_PROMPT_VERSION = "13"
 
 
 def _slug(text: str) -> str:
@@ -241,6 +241,12 @@ def _fact_plan_markdown(
     elif first_claim is not None:
         statement, ids = first_claim
         intro_text = statement + " " + "".join(f"[{item}]" for item in ids)
+        title, paragraph = rendered_sections[0]
+        if paragraph.startswith(statement):
+            remainder = paragraph[len(statement) :].lstrip()
+            prose = re.sub(r"\[(?:E|R)\d+\]", "", remainder).strip()
+            if len(prose) >= 40:
+                rendered_sections[0] = (title, remainder)
     else:
         return ""
     blocks = [intro_text]
