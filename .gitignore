@@ -39,6 +39,7 @@ web/loop/
 web/LOOP.md
 web/node_modules/
 web/.next/
+web/dist/
 web/out/
 web/next-env.d.ts
 web/*.tsbuildinfo

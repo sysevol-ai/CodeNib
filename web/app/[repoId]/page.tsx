@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
@@ -107,9 +106,7 @@ function commitEvidence(commits: CommitRef[], selected?: string): string | null 
   return parts.length ? parts.join(" · ") : null;
 }
 
-export default function WikiPageView() {
-  const params = useParams<{ repoId: string }>();
-  const repoId = decodeURIComponent(params.repoId);
+export default function WikiPageView({ repoId }: { repoId: string }) {
 
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);

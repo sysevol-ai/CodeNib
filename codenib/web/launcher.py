@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import shutil
@@ -19,7 +18,6 @@ import webbrowser
 from pathlib import Path
 from typing import Optional
 
-from ..paths import user_state_dir
 from .local import LocalWiki
 
 _MIN_NODE_VERSION = (18, 18, 0)
@@ -30,7 +28,7 @@ def _packaged_frontend_dir() -> Path:
 
 
 def find_frontend_dir(explicit: str | os.PathLike[str] | None = None) -> Optional[Path]:
-    """Locate a source or packaged CodeNib frontend."""
+    """Locate a source checkout or prebuilt CodeNib frontend."""
     candidates = []
     if explicit:
         candidates.append(Path(explicit))
@@ -41,46 +39,15 @@ def find_frontend_dir(explicit: str | os.PathLike[str] | None = None) -> Optiona
 
     for candidate in candidates:
         resolved = candidate.expanduser().resolve()
-        if (resolved / "package.json").is_file():
+        if (resolved / "index.html").is_file() or (resolved / "package.json").is_file():
             return resolved
     return None
 
 
-def _frontend_digest(source: Path) -> str:
-    digest = hashlib.sha256()
-    for path in sorted(source.rglob("*")):
-        if not path.is_file():
-            continue
-        if any(part in {".next", "node_modules"} for part in path.parts):
-            continue
-        digest.update(str(path.relative_to(source)).encode())
-        digest.update(path.read_bytes())
-    return digest.hexdigest()
-
-
-def materialize_frontend(source: Path) -> Path:
-    """Copy wheel-owned frontend files to writable user state."""
-    packaged = _packaged_frontend_dir().resolve()
-    source = source.resolve()
-    if source != packaged:
-        return source
-
-    digest = _frontend_digest(source)
-    target = user_state_dir() / "frontend" / digest[:12]
-    marker = target / ".codenib-frontend-digest"
-    if marker.is_file() and marker.read_text(encoding="utf-8").strip() == digest:
-        return target
-
-    if target.exists():
-        shutil.rmtree(target)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(
-        source,
-        target,
-        ignore=shutil.ignore_patterns(".next", "node_modules"),
-    )
-    marker.write_text(digest + "\n", encoding="utf-8")
-    return target
+def is_prebuilt_frontend(frontend_dir: Path) -> bool:
+    return (frontend_dir / "index.html").is_file() and not (
+        frontend_dir / "package.json"
+    ).is_file()
 
 
 def _wait_for_http(
@@ -147,8 +114,8 @@ def node_runtime_status() -> tuple[bool, str]:
 
 
 def _ensure_frontend_dependencies(frontend_dir: Path, *, install: bool) -> None:
-    next_cli = frontend_dir / "node_modules" / "next" / "dist" / "bin" / "next"
-    if next_cli.is_file():
+    vite_cli = frontend_dir / "node_modules" / "vite" / "bin" / "vite.js"
+    if vite_cli.is_file():
         return
     if not install:
         raise RuntimeError(
@@ -183,16 +150,19 @@ def launch_local_wiki(
     if frontend is None:
         raise RuntimeError(
             "CodeNib Wiki frontend was not found. Set --frontend-dir or "
-            "CODENIB_WEB_FRONTEND_DIR to a checkout containing web/package.json."
+            "CODENIB_WEB_FRONTEND_DIR to a prebuilt frontend or source checkout."
         )
-    frontend = materialize_frontend(frontend)
-    node_ok, node_detail = node_runtime_status()
-    npm = shutil.which("npm")
-    if not node_ok:
-        raise RuntimeError(f"Node.js is unavailable: {node_detail}")
-    if npm is None:
-        raise RuntimeError("npm is required for the Wiki frontend")
-    _ensure_frontend_dependencies(frontend, install=install_frontend)
+    frontend = frontend.resolve()
+    prebuilt_frontend = is_prebuilt_frontend(frontend)
+    npm = None
+    if not prebuilt_frontend:
+        node_ok, node_detail = node_runtime_status()
+        npm = shutil.which("npm")
+        if not node_ok:
+            raise RuntimeError(f"Node.js is unavailable: {node_detail}")
+        if npm is None:
+            raise RuntimeError("npm is required for the Wiki frontend")
+        _ensure_frontend_dependencies(frontend, install=install_frontend)
 
     env = os.environ.copy()
     env["CODENIB_DEMO_CONFIG"] = str(local.config_path)
@@ -221,20 +191,38 @@ def launch_local_wiki(
             backend,
         )
 
-        frontend_process = subprocess.Popen(
-            [
-                npm,
-                "run",
-                "dev",
-                "--",
-                "--hostname",
-                frontend_host,
-                "--port",
-                str(frontend_port),
-            ],
-            cwd=frontend,
-            env=env,
-        )
+        if prebuilt_frontend:
+            frontend_process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "codenib.web.static_server",
+                    "--directory",
+                    str(frontend),
+                    "--api-base",
+                    env["CODENIB_API_BASE"],
+                    "--host",
+                    frontend_host,
+                    "--port",
+                    str(frontend_port),
+                ],
+                env=env,
+            )
+        else:
+            frontend_process = subprocess.Popen(
+                [
+                    npm,
+                    "run",
+                    "dev",
+                    "--",
+                    "--host",
+                    frontend_host,
+                    "--port",
+                    str(frontend_port),
+                ],
+                cwd=frontend,
+                env=env,
+            )
         public_url = f"http://{_loopback_host(frontend_host)}:{frontend_port}"
         _wait_for_http(public_url, frontend_process)
         repo_url = f"{public_url}/{local.repo_id}"
@@ -258,7 +246,7 @@ def launch_local_wiki(
 
 __all__ = [
     "find_frontend_dir",
+    "is_prebuilt_frontend",
     "launch_local_wiki",
-    "materialize_frontend",
     "node_runtime_status",
 ]

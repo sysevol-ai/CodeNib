@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, type ReactElement, type ReactNode } from "react";
-import dynamic from "next/dynamic";
+import {
+  lazy,
+  Suspense,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
@@ -12,7 +17,7 @@ import type { Citation } from "@/lib/api";
 
 // Mermaid (~1MB) is only needed when a diagram actually appears; load it on
 // demand so it never weighs down pages that have none (wiki strips diagrams).
-const Mermaid = dynamic(() => import("./Mermaid"), { ssr: false });
+const Mermaid = lazy(() => import("./Mermaid"));
 
 // Recursively collect plain text from React children (to recover raw code).
 function nodeText(n: ReactNode): string {
@@ -103,7 +108,11 @@ export default function Markdown({
             const className = codeEl?.props?.className || "";
             const text = nodeText(codeEl?.props?.children);
             if (/language-mermaid/.test(className)) {
-              return <Mermaid chart={text} />;
+              return (
+                <Suspense fallback={<div className="mermaid-loading">Loading diagram…</div>}>
+                  <Mermaid chart={text} />
+                </Suspense>
+              );
             }
             const lang = (className.match(/language-(\w+)/) || [])[1] || "";
             return <CodeBlock text={text} lang={lang}>{children}</CodeBlock>;

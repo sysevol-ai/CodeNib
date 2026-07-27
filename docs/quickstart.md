@@ -14,7 +14,6 @@ neither an API key nor a model download.
 
 - Python 3.10 or newer
 - Git
-- Node.js 18.18 or newer, with npm
 
 Install CodeNib and verify the local runtime:
 
@@ -35,12 +34,11 @@ CodeNib performs four steps:
 2. Builds or updates the repository views under
    `<repo>/.codenib_cache`.
 3. Registers the repository with a local FastAPI service.
-4. Starts the packaged Wiki frontend and opens
+4. Serves the packaged production frontend and opens
    [http://localhost:3000](http://localhost:3000).
 
-The first launch runs `npm ci` in a user-owned frontend cache under
-`$CODENIB_HOME`; later launches reuse that installation. Press `Ctrl-C` once
-to stop both services.
+The release wheel contains the compiled frontend, so this path does not need
+Node.js, npm, or a source checkout. Press `Ctrl-C` once to stop both services.
 
 Use different ports or keep the browser closed when needed:
 
@@ -100,7 +98,7 @@ through a LiteLLM-supported provider:
 ```bash
 pip install "codenib[agent]"
 export OPENAI_API_KEY=...
-codenib wiki . --agent-wiki
+codenib wiki . --generate --model openai/gpt-4o-mini
 ```
 
 Provider and model configuration is documented in
@@ -130,7 +128,6 @@ codenib doctor --require semantic --require graph
 
 Common fixes:
 
-- Upgrade Node.js if the Wiki reports a version below 18.18.
 - Install the named extra when a command reports a missing optional module.
 - Use `--rebuild` after intentionally changing index profiles or builders.
 - Check that ports 3000 and 8000 are free, or select alternatives.

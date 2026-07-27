@@ -361,11 +361,19 @@ def _doctor_model_config(
 def _doctor_rows(
     args: argparse.Namespace | None = None,
 ) -> dict[str, list[tuple[str, bool, str]]]:
-    from .web.launcher import find_frontend_dir, node_runtime_status
+    from .web.launcher import (
+        find_frontend_dir,
+        is_prebuilt_frontend,
+        node_runtime_status,
+    )
 
     py_ok = sys.version_info >= (3, 10)
     frontend = find_frontend_dir()
     node_ok, node_detail = node_runtime_status()
+    frontend_prebuilt = frontend is not None and is_prebuilt_frontend(frontend)
+    runtime_detail = (
+        "not required (prebuilt frontend)" if frontend_prebuilt else node_detail
+    )
     rows = {
         "core": [
             ("Python >= 3.10", py_ok, sys.version.split()[0]),
@@ -403,10 +411,18 @@ def _doctor_rows(
             ),
             (
                 "Node.js",
-                node_ok,
-                node_detail,
+                frontend_prebuilt or node_ok,
+                runtime_detail,
             ),
-            ("npm", shutil.which("npm") is not None, shutil.which("npm") or "missing"),
+            (
+                "npm",
+                frontend_prebuilt or shutil.which("npm") is not None,
+                (
+                    "not required (prebuilt frontend)"
+                    if frontend_prebuilt
+                    else shutil.which("npm") or "missing"
+                ),
+            ),
             (
                 "Wiki frontend",
                 frontend is not None,
@@ -609,13 +625,13 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_parser.add_argument("--api-port", type=int, default=8000)
     wiki_parser.add_argument(
         "--frontend-dir",
-        help="path to the CodeNib Next.js frontend",
+        help="path to a prebuilt CodeNib frontend or web source checkout",
     )
     wiki_parser.add_argument("--no-open", action="store_true")
     wiki_parser.add_argument(
         "--no-install-frontend",
         action="store_true",
-        help="fail instead of running npm ci when frontend dependencies are missing",
+        help="do not install missing dependencies for a source frontend",
     )
     wiki_parser.set_defaults(handler=_run_wiki)
 

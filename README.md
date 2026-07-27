@@ -36,7 +36,7 @@ it can build a deterministic Wiki with BM25 search and no API key.
 
 ## Quickstart
 
-Requires Python 3.10+ and Node.js 18.18+.
+Requires Python 3.10+ and Git.
 
 ```bash
 pip install codenib
@@ -45,8 +45,8 @@ codenib wiki /path/to/repository
 
 CodeNib detects the repository languages, builds a reusable index under
 `<repo>/.codenib_cache`, launches the local Wiki, and opens
-[http://localhost:3000](http://localhost:3000). The first launch installs the
-packaged frontend dependencies with `npm ci`; later launches reuse them.
+[http://localhost:3000](http://localhost:3000). The wheel includes the
+production Wiki frontend, so normal use does not require Node.js or npm.
 
 Check the environment or index without opening the Wiki:
 

@@ -101,7 +101,7 @@ documentation.
 
 ### M0: Reproducible product baseline
 
-Status: in progress.
+Status: complete.
 
 - Record fresh-install, first-run, restart, graph-build, and generation
   behavior.
@@ -123,7 +123,14 @@ Observed on the TestPyPI 0.1.0 candidate:
 - The default Wiki is deterministic template output, but the UI does not make
   that mode sufficiently clear.
 
+The production frontend migration removes the first-run npm installation:
+release wheel and sdist artifacts are about 2.2 MB each, and an isolated wheel
+completed index, Wiki, source-link, and MCP service smoke with Node/npm absent
+from `PATH`.
+
 ### M1: Correct indexing and capability behavior
+
+Status: complete.
 
 - Unify repository exclusion policy across all builders.
 - Preserve independently fresh manifest views during partial updates.
@@ -133,12 +140,17 @@ Observed on the TestPyPI 0.1.0 candidate:
 
 ### M2: Provider-independent generation runtime
 
+Status: complete.
+
 - Route every LLM operation through the shared LiteLLM adapter.
 - Add explicit generation CLI and configuration.
 - Add backend diagnostics, retries, usage reporting, and correct cache keys.
 - Validate native-provider and OpenAI-compatible paths.
 
 ### M3: Grounded Wiki quality
+
+Status: complete for the current generation path; cross-page quality auditing
+remains part of M6 acceptance.
 
 - Build the outline from README, manifest, source hierarchy, and graph
   communities.
@@ -150,6 +162,8 @@ Observed on the TestPyPI 0.1.0 candidate:
 
 ### M4: Product interaction
 
+Status: in progress.
+
 - Present build and generation progress in the Wiki.
 - Integrate Dependency Map, page-local graph snapshots, search, and source
   navigation.
@@ -158,8 +172,11 @@ Observed on the TestPyPI 0.1.0 candidate:
 
 ### M5: Distribution
 
-- Ship prebuilt frontend assets or a standalone runtime instead of installing
-  a full Next.js development tree on first use.
+Status: in progress. The Python-only production frontend path is complete;
+Docker and public documentation remain.
+
+- Ship prebuilt frontend assets instead of installing a frontend development
+  tree on first use.
 - Keep user state outside the target repository by default.
 - Provide wheel and Docker paths with the same CLI and configuration model.
 - Finish public release documentation only after fresh-machine acceptance.

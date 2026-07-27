@@ -6,10 +6,9 @@
     "node": ">=18.18.0"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
@@ -17,10 +16,8 @@
     "cytoscape-dagre": "^2.5.0",
     "cytoscape-fcose": "^2.2.0",
     "dagre": "^0.8.5",
-    "geist": "^1.7.1",
     "highlight.js": "^11.11.1",
     "mermaid": "^11.15.0",
-    "next": "15.5.21",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-markdown": "9.0.1",
@@ -32,10 +29,12 @@
     "@types/node": "20.19.43",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "^5.0.4",
     "pixelmatch": "^7.2.0",
     "playwright": "^1.56.1",
     "pngjs": "^7.0.0",
-    "typescript": "5.5.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7",
     "vitest": "^4.1.8"
   },
   "overrides": {

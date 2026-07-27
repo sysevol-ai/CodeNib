@@ -5,7 +5,7 @@
 """Request/response models for the demo API.
 
 Also holds the mapping from an ``AgentResult`` (codenib's agent output) to the
-flat, UI-friendly ``ChatResponse`` the Next.js frontend renders.
+flat, UI-friendly ``ChatResponse`` the Wiki frontend renders.
 """
 
 from __future__ import annotations

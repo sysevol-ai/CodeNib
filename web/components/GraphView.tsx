@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
 import HighlightedCode from "@/components/HighlightedCode";
 import SystemMap from "@/components/SystemMap";
@@ -15,14 +14,15 @@ import {
 
 // Cytoscape loads only when a graph is shown, so the wiki
 // narrative paints first and the graph fills in a beat later.
-const CodeGraph = dynamic(() => import("@/components/CodeGraph"), {
-  ssr: false,
-  loading: () => (
+const CodeGraph = lazy(() => import("@/components/CodeGraph"));
+
+function GraphLoading() {
+  return (
     <div className="codegraph">
       <div className="codegraph-canvas codegraph-loading">Loading graph…</div>
     </div>
-  ),
-});
+  );
+}
 
 // What a source peek is showing: an edge's exact call site(s), or a node's
 // definition. Both resolve to a (file, line) the /source endpoint can open.
@@ -284,14 +284,16 @@ export default function GraphView({
           onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
         />
       ) : (
-        <CodeGraph
-          data={data}
-          variant={variant}
-          focusRequest={focusReq}
-          repoId={repoId}
-          onNodeClick={(node) => setPeek({ kind: "node", node })}
-          onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
-        />
+        <Suspense fallback={<GraphLoading />}>
+          <CodeGraph
+            data={data}
+            variant={variant}
+            focusRequest={focusReq}
+            repoId={repoId}
+            onNodeClick={(node) => setPeek({ kind: "node", node })}
+            onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
+          />
+        </Suspense>
       )}
       {peek && (
         <SourcePeek

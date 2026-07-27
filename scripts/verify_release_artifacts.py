@@ -56,10 +56,9 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
         "codenib/__init__.py",
         "codenib/__main__.py",
         "codenib/cli.py",
-        "codenib/web/frontend/package.json",
-        "codenib/web/frontend/package-lock.json",
-        "codenib/web/frontend/app/page.tsx",
-        "codenib/web/frontend/public/codenib-icon.svg",
+        "codenib/web/frontend/index.html",
+        "codenib/web/frontend/codenib-icon.svg",
+        "codenib/web/frontend/runtime-config.js",
     }
     with zipfile.ZipFile(wheel) as archive:
         members = set(archive.namelist())
@@ -67,6 +66,13 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
         if missing:
             raise ReleaseValidationError(
                 f"{wheel.name} is missing packaged runtime files: {', '.join(missing)}"
+            )
+        if not any(
+            member.startswith("codenib/web/frontend/assets/") and member.endswith(".js")
+            for member in members
+        ):
+            raise ReleaseValidationError(
+                f"{wheel.name} has no compiled Wiki JavaScript assets"
             )
 
         metadata_members = sorted(

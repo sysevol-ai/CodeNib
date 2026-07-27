@@ -1,14 +1,12 @@
-const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE ?? "";
+declare global {
+  interface Window {
+    __CODENIB_API_BASE__?: string;
+  }
+}
 
 function browserApiBase(): string {
-  if (typeof window === "undefined") return configuredApiBase;
-  try {
-    const url = new URL(configuredApiBase);
-    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return "";
-  } catch {
-    // Empty or relative base already means same-origin.
-  }
-  return configuredApiBase;
+  if (typeof window === "undefined") return "";
+  return (window.__CODENIB_API_BASE__ ?? "").replace(/\/+$/, "");
 }
 
 export const API_BASE = browserApiBase();

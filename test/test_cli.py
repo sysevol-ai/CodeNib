@@ -316,26 +316,39 @@ def test_prepare_generated_wiki_keeps_secret_out_of_config(
     assert local.runtime_env == {"CODENIB_DEMO_API_KEY": "super-secret"}
 
 
-def test_packaged_frontend_is_materialized_in_user_state(
+def test_installed_package_frontend_is_prebuilt(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     packaged = tmp_path / "site-packages" / "codenib" / "web" / "frontend"
     packaged.mkdir(parents=True)
-    (packaged / "package.json").write_text('{"name":"codenib-wiki"}\n')
-    (packaged / "app").mkdir()
-    (packaged / "app" / "page.tsx").write_text("export default function Page() {}\n")
-    state = tmp_path / "state"
+    (packaged / "index.html").write_text("<title>CodeNib Wiki</title>\n")
 
-    monkeypatch.setattr(launcher, "_packaged_frontend_dir", lambda: packaged)
-    monkeypatch.setattr(launcher, "user_state_dir", lambda: state)
+    assert launcher.is_prebuilt_frontend(packaged) is True
 
-    runtime = launcher.materialize_frontend(packaged)
 
-    assert runtime != packaged
-    assert (runtime / "package.json").is_file()
-    assert (runtime / "app" / "page.tsx").is_file()
-    assert (runtime / ".codenib-frontend-digest").is_file()
+def test_vite_source_checkout_is_not_treated_as_prebuilt(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text('<div id="root"></div>\n')
+    (tmp_path / "package.json").write_text('{"scripts":{"dev":"vite"}}\n')
+
+    assert launcher.is_prebuilt_frontend(tmp_path) is False
+
+
+def test_doctor_does_not_require_node_for_prebuilt_frontend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "index.html").write_text("<title>CodeNib Wiki</title>\n")
+    monkeypatch.setattr(launcher, "find_frontend_dir", lambda: frontend)
+    monkeypatch.setattr(launcher, "node_runtime_status", lambda: (False, "missing"))
+    monkeypatch.setattr("codenib.cli.shutil.which", lambda _command: None)
+
+    rows = cli._doctor_rows()
+    wiki = {name: (ok, detail) for name, ok, detail in rows["wiki"]}
+
+    assert wiki["Node.js"] == (True, "not required (prebuilt frontend)")
+    assert wiki["npm"] == (True, "not required (prebuilt frontend)")
 
 
 def test_node_runtime_status_rejects_unsupported_version(

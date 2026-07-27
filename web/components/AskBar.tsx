@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { navigate } from "@/lib/router";
 
 /**
  * DeepWiki-style ask bar pinned to the bottom of the page. By default,
@@ -22,7 +22,6 @@ export default function AskBar({
   onSubmit?: (query: string) => void;
   disabled?: boolean;
 }) {
-  const router = useRouter();
   const [q, setQ] = useState(defaultValue);
 
   function submit(e: React.FormEvent) {
@@ -34,7 +33,7 @@ export default function AskBar({
       setQ("");
       return;
     }
-    router.push(`/${encodeURIComponent(repoId)}/ask?q=${encodeURIComponent(query)}`);
+    navigate(`/${encodeURIComponent(repoId)}/ask?q=${encodeURIComponent(query)}`);
   }
 
   return (

@@ -14,11 +14,10 @@ BACKEND_PORT="${CODENIB_DEMO_PORT:-8000}"
 FRONTEND_HOST="${CODENIB_WEB_FRONTEND_HOST:-0.0.0.0}"
 FRONTEND_PORT="${CODENIB_WEB_FRONTEND_PORT:-3000}"
 PUBLIC_FRONTEND_HOST="${CODENIB_WEB_PUBLIC_FRONTEND_HOST:-localhost}"
-# Backend URL used by Next.js rewrites. Browser code should normally use the
+# Backend URL used by the Vite development proxy. Browser code should use the
 # same-origin /api path so remote/forwarded browsers don't try to reach their
 # own 127.0.0.1:8000.
 API_BASE="${CODENIB_API_BASE:-http://${BACKEND_HOST}:${BACKEND_PORT}}"
-PUBLIC_API_BASE="${NEXT_PUBLIC_API_BASE:-}"
 
 PYTHON_BIN="${CODENIB_WEB_PYTHON:-python}"
 NODE_BIN="${CODENIB_WEB_NODE:-node}"
@@ -34,7 +33,7 @@ usage() {
 Usage: $0 <command>
 
 Commands:
-  start      Start the FastAPI backend and Next.js frontend.
+  start      Start the FastAPI backend and Vite frontend.
   stop       Stop managed backend/frontend processes.
   restart    Stop managed processes, then start both services.
   reclaim    Stop current-user listeners on the managed ports.
@@ -44,13 +43,12 @@ Commands:
 
 Environment:
   CODENIB_WEB_PYTHON         Python executable for uvicorn (default: python)
-  CODENIB_WEB_NODE           node executable for Next.js (default: node)
+  CODENIB_WEB_NODE           node executable for Vite (default: node)
   CODENIB_DEMO_HOST          Backend host (default: 127.0.0.1)
   CODENIB_DEMO_PORT          Backend port (default: 8000)
-  CODENIB_WEB_FRONTEND_HOST  Next.js bind host (default: 0.0.0.0)
-  CODENIB_WEB_FRONTEND_PORT  Next.js port (default: 3000)
-  CODENIB_API_BASE           Backend URL for Next.js /api rewrites (default: http://127.0.0.1:8000)
-  NEXT_PUBLIC_API_BASE         Optional direct browser API base; leave unset for same-origin /api proxy.
+  CODENIB_WEB_FRONTEND_HOST  Vite bind host (default: 0.0.0.0)
+  CODENIB_WEB_FRONTEND_PORT  Vite port (default: 3000)
+  CODENIB_API_BASE           Backend URL for Vite /api proxy (default: http://127.0.0.1:8000)
   CODENIB_WEB_RECLAIM_PORTS  If 1, start/restart may stop current-user port owners.
 EOF
 }
@@ -280,8 +278,8 @@ start_frontend() {
     printf 'node executable not found: %s\n' "$NODE_BIN" >&2
     return 1
   }
-  [[ -f "$WEB_DIR/node_modules/next/dist/bin/next" ]] || {
-    printf 'Missing Next.js CLI. Run: make web-deps\n' >&2
+  [[ -f "$WEB_DIR/node_modules/vite/bin/vite.js" ]] || {
+    printf 'Missing Vite CLI. Run: make web-deps\n' >&2
     return 1
   }
   [[ -d "$WEB_DIR/node_modules" ]] || {
@@ -297,12 +295,11 @@ start_frontend() {
   FRONTEND_HOST="$FRONTEND_HOST" \
   FRONTEND_PORT="$FRONTEND_PORT" \
   CODENIB_API_BASE="$API_BASE" \
-  NEXT_PUBLIC_API_BASE="$PUBLIC_API_BASE" \
   setsid -f bash -c '
     echo $$ > "$FRONTEND_PID_FILE"
     cd "$WEB_DIR"
-    export CODENIB_API_BASE NEXT_PUBLIC_API_BASE
-    exec "$NODE_BIN" "$WEB_DIR/node_modules/next/dist/bin/next" dev --hostname "$FRONTEND_HOST" --port "$FRONTEND_PORT"
+    export CODENIB_API_BASE
+    exec "$NODE_BIN" "$WEB_DIR/node_modules/vite/bin/vite.js" --host "$FRONTEND_HOST" --port "$FRONTEND_PORT"
   ' >>"$FRONTEND_LOG" 2>&1 </dev/null
 
   printf 'Started frontend pid=%s log=%s\n' "$(wait_for_pid_file "$FRONTEND_PID" frontend)" "$FRONTEND_LOG"

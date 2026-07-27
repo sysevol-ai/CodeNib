@@ -14,24 +14,20 @@ from setuptools.command.build_py import build_py as _build_py
 
 
 class BuildPy(_build_py):
-    """Stage the Wiki frontend inside the Python package."""
+    """Stage the prebuilt Wiki frontend inside the Python package."""
 
     def run(self) -> None:
         super().run()
-        source = Path(__file__).resolve().parent / "web"
+        source = Path(__file__).resolve().parent / "web" / "dist"
+        if not (source / "index.html").is_file():
+            raise RuntimeError(
+                "the prebuilt Wiki frontend is missing; run "
+                "`cd web && npm ci && npm run build` before building the wheel"
+            )
         target = Path(self.build_lib) / "codenib" / "web" / "frontend"
         if target.exists():
             shutil.rmtree(target)
-        target.mkdir(parents=True)
-        for filename in (
-            "next.config.js",
-            "package-lock.json",
-            "package.json",
-            "tsconfig.json",
-        ):
-            shutil.copy2(source / filename, target / filename)
-        for dirname in ("app", "components", "lib", "public", "types"):
-            shutil.copytree(source / dirname, target / dirname)
+        shutil.copytree(source, target)
 
 
 setup(cmdclass={"build_py": BuildPy})

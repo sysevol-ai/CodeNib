@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
 import { fetchRepos, type RepoInfo } from "@/lib/api";
+import { AppLink, navigate } from "@/lib/router";
 
 function repoDescription(r: RepoInfo): string {
   if (r.description) return r.description;
@@ -27,7 +26,7 @@ function incrementalNote(r: RepoInfo): string | null {
 function RepoCard({ r }: { r: RepoInfo }) {
   const incremental = incrementalNote(r);
   return (
-    <Link className="repo-card" href={`/${r.id}`} aria-label={`Open ${r.repo} wiki`}>
+    <AppLink className="repo-card" href={`/${r.id}`} aria-label={`Open ${r.repo} wiki`}>
       <div className="repo-card-title">{r.repo}</div>
       <div className="repo-card-desc">{repoDescription(r)}</div>
       <div className="repo-card-footer">
@@ -59,7 +58,7 @@ function RepoCard({ r }: { r: RepoInfo }) {
           <path d="M5 12h14M13 6l6 6-6 6" />
         </svg>
       </span>
-    </Link>
+    </AppLink>
   );
 }
 
@@ -67,7 +66,6 @@ const repoRetryDelays = [0, 1000, 2000, 4000, 8000];
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export default function Landing() {
-  const router = useRouter();
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -143,7 +141,9 @@ export default function Landing() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && filtered.length > 0) router.push(`/${filtered[0].id}`);
+              if (e.key === "Enter" && filtered.length > 0) {
+                navigate(`/${filtered[0].id}`);
+              }
             }}
             placeholder="Search repositories (press Enter to open)"
             aria-label="Search repositories"

@@ -4,6 +4,8 @@
 --------------------------------------------------------------------------- */
 :root,
 [data-theme="light"] {
+  --font-geist-sans: system-ui;
+  --font-geist-mono: ui-monospace;
   --bg-page: #f8fafc;
   --bg-surface: #ffffff;
   --bg-subtle: #f1f5f9;

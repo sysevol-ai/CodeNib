@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import { AppLink } from "@/lib/router";
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -73,9 +73,9 @@ export default function Header({
 }) {
   return (
     <header className="site-header">
-      <Link href="/" className="brand">
+      <AppLink href="/" className="brand">
         <img className="brand-mark" src="/codenib-icon.svg" alt="" /> CodeNib Wiki
-      </Link>
+      </AppLink>
       {center}
       <div className="header-right">
         <span className="header-note">Source-linked repository docs</span>

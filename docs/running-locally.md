@@ -15,7 +15,7 @@ The setup has three services running in separate terminals:
 |---------|--------|--------------|
 | LLM server (llama-cpp-python) | `scripts/start_llm.sh` | GPU node |
 | CodeNib backend (FastAPI) | `scripts/start_web.sh` | Main machine |
-| Next.js frontend | `cd web && npm run dev` | Main machine |
+| Vite frontend | `cd web && npm run dev` | Main machine |
 
 ---
 
@@ -209,11 +209,10 @@ only:
 ssh -L 3000:localhost:3000 <main-machine>
 ```
 
-The browser talks same-origin to the Next.js dev server, which proxies
+The browser talks same-origin to the Vite dev server, which proxies
 `/api/*` server-side to the FastAPI backend at `CODENIB_API_BASE` (default
-`http://127.0.0.1:8000`; see `web/next.config.js`) — port 8000 does not need to
-be forwarded. A non-loopback `NEXT_PUBLIC_API_BASE` bypasses this proxy and
-must be browser-reachable with suitable CORS configuration.
+`http://127.0.0.1:8000`; see `web/vite.config.ts`) — port 8000 does not need to
+be forwarded.
 
 If the LLM server is on a different node than the backend, only the backend
 needs to reach port 8080 on the GPU node — the browser never talks to port 8080
