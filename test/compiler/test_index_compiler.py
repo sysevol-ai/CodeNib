@@ -134,7 +134,7 @@ class TestBM25IndexBuilder:
             assert result == "result"
 
     def test_artifact_identity_tracks_source_body_indexing(self):
-        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 3
+        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 4
 
 
 # ---------------------------------------------------------------------------

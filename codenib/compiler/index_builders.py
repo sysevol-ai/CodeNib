@@ -93,8 +93,8 @@ class BM25IndexBuilder:
 
     def artifact_identity(self) -> Dict[str, Any]:
         return {
-            # v3 indexes normalized source bodies in addition to symbol names.
-            "builder_schema": 3,
+            # v4 keeps overloads and bounded large-definition spans separate.
+            "builder_schema": 4,
             "languages": list(self.languages),
             "max_k": self.max_k,
             "max_lines_per_chunk": self.max_lines_per_chunk,

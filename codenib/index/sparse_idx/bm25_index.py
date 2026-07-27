@@ -155,33 +155,25 @@ class BM25CodeIndexer:
         self.code_graph = None
         self.project_root = project_root
 
-        # Keep one deterministic document per symbol. Split chunks share a
-        # node_id, so widen their source range without changing indexed text.
-        documents_by_node: dict[str, Document] = {}
+        # Keep each bounded source span independently searchable. Overloads and
+        # split large definitions can share a node_id, but merging them widens
+        # the returned location and defeats the chunk-size contract.
+        documents_by_span: dict[tuple[str, int, int], Document] = {}
         for chunk in chunks:
             node_id = getattr(chunk, "node_id", None)
             if not node_id:
                 continue
             doc = self._convert_chunk_to_document(chunk)
             if doc is not None:
-                existing = documents_by_node.get(node_id)
-                if existing is None:
-                    documents_by_node[node_id] = doc
-                    continue
-                existing.page_content = (
-                    f"{existing.page_content} {doc.page_content}".strip()
+                key = (
+                    node_id,
+                    int(doc.metadata["start_line"]),
+                    int(doc.metadata["end_line"]),
                 )
-                existing.metadata["start_line"] = min(
-                    existing.metadata["start_line"],
-                    doc.metadata["start_line"],
-                )
-                existing.metadata["end_line"] = max(
-                    existing.metadata["end_line"],
-                    doc.metadata["end_line"],
-                )
+                documents_by_span.setdefault(key, doc)
 
-        self.documents = list(documents_by_node.values())
-        self.nodes = list(documents_by_node)
+        self.documents = list(documents_by_span.values())
+        self.nodes = list(dict.fromkeys(key[0] for key in documents_by_span))
 
         # Create BM25Retriever with LangChain format
         self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)
@@ -703,14 +695,16 @@ class BM25CodeIndexer:
         # Reconstruct Document objects
         self.documents = []
         self.nodes = []
+        seen_nodes = set()
         for doc_data in documents_data:
             doc = Document(
                 page_content=doc_data["page_content"], metadata=doc_data["metadata"]
             )
             self.documents.append(doc)
             node_name = doc.metadata.get("node_id") or doc.metadata.get("name")
-            if node_name:
+            if node_name and node_name not in seen_nodes:
                 self.nodes.append(node_name)
+                seen_nodes.add(node_name)
 
         # Load additional metadata including project_root
         metadata_file = os.path.join(directory_path, "bm25_metadata.json")
