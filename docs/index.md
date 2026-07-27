@@ -6,9 +6,10 @@ SPDX-License-Identifier: Apache-2.0
 
 # CodeNib
 
-CodeNib compiles repositories into reusable, source-linked context for coding
-agents and developers. Start with a local Wiki, then reuse the same manifest
-through MCP, Python APIs, and evaluation harnesses.
+CodeNib is a multi-view data system for serving repository context to coding
+agents. It compiles repositories into reusable, source-linked lexical, semantic,
+structural, and static-navigation views, then serves the same manifest through
+MCP, Python APIs, the local Wiki, and evaluation harnesses.
 
 Language support varies by surface. Start with the generated
 [Language Capabilities](language_capabilities.md) matrix when you need to know

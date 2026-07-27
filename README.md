@@ -6,20 +6,20 @@ SPDX-License-Identifier: Apache-2.0
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_logo.svg" alt="CodeNib" width="560">
-  <h1>Incremental repository context for coding agents</h1>
+  <h1>A Multi-View Data System for Serving Repository Context to Coding Agents</h1>
   <p>
-    Compile once. Update what changed. Serve source-linked context through agent-native tools.
+    Incremental compilation, explicit per-view manifests, and agent-native context serving.
   </p>
   <p>
     <a href="#quickstart">Quickstart</a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://codenib.ai">Website</a>
     &nbsp;&middot;&nbsp;
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/index.md">Documentation</a>
     &nbsp;&middot;&nbsp;
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/mcp.md">MCP</a>
     &nbsp;&middot;&nbsp;
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md">Languages</a>
-    &nbsp;&middot;&nbsp;
-    <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
   </p>
   <p>
     <a href="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml"><img src="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -29,11 +29,11 @@ SPDX-License-Identifier: Apache-2.0
   </p>
 </div>
 
-CodeNib is a native repository-context compiler and serving runtime for coding
-agents. It turns a checkout into manifest-linked lexical, semantic, structural,
-and static-navigation views, updates supported views as the repository evolves,
-and serves bounded source evidence through MCP, LSP-shaped providers, Python,
-and HTTP APIs.
+CodeNib is a multi-view data system for serving repository context to coding
+agents. Its native runtime compiles a checkout into manifest-linked lexical,
+semantic, structural, and static-navigation views, incrementally maintains
+supported transitions, and serves bounded source evidence through MCP,
+LSP-shaped providers, Python, and HTTP APIs.
 
 The Wiki, Ask view, and Dependency Map are inspection clients of that same
 runtime, not the system boundary. The core implementation lives in CodeNib;
@@ -193,6 +193,8 @@ package, import namespace, commands, and repository use `CodeNib`. See
 
 ## Project
 
+[Website](https://codenib.ai)
+&nbsp;&middot;&nbsp;
 [Changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md)
 &nbsp;&middot;&nbsp;
 [Contributing](https://github.com/sysevol-ai/CodeNib/blob/main/CONTRIBUTING.md)

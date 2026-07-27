@@ -5,9 +5,10 @@ type: software
 version: 0.1.0
 date-released: 2026-07-26
 abstract: >-
-  CodeNib compiles repositories into reusable lexical, semantic, and
-  structural views and serves source-linked context to coding agents and
-  developers.
+  CodeNib is a multi-view data system for serving repository context to
+  coding agents. It compiles repositories into reusable lexical, semantic,
+  structural, and static-navigation views and serves source-linked evidence
+  through agent-native interfaces.
 authors:
   - family-names: Yu
     given-names: Zhongming
@@ -70,7 +71,7 @@ authors:
     email: jzhao@ucsd.edu
     affiliation: University of California San Diego
 repository-code: "https://github.com/sysevol-ai/CodeNib"
-url: "https://github.com/sysevol-ai/CodeNib"
+url: "https://codenib.ai"
 license: Apache-2.0
 keywords:
   - coding agents

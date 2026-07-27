@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 site_name: CodeNib
-site_description: Source-linked repository context for coding agents and developers
+site_description: A multi-view data system for serving repository context to coding agents
 site_url: https://sysevol-ai.github.io/CodeNib/
 repo_url: https://github.com/sysevol-ai/CodeNib
 repo_name: sysevol-ai/CodeNib

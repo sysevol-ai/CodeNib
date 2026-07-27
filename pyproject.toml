@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "codenib"
 version = "0.1.0"
-description = "Multi-view repository context serving for coding agents"
+description = "A multi-view data system for serving repository context to coding agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -48,7 +48,7 @@ dependencies = [
 
 [project.urls]
 Documentation = "https://sysevol-ai.github.io/CodeNib/"
-Homepage = "https://github.com/sysevol-ai/CodeNib"
+Homepage = "https://codenib.ai"
 Issues = "https://github.com/sysevol-ai/CodeNib/issues"
 Repository = "https://github.com/sysevol-ai/CodeNib.git"
 

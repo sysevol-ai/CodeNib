@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CodeNib: Understand any codebase in minutes</title>
-<meta name="description" content="CodeNib compiles a repository into a precise symbol graph, then writes its wiki and answers questions with line-level citations.">
-<meta property="og:title" content="CodeNib">
-<meta property="og:description" content="Understand any codebase in minutes. Wikis, dependency maps, and cited answers, compiled from a symbol graph.">
+<title>CodeNib: Multi-View Repository Context for Coding Agents</title>
+<meta name="description" content="CodeNib is a multi-view data system for serving repository context to coding agents through incremental, source-linked indexes.">
+<meta property="og:title" content="CodeNib: Multi-View Repository Context for Coding Agents">
+<meta property="og:description" content="Incremental lexical, semantic, structural, and navigation views served through agent-native interfaces.">
 <meta property="og:image" content="https://codenib.ai/assets/shots/wiki-light.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://codenib.ai/">
@@ -247,7 +247,7 @@ footer { border-top: 1px solid var(--line); }
     <div class="wrap hero-grid">
       <div>
         <h1 class="rise">Understand any codebase in minutes.</h1>
-        <p class="sub rise d1">CodeNib is a multi-view data system that serves codebase context to coding agents.</p>
+        <p class="sub rise d1">CodeNib is a multi-view data system for serving repository context to coding agents.</p>
         <div class="ctas rise d2">
           <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
           <a class="btn btn-ghost btn-lg" href="https://github.com/sysevol-ai/CodeNib#readme">Read the docs</a>
@@ -265,7 +265,7 @@ footer { border-top: 1px solid var(--line); }
           <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5 20 19H4Z"/></svg></span>
           <div>
             <div class="k">incremental</div>
-            <div class="v">Commit diffs update only the views that changed.</div>
+            <div class="v">Supported changes repair affected views; other transitions rebuild safely.</div>
           </div>
         </div>
         <div>
@@ -293,8 +293,8 @@ footer { border-top: 1px solid var(--line); }
 
   <section>
     <div class="wrap">
-      <h2 class="reveal">One graph, three views</h2>
-      <p class="section-sub reveal">The wiki, the dependency map, and the chat are projections of the same compiled index.</p>
+      <h2 class="reveal">One repository, coordinated views</h2>
+      <p class="section-sub reveal">The Wiki, Dependency Map, and Ask consume manifest-linked lexical, semantic, and structural views from one incremental compiler.</p>
       <div class="bento">
         <div class="cell cell-ask reveal">
           <h3>Ask, with receipts</h3>
@@ -319,7 +319,7 @@ footer { border-top: 1px solid var(--line); }
         <div class="cell cell-wide reveal">
           <div class="cw-text">
             <h3>Five languages in the live demo</h3>
-            <p>Tree-sitter parses everything into the same graph. Browse the repositories already indexed in the demo.</p>
+            <p>Language backends preserve shared source locations and capability metadata across each compiled view.</p>
             <div class="chips">
               <span>python</span><span>c/c++</span><span>go</span><span>rust</span><span>typescript</span>
             </div>
