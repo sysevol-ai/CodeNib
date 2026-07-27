@@ -39,6 +39,7 @@ from .evidence import (
     infer_claim_role,
     is_interaction_claim,
     parse_fact_plan,
+    promotional_phrases,
     reciprocal_rank_fuse,
     relation_endpoints_named,
     relation_matches_claim,
@@ -77,7 +78,7 @@ _EXT_LANG = {
 }
 _MAX_CONTEXT_CHARS = 14000
 _OUTLINE_PROMPT_VERSION = "12"
-_PAGE_PROMPT_VERSION = "79"
+_PAGE_PROMPT_VERSION = "82"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 _OVERVIEW_RETRIEVAL_LIMIT = 12
@@ -952,11 +953,50 @@ def _readme_intro(evidence: List[EvidenceItem]) -> tuple[str, str] | None:
     return None
 
 
+def _canonical_readme_sentence(text: str, repository_name: str = "") -> str:
+    """Turn a README heading into a neutral, grammatical repository statement."""
+
+    value = re.sub(r"\s+", " ", text).strip()
+    if not value:
+        return ""
+    phrases = promotional_phrases(value)
+    if re.search(r"[.!?]\s*$", value):
+        return "" if phrases else value
+
+    for phrase in sorted(phrases, key=len, reverse=True):
+        value = re.sub(rf"\b{re.escape(phrase)}\b", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s+", " ", value)
+    value = re.sub(r"^\s*(?:and|or)\b\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\b(?:and|or)\s*$", "", value, flags=re.IGNORECASE)
+    value = value.strip(" ,;:-")
+    value = re.sub(r"^(?:a|an|the)\s+", "", value, flags=re.IGNORECASE)
+    if not value:
+        return ""
+
+    words = []
+    for token in value.split():
+        bare = re.sub(r"[^A-Za-z0-9]+", "", token)
+        if bare.isupper() or any(char.isupper() for char in bare[1:]):
+            words.append(token)
+        else:
+            words.append(token.lower())
+    phrase = " ".join(words)
+
+    subject = repository_name.strip().rstrip("/").rsplit("/", 1)[-1]
+    if not subject:
+        return phrase[:1].upper() + phrase[1:] + "."
+    first = re.sub(r"[^A-Za-z]+", "", words[0])
+    vowel_sound_acronym = first.isupper() and first[:1] in "AEFHILMNORSX"
+    article = "an" if first[:1].lower() in "aeiou" or vowel_sound_acronym else "a"
+    return f"{subject} is {article} {phrase}."
+
+
 def _ensure_cited_intro(
     markdown: str,
     evidence: List[EvidenceItem],
     *,
     canonical_readme: bool = False,
+    repository_name: str = "",
 ) -> str:
     """Prepend the README synopsis when a model starts directly with a section."""
 
@@ -964,8 +1004,11 @@ def _ensure_cited_intro(
     intro = _readme_intro(evidence)
     if canonical_readme and intro is not None:
         text, evidence_id = intro
-        sections = markdown[first_section.start() :] if first_section else ""
-        return f"{text} [{evidence_id}]\n\n{sections.lstrip()}".rstrip()
+        canonical = _canonical_readme_sentence(text, repository_name)
+        if canonical:
+            sections = markdown[first_section.start() :] if first_section else ""
+            return f"{canonical} [{evidence_id}]\n\n{sections.lstrip()}".rstrip()
+        intro = None
 
     intro_body = markdown[: first_section.start()] if first_section else markdown
     intro_plain = re.sub(r"^#\s+.*$", "", intro_body, flags=re.MULTILINE)
@@ -1605,18 +1648,23 @@ def _plan_quality_warnings(
             )
         return warnings
 
-    required_claims = max(6, len(sections) * 2)
+    major_topics = [
+        topic
+        for topic in meta.get("major_topics") or []
+        if isinstance(topic, dict) and str(topic.get("title") or "").strip()
+    ]
+    required_facts = max(4, len(sections) + 1, len(major_topics) + 1)
     supported_thesis = _supported_thesis(
         plan.get("thesis"),
         evidence,
         relations,
     )
     narrative_facts = len(claims) + int(supported_thesis is not None)
-    if narrative_facts < required_claims:
+    if narrative_facts < required_facts:
         warnings.append(
-            f"Overview needs at least {required_claims} supported narrative "
-            "facts, including its thesis, so each topic pairs its responsibility "
-            "with an entry point, handoff, mechanism, or contract"
+            f"Overview needs at least {required_facts} supported narrative "
+            "facts: one thesis and one concrete fact for every planned or "
+            "allocated topic"
         )
     density = _narrative_density_report(plan_markdown)
     if not density["narrative_density_valid"]:
@@ -3198,6 +3246,12 @@ class AgentWiki:
             return draft
 
     def _generate_page(self, meta: Dict[str, Any]) -> dict:
+        repo_dir = str(getattr(self._bundle.entry, "repo_dir", "") or "").rstrip(os.sep)
+        repository_name = (
+            os.path.basename(repo_dir)
+            or str(getattr(self._bundle.entry, "repo", "") or "")
+            or str(getattr(self._bundle.entry, "instance_id", "") or "")
+        )
         nodes = self._retrieve(
             meta,
             top_k=(_OVERVIEW_RETRIEVAL_LIMIT if meta.get("id") == "overview" else 8),
@@ -3265,6 +3319,7 @@ class AgentWiki:
             markdown,
             evidence,
             canonical_readme=dense_sections,
+            repository_name=repository_name,
         )
         report = grounding_report(markdown, evidence, relations)
         quality = _page_quality_report(
@@ -3325,6 +3380,7 @@ class AgentWiki:
                 repaired_markdown,
                 evidence,
                 canonical_readme=dense_sections,
+                repository_name=repository_name,
             )
             repaired = True
             repaired_report = grounding_report(repaired_markdown, evidence, relations)
@@ -3380,6 +3436,7 @@ class AgentWiki:
             markdown,
             evidence,
             canonical_readme=dense_sections,
+            repository_name=repository_name,
         )
         report = grounding_report(markdown, evidence, relations)
         quality = _page_quality_report(
@@ -3401,6 +3458,7 @@ class AgentWiki:
                         candidate,
                         evidence,
                         canonical_readme=dense_sections,
+                        repository_name=repository_name,
                     )
                 )
                 candidate_report = grounding_report(
@@ -3436,6 +3494,7 @@ class AgentWiki:
                         candidate,
                         evidence,
                         canonical_readme=dense_sections,
+                        repository_name=repository_name,
                     )
                 )
                 candidate_report = grounding_report(

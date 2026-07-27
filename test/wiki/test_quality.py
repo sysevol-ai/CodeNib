@@ -235,6 +235,34 @@ def test_sentence_redundancy_allows_one_source_to_call_distinct_targets():
     assert report["sentence_redundancy_valid"] is True
 
 
+def test_sentence_redundancy_allows_symmetric_named_operations():
+    report = section_sentence_redundancy_report(
+        "# Logging\n\n"
+        "## Output\n\n"
+        "`LoggingManager.switch_to_file()` changes logging output to a file and "
+        "updates handlers. "
+        "`LoggingManager.switch_to_stdout()` changes logging output to stdout and "
+        "updates handlers."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
+def test_sentence_redundancy_allows_parallel_documented_entrypoints():
+    report = section_sentence_redundancy_report(
+        "# Evaluation\n\n"
+        "## Entry points\n\n"
+        "The `run_sgl_eval.sh` script generates task IDs and runs SGLang "
+        "benchmarks. "
+        "The `run_lc_eval.sh` script generates task IDs and runs LangChain "
+        "benchmarks."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
 def test_prose_integrity_rejects_internal_ids_and_private_user_entries():
     report = prose_integrity_report(
         "# Runtime\n\n"

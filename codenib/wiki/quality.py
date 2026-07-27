@@ -276,6 +276,12 @@ def section_synthesis_report(markdown: str) -> dict[str, Any]:
 def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
     """Find near-duplicate explanatory sentences inside one section."""
 
+    def leading_identifier(sentence: str) -> str:
+        match = re.match(r"^\s*(?:the\s+)?`([^`\n]+)`", sentence, re.IGNORECASE)
+        if not match:
+            return ""
+        return re.sub(r"\([^)]*\)$", "", match.group(1)).casefold()
+
     def redundancy_terms(sentence: str) -> set[str]:
         terms = set()
         for token in prose_terms(sentence) - {"also", "function", "method"}:
@@ -310,6 +316,7 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
             }
             for sentence in sentences
         ]
+        subjects = [leading_identifier(sentence) for sentence in sentences]
         for left in range(len(sentences)):
             for right in range(left + 1, len(sentences)):
                 smaller = min(len(terms[left]), len(terms[right]))
@@ -323,7 +330,16 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
                     and len(identifiers[right]) >= 2
                     and identifiers[left] != identifiers[right]
                 )
-                if overlap >= 0.7 and not distinct_handoffs:
+                distinct_named_subjects = bool(
+                    subjects[left]
+                    and subjects[right]
+                    and subjects[left] != subjects[right]
+                )
+                if (
+                    overlap >= 0.7
+                    and not distinct_handoffs
+                    and not distinct_named_subjects
+                ):
                     repetitions.append(
                         {
                             "section": match.group(1).strip(),

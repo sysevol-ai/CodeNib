@@ -1110,6 +1110,70 @@ def test_overview_density_counts_the_rendered_thesis():
     )
 
 
+def test_overview_fact_minimum_tracks_allocated_topic_coverage():
+    evidence = [
+        EvidenceItem(
+            id=f"E{index}",
+            file=file,
+            start_line=None,
+            end_line=None,
+            symbol=file,
+            kind="file",
+            content=content,
+        )
+        for index, file, content in [
+            (1, "README.md", "The project coordinates four repository workflows."),
+            (2, "src/env.py", "The environment runner executes benchmark commands."),
+            (3, "src/editor.py", "The editor creates repository patches."),
+            (4, "tests/evaluate.py", "The evaluation script runs benchmark cases."),
+            (5, "src/trace.py", "The tracer records each workflow turn."),
+        ]
+    ]
+    topics = [
+        ("Environment", "src/env.py", "The environment runner executes commands", "E2"),
+        ("Editing", "src/editor.py", "The editor creates patches", "E3"),
+        ("Evaluation", "tests/evaluate.py", "The evaluation script runs cases", "E4"),
+        ("Tracing", "src/trace.py", "The tracer records workflow turns", "E5"),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The project coordinates four repository workflows",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": title,
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": statement,
+                        "evidence": [evidence_id],
+                    }
+                ],
+            }
+            for title, _file, statement, evidence_id in topics
+        ],
+    }
+    meta = {
+        "id": "overview",
+        "major_topics": [
+            {"title": title, "files": [file]} for title, file, _statement, _id in topics
+        ],
+    }
+
+    warnings = _plan_quality_warnings(meta, plan, evidence)
+    no_thesis = {**plan, "thesis": {"statement": "", "evidence": []}}
+    sparse_warnings = _plan_quality_warnings(meta, no_thesis, evidence)
+
+    assert not any(
+        warning.startswith("Overview needs at least") for warning in warnings
+    )
+    assert any(
+        warning.startswith("Overview needs at least 5 supported narrative facts")
+        for warning in sparse_warnings
+    )
+
+
 def test_overview_plan_allows_one_source_for_a_cohesive_section():
     evidence = [
         EvidenceItem(
@@ -2746,52 +2810,17 @@ def test_overview_fact_plan_merges_complementary_repairs():
                     }
                 ],
             },
-            {
-                "title": "Runtime",
-                "claims": [
-                    {
-                        "role": "responsibility",
-                        "statement": "`Server.page()` returns `PageResponse(page)`",
-                        "evidence": ["E4"],
-                    }
-                ],
-            },
         ],
     }
     complementary = {
         "thesis": initial["thesis"],
         "sections": [
             {
-                "title": "Workflow",
-                "claims": [
-                    {
-                        "role": "responsibility",
-                        "statement": (
-                            "`main()` uses `RepositoryRequest(repository_path)`"
-                        ),
-                        "evidence": ["E2"],
-                    }
-                ],
-            },
-            {
-                "title": "Build",
-                "claims": [
-                    {
-                        "role": "contract",
-                        "statement": "`Compiler.record()` returns `self.manifest`",
-                        "evidence": ["E3"],
-                    }
-                ],
-            },
-            {
                 "title": "Runtime",
                 "claims": [
                     {
-                        "role": "contract",
-                        "statement": (
-                            "`Server.page()` uses "
-                            "`SourceLinkedWikiPage(wiki_request)`"
-                        ),
+                        "role": "responsibility",
+                        "statement": "`Server.page()` returns `PageResponse(page)`",
                         "evidence": ["E4"],
                     }
                 ],
@@ -2878,7 +2907,11 @@ def test_overview_fact_plan_merges_complementary_repairs():
     )
 
     assert llm.calls == 2, warnings
-    assert [len(section["claims"]) for section in plan["sections"]] == [2, 2, 2]
+    assert [section["title"] for section in plan["sections"]] == [
+        "Workflow",
+        "Build",
+        "Runtime",
+    ]
     assert not any(warning.startswith("Overview needs") for warning in warnings)
 
 
@@ -3037,6 +3070,34 @@ def test_readme_intro_skips_commands_and_warning_chrome():
         "Efficient ASE Framework based on SGLang",
         "E1",
     )
+
+
+def test_overview_neutralizes_a_promotional_readme_heading():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=20,
+            symbol="README.md",
+            kind="file",
+            content="# Efficient ASE Framework based on SGLang",
+        )
+    ]
+    draft = (
+        "## Evaluation\n\n"
+        "The evaluation script executes benchmark cases from a repository. [E1]"
+    )
+
+    rendered = _ensure_cited_intro(
+        draft,
+        evidence,
+        canonical_readme=True,
+        repository_name="sysevol-ai/FlashCoder",
+    )
+
+    assert rendered.startswith("FlashCoder is an ASE framework based on SGLang. [E1]")
+    assert "Efficient" not in rendered
 
 
 def test_overview_uses_canonical_readme_intro():
