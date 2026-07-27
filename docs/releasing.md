@@ -24,6 +24,9 @@ workflows. It:
 7. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
    real BM25 tool call, final answer, and source citation, without installing
    semantic or graph extras.
+8. Installs the graph extra and a pinned Python SCIP provider, then verifies
+   repository-aware diagnostics, a real caller-to-callee graph edge, source
+   anchors, and the installed Dependency Map API.
 
 Manually dispatching the TestPyPI Release workflow from `main` runs these gates
 and then publishes to TestPyPI. Production publishing remains in the separate

@@ -204,6 +204,9 @@ Acceptance evidence on 2026-07-26:
 
 - A fresh wheel with the MCP extra completed CLI, Wiki, source-link, and MCP
   stdio smoke tests from outside the source checkout.
+- A fresh wheel with only the graph extra plus a pinned Python SCIP provider
+  completed repository-aware diagnostics, graph construction, caller-to-callee
+  edge recovery, source-anchor validation, and the installed Dependency Map API.
 - Python, TypeScript, and mixed TypeScript/Python repositories built fresh BM25
   views while leaving `git status --porcelain` empty; a second unchanged build
   reused the manifest without changing its mtime.

@@ -220,3 +220,68 @@ jobs:
       - name: Exercise installed Ask service
         working-directory: ${{ runner.temp }}
         run: python "$GITHUB_WORKSPACE/scripts/smoke_release_agent.py"
+
+  graph-smoke:
+    name: Installed graph and Dependency Map
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Checkout graph harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install wheel and Python graph runtime
+        run: |
+          GRAPH_VENV="$RUNNER_TEMP/codenib-release-graph-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$GRAPH_VENV"
+          echo "$GRAPH_VENV/bin" >> "$GITHUB_PATH"
+          "$GRAPH_VENV/bin/python" -m pip install --upgrade pip
+          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL"
+          "$GRAPH_VENV/bin/python" -m pip install "${WHEEL}[graph]"
+
+      - name: Provision the Python SCIP provider
+        run: |
+          SCIP_ROOT="$RUNNER_TEMP/codenib-scip-python-${{ github.run_id }}-${{ github.run_attempt }}"
+          npm install --prefix "$SCIP_ROOT" "@sourcegraph/scip-python@0.6.6"
+          echo "$SCIP_ROOT/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Verify graph dependency boundary
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          required = ("google.protobuf", "igraph")
+          missing = [name for name in required if importlib.util.find_spec(name) is None]
+          if missing:
+              raise SystemExit(f"missing graph runtimes: {missing}")
+
+          unexpected = [
+              name
+              for name in ("faiss", "litellm", "sentence_transformers")
+              if importlib.util.find_spec(name) is not None
+          ]
+          if unexpected:
+              raise SystemExit(f"unexpected non-graph runtimes: {unexpected}")
+          PY
+
+      - name: Exercise installed Dependency Map
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/scripts/smoke_release_graph.py"
