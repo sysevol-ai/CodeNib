@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 from pathlib import Path
 
 from codenib.scip_interface import scip_indexer_python
@@ -42,3 +43,35 @@ def test_scip_python_preserves_explicit_node_heap(monkeypatch, tmp_path):
     )
 
     assert env["NODE_OPTIONS"] == "--trace-gc --max-old-space-size=24576"
+
+
+def test_scip_python_applies_temporary_excludes_without_dirtying_repo(tmp_path):
+    indexer = SCIPPythonIndexer(
+        tmp_path,
+        output_dir=tmp_path / "out",
+        exclude_patterns=["third_party/**", ".next/**"],
+    )
+    config_path = tmp_path / "pyrightconfig.json"
+
+    with indexer._temporary_exclude_config():
+        assert json.loads(config_path.read_text()) == {
+            "exclude": [".next/**", "third_party/**"]
+        }
+
+    assert not config_path.exists()
+
+
+def test_scip_python_preserves_project_owned_pyright_config(tmp_path):
+    config_path = tmp_path / "pyrightconfig.json"
+    original = '{"include": ["src"]}\n'
+    config_path.write_text(original)
+    indexer = SCIPPythonIndexer(
+        tmp_path,
+        output_dir=tmp_path / "out",
+        exclude_patterns=["third_party/**"],
+    )
+
+    with indexer._temporary_exclude_config():
+        assert config_path.read_text() == original
+
+    assert config_path.read_text() == original

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Set
 
 from ...log_utils import get_logger
+from ...repository_filters import DEFAULT_IGNORED_DIRS
 
 logger = get_logger(__name__)
 
@@ -206,20 +207,7 @@ class GitDiffDetector:
         return Path(path).suffix in self._extensions
 
     # Directories to skip when walking the repo for the first-time fallback.
-    _SKIP_DIRS = frozenset(
-        {
-            ".git",
-            "node_modules",
-            "__pycache__",
-            ".tox",
-            ".mypy_cache",
-            ".pytest_cache",
-            "vendor",
-            "third_party",
-            ".venv",
-            "venv",
-        }
-    )
+    _SKIP_DIRS = DEFAULT_IGNORED_DIRS
 
     def _all_files_as_added(self, repo_path: str, new_commit: str) -> RepoChanges:
         """Fallback: walk the repo and treat every supported file as added."""

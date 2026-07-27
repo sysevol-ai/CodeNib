@@ -23,6 +23,7 @@ from .languages import (
 )
 from .log_utils import get_logger
 from .paths import user_state_dir
+from .repository_filters import DEFAULT_IGNORED_DIRS
 from .utils import is_test_file
 
 logger = get_logger(__name__)
@@ -112,23 +113,7 @@ class RepoChunkingConfig:
             )
 
         if self.ignore_dirs is None:
-            self.ignore_dirs = {
-                "__pycache__",
-                ".git",
-                ".svn",
-                ".hg",
-                "node_modules",
-                ".venv",
-                "venv",
-                "env",
-                ".env",
-                "build",
-                "dist",
-                ".pytest_cache",
-                ".mypy_cache",
-                ".tox",
-                "htmlcov",
-            }
+            self.ignore_dirs = set(DEFAULT_IGNORED_DIRS)
 
         if self.ignore_patterns is None:
             self.ignore_patterns = {

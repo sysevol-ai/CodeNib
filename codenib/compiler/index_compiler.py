@@ -20,6 +20,7 @@ Usage::
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import subprocess
@@ -29,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from ..paths import REPO_INDEX_DIRNAME
+from ..repository_filters import count_repository_files
 from .index_builders import IndexBuilderRegistry
 from .manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 from .resources import IndexStatus
@@ -96,7 +98,10 @@ class IndexCompiler:
             The completed ``RepoManifest``.
         """
         return self._compile(
-            repo_path, index_types=index_types, cache_dir=cache_dir, last_commit=None
+            repo_path,
+            index_types=index_types,
+            cache_dir=cache_dir,
+            existing_manifest=None,
         )
 
     def update_repo(
@@ -140,47 +145,42 @@ class IndexCompiler:
             )
 
         types_to_update = index_types or self._config.index_types
+        head_commit = self._get_head_commit(repo_path)
         incomplete = [
             idx_type
             for idx_type in types_to_update
             if idx_type not in existing.indexes
             or existing.indexes[idx_type].status != "fresh"
+            or not self._entry_matches_builder(
+                existing.indexes[idx_type],
+                self._builders.get(idx_type),
+            )
+            or (
+                bool(head_commit)
+                and bool(existing.indexes[idx_type].commit)
+                and existing.indexes[idx_type].commit != head_commit
+            )
         ]
-        # An explicitly empty last_indexed_commit means the previous full build
-        # never established a usable baseline. RepoManifest.from_dict() already
-        # maps legacy manifests that lack this field to `commit`, so falling
-        # back here would only hide a recorded failure.
-        previous = existing.last_indexed_commit
-        head_commit = self._get_head_commit(repo_path)
-        if not previous:
-            logger.info(
-                "Manifest records no complete indexed commit; rebuilding %s",
-                types_to_update,
-            )
-            return self.compile_repo(
-                repo_path, index_types=index_types, cache_dir=cache_dir
-            )
-        if head_commit and previous == head_commit and not incomplete:
+        if head_commit and not incomplete:
             logger.info("Indexes already at %s; nothing to update", head_commit[:8])
             return existing
-        if head_commit and previous == head_commit:
+        if head_commit and existing.commit == head_commit:
             logger.info(
                 "Retrying incomplete indexes at %s: %s",
                 head_commit[:8],
                 incomplete,
             )
-            return self.compile_repo(
-                repo_path, index_types=index_types, cache_dir=cache_dir
+        else:
+            logger.info(
+                "Updating indexes %s -> %s",
+                (existing.commit or "unknown")[:8],
+                (head_commit or "HEAD")[:8],
             )
-
-        logger.info(
-            "Updating indexes %s -> %s", previous[:8], (head_commit or "HEAD")[:8]
-        )
         return self._compile(
             repo_path,
             index_types=index_types,
             cache_dir=cache_dir,
-            last_commit=previous,
+            existing_manifest=existing,
         )
 
     def _compile(
@@ -189,9 +189,9 @@ class IndexCompiler:
         *,
         index_types: Optional[List[str]],
         cache_dir: Optional[str],
-        last_commit: Optional[str],
+        existing_manifest: Optional[RepoManifest],
     ) -> RepoManifest:
-        """Shared build loop. ``last_commit`` selects the incremental path."""
+        """Build requested views while preserving independent manifest entries."""
         repo_path = os.path.abspath(repo_path)
         cache = cache_dir or os.path.join(repo_path, self._config.cache_dir_name)
         os.makedirs(cache, exist_ok=True)
@@ -199,24 +199,78 @@ class IndexCompiler:
         types_to_build = index_types or self._config.index_types
 
         head_commit = self._get_head_commit(repo_path)
+        existing = existing_manifest
+        languages = list(self._config.languages)
+        if existing is not None:
+            languages = list(dict.fromkeys([*existing.languages, *languages]))
         manifest = RepoManifest(
             repo_path=repo_path,
             commit=head_commit,
-            last_indexed_commit=head_commit,
-            languages=list(self._config.languages),
+            last_indexed_commit=(
+                existing.last_indexed_commit if existing is not None else head_commit
+            ),
+            languages=languages,
             file_count=self._count_files(repo_path),
+            indexes=(copy.deepcopy(existing.indexes) if existing is not None else {}),
         )
-        all_succeeded = True
+        for entry in manifest.indexes.values():
+            if (
+                entry.status == "fresh"
+                and entry.commit
+                and head_commit
+                and entry.commit != head_commit
+            ):
+                entry.status = "stale"
+
+        requested_succeeded = True
 
         for idx_type in types_to_build:
+            previous_entry = (
+                existing.indexes.get(idx_type) if existing is not None else None
+            )
+            current_entry = manifest.indexes.get(idx_type)
+            if (
+                current_entry is not None
+                and current_entry.status == "fresh"
+                and self._entry_matches_builder(
+                    current_entry,
+                    self._builders.get(idx_type),
+                )
+                and (
+                    not head_commit
+                    or not current_entry.commit
+                    or current_entry.commit == head_commit
+                )
+            ):
+                continue
+
             builder = self._builders.get(idx_type)
             if builder is None:
                 logger.warning("No builder registered for '%s', skipping", idx_type)
+                requested_succeeded = False
                 continue
+
+            previous_commit = ""
+            if previous_entry is not None and previous_entry.status in {
+                "fresh",
+                "stale",
+            }:
+                previous_commit = previous_entry.commit
+            if not previous_commit and existing is not None:
+                previous_commit = existing.last_indexed_commit
+            incremental_from = (
+                previous_commit
+                if previous_commit and head_commit and previous_commit != head_commit
+                else None
+            )
 
             output_dir = os.path.join(cache, idx_type)
             result = self._build_one(
-                builder, idx_type, repo_path, output_dir, last_commit=last_commit
+                builder,
+                idx_type,
+                repo_path,
+                output_dir,
+                last_commit=incremental_from,
             )
 
             now = datetime.now(timezone.utc)
@@ -231,21 +285,26 @@ class IndexCompiler:
                     **(result.status.metadata if result.status else {}),
                     "build_duration_seconds": round(result.duration_seconds, 2),
                 },
+                commit=head_commit if result.success else previous_commit,
             )
             if not result.success and result.error:
                 entry.metadata["error"] = result.error
 
             manifest.indexes[idx_type] = entry
             if not result.success:
-                all_succeeded = False
+                requested_succeeded = False
 
-        # Only claim HEAD as indexed when every requested index actually reached
-        # it. Otherwise update_repo() would see `last_indexed_commit == HEAD` on
-        # its next run, report "nothing to update", and leave the failed index
-        # stale forever -- a recoverable failure turned into a silent permanent
-        # one. Leaving the previous commit recorded means the next run retries.
-        if not all_succeeded:
-            manifest.last_indexed_commit = last_commit or ""
+        all_views_at_head = bool(manifest.indexes) and all(
+            entry.status == "fresh"
+            and (not head_commit or not entry.commit or entry.commit == head_commit)
+            for entry in manifest.indexes.values()
+        )
+        if requested_succeeded and all_views_at_head:
+            manifest.last_indexed_commit = head_commit
+        else:
+            manifest.last_indexed_commit = (
+                existing.last_indexed_commit if existing is not None else ""
+            )
             logger.warning(
                 "Not all indexes reached %s; last_indexed_commit left at %r",
                 (head_commit or "HEAD")[:8],
@@ -262,6 +321,20 @@ class IndexCompiler:
         logger.info("Manifest written to %s", manifest_path)
 
         return manifest
+
+    @staticmethod
+    def _entry_matches_builder(entry: IndexEntry, builder: Any) -> bool:
+        """Whether a persisted view matches the current builder contract."""
+
+        identity_fn = getattr(builder, "artifact_identity", None)
+        if not callable(identity_fn):
+            return True
+        try:
+            expected = identity_fn()
+        except Exception as exc:  # noqa: BLE001 - rebuild on uncertain identity
+            logger.warning("Could not inspect builder identity: %s", exc)
+            return False
+        return all(entry.config.get(key) == value for key, value in expected.items())
 
     @staticmethod
     def _build_one(
@@ -326,7 +399,4 @@ class IndexCompiler:
 
     @staticmethod
     def _count_files(repo_path: str) -> int:
-        count = 0
-        for _, _, files in os.walk(repo_path):
-            count += len(files)
-        return count
+        return count_repository_files(repo_path)

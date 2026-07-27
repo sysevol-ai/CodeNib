@@ -35,9 +35,10 @@ class IndexEntry:
     path: str  # path to the index directory
     built_at: str  # ISO 8601 timestamp
     built_at_epoch: float  # epoch seconds (for age calculations)
-    status: str  # "fresh" | "failed"
+    status: str  # "fresh" | "stale" | "failed"
     config: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    commit: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -48,6 +49,7 @@ class IndexEntry:
             "status": self.status,
             "config": dict(self.config),
             "metadata": dict(self.metadata),
+            "commit": self.commit,
         }
 
     @classmethod
@@ -60,6 +62,7 @@ class IndexEntry:
             status=data["status"],
             config=data.get("config", {}),
             metadata=data.get("metadata", {}),
+            commit=data.get("commit", ""),
         )
 
 
@@ -104,7 +107,10 @@ class RepoManifest:
         repo = data.get("repo", {})
         indexes: Dict[str, IndexEntry] = {}
         for k, v in data.get("indexes", {}).items():
-            indexes[k] = IndexEntry.from_dict(v)
+            entry = IndexEntry.from_dict(v)
+            if not entry.commit and entry.status == "fresh":
+                entry.commit = repo.get("commit", "")
+            indexes[k] = entry
         return cls(
             version=data.get("version", MANIFEST_VERSION),
             repo_path=repo.get("path", ""),
@@ -147,7 +153,11 @@ class RepoManifest:
 
     def _index_is_fresh(self, index_type: str) -> bool:
         entry = self.indexes.get(index_type)
-        return entry is not None and entry.status == "fresh"
+        return (
+            entry is not None
+            and entry.status == "fresh"
+            and (not self.commit or not entry.commit or entry.commit == self.commit)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +182,11 @@ class ManifestIndexStateStore:
         if entry is None:
             return None
 
-        if entry.status != "fresh":
+        if entry.status != "fresh" or (
+            entry.commit
+            and self._manifest.commit
+            and entry.commit != self._manifest.commit
+        ):
             return None  # treat failed builds as missing
 
         age = time.time() - entry.built_at_epoch

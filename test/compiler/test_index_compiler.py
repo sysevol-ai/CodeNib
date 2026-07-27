@@ -34,6 +34,10 @@ from codenib.compiler.resources import (
     IndexStatus,
     ResourceResolver,
 )
+from codenib.repository_filters import (
+    REPOSITORY_FILTER_POLICY_VERSION,
+    default_exclude_patterns,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -168,13 +172,18 @@ class TestVectorIndexBuilder:
             index_metric="l2",
         )
 
-        assert builder._artifact_identity() == {
+        assert builder.artifact_identity() == {
+            "builder_schema": 2,
             "embedding_model": "test-model",
             "embedding_provider": "huggingface",
             "embedding_dimension": 384,
             "dimension": 384,
             "embedding_kwargs": {"revision": "model-commit"},
             "index_metric": "l2",
+            "languages": ["python"],
+            "levels": ["l0", "l2"],
+            "max_lines_per_chunk": 300,
+            "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
 
 
@@ -221,6 +230,7 @@ class TestSymbolGraphBuilder:
                     "languages": ["python"],
                     "project_name": "repo",
                     "skip_level": None,
+                    "exclude_patterns": default_exclude_patterns(),
                     "graph_route": "active",
                 },
             )
@@ -703,6 +713,46 @@ class TestUpdateRepo:
         # HEAD did not move, so no builder should run again.
         assert len(calls) == 1
 
+    def test_rebuilds_only_view_with_outdated_builder_identity(self, tmp_path):
+        _git_repo(tmp_path)
+        calls = []
+
+        class VersionedBuilder:
+            version = 1
+
+            def artifact_identity(self):
+                return {"builder_schema": self.version}
+
+            def build(self, scope: str, **kwargs) -> IndexStatus:
+                calls.append(self.version)
+                return IndexStatus(
+                    index_type="rec",
+                    state=IndexState.FRESH,
+                    last_built=time.time(),
+                    age_seconds=0.0,
+                    scope=scope,
+                    path=kwargs["output_dir"],
+                    metadata=self.artifact_identity(),
+                )
+
+            def incremental_update(self, scope: str, **kwargs) -> IndexStatus:
+                return self.build(scope, **kwargs)
+
+        builder = VersionedBuilder()
+        registry = IndexBuilderRegistry()
+        registry.register("rec", builder)
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(index_types=["rec"], languages=["python"]),
+        )
+        compiler.compile_repo(str(tmp_path))
+        builder.version = 2
+
+        manifest = compiler.update_repo(str(tmp_path))
+
+        assert calls == [1, 2]
+        assert manifest.indexes["rec"].config["builder_schema"] == 2
+
     def test_uses_incremental_path_when_head_moved(self, tmp_path):
         first = _git_repo(tmp_path)
         calls: list = []
@@ -818,6 +868,55 @@ class TestUpdateRepo:
         assert attempts == ["build", "build"]
         assert recovered.last_indexed_commit == head
         assert recovered.indexes["rec"].status == "fresh"
+
+    def test_partial_build_preserves_other_fresh_views(self, tmp_path):
+        head = _git_repo(tmp_path)
+        registry = IndexBuilderRegistry()
+        registry.register("bm25", _mock_builder("bm25"))
+        registry.register("symbol_graph", _mock_builder("symbol_graph"))
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(
+                index_types=["bm25", "symbol_graph"],
+                languages=["python"],
+            ),
+        )
+
+        compiler.compile_repo(str(tmp_path), index_types=["bm25"])
+        manifest = compiler.update_repo(str(tmp_path), index_types=["symbol_graph"])
+
+        assert set(manifest.indexes) == {"bm25", "symbol_graph"}
+        assert manifest.indexes["bm25"].status == "fresh"
+        assert manifest.indexes["symbol_graph"].status == "fresh"
+        assert manifest.indexes["bm25"].commit == head
+        assert manifest.indexes["symbol_graph"].commit == head
+        assert manifest.capabilities["sparse_search"] is True
+        assert manifest.capabilities["symbol_navigation"] is True
+
+    def test_partial_update_marks_unrequested_old_view_stale(self, tmp_path):
+        first = _git_repo(tmp_path)
+        registry = IndexBuilderRegistry()
+        registry.register("bm25", _mock_builder("bm25"))
+        registry.register("symbol_graph", _mock_builder("symbol_graph"))
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(
+                index_types=["bm25", "symbol_graph"],
+                languages=["python"],
+            ),
+        )
+        compiler.compile_repo(str(tmp_path))
+        second = _commit(tmp_path, "b.py")
+
+        manifest = compiler.update_repo(str(tmp_path), index_types=["bm25"])
+
+        assert manifest.indexes["bm25"].status == "fresh"
+        assert manifest.indexes["bm25"].commit == second
+        assert manifest.indexes["symbol_graph"].status == "stale"
+        assert manifest.indexes["symbol_graph"].commit == first
+        assert manifest.capabilities["sparse_search"] is True
+        assert manifest.capabilities["symbol_navigation"] is False
+        assert manifest.last_indexed_commit == first
 
 
 # ---------------------------------------------------------------------------

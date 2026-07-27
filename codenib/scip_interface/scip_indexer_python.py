@@ -7,11 +7,13 @@
 """
 SCIP indexer for Python projects using scip-python (via conda environment).
 """
+import json
 import os
 import signal
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Iterator, List, Optional, Union
 
 from ..log_utils import get_logger
 from ..profiler import Profiler
@@ -144,15 +146,69 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         if target_dir:
             cmd.extend(["--target-only", target_dir])
 
-        # Note: scip-python does not support --exclude option
-        # exclude_patterns are silently ignored for Python indexing
-        if self.exclude_patterns:
-            logger.warning(
-                f"scip-python does not support exclude patterns. "
-                f"Ignoring: {self.exclude_patterns}"
-            )
-
         return cmd
+
+    def _has_project_pyright_config(self) -> bool:
+        """Return whether the project already owns Pyright configuration."""
+
+        if (self.project_root / "pyrightconfig.json").is_file():
+            return True
+        pyproject = self.project_root / "pyproject.toml"
+        try:
+            return any(
+                line.strip() == "[tool.pyright]"
+                for line in pyproject.read_text(encoding="utf-8").splitlines()
+            )
+        except OSError:
+            return False
+
+    @contextmanager
+    def _temporary_exclude_config(self) -> Iterator[None]:
+        """Apply CodeNib exclusions to scip-python without persisting config.
+
+        scip-python has no exclude flag, but it delegates project discovery to
+        Pyright. When the repository does not already own Pyright
+        configuration, an exact temporary ``pyrightconfig.json`` prevents
+        generated and vendored trees from entering the expensive analysis.
+        Existing project configuration always wins.
+        """
+
+        if not self.exclude_patterns or self._has_project_pyright_config():
+            yield
+            return
+
+        path = self.project_root / "pyrightconfig.json"
+        payload = (
+            json.dumps(
+                {"exclude": sorted(dict.fromkeys(self.exclude_patterns))},
+                indent=2,
+            )
+            + "\n"
+        )
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            yield
+            return
+        except OSError as exc:
+            logger.warning("Could not apply temporary Pyright excludes: %s", exc)
+            yield
+            return
+
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(payload)
+            logger.info(
+                "Applying %d temporary Pyright exclusions",
+                len(self.exclude_patterns),
+            )
+            yield
+        finally:
+            try:
+                if path.read_text(encoding="utf-8") == payload:
+                    path.unlink()
+            except OSError:
+                logger.warning("Could not remove temporary Pyright config at %s", path)
 
     def _get_decoder_class(self):
         """
@@ -198,7 +254,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         logger.debug(f"Running command: {' '.join(cmd)}")
 
         with self.profiler.section("generate_index") as section:
-            success = self._run_in_conda_env(cmd, self.project_root)
+            with self._temporary_exclude_config():
+                success = self._run_in_conda_env(cmd, self.project_root)
         duration = section.duration
 
         if success:
