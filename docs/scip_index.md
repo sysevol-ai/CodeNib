@@ -71,30 +71,24 @@ Related links:
 - [Our scip-python fork](https://github.com/fishmingyu/scip-python/tree/exclude-config)
 - [Original scip-python](https://github.com/sourcegraph/scip-python)
 
-### Convert index.scip to index.decoded
-
-First install the [protobuf](https://protobuf.dev/installation/).
-Get the scip.proto from [SCIP](https://github.com/sourcegraph/scip/tree/main).
-
 ### Using the LSIndexer
 
-The `LSIndexer` class provides a Python interface for working with SCIP indices. **It automatically handles conda environment isolation** to prevent conflicts with system Python packages.
+The `LSIndexer` class provides a Python interface for working with SCIP
+indices. CodeNib decodes `index.scip` with the packaged protobuf descriptor, so
+users do not need a separate `protoc` executable.
 
-#### Conda Environment Isolation
+#### Python Provider Resolution
 
-**Important:** The LSIndexer uses conda for environment isolation when running `scip-python`. This prevents issues with:
-- Package version conflicts
-- System Python package interference
-- Inconsistent dependency resolution
+For Python, CodeNib first resolves `scip-python` from `PATH`. The repository
+graph intentionally omits the caller's external package inventory, which keeps
+indexing reproducible and avoids scanning a large global Python environment.
+The managed `scip-env` Conda route remains a compatibility fallback for
+development environments where `scip-python` is not directly available.
 
-The indexer automatically:
-1. Checks if conda is installed
-2. Creates a dedicated `scip-env` environment (if not exists) using [scip-environment.yml](https://github.com/sysevol-ai/CodeNib/blob/main/codenib/scip_interface/scip-environment.yml)
-3. Runs all `scip-python` commands within this isolated environment
+Inspect the exact requirements for a repository before building:
 
-**Manual conda environment setup** (optional - the indexer does this automatically):
 ```bash
-conda env create -f codenib/scip_interface/scip-environment.yml
+codenib doctor /path/to/repository --require graph
 ```
 
 #### Basic Usage
@@ -110,7 +104,7 @@ indexer = LSIndexer("/path/to/project")
 # Or specify a custom output directory
 indexer = LSIndexer("/path/to/project", output_dir="/custom/output/path")
 
-# Generate an index (runs in isolated conda environment automatically)
+# Generate an index (uses scip-python on PATH, then managed Conda as fallback)
 indexer.generate_index(project_name="MyProject", target_dir="src")
 
 # Decode the index.scip file to index.decoded

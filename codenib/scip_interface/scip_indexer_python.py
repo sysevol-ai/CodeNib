@@ -4,11 +4,10 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""
-SCIP indexer for Python projects using scip-python (via conda environment).
-"""
+"""SCIP indexer for Python projects using scip-python."""
 import json
 import os
+import shutil
 import signal
 import subprocess
 from contextlib import contextmanager
@@ -67,8 +66,9 @@ class SCIPPythonIndexer(SCIPIndexerBase):
     """
     SCIP indexer for Python projects.
 
-    Uses the scip-python tool (installed in a conda environment) to generate
-    SCIP indices for Python codebases.
+    Uses a ``scip-python`` executable already available on ``PATH`` when
+    possible. The historical managed Conda environment remains a fallback for
+    development and CI environments that do not expose the tool directly.
     """
 
     def __init__(
@@ -101,14 +101,19 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         # Conda environment configuration
         self.conda_env_name = "scip-env"
         self.env_file = self.module_dir / "scip-environment.yml"
+        self._direct_indexer_path: Optional[str] = None
 
     def _check_indexer_available(self) -> bool:
         """
-        Check if the conda environment for scip-python is available.
+        Check for a directly installed scip-python before the Conda fallback.
 
         Returns:
             bool: True if the environment is available, False otherwise
         """
+        self._direct_indexer_path = shutil.which("scip-python")
+        if self._direct_indexer_path:
+            logger.info("Using scip-python from %s", self._direct_indexer_path)
+            return True
         return self._ensure_conda_env()
 
     def _build_index_command(
@@ -130,7 +135,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         Returns:
             List[str]: Command as list of strings
         """
-        cmd = ["scip-python", "index"]
+        cmd = [self._direct_indexer_path or "scip-python", "index"]
 
         if cwd:
             cmd.append("--cwd")
@@ -142,6 +147,16 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             cmd.extend(["--project-name", self.project_root.name])
 
         cmd.extend(["--output", str(self.index_file)])
+
+        if self._direct_indexer_path:
+            # Repository-context serving does not expose navigation into the
+            # caller's Python environment. Supplying an explicit empty external
+            # package inventory avoids scip-python enumerating every package in
+            # a large global/Conda environment, which is slow, unreproducible,
+            # and can exceed old scip-python subprocess buffers.
+            environment_file = self.output_dir / "python_environment.json"
+            environment_file.write_text("[]\n", encoding="utf-8")
+            cmd.extend(["--environment", str(environment_file)])
 
         if target_dir:
             cmd.extend(["--target-only", target_dir])
@@ -231,7 +246,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         """
         Generate SCIP index for the Python project.
 
-        Uses conda environment to run scip-python.
+        Uses the resolved PATH executable, with Conda as a compatibility
+        fallback.
 
         Args:
             cwd: Working directory (defaults to project_root)
@@ -255,7 +271,10 @@ class SCIPPythonIndexer(SCIPIndexerBase):
 
         with self.profiler.section("generate_index") as section:
             with self._temporary_exclude_config():
-                success = self._run_in_conda_env(cmd, self.project_root)
+                if self._direct_indexer_path:
+                    success = self._run_direct(cmd, self.project_root)
+                else:
+                    success = self._run_in_conda_env(cmd, self.project_root)
         duration = section.duration
 
         if success:
@@ -301,6 +320,39 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         )
 
     # ── Conda environment helpers ──────────────────────────────────────
+
+    @staticmethod
+    def _subprocess_env() -> dict[str, str]:
+        env = os.environ.copy()
+        node_opts = env.get("NODE_OPTIONS", "")
+        if "--max-old-space-size" not in node_opts:
+            env["NODE_OPTIONS"] = (
+                node_opts + f" --max-old-space-size={_SCIP_PYTHON_MAX_OLD_SPACE_MB}"
+            ).strip()
+        return env
+
+    def _run_direct(self, cmd: list, cwd: Optional[Union[str, Path]] = None) -> bool:
+        """Run an explicitly resolved scip-python without creating an environment."""
+
+        work_dir = Path(cwd if cwd else self.project_root).resolve()
+        try:
+            _run_checked_with_timeout(
+                cmd,
+                cwd=work_dir,
+                env=self._subprocess_env(),
+                timeout=_SCIP_PYTHON_INDEX_TIMEOUT_S,
+            )
+            return True
+        except subprocess.TimeoutExpired as exc:
+            logger.error(
+                "scip-python timed out after %ss (cmd: %s)",
+                exc.timeout,
+                exc.cmd,
+            )
+            return False
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            logger.error("Error running scip-python: %s", exc)
+            return False
 
     def _ensure_conda_env(self) -> bool:
         """
@@ -418,17 +470,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 # Run directly with scip-env/bin on PATH instead of
                 # using `conda run`, which resets PATH during activation
                 # and causes pip3 to resolve to the wrong environment.
-                env = os.environ.copy()
+                env = self._subprocess_env()
                 env["PATH"] = f"{scip_bin}:{env.get('PATH', '')}"
-                # scip-python is Node-based; cold SymPy indexing exceeds 8 GiB
-                # of V8 old space. Raise the ceiling for this subprocess only
-                # while honoring an explicit caller-set value.
-                node_opts = env.get("NODE_OPTIONS", "")
-                if "--max-old-space-size" not in node_opts:
-                    env["NODE_OPTIONS"] = (
-                        node_opts
-                        + f" --max-old-space-size={_SCIP_PYTHON_MAX_OLD_SPACE_MB}"
-                    ).strip()
                 logger.info(f"Running with scip-env PATH ({scip_bin}): {cmd}")
                 _run_checked_with_timeout(
                     cmd,

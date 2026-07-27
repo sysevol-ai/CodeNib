@@ -358,7 +358,7 @@ class SCIPIndexerBase(ABC):
 
     def decode_index(self) -> bool:
         """
-        Decode the SCIP index using protobuf to create a readable version.
+        Decode the SCIP index with the packaged protobuf descriptor.
 
         Returns:
             bool: True if decoding was successful, False otherwise
@@ -368,28 +368,31 @@ class SCIPIndexerBase(ABC):
             return False
 
         try:
-            # Using protoc to decode the binary SCIP file
-            cmd = [
-                "protoc",
-                "--decode=scip.Index",
-                f"--proto_path={self.module_dir}",
-                "scip.proto",
-                f"< {self.index_file}",
-                f"> {self.decoded_file}",
-            ]
+            from google.protobuf.message import DecodeError
+            from google.protobuf.text_format import MessageToString
 
-            # We need to use shell=True for the redirect operators
-            cmd_str = " ".join(cmd)
-            logger.info(f"Running command: {cmd_str}")
+            from .scip_pb2 import Index
+        except ImportError:
+            logger.error("SCIP decoding requires protobuf. Install `codenib[graph]`.")
+            return False
 
+        try:
             with self.profiler.section("decode_index") as section:
-                subprocess.run(cmd_str, shell=True, check=True, cwd=self.module_dir)
+                payload = self.index_file.read_bytes()
+                if not payload:
+                    raise DecodeError("SCIP index is empty")
+                index = Index()
+                index.ParseFromString(payload)
+                self.decoded_file.write_text(
+                    MessageToString(index, as_utf8=True),
+                    encoding="utf-8",
+                )
             duration = section.duration
 
             logger.info(f"Successfully decoded SCIP index to {self.decoded_file}")
             logger.info(f"⏱️  Index decoding took: {duration:.2f} seconds")
             return True
-        except subprocess.CalledProcessError as e:
+        except (OSError, DecodeError) as e:
             logger.error(f"Error decoding SCIP index: {e}")
             return False
 

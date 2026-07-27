@@ -5,8 +5,9 @@
 import json
 from pathlib import Path
 
-from codenib.scip_interface import scip_indexer_python
+from codenib.scip_interface import scip_indexer_base, scip_indexer_python
 from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
+from codenib.scip_interface.scip_pb2 import Index
 
 
 def _captured_subprocess_env(monkeypatch, tmp_path, node_options=None):
@@ -43,6 +44,70 @@ def test_scip_python_preserves_explicit_node_heap(monkeypatch, tmp_path):
     )
 
     assert env["NODE_OPTIONS"] == "--trace-gc --max-old-space-size=24576"
+
+
+def test_scip_python_prefers_an_existing_path_tool(monkeypatch, tmp_path):
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "out")
+    monkeypatch.setattr(
+        scip_indexer_python.shutil,
+        "which",
+        lambda command: "/tools/scip-python" if command == "scip-python" else None,
+    )
+    monkeypatch.setattr(
+        indexer,
+        "_ensure_conda_env",
+        lambda: (_ for _ in ()).throw(AssertionError("Conda should not be used")),
+    )
+
+    assert indexer._check_indexer_available() is True
+    assert indexer._direct_indexer_path == "/tools/scip-python"
+    assert indexer._build_index_command()[:2] == [
+        "/tools/scip-python",
+        "index",
+    ]
+    command = indexer._build_index_command()
+    environment_path = Path(command[command.index("--environment") + 1])
+    assert environment_path.read_text() == "[]\n"
+
+
+def test_scip_python_direct_run_preserves_node_heap(monkeypatch, tmp_path):
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "out")
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured.update(kwargs)
+
+    monkeypatch.setattr(scip_indexer_python, "_run_checked_with_timeout", fake_run)
+    monkeypatch.delenv("NODE_OPTIONS", raising=False)
+
+    assert indexer._run_direct(["/tools/scip-python", "index"], tmp_path)
+    assert captured["cmd"][0] == "/tools/scip-python"
+    assert captured["env"]["NODE_OPTIONS"] == "--max-old-space-size=16384"
+
+
+def test_scip_binary_decode_uses_packaged_protobuf_descriptor(monkeypatch, tmp_path):
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "out")
+    monkeypatch.setattr(
+        scip_indexer_base.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("decode must not invoke protoc")
+        ),
+    )
+    payload = Index()
+    document = payload.documents.add()
+    document.language = "python"
+    document.relative_path = "calculator.py"
+    occurrence = document.occurrences.add()
+    occurrence.range.extend([0, 0, 0, 3])
+    occurrence.symbol = "scip-python python repo 1.0 calculator/release_sum()."
+    indexer.index_file.write_bytes(payload.SerializeToString())
+
+    assert indexer.decode_index() is True
+    decoded = indexer.decoded_file.read_text()
+    assert 'relative_path: "calculator.py"' in decoded
+    assert "calculator/release_sum()" in decoded
 
 
 def test_scip_python_applies_temporary_excludes_without_dirtying_repo(tmp_path):

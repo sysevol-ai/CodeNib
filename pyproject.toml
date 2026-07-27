@@ -75,6 +75,7 @@ datasets = [
 ]
 graph = [
     "igraph>=0.11.6",
+    "protobuf>=3.20.0",
 ]
 mcp = [
     "mcp>=1.0.0",
@@ -98,6 +99,7 @@ full = [
     "mcp>=1.0.0",
     "numpy>=1.24.0",
     "openai>=1.0.0",
+    "protobuf>=3.20.0",
     "requests>=2.25.0",
     "sentence-transformers>=2.2.0",
 ]
@@ -121,6 +123,7 @@ test = [
     "mcp>=1.0.0",
     "numpy>=1.24.0",
     "openai>=1.0.0",
+    "protobuf>=3.20.0",
     "pytest>=6.0.0",
     "pytest-cov>=3.0.0",
     "pytest-timeout>=2.1.0",
