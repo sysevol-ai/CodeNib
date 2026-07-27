@@ -2061,6 +2061,164 @@ def test_overview_supplements_an_allocated_callable_relation():
     }
 
 
+def test_overview_aligns_an_existing_handoff_with_its_allocated_relation():
+    plan = {
+        "sections": [
+            {
+                "title": "Editor Tools",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "`Editor.create_patch()` creates a patch",
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`Editor.revise_bug()` uses `_edit_with_new_code()` "
+                            "to update a snippet"
+                        ),
+                        "evidence": ["E2"],
+                    },
+                ],
+            }
+        ]
+    }
+    relation = RelationItem(
+        id="R1",
+        source="src/editor.py:Editor.revise_bug()",
+        target="src/editor.py:Editor._edit_with_new_code()",
+        anchors=("src/editor.py:12",),
+    )
+
+    supplemented = _supplement_topic_relation_flows(
+        {
+            "id": "overview",
+            "major_topics": [{"title": "Editor Tools", "files": ["src/editor.py"]}],
+        },
+        plan,
+        [relation],
+    )
+
+    flow = supplemented["sections"][0]["claims"][1]
+    assert flow["statement"] == (
+        "`Editor.revise_bug()` uses `Editor._edit_with_new_code()` "
+        "to update a snippet"
+    )
+    assert flow["role"] == "flow"
+    assert flow["evidence"] == ["E2", "R1"]
+    assert len(supplemented["sections"][0]["claims"]) == 2
+
+
+def test_parent_page_supplements_a_relation_in_its_source_section():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/tracing.py",
+            start_line=10,
+            end_line=20,
+            symbol="Tracer.end_turn",
+            kind="method",
+            content="def end_turn(self): return self.turn.duration()",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/logging.py",
+            start_line=1,
+            end_line=8,
+            symbol="LoggingManager.get_logger",
+            kind="method",
+            content="def get_logger(self): pass",
+        ),
+    ]
+    relation = RelationItem(
+        id="R1",
+        source="src/tracing.py:Tracer.end_turn()",
+        target="src/tracing.py:Turn.duration()",
+        anchors=("src/tracing.py:12",),
+    )
+    plan = {
+        "sections": [
+            {
+                "title": "Tracing",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "`Tracer.end_turn()` records the turn",
+                        "evidence": ["E1"],
+                    }
+                ],
+            },
+            {
+                "title": "Logging",
+                "claims": [
+                    {
+                        "role": "component",
+                        "statement": "`LoggingManager.get_logger()` returns a logger",
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+        ]
+    }
+
+    supplemented = _supplement_topic_relation_flows(
+        {"id": "logging-and-tracing"},
+        plan,
+        [relation],
+        evidence,
+    )
+
+    assert supplemented["sections"][0]["claims"][-1] == {
+        "role": "flow",
+        "statement": "`Tracer.end_turn()` calls `Turn.duration()`",
+        "evidence": ["R1"],
+    }
+    assert len(supplemented["sections"][1]["claims"]) == 1
+
+
+def test_parent_page_does_not_attach_an_unrelated_relation():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/runtime.py",
+            start_line=1,
+            end_line=4,
+            symbol="Runtime.run",
+            kind="method",
+            content="def run(self): pass",
+        )
+    ]
+    plan = {
+        "sections": [
+            {
+                "title": "Runtime",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "`Runtime.run()` handles a request",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ]
+    }
+    relation = RelationItem(
+        id="R1",
+        source="src/storage.py:Store.load()",
+        target="src/storage.py:Store.read()",
+    )
+
+    supplemented = _supplement_topic_relation_flows(
+        {"id": "runtime"},
+        plan,
+        [relation],
+        evidence,
+    )
+
+    assert supplemented == plan
+
+
 def test_overview_supplements_a_missing_topic_with_two_callable_relations():
     relations = [
         RelationItem(

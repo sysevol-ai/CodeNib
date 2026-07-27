@@ -81,7 +81,7 @@ _EXT_LANG = {
 }
 _MAX_CONTEXT_CHARS = 14000
 _OUTLINE_PROMPT_VERSION = "12"
-_PAGE_PROMPT_VERSION = "98"
+_PAGE_PROMPT_VERSION = "99"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 _OVERVIEW_RETRIEVAL_LIMIT = 12
@@ -722,14 +722,153 @@ def _supplement_topic_relation_flows(
     meta: Dict[str, Any],
     plan: dict[str, Any],
     relations: Sequence[RelationItem],
+    evidence: Sequence[EvidenceItem] = (),
 ) -> dict[str, Any]:
-    """Materialize callable edges when an Overview topic omitted its flow."""
+    """Align or materialize callable edges omitted by the model plan."""
 
-    if meta.get("id") != "overview" or not relations:
+    if not relations:
         return plan
 
     supplemented = copy.deepcopy(plan)
     sections = supplemented.setdefault("sections", [])
+
+    def endpoint_symbol(endpoint: str) -> str:
+        return endpoint.rsplit(":", 1)[-1].strip()
+
+    def normalized_symbol(value: str) -> str:
+        return re.sub(r"\([^)]*\)$", "", value.strip()).casefold()
+
+    def canonical_relation_claim(
+        statement: str,
+        relation: RelationItem,
+    ) -> Optional[str]:
+        if relation_matches_claim(statement, relation):
+            return statement
+        if not is_interaction_claim(statement):
+            return None
+
+        identifiers = list(re.finditer(r"`([^`\n]+)`", statement))
+        source = normalized_symbol(endpoint_symbol(relation.source))
+        target = normalized_symbol(endpoint_symbol(relation.target))
+        source_leaf = source.rsplit(".", 1)[-1]
+        target_leaf = target.rsplit(".", 1)[-1]
+        source_matches = [
+            match
+            for match in identifiers
+            if normalized_symbol(match.group(1)) in {source, source_leaf}
+        ]
+        target_matches = [
+            match
+            for match in identifiers
+            if normalized_symbol(match.group(1)) in {target, target_leaf}
+        ]
+        pair = next(
+            (
+                (source_match, target_match)
+                for source_match in source_matches
+                for target_match in target_matches
+                if source_match.start() < target_match.start()
+            ),
+            None,
+        )
+        if pair is None:
+            return None
+
+        replacements = (
+            (pair[0].start(1), pair[0].end(1), endpoint_symbol(relation.source)),
+            (pair[1].start(1), pair[1].end(1), endpoint_symbol(relation.target)),
+        )
+        canonical = statement
+        for start, end, replacement in sorted(replacements, reverse=True):
+            canonical = canonical[:start] + replacement + canonical[end:]
+        return canonical if relation_matches_claim(canonical, relation) else None
+
+    for section in sections:
+        for claim in section.get("claims") or []:
+            statement = str(claim.get("statement") or "")
+            matches = [
+                (relation, canonical)
+                for relation in relations
+                if (canonical := canonical_relation_claim(statement, relation))
+                is not None
+            ]
+            if len(matches) != 1:
+                continue
+            relation, canonical = matches[0]
+            claim["statement"] = canonical
+            claim["role"] = "flow"
+            claim["evidence"] = list(
+                dict.fromkeys(
+                    [
+                        *[str(item) for item in claim.get("evidence") or []],
+                        relation.id,
+                    ]
+                )
+            )
+
+    if meta.get("id") != "overview":
+        covered_relations = {
+            str(item)
+            for section in sections
+            for claim in section.get("claims") or []
+            if str(claim.get("role") or "") == "flow"
+            for item in claim.get("evidence") or []
+            if str(item).startswith("R")
+        }
+        if covered_relations:
+            return supplemented
+
+        evidence_by_id = {item.id: item for item in evidence}
+        candidates = []
+        for relation in relations:
+            source = endpoint_symbol(relation.source)
+            target = endpoint_symbol(relation.target)
+            if not source.endswith("()") or not target.endswith("()"):
+                continue
+            source_file = AgentWiki._norm_hint_path(relation.source.split(":", 1)[0])
+            target_file = AgentWiki._norm_hint_path(relation.target.split(":", 1)[0])
+            for section_index, section in enumerate(sections):
+                section_files = {
+                    AgentWiki._norm_hint_path(evidence_by_id[item].file)
+                    for claim in section.get("claims") or []
+                    for item in claim.get("evidence") or []
+                    if item in evidence_by_id
+                }
+                score = 2 * int(source_file in section_files) + int(
+                    target_file in section_files
+                )
+                if score:
+                    candidates.append((score, -section_index, relation, section))
+        if not candidates:
+            return supplemented
+        _, _, relation, section = max(
+            candidates,
+            key=lambda item: (item[0], item[1], item[2].id),
+        )
+        claims = section.setdefault("claims", [])
+        flow = {
+            "role": "flow",
+            "statement": (
+                f"`{endpoint_symbol(relation.source)}` calls "
+                f"`{endpoint_symbol(relation.target)}`"
+            ),
+            "evidence": [relation.id],
+        }
+        if len(claims) < 3:
+            claims.append(flow)
+        else:
+            replaceable = next(
+                (
+                    index
+                    for index, existing in enumerate(claims)
+                    if str(existing.get("role") or "") == "component"
+                ),
+                None,
+            )
+            if replaceable is not None:
+                claims[replaceable] = flow
+        return supplemented
+
     for topic in meta.get("major_topics") or []:
         if not isinstance(topic, dict):
             continue
@@ -3337,6 +3476,7 @@ class AgentWiki:
             meta,
             best_plan,
             relations,
+            evidence,
         )
         if supplemented_plan != best_plan:
             supplemented_plan = _normalize_plan_support(
@@ -3412,6 +3552,7 @@ class AgentWiki:
                         meta,
                         admitted_plan,
                         relations,
+                        evidence,
                     )
                     for admitted_plan in tuple(variants)
                 )
