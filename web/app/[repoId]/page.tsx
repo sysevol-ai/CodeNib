@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
@@ -14,11 +14,14 @@ import {
   fetchWikiTree,
   repoRelative,
   type CodemapResponse,
+  type Citation,
   type CommitRef,
   type RepoInfo,
   type WikiPage,
   type WikiPageRef,
 } from "@/lib/api";
+
+const CodePanel = lazy(() => import("@/components/CodePanel"));
 
 interface Heading {
   id: string;
@@ -117,6 +120,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
   // symbol when launched via "Focus here" from a wiki subsystem map.
   const [graphSeed, setGraphSeed] = useState<string | undefined>(undefined);
   const [graphOpen, setGraphOpen] = useState(false);
+  const [sourceCitation, setSourceCitation] = useState<Citation | null>(null);
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [activeHeading, setActiveHeading] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +178,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
     setPage(null);
     setPageError(null);
     setPageGraph(null);
+    setSourceCitation(null);
     fetchWikiPage(repoId, activeId)
       .then((p) => !cancelled && setPage(p))
       .catch((e) => !cancelled && setPageError(String(e)));
@@ -239,6 +244,15 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [graphOpen]);
+
+  useEffect(() => {
+    if (!sourceCitation) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSourceCitation(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sourceCitation]);
 
   const hasGraph = !!repo?.capabilities?.codemap;
   const generationMode = page?.generation?.mode ?? "offline";
@@ -485,7 +499,14 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                 </details>
               ) : null}
               {page ? (
-                <Markdown>{stripGeneratedDiagrams(page.markdown)}</Markdown>
+                <Markdown
+                  citations={page.citations}
+                  onCite={(index) =>
+                    setSourceCitation(page.citations[index] ?? null)
+                  }
+                >
+                  {stripGeneratedDiagrams(page.markdown)}
+                </Markdown>
               ) : pageError ? (
                 <p className="muted">Couldn't load this page. It may not exist — pick a section from the sidebar.</p>
               ) : (
@@ -552,6 +573,61 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
             </div>
             <div className="graph-modal-body">
               <Codemap repoId={repoId} initialSymbol={graphSeed} commit={selectedCommit} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sourceCitation && (
+        <div
+          className="source-modal-scrim"
+          onClick={() => setSourceCitation(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Source definition"
+        >
+          <div
+            className="source-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="source-modal-head">
+              <div>
+                <span className="source-modal-kicker">Indexed definition</span>
+                <div className="source-modal-title mono">
+                  {sourceCitation.node_name ||
+                    repoRelative(sourceCitation.file)}
+                </div>
+                <div className="source-modal-location mono">
+                  {repoRelative(sourceCitation.file)}
+                  {sourceCitation.start_line != null
+                    ? `:${sourceCitation.start_line}-${
+                        sourceCitation.end_line ??
+                        sourceCitation.start_line
+                      }`
+                    : ""}
+                </div>
+              </div>
+              <button
+                className="source-modal-close"
+                onClick={() => setSourceCitation(null)}
+                aria-label="Close source"
+              >
+                ×
+              </button>
+            </div>
+            <div className="source-modal-body">
+              <Suspense
+                fallback={
+                  <div className="codemap-loading">Loading source…</div>
+                }
+              >
+                <CodePanel
+                  repoId={repoId}
+                  citations={[sourceCitation]}
+                  repo={repo?.repo}
+                  commit={repo?.base_commit}
+                />
+              </Suspense>
             </div>
           </div>
         </div>

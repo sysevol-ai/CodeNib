@@ -14,7 +14,6 @@ concurrent queries are safe.
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 from importlib.util import find_spec
 from threading import Lock
@@ -22,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ..compiler.manifest import RepoManifest
 from ..log_utils import get_logger
+from ..repository_summary import read_repository_summary
 from .config import QAConfig, RepoEntry, load_registry
 from .schemas import RepoInfo
 
@@ -50,40 +50,6 @@ _DEMO_SYSTEM_PROMPT = (
     "you found so the reader can open them. If a search returns nothing useful, "
     "try a different query or tool before concluding."
 )
-
-
-_README_SKIP = re.compile(
-    r"\b(install|download|getting started|to get started|usage|build from source"
-    r"|clone|npm i\b|pip install|cargo add|see (the )?docs|documentation"
-    r"|these steps|version information|for example|e\.g\.)\b",
-    re.IGNORECASE,
-)
-# Lines that are clearly boilerplate prefixes, not a project tagline.
-_README_SKIP_PREFIX = ("note:", "warning:", "tip:", "see ", "run ", "$ ")
-
-
-def _readme_summary(text: str, limit: int = 160) -> str:
-    """A descriptive sentence from a README — skipping headings, badges, HTML,
-    and install/usage boilerplate (prefers the project tagline)."""
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        if line.startswith(("#", ">", "<", "---", "===", "|", "- ", "* ", "```")):
-            continue
-        if line.startswith(("![", "[![")) or line.startswith("["):
-            continue  # badge / image / link-only line
-        # Strip markdown links/emphasis, keep the visible text.
-        line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
-        line = re.sub(r"[*_`]", "", line)
-        line = re.sub(r"<[^>]+>", "", line).strip()
-        # Require a real sentence: skip labels ("Requirements:"), short lines.
-        if line.endswith(":") or len(line.split()) < 6 or _README_SKIP.search(line):
-            continue
-        if line.lower().startswith(_README_SKIP_PREFIX):
-            continue
-        return (line[:limit] + "…") if len(line) > limit else line
-    return ""
 
 
 def _fresh_registry():
@@ -290,18 +256,7 @@ class RepoBundle:
         cached = getattr(self, "_description_cache", None)
         if cached is not None:
             return cached
-        desc = ""
-        repo_dir = self.entry.repo_dir
-        for name in ("README.md", "README.rst", "README.txt", "README", "readme.md"):
-            path = os.path.join(repo_dir, name)
-            if not os.path.isfile(path):
-                continue
-            try:
-                with open(path, encoding="utf-8", errors="replace") as fh:
-                    desc = _readme_summary(fh.read())
-            except OSError:
-                desc = ""
-            break
+        desc = read_repository_summary(self.entry.repo_dir)
         self._description_cache = desc
         return desc
 

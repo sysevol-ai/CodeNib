@@ -879,6 +879,8 @@ pre {
   font: inherit;
   line-height: inherit;
   vertical-align: baseline;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .cite-chip:hover {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
@@ -896,15 +898,25 @@ pre {
   color: var(--muted);
   font-family: var(--font-geist-mono), ui-monospace, monospace;
 }
+.markdown .table-scroll {
+  width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+}
 .markdown table {
   border-collapse: collapse;
-  margin: 12px 0;
+  margin: 0;
   width: 100%;
 }
 .markdown th,
 .markdown td {
   border: 1px solid var(--border);
   padding: 6px 12px;
+}
+@media (max-width: 680px) {
+  .markdown .table-scroll table {
+    min-width: 620px;
+  }
 }
 
 /* code blocks (header with language label + copy button) */
@@ -2171,6 +2183,80 @@ pre {
 .graph-modal-body .codegraph[data-mode="symbols"] .codegraph-canvas {
   height: min(74vh, 800px);
 }
+
+/* Source definition opened from an evidence-linked symbol in Wiki prose. */
+.source-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  padding: 5vh 4vw;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, #000 42%, transparent);
+}
+.source-modal {
+  width: min(900px, 92vw);
+  height: min(760px, 88vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.42);
+}
+.source-modal-head {
+  min-height: 72px;
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.source-modal-kicker {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.source-modal-title,
+.source-modal-location {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-modal-title {
+  font-size: 14px;
+  font-weight: 650;
+}
+.source-modal-location {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.source-modal-close {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+.source-modal-close:hover {
+  color: var(--text);
+}
+.source-modal-body {
+  flex: 1;
+  min-height: 0;
+}
+.source-modal .codepane-nav {
+  display: none;
+}
 @media (max-width: 900px) {
   .codemap-unavailable {
     grid-template-columns: 52px minmax(0, 1fr);
@@ -2185,6 +2271,16 @@ pre {
   }
   .graph-modal-close {
     margin-left: auto;
+  }
+  .source-modal-scrim {
+    padding: 12px;
+  }
+  .source-modal {
+    width: 100%;
+    height: 100%;
+  }
+  .source-modal-head {
+    min-height: 66px;
   }
 }
 .codegraph-loading {

@@ -11,8 +11,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from codenib.web.repo_registry import _readme_summary
-from codenib.wiki.builder import WikiBuilder, _slug, _top_module
+from codenib.repository_summary import readme_summary
+from codenib.wiki.builder import (
+    WikiBuilder,
+    _is_supporting_area,
+    _module_label,
+    _slug,
+    _top_module,
+)
 
 
 @dataclass
@@ -94,18 +100,22 @@ def test_readme_summary_prefers_tagline():
         "To install, run pip install myproject from PyPI today.\n\n"
         "My Project is a fast, friendly library for doing useful things.\n"
     )
-    out = _readme_summary(md)
+    out = readme_summary(md)
     assert "fast, friendly library" in out
     assert "install" not in out.lower()
 
 
 def test_readme_summary_skips_labels_and_short_lines():
-    assert _readme_summary("Requirements:\nGo 1.21\n") == ""  # label + short line
+    assert readme_summary("Requirements:\nGo 1.21\n") == ""  # label + short line
 
 
 def test_top_module_depth_two_and_slug():
     assert _top_module("pkg/mod/a.py") == "pkg/mod"
-    assert _top_module("solo.py") == "solo.py"  # top-level file: itself
+    assert _top_module("pkg/a.py") == "pkg"
+    assert _top_module("solo.py") == "root"
+    assert _module_label("root") == "Repository root"
+    assert _is_supporting_area("pkg/eval")
+    assert not _is_supporting_area("pkg/runtime")
     assert _slug("astropy/IO Fits") == "astropy-io-fits"
 
 
@@ -145,6 +155,40 @@ def test_overview_links_modules(repo_dir):
     page = wb.page("overview")
     assert "?p=mod__" in page["markdown"]
     assert page["diagram"].startswith("graph TD")
+    assert "Repository at a glance" in page["markdown"]
+    assert "Representative definitions" in page["markdown"]
+    assert "```mermaid" not in page["markdown"]
+
+
+def test_overview_uses_readme_purpose_without_a_model(repo_dir):
+    with open(f"{repo_dir}/README.md", "w", encoding="utf-8") as handle:
+        handle.write(
+            "# ProjectX\n\n"
+            "ProjectX coordinates indexed source evidence for repository tools.\n"
+        )
+
+    markdown = WikiBuilder(_make_bundle(repo_dir)).page("overview")["markdown"]
+
+    assert "ProjectX coordinates indexed source evidence" in markdown
+    assert "generated from" not in markdown.lower()
+
+
+def test_architecture_reports_area_facts_and_source_citations(repo_dir):
+    page = WikiBuilder(_make_bundle(repo_dir)).page("architecture")
+    markdown = page["markdown"]
+
+    assert "4 of 4 indexed named definitions" in markdown
+    assert "## Module inventory" in markdown
+    assert "| [**pkg/mod**](?p=mod__pkg-mod) | 2 | 1 | 3 | 3 |" in markdown
+    assert "## Key definitions" in markdown
+    assert "| Definition | Kind | Area | Source |" in markdown
+    assert "`Model.fit`" in markdown
+    assert "```mermaid" not in markdown
+    assert page["citations"]
+    assert {citation["file"] for citation in page["citations"]} >= {
+        "pkg/mod/a.py",
+        "pkg/util/c.py",
+    }
 
 
 # -- Critique #8: LLM-authored content layer ---------------------------------
@@ -176,10 +220,11 @@ def test_overview_has_no_swebench_artifact(repo_dir):
     assert "Some bug happened" not in md
 
 
-def test_fallback_overview_keeps_templated_lead(repo_dir):
-    """G6: disabled narrator -> the templated factual lead is used."""
+def test_fallback_overview_keeps_factual_lead(repo_dir):
+    """G6: disabled narrator -> a deterministic repository fact is used."""
     md = WikiBuilder(_make_bundle(repo_dir)).page("overview")["markdown"]
-    assert "generated from" in md.lower()
+    assert "`o/r` is a Python repository." in md
+    assert "generated from" not in md.lower()
 
 
 class _FakeNarrator:

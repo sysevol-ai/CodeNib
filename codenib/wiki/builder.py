@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from ..repository_summary import read_repository_summary
 from .narrator import Narrator
 
 # Symbol chunk types worth surfacing as "components" (mirrors SYMBOL_CHUNK_TYPES).
@@ -44,9 +45,20 @@ _LANG_FENCE = {
     "c": "c",
 }
 
-_MAX_MODULES = 8
+_MAX_MODULES = 12
 _MAX_SYMBOLS_PER_PAGE = 12
 _MAX_SNIPPET_LINES = 28
+_SUPPORTING_AREA_SEGMENTS = {
+    "benchmark",
+    "benchmarks",
+    "docs",
+    "eval",
+    "evaluation",
+    "examples",
+    "scripts",
+    "test",
+    "tests",
+}
 
 
 @dataclass
@@ -61,6 +73,29 @@ class Symbol:
     @property
     def lines(self) -> int:
         return max(1, self.end_line - self.start_line + 1)
+
+
+@dataclass(frozen=True)
+class Representative:
+    """One concrete definition standing in for a repository area."""
+
+    name: str
+    kind: str
+    symbol: Symbol
+    weight: int
+
+
+@dataclass(frozen=True)
+class ModuleFacts:
+    """Deterministic facts used by the overview and architecture pages."""
+
+    name: str
+    label: str
+    files: tuple[str, ...]
+    symbol_count: int
+    type_count: int
+    callable_count: int
+    representatives: tuple[Representative, ...]
 
 
 @dataclass
@@ -87,11 +122,33 @@ def _fence(language: str) -> str:
 
 def _top_module(path: str) -> str:
     parts = [p for p in (path or "").split("/") if p]
-    if not parts:
+    directories = parts[:-1]
+    if not directories:
         return "root"
-    # Group at depth 2 (e.g. "astropy/io", "lib/core") so single-package repos
-    # don't collapse into one giant module; depth 1 when that's all there is.
-    return "/".join(parts[:2]) if len(parts) >= 2 else parts[0]
+    # Group by at most two directory levels (e.g. "astropy/io", "lib/core").
+    # A top-level source file belongs to "root"; a file directly below a
+    # package belongs to that package rather than becoming its own module.
+    return "/".join(directories[:2])
+
+
+def _module_label(module: str) -> str:
+    return "Repository root" if module == "root" else module
+
+
+def _is_supporting_area(module: str) -> bool:
+    segments = {segment.lower() for segment in module.split("/")}
+    return bool(segments & _SUPPORTING_AREA_SEGMENTS)
+
+
+def _is_private_symbol(name: str) -> bool:
+    return name.rsplit(".", 1)[-1].startswith("_")
+
+
+def _representative_symbol(symbols: List[Symbol]) -> Symbol:
+    return max(
+        symbols,
+        key=lambda symbol: (not _is_private_symbol(symbol.name), symbol.lines),
+    )
 
 
 class WikiBuilder:
@@ -104,6 +161,7 @@ class WikiBuilder:
         self._language = bundle.entry.language
         self._narrator = narrator or Narrator(enabled=False)
         self._symbols_cache: Optional[tuple] = None
+        self._project_summary_cache: Optional[str] = None
 
     def _key(self, page_id: str) -> str:
         """Stable cache key for narrated prose: repo@commit/page."""
@@ -149,7 +207,7 @@ class WikiBuilder:
         )[:limit]
         out = []
         for cls, methods in ranked:
-            rep = max(methods, key=lambda m: m.lines) if methods else None
+            rep = _representative_symbol(methods) if methods else None
             out.append((cls, self._docline(rep.content) if rep else ""))
         return out
 
@@ -240,7 +298,149 @@ class WikiBuilder:
 
     def _ranked_modules(self) -> List[str]:
         groups = self._modules()
-        return sorted(groups, key=lambda m: len(groups[m]), reverse=True)[:_MAX_MODULES]
+        return sorted(
+            groups,
+            key=lambda m: (
+                _is_supporting_area(m),
+                -len(groups[m]),
+                -sum(symbol.lines for symbol in groups[m]),
+                m,
+            ),
+        )[:_MAX_MODULES]
+
+    def _languages(self) -> List[str]:
+        languages = list(
+            getattr(getattr(self._bundle, "manifest", None), "languages", []) or []
+        )
+        if not languages and self._language:
+            languages = [self._language]
+        return list(dict.fromkeys(str(language) for language in languages if language))
+
+    def _indexed_file_count(self) -> int:
+        symbol_files = len({symbol.file for symbol in self._symbols()})
+        manifest_count = int(
+            getattr(getattr(self._bundle, "manifest", None), "file_count", 0) or 0
+        )
+        return max(symbol_files, manifest_count)
+
+    def _project_summary(self) -> str:
+        if self._project_summary_cache is not None:
+            return self._project_summary_cache
+
+        description = getattr(self._bundle, "_description", None)
+        if callable(description):
+            try:
+                summary = str(description() or "").strip()
+            except OSError:
+                summary = ""
+            if summary:
+                self._project_summary_cache = summary
+                return summary
+
+        # Keep the index-derived builder useful with lightweight bundle objects
+        # as well as RepoBundle. The parser rejects badges, headings, and
+        # installation boilerplate rather than treating them as project purpose.
+        summary = read_repository_summary(self._entry.repo_dir)
+        self._project_summary_cache = summary
+        return summary
+
+    def _representatives(
+        self, symbols: List[Symbol], limit: int = 4
+    ) -> tuple[Representative, ...]:
+        explicit, classes, functions = self._classify(symbols)
+        ranked: List[Representative] = []
+
+        for name, methods in classes.items():
+            declared = explicit.get(name)
+            if declared is not None:
+                representative = declared
+            elif methods:
+                representative = _representative_symbol(methods)
+            else:
+                continue
+            ranked.append(
+                Representative(
+                    name=name,
+                    kind=representative.type,
+                    symbol=representative,
+                    weight=(declared.lines if declared is not None else 0)
+                    + sum(method.lines for method in methods),
+                )
+            )
+
+        ranked.extend(
+            Representative(
+                name=function.name,
+                kind=function.type,
+                symbol=function,
+                weight=function.lines,
+            )
+            for function in functions
+        )
+        ranked.sort(
+            key=lambda item: (
+                _is_private_symbol(item.name),
+                -item.weight,
+                item.name,
+                item.symbol.file,
+            )
+        )
+        return tuple(ranked[:limit])
+
+    def _module_facts(self, module: str) -> ModuleFacts:
+        symbols = self._modules().get(module, [])
+        explicit, classes, _ = self._classify(symbols)
+        return ModuleFacts(
+            name=module,
+            label=_module_label(module),
+            files=tuple(sorted({symbol.file for symbol in symbols})),
+            symbol_count=len(symbols),
+            type_count=len(set(explicit) | set(classes)),
+            callable_count=sum(symbol.type in _CALLABLE_TYPES for symbol in symbols),
+            representatives=self._representatives(symbols),
+        )
+
+    def _ranked_module_facts(self) -> List[ModuleFacts]:
+        return [self._module_facts(module) for module in self._ranked_modules()]
+
+    @staticmethod
+    def _representative_markdown(facts: ModuleFacts, limit: int = 3) -> str:
+        names = [
+            f"`{representative.symbol.name}`"
+            for representative in facts.representatives[:limit]
+        ]
+        return ", ".join(names) if names else "No named definitions"
+
+    @staticmethod
+    def _fact_representatives(
+        facts: List[ModuleFacts], limit: int = 12
+    ) -> List[tuple[ModuleFacts, Representative]]:
+        """Round-robin definitions so every area gets evidence before repeats."""
+
+        selected = []
+        depth = max((len(module.representatives) for module in facts), default=0)
+        for offset in range(depth):
+            for module in facts:
+                if offset >= len(module.representatives):
+                    continue
+                selected.append((module, module.representatives[offset]))
+                if len(selected) >= limit:
+                    return selected
+        return selected
+
+    def _fact_citations(self, facts: List[ModuleFacts], limit: int = 12) -> List[dict]:
+        citations = []
+        seen = set()
+        for _, representative in self._fact_representatives(facts, limit=limit * 2):
+            symbol = representative.symbol
+            key = (symbol.file, symbol.start_line, symbol.end_line)
+            if key in seen:
+                continue
+            seen.add(key)
+            citations.append(self._citation(symbol))
+            if len(citations) >= limit:
+                return citations
+        return citations
 
     # -- page tree ---------------------------------------------------------
 
@@ -248,7 +448,7 @@ class WikiBuilder:
         pages = [PageRef(id="overview", title="Overview")]
         arch = PageRef(id="architecture", title="Architecture")
         for m in self._ranked_modules():
-            arch.children.append(PageRef(id=f"mod__{_slug(m)}", title=m))
+            arch.children.append(PageRef(id=f"mod__{_slug(m)}", title=_module_label(m)))
         pages.append(arch)
         return [p.to_dict() for p in pages]
 
@@ -274,15 +474,25 @@ class WikiBuilder:
             weight[s.file] = weight.get(s.file, 0) + s.lines
         return sorted(weight, key=lambda f: weight[f], reverse=True)[:limit]
 
+    def _overview_diagram(self, facts: List[ModuleFacts]) -> str:
+        diagram = ["graph TD", '  ROOT["{}"]'.format(self._entry.repo)]
+        for index, module in enumerate(facts):
+            diagram.append(
+                f'  ROOT --> M{index}["{module.label}<br/>'
+                f'{module.symbol_count} symbols"]'
+            )
+        return "\n".join(diagram)
+
     def _overview_md(self) -> tuple:
         groups = self._modules()
-        mods = self._ranked_modules()
+        facts = self._ranked_module_facts()
+        mods = [module.name for module in facts]
         total_syms = len(self._symbols())
-        n_files = len({s.file for s in self._symbols()})
-        files = self._salient_files(12)
-        lang = self._language or "code"
+        n_files = self._indexed_file_count()
+        languages = self._languages()
+        lang = ", ".join(languages) or "code"
         # LLM-authored narrative lead (DeepWiki style); falls back to the
-        # templated factual sentence when no model/creds are available (G6).
+        # README summary and index facts when no model/creds are available.
         highlights = [
             f"{c} — {d}" if d else c
             for c, d in self._class_facts(groups.get(mods[0], []) if mods else [], 10)
@@ -298,54 +508,94 @@ class WikiBuilder:
         if narrative:
             lines += [narrative, ""]
         else:
-            commit = (
-                f" at commit `{self._entry.commit_short}`"
-                if self._entry.commit_short
-                else ""
-            )
-            lines += [
-                f"`{self._entry.repo}` is indexed{commit} ({lang}). "
-                "This wiki is generated from "
-                f"CodeNib's static analysis of **{n_files} source files** and "
-                f"**{total_syms} symbols**, grouped into the modules below.",
-                "",
-            ]
+            summary = self._project_summary()
+            if summary:
+                lines += [summary, ""]
+            else:
+                lines += [
+                    f"`{self._entry.repo}` is a {lang} repository. "
+                    "Its indexed source is organized into the areas below.",
+                    "",
+                ]
         lines += [
-            "## Module structure",
+            "## Repository at a glance",
             "",
-            (
-                "The repository's top-level modules and their relative size "
-                + "(by indexed symbol count):"
-            ),
+            "| Languages | Indexed source files | Named symbols | Featured areas |",
+            "|---|---:|---:|---:|",
+            f"| {lang} | {n_files} | {total_syms} | {len(facts)} |",
             "",
         ]
-        # Mermaid diagram of the top modules. Use .format so the literal quotes
-        # (Mermaid node syntax) aren't flagged as a !r candidate (flake8 B907).
-        diagram = [
-            "graph TD",
-            '  ROOT["{}"]'.format(self._entry.repo),
+
+        # Keep the diagram payload for API compatibility and graph-aware clients;
+        # the Wiki prose itself uses a denser table instead of a static diagram.
+        diagram_str = self._overview_diagram(facts)
+        lines += [
+            "## Major areas",
+            "",
+            "| Area | Indexed scope | Representative definitions |",
+            "|---|---:|---|",
         ]
-        for i, m in enumerate(mods):
-            nid = f"M{i}"
-            diagram.append(f'  ROOT --> {nid}["{m}<br/>{len(groups[m])} symbols"]')
-        diagram_str = "\n".join(diagram)
-        lines += ["```mermaid", diagram_str, "```", ""]
-        lines += ["## Modules", ""]
-        for m in mods:
+        for module in facts:
             lines.append(
-                f"- [**{m}**](?p=mod__{_slug(m)}) — {len(groups[m])} indexed symbols"
+                f"| [**{module.label}**](?p=mod__{_slug(module.name)}) "
+                f"| {len(module.files)} files · {module.symbol_count} symbols "
+                f"| {self._representative_markdown(module)} |"
             )
-        lines += ["", "## Relevant source files", ""]
-        for f in files[:12]:
-            lines.append(f"- `{f}`")
         # NB: no "Example issue" / problem_statement here — that is a SWE-bench
         # dataset artifact, not repo documentation (Critique #8, G3).
-        # A couple of citations from the largest module.
-        cites = []
-        if mods:
-            for s in sorted(groups[mods[0]], key=lambda x: x.lines, reverse=True)[:3]:
-                cites.append(self._citation(s))
+        cites = self._fact_citations(facts)
         return "\n".join(lines), cites, diagram_str
+
+    def _architecture_md(self) -> tuple:
+        facts = self._ranked_module_facts()
+        featured_symbols = sum(module.symbol_count for module in facts)
+        total_symbols = len(self._symbols())
+        commit = (
+            f" at commit `{self._entry.commit_short}`"
+            if self._entry.commit_short
+            else ""
+        )
+        lines = [
+            "# Architecture",
+            "",
+            f"The architecture view{commit} summarizes **{len(facts)} featured "
+            f"repository areas** containing **{featured_symbols} of "
+            f"{total_symbols} indexed named definitions**. The inventory below "
+            "is derived from source paths and definitions.",
+            "",
+            "## Module inventory",
+            "",
+            "| Area | Files | Types | Callables | Symbols |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for module in facts:
+            lines.append(
+                f"| [**{module.label}**](?p=mod__{_slug(module.name)}) "
+                f"| {len(module.files)} | {module.type_count} "
+                f"| {module.callable_count} | {module.symbol_count} |"
+            )
+
+        representatives = self._fact_representatives(facts)
+        if representatives:
+            lines += [
+                "",
+                "## Key definitions",
+                "",
+                "| Definition | Kind | Area | Source |",
+                "|---|---|---|---|",
+            ]
+            for module, representative in representatives:
+                lines.append(
+                    f"| `{representative.symbol.name}` | {representative.kind} "
+                    f"| [{module.label}](?p=mod__{_slug(module.name)}) "
+                    f"| `{representative.symbol.file}` |"
+                )
+
+        return (
+            "\n".join(lines),
+            self._fact_citations(facts),
+            self._overview_diagram(facts),
+        )
 
     def _classify(self, syms: List[Symbol]):
         """Group symbols into synthesized classes (by `Class.method` prefix)
@@ -366,12 +616,13 @@ class WikiBuilder:
     def _module_md(self, module: str) -> tuple:
         groups = self._modules()
         syms = groups.get(module, [])
+        module_label = _module_label(module)
         explicit, classes, funcs = self._classify(syms)
         files = sorted({s.file for s in syms})
         fence = _fence(self._language)
         n_types = len(set(explicit) | set(classes))
         fact = (
-            f"The `{module}` module contains **{len(syms)} indexed symbols** "
+            f"**{module_label}** contains **{len(syms)} indexed symbols** "
             f"across **{len(files)} files** "
             f"({n_types} types, {len(funcs)} top-level functions)."
         )
@@ -384,7 +635,7 @@ class WikiBuilder:
             [f"{c} — {d}" if d else c for c, d in self._class_facts(syms, 10)],
             self._key("mod__" + _slug(module)),
         )
-        lines = [f"# {module}", ""]
+        lines = [f"# {module_label}", ""]
         if intro:
             lines += [intro, "", fact, ""]
         else:
@@ -394,7 +645,6 @@ class WikiBuilder:
         for i, f in enumerate(files[:10]):
             diagram.append('  MOD --> F{}["{}"]'.format(i, f.split("/")[-1]))
         diagram_str = "\n".join(diagram)
-        lines += ["```mermaid", diagram_str, "```", ""]
         for f in files[:12]:
             lines.append(f"- `{f}`")
 
@@ -412,7 +662,7 @@ class WikiBuilder:
                     (
                         cls,
                         self._docline(
-                            (max(ms, key=lambda m: m.lines).content if ms else "")
+                            (_representative_symbol(ms).content if ms else "")
                         ),
                     )
                     for cls, ms in ranked_classes
@@ -427,7 +677,7 @@ class WikiBuilder:
             # Heading id is supplied by rehype-slug on the frontend; _slug(cls)
             # matches its output, so the jump link below resolves.
             first_anchor = first_anchor or _slug(cls)
-            rep = max(methods, key=lambda m: m.lines) if methods else None
+            rep = _representative_symbol(methods) if methods else None
             file = (
                 rep.file
                 if rep
@@ -473,7 +723,7 @@ class WikiBuilder:
         if siblings:
             lines += ["", "## Related modules", ""]
             for m in siblings:
-                lines.append(f"- [{m}](?p=mod__{_slug(m)})")
+                lines.append(f"- [{_module_label(m)}](?p=mod__{_slug(m)})")
 
         if first_anchor and "## Files" in lines:
             at = lines.index("## Files")
@@ -494,26 +744,12 @@ class WikiBuilder:
                 "diagram": diagram,
             }
         if page_id == "architecture":
-            mods = self._ranked_modules()
-            md = [
-                "# Architecture",
-                "",
-                (
-                    "CodeNib grouped this repository into the following modules. "
-                    + "Select a module in the sidebar to explore its components."
-                ),
-                "",
-                "## Modules",
-                "",
-            ]
-            for m in mods:
-                md.append(f"- **{m}**")
-            _, _, diagram = self._overview_md()
+            md, cites, diagram = self._architecture_md()
             return {
                 "id": "architecture",
                 "title": "Architecture",
-                "markdown": "\n".join(md),
-                "citations": [],
+                "markdown": md,
+                "citations": cites,
                 "diagram": diagram,
             }
         if page_id.startswith("mod__"):
@@ -523,7 +759,7 @@ class WikiBuilder:
                     md, cites, diagram = self._module_md(m)
                     return {
                         "id": page_id,
-                        "title": m,
+                        "title": _module_label(m),
                         "markdown": md,
                         "citations": cites,
                         "diagram": diagram,

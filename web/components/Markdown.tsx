@@ -101,6 +101,13 @@ export default function Markdown({
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeSlug, [rehypeHighlight, { ignoreMissing: true }]]}
         components={{
+          table({ children }) {
+            return (
+              <div className="table-scroll">
+                <table>{children}</table>
+              </div>
+            );
+          },
           pre({ children }) {
             const codeEl = (Array.isArray(children) ? children[0] : children) as
               | ReactElement<{ className?: string; children?: ReactNode }>
