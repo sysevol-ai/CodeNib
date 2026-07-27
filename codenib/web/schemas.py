@@ -207,75 +207,93 @@ def _node_to_citation(node: Any, repo_path: str = "") -> Optional[Citation]:
     )
 
 
-def _answer_citations(
+def _symbol_labels(node_name: str) -> set[str]:
+    """Return answer-facing symbol spellings from an indexed node identity."""
+
+    symbol = (node_name or "").rsplit(":", 1)[-1].strip()
+    if not symbol:
+        return set()
+    without_args = re.sub(r"\([^)]*\)$", "", symbol)
+    labels = {symbol, without_args}
+    leaf = without_args.rsplit(".", 1)[-1]
+    if leaf:
+        labels.add(leaf)
+        labels.add(f"{leaf}()")
+    return {label for label in labels if len(label) >= 3}
+
+
+def _answer_names_symbol(answer: str, node_name: str) -> bool:
+    folded = answer.casefold()
+    for label in _symbol_labels(node_name):
+        candidate = label.casefold()
+        if f"`{candidate}`" in folded:
+            return True
+        plain_identifier = re.sub(r"\(\)$", "", label)
+        distinctive = (
+            "_" in plain_identifier
+            or "." in plain_identifier
+            or "::" in plain_identifier
+            or any(character.isupper() for character in label)
+        )
+        if not distinctive:
+            continue
+        if re.search(
+            rf"(?<![\w.]){re.escape(candidate)}(?![\w.])",
+            folded,
+        ):
+            return True
+    return False
+
+
+def _answer_names_file(answer: str, file: str) -> bool:
+    candidate = (file or "").casefold()
+    folded = (answer or "").casefold()
+    if not candidate:
+        return False
+    if f"`{candidate}`" in folded:
+        return True
+    return bool(
+        re.search(
+            rf"(?<![\w/.-]){re.escape(candidate)}(?![\w/.-])",
+            folded,
+        )
+    )
+
+
+def _select_answer_citations(
     answer: str,
     citations: List[Citation],
     *,
-    limit: int = 8,
+    limit: int = 5,
 ) -> List[Citation]:
-    """Prefer retrieved locations that the final answer actually names."""
+    """Keep the strongest source locations actually named in the final answer."""
 
-    normalized_answer = (answer or "").replace("\\", "/").lower()
-    ranked: list[tuple[int, int, Citation]] = []
-    generic_symbols = {
-        "build",
-        "class",
-        "function",
-        "index",
-        "main",
-        "method",
-        "query",
-        "run",
-        "search",
-    }
-    for position, citation in enumerate(citations):
-        score = 0
-        file = (citation.file or "").replace("\\", "/").lower()
-        if file and file in normalized_answer:
-            score += 8
-        elif file:
-            basename = file.rsplit("/", 1)[-1]
-            if basename and basename in normalized_answer:
-                score += 2
+    symbol_matches = [
+        citation
+        for citation in citations
+        if _answer_names_symbol(answer, citation.node_name)
+    ]
+    selected = list(symbol_matches)
+    selected_files = {citation.file for citation in selected if citation.file}
 
-        raw_symbol = (citation.node_name or "").rsplit(":", 1)[-1]
-        symbol = re.sub(r"\([^)]*\)$", "", raw_symbol).strip()
-        if symbol and symbol.lower() in normalized_answer:
-            score += 6
-        for part in symbol.split("."):
-            candidate = part.strip()
-            if len(candidate) < 4 or candidate.lower() in generic_symbols:
-                continue
-            if re.search(
-                rf"(?<![\w]){re.escape(candidate.lower())}(?![\w])",
-                normalized_answer,
-            ):
-                score += 4
-        if score:
-            ranked.append((-score, position, citation))
-
-    if not ranked:
-        return citations[: min(5, limit)]
-
-    selected: List[Citation] = []
-    per_file: dict[str, int] = {}
-    for _, _, citation in sorted(ranked):
-        file_key = citation.file or ""
-        if per_file.get(file_key, 0) >= 3:
+    for citation in citations:
+        file = citation.file
+        if not file or file in selected_files or not _answer_names_file(answer, file):
             continue
         selected.append(citation)
-        per_file[file_key] = per_file.get(file_key, 0) + 1
-        if len(selected) >= limit:
-            break
-    return selected
+        selected_files.add(file)
+
+    if not selected:
+        selected = citations
+    return selected[:limit]
 
 
 def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
     """Flatten an ``AgentResult`` into the API response.
 
-    Citations are de-duplicated across all tool calls by (file, start_line,
-    end_line) so a node retrieved by several searches appears once. ``repo_path``
-    (when given) makes citation file paths repo-relative.
+    Retrieved locations are de-duplicated and narrowed to the strongest files
+    or symbols named in the final answer. ``repo_path`` (when given) makes
+    citation file paths repo-relative.
     """
     tool_calls: List[ToolCallInfo] = []
     citations: List[Citation] = []
@@ -304,7 +322,7 @@ def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
 
     return ChatResponse(
         answer=result.answer or "",
-        citations=_answer_citations(result.answer or "", citations),
+        citations=_select_answer_citations(result.answer or "", citations),
         tool_calls=tool_calls,
         total_turns=result.total_turns,
         total_duration_ms=result.total_duration_ms,

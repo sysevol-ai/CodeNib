@@ -107,6 +107,129 @@ def test_citations_bound_unnamed_retrieval_candidates():
     ]
 
 
+def test_citations_prefer_symbols_named_in_the_final_answer():
+    result = AgentResult(
+        answer=(
+            "`index_repository()` delegates compilation to "
+            "`IndexCompiler.compile_repo()`."
+        ),
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "repository_search",
+                {},
+                result=[
+                    _node(
+                        "codenib/cli.py",
+                        92,
+                        112,
+                        "codenib/cli.py:resolve_manifest_path()",
+                    ),
+                    _node(
+                        "codenib/cli.py",
+                        137,
+                        179,
+                        "codenib/cli.py:index_repository()",
+                    ),
+                    _node(
+                        "codenib/compiler/index_compiler.py",
+                        84,
+                        108,
+                        (
+                            "codenib/compiler/index_compiler.py:"
+                            "IndexCompiler.compile_repo()"
+                        ),
+                    ),
+                    _node(
+                        "codenib/scip_interface/scip_indexer_php.py",
+                        235,
+                        239,
+                        "SCIPPHPIndexer._build_index_command()",
+                    ),
+                ],
+            )
+        ],
+    )
+
+    resp = agent_result_to_response(result)
+
+    assert [citation.node_name for citation in resp.citations] == [
+        "codenib/cli.py:index_repository()",
+        "codenib/compiler/index_compiler.py:IndexCompiler.compile_repo()",
+    ]
+
+
+def test_citations_keep_one_location_for_each_named_file():
+    result = AgentResult(
+        answer="The path starts in `a.py` and persists state in `b.py`.",
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "repository_search",
+                {},
+                result=[
+                    _node("a.py", 0, 9, "first"),
+                    _node("a.py", 10, 19, "second"),
+                    _node("b.py", 20, 29, "third"),
+                    _node("noise.py", 30, 39, "noise"),
+                ],
+            )
+        ],
+    )
+
+    resp = agent_result_to_response(result)
+
+    assert [citation.file for citation in resp.citations] == ["a.py", "b.py"]
+
+
+def test_citations_fall_back_to_five_retrieval_results():
+    result = AgentResult(
+        answer="The implementation follows this path.",
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "repository_search",
+                {},
+                result=[
+                    _node(f"{index}.py", index, index + 1, f"fn_{index}")
+                    for index in range(7)
+                ],
+            )
+        ],
+    )
+
+    resp = agent_result_to_response(result)
+
+    assert [citation.file for citation in resp.citations] == [
+        "0.py",
+        "1.py",
+        "2.py",
+        "3.py",
+        "4.py",
+    ]
+
+
+def test_plain_prose_does_not_match_a_generic_main_symbol():
+    result = AgentResult(
+        answer="The main entry point delegates to `index_repository()`.",
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "repository_search",
+                {},
+                result=[
+                    _node("scripts/index_repo.py", 1, 9, "main()"),
+                    _node("codenib/cli.py", 10, 20, "index_repository()"),
+                ],
+            )
+        ],
+    )
+
+    resp = agent_result_to_response(result)
+
+    assert [citation.node_name for citation in resp.citations] == ["index_repository()"]
+
+
 def test_error_tool_call_has_no_citations():
     result = AgentResult(
         answer="ans",

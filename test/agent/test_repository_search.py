@@ -191,6 +191,96 @@ def test_exact_symbol_query_adds_call_site_retrieval():
     )
 
 
+def test_exact_symbol_definition_precedes_wrappers_that_reference_it():
+    definition = _node(
+        "definition",
+        "codenib/compiler/index_compiler.py",
+        name="IndexCompiler._compile",
+    )
+    compile_wrapper = _node(
+        "compile-wrapper",
+        "codenib/compiler/index_compiler.py",
+        name="IndexCompiler.compile_repo",
+    )
+    update_wrapper = _node(
+        "update-wrapper",
+        "codenib/compiler/index_compiler.py",
+        name="IndexCompiler.update_repo",
+    )
+    bm25 = MagicMock()
+    bm25.search.return_value = [compile_wrapper, update_wrapper, definition]
+    bm25.search_identifier_occurrences.return_value = [
+        compile_wrapper,
+        update_wrapper,
+    ]
+    from codenib.agent.skills.repository_search.executor import create_executor
+
+    execute = create_executor(
+        ComposerContexts(
+            retrieve=RetrieveContext(
+                bm25=bm25,
+                vector_store=None,
+                default_level="l2",
+            )
+        )
+    )
+
+    results = execute("IndexCompiler._compile manifest.save", top_k=2)
+
+    assert [node.node_id for node in results] == [
+        "definition",
+        "compile-wrapper",
+    ]
+
+
+def test_persistence_query_expands_to_save_definition_and_call_site():
+    save_definition = _node(
+        "save-definition",
+        "codenib/compiler/manifest.py",
+        name="RepoManifest.save",
+    )
+    save_call_site = _node(
+        "save-call-site",
+        "codenib/compiler/index_compiler.py",
+        name="IndexCompiler._compile",
+    )
+    bm25 = MagicMock()
+    bm25.search.return_value = [save_definition]
+    bm25.search_identifier_occurrences.return_value = [save_call_site]
+    from codenib.agent.skills.repository_search.executor import create_executor
+
+    execute = create_executor(
+        ComposerContexts(
+            retrieve=RetrieveContext(
+                bm25=bm25,
+                vector_store=None,
+                default_level="l2",
+            )
+        )
+    )
+
+    results = execute("How is the repository manifest persisted?", top_k=2)
+
+    assert [node.node_id for node in results] == [
+        "save-definition",
+        "save-call-site",
+    ]
+    bm25.search.assert_called_once_with(
+        query="How is the repository manifest persisted? save serialize write",
+        top_k=20,
+        return_code_content=True,
+        wrap_with_ln=True,
+        filter_test=False,
+    )
+    bm25.search_identifier_occurrences.assert_called_once_with(
+        "save",
+        context_query="How is the repository manifest persisted?",
+        top_k=20,
+        wrap_with_ln=True,
+        filter_test=False,
+    )
+
+
 def test_mechanism_query_expands_a_returned_predicate_to_call_sites():
     predicate = _node(
         "predicate",

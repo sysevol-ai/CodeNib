@@ -76,6 +76,19 @@ _BOOLEAN_IDENTIFIER_TERMS = frozenset(
     }
 )
 _MAX_INFERRED_PREDICATES = 3
+_ACTION_QUERY_ALIASES = {
+    "persist": ("save", "serialize", "write"),
+    "persisted": ("save", "serialize", "write"),
+    "persistence": ("save", "serialize", "write"),
+    "persists": ("save", "serialize", "write"),
+    "save": ("persist", "serialize", "write"),
+    "saved": ("persist", "serialize", "write"),
+    "serialize": ("persist", "save", "write"),
+    "serialized": ("persist", "save", "write"),
+    "write": ("persist", "save", "serialize"),
+    "writes": ("persist", "save", "serialize"),
+    "written": ("persist", "save", "serialize"),
+}
 _TOTAL_CONTENT_BUDGET = 10_000
 _MIN_CONTENT_BUDGET = 800
 _MAX_CONTENT_BUDGET = 2_400
@@ -149,6 +162,54 @@ def _code_identifiers(query: str) -> List[str]:
         if len(leaves) == 3:
             break
     return leaves
+
+
+def _action_query_aliases(query: str) -> List[str]:
+    ordered_terms = list(dict.fromkeys(re.findall(r"[a-z0-9_]+", query.casefold())))
+    terms = set(ordered_terms)
+    aliases: List[str] = []
+    for term in ordered_terms:
+        for alias in _ACTION_QUERY_ALIASES.get(term, ()):
+            if alias not in terms and alias not in aliases:
+                aliases.append(alias)
+    return aliases
+
+
+def _sparse_query(query: str) -> str:
+    aliases = _action_query_aliases(query)
+    return " ".join((query, *aliases)) if aliases else query
+
+
+def _retrieved_action_identifiers(
+    query: str,
+    branches: List[List["QueriedNode"]],
+) -> List[str]:
+    """Find concrete action symbols surfaced by semantic query expansion."""
+
+    query_terms = set(re.findall(r"[a-z0-9_]+", query.casefold()))
+    candidates = set(_action_query_aliases(query))
+    candidates.update(query_terms.intersection(_ACTION_QUERY_ALIASES))
+    if not candidates:
+        return []
+
+    identifiers: List[str] = []
+    for branch in branches:
+        for node in branch:
+            raw_name = str(node.node_name or node.node_id or "")
+            symbol = re.sub(r"\([^)]*\)$", "", raw_name.rsplit(":", 1)[-1])
+            identifier = symbol.rsplit(".", 1)[-1]
+            if identifier.casefold() not in candidates or identifier in identifiers:
+                continue
+            identifiers.append(identifier)
+            if len(identifiers) == _MAX_INFERRED_PREDICATES:
+                return identifiers
+    return identifiers
+
+
+def _node_names_identifier(node: "QueriedNode", identifier: str) -> bool:
+    raw_name = str(node.node_name or node.node_id or "")
+    symbol = re.sub(r"\([^)]*\)$", "", raw_name.rsplit(":", 1)[-1])
+    return identifier in {symbol, symbol.rsplit(".", 1)[-1]}
 
 
 def _inferred_predicate_identifiers(
@@ -310,11 +371,12 @@ def create_executor(
         candidate_limit = min(max(limit * 3, 20), 60)
         branches: List[List["QueriedNode"]] = []
         weights: List[float] = []
+        explicit_identifiers = _code_identifiers(normalized_query)
 
         if retrieve.bm25 is not None:
             sparse = to_queried_nodes(
                 retrieve.bm25.search(
-                    query=normalized_query,
+                    query=_sparse_query(normalized_query),
                     top_k=candidate_limit,
                     return_code_content=True,
                     wrap_with_ln=True,
@@ -335,13 +397,24 @@ def create_executor(
             branches.append(dense)
             weights.append(1.0)
 
+        occurrence_identifiers = list(explicit_identifiers)
+        definition_identifiers = list(explicit_identifiers)
+        for identifier in _retrieved_action_identifiers(
+            normalized_query,
+            branches,
+        ):
+            if identifier not in occurrence_identifiers:
+                occurrence_identifiers.append(identifier)
+            if identifier not in definition_identifiers:
+                definition_identifiers.append(identifier)
+
         occurrence_search = (
             getattr(retrieve.bm25, "search_identifier_occurrences", None)
             if retrieve.bm25 is not None
             else None
         )
         if callable(occurrence_search):
-            identifiers = _code_identifiers(normalized_query)
+            identifiers = occurrence_identifiers
             if not identifiers:
                 identifiers = _inferred_predicate_identifiers(
                     normalized_query,
@@ -408,6 +481,14 @@ def create_executor(
                 return
             selected_keys.add(key)
             selected.append(fused_by_key.get(key, node))
+
+        # An explicitly named symbol asks for its definition before wrappers
+        # or call sites that merely mention it.
+        for identifier in definition_identifiers:
+            for node in fused:
+                if _node_names_identifier(node, identifier):
+                    add(node)
+                    break
 
         fused_head_count = max(1, limit // 2)
         for node in fused[:fused_head_count]:

@@ -60,7 +60,12 @@ _DEMO_SYSTEM_PROMPT = (
     "Distinguish building an artifact from marking it stale, publishing it, "
     "and loading it. Write a direct, well-structured final answer and name the "
     "strongest two to five repository-relative files or symbols so the reader "
-    "can open them. If the evidence is incomplete, state that limitation "
+    "can open them. For every action requested by the user, follow wrappers to "
+    "the concrete implementation; a name or docstring saying that a method "
+    "writes, loads, validates, or publishes an artifact is not evidence that "
+    "the action occurs. Include a helper only when the retrieved implementation "
+    "shows it lies on the requested execution path; nearby search results are "
+    "not architecture. If the evidence is incomplete, state that limitation "
     "instead of inventing a mechanism."
 )
 

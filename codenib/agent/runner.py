@@ -136,7 +136,11 @@ in the follow-up query (for example, `symbol_name vector runtime load`); a query
 that only asks for generic "usage" is not enough. Report the fields used by an \
 actual branch or comparison; computing age or timestamps after a predicate does \
 not make time the freshness criterion. Distinguish building an artifact from \
-marking it stale, publishing it, and loading it.
+marking it stale, publishing it, and loading it. Verify that every function in \
+the final explanation is on the requested execution path. If an inspected body \
+delegates to another method, search that callee together with the requested \
+side-effect verb before claiming the side effect. A function name or docstring \
+is not direct evidence that a write, load, validation, or publication occurs.
 """
 
 # Maximum characters for a single tool result to avoid context blowup.
