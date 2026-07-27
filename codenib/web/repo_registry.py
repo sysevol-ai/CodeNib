@@ -13,6 +13,7 @@ concurrent queries are safe.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from importlib.util import find_spec
@@ -40,23 +41,27 @@ _SKILLS_DIR = os.path.join(
     "skills",
 )
 
-# Demo agent prompt: steer the model to search the indexes and ground its
-# answer in retrieved code (so the answer carries citations the code pane uses).
+# Interactive Ask prompt: keep the model on the query-facing retrieval contract
+# and require implementation evidence before it explains repository behaviour.
 _DEMO_SYSTEM_PROMPT = (
-    "You answer questions about a code repository for a documentation explorer. "
-    "Use the search tools (hybrid_search / embedding_search / bm25_search) to "
-    "find the relevant code, then write a clear, well-structured explanation. "
-    "Ground every claim in the retrieved code and name the key files and symbols "
-    "you found so the reader can open them. Follow identifiers discovered in a "
-    "call site with a targeted search when the question asks for a definition, "
-    "owner, implementation, or control flow; do not claim that a symbol is "
-    "missing while an unresolved candidate identifier remains in the evidence. "
-    "When a call site names several candidates, distinguish registries and "
-    "configuration objects from the component whose method performs the "
-    "requested operation, then resolve that component's definition. "
-    "Answer definition questions with the exact identifier and defining file, "
-    "and use call sites only to explain how it is reached. If a search returns "
-    "nothing useful, try a different query or tool before concluding."
+    "You answer questions about a code repository for a developer explorer. "
+    "Start with `repository_search`. For a broad or multi-part question, issue "
+    "focused follow-up searches for the distinct concepts or lifecycle stages. "
+    "Explain behaviour only after finding implementation evidence. Treat tests, "
+    "examples, documentation, and validation scripts as corroboration, not as "
+    "runtime mechanisms, unless the user asks about them explicitly. Distinguish "
+    "build-time checks from runtime checks and current behaviour from intended "
+    "design. For prevention, validation, or guarantee questions, find both the "
+    "predicate and the loader or provider call site that acts on it; warnings "
+    "and tests do not prove enforcement. Never infer behaviour from a function "
+    "name or use speculative language such as 'likely' or 'presumably'. State "
+    "the fields used by an actual branch or comparison: computing age or a "
+    "timestamp after a predicate does not make time the freshness criterion. "
+    "Distinguish building an artifact from marking it stale, publishing it, "
+    "and loading it. Write a direct, well-structured final answer and name the "
+    "strongest two to five repository-relative files or symbols so the reader "
+    "can open them. If the evidence is incomplete, state that limitation "
+    "instead of inventing a mechanism."
 )
 
 
@@ -343,7 +348,7 @@ class RepoRegistry:
         self._bundles: Dict[str, RepoBundle] = {}
         # One embedding model per model name, shared across repos: the GPU model
         # is loaded once instead of once per CodeVectorStore (one per repo).
-        self._embeddings: Dict[Tuple[str, str, Optional[str]], object] = {}
+        self._embeddings: Dict[Tuple[str, str, int, Optional[str], str], object] = {}
 
     def load_all(self) -> None:
         """Load every dataset repo in the registry whose manifest exists."""
@@ -382,27 +387,61 @@ class RepoRegistry:
 
     def _load_vector_store(self, vec_entry: Any) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
-        emb_model = vec_entry.config.get(
-            "embedding_model", self._config.embedding_model
+        artifact_config = vec_entry.config or {}
+        emb_model = artifact_config.get("embedding_model", self._config.embedding_model)
+        emb_dim = artifact_config.get(
+            "dimension",
+            artifact_config.get(
+                "embedding_dimension",
+                self._config.embedding_dimension,
+            ),
         )
-        emb_dim = vec_entry.config.get(
-            "embedding_dimension", self._config.embedding_dimension
-        )
+        if not isinstance(emb_model, str) or not emb_model.strip():
+            raise ValueError("vector manifest has invalid embedding model")
+        if not isinstance(emb_dim, int) or emb_dim <= 0:
+            raise ValueError("vector manifest has invalid embedding dimension")
+
         provider = self._config.embedding_provider
-        cache_key = (provider, emb_model, self._config.embedding_base_url)
+        artifact_provider = artifact_config.get("embedding_provider")
+        embedding_kwargs = artifact_config.get("embedding_kwargs") or {}
+        if not isinstance(embedding_kwargs, dict):
+            raise ValueError("vector manifest has invalid embedding kwargs")
+        if artifact_provider and artifact_provider != provider:
+            # A remote provider may serve vectors compatible with an artifact
+            # built in-process, but Hugging Face constructor options are not
+            # valid OpenAI client options.
+            embedding_kwargs = {}
+        else:
+            embedding_kwargs = dict(embedding_kwargs)
+
+        config_fingerprint = json.dumps(
+            embedding_kwargs,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=repr,
+        )
+        cache_key = (
+            provider,
+            emb_model,
+            emb_dim,
+            self._config.embedding_base_url,
+            config_fingerprint,
+        )
         client_kwargs: Dict[str, object] = {}
         if self._config.embedding_base_url:
             client_kwargs["base_url"] = self._config.embedding_base_url
         if self._config.embedding_api_key:
             client_kwargs["api_key"] = self._config.embedding_api_key
+        embedding_kwargs.update(client_kwargs)
 
         vector_store = _vector_store_type()(
             embedding_model=emb_model,
             embedding_provider=provider,
             dimension=emb_dim,
+            index_metric=artifact_config.get("index_metric", "ip"),
             store_path=vec_entry.path,
             embedding=self._embeddings.get(cache_key),
-            **client_kwargs,
+            **embedding_kwargs,
         )
         self._embeddings[cache_key] = vector_store.embedding
         vector_store.load(vec_entry.path)
@@ -483,6 +522,10 @@ class RepoRegistry:
             manifest=manifest,
             session_ctx=session_ctx,
             system_prompt=_DEMO_SYSTEM_PROMPT,
+            # Ask exposes one query-facing retrieval contract. Internal branch
+            # retrievers, rerankers, and aggregate operators remain available
+            # to compiled pipelines but are not meaningful standalone tools.
+            allow_skills={"repository_search"},
             # The demo answers from the retrieval indexes (BM25 + embeddings),
             # which return citable nodes that feed the answer's code pane. The
             # default read/grep/glob/bash tools return plain text (no
@@ -494,6 +537,10 @@ class RepoRegistry:
             # A capped exploration should still end in a usable answer (one
             # extra tool-free turn) instead of mid-search chatter.
             force_final_answer=True,
+            # The first prose response is a draft. Give the model one
+            # evidence-audit pass with tool access so it can trace predicates
+            # to enforcing call sites or remove unsupported claims.
+            review_final_answer=True,
         )
         bundle.runner = runner
 

@@ -334,6 +334,130 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
     assert second.kwargs["embedding"] is first.embedding
 
 
+def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
+    created = []
+
+    class FakeVectorStore:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.embedding = kwargs.get("embedding") or object()
+            created.append(self)
+
+        def load(self, _path):
+            pass
+
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: FakeVectorStore,
+    )
+    registry = RepoRegistry(QAConfig(embedding_provider="huggingface"))
+    entry = SimpleNamespace(
+        path="/tmp/vector",
+        config={
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_provider": "huggingface",
+            "dimension": 768,
+            "embedding_kwargs": {
+                "model_kwargs": {"trust_remote_code": True},
+                "revision": "immutable-model-revision",
+            },
+            "index_metric": "l2",
+        },
+    )
+
+    registry._load_vector_store(entry)
+
+    assert created[0].kwargs["embedding_model"] == "nomic-ai/CodeRankEmbed"
+    assert created[0].kwargs["dimension"] == 768
+    assert created[0].kwargs["index_metric"] == "l2"
+    assert created[0].kwargs["model_kwargs"] == {"trust_remote_code": True}
+    assert created[0].kwargs["revision"] == "immutable-model-revision"
+
+
+def test_vector_store_cache_separates_model_revisions(monkeypatch):
+    created = []
+
+    class FakeVectorStore:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.embedding = kwargs.get("embedding") or object()
+            created.append(self)
+
+        def load(self, _path):
+            pass
+
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: FakeVectorStore,
+    )
+    registry = RepoRegistry(QAConfig(embedding_provider="huggingface"))
+
+    def entry(revision):
+        return SimpleNamespace(
+            path=f"/tmp/vector-{revision}",
+            config={
+                "embedding_model": "vendor/model",
+                "embedding_provider": "huggingface",
+                "embedding_dimension": 384,
+                "embedding_kwargs": {"revision": revision},
+            },
+        )
+
+    first = registry._load_vector_store(entry("revision-a"))
+    second = registry._load_vector_store(entry("revision-b"))
+
+    assert first.embedding is not second.embedding
+    assert second.kwargs["embedding"] is None
+
+
+def test_remote_embedding_override_drops_huggingface_constructor_options(
+    monkeypatch,
+):
+    created = []
+
+    class FakeVectorStore:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.embedding = object()
+            created.append(self)
+
+        def load(self, _path):
+            pass
+
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: FakeVectorStore,
+    )
+    registry = RepoRegistry(
+        QAConfig(
+            embedding_provider="openai",
+            embedding_base_url="http://embed.local/v1",
+            embedding_api_key="secret",
+        )
+    )
+    entry = SimpleNamespace(
+        path="/tmp/vector",
+        config={
+            "embedding_model": "vendor/model",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 384,
+            "embedding_kwargs": {
+                "model_kwargs": {"trust_remote_code": True},
+                "revision": "local-revision",
+            },
+        },
+    )
+
+    registry._load_vector_store(entry)
+
+    kwargs = created[0].kwargs
+    assert kwargs["embedding_provider"] == "openai"
+    assert kwargs["base_url"] == "http://embed.local/v1"
+    assert kwargs["api_key"] == "secret"
+    assert "model_kwargs" not in kwargs
+    assert "revision" not in kwargs
+
+
 def test_ask_model_receives_its_own_endpoint(monkeypatch):
     captured = {}
 
@@ -363,6 +487,36 @@ def test_ask_model_receives_its_own_endpoint(monkeypatch):
         "api_key": "ask-secret",
         "extra_kwargs": {"api_version": "2025-01-01"},
     }
+
+
+def test_ask_runtime_exposes_only_query_facing_repository_search(monkeypatch):
+    captured = {}
+
+    class FakeRunner:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("codenib.agent.runner.AgentRunner", FakeRunner)
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(registry, "_create_ask_llm", lambda: object())
+    bundle = RepoBundle(
+        entry=SimpleNamespace(language="python"),
+        manifest=SimpleNamespace(
+            repo_path="/tmp/repository",
+            file_count=12,
+            languages=["python"],
+        ),
+        bm25=object(),
+    )
+
+    registry._load_repo_runtime(bundle)
+
+    assert captured["allow_skills"] == {"repository_search"}
+    assert captured["include_default_tools"] is False
+    assert captured["force_final_answer"] is True
+    assert captured["review_final_answer"] is True
+    assert captured["registry"].has("repository_search")
+    assert bundle.runner is not None
 
 
 @pytest.mark.parametrize(

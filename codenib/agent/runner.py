@@ -121,6 +121,24 @@ call it with `symbols=[]` and the original request as `query`.
 files/ranges before citing anything in the final answer.
 """
 
+_GROUNDED_ANSWER_REVIEW_PROMPT = """\
+Treat your previous response as a draft and audit it against the retrieved \
+implementation before answering the user. For every claimed mechanism, verify \
+that the cited source directly performs the stated behavior. A predicate must \
+be paired with the loader, provider, or caller that acts on it when the question \
+is about prevention, validation, or a guarantee; warnings, tests, and generic \
+error handling are not enforcement. If any material claim lacks direct evidence, \
+call the available search tool now with a concrete, action-oriented query and \
+then revise the answer. Otherwise return a corrected final answer now. Remove \
+unsupported claims rather than filling gaps with inference. When tracing an \
+exact symbol, preserve the relevant object and action from the original request \
+in the follow-up query (for example, `symbol_name vector runtime load`); a query \
+that only asks for generic "usage" is not enough. Report the fields used by an \
+actual branch or comparison; computing age or timestamps after a predicate does \
+not make time the freshness criterion. Distinguish building an artifact from \
+marking it stale, publishing it, and loading it.
+"""
+
 # Maximum characters for a single tool result to avoid context blowup.
 _MAX_RESULT_CHARS = 16_000
 _CHARS_PER_TOKEN_ESTIMATE = 4
@@ -159,6 +177,7 @@ class AgentRunner:
         retry: Optional[RetryConfig] = None,
         force_localization_contract: bool = False,
         force_final_answer: bool = False,
+        review_final_answer: bool = False,
         first_turn_tool_choice: Optional[str] = None,
         force_first_turn_only: bool = False,
         compact_after_read: bool = False,
@@ -235,6 +254,11 @@ class AgentRunner:
         # behaviour is untouched; an empty forced answer raises instead of
         # silently returning mid-exploration chatter.
         self._final_answer = force_final_answer
+        # Grounded QA callers can require one evidence-audit pass after the
+        # first prose draft. The audit retains tool access, so it can repair a
+        # missing call-site trace instead of merely rephrasing the same answer.
+        # Opt-in keeps localization experiments and their turn budgets stable.
+        self._review_final_answer = review_final_answer
         self.first_turn_tool_choice = first_turn_tool_choice
         # When True, only turn 0 is forced (legacy single-turn behaviour);
         # default False = force until the agent reads a file.
@@ -597,6 +621,7 @@ limited tool budget, so converge once the implementing location is confirmed.
         read_paths: List[str] = []  # files the agent read (for schema salvage)
         read_outputs: List[Dict[str, str]] = []  # successful read transcripts
         compacted = False  # eager_compact: collapsed to direction seed yet?
+        answer_reviewed = False
 
         def _finish_result(
             answer: str,
@@ -700,6 +725,26 @@ limited tool budget, so converge once the implementing location is confirmed.
                 # without the contract (it explored but didn't format), force one
                 # schema turn so a genuine localization isn't lost to formatting.
                 answer = getattr(assistant_msg, "content", None) or ""
+                if (
+                    self._review_final_answer
+                    and all_tool_calls
+                    and not answer_reviewed
+                    and turn < max_turns - 1
+                ):
+                    answer_reviewed = True
+                    trace.add(
+                        "final_answer_review",
+                        turn + 1,
+                        status="requested",
+                        draft_chars=len(answer),
+                    )
+                    history.add_message(
+                        {
+                            "role": "user",
+                            "content": _GROUNDED_ANSWER_REVIEW_PROMPT,
+                        }
+                    )
+                    continue
                 answer_source = "assistant"
                 if (
                     self._force_contract

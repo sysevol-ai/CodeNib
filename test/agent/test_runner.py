@@ -279,6 +279,61 @@ class TestAgentRunner:
         assert result.answer == "Done."
         assert llm._call_raw.call_count == 2
 
+    def test_grounded_review_revises_first_prose_draft(self, echo_registry):
+        """Opt-in QA review turns the first sourced prose answer into a draft."""
+        llm = _make_llm()
+        tc = _make_tool_call("call_1", "echo", '{"text": "evidence"}')
+        llm._call_raw.side_effect = [
+            _make_response(tool_calls=[tc]),
+            _make_response(content="Unsupported draft."),
+            _make_response(content="Corrected answer grounded in evidence."),
+        ]
+
+        result = AgentRunner(
+            llm,
+            echo_registry,
+            max_turns=5,
+            review_final_answer=True,
+        ).run("Explain the mechanism")
+
+        assert result.answer == "Corrected answer grounded in evidence."
+        assert result.total_turns == 3
+        assert llm._call_raw.call_count == 3
+        review_messages = [
+            message["content"]
+            for message in result.messages
+            if message.get("role") == "user"
+            and "audit it against the retrieved implementation"
+            in message.get("content", "")
+        ]
+        assert len(review_messages) == 1
+
+    def test_grounded_review_can_search_for_missing_evidence(self, echo_registry):
+        """The audit retains tools so it can repair evidence, not just rephrase."""
+        llm = _make_llm()
+        first = _make_tool_call("call_1", "echo", '{"text": "predicate"}')
+        follow_up = _make_tool_call("call_2", "echo", '{"text": "caller"}')
+        llm._call_raw.side_effect = [
+            _make_response(tool_calls=[first]),
+            _make_response(content="Draft with an unverified call site."),
+            _make_response(tool_calls=[follow_up]),
+            _make_response(content="Verified predicate and caller."),
+        ]
+
+        result = AgentRunner(
+            llm,
+            echo_registry,
+            max_turns=6,
+            review_final_answer=True,
+        ).run("Explain enforcement")
+
+        assert result.answer == "Verified predicate and caller."
+        assert result.total_turns == 4
+        assert [record.arguments["text"] for record in result.tool_calls] == [
+            "predicate",
+            "caller",
+        ]
+
     def test_unknown_skill_returns_error(self):
         """Tool call for unregistered skill records an error."""
         llm = _make_llm()
