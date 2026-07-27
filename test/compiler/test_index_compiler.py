@@ -36,6 +36,7 @@ from codenib.compiler.resources import (
     IndexStatus,
     ResourceResolver,
 )
+from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
 from codenib.repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     default_exclude_patterns,
@@ -374,6 +375,12 @@ class TestRegisterDefaultBuilders:
         assert registry.has("vector")
         assert registry.has("symbol_graph")
         assert registry.has("zoekt")
+        vector = registry.get("vector")
+        assert isinstance(vector, VectorIndexBuilder)
+        assert vector.embedding_kwargs == {
+            "model_kwargs": {"trust_remote_code": True},
+            "revision": DEFAULT_EMBEDDING_REVISION,
+        }
 
     def test_custom_params_forwarded(self):
         registry = IndexBuilderRegistry()

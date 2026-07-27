@@ -36,6 +36,11 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from ..agent.skills.core import SkillType
 from ..agent.skills.registry import SkillRegistry
+from ..index.embedding.model_policy import (
+    DEFAULT_EMBEDDING_DIMENSION,
+    DEFAULT_EMBEDDING_MODEL,
+    resolve_embedding_load_policy,
+)
 from ..paths import REPO_INDEX_DIRNAME
 from .index_builders import IndexBuilderRegistry, register_default_builders
 from .index_compiler import IndexCompiler, IndexCompilerConfig
@@ -360,13 +365,13 @@ def build_skill_contexts(
     skills_dir: Optional[str] = None,
     skill_registry: Optional[SkillRegistry] = None,
     builder_registry: Optional[IndexBuilderRegistry] = None,
-    embedding_model: str = "nomic-ai/CodeRankEmbed",
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
     embedding_revision: Optional[str] = None,
-    embedding_dimension: int = 768,
+    embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION,
     default_top_k: int = 10,
     default_level: str = "l2",
     rebuild: bool = False,
-    trust_remote_code: bool = False,
+    trust_remote_code: Optional[bool] = None,
     embedding_batch_size: Optional[int] = None,
     embedding_max_seq_length: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -413,6 +418,11 @@ def build_skill_contexts(
     skill_types = _skill_types_for(
         skill_ids, skills_dir=skills_dir, skill_registry=skill_registry
     )
+    load_policy = resolve_embedding_load_policy(
+        embedding_model,
+        revision=embedding_revision,
+        trust_remote_code=trust_remote_code,
+    )
 
     if needed:
         missing = _missing_index_types(needed, cache_dir, rebuild=rebuild)
@@ -424,9 +434,9 @@ def build_skill_contexts(
                     registry,
                     languages=list(languages),
                     embedding_model=embedding_model,
-                    embedding_revision=embedding_revision,
+                    embedding_revision=load_policy.revision,
                     embedding_dimension=embedding_dimension,
-                    trust_remote_code=trust_remote_code,
+                    trust_remote_code=load_policy.trust_remote_code,
                     embedding_batch_size=embedding_batch_size,
                     embedding_max_seq_length=embedding_max_seq_length,
                 )
@@ -455,13 +465,13 @@ def build_skill_contexts(
             embedding_model=embedding_model,
             embedding_provider="huggingface",
             embedding_dimension=embedding_dimension,
-            embedding_revision=embedding_revision,
+            embedding_revision=load_policy.revision,
             embedding_kwargs=(
                 {"max_seq_length": embedding_max_seq_length}
                 if embedding_max_seq_length is not None
                 else None
             ),
-            trust_remote_code=trust_remote_code,
+            trust_remote_code=load_policy.trust_remote_code,
             default_batch_size=embedding_batch_size,
         )
     if "symbol_graph" in loadable:

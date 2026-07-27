@@ -19,6 +19,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Union
 
 from ..compiler.manifest import RepoManifest
+from ..index.embedding.model_policy import (
+    DEFAULT_EMBEDDING_DIMENSION,
+    DEFAULT_EMBEDDING_MODEL,
+)
 from ..llm.litellm_chat import LiteLLMChat, RetryConfig
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
@@ -1494,8 +1498,8 @@ class CodeNibAgentOptions:
     primary_language: Optional[str] = None
     repo_size: Optional[int] = None
     index_cache_dir: Optional[str] = None
-    embedding_model: str = "nomic-ai/CodeRankEmbed"
-    embedding_dimension: int = 768
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
+    embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION
     default_top_k: int = 10
     default_level: str = "l2"
     rebuild_indexes: bool = False
@@ -1894,8 +1898,8 @@ def compile_repo(
     index_types: Sequence[str] = ("bm25",),
     languages: Sequence[str] = ("python",),
     cache_dir: Optional[str] = None,
-    embedding_model: str = "nomic-ai/CodeRankEmbed",
-    embedding_dimension: int = 768,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION,
 ) -> "RepoManifest":
     """Compile indexes for *repo_path* ahead of time and return the manifest.
 

@@ -14,6 +14,7 @@ def test_cli_and_static_wiki_do_not_import_optional_runtimes() -> None:
     script = """
 import sys
 import codenib
+import codenib.compiler.index_builders
 import codenib.web.app
 
 forbidden = {

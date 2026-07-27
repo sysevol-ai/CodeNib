@@ -83,10 +83,12 @@ pip install "codenib[semantic]"
 codenib wiki /path/to/repository --preset semantic
 ```
 
-The semantic preset downloads its embedding model on first use. The `graph`
-extra supplies the Python graph and protobuf runtimes, while each repository
-language still needs its own SCIP/LSP executable. Check the exact repository
-instead of testing for an unrelated tool:
+The semantic preset downloads CodeRankEmbed on first use. CodeNib pins the
+built-in model to an immutable revision and enables remote model code only for
+that revision; caller-supplied models or revisions are not trusted implicitly.
+The `graph` extra supplies the Python graph and protobuf runtimes, while each
+repository language still needs its own SCIP/LSP executable. Check the exact
+repository instead of testing for an unrelated tool:
 
 ```bash
 codenib doctor /path/to/repository --require graph

@@ -24,6 +24,11 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
+from ..index.embedding.model_policy import (
+    DEFAULT_EMBEDDING_DIMENSION,
+    DEFAULT_EMBEDDING_MODEL,
+    resolve_embedding_load_policy,
+)
 from ..repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     default_exclude_patterns,
@@ -145,9 +150,9 @@ class VectorIndexBuilder:
     """Build a hierarchical embedding index (L0/L2)."""
 
     languages: List[str] = field(default_factory=lambda: ["python"])
-    embedding_model: str = "nomic-ai/CodeRankEmbed"
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
     embedding_provider: str = "huggingface"
-    embedding_dimension: int = 768
+    embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION
     embedding_kwargs: Dict[str, Any] = field(default_factory=dict)
     build_levels: List[str] = field(default_factory=lambda: ["l0", "l2"])
     max_lines_per_chunk: int = 300
@@ -800,10 +805,10 @@ def register_default_builders(
     *,
     languages: Optional[List[str]] = None,
     graph_route: str = "active",
-    embedding_model: str = "nomic-ai/CodeRankEmbed",
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
     embedding_revision: Optional[str] = None,
-    embedding_dimension: int = 768,
-    trust_remote_code: bool = False,
+    embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION,
+    trust_remote_code: Optional[bool] = None,
     embedding_batch_size: Optional[int] = None,
     embedding_max_seq_length: Optional[int] = None,
     exclude_patterns: Optional[List[str]] = None,
@@ -813,16 +818,20 @@ def register_default_builders(
     langs = languages or ["python"]
     registry.register("bm25", BM25IndexBuilder(languages=langs))
 
-    # Build embedding_kwargs with trust_remote_code if requested
-    embedding_kwargs = {}
-    if trust_remote_code:
+    load_policy = resolve_embedding_load_policy(
+        embedding_model,
+        revision=embedding_revision,
+        trust_remote_code=trust_remote_code,
+    )
+    embedding_kwargs: Dict[str, Any] = {}
+    if load_policy.trust_remote_code:
         embedding_kwargs = {"model_kwargs": {"trust_remote_code": True}}
     if embedding_batch_size is not None:
         embedding_kwargs["encode_kwargs"] = {"batch_size": embedding_batch_size}
     if embedding_max_seq_length is not None:
         embedding_kwargs["max_seq_length"] = embedding_max_seq_length
-    if embedding_revision is not None:
-        embedding_kwargs["revision"] = embedding_revision
+    if load_policy.revision is not None:
+        embedding_kwargs["revision"] = load_policy.revision
 
     registry.register(
         "vector",

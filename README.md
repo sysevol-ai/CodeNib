@@ -79,6 +79,9 @@ Select a profile when indexing or launching:
 codenib wiki /path/to/repository --preset semantic
 ```
 
+The semantic profile uses a pinned CodeRankEmbed revision; its remote model
+code is trusted only for that immutable built-in revision.
+
 The `graph` and `full` profiles also need the relevant SCIP/LSP binaries;
 `full` additionally needs Zoekt. Backend availability differs by language;
 consult the

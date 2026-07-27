@@ -40,6 +40,7 @@ from codenib.agent.skills.registry import SkillRegistry
 from codenib.compiler import resources as compiler_resources
 from codenib.compiler import skill_context
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
 
 
 def _make_meta(
@@ -397,6 +398,34 @@ def test_embedding_resource_limits_reach_builder_and_loader(
             "embedding_kwargs": {"max_seq_length": 8192},
             "trust_remote_code": False,
             "default_batch_size": 4,
+        }
+    ]
+
+
+def test_bundled_embedding_policy_reaches_builder_and_loader(
+    registry, mocked_build, tmp_path
+):
+    skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(tmp_path / "cache"),
+        skill_registry=registry,
+    )
+
+    vector_builder = mocked_build["registries"][0].get("vector")
+    assert vector_builder.embedding_kwargs == {
+        "model_kwargs": {"trust_remote_code": True},
+        "revision": DEFAULT_EMBEDDING_REVISION,
+    }
+    assert mocked_build["vector_kwargs"] == [
+        {
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 768,
+            "embedding_revision": DEFAULT_EMBEDDING_REVISION,
+            "embedding_kwargs": None,
+            "trust_remote_code": True,
+            "default_batch_size": None,
         }
     ]
 
