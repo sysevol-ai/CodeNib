@@ -138,6 +138,11 @@ Status: complete.
 - Make graph availability and setup visible in CLI and UI.
 - Add focused unit and local integration coverage.
 
+Mixed-language graph construction retains successful language views and
+records unavailable backends explicitly. The lower-level graph API remains
+strict for callers that require complete coverage; the product CLI opts into
+partial coverage and surfaces it in both startup output and Dependency Map.
+
 ### M2: Provider-independent generation runtime
 
 Status: complete.
@@ -210,6 +215,18 @@ Acceptance evidence on 2026-07-26:
 - A generated mixed-language Overview covered all eight planned claims with
   1.0 citation coverage, cited all three source files, and published no unknown
   files, identifiers, or citations.
+- On the CodeNib checkout, applying the shared exclusion policy before SCIP
+  generation removed nested `web/dist` output from the graph and reduced the
+  mixed-language graph build from about 168.9 seconds to 61.89 seconds.
+  Python and TypeScript remained available while C/C++, Go, and Rust failures
+  were retained as explicit partial-coverage metadata.
+- The real-repository v24 Overview published eight of eight planned facts from
+  five cited source files with 1.0 citation coverage, three dense sections,
+  no duplicate prose blocks, and no repair, fallback, or quality warning.
+- Desktop (1440x1000), intermediate (1024x900), and mobile (390x844) Wiki
+  captures had no horizontal overflow, console errors, or page errors. The
+  Dependency Map rendered a real retrieval-pipeline neighborhood with nine
+  symbols, eight edges, and the partial-language coverage notice.
 
 ## Completion Rule
 
