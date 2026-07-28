@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 import faiss
 import numpy as np
 
+from ... import compat_pickle
 from ...log_utils import get_logger
 from ...profiler import Profiler
 from ...types import NodeInfo
@@ -1090,7 +1091,7 @@ class CodeVectorStore:
         if docs_path.exists():
             try:
                 with open(docs_path, "rb") as f:
-                    raw_docs = pickle.load(f)
+                    raw_docs = compat_pickle.load(f)
                 documents = [_to_document(d) for d in raw_docs]
                 return index, documents
             except Exception as e:
@@ -1124,7 +1125,7 @@ class CodeVectorStore:
         docstore string IDs.
         """
         with open(pkl_path, "rb") as f:
-            docstore, index_to_docstore_id = pickle.load(f)
+            docstore, index_to_docstore_id = compat_pickle.load(f)
 
         documents: List[_Document] = []
         for i in sorted(index_to_docstore_id.keys()):
