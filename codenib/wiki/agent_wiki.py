@@ -17,6 +17,7 @@ Drop-in for the demo's ``WikiBuilder``: exposes ``page_tree`` / ``page`` /
 from __future__ import annotations
 
 import copy
+import dataclasses
 import hashlib
 import html
 import json
@@ -181,6 +182,19 @@ def _slug(text: str) -> str:
 
 def _lang(file: str) -> str:
     return _EXT_LANG.get((file or "").rsplit(".", 1)[-1].lower(), "")
+
+
+def _canonical_symbol(value: str) -> str:
+    """Identity of a symbol across retrieval routes.
+
+    The same definition reaches evidence under different spellings depending on
+    which index found it -- a sparse hit names it ``path/to/file.ts:thing()``
+    while a dense hit names it ``thing``. Strip the path qualifier and the
+    argument list so the two collapse onto one identity.
+    """
+
+    name = (value or "").strip().rsplit(":", 1)[-1].strip()
+    return re.sub(r"\([^)]*\)$", "", name).strip().casefold()
 
 
 def _link_evidence_markers(markdown: str) -> str:
@@ -3152,6 +3166,7 @@ class AgentWiki:
 
     def _evidence_items(self, nodes: List[Any]) -> List[EvidenceItem]:
         items: List[EvidenceItem] = []
+        by_identity: Dict[tuple[str, str], int] = {}
         total = 0
         for node in nodes:
             raw_file = self._node_attr(node, "file") or ""
@@ -3186,6 +3201,33 @@ class AgentWiki:
                 candidate_key(node, self._node_attr),
                 (),
             )
+            # One definition can surface once per retrieval route. Keeping both
+            # copies spends the context budget twice and, when the extra copy
+            # came from a span-less index, leaves the page citing the same
+            # symbol once with a line anchor and once without.
+            identity = (file, _canonical_symbol(str(symbol)))
+            seen_at = by_identity.get(identity)
+            if seen_at is not None:
+                prior = items[seen_at]
+                merged_routes = tuple(dict.fromkeys((*prior.routes, *routes)))
+                if prior.start_line is None and start_line is not None:
+                    # This copy knows where it lives; prefer it, and take the
+                    # content that matches the span it reports.
+                    upgraded = dataclasses.replace(
+                        prior,
+                        start_line=start_line,
+                        end_line=end_line,
+                        content=content,
+                        routes=merged_routes,
+                    )
+                elif merged_routes != prior.routes:
+                    upgraded = dataclasses.replace(prior, routes=merged_routes)
+                else:
+                    continue
+                total += len(upgraded.prompt_block()) - len(prior.prompt_block())
+                items[seen_at] = upgraded
+                continue
+
             item = EvidenceItem(
                 id=f"E{len(items) + 1}",
                 file=file,
@@ -3200,6 +3242,7 @@ class AgentWiki:
             if items and total + block_size > _MAX_CONTEXT_CHARS:
                 break
             items.append(item)
+            by_identity[identity] = len(items) - 1
             total += block_size
         return items
 
