@@ -194,3 +194,53 @@ def test_dashboard_preserves_guardian_analysis_health_fields():
     assert row["guardian_cycle_count"] == 3
     assert row["guardian_exit_reasons"] == ["ReportSubmitted"] * 3
     assert row["guardian_total_tokens"] == 291_925
+
+
+def test_dashboard_task_rows_include_average_test_metrics():
+    rows = dashboard._task_rows(
+        [
+            {
+                "task": "fixture-task",
+                "baseline": "solo",
+                "model": "fixture-model",
+                "reasoning_effort": "medium",
+                "pass_rate": 0.25,
+                "avg_f2p": 0.5,
+                "avg_p2p": 0.75,
+                "avg_partial": 0.625,
+                "n_trials": 4,
+            },
+            {
+                "task": "fixture-task",
+                "baseline": "guardian",
+                "model": "fixture-model",
+                "reasoning_effort": "medium",
+                "pass_rate": 0.5,
+                "avg_f2p": 0.625,
+                "avg_p2p": 1.0,
+                "avg_partial": 0.75,
+                "avg_total_cost_usd": 1.25,
+                "n_trials": 4,
+            },
+        ]
+    )
+
+    assert rows == [
+        {
+            "task": "fixture-task",
+            "model": "fixture-model",
+            "reasoning_effort": "medium",
+            "solo_pass_rate": 0.25,
+            "guardian_pass_rate": 0.5,
+            "solo_avg_f2p": 0.5,
+            "guardian_avg_f2p": 0.625,
+            "solo_avg_p2p": 0.75,
+            "guardian_avg_p2p": 1.0,
+            "solo_avg_partial": 0.625,
+            "guardian_avg_partial": 0.75,
+            "delta_pass_rate": 0.25,
+            "solo_trials": 4,
+            "guardian_trials": 4,
+            "guardian_avg_cost_usd": 1.25,
+        }
+    ]

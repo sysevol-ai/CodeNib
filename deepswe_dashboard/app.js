@@ -6,6 +6,9 @@ const state = {
 
 const metricLabels = {
   pass_rate: "Pass rate",
+  avg_f2p: "Avg F2P",
+  avg_p2p: "Avg P2P",
+  avg_partial: "Avg partial",
   avg_total_cost_usd: "Avg cost",
   sum_total_cost_usd: "Total cost",
   avg_main_input_tokens: "Avg input tokens",
@@ -26,7 +29,9 @@ function fmt(value, kind = "number") {
 }
 
 function metricKind(metric) {
-  if (metric === "pass_rate") return "pct";
+  if (["pass_rate", "avg_f2p", "avg_p2p", "avg_partial"].includes(metric)) {
+    return "pct";
+  }
   if (metric.includes("cost")) return "cost";
   return "number";
 }
@@ -34,7 +39,7 @@ function metricKind(metric) {
 function heatColor(value, metric) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "#f3f4f6";
   const n = Number(value);
-  if (metric === "pass_rate") {
+  if (["pass_rate", "avg_f2p", "avg_p2p", "avg_partial"].includes(metric)) {
     const hue = 8 + Math.max(0, Math.min(1, n)) * 135;
     return `hsl(${hue} 64% 86%)`;
   }
@@ -125,6 +130,12 @@ function renderTasks() {
       "Solo",
       "Guardian",
       "Delta",
+      "Solo avg F2P",
+      "Guardian avg F2P",
+      "Solo avg P2P",
+      "Guardian avg P2P",
+      "Solo avg partial",
+      "Guardian avg partial",
       "Solo n",
       "Guardian n",
       "Guardian avg cost",
@@ -136,11 +147,33 @@ function renderTasks() {
       fmt(r.solo_pass_rate, "pct"),
       fmt(r.guardian_pass_rate, "pct"),
       fmt(r.delta_pass_rate, "pct"),
+      fmt(r.solo_avg_f2p, "pct"),
+      fmt(r.guardian_avg_f2p, "pct"),
+      fmt(r.solo_avg_p2p, "pct"),
+      fmt(r.guardian_avg_p2p, "pct"),
+      fmt(r.solo_avg_partial, "pct"),
+      fmt(r.guardian_avg_partial, "pct"),
       fmt(r.solo_trials),
       fmt(r.guardian_trials),
       fmt(r.guardian_avg_cost_usd, "cost"),
     ]),
-    [false, false, false, true, true, true, true, true, true],
+    [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ],
   );
 }
 

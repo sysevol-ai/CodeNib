@@ -173,6 +173,12 @@ def _task_rows(summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "reasoning_effort": effort,
                 "solo_pass_rate": (solo or {}).get("pass_rate"),
                 "guardian_pass_rate": (guardian or {}).get("pass_rate"),
+                "solo_avg_f2p": (solo or {}).get("avg_f2p"),
+                "guardian_avg_f2p": (guardian or {}).get("avg_f2p"),
+                "solo_avg_p2p": (solo or {}).get("avg_p2p"),
+                "guardian_avg_p2p": (guardian or {}).get("avg_p2p"),
+                "solo_avg_partial": (solo or {}).get("avg_partial"),
+                "guardian_avg_partial": (guardian or {}).get("avg_partial"),
                 "delta_pass_rate": (
                     (guardian or {}).get("pass_rate", 0)
                     - (solo or {}).get("pass_rate", 0)
