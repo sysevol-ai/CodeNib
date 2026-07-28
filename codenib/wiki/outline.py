@@ -481,7 +481,10 @@ def _format_symbols(symbols: List[Symbol]) -> str:
 def generate_outline(
     bundle: Any,
     model: str,
-    max_tokens: int = 4096,
+    # A large repo's outline (sympy, matplotlib) truncates at 4096, which
+    # silently degrades the page tree instead of failing. Restored from the
+    # closed PR #327 ("sympy dense embeddings + wiki outline budget").
+    max_tokens: int = 16000,
     *,
     llm: Any = None,
 ) -> Dict[str, Any]:
