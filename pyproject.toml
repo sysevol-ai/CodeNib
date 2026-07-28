@@ -87,6 +87,12 @@ semantic = [
     "openai>=1.0.0",
     "sentence-transformers>=2.2.0",
 ]
+# Vertex AI backends (``vertex_ai/...`` litellm model strings, via gcloud ADC).
+# litellm resolves these through the Google SDK, so it is a hard requirement
+# for any Vertex-backed model even though litellm itself does not depend on it.
+vertex = [
+    "google-cloud-aiplatform>=1.38",
+]
 zoekt = [
     "requests>=2.25.0",
 ]

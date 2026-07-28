@@ -143,10 +143,20 @@ def _no_thinking_kwargs(model: str) -> Dict[str, Any]:
     (``finish_reason="length"``). LiteLLM maps Anthropic-style ``thinking`` to
     Gemini's ``thinkingConfig``; a zero budget turns thinking off so the budget
     goes to the answer. No-op for non-thinking providers.
+
+    vLLM-served Qwen thinking models emit a verbose ``Here's a thinking
+    process:`` preamble (plain text, not ``<think>`` tags) before the answer,
+    which derails the agent's answer extraction and wastes tokens. Disable it
+    via the chat template so the model answers directly. Injecting it by model
+    name keeps this vLLM-only knob out of ``model_options``, where it would
+    leak onto a differently-backed wiki model. (Restored from the closed
+    PR #327.)
     """
     m = (model or "").lower()
     if "gemini-2.5" in m or "gemini-2-5" in m:
         return {"thinking": {"type": "disabled", "budget_tokens": 0}}
+    if "qwen" in m and "embed" not in m:
+        return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
     return {}
 
 

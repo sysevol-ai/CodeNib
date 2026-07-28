@@ -152,19 +152,36 @@ class QAConfig:
 
     @property
     def wiki_generation_api_base(self) -> Optional[str]:
-        """Endpoint used by wiki generation, falling back to the Ask endpoint."""
+        """Endpoint for wiki generation.
 
+        When ``wiki_model`` is set the wiki runs on its own backend, so the
+        endpoint comes from ``wiki_api_base`` alone. Falling back to the Ask
+        endpoint would aim a hosted-provider call (e.g. ``vertex_ai/...``) at
+        whatever local OpenAI-compatible URL Ask happens to use.
+        """
+
+        if self.wiki_model:
+            return self.wiki_api_base
         return self.wiki_api_base or self.model_api_base
 
     @property
     def wiki_generation_api_key(self) -> Optional[str]:
-        """Credential used by wiki generation, falling back to the Ask key."""
+        """Credential for wiki generation (see ``wiki_generation_api_base``)."""
 
+        if self.wiki_model:
+            return self.wiki_api_key
         return self.wiki_api_key or self.model_api_key
 
     @property
     def wiki_generation_options(self) -> Dict[str, Any]:
-        """Provider options for Wiki calls, layered over the Ask defaults."""
+        """Provider options for Wiki calls, layered over the Ask defaults.
+
+        Generic knobs (``timeout``, …) carry over; wiki-specific keys win. Keep
+        backend-specific knobs out of ``model_options`` — a local vLLM's
+        ``chat_template_kwargs`` layered onto a hosted wiki model would be sent
+        to a provider that rejects it. ``_no_thinking_kwargs`` injects those
+        per-backend knobs by model name, so they need not be configured here.
+        """
 
         return merge_model_options(self.model_options, self.wiki_model_options)
 
