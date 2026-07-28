@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from codeminer.guardian.cycle import GuardianConfig, _merge_llm_usage, run_cycle
+from codeminer.guardian.interaction import MessageInbox
 from codeminer.guardian.investigator.runner import LLMUsage
 from codeminer.guardian.memory import MemoryStore
 from codeminer.guardian.report import render_markdown
@@ -435,6 +436,33 @@ def test_no_progress_is_an_incomplete_review(tmp_path):
     assert report.analysis_status == "incomplete"
     assert report.degraded is False
     assert "absence of findings is not a clean" in render_markdown(report)
+
+
+def test_episode_records_exact_external_message_snapshot(tmp_path):
+    repo = _make_repo(tmp_path)
+    inbox_path = tmp_path / "inbox" / "messages.jsonl"
+    inbox = MessageInbox(str(inbox_path), repo_path=str(repo))
+    sent = inbox.append(
+        "The solver believes aliases should be preserved.",
+        sender="solver:test",
+        scope=["parser.py"],
+    )
+    episode = tmp_path / "episode"
+
+    report = run_cycle(
+        GuardianConfig(
+            repo_path=str(repo),
+            episode_dir=str(episode),
+            message_inbox_path=str(inbox_path),
+        ),
+        manifest=_FakeManifest(),
+    )
+
+    snapshot = json.loads(
+        (episode / "external_messages.json").read_text(encoding="utf-8")
+    )
+    assert snapshot == [sent.to_dict()]
+    assert report.external_message_ids == [sent.id]
 
 
 @pytest.mark.integration

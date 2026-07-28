@@ -49,9 +49,11 @@ import sys
 import threading
 import time
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .cycle import GuardianConfig, run_cycle
+from .interaction import MessageInbox
 from .report import Finding
 
 # ---------------------------------------------------------------------------
@@ -85,6 +87,7 @@ _start_lock = threading.Lock()
 _watcher_config: Optional[GuardianConfig] = None
 _watcher_baseline = ""
 _watcher_thread: Optional[threading.Thread] = None
+_message_inbox: Optional[MessageInbox] = None
 
 # Trace log — set by main() from --trace-log arg; None disables tracing.
 _trace_log_path: Optional[str] = None
@@ -364,7 +367,7 @@ def _handle_query_guardian(arguments: Dict[str, Any]) -> str:
 
 _stdout_lock = threading.Lock()
 
-_TOOL_SCHEMA = {
+_QUERY_TOOL_SCHEMA = {
     "name": "query_guardian",
     "description": (
         "Ask the Repository Guardian for its latest findings about the repo. "
@@ -398,6 +401,43 @@ _TOOL_SCHEMA = {
         "required": ["hypothesis"],
     },
 }
+
+_MESSAGE_TOOL_SCHEMA = {
+    "name": "send_guardian_message",
+    "description": (
+        "Send Guardian your current understanding, intent, or concern. The "
+        "message is an untrusted perspective, not evidence, and does not start "
+        "or interrupt analysis. Guardian snapshots it at the next commit cycle."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "message": {"type": "string"},
+            "scope": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["message"],
+        "additionalProperties": False,
+    },
+}
+
+
+def _handle_send_guardian_message(arguments: Dict[str, Any]) -> str:
+    if _message_inbox is None:
+        raise RuntimeError("Guardian message inbox is not configured")
+    message = _message_inbox.append(
+        str(arguments.get("message", "")),
+        sender="solver:mcp",
+        scope=arguments.get("scope"),
+    )
+    return json.dumps(
+        {
+            "accepted": True,
+            "message": message.to_dict(),
+            "applies": "next_cycle",
+            "cycle_triggered": False,
+        },
+        indent=2,
+    )
 
 
 def _send(obj: Dict[str, Any]) -> None:
@@ -437,15 +477,20 @@ def _handle_request(msg: Dict[str, Any]) -> None:
         _respond(req_id, {})
 
     elif method == "tools/list":
-        _respond(req_id, {"tools": [_TOOL_SCHEMA]})
+        _respond(req_id, {"tools": [_QUERY_TOOL_SCHEMA, _MESSAGE_TOOL_SCHEMA]})
 
     elif method == "tools/call":
         name = params.get("name")
-        if name != "query_guardian":
+        if name not in {"query_guardian", "send_guardian_message"}:
             _respond_error(req_id, -32601, f"Unknown tool: {name}")
             return
         try:
-            text = _handle_query_guardian(params.get("arguments") or {})
+            arguments = params.get("arguments") or {}
+            text = (
+                _handle_query_guardian(arguments)
+                if name == "query_guardian"
+                else _handle_send_guardian_message(arguments)
+            )
             _respond(
                 req_id,
                 {
@@ -490,11 +535,17 @@ def _stdio_loop() -> None:
 
 def main(argv: Optional[List[str]] = None) -> None:
     global POLL_INTERVAL, _trace_log_path, _watcher_config, _watcher_baseline
+    global _message_inbox
     parser = argparse.ArgumentParser(
         description="Repository Guardian MCP server (stdio transport)"
     )
     parser.add_argument(
         "--repo", required=True, help="Path to the repository to monitor"
+    )
+    parser.add_argument(
+        "--message-inbox",
+        default=None,
+        help="Append-only JSONL inbox (defaults under --memory-dir).",
     )
     parser.add_argument(
         "--arm",
@@ -584,7 +635,20 @@ def main(argv: Optional[List[str]] = None) -> None:
         top_n=args.top_n,
         budget_tokens=None if args.no_budget_limit else args.budget_tokens,
         max_context_tokens=args.max_context_tokens,
+        message_inbox_path=(
+            args.message_inbox
+            or str(
+                (
+                    Path(args.memory_dir).parent
+                    if args.memory_dir
+                    else Path(args.repo) / ".guardian"
+                )
+                / "inbox"
+                / "messages.jsonl"
+            )
+        ),
     )
+    _message_inbox = MessageInbox(config.message_inbox_path, repo_path=config.repo_path)
     baseline_commit = args.baseline_commit
     if args.baseline_file:
         try:

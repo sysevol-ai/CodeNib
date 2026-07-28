@@ -9,7 +9,7 @@ import hashlib
 import json
 import os
 import tempfile
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
@@ -159,6 +159,9 @@ class CycleState:
     exit_reason: Optional[str]
     carried_from: Optional[int]
     report_summary: str = ""
+    understanding: str = ""
+    open_questions: List[str] = field(default_factory=list)
+    external_messages: List[dict] = field(default_factory=list)
     degraded: bool = False
     compaction_events: int = 0
 
@@ -180,6 +183,9 @@ class CycleState:
             exit_reason=raw.get("exit_reason"),
             carried_from=raw.get("carried_from"),
             report_summary=str(raw.get("report_summary", "")),
+            understanding=str(raw.get("understanding", "")),
+            open_questions=[str(item) for item in raw.get("open_questions", [])],
+            external_messages=list(raw.get("external_messages", [])),
             degraded=bool(raw.get("degraded", False)),
             compaction_events=int(raw.get("compaction_events", 0)),
         )

@@ -201,9 +201,23 @@ TOOLS = [
     ),
     _function(
         "submit_report",
-        "End the cycle when further work is not worth its cost.",
-        {"summary": {"type": "string"}},
-        required=["summary"],
+        (
+            "End the cycle after re-grounding the current explanation and "
+            "challenging its important weak beliefs."
+        ),
+        {
+            "summary": {"type": "string"},
+            "understanding": {
+                "type": "string",
+                "description": "Current coherent explanation of repository behavior.",
+            },
+            "open_questions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Important residual uncertainties, empty when none remain.",
+            },
+        },
+        required=["summary", "understanding", "open_questions"],
     ),
 ]
 

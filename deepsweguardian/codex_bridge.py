@@ -303,6 +303,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--out-dir", default="~/.guardian")
     parser.add_argument("--arm", choices=["memory", "memoryless"], default="memory")
     parser.add_argument("--memory-dir", default="~/.guardian/memory")
+    parser.add_argument("--message-inbox", default="~/.guardian/inbox/messages.jsonl")
     parser.add_argument("--model", default="codex:gpt-5.6-luna")
     parser.add_argument("--index-types", nargs="+", default=["bm25"])
     parser.add_argument("--since", default="90 days ago")
@@ -338,6 +339,7 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     out_dir = os.path.expanduser(args.out_dir)
     memory_dir = os.path.expanduser(args.memory_dir)
+    message_inbox = os.path.expanduser(args.message_inbox)
     baseline_commit = args.baseline_commit
     if args.baseline_file:
         try:
@@ -364,6 +366,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         budget_tokens=None if args.no_budget_limit else args.budget_tokens,
         max_context_tokens=args.max_context_tokens,
         episode_dir="/logs/agent/guardian_episode",
+        message_inbox_path=message_inbox,
     )
     run_bridge(
         cfg,

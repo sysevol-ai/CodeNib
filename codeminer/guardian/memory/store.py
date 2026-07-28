@@ -193,6 +193,25 @@ class MemoryStore:
                 (f"test_recipe:{key}", json.dumps(recipe, sort_keys=True)),
             )
 
+    def load_review_understanding(self) -> tuple[str, list[str]]:
+        """Load the latest coherent review model without changing schema v2."""
+        if self.readonly or not os.path.exists(self._db_path):
+            return "", []
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT key, value FROM metadata "
+                "WHERE key IN ('review_understanding', 'review_open_questions')"
+            ).fetchall()
+        values = {row["key"]: row["value"] for row in rows}
+        try:
+            questions = json.loads(values.get("review_open_questions", "[]"))
+        except (TypeError, json.JSONDecodeError):
+            questions = []
+        return (
+            str(values.get("review_understanding", "")),
+            [str(item) for item in questions] if isinstance(questions, list) else [],
+        )
+
     def load_hypotheses(self) -> list:
         """Load the latest snapshot of every carried hypothesis."""
         if self.readonly or not os.path.exists(self._db_path):
@@ -327,6 +346,19 @@ class MemoryStore:
                         json.dumps(signal.value, sort_keys=True),
                     ),
                 )
+            connection.execute(
+                "INSERT INTO metadata (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("review_understanding", state.understanding),
+            )
+            connection.execute(
+                "INSERT INTO metadata (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (
+                    "review_open_questions",
+                    json.dumps(state.open_questions, sort_keys=True),
+                ),
+            )
 
         if graph is not None:
             try:
@@ -403,8 +435,7 @@ class MemoryStore:
                     if item["grade"] in {"finding", "supported", "refuted"}
                 ]
                 confirmation_rate = (
-                    sum(item["grade"] == "finding" for item in resolved)
-                    / len(resolved)
+                    sum(item["grade"] == "finding" for item in resolved) / len(resolved)
                     if resolved
                     else 0.0
                 )
@@ -438,13 +469,9 @@ class MemoryStore:
         query_terms = set(re.findall(r"[a-z0-9_]+", query_normalized))
         document_terms = set(re.findall(r"[a-z0-9_]+", document))
         overlap = (
-            len(query_terms & document_terms) / len(query_terms)
-            if query_terms
-            else 0.0
+            len(query_terms & document_terms) / len(query_terms) if query_terms else 0.0
         )
-        sequence = SequenceMatcher(
-            None, query_normalized, document[:2_000]
-        ).ratio()
+        sequence = SequenceMatcher(None, query_normalized, document[:2_000]).ratio()
         return (0.8 * overlap) + (0.2 * sequence)
 
     @staticmethod

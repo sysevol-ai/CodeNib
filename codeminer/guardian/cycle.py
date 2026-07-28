@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import subprocess
 import tempfile
@@ -65,6 +66,8 @@ class GuardianConfig:
     context_reserve_tokens: int = 20_000
     max_context_chars: Optional[int] = None
     checkpoint_path: Optional[str] = None
+    message_inbox_path: Optional[str] = None
+    max_external_messages: int = 20
     resume: bool = False
 
 
@@ -283,6 +286,18 @@ def _run_cycle_inner(
     manifest: object = None,
 ) -> GuardianReport:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    # Freeze external input before indexing or model work. Messages arriving
+    # after this boundary are deliberately deferred to the next commit cycle.
+    external_messages: list[dict] = []
+    if config.message_inbox_path:
+        from .interaction import MessageInbox
+
+        external_messages = [
+            item.to_dict()
+            for item in MessageInbox(
+                config.message_inbox_path, repo_path=config.repo_path
+            ).read_recent(limit=config.max_external_messages)
+        ]
     if manifest is None:
         manifest = _compile_index(config)
     commit = getattr(manifest, "commit", "") or _current_commit(config.repo_path)
@@ -293,6 +308,8 @@ def _run_cycle_inner(
     prior_graph = None
     cycle_no = 1
     carried_hypotheses = []
+    prior_understanding = ""
+    prior_open_questions: list[str] = []
     if config.memory_dir:
         from .memory import MemoryStore
 
@@ -301,6 +318,9 @@ def _run_cycle_inner(
             cycle_no = store.next_cycle_no()
             carried_hypotheses = store.load_hypotheses()
             prior_graph = store.load_prior_graph(config.memory_dir)
+            prior_understanding, prior_open_questions = (
+                store.load_review_understanding()
+            )
 
     current_graph = _load_current_graph(manifest)
     signals, edge_changes = _collect_signals(
@@ -323,6 +343,9 @@ def _run_cycle_inner(
         decision_log=[],
         exit_reason=None,
         carried_from=(cycle_no - 1 if cycle_no > 1 else None),
+        understanding=prior_understanding,
+        open_questions=prior_open_questions,
+        external_messages=external_messages,
     )
 
     from .investigator import CurrentSnapshotSandbox, LLMUsage, PriorSnapshotSandbox
@@ -338,6 +361,12 @@ def _run_cycle_inner(
             else Path(tempfile.gettempdir()) / "codeminer-guardian" / commit[:12]
         )
     )
+    if config.episode_dir:
+        output_root.mkdir(parents=True, exist_ok=True)
+        (output_root / "external_messages.json").write_text(
+            json.dumps(external_messages, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     checkpoint = Path(config.checkpoint_path or output_root / "cycle_state.json")
 
     if config.resume and checkpoint.exists():
@@ -468,6 +497,11 @@ def _run_cycle_inner(
         cycle_no=state.cycle_no,
         exit_reason=state.exit_reason or "",
         report_summary=state.report_summary,
+        understanding=state.understanding,
+        open_questions=state.open_questions,
+        external_message_ids=[
+            str(item.get("id", "")) for item in state.external_messages
+        ],
         degraded=state.degraded,
         analysis_status=_analysis_status(
             state.exit_reason,

@@ -84,6 +84,20 @@ def test_init_and_cycle_numbering(tmp_path):
     assert store.cycle_count() == 1
 
 
+def test_review_understanding_persists_as_memory_metadata(tmp_path):
+    store = MemoryStore(str(tmp_path / "memory"))
+    state = _state(1)
+    state.understanding = "The parser normalizes public aliases."
+    state.open_questions = ["Does the runtime path use the normalized value?"]
+
+    store.persist_state(state, _report(state))
+
+    assert store.load_review_understanding() == (
+        "The parser normalizes public aliases.",
+        ["Does the runtime path use the normalized value?"],
+    )
+
+
 def test_readonly_has_identical_api_but_no_data_or_writes(tmp_path):
     store = MemoryStore(str(tmp_path / "memory"), readonly=True)
     state = _state(1, hypotheses=[_hypothesis()])

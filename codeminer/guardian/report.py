@@ -118,6 +118,9 @@ class GuardianReport:
     cycle_no: int = 0
     exit_reason: str = ""
     report_summary: str = ""
+    understanding: str = ""
+    open_questions: List[str] = field(default_factory=list)
+    external_message_ids: List[str] = field(default_factory=list)
     degraded: bool = False
     analysis_status: str = "pending"
     decision_log: List[dict] = field(default_factory=list)
@@ -234,8 +237,8 @@ def render_markdown(report: GuardianReport) -> str:
         [
             f"- **Compaction events:** {report.compaction_events}",
             "",
-            "_Non-modifying report: findings and evidence only — no changes were "
-            "made to the repository._",
+            "_Non-modifying review: understanding, findings, and evidence only — "
+            "no changes were made to the repository._",
             "",
         ]
     )
@@ -261,6 +264,14 @@ def render_markdown(report: GuardianReport) -> str:
         )
     if report.report_summary:
         lines.extend(["## Cycle Summary", "", report.report_summary, ""])
+    if report.understanding:
+        lines.extend(["## Current Understanding", "", report.understanding, ""])
+    lines.extend(["## Open Questions", ""])
+    if report.open_questions:
+        lines.extend([f"- {item}" for item in report.open_questions])
+    else:
+        lines.append("No high-value unresolved questions were retained.")
+    lines.append("")
 
     lines.extend([f"## Findings ({len(report.findings)})", ""])
     if not report.findings:

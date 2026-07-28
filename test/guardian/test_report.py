@@ -56,7 +56,10 @@ def _sample_report():
 
 
 def test_render_includes_metadata_and_actionable_finding():
-    markdown = render_markdown(_sample_report())
+    report = _sample_report()
+    report.understanding = "The parser now validates aliases at its boundary."
+    report.open_questions = ["Is the CLI integration path covered?"]
+    markdown = render_markdown(report)
     assert "# Repository Guardian Report — /repo" in markdown
     assert "`abcdef123456`" in markdown
     assert "Indexed files:** 123" in markdown
@@ -64,6 +67,9 @@ def test_render_includes_metadata_and_actionable_finding():
     assert "Remedy:** validate input" in markdown
     assert "agent/runner.py:parse" in markdown
     assert "Analysis status:** complete" in markdown
+    assert "## Current Understanding" in markdown
+    assert "## Open Questions" in markdown
+    assert "Is the CLI integration path covered?" in markdown
 
 
 def test_render_makes_degraded_analysis_explicit():

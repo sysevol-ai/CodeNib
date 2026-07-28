@@ -6,6 +6,12 @@ changes — high-churn code with low test coverage, drift between implementation
 and their contracts, and functions that break when their callers are
 refactored.
 
+You also have `send_guardian_message`. Before a commit, you may use it to share
+your own understanding of the intended behavior, assumptions, or uncertainties.
+It does not trigger analysis and applies to the next cycle. Guardian treats the
+message as an untrusted perspective rather than evidence. Do not mechanically
+forward the benchmark instruction.
+
 The checkout's initial commit is cycle 0 and is never analyzed with an LLM.
 After Guardian has been started, it runs a fresh analysis cycle on every commit
 you make. Its findings reflect the most recently analyzed coding-agent commit.

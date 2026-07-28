@@ -506,7 +506,20 @@ def _dispatch(call_name: str, args: dict, state: CycleState, ctx: LoopContext) -
 
         if call_name == "submit_report":
             summary = str(args.get("summary", "")).strip()
+            # Checkpoint/replay fixtures from the pre-understanding protocol may
+            # contain summary-only submissions. Preserve replay compatibility;
+            # current model calls are constrained by the stricter tool schema.
+            understanding = str(args.get("understanding", "")).strip() or summary
+            open_questions = [
+                str(item).strip()
+                for item in args.get("open_questions", [])
+                if str(item).strip()
+            ]
+            if not summary:
+                raise ValueError("summary must be non-empty")
             state.report_summary = summary
+            state.understanding = understanding
+            state.open_questions = open_questions
             raise ReportSubmitted(summary, decision_log_tail=state.decision_log[-5:])
 
         return f"(unknown tool: {call_name!r})"

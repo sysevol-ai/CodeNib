@@ -161,7 +161,9 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_checkpoint_dir = guardian_checkpoint_dir
         self._guardian_bridge_pidfile = f"{guardian_findings_dir}/codex_bridge.pid"
         self._guardian_baseline_file = "/app/.guardian/base_commit"
+        self._guardian_message_inbox = "/app/.guardian/inbox/messages.jsonl"
         self._guardian_start_path = f"{guardian_checkpoint_dir}/guardian-start"
+        self._guardian_message_path = f"{guardian_checkpoint_dir}/guardian-message"
         self._guardian_codex_home = "/tmp/guardian-codex-home"
         self._guardian_codex_secrets_dir = "/tmp/guardian-codex-secrets"
 
@@ -176,6 +178,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
             guardian_arm,
             "--memory-dir",
             guardian_memory_dir,
+            "--message-inbox",
+            self._guardian_message_inbox,
             "--model",
             guardian_model,
             "--top-n",
@@ -361,6 +365,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
             f"{self._guardian_checkpoint_dir}/guardian-checkpoint"
         )
         start_path = _quote_shell_path(self._guardian_start_path)
+        message_path = _quote_shell_path(self._guardian_message_path)
         checkpoint_script = shlex.quote(
             guardian_checkpoint_script(
                 start_command=self._guardian_start_path,
@@ -417,6 +422,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
             self._guardian_arm,
             "--memory-dir",
             self._guardian_memory_dir,
+            "--message-inbox",
+            self._guardian_message_inbox,
             "--model",
             self._guardian_model,
             "--top-n",
@@ -446,12 +453,22 @@ class GuardianCodingAgent(BaseInstalledAgent):
                 log_file="/logs/agent/codex_bridge.log",
             )
         )
+        message_script = shlex.quote(
+            "#!/bin/sh\n"
+            f"exec {shlex.quote(self._codeminer_python)} "
+            f"{shlex.quote(self._codeminer_path + '/codeminer/guardian/interaction.py')} "
+            f"--inbox {shlex.quote(self._guardian_message_inbox)} "
+            f"--repo {shlex.quote(self._guardian_repo)} "
+            '"$@"\n'
+        )
         await environment.exec(
             f"mkdir -p {findings_dir} {checkpoint_bin_dir} && "
             f"printf %s {start_script} > {start_path} && "
             f"chmod +x {start_path} && "
             f"printf %s {checkpoint_script} > {checkpoint_path} && "
-            f"chmod +x {checkpoint_path}"
+            f"chmod +x {checkpoint_path} && "
+            f"printf %s {message_script} > {message_path} && "
+            f"chmod +x {message_path}"
         )
 
     async def _stop_codex_bridge(self, environment: BaseEnvironment) -> None:
