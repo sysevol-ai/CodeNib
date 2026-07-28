@@ -2404,9 +2404,14 @@ class AgentWiki:
         prompt_version = (
             _OUTLINE_PROMPT_VERSION if suffix == "outline" else _PAGE_PROMPT_VERSION
         )
+        # Deliberately model-independent: the key identifies *what* was asked
+        # (prompt version + repo snapshot + index state), not *who* answered.
+        # Binding the model/endpoint into the key made every backend swap
+        # discard the whole corpus (~800 pages, hours of generation). The
+        # producing model is recorded in the cache entry instead — see
+        # ``_write_cache`` — mirroring EdgeLabeler's namespace-only keying.
         raw = (
             f"{prompt_version}/{getattr(entry, 'instance_id', 'repo')}@{commit}/"
-            f"{self._model}/{self._api_base or ''}/{self._cache_llm_identity}/"
             f"{view_identity}/{suffix}"
         )
         return hashlib.sha1(raw.encode()).hexdigest()[:16]
@@ -2460,7 +2465,17 @@ class AgentWiki:
             return
         try:
             with open(path, "w", encoding="utf-8") as fh:
-                json.dump({"model": self._model, "data": data}, fh)
+                json.dump(
+                    {
+                        # Provenance only — none of this is part of the cache
+                        # key, so a later backend swap reuses this entry.
+                        "model": self._model,
+                        "api_base": self._api_base or "",
+                        "llm_identity": self._cache_llm_identity,
+                        "data": data,
+                    },
+                    fh,
+                )
         except OSError:
             pass
 

@@ -93,12 +93,11 @@ class Narrator:
     def _cache_file(self, key: str) -> Optional[str]:
         if not self.cache_dir:
             return None
-        llm_identity = getattr(self._llm, "cache_identity", "")
-        identity = (
-            f"{_PROMPT_VERSION}\0{self.model}\0{self.api_base or ''}\0"
-            f"{json.dumps(self.model_options, sort_keys=True)}\0"
-            f"{llm_identity}\0{key}"
-        )
+        # Model-independent by design (same rationale as AgentWiki._key): the
+        # prose is keyed by prompt version + call key, so pointing the narrator
+        # at a different backend reuses what was already generated. The
+        # producing model is recorded in the entry by ``_write_cache``.
+        identity = f"{_PROMPT_VERSION}\0{key}"
         h = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:20]
         return os.path.join(self.cache_dir, f"{h}.json")
 
@@ -118,7 +117,16 @@ class Narrator:
             return
         try:
             with open(path, "w", encoding="utf-8") as fh:
-                json.dump({"model": self.model, "key": key, "text": text}, fh)
+                # ``model``/``api_base`` are provenance, not key material.
+                json.dump(
+                    {
+                        "model": self.model,
+                        "api_base": self.api_base or "",
+                        "key": key,
+                        "text": text,
+                    },
+                    fh,
+                )
         except Exception as exc:  # noqa: BLE001 - cache write is best-effort
             # Fail soft: a missing/unwritable cache only costs a recompute.
             logger.debug("wiki narrator cache write failed for %r: %s", key, exc)
