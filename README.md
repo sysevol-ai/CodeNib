@@ -40,9 +40,9 @@ runtime, not the system boundary. The core implementation lives in CodeNib;
 optional model endpoints and language servers are providers rather than a host
 agent or code-Wiki framework.
 
-## Runtime Model
+## System Architecture
 
-| Layer | Native responsibility |
+| Layer | Responsibility |
 |---|---|
 | Incremental compiler | Chunk source and materialize BM25, dense, graph, and navigation views; reuse or repair supported artifacts and rebuild when an update cannot be admitted |
 | View manifest | Record repository identity, source fingerprint, builder profile, capabilities, status, and artifact location independently for each view |
