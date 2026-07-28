@@ -3145,6 +3145,14 @@ class AgentWiki:
                 continue
             start = self._node_attr(node, "start_line")
             end = self._node_attr(node, "end_line")
+            # A 0/0 span is the "no line data" signature of an index whose
+            # document metadata carries no spans (``_compute_symbols`` coerces
+            # a missing span to 0). Emitting it would cite line 1 of the file
+            # with false confidence; a citation without a line anchor is the
+            # honest degradation. A genuine whole-file anchor pairs start 0
+            # with the file's real end line, so it is unaffected.
+            if start == 0 and end == 0:
+                start = end = None
             start_line = (start + 1) if isinstance(start, int) else None
             end_line = (end + 1) if isinstance(end, int) else start_line
             content = self._node_attr(node, "content") or ""
@@ -3646,7 +3654,14 @@ class AgentWiki:
             for i in range(len(parts)):
                 rel = "/".join(parts[i:])
                 if os.path.exists(os.path.join(repo_dir, rel)):
-                    self._iroot = p[: len(p) - len(rel)]
+                    prefix = p[: len(p) - len(rel)]
+                    # Only cache a real prefix. An already-relative input (a
+                    # sparse hit) matches at i=0 with an empty prefix, and
+                    # caching that would make every later absolute path (a
+                    # dense hit, indexed under the builder's own root) fall
+                    # through unstripped.
+                    if prefix:
+                        self._iroot = prefix
                     return rel
         mi = p.rfind("/repo/")
         if mi != -1:
