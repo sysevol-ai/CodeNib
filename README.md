@@ -87,36 +87,11 @@ codenib index /path/to/repository
 
 See the
 [Quickstart](https://github.com/sysevol-ai/CodeNib/blob/main/docs/quickstart.md)
-for ports, reusable manifests, presets, and troubleshooting.
+for ports, advanced indexing, and troubleshooting.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_wiki.png" alt="CodeNib Wiki showing a source-linked overview of the CodeNib repository" width="100%">
 </p>
-
-## Choose A Profile
-
-| Profile | Install | Views | Best for |
-|---|---|---|---|
-| `fast` (default) | `pip install codenib` | BM25 | A quick local Wiki with no model download |
-| `semantic` | `pip install "codenib[semantic]"` | BM25 + dense vectors | Natural-language repository search |
-| `graph` | `pip install "codenib[graph]"` | BM25 + symbol graph | Dependency exploration and static navigation |
-| `full` | `pip install "codenib[full]"` | BM25 + vectors + symbol graph + Zoekt | Advanced source and graph workflows |
-
-Select a profile when indexing or launching:
-
-```bash
-codenib wiki /path/to/repository --preset semantic
-```
-
-The semantic profile uses a pinned CodeRankEmbed revision; its remote model
-code is trusted only for that immutable built-in revision.
-
-The `graph` and `full` profiles also need the relevant SCIP/LSP binaries;
-`full` additionally needs Zoekt. Backend availability differs by language;
-consult the
-[Language Capabilities](https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md)
-matrix and
-[SCIP setup](https://github.com/sysevol-ai/CodeNib/blob/main/docs/scip_index.md).
 
 ## Serve An Agent
 
