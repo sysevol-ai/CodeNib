@@ -408,7 +408,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                       ? "Index-derived page"
                       : sourceChecked
                         ? "Evidence-linked generation"
-                        : generationMode === "degraded"
+                        : page.generation?.fallback
                           ? "Index-derived fallback"
                           : "Generated, evidence review needed"}
                   </span>
