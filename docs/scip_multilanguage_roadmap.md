@@ -714,7 +714,7 @@ Issue triage rules:
 - If a PR changes graph schema or decoder semantics, run parity checks and
   inspect whether `_SCHEMA_VERSION` must change.
 
-Current issue triage notes from July 25, 2026:
+Current issue triage notes from July 28, 2026:
 
 - PR #248 is merged (June 25, 2026). It was an agent-compile/Qwen local-backend
   PR outside this SCIP roadmap and landed as agent-compile work, not as a
@@ -723,8 +723,10 @@ Current issue triage notes from July 25, 2026:
   SCIP cold-start and acceleration program.
 - #252, the Repository Guardian RFC, is closed (July 7, 2026).
 - #199 is an enterprise index-storage RFC and remains open.
-- #133 is an agent-compile RFC and remains open because the query-time
-  skill-selection mechanism is still tracked as follow-up work.
+- #133 is closed. Its query-time skill-selection runtime landed through #149
+  and the subsequent agent-runtime refactor; the original fitted A0--A6 table
+  plan was retired in favor of the design-space cost study. Any new adaptive
+  policy should start from the current benchmark in a focused follow-up.
 
 ## Required Local Checks
 
