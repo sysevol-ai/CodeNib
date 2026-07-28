@@ -15,9 +15,12 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mcp import Client
+from mcp.types import LATEST_PROTOCOL_VERSION
 
 # Import server module components
 import codenib.mcp.server as server_module
@@ -38,6 +41,21 @@ if loaded:
 """
 
     subprocess.run([sys.executable, "-c", script], check=True)
+
+
+def test_server_negotiates_modern_and_legacy_protocols() -> None:
+    async def negotiate(mode: Literal["auto", "legacy"]) -> tuple[str, set[str]]:
+        async with Client(server_module.mcp, mode=mode, cache=None) as client:
+            tools = await client.list_tools()
+            return client.protocol_version, {tool.name for tool in tools.tools}
+
+    modern_version, modern_tools = asyncio.run(negotiate("auto"))
+    legacy_version, legacy_tools = asyncio.run(negotiate("legacy"))
+
+    assert modern_version == LATEST_PROTOCOL_VERSION
+    assert legacy_version != modern_version
+    assert modern_tools == legacy_tools
+    assert {"get_manifest", "search_bm25", "search_semantic"} <= modern_tools
 
 
 @pytest.fixture
@@ -76,8 +94,8 @@ def mock_manifest(tmp_path: Path) -> Path:
 
 def test_init_server_missing_manifest():
     """Test that init_server raises FileNotFoundError for missing manifest."""
-    # Mock FastMCP availability
-    with patch.object(server_module, "FastMCP", MagicMock()):
+    # Mock MCPServer availability
+    with patch.object(server_module, "MCPServer", MagicMock()):
         with pytest.raises(FileNotFoundError, match="Manifest not found"):
             server_module.init_server("/nonexistent/manifest.json")
 
@@ -85,7 +103,7 @@ def test_init_server_missing_manifest():
 def test_init_server_success(mock_manifest: Path):
     """Test successful server initialization."""
     mock_mcp = MagicMock()
-    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+    with patch.object(server_module, "MCPServer", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):
@@ -110,7 +128,7 @@ def test_semantic_search_tool_no_vector_index(mock_manifest: Path):
     """Test semantic_search tool returns error when vector index not loaded."""
     # Initialize server with mock that fails vector loading
     mock_mcp = MagicMock()
-    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+    with patch.object(server_module, "MCPServer", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
             with patch.object(
                 CodeVectorStore, "load", side_effect=Exception("Load failed")
@@ -141,7 +159,7 @@ def test_semantic_search_tool_with_vector_index(mock_manifest: Path):
     mock_vector.search_with_content.return_value = [mock_node]
 
     mock_mcp = MagicMock()
-    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+    with patch.object(server_module, "MCPServer", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):
@@ -237,7 +255,7 @@ def test_server_status_resource(mock_manifest: Path):
     mock_vector.get_stats.return_value = {"total_documents": 150}
 
     mock_mcp = MagicMock()
-    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+    with patch.object(server_module, "MCPServer", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):

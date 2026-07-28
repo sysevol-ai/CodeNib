@@ -78,7 +78,7 @@ graph = [
     "protobuf>=3.20.0",
 ]
 mcp = [
-    "mcp>=1.0.0",
+    "mcp>=2.0.0,<3",
 ]
 semantic = [
     "einops>=0.8.0",
@@ -96,7 +96,7 @@ full = [
     "faiss-cpu>=1.7.0",
     "igraph>=0.11.6",
     "litellm>=1.40.0",
-    "mcp>=1.0.0",
+    "mcp>=2.0.0,<3",
     "numpy>=1.24.0",
     "openai>=1.0.0",
     "protobuf>=3.20.0",
@@ -120,7 +120,7 @@ test = [
     "igraph>=0.11.6",
     "litellm>=1.40.0",
     "matplotlib>=3.4.0",
-    "mcp>=1.0.0",
+    "mcp>=2.0.0,<3",
     "numpy>=1.24.0",
     "openai>=1.0.0",
     "protobuf>=3.20.0",

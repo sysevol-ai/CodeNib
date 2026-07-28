@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from .context import ServerContext
 from .prompts import CODENIB_GUIDE
@@ -48,7 +48,7 @@ def get_context() -> ServerContext:
     return _ctx
 
 
-mcp = FastMCP(
+mcp = MCPServer(
     "codenib",
     instructions=(
         "CodeNib provides code search over pre-built indexes. "

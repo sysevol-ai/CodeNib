@@ -267,9 +267,9 @@ class _ProtocolErrorHandler(logging.Handler):
 
 
 def _structured_result(result: Any) -> dict[str, Any]:
-    if getattr(result, "isError", False):
+    if getattr(result, "is_error", False):
         raise RuntimeError(f"MCP tool returned a protocol error: {result!r}")
-    payload = getattr(result, "structuredContent", None)
+    payload = getattr(result, "structured_content", None)
     if not isinstance(payload, dict):
         raise RuntimeError(f"MCP tool did not return structured content: {result!r}")
     return payload
@@ -282,7 +282,7 @@ async def _assert_mcp_async(
     executable: str,
     env: dict[str, str],
 ) -> None:
-    from mcp import ClientSession, StdioServerParameters
+    from mcp import Client, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
     protocol_errors = _ProtocolErrorHandler()
@@ -299,18 +299,22 @@ async def _assert_mcp_async(
     try:
         try:
             with stderr_path.open("w+", encoding="utf-8") as server_stderr:
-                async with stdio_client(parameters, errlog=server_stderr) as streams:
-                    async with ClientSession(*streams) as session:
-                        await session.initialize()
-                        tools = await session.list_tools()
+                for mode in ("auto", "legacy"):
+                    transport = stdio_client(parameters, errlog=server_stderr)
+                    async with Client(transport, mode=mode, cache=None) as client:
+                        tools = await client.list_tools()
                         names = {tool.name for tool in tools.tools}
                         required = {"get_manifest", "search_bm25", "search_semantic"}
                         if not required.issubset(names):
                             raise RuntimeError(
-                                f"MCP tools are missing: {sorted(required - names)}"
+                                f"MCP tools are missing in {mode} mode: "
+                                f"{sorted(required - names)}"
                             )
 
-                        result = await session.call_tool(
+                        if mode == "legacy":
+                            continue
+
+                        result = await client.call_tool(
                             "search_bm25",
                             arguments={"query": "release_signature", "top_k": 5},
                         )
@@ -325,7 +329,7 @@ async def _assert_mcp_async(
                                 f"MCP BM25 hit was unexpected: {hits[0]!r}"
                             )
 
-                        unavailable = await session.call_tool(
+                        unavailable = await client.call_tool(
                             "search_semantic",
                             arguments={"query": "release signature", "top_k": 5},
                         )

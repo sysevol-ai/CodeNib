@@ -72,9 +72,9 @@ class TestMCPServerE2E:
 
     def test_mcp_server_initialization(self, test_manifest_path):
         """Test MCP server can initialize with real index."""
-        # Mock FastMCP to avoid dependency
+        # Mock MCPServer to avoid dependency
         mock_mcp = MagicMock()
-        with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+        with patch.object(server_module, "MCPServer", return_value=mock_mcp):
             with patch.object(server_module, "mcp", mock_mcp):
                 server_module.init_server(test_manifest_path)
 
@@ -94,7 +94,7 @@ class TestMCPServerE2E:
         """Test MCP semantic_search tool with real query."""
         # Initialize server
         mock_mcp = MagicMock()
-        with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+        with patch.object(server_module, "MCPServer", return_value=mock_mcp):
             with patch.object(server_module, "mcp", mock_mcp):
                 server_module.init_server(test_manifest_path)
 
@@ -167,7 +167,7 @@ class TestMCPServerE2E:
 
         # MCP server call
         mock_mcp = MagicMock()
-        with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+        with patch.object(server_module, "MCPServer", return_value=mock_mcp):
             with patch.object(server_module, "mcp", mock_mcp):
                 server_module.init_server(test_manifest_path)
 
@@ -196,7 +196,7 @@ class TestMCPServerE2E:
     def test_mcp_server_status(self, test_manifest_path):
         """Test server_status resource returns correct info."""
         mock_mcp = MagicMock()
-        with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+        with patch.object(server_module, "MCPServer", return_value=mock_mcp):
             with patch.object(server_module, "mcp", mock_mcp):
                 server_module.init_server(test_manifest_path)
 
