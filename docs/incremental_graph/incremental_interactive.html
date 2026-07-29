@@ -10,124 +10,308 @@ SPDX-License-Identifier: Apache-2.0
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Incremental Graph Update</title>
+<script>
+(() => {
+  let scheme = '';
+  try {
+    scheme = window.parent.document.body.dataset.mdColorScheme || '';
+  } catch (_) {
+    // Direct access or a cross-origin embed falls back to the OS preference.
+  }
+  const dark = scheme
+    ? scheme === 'slate'
+    : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+})();
+</script>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Segoe UI',system-ui,sans-serif; background:#0d1117; color:#c9d1d9; }
+@font-face {
+  font-family: "Inter Variable";
+  src: url("../assets/fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
 
-.top-nav { background:#161b22; border-bottom:1px solid #30363d; padding:0 24px; display:flex; align-items:center; height:48px; position:sticky; top:0; z-index:100; }
-.nav-brand { font-size:14px; font-weight:700; color:#58a6ff; margin-right:28px; }
-.nav-tabs { display:flex; gap:2px; }
-.nav-tab { background:none; border:none; color:#8b949e; font-size:13px; padding:0 14px; height:48px; cursor:pointer; border-bottom:2px solid transparent; }
-.nav-tab:hover { color:#c9d1d9; }
-.nav-tab.active { color:#58a6ff; border-bottom-color:#58a6ff; }
+@font-face {
+  font-family: "Newsreader Variable";
+  src: url("../assets/fonts/newsreader-latin-wght-normal.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --demo-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  --demo-serif: "Newsreader Variable", Iowan Old Style, Georgia, serif;
+  --demo-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --demo-bg: #f9f6ef;
+  --demo-surface: #fffdf8;
+  --demo-surface-strong: #ffffff;
+  --demo-soft: #f1ece1;
+  --demo-soft-strong: #e9e2d6;
+  --demo-line: #ddd4c5;
+  --demo-line-strong: #c9c0b0;
+  --demo-ink: #1d1913;
+  --demo-ink-soft: #453f36;
+  --demo-muted: #6d6860;
+  --demo-neutral: #776f64;
+  --demo-accent: #176b64;
+  --demo-accent-strong: #0d4a44;
+  --demo-accent-soft: #d9e9e6;
+  --demo-on-accent: #fffdf8;
+  --demo-added: #2f7d4d;
+  --demo-added-soft: #e0eee5;
+  --demo-added-node: #d3e8da;
+  --demo-added-text: #205a38;
+  --demo-shifted: #8a5c08;
+  --demo-shifted-soft: #f4ead3;
+  --demo-shifted-node: #ead9ae;
+  --demo-shifted-text: #674300;
+  --demo-affected: #aa5128;
+  --demo-affected-soft: #f6e4da;
+  --demo-affected-node: #f0d7c8;
+  --demo-affected-text: #7d3518;
+  --demo-deleted: #a6403d;
+  --demo-deleted-soft: #f5e2e0;
+  --demo-class: #6f4d96;
+  --demo-class-soft: #ede6f4;
+  --demo-class-node: #dfd1ec;
+  --demo-class-text: #533573;
+  --demo-file: #316986;
+  --demo-file-soft: #e1edf2;
+  --demo-file-node: #d4e6ee;
+  --demo-file-text: #244f68;
+  --demo-shadow: 0 14px 42px rgba(42, 34, 23, 0.08);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --demo-bg: #171512;
+  --demo-surface: #1d1a16;
+  --demo-surface-strong: #211e19;
+  --demo-soft: #211e19;
+  --demo-soft-strong: #2a261f;
+  --demo-line: #37332b;
+  --demo-line-strong: #575247;
+  --demo-ink: #f3efe7;
+  --demo-ink-soft: #ddd7cb;
+  --demo-muted: #b8b1a3;
+  --demo-neutral: #9c9487;
+  --demo-accent: #58c1b6;
+  --demo-accent-strong: #7bd2c8;
+  --demo-accent-soft: #14332f;
+  --demo-on-accent: #10211f;
+  --demo-added: #68c98b;
+  --demo-added-soft: #193527;
+  --demo-added-node: #204632;
+  --demo-added-text: #c2ecd0;
+  --demo-shifted: #d9ad5c;
+  --demo-shifted-soft: #382c18;
+  --demo-shifted-node: #493713;
+  --demo-shifted-text: #f3d89d;
+  --demo-affected: #ef9b62;
+  --demo-affected-soft: #3d2419;
+  --demo-affected-node: #4a2919;
+  --demo-affected-text: #ffd0ae;
+  --demo-deleted: #ed7772;
+  --demo-deleted-soft: #3d201f;
+  --demo-class: #b994dd;
+  --demo-class-soft: #30243d;
+  --demo-class-node: #3d2851;
+  --demo-class-text: #ead7f7;
+  --demo-file: #75b5d4;
+  --demo-file-soft: #1d313c;
+  --demo-file-node: #24404e;
+  --demo-file-text: #d0ebf6;
+  --demo-shadow: 0 14px 42px rgba(0, 0, 0, 0.22);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { min-height:100%; background:var(--demo-bg); }
+body {
+  color:var(--demo-ink-soft);
+  font-family:var(--demo-sans);
+  font-size:14px;
+  transition:background-color .18s ease, color .18s ease;
+}
+button { font:inherit; }
+::selection { color:var(--demo-ink); background:var(--demo-accent-soft); }
+
+.top-nav {
+  height:50px;
+  padding:0 22px;
+  display:flex;
+  align-items:center;
+  position:sticky;
+  top:0;
+  z-index:100;
+  overflow-x:auto;
+  background:color-mix(in srgb, var(--demo-surface) 94%, transparent);
+  border-bottom:1px solid var(--demo-line);
+  backdrop-filter:blur(14px);
+  scrollbar-width:none;
+}
+.top-nav::-webkit-scrollbar { display:none; }
+.nav-brand {
+  margin-right:26px;
+  flex:0 0 auto;
+  color:var(--demo-ink);
+  font-family:var(--demo-serif);
+  font-size:16px;
+  font-weight:620;
+  letter-spacing:-.015em;
+}
+.nav-tabs { display:flex; gap:2px; flex:0 0 auto; }
+.nav-tab {
+  height:50px;
+  padding:0 14px;
+  flex:0 0 auto;
+  cursor:pointer;
+  color:var(--demo-muted);
+  background:none;
+  border:0;
+  border-bottom:2px solid transparent;
+  font-size:12px;
+  font-weight:560;
+  transition:color .14s ease, border-color .14s ease;
+}
+.nav-tab:hover { color:var(--demo-ink); }
+.nav-tab.active { color:var(--demo-accent); border-bottom-color:var(--demo-accent); }
+.nav-tab:focus-visible,
+.btn:focus-visible {
+  outline:2px solid var(--demo-accent);
+  outline-offset:-3px;
+}
 .tab-section { display:none; }
 .tab-section.active { display:block; }
 
 /* ── Overview ── */
 .ov-wrap { max-width:1100px; margin:0 auto; padding:40px 24px; }
-.ov-title { font-size:28px; color:#f0f6fc; margin-bottom:8px; }
-.ov-sub { font-size:14px; color:#8b949e; margin-bottom:32px; max-width:600px; line-height:1.6; }
+.ov-title { margin-bottom:8px; color:var(--demo-ink); font-family:var(--demo-serif); font-size:30px; font-weight:560; }
+.ov-sub { max-width:600px; margin-bottom:32px; color:var(--demo-muted); font-size:14px; line-height:1.6; }
 .stat-row { display:flex; gap:12px; margin-bottom:40px; flex-wrap:wrap; }
-.stat-box { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px 20px; min-width:130px; text-align:center; }
-.stat-val { font-size:22px; font-weight:700; color:#3fb950; }
-.stat-lbl { font-size:11px; color:#8b949e; margin-top:2px; }
+.stat-box { min-width:130px; padding:14px 20px; text-align:center; background:var(--demo-surface); border:1px solid var(--demo-line); border-radius:12px; box-shadow:var(--demo-shadow); }
+.stat-val { color:var(--demo-accent); font-size:22px; font-weight:700; }
+.stat-lbl { margin-top:2px; color:var(--demo-muted); font-size:11px; }
 .pipeline { display:flex; gap:0; align-items:stretch; }
-.pipe { flex:1; background:#161b22; border:1px solid #30363d; border-radius:10px; padding:18px 14px; position:relative; cursor:pointer; transition:border-color .15s; }
-.pipe:hover { border-color:#58a6ff; }
+.pipe { flex:1; padding:18px 14px; position:relative; cursor:pointer; background:var(--demo-surface); border:1px solid var(--demo-line); border-radius:12px; transition:border-color .15s, transform .15s; }
+.pipe:hover { border-color:var(--demo-accent); transform:translateY(-1px); }
 .pipe:not(:last-child) { margin-right:28px; }
-.pipe:not(:last-child)::after { content:''; position:absolute; right:-20px; top:50%; transform:translateY(-50%); border-left:12px solid #30363d; border-top:8px solid transparent; border-bottom:8px solid transparent; }
-.pipe-num { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#0d1117; margin-bottom:10px; }
-.pipe h4 { font-size:13px; color:#f0f6fc; margin-bottom:6px; }
-.pipe p { font-size:11px; color:#8b949e; line-height:1.5; }
+.pipe:not(:last-child)::after { content:''; position:absolute; right:-20px; top:50%; transform:translateY(-50%); border-left:12px solid var(--demo-line-strong); border-top:8px solid transparent; border-bottom:8px solid transparent; }
+.pipe-num { width:24px; height:24px; margin-bottom:10px; display:flex; align-items:center; justify-content:center; color:var(--demo-on-accent); border-radius:50%; font-size:11px; font-weight:700; }
+.pipe h4 { margin-bottom:6px; color:var(--demo-ink); font-size:13px; }
+.pipe p { color:var(--demo-muted); font-size:11px; line-height:1.5; }
 .pipe-tag { display:inline-block; font-size:10px; padding:2px 8px; border-radius:10px; margin-top:8px; font-family:monospace; }
 
-.section-label { font-size:12px; color:#8b949e; text-transform:uppercase; letter-spacing:1px; margin:32px 0 14px; }
+.section-label { margin:32px 0 14px; color:var(--demo-muted); font-size:12px; text-transform:uppercase; letter-spacing:1px; }
 .module-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-.mod-card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px; }
-.mod-card h4 { font-size:12px; color:#79c0ff; font-family:monospace; margin-bottom:6px; }
-.mod-card p { font-size:11px; color:#8b949e; line-height:1.5; }
-.mod-fn { font-size:10px; font-family:monospace; color:#3fb950; background:#0d1117; padding:2px 6px; border-radius:3px; margin-top:4px; display:inline-block; }
+.mod-card { padding:16px; background:var(--demo-surface); border:1px solid var(--demo-line); border-radius:12px; }
+.mod-card h4 { margin-bottom:6px; color:var(--demo-accent); font-family:var(--demo-mono); font-size:12px; }
+.mod-card p { color:var(--demo-muted); font-size:11px; line-height:1.5; }
+.mod-fn { display:inline-block; margin-top:4px; padding:2px 6px; color:var(--demo-added); background:var(--demo-added-soft); border-radius:4px; font-family:var(--demo-mono); font-size:10px; }
 
 /* ── Demo layout ── */
-.demo-outer { display:grid; grid-template-columns:1fr; grid-template-rows:auto 1fr; height:calc(100vh - 48px); }
-.demo-left { background:#161b22; border-bottom:1px solid #30363d; display:flex; flex-direction:column; overflow:hidden; }
-.demo-right { background:#0d1117; display:flex; flex-direction:column; overflow:hidden; position:relative; }
+.demo-outer { display:grid; grid-template-columns:1fr; grid-template-rows:auto 1fr; height:calc(100vh - 50px); min-height:610px; }
+.demo-left { display:flex; flex-direction:column; overflow:hidden; background:var(--demo-surface); border-bottom:1px solid var(--demo-line); }
+.demo-right { display:flex; flex-direction:column; overflow:hidden; position:relative; background:var(--demo-bg); }
 
 /* step progress */
-.step-prog { padding:8px 18px; border-bottom:1px solid #30363d; display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.step-prog { padding:10px 18px; display:flex; align-items:center; gap:10px; flex-shrink:0; border-bottom:1px solid var(--demo-line); }
 .dots { display:flex; gap:4px; flex:1; }
-.dot { flex:1; height:3px; border-radius:2px; background:#21262d; cursor:pointer; transition:background .2s; }
-.dot.done { background:#3fb950; }
-.dot.active { background:#58a6ff; }
-.step-ctr { font-size:11px; color:#8b949e; white-space:nowrap; }
+.dot { flex:1; height:3px; cursor:pointer; background:var(--demo-soft-strong); border-radius:2px; transition:background .2s; }
+.dot.done { background:var(--demo-added); }
+.dot.active { background:var(--demo-accent); }
+.step-ctr { color:var(--demo-muted); font-size:11px; white-space:nowrap; }
 
 /* step info */
-.step-info { padding:10px 18px; overflow-y:auto; font-size:12px; max-height:160px; }
+.step-info { max-height:180px; padding:12px 18px; overflow-y:auto; font-size:12px; }
 .step-tag { display:inline-block; font-size:10px; padding:2px 8px; border-radius:10px; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
-.step-h { font-size:13px; font-weight:700; color:#f0f6fc; margin-bottom:2px; display:inline; margin-left:8px; }
-.step-sub { font-size:11px; color:#58a6ff; font-family:monospace; margin-bottom:4px; }
-.step-body { font-size:11px; color:#c9d1d9; line-height:1.4; }
-.step-body strong { color:#f0f6fc; }
-.step-body code { background:#21262d; padding:1px 5px; border-radius:3px; font-family:monospace; font-size:12px; color:#79c0ff; }
+.step-h { display:inline; margin:0 0 2px 8px; color:var(--demo-ink); font-size:13px; font-weight:700; }
+.step-sub { margin-bottom:4px; color:var(--demo-accent); font-family:var(--demo-mono); font-size:11px; }
+.step-body { color:var(--demo-ink-soft); font-size:12px; line-height:1.48; }
+.step-body strong { color:var(--demo-ink); }
+.step-body code { padding:1px 5px; color:var(--demo-accent-strong); background:var(--demo-soft); border-radius:4px; font-family:var(--demo-mono); font-size:11px; }
 
 /* classification legend */
 .cls-legend { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
 .cls-pill { display:flex; align-items:center; gap:5px; font-size:11px; padding:3px 10px; border-radius:10px; }
 
 /* symbol table */
-.sym-table { margin-top:14px; border:1px solid #30363d; border-radius:8px; overflow:hidden; }
-.sym-table table { width:100%; border-collapse:collapse; font-size:11px; font-family:monospace; }
-.sym-table th { padding:6px 10px; background:#21262d; color:#8b949e; text-align:left; font-size:10px; text-transform:uppercase; }
-.sym-table td { padding:5px 10px; border-top:1px solid #21262d; }
-.sym-table tr.highlight td { background:#1c2128; }
+.sym-table { margin-top:14px; overflow:hidden; border:1px solid var(--demo-line); border-radius:8px; }
+.sym-table table { width:100%; border-collapse:collapse; font-family:var(--demo-mono); font-size:11px; }
+.sym-table th { padding:6px 10px; color:var(--demo-muted); background:var(--demo-soft); text-align:left; font-size:10px; text-transform:uppercase; }
+.sym-table td { padding:5px 10px; border-top:1px solid var(--demo-line); }
+.sym-table tr.highlight td { background:var(--demo-soft); }
 
 /* nav buttons */
-.demo-nav { padding:12px 18px; border-top:1px solid #30363d; display:flex; gap:8px; flex-shrink:0; }
-.btn { padding:7px 18px; border-radius:6px; border:1px solid #30363d; font-size:12px; cursor:pointer; }
-.btn-p { background:#1f6feb; border-color:#1f6feb; color:#fff; }
-.btn-p:hover { background:#388bfd; }
-.btn-s { background:#161b22; color:#c9d1d9; }
-.btn-s:hover { background:#21262d; }
+.demo-nav { padding:12px 18px; display:flex; gap:8px; flex-shrink:0; border-top:1px solid var(--demo-line); }
+.btn { padding:7px 18px; cursor:pointer; border:1px solid var(--demo-line); border-radius:7px; font-size:12px; font-weight:600; transition:background .14s, border-color .14s, color .14s; }
+.btn-p { color:var(--demo-on-accent); background:var(--demo-accent); border-color:var(--demo-accent); }
+.btn-p:hover { background:var(--demo-accent-strong); border-color:var(--demo-accent-strong); }
+.btn-s { color:var(--demo-ink-soft); background:var(--demo-surface); }
+.btn-s:hover { background:var(--demo-soft); }
 .btn:disabled { opacity:.4; cursor:not-allowed; }
-.btn-auto { background:#161b22; color:#3fb950; border-color:#3fb950; margin-left:auto; font-size:11px; }
-.btn-auto:hover { background:#1a2e1a; }
-.btn-auto.on { color:#f85149; border-color:#f85149; }
+.btn-auto { margin-left:auto; color:var(--demo-added); background:var(--demo-surface); border-color:var(--demo-added); font-size:11px; }
+.btn-auto:hover { background:var(--demo-added-soft); }
+.btn-auto.on { color:var(--demo-deleted); border-color:var(--demo-deleted); }
 
 /* graph area */
-.graph-hdr { padding:12px 18px 8px; border-bottom:1px solid #21262d; display:none; align-items:center; justify-content:space-between; flex-shrink:0; }
-.graph-hdr-title { font-size:13px; color:#f0f6fc; }
+.graph-hdr { padding:12px 18px 8px; display:none; align-items:center; justify-content:space-between; flex-shrink:0; border-bottom:1px solid var(--demo-line); }
+.graph-hdr-title { color:var(--demo-ink); font-size:13px; }
 .phase-badge { font-size:11px; padding:2px 10px; border-radius:10px; }
-.svg-wrap { flex:1; padding:14px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.svg-wrap { flex:1; padding:18px; display:flex; align-items:center; justify-content:center; overflow:auto; }
 #gsv { width:100%; height:100%; max-height:380px; }
-.graph-leg { padding:6px 16px 10px; border-top:1px solid #21262d; display:flex; gap:14px; flex-wrap:wrap; flex-shrink:0; }
-.leg-i { display:flex; align-items:center; gap:5px; font-size:10px; color:#8b949e; }
+.graph-leg { padding:8px 16px 11px; display:flex; gap:14px; flex-wrap:wrap; flex-shrink:0; border-top:1px solid var(--demo-line); }
+.leg-i { display:flex; align-items:center; gap:5px; color:var(--demo-muted); font-size:10px; }
 .leg-d { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
 .leg-l { width:18px; height:0; border-top:2px dashed; flex-shrink:0; }
 
 /* ── Algorithms tab ── */
 .algo-wrap { max-width:960px; margin:0 auto; padding:40px 24px; }
-.algo-wrap h2 { font-size:22px; color:#f0f6fc; margin-bottom:6px; }
-.algo-wrap .intro { font-size:13px; color:#8b949e; margin-bottom:28px; line-height:1.6; }
-.algo-card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:20px; margin-bottom:16px; }
-.algo-card h3 { font-size:14px; color:#f0f6fc; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
-.algo-num { width:22px; height:22px; border-radius:50%; background:#58a6ff; color:#0d1117; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
-.algo-card p { font-size:12px; color:#8b949e; line-height:1.7; margin-bottom:10px; }
-.tree { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:14px; font-size:11px; font-family:monospace; line-height:2; }
-.t-q { color:#d2a8ff; }
-.t-y { color:#3fb950; }
-.t-n { color:#f85149; }
-.t-a { color:#58a6ff; }
-.t-w { color:#d29922; }
+.algo-wrap h2 { margin-bottom:6px; color:var(--demo-ink); font-family:var(--demo-serif); font-size:25px; font-weight:560; }
+.algo-wrap .intro { margin-bottom:28px; color:var(--demo-muted); font-size:13px; line-height:1.6; }
+.algo-card { margin-bottom:16px; padding:20px; background:var(--demo-surface); border:1px solid var(--demo-line); border-radius:12px; }
+.algo-card h3 { margin-bottom:8px; display:flex; align-items:center; gap:8px; color:var(--demo-ink); font-size:14px; }
+.algo-num { width:22px; height:22px; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var(--demo-on-accent); background:var(--demo-accent); border-radius:50%; font-size:11px; font-weight:700; }
+.algo-card p { margin-bottom:10px; color:var(--demo-muted); font-size:12px; line-height:1.7; }
+.tree { padding:14px; color:var(--demo-ink-soft); background:var(--demo-soft); border:1px solid var(--demo-line); border-radius:7px; font-family:var(--demo-mono); font-size:11px; line-height:2; }
+.t-q { color:var(--demo-class); }
+.t-y { color:var(--demo-added); }
+.t-n { color:var(--demo-deleted); }
+.t-a { color:var(--demo-accent); }
+.t-w { color:var(--demo-shifted); }
 .two-c { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
-.lang-box { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; }
-.lang-box h5 { font-size:11px; color:#79c0ff; font-family:monospace; margin-bottom:8px; }
-.lang-ex { font-size:10px; font-family:monospace; line-height:1.9; }
-.le-s { color:#ffa657; } .le-r { color:#3fb950; } .le-a { color:#484f58; }
+.lang-box { padding:12px; background:var(--demo-soft); border:1px solid var(--demo-line); border-radius:7px; }
+.lang-box h5 { margin-bottom:8px; color:var(--demo-accent); font-family:var(--demo-mono); font-size:11px; }
+.lang-ex { font-family:var(--demo-mono); font-size:10px; line-height:1.9; }
+.le-s { color:var(--demo-affected); } .le-r { color:var(--demo-added); } .le-a { color:var(--demo-muted); }
 .flow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0; }
-.fbox { background:#0d1117; border:1px solid #30363d; border-radius:5px; padding:6px 10px; font-size:11px; }
-.fbox.hit { border-color:#3fb950; color:#3fb950; background:#1a2e1a; }
-.fbox.miss { border-color:#d29922; color:#d29922; background:#2e2a1a; }
-.farr { color:#58a6ff; font-size:14px; flex-shrink:0; }
+.fbox { padding:6px 10px; background:var(--demo-soft); border:1px solid var(--demo-line); border-radius:6px; font-size:11px; }
+.fbox.hit { color:var(--demo-added); background:var(--demo-added-soft); border-color:var(--demo-added); }
+.fbox.miss { color:var(--demo-shifted); background:var(--demo-shifted-soft); border-color:var(--demo-shifted); }
+.farr { flex-shrink:0; color:var(--demo-accent); font-size:14px; }
+
+@media (max-width: 720px) {
+  .top-nav { height:48px; padding:0 10px; }
+  .nav-brand { display:none; }
+  .nav-tab { height:48px; padding:0 8px; font-size:10.5px; }
+  .demo-outer { height:calc(100vh - 48px); min-height:620px; }
+  .step-prog { padding:9px 12px; }
+  .step-info { max-height:210px; padding:12px; }
+  .step-body { font-size:12px; line-height:1.52; }
+  .demo-nav { padding:10px 12px; }
+  .btn { padding:7px 12px; }
+  .svg-wrap { padding:18px 0 12px; align-items:flex-start; justify-content:flex-start; }
+  #csv, #gsv { width:700px; min-width:700px; height:auto; min-height:330px; }
+  .graph-leg { padding-inline:12px; }
+  .algo-wrap { padding:28px 14px; }
+  .two-c, .module-grid { grid-template-columns:1fr; }
+  .pipeline { display:grid; gap:12px; }
+  .pipe:not(:last-child) { margin-right:0; }
+  .pipe:not(:last-child)::after { display:none; }
+}
 </style>
 </head>
 <body>
@@ -136,7 +320,8 @@ body { font-family:'Segoe UI',system-ui,sans-serif; background:#0d1117; color:#c
   <div class="nav-brand">Incremental Graph Update</div>
   <div class="nav-tabs">
     <button class="nav-tab active" onclick="switchTab('classify')">① Symbol Classification</button>
-    <button class="nav-tab" onclick="switchTab('rebuild')">② Graph Rebuild</button>
+    <button class="nav-tab" onclick="switchTab('rebuild')">② Patch Lifecycle</button>
+    <button class="nav-tab" onclick="switchTab('algorithms')">③ Contracts</button>
   </div>
 </nav>
 
@@ -144,36 +329,42 @@ body { font-family:'Segoe UI',system-ui,sans-serif; background:#0d1117; color:#c
 <section id="tab-overview" class="tab-section">
   <div class="ov-wrap">
     <h1 class="ov-title">Incremental Code Graph Update</h1>
-    <p class="ov-sub">When a file changes, only its subgraph is rebuilt. Unchanged symbol edges are remapped directly — no LSP needed. Changed bodies trigger targeted LSP queries only for the changed line ranges.</p>
+    <p class="ov-sub">Changed symbols are updated in place. Stable edges survive,
+    stale outgoing call sites are removed, and LSP discovery is limited to the
+    affected ranges. Full-file rebuilds are a fallback, not the normal path.</p>
     <div class="stat-row">
-      <div class="stat-box"><div class="stat-val">~87%</div><div class="stat-lbl">Fewer LSP calls</div></div>
-      <div class="stat-box"><div class="stat-val">5</div><div class="stat-lbl">Symbol categories</div></div>
-      <div class="stat-box"><div class="stat-val">4</div><div class="stat-lbl">Phases per file</div></div>
-      <div class="stat-box"><div class="stat-val">O(V)</div><div class="stat-lbl">Index rebuild</div></div>
+      <div class="stat-box"><div class="stat-val">6</div><div class="stat-lbl">Symbol categories</div></div>
+      <div class="stat-box"><div class="stat-val">2</div><div class="stat-lbl">Patch rounds</div></div>
+      <div class="stat-box"><div class="stat-val">6</div><div class="stat-lbl">Severed-edge fields</div></div>
+      <div class="stat-box"><div class="stat-val">O(V+E)</div><div class="stat-lbl">Range-index refresh</div></div>
     </div>
     <div class="pipeline">
       <div class="pipe" onclick="switchTab('classify')">
         <div class="pipe-num" style="background:#3fb950;">1</div>
         <h4>Classify Symbols</h4>
-        <p>Match old graph symbols with new LSP symbols. Classify as added / deleted / modified / shifted / unaffected.</p>
+        <p>Match old graph symbols with the LSP outline and classify deleted,
+        added, affected, shifted, unchanged, and invisible definitions.</p>
         <span class="pipe-tag" style="background:#1a2e1a;color:#3fb950;">change_mgr + patcher_base</span>
       </div>
       <div class="pipe" onclick="switchTab('rebuild')">
         <div class="pipe-num" style="background:#58a6ff;">2</div>
-        <h4>Delete Old Subgraph</h4>
-        <p>Remove deleted + modified vertices. Record cut reference edges as 4-tuples for remap.</p>
+        <h4>Prepare Vertices</h4>
+        <p>Remove deleted vertices, create additions, and update shifted or
+        affected vertices in place so incoming edges remain attached.</p>
         <span class="pipe-tag" style="background:#1a1e2e;color:#58a6ff;">subgraph_mgr</span>
       </div>
       <div class="pipe" onclick="switchTab('rebuild')">
         <div class="pipe-num" style="background:#a371f7;">3</div>
-        <h4>Rebuild Subgraph</h4>
-        <p>Rename shifted vertices (free). Rebuild modified/added from documentSymbol.</p>
+        <h4>Invalidate Stale Edges</h4>
+        <p>Drop affected outgoing anchors surgically when line counts match;
+        otherwise clear that symbol's outgoing references.</p>
         <span class="pipe-tag" style="background:#2e1a2e;color:#a371f7;">subgraph_mgr</span>
       </div>
       <div class="pipe" onclick="switchTab('rebuild')">
         <div class="pipe-num" style="background:#d29922;">4</div>
-        <h4>Reconnect Edges</h4>
-        <p>Remap cut edges via unified_name. LSP discovery only for modified-body changed lines.</p>
+        <h4>Connect + Reindex</h4>
+        <p>Discover affected/added references, batch edge writes, then rebuild
+        line-range indexes from the final graph.</p>
         <span class="pipe-tag" style="background:#2e2a1a;color:#d29922;">patcher_base</span>
       </div>
     </div>
@@ -188,9 +379,10 @@ body { font-family:'Segoe UI',system-ui,sans-serif; background:#0d1117; color:#c
       </div>
       <div class="mod-card">
         <h4>patcher_base.py</h4>
-        <p>High-level orchestration. Classifies symbols, drives the 4-phase loop, handles remap logic.</p>
+        <p>High-level orchestration. Classifies symbols, drives two patch
+        rounds, handles fallback remap logic, and refreshes range indexes.</p>
         <span class="mod-fn">_classify_symbols(old, new)</span>
-        <span class="mod-fn">_remap_cut_edges()</span>
+        <span class="mod-fn">_remap_severed_edges()</span>
       </div>
       <div class="mod-card">
         <h4>subgraph_mgr.py</h4>
@@ -201,7 +393,8 @@ body { font-family:'Segoe UI',system-ui,sans-serif; background:#0d1117; color:#c
       </div>
       <div class="mod-card">
         <h4>lsp_client.py</h4>
-        <p>JSON-RPC wrapper for rust-analyzer / pyright / gopls / clangd.</p>
+        <p>JSON-RPC wrapper for rust-analyzer, basedpyright, gopls, and
+        typescript-language-server. C/C++ uses refreshed clangd .idx data.</p>
         <span class="mod-fn">document_symbol()</span>
         <span class="mod-fn">references()</span>
         <span class="mod-fn">semantic_tokens_range()</span>
@@ -340,13 +533,14 @@ body { font-family:'Segoe UI',system-ui,sans-serif; background:#0d1117; color:#c
 
     <div class="algo-card">
       <h3><div class="algo-num">2</div>Two-level location matching</h3>
-      <p>LSP returns file:line:char positions. Map these to graph vertices using a 2-level fallback (~96% hit on Level 1).</p>
+      <p>LSP returns file:line:character positions. Match an exact symbol start
+      first, then fall back to the innermost symbol span containing the line.</p>
       <div class="flow">
         <div class="fbox">LSP → <code>checker.rs:15:0</code></div>
         <div class="farr">→</div>
         <div class="fbox"><strong>Level 1</strong><br>exact start_line == 15</div>
         <div class="farr">→</div>
-        <div class="fbox hit">✓ Checker.check():15<br>~96% hit rate</div>
+        <div class="fbox hit">✓ Checker.check():15<br>exact match</div>
       </div>
       <div class="flow" style="margin-top:6px;">
         <div class="fbox">LSP → <code>linter.rs:45:12</code></div>
@@ -360,25 +554,140 @@ body { font-family:'Segoe UI',system-ui,sans-serif; background:#0d1117; color:#c
     </div>
 
     <div class="algo-card">
-      <h3><div class="algo-num">3</div>Cuted edge remap decision</h3>
-      <p>After deletion, each cut reference edge is re-evaluated using its 4-tuple record.</p>
+      <h3><div class="algo-num">3</div>Severed-edge remap contract</h3>
+      <p>A full-file rebuild or fallback records one six-field entry per
+      call-site anchor:
+      <code>(src_name, tgt_name, src_uname, tgt_uname, anchor_file, anchor_line)</code>.
+      The ordinary affected-symbol path updates the vertex in place and does
+      not need this remap.</p>
       <div class="tree">
-        <span class="t-q">FOR EACH cut edge:</span><br>
+        <span class="t-q">FOR EACH severed six-tuple:</span><br>
         &nbsp;&nbsp;<span class="t-q">IF INCOMING (source is external):</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;→ match new target by tgt_uname<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;→ <span class="t-y">REMAP</span> — caller's body unchanged → 0 LSP calls<br><br>
-        &nbsp;&nbsp;<span class="t-q">IF OUTGOING (source was deleted):</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;<span class="t-q">IF source body NOT in changed line ranges:</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <span class="t-y">REMAP</span> — body unchanged → 0 LSP calls<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;<span class="t-q">IF source body WAS in changed line ranges:</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <span class="t-n">SKIP</span> — rediscover in Phase 4<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <span class="t-a">semanticTokens(changed_lines) + definition()</span>
+        &nbsp;&nbsp;&nbsp;&nbsp;→ resolve renamed source by src_uname if needed<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;→ match rebuilt target by tgt_uname<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;→ <span class="t-y">REMAP</span> with the recorded/rebased anchor<br><br>
+        &nbsp;&nbsp;<span class="t-q">IF OUTGOING (source was rebuilt):</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="t-q">IF source body is still trustworthy:</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <span class="t-y">REMAP</span>, preserving each distinct call site<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="t-q">OTHERWISE:</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <span class="t-n">SKIP</span> and rediscover with LSP
       </div>
+    </div>
+
+    <div class="algo-card">
+      <h3><div class="algo-num">4</div>Range-query visibility</h3>
+      <p>Every successful patch batch ends with
+      <code>build_range_indexes()</code>. The refresh scans the final vertices
+      and anchored edges in <code>O(V + E)</code>, so
+      <code>query_range()</code> sees added, moved, and removed spans
+      immediately. C/C++ upholds the same contract after its .idx refresh.</p>
     </div>
   </div>
 </section>
 
 <script>
+// Legacy diagram colors are normalized to the shared Docs palette here. SVG
+// presentation attributes accept CSS variables, so a parent theme change
+// updates the graph without rebuilding its nodes.
+const COLOR_TOKENS = Object.freeze({
+  '#0d1117': 'var(--demo-bg)',
+  '#161b22': 'var(--demo-surface)',
+  '#1c2128': 'var(--demo-soft-strong)',
+  '#21262d': 'var(--demo-soft)',
+  '#30363d': 'var(--demo-line)',
+  '#484f58': 'var(--demo-neutral)',
+  '#6e7681': 'var(--demo-muted)',
+  '#8b949e': 'var(--demo-muted)',
+  '#c9d1d9': 'var(--demo-ink-soft)',
+  '#f0f6fc': 'var(--demo-ink)',
+  '#fff': 'var(--demo-on-accent)',
+  '#ffffff': 'var(--demo-on-accent)',
+  '#1f6feb': 'var(--demo-accent)',
+  '#388bfd': 'var(--demo-accent)',
+  '#58a6ff': 'var(--demo-accent)',
+  '#79c0ff': 'var(--demo-accent)',
+  '#1a1e2e': 'var(--demo-accent-soft)',
+  '#1f3a5e': 'var(--demo-file-node)',
+  '#a3c8ff': 'var(--demo-file-text)',
+  '#3fb950': 'var(--demo-added)',
+  '#1a2e1a': 'var(--demo-added-soft)',
+  '#1a3d2b': 'var(--demo-added-node)',
+  '#256d3b': 'var(--demo-added-node)',
+  '#8fe8a8': 'var(--demo-added-text)',
+  '#aff5c4': 'var(--demo-added-text)',
+  '#d29922': 'var(--demo-shifted)',
+  '#2e2500': 'var(--demo-shifted-soft)',
+  '#2e2a00': 'var(--demo-shifted-soft)',
+  '#2e2a1a': 'var(--demo-shifted-soft)',
+  '#3d2e00': 'var(--demo-shifted-node)',
+  '#ffd666': 'var(--demo-shifted-text)',
+  '#f0883e': 'var(--demo-affected)',
+  '#2e1a00': 'var(--demo-affected-node)',
+  '#ffa657': 'var(--demo-affected)',
+  '#ffd1a3': 'var(--demo-affected-text)',
+  '#f85149': 'var(--demo-deleted)',
+  '#3d0f0f': 'var(--demo-deleted-soft)',
+  '#6e40c9': 'var(--demo-class-node)',
+  '#a371f7': 'var(--demo-class)',
+  '#2e1a2e': 'var(--demo-class-soft)',
+  '#3b1f6e': 'var(--demo-class-node)',
+  '#d2a8ff': 'var(--demo-class)',
+  '#d4b8ff': 'var(--demo-class-text)',
+  '#e8d9ff': 'var(--demo-class-text)',
+});
+
+function themedColor(value) {
+  if (typeof value !== 'string') return value;
+  const normalized = value.toLowerCase();
+  const direct = COLOR_TOKENS[normalized];
+  if (direct) return direct;
+  const alphaMatch = normalized.match(/^(#[0-9a-f]{6})([0-9a-f]{2})$/);
+  if (!alphaMatch) return value;
+  const token = COLOR_TOKENS[alphaMatch[1]];
+  if (!token) return value;
+  const opacity = (parseInt(alphaMatch[2], 16) / 255 * 100).toFixed(1);
+  return `color-mix(in srgb, ${token} ${opacity}%, transparent)`;
+}
+
+function themedMarkup(markup) {
+  return markup.replace(
+    /#[0-9a-f]{8}|#[0-9a-f]{6}|#fff\b/gi,
+    color => themedColor(color),
+  );
+}
+
+function themeInlineStyles(root = document) {
+  root.querySelectorAll('[style]').forEach(element => {
+    const style = element.getAttribute('style');
+    element.setAttribute('style', themedMarkup(style));
+  });
+}
+
+function syncThemeFromParent() {
+  let scheme = '';
+  try {
+    scheme = window.parent.document.body.dataset.mdColorScheme || '';
+  } catch (_) {
+    // Direct access or a cross-origin embed uses the OS preference below.
+  }
+  const dark = scheme
+    ? scheme === 'slate'
+    : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+}
+
+syncThemeFromParent();
+try {
+  if (window.parent === window) throw new Error('standalone');
+  new MutationObserver(syncThemeFromParent).observe(window.parent.document.body, {
+    attributes: true,
+    attributeFilter: ['data-md-color-scheme'],
+  });
+} catch (_) {
+  window.matchMedia('(prefers-color-scheme: dark)')
+    .addEventListener('change', syncThemeFromParent);
+}
+
 // ══════════════════════════════════════════
 // Tab switching
 // ══════════════════════════════════════════
@@ -386,7 +695,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  ['classify','rebuild'].forEach((n,i) => {
+  ['classify','rebuild','algorithms'].forEach((n,i) => {
     if (n === name) document.querySelectorAll('.nav-tab')[i].classList.add('active');
   });
 }
@@ -400,15 +709,15 @@ function mkRect(x, y, w, h, fill, stroke, sw=1, rx=5) {
   const r = document.createElementNS(NS, 'rect');
   r.setAttribute('x', x); r.setAttribute('y', y);
   r.setAttribute('width', w); r.setAttribute('height', h);
-  r.setAttribute('rx', rx); r.setAttribute('fill', fill);
-  r.setAttribute('stroke', stroke); r.setAttribute('stroke-width', sw);
+  r.setAttribute('rx', rx); r.setAttribute('fill', themedColor(fill));
+  r.setAttribute('stroke', themedColor(stroke)); r.setAttribute('stroke-width', sw);
   return r;
 }
 
 function mkText(x, y, txt, fill='#f0f6fc', size=10, anchor='middle', mono=true) {
   const t = document.createElementNS(NS, 'text');
   t.setAttribute('x', x); t.setAttribute('y', y);
-  t.setAttribute('fill', fill); t.setAttribute('font-size', size);
+  t.setAttribute('fill', themedColor(fill)); t.setAttribute('font-size', size);
   t.setAttribute('text-anchor', anchor);
   if (mono) t.setAttribute('font-family', 'monospace');
   t.textContent = txt;
@@ -419,7 +728,7 @@ function mkLine(x1, y1, x2, y2, stroke, sw=1.5, dash='') {
   const l = document.createElementNS(NS, 'line');
   l.setAttribute('x1',x1); l.setAttribute('y1',y1);
   l.setAttribute('x2',x2); l.setAttribute('y2',y2);
-  l.setAttribute('stroke', stroke); l.setAttribute('stroke-width', sw);
+  l.setAttribute('stroke', themedColor(stroke)); l.setAttribute('stroke-width', sw);
   if (dash) l.setAttribute('stroke-dasharray', dash);
   l.setAttribute('fill', 'none');
   return l;
@@ -427,7 +736,7 @@ function mkLine(x1, y1, x2, y2, stroke, sw=1.5, dash='') {
 
 function mkPath(d, stroke, sw=1.5, dash='', marker='') {
   const p = document.createElementNS(NS, 'path');
-  p.setAttribute('d', d); p.setAttribute('stroke', stroke);
+  p.setAttribute('d', d); p.setAttribute('stroke', themedColor(stroke));
   p.setAttribute('stroke-width', sw); p.setAttribute('fill', 'none');
   if (dash) p.setAttribute('stroke-dasharray', dash);
   if (marker) p.setAttribute('marker-end', 'url(#' + marker + ')');
@@ -449,7 +758,7 @@ function addDefs(svg) {
     m.setAttribute('markerHeight', 5); m.setAttribute('refX', 7); m.setAttribute('refY', 2.5);
     m.setAttribute('orient', 'auto');
     const p = document.createElementNS(NS, 'polygon');
-    p.setAttribute('points', '0 0, 7 2.5, 0 5'); p.setAttribute('fill', col);
+    p.setAttribute('points', '0 0, 7 2.5, 0 5'); p.setAttribute('fill', themedColor(col));
     m.appendChild(p); defs.appendChild(m);
   });
   svg.appendChild(defs);
@@ -488,7 +797,7 @@ function straightArrow(svg, x1, y1, x2, y2, col, marker, dash='') {
 //   struct Checker { settings(L5), }   ← outside impl block
 //   impl Checker {
 //     fn new()   L11–13  (old) → L13–15 (new, SHIFTED +2 by diagnostics insertion)
-//     fn check() L15–28  (old) → L17–32 (new, MODIFIED body rewritten)
+//     fn check() L15–28  (old) → L17–32 (new, AFFECTED body rewritten)
 //   }
 // changed range (new version): L17–32
 const OLD_SYMS = [
@@ -508,11 +817,11 @@ const NEW_SYMS = [
 
 // Classification results
 const CLS = {
-  'Checker':        { type:'unaffected', color:'#484f58', label:'UNAFFECTED' },
-  '.settings':      { type:'unaffected', color:'#484f58', label:'UNAFFECTED' },
+  'Checker':        { type:'shifted',    color:'#d29922', label:'SHIFTED' },
+  '.settings':      { type:'unchanged',  color:'#484f58', label:'UNCHANGED' },
   '.diagnostics':   { type:'added',      color:'#3fb950', label:'ADDED' },
   '.new()':         { type:'shifted',    color:'#d29922', label:'SHIFTED +2' },
-  '.check()':       { type:'modified',   color:'#f0883e', label:'MODIFIED' },
+  '.check()':       { type:'affected',   color:'#f0883e', label:'AFFECTED' },
 };
 
 const CLS_STEPS = [
@@ -540,7 +849,7 @@ const CLS_STEPS = [
     tag:'Classify', tagCls:'tag-remap',
     title:'Classify each matched symbol',
     badge:'Step 3',
-    body:'<span style="color:#f85149">■ DELETED</span> not in new &nbsp;<span style="color:#3fb950">■ ADDED</span> not in old &nbsp;<span style="color:#f0883e">■ MODIFIED</span> body overlaps Hunk 2 (L15–28) &nbsp;<span style="color:#d29922">■ SHIFTED</span> matched, line moved &nbsp;<span style="color:#8b949e">■ UNAFFECTED</span> unchanged',
+    body:'<span style="color:#f85149">■ DELETED</span> old-only and touched &nbsp;<span style="color:#3fb950">■ ADDED</span> new-only &nbsp;<span style="color:#f0883e">■ AFFECTED</span> span overlaps Hunk 2 &nbsp;<span style="color:#d29922">■ SHIFTED</span> moved or structural parent refresh &nbsp;<span style="color:#8b949e">■ UNCHANGED</span> stable &nbsp;<span style="color:#a371f7">■ INVISIBLE</span> old-only but untouched',
     reveal:0,
     showHunk: true,
     showMatch: true,
@@ -550,7 +859,7 @@ const CLS_STEPS = [
     tag:'Git Hunk', tagCls:'tag-git',
     title:'How git hunk maps to symbol classification',
     badge:'Step 4',
-    body:'<strong>Hunk 1</strong> (+L7,1): .diagnostics has no match in old graph → <strong style="color:#3fb950">ADDED</strong>. <strong>Hunk 2</strong> (-L15,14 +L17,16): check() body overlaps → <strong style="color:#f0883e">MODIFIED</strong>. new() line moved L11→L13 but outside both hunks → <strong style="color:#d29922">SHIFTED</strong>.',
+    body:'<strong>Hunk 1</strong> (+L7,1): .diagnostics has no old match → <strong style="color:#3fb950">ADDED</strong>. <strong>Hunk 2</strong> (-L15,14 +L17,16): check() overlaps → <strong style="color:#f0883e">AFFECTED</strong>. new() moved L11→L13 outside the hunks → <strong style="color:#d29922">SHIFTED</strong>. Checker is a structural parent of the affected method, so it is demoted from affected to shifted and is not rescanned.',
     reveal:0,
     showHunk: true,
     showMatch: true,
@@ -560,7 +869,7 @@ const CLS_STEPS = [
     tag:'Summary', tagCls:'tag-done',
     title:'Classification result',
     badge:'Step 5',
-    body:'<strong style="color:#8b949e">UNAFFECTED / SHIFTED</strong> → 0 LSP calls. &nbsp;<strong style="color:#f0883e">MODIFIED</strong> → semanticTokens + definition. &nbsp;<strong style="color:#3fb950">ADDED</strong> → references().',
+    body:'<strong style="color:#8b949e">UNCHANGED / INVISIBLE</strong> stay untouched. &nbsp;<strong style="color:#d29922">SHIFTED</strong> keeps edges and rebases call-site lines. &nbsp;<strong style="color:#f0883e">AFFECTED</strong> rediscovers stale outgoing references. &nbsp;<strong style="color:#3fb950">ADDED</strong> discovers incoming and outgoing references.',
     reveal:0,
     showHunk: true,
     showMatch: true,
@@ -579,7 +888,7 @@ const CLS_STEPS = [
   <tbody>
     <tr style="border-bottom:1px solid #21262d;">
       <td style="padding:5px 7px;white-space:nowrap;"><strong style="color:#f85149;">Deleted</strong></td>
-      <td style="padding:5px 7px;color:#8b949e;">In old, not in new</td>
+      <td style="padding:5px 7px;color:#8b949e;">Old-only; old span overlaps a hunk</td>
       <td style="padding:5px 7px;color:#c9d1d9;">Remove vertex; edges auto-deleted</td>
     </tr>
     <tr style="border-bottom:1px solid #21262d;">
@@ -588,9 +897,9 @@ const CLS_STEPS = [
       <td style="padding:5px 7px;color:#c9d1d9;">Create vertex + contain edge + full reference discovery</td>
     </tr>
     <tr style="border-bottom:1px solid #21262d;">
-      <td style="padding:5px 7px;white-space:nowrap;"><strong style="color:#f0883e;">Modified</strong></td>
+      <td style="padding:5px 7px;white-space:nowrap;"><strong style="color:#f0883e;">Affected</strong></td>
       <td style="padding:5px 7px;color:#8b949e;">In both; range overlaps a git hunk</td>
-      <td style="padding:5px 7px;color:#c9d1d9;">Update range; re-scan outgoing references</td>
+      <td style="padding:5px 7px;color:#c9d1d9;">Keep vertex; invalidate and re-scan stale outgoing references</td>
     </tr>
     <tr style="border-bottom:1px solid #21262d;">
       <td style="padding:5px 7px;white-space:nowrap;"><strong style="color:#d29922;">Shifted</strong></td>
@@ -601,6 +910,11 @@ const CLS_STEPS = [
       <td style="padding:5px 7px;white-space:nowrap;"><strong style="color:#8b949e;">Unchanged</strong></td>
       <td style="padding:5px 7px;color:#8b949e;">In both; line numbers identical</td>
       <td style="padding:5px 7px;color:#c9d1d9;">No action required</td>
+    </tr>
+    <tr>
+      <td style="padding:5px 7px;white-space:nowrap;"><strong style="color:#a371f7;">Invisible</strong></td>
+      <td style="padding:5px 7px;color:#8b949e;">Old-only; outside every hunk</td>
+      <td style="padding:5px 7px;color:#c9d1d9;">Preserve definitions omitted by documentSymbol</td>
     </tr>
   </tbody>
 </table>`,
@@ -661,8 +975,8 @@ function drawClassifySVG(stepIdx) {
                 skey === '.settings' ? CLS['.settings'] :
                 skey === '.new()' ? CLS['.new()'] :
                 skey === '.check()' ? CLS['.check()'] : null;
-      if (m && m.type === 'unaffected') { fill = '#21262d'; stroke = '#484f58'; }
-      if (m && m.type === 'modified')  { fill = '#2e1a00'; stroke = '#f0883e'; }
+      if (m && m.type === 'unchanged') { fill = '#21262d'; stroke = '#484f58'; }
+      if (m && m.type === 'affected')  { fill = '#2e1a00'; stroke = '#f0883e'; }
       if (m && m.type === 'shifted')   { fill = '#2e2500'; stroke = '#d29922'; }
     }
     const y = 52 + i * (SYMH + GAP);
@@ -688,9 +1002,9 @@ function drawClassifySVG(stepIdx) {
                 skey === '.diagnostics' ? CLS['.diagnostics'] :
                 skey === '.new()' ? CLS['.new()'] :
                 skey === '.check()' ? CLS['.check()'] : null;
-      if (m && m.type === 'unaffected') { fill = '#21262d'; stroke = '#484f58'; }
+      if (m && m.type === 'unchanged') { fill = '#21262d'; stroke = '#484f58'; }
       if (m && m.type === 'added')      { fill = '#1a2e1a'; stroke = '#3fb950'; }
-      if (m && m.type === 'modified')   { fill = '#2e1a00'; stroke = '#f0883e'; }
+      if (m && m.type === 'affected')   { fill = '#2e1a00'; stroke = '#f0883e'; }
       if (m && m.type === 'shifted')    { fill = '#2e2500'; stroke = '#d29922'; }
     }
     const y = 52 + i * (SYMH + GAP);
@@ -762,26 +1076,26 @@ function renderClsStep(idx) {
   });
   document.getElementById('cls-ctr').textContent = `${idx+1} / ${CLS_STEPS.length}`;
   document.getElementById('cls-badge').textContent = step.badge;
-  document.getElementById('cls-info').innerHTML = `
+  document.getElementById('cls-info').innerHTML = themedMarkup(`
     <div><span class="step-tag" style="background:#1a2e1a;color:#3fb950;">${step.tag}</span></div>
     <div class="step-h">${step.title}</div>
     <div class="step-body" style="margin-top:8px;">${step.body}</div>
-  `;
+  `);
   drawClassifySVG(idx);
   // Update legend based on whether classification is shown
   const leg = document.getElementById('cls-leg');
   if (step.showCls) {
-    leg.innerHTML = `
-      <div class="leg-i"><div class="leg-d" style="background:#8b949e;"></div>Unaffected</div>
+    leg.innerHTML = themedMarkup(`
+      <div class="leg-i"><div class="leg-d" style="background:#8b949e;"></div>Unchanged</div>
       <div class="leg-i"><div class="leg-d" style="background:#d29922;"></div>Shifted</div>
-      <div class="leg-i"><div class="leg-d" style="background:#f0883e;"></div>Modified</div>
+      <div class="leg-i"><div class="leg-d" style="background:#f0883e;"></div>Affected</div>
       <div class="leg-i"><div class="leg-d" style="background:#f85149;"></div>Deleted</div>
-      <div class="leg-i"><div class="leg-d" style="background:#3fb950;"></div>Added</div>`;
+      <div class="leg-i"><div class="leg-d" style="background:#3fb950;"></div>Added</div>`);
   } else {
-    leg.innerHTML = `
+    leg.innerHTML = themedMarkup(`
       <div class="leg-i"><div class="leg-d" style="background:#a371f7;"></div>class</div>
       <div class="leg-i"><div class="leg-d" style="background:#d29922;"></div>field</div>
-      <div class="leg-i"><div class="leg-d" style="background:#3fb950;"></div>method</div>`;
+      <div class="leg-i"><div class="leg-d" style="background:#3fb950;"></div>method</div>`);
   }
   document.getElementById('cls-prev').disabled = idx===0;
   document.getElementById('cls-next').disabled = idx===CLS_STEPS.length-1;
@@ -811,30 +1125,28 @@ const RB_STEPS = [
     phase: 'initial',
   },
   {
-    tag:'Delete', badge:'Phase 1',
-    title:'Delete modified + subgraph, record cut edges',
-    body:'Delete subgraph. Cut edges saved as 4-tuple <code>(src, tgt, src_uname, tgt_uname)</code> for remap. Indexes rebuilt O(V).',
-    phase: 'delete',
+    tag:'Round 1', badge:'Phase 1',
+    title:'Prepare every changed file’s vertices',
+    body:'<strong style="color:#d29922">SHIFTED</strong>: update the existing vertex and rebase its anchored outgoing lines. <strong style="color:#f0883e">AFFECTED</strong>: keep the vertex and its incoming edges. <strong style="color:#3fb950">ADDED</strong>: create a vertex plus containment edge. No cross-file discovery runs until all changed files finish this round.',
+    phase: 'prepare',
   },
   {
-    tag:'Rebuild', badge:'Phase 2',
-    title:'Rename shifted + rebuild from documentSymbol',
-    body:'<strong style="color:#d29922">SHIFTED</strong>: rename vertex only — edges preserved. <strong style="color:#f0883e">MODIFIED / ADDED</strong>: new vertices from documentSymbol + containment edges.',
-    phase: 'rebuild',
+    tag:'Invalidate', badge:'Phase 2',
+    title:'Remove only stale outgoing references',
+    body:'check() changed length, so all of its outgoing reference edges are cleared. The incoming <code>Linter→check</code> edge remains attached to the in-place vertex; unchanged <code>settings→Settings</code> also survives. Equal-length edits take a narrower path and remove only anchors inside changed ranges.',
+    phase: 'cleanup',
   },
   {
-    tag:'Remap', badge:'Phase 3',
-    title:'Remap cut edges via unified_name',
-    body:'Cut edges are restored by matching <code>unified_name</code>.<br><br>'
-      + '<strong style="color:#d29922">REMAP</strong>: edge is reconnected to the new vertex — used when the caller is unchanged (<code>Linter→check</code>) or the callee body is unchanged (<code>settings→Settings</code>).<br><br>'
-      + '<strong style="color:#f85149">SKIP</strong>: edge is <em>not</em> restored — <code>check()→Parser</code> is skipped because check() body was rewritten. We no longer trust the old edge. It will be re-discovered via LSP in the next phase.',
-    phase: 'remap',
-  },
-  {
-    tag:'LSP Discovery', badge:'Phase 4',
-    title:'LSP discovery for changed lines only',
-    body:'<code>semanticTokens(L8–28)</code> + <code>definition()</code> → rediscover outgoing. <code>references()</code> for new symbols (diagnostics). <strong style="color:#3fb950">parser.rs:Parser</strong> auto-discovered as new node.',
+    tag:'Round 2', badge:'Phase 3',
+    title:'Discover references after all vertices exist',
+    body:'<code>semanticTokens</code> + <code>definition()</code> rediscovers affected outgoing call sites. Added diagnostics runs <code>references()</code> plus outgoing discovery. All writes flow through one anchor-aware edge batch.',
     phase: 'discover',
+  },
+  {
+    tag:'Query Ready', badge:'Phase 4',
+    title:'Refresh line-range and anchor indexes',
+    body:'<code>build_range_indexes()</code> scans the final graph in <code>O(V + E)</code>. Range queries now see the moved spans and the newly anchored references immediately. The C/C++ .idx patch path performs the same final refresh.',
+    phase: 'indexed',
   },
 ];
 
@@ -881,47 +1193,11 @@ function getPhaseState(phase) {
           {f:'n_check_old',t:'n_parser',type:'ref'},
         ],
       };
-    case 'delete':
+    case 'prepare':
       return {
         nodes: {
-          f_checker:'normal', n_Checker:'normal',
-          n_new_old:'shifted',   // SHIFTED: stays, will be renamed
-          n_check_old:'deleted', // MODIFIED: deleted
-          n_settings:'normal',   // UNAFFECTED: stays
-          n_linter:'ext', n_Settings:'ext', n_parser:'ext',
-        },
-        edges: [
-          {f:'f_checker', t:'n_Checker',   type:'contain'},
-          {f:'n_Checker',  t:'n_new_old',  type:'contain'},
-          {f:'n_Checker',  t:'n_check_old',type:'cut'},
-          {f:'n_Checker',  t:'n_settings', type:'contain'},
-          {f:'n_settings', t:'n_Settings', type:'ref'},
-          {f:'n_linter',   t:'n_check_old',type:'cut'},
-          {f:'n_check_old',t:'n_parser',   type:'cut'},
-        ],
-      };
-    case 'rebuild':
-      return {
-        nodes: {
-          f_checker:'normal', n_Checker:'normal', n_new_new:'shifted',
-          n_check_new:'modified', n_settings:'normal', n_diagnostics:'new',
-          n_linter:'ext', n_Settings:'ext', n_parser:'ext',
-        },
-        edges: [
-          {f:'f_checker',t:'n_Checker',type:'contain'},
-          {f:'n_Checker',t:'n_new_new',type:'contain'},
-          {f:'n_Checker',t:'n_check_new',type:'new'},
-          {f:'n_Checker',t:'n_settings',type:'contain'},
-          {f:'n_Checker',t:'n_diagnostics',type:'new'},
-          {f:'n_settings',t:'n_Settings',type:'ref'},
-        ],
-        // check→Parser edge not yet restored (will be discovered in phase 4)
-      };
-    case 'remap':
-      return {
-        nodes: {
-          f_checker:'normal', n_Checker:'normal', n_new_new:'shifted',
-          n_check_new:'modified', n_settings:'normal', n_diagnostics:'new',
+          f_checker:'normal', n_Checker:'shifted', n_new_new:'shifted',
+          n_check_new:'affected', n_settings:'normal', n_diagnostics:'new',
           n_linter:'ext', n_Settings:'ext', n_parser:'ext',
         },
         edges: [
@@ -929,17 +1205,35 @@ function getPhaseState(phase) {
           {f:'n_Checker',t:'n_new_new',type:'contain'},
           {f:'n_Checker',t:'n_check_new',type:'contain'},
           {f:'n_Checker',t:'n_settings',type:'contain'},
-          {f:'n_Checker',t:'n_diagnostics',type:'contain'},
-          {f:'n_settings',t:'n_Settings',type:'remap'},  // outgoing unchanged body → REMAP
-          {f:'n_linter',t:'n_check_new',type:'remap'},   // incoming → always REMAP
-          {f:'n_check_new',t:'n_parser',type:'skip'},    // changed body → SKIP
+          {f:'n_Checker',t:'n_diagnostics',type:'new'},
+          {f:'n_settings',t:'n_Settings',type:'ref'},
+          {f:'n_linter',t:'n_check_new',type:'ref'},
+          {f:'n_check_new',t:'n_parser',type:'skip'},
+        ],
+      };
+    case 'cleanup':
+      return {
+        nodes: {
+          f_checker:'normal', n_Checker:'shifted', n_new_new:'shifted',
+          n_check_new:'affected', n_settings:'normal', n_diagnostics:'new',
+          n_linter:'ext', n_Settings:'ext', n_parser:'ext',
+        },
+        edges: [
+          {f:'f_checker',t:'n_Checker',type:'contain'},
+          {f:'n_Checker',t:'n_new_new',type:'contain'},
+          {f:'n_Checker',t:'n_check_new',type:'contain'},
+          {f:'n_Checker',t:'n_settings',type:'contain'},
+          {f:'n_Checker',t:'n_diagnostics',type:'new'},
+          {f:'n_settings',t:'n_Settings',type:'ref'},
+          {f:'n_linter',t:'n_check_new',type:'ref'},
+          {f:'n_check_new',t:'n_parser',type:'skip'},
         ],
       };
     case 'discover':
       return {
         nodes: {
-          f_checker:'normal', n_Checker:'normal', n_new_new:'shifted',
-          n_check_new:'modified', n_settings:'normal', n_diagnostics:'new',
+          f_checker:'normal', n_Checker:'shifted', n_new_new:'shifted',
+          n_check_new:'affected', n_settings:'normal', n_diagnostics:'new',
           n_linter:'ext', n_Settings:'ext', n_parser:'ext', n_reporter:'ext',
         },
         edges: [
@@ -948,10 +1242,29 @@ function getPhaseState(phase) {
           {f:'n_Checker',t:'n_check_new',type:'contain'},
           {f:'n_Checker',t:'n_settings',type:'contain'},
           {f:'n_Checker',t:'n_diagnostics',type:'contain'},
-          {f:'n_settings',t:'n_Settings',type:'remap'},
-          {f:'n_linter',t:'n_check_new',type:'remap'},
-          {f:'n_check_new',t:'n_parser',type:'disc'},    // re-discovered via LSP
-          {f:'n_reporter',t:'n_diagnostics',type:'disc'}, // incoming ref found via references()
+          {f:'n_settings',t:'n_Settings',type:'ref'},
+          {f:'n_linter',t:'n_check_new',type:'ref'},
+          {f:'n_check_new',t:'n_parser',type:'disc'},
+          {f:'n_reporter',t:'n_diagnostics',type:'disc'},
+        ],
+      };
+    case 'indexed':
+      return {
+        nodes: {
+          f_checker:'normal', n_Checker:'shifted', n_new_new:'shifted',
+          n_check_new:'affected', n_settings:'normal', n_diagnostics:'new',
+          n_linter:'ext', n_Settings:'ext', n_parser:'ext', n_reporter:'ext',
+        },
+        edges: [
+          {f:'f_checker',t:'n_Checker',type:'contain'},
+          {f:'n_Checker',t:'n_new_new',type:'contain'},
+          {f:'n_Checker',t:'n_check_new',type:'contain'},
+          {f:'n_Checker',t:'n_settings',type:'contain'},
+          {f:'n_Checker',t:'n_diagnostics',type:'contain'},
+          {f:'n_settings',t:'n_Settings',type:'ref'},
+          {f:'n_linter',t:'n_check_new',type:'ref'},
+          {f:'n_check_new',t:'n_parser',type:'ref'},
+          {f:'n_reporter',t:'n_diagnostics',type:'ref'},
         ],
       };
   }
@@ -962,7 +1275,7 @@ const NODE_FILL_BY_STATE = {
   normal:   (n) => n.fill,
   new:      (n) => n.fill,
   shifted:  (n) => '#2e2500',
-  modified: (n) => '#2e1a00',
+  affected: (n) => '#2e1a00',
   deleted:  (n) => '#3d0f0f',
   ext:      (n) => '#1c2128',
 };
@@ -970,15 +1283,15 @@ const NODE_STROKE_BY_STATE = {
   normal:   (n) => n.stroke,
   new:      (n) => '#3fb950',
   shifted:  (n) => '#d29922',
-  modified: (n) => '#f0883e',
+  affected: (n) => '#f0883e',
   deleted:  (n) => '#f85149',
   ext:      (n) => n.stroke,
 };
 const NODE_LABEL_BY_STATE = {
-  normal:   (n) => ['UNAFFECTED', '#484f58'],
+  normal:   (n) => ['UNCHANGED',  '#484f58'],
   new:      (n) => ['ADDED',      '#3fb950'],
   shifted:  (n) => ['SHIFTED',    '#d29922'],
-  modified: (n) => ['MODIFIED',   '#f0883e'],
+  affected: (n) => ['AFFECTED',   '#f0883e'],
   deleted:  (n) => ['DELETED',    '#f85149'],
   ext:      (n) => ['',           ''],
 };
@@ -1014,7 +1327,7 @@ function drawGraphSVG(phase) {
     m.setAttribute('markerHeight', 6); m.setAttribute('refX', 8); m.setAttribute('refY', 3);
     m.setAttribute('orient', 'auto'); m.setAttribute('markerUnits', 'userSpaceOnUse');
     const p = document.createElementNS(NS, 'polygon');
-    p.setAttribute('points', '0 0, 8 3, 0 6'); p.setAttribute('fill', col);
+    p.setAttribute('points', '0 0, 8 3, 0 6'); p.setAttribute('fill', themedColor(col));
     m.appendChild(p); defs.appendChild(m);
   });
   svg.appendChild(defs);
@@ -1022,14 +1335,14 @@ function drawGraphSVG(phase) {
   const ps = getPhaseState(phase);
 
   // Background box for checker.rs
-  const boxFill = phase==='delete' ? '#3d0f0f22' : '#1f6feb08';
-  const boxStroke = phase==='delete' ? '#f85149' : (phase==='rebuild'||phase==='remap'||phase==='discover') ? '#3fb95066' : '#30363d';
+  const boxFill = phase==='cleanup' ? '#d2992214' : '#1f6feb08';
+  const boxStroke = phase==='initial' ? '#30363d' : '#3fb95066';
   svg.appendChild(mkRect(10, 16, 332, 244, boxFill, boxStroke, 1, 8));
-  const boxLbl = phase==='delete' ? 'deleting…' : phase==='rebuild' ? 'rebuilt' : 'checker.rs';
+  const boxLbl = phase==='indexed' ? 'checker.rs · range-indexed' : 'checker.rs';
   svg.appendChild(mkText(176, 13, boxLbl, '#484f58', 10));
 
   // External box
-  const extH = (phase === 'discover') ? 264 : 194;
+  const extH = (phase === 'discover' || phase === 'indexed') ? 264 : 194;
   svg.appendChild(mkRect(458, 46, 307, extH, '#1f6feb06', '#30363d', 1, 8));
   svg.appendChild(mkText(611, 43, 'external nodes', '#484f58', 10));
 
@@ -1073,7 +1386,7 @@ function drawGraphSVG(phase) {
     const aw = 5;
     const pts = `${tipX},${ty2} ${tx2},${ty2-aw} ${tx2},${ty2+aw}`;
     const tri = document.createElementNS(NS, 'polygon');
-    tri.setAttribute('points', pts); tri.setAttribute('fill', style.col);
+    tri.setAttribute('points', pts); tri.setAttribute('fill', themedColor(style.col));
     edgeGroup.appendChild(tri);
   });
 
@@ -1083,7 +1396,7 @@ function drawGraphSVG(phase) {
     if (!n) return;
     const fill   = (NODE_FILL_BY_STATE[state]   || NODE_FILL_BY_STATE.normal)(n);
     const stroke = (NODE_STROKE_BY_STATE[state] || NODE_STROKE_BY_STATE.normal)(n);
-    const sw = (state==='new'||state==='shifted'||state==='modified'||state==='deleted') ? 2 : 1;
+    const sw = (state==='new'||state==='shifted'||state==='affected'||state==='deleted') ? 2 : 1;
 
     const g = mkGroup();
     g.appendChild(mkRect(n.x, n.y, n.w, 26, fill, stroke, sw, 5));
@@ -1113,11 +1426,11 @@ function renderRbStep(idx) {
   });
   document.getElementById('rb-ctr').textContent = `${idx+1} / ${RB_STEPS.length}`;
   document.getElementById('rb-badge').textContent = step.badge;
-  document.getElementById('rb-info').innerHTML = `
+  document.getElementById('rb-info').innerHTML = themedMarkup(`
     <div><span class="step-tag" style="background:#1a2e1a;color:#3fb950;">${step.tag}</span></div>
     <div class="step-h">${step.title}</div>
     <div class="step-body" style="margin-top:8px;">${step.body}</div>
-  `;
+  `);
   drawGraphSVG(step.phase);
   document.getElementById('rb-prev').disabled = idx===0;
   document.getElementById('rb-next').disabled = idx===RB_STEPS.length-1;
@@ -1133,6 +1446,7 @@ function rbToggleAuto() {
 }
 
 // ── Init ──
+themeInlineStyles();
 renderClsStep(0);
 renderRbStep(0);
 </script>
