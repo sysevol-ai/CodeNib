@@ -7,9 +7,10 @@
 CODENIB_GUIDE = """\
 # CodeNib Tools Guide
 
-CodeNib provides **semantic code search** over pre-built indexes. Results are
-structured at the symbol level (functions, classes, methods) with precise file
-locations and source content, not raw line-level grep output.
+CodeNib provides several search modes over pre-built indexes. Results retain
+precise file locations and source content: BM25 primarily returns symbols,
+regex searches file and symbol nodes in the CodeGraph, and Zoekt searches raw
+repository files.
 
 ## When to use each tool
 
@@ -23,8 +24,9 @@ Examples:
 - "where is `DatabaseConnectionError` raised"
 
 ### search_regex
-Best for **pattern-based** searches across the code graph.  Supports full Python
-regex syntax plus optional file-glob and node-type filters.
+Best for **pattern-based** searches across file and symbol nodes in the code
+graph. Supports full Python regex syntax plus optional file-glob and node-type
+filters.
 
 Examples:
 - `def\\s+test_` with `file_glob="**/test_*.py"`: find all test functions
@@ -54,7 +56,7 @@ Examples:
 | Scenario | Tool |
 |----------|------|
 | Know the exact symbol name | search_bm25 |
-| Looking for a pattern across many files (symbol-level) | search_regex |
+| Looking for a pattern across CodeGraph file/symbol nodes | search_regex |
 | Natural-language description of what the code does | search_bm25 |
 | Need structural filters (by file glob or node type) | search_regex |
 | Need raw-text occurrence anywhere in the repo, fast | search_zoekt |
@@ -67,7 +69,8 @@ Examples:
   and `node_type` to narrow down large result sets.
 - `search_zoekt` returns file-level matches.  Use ``file_filter`` to
   restrict by path glob/regex.  Zoekt query atoms (``case:yes``,
-  ``lang:python``, ``r:<regex>``) can be inlined in the ``query``.
-- BM25 / regex tools return symbol-level fields (`type` is one of
-  ``function``, ``class``, ``method``).  Zoekt results carry ``type="file"``.
+  ``lang:python``, ``regex:<pattern>``) can be inlined in the ``query``.
+- BM25 primarily returns symbols. Regex can return file or symbol nodes
+  (for example ``function``, ``class``, or ``method``); use ``node_type`` to
+  narrow it. Zoekt results carry ``type="file"``.
 """

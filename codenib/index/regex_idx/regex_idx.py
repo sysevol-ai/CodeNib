@@ -62,10 +62,11 @@ class RegexNodeIndex:
                     content_failures += 1
 
             # Create NodeInfo object
+            node_type = attrs.get("type") or ""
             node = NodeInfo(
                 node_name=v["name"],
-                type=attrs.get("type") or "",
-                file=attrs.get("file"),
+                type=node_type,
+                file=v["name"] if node_type == NODE_TYPE_FILE else attrs.get("file"),
                 start_line=attrs.get("start_line"),
                 end_line=attrs.get("end_line"),
                 content=content,

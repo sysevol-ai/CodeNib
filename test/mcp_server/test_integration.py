@@ -64,12 +64,11 @@ def _build_synthetic_repo(repo_dir: Path) -> CodeGraph:
     for rel_path in REPO_FILES:
         graph._add_vertex(rel_path, {"type": "file"})
 
-    # Symbol nodes (start_line / end_line are 1-based inclusive to match
-    # CodeGraph.get_node_content's slicing convention).
+    # Symbol nodes use CodeGraph's 0-based inclusive source ranges.
     symbols = [
-        ("billing/tax.py:calculate_tax", "function", "billing/tax.py", 1, 3),
-        ("billing/exceptions.py:TaxError", "class", "billing/exceptions.py", 1, 3),
-        ("auth/session.py:authenticate_user", "function", "auth/session.py", 1, 3),
+        ("billing/tax.py:calculate_tax", "function", "billing/tax.py", 0, 2),
+        ("billing/exceptions.py:TaxError", "class", "billing/exceptions.py", 0, 2),
+        ("auth/session.py:authenticate_user", "function", "auth/session.py", 0, 2),
     ]
     for name, node_type, file, start_line, end_line in symbols:
         graph._add_vertex(
@@ -184,11 +183,25 @@ def test_search_regex_file_glob_filter(manifest_path: Path) -> None:
     )
 
     assert results
-    files = {r.get("file") for r in results}
-    # All hits must be inside billing/
-    for f in files:
-        if f is not None:
-            assert f.startswith("billing/"), f"Unexpected file: {f}"
+    files = {r["file"] for r in results}
+    assert all(f.startswith("billing/") for f in files)
+
+
+def test_search_regex_returns_file_nodes_with_glob_filter(
+    manifest_path: Path,
+) -> None:
+    ctx = ServerContext.load(manifest_path)
+    results = search_regex_impl(
+        ctx,
+        pattern="calculate_tax",
+        top_k=20,
+        file_glob="billing/*.py",
+        node_type="file",
+    )
+
+    assert [(result["type"], result["file"]) for result in results] == [
+        ("file", "billing/tax.py")
+    ]
 
 
 def test_search_regex_invalid_pattern_raises_friendly_error(

@@ -6,11 +6,11 @@ SPDX-License-Identifier: Apache-2.0
 
 # Regex Node Index
 
-An in-memory index for fast regex-based searching across CodeGraph nodes (similar to grep).
+An in-memory, grep-like index for regex searches across CodeGraph nodes.
 
 ## Features
 
-- **In-Memory Storage**: Fast access using Python list structure
+- **In-Memory Storage**: Searches the indexed node list without rescanning the repository
 - **Regex Matching**: Powerful regular expression search capabilities
 - **Glob Filtering**: File path filtering with glob pattern support
 
@@ -92,7 +92,7 @@ def search(
 
 - **`use_regex`** (bool, default=True): Whether to use regex matching
   - `True`: Pattern treated as regular expression
-  - `False`: Pattern treated as plain string (faster)
+  - `False`: Pattern treated as a plain string
 
 **Returns:**
 - `List[NodeInfo]`: List of matching nodes

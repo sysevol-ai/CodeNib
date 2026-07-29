@@ -53,8 +53,8 @@ mcp = MCPServer(
     instructions=(
         "CodeNib provides code search over pre-built indexes. "
         "Use search_semantic for vector/embedding similarity, "
-        "search_bm25 for keyword lookups, search_regex for symbol-level "
-        "pattern matching, and search_zoekt for fast trigram-based "
+        "search_bm25 for keyword lookups, search_regex for CodeGraph "
+        "file/symbol pattern matching, and search_zoekt for fast trigram-based "
         "substring/regex search across raw file contents. Use "
         "lsp_definition, lsp_references, and lsp_route for graph-backed "
         "LSP-shaped symbol navigation."
@@ -123,7 +123,7 @@ async def search_bm25(
     description=(
         "Search code graph nodes by regex pattern (grep-like). "
         "Supports file glob filtering and node type filtering. "
-        "Returns matching functions, classes, and methods with source content. "
+        "Returns matching file and symbol nodes with source content. "
         "Best for pattern-based searches across the codebase. "
         "Prefer search_bm25 when you know the exact name; "
         "prefer this when you need structural pattern matching."
@@ -157,8 +157,8 @@ async def search_regex(
         "Returns file-level matches with line ranges and snippet content. "
         "Best for fast substring or regex lookups that span the whole "
         "repo (magic strings, comments, identifiers across files). "
-        "Prefer search_bm25 / search_regex when you want symbol-level "
-        "(function/class/method) results bound to the CodeGraph."
+        "Prefer search_bm25 for ranked symbol results or search_regex for "
+        "file/symbol results bound to the CodeGraph."
     ),
 )
 async def search_zoekt(
