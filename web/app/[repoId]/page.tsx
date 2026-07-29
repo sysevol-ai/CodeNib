@@ -279,7 +279,11 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
 
   const hasGraph = !!repo?.capabilities?.codemap;
   const generationMode = page?.generation?.mode ?? "offline";
-  const sourceChecked = !!page?.grounding?.valid && page?.quality?.valid !== false;
+  // A published page cleared the grounding floor. `grounding.valid` is the
+  // stricter reading kept for description -- gating the label on it said
+  // "evidence review needed" on pages that were fully sourced and had merely
+  // used a token the checker could not resolve.
+  const sourceChecked = generationMode === "generated";
   const evidenceRoutes = [
     ...new Set(page?.evidence?.items.flatMap((item) => item.routes) ?? []),
   ];
