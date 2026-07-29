@@ -6,81 +6,66 @@ SPDX-License-Identifier: Apache-2.0
 
 # CodeNib Core (C++)
 
-This directory contains a C++ implementation of the high-traffic pieces of the
-Python `codenib` graph pipeline. The goal is to mirror the behaviour of
-`codenib.graph.code_graph.CodeGraph` and the active serial SCIP decoders while
-leveraging the libigraph C API for better throughput on large `.decoded` index
-files.
+This directory contains the optional C++ implementation of selected
+high-traffic graph operations and SCIP decoders. It preserves the Python
+`codenib.graph.code_graph.CodeGraph` contract; languages without an accepted
+core decoder continue to use the serial Python path.
 
 ## Components
 
-- `code_graph.h` / `code_graph.cpp` – graph container that stores vertices, edges, and metadata compatible with the Python implementation.
-- `graph_layers.h` / `graph_layers.cpp` – shared graph-layer classification
-  used by Python graph indexing when the pybind module is available.
-- `scip_decode_common.h` / `scip_decode_common.cpp` – shared SCIP decoder
-  subgraph builders and language-neutral text/string parsing helpers.
-- `scip_decode.h`, `scip_decode_base.{h,cpp}`,
-  `scip_decoder_registry.{h,cpp}`, and the language-specific
-  `scip_decode_*.{h,cpp}` files – translate `.decoded` SCIP indexes into the
-  C++ `CodeGraph` and keep core decoder aliases/factory wiring centralized.
-- `bindings/pybind_module.cpp` – exposes `decode_scip(...)` and
-  `classify_edge_layers(...)`; binding code should delegate algorithms to core
-  modules.
-- `CMakeLists.txt` – builds a static library (`codenib_core`) suitable for later wrapping with pybind11 or another binding layer.
+- `code_graph.{h,cpp}` — C++ graph container.
+- `graph_layers.{h,cpp}` — shared normalized edge-layer classification.
+- `scip_decode_base.{h,cpp}` — common loading, document scheduling, merge, and
+  post-processing behavior.
+- `scip_decode_common.{h,cpp}` — language-neutral SCIP parsing and subgraph
+  helpers.
+- `scip_decode_<language>.{h,cpp}` — language-specific decoder policy.
+- `scip_decoder_registry.{h,cpp}` — canonical decoder names and aliases.
+- `bindings/pybind_module.cpp` — Python bindings for `decode_scip(...)`,
+  `classify_edge_layers(...)`, and registry inspection.
 
-## Building
+## Build And Test
 
 Requirements:
 
-- CMake ≥ 3.15
-- A compiler with C++17 support
-- pkg-config and RE2 headers installed on the system
+- CMake 3.15 or newer
+- a C++17 compiler
+- `pkg-config`
+- RE2 development headers
 - pybind11 in the active Python environment
 
-c-igraph is vendored through CMake FetchContent and linked privately into the
-pybind module to avoid symbol clashes with the Python `igraph` wheel.
-
-Example build commands (from the repository root):
+From the repository root:
 
 ```bash
+make core-system-deps-ubuntu  # Ubuntu only
 make core-build
 make core-test
 ```
 
 The resulting library and Python extension are placed in `build/core`.
+c-igraph is fetched by CMake and linked privately to avoid symbol clashes with
+the Python `igraph` wheel.
 
-## Decoder Engineering Contract
+Some parity tests use generated SCIP integration fixtures and are skipped when
+those caches are absent. Always inspect the skip report from `make core-test`.
 
-Add C++ decoder code only after profiling shows local decode/build is a real
-bottleneck, not just because a language has an active SCIP cold-start route.
-New decoders should:
+## Use Through Python
 
-- Reuse `SCIPDecoderBase` for file loading, document extraction, parallel
-  document processing, merge order, and post-processing hooks.
-- Use `SubgraphBuilder` for node/edge construction instead of writing directly
-  to `CodeGraph` from language parsers.
-- Put only language-neutral SCIP text helpers in `scip_decode_common.h` /
-  `scip_decode_common.cpp`. Language policy, metadata loading, and symbol
-  normalization stay in `scip_decode_<language>.cpp`.
-- Register canonical language names and aliases in `scip_decoder_registry.cpp`
-  and keep the Python registry parity tests green before advertising a decoder
-  as accepted.
-- Prove serial/core parity for the relevant fixture before recording a speedup
-  in docs.
+Application code should select the core decoder through `LSIndexer`, which
+also builds occurrence and range indexes and persists the normal graph format:
 
-## Using the Decoder
+```python
+from codenib.ls_router import LSIndexer
 
-```cpp
-#include "scip_decode.h"
-
-int main() {
-    codenib::core::SCIPGraphDecoder decoder("index.decoded", ".");
-    auto graph = decoder.decode();
-    graph.save_graph("graph.json");
-    return 0;
-}
+indexer = LSIndexer(
+    project_root="/path/to/repository",
+    language="python",
+    decoder_backend="core",
+)
+graph = indexer.run_pipeline()
 ```
 
-The `save_graph` helper currently writes a JSON snapshot for inspection or
-downstream loading. The Python pybind wrapper converts `decode_scip(...)` output
-into `CodeGraph` and keeps serial/core parity tests as the compatibility gate.
+The accepted language set comes from `codenib.languages`; the C++ registry and
+Python registry must remain in parity. See the
+[Optional C++ Core](https://docs.codenib.ai/core_cpp/) reference for the
+current support set and contributor contract.

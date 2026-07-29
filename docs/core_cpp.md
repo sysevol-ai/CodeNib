@@ -4,146 +4,114 @@ SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Core C++ Backend
+# Optional C++ Core
 
-The `core/` directory contains a C++ implementation of the high-traffic pieces
-of the Python graph pipeline. It mirrors the behaviour of
-`codenib.graph.code_graph.CodeGraph` and the active serial SCIP decoders while
-using the libigraph C API for higher throughput on large `.decoded` SCIP index
-files.
+The optional `core/` module accelerates selected graph operations while
+preserving the Python `CodeGraph` contract. CodeNib continues to work without
+it; unsupported languages and installations without the extension use the
+serial Python implementation.
+
+The accepted C++ SCIP decoders are currently:
+
+- Python
+- Go
+- Rust
+- Ruby
+- TypeScript, including the `ts` and `js` aliases
+
+Java, C#, Kotlin, PHP, and Scala currently use their serial Python decoders.
+The generated [Language Capabilities](language_capabilities.md) matrix is the
+source of truth for this support set.
+
+## Build
+
+Requirements:
+
+- CMake 3.15 or newer
+- a C++17 compiler
+- `pkg-config`
+- RE2 development headers
+- pybind11 in the active Python environment
+
+On Ubuntu:
+
+```bash
+make core-system-deps-ubuntu
+make core-build
+```
+
+The build places the extension in `build/core`. Add that directory to
+`PYTHONPATH` when running directly from a source checkout:
+
+```bash
+export PYTHONPATH="$PWD/build/core:$PYTHONPATH"
+```
+
+The build vendors c-igraph through CMake FetchContent and links it privately to
+avoid symbol clashes with the Python `igraph` wheel.
+
+## Use The Accelerated Decoder
+
+Select the backend through the normal `LSIndexer` API:
+
+```python
+from codenib.ls_router import LSIndexer
+
+indexer = LSIndexer(
+    project_root="/path/to/repository",
+    language="python",
+    decoder_backend="core",
+)
+graph = indexer.run_pipeline(skip_level=None)
+```
+
+Use `skip_level=None` when explicitly comparing decoders; `"graph"` may reuse a
+graph written by an earlier serial run. If the extension is unavailable or the
+language has no accepted C++ decoder, the pipeline logs the decoding failure
+and returns no graph. Non-SCIP backends such as C/C++ ignore
+`decoder_backend` because they do not use a SCIP decoder.
+
+The pybind module also exposes lower-level `decode_scip(...)`,
+`classify_edge_layers(...)`, and decoder-registry inspection functions. These
+are primarily integration surfaces; application code should normally use
+`LSIndexer` so filtering, occurrence indexes, range indexes, and persistence
+remain consistent with the serial path.
+
+## Verify
+
+```bash
+make core-test
+```
+
+This runs the C++ smoke tests, graph-layer checks, registry consistency checks,
+and the serial/core parity fixtures available in the checkout. Some
+integration-cache parity cases are skipped when their generated SCIP fixtures
+are not present, so a successful local run should be read together with its
+skip report.
 
 ## Components
 
-- `code_graph.h` / `code_graph.cpp` — graph container (vertices, edges, metadata)
-  compatible with the Python implementation.
-- `graph_layers.h` / `graph_layers.cpp` — language-agnostic default layer
-  classification for CodeGraph edge types. This is shared by SCIP, clangd, and
-  generic-LSP graphs after they have normalized into the common schema.
-- `scip_decode_common.h` / `scip_decode_common.cpp` — shared per-document
-  `SubgraphBuilder` utilities and language-neutral SCIP text/string helpers
-  used by the accelerated decoders.
-- `scip_decode.h`, `scip_decoder_registry.{h,cpp}`, and the
-  language-specific `scip_decode_*.{h,cpp}` files — translate `.decoded` SCIP
-  indexes into the C++ `CodeGraph` and keep decoder aliases/factory wiring out
-  of bindings and smoke-test CLIs.
-- `bindings/pybind_module.cpp` — exposes `decode_scip(...)` and the optional
-  `classify_edge_layers(...)` binding. The binding delegates to the core
-  `graph_layers` module; it should not own graph algorithms.
-- `CMakeLists.txt` — builds the static library `codenib_core`, suitable for wrapping
-  with pybind11 or another binding layer.
+- `code_graph.{h,cpp}` implements the C++ graph container.
+- `graph_layers.{h,cpp}` classifies normalized edge types into reusable graph
+  layers.
+- `scip_decode_base.{h,cpp}` and `scip_decode_common.{h,cpp}` provide shared
+  decoder mechanics.
+- `scip_decode_<language>.{h,cpp}` owns language-specific symbol and metadata
+  policy.
+- `scip_decoder_registry.{h,cpp}` owns canonical decoder names and aliases.
+- `bindings/pybind_module.cpp` exposes the extension to Python.
 
-## Building
+## Contributor Contract
 
-Requirements: CMake >= 3.15, a C++17 compiler, pkg-config, RE2 headers, and
-pybind11. The build vendors c-igraph through CMake FetchContent to avoid symbol
-clashes with the Python `igraph` wheel.
+Add a C++ decoder only when profiling shows decode/build is a meaningful
+bottleneck. A new decoder must:
 
-```bash
-make core-system-deps-ubuntu  # Ubuntu system packages
-make core-build               # pybind11 + CMake configure/build
-make core-test                # C++ smoke + Python/core parity checks
-```
+1. reuse `SCIPDecoderBase` for loading, parallel document work, merge order,
+   and post-processing;
+2. create nodes and edges through `SubgraphBuilder`;
+3. keep language policy in its language-specific decoder;
+4. update the C++ registry and Python language registry together;
+5. pass serial/core node, attribute, and edge-multiset parity checks.
 
-The resulting static library and pybind module are placed in `build/core`.
-`make core-test` currently validates the C++ executable smoke tests,
-`graph_layers`, registry-driven Python and C++ core language metadata, and
-serial/core parity for the active accelerated SCIP backends: Python, Go, Rust,
-Ruby, TypeScript, and the JavaScript/TypeScript aliases.
-The pybind module also exposes the C++ decoder registry so tests can compare it
-directly with `codenib.languages.core_decoder_languages(...)`.
-
-Ruby has a dedicated C++ decoder because real `ruby/rake` profiling showed the
-serial local decode path was the bottleneck after `scip-ruby` produced a large
-text index. On the `ruby/rake` gate, serial `process_index` took 7.58s while the
-C++ backend took 1.04s after filtering to `lib/`; both routes produced 815
-vertices, 3,466 edges, and no vertex-attribute or edge-multiset differences.
-
-Java, C#, Kotlin, PHP, and Scala are active SCIP cold-start routes but
-intentionally remain serial-only in Python. Local profiles show their external
-indexers dominate cold-start time: `scip-java` on `jitpack/maven-simple` took
-about 5.98s to index while protoc decode took 0.01s, Python graph decode
-0.007s, and range-index construction 0.001s; `scip-dotnet` on the recorded C#
-fixture took about 4.3-4.8s while Python decode/build was about 0.01s; the
-KotlinPoet 2.2.0 gate spent 61.914s in `scip-java`, 0.150s in protoc decode,
-6.931s in Python graph decode, and 0.008s in range-index construction; the
-small PHP Composer gate spent about 0.551s in SCIP indexing, 0.008s in protoc
-decode, and 0.007s in Python graph decode; the `sbt/io` Scala gate spent about
-74.527s in `scip-java` indexing, 0.099s in protoc decode, 2.156s in Python
-graph decode, and 0.069s in range-index construction. Adding C++ decoder files
-for those languages is not justified until a larger profile shows local
-decode/build time crossing the 20% acceleration gate.
-
-## Decoder Engineering Contract
-
-The accepted C++ decoder set is deliberately smaller than the active SCIP
-cold-start set. A new language should be added to `core/` only after the
-profiling gate above is met and the implementation follows these boundaries:
-
-- Start from `SCIPDecoderBase` for file loading, document extraction, parallel
-  worker execution, merge ordering, and post-processing hooks.
-- Build nodes and edges through `SubgraphBuilder`; language decoders should not
-  write directly to the graph container.
-- Put language-neutral SCIP text primitives in `scip_decode_common.h` /
-  `scip_decode_common.cpp`. Current shared helpers cover integer extraction,
-  whitespace splitting, suffix checks, trailing-character stripping, and
-  backtick removal.
-- Keep language policy in the owning decoder file: metadata discovery,
-  standard-library filtering, symbol normalization, scope rules, and display
-  naming are not generic helpers.
-- Update `scip_decoder_registry.cpp`, Python registry metadata, and
-  serial/core parity tests together before documenting the language as
-  core-accelerated.
-
-Large-repo acceleration decisions should use the manifest-driven harness before
-new decoder work starts:
-
-```bash
-# Inspect the selected large-repo targets without cloning or indexing.
-make large-scip-profile LARGE_SCIP_PROFILE_EXTRA_ARGS="--dry-run"
-
-# Profile one serial-only active language on the checked-in large-repo targets.
-make large-scip-profile LARGE_SCIP_PROFILE_EXTRA_ARGS="--language java"
-```
-
-The default manifest is `scripts/profiling/large_scip_repos.yml`. Results are
-written to `LARGE_SCIP_PROFILE_OUTPUT_DIR` as `large_scip_profile.json` and
-`large_scip_profile.md`. Each row reports external index time, protoc decode
-time, serial graph decode/build time, optional core decode time for accepted
-C++ languages, and whether the 20% local decode/build gate is crossed.
-
-## Profiling Shared Helpers
-
-The layer-index helper can be profiled independently of SCIP decoding:
-
-```bash
-PYTHONPATH=build/core:$PYTHONPATH \
-python scripts/profiling/profile_graph_layers.py --edges 1000000 --reps 3
-```
-
-Latest local sample:
-
-```json
-{
-  "core_seconds_min": 0.1028488609008491,
-  "edges": 1000000,
-  "parity": true,
-  "python_seconds_min": 0.3491414119489491,
-  "speedup_vs_python": 3.3947037321641997
-}
-```
-
-## Using the decoder
-
-```cpp
-#include "scip_decode.h"
-
-int main() {
-    codenib::core::SCIPGraphDecoder decoder("index.decoded", ".");
-    auto graph = decoder.decode();
-    graph.save_graph("graph.json");  // JSON snapshot for inspection / downstream load
-    return 0;
-}
-```
-
-See [`core/README.md`](https://github.com/sysevol-ai/CodeNib/blob/main/core/README.md)
-for the latest details.
+Performance measurements and promotion decisions belong in versioned benchmark
+artifacts or internal engineering records, not in this user-facing reference.
