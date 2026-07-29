@@ -165,8 +165,23 @@ class GenericLSPIndexer:
         return graph
 
     def clear_cache(self, level: str = "all") -> bool:
-        targets = [self.graph_file]
-        if level in ("all", "raw", "decode"):
+        """Remove artifacts above the requested preservation boundary.
+
+        Generic LSP has one raw/decoded JSON artifact, followed by graph.pkl.
+        Its public cache levels match the SCIP and clangd indexers:
+
+        - ``graph`` keeps every artifact;
+        - ``decode`` and ``raw`` keep index.lsp.json and remove graph.pkl;
+        - ``all`` removes both artifacts.
+        """
+        if level not in ("graph", "decode", "raw", "all"):
+            logger.error("Invalid cache level: %s", level)
+            return False
+
+        targets = []
+        if level in ("decode", "raw", "all"):
+            targets.append(self.graph_file)
+        if level == "all":
             targets.append(self.index_file)
         ok = True
         for path in targets:

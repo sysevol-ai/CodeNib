@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from codenib.ls_index.lsp_graph_decode import (
     GenericLSPGraphDecoder,
     iter_lsp_symbol_definitions,
@@ -317,6 +319,32 @@ def test_generic_lsp_indexer_normalizes_language_alias(tmp_path):
     indexer = GenericLSPIndexer(tmp_path, language="rb")
 
     assert indexer.language == "ruby"
+
+
+@pytest.mark.parametrize(
+    ("level", "keeps_index", "keeps_graph", "expected"),
+    [
+        ("graph", True, True, True),
+        ("decode", True, False, True),
+        ("raw", True, False, True),
+        ("all", False, False, True),
+        ("invalid", True, True, False),
+    ],
+)
+def test_generic_lsp_clear_cache_uses_shared_preservation_contract(
+    tmp_path,
+    level,
+    keeps_index,
+    keeps_graph,
+    expected,
+):
+    indexer = GenericLSPIndexer(tmp_path, language="java")
+    indexer.index_file.write_text("{}", encoding="utf-8")
+    indexer.graph_file.write_bytes(b"graph")
+
+    assert indexer.clear_cache(level) is expected
+    assert indexer.index_file.exists() is keeps_index
+    assert indexer.graph_file.exists() is keeps_graph
 
 
 def test_generic_lsp_decoder_adds_reference_edges(tmp_path):
