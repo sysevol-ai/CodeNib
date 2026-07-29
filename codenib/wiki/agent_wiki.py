@@ -1107,60 +1107,83 @@ def _renderable_plan(
     else:
         rendered.pop("map", None)
 
-    # A diagram must name symbols the page actually has evidence for; anything
-    # else is an invented sequence, which is worse than showing no diagram.
+    # Every diagram edge must be proven by the evidence id attached to that
+    # exact step. Seeing both endpoint names somewhere in the repository does
+    # not establish a relationship between them.
     flow = rendered.get("flow") or {}
     if flow:
-        corpus = " ".join(
-            [
-                part
-                for item in evidence
-                for part in (item.file, item.symbol, item.content)
-            ]
-            + [part for item in relations for part in (item.source, item.target)]
-        ).casefold()
+        evidence_by_id = {item.id: item for item in evidence}
+        relations_by_id = {item.id: item for item in relations}
 
-        def endpoint_is_supported(endpoint: str) -> bool:
+        def endpoint_key(endpoint: str) -> str:
             name = endpoint.strip().strip("`").strip()
             name = re.sub(r":\d+(?:-\d+)?$", "", name)
-            leaf = name.rsplit(":", 1)[-1].rsplit(".", 1)[-1]
-            leaf = re.sub(r"\([^)]*\)$", "", leaf).strip()
-            return bool(leaf) and leaf.casefold() in corpus
+            name = re.sub(r"\([^)]*\)$", "", name).strip()
+            return re.split(r"::|\.", name)[-1].casefold()
+
+        def admitted_step(step: dict[str, Any]) -> dict[str, Any] | None:
+            source = str(step.get("from") or "").strip()
+            target = str(step.get("to") or "").strip()
+            if not source or not target or endpoint_key(source) == endpoint_key(target):
+                return None
+            statement = f"`{source.strip('`')}` calls `{target.strip('`')}`"
+            supported_ids = []
+            for raw_id in step.get("evidence") or []:
+                item_id = str(raw_id)
+                source_item = evidence_by_id.get(item_id)
+                relation = relations_by_id.get(item_id)
+                if source_item is not None and evidence_matches_claim(
+                    statement,
+                    source_item,
+                ):
+                    supported_ids.append(item_id)
+                elif relation is not None and (
+                    endpoint_key(source) == endpoint_key(relation.source)
+                    and endpoint_key(target) == endpoint_key(relation.target)
+                ):
+                    supported_ids.append(item_id)
+            if not supported_ids:
+                return None
+            return {**step, "evidence": supported_ids}
 
         steps = [
-            step
+            admitted
             for step in flow.get("steps") or []
-            if endpoint_is_supported(str(step.get("from") or ""))
-            and endpoint_is_supported(str(step.get("to") or ""))
+            if (admitted := admitted_step(step)) is not None
         ]
-        # A lifecycle has to connect. Disconnected pairs are a relation list
-        # drawn with arrows, which reads as noise rather than a path, so keep
-        # only the largest connected component and drop the diagram if what
-        # survives is no longer a path.
-        if steps:
-            parent: dict[str, str] = {}
 
-            def find(node: str) -> str:
-                parent.setdefault(node, node)
-                while parent[node] != node:
-                    parent[node] = parent[parent[node]]
-                    node = parent[node]
-                return node
+        # A flow is a directed path, not merely a weakly connected set. Pick the
+        # longest simple directed path from the admitted edges and drop a lone
+        # arrow rather than presenting it as a lifecycle.
+        best_path: List[dict[str, Any]] = []
 
-            def union(a: str, b: str) -> None:
-                ra, rb = find(a), find(b)
-                if ra != rb:
-                    parent[ra] = rb
+        def visit(
+            path: List[dict[str, Any]],
+            used_edges: set[int],
+            seen_nodes: set[str],
+        ) -> None:
+            nonlocal best_path
+            if len(path) > len(best_path):
+                best_path = list(path)
+            target = endpoint_key(str(path[-1].get("to") or ""))
+            for index, candidate in enumerate(steps):
+                if index in used_edges:
+                    continue
+                source = endpoint_key(str(candidate.get("from") or ""))
+                next_target = endpoint_key(str(candidate.get("to") or ""))
+                if source != target or next_target in seen_nodes:
+                    continue
+                visit(
+                    [*path, candidate],
+                    {*used_edges, index},
+                    {*seen_nodes, next_target},
+                )
 
-            def key(endpoint: str) -> str:
-                return endpoint.strip().strip("`").strip().casefold()
-
-            for step in steps:
-                union(key(str(step.get("from"))), key(str(step.get("to"))))
-            groups: dict[str, List[dict[str, Any]]] = {}
-            for step in steps:
-                groups.setdefault(find(key(str(step.get("from")))), []).append(step)
-            steps = max(groups.values(), key=len)
+        for index, step in enumerate(steps):
+            source = endpoint_key(str(step.get("from") or ""))
+            target = endpoint_key(str(step.get("to") or ""))
+            visit([step], {index}, {source, target})
+        steps = best_path
         if len(steps) >= 2:
             rendered["flow"] = {**flow, "steps": steps}
         else:

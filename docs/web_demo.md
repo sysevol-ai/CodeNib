@@ -106,6 +106,7 @@ environment variables beat the YAML (`load_config()` in
 |---|---|---|
 | `model` | `CODENIB_DEMO_MODEL` | LiteLLM model for the Ask agent (default `gpt-4o`) |
 | `wiki_model` | `CODENIB_DEMO_WIKI_MODEL` | Separate model for wiki prose and edge labels; unset → uses `model` |
+| `wiki_api_base` / `wiki_api_key` | `CODENIB_DEMO_WIKI_API_BASE` / `CODENIB_DEMO_WIKI_API_KEY` | Optional endpoint and credential dedicated to Wiki generation |
 | `model_api_base` / `model_api_key` | `CODENIB_DEMO_API_BASE` / `CODENIB_DEMO_API_KEY` | OpenAI-compatible endpoint for the Ask model; provider-native models (Vertex, Anthropic) leave these unset |
 | `model_options` | `CODENIB_DEMO_MODEL_OPTIONS` | Provider-specific LiteLLM options for Ask; the environment value is a JSON object and overrides matching YAML fields |
 | `wiki_model_options` | `CODENIB_DEMO_WIKI_MODEL_OPTIONS` | Nested overrides applied only to Wiki, narration, and edge-label calls |
@@ -115,6 +116,12 @@ environment variables beat the YAML (`load_config()` in
 | `embedding_model` / `embedding_base_url` / `embedding_api_key` | `CODENIB_EMBEDDING_MODEL` / `CODENIB_EMBEDDING_BASE_URL` / `CODENIB_EMBEDDING_API_KEY` | Embedding model plus the endpoint and credential for the remote provider |
 | `edge_labels` | `CODENIB_EDGE_LABELS` | Opt-in LLM-written edge phrases in the graph view (off by default; each first-seen edge costs one small LLM call, then cached) |
 | `edge_label_model` | `CODENIB_EDGE_MODEL` | Optional cheaper model for the short edge-label calls |
+
+When `wiki_model` and `model` use the same LiteLLM provider prefix, Wiki may
+reuse `model_api_base` and `model_api_key`. A different provider never inherits
+the Ask endpoint or credential: configure `wiki_api_base` / `wiki_api_key`, or
+leave them unset for provider-native routing and credentials. For example, a
+`vertex_ai/...` Wiki model will not be sent to an `openai/...` Ask server.
 
 LiteLLM provider selection comes from the model prefix, for example
 `anthropic/...`, `vertex_ai/...`, `ollama/...`, or `openrouter/...`. CodeNib

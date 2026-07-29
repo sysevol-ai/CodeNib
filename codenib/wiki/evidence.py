@@ -258,36 +258,101 @@ def relation_matches_claim(statement: str, relation: RelationItem) -> bool:
 
 
 def evidence_matches_claim(statement: str, evidence: EvidenceItem) -> bool:
-    """Whether one cited source body contains every named claim endpoint."""
+    """Whether a cited callable body directly invokes the named target.
 
-    identifiers = {
+    Merely mentioning both names is not enough: a file that independently
+    defines ``alpha`` and ``beta`` does not prove an ``alpha -> beta`` edge.
+    Source-only flow support is therefore limited to a function/method whose
+    identity matches the claim's source and whose body contains a call to the
+    target. Other interactions require a static ``RelationItem``.
+    """
+
+    identifiers = [
         re.sub(r"\([^)]*\)$", "", item.strip()).lower()
         for item in _CODE_RE.findall(statement or "")
-    }
+    ]
     if len(identifiers) < 2:
         return False
-    source_corpus = "\n".join((evidence.symbol, evidence.content)).lower()
-    file_corpus = evidence.file.lower()
+    evidence_symbol = _endpoint_symbol(evidence.symbol)
+    evidence_leaf = re.split(r"::|\.", evidence_symbol)[-1]
 
-    def present(identifier: str) -> bool:
-        if identifier in source_corpus:
-            return True
-        if "/" in identifier or re.search(
-            r"\.(?:py|go|rs|ts|tsx|js|jsx|c|h|cc|cpp|java|rb|php|cs|kt|kts)$",
-            identifier,
-        ):
-            return identifier in file_corpus
-        symbol = identifier.rsplit(":", 1)[-1]
-        leaf = symbol.rsplit(".", 1)[-1]
-        return bool(
-            len(leaf) >= 3
-            and re.search(
-                rf"(?<!\w){re.escape(leaf)}(?!\w)",
-                source_corpus,
+    def names_evidence_symbol(identifier: str) -> bool:
+        normalized = _endpoint_symbol(identifier)
+        leaf = re.split(r"::|\.", normalized)[-1]
+        return normalized == evidence_symbol or (bool(leaf) and leaf == evidence_leaf)
+
+    def source_body(identifier: str) -> str:
+        if names_evidence_symbol(identifier):
+            return evidence.content or ""
+        source = _endpoint_symbol(identifier)
+        leaf = re.split(r"::|\.", source)[-1]
+        definitions = (
+            re.compile(
+                rf"^(?P<indent>\s*)(?:async\s+)?def\s+{re.escape(leaf)}\s*\(",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                rf"^(?P<indent>\s*)(?:(?:export|public|private|protected|static)"
+                rf"\s+)*(?:async\s+)?function\s+{re.escape(leaf)}\s*\(",
+                re.IGNORECASE,
+            ),
+        )
+        lines = (evidence.content or "").splitlines()
+        for index, line in enumerate(lines):
+            match = next(
+                (
+                    pattern.search(line)
+                    for pattern in definitions
+                    if pattern.search(line)
+                ),
+                None,
             )
+            if match is None:
+                continue
+            indent = len(match.group("indent").expandtabs(4))
+            body = [line]
+            for later in lines[index + 1 :]:
+                stripped = later.strip()
+                later_indent = len(later) - len(later.lstrip())
+                if (
+                    stripped
+                    and later_indent <= indent
+                    and re.match(
+                        r"(?:async\s+)?def\s+|class\s+|"
+                        r"(?:(?:export|public|private|protected|static)\s+)*"
+                        r"(?:async\s+)?function\s+",
+                        stripped,
+                        re.IGNORECASE,
+                    )
+                ):
+                    break
+                body.append(later)
+            return "\n".join(body)
+        return ""
+
+    def body_calls(identifier: str, content: str) -> bool:
+        target = _endpoint_symbol(identifier)
+        leaf = re.split(r"::|\.", target)[-1]
+        if len(leaf) < 2:
+            return False
+        call = re.compile(rf"(?<!\w){re.escape(leaf)}\s*\(", re.IGNORECASE)
+        declarations = (
+            re.compile(rf"^\s*(?:async\s+)?def\s+{re.escape(leaf)}\s*\("),
+            re.compile(
+                rf"^\s*(?:(?:export|public|private|protected|static)\s+)*"
+                rf"(?:async\s+)?function\s+{re.escape(leaf)}\s*\("
+            ),
+        )
+        return any(
+            call.search(line)
+            and not any(pattern.search(line) for pattern in declarations)
+            for line in content.splitlines()
         )
 
-    return all(present(identifier) for identifier in identifiers)
+    return any(
+        bool(body := source_body(source)) and body_calls(target, body)
+        for source, target in zip(identifiers, identifiers[1:], strict=False)
+    )
 
 
 def is_interaction_claim(statement: str) -> bool:
@@ -599,7 +664,7 @@ def parse_fact_plan(
                 label="flow step",
                 errors=errors,
             )
-            if source and target and source != target:
+            if source and target and source != target and step_evidence:
                 steps.append(
                     {
                         "from": source,
@@ -756,18 +821,19 @@ def grounding_report(
         and not unknown_files
         and not unsupported_identifiers
     )
-    # ``valid`` is the strict, descriptive reading: everything on the page
-    # resolves. ``grounded`` is the floor a page must clear to be published --
-    # it says the page rests on real cited source, not that every last token
-    # resolved. Holding publication to the strict reading meant one unresolved
-    # attribute name suppressed an otherwise well-sourced page, and readability
-    # and provenance are not supposed to be in tension.
+    # ``valid`` is the strict, descriptive reading: every substantial block is
+    # cited and every source reference resolves. ``grounded`` keeps a looser
+    # coverage floor for readable connective prose, but never admits an unknown
+    # source path, invented identifier, or promotional claim.
     grounded = (
         bool(blocks)
         and coverage >= _MIN_CITATION_COVERAGE
         # Citing an id that was never supplied is an integrity failure, not a
         # shortfall: the page points at evidence that does not exist.
         and not unknown_citations
+        and not unknown_files
+        and not unsupported_identifiers
+        and not promotional
     )
     return {
         "valid": valid,

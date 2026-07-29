@@ -33,6 +33,13 @@ CACHE_DIR_NAME = REPO_INDEX_DIRNAME
 REGISTRY_FILENAME = "qa_registry.json"
 
 
+def _model_provider(model: str) -> Optional[str]:
+    """Return the explicit LiteLLM provider prefix, if one is present."""
+
+    provider, separator, _ = str(model or "").strip().partition("/")
+    return provider.lower() if separator else None
+
+
 @dataclass(slots=True)
 class RepoEntry:
     """One indexed dataset instance (repo @ base_commit)."""
@@ -151,26 +158,38 @@ class QAConfig:
         return self.wiki_model or self.model
 
     @property
+    def _wiki_shares_ask_backend(self) -> bool:
+        """Whether an implicit Ask endpoint is safe for the selected Wiki model."""
+
+        if not self.wiki_model:
+            return True
+        return _model_provider(self.wiki_model) == _model_provider(self.model)
+
+    @property
     def wiki_generation_api_base(self) -> Optional[str]:
         """Endpoint for wiki generation.
 
-        When ``wiki_model`` is set the wiki runs on its own backend, so the
-        endpoint comes from ``wiki_api_base`` alone. Falling back to the Ask
-        endpoint would aim a hosted-provider call (e.g. ``vertex_ai/...``) at
-        whatever local OpenAI-compatible URL Ask happens to use.
+        A Wiki model with the same provider route as Ask may reuse Ask's
+        endpoint. A different explicit provider must use ``wiki_api_base`` (or
+        its provider-native defaults), otherwise a hosted model such as Vertex
+        could be aimed at Ask's local OpenAI-compatible server.
         """
 
-        if self.wiki_model:
+        if self.wiki_api_base:
             return self.wiki_api_base
-        return self.wiki_api_base or self.model_api_base
+        if self._wiki_shares_ask_backend:
+            return self.model_api_base
+        return None
 
     @property
     def wiki_generation_api_key(self) -> Optional[str]:
         """Credential for wiki generation (see ``wiki_generation_api_base``)."""
 
-        if self.wiki_model:
+        if self.wiki_api_key:
             return self.wiki_api_key
-        return self.wiki_api_key or self.model_api_key
+        if self._wiki_shares_ask_backend:
+            return self.model_api_key
+        return None
 
     @property
     def wiki_generation_options(self) -> Dict[str, Any]:

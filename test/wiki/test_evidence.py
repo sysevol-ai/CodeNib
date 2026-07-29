@@ -133,6 +133,20 @@ def test_source_body_matches_a_class_qualified_self_call():
     )
 
 
+def test_source_body_does_not_infer_flow_from_sibling_definitions():
+    evidence = EvidenceItem(
+        id="E1",
+        file="src/workflow.py",
+        start_line=1,
+        end_line=8,
+        symbol="alpha",
+        kind="function",
+        content=("def alpha():\n" "    return 1\n\n" "def beta():\n" "    return 2"),
+    )
+
+    assert not evidence_matches_claim("`alpha` calls `beta`", evidence)
+
+
 def test_diversification_bounds_candidates_from_one_file():
     ranked = [
         (SimpleNamespace(file="a.py", name=f"a{i}"), ("dense",), 1.0 / (i + 1))
@@ -716,8 +730,8 @@ def test_an_invented_symbol_still_flags():
     assert grounding_report(md, [item], [])["unsupported_identifiers"]
 
 
-def test_grounding_floor_publishes_a_mostly_sourced_page():
-    """One unresolved token must not suppress a well-sourced page."""
+def test_grounding_floor_rejects_an_unsupported_symbol():
+    """A mostly cited page must not publish an invented symbol as grounded."""
 
     from codenib.wiki.evidence import grounding_report
 
@@ -728,9 +742,25 @@ def test_grounding_floor_publishes_a_mostly_sourced_page():
         "The `NonexistentHelper.thing()` call is not in evidence at all."
     )
     report = grounding_report(md, [item], [])
-    assert report["valid"] is False  # strict reading still records the problem
-    assert report["grounded"] is True  # but the page rests on real source
+    assert report["valid"] is False
+    assert report["grounded"] is False
     assert report["unsupported_identifiers"]
+
+
+def test_grounding_floor_allows_uncited_connective_prose_without_false_sources():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc("def prepare_url(self):\n    return None")
+    md = (
+        "`prepare_url` encodes the target host before transmission. [E1]\n\n"
+        "The request path is described in the next section for context.\n\n"
+        "`prepare_url` returns after the request target is ready. [E1]"
+    )
+    report = grounding_report(md, [item], [])
+    assert report["valid"] is False
+    assert report["grounded"] is True
+    assert report["unknown_files"] == []
+    assert report["unsupported_identifiers"] == []
 
 
 def test_grounding_floor_rejects_a_page_citing_evidence_that_does_not_exist():
@@ -806,3 +836,38 @@ def test_flow_survives_with_enough_steps():
     )
     plan, _ = parse_fact_plan(raw, {"E1"})
     assert len(plan["flow"]["steps"]) == 2
+
+
+def test_flow_drops_steps_without_admissible_evidence():
+    import json
+
+    from codenib.wiki.evidence import parse_fact_plan
+
+    raw = json.dumps(
+        {
+            "thesis": {"statement": "`A.go()` runs.", "evidence": ["E1"]},
+            "flow": {
+                "title": "Unattributed path",
+                "steps": [
+                    {"from": "`A.go()`", "to": "`B.go()`"},
+                    {"from": "`B.go()`", "to": "`C.go()`"},
+                ],
+            },
+            "sections": [
+                {
+                    "title": "S",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": "`A.go()` calls `B.go()`.",
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    plan, _ = parse_fact_plan(raw, {"E1"})
+
+    assert "flow" not in plan

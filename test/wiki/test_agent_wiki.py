@@ -5563,17 +5563,29 @@ def test_flow_keeps_only_its_connected_path():
             id="E1",
             file="a.py",
             start_line=1,
-            end_line=9,
+            end_line=3,
             symbol="Session.send",
             kind="method",
-            content=(
-                "def send(self):\n"
-                "    prepare()\n"
-                "    dispatch()\n"
-                "    unrelated_one()\n"
-                "    unrelated_two()"
-            ),
-        )
+            content="def send(self):\n    prepare()",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="a.py",
+            start_line=4,
+            end_line=6,
+            symbol="prepare",
+            kind="function",
+            content="def prepare():\n    dispatch()",
+        ),
+        EvidenceItem(
+            id="E3",
+            file="b.py",
+            start_line=1,
+            end_line=3,
+            symbol="unrelated_one",
+            kind="function",
+            content="def unrelated_one():\n    unrelated_two()",
+        ),
     ]
     plan = {
         "thesis": {"statement": "`Session.send()` sends.", "evidence": ["E1"]},
@@ -5581,11 +5593,11 @@ def test_flow_keeps_only_its_connected_path():
             "title": "Path",
             "steps": [
                 {"from": "`send()`", "to": "`prepare()`", "evidence": ["E1"]},
-                {"from": "`prepare()`", "to": "`dispatch()`", "evidence": ["E1"]},
+                {"from": "`prepare()`", "to": "`dispatch()`", "evidence": ["E2"]},
                 {
                     "from": "`unrelated_one()`",
                     "to": "`unrelated_two()`",
-                    "evidence": ["E1"],
+                    "evidence": ["E3"],
                 },
             ],
         },
@@ -5605,3 +5617,47 @@ def test_flow_keeps_only_its_connected_path():
     steps = _renderable_plan(plan, evidence, [])["flow"]["steps"]
     assert len(steps) == 2
     assert all("unrelated" not in str(s) for s in steps)
+
+
+def test_flow_drops_names_that_exist_without_a_proven_relation():
+    """Independent definitions must not become a source-checked flow."""
+
+    from codenib.wiki.agent_wiki import _renderable_plan
+    from codenib.wiki.evidence import EvidenceItem
+
+    evidence = [
+        EvidenceItem(
+            id=f"E{index}",
+            file="workflow.py",
+            start_line=index,
+            end_line=index,
+            symbol=name,
+            kind="function",
+            content=f"def {name}():\n    return {index}",
+        )
+        for index, name in enumerate(("alpha", "beta", "gamma"), start=1)
+    ]
+    plan = {
+        "thesis": {"statement": "`alpha()` starts.", "evidence": ["E1"]},
+        "flow": {
+            "title": "Invented path",
+            "steps": [
+                {"from": "`alpha()`", "to": "`beta()`", "evidence": ["E1"]},
+                {"from": "`beta()`", "to": "`gamma()`", "evidence": ["E2"]},
+            ],
+        },
+        "sections": [
+            {
+                "title": "S",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "`alpha()` returns one",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    assert "flow" not in _renderable_plan(plan, evidence, [])

@@ -13,6 +13,10 @@
 model: gpt-4o
 # Optional: use a different model for generated wiki prose and edge labels.
 # wiki_model: vertex_ai/gemini-2.5-flash
+# A Wiki model with the same provider prefix may reuse model_api_base/key.
+# Otherwise use its provider-native credentials, or configure a dedicated
+# endpoint via CODENIB_DEMO_WIKI_API_BASE / CODENIB_DEMO_WIKI_API_KEY.
+# wiki_api_base: http://127.0.0.1:8081/v1
 # Optional: point the Ask model at an OpenAI-compatible endpoint. Prefer the
 # CODENIB_DEMO_API_BASE and CODENIB_DEMO_API_KEY environment variables.
 # model_api_base: http://127.0.0.1:8080/v1

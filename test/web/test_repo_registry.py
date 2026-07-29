@@ -288,6 +288,30 @@ def test_wiki_backend_falls_back_to_ask_backend():
     assert cfg.wiki_generation_api_key == "ask-secret"
 
 
+def test_explicit_wiki_model_reuses_matching_ask_provider_backend():
+    cfg = QAConfig(
+        model="openai/ask-model",
+        wiki_model="openai/wiki-model",
+        model_api_base="http://shared.local/v1",
+        model_api_key="shared-secret",
+    )
+
+    assert cfg.wiki_generation_api_base == "http://shared.local/v1"
+    assert cfg.wiki_generation_api_key == "shared-secret"
+
+
+def test_explicit_wiki_model_does_not_inherit_different_provider_backend():
+    cfg = QAConfig(
+        model="openai/ask-model",
+        wiki_model="vertex_ai/wiki-model",
+        model_api_base="http://ask.local/v1",
+        model_api_key="ask-secret",
+    )
+
+    assert cfg.wiki_generation_api_base is None
+    assert cfg.wiki_generation_api_key is None
+
+
 def test_rejects_unknown_embedding_provider(tmp_path):
     cfg_file = tmp_path / "qa.yaml"
     cfg_file.write_text("embedding_provider: custom\n")
