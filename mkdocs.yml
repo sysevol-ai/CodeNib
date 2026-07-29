@@ -8,6 +8,20 @@ site_url: https://docs.codenib.ai/
 repo_url: https://github.com/sysevol-ai/CodeNib
 repo_name: sysevol-ai/CodeNib
 
+# Keep engineering plans, experiment logs, and publisher-only procedures in the
+# repository without publishing them on docs.codenib.ai. These patterns apply
+# to every generated artifact, including Markdown, JSON, images, search, and the
+# sitemap.
+exclude_docs: |
+  experiments/
+  product_roadmap.md
+  agent_runner_architecture_goal.md
+  agent_compile_design.md
+  scip_multilanguage_roadmap.md
+  upload_dataset_to_huggingface.md
+  diagnose_query_leak.md
+  codenib_namespace_migration.md
+
 theme:
   name: material
   logo: assets/images/codenib-icon.svg
@@ -64,13 +78,15 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started:
+  - User Guide:
       - Quickstart: quickstart.md
       - MCP Server: mcp.md
       - Web UI: web_demo.md
       - Running Locally: running-locally.md
       - Language Capabilities: language_capabilities.md
-  - Core Concepts:
+      - Agent Skills: agent_skills.md
+      - RAG Ops And Planner: rag_ops.md
+  - Concepts:
       - SCIP Index: scip_index.md
       - CodeGraph Hierarchy Model: codegraph_hierarchy_model.md
       - Graph Range Query: graph_query.md
@@ -80,30 +96,13 @@ nav:
           - Overview: incremental_graph/index.md
           - Interactive Demo: incremental_graph/interactive.md
       - Core C++ Backend: core_cpp.md
-  - Guides:
+  - Development:
+      - Contributing a Language: contributing-a-language.md
+      - Naming: branding.md
+      - CI/CD: ci_cd.md
+      - Releasing: releasing.md
+  - Evaluation:
       - SWE-bench Collection: collect_swebench.md
       - Synthesis Pipeline: synthesis_pipeline.md
-      - Upload to HuggingFace: upload_dataset_to_huggingface.md
-      - Diagnose Query Leak: diagnose_query_leak.md
-      - Contributing a Language: contributing-a-language.md
-  - Agent And Retrieval:
-      - Agent Skills: agent_skills.md
-      - RAG Ops And Planner: rag_ops.md
-      - Agent Runner Architecture Goal: agent_runner_architecture_goal.md
-      - Agent Compile (Design): agent_compile_design.md
       - GT Locator: gt_locator.md
-  - Operations:
-      - Naming: branding.md
-      - Releasing: releasing.md
-      - Namespace Migration: codenib_namespace_migration.md
-      - CI/CD: ci_cd.md
       - Evaluation Artifact Bundles: evaluation_artifacts.md
-      - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md
-  - Experiments:
-      - Agent Compile Sweep: experiments/agent_compile.md
-      - Compact Pre-load: experiments/compact_preload.md
-      - Agent Runtime Probe: experiments/agent_runtime.md
-      - Local Model Backend: experiments/qwen_backend.md
-      - LSP Core Acceleration Gate: experiments/lsp_core_acceleration.md
-      - LSP-route Adoption: experiments/lsp_route_adoption.md
-      - Systems Paper Plan: experiments/system_paper_plan.md

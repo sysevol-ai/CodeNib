@@ -16,7 +16,7 @@ Language support varies by surface. Start with the generated
 which languages support chunking, graph indexing, incremental patching, or C++
 core decoder parity.
 
-## Start Here
+## User Guide
 
 | Goal | Read |
 |------|------|
@@ -27,7 +27,11 @@ core decoder parity.
 | Understand language support and gaps | [Language Capabilities](language_capabilities.md) |
 | Add or promote a language backend | [Contributing a Language](contributing-a-language.md) |
 
-## Core Surfaces
+Once an index exists, use [Agent Skills](agent_skills.md) for optional
+retrieval and reranking workflows, or [RAG Ops And Planner](rag_ops.md) for the
+query planner and graph-aware retrieval boundaries.
+
+## Concepts
 
 | Surface | Description |
 |---------|-------------|
@@ -38,25 +42,25 @@ core decoder parity.
 | [SCIP Index](scip_index.md) | SCIP and language-server graph indexing details, cache levels, and backend behavior |
 | [Core C++ Backend](core_cpp.md) | libigraph-based decoder acceleration and parity boundaries |
 
-## Developer Guides
+## Development
 
-- [CI/CD](ci_cd.md) — local and remote test tiers, including serial, graph-consumer, core, and slow jobs
-- [Agent Skills](agent_skills.md) — optional retrieval/rerank/trace skills built on top of the index substrate
-- [RAG Ops And Planner](rag_ops.md) — retrieval operator boundaries, query-aware planner behavior, and graph-plan limits
-- [Collecting SWE-bench Instances](collect_swebench.md) — sample representative instances across languages
-- [Synthesis Pipeline](synthesis_pipeline.md) — synthesize traversal/behavior/multiply queries for the CodeNib Synthesis benchmark
-- [Uploading to HuggingFace](upload_dataset_to_huggingface.md) — build and publish the dataset
-- [Diagnose Query Leak](diagnose_query_leak.md) — detect lexical/semantic leakage in synthesized queries
+- [Contributing a Language](contributing-a-language.md) — add a language
+  through the shared registry and verify each supported surface.
+- [CI/CD](ci_cd.md) — run local and remote test tiers, including serial,
+  graph-consumer, core, and slow jobs.
+- [Releasing](releasing.md) — prepare and verify a CodeNib release.
+- [Naming](branding.md) — use the project and package names consistently.
 
-## Research And Roadmaps
+## Evaluation
 
-These documents guide development decisions, but they are not required for the
-normal index -> retrieve/query -> serve path.
-
-- [SCIP Multi-Language Roadmap](scip_multilanguage_roadmap.md) — cold-start backend promotion, C++ acceleration gates, and long-running language work
-- [Agent Runner Architecture Goal](agent_runner_architecture_goal.md) — milestones and guardrails for extracting runner core from spike experiments
-- [Agent Compile Design](agent_compile_design.md) — historical design notes for scenario-gated agent skill selection
-- [Agent Compile Sweep](experiments/agent_compile.md) — experiment log and ablations for agent harness behavior
+- [Collecting SWE-bench Instances](collect_swebench.md) — sample
+  representative instances across languages.
+- [Synthesis Pipeline](synthesis_pipeline.md) — synthesize traversal,
+  behavior, and multi-step queries for the CodeNib Synthesis benchmark.
+- [GT Locator](gt_locator.md) — evaluate source-location retrieval against
+  ground-truth patches.
+- [Evaluation Artifact Bundles](evaluation_artifacts.md) — package
+  reproducible evaluation outputs.
 
 ## Quick Start
 

@@ -4,12 +4,11 @@ SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeNib Naming
+# CodeNib Names And Paths
 
-CodeNib is both the product name and the maintained programmatic namespace on
-`main`. The frozen artifact branch preserves earlier experiments; current
-installations use the CodeNib package, commands, environment variables, and
-state paths directly.
+CodeNib is both the product name and the maintained Python and command-line
+namespace. Current installations use the `codenib` package, `codenib` command,
+`CODENIB_*` environment variables, and CodeNib-owned state paths.
 
 ## Preferred Commands
 
@@ -28,11 +27,10 @@ from codenib.agent import CodeNibAgentOptions
 
 ## Stable Inputs
 
-The following identifiers remain canonical:
+The following identifiers are stable public inputs:
 
 - `CODENIB_*` environment variables;
-- `~/.codenib` and `.codenib_qa` state roots, plus the legacy
-  `.codenib_cache` layout;
+- `~/.codenib` and `.codenib_qa` state roots;
 - the `codenib` package and every existing `codenib-*` command;
 - MCP server ID `codenib`, prompt ID `codenib-guide`, tool names, and
   `codenib_context` skill ID;
@@ -40,17 +38,14 @@ The following identifiers remain canonical:
   `repo_manifest.json`, `graph.pkl`, `incremental_state.json`,
   `chunk_store.pkl`, `embeddings_cache.pkl`, and `qa_registry.json` entry
   filenames;
-- canonical repository URL `https://github.com/sysevol-ai/CodeNib` (GitHub
-  redirects the repository's former URL for historical references);
+- canonical repository URL `https://github.com/sysevol-ai/CodeNib`;
 - CodeNib Base, CodeNib Synthesis, their Hub IDs, and artifact paths;
 - public classes such as `CodeNibAgentOptions`, `CodeNibBaseDataset`, and
   `CodeNibSynthesisDataset`.
 
-The Hub values above are immutable external addresses, not aliases for
-executable CodeNib interfaces. Schemas change only when their serialized
-structure or declared identity changes. The full mapping from former
-identifiers to their CodeNib replacements lives in the
-[namespace migration record](codenib_namespace_migration.md).
+The Hub values above are external dataset addresses, not aliases for executable
+CodeNib interfaces. Persisted schemas change only when their serialized
+structure or declared identity changes.
 
 ## Filesystem Roots
 
@@ -69,5 +64,5 @@ User-facing commands keep repository indexes under
 `~/.codenib/repositories/...`) instead of storing CodeNib artifacts in the
 target checkout. Language-aware graph builders may still invoke project
 toolchains that prepare dependencies in the checkout. The lower-level compiler
-accepts an explicit `cache_dir`, and CLI manifest discovery can read the legacy
-`<repo>/.codenib_cache` layout.
+accepts an explicit `cache_dir`; compatibility code can also read older
+repository-local `.codenib_cache` manifests.

@@ -15,11 +15,11 @@ SPDX-License-Identifier: Apache-2.0
     &nbsp;&middot;&nbsp;
     <a href="https://codenib.ai">Website</a>
     &nbsp;&middot;&nbsp;
-    <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/index.md">Documentation</a>
+    <a href="https://docs.codenib.ai/">Documentation</a>
     &nbsp;&middot;&nbsp;
-    <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/mcp.md">MCP</a>
+    <a href="https://docs.codenib.ai/mcp/">MCP</a>
     &nbsp;&middot;&nbsp;
-    <a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md">Languages</a>
+    <a href="https://docs.codenib.ai/language_capabilities/">Languages</a>
   </p>
   <p>
     <a href="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml"><img src="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -86,7 +86,7 @@ codenib index /path/to/repository
 ```
 
 See the
-[Quickstart](https://github.com/sysevol-ai/CodeNib/blob/main/docs/quickstart.md)
+[Quickstart](https://docs.codenib.ai/quickstart/)
 for ports, advanced indexing, and troubleshooting.
 
 <p align="center">
@@ -126,16 +126,16 @@ for client configuration and tool contracts.
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 
 Language support varies by surface. The generated
-[capability matrix](https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md)
+[capability matrix](https://docs.codenib.ai/language_capabilities/)
 records chunking, graph, incremental, and C++ decoder support.
 
 ## Documentation
 
-- [Quickstart](https://github.com/sysevol-ai/CodeNib/blob/main/docs/quickstart.md)
-- [MCP Server](https://github.com/sysevol-ai/CodeNib/blob/main/docs/mcp.md)
-- [Web UI](https://github.com/sysevol-ai/CodeNib/blob/main/docs/web_demo.md)
-- [Language Capabilities](https://github.com/sysevol-ai/CodeNib/blob/main/docs/language_capabilities.md)
-- [Architecture and experiments](https://github.com/sysevol-ai/CodeNib/blob/main/docs/index.md)
+- [Quickstart](https://docs.codenib.ai/quickstart/)
+- [MCP Server](https://docs.codenib.ai/mcp/)
+- [Web UI](https://docs.codenib.ai/web_demo/)
+- [Language Capabilities](https://docs.codenib.ai/language_capabilities/)
+- [Concepts and development guides](https://docs.codenib.ai/)
 
 Build the documentation site locally with:
 
@@ -155,7 +155,7 @@ make test
 
 The test suite is split into unit, integration, serial integration, core,
 graph-consumer, and slow tiers. See
-[CI/CD](https://github.com/sysevol-ai/CodeNib/blob/main/docs/ci_cd.md) before
+[CI/CD](https://docs.codenib.ai/ci_cd/) before
 running the credential- or toolchain-dependent tiers.
 
 ## Status
@@ -164,7 +164,7 @@ CodeNib `0.1.0` is a developer preview. The CLI and manifest format are usable,
 but public interfaces may still change before a stable release. Historical
 research artifacts retain their published dataset identifiers; the maintained
 package, import namespace, commands, and repository use `CodeNib`. See
-[Naming](https://github.com/sysevol-ai/CodeNib/blob/main/docs/branding.md).
+[Naming](https://docs.codenib.ai/branding/).
 
 ## Citation
 

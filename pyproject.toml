@@ -47,7 +47,7 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://sysevol-ai.github.io/CodeNib/"
+Documentation = "https://docs.codenib.ai/"
 Homepage = "https://codenib.ai"
 Issues = "https://github.com/sysevol-ai/CodeNib/issues"
 Repository = "https://github.com/sysevol-ai/CodeNib.git"
