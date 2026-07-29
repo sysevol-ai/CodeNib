@@ -546,6 +546,50 @@ def parse_fact_plan(
                 {"concern": concern, "entity": entity, "evidence": row_evidence}
             )
 
+    # A diagram is validated here, on structured data, rather than by reading the
+    # rendered fence back out: a mermaid block is stripped before the prose
+    # checks run, so a step naming a symbol nobody supplied would sail through.
+    flow: dict[str, Any] = {}
+    raw_flow = raw.get("flow")
+    if isinstance(raw_flow, dict):
+        steps = []
+        for step in raw_flow.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            source = str(step.get("from") or "").strip()
+            target = str(step.get("to") or "").strip()
+            label = str(step.get("label") or "").strip()
+            step_evidence = _supported_evidence_ids(
+                step.get("evidence"),
+                allowed,
+                label="flow step",
+                errors=errors,
+            )
+            if source and target and source != target:
+                steps.append(
+                    {
+                        "from": source,
+                        "to": target,
+                        "label": label,
+                        "evidence": step_evidence,
+                    }
+                )
+        # One arrow is not a flow.
+        if len(steps) >= 2:
+            flow = {
+                "title": str(raw_flow.get("title") or "").strip(),
+                "steps": steps[:6],
+            }
+
+    see_also: List[dict[str, Any]] = []
+    for ref in raw.get("see_also") or []:
+        if not isinstance(ref, dict):
+            continue
+        page = str(ref.get("page") or "").strip()
+        why = str(ref.get("why") or "").strip()
+        if page:
+            see_also.append({"page": page, "why": why})
+
     plan: dict[str, Any] = {
         "thesis": {
             "statement": thesis_statement,
@@ -557,6 +601,10 @@ def parse_fact_plan(
         plan["purpose"] = purpose
     if scan_map:
         plan["map"] = scan_map
+    if flow:
+        plan["flow"] = flow
+    if see_also:
+        plan["see_also"] = see_also[:3]
     return plan, errors
 
 

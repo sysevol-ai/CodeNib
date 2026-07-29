@@ -741,3 +741,68 @@ def test_grounding_floor_rejects_a_page_citing_evidence_that_does_not_exist():
     report = grounding_report(md, [item], [])
     assert report["grounded"] is False
     assert report["unknown_citations"] == ["E9"]
+
+
+def test_flow_needs_at_least_two_steps():
+    """A single arrow is not a path worth drawing."""
+
+    import json
+
+    from codenib.wiki.evidence import parse_fact_plan
+
+    raw = json.dumps(
+        {
+            "thesis": {"statement": "`A.go()` runs.", "evidence": ["E1"]},
+            "flow": {
+                "title": "One hop",
+                "steps": [{"from": "`A.go()`", "to": "`B.do()`", "evidence": ["E1"]}],
+            },
+            "sections": [
+                {
+                    "title": "S",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": "`A.go()` calls `B.do()`.",
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    plan, _ = parse_fact_plan(raw, {"E1"})
+    assert "flow" not in plan
+
+
+def test_flow_survives_with_enough_steps():
+    import json
+
+    from codenib.wiki.evidence import parse_fact_plan
+
+    raw = json.dumps(
+        {
+            "thesis": {"statement": "`A.go()` runs.", "evidence": ["E1"]},
+            "flow": {
+                "title": "Request path",
+                "steps": [
+                    {"from": "`A.go()`", "to": "`B.do()`", "evidence": ["E1"]},
+                    {"from": "`B.do()`", "to": "`C.end()`", "evidence": ["E1"]},
+                ],
+            },
+            "sections": [
+                {
+                    "title": "S",
+                    "claims": [
+                        {
+                            "role": "flow",
+                            "statement": "`A.go()` calls `B.do()`.",
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    plan, _ = parse_fact_plan(raw, {"E1"})
+    assert len(plan["flow"]["steps"]) == 2

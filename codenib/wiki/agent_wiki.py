@@ -82,7 +82,7 @@ _EXT_LANG = {
 }
 _MAX_CONTEXT_CHARS = 14000
 _OUTLINE_PROMPT_VERSION = "12"
-_PAGE_PROMPT_VERSION = "100"
+_PAGE_PROMPT_VERSION = "101"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 # The overview is asked for a section per outline area, and a repository
@@ -702,7 +702,7 @@ def _merge_fact_plans(
         merged["thesis"] = copy.deepcopy(candidate["thesis"])
     # A repair pass may be the first attempt that produced usable framing or a
     # scan table; keep it rather than losing it to the earlier plan.
-    for key in ("purpose", "map"):
+    for key in ("purpose", "map", "flow", "see_also"):
         if not merged.get(key) and candidate.get(key):
             merged[key] = copy.deepcopy(candidate[key])
 
@@ -1095,6 +1095,37 @@ def _renderable_plan(
     else:
         rendered.pop("map", None)
 
+    # A diagram must name symbols the page actually has evidence for; anything
+    # else is an invented sequence, which is worse than showing no diagram.
+    flow = rendered.get("flow") or {}
+    if flow:
+        corpus = " ".join(
+            [
+                part
+                for item in evidence
+                for part in (item.file, item.symbol, item.content)
+            ]
+            + [part for item in relations for part in (item.source, item.target)]
+        ).casefold()
+
+        def endpoint_is_supported(endpoint: str) -> bool:
+            name = endpoint.strip().strip("`").strip()
+            name = re.sub(r":\d+(?:-\d+)?$", "", name)
+            leaf = name.rsplit(":", 1)[-1].rsplit(".", 1)[-1]
+            leaf = re.sub(r"\([^)]*\)$", "", leaf).strip()
+            return bool(leaf) and leaf.casefold() in corpus
+
+        steps = [
+            step
+            for step in flow.get("steps") or []
+            if endpoint_is_supported(str(step.get("from") or ""))
+            and endpoint_is_supported(str(step.get("to") or ""))
+        ]
+        if len(steps) >= 2:
+            rendered["flow"] = {**flow, "steps": steps}
+        else:
+            rendered.pop("flow", None)
+
     rendered_sections = []
     for section in rendered.get("sections") or []:
         rendered_claims = []
@@ -1249,6 +1280,65 @@ def _fact_plan_markdown(
             lines.append(f"| {concern} | {entity} | {ids} |")
         map_block = "\n".join(lines)
 
+    # Mermaid node ids must be opaque; the labels carry the real names.
+    flow_block = ""
+    flow = plan.get("flow") or {}
+    if flow.get("steps"):
+        node_ids: dict[str, str] = {}
+
+        def node_id(label: str) -> str:
+            key = label.strip().strip("`").strip()
+            if key not in node_ids:
+                node_ids[key] = f"n{len(node_ids)}"
+            return node_ids[key]
+
+        lines = ["```mermaid", "flowchart LR"]
+        edges = []
+        for step in flow["steps"]:
+            src = str(step.get("from") or "").strip().strip("`")
+            tgt = str(step.get("to") or "").strip().strip("`")
+            label = re.sub(r'["\n|]', " ", str(step.get("label") or "")).strip()
+            sid, tid = node_id(src), node_id(tgt)
+            edges.append((sid, tid, label))
+        for name, ident in node_ids.items():
+            safe = re.sub(r'["\n|]', " ", name)
+            # Mermaid needs the label in literal double quotes, so build it
+            # rather than let a repr choose the quoting.
+            lines.append("  " + ident + '["' + safe + '"]')
+        for sid, tid, label in edges:
+            lines.append(
+                f"  {sid} -->|{label}| {tid}" if label else f"  {sid} --> {tid}"
+            )
+        lines.append("```")
+        caption_ids: List[str] = []
+        for step in flow["steps"]:
+            for item in step.get("evidence") or []:
+                if item not in caption_ids:
+                    caption_ids.append(str(item))
+        caption = str(flow.get("title") or "").strip()
+        if caption and caption_ids:
+            # The fence is stripped before the prose checks run, so the caption
+            # is where this block states its sources.
+            lines.append("")
+            lines.append(
+                caption.rstrip(".")
+                + ". "
+                + " ".join(f"[{item}]" for item in caption_ids)
+            )
+        flow_block = "\n".join(lines)
+
+    see_also_block = ""
+    refs = plan.get("see_also") or []
+    if refs:
+        parts = []
+        for ref in refs:
+            page = str(ref.get("page") or "").strip()
+            title = str(ref.get("title") or page).strip()
+            why = str(ref.get("why") or "").strip()
+            link = f"[{title}](?p={page})"
+            parts.append(f"- {link}" + (f" — {why}" if why else ""))
+        see_also_block = "\n".join(parts)
+
     rendered_sections: List[tuple[str, str]] = []
     for section in plan.get("sections") or []:
         sentences = []
@@ -1278,8 +1368,12 @@ def _fact_plan_markdown(
         blocks.extend(("## Purpose and scope", purpose_block))
     if map_block:
         blocks.extend(("## At a glance", map_block))
+    if flow_block:
+        blocks.extend((f"## {flow.get('title') or 'How it fits together'}", flow_block))
     for title, paragraph in rendered_sections:
         blocks.extend((f"## {title}", paragraph))
+    if see_also_block:
+        blocks.extend(("## Related pages", see_also_block))
     return "\n\n".join(blocks)
 
 
@@ -1446,6 +1540,9 @@ Return ONLY JSON with this shape:
 "what a reader can do with it"],"evidence":["E1","E2"]}},
 "map":[{{"concern":"Short capability name","entity":"`Class.method()`",
 "evidence":["E1"]}}],
+"flow":{{"title":"What the diagram shows","steps":[{{"from":"`Class.method()`",
+"to":"`Other.call()`","label":"what moves","evidence":["R1"]}}]}},
+"see_also":[{{"page":"page-id-from-the-list","why":"what that page covers"}}],
 "sections":[{{"title":"Section title","claims":[{{"role":"flow",
 "statement":"one concrete claim","evidence":["E1","E2","R1"]}}]}}]}}
 
@@ -1469,6 +1566,18 @@ Write `map` as 3-6 rows pairing a capability a reader would look for with the
 concrete code entity that implements it, so the page can be scanned before it
 is read. Each row cites the evidence for that pairing. Omit `map` when the
 evidence does not support at least three distinct pairings.
+
+Write `flow` when the evidence supports an ordered path a reader can follow --
+a request being handled, a value being transformed, a lifecycle advancing. Use
+3-6 steps. Every `from` and `to` must be a symbol that appears in the supplied
+evidence or relations, written the same way it appears there; a step that names
+anything else is dropped. Prefer steps backed by an R# relation. Omit `flow`
+entirely when the evidence shows no ordered path -- an invented sequence is
+worse than none.
+
+Write `see_also` to point at 1-3 of the other wiki pages listed below when a
+responsibility genuinely belongs to them. Use their exact bracketed id. Never
+name a page that is not listed, and do not point at this page.
 
 Do not repeat a relation across sections: each source-to-target handoff belongs
 to exactly one section, in the section whose responsibility it serves.
@@ -3618,6 +3727,51 @@ class AgentWiki:
     def _relations_context(relations: List[RelationItem]) -> str:
         return "\n".join(item.prompt_line() for item in relations) or "(none)"
 
+    def _resolve_page_references(
+        self,
+        plan: Dict[str, Any],
+        current_id: str,
+    ) -> Dict[str, Any]:
+        """Keep only cross-references that name a real page of this wiki.
+
+        The model is given the page list, but a link to a page that does not
+        exist is a dead end for the reader, so ids are checked rather than
+        trusted. Titles come from the outline so the link text stays correct
+        even if the model paraphrased.
+        """
+
+        refs = plan.get("see_also") or []
+        if not refs:
+            return plan
+        titles: Dict[str, str] = {}
+
+        def walk(pages: Sequence[Dict[str, Any]]) -> None:
+            for page in pages:
+                if not isinstance(page, dict):
+                    continue
+                page_id = str(page.get("id") or "")
+                if page_id:
+                    titles[page_id] = str(page.get("title") or page_id)
+                walk(page.get("children") or [])
+
+        walk((self._outline or {}).get("pages") or [])
+        if not titles:
+            return plan
+        resolved = []
+        seen = set()
+        for ref in refs:
+            page_id = str(ref.get("page") or "").strip()
+            if page_id not in titles or page_id == current_id or page_id in seen:
+                continue
+            seen.add(page_id)
+            resolved.append({**ref, "page": page_id, "title": titles[page_id]})
+        plan = dict(plan)
+        if resolved:
+            plan["see_also"] = resolved
+        else:
+            plan.pop("see_also", None)
+        return plan
+
     def _wiki_context(self, current_id: str) -> str:
         """The other pages of this wiki, so a page knows where it sits.
 
@@ -3642,8 +3796,10 @@ class AgentWiki:
                 ]
                 marker = " (this page)" if page_id == current_id else ""
                 indent = "  " * depth
+                # The id is what a cross-reference has to name, so hand it over.
                 lines.append(
-                    f"{indent}- {title}{marker}" + (f": {summary}" if summary else "")
+                    f"{indent}- [{page_id}] {title}{marker}"
+                    + (f": {summary}" if summary else "")
                 )
                 walk(page.get("children") or [], depth + 1)
 
@@ -3690,7 +3846,7 @@ class AgentWiki:
             # it back on whichever plan finally wins.
             sticky_blocks = {
                 key: copy.deepcopy(plan[key])
-                for key in ("purpose", "map")
+                for key in ("purpose", "map", "flow", "see_also")
                 if plan.get(key)
             }
             plan = _normalize_plan_support(plan, evidence, relations)
@@ -4082,6 +4238,7 @@ class AgentWiki:
 
         relations = self._relation_items(evidence, meta)
         plan, plan_warnings = self._fact_plan(meta, evidence, relations)
+        plan = self._resolve_page_references(plan, str(meta.get("id") or ""))
         model_planning_failed = "model planning unavailable" in plan_warnings
         dense_sections = meta.get("id") == "overview"
         quality_requirements = {

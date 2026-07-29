@@ -5498,3 +5498,55 @@ def test_agent_wiki_page_cache_key_tracks_outline_metadata():
     assert AgentWiki._page_cache_suffix(original) != AgentWiki._page_cache_suffix(
         revised
     )
+
+
+def test_flow_step_naming_an_unsupported_symbol_is_dropped():
+    """A diagram must not invent a hop the evidence does not show."""
+
+    from codenib.wiki.agent_wiki import _renderable_plan
+    from codenib.wiki.evidence import EvidenceItem
+
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="a.py",
+            start_line=1,
+            end_line=9,
+            symbol="Router.handle",
+            kind="method",
+            content="def handle(self):\n    return self.dispatch()",
+        )
+    ]
+    plan = {
+        "thesis": {"statement": "`Router.handle()` dispatches.", "evidence": ["E1"]},
+        "flow": {
+            "title": "Path",
+            "steps": [
+                {
+                    "from": "`Router.handle()`",
+                    "to": "`Router.dispatch()`",
+                    "evidence": ["E1"],
+                },
+                {
+                    "from": "`Router.dispatch()`",
+                    "to": "`Teleporter.beam()`",
+                    "evidence": ["E1"],
+                },
+            ],
+        },
+        "sections": [
+            {
+                "title": "S",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "`Router.handle()` calls `Router.dispatch()`.",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+    rendered = _renderable_plan(plan, evidence, [])
+    # Only one step resolves, and one arrow is not a flow.
+    assert "flow" not in rendered
