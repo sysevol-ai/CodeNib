@@ -35,11 +35,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import pickle
 import shutil
 import sys
 import tempfile
 from typing import Any, Iterable, Optional
+
+from codenib import compat_pickle
 
 # External experiment artifacts were written with schema 3 before exact SCIP
 # declaration lines were persisted. They remain valid for retrieval and graph
@@ -132,7 +133,7 @@ def load_code_graph_artifact(path: str, *, project_root: Optional[str] = None):
         return _normalize_loaded_graph(graph, project_root=project_root)
 
     with open(path, "rb") as f:
-        data = pickle.load(f)
+        data = compat_pickle.load(f)
 
     if isinstance(data, CodeGraph):
         graph = data
@@ -192,7 +193,7 @@ def graph_artifact_metadata(path: str) -> dict[str, Any]:
     """Return lightweight metadata for a graph pickle without normalizing it."""
 
     with open(path, "rb") as f:
-        data = pickle.load(f)
+        data = compat_pickle.load(f)
     if isinstance(data, dict):
         return {
             "shape": "bundle",

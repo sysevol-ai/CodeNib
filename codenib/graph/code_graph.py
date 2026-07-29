@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 
 import igraph as ig
 
+from .. import compat_pickle
 from ..types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
@@ -764,7 +765,7 @@ class CodeGraph:
             CodeGraph: Loaded graph instance
         """
         with open(input_path, "rb") as f:
-            data = pickle.load(f)
+            data = compat_pickle.load(f)
 
         on_disk = data.get("schema_version")
         if on_disk != _SCHEMA_VERSION:

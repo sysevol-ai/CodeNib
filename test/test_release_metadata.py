@@ -60,13 +60,32 @@ def test_default_install_is_the_fast_wiki_runtime() -> None:
 def test_optional_capabilities_have_named_extras() -> None:
     extras = _project()["optional-dependencies"]
 
-    assert {"agent", "datasets", "graph", "mcp", "semantic", "zoekt", "full"} <= set(
-        extras
-    )
+    assert {
+        "agent",
+        "datasets",
+        "graph",
+        "mcp",
+        "semantic",
+        "vertex",
+        "zoekt",
+        "full",
+    } <= set(extras)
     assert "litellm" in _names(extras["agent"])
     assert {"faiss-cpu", "sentence-transformers"} <= _names(extras["semantic"])
     assert "igraph" in _names(extras["graph"])
     assert "mcp" in _names(extras["mcp"])
+
+
+def test_vertex_capability_uses_litellm_provider_constraints() -> None:
+    extras = _project()["optional-dependencies"]
+    provider_requirement = "litellm[google]>=1.93.0"
+
+    # The provider-specific preset must install both LiteLLM and the Google SDK
+    # versions LiteLLM declares compatible. The full preset promises every
+    # supported backend, so it must carry the identical coupled requirement.
+    assert extras["vertex"] == [provider_requirement]
+    assert provider_requirement in extras["full"]
+    assert "google-cloud-aiplatform" not in _names(extras["vertex"])
 
 
 def test_runtime_version_comes_from_distribution_metadata() -> None:

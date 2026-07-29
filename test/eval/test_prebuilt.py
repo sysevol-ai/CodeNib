@@ -259,6 +259,31 @@ def test_load_prebuilt_code_graph_accepts_direct_codegraph_pickle(tmp_path):
     assert loaded.name_to_vertex["pkg/direct.py"] == 0
 
 
+def test_load_code_graph_artifact_accepts_former_namespace_pickle(tmp_path):
+    from codenib.graph.code_graph import CodeGraph
+
+    graph = CodeGraph(project_root="repo")
+    graph.add_file_node("pkg/former.py")
+    current = pickle.dumps(graph, protocol=0)
+    current_global = b"ccodenib.graph.code_graph\nCodeGraph\n"
+    former_root = b"code" + b"miner"
+    former_global = b"c" + former_root + b".graph.code_graph\nCodeGraph\n"
+    assert current_global in current
+
+    graph_path = tmp_path / "graph.pkl"
+    graph_path.write_bytes(current.replace(current_global, former_global))
+
+    loaded = prebuilt.load_code_graph_artifact(
+        str(graph_path),
+        project_root=str(tmp_path / "repo"),
+    )
+
+    assert isinstance(loaded, CodeGraph)
+    assert loaded.graph.vcount() == 1
+    assert loaded.project_root == os.path.abspath(tmp_path / "repo")
+    assert loaded.name_to_vertex["pkg/former.py"] == 0
+
+
 def test_stage_normalizes_legacy_graph_for_strict_loader(tmp_path):
     from codenib.graph.code_graph import CodeGraph
 
