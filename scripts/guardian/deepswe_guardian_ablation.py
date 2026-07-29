@@ -318,6 +318,14 @@ def _build_pier_command(
                 json.dumps(_common_mounts(args, logs_dir)),
             ]
         )
+        prompt_template_path = getattr(args, "prompt_template_path", None)
+        if prompt_template_path is not None:
+            cmd.extend(
+                [
+                    "--ak",
+                    f"prompt_template_path={prompt_template_path}",
+                ]
+            )
     return cmd
 
 
@@ -385,6 +393,12 @@ def _run_trial(
         "job_id": job_id,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "context_injection_source": str(
+            getattr(args, "context_injection_source", "") or ""
+        ),
+        "context_injection_sha256": str(
+            getattr(args, "context_injection_sha256", "") or ""
+        ),
         "guardian_model": args.guardian_model if baseline == "guardian" else "",
         "guardian_arm": args.guardian_arm if baseline == "guardian" else "",
         "guardian_budget_tokens": (
