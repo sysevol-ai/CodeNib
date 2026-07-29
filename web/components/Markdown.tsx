@@ -12,7 +12,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
 import { matchCitation, lineLabel } from "@/lib/citations";
-import type { Citation } from "@/lib/api";
+import {
+  repoRelative,
+  type Citation,
+  type WikiRelationItem,
+} from "@/lib/api";
 
 // Mermaid (~1MB) is only needed when a diagram actually appears; load it on
 // demand so it never weighs down pages that have none (wiki strips diagrams).
@@ -94,7 +98,10 @@ function CiteChip({
   showLoc: boolean;
   onClick: () => void;
 }) {
-  const loc = showLoc ? lineLabel(c) : "";
+  // The line range belongs with the source reference at the end of the block,
+  // not wedged into the middle of a sentence.
+  const loc = "";
+  void showLoc;
   return (
     <button
       type="button"
@@ -115,11 +122,14 @@ function CiteChip({
 export default function Markdown({
   children,
   citations,
+  relations,
   onCite,
 }: {
   children: string;
   /** When provided (with onCite), inline code naming a citation becomes a clickable chip. */
   citations?: Citation[];
+  /** Static relations, so an R# marker can name the call site it stands for. */
+  relations?: WikiRelationItem[];
   onCite?: (index: number) => void;
 }) {
   return (
@@ -128,6 +138,53 @@ export default function Markdown({
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeSlug]}
         components={{
+          a({ href, children, ...rest }) {
+            // `[E3]` is an internal handle; the reader wants the source it
+            // stands for. Resolve it to file and line range, the way a
+            // reference in a technical document reads.
+            const m = /^#evidence-([ER]\d+)$/.exec(String(href || ""));
+            const marker = m ? m[1] : "";
+            const index = marker.startsWith("E") ? Number(marker.slice(1)) - 1 : -1;
+            const cite =
+              index >= 0 && citations ? citations[index] : undefined;
+            if (!cite && marker.startsWith("R") && relations) {
+              // A relation stands for a call site; name that, not the handle.
+              const rel = relations.find((r) => r.id === marker);
+              const anchor = rel?.anchors?.[0];
+              if (anchor) {
+                const at = anchor.lastIndexOf(":");
+                const file = at > 0 ? anchor.slice(0, at) : anchor;
+                const line = at > 0 ? anchor.slice(at + 1) : "";
+                const shown = repoRelative(file) ?? file;
+                return (
+                  <span className="cite-src" title={`${shown}${line ? `:${line}` : ""}`}>
+                    {shown.split("/").pop() || shown}
+                    {line && <span className="cite-src-loc">:{line}</span>}
+                  </span>
+                );
+              }
+            }
+            if (cite) {
+              const rel = repoRelative(cite.file) ?? cite.file;
+              const loc = lineLabel(cite);
+              return (
+                <button
+                  type="button"
+                  className="cite-src"
+                  title={`${rel}${loc ? `:${loc}` : ""}`}
+                  onClick={() => onCite?.(index)}
+                >
+                  {rel.split("/").pop() || rel}
+                  {loc && <span className="cite-src-loc">:{loc}</span>}
+                </button>
+              );
+            }
+            return (
+              <a href={href} {...rest}>
+                {children}
+              </a>
+            );
+          },
           table({ children }) {
             return <ResponsiveTable>{children}</ResponsiveTable>;
           },

@@ -916,12 +916,16 @@ pre {
 }
 /* Inline citation chip: a cited symbol/file in prose; click scrolls the code pane. */
 .cite-chip {
+  /* A symbol is part of the sentence, not a control sitting in it. Border and
+     fill made every mention read as a chip and the prose read as a form; the
+     affordance now appears on hover instead. */
   display: inline;
-  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-  border-radius: 5px;
-  padding: 1px 4px;
-  margin: 0 1px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
   font: inherit;
   line-height: inherit;
@@ -930,8 +934,7 @@ pre {
   overflow-wrap: anywhere;
 }
 .cite-chip:hover {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  border-color: var(--accent);
+  border-bottom-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .cite-chip > code {
   background: none;
@@ -3630,4 +3633,27 @@ a.codepanel-name:hover {
   background: var(--hover, rgba(127, 127, 127, 0.12));
   color: inherit;
   font-weight: 600;
+}
+
+/* A citation reads as the source it stands for, not as an internal handle. */
+.cite-src {
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0 0 0 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82em;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.cite-src:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.cite-src-loc {
+  opacity: 0.75;
 }

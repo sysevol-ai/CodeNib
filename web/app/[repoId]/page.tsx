@@ -579,6 +579,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
               {page ? (
                 <Markdown
                   citations={page.citations}
+                  relations={page.evidence?.relations}
                   onCite={(index) =>
                     setSourceCitation(page.citations[index] ?? null)
                   }
