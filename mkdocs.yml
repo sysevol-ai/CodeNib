@@ -10,6 +10,8 @@ repo_name: sysevol-ai/CodeNib
 
 theme:
   name: material
+  logo: assets/images/codenib-icon.svg
+  favicon: assets/images/codenib-icon.svg
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -37,6 +39,9 @@ theme:
     - content.code.annotate
   icon:
     repo: fontawesome/brands/github
+
+extra_css:
+  - assets/stylesheets/extra.css
 
 plugins:
   - search
