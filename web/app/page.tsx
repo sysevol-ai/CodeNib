@@ -152,7 +152,12 @@ export default function Landing() {
       </section>
 
       <div className="repo-grid">
-        <div className="repo-card add-repo" role="note" aria-label="Add repo (coming soon)">
+        <button
+          type="button"
+          className="repo-card add-repo"
+          aria-label="Index your own repository"
+          onClick={() => navigate("/add-repo")}
+        >
           <span className="add-plus">+</span>
           <span className="add-label">Add repo</span>
           <span className="repo-card-go" aria-hidden>
@@ -160,7 +165,7 @@ export default function Landing() {
               <path d="M5 12h14M13 6l6 6-6 6" />
             </svg>
           </span>
-        </div>
+        </button>
 
         {error && (
           <div className="empty">

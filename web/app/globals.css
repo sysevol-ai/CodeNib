@@ -3731,3 +3731,104 @@ a.codepanel-name:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Guidance for running CodeNib on your own repository. */
+.addrepo {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 24px 72px;
+}
+.addrepo-back {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-bottom: 20px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.addrepo-back:hover {
+  color: var(--accent);
+}
+.addrepo h1 {
+  font-size: 26px;
+  margin: 0 0 14px;
+  color: var(--text-primary);
+}
+.addrepo-lede {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  margin: 0 0 32px;
+}
+.addrepo-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.addrepo-step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.addrepo-step-n {
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.addrepo-step-head h2 {
+  font-size: 16px;
+  margin: 0;
+  color: var(--text-primary);
+}
+.addrepo-steps p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.addrepo-code {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--code-bg);
+  overflow-x: auto;
+}
+.addrepo-code code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre;
+  background: none;
+  padding: 0;
+}
+.addrepo-note {
+  margin-top: 10px !important;
+  font-size: 13px !important;
+  color: var(--text-muted) !important;
+}
+.addrepo-foot {
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.addrepo-foot a {
+  color: var(--accent);
+}
