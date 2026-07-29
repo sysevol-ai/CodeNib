@@ -52,8 +52,19 @@ jobs:
       - name: Validate production release ref
         if: github.ref_type == 'tag'
         run: |
-          test "$(git cat-file -t "$GITHUB_REF")" = "tag"
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          REMOTE_TAG_SHA="$(
+            git ls-remote --refs origin "refs/tags/$GITHUB_REF_NAME" |
+              cut -f1
+          )"
+          REMOTE_COMMIT_SHA="$(
+            git ls-remote origin "refs/tags/$GITHUB_REF_NAME^{}" |
+              cut -f1
+          )"
+          test -n "$REMOTE_TAG_SHA"
+          test -n "$REMOTE_COMMIT_SHA"
+          test "$REMOTE_TAG_SHA" != "$REMOTE_COMMIT_SHA"
+          test "$REMOTE_COMMIT_SHA" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$REMOTE_COMMIT_SHA" origin/main
           python scripts/verify_release_artifacts.py dist --tag "$GITHUB_REF_NAME"
 
       - name: Upload distributions
