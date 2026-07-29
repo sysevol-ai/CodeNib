@@ -839,7 +839,9 @@ pre {
 .onthispage-list a.active {
   background: var(--accent-soft);
   color: var(--accent);
-  font-weight: 600;
+  /* No weight change: bolding re-measures the text, so a long entry rewraps
+     onto a second line as it becomes active and the whole rail jumps while
+     the reader scrolls. The accent background and colour already mark it. */
 }
 .refresh-wiki {
   margin-top: 18px;

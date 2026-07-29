@@ -14,6 +14,14 @@ function basename(p: string): string {
   return p.split("/").pop() || p;
 }
 
+/** A citation's node_name may arrive qualified as `path/to/file.py:Owner.method()`.
+ *  Prose writes the symbol alone, so compare against the part after the path. */
+function symbolPart(nodeName: string): string {
+  const withoutCall = nodeName.replace(/\(\)$/, "");
+  const colon = withoutCall.lastIndexOf(":");
+  return colon >= 0 ? withoutCall.slice(colon + 1) : withoutCall;
+}
+
 /** A match: its index in {@link codeRefs}, and whether the span named a symbol
  *  (has a real line range) or a file (ambiguous — no range shown). */
 export interface CiteMatch {
@@ -33,10 +41,12 @@ export function matchCitation(raw: string, refs: Citation[]): CiteMatch | null {
 
   const rels = refs.map((c) => repoRelative(c.file));
 
-  // exact symbol
+  // exact symbol, whole or after a path qualifier
   for (let i = 0; i < refs.length; i++) {
     const n = refs[i].node_name;
-    if (n && norm(n.replace(/\(\)$/, "")) === t) return { index: i, kind: "symbol" };
+    if (!n) continue;
+    if (norm(n.replace(/\(\)$/, "")) === t) return { index: i, kind: "symbol" };
+    if (norm(symbolPart(n)) === t) return { index: i, kind: "symbol" };
   }
   // exact repo-relative path
   for (let i = 0; i < refs.length; i++) {
