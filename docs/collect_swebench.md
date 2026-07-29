@@ -13,7 +13,8 @@ This guide covers how to use the `collect_swebench.sh` script to sample represen
 The collection pipeline:
 
 1. Loads SWE-bench datasets (Python from SWE-bench Verified, others from SWE-bench Multilingual)
-2. Selects top repositories per language by instance count
+2. Filters repositories by available instance count, then samples small,
+   medium, and large repositories by source-file count
 3. Samples instances per repo with patch-size diversity
 4. Classifies difficulty (low/medium/high) using a Claude agent
 5. Extracts ground-truth code blocks from patches via tree-sitter
@@ -25,7 +26,8 @@ The collection pipeline:
 1. **Install the project:**
 
    ```bash
-   pip install -e .
+   pip install -e ".[datasets]"
+   pip install claude-agent-sdk
    ```
 
 2. **Authenticate for difficulty classification** — the pipeline uses `claude_agent_sdk` to call Claude. Choose one method:
@@ -124,7 +126,9 @@ The pipeline writes the following files to the output directory:
 | `difficulty_cache.json` | Cached difficulty classifications (avoids re-calling the LLM) |
 | `gt_locator_cache.json` | Cached ground-truth extraction results |
 
-The `selected_instances.json` file is the primary output — pass it to `build_swebench_locator_hf_dataset.py` to upload to HuggingFace (see [upload_dataset_to_huggingface.md](upload_dataset_to_huggingface.md)).
+The `selected_instances.json` file is the primary output. It can be passed to
+`scripts/build_swebench_locator_hf_dataset.py` when preparing the locator
+dataset.
 
 ## Caching
 

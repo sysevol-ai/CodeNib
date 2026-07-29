@@ -71,9 +71,8 @@ solvability, and stance compliance, returning one of `valid` / `fix` /
 
 !!! note "Line-number origin"
     Ground-truth code blocks follow the same conventions as the rest of the
-    dataset code — see [Ground-Truth Locator](gt_locator.md) and
-    [`codenib/dataset/CLAUDE.md`](https://github.com/sysevol-ai/CodeNib/blob/main/codenib/dataset/CLAUDE.md) for the
-    0-based (`CodeChunk`) vs. 1-based (`CodeLocation`) boundary.
+    dataset code — see [Ground-Truth Locator](gt_locator.md) for the 0-based
+    (`CodeChunk`) vs. 1-based (`CodeLocation`) boundary.
 
 ## Dataset wrapper
 
@@ -149,12 +148,9 @@ and `stance`.
   `target_symbols` → `gt_symbols`, `target_files` → `gt_files`,
   `query_type`/`difficulty` → `category`), fills `language_group` from the
   config when missing, stamps `source_config`, and computes
-  `gt_code_blocks_count`. There is no fallback for legacy
-  `target_symbol_nodes`: a row carrying only that column normalizes to empty
-  `gt_symbol_nodes` with `gt_code_blocks_count=0`, and still passes validation
-  because the empty-ground-truth check only inspects `gt_files`/`gt_symbols`.
-  Rename that column to `gt_symbol_nodes` upstream (the generation scripts
-  under `scripts/` already do) before normalizing legacy rows.
+  `gt_code_blocks_count`. Source rows must use `gt_symbol_nodes` for structured
+  code blocks; rename a legacy `target_symbol_nodes` column before
+  normalization.
 - `validate_synthesis_records(rows, *, expected_category_counts=None, compare_category_distribution=True)`
   returns a structured report (`row_count`, `by_config`, `by_category`,
   `by_config_category`, `issues`, `error_count`, `warning_count`). It flags
@@ -169,6 +165,7 @@ The generation scripts use the Claude Agent SDK. Install and authenticate it
 before running the multipliers:
 
 ```bash
+pip install -e ".[datasets]"
 pip install claude-agent-sdk
 # then choose one auth path:
 claude login
@@ -207,8 +204,8 @@ set 0 to skip).
 
 !!! note "Consensus voting"
     `--behavioral-consensus-runs N` runs N LLM passes per query; blocks selected
-    by majority (≥ `ceil(N/2)`) become the ground truth. `N=3` yields organic
-    multi-hop GT; `N=1` is faster but suppresses multi-hop.
+    by majority (≥ `ceil(N/2)`) become the ground truth. With `N=1`, the single
+    pass determines the selected blocks.
 
 ### `multiply_queries.py` — generic query multiplication
 
@@ -355,9 +352,6 @@ Flags: `--input-dir` (required), `--repo-id` (default
 `--commit-message` (override the auto-generated message), `--dry-run` (build the
 `Dataset` locally but do not push).
 
-See [Uploading Datasets to HuggingFace](upload_dataset_to_huggingface.md) for
-general upload/auth guidance.
-
 ### `report_codenib_synthesis.py` — report and gate quality
 
 Loads the published dataset, validates it, and prints a text report
@@ -386,5 +380,5 @@ also fails on warnings, and `--no-fail` forces a zero exit.
 
 - [Ground-Truth Locator](gt_locator.md) — how GT code blocks are extracted from patches.
 - [Collecting SWE-bench Instances](collect_swebench.md) — sourcing the base instances.
-- [Uploading Datasets to HuggingFace](upload_dataset_to_huggingface.md) — upload/auth mechanics.
-- [Diagnosing Query Leaks](diagnose_query_leak.md) — analyzing lexical leakage in queries.
+- [Evaluation Artifact Bundles](evaluation_artifacts.md) — freezing generated
+  datasets and reports with content hashes.
