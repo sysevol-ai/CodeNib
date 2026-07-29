@@ -618,11 +618,30 @@ def grounding_report(
         call_name_match = re.match(r"([A-Za-z_][\w.]*)\s*\(", source_name)
         call_name = call_name_match.group(1) if call_name_match else ""
         call_leaf = call_name.rsplit(".", 1)[-1]
+        # `path/to/file.rs:Symbol` is a display form; the corpus holds the path
+        # and the symbol separately, never joined. Accept it only when both
+        # halves are known.
+        qualified = ""
+        if ":" in source_name and not source_name.endswith(":"):
+            head, _, tail = source_name.rpartition(":")
+            if head and tail and head.lower() in corpus and tail.lower() in corpus:
+                qualified = source_name
+        # Attribute access, e.g. `PreparedRequest.url`. Calls already resolve by
+        # leaf name; do the same for attributes, but require the owner too.
+        attribute = ""
+        if not call_name and "." in source_name:
+            owner, _, leaf = source_name.rpartition(".")
+            if owner and leaf and owner.lower() in corpus and leaf.lower() in corpus:
+                attribute = source_name
         if (
             not normalized
             or normalized.lower() in _COMMON_CODE_TERMS
+            # A URI scheme (`mailto:`, `https:`) is not a code identifier.
+            or re.fullmatch(r"[A-Za-z][A-Za-z0-9+.\-]*:", normalized)
             or normalized.lower() in corpus
             or source_name.lower() in corpus
+            or qualified
+            or attribute
             or (call_name and call_name.lower() in corpus)
             or (call_leaf and call_leaf.lower() in corpus)
         ):

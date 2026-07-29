@@ -664,3 +664,53 @@ def test_promotional_words_the_page_wrote_itself_still_flag():
     )
     authored = "`Build()` is a fast and flexible entry point. [E1]"
     assert grounding_report(authored, [src], [])["promotional_phrases"]
+
+
+def _doc(content, file="src/models.py", symbol="PreparedRequest.prepare_url"):
+    from codenib.wiki.evidence import EvidenceItem
+
+    return EvidenceItem(
+        id="E1",
+        file=file,
+        start_line=1,
+        end_line=9,
+        symbol=symbol,
+        kind="method",
+        content=content,
+    )
+
+
+def test_qualified_display_name_resolves_from_both_halves():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc(
+        "struct AnyNodeRef;", file="crates/ast/src/generated.rs", symbol="AnyNodeRef"
+    )
+    md = "The `crates/ast/src/generated.rs:AnyNodeRef` enum wraps every node. [E1]"
+    assert grounding_report(md, [item], [])["unsupported_identifiers"] == []
+
+
+def test_attribute_access_resolves_from_owner_and_leaf():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc(
+        "class PreparedRequest:\n    def prepare_url(self):\n        self.url = None"
+    )
+    md = "`PreparedRequest.url` holds the encoded target after preparation. [E1]"
+    assert grounding_report(md, [item], [])["unsupported_identifiers"] == []
+
+
+def test_uri_scheme_is_not_an_identifier():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc("def prepare_url(self):\n    return None")
+    md = "`prepare_url` rejects a `mailto:` target before encoding the host. [E1]"
+    assert grounding_report(md, [item], [])["unsupported_identifiers"] == []
+
+
+def test_an_invented_symbol_still_flags():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc("def prepare_url(self):\n    return None")
+    md = "`PreparedRequest.teleport_payload()` moves the body offsite. [E1]"
+    assert grounding_report(md, [item], [])["unsupported_identifiers"]
