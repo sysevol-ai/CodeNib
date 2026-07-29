@@ -104,13 +104,13 @@ codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```
 
-The MCP server derives its advertised capabilities from the compiled manifest,
-so an agent can reuse repository work instead of rebuilding context through
-unbounded `grep` and `read` loops. It exposes BM25, semantic, regex, Zoekt,
-dependency, and static-navigation operations when their backing views are
-available; all results retain source locations for follow-up reads and
-citations. See
-[MCP Server](https://github.com/sysevol-ai/CodeNib/blob/main/docs/mcp.md)
+The MCP server advertises its full tool set and uses the compiled manifest to
+decide which calls have a fresh backing view. An agent can therefore reuse
+available repository work instead of rebuilding context through unbounded
+`grep` and `read` loops, while unavailable searches fail explicitly. BM25,
+semantic, regex, Zoekt, dependency, and static-navigation results retain source
+locations for follow-up reads and citations. See
+[MCP Server](https://docs.codenib.ai/mcp/)
 for client configuration and tool contracts.
 
 ## What CodeNib Provides

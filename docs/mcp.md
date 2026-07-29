@@ -75,13 +75,15 @@ Only tools whose backing views are fresh and available can return results.
 |---|---|---|---|
 | `search_semantic` | `vector` | file/symbol (L0/L2) | Natural-language or conceptual queries |
 | `search_bm25` | `bm25` | symbol | Exact names and keyword lookups |
-| `search_regex` | `symbol_graph` | symbol | Structural pattern matching |
+| `search_regex` | `symbol_graph` | file / symbol | Structural pattern matching |
 | `search_zoekt` | `zoekt` | file | Fast substring or regex search over files |
 | `dependency_subgraph` | `symbol_graph` | call graph | Caller impact, callee dependencies, or a one-hop neighborhood |
 | `lsp_definition` | `symbol_graph` | location | Static go-to-definition-shaped lookup |
 | `lsp_references` | `symbol_graph` | locations | Static find-references-shaped lookup |
 | `lsp_route` | `symbol_graph` | locations | Compact route anchors among related symbols |
 | `get_manifest` | manifest | repository | Repository identity, languages, view states, and capabilities |
+
+All source locations returned by MCP use 1-based line numbers.
 
 The `codenib-guide` prompt explains how to choose among available tools.
 Parameter and return schemas live in
@@ -96,11 +98,19 @@ pip install "codenib[full]"
 codenib index /path/to/repository --preset full
 ```
 
-Graph and Zoekt construction also require external backend binaries. Check
-their availability before building:
+Graph and Zoekt construction also require external backend binaries. Check the
+repository's language-specific graph provider before building:
 
 ```bash
 codenib doctor /path/to/repository --require graph
+```
+
+The doctor command does not currently diagnose Zoekt. Verify both Zoekt
+commands independently:
+
+```bash
+command -v zoekt-git-index
+command -v zoekt-webserver
 ```
 
 See [SCIP Indexing](scip_index.md) and

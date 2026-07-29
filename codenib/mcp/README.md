@@ -7,17 +7,17 @@ SPDX-License-Identifier: Apache-2.0
 # CodeNib MCP Server
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes
-CodeNib's search over a **pre-built index** to LLM agents. It serves four search
-tools — vector (semantic), BM25, regex, and Zoekt trigram — plus a manifest tool, a
-usage-guidance prompt, and a status helper. Transport is stdio.
+CodeNib's search and static-navigation views over a **pre-built repository
+manifest** to coding agents. Transport is stdio; protocol logs go to stderr.
 
 ## Installation
 
 ```bash
-make dev
+pip install "codenib[mcp]"
 ```
 
-Zoekt search additionally requires the Go-based Zoekt binaries on `PATH`:
+From a source checkout, `make dev` installs development and test dependencies.
+Zoekt search additionally requires its Go binaries on `PATH`:
 
 ```bash
 make zoekt-tool
@@ -26,55 +26,42 @@ eval "$(make --no-print-directory active-scip-env | sed -n 's/^  export /export 
 
 ## Usage
 
-The server is **query-only**: it loads a `repo_manifest.json` produced by the index
-compiler and serves search over those indexes. Build the manifest first, then start
-the server against it.
+The MCP server is **query-only**. Build or update the repository views first,
+then serve their manifest.
 
-### 1. Build the index (writes the manifest)
+### 1. Build the repository
 
-There is no standalone CLI for this step — drive `IndexCompiler` from Python
-(`codenib.compiler`). It runs the registered index builders and writes
-`<repo>/.codenib_cache/repo_manifest.json`:
+The default `fast` preset builds BM25:
 
-```python
-from codenib.compiler import IndexCompiler, IndexCompilerConfig
-from codenib.compiler.index_builders import (
-    IndexBuilderRegistry,
-    register_default_builders,
-)
-
-registry = IndexBuilderRegistry()
-register_default_builders(registry, languages=["python"])
-
-compiler = IndexCompiler(
-    registry,
-    IndexCompilerConfig(
-        # bm25/vector/symbol_graph are the defaults; add "zoekt" to enable
-        # trigram search (requires the zoekt-git-index binary on PATH).
-        index_types=["bm25", "vector", "symbol_graph", "zoekt"],
-        languages=["python"],
-    ),
-)
-manifest = compiler.compile_repo("/path/to/repo")
-# -> writes /path/to/repo/.codenib_cache/repo_manifest.json
+```bash
+codenib index /path/to/repo
 ```
 
-`search_semantic` needs the `vector` index, `search_bm25` needs `bm25`,
-`search_regex` needs `symbol_graph` (the regex index is derived from it), and
-`search_zoekt` needs `zoekt`. Builds that fail (e.g. Zoekt binary missing) are marked
-`failed` in the manifest and the corresponding tool returns a clear error rather than
-aborting the others.
+Select a richer preset when those tools are needed:
+
+```bash
+pip install "codenib[full]"
+codenib index /path/to/repo --preset full
+```
+
+CodeNib writes the manifest below
+`$CODENIB_HOME/repositories/<repo>-<id>/indexes` (default
+`~/.codenib/repositories/...`) and prints its exact path. `search_semantic`
+needs `vector`, `search_bm25` needs `bm25`, `search_regex` and the LSP-shaped
+tools need `symbol_graph`, and `search_zoekt` needs `zoekt`. A failed optional
+view is recorded without discarding successful independent views.
 
 ### 2. Start the MCP server
 
 ```bash
-codenib-mcp /path/to/repo/.codenib_cache/repo_manifest.json
-# or, equivalently:
-codenib-mcp --manifest /path/to/repo/.codenib_cache/repo_manifest.json
-python -m codenib.mcp /path/to/repo/.codenib_cache/repo_manifest.json
+codenib mcp /path/to/repo
 ```
 
-Optional `--log-level {DEBUG,INFO,WARNING,ERROR}` (default `INFO`); logs go to stderr.
+`codenib mcp` accepts either the repository directory or the exact
+`repo_manifest.json` path printed by `codenib index`. For compatibility, the
+`codenib-mcp <manifest>` and `python -m codenib.mcp <manifest>` entry points
+also remain available. All forms accept
+`--log-level {DEBUG,INFO,WARNING,ERROR}` (default `INFO`).
 
 ## Tools
 
@@ -82,13 +69,16 @@ Optional `--log-level {DEBUG,INFO,WARNING,ERROR}` (default `INFO`); logs go to s
 |------|---------------|--------------------|---------|
 | `search_semantic` | `vector` | file (l0) / symbol (l2) | natural-language / conceptual queries |
 | `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
-| `search_regex` | `symbol_graph` | symbol | structural pattern matching |
+| `search_regex` | `symbol_graph` | file / symbol | structural pattern matching |
 | `search_zoekt` | `zoekt` | file | fast substring/regex across raw repo contents |
 | `dependency_subgraph` | `symbol_graph` | call graph | structural dependency / impact analysis |
 | `lsp_definition` | `symbol_graph` | location | static graph analogue of go-to-definition |
 | `lsp_references` | `symbol_graph` | locations | static graph analogue of find-references |
 | `lsp_route` | `symbol_graph` | locations | compact route anchors for related symbols |
 | `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
+
+All source locations returned by MCP use 1-based line numbers. Internal indexes
+remain 0-based; the MCP adapters perform the conversion once at the boundary.
 
 ### `search_semantic`
 Vector-embedding similarity search.
@@ -99,9 +89,9 @@ Vector-embedding similarity search.
   (functions/methods).
 - `score_threshold` (float, default 0.0): minimum similarity; `0` disables the filter.
 
-Returns a list of node dicts (`node_id`, `file_path`, `node_type`, `content`, `score`,
-`start_line`/`end_line` 1-based). If no vector index is loaded it returns
-`{"error": ...}` so callers can recover gracefully.
+Returns a list of node dicts (`node_name`, `node_id`, `file`, `type`, `content`,
+`score`, `start_line`/`end_line` 1-based). If no vector index is loaded it
+returns `{"error": ...}` so callers can recover gracefully.
 
 ### `search_bm25`
 BM25 keyword retrieval over indexed symbols.
@@ -123,23 +113,39 @@ Grep-like regex over CodeGraph nodes.
 Trigram search over **raw repository contents** (not the CodeGraph), so results are
 file-level (`type="file"`).
 
-- `query` (str): plain substring, regex (`r:foo`), or atoms like `case:yes` /
+- `query` (str): plain substring, regex (`regex:foo`), or atoms like `case:yes` /
   `lang:python`.
 - `top_k` (int, default 20).
 - `file_filter` (str, default `""`): glob/regex appended as `file:<expr>`.
+
+### `dependency_subgraph`
+Call-graph neighborhood or transitive impact analysis.
+
+- `symbol` (str): readable symbol seed; fuzzy resolution is supported.
+- `direction` (str, default `"both"`): `"impact"` for transitive callers,
+  `"dependencies"` for transitive callees, or `"both"` for a neighborhood.
+- `depth` (int, default 2): traversal depth, clamped to at least 1.
+- `max_nodes` (int, default 60): node budget for transitive traversals.
+
+Returns `root`, `direction`, `nodes`, `edges`, `truncated`, and `note`.
+Each node's optional `line` is 1-based.
 
 ### `lsp_definition` / `lsp_references` / `lsp_route`
 Static LSP-shaped navigation over the loaded `symbol_graph`. These tools return
 compact locations only; clients should read source before finalizing.
 
-- `lsp_definition`: provide either `symbol` or `file_path` + 1-based `line`.
-- `lsp_references`: same inputs, with optional `include_declaration`.
-- `lsp_route`: provide one or more `symbols` plus optional `query` to rank
-  endpoint, bridge/factory, provider/value, and type anchors.
+- `lsp_definition`: provide either `symbol`, or `file_path` + 1-based `line`
+  with optional 0-based `character`; `top_k` defaults to 8.
+- `lsp_references`: accepts the same position/symbol inputs;
+  `include_declaration` defaults to `true` and `top_k` to 40.
+- `lsp_route`: provide `symbols`, with optional `query`, `top_k` (default 12),
+  and `include_neighbors` (default `true`) to rank endpoint, bridge/factory,
+  provider/value, and type anchors.
 
 ### `get_manifest`
-Returns the repo manifest as a dict: path, commit, languages, available indexes, and
-derived capabilities.
+Returns the manifest version; a nested `repo` object containing path, commit,
+languages, source fingerprints, and file count; the `indexes` mapping;
+`capabilities`; and compilation timestamps.
 
 ## Prompt & status
 
