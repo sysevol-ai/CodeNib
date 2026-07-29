@@ -214,15 +214,27 @@ starting from zero either.
 
 ### The three gaps
 
-**Gap C — the per-view projection drops the dependency overlay.**
-`hierarchy_for_view` (`hierarchy.py:505`) returns `{root, nodes, open_files}`.
-No `dependencies`. Verified on the live API: the wiki page graph for
-`caddyserver/caddy?p=reverse-proxy` returns a 17-node hierarchy
-(1 root / 2 dirs / 4 files / 10 symbols) and **no container-level edges**. A client
-therefore cannot draw a single edge while anything is collapsed — it only has
-symbol-level `edges` keyed to leaf ids. Fix: route each view edge through
-`route()` and emit the aggregated container-level edges alongside the leaf ones,
-preserving `anchors` so a rolled-up edge still opens the underlying call sites.
+**Gap C — none. The served payload is already sufficient; roll-up belongs on the
+client.** An earlier draft of this memo claimed `hierarchy_for_view`
+(`hierarchy.py:505`) had to emit container-level dependencies because it returns
+only `{root, nodes, open_files, source_root}`. That was wrong, on two counts.
+
+First, the data is there. Every hierarchy `symbol` node carries `node_id`, the
+view id its leaf edge endpoints use, and every node carries `parent` — so a
+client can walk any endpoint to its full ancestor chain. Checked against the live
+API for `caddyserver/caddy?p=reverse-proxy`: 10/10 view nodes map into the
+hierarchy and **8/8 edges resolve both endpoints to complete chains** from symbol
+through file and directory to root.
+
+Second, and decisive: which ancestor an edge rolls up *to* depends on the open
+set, which is client state. There is no fixed set of container edges to
+precompute — only the enumeration of every possible collapse state, which is
+exponential. The correct shape is: server ships leaf edges plus the containment
+tree (it already does), and the renderer maps each endpoint to its nearest
+*visible* ancestor and aggregates. `route()` stays useful for server-side
+questions, but it is not on this path.
+
+So P5 is frontend-only.
 
 **Gap D — the frontend has no per-node expand/collapse.** `hierarchyMode` is a
 global binary `"files" | "symbols"` (`CodeGraph.tsx:243`). There is no per-container
@@ -265,23 +277,22 @@ One renderer, seeded differently per surface:
 
 ### Sequencing
 
-1. **P5a — backend**: emit routed container-level dependencies from
-   `hierarchy_for_view`; unit-test `route()` roll-up against a known subgraph.
-2. **P5b — renderer**: per-node open/collapse over the served tree, `doi`-ordered
-   auto-open budget, rolled-up edge rendering.
-3. **P5c — adopt on wiki**: point `variant="wiki"` at the hierarchical renderer,
+1. **P5a — renderer**: per-node open/collapse over the served tree, `doi`-ordered
+   auto-open budget, and nearest-visible-ancestor edge roll-up (see Gap C: this is
+   client-side; no backend change is needed).
+2. **P5b — adopt on wiki**: point `variant="wiki"` at the hierarchical renderer,
    seeded from `open_files`; retire `SystemMap` or keep it only as a
    no-graph-available fallback.
 
 ### Honest caveats
 
-- **Fixing Gap E alone would already restore the anchored edges** on wiki pages,
-  without any of P5. If drill-down slips, do that on its own — it is a one-condition
-  change and the data is already on the wire.
-- `route()` has no test coverage against a UI consumer; treat P5a's roll-up as
-  unproven until a subgraph with a known LCA is asserted end to end.
+- **Gap E was fixed on its own** (`SystemMap` now keeps same-component edges), so
+  wiki pages already show their anchored relationships without any of P5. P5 is
+  about making the map navigable, not about recovering lost edges.
 - Roll-up needs a weight/level cap or a dense repo's overview will draw an edge
   between every pair of top-level directories — visually the same mesh, one level up.
+- A collapsed container's rolled-up edge must keep the union of its descendants'
+  `anchors`, or expanding and collapsing silently changes what an edge click opens.
 
 ## Verify the bet end-to-end
 
