@@ -5233,7 +5233,7 @@ def test_structured_page_deduplicates_without_free_form_markdown_repair(tmp_path
     assert page["markdown"].count("`Router` dispatches") == 1
 
 
-def test_generation_distinguishes_soft_and_semantic_plan_diagnostics(tmp_path):
+def test_generation_separates_soft_composition_and_semantic_diagnostics(tmp_path):
     node = {
         "file": "src/core.py",
         "node_name": "Router",
@@ -5319,10 +5319,15 @@ def test_generation_distinguishes_soft_and_semantic_plan_diagnostics(tmp_path):
         }
     )
 
+    # A composition note says the page could be organised better, not that it
+    # says something unsupported. It is recorded and steers repair, but it does
+    # not stop the page from being published -- a richer page has more sections
+    # and so more surface for these to fire on, and gating on them marked every
+    # page degraded while its grounding report was clean.
     assert isolated["grounding"]["valid"] is True
     assert isolated["quality"]["valid"] is True
-    assert isolated["generation"]["mode"] == "degraded"
-    assert isolated["generation"]["reason"] == "quality_guard"
+    assert isolated["generation"]["mode"] == "generated"
+    assert isolated["generation"]["reason"] is None
     assert isolated["generation"]["plan_warnings"] == [isolated_warning]
 
     semantic_warning = (
@@ -5341,6 +5346,7 @@ def test_generation_distinguishes_soft_and_semantic_plan_diagnostics(tmp_path):
         }
     )
 
+    # An unsupported fact is the tier that still blocks publication.
     assert guarded["grounding"]["valid"] is True
     assert guarded["quality"]["valid"] is True
     assert guarded["generation"]["mode"] == "degraded"

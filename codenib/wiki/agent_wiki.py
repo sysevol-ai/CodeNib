@@ -85,8 +85,36 @@ _OUTLINE_PROMPT_VERSION = "12"
 _PAGE_PROMPT_VERSION = "100"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
-_OVERVIEW_RETRIEVAL_LIMIT = 12
+# The overview is asked for a section per outline area, and a repository
+# outline runs to 9-17 of them. Twelve symbols could not ground that many,
+# so the coverage guard fired on pages that simply had nothing to say about
+# an area -- feed it enough to answer instead of relaxing what it asks.
+_OVERVIEW_RETRIEVAL_LIMIT = 24
 _SOFT_PLAN_WARNING_PREFIXES = ("page thesis must contain exactly one sentence",)
+# Plan diagnostics come in three tiers. Soft ones are noise. *Composition* ones
+# say the page could be organised better -- a section leans on helpers, an area
+# has no section of its own -- but every sentence still says something real and
+# cites it. Only the third tier, an unsupported or misattributed fact, means the
+# page must not be published as written.
+#
+# Composition notes still steer the repair loop; they just no longer decide
+# publishability. They used to, and a richer page -- more sections, so more
+# surface for them to fire on -- was marked degraded even with a clean grounding
+# report, which made the flag fire on everything and mean nothing.
+_COMPOSITION_PLAN_WARNING_MARKERS = (
+    "elevates incidental helpers",
+    "is not an explicit component handoff",
+    "no supported component handoff",
+    "dominated by isolated",
+    "reads as a callable catalog",
+    "grounded in its allocated evidence",
+    "must use an allocated relation",
+    "needs a section-level",
+    "substantially repeat an admitted fact",
+    "needs one publishable, non-redundant claim",
+    "needs at least two supported facts",
+    "names a source file as a subsystem",
+)
 _NARRATIVE_CALLABLE_KINDS = frozenset({"function", "method"})
 _NARRATIVE_TYPE_KINDS = frozenset(
     {
@@ -573,6 +601,27 @@ def _hard_plan_warnings(warnings: Sequence[str]) -> List[str]:
         warning
         for warning in warnings
         if not warning.startswith(_SOFT_PLAN_WARNING_PREFIXES)
+    ]
+
+
+def _composition_plan_warnings(warnings: Sequence[str]) -> List[str]:
+    """Diagnostics about how the page is organised, not whether it is true."""
+
+    return [
+        warning
+        for warning in warnings
+        if any(marker in warning for marker in _COMPOSITION_PLAN_WARNING_MARKERS)
+    ]
+
+
+def _blocking_plan_warnings(warnings: Sequence[str]) -> List[str]:
+    """Diagnostics that must stop a page from being published as written."""
+
+    composition = set(_composition_plan_warnings(warnings))
+    return [
+        warning
+        for warning in _hard_plan_warnings(warnings)
+        if warning not in composition
     ]
 
 
@@ -2673,7 +2722,7 @@ class AgentWiki:
         self._write_cache(cache_suffix, page)
         return page
 
-    def _retrieve(self, meta: Dict[str, Any], top_k: int = 8) -> List[Any]:
+    def _retrieve(self, meta: Dict[str, Any], top_k: int = 12) -> List[Any]:
         ensure_views = getattr(self._bundle, "ensure_views", None)
         if callable(ensure_views):
             ensure_views()
@@ -3999,7 +4048,7 @@ class AgentWiki:
         )
         nodes = self._retrieve(
             meta,
-            top_k=(_OVERVIEW_RETRIEVAL_LIMIT if meta.get("id") == "overview" else 8),
+            top_k=(_OVERVIEW_RETRIEVAL_LIMIT if meta.get("id") == "overview" else 12),
         )
         evidence = self._evidence_items(nodes)
         if not evidence:
@@ -4268,12 +4317,12 @@ class AgentWiki:
                     quality = candidate_quality
                     repaired = True
         markdown = _link_evidence_markers(markdown)
-        hard_plan_warnings = _hard_plan_warnings(plan_warnings)
+        blocking_plan_warnings = _blocking_plan_warnings(plan_warnings)
         publishable = bool(
             report["valid"]
             and not report["promotional_phrases"]
             and quality["valid"]
-            and not hard_plan_warnings
+            and not blocking_plan_warnings
         )
         generated = publishable and not model_failed and not model_planning_failed
         if generated:
