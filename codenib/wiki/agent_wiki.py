@@ -81,8 +81,10 @@ _EXT_LANG = {
     "kts": "kotlin",
 }
 _MAX_CONTEXT_CHARS = 14000
+# A quoted body should carry an idea, not reproduce a file.
+_MAX_EXCERPT_LINES = 14
 _OUTLINE_PROMPT_VERSION = "12"
-_PAGE_PROMPT_VERSION = "101"
+_PAGE_PROMPT_VERSION = "102"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 # The overview is asked for a section per outline area, and a repository
@@ -1377,7 +1379,35 @@ def _fact_plan_markdown(
             parts.append(f"- {link}" + (f" — {why}" if why else ""))
         see_also_block = "\n".join(parts)
 
-    rendered_sections: List[tuple[str, str]] = []
+    evidence_by_id = {item.id: item for item in evidence}
+
+    def excerpt_block(section: dict[str, Any]) -> str:
+        """Render a cited body verbatim from the evidence we hold."""
+
+        spec = section.get("excerpt") or {}
+        item = evidence_by_id.get(str(spec.get("evidence") or ""))
+        if item is None or not (item.content or "").strip():
+            return ""
+        lines = [
+            line
+            for line in item.content.splitlines()
+            if line.strip() and not line.strip().startswith("…")
+        ][:_MAX_EXCERPT_LINES]
+        if len(lines) < 2:
+            return ""
+        language = _lang(item.file)
+        span = ""
+        if item.start_line is not None:
+            span = f":{item.start_line}"
+            if item.end_line is not None and item.end_line != item.start_line:
+                span += f"-{item.end_line}"
+        why = re.sub(r"\s+", " ", str(spec.get("why") or "")).strip()
+        caption = f"`{item.file}{span}`" + (f" — {why.rstrip('.')}." if why else "")
+        return "\n".join(
+            [f"```{language}", *lines, "```", "", f"{caption} [{item.id}]"]
+        )
+
+    rendered_sections: List[tuple[str, List[str]]] = []
     for section in plan.get("sections") or []:
         sentences = []
         section_ids: list[str] = []
@@ -1389,11 +1419,30 @@ def _fact_plan_markdown(
             sentences.append(rendered_claim)
             section_ids.extend(item for item in ids if item not in section_ids)
         title = re.sub(r"\s+", " ", str(section.get("title") or "")).strip()
-        if title and sentences:
-            paragraph = " ".join(sentences)
-            if section_ids:
-                paragraph += " " + " ".join(f"[{item}]" for item in section_ids)
-            rendered_sections.append((title, paragraph))
+        if not title or not sentences:
+            continue
+        parts: List[str] = []
+        lead = section.get("lead") or {}
+        lead_sentences = [
+            _format_supported_literals(str(item).strip()).rstrip(".") + "."
+            for item in lead.get("statements") or []
+            if str(item or "").strip()
+        ]
+        lead_ids = [str(item) for item in lead.get("evidence") or []]
+        if lead_sentences and lead_ids:
+            parts.append(
+                " ".join(lead_sentences)
+                + " "
+                + " ".join(f"[{item}]" for item in lead_ids)
+            )
+        paragraph = " ".join(sentences)
+        if section_ids:
+            paragraph += " " + " ".join(f"[{item}]" for item in section_ids)
+        parts.append(paragraph)
+        block = excerpt_block(section)
+        if block:
+            parts.append(block)
+        rendered_sections.append((title, parts))
 
     if not rendered_sections:
         if intro is None:
@@ -1408,8 +1457,9 @@ def _fact_plan_markdown(
         blocks.extend(("## At a glance", map_block))
     if flow_block:
         blocks.extend((f"## {flow.get('title') or 'How it fits together'}", flow_block))
-    for title, paragraph in rendered_sections:
-        blocks.extend((f"## {title}", paragraph))
+    for title, parts in rendered_sections:
+        blocks.append(f"## {title}")
+        blocks.extend(parts)
     if see_also_block:
         blocks.extend(("## Related pages", see_also_block))
     return "\n\n".join(blocks)
@@ -1581,7 +1631,11 @@ Return ONLY JSON with this shape:
 "flow":{{"title":"What the diagram shows","steps":[{{"from":"`Class.method()`",
 "to":"`Other.call()`","label":"what moves","evidence":["R1"]}}]}},
 "see_also":[{{"page":"page-id-from-the-list","why":"what that page covers"}}],
-"sections":[{{"title":"Section title","claims":[{{"role":"flow",
+"sections":[{{"title":"Section title",
+"lead":{{"statements":["what problem this part solves",
+"how it is arranged"],"evidence":["E1"]}},
+"excerpt":{{"evidence":"E2","why":"what to notice in these lines"}},
+"claims":[{{"role":"flow",
 "statement":"one concrete claim","evidence":["E1","E2","R1"]}}]}}]}}
 
 Use 3-6 sections and 2-4 claims per section. Every thesis, purpose, and claim
@@ -1604,6 +1658,19 @@ Write `map` as 3-6 rows pairing a capability a reader would look for with the
 concrete code entity that implements it, so the page can be scanned before it
 is read. Each row cites the evidence for that pairing. Omit `map` when the
 evidence does not support at least three distinct pairings.
+
+Open each section with `lead`: one or two sentences at the level of mechanism
+-- what problem this part of the system solves and how it is arranged -- before
+any symbol-by-symbol detail. A lead may reason across its sentences and does
+not have to name two endpoints; it must still cite the evidence it rests on.
+Write it for someone meeting this codebase for the first time. Do not restate
+the section title, and do not simply name the callables the claims will cover.
+
+Give a section an `excerpt` when one cited body is worth reading directly,
+naming the E# whose source shows it and one sentence on what to notice. Choose
+the passage that carries the idea, not the longest one. At most two sections on
+a page should carry an excerpt; a page of code excerpts is no better than
+reading the file.
 
 Write `flow` when the evidence supports an ordered path a reader can follow --
 a request being handled, a value being transformed, a lifecycle advancing. Use

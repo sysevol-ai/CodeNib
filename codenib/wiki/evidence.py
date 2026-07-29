@@ -505,8 +505,42 @@ def parse_fact_plan(
                         "evidence": evidence,
                     }
                 )
+        # Mechanism-level framing for the section. It may reason across two
+        # sentences and need not name two endpoints, but it still has to cite.
+        lead: dict[str, Any] = {}
+        raw_lead = section.get("lead")
+        if isinstance(raw_lead, dict):
+            statements = [
+                str(item).strip()
+                for item in raw_lead.get("statements") or []
+                if str(item or "").strip()
+            ]
+            lead_evidence = _supported_evidence_ids(
+                raw_lead.get("evidence"),
+                allowed,
+                label="section lead",
+                errors=errors,
+            )
+            if statements and lead_evidence:
+                lead = {"statements": statements[:2], "evidence": lead_evidence}
+
+        # The excerpt names which evidence to show; the source is rendered from
+        # that item rather than reproduced by the model, so it stays verbatim.
+        excerpt: dict[str, Any] = {}
+        raw_excerpt = section.get("excerpt")
+        if isinstance(raw_excerpt, dict):
+            ref = str(raw_excerpt.get("evidence") or "").strip()
+            why = str(raw_excerpt.get("why") or "").strip()
+            if ref in allowed:
+                excerpt = {"evidence": ref, "why": why}
+
         if title and claims:
-            sections.append({"title": title, "claims": claims})
+            entry: dict[str, Any] = {"title": title, "claims": claims}
+            if lead:
+                entry["lead"] = lead
+            if excerpt:
+                entry["excerpt"] = excerpt
+            sections.append(entry)
     if not sections:
         errors.append("plan has no supported sections")
 
