@@ -33,8 +33,10 @@ from .evidence import promotional_phrases
 logger = get_logger(__name__)
 
 _README_NAMES = ("README.md", "README.rst", "README.txt", "README", "readme.md")
-_MAX_OUTLINE_PAGES = 10
-_MAX_CHILDREN = 3
+# Ceilings, not targets. The requested breadth is derived per repository in
+# ``_outline_breadth``; these only stop a runaway tree.
+_MAX_OUTLINE_PAGES = 18
+_MAX_CHILDREN = 5
 _MAX_OUTLINE_PLAN_REPAIRS = 3
 _MAX_OUTLINE_STYLE_REPAIRS = 2
 _SOURCE_SUFFIXES = {
@@ -246,6 +248,43 @@ def _repository_structure(repo_dir: str, limit: int = 16) -> str:
     )
 
 
+def _outline_breadth(core_files: List[str], symbol_count: int) -> tuple[str, str]:
+    """Ask for a table of contents proportional to the repository.
+
+    A fixed "5-8 top-level pages" produced the same size wiki for a 16-file
+    library and a 12,000-file firmware tree, which reads as a template rather
+    than as this repository's documentation. Scale the request by how many
+    distinct areas the salient files actually span, with the indexed symbol
+    surface breaking ties for a repo that is broad but shallowly nested.
+    """
+
+    def area_of(file: str) -> str:
+        # Two segments, matching how the structure summary groups the tree:
+        # `modules/caddyhttp` and `modules/caddytls` are distinct subsystems,
+        # and collapsing them to `modules` hides most of a plugin-shaped repo.
+        parts = Path(file).parts
+        if len(parts) > 2:
+            return "/".join(parts[:2])
+        return parts[0] if len(parts) > 1 else "root"
+
+    areas = {area_of(file) for file in core_files if not _is_supporting_file(file)}
+    breadth = len(areas)
+    if symbol_count >= 4000:
+        breadth += 3
+    elif symbol_count >= 1200:
+        breadth += 2
+    elif symbol_count >= 400:
+        breadth += 1
+
+    if breadth <= 4:
+        return "5-7", "1-3"
+    if breadth <= 7:
+        return "7-10", "2-4"
+    if breadth <= 11:
+        return "10-13", "2-4"
+    return "12-16", "3-5"
+
+
 def _overview_file_score(file: str) -> int:
     """Rank files that explain a repository's public execution path."""
 
@@ -381,9 +420,12 @@ Central dependency communities:
 Available repository views:
 {views}
 
-Return ONLY JSON, no prose, of exactly this shape. Aim for 5-8 top-level pages \
-that together cover the WHOLE system, and give the major subsystems 1-3 children \
-so the tree is genuinely TWO LEVELS deep — not a flat list. Start with "Overview".
+Return ONLY JSON, no prose, of exactly this shape. Aim for {top_level_pages} \
+top-level pages that together cover the WHOLE system, and give the major \
+subsystems {children_per_page} children so the tree is genuinely TWO LEVELS \
+deep — not a flat list. Cover what this repository actually contains: a large \
+codebase earns more pages than a small one, and a page that would only restate \
+its neighbour should not exist. Start with "Overview".
 {{"pages":[{{"id":"kebab-case-id","title":"Concept Title","summary":"1-2 \
 sentences on what this page explains","keywords":["specific","symbol or \
 feature","search","terms"],"files":["likely/relevant/path.ext"],"children":[\
@@ -509,6 +551,7 @@ def generate_outline(
     files = list(dict.fromkeys([*core_files, *documented_files, *supporting_files]))
     languages = ", ".join(getattr(bundle.manifest, "languages", []) or [])
 
+    breadth_pages, breadth_children = _outline_breadth(core_files, len(symbols))
     prompt = _OUTLINE_PROMPT.format(
         repo=getattr(bundle.entry, "repo", "this repository"),
         languages=languages or "unknown",
@@ -522,6 +565,8 @@ def generate_outline(
             )
             or "(none)"
         ),
+        top_level_pages=breadth_pages,
+        children_per_page=breadth_children,
         structure=_repository_structure(repo_dir),
         core_symbols=_format_symbols(_top_symbols(core_symbols, limit=60)) or "(none)",
         supporting_symbols=_format_symbols(_top_symbols(supporting_symbols, limit=10))
