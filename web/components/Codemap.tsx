@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import GraphView from "@/components/GraphView";
+import HierarchyMap from "@/components/HierarchyMap";
 import {
   fetchCodemap,
   type CodemapResponse,
@@ -53,6 +54,7 @@ export default function Codemap({
   const [query, setQuery] = useState(initialSymbol ?? ""); // last submitted focus symbol
   const [direction, setDirection] = useState<Direction>("both");
   const [depth, setDepth] = useState<Depth>(1);
+  const [view, setView] = useState<"graph" | "structure">("structure");
   const [data, setData] = useState<CodemapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -210,6 +212,28 @@ export default function Codemap({
         <button type="submit">Map</button>
       </form>
 
+      {/* The graph answers "what connects to what"; the structure view answers
+          "what is in here", which is where a reader who does not yet know the
+          repo has to start. */}
+      <div className="codemap-views" role="group" aria-label="Map view">
+        <button
+          type="button"
+          className={view === "graph" ? "is-active" : ""}
+          aria-pressed={view === "graph"}
+          onClick={() => setView("graph")}
+        >
+          Graph
+        </button>
+        <button
+          type="button"
+          className={view === "structure" ? "is-active" : ""}
+          aria-pressed={view === "structure"}
+          onClick={() => setView("structure")}
+        >
+          Structure
+        </button>
+      </div>
+
       {coverage?.partial && (
         <div className="codemap-coverage" role="status">
           <span className="codemap-coverage-title">Partial language coverage</span>
@@ -238,7 +262,11 @@ export default function Codemap({
             </p>
           )}
           {data.note && <p className="muted small">{data.note}</p>}
-          <GraphView repoId={repoId} data={data} variant="explore" onFocus={focus} />
+          {view === "structure" && (data.hierarchy?.nodes?.length ?? 0) > 0 ? (
+            <HierarchyMap data={data} onNodeClick={(node) => focus(node.label)} />
+          ) : (
+            <GraphView repoId={repoId} data={data} variant="explore" onFocus={focus} />
+          )}
           <div className="codemap-nodes">
             {data.nodes.map((n) => (
               <button
