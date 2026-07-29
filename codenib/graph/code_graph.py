@@ -942,9 +942,18 @@ class CodeGraph:
                 print(f"File not found: {file_path}")
                 return None
         elif is_symbol_node(node_type):
-            # Get the start and end lines
+            # Graph source ranges are 0-based and inclusive.
             start_line = node["start_line"]
             end_line = node["end_line"]
+            if (
+                not isinstance(start_line, int)
+                or isinstance(start_line, bool)
+                or not isinstance(end_line, int)
+                or isinstance(end_line, bool)
+                or start_line < 0
+                or end_line < start_line
+            ):
+                return None
 
             # Get the file path
             file_path = node["file"] if "file" in node.attributes() else None
@@ -956,7 +965,7 @@ class CodeGraph:
                 try:
                     with open(file_path, "r") as f:
                         lines = f.readlines()
-                    return "".join(lines[start_line - 1 : end_line])
+                    return "".join(lines[start_line : end_line + 1])
                 except FileNotFoundError:
                     print(f"File not found: {file_path}")
                     return None
