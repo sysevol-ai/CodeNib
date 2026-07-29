@@ -5550,3 +5550,58 @@ def test_flow_step_naming_an_unsupported_symbol_is_dropped():
     rendered = _renderable_plan(plan, evidence, [])
     # Only one step resolves, and one arrow is not a flow.
     assert "flow" not in rendered
+
+
+def test_flow_keeps_only_its_connected_path():
+    """Disconnected pairs are a relation list drawn with arrows, not a path."""
+
+    from codenib.wiki.agent_wiki import _renderable_plan
+    from codenib.wiki.evidence import EvidenceItem
+
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="a.py",
+            start_line=1,
+            end_line=9,
+            symbol="Session.send",
+            kind="method",
+            content=(
+                "def send(self):\n"
+                "    prepare()\n"
+                "    dispatch()\n"
+                "    unrelated_one()\n"
+                "    unrelated_two()"
+            ),
+        )
+    ]
+    plan = {
+        "thesis": {"statement": "`Session.send()` sends.", "evidence": ["E1"]},
+        "flow": {
+            "title": "Path",
+            "steps": [
+                {"from": "`send()`", "to": "`prepare()`", "evidence": ["E1"]},
+                {"from": "`prepare()`", "to": "`dispatch()`", "evidence": ["E1"]},
+                {
+                    "from": "`unrelated_one()`",
+                    "to": "`unrelated_two()`",
+                    "evidence": ["E1"],
+                },
+            ],
+        },
+        "sections": [
+            {
+                "title": "S",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "`send()` calls `prepare()`.",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+    steps = _renderable_plan(plan, evidence, [])["flow"]["steps"]
+    assert len(steps) == 2
+    assert all("unrelated" not in str(s) for s in steps)

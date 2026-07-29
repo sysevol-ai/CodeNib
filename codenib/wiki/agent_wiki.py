@@ -286,6 +286,16 @@ def _prune_uncited_blocks(markdown: str) -> str:
         if (
             not stripped
             or stripped.startswith("#")
+            # A fenced block is a diagram or a code excerpt; it states its
+            # sources in the caption that follows, not inside the fence.
+            or stripped.startswith("```")
+            # A link list points at other pages of this wiki, which are named
+            # rather than cited.
+            or all(
+                line.lstrip().startswith(("-", "*"))
+                for line in stripped.splitlines()
+                if line.strip()
+            )
             or re.search(r"\[((?:E|R)\d+)\]", stripped)
             or len(re.sub(r"[`*_[\]()#>-]", "", stripped).strip()) < 40
         ):
@@ -1121,6 +1131,34 @@ def _renderable_plan(
             if endpoint_is_supported(str(step.get("from") or ""))
             and endpoint_is_supported(str(step.get("to") or ""))
         ]
+        # A lifecycle has to connect. Disconnected pairs are a relation list
+        # drawn with arrows, which reads as noise rather than a path, so keep
+        # only the largest connected component and drop the diagram if what
+        # survives is no longer a path.
+        if steps:
+            parent: dict[str, str] = {}
+
+            def find(node: str) -> str:
+                parent.setdefault(node, node)
+                while parent[node] != node:
+                    parent[node] = parent[parent[node]]
+                    node = parent[node]
+                return node
+
+            def union(a: str, b: str) -> None:
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[ra] = rb
+
+            def key(endpoint: str) -> str:
+                return endpoint.strip().strip("`").strip().casefold()
+
+            for step in steps:
+                union(key(str(step.get("from"))), key(str(step.get("to"))))
+            groups: dict[str, List[dict[str, Any]]] = {}
+            for step in steps:
+                groups.setdefault(find(key(str(step.get("from")))), []).append(step)
+            steps = max(groups.values(), key=len)
         if len(steps) >= 2:
             rendered["flow"] = {**flow, "steps": steps}
         else:

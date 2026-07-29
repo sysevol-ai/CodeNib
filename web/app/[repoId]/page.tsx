@@ -33,7 +33,14 @@ interface Heading {
 // The wiki page now leads with an interactive subsystem graph, so the narrator's
 // generated mermaid diagrams (and any heading left empty once removed) are
 // redundant — strip them before rendering.
-function stripGeneratedDiagrams(md: string): string {
+/** Drop diagrams from index-derived pages.
+ *
+ *  The WikiBuilder path emits a mechanical fan-out of every module it found,
+ *  which Mermaid's auto-layout renders as noise. A planned page is different:
+ *  its diagram is an ordered path of a few steps whose every endpoint had to
+ *  resolve against that page's own evidence, so it is kept. */
+function stripGeneratedDiagrams(md: string, indexDerived: boolean): string {
+  if (!indexDerived) return md;
   return md
     .replace(/\n#{1,6}[^\n]*\n+```mermaid[\s\S]*?```/g, "") // a heading + its diagram
     .replace(/```mermaid[\s\S]*?```/g, "") // any stray diagram
@@ -576,7 +583,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                     setSourceCitation(page.citations[index] ?? null)
                   }
                 >
-                  {stripGeneratedDiagrams(page.markdown)}
+                  {stripGeneratedDiagrams(page.markdown, generationMode === "offline")}
                 </Markdown>
               ) : pageError ? (
                 <p className="muted">Couldn't load this page. It may not exist — pick a section from the sidebar.</p>
