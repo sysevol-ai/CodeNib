@@ -182,6 +182,106 @@ these. SCIP symbol roles can recover some; bigger backend change — defer.
 - **P2** — Cytoscape UX: compound nodes, expand-on-click, filter, **edge click → exact source**.
 - **P3** — Wiki-as-graph-views reframe.
 - **P4 (stretch)** — Gap B: fine-grained edge types from SCIP roles.
+- **P5** — Hierarchical drill-down: overview → module → file → symbol (below).
+
+## P5 — hierarchical drill-down (overview → module → file → symbol)
+
+**The ask.** The graph should open as an abstraction the reader can hold in their
+head, then expand *down* to concrete symbols — not dump a flat mesh that reads as
+noise. Today the wiki's map is a flat card list and the explore graph is a
+one-shot files-or-symbols toggle; neither lets you start coarse and drill.
+
+### The good news: the backend already models this
+
+Do **not** rebuild the data layer. `codenib/graph/hierarchy.py` already ships:
+
+- A 4-level containment tree — `root → directory → file → symbol` (depths 0–4),
+  each `ContainmentNode` carrying `child_count`, `symbol_count`, `importance`,
+  `external`, and — decisively — **`doi`** (degree of interest, `_node_doi`,
+  `hierarchy.py:497`) and **`open_by_default`**. Those two fields are precisely a
+  progressive-disclosure seed, computed and served, and currently unread.
+- A dependency overlay: `DependencyEdge` (`hierarchy.py:56`) with `kind`, `weight`
+  and **`anchors`** — the per-call-site locations the P1/P2 differentiator rests on.
+- **`HierarchicalCodeGraph.route(source_hid, target_hid)`** (`hierarchy.py:95`),
+  which walks a dependency edge through the containment tree and returns
+  `(route, lowest_common_ancestor)`. **This is the edge roll-up primitive**: when a
+  subtree is collapsed, an edge into any descendant is drawn at the ancestor the
+  route passes through. It exists and is untested against a UI.
+
+`CodeGraph.tsx` already projects the served hierarchy into Cytoscape compound
+nodes (`backendHierarchyProjection`, `CodeGraph.tsx:243+`), so the renderer is not
+starting from zero either.
+
+### The three gaps
+
+**Gap C — the per-view projection drops the dependency overlay.**
+`hierarchy_for_view` (`hierarchy.py:505`) returns `{root, nodes, open_files}`.
+No `dependencies`. Verified on the live API: the wiki page graph for
+`caddyserver/caddy?p=reverse-proxy` returns a 17-node hierarchy
+(1 root / 2 dirs / 4 files / 10 symbols) and **no container-level edges**. A client
+therefore cannot draw a single edge while anything is collapsed — it only has
+symbol-level `edges` keyed to leaf ids. Fix: route each view edge through
+`route()` and emit the aggregated container-level edges alongside the leaf ones,
+preserving `anchors` so a rolled-up edge still opens the underlying call sites.
+
+**Gap D — the frontend has no per-node expand/collapse.** `hierarchyMode` is a
+global binary `"files" | "symbols"` (`CodeGraph.tsx:243`). There is no per-container
+open/closed state, so `doi` and `open_by_default` do nothing. Fix: hold an open-set
+seeded from `open_by_default`, expand/collapse on container click, and let `doi`
+order which siblings auto-open when the open-set would otherwise overflow a budget.
+
+**Gap E — wiki pages bypass the hierarchy entirely.** `GraphView.tsx:280` renders
+`SystemMap` for `variant="wiki"`. `SystemMap` re-derives its own flat directory
+grouping and then keeps only *inter*-component edges:
+
+```js
+if (!sourceGroup || !targetGroup || sourceGroup === targetGroup) continue;  // SystemMap.tsx:235
+```
+
+A wiki page is topical, and a topic usually lives inside one module — so its
+subgraph is almost always intra-component and every edge is dropped. Observed on
+the live demo: `caddy?p=reverse-proxy` serves 10 nodes / **8 edges** from the API
+and the panel renders "1 cited component · **0 relationships**" as a flat symbol
+list. The anchored edges — the differentiator — are discarded at the last hop.
+
+### Shape of the interaction
+
+One renderer, seeded differently per surface:
+
+| Level | Opens as | Expands to |
+|---|---|---|
+| Repo overview | top-level directories, sized by `symbol_count` | directories |
+| Module | files in that directory | files |
+| File | symbols defined in it | symbols |
+| Symbol | the definition, click → source (existing `SourcePeek`) | — |
+
+- A collapsed container shows its rolled-up edges (Gap C), labelled with the
+  aggregate `weight`; expanding it replaces them with the finer edges beneath.
+- A wiki page seeds the open-set from its cited symbols' ancestors (`open_files` is
+  already served for exactly this) rather than from the repo root — so the page
+  opens *at* its subject and can be zoomed out for context.
+- Edge click keeps its current contract: open the exact call site. A rolled-up edge
+  with several anchors reuses the existing call-site pager.
+
+### Sequencing
+
+1. **P5a — backend**: emit routed container-level dependencies from
+   `hierarchy_for_view`; unit-test `route()` roll-up against a known subgraph.
+2. **P5b — renderer**: per-node open/collapse over the served tree, `doi`-ordered
+   auto-open budget, rolled-up edge rendering.
+3. **P5c — adopt on wiki**: point `variant="wiki"` at the hierarchical renderer,
+   seeded from `open_files`; retire `SystemMap` or keep it only as a
+   no-graph-available fallback.
+
+### Honest caveats
+
+- **Fixing Gap E alone would already restore the anchored edges** on wiki pages,
+  without any of P5. If drill-down slips, do that on its own — it is a one-condition
+  change and the data is already on the wire.
+- `route()` has no test coverage against a UI consumer; treat P5a's roll-up as
+  unproven until a subgraph with a known LCA is asserted end to end.
+- Roll-up needs a weight/level cap or a dense repo's overview will draw an edge
+  between every pair of top-level directories — visually the same mesh, one level up.
 
 ## Verify the bet end-to-end
 
