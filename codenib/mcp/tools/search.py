@@ -10,13 +10,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
+from ...agent.boundary import to_agent_repr
 from ...types import NodeInfo
 from ..context import ServerContext
 
 
 def _node_to_dict(node: NodeInfo) -> Dict[str, Any]:
-    """Serialize a NodeInfo to a JSON-friendly dict, dropping None fields."""
-    return node.model_dump(exclude_none=True)
+    """Serialize a NodeInfo at the 1-based agent boundary."""
+    return to_agent_repr(node)
 
 
 # ------------------------------------------------------------------
@@ -64,7 +65,7 @@ async def search_semantic(
 
     result_dicts = []
     for node in results:
-        node_dict = node.model_dump()
+        node_dict = _node_to_dict(node)
         if hasattr(node_dict.get("score"), "item"):
             node_dict["score"] = float(node_dict["score"].item())
         elif isinstance(node_dict.get("score"), (int, float)):
@@ -188,7 +189,7 @@ def search_zoekt_impl(
 
     Args:
         ctx: ServerContext with an active ``zoekt`` searcher.
-        query: Zoekt query string.  Plain substrings, regex (``r:foo``),
+        query: Zoekt query string. Plain substrings, regex (``regex:foo``),
             and atoms like ``case:yes`` / ``lang:python`` are all valid.
         top_k: Maximum number of file matches to return.
         file_filter: Optional glob/regex appended as ``file:<expr>``.

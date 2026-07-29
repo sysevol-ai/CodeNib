@@ -22,7 +22,7 @@ def _graph() -> CodeGraph:
     gg.vs["unified_name"] = ["a.c:caller()", "a.c:mid()", "b.c:leaf()"]
     gg.vs["type"] = ["function"] * 3
     gg.vs["file"] = ["a.c", "a.c", "b.c"]
-    gg.vs["start_line"] = [1, 10, 5]
+    gg.vs["start_line"] = [0, 10, 5]
     gg.vs["end_line"] = [9, 20, 8]
     gg.add_edges([(0, 1), (1, 2)])  # caller -> mid -> leaf
     gg.es["type"] = ["reference", "reference"]
@@ -37,6 +37,10 @@ def test_impact_direction_returns_transitive_callers():
     out = dependency_subgraph_impl(ctx, "leaf", direction="impact", depth=3)
     assert out["root"] == "b.c:leaf()"
     assert {n["name"] for n in out["nodes"]} == {"a.c:mid()", "a.c:caller()"}
+    assert {n["name"]: n["line"] for n in out["nodes"]} == {
+        "a.c:caller()": 1,
+        "a.c:mid()": 11,
+    }
     assert all(set(e) == {"source", "target", "type"} for e in out["edges"])
 
 

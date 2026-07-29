@@ -67,6 +67,10 @@ def test_search_semantic_normal_path(mock_context):
     assert results[0]["node_name"] == "test.py::test_function"
     assert results[0]["score"] == 0.95
     assert results[0]["content"] == "def test_function():\n    pass"
+    assert results[0]["start_line"] == 11
+    assert results[0]["end_line"] == 21
+    assert results[1]["start_line"] == 2
+    assert results[1]["end_line"] == 6
     assert "type" in results[0]
     assert "file" in results[0]
 

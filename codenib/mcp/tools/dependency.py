@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from ...agent.boundary import AGENT_LINE_OFFSET
+
 
 def dependency_subgraph_impl(
     ctx: Any,
@@ -46,4 +48,9 @@ def dependency_subgraph_impl(
         )
     else:
         result = analyzer.subgraph(symbol, radius=depth)
-    return result.to_dict()
+    payload = result.to_dict()
+    for node in payload["nodes"]:
+        line = node.get("line")
+        if isinstance(line, int) and not isinstance(line, bool):
+            node["line"] = line + AGENT_LINE_OFFSET
+    return payload

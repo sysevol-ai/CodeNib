@@ -315,9 +315,11 @@ def _file_match_to_node(fm: Dict[str, Any]) -> NodeInfo:
         }
 
     File matches are collapsed into one ``NodeInfo`` with ``type="file"``;
-    ``start_line`` / ``end_line`` span the union of matched line numbers,
-    and ``content`` joins ``Pre + Match + Post`` per fragment so the agent
-    sees the actual matched line in context.
+    Zoekt's ``LineNum`` is 1-based. ``NodeInfo`` is an internal model, so
+    ``start_line`` / ``end_line`` normalize the union of matched line numbers
+    to 0-based values. ``content`` keeps the original 1-based ``L<n>`` label
+    and joins ``Pre + Match + Post`` per fragment so the agent sees the actual
+    matched line in context.
 
     Score is not exposed by the JSON endpoint -- callers needing
     ranking information should fall back to result order, which Zoekt
@@ -331,10 +333,20 @@ def _file_match_to_node(fm: Dict[str, Any]) -> NodeInfo:
     snippets: List[str] = []
 
     for m in fm.get("Matches") or []:
-        ln = m.get("LineNum")
-        if isinstance(ln, int):
-            start_line = ln if start_line is None else min(start_line, ln)
-            end_line = ln if end_line is None else max(end_line, ln)
+        display_line = m.get("LineNum")
+        has_source_line = (
+            isinstance(display_line, int)
+            and not isinstance(display_line, bool)
+            and display_line >= 1
+        )
+        if has_source_line:
+            internal_line = display_line - 1
+            start_line = (
+                internal_line if start_line is None else min(start_line, internal_line)
+            )
+            end_line = (
+                internal_line if end_line is None else max(end_line, internal_line)
+            )
         for frag in m.get("Fragments") or []:
             text = "{}{}{}".format(
                 frag.get("Pre", "") or "",
@@ -343,7 +355,7 @@ def _file_match_to_node(fm: Dict[str, Any]) -> NodeInfo:
             )
             stripped = text.rstrip("\n")
             if stripped:
-                prefix = f"L{ln}: " if isinstance(ln, int) else ""
+                prefix = f"L{display_line}: " if has_source_line else ""
                 snippets.append(prefix + stripped)
 
     content = "\n".join(snippets) if snippets else None
