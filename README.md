@@ -166,6 +166,23 @@ research artifacts retain their published dataset identifiers; the maintained
 package, import namespace, commands, and repository use `CodeNib`. See
 [Naming](https://github.com/sysevol-ai/CodeNib/blob/main/docs/branding.md).
 
+## Citation
+
+If you use CodeNib in your research, please cite our
+[arXiv paper](https://arxiv.org/abs/2607.25431):
+
+```bibtex
+@misc{yu2026codenibmultiviewdataserving,
+      title={CodeNib: A Multi-View Data System for Serving Repository Context to Coding Agents},
+      author={Zhongming Yu and Hengjia Yu and Boqin Yuan and Shuting Zhao and Yizhao Chen and Aryan Dokania and Mihir Jagtap and Jiayu Chang and Yitong Ma and Yash Jayswal and Wentao Ni and Hejia Zhang and Zhaoling Chen and Gangda Deng and Jishen Zhao},
+      year={2026},
+      eprint={2607.25431},
+      archivePrefix={arXiv},
+      primaryClass={cs.SE},
+      url={https://arxiv.org/abs/2607.25431},
+}
+```
+
 ## Project
 
 [Website](https://codenib.ai)
@@ -173,8 +190,6 @@ package, import namespace, commands, and repository use `CodeNib`. See
 [Changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md)
 &nbsp;&middot;&nbsp;
 [Contributing](https://github.com/sysevol-ai/CodeNib/blob/main/CONTRIBUTING.md)
-&nbsp;&middot;&nbsp;
-[Citation](https://github.com/sysevol-ai/CodeNib/blob/main/CITATION.cff)
 
 ## License
 

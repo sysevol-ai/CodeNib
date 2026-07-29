@@ -4,7 +4,6 @@
 
 graft web
 include CHANGELOG.md
-include CITATION.cff
 include CONTRIBUTING.md
 prune web/.next
 prune web/node_modules

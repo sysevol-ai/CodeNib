@@ -17,7 +17,6 @@ on:
       - "test/test_release_artifacts.py"
       - "web/**"
       - "CHANGELOG.md"
-      - "CITATION.cff"
       - "CONTRIBUTING.md"
       - "LICENSE"
       - "MANIFEST.in"

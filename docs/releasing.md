@@ -80,7 +80,8 @@ on PyPI.
 
 1. Move relevant entries from `Unreleased` into a dated version section in
    `CHANGELOG.md`.
-2. Confirm `CITATION.cff` and `pyproject.toml` use the release version.
+2. Confirm `pyproject.toml` uses the release version and the README `Citation`
+   section still matches the current arXiv entry.
 3. Run `pre-commit run --all-files` and the local package smoke.
 4. Merge the release commit to `main` and confirm its package gates pass.
 5. Confirm the TestPyPI pending publisher is visible, then dispatch the
