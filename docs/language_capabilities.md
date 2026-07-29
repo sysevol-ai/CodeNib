@@ -11,6 +11,11 @@ which surfaces are enabled for each registered language and makes core parity
 coverage explicit for languages that are graph-capable, serial-only, or
 tree-sitter-only.
 
+`yes` and `active` describe registered CodeNib capabilities, not the tools
+installed on the current machine. Run
+`codenib doctor /path/to/repository --require graph` before building a graph
+view.
+
 Update the registry first, then refresh this table:
 
 ```bash
