@@ -597,3 +597,36 @@ def test_promotional_sentence_removal_preserves_support_marker():
     cleaned = remove_promotional_sentences(markdown)
 
     assert cleaned == "The `Router` dispatches requests from `src/core.py`. [E1]"
+
+
+def test_fully_attributed_table_counts_as_cited():
+    """A table cites per row; its last cell closes with a pipe, not a citation."""
+
+    from codenib.wiki.evidence import _block_is_cited
+
+    table = (
+        "| Capability | Implemented by | Source |\n"
+        "|---|---|---|\n"
+        "| Send a request | `Session.send()` | [E1] |\n"
+        "| Open a connection | `HTTPAdapter.get_connection()` | [E2] |"
+    )
+    assert _block_is_cited(table)
+
+
+def test_table_with_an_unattributed_row_is_not_cited():
+    from codenib.wiki.evidence import _block_is_cited
+
+    table = (
+        "| Capability | Implemented by | Source |\n"
+        "|---|---|---|\n"
+        "| Send a request | `Session.send()` | [E1] |\n"
+        "| Open a connection | `HTTPAdapter.get_connection()` |  |"
+    )
+    assert not _block_is_cited(table)
+
+
+def test_prose_still_needs_a_trailing_citation_run():
+    from codenib.wiki.evidence import _block_is_cited
+
+    assert _block_is_cited("`Session.send()` dispatches the request. [E1]")
+    assert not _block_is_cited("`Session.send()` dispatches the request.")

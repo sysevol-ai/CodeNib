@@ -26,6 +26,27 @@ _CITATION_TAIL_RE = re.compile(
     r"(?:\s*\[(?:E|R)\d+\])+\s*[.!?]?\s*$",
 )
 _CODE_RE = re.compile(r"`([^`\n]+)`")
+_TABLE_DIVIDER_RE = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
+
+
+def _block_is_cited(block: str) -> bool:
+    """Whether a rendered block carries its own source attribution.
+
+    Prose puts its citations in a trailing run. A table cites per row instead,
+    and its last cell closes with a pipe, so the trailing-run test never matches
+    -- which counted a fully attributed table as an uncited block. Require every
+    data row to cite, which is stricter than the prose rule, not looser.
+    """
+
+    if _CITATION_TAIL_RE.search(block):
+        return True
+    rows = [line for line in block.splitlines() if line.strip().startswith("|")]
+    if len(rows) >= 3 and _TABLE_DIVIDER_RE.match(rows[1]):
+        data_rows = rows[2:]
+        return bool(data_rows) and all(_CITATION_RE.search(row) for row in data_rows)
+    return False
+
+
 _PATH_RE = re.compile(
     r"(?<![\w/])([\w./-]+\.(?:py|pyi|go|rs|ts|tsx|js|jsx|c|h|cc|cpp|hpp|"
     r"java|rb|php|cs|kt|kts|swift|scala))(?![\w/])",
@@ -557,7 +578,7 @@ def grounding_report(
         plain = re.sub(r"^[-*]\s+", "", block, flags=re.MULTILINE)
         if len(re.sub(r"[`*_[\]()#>-]", "", plain).strip()) >= 40:
             blocks.append(block)
-    cited_blocks = sum(1 for block in blocks if _CITATION_TAIL_RE.search(block))
+    cited_blocks = sum(1 for block in blocks if _block_is_cited(block))
     coverage = cited_blocks / len(blocks) if blocks else 0.0
 
     corpus = "\n".join(
