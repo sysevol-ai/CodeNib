@@ -3482,13 +3482,16 @@ a.codepanel-name:hover {
 }
 
 /* --- hierarchical drill-down map (P5) --------------------------------------
-   Nested containment boxes: directory -> file -> symbol. Relationships below
-   are aggregated to whatever depth the reader has expanded to. */
+   Nesting depth is an ordered quantity, so it is encoded as one hue stepping
+   through the surface ramp rather than a colour per level. Kind is also carried
+   by text -- a directory ends in "/", a file counts its symbols, a symbol shows
+   its line -- so nothing here depends on colour alone. Dark mode uses its own
+   steps from the same tokens. */
 .hier-map {
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
   padding: 12px 14px 14px;
-  background: var(--panel, transparent);
+  background: var(--bg-muted);
 }
 .hier-head {
   display: flex;
@@ -3496,29 +3499,41 @@ a.codepanel-name:hover {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 .hier-kicker {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text-muted);
+  font-weight: 600;
 }
 .hier-stats {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .hier-tree {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 .hier-box {
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   overflow: hidden;
+  background: var(--bg-surface);
 }
-.hier-box.is-open {
-  border-color: var(--border);
+/* One step darker per level, so depth is legible before reading a label. */
+.hier-box.hier-directory {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+.hier-box.hier-directory > .hier-box-head {
+  border-left: 3px solid var(--accent-border);
+}
+.hier-box.hier-file > .hier-box-head {
+  border-left: 3px solid var(--border-strong);
 }
 .hier-box-head {
   display: flex;
@@ -3534,42 +3549,48 @@ a.codepanel-name:hover {
   color: inherit;
 }
 .hier-box-head:hover {
-  background: var(--hover, rgba(127, 127, 127, 0.08));
+  background: var(--accent-soft);
 }
 .hier-chevron {
-  width: 14px;
-  flex: 0 0 14px;
+  width: 13px;
+  flex: 0 0 13px;
   text-align: center;
-  font-family: var(--mono, monospace);
-  color: var(--muted);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  color: var(--text-muted);
 }
 .hier-label {
   font-size: 13px;
   font-weight: 600;
+  color: var(--text-primary);
   overflow-wrap: anywhere;
+}
+.hier-box.hier-file .hier-label {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
 }
 .hier-meta {
   margin-inline-start: auto;
   flex: 0 0 auto;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   white-space: nowrap;
 }
 .hier-children {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  padding: 0 10px 9px 10px;
+  padding: 2px 10px 9px 10px;
 }
 .hier-symbol {
   display: flex;
   align-items: baseline;
   gap: 8px;
   width: 100%;
-  padding: 5px 8px;
-  border: 1px solid var(--border-2);
+  padding: 5px 9px;
+  border: 1px solid transparent;
   border-radius: 6px;
-  background: none;
+  background: var(--code-bg);
   cursor: pointer;
   text-align: left;
   font: inherit;
@@ -3577,25 +3598,32 @@ a.codepanel-name:hover {
 }
 .hier-symbol:disabled {
   cursor: default;
-  opacity: 0.7;
+  opacity: 0.65;
 }
 .hier-symbol:not(:disabled):hover {
-  border-color: var(--accent, currentColor);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
 .hier-symbol-name {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 12px;
+  color: var(--text-primary);
   overflow-wrap: anywhere;
 }
 .hier-symbol-line {
   margin-inline-start: auto;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
+/* Relationships are a different kind of thing from the tree, so they carry the
+   accent while the tree stays on neutral surfaces. */
 .hier-links {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 6px;
-  margin-top: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
 }
 .hier-link {
   display: flex;
@@ -3603,9 +3631,9 @@ a.codepanel-name:hover {
   justify-content: space-between;
   gap: 8px;
   padding: 6px 9px;
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--accent-border);
   border-radius: 6px;
-  background: none;
+  background: var(--accent-soft);
   cursor: pointer;
   font: inherit;
   color: inherit;
@@ -3613,10 +3641,12 @@ a.codepanel-name:hover {
 }
 .hier-link:disabled {
   cursor: default;
-  opacity: 0.6;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+  opacity: 0.7;
 }
 .hier-link:not(:disabled):hover {
-  border-color: var(--accent, currentColor);
+  border-color: var(--accent);
 }
 .hier-link-main {
   display: flex;
@@ -3624,21 +3654,24 @@ a.codepanel-name:hover {
   gap: 6px;
   min-width: 0;
   font-size: 12px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
 }
 .hier-link-main span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-primary);
 }
 .hier-link-main b {
   flex: 0 0 auto;
-  color: var(--muted);
+  color: var(--accent);
+  font-weight: 700;
 }
 .hier-link em {
   flex: 0 0 auto;
   font-style: normal;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 
 /* Graph / Structure switch inside the Dependency Map */
