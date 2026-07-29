@@ -10,9 +10,9 @@ GitHub Actions has seven workflow files:
 
 - `.github/workflows/ci.yml` runs the Python, graph, SCIP, slow, and C++ parity
   test tiers.
-- `.github/workflows/docs.yml` runs the display-branding guard plus a
-  lightweight strict documentation build for docs-only changes that the main CI
-  intentionally ignores.
+- `.github/workflows/docs.yml` checks display branding and the generated
+  language matrix, runs a strict documentation build, and verifies the
+  public-document boundary for changes that the main CI intentionally ignores.
 - `.github/workflows/auto-label.yml` ("Label PRs") applies the path-based
   `scope/*` / `type/*` label taxonomy to pull requests with `actions/labeler@v5`,
   driven by `.github/labeler.yml`.
@@ -39,8 +39,10 @@ GitHub Actions has seven workflow files:
 | `workflow_dispatch` | Manual run with a `skip_tests` boolean input and a `test_tier` choice (`light` / `full`, default `full`). |
 
 The separate docs workflow runs on pushes/PRs that touch Markdown, `docs/**`,
-`mkdocs.yml`, `pyproject.toml`, or the docs workflow itself. On the self-hosted
-runner it first runs the display-branding guard:
+`mkdocs.yml`, `pyproject.toml`, the `Makefile`, Python under `codenib/`, the
+C++ core, the web package manifests, the public-docs and language-capability
+checks, or the docs workflow itself. On the self-hosted runner it first runs
+the display-branding guard:
 
 ```bash
 python scripts/check_namespace.py
@@ -49,20 +51,30 @@ python scripts/check_namespace.py
 which rejects former product identifiers outside the allowlisted external
 addresses (see [Naming](branding.md)) — so a docs-only PR can fail the Docs job
 on a legacy-name occurrence before mkdocs even runs. It then installs
-`mkdocs-material` and runs:
+`mkdocs-material`, verifies that the checked-in capability matrix still matches
+the language registry, and builds the site:
 
 ```bash
+python scripts/language_capability_matrix.py \
+  --check docs/language_capabilities.md
 python -m mkdocs build --strict
 ```
 
-This keeps docs-only PRs covered without forcing the self-hosted test runner to
-run unit, integration, slow, or serial graph jobs for prose-only edits.
+After the build it runs:
+
+```bash
+python scripts/check_public_docs.py
+```
+
+That check verifies that internal plans, experiment outputs, and
+publisher-only procedures are absent from generated files, search, and the
+sitemap. This keeps docs-only PRs covered without running the unit,
+integration, slow, or serial graph jobs for prose-only edits.
 
 !!! note "Concurrency"
-    The concurrency group is keyed by `github.head_ref || github.run_id`, and
-    `cancel-in-progress` is `true` **only for `pull_request` events**. Pushes to
-    `main`/`master` and scheduled runs always run to completion and never cancel
-    each other.
+    The concurrency group is keyed by the workflow name and full Git ref.
+    `cancel-in-progress` is always enabled, so a newer docs run for the same
+    branch or tag supersedes the older one.
 
 ## Jobs
 
@@ -84,11 +96,11 @@ preflight ─ unit ─ integration ─ integration-serial ─┬─ scip-core �
 |-----|---------|--------|------------------|---------|
 | **preflight** | — | self-hosted | Decision job; no tests | — |
 | **unit** | `preflight` | self-hosted | `not slow and not integration and not integration_serial and not integration_serial_consumer` | 20 min |
-| **integration** | `preflight`, `unit` | self-hosted | `integration and not slow` (~2 min) | 30 min |
-| **integration-serial** | `preflight`, `integration` | self-hosted | `integration_serial` (~25 min) | 45 min |
+| **integration** | `preflight`, `unit` | self-hosted | `integration and not slow` | 30 min |
+| **integration-serial** | `preflight`, `integration` | self-hosted | `integration_serial` | 45 min |
 | **scip-core** | `preflight`, `integration-serial` | self-hosted | `test/scip/test_scip_core.py` (C++ decoder parity) | 30 min |
-| **graph-consumer** | `preflight`, `integration-serial` | self-hosted | `integration_serial_consumer` (~5 min) | 15 min |
-| **slow** | `preflight`, `unit`, `integration`, `integration-serial`, `scip-core`, `graph-consumer` | self-hosted | `slow` (~15 min) | 60 min |
+| **graph-consumer** | `preflight`, `integration-serial` | self-hosted | `integration_serial_consumer` | 15 min |
+| **slow** | `preflight`, `unit`, `integration`, `integration-serial`, `scip-core`, `graph-consumer` | self-hosted | `slow` | 60 min |
 
 ### preflight — the decision job
 
@@ -154,7 +166,7 @@ is skipped while `unit` and `integration` still run.
 
 ### unit
 
-Pure logic with mocks only (~1 min). Sets up a Python 3.12 conda env
+Pure logic with mocks only. Sets up a Python 3.12 conda env
 (`codenib-test`), preinstalls the configured CPU-only `torch` wheel, installs
 `pip install -e ".[test]"`, then runs (verbatim):
 
@@ -173,7 +185,7 @@ running in this tier.
 
 ### integration
 
-Read-only, parallel-safe tests (~2 min): chunkers and fixture-based SCIP. This
+Read-only, parallel-safe tests: chunkers and fixture-based SCIP. This
 tier runs with `pytest-xdist`, so tests that load HuggingFace embedding models,
 consume GPU memory, or depend on LLM credentials do **not** belong here; mark
 those `slow` instead. Uses the shared `./.github/actions/setup-env` composite
@@ -186,7 +198,7 @@ pytest -n 4 -m "integration and not slow" --tb=short --timeout=600 --durations=2
 ### integration-serial
 
 Tests that **mutate shared repos** — SCIP indexing, `process_instance`,
-`git checkout`/`apply` — so they must run sequentially (~25 min). The job
+`git checkout`/`apply` — so they must run sequentially. The job
 symlinks `$HOME/.codenib` to a persistent runner cache so SCIP outputs at
 `~/.codenib/<instance_id>/` survive across runs and are visible to the
 downstream `scip-core` and `graph-consumer` jobs. It runs:
@@ -196,11 +208,8 @@ pytest -m "integration_serial" -x -v --tb=short --timeout=900 --durations=20
 ```
 
 !!! note "`--timeout=900` per-test guardrail"
-    The slowest healthy serial test is ~7.5 min, so a 15-min (`900 s`) per-test
-    cap leaves ~2x headroom while still failing a genuinely hung test fast
-    (e.g. scip-python indexing of sympy has been observed hanging ~27 min)
-    instead of letting it run out the 45-min job cap and hog the single
-    self-hosted runner.
+    The 15-minute (`900 s`) per-test cap stops a hung test before the
+    45-minute job timeout. It applies to each test, not to the whole command.
 
 ### scip-core
 
@@ -232,7 +241,7 @@ the Python implementation** using the serial graphs persisted by
 
 Consumes the `graph.pkl` written by `integration-serial` (specifically
 `test_scip_multilingual`) and runs query / range / anchor checks against it via
-`skip_level="graph"` (~5 min). Like `scip-core`, it depends on
+`skip_level="graph"`. Like `scip-core`, it depends on
 `integration-serial` at the job level so the cached pickle is always fresh from
 the most recent decoder run. Gated on both `should-run` and `run-serial`:
 
@@ -242,7 +251,7 @@ pytest -m "integration_serial_consumer" -v --tb=short
 
 ### slow
 
-LLM API calls, HuggingFace downloads, and GPU embeddings (~15 min). Runs
+LLM API calls, HuggingFace downloads, and GPU embeddings. Runs
 **last**: its `needs` lists the entire chain (`preflight`, `unit`,
 `integration`, `integration-serial`, `scip-core`, `graph-consumer`) under an
 `if: always() && ...` guard that requires `unit` and `integration` to have

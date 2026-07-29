@@ -14,6 +14,13 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "pyproject.toml"
+      - "Makefile"
+      - "codenib/**/*.py"
+      - "core/**"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - "scripts/check_public_docs.py"
+      - "scripts/language_capability_matrix.py"
       - ".github/workflows/docs.yml"
   pull_request:
     branches:
@@ -23,15 +30,23 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "pyproject.toml"
+      - "Makefile"
+      - "codenib/**/*.py"
+      - "core/**"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - "scripts/check_public_docs.py"
+      - "scripts/language_capability_matrix.py"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  pages: read
 
 concurrency:
-  group: docs-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -55,8 +70,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "mkdocs-material>=9.5.0"
 
+      - name: Check generated capability docs
+        run: >-
+          python scripts/language_capability_matrix.py
+          --check docs/language_capabilities.md
+
       - name: Build docs
         run: python -m mkdocs build --strict
+
+      - name: Check public docs boundary
+        run: python scripts/check_public_docs.py
 
       - name: Configure GitHub Pages
         if: >-
