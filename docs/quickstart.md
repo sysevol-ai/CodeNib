@@ -54,12 +54,18 @@ codenib wiki . --port 3100 --api-port 8100 --no-open
 
 ## Reuse An Existing Index
 
-The default command updates an existing manifest when the repository changes.
-To launch without checking or updating it:
+The default command compares the repository with its existing manifest and
+updates changed views. To reuse an already-built manifest without performing
+that index update:
 
 ```bash
 codenib wiki /path/to/repository --no-index
 ```
+
+`--no-index` requires an existing `repo_manifest.json`. It skips rebuilding or
+updating views, but still validates that the current checkout matches the
+manifest's recorded source identity and commit; CodeNib refuses to launch on a
+mismatch.
 
 Force a clean rebuild with:
 
@@ -94,9 +100,16 @@ repository instead of testing for an unrelated tool:
 codenib doctor /path/to/repository --require graph
 ```
 
-The full preset also needs Zoekt binaries. Follow
-[SCIP Indexing](scip_index.md) and check the
-[Language Capabilities](language_capabilities.md) matrix for backend setup.
+The full preset also needs `zoekt-git-index` and `zoekt-webserver` on `PATH`.
+`codenib doctor --require graph` checks language-specific graph providers, not
+Zoekt. Follow [SCIP Indexing](scip_index.md), check the
+[Language Capabilities](language_capabilities.md) matrix, and verify the Zoekt
+commands separately:
+
+```bash
+command -v zoekt-git-index
+command -v zoekt-webserver
+```
 
 Override individual views or language detection:
 
@@ -126,7 +139,7 @@ For an OpenAI-compatible local or hosted endpoint:
 export LOCAL_LLM_KEY=...
 codenib wiki . --generate \
   --model openai/local-model \
-  --api-base http://127.0.0.1:8000/v1 \
+  --api-base http://127.0.0.1:8080/v1 \
   --api-key-env LOCAL_LLM_KEY
 ```
 
@@ -135,7 +148,12 @@ Provider-native LiteLLM routes use their normal model prefix and credentials:
 ```bash
 export ANTHROPIC_API_KEY=...
 codenib wiki . --generate --model anthropic/claude-sonnet-4-5
+```
 
+Vertex AI additionally requires CodeNib's `vertex` extra:
+
+```bash
+pip install "codenib[agent,vertex]"
 gcloud auth application-default login
 codenib wiki . --generate \
   --model vertex_ai/gemini-2.5-flash \
@@ -159,12 +177,14 @@ gateway. For example, use `openai/qwen3`, not bare `qwen3`, for an
 OpenAI-compatible Qwen endpoint.
 
 Repeat `--model-option KEY=VALUE` for provider-specific LiteLLM parameters.
-Values are JSON-decoded and dotted keys create nested payloads:
+Values are JSON-decoded and dotted keys create nested payloads. This flag is
+available on `codenib wiki` and `codenib doctor`; configure the standalone
+`codenib-web` service through YAML or `CODENIB_DEMO_*` environment variables.
 
 ```bash
 codenib wiki . --generate \
   --model openai/qwen3 \
-  --api-base http://127.0.0.1:8000/v1 \
+  --api-base http://127.0.0.1:8080/v1 \
   --model-option extra_body.chat_template_kwargs.enable_thinking=false
 ```
 
@@ -181,7 +201,9 @@ Provider and model configuration is documented in
 [Web UI](web_demo.md) and the
 [LiteLLM provider documentation](https://docs.litellm.ai/docs/providers).
 Search, source links, and deterministic pages remain available without this
-extra.
+extra. Ask is model-backed: if its configured provider cannot authenticate or
+cannot be reached, the question request fails while the rest of the Wiki
+continues to work.
 
 ## Serve The Index Over MCP
 
@@ -208,6 +230,8 @@ Common fixes:
 
 - Install the named extra when a command reports a missing optional module.
 - Use `--rebuild` after intentionally changing index profiles or builders.
-- Check that ports 3000 and 8000 are free, or select alternatives.
+- Check that frontend port 3000 and API port 8000 are free, or select
+  alternatives. Run a local OpenAI-compatible model on a separate port such as
+  8080.
 - Pass `--language` when a repository contains no detectable supported source
   extension.
