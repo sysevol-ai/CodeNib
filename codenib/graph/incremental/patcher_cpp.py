@@ -9,6 +9,7 @@ Uses clangd .idx files instead of LSP queries for incremental updates.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import shutil
@@ -71,6 +72,49 @@ class PatcherCpp(PatcherBase):
     # ═══════════════════════════════════════════════════════════
 
     def patch_files(self, changed_files, **kwargs):
+        """Patch through clangd without exposing a partially mutated graph.
+
+        Reindexing is prepared before any vertices are removed. Once mutation
+        begins, the CodeGraph state is transactional: decoder, merge, or range
+        index failures restore the caller's original graph before propagating
+        the error.
+        """
+        all_changed = (
+            changed_files.get("modified", [])
+            + changed_files.get("added", [])
+            + [new for _, new in changed_files.get("renamed", [])]
+        )
+        prepared_idx_dir = None
+        if all_changed:
+            with self.profiler.section("cpp.reindex"):
+                prepared_idx_dir = self._reindex_changed_files(all_changed)
+            if prepared_idx_dir is None:
+                raise RuntimeError(
+                    "clangd incremental indexing failed; graph was not modified"
+                )
+
+        graph_state = copy.deepcopy(self.code_graph.__dict__)
+        try:
+            return self._patch_files_mutating(
+                changed_files,
+                prepared_idx_dir=prepared_idx_dir,
+                **kwargs,
+            )
+        except Exception:
+            self.code_graph.__dict__.clear()
+            self.code_graph.__dict__.update(graph_state)
+            logger.exception(
+                "C++ incremental patch failed; restored the original graph"
+            )
+            raise
+
+    def _patch_files_mutating(
+        self,
+        changed_files,
+        *,
+        prepared_idx_dir: Path | None,
+        **kwargs,
+    ):
         """C++ incremental: delete old subgraphs, reindex via .idx, rebuild."""
         total_stats = {
             "files_deleted": 0,
@@ -119,7 +163,10 @@ class PatcherCpp(PatcherBase):
 
         # Reindex and rebuild via .idx
         if all_changed:
-            stats = self._incremental_update_idx(all_changed)
+            stats = self._incremental_update_idx(
+                all_changed,
+                idx_dir=prepared_idx_dir,
+            )
             total_stats["vertices_created"] = stats["vertices_created"]
             total_stats["refs_outgoing"] = stats["refs_added"]
 
@@ -135,7 +182,7 @@ class PatcherCpp(PatcherBase):
         total_stats["edges_after"] = edges_after
 
         earlier = kwargs.get("earlier_commit", "")
-        later = kwargs.get("later_commit", "")
+        later = kwargs.get("later_commit") or "HEAD"
         commit_info = ""
         if earlier and later:
             total_stats["commit_earlier"] = earlier
@@ -154,6 +201,13 @@ class PatcherCpp(PatcherBase):
             f"edges {edges_before}→{edges_after} "
             f"(Δ{edges_after - edges_before:+d})"
         )
+
+        # Keep range queries coherent with the post-patch graph.  The generic
+        # LSP patcher does this at the end of PatcherBase.patch_files(), but
+        # C/C++ owns a separate .idx-based entry point and must uphold the
+        # same public contract explicitly.
+        with self.profiler.section("patch_files.build_range_indexes"):
+            self.code_graph.build_range_indexes()
 
         report = self.profiler.report(reset=True)
         if report:
@@ -177,15 +231,20 @@ class PatcherCpp(PatcherBase):
     # .idx-based incremental update
     # ═══════════════════════════════════════════════════════════
 
-    def _incremental_update_idx(self, changed_files: list[str]) -> dict:
+    def _incremental_update_idx(
+        self,
+        changed_files: list[str],
+        *,
+        idx_dir: Path | None = None,
+    ) -> dict:
         """Reindex via clangd .idx, then rebuild graph for changed files."""
         stats = {"vertices_created": 0, "refs_added": 0}
 
-        with self.profiler.section("cpp.reindex"):
-            idx_dir = self._reindex_changed_files(changed_files)
         if idx_dir is None:
-            logger.warning("clangd incremental indexing failed")
-            return stats
+            with self.profiler.section("cpp.reindex"):
+                idx_dir = self._reindex_changed_files(changed_files)
+        if idx_dir is None:
+            raise RuntimeError("clangd incremental indexing failed")
 
         from codenib.ls_index.clangd_decode import ClangdGraphDecoder
 

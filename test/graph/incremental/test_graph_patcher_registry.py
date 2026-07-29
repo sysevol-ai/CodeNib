@@ -17,6 +17,7 @@ from codenib.graph.incremental.patcher_go import PatcherGo
 from codenib.graph.incremental.patcher_python import PatcherPython
 from codenib.graph.incremental.patcher_rust import PatcherRust
 from codenib.graph.incremental.patcher_ts import PatcherTS
+from codenib.types import EDGE_TYPE_REFERENCE
 
 
 @pytest.mark.parametrize(
@@ -65,6 +66,136 @@ def test_patcher_lsp_metadata_comes_from_language_registry(
 
     assert patcher.get_lsp_command() == command
     assert patcher._language_id() == language_id
+
+
+def test_cpp_patch_rebuilds_range_indexes(tmp_path, monkeypatch):
+    graph = CodeGraph(str(tmp_path))
+    graph.add_file_node("target.cpp")
+    graph._add_vertex(
+        "target.cpp:target",
+        {
+            "type": "function",
+            "file": "target.cpp",
+            "start_line": 0,
+            "end_line": 2,
+            "unified_name": "target.cpp:target()",
+        },
+    )
+    graph.symbol_ranges["target.cpp:target"] = (0, 2)
+    graph.build_range_indexes()
+
+    patcher = PatcherCpp(str(tmp_path), graph)
+
+    idx_dir = tmp_path / ".cache" / "clangd" / "index"
+    idx_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        patcher,
+        "_reindex_changed_files",
+        lambda changed_files: idx_dir,
+    )
+
+    def fake_incremental_update_idx(changed_files, *, idx_dir=None):
+        assert changed_files == ["new.cpp"]
+        assert idx_dir == tmp_path / ".cache" / "clangd" / "index"
+        graph.add_file_node("new.cpp")
+        graph._add_vertex(
+            "new.cpp:caller",
+            {
+                "type": "function",
+                "file": "new.cpp",
+                "start_line": 3,
+                "end_line": 8,
+                "unified_name": "new.cpp:caller()",
+            },
+        )
+        graph.symbol_ranges["new.cpp:caller"] = (3, 8)
+        graph._add_edge(
+            "new.cpp:caller",
+            "target.cpp:target",
+            EDGE_TYPE_REFERENCE,
+            anchor_file="new.cpp",
+            anchor_line=5,
+        )
+        return {"vertices_created": 2, "refs_added": 1}
+
+    monkeypatch.setattr(
+        patcher,
+        "_incremental_update_idx",
+        fake_incremental_update_idx,
+    )
+
+    patcher.patch_files(
+        {
+            "modified": [],
+            "added": ["new.cpp"],
+            "deleted": [],
+            "renamed": [],
+        }
+    )
+
+    result = graph.query_range("new.cpp", 5, 5)
+    assert [node.name for node in result.defined] == ["new.cpp:caller"]
+    assert len(result.outgoing) == 1
+    assert result.outgoing[0].anchor_file == "new.cpp"
+    assert result.outgoing[0].anchor_line == 5
+
+
+@pytest.mark.parametrize("failure_stage", ["reindex", "apply"])
+def test_cpp_patch_failure_preserves_original_graph(
+    tmp_path,
+    monkeypatch,
+    failure_stage,
+):
+    graph = CodeGraph(str(tmp_path))
+    graph.add_file_node("source.cpp")
+    graph._add_vertex(
+        "source.cpp:kept",
+        {
+            "type": "function",
+            "file": "source.cpp",
+            "start_line": 1,
+            "end_line": 4,
+            "unified_name": "source.cpp:kept()",
+        },
+    )
+    graph.symbol_ranges["source.cpp:kept"] = (1, 4)
+    graph.build_range_indexes()
+    original_names = list(graph.graph.vs["name"])
+    original_ranges = dict(graph.symbol_ranges)
+
+    patcher = PatcherCpp(str(tmp_path), graph)
+    idx_dir = tmp_path / ".cache" / "clangd" / "index"
+    idx_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        patcher,
+        "_reindex_changed_files",
+        lambda _changed_files: None if failure_stage == "reindex" else idx_dir,
+    )
+    if failure_stage == "apply":
+
+        def fail_incremental_update(*_args, **_kwargs):
+            raise RuntimeError("decode failed")
+
+        monkeypatch.setattr(
+            patcher,
+            "_incremental_update_idx",
+            fail_incremental_update,
+        )
+
+    with pytest.raises(RuntimeError):
+        patcher.patch_files(
+            {
+                "modified": ["source.cpp"],
+                "added": [],
+                "deleted": [],
+                "renamed": [],
+            }
+        )
+
+    assert list(graph.graph.vs["name"]) == original_names
+    assert graph.symbol_ranges == original_ranges
+    result = graph.query_range("source.cpp", 2, 2)
+    assert [node.name for node in result.defined] == ["source.cpp:kept"]
 
 
 def test_python_patcher_lsp_command_allows_registry_env_override(tmp_path, monkeypatch):
