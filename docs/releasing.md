@@ -31,7 +31,8 @@ workflows. It:
 Manually dispatching the TestPyPI Release workflow from `main` runs these gates
 and then publishes to TestPyPI. Production publishing remains in the separate
 Release workflow and requires a `v<version>` tag that exactly matches
-`project.version`.
+`project.version`. After PyPI publication, the workflow creates a prerelease
+GitHub Release containing the distributions and `SHA256SUMS`.
 
 ## Trusted Publisher Setup
 
@@ -67,7 +68,7 @@ the Docs workflow from `main`. Confirm that the documentation site and the two
 README assets are anonymously reachable:
 
 ```text
-https://sysevol-ai.github.io/CodeNib/
+https://docs.codenib.ai/
 https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_logo.svg
 https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_wiki.png
 ```
@@ -90,7 +91,7 @@ on PyPI.
 7. Complete the public-surface gate above.
 8. Confirm the PyPI pending publisher is visible.
 9. Create and push an annotated `v<version>` tag.
-10. Confirm the PyPI deployment and generated GitHub Release.
+10. Confirm the PyPI deployment and generated prerelease GitHub Release.
 
 Do not reuse a published version. If publication partially succeeds, increment
 the version and produce new artifacts.
