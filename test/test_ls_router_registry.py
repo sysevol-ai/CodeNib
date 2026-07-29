@@ -193,8 +193,14 @@ def test_ls_indexer_graph_patch_constructs_graph_patcher_without_profiler_kwarg(
         calls["detect"] = (project_root, base_commit, target_commit, extensions)
         return {"modified": [], "added": [], "deleted": [], "renamed": []}
 
-    def fake_patch_files(self, changed_files):
-        calls["patch"] = changed_files
+    def fake_patch_files(
+        self,
+        changed_files,
+        *,
+        earlier_commit=None,
+        later_commit=None,
+    ):
+        calls["patch"] = (changed_files, earlier_commit, later_commit)
         return {"ok": True}
 
     monkeypatch.setattr(
@@ -208,7 +214,11 @@ def test_ls_indexer_graph_patch_constructs_graph_patcher_without_profiler_kwarg(
 
     assert result == {"ok": True}
     assert calls["detect"][1:] == ("base", "HEAD", {".py"})
-    assert calls["patch"] == {"modified": [], "added": [], "deleted": [], "renamed": []}
+    assert calls["patch"] == (
+        {"modified": [], "added": [], "deleted": [], "renamed": []},
+        "base",
+        "HEAD",
+    )
 
 
 def test_build_graph_for_languages_preserves_single_language_layout(

@@ -298,6 +298,8 @@ class PatcherBase(SubgraphMgr):
         Returns:
             Stats dict.
         """
+        effective_later_commit = later_commit or "HEAD"
+
         # Drop files the language excludes from indexing (e.g. _test.go for
         # Go, where SCIP-go skips test files by design — see
         # scip_decode_go.py).
@@ -367,7 +369,11 @@ class PatcherBase(SubgraphMgr):
             raise ValueError("earlier_commit required for modified files")
         mod_contexts = []
         for path in modified:
-            ctx = self._incremental_prepare_vertices(path, earlier_commit)
+            ctx = self._incremental_prepare_vertices(
+                path,
+                earlier_commit,
+                effective_later_commit,
+            )
             if ctx is not None:
                 mod_contexts.append((path, ctx))
                 self._merge_stats(total_stats, ctx["file_stats"])
@@ -396,10 +402,12 @@ class PatcherBase(SubgraphMgr):
         total_stats["edges_after"] = edges_after
 
         commit_info = ""
-        if earlier_commit and later_commit:
+        if earlier_commit:
             total_stats["commit_earlier"] = earlier_commit
-            total_stats["commit_later"] = later_commit
-            commit_info = f"commits {earlier_commit[:12]}..{later_commit[:12]}, "
+            total_stats["commit_later"] = effective_later_commit
+            commit_info = (
+                f"commits {earlier_commit[:12]}..{effective_later_commit[:12]}, "
+            )
 
         total_changed = sum(
             len(changed_files.get(k, []))
@@ -537,9 +545,15 @@ class PatcherBase(SubgraphMgr):
     # ═══════════════════════════════════════════════════════════
 
     def _incremental_prepare_vertices(
-        self, file_path: str, base_commit: str
+        self,
+        file_path: str,
+        base_commit: str,
+        target_commit: str = "HEAD",
     ) -> Optional[dict]:
         """Round 1: classify symbols and build/delete/shift vertices.
+
+        ``target_commit`` must be the same target used to detect
+        ``changed_files``. It defaults to ``HEAD`` for direct callers.
 
         Returns a context dict for Round 2 (edge connection), or None
         if no hunks were found (file unchanged at line level).
@@ -556,7 +570,10 @@ class PatcherBase(SubgraphMgr):
 
         with self.profiler.section("git_diff"):
             hunks = change_mgr.get_changed_line_ranges(
-                str(self.project_root), file_path, base_commit
+                str(self.project_root),
+                file_path,
+                base_commit,
+                target_commit,
             )
         if not hunks:
             return None

@@ -23,6 +23,7 @@ Example:
     decoder = LSGraphDecoder(index_file_path="/path/to/index.decoded", language="rust")
     graph = decoder.decode()
 """
+
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
@@ -293,7 +294,11 @@ class LSIndexer:
             target_commit,
             extensions=LANGUAGE_EXTENSIONS.get(self.language),
         )
-        return patcher.patch_files(changed)
+        return patcher.patch_files(
+            changed,
+            earlier_commit=base_commit,
+            later_commit=target_commit,
+        )
 
 
 def build_graph_for_languages_with_report(
