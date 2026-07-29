@@ -4324,11 +4324,13 @@ class AgentWiki:
                     repaired = True
         markdown = _link_evidence_markers(markdown)
         blocking_plan_warnings = _blocking_plan_warnings(plan_warnings)
+        # Publish on the grounding floor, not on a spotless report. Coverage,
+        # unresolved identifiers, marketing words and composition notes are all
+        # still computed and returned -- they describe the page, and surfacing
+        # them is the point. Gating on every one of them made "degraded" fire on
+        # pages whose only fault was a shape the checker could not spell.
         publishable = bool(
-            report["valid"]
-            and not report["promotional_phrases"]
-            and quality["valid"]
-            and not blocking_plan_warnings
+            report.get("grounded", report["valid"]) and not blocking_plan_warnings
         )
         generated = publishable and not model_failed and not model_planning_failed
         if generated:

@@ -417,6 +417,11 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                       {page.grounding.evidence_count} source symbols
                       {page.grounding.relation_count > 0 &&
                         ` · ${page.grounding.relation_count} static relations`}
+                      {/* State how much of the page carries its source rather
+                          than only flagging a shortfall: the coverage number is
+                          the claim this product makes. */}
+                      {page.grounding.citation_coverage < 1 &&
+                        ` · ${Math.round(page.grounding.citation_coverage * 100)}% of blocks sourced`}
                       {evidenceRoutes.length > 0 && ` · ${evidenceRoutes.join(" + ")}`}
                     </span>
                   )}

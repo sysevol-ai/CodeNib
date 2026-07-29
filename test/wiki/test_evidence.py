@@ -714,3 +714,30 @@ def test_an_invented_symbol_still_flags():
     item = _doc("def prepare_url(self):\n    return None")
     md = "`PreparedRequest.teleport_payload()` moves the body offsite. [E1]"
     assert grounding_report(md, [item], [])["unsupported_identifiers"]
+
+
+def test_grounding_floor_publishes_a_mostly_sourced_page():
+    """One unresolved token must not suppress a well-sourced page."""
+
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc("def prepare_url(self):\n    return None")
+    md = (
+        "`prepare_url` encodes the target host before transmission. [E1]\n\n"
+        "It also normalises the query string for the adapter. [E1]\n\n"
+        "The `NonexistentHelper.thing()` call is not in evidence at all."
+    )
+    report = grounding_report(md, [item], [])
+    assert report["valid"] is False  # strict reading still records the problem
+    assert report["grounded"] is True  # but the page rests on real source
+    assert report["unsupported_identifiers"]
+
+
+def test_grounding_floor_rejects_a_page_citing_evidence_that_does_not_exist():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc("def prepare_url(self):\n    return None")
+    md = "`prepare_url` encodes the target host before transmission. [E9]"
+    report = grounding_report(md, [item], [])
+    assert report["grounded"] is False
+    assert report["unknown_citations"] == ["E9"]

@@ -109,6 +109,9 @@ export interface WikiPage {
   grounding?: {
     valid: boolean;
     citation_coverage: number;
+    // Strict reading: everything on the page resolved. `grounded` is the
+    // looser floor publication is gated on.
+    grounded?: boolean;
     cited_evidence?: number;
     evidence_count: number;
     relation_count: number;

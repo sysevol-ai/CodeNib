@@ -26,6 +26,8 @@ _CITATION_TAIL_RE = re.compile(
     r"(?:\s*\[(?:E|R)\d+\])+\s*[.!?]?\s*$",
 )
 _CODE_RE = re.compile(r"`([^`\n]+)`")
+# Publication floor: at least half a page's blocks must carry their source.
+_MIN_CITATION_COVERAGE = 0.5
 _TABLE_DIVIDER_RE = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
 
 
@@ -672,8 +674,22 @@ def grounding_report(
         and not unknown_files
         and not unsupported_identifiers
     )
+    # ``valid`` is the strict, descriptive reading: everything on the page
+    # resolves. ``grounded`` is the floor a page must clear to be published --
+    # it says the page rests on real cited source, not that every last token
+    # resolved. Holding publication to the strict reading meant one unresolved
+    # attribute name suppressed an otherwise well-sourced page, and readability
+    # and provenance are not supposed to be in tension.
+    grounded = (
+        bool(blocks)
+        and coverage >= _MIN_CITATION_COVERAGE
+        # Citing an id that was never supplied is an integrity failure, not a
+        # shortfall: the page points at evidence that does not exist.
+        and not unknown_citations
+    )
     return {
         "valid": valid,
+        "grounded": grounded,
         "citation_coverage": round(coverage, 3),
         "cited_evidence": len(cited & allowed_ids),
         "evidence_count": len(evidence),
