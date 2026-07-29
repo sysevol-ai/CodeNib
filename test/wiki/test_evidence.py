@@ -630,3 +630,37 @@ def test_prose_still_needs_a_trailing_citation_run():
 
     assert _block_is_cited("`Session.send()` dispatches the request. [E1]")
     assert not _block_is_cited("`Session.send()` dispatches the request.")
+
+
+def test_promotional_words_quoted_from_source_are_not_the_page_s_own():
+    """A project's own tagline is reported with a citation, not asserted."""
+
+    from codenib.wiki.evidence import EvidenceItem, grounding_report
+
+    readme = EvidenceItem(
+        id="E1",
+        file="README.md",
+        start_line=1,
+        end_line=3,
+        symbol="README.md",
+        kind="doc",
+        content="A fast and flexible static site generator written in Go.",
+    )
+    quoted = "A fast and flexible static site generator written in Go. [E1]"
+    assert grounding_report(quoted, [readme], [])["promotional_phrases"] == []
+
+
+def test_promotional_words_the_page_wrote_itself_still_flag():
+    from codenib.wiki.evidence import EvidenceItem, grounding_report
+
+    src = EvidenceItem(
+        id="E1",
+        file="site.go",
+        start_line=1,
+        end_line=3,
+        symbol="Build",
+        kind="function",
+        content="func Build() error { return nil }",
+    )
+    authored = "`Build()` is a fast and flexible entry point. [E1]"
+    assert grounding_report(authored, [src], [])["promotional_phrases"]

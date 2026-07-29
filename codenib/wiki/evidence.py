@@ -558,6 +558,28 @@ def parse_fact_plan(
     return plan, errors
 
 
+def _quotes_cited_evidence(block: str, evidence: Sequence["EvidenceItem"]) -> bool:
+    """Whether a block reproduces text that is already in its cited source.
+
+    A project's own one-line description is the natural opening for an overview,
+    and it is reported with a citation rather than asserted. Judging it as the
+    page's own marketing flagged pages for saying what their README says --
+    "A fast and flexible static site generator" -- which the page did not claim,
+    it quoted.
+    """
+
+    text = _CITATION_TAIL_RE.sub("", block).strip()
+    text = re.sub(r"\[(?:E|R)\d+\]", "", text).strip()
+    if len(text) < 24:
+        return False
+    needle = " ".join(text.split()).casefold()
+    for item in evidence:
+        haystack = " ".join((item.content or "").split()).casefold()
+        if needle and needle in haystack:
+            return True
+    return False
+
+
 def grounding_report(
     markdown: str,
     evidence: Sequence[EvidenceItem],
@@ -618,7 +640,12 @@ def grounding_report(
         }
     )
     unsupported_identifiers = sorted(set(unsupported_identifiers))
-    promotional = promotional_phrases(without_fences)
+    # Marketing words the page wrote itself are a defect; the same words inside
+    # a block it is quoting from cited source are not.
+    authored = "\n\n".join(
+        block for block in blocks if not _quotes_cited_evidence(block, evidence)
+    )
+    promotional = promotional_phrases(authored)
     valid = (
         bool(blocks)
         and coverage == 1.0
