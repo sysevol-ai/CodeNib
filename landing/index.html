@@ -74,7 +74,7 @@ header {
 }
 .nav { display: flex; align-items: center; gap: 28px; height: 64px; }
 .brand { display: flex; align-items: center; font-weight: 620; font-size: 17px; letter-spacing: -0.01em; margin-right: auto; }
-.brand img { height: 26px; width: auto; }
+.brand img { height: 32px; width: auto; }
 .nav a.link { font-size: 14.5px; color: var(--ink-2); transition: color .15s; }
 .nav a.link:hover { color: var(--ink); }
 .nav a.gh { display: flex; }
@@ -177,11 +177,21 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
   border-radius: var(--r-box); padding: 18px;
 }
 .t-icon {
-  flex: none; width: 38px; height: 38px; border-radius: var(--r-ui);
-  background: var(--surface); border: 1px solid var(--line);
+  position: relative; isolation: isolate; overflow: hidden;
+  flex: none; width: 44px; height: 44px; border-radius: 13px;
+  background: #f6f9fe;
+  border: 1px solid #cfe0fb;
   display: flex; align-items: center; justify-content: center;
 }
-.t-icon svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.t-icon svg {
+  width: 27px; height: 27px; overflow: visible;
+  stroke: var(--accent); fill: none; stroke-width: 1.55;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.t-icon .panel { fill: rgba(255, 255, 255, 0.82); stroke: #8bb7fa; }
+.t-icon .guide { stroke: #93c5fd; stroke-width: 1.2; }
+.t-icon .hot { fill: var(--accent); stroke: var(--accent); }
+.t-icon .spark { fill: #dbeafe; stroke: var(--accent); }
 .traits .k { font-family: "Geist Mono", monospace; font-size: 13px; color: var(--accent); font-weight: 560; }
 .traits .v { margin-top: 3px; font-size: 14px; color: var(--ink-2); line-height: 1.5; }
 
@@ -193,6 +203,9 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
 footer { border-top: 1px solid var(--line); }
 .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding-top: 26px; padding-bottom: 26px; font-size: 14px; color: var(--ink-2); }
 .foot .brand { font-size: 15px; color: var(--ink); }
+.foot .foot-brand { gap: 8px; line-height: 1; }
+.foot .foot-brand img { width: 16px; height: 20px; object-fit: contain; }
+.foot .foot-brand span { display: block; line-height: 20px; }
 .foot .spacer { margin-left: auto; }
 .foot a:hover { color: var(--ink); }
 
@@ -234,7 +247,7 @@ footer { border-top: 1px solid var(--line); }
     <a class="brand" href="/">
       <img src="assets/codenib-logo.svg" alt="CodeNib">
     </a>
-    <a class="link" href="https://github.com/sysevol-ai/CodeNib#readme">Docs</a>
+    <a class="link" href="https://docs.codenib.ai">Docs</a>
     <a class="link gh" href="https://github.com/sysevol-ai/CodeNib" aria-label="Source on GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
     </a>
@@ -250,26 +263,65 @@ footer { border-top: 1px solid var(--line); }
         <p class="sub rise d1">CodeNib is a multi-view data system for serving repository context to coding agents.</p>
         <div class="ctas rise d2">
           <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
-          <a class="btn btn-ghost btn-lg" href="https://github.com/sysevol-ai/CodeNib#readme">Read the docs</a>
+          <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
         </div>
       </div>
       <div class="traits rise d2">
         <div>
-          <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.5 20 8l-8 4.5L4 8Z"/><path d="M4 12.5 12 17l8-4.5"/><path d="M4 16.5 12 21l8-4.5"/></svg></span>
+          <span class="t-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path class="guide" d="M10 12.5 16 19m6-6.5-6 6"/>
+              <rect class="panel" x="2.5" y="3.5" width="11" height="10" rx="3"/>
+              <path d="M5.5 7h5M5.5 10h3.5"/>
+              <rect class="panel" x="18.5" y="3.5" width="11" height="10" rx="3"/>
+              <circle class="hot" cx="22" cy="8.5" r=".8"/>
+              <circle class="hot" cx="26" cy="6.5" r=".8"/>
+              <circle class="hot" cx="26" cy="10.5" r=".8"/>
+              <path class="guide" d="m22.7 8.1 2.6-1.2m-2.6 2 2.6 1.2"/>
+              <rect class="panel" x="10.5" y="18.5" width="11" height="10" rx="3"/>
+              <circle class="hot" cx="14" cy="23.5" r=".75"/>
+              <circle class="hot" cx="18" cy="21.5" r=".75"/>
+              <circle class="hot" cx="18" cy="25.5" r=".75"/>
+              <path class="guide" d="m14.7 23.1 2.6-1.2m-2.6 2 2.6 1.2"/>
+            </svg>
+          </span>
           <div>
             <div class="k">heterogeneous</div>
             <div class="v">Lexical, dense, and graph views of the repo, from one compile.</div>
           </div>
         </div>
         <div>
-          <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5 20 19H4Z"/></svg></span>
+          <span class="t-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path class="guide" d="M9 5.5v21"/>
+              <circle class="panel" cx="9" cy="6.5" r="2.5"/>
+              <circle class="hot" cx="9" cy="16" r="2.5"/>
+              <circle class="panel" cx="9" cy="25.5" r="2.5"/>
+              <path d="M11.5 16c4.5 0 3.2-6.5 7.5-6.5h2.5"/>
+              <path d="m19.5 7.5 2 2-2 2"/>
+              <rect class="panel" x="18.5" y="14.5" width="10" height="10" rx="3"/>
+              <path d="M21.5 19.5h4m-2-2v4"/>
+            </svg>
+          </span>
           <div>
             <div class="k">incremental</div>
             <div class="v">Supported changes repair affected views; other transitions rebuild safely.</div>
           </div>
         </div>
         <div>
-          <span class="t-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6.2" cy="12" r="2.9"/><circle cx="17.8" cy="12" r="2.9"/><path d="M9.1 12h5.8"/></svg></span>
+          <span class="t-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path class="guide" d="M8 9.5 14 14m10-4.5L18 14m-2 5v5"/>
+              <rect class="panel" x="3.5" y="5" width="9" height="9" rx="3"/>
+              <path d="m8.5 7.8-2 1.7 2 1.7"/>
+              <rect class="panel" x="19.5" y="5" width="9" height="9" rx="3"/>
+              <path d="m23.5 7.8 2 1.7-2 1.7"/>
+              <path class="spark" d="m16 10.5 1.6 3.9 3.9 1.6-3.9 1.6-1.6 3.9-1.6-3.9-3.9-1.6 3.9-1.6Z"/>
+              <rect class="panel" x="11.5" y="23" width="9" height="6" rx="2.5"/>
+              <circle class="hot" cx="14.5" cy="26" r=".7"/>
+              <path d="M16.8 26h1.3"/>
+            </svg>
+          </span>
           <div>
             <div class="k">agent-native</div>
             <div class="v">Context served to agents as tools, with bounded budgets, over MCP.</div>
@@ -341,7 +393,7 @@ footer { border-top: 1px solid var(--line); }
       <h2 class="reveal">Point it at a codebase.</h2>
       <div class="ctas reveal">
         <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
-        <a class="btn btn-ghost btn-lg" href="https://github.com/sysevol-ai/CodeNib#readme">Read the docs</a>
+        <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
       </div>
     </div>
   </div>
@@ -349,9 +401,12 @@ footer { border-top: 1px solid var(--line); }
 
 <footer>
   <div class="wrap foot">
-    <span class="brand">codenib.ai</span>
+    <a class="brand foot-brand" href="/" aria-label="CodeNib home">
+      <img src="assets/codenib-icon.svg" alt="">
+      <span>codenib.ai</span>
+    </a>
     <span class="spacer"></span>
-    <a href="https://github.com/sysevol-ai/CodeNib#readme">Docs</a>
+    <a href="https://docs.codenib.ai">Docs</a>
     <a href="https://demo.codenib.ai">Demo</a>
     <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
     <span>© 2026 CodeNib</span>
