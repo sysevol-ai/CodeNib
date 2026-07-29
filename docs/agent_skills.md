@@ -84,6 +84,7 @@ exposed, or `include_default_tools=False` to withhold them).
 | `embedding_search` | retrieval | Semantic vector retrieval that matches code by meaning, not literal tokens. |
 | `hybrid_search` | aggregate | Fuses multiple retrievers (e.g. BM25 + embedding) via weighted score normalization. |
 | `codenib_context` | custom | One-call GraphRAG composer: search seeds + deterministic call-graph expansion into a compact set (graph step toggle: `CODENIB_COMPOSER_NO_GRAPH=1`). |
+| `repository_search` | custom | Repository-wide source retrieval with lexical search and optional semantic reciprocal-rank fusion; excludes supporting material by default. |
 | `find_callers` | expand | Incoming call-graph edges of a symbol (who calls X). |
 | `find_callees` | expand | Outgoing call-graph edges of a symbol (what X calls). |
 | `trace` | expand | Shortest call path between two symbols. |
@@ -91,26 +92,17 @@ exposed, or `include_default_tools=False` to withhold them).
 | `lsp_definition` | expand | LSP-compatible go-to-definition for the identifier at an exact source position (repo-relative `file_path`, 1-based `line`, 0-based `character`), served by the runtime's selected semantic provider — static SCIP occurrences by default, live LSP when injected. |
 | `lsp_references` | expand | LSP-compatible find-references at an exact source position, with optional `include_declaration`; same position contract and provider selection as `lsp_definition`. |
 | `llm_rerank` | rerank | High-precision LLM-judged reranking to refine top results. |
-| `crossencoder_rerank` | custom | Fast pairwise reranking: scores each (query, candidate) pair jointly with a cross-encoder model — more accurate than embedding similarity, faster than `llm_rerank`; requires a `CrossEncoderContext` in the runner's skill contexts. |
+| `crossencoder_rerank` | custom | Pairwise reranking that scores each query/candidate pair with a cross-encoder; requires a `CrossEncoderContext` in the runner's skill contexts. |
 | `code_to_query` | transform | Packs retrieved code nodes into a reusable follow-up search query. |
-
-> Removed in the skill redesign (low in-loop value per the #133 cost study; see
-> `docs/experiments/agent_compile.md`): `graph_expand` and `impact_analysis`
-> (bulk/transitive graph nav — ignored when grep is present), `regex_search`
-> (subsumed by the `grep` default tool), `embedding_rerank` (use `llm_rerank`
-> or `crossencoder_rerank`),
-> `query_transform` (the LLM reformulates natively), `read_code_block` (use the
-> `read` default tool), and `bm25_names` (merged into `bm25_search` as
-> `names_only`).
 
 ## Line-numbering at the agent boundary
 
-Internally, every line number is **0-based** — BM25 docs, FAISS metadata,
-symbol-graph anchors, and the tree-sitter `CodeChunk` all count from 0. The
-*agent boundary* is **1-based outward**: line numbers shown to, and accepted
-back from, the LLM are 1-based. This mirrors the `CodeLocation` convention at
-the dataset/HuggingFace boundary (see `_chunk_to_code_block` in
-`dataset/gt_locate.py`).
+Retrieval and graph representations used by skills are **0-based** — BM25
+documents, FAISS metadata, symbol-graph anchors, and tree-sitter `CodeChunk`
+objects count from 0. The *agent boundary* is **1-based outward**: line numbers
+shown to, and accepted back from, the LLM are 1-based. Dataset
+`CodeLocation` values are also 1-based; `_chunk_to_code_block` in
+`dataset/gt_locate.py` performs that separate output conversion.
 
 All conversion lives in one module, `codenib/agent/boundary.py`, with one
 site per direction:
