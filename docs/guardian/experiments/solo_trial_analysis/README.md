@@ -12,6 +12,10 @@ Each task directory contains:
 - `generic_review_prompt.md`: benchmark-generic context distilled from the
   observed capability gaps.
 
+Task directories may additionally contain experiment reports comparing a
+context intervention with the original baseline. The igel analysis includes
+`context_injection_report.md`.
+
 ## Completed analyses
 
 | Task | Passes | Primary review problem |
