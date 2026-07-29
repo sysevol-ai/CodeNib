@@ -3,6 +3,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
 import HighlightedCode from "@/components/HighlightedCode";
+import HierarchyMap from "@/components/HierarchyMap";
 import SystemMap from "@/components/SystemMap";
 import {
   fetchEdgeLabel,
@@ -270,6 +271,8 @@ export default function GraphView({
 
   // Wiki: focusing re-roots into the standalone explore graph (how you get in).
   // Explore: focus stays inside the current graph so it isn't thrown away.
+  const hasHierarchy = (data.hierarchy?.nodes?.length ?? 0) > 0;
+
   const peekFocus =
     variant === "wiki"
       ? onFocus
@@ -278,11 +281,21 @@ export default function GraphView({
   return (
     <>
       {variant === "wiki" ? (
-        <SystemMap
-          data={data}
-          onNodeClick={(node) => setPeek({ kind: "node", node })}
-          onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
-        />
+        // Drill down the containment tree when the payload carries one; the flat
+        // component view is the fallback for payloads that do not.
+        hasHierarchy ? (
+          <HierarchyMap
+            data={data}
+            onNodeClick={(node) => setPeek({ kind: "node", node })}
+            onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
+          />
+        ) : (
+          <SystemMap
+            data={data}
+            onNodeClick={(node) => setPeek({ kind: "node", node })}
+            onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
+          />
+        )
       ) : (
         <Suspense fallback={<GraphLoading />}>
           <CodeGraph

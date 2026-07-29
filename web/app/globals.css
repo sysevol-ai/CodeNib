@@ -3444,3 +3444,163 @@ a.codepanel-name:hover {
   padding: 0;
   white-space: pre;
 }
+
+/* --- hierarchical drill-down map (P5) --------------------------------------
+   Nested containment boxes: directory -> file -> symbol. Relationships below
+   are aggregated to whatever depth the reader has expanded to. */
+.hier-map {
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  padding: 12px 14px 14px;
+  background: var(--panel, transparent);
+}
+.hier-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.hier-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hier-stats {
+  font-size: 12px;
+  color: var(--muted);
+}
+.hier-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hier-box {
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.hier-box.is-open {
+  border-color: var(--border);
+}
+.hier-box-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.hier-box-head:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.08));
+}
+.hier-chevron {
+  width: 14px;
+  flex: 0 0 14px;
+  text-align: center;
+  font-family: var(--mono, monospace);
+  color: var(--muted);
+}
+.hier-label {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.hier-meta {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.hier-children {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 10px 9px 10px;
+}
+.hier-symbol {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.hier-symbol:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.hier-symbol:not(:disabled):hover {
+  border-color: var(--accent, currentColor);
+}
+.hier-symbol-name {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.hier-symbol-line {
+  margin-inline-start: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+.hier-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+.hier-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+}
+.hier-link:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.hier-link:not(:disabled):hover {
+  border-color: var(--accent, currentColor);
+}
+.hier-link-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+.hier-link-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hier-link-main b {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.hier-link em {
+  flex: 0 0 auto;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+}
