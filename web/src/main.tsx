@@ -7,6 +7,7 @@ import { routeSegments, useBrowserLocation } from "@/lib/router";
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
 const WikiPageView = lazy(() => import("@/app/[repoId]/page"));
 const Landing = lazy(() => import("@/app/page"));
+const AddRepo = lazy(() => import("@/app/add-repo/page"));
 
 function RouteLoading() {
   return (
@@ -22,6 +23,12 @@ function App() {
   const segments = routeSegments(location.pathname);
   if (segments.length === 0) {
     return <Landing />;
+  }
+
+  // Guidance for running CodeNib on your own code. Checked before the repo
+  // route because it is a page, not a repository id.
+  if (segments[0] === "add-repo") {
+    return <AddRepo />;
   }
 
   const repoId = segments[0];
