@@ -30,6 +30,25 @@ _README_SKIP_PREFIX = (
     "you can choose ",
     "$ ",
 )
+# A README's first prose is often not a description of the project. These are the
+# shapes that showed up as repo-card blurbs across the demo corpus.
+_README_NOISE = re.compile(
+    r"^\s*\.\.\s"  # reStructuredText directive line
+    r"|\|\w+\|\s*(image|replace)::"  # RST substitution definition
+    r"|:target:|:alt:|:scale:"  # RST directive options
+    r"|\b(?:href|src|alt|width|height|style)\s*=\s*[\"']"  # stray HTML attrs
+    r"|&#x[0-9a-fA-F]+;|&amp;|&quot;"  # HTML entities left by a stripped tag
+    r"|\bwe(?:'re| are)\s+(?:excited|thrilled|pleased|happy)\b"
+    r"|\bannounc(?:e|es|ed|ing|ement)\b"
+    r"|\b(?:now available|tickets are|registration is)\b"
+    r"|^this\s+(?:document|readme|file|page|repository)\s+(?:serves|is|contains)"
+    r"|^and\s+many\s+more\s+people\b"
+    r"|\b(?:mailing list|reported bugs|helped organize|special thanks)\b"
+    r"|^(?:license|copyright|authors?|maintainers?|credits)\s*:"
+    r"|\b(?:sponsor|sponsors|donate|open collective|backers|dependency tree)\b",
+    re.IGNORECASE,
+)
+
 _README_SECTION_TITLES = {
     "acknowledgements",
     "building",
@@ -55,6 +74,8 @@ _README_SECTION_TITLES = {
 
 def _plain_text(line: str) -> str:
     line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
+    # Reference-style links: [text][ref] and the collapsed [ref][] form.
+    line = re.sub(r"\[([^\]]+)\]\[[^\]]*\]", r"\1", line)
     line = re.sub(r"[*_`]", "", line)
     return re.sub(r"<[^>]+>", "", line).strip()
 
@@ -114,6 +135,8 @@ def readme_summary(text: str, limit: int = 160) -> str:
 
     for line in candidates:
         if line.endswith(":") or len(line.split()) < 6 or _README_SKIP.search(line):
+            continue
+        if _README_NOISE.search(line):
             continue
         prefix_text = re.sub(r"^[^a-z0-9$]+", "", line.lower())
         if prefix_text.startswith(_README_SKIP_PREFIX):
