@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 # Graph Range Query
 
 `CodeGraph` supports LSP-aligned queries that resolve a **source-file line range** (or a
-symbol) into the symbols defined there and the reference edges crossing that range.
+symbol) into symbol spans that overlap it and the reference edges crossing that range.
 These return typed records (`NodeRef`/`EdgeRef`/`RangeQueryResult`) so consumers never
 poke `graph.vs[...]` directly. The API lives in `codenib/graph/code_graph.py`.
 
@@ -34,10 +34,15 @@ result = graph.query_range(
     depth=1,            # only depth=1 is supported in v1
 )
 
-result.defined    # List[NodeRef]  — symbols defined within the range
+result.defined    # List[NodeRef]  — symbol spans overlapping the range
 result.outgoing   # List[EdgeRef]  — references anchored inside the range
-result.incoming   # List[EdgeRef]  — references targeting symbols defined in the range
+result.incoming   # List[EdgeRef]  — references targeting overlapping symbols
 ```
+
+`defined` uses inclusive **span-overlap** semantics:
+`symbol.start_line <= end_line and symbol.end_line >= start_line`. A query that
+touches only part of a function therefore still returns that function; the
+symbol's start line does not need to fall inside the query.
 
 `query_range_by_symbol(name, kinds=None, depth=1)` resolves a symbol by its identity
 `name` (the globally-unique, semi-raw SCIP symbol — not the display `unified_name`) to

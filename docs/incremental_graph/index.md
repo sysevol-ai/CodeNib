@@ -6,7 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 # Incremental Graph Patching
 
-Update an existing `CodeGraph` in-place when code changes, avoiding full re-indexing. Uses LSP language servers to detect symbol changes and reconnect reference edges.
+Update an existing `CodeGraph` in place when code changes, avoiding a full
+re-index whenever the language backend supports a safe delta. Most languages
+use an LSP server; C/C++ refreshes clangd `.idx` data instead.
 
 There are two entry points:
 
@@ -62,15 +64,68 @@ Independently of verification, the builder falls back to a full rebuild whenever
 
 Given a base commit (matching the current graph) and a target commit:
 
-1. **Detect changes** — `git diff -U0` identifies modified/added/deleted/renamed files and changed line ranges
-2. **Round 1 (Vertices)** — delete old symbols, create new ones, shift line numbers for unaffected symbols
-3. **Round 2 (Edges)** — reconnect reference edges using LSP `references` (incoming) and `semantic_tokens` + `definition` (outgoing)
+1. **Detect files and hunks** — `git diff --name-status` identifies
+   modified/added/deleted/renamed files; `git diff -U0` provides inclusive,
+   0-based old/new hunk ranges.
+2. **Round 1 (prepare vertices)** — all changed files are classified before
+   cross-file edges are queried. Added symbols are created, deleted symbols
+   are removed, and existing shifted/affected symbols are updated in place.
+3. **Round 2 (connect edges)** — affected symbols rediscover outgoing
+   references; added symbols discover both incoming and outgoing references.
+   Edge writes are batched after all Round 1 vertices exist.
+4. **Refresh range indexes** — the `O(V + E)` line-span and call-site indexes
+   are rebuilt so `query_range()` immediately sees the post-patch graph.
 
-The two-round design ensures all vertices exist before any edges are created.
+The two-round design ensures a definition added in one changed file exists
+before another changed file tries to connect a reference to it.
 
 ### Symbol Classification
 
-For modified files, each symbol is classified by comparing old graph data against new LSP results and git hunks: `deleted`, `added`, `affected` (overlaps changed lines), `shifted` (line offset but content unchanged), or `unchanged`. Only `affected` and `added` symbols trigger edge reconnection in Round 2.
+For modified files, the patcher compares the existing graph with the new
+`documentSymbol` snapshot and classifies each symbol:
+
+| Class | Meaning | Patch action |
+|------|---------|--------------|
+| `deleted` | Present only in the old snapshot and its old span overlaps a hunk | Remove the vertex |
+| `added` | Present only in the new snapshot | Create the vertex and discover incoming/outgoing references |
+| `affected` | Stable identity, but its new span overlaps a hunk | Keep the vertex; refresh stale outgoing references |
+| `shifted` | Stable identity and body, but its start line moved | Rename/update the vertex and shift its anchored outgoing edges |
+| `unchanged` | Stable identity and line | Leave it untouched |
+| `invisible` | Present in the baseline graph but absent from `documentSymbol`, outside every hunk | Preserve it; this covers definitions the LSP outline cannot represent |
+
+An `affected` symbol takes one of two paths. If every overlapping hunk
+preserves line count, only outgoing edges anchored in the changed ranges are
+removed and rediscovered; surviving anchors are shifted uniformly. If a hunk
+changes line count, all outgoing references for that symbol are cleared and
+its full body is rescanned. Incoming edges remain attached because the vertex
+is updated rather than deleted.
+
+When a container overlaps a hunk only because one of its children is affected,
+the classifier demotes the container to `shifted`. Its span metadata is still
+refreshed, but the child owns the reference rescan and avoids duplicate work.
+
+### Severed-edge contract
+
+A full-file rebuild can temporarily cut references between the rebuilt file
+and the rest of the graph. Each cut call site is recorded separately as:
+
+```text
+(
+  source_name,
+  target_name,
+  source_unified_name,
+  target_unified_name,
+  anchor_file,
+  anchor_line,
+)
+```
+
+This is a six-element tuple, not a source/target pair: parallel references
+between the same symbols remain distinct when their call-site anchors differ.
+Incoming edges are safe to remap to the rebuilt target. Outgoing edges are
+remapped only when the source body is still trustworthy; otherwise LSP
+discovery replaces them. Recorded anchor lines are preserved or rebased
+through a known file shift before the edge is restored.
 
 ### LSP Interaction
 
@@ -93,13 +148,24 @@ The patcher queries three LSP methods to rebuild the graph:
 `LSPClient` auto-resolves server binaries from PATH / conda / venv / Go,
 Cargo, npm-global, .NET global tools, and local user bin directories.
 
-**C/C++ special case**: clangd's background indexer is natively incremental — it only re-indexes changed translation units, producing updated `.idx` files. So `patcher_cpp.py` simply triggers a clangd background-index run on the changed files and rebuilds the graph from the new `.idx` data, without the LSP query flow above.
+**C/C++ special case**: clangd's background indexer refreshes `.idx` files
+for affected translation units. `patcher_cpp.py` removes the old changed-file
+subgraphs, reads the refreshed `.idx` data to restore their vertices and
+references, then rebuilds the same range indexes as the generic patcher.
+Header changes can invalidate multiple translation units, so that path may do
+more work than the source-file list alone suggests. The `.idx` refresh is
+prepared before graph mutation; if reindexing, decoding, merging, or range-index
+construction fails, the patcher restores the original in-memory graph and
+raises instead of returning a partially updated graph.
 
 ## Prerequisites
 
 - An existing `CodeGraph` (built via `LSIndexer.run_pipeline()`, see [scip_index](../scip_index.md))
 - The corresponding language server installed (see table above)
 - The project must be a git repository with both the base and target commits reachable
+- The checked-out, tracked working tree must represent `target_commit`.
+  Symbol and `.idx` snapshots come from files on disk; the compiler path
+  enforces a clean tree and uses the resolved current `HEAD` as its target.
 
 ## Usage
 
@@ -116,6 +182,13 @@ result = indexer.graph_patch(graph, base_commit="v1.0", target_commit="HEAD")
 
 graph.save_graph("/cache/project/graph.pkl")
 ```
+
+`base_commit` is passed into the patcher as `earlier_commit`, and
+`target_commit` as `later_commit`. The same pair drives both changed-file
+detection and every modified file's old/new hunk coordinates. Direct
+`patch_files()` callers may omit `later_commit`; its effective value is then
+`HEAD`. The returned `commit_earlier` and `commit_later` fields record the
+effective pair used by the patch.
 
 **Supported languages:** Python, Rust, TypeScript/JS, Go, C/C++.
 
@@ -138,4 +211,6 @@ graph.save_graph("/cache/project/graph.pkl")
 
 ## Interactive Demo
 
-See the [Interactive Demo](interactive.md) for a step-by-step visual walkthrough of the symbol classification and graph rebuild process.
+See the [Interactive Demo](interactive.md) for a step-by-step walkthrough of
+classification, in-place vertex preparation, reference discovery, and the
+final range-index refresh.
