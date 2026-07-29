@@ -486,13 +486,55 @@ def parse_fact_plan(
             sections.append({"title": title, "claims": claims})
     if not sections:
         errors.append("plan has no supported sections")
-    return {
+
+    # Reader-facing framing and the scan table are grounded like any claim: each
+    # needs admissible evidence ids or it is dropped rather than passed through.
+    purpose: dict[str, Any] = {}
+    raw_purpose = raw.get("purpose")
+    if isinstance(raw_purpose, dict):
+        statements = [
+            str(item).strip()
+            for item in raw_purpose.get("statements") or []
+            if str(item or "").strip()
+        ]
+        purpose_evidence = _supported_evidence_ids(
+            raw_purpose.get("evidence"),
+            allowed,
+            label="purpose",
+            errors=errors,
+        )
+        if statements and purpose_evidence:
+            purpose = {"statements": statements, "evidence": purpose_evidence}
+
+    scan_map: List[dict[str, Any]] = []
+    for row in raw.get("map") or []:
+        if not isinstance(row, dict):
+            continue
+        concern = str(row.get("concern") or "").strip()
+        entity = str(row.get("entity") or "").strip()
+        row_evidence = _supported_evidence_ids(
+            row.get("evidence"),
+            allowed,
+            label="map row",
+            errors=errors,
+        )
+        if concern and entity and row_evidence:
+            scan_map.append(
+                {"concern": concern, "entity": entity, "evidence": row_evidence}
+            )
+
+    plan: dict[str, Any] = {
         "thesis": {
             "statement": thesis_statement,
             "evidence": thesis_evidence,
         },
         "sections": sections,
-    }, errors
+    }
+    if purpose:
+        plan["purpose"] = purpose
+    if scan_map:
+        plan["map"] = scan_map
+    return plan, errors
 
 
 def grounding_report(

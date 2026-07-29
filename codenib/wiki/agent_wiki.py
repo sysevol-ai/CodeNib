@@ -82,7 +82,7 @@ _EXT_LANG = {
 }
 _MAX_CONTEXT_CHARS = 14000
 _OUTLINE_PROMPT_VERSION = "12"
-_PAGE_PROMPT_VERSION = "99"
+_PAGE_PROMPT_VERSION = "100"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 _OVERVIEW_RETRIEVAL_LIMIT = 12
@@ -651,6 +651,11 @@ def _merge_fact_plans(
     merged = copy.deepcopy(base)
     if not merged.get("thesis") and candidate.get("thesis"):
         merged["thesis"] = copy.deepcopy(candidate["thesis"])
+    # A repair pass may be the first attempt that produced usable framing or a
+    # scan table; keep it rather than losing it to the earlier plan.
+    for key in ("purpose", "map"):
+        if not merged.get(key) and candidate.get(key):
+            merged[key] = copy.deepcopy(candidate[key])
 
     sections = merged.setdefault("sections", [])
     for incoming in candidate.get("sections") or []:
@@ -1005,6 +1010,42 @@ def _renderable_plan(
         intro = readme_intro[0] if readme_intro is not None else ""
     intro_terms = _prose_terms(intro)
 
+    # Framing and the scan table are grounded like any claim: a statement or row
+    # that cites nothing admissible is dropped rather than rendered unsupported.
+    purpose = rendered.get("purpose") or {}
+    purpose_ids = [
+        str(item) for item in (purpose.get("evidence") or []) if str(item) in allowed
+    ]
+    purpose_statements = [
+        sentence
+        for sentence in (
+            re.sub(r"\s+", " ", str(raw or "")).strip()
+            for raw in (purpose.get("statements") or [])
+        )
+        if sentence
+    ]
+    if purpose_statements and purpose_ids:
+        rendered["purpose"] = {
+            "statements": purpose_statements[:3],
+            "evidence": purpose_ids,
+        }
+    else:
+        rendered.pop("purpose", None)
+
+    rendered_map = []
+    for row in rendered.get("map") or []:
+        concern = re.sub(r"\s+", " ", str(row.get("concern") or "")).strip()
+        entity = re.sub(r"\s+", " ", str(row.get("entity") or "")).strip()
+        ids = [str(item) for item in row.get("evidence") or [] if str(item) in allowed]
+        if not concern or not entity or not ids:
+            continue
+        rendered_map.append({"concern": concern, "entity": entity, "evidence": ids})
+    # A two-row table is not worth the chrome; below that, prose carries it.
+    if len(rendered_map) >= 3:
+        rendered["map"] = rendered_map[:6]
+    else:
+        rendered.pop("map", None)
+
     rendered_sections = []
     for section in rendered.get("sections") or []:
         rendered_claims = []
@@ -1131,6 +1172,34 @@ def _fact_plan_markdown(
         readme_intro = _readme_intro(evidence)
         if readme_intro is not None:
             intro = (readme_intro[0], [readme_intro[1]])
+    # Framing first, then the scan table, then the detail -- a reader who has
+    # not seen the codebase needs to know what this area is for before being
+    # handed symbol-level handoffs.
+    purpose_block = ""
+    purpose = plan.get("purpose") or {}
+    purpose_statements = [str(item).strip() for item in purpose.get("statements") or []]
+    purpose_statements = [item for item in purpose_statements if item]
+    if purpose_statements:
+        sentences = [
+            _format_supported_literals(item).rstrip(".") + "."
+            for item in purpose_statements
+        ]
+        purpose_block = " ".join(sentences)
+        ids = [str(item) for item in purpose.get("evidence") or []]
+        if ids:
+            purpose_block += " " + " ".join(f"[{item}]" for item in ids)
+
+    map_block = ""
+    rows = plan.get("map") or []
+    if rows:
+        lines = ["| Capability | Implemented by | Source |", "|---|---|---|"]
+        for row in rows:
+            concern = _format_supported_literals(str(row.get("concern") or "")).strip()
+            entity = _format_supported_literals(str(row.get("entity") or "")).strip()
+            ids = " ".join(f"[{item}]" for item in row.get("evidence") or [])
+            lines.append(f"| {concern} | {entity} | {ids} |")
+        map_block = "\n".join(lines)
+
     rendered_sections: List[tuple[str, str]] = []
     for section in plan.get("sections") or []:
         sentences = []
@@ -1156,6 +1225,10 @@ def _fact_plan_markdown(
     blocks = []
     if intro is not None:
         blocks.append(intro[0] + " " + " ".join(f"[{item}]" for item in intro[1]))
+    if purpose_block:
+        blocks.extend(("## Purpose and scope", purpose_block))
+    if map_block:
+        blocks.extend(("## At a glance", map_block))
     for title, paragraph in rendered_sections:
         blocks.extend((f"## {title}", paragraph))
     return "\n\n".join(blocks)
@@ -1315,14 +1388,42 @@ Source evidence:
 Static reference relations:
 {relations}
 
+Other pages of this wiki (do not restate what they own):
+{wiki_pages}
+
 Return ONLY JSON with this shape:
 {{"thesis":{{"statement":"one concise supported thesis","evidence":["E1"]}},
+"purpose":{{"statements":["what this area is responsible for",
+"what a reader can do with it"],"evidence":["E1","E2"]}},
+"map":[{{"concern":"Short capability name","entity":"`Class.method()`",
+"evidence":["E1"]}}],
 "sections":[{{"title":"Section title","claims":[{{"role":"flow",
 "statement":"one concrete claim","evidence":["E1","E2","R1"]}}]}}]}}
 
-Use 2-5 sections and 1-3 claims per section. Every thesis and claim statement
-must be exactly one sentence, and every claim must cite one or more provided
-evidence IDs. Do not invent files, symbols, APIs, relationships, or
+Use 3-6 sections and 2-4 claims per section. Every thesis, purpose, and claim
+statement must be exactly one sentence, and every claim must cite one or more
+provided evidence IDs.
+
+Write `purpose` for a reader who has not seen this codebase: two or three
+sentences saying what this area is responsible for and what it does for the
+caller, in plain language, before any symbol-by-symbol detail. Name concrete
+components, but explain the responsibility rather than reciting a call. It is
+still grounded -- cite the evidence the responsibility rests on.
+
+Write `map` as 3-6 rows pairing a capability a reader would look for with the
+concrete code entity that implements it, so the page can be scanned before it
+is read. Each row cites the evidence for that pairing. Omit `map` when the
+evidence does not support at least three distinct pairings.
+
+Do not repeat a relation across sections: each source-to-target handoff belongs
+to exactly one section, in the section whose responsibility it serves.
+
+You are writing one page of a wiki, not a standalone document. When a
+responsibility clearly belongs to another listed page, name that area in one
+clause and move on instead of re-explaining it; spend this page's evidence on
+what this page owns. Never invent a page that is not listed.
+
+Do not invent files, symbols, APIs, relationships, or
 behavior. State implementation facts, not expected benefits or marketing
 judgments. Write direct subject-verb-object claims. Avoid benefit language such
 as allows, enables, facilitates, efficient, optimize, quick, flexible, easy, or
@@ -3462,6 +3563,44 @@ class AgentWiki:
     def _relations_context(relations: List[RelationItem]) -> str:
         return "\n".join(item.prompt_line() for item in relations) or "(none)"
 
+    def _wiki_context(self, current_id: str) -> str:
+        """The other pages of this wiki, so a page knows where it sits.
+
+        Pages are planned independently from their own retrieved evidence, which
+        left every page re-explaining whatever its neighbours had already
+        covered and never pointing at them. This is derived from the outline,
+        so it costs no extra model call.
+        """
+
+        lines: List[str] = []
+
+        def walk(pages: Sequence[Dict[str, Any]], depth: int) -> None:
+            for page in pages:
+                if not isinstance(page, dict):
+                    continue
+                page_id = str(page.get("id") or "")
+                title = str(page.get("title") or "").strip()
+                if not title:
+                    continue
+                summary = re.sub(r"\s+", " ", str(page.get("summary") or "")).strip()[
+                    :160
+                ]
+                marker = " (this page)" if page_id == current_id else ""
+                indent = "  " * depth
+                lines.append(
+                    f"{indent}- {title}{marker}" + (f": {summary}" if summary else "")
+                )
+                walk(page.get("children") or [], depth + 1)
+
+        # Read the resolved outline only. Generating one here would make page
+        # rendering depend on an outline round-trip it does not otherwise need.
+        outline = self._outline or {}
+        try:
+            walk(outline.get("pages") or [], 0)
+        except Exception:  # noqa: BLE001 - context is an enhancement, never fatal
+            return "(unavailable)"
+        return "\n".join(lines) or "(none)"
+
     def _fact_plan(
         self,
         meta: Dict[str, Any],
@@ -3476,16 +3615,29 @@ class AgentWiki:
             constraints=_plan_evidence_constraints(meta, evidence, relations),
             evidence=self._evidence_context(evidence),
             relations=self._relations_context(relations),
+            wiki_pages=self._wiki_context(str(meta.get("id") or "")),
         )
         allowed = [item.id for item in evidence] + [item.id for item in relations]
         errors: List[str] = []
         try:
             text = self._client().complete(
                 [{"role": "user", "content": prompt}],
-                max_tokens=1200,
+                # A plan now carries framing, a scan table and up to six
+                # sections; 1200 truncated the JSON mid-object, which parsed as
+                # "no supported sections" and sent every page through repair.
+                max_tokens=3000,
                 temperature=0.0,
             )
             plan, errors = parse_fact_plan(text, allowed)
+            # Framing and the scan table are validated on their own evidence and
+            # are orthogonal to the section repairs that follow. Repairs rewrite
+            # sections and can drop them, so hold the first admitted copy and put
+            # it back on whichever plan finally wins.
+            sticky_blocks = {
+                key: copy.deepcopy(plan[key])
+                for key in ("purpose", "map")
+                if plan.get(key)
+            }
             plan = _normalize_plan_support(plan, evidence, relations)
             plan = _renderable_plan(plan, evidence, relations)
         except Exception as exc:  # noqa: BLE001 - use structural fallback
@@ -3597,7 +3749,7 @@ class AgentWiki:
             try:
                 repaired_text = self._client().complete(
                     [{"role": "user", "content": repair_prompt}],
-                    max_tokens=1400,
+                    max_tokens=2600,
                     temperature=0.0,
                 )
                 repaired_plan, repaired_errors = parse_fact_plan(repaired_text, allowed)
@@ -3662,6 +3814,8 @@ class AgentWiki:
                 logger.debug("wiki fact-plan repair unavailable: %s", exc)
                 break
         if best_plan.get("sections"):
+            for key, value in sticky_blocks.items():
+                best_plan.setdefault(key, value)
             return best_plan, best_warnings
 
         claims = [
