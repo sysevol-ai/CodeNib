@@ -21,52 +21,15 @@ logging.basicConfig(
     level=logging.INFO, stream=sys.stdout, format="%(levelname)-8s %(message)s"
 )
 
+from codenib.cli import CLIError
+from codenib.cli import detect_languages as detect_supported_languages
+from codenib.cli import normalize_languages as normalize_supported_languages
 from codenib.compiler import IndexCompiler, IndexCompilerConfig
 from codenib.compiler.index_builders import (
     IndexBuilderRegistry,
     register_default_builders,
 )
 from codenib.paths import QA_DATA_DIRNAME, repo_index_dir
-
-_LANGUAGE_ALIASES = {
-    "python": ["python"],
-    "py": ["python"],
-    "go": ["go"],
-    "golang": ["go"],
-    "rust": ["rust"],
-    "rs": ["rust"],
-    "javascript": ["javascript"],
-    "js": ["javascript"],
-    "typescript": ["typescript"],
-    "ts": ["typescript"],
-    "cpp": ["cpp"],
-    "c++": ["cpp"],
-    "cxx": ["cpp"],
-    "cc": ["cpp"],
-    "c": ["cpp"],
-}
-
-_EXT_LANGS = {
-    ".py": ["python"],
-    ".pyi": ["python"],
-    ".pyx": ["python"],
-    ".go": ["go"],
-    ".rs": ["rust"],
-    ".js": ["javascript"],
-    ".jsx": ["javascript"],
-    ".mjs": ["javascript"],
-    ".ts": ["typescript"],
-    ".tsx": ["typescript"],
-    ".mts": ["typescript"],
-    ".cts": ["typescript"],
-    ".cpp": ["cpp"],
-    ".cc": ["cpp"],
-    ".cxx": ["cpp"],
-    ".c": ["cpp"],
-    ".h": ["cpp"],
-    ".hpp": ["cpp"],
-    ".hxx": ["cpp"],
-}
 
 
 def get_base_commit(repo_dir: str) -> str:
@@ -83,37 +46,15 @@ def get_base_commit(repo_dir: str) -> str:
         return ""
 
 
-def _dedupe(languages: list[str]) -> list[str]:
-    seen = set()
-    result = []
-    for language in languages:
-        if language not in seen:
-            seen.add(language)
-            result.append(language)
-    return result
-
-
 def normalize_languages(value: str) -> list[str]:
-    languages: list[str] = []
-    for token in re.split(r"[,/]", value or ""):
-        token = token.strip().lower()
-        if not token:
-            continue
-        languages.extend(_LANGUAGE_ALIASES.get(token, [token]))
-    return _dedupe(languages) or ["python"]
+    """Normalize overrides through the project-wide language registry."""
+    values = [part for part in re.split(r"[,/]", value or "") if part.strip()]
+    return normalize_supported_languages(values)
 
 
 def detect_languages(repo_dir: str) -> list[str]:
-    counts: dict[str, int] = {}
-    for root, _, files in os.walk(repo_dir):
-        if "/.git" in root or "/.codenib" in root:
-            continue
-        for f in files:
-            for lang in _EXT_LANGS.get(os.path.splitext(f)[1].lower(), []):
-                counts[lang] = counts.get(lang, 0) + 1
-    if not counts:
-        return ["python"]
-    return sorted(counts, key=lambda lang: (-counts[lang], lang))
+    """Detect every source language registered with the CodeNib chunker."""
+    return detect_supported_languages(repo_dir)
 
 
 def update_registry(registry_path: str, entry: dict) -> None:
@@ -150,11 +91,18 @@ def main() -> None:
         print(f"ERROR: Directory not found: {repo_dir}")
         sys.exit(1)
 
-    languages = (
-        normalize_languages(args.language)
-        if args.language
-        else detect_languages(repo_dir)
-    )
+    try:
+        languages = (
+            normalize_languages(args.language)
+            if args.language
+            else detect_languages(repo_dir)
+        )
+    except CLIError as exc:
+        parser.error(str(exc))
+    if not languages:
+        parser.error(
+            "no supported source language was detected; pass --language explicitly"
+        )
     language = "/".join(languages)
     print(f"Target languages: {', '.join(languages)}")
 
