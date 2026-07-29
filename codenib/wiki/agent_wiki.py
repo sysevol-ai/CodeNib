@@ -1459,6 +1459,12 @@ caller, in plain language, before any symbol-by-symbol detail. Name concrete
 components, but explain the responsibility rather than reciting a call. It is
 still grounded -- cite the evidence the responsibility rests on.
 
+The no-benefit-language rule below applies to `purpose` and `map` exactly as it
+does to claims: describe what the code does, never how good it is. Do not write
+that something is fast, flexible, easy, powerful, efficient, or that it allows,
+enables, ensures, facilitates or optimizes anything -- not even when the
+project's own README says so. Say what it does instead.
+
 Write `map` as 3-6 rows pairing a capability a reader would look for with the
 concrete code entity that implements it, so the page can be scanned before it
 is read. Each row cites the evidence for that pairing. Omit `map` when the
