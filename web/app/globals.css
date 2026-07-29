@@ -913,6 +913,8 @@ pre {
   padding: 2px 5px;
   font-size: 0.85em;
   color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 /* Inline citation chip: a cited symbol/file in prose; click scrolls the code pane. */
 .cite-chip {
@@ -1747,6 +1749,7 @@ pre {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 8px;
+  overflow-wrap: anywhere;
 }
 .codemap-coverage {
   display: flex;
@@ -1784,6 +1787,9 @@ pre {
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   cursor: pointer;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .codemap-chip:hover {
   border-color: var(--accent);
@@ -2380,6 +2386,7 @@ pre {
   width: 94vw;
   height: 92vh;
   max-width: 1500px;
+  min-width: 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -2425,6 +2432,7 @@ pre {
 .graph-modal-body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   padding: 12px 16px 16px;
 }
@@ -2519,6 +2527,29 @@ pre {
   }
 }
 @media (max-width: 600px) {
+  .graph-modal-scrim {
+    padding: 12px;
+  }
+  .graph-modal {
+    width: 100%;
+    height: calc(100dvh - 24px);
+    max-width: 100%;
+  }
+  .graph-modal-head {
+    min-width: 0;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+  .graph-modal-body {
+    padding: 10px;
+  }
+  .codemap-controls > * {
+    max-width: 100%;
+  }
+  .codemap-symbol {
+    flex-basis: 100%;
+    min-width: 0;
+  }
   .graph-modal-hint {
     display: none;
   }
@@ -3656,4 +3687,14 @@ a.codepanel-name:hover {
 }
 .cite-src-loc {
   opacity: 0.75;
+}
+
+@media (max-width: 600px) {
+  .graph-modal-body .hier-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .graph-modal-body .hier-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

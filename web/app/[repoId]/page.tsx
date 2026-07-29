@@ -33,14 +33,18 @@ interface Heading {
 // The wiki page now leads with an interactive subsystem graph, so the narrator's
 // generated mermaid diagrams (and any heading left empty once removed) are
 // redundant — strip them before rendering.
-/** Drop diagrams from index-derived pages.
+/** Drop diagrams unless they came from the validated structured plan.
  *
  *  The WikiBuilder path emits a mechanical fan-out of every module it found,
- *  which Mermaid's auto-layout renders as noise. A planned page is different:
- *  its diagram is an ordered path of a few steps whose every endpoint had to
- *  resolve against that page's own evidence, so it is kept. */
-function stripGeneratedDiagrams(md: string, indexDerived: boolean): string {
-  if (!indexDerived) return md;
+ *  which Mermaid's auto-layout renders as noise. Free-form model Markdown is
+ *  also not trusted to supply executable Mermaid directives. A generated
+ *  fact-plan diagram is different: its directed edges were validated against
+ *  the page's evidence before the backend rendered the fence. */
+function stripGeneratedDiagrams(
+  md: string,
+  keepValidatedPlan: boolean,
+): string {
+  if (keepValidatedPlan) return md;
   return md
     .replace(/\n#{1,6}[^\n]*\n+```mermaid[\s\S]*?```/g, "") // a heading + its diagram
     .replace(/```mermaid[\s\S]*?```/g, "") // any stray diagram
@@ -286,11 +290,11 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
 
   const hasGraph = !!repo?.capabilities?.codemap;
   const generationMode = page?.generation?.mode ?? "offline";
-  // A published page cleared the grounding floor. `grounding.valid` is the
-  // stricter reading kept for description -- gating the label on it said
-  // "evidence review needed" on pages that were fully sourced and had merely
-  // used a token the checker could not resolve.
-  const sourceChecked = generationMode === "generated";
+  // "Source checked" is the strict claim: every substantial block is cited
+  // and every referenced source identifier resolves. Generated pages that only
+  // clear the looser grounding floor stay visible, but retain the review badge.
+  const sourceChecked =
+    generationMode === "generated" && page?.grounding?.valid === true;
   const evidenceRoutes = [
     ...new Set(page?.evidence?.items.flatMap((item) => item.routes) ?? []),
   ];
@@ -584,7 +588,11 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                     setSourceCitation(page.citations[index] ?? null)
                   }
                 >
-                  {stripGeneratedDiagrams(page.markdown, generationMode === "offline")}
+                  {stripGeneratedDiagrams(
+                    page.markdown,
+                    generationMode === "generated" &&
+                      page.generation?.renderer === "fact_plan",
+                  )}
                 </Markdown>
               ) : pageError ? (
                 <p className="muted">Couldn't load this page. It may not exist — pick a section from the sidebar.</p>

@@ -110,7 +110,7 @@ export interface WikiPage {
     valid: boolean;
     citation_coverage: number;
     // Strict reading: everything on the page resolved. `grounded` is the
-    // looser floor publication is gated on.
+    // looser coverage floor; it still rejects unknown sources and identifiers.
     grounded?: boolean;
     cited_evidence?: number;
     evidence_count: number;
