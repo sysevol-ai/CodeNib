@@ -92,7 +92,7 @@ See the
 for ports, advanced indexing, and troubleshooting.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_wiki.png" alt="CodeNib Wiki showing a source-linked overview of the CodeNib repository" width="100%">
+  <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_wiki.png" alt="CodeNib Wiki showing the source-linked reverse proxy guide for Caddy" width="100%">
 </p>
 
 ## Serve An Agent
