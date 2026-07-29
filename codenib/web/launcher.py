@@ -20,7 +20,7 @@ from typing import Optional
 
 from .local import LocalWiki
 
-_MIN_NODE_VERSION = (18, 18, 0)
+_NODE_VERSION_REQUIREMENT = "^20.19.0 or >=22.12.0"
 
 
 def _packaged_frontend_dir() -> Path:
@@ -92,7 +92,7 @@ def node_runtime_status() -> tuple[bool, str]:
     """Return whether the installed Node.js can run the Wiki frontend."""
     node = shutil.which("node")
     if node is None:
-        return False, "missing (requires >= 18.18.0)"
+        return False, f"missing (requires {_NODE_VERSION_REQUIREMENT})"
     try:
         result = subprocess.run(
             [node, "--version"],
@@ -108,8 +108,8 @@ def node_runtime_status() -> tuple[bool, str]:
     if match is None:
         return False, f"unrecognized version: {raw_version or 'empty output'}"
     version = tuple(int(part) for part in match.groups())
-    if version < _MIN_NODE_VERSION:
-        return False, f"{raw_version} (requires >= 18.18.0)"
+    if not ((version[0] == 20 and version >= (20, 19, 0)) or version >= (22, 12, 0)):
+        return False, f"{raw_version} (requires {_NODE_VERSION_REQUIREMENT})"
     return True, raw_version
 
 

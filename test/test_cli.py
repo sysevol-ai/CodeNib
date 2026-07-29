@@ -739,17 +739,34 @@ def test_doctor_does_not_require_node_for_prebuilt_frontend(
     assert wiki["npm"] == (True, "not required (prebuilt frontend)")
 
 
-def test_node_runtime_status_rejects_unsupported_version(
+@pytest.mark.parametrize(
+    ("version", "expected_ok"),
+    [
+        ("v18.17.1", False),
+        ("v20.18.1", False),
+        ("v20.19.0", True),
+        ("v21.7.3", False),
+        ("v22.11.0", False),
+        ("v22.12.0", True),
+        ("v24.0.0", True),
+    ],
+)
+def test_node_runtime_status_matches_vite_requirement(
     monkeypatch: pytest.MonkeyPatch,
+    version: str,
+    expected_ok: bool,
 ) -> None:
     monkeypatch.setattr(launcher.shutil, "which", lambda command: f"/bin/{command}")
     monkeypatch.setattr(
         launcher.subprocess,
         "run",
-        lambda *args, **kwargs: CompletedProcess(args[0], 0, "v18.17.1\n", ""),
+        lambda *args, **kwargs: CompletedProcess(args[0], 0, f"{version}\n", ""),
     )
 
     ok, detail = launcher.node_runtime_status()
 
-    assert ok is False
-    assert detail == "v18.17.1 (requires >= 18.18.0)"
+    assert ok is expected_ok
+    if expected_ok:
+        assert detail == version
+    else:
+        assert detail == f"{version} (requires ^20.19.0 or >=22.12.0)"
