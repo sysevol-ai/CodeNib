@@ -24,6 +24,7 @@ exclude_docs: |
 
 theme:
   name: material
+  font: false
   logo: assets/images/codenib-icon.svg
   favicon: assets/images/codenib-icon.svg
   palette:
