@@ -25,6 +25,22 @@ class ReleaseValidationError(RuntimeError):
     """A release artifact does not satisfy the publication contract."""
 
 
+README_CITATION_MARKERS = (
+    "## Citation",
+    "https://arxiv.org/abs/2607.25431",
+    "@misc{yu2026codenibmultiviewdataserving,",
+)
+
+
+def validate_readme_citation(readme: str) -> None:
+    """Require the canonical paper citation in the packaged README."""
+    missing = [marker for marker in README_CITATION_MARKERS if marker not in readme]
+    if missing:
+        raise ReleaseValidationError(
+            "README.md is missing citation markers: " + ", ".join(missing)
+        )
+
+
 def project_identity(project_file: Path) -> tuple[str, str]:
     with project_file.open("rb") as handle:
         project = tomllib.load(handle)["project"]
@@ -114,7 +130,6 @@ def _validate_sdist(sdist: Path, name: str, version: str) -> None:
     root = f"{name}-{version}"
     required = {
         f"{root}/CHANGELOG.md",
-        f"{root}/CITATION.cff",
         f"{root}/LICENSE",
         f"{root}/README.md",
         f"{root}/pyproject.toml",
@@ -122,11 +137,15 @@ def _validate_sdist(sdist: Path, name: str, version: str) -> None:
     }
     with tarfile.open(sdist, mode="r:gz") as archive:
         members = {member.name for member in archive.getmembers()}
-    missing = sorted(required - members)
-    if missing:
-        raise ReleaseValidationError(
-            f"{sdist.name} is missing source-release files: {', '.join(missing)}"
-        )
+        missing = sorted(required - members)
+        if missing:
+            raise ReleaseValidationError(
+                f"{sdist.name} is missing source-release files: {', '.join(missing)}"
+            )
+        readme_file = archive.extractfile(f"{root}/README.md")
+        if readme_file is None:  # guarded by the required-members check
+            raise ReleaseValidationError(f"{sdist.name} has no readable README.md")
+        validate_readme_citation(readme_file.read().decode("utf-8"))
 
 
 def validate_release(

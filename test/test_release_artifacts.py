@@ -13,6 +13,7 @@ from scripts.verify_release_artifacts import (
     ReleaseValidationError,
     expected_tag,
     project_identity,
+    validate_readme_citation,
     validate_tag,
 )
 
@@ -29,6 +30,18 @@ def test_project_identity_and_tag_match_release_metadata() -> None:
 def test_release_tag_must_match_project_version() -> None:
     with pytest.raises(ReleaseValidationError, match="does not match"):
         validate_tag("v0.2.0", "0.1.0")
+
+
+def test_packaged_readme_requires_the_arxiv_citation() -> None:
+    citation = """
+## Citation
+https://arxiv.org/abs/2607.25431
+@misc{yu2026codenibmultiviewdataserving,
+"""
+    validate_readme_citation(citation)
+
+    with pytest.raises(ReleaseValidationError, match="citation markers"):
+        validate_readme_citation("# CodeNib\n")
 
 
 def test_registry_publishers_use_separate_workflows() -> None:
