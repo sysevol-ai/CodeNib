@@ -53,7 +53,7 @@ jobs:
       name: pypi
       url: https://pypi.org/p/codenib
     permissions:
-      id-token: write
+      contents: read
     steps:
       - name: Download distributions
         uses: actions/download-artifact@v4
@@ -63,6 +63,8 @@ jobs:
 
       - name: Publish distributions
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
 
   github-release:
     name: Create GitHub Release

@@ -68,7 +68,12 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "publish-pypi",
         "github-release",
     }
-    assert production["jobs"]["publish-pypi"]["environment"]["name"] == "pypi"
+    production_publisher = production["jobs"]["publish-pypi"]
+    assert production_publisher["environment"]["name"] == "pypi"
+    assert production_publisher["permissions"] == {"contents": "read"}
+    assert production_publisher["steps"][-1]["with"]["password"] == (
+        "${{ secrets.PYPI_API_TOKEN }}"
+    )
 
     assert set(test["jobs"]) == {"verify", "publish-testpypi"}
     test_publisher = test["jobs"]["publish-testpypi"]
