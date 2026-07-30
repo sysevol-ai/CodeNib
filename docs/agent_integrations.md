@@ -111,4 +111,79 @@ reference or type-use edges as exact call or inheritance facts.
 - Loading the provider never invokes LocAgent, OpenHands ACI, NetworkX,
   LlamaIndex, or an index builder.
 
-The base `codenib` package therefore gains no LocAgent or OpenHands dependency.
+## OrcaLoca
+
+The OrcaLoca provider replaces its repository data plane while retaining the
+upstream search policy. It implements the six functions exposed to the model:
+
+- `search_file_contents`
+- `search_source_code`
+- `search_class`
+- `search_method_in_class`
+- `search_callable`
+- `search_file_tree`
+
+It also implements the history, distance, exact-location, decomposition, and
+disambiguation hooks that OrcaLoca's `SearchWorker` calls directly. Those
+private hooks are a revision-scoped compatibility surface, not new CodeNib core
+APIs.
+
+Build a graph-enabled manifest and create the factory:
+
+```python
+from codenib.integrations.orcaloca import (
+    make_orcaloca_search_manager_factory,
+)
+
+search_manager_factory = make_orcaloca_search_manager_factory(
+    "/path/to/repo_manifest.json",
+)
+```
+
+With the small injection seam from
+[OrcaLoca PR #140](https://github.com/fishmingyu/OrcaLoca/pull/140), pass that
+factory to the unchanged search agent:
+
+```python
+from Orcar.search_agent import SearchAgent
+
+agent = SearchAgent(
+    llm=llm,
+    search_input=search_input,
+    repo_path="/path/to/repository",
+    search_manager_factory=search_manager_factory,
+)
+```
+
+The factory verifies that `repo_path` is the repository bound by the manifest.
+It loads no OrcaLoca graph and creates no `_index_data` directory. Each agent
+gets isolated lightweight query history, while source, symbol identity,
+containment, dependency distance, and ranges all come from the same
+manifest-backed `ServerContext`.
+
+Compatibility is pinned to OrcaLoca revision
+`37db289be2dc3b7432183fe08b3f06becce87c27`. The adapter preserves its
+repository-relative `file::Class::method` identities, 1-based locations, and
+prompt-visible markers. Prose and ambiguous-result tie ordering may differ;
+semantic file, class, method, and source ranges are the compatibility
+boundary.
+
+Run the local contract and provider tests with:
+
+```bash
+pytest -q test/integrations/test_orcaloca.py
+```
+
+To compare against a pinned upstream checkout and exercise OrcaLoca's actual
+decomposition, priority queue, and final-location decoder:
+
+```bash
+ORCALOCA_CHECKOUT=/path/to/OrcaLoca \
+  pytest -q test/integrations/test_orcaloca_upstream.py
+```
+
+The upstream probe is optional and marked `integration`; without
+`ORCALOCA_CHECKOUT`, it skips before importing OrcaLoca.
+
+The base `codenib` package therefore gains no LocAgent, OpenHands, OrcaLoca,
+LlamaIndex, pandas, or NetworkX dependency.

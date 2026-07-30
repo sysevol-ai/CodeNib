@@ -1,0 +1,59 @@
+revision: 37db289be2dc3b7432183fe08b3f06becce87c27
+tools:
+  search_file_contents:
+    parameters:
+      - file_name
+      - directory_path
+    defaults:
+      directory_path: null
+  search_source_code:
+    parameters:
+      - file_path
+      - source_code
+    defaults: {}
+  search_class:
+    parameters:
+      - class_name
+      - file_path
+    defaults:
+      file_path: null
+  search_method_in_class:
+    parameters:
+      - class_name
+      - method_name
+      - file_path
+    defaults:
+      file_path: null
+  search_callable:
+    parameters:
+      - query_name
+      - file_path
+    defaults:
+      file_path: null
+  search_file_tree:
+    parameters:
+      - name
+      - max_depth
+    defaults:
+      name: null
+      max_depth: null
+manager_hooks:
+  - _get_class_methods
+  - _get_disambiguous_classes
+  - _get_disambiguous_files
+  - _get_disambiguous_methods
+  - _get_exact_loc
+  - _get_file_functions
+  - check_and_add_query
+  - get_distance_between_queries
+  - get_frame_from_history
+  - get_node_existence
+  - get_query_from_history
+history_fields:
+  - search_action
+  - search_input
+  - search_query
+  - search_content
+  - query_type
+  - file_path
+  - is_skeleton

@@ -334,6 +334,30 @@ class RepositoryAdapter:
         candidates = self.find_entities(file_path, kinds={NODE_TYPE_FILE})
         return candidates[0] if len(candidates) == 1 else None
 
+    def entity_by_canonical(self, canonical_name: str) -> RepositoryEntity | None:
+        return self._entity_by_canonical.get(canonical_name)
+
+    def parent(self, entity: RepositoryEntity) -> RepositoryEntity | None:
+        if entity.parent_name is None:
+            return None
+        return self._entity_by_canonical.get(entity.parent_name)
+
+    def entities_in_file(
+        self,
+        file_path: str,
+        *,
+        kinds: Iterable[str] | None = None,
+    ) -> list[RepositoryEntity]:
+        files = self.find_files(file_path)
+        if len(files) != 1:
+            return []
+        allowed = set(kinds or ())
+        return [
+            entity
+            for entity in self._entities
+            if entity.file_path == files[0] and (not allowed or entity.kind in allowed)
+        ]
+
     def find_entities(
         self,
         query: str,
@@ -537,7 +561,7 @@ class RepositoryAdapter:
         return output
 
     def distance(self, first: str, second: str) -> int:
-        """Return an undirected graph hop distance, or ``-1`` if unresolved."""
+        """Return the shorter directed distance, or ``-1`` if unresolved."""
 
         if self.graph is None:
             self.require_view("symbol_graph", "symbol_graph")
@@ -545,12 +569,20 @@ class RepositoryAdapter:
         right = self.find_entities(second)
         if len(left) != 1 or len(right) != 1:
             return -1
-        distance = self.graph.graph.distances(
-            [left[0].vertex_id], [right[0].vertex_id], mode="all"
+        forward = self.graph.graph.distances(
+            [left[0].vertex_id], [right[0].vertex_id], mode="out"
         )[0][0]
-        if isinstance(distance, float) and math.isinf(distance):
+        backward = self.graph.graph.distances(
+            [right[0].vertex_id], [left[0].vertex_id], mode="out"
+        )[0][0]
+        finite = [
+            distance
+            for distance in (forward, backward)
+            if not (isinstance(distance, float) and math.isinf(distance))
+        ]
+        if not finite:
             return -1
-        return int(distance)
+        return int(min(finite))
 
     def file_tree(self, name: str | None = None, max_depth: int | None = None) -> str:
         """Render a deterministic tree from files represented in the graph."""
@@ -771,6 +803,7 @@ class RepositoryAdapter:
         yield entity.locagent_id
         yield entity.orcaloca_id
         yield entity.qualified_name
+        yield entity.qualified_name.replace(".", "::")
         yield entity.simple_name
         if entity.file_path:
             yield entity.file_path
