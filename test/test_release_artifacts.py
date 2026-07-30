@@ -51,6 +51,13 @@ def test_registry_publishers_use_separate_workflows() -> None:
         with (workflows / name).open(encoding="utf-8") as handle:
             return yaml.load(handle, Loader=yaml.BaseLoader)
 
+    def publisher_step(job: dict[str, object]) -> dict[str, object]:
+        return next(
+            step
+            for step in job["steps"]
+            if step.get("uses", "").startswith("pypa/gh-action-pypi-publish@")
+        )
+
     production = load("release.yml")
     test = load("release-test.yml")
     verification = load("release-verify.yml")
@@ -71,7 +78,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     production_publisher = production["jobs"]["publish-pypi"]
     assert production_publisher["environment"]["name"] == "pypi"
     assert production_publisher["permissions"] == {"contents": "read"}
-    assert production_publisher["steps"][-1]["with"]["password"] == (
+    assert publisher_step(production_publisher)["with"]["password"] == (
         "${{ secrets.PYPI_API_TOKEN }}"
     )
 
@@ -79,7 +86,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     test_publisher = test["jobs"]["publish-testpypi"]
     assert test_publisher["environment"]["name"] == "testpypi"
     assert (
-        test_publisher["steps"][-1]["with"]["repository-url"]
+        publisher_step(test_publisher)["with"]["repository-url"]
         == "https://test.pypi.org/legacy/"
     )
 
