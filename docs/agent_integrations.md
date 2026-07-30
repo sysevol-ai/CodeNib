@@ -73,6 +73,19 @@ Current OpenHands CLI does not contain that historical LocAgent module. The pin
 describes the supported tool contract; it is not a claim that every OpenHands
 CLI revision exposes LocAgent.
 
+Run the optional source-level probe against local upstream checkouts with:
+
+```bash
+LOCAGENT_CHECKOUT=/path/to/LocAgent \
+OPENHANDS_CHECKOUT=/path/to/OpenHands \
+  pytest -q test/integrations/test_locagent_upstream.py
+```
+
+The probe reads files directly from the pinned Git objects and does not import
+either project. To advance compatibility, update the two revision constants,
+refresh the YAML fixture from the reviewed upstream schemas, and run both this
+probe and `test/integrations/test_locagent.py` in the same change.
+
 ### Relation Semantics
 
 LocAgent and CodeNib use different graph relation vocabularies. The provider

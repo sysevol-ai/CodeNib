@@ -370,10 +370,23 @@ class LocAgentToolProvider:
             return "No start entities were provided."
         return self._bounded("\n\n".join(sections))
 
-    def explore_graph_structure(self, *args: Any, **kwargs: Any) -> str:
-        """Compatibility alias for LocAgent's non-function-calling path."""
+    def explore_graph_structure(
+        self,
+        start_entities: Sequence[str],
+        direction: str = "downstream",
+        traversal_depth: int = 1,
+        entity_type_filter: Sequence[str] | None = None,
+        dependency_type_filter: Sequence[str] | None = None,
+    ) -> str:
+        """Compatibility wrapper for LocAgent's non-function-calling path."""
 
-        return self.explore_tree_structure(*args, **kwargs)
+        return self.explore_tree_structure(
+            start_entities=start_entities,
+            direction=direction,
+            traversal_depth=traversal_depth,
+            entity_type_filter=entity_type_filter,
+            dependency_type_filter=dependency_type_filter,
+        )
 
     # ------------------------------------------------------------------
     # Formatting and search helpers

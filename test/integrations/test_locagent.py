@@ -269,7 +269,27 @@ def test_openhands_style_bindings_and_json_dispatch(
         "get_entity_contents",
         '{"entity_names":["src/model.py:TaxRule"]}',
     )
+    search_result = dispatch_locagent_tool_call(
+        provider,
+        "search_code_snippets",
+        {
+            "search_terms": ["invoice sales computation"],
+            "file_path_or_pattern": "src/*.py",
+        },
+    )
+    graph_result = dispatch_locagent_tool_call(
+        provider,
+        "explore_tree_structure",
+        {
+            "start_entities": ["src/service.py:BillingService.calculate_tax"],
+            "dependency_type_filter": ["invokes"],
+            "traversal_depth": 1,
+        },
+    )
+
     assert "src/model.py:TaxRule" in result
+    assert "src/service.py:BillingService.calculate_tax" in search_result
+    assert "invokes -> src/service.py:helper" in graph_result
 
     with pytest.raises(KeyError, match="unknown LocAgent tool"):
         dispatch_locagent_tool_call(provider, "bash", {})
