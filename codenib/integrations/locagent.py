@@ -203,7 +203,15 @@ class LocAgentToolProvider:
         """Execute a function call directly, without IPython string evaluation."""
 
         if isinstance(arguments, str):
-            parsed = json.loads(arguments)
+            try:
+                decoded = json.loads(arguments)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "LocAgent tool arguments must be a valid JSON object"
+                ) from exc
+            if not isinstance(decoded, Mapping):
+                raise ValueError("LocAgent tool arguments must decode to a JSON object")
+            parsed = dict(decoded)
         else:
             parsed = dict(arguments or {})
         function = self.bindings().get(name)

@@ -203,14 +203,20 @@ def test_root_tree_uses_graph_files(provider: LocAgentToolProvider) -> None:
 
 def test_unlimited_root_tree_is_not_collapsed(
     provider: LocAgentToolProvider,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    deep_file = "/".join(
+        [f"directory_{index}" for index in range(101)] + ["terminal.py"]
+    )
+    monkeypatch.setattr(provider.repository, "_files", (deep_file,))
+
     result = provider.explore_tree_structure(
         ["/"],
         dependency_type_filter=["contains"],
         traversal_depth=-1,
     )
 
-    assert "service.py" in result
+    assert "terminal.py" in result
 
 
 def test_unlimited_traversal_uses_node_budget_not_hidden_depth_cap(
@@ -293,6 +299,10 @@ def test_openhands_style_bindings_and_json_dispatch(
 
     with pytest.raises(KeyError, match="unknown LocAgent tool"):
         dispatch_locagent_tool_call(provider, "bash", {})
+    with pytest.raises(ValueError, match="valid JSON object"):
+        dispatch_locagent_tool_call(provider, "get_entity_contents", "{")
+    with pytest.raises(ValueError, match="decode to a JSON object"):
+        dispatch_locagent_tool_call(provider, "get_entity_contents", "[]")
 
 
 def test_repository_path_escape_is_rejected(

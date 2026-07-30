@@ -585,12 +585,14 @@ class RepositoryAdapter:
                 node = node.setdefault(part, {})
 
         limit = (
-            100 if max_depth is None or int(max_depth) == -1 else max(0, int(max_depth))
+            None
+            if max_depth is None or int(max_depth) == -1
+            else max(0, int(max_depth))
         )
         lines = [prefix or "/"]
 
         def render(tree: Mapping[str, Any], indent: str, level: int) -> None:
-            if level >= limit:
+            if limit is not None and level >= limit:
                 return
             items = sorted(tree.items(), key=lambda item: (bool(item[1]), item[0]))
             for index, (label, children) in enumerate(items):
@@ -608,11 +610,7 @@ class RepositoryAdapter:
     def skeleton(self, entity: RepositoryEntity) -> str:
         """Render a language-neutral signature skeleton from graph ranges."""
 
-        if entity.kind == NODE_TYPE_FILE:
-            children = self.children(entity)
-        else:
-            children = self.children(entity)
-
+        children = self.children(entity)
         records = [entity] if entity.kind != NODE_TYPE_FILE else []
         records.extend(children)
         signatures: list[str] = []
