@@ -86,6 +86,7 @@ nav:
       - Running Locally: running-locally.md
       - Language Capabilities: language_capabilities.md
       - Agent Skills: agent_skills.md
+      - Agent Integrations: agent_integrations.md
       - RAG Ops And Planner: rag_ops.md
   - Concepts:
       - SCIP Index: scip_index.md

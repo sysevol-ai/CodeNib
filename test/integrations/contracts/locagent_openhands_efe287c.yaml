@@ -1,0 +1,27 @@
+behavior_revision: ef170542a5cca88a1bd8463335ec43de222ed5f9
+integration_revision: efe287ce3402706a171b3a5fb40f15914e98ef20
+tools:
+  explore_tree_structure:
+    required:
+      - start_entities
+    properties:
+      start_entities: array
+      direction: string
+      traversal_depth: integer
+      entity_type_filter:
+        - array
+        - "null"
+      dependency_type_filter:
+        - array
+        - "null"
+  get_entity_contents:
+    required:
+      - entity_names
+    properties:
+      entity_names: array
+  search_code_snippets:
+    required: []
+    properties:
+      search_terms: array
+      line_nums: array
+      file_path_or_pattern: string
