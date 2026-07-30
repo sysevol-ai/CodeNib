@@ -39,6 +39,7 @@ REPOSITORY_FILES = {
         "def helper(amount):\n" '    """Fallback tax helper."""\n' "    return amount\n"
     ),
     "src/model.py": ("class TaxRule:\n" "    rate = 0.08\n"),
+    ".github/workflows/ci.yml": "name: CI\n",
     "README.md": "# Billing fixture\n",
 }
 
@@ -74,6 +75,8 @@ def build_integration_graph(repo_root: Path) -> CodeGraph:
     graph = CodeGraph(project_root=str(repo_root))
     _add_vertex(graph, ROOT_NODE, kind=NODE_TYPE_DIRECTORY)
     _add_vertex(graph, "src", kind=NODE_TYPE_DIRECTORY)
+    _add_vertex(graph, ".github", kind=NODE_TYPE_DIRECTORY)
+    _add_vertex(graph, ".github/workflows", kind=NODE_TYPE_DIRECTORY)
     for relative in REPOSITORY_FILES:
         _add_vertex(graph, relative, kind=NODE_TYPE_FILE)
 
@@ -124,6 +127,13 @@ def build_integration_graph(repo_root: Path) -> CodeGraph:
     )
 
     graph._add_edge(ROOT_NODE, "src", EDGE_TYPE_CONTAIN)
+    graph._add_edge(ROOT_NODE, ".github", EDGE_TYPE_CONTAIN)
+    graph._add_edge(".github", ".github/workflows", EDGE_TYPE_CONTAIN)
+    graph._add_edge(
+        ".github/workflows",
+        ".github/workflows/ci.yml",
+        EDGE_TYPE_CONTAIN,
+    )
     graph._add_edge(ROOT_NODE, "README.md", EDGE_TYPE_CONTAIN)
     for relative in ("src/service.py", "src/other.py", "src/model.py"):
         graph._add_edge("src", relative, EDGE_TYPE_CONTAIN)

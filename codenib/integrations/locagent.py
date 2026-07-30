@@ -560,7 +560,8 @@ class LocAgentToolProvider:
             return []
         if isinstance(values, str):
             values = [values]
-        return [str(value).strip().strip(".") for value in values if str(value).strip()]
+        normalized = [str(value).strip().rstrip(".") for value in values]
+        return [value for value in normalized if value]
 
     def _bounded(self, value: str) -> str:
         if len(value) <= self.max_output_chars:

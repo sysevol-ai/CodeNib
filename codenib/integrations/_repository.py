@@ -504,7 +504,7 @@ class RepositoryAdapter:
     ) -> list[tuple[int, RepositoryRelation, RepositoryEntity]]:
         if depth < -1:
             raise ValueError("depth must be -1 or a non-negative integer")
-        depth_limit = 20 if depth == -1 else depth
+        depth_limit = None if depth == -1 else depth
         if depth_limit == 0 or max_nodes <= 1:
             return []
 
@@ -515,7 +515,7 @@ class RepositoryAdapter:
 
         while queue and len(expanded) < max_nodes:
             current, level = queue.popleft()
-            if level >= depth_limit:
+            if depth_limit is not None and level >= depth_limit:
                 continue
             for relation in self.adjacent(
                 current, direction=direction, edge_types=edge_types
@@ -539,6 +539,8 @@ class RepositoryAdapter:
     def distance(self, first: str, second: str) -> int:
         """Return an undirected graph hop distance, or ``-1`` if unresolved."""
 
+        if self.graph is None:
+            self.require_view("symbol_graph", "symbol_graph")
         left = self.find_entities(first)
         right = self.find_entities(second)
         if len(left) != 1 or len(right) != 1:

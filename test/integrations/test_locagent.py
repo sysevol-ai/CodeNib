@@ -16,6 +16,7 @@ from codenib.integrations import (
     RepositoryAdapter,
     RepositoryPathError,
 )
+from codenib.integrations._repository import RepositoryEntity, RepositoryRelation
 from codenib.integrations.locagent import (
     LOCAGENT_REVISION,
     OPENHANDS_LOCAGENT_REVISION,
@@ -24,6 +25,7 @@ from codenib.integrations.locagent import (
     dispatch_locagent_tool_call,
     get_locagent_tool_schemas,
 )
+from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION
 
 
 @pytest.fixture()
@@ -89,6 +91,15 @@ def test_ambiguous_symbol_lists_repository_relative_candidates(
     assert "`src/other.py:helper`" in result
     assert "`src/service.py:helper`" in result
     assert "/tmp/" not in result
+
+
+def test_dotfile_path_keeps_its_leading_period(
+    provider: LocAgentToolProvider,
+) -> None:
+    result = provider.get_entity_contents([".github/workflows/ci.yml."])
+
+    assert "`.github/workflows/ci.yml`" in result
+    assert "name: CI" in result
 
 
 def test_keyword_search_uses_prebuilt_bm25(
@@ -202,6 +213,47 @@ def test_unlimited_root_tree_is_not_collapsed(
     assert "service.py" in result
 
 
+def test_unlimited_traversal_uses_node_budget_not_hidden_depth_cap(
+    provider: LocAgentToolProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nodes = [
+        RepositoryEntity(
+            vertex_id=index,
+            canonical_name=f"node-{index}",
+            display_name=f"node-{index}",
+            kind=NODE_TYPE_FUNCTION,
+            file_path="src/service.py",
+            qualified_name=f"node_{index}",
+            simple_name=f"node_{index}",
+            start_line=0,
+            end_line=0,
+        )
+        for index in range(26)
+    ]
+
+    def adjacent(entity, **_kwargs):
+        if entity.vertex_id + 1 >= len(nodes):
+            return []
+        return [
+            RepositoryRelation(
+                source=entity,
+                target=nodes[entity.vertex_id + 1],
+                edge_type=EDGE_TYPE_REFERENCE,
+            )
+        ]
+
+    monkeypatch.setattr(provider.repository, "adjacent", adjacent)
+    traversed = provider.repository.traverse(
+        nodes[0],
+        depth=-1,
+        max_nodes=len(nodes),
+    )
+
+    assert len(traversed) == 25
+    assert traversed[-1][0] == 25
+
+
 def test_openhands_style_bindings_and_json_dispatch(
     provider: LocAgentToolProvider,
 ) -> None:
@@ -247,6 +299,25 @@ def test_missing_graph_fails_explicitly(tmp_path: Path) -> None:
         IntegrationCapabilityError, match="required 'symbol_graph' view"
     ):
         LocAgentToolProvider(context)
+
+
+def test_optional_adapter_distance_fails_explicitly_without_graph(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    context = SimpleNamespace(
+        manifest=RepoManifest(repo_path=str(repo), commit="current"),
+        symbol_graph=None,
+        errors={},
+    )
+    adapter = RepositoryAdapter(context, require_graph=False)
+
+    with pytest.raises(
+        IntegrationCapabilityError,
+        match="required 'symbol_graph' view",
+    ):
+        adapter.distance("first", "second")
 
 
 def test_stale_graph_fails_explicitly(tmp_path: Path) -> None:
