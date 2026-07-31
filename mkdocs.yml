@@ -69,6 +69,9 @@ plugins:
       nav_section_title: API Reference
       api_root_uri: api
       exclude_private: true
+      # Internal tooling also contains implicit namespace packages. Skip them
+      # without changing runtime package boundaries merely for documentation.
+      on_implicit_namespace_package: skip
       exclude:
         # api-autonav 0.4 accepts directory roots rather than individual Python
         # files. Enforce an exact, positive public-module allowlist by rejecting
