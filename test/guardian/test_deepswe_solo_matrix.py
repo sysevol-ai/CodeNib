@@ -166,6 +166,46 @@ def test_context_file_builds_reproducible_pier_prompt_template(tmp_path):
     assert f"prompt_template_path={args.prompt_template_path}" in command
 
 
+def test_task_context_directory_builds_distinct_templates(tmp_path):
+    tasks = matrix.DEFAULT_TASKS[:2]
+    context_dir = tmp_path / "contexts"
+    context_dir.mkdir()
+    for index, task in enumerate(tasks):
+        (context_dir / f"{task}.md").write_text(
+            f"Task-specific obligation {index}.",
+            encoding="utf-8",
+        )
+    args = _args(
+        tmp_path,
+        "--tasks",
+        *tasks,
+        "--task-context-dir",
+        str(context_dir),
+    )
+    matrix._validate(args)
+    matrix._prepare_context_template(args)
+
+    assert set(args.prompt_template_paths_by_task) == set(tasks)
+    assert len(set(args.prompt_template_paths_by_task.values())) == 2
+    assert len(set(args.context_injection_sha256_by_task.values())) == 2
+    for index, task in enumerate(tasks):
+        trial = matrix.Trial(
+            model="gpt-5.6-terra",
+            task=task,
+            repeat_index=1,
+        )
+        trial_args = matrix._ablation_args(args, trial)
+        template = trial_args.prompt_template_path.read_text(encoding="utf-8")
+        assert f"Task-specific obligation {index}." in template
+        assert trial_args.context_injection_source == (
+            context_dir / f"{task}.md"
+        ).resolve()
+        assert (
+            trial_args.context_injection_sha256
+            == args.context_injection_sha256_by_task[task]
+        )
+
+
 def test_run_plan_limits_parallel_trials_to_configured_concurrency(
     tmp_path, monkeypatch
 ):

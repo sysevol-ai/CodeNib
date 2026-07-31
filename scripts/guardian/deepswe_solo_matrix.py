@@ -112,8 +112,9 @@ def _recorded_metadata(
         "job_id": trial.job_id,
         "reasoning_effort": args.reasoning_effort,
     }
-    if args.context_file is not None:
-        expected["context_injection_sha256"] = args.context_injection_sha256
+    context_digest = _context_digest(args, trial.task)
+    if context_digest:
+        expected["context_injection_sha256"] = context_digest
     if any(row.get(field) != value for field, value in expected.items()):
         return None
     return row
@@ -189,6 +190,17 @@ def _write_state(
                 str(args.context_file) if args.context_file is not None else ""
             ),
             "context_injection_sha256": args.context_injection_sha256,
+            "task_context_injection_sources": {
+                task: str(path)
+                for task, path in getattr(
+                    args,
+                    "context_injection_sources_by_task",
+                    {},
+                ).items()
+            },
+            "task_context_injection_sha256": (
+                getattr(args, "context_injection_sha256_by_task", {})
+            ),
             "runs_per_setting": args.runs,
             "tasks": args.tasks,
             "models": args.models,
@@ -220,21 +232,30 @@ def _ablation_args(args: argparse.Namespace, trial: Trial) -> argparse.Namespace
             str(args.output_root),
         ]
     )
-    trial_args.prompt_template_path = args.prompt_template_path
-    trial_args.context_injection_source = args.context_file
-    trial_args.context_injection_sha256 = args.context_injection_sha256
+    trial_args.prompt_template_path = args.prompt_template_paths_by_task.get(
+        trial.task,
+        args.prompt_template_path,
+    )
+    trial_args.context_injection_source = args.context_injection_sources_by_task.get(
+        trial.task,
+        args.context_file,
+    )
+    trial_args.context_injection_sha256 = _context_digest(args, trial.task)
     return trial_args
 
 
-def _prepare_context_template(args: argparse.Namespace) -> None:
-    """Build Pier's Jinja prompt template from a task-independent context file."""
+def _context_digest(args: argparse.Namespace, task: str) -> str:
+    return getattr(args, "context_injection_sha256_by_task", {}).get(
+        task,
+        getattr(args, "context_injection_sha256", ""),
+    )
 
-    args.prompt_template_path = None
-    args.context_injection_sha256 = ""
-    if args.context_file is None:
-        return
 
-    context_path = args.context_file.resolve()
+def _write_context_template(
+    args: argparse.Namespace,
+    context_path: Path,
+) -> tuple[Path, str]:
+    context_path = context_path.resolve()
     context = context_path.read_text(encoding="utf-8").strip()
     digest = hashlib.sha256(context.encode("utf-8")).hexdigest()
     template_dir = args.output_root / "_matrix_runs" / "prompt_templates"
@@ -247,9 +268,33 @@ def _prepare_context_template(args: argparse.Namespace) -> None:
         f"{context}\n"
     )
     template_path.write_text(rendered_source, encoding="utf-8")
+    return template_path.resolve(), digest
+
+
+def _prepare_context_template(args: argparse.Namespace) -> None:
+    """Build Pier prompt templates from shared or task-specific context."""
+
+    args.prompt_template_path = None
+    args.prompt_template_paths_by_task = {}
+    args.context_injection_sources_by_task = {}
+    args.context_injection_sha256 = ""
+    args.context_injection_sha256_by_task = {}
+    if args.context_file is None:
+        if args.task_context_dir is None:
+            return
+        for task in args.tasks:
+            context_path = (args.task_context_dir / f"{task}.md").resolve()
+            template_path, digest = _write_context_template(args, context_path)
+            args.prompt_template_paths_by_task[task] = template_path
+            args.context_injection_sources_by_task[task] = context_path
+            args.context_injection_sha256_by_task[task] = digest
+        return
+
+    context_path = args.context_file.resolve()
+    template_path, digest = _write_context_template(args, context_path)
     args.context_file = context_path
     args.context_injection_sha256 = digest
-    args.prompt_template_path = template_path.resolve()
+    args.prompt_template_path = template_path
 
 
 def _initial_status(
@@ -293,6 +338,19 @@ def _validate(args: argparse.Namespace) -> None:
         raise FileNotFoundError(
             f"context injection file does not exist: {args.context_file}"
         )
+    if args.task_context_dir is not None:
+        if not args.task_context_dir.is_dir():
+            raise FileNotFoundError(
+                f"task context directory does not exist: {args.task_context_dir}"
+            )
+        missing_contexts = [
+            args.task_context_dir / f"{task}.md"
+            for task in args.tasks
+            if not (args.task_context_dir / f"{task}.md").is_file()
+        ]
+        if missing_contexts:
+            paths = ", ".join(str(path) for path in missing_contexts)
+            raise FileNotFoundError(f"task context files do not exist: {paths}")
     profile = args.codeminer_root / "deepsweguardian" / "task_venv_profile.sh"
     if not profile.is_file():
         raise FileNotFoundError(f"task virtualenv profile does not exist: {profile}")
@@ -355,13 +413,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=Path,
         default=DEFAULT_OUTPUT_ROOT,
     )
-    parser.add_argument(
+    context_group = parser.add_mutually_exclusive_group()
+    context_group.add_argument(
         "--context-file",
         type=Path,
         default=None,
         help=(
             "Append this Markdown file to the original task instruction using "
             "Pier's Codex prompt template support."
+        ),
+    )
+    context_group.add_argument(
+        "--task-context-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Append task-specific context from <dir>/<task>.md using Pier's "
+            "Codex prompt template support."
         ),
     )
     parser.add_argument(
