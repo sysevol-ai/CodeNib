@@ -11,6 +11,10 @@ SPDX-License-Identifier: Apache-2.0
     Incremental compilation, explicit per-view manifests, and agent-native context serving.
   </p>
   <p>
+    <a href="https://arxiv.org/abs/2607.25431"><img src="https://img.shields.io/badge/arXiv-2607.25431-b31b1b.svg?logo=arxiv&amp;logoColor=white" alt="arXiv 2607.25431"></a>
+    <a href="https://huggingface.co/papers/2607.25431"><img src="https://img.shields.io/badge/Hugging_Face-%232_Paper_of_the_Day-FFD21E.svg?logo=huggingface&amp;logoColor=black" alt="Hugging Face: #2 Paper of the Day"></a>
+  </p>
+  <p>
     <a href="#quickstart">Quickstart</a>
     &nbsp;&middot;&nbsp;
     <a href="https://codenib.ai">Website</a>
