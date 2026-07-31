@@ -46,9 +46,8 @@ theme:
     - navigation.instant
     - navigation.sections
     # `prune` replaces `expand`, which the theme documents as incompatible.
-    # The generated API reference adds ~280 nav entries, and Material inlines
-    # the whole tree into every page: expanding all of them buried the current
-    # page inside unrelated subtrees and tripled page weight.
+    # Material inlines the generated API tree into every page, so keep the
+    # navigation compact instead of expanding every API entry by default.
     - navigation.prune
     - navigation.indexes
     - navigation.top
@@ -71,11 +70,38 @@ plugins:
       api_root_uri: api
       exclude_private: true
       exclude:
-        - re:codenib\..*_pb2(_grpc)?$
-        # `exclude_docs` below drops any directory named `experiments/`, which
-        # also matches the generated `api/codenib/eval/experiments/` pages.
-        # Skip the package here so the nav never points at a dropped page.
-        - codenib.eval.experiments
+        # api-autonav 0.4 accepts directory roots rather than individual Python
+        # files. Enforce an exact, positive public-module allowlist by rejecting
+        # every descendant that is not named here. This also keeps future
+        # internal modules private by default.
+        - >-
+          re:(?x)^codenib\.
+          (?!
+            (?:
+              agent
+              | agent\.skills
+              | agent\.skills\.context
+              | agent\.tools
+              | code_chunking
+              | compiler
+              | graph
+              | index
+              | index\.embedding
+              | integrations
+              | integrations\.(?:locagent|orcaloca)
+              | languages
+              | llm
+              | mcp
+              | model
+              | ops
+              | ops\.(?:expand|filter|rerank|retrieve|transform)
+              | scip_interface
+              | search
+              | types
+              | web\.local
+              | wiki
+            )$
+          ).*$
   - mkdocstrings:
       handlers:
         python:
@@ -86,8 +112,8 @@ plugins:
             docstring_section_style: table
             # Types come from annotations (94% of public signatures are
             # annotated), so a missing docstring type is not a defect.
-            # An undocumented-but-declared parameter is: keep that one as a
-            # lint gate, since `mkdocs build --strict` turns it into a failure.
+            # Reject stale or misspelled docstring parameters that do not exist
+            # in the signature. This does not check for missing parameter docs.
             docstring_options:
               ignore_init_summary: true
               warn_missing_types: false
