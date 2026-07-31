@@ -85,6 +85,8 @@
   --codenib-shadow: 0 10px 34px rgba(0, 0, 0, 0.24);
 
   --md-hue: 32;
+  --md-primary-fg-color: var(--codenib-accent);
+  --md-accent-fg-color: var(--codenib-accent);
   --md-default-bg-color: var(--codenib-bg);
   --md-default-fg-color: var(--codenib-ink);
   --md-default-fg-color--light: var(--codenib-ink-soft);
@@ -126,6 +128,7 @@ body {
 .md-header,
 .md-header--shadow {
   color: var(--codenib-ink);
+  background: var(--codenib-bg);
   background: color-mix(in srgb, var(--codenib-bg) 92%, transparent);
   border-bottom: 1px solid var(--codenib-line);
   box-shadow: none;
@@ -214,6 +217,55 @@ body {
   color: var(--codenib-ink-soft);
 }
 
+/* Top-level information architecture. Keep the tabs quiet and editorial: the
+   active section gets one precise rule instead of a filled pill or shadow. */
+.md-tabs {
+  color: var(--codenib-ink-soft);
+  background: transparent;
+  border-top: 1px solid var(--codenib-line);
+  box-shadow: none;
+}
+
+.md-tabs__list {
+  gap: 0.15rem;
+}
+
+.md-tabs__item {
+  position: relative;
+  height: 2.65rem;
+  padding: 0 0.48rem;
+}
+
+.md-tabs__link {
+  margin-top: 0.78rem;
+  color: var(--codenib-ink-soft);
+  font-family: var(--codenib-sans);
+  font-size: 0.68rem;
+  font-weight: 560;
+  letter-spacing: -0.006em;
+  opacity: 0.78;
+  transition:
+    color 120ms ease,
+    opacity 120ms ease;
+}
+
+.md-tabs__link:hover,
+.md-tabs__link:focus,
+.md-tabs__item--active > .md-tabs__link {
+  color: var(--codenib-accent);
+  opacity: 1;
+}
+
+.md-tabs__item--active::after {
+  position: absolute;
+  right: 0.48rem;
+  bottom: -1px;
+  left: 0.48rem;
+  height: 2px;
+  background: var(--codenib-accent);
+  content: "";
+}
+
 /* Wider, calmer reading frame */
 .md-grid {
   max-width: 72rem;
@@ -275,6 +327,10 @@ body {
 }
 
 @media screen and (min-width: 76.25em) {
+  html {
+    scroll-padding-top: 6.2rem;
+  }
+
   .md-sidebar--primary .md-sidebar__scrollwrap {
     padding-right: 0.65rem;
     border-right: 1px solid var(--codenib-line);
@@ -358,6 +414,73 @@ body {
   padding: 0.25rem 0 0.25rem 1rem;
   color: var(--codenib-ink-soft);
   border-left: 0.15rem solid var(--codenib-accent);
+}
+
+/* Section overview pages */
+.codenib-section-lede {
+  max-width: 42rem;
+  margin-bottom: 1.5rem;
+}
+
+.codenib-section-lede p {
+  color: var(--codenib-ink-soft);
+  font-size: 1.08em;
+}
+
+.md-typeset .codenib-section-grid > ul:not([hidden]) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1.55rem 0 2.2rem;
+  padding: 0;
+}
+
+.md-typeset .codenib-section-grid > ul > li {
+  display: flex;
+  flex-direction: column;
+  min-height: 10.5rem;
+  margin: 0;
+  padding: 1.05rem 1.15rem 1.1rem;
+  color: var(--codenib-ink-soft);
+  list-style: none;
+  background: var(--codenib-surface);
+  border: 1px solid var(--codenib-line);
+  border-radius: 0.65rem;
+}
+
+.codenib-section-grid > ul > li::before {
+  display: none;
+}
+
+.codenib-section-grid strong {
+  display: block;
+  margin: 0.28rem 0 0.42rem;
+  color: var(--codenib-ink);
+  font-family: var(--codenib-serif);
+  font-size: 1.18rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.codenib-section-grid li > p {
+  margin: 0.35rem 0;
+}
+
+.codenib-section-grid li > p:last-child {
+  margin-top: auto;
+  padding-top: 0.7rem;
+  font-family: var(--codenib-sans);
+  font-size: 0.72rem;
+  font-weight: 620;
+}
+
+.codenib-card-eyebrow {
+  color: var(--codenib-muted);
+  font-family: var(--codenib-sans);
+  font-size: 0.61rem;
+  font-weight: 680;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* Code */
@@ -556,6 +679,14 @@ body {
 
   .md-typeset h2 {
     font-size: 1.58em;
+  }
+
+  .md-typeset .codenib-section-grid > ul:not([hidden]) {
+    grid-template-columns: 1fr;
+  }
+
+  .md-typeset .codenib-section-grid > ul > li {
+    min-height: 0;
   }
 }
 

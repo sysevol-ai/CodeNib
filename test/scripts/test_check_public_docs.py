@@ -3,8 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from pathlib import Path
 
 from scripts import check_public_docs
+
+REPO_ROOT = Path(__file__).parents[2]
 
 
 def _config() -> dict:
@@ -12,6 +15,44 @@ def _config() -> dict:
         "exclude_docs": "\n".join(sorted(check_public_docs.REQUIRED_EXCLUSIONS)),
         "nav": [{"Home": "index.md"}],
     }
+
+
+def test_mkdocs_navigation_tabs_contract():
+    config = check_public_docs._load_config(REPO_ROOT / "mkdocs.yml")
+    features = set(config["theme"]["features"])
+    assert {
+        "navigation.indexes",
+        "navigation.tabs",
+        "navigation.tabs.sticky",
+    } <= features
+
+    nav = config["nav"]
+    titles = [item if isinstance(item, str) else next(iter(item)) for item in nav]
+    assert titles == [
+        "Home",
+        "Get Started",
+        "Guides",
+        "Concepts",
+        "API Reference",
+        "Development",
+    ]
+
+    sections = {
+        next(iter(item)): next(iter(item.values()))
+        for item in nav
+        if isinstance(item, dict)
+    }
+    assert sections["Get Started"][0] == "get-started/index.md"
+    assert sections["Guides"][0] == "guides/index.md"
+    assert sections["Concepts"][0] == "concepts/index.md"
+    assert sections["Development"][0] == "development/index.md"
+
+    evaluation = next(
+        item["Benchmarks & Evaluation"]
+        for item in sections["Development"]
+        if isinstance(item, dict) and "Benchmarks & Evaluation" in item
+    )
+    assert evaluation[0] == "evaluation/index.md"
 
 
 def _write_api_site(site_dir, routes=None):

@@ -44,6 +44,8 @@ theme:
         name: Switch to light mode
   features:
     - navigation.instant
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     # `prune` replaces `expand`, which the theme documents as incompatible.
     # Material inlines the generated API tree into every page, so keep the
@@ -157,32 +159,44 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - User Guide:
+  - Get Started:
+      - get-started/index.md
       - Quickstart: quickstart.md
-      - MCP Server: mcp.md
       - Web UI: web_demo.md
       - Running Locally: running-locally.md
       - Language Capabilities: language_capabilities.md
+  - Guides:
+      - guides/index.md
+      - MCP Server: mcp.md
       - Agent Skills: agent_skills.md
       - Agent Integrations: agent_integrations.md
       - RAG Ops And Planner: rag_ops.md
   - Concepts:
-      - SCIP Index: scip_index.md
-      - CodeGraph Hierarchy Model: codegraph_hierarchy_model.md
-      - Graph Range Query: graph_query.md
-      - Regex Index: regex_index.md
-      - Graph Cache: graph_cache_usage.md
-      - Incremental Graph:
-          - Overview: incremental_graph/index.md
-          - Interactive Demo: incremental_graph/interactive.md
-      - Core C++ Backend: core_cpp.md
+      - concepts/index.md
+      - Indexes:
+          - SCIP Index: scip_index.md
+          - Regex Index: regex_index.md
+      - Code Graph:
+          - Hierarchy Model: codegraph_hierarchy_model.md
+          - Range Query: graph_query.md
+          - Graph Cache: graph_cache_usage.md
+          - Incremental Graph:
+              - Overview: incremental_graph/index.md
+              - Interactive Demo: incremental_graph/interactive.md
+      - Acceleration:
+          - Core C++ Backend: core_cpp.md
+  - API Reference
   - Development:
-      - Contributing a Language: contributing-a-language.md
-      - Naming: branding.md
-      - CI/CD: ci_cd.md
-      - Releasing: releasing.md
-  - Evaluation:
-      - SWE-bench Collection: collect_swebench.md
-      - Synthesis Pipeline: synthesis_pipeline.md
-      - GT Locator: gt_locator.md
-      - Evaluation Artifact Bundles: evaluation_artifacts.md
+      - development/index.md
+      - Contributing:
+          - Contributing a Language: contributing-a-language.md
+          - CI/CD: ci_cd.md
+      - Project Maintenance:
+          - Releasing: releasing.md
+          - Naming: branding.md
+      - Benchmarks & Evaluation:
+          - evaluation/index.md
+          - SWE-bench Collection: collect_swebench.md
+          - Synthesis Pipeline: synthesis_pipeline.md
+          - GT Locator: gt_locator.md
+          - Evaluation Artifact Bundles: evaluation_artifacts.md
