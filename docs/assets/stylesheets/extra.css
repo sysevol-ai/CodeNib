@@ -340,6 +340,31 @@ body {
     padding-left: 0.65rem;
     border-left: 1px solid var(--codenib-line);
   }
+
+  /* When a landing page hides its primary navigation, use its page outline as
+     the left rail so top-level tab changes keep the same content baseline. */
+  .md-main__inner
+    > .md-sidebar--primary[hidden]
+    + .md-sidebar--secondary:not([hidden]) {
+    order: 0;
+  }
+
+  .md-main__inner
+    > .md-sidebar--primary[hidden]
+    + .md-sidebar--secondary:not([hidden])
+    .md-sidebar__scrollwrap {
+    padding-inline: 0 0.65rem;
+    border-inline-start: 0;
+    border-inline-end: 1px solid var(--codenib-line);
+  }
+
+  .md-main__inner
+    > .md-sidebar--primary[hidden]
+    + .md-sidebar--secondary:not([hidden])
+    ~ .md-content
+    > .md-content__inner {
+    margin-inline: 1.2rem 0.8rem;
+  }
 }
 
 /* Editorial typography */
@@ -606,6 +631,14 @@ body {
 .md-footer__link:hover {
   color: var(--codenib-accent);
   opacity: 1;
+}
+
+@media screen and (min-width: 60em) and (max-width: 76.234375em) {
+  .md-main__inner
+    > .md-sidebar--primary[hidden]
+    + .md-sidebar--secondary:not([hidden]) {
+    display: none;
+  }
 }
 
 @media screen and (max-width: 76.234375em) {

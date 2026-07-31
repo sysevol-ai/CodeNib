@@ -56,10 +56,10 @@ def test_mkdocs_navigation_tabs_contract():
     )
     assert evaluation[0] == "evaluation/index.md"
 
-    # Keep the desktop content column aligned when switching top-level tabs.
+    # Home uses its page outline as the left rail without duplicating "Home".
     home_source = (REPO_ROOT / "docs" / "index.md").read_text(encoding="utf-8")
     home_metadata = yaml.safe_load(home_source.split("---", 2)[1])
-    assert home_metadata["hide"] == ["toc"]
+    assert home_metadata["hide"] == ["navigation"]
 
 
 def _write_api_site(site_dir, routes=None):
