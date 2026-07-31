@@ -93,6 +93,11 @@ Use `universal_generic_prompt.md` unchanged across all five tasks. It contains
 no task names, oracle cases, or expected patches. This measures whether a
 generic autonomous-review procedure improves solo performance.
 
+This experiment has now completed. See
+`universal_context_injection_report.md` for the aggregate result and per-task
+reports. In brief, exact success fell from 27/60 to 25/60 despite substantially
+more test authoring and token use.
+
 For diagnosis only, each task also has an `oracle_ceiling_prompt.md`. Those
 prompts deliberately reveal post-hoc failure information and must be labeled
 contaminated. They answer whether targeted context can rescue the run, not
@@ -130,4 +135,3 @@ The evidence favors a small interface rather than a heavy new object model:
 
 The task-specific reports provide examples of the message Guardian should learn
 to produce. The generic prompt is the initial hardcoded approximation.
-

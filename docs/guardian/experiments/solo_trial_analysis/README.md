@@ -13,8 +13,9 @@ Each task directory contains:
   observed capability gaps.
 
 Task directories may additionally contain experiment reports comparing a
-context intervention with the original baseline. The igel analysis includes
-`context_injection_report.md`.
+context intervention with the original baseline. Each task now includes
+`universal_context_injection_report.md`; the IGEL analysis also includes the
+earlier task-specific `context_injection_report.md`.
 
 ## Completed analyses
 
@@ -28,7 +29,8 @@ context intervention with the original baseline. The igel analysis includes
 
 See `cross_task_synthesis.md` for the 60-trial comparison and
 `universal_generic_prompt.md` for the proposed non-oracle hardcoded
-intervention.
+intervention. See `universal_context_injection_report.md` for the completed
+60-trial intervention experiment and links to the five task reports.
 
 ## Evidence labels
 
