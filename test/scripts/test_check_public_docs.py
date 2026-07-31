@@ -85,6 +85,36 @@ def test_relative_link_is_resolved_against_its_own_page_not_the_site_root(tmp_pa
     assert check_public_docs._check_site_links(site_dir) == []
 
 
+def test_relative_link_cannot_escape_above_the_public_site_root(tmp_path):
+    site_dir = tmp_path / "site"
+    page = site_dir / "guide" / "index.html"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        '<a href="../../../../experiments/private/">private</a>',
+        encoding="utf-8",
+    )
+
+    errors = check_public_docs._check_site_links(site_dir)
+
+    assert errors
+    assert "experiments/private" in errors[0]
+
+
+def test_encoded_parent_segments_are_clamped_to_the_public_site_root(tmp_path):
+    site_dir = tmp_path / "site"
+    page = site_dir / "guide" / "index.html"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        '<a href="%2e%2e%2f%2e%2e%2f%65xperiments/private/">private</a>',
+        encoding="utf-8",
+    )
+
+    errors = check_public_docs._check_site_links(site_dir)
+
+    assert errors
+    assert "experiments/private" in errors[0]
+
+
 def test_absolute_and_repository_links_to_internal_locations_still_rejected(tmp_path):
     site_dir = tmp_path / "site"
     page = site_dir / "api" / "index.html"

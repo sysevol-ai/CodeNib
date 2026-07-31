@@ -14,7 +14,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import yaml
 
@@ -121,6 +121,19 @@ def _normalize_public_location(location: str) -> str:
     parsed = urlparse(html.unescape(location))
     path = unquote(parsed.path).replace("\\", "/")
     return posixpath.normpath(f"/{path}").lstrip("/")
+
+
+def _resolve_public_relative_location(source: str, location: str) -> str:
+    """Resolve a link as a browser would, clamping traversal at the origin."""
+
+    path = unquote(location).replace("\\", "/")
+    if path.startswith("/"):
+        # A percent-encoded leading slash is still a path on this origin, not
+        # a protocol-relative URL whose first segment becomes a host name.
+        path = f"/{path.lstrip('/')}"
+    base_url = f"https://public-docs.invalid/{source.lstrip('/')}"
+    resolved_path = urlparse(urljoin(base_url, path)).path
+    return _normalize_public_location(resolved_path)
 
 
 def _location_candidates(location: str) -> Iterable[str]:
@@ -314,7 +327,7 @@ def _check_site_links(site_dir: Path) -> list[str]:
         source = html_path.relative_to(site_root).as_posix()
         text = html_path.read_text(encoding="utf-8")
         for raw_target in _link_targets(text):
-            target = raw_target.strip()
+            target = html.unescape(raw_target.strip())
             if not target or target.startswith("#"):
                 continue
             parsed = urlparse(target)
@@ -330,11 +343,7 @@ def _check_site_links(site_dir: Path) -> list[str]:
                 continue
             if not parsed.path:
                 continue
-            resolved = (html_path.parent / unquote(parsed.path)).resolve()
-            try:
-                relative = resolved.relative_to(site_root).as_posix()
-            except ValueError:
-                continue
+            relative = _resolve_public_relative_location(source, parsed.path)
             if _is_forbidden(relative):
                 exposed_links.append(f"{source} -> {relative}")
 
