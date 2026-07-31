@@ -5,6 +5,8 @@
 import json
 from pathlib import Path
 
+import yaml
+
 from scripts import check_public_docs
 
 REPO_ROOT = Path(__file__).parents[2]
@@ -53,6 +55,11 @@ def test_mkdocs_navigation_tabs_contract():
         if isinstance(item, dict) and "Benchmarks & Evaluation" in item
     )
     assert evaluation[0] == "evaluation/index.md"
+
+    # Keep the desktop content column aligned when switching top-level tabs.
+    home_source = (REPO_ROOT / "docs" / "index.md").read_text(encoding="utf-8")
+    home_metadata = yaml.safe_load(home_source.split("---", 2)[1])
+    assert home_metadata["hide"] == ["toc"]
 
 
 def _write_api_site(site_dir, routes=None):
