@@ -10,10 +10,24 @@ does not initialize optional graph, embedding, and agent runtimes.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ._lazy import exported_dir, load_export
 from ._version import __version__
+
+if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
+    from codenib.agent.extract_agent import KeywordExtractor
+    from codenib.agent.rerank_agent import RerankAgent
+    from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+    from codenib.graph.code_graph import CodeGraph
+    from codenib.index.embedding.vector_store import (
+        CodeVectorStore,
+        create_code_vector_store,
+    )
+    from codenib.index.regex_idx import RegexNodeIndex
+    from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+    from codenib.ls_router import LSIndexer
+    from codenib.search import CodeSearchEngine
 
 _EXPORTS = {
     "LSIndexer": ("codenib.ls_router", "LSIndexer"),

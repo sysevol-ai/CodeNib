@@ -21,9 +21,26 @@ The package provides:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .._lazy import exported_dir, load_export
+
+if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
+    from codenib.compiler.index_builders import IndexBuilderRegistry
+    from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+    from codenib.compiler.manifest import ManifestIndexStateStore, RepoManifest
+    from codenib.compiler.params import ResolvedParams, SessionContext, resolve_params
+    from codenib.compiler.resources import (
+        IndexRequirement,
+        IndexState,
+        ResourcePlan,
+        ResourceResolver,
+    )
+    from codenib.compiler.skill_context import (
+        build_skill_contexts,
+        load_contexts_from_manifest,
+        required_index_types,
+    )
 
 _EXPORTS = {
     "IndexCompiler": ("codenib.compiler.index_compiler", "IndexCompiler"),

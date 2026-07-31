@@ -116,7 +116,13 @@ dev = [
     "mypy>=0.950",
     "flake8>=4.0.1",
     "flake8-bugbear>=24.4.0",
+    # Docs. Keep this list in sync with the install step in
+    # .github/workflows/docs.yml. MkDocs 2.0 drops the plugin system with no
+    # migration path, which would take mkdocstrings and api-autonav with it.
+    "mkdocs<2.0.0",
     "mkdocs-material>=9.5.0",
+    "mkdocstrings-python>=2.0.0",
+    "mkdocs-api-autonav>=0.4.0",
 ]
 test = [
     "datasets>=4.0.0",

@@ -45,7 +45,11 @@ theme:
   features:
     - navigation.instant
     - navigation.sections
-    - navigation.expand
+    # `prune` replaces `expand`, which the theme documents as incompatible.
+    # The generated API reference adds ~280 nav entries, and Material inlines
+    # the whole tree into every page: expanding all of them buried the current
+    # page inside unrelated subtrees and tripled page weight.
+    - navigation.prune
     - navigation.indexes
     - navigation.top
     - search.suggest
@@ -60,6 +64,51 @@ extra_css:
 
 plugins:
   - search
+  - api-autonav:
+      modules:
+        - codenib
+      nav_section_title: API Reference
+      api_root_uri: api
+      exclude_private: true
+      exclude:
+        - re:codenib\..*_pb2(_grpc)?$
+        # `exclude_docs` below drops any directory named `experiments/`, which
+        # also matches the generated `api/codenib/eval/experiments/` pages.
+        # Skip the package here so the nav never points at a dropped page.
+        - codenib.eval.experiments
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - .
+          options:
+            docstring_style: google
+            docstring_section_style: table
+            # Types come from annotations (94% of public signatures are
+            # annotated), so a missing docstring type is not a defect.
+            # An undocumented-but-declared parameter is: keep that one as a
+            # lint gate, since `mkdocs build --strict` turns it into a failure.
+            docstring_options:
+              ignore_init_summary: true
+              warn_missing_types: false
+              warn_unknown_params: true
+            filters: public
+            members_order: source
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            show_root_heading: true
+            show_root_full_path: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_source: true
+            show_bases: true
+            show_labels: true
+            summary: true
+            unwrap_annotated: true
+            modernize_annotations: true
+            line_length: 88
 
 markdown_extensions:
   - admonition

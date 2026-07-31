@@ -589,7 +589,8 @@ class CodeGraph:
 
         Args:
             file: source file (graph-relative path).
-            start_line, end_line: inclusive 0-based line span.
+            start_line: first line of the inclusive 0-based span.
+            end_line: last line of the inclusive 0-based span.
             kinds: edge kinds to include in `outgoing` AND `incoming`.
                 Defaults to `{EDGE_TYPE_REFERENCE}` — CONTAIN edges have no
                 meaningful anchor and are excluded by default. Pass an

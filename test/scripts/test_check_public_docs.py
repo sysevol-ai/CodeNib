@@ -61,4 +61,47 @@ def test_generated_html_links_to_internal_location_are_rejected(tmp_path):
     errors = check_public_docs._check_site_links(site_dir)
 
     assert errors
-    assert "%65xperiments/private" in errors[0]
+    # Relative targets are reported at the location they resolve to, which is
+    # what makes the leak actionable; percent-encoding must not hide it.
+    assert "experiments/private" in errors[0]
+
+
+def test_relative_link_is_resolved_against_its_own_page_not_the_site_root(tmp_path):
+    """A nested page may legitimately point at its own `experiments/` sibling.
+
+    Normalizing the raw target against the site root turns `../../experiments/`
+    into `experiments/`, which flags generated API pages such as
+    `api/codenib/eval/**` even though they never leave the `api/` subtree.
+    """
+
+    site_dir = tmp_path / "site"
+    page = site_dir / "api" / "codenib" / "eval" / "agent_runner" / "index.html"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        '<a href="../../experiments/">sibling package</a>',
+        encoding="utf-8",
+    )
+
+    assert check_public_docs._check_site_links(site_dir) == []
+
+
+def test_absolute_and_repository_links_to_internal_locations_still_rejected(tmp_path):
+    site_dir = tmp_path / "site"
+    page = site_dir / "api" / "index.html"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        "\n".join(
+            [
+                '<a href="/product_roadmap/">absolute</a>',
+                '<a href="https://github.com/sysevol-ai/CodeNib/blob/main/docs/'
+                'experiments/private.json">repository</a>',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    errors = check_public_docs._check_site_links(site_dir)
+
+    assert errors
+    assert "/product_roadmap/" in errors[0]
+    assert "github.com" in errors[0]

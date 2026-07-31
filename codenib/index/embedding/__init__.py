@@ -9,9 +9,19 @@ Provides vector storage and semantic search capabilities for code chunks.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..._lazy import exported_dir, load_export
+
+if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
+    from codenib.index.embedding.builders import (
+        VectorStoreBuilder,
+        build_hierarchical_vector_store,
+    )
+    from codenib.index.embedding.vector_store import (
+        CodeVectorStore,
+        create_code_vector_store,
+    )
 
 _EXPORTS = {
     "CodeVectorStore": (

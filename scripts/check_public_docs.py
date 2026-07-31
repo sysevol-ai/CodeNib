@@ -317,11 +317,18 @@ def _check_site_links(site_dir: Path) -> list[str]:
             target = raw_target.strip()
             if not target or target.startswith("#"):
                 continue
-            if _is_forbidden(target):
-                exposed_links.append(f"{source} -> {target}")
-                continue
             parsed = urlparse(target)
-            if parsed.scheme or parsed.netloc or not parsed.path:
+            # Only absolute targets may be matched against the forbidden
+            # prefixes as written: normalizing a relative link against the site
+            # root turns any "../../experiments/" into "experiments/", which
+            # misreads generated pages (e.g. the codenib.eval.experiments API
+            # reference) as leaks. Relative links are resolved below, against
+            # the directory of the page that contains them.
+            if parsed.scheme or parsed.netloc or unquote(parsed.path).startswith("/"):
+                if _is_forbidden(target):
+                    exposed_links.append(f"{source} -> {target}")
+                continue
+            if not parsed.path:
                 continue
             resolved = (html_path.parent / unquote(parsed.path)).resolve()
             try:

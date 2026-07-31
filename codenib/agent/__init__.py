@@ -6,9 +6,65 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .._lazy import exported_dir, load_export
+
+if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
+    from codenib.agent.agent_types import AgentResult, ToolCallRecord
+    from codenib.agent.extract_agent import (
+        KeywordExtraction,
+        KeywordExtractor,
+        extract_keywords_from_statement,
+    )
+    from codenib.agent.harness import (
+        AgentHarnessSpec,
+        AgentRunAccumulator,
+        agent_working_directory,
+        run_agent_in_directory,
+    )
+    from codenib.agent.history import (
+        PlainChatHistory,
+        TokenBudgetedChatHistory,
+        count_message_tokens,
+    )
+    from codenib.agent.lsp_provider import (
+        LSPProviderMetadata,
+        LSPProviderNodes,
+        StaticLSPProvider,
+        lsp_result_metadata,
+    )
+    from codenib.agent.rerank_agent import (
+        RerankAgent,
+        RerankResult,
+        rerank_nodes_with_query,
+    )
+    from codenib.agent.route_context import (
+        LSPRouteContext,
+        build_lsp_route_context,
+        canonical_lsp_route_args,
+        extract_lsp_symbol_seeds,
+        filter_lsp_symbol_seeds,
+        fingerprint_lsp_route_nodes,
+        is_specific_lsp_symbol_seed,
+        normalize_lsp_route_seed_policy,
+        render_lsp_route_context,
+    )
+    from codenib.agent.runner import (
+        AgentRunner,
+        CodeNibAgentOptions,
+        compile_repo,
+        has_localization_contract,
+        query,
+    )
+    from codenib.agent.runtime import (
+        AGENT_TRACE_SCHEMA_VERSION,
+        AgentRunTrace,
+        AgentTraceEvent,
+        ContextLedger,
+        ContextLedgerEntry,
+    )
+    from codenib.agent.tool_schema import registry_to_tools, skill_to_tool_schema
 
 _EXPORTS = {
     "AgentResult": ("codenib.agent.agent_types", "AgentResult"),

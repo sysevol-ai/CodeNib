@@ -565,7 +565,7 @@ class CodeVectorStore:
         Args:
             code_chunks: List of code chunk dictionaries with content and metadata
             level: Index level to add chunks to
-            ("l0" for file skeletons, "l2" for functions/methods)
+                ("l0" for file skeletons, "l2" for functions/methods)
         """
         if not code_chunks:
             logger.warning("No code chunks provided")

@@ -10,9 +10,39 @@ the optional igraph runtime or every language backend.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .._lazy import exported_dir, load_export
+
+if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
+    from codenib.scip_interface.lsp_occurrence_index import (
+        LSP_OCCURRENCE_INDEX_SCHEMA_VERSION,
+        SCIPLocation,
+        SCIPOccurrence,
+        SCIPOccurrenceIndex,
+    )
+    from codenib.scip_interface.scip_decode_csharp import SCIPCSharpGraphDecoder
+    from codenib.scip_interface.scip_decode_java import SCIPJavaGraphDecoder
+    from codenib.scip_interface.scip_decode_php import SCIPPHPGraphDecoder
+    from codenib.scip_interface.scip_decode_python import SCIPPythonGraphDecoder
+    from codenib.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
+    from codenib.scip_interface.scip_decode_rust import SCIPRustGraphDecoder
+    from codenib.scip_interface.scip_decode_ts import SCIPTypeScriptGraphDecoder
+    from codenib.scip_interface.scip_indexer_base import SCIPIndexerBase
+    from codenib.scip_interface.scip_indexer_csharp import SCIPCSharpIndexer
+    from codenib.scip_interface.scip_indexer_java import (
+        SCIPJavaIndexer,
+        SCIPKotlinIndexer,
+        SCIPScalaIndexer,
+    )
+    from codenib.scip_interface.scip_indexer_php import PHPHybridIndexer, SCIPPHPIndexer
+    from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
+    from codenib.scip_interface.scip_indexer_ruby import (
+        RubyHybridIndexer,
+        SCIPRubyIndexer,
+    )
+    from codenib.scip_interface.scip_indexer_rust import SCIPRustIndexer
+    from codenib.scip_interface.scip_indexer_ts import SCIPTypeScriptIndexer
 
 _EXPORTS = {
     "SCIPIndexerBase": (
@@ -109,7 +139,31 @@ _EXPORTS = {
     ),
 }
 
-__all__ = list(_EXPORTS)
+__all__ = [
+    "LSP_OCCURRENCE_INDEX_SCHEMA_VERSION",
+    "PHPHybridIndexer",
+    "RubyHybridIndexer",
+    "SCIPCSharpGraphDecoder",
+    "SCIPCSharpIndexer",
+    "SCIPIndexerBase",
+    "SCIPJavaGraphDecoder",
+    "SCIPJavaIndexer",
+    "SCIPKotlinIndexer",
+    "SCIPLocation",
+    "SCIPOccurrence",
+    "SCIPOccurrenceIndex",
+    "SCIPPHPGraphDecoder",
+    "SCIPPHPIndexer",
+    "SCIPPythonGraphDecoder",
+    "SCIPPythonIndexer",
+    "SCIPRubyGraphDecoder",
+    "SCIPRubyIndexer",
+    "SCIPRustGraphDecoder",
+    "SCIPRustIndexer",
+    "SCIPScalaIndexer",
+    "SCIPTypeScriptGraphDecoder",
+    "SCIPTypeScriptIndexer",
+]
 
 
 def __getattr__(name: str) -> Any:

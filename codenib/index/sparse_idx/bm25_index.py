@@ -82,8 +82,6 @@ class BM25CodeIndexer:
         Args:
             code_graph: CodeGraph instance containing nodes to index. If provided,
                        the index will be built immediately.
-            code_chunker: CodeChunker instance containing chunks to index. If provided,
-                         the index will be built immediately.
             chunks: List of CodeChunk objects to index. If provided, the index will
                    be built immediately.
             max_k: Maximum number of results to return in searches

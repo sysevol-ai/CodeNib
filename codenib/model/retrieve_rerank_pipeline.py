@@ -104,14 +104,20 @@ class RetrieveRerankPipeline:
             When omitted, :func:`build_retrieve_plan` is invoked with the
             provided ``retrieval_mode``.
         retrieval_mode: Shortcut for :func:`build_retrieve_plan`.
-        embedding_model / provider / dimension / kwargs: Dense index config.
-        rerank_model / provider / temperature / max_tokens: Reranker config.
+        embedding_model: Dense embedding model identifier.
+        embedding_provider: Backend serving ``embedding_model``.
+        embedding_dimension: Dense vector width.
+        embedding_model_kwargs: Extra keyword arguments for the dense encoder.
+        rerank_model: Reranker model identifier.
+        rerank_temperature: Sampling temperature for the LLM reranker.
+        rerank_max_tokens: Token budget for a single rerank call.
         languages: Languages to chunk for indexing (default: ["python"]).
         max_lines_per_chunk: Maximum lines per chunk passed to chunker.
         sparse_max_k: Upper bound for BM25 index fan-out; defaults to 128.
-        rerank_window_size / rerank_window_step: Sliding window controls for the
-            reranker (see :meth:`RerankAgent.rerank_nodes`). When ``None``, the
-            reranker considers all candidates at once.
+        rerank_window_size: Sliding window width for the reranker (see
+            :meth:`RerankAgent.rerank_nodes`). When ``None``, the reranker
+            considers all candidates at once.
+        rerank_window_step: Stride between consecutive rerank windows.
     """
 
     def __init__(
