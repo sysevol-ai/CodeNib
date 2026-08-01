@@ -37,6 +37,14 @@ result = provider.dispatch(
 )
 ```
 
+The standalone provider example requires no LocAgent installation:
+
+```bash
+python examples/integrations/locagent.py \
+  --manifest /path/to/repo_manifest.json \
+  --search "configuration loader"
+```
+
 `provider.bindings()` returns the same-named Python callables for a runtime
 plugin. This follows the separation in
 [OpenHands PR #7371](https://github.com/OpenHands/OpenHands/pull/7371): the
@@ -111,6 +119,55 @@ reference or type-use edges as exact call or inheritance facts.
 - Loading the provider never invokes LocAgent, OpenHands ACI, NetworkX,
   LlamaIndex, or an index builder.
 
+### Shared Benchmark Interface
+
+`LocAgentAgent` retains LocAgent's pinned prompts, function schemas, and
+reasoning loop while replacing its repository data plane with
+`LocAgentToolProvider`. It implements the same
+`BaselineTask -> locate_code() -> BaselineRunResult` contract as the other
+localization baselines:
+
+```python
+from codenib.clients.locagent_agent import LocAgentAgent
+
+agent = LocAgentAgent(
+    model="openai-compatible-model",
+    locagent_checkout="/path/to/LocAgent",
+)
+result = await agent.locate_code(
+    query_text=issue,
+    repo_path=checkout,
+    context={"package_name": "project"},
+)
+```
+
+The adapter extracts the upstream protocol lazily in an isolated subprocess
+and resolves final file, class, function, and 1-based line records through
+CodeNib's language-neutral graph. The main process never imports LocAgent or
+LiteLLM; `--locagent-python` can select a dedicated upstream environment.
+OpenAI is loaded only when the policy executes, and `--base-url` accepts an
+OpenAI-compatible endpoint such as a LiteLLM proxy.
+
+The common runner reports the same ranked file/symbol accuracy, precision, and
+recall for every policy. LocAgent's additional native nDCG and MAP reports
+remain artifact-specific; they do not silently replace the shared metric
+contract.
+
+```bash
+python examples/locagent_loc_agent.py \
+  --dataset codenib_base \
+  --model "$LOCAGENT_MODEL" \
+  --locagent-checkout /path/to/LocAgent \
+  --result-path results/locagent.jsonl
+```
+
+Run the provider and common-runner tests with:
+
+```bash
+pytest -q test/integrations/test_locagent.py \
+  test/eval/test_locagent_benchmark_adapter.py
+```
+
 ## OrcaLoca
 
 The OrcaLoca provider replaces its repository data plane while retaining the
@@ -138,6 +195,14 @@ from codenib.integrations.orcaloca import (
 search_manager_factory = make_orcaloca_search_manager_factory(
     "/path/to/repo_manifest.json",
 )
+```
+
+To inspect the provider without installing OrcaLoca, run the
+[standalone example](https://github.com/sysevol-ai/CodeNib/blob/main/examples/integrations/orcaloca.py):
+
+```bash
+python examples/integrations/orcaloca.py \
+  --manifest /path/to/repo_manifest.json
 ```
 
 With the small injection seam from
@@ -168,10 +233,79 @@ prompt-visible markers. Prose and ambiguous-result tie ordering may differ;
 semantic file, class, method, and source ranges are the compatibility
 boundary.
 
+### Evaluation Metrics
+
+The dependency-free scorer under `codenib.eval.benchmarks.orcaloca` implements
+OrcaLoca's published File Match and Function Match definitions. Both are
+golden-patch subset metrics; extra predictions affect the separately reported
+precision but not the binary match.
+
+```python
+from codenib.eval.benchmarks.orcaloca import (
+    OrcaLocaGroundTruth,
+    parse_orcaloca_locations,
+    score_orcaloca_locations,
+)
+
+ground_truth = OrcaLocaGroundTruth(
+    files=("src/service.py",),
+    functions=("src/service.py:Service.run",),
+)
+locations = parse_orcaloca_locations(search_agent_output)
+score = score_orcaloca_locations(ground_truth, locations)
+```
+
+Ground-truth fields must come from the benchmark's golden patch. Trajectory-read
+labels such as SWE-Explore's `read_core_*` fields measure a different target.
+
+### Shared Benchmark Interface
+
+`OrcaLocaAgent` adapts the upstream policy to the same
+`BaselineTask -> locate_code() -> BaselineRunResult` contract used by the
+Claude and Codex localization baselines:
+
+```python
+from codenib.clients.orcaloca_agent import OrcaLocaAgent
+
+agent = OrcaLocaAgent(
+    model="openai-compatible-model",
+    base_url="https://gateway.example/v1",  # optional
+)
+result = await agent.locate_code(
+    query_text=issue,
+    repo_path=checkout,
+    context={},
+)
+```
+
+The adapter resolves the checkout's CodeNib manifest, injects the
+manifest-backed search manager, runs OrcaLoca with an empty trace-analysis
+input, and converts final `file/class/method` records into canonical generic
+symbols such as `Service.run()`. It imports OrcaLoca and LlamaIndex only when a
+task runs.
+
+The generic runner reports the common file/symbol top-k metrics. OrcaLoca's
+published File Match and Function Match remain separate because they use
+golden-patch subset semantics rather than the generic ranking metric. This
+prevents an external policy's native metric from silently changing the common
+benchmark contract.
+
+Run the common dataset loop with:
+
+```bash
+python examples/orcaloca_loc_agent.py \
+  --dataset codenib_base \
+  --model "$ORCALOCA_MODEL" \
+  --orcaloca-checkout /path/to/OrcaLoca \
+  --result-path results/orcaloca.jsonl
+```
+
 Run the local contract and provider tests with:
 
 ```bash
-pytest -q test/integrations/test_orcaloca.py
+pytest -q test/integrations/test_orcaloca.py \
+  test/eval/test_orcaloca_metrics.py \
+  test/eval/test_orcaloca_benchmark_adapter.py
 ```
 
 To compare against a pinned upstream checkout and exercise OrcaLoca's actual
@@ -187,3 +321,46 @@ The upstream probe is optional and marked `integration`; without
 
 The base `codenib` package therefore gains no LocAgent, OpenHands, OrcaLoca,
 LlamaIndex, pandas, or NetworkX dependency.
+
+## Paired Provider Compatibility
+
+The generic examples above measure each CodeNib-backed policy against common
+localization targets. The paired compatibility driver instead keeps a pinned
+upstream policy, model, prompt, case set, and iteration budget fixed while
+swapping only the repository provider between `native` and `codenib`:
+
+```bash
+python scripts/analysis/compare_agent_integrations.py locagent \
+  --cases /path/to/cases.json \
+  --output-dir results/locagent-paired \
+  --provider both \
+  --locagent-checkout /path/to/LocAgent \
+  --locagent-python /path/to/locagent-env/bin/python \
+  --native-index-dir /path/to/locagent-index \
+  --model "$LOCAGENT_MODEL"
+
+python scripts/analysis/compare_agent_integrations.py orcaloca \
+  --cases /path/to/cases.json \
+  --output-dir results/orcaloca-paired \
+  --provider both \
+  --orcaloca-checkout /path/to/OrcaLoca \
+  --model "$ORCALOCA_MODEL"
+
+python scripts/analysis/compare_agent_integrations.py score-orcaloca \
+  --cases /path/to/cases.json \
+  --results-dir results/orcaloca-paired \
+  --output results/orcaloca-summary.json
+```
+
+Before any model call, the driver checks every requested checkout commit,
+tracked-file state, manifest commit, and required capability. Result files bind
+the selected-case digest, CodeNib revision, pinned upstream revisions, model,
+and run options. The scorer retains missing and failed cells in the requested
+denominator and rejects mixed-model aggregation. `--allow-incomplete` writes an
+explicit partial audit; it does not turn a partial matrix into a complete one.
+
+The OrcaLoca comparison covers its search policy with an empty
+`TraceAnalysisOutput`; TraceAnalysis generation is outside this compatibility
+experiment. File Match and Function Match use golden-patch labels and remain
+separate from the common ranked file/symbol metrics. Legacy result cells may be
+reused, but the summary reports their missing provenance explicitly.
