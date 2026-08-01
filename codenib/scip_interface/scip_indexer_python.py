@@ -6,6 +6,7 @@
 
 """SCIP indexer for Python projects using scip-python."""
 import json
+import math
 import os
 import shutil
 import signal
@@ -41,7 +42,7 @@ def _scip_python_index_timeout() -> float:
         timeout = float(raw)
     except ValueError:
         timeout = 0.0
-    if timeout <= 0:
+    if not math.isfinite(timeout) or timeout <= 0:
         logger.warning(
             "Ignoring invalid %s=%r; using %ss",
             _SCIP_PYTHON_INDEX_TIMEOUT_ENV,
