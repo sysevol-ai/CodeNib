@@ -392,25 +392,18 @@ export async function fetchCodemap(
   return res.json();
 }
 
-/** One file or directory in the module map. */
-export interface ModuleNode {
-  id: string;
-  name: string;
+/**
+ * One file or directory in the module map. Extends CodemapNode so a module
+ * payload is assignable to CodemapResponse and the existing graph renderers
+ * accept it unchanged; `line`/`end_line` carry no meaning for a directory.
+ */
+export interface ModuleNode extends CodemapNode {
   path: string;
-  label: string;
-  short: string;
-  file: string | null; // set at file granularity; null for a directory node
   kind: "file" | "directory";
   symbol_count: number;
-  is_root: boolean;
-  external: boolean;
-  importance?: number;
-  community?: number;
-  ref_count?: number;
-  entry_score?: number;
 }
 
-export interface ModuleEdge {
+export interface ModuleEdge extends CodemapEdge {
   source: string;
   target: string;
   /** Distinct symbol pairs behind this dependency — how coupled the modules are. */
@@ -419,14 +412,9 @@ export interface ModuleEdge {
   call_sites: number;
   anchors: CallSite[]; // capped sample; see hidden_anchors for the remainder
   hidden_anchors: number;
-  source_hierarchy?: string;
-  target_hierarchy?: string;
-  bundle_path?: string[];
-  bundle_lca?: string;
-  bundle_lca_kind?: string;
 }
 
-export interface ModulemapResponse {
+export interface ModulemapResponse extends Omit<CodemapResponse, "nodes" | "edges"> {
   available: boolean;
   /** Resolved granularity — "auto" becomes "file" or "directory" server-side. */
   granularity: "file" | "directory";

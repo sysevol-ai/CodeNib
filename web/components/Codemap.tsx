@@ -5,12 +5,15 @@ import GraphView from "@/components/GraphView";
 import HierarchyMap from "@/components/HierarchyMap";
 import {
   fetchCodemap,
+  fetchModulemap,
   type CodemapResponse,
   type GraphCoverage,
+  type ModulemapResponse,
 } from "@/lib/api";
 
 type Direction = "both" | "callees" | "callers";
 type Depth = 1 | 2;
+type View = "graph" | "structure" | "modules";
 
 const LANGUAGE_NAMES: Record<string, string> = {
   cpp: "C / C++",
@@ -29,6 +32,85 @@ const LANGUAGE_NAMES: Record<string, string> = {
 
 function languageNames(languages: string[]): string {
   return languages.map((language) => LANGUAGE_NAMES[language] ?? language).join(", ");
+}
+
+/**
+ * Module view: "which file depends on which", projected from symbol references
+ * (see `codenib/web/modulemap.py`). Clicking a module re-centres the map on it;
+ * clicking an edge opens the exact call sites behind the dependency, which is
+ * the part no import-statement parser can give you.
+ */
+function ModuleView({
+  repoId,
+  data,
+  loading,
+  focus,
+  onFocus,
+}: {
+  repoId: string;
+  data: ModulemapResponse | null;
+  loading: boolean;
+  focus: string;
+  onFocus: (path: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <p className="muted" role="status">
+        Projecting module dependencies…
+      </p>
+    );
+  }
+  if (!data || !data.available) {
+    return <p className="muted">No module dependencies for this repo.</p>;
+  }
+
+  const excluded = data.excluded;
+  const dropped = (excluded?.test_files ?? 0) + (excluded?.derived_files ?? 0);
+
+  return (
+    <>
+      <div className="codemap-meta mono">
+        {focus ? `${data.focus_label} · ` : ""}
+        {data.nodes.length} {data.granularity === "file" ? "files" : "directories"} ·{" "}
+        {data.edges.length} dependencies
+        {data.truncated ? ` · top ${data.nodes.length} of ${data.total_modules}` : ""}
+      </div>
+      {/* State what the projection left out rather than implying full coverage. */}
+      {dropped > 0 && (
+        <p className="muted small">
+          Excludes {excluded?.test_files ?? 0} test and{" "}
+          {excluded?.derived_files ?? 0} generated/declaration files.
+        </p>
+      )}
+      {data.note && <p className="muted small">{data.note}</p>}
+      {focus && (
+        <p className="muted small">
+          Centred on {data.focus_label}.{" "}
+          <button type="button" className="linklike" onClick={() => onFocus("")}>
+            Show the whole repo
+          </button>
+        </p>
+      )}
+      <GraphView
+        repoId={repoId}
+        data={data}
+        variant="modules"
+        onFocus={(label) => onFocus(label.replace(/\/$/, ""))}
+      />
+      <div className="codemap-nodes">
+        {data.nodes.map((n) => (
+          <button
+            key={n.id}
+            className={`codemap-chip ${n.is_root ? "root" : ""}`}
+            title={`${n.path} — ${n.symbol_count} symbols, referenced by ${n.ref_count ?? 0}`}
+            onClick={() => onFocus(n.path)}
+          >
+            {n.short}
+          </button>
+        ))}
+      </div>
+    </>
+  );
 }
 
 /**
@@ -54,11 +136,15 @@ export default function Codemap({
   const [query, setQuery] = useState(initialSymbol ?? ""); // last submitted focus symbol
   const [direction, setDirection] = useState<Direction>("both");
   const [depth, setDepth] = useState<Depth>(1);
-  const [view, setView] = useState<"graph" | "structure">("structure");
+  const [view, setView] = useState<View>("structure");
   const [data, setData] = useState<CodemapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Module view: which file/directory the map is centred on ("" = repo-wide).
+  const [moduleFocus, setModuleFocus] = useState("");
+  const [modules, setModules] = useState<ModulemapResponse | null>(null);
+  const [modulesLoading, setModulesLoading] = useState(false);
 
   // Re-seed when an external focus arrives (e.g. "explore in graph" from a wiki page).
   useEffect(() => {
@@ -86,6 +172,21 @@ export default function Codemap({
       cancelled = true;
     };
   }, [repoId, query, direction, depth, commit]);
+
+  // The module map is its own fetch: it projects the whole graph rather than
+  // walking out from a symbol, so it does not share the symbol controls.
+  useEffect(() => {
+    if (view !== "modules") return;
+    let cancelled = false;
+    setModulesLoading(true);
+    fetchModulemap(repoId, { focus: moduleFocus || undefined, depth: 2, commit })
+      .then((d) => !cancelled && setModules(d))
+      .catch(() => !cancelled && setModules(null))
+      .finally(() => !cancelled && setModulesLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId, view, moduleFocus, commit]);
 
   function focus(label: string) {
     setSymbol(label);
@@ -232,6 +333,14 @@ export default function Codemap({
         >
           Structure
         </button>
+        <button
+          type="button"
+          className={view === "modules" ? "is-active" : ""}
+          aria-pressed={view === "modules"}
+          onClick={() => setView("modules")}
+        >
+          Modules
+        </button>
       </div>
 
       {coverage?.partial && (
@@ -246,10 +355,24 @@ export default function Codemap({
         </div>
       )}
 
-      {loading && <p className="muted">Updating dependency map…</p>}
-      {err && <p className="muted">Couldn&apos;t load the dependency map.</p>}
+      {view === "modules" ? (
+        <ModuleView
+          repoId={repoId}
+          data={modules}
+          loading={modulesLoading}
+          focus={moduleFocus}
+          onFocus={setModuleFocus}
+        />
+      ) : null}
 
-      {data && data.available && (
+      {loading && view !== "modules" && (
+        <p className="muted">Updating dependency map…</p>
+      )}
+      {err && view !== "modules" && (
+        <p className="muted">Couldn&apos;t load the dependency map.</p>
+      )}
+
+      {view !== "modules" && data && data.available && (
         <>
           <div className="codemap-meta mono">
             {data.root_label} · {data.nodes.length} symbols · {data.edges.length} edges

@@ -254,6 +254,26 @@ def _select(
     return chosen, truncated
 
 
+def _hops_from(
+    projection: _Projection, root: str, selected: Set[str]
+) -> Dict[str, int]:
+    """BFS distance from *root* over the undirected projection, for node depth."""
+    adjacency: Dict[str, Set[str]] = defaultdict(set)
+    for src, tgt in projection.pairs:
+        if src in selected and tgt in selected:
+            adjacency[src].add(tgt)
+            adjacency[tgt].add(src)
+    hops = {root: 0}
+    queue: deque[str] = deque([root])
+    while queue:
+        module = queue.popleft()
+        for neighbour in adjacency[module]:
+            if neighbour not in hops:
+                hops[neighbour] = hops[module] + 1
+                queue.append(neighbour)
+    return hops
+
+
 def _score(
     names: Sequence[str], edges: Sequence[Tuple[Tuple[str, str], int]]
 ) -> Tuple[Dict[str, float], Dict[str, int], Dict[str, int], Dict[str, float]]:
@@ -503,6 +523,7 @@ def build_modulemap(
     ]
     importance, community, ref_count, entry = _score(selected, kept)
 
+    hops = _hops_from(projection, root, selected_set) if root else {}
     nodes: List[Dict[str, Any]] = []
     for module in selected:
         label = _module_label(module, resolved)
@@ -514,6 +535,13 @@ def build_modulemap(
                 "label": label,
                 "short": _short(label),
                 "file": module if resolved == "file" else None,
+                # ``line``/``end_line``/``depth`` are not meaningful for a module
+                # but keep the node shape assignable to the codemap's, so the
+                # existing graph renderers accept this payload unchanged. Line 1
+                # lets a file module's peek open the top of the file.
+                "line": 1 if resolved == "file" else None,
+                "end_line": None,
+                "depth": hops.get(module, 0),
                 "kind": resolved,
                 "symbol_count": projection.symbol_count.get(module, 0),
                 "is_root": module == root,

@@ -78,6 +78,9 @@ function SourcePeek({
   const rel = repoRelative(site.file);
   const line = site.line ?? 1;
   const isExternal = source.kind === "node" && !!source.node.external;
+  // A directory node in the module map aggregates many files — there is no one
+  // definition to peek at.
+  const hasNoSingleFile = source.kind === "node" && !source.node.file;
   const fileName = rel.split("/").pop() || rel;
   const sourceTitle =
     source.kind === "edge"
@@ -129,7 +132,7 @@ function SourcePeek({
   }, [source, repoId]);
 
   useEffect(() => {
-    if (isExternal) return; // external dep — no in-repo source to fetch
+    if (isExternal || hasNoSingleFile) return; // nothing single to fetch
     let cancelled = false;
     setState("loading");
     // Node peeks use the indexed symbol span, plus a little context around it.
@@ -149,7 +152,7 @@ function SourcePeek({
     return () => {
       cancelled = true;
     };
-  }, [repoId, rel, line, isNode, nodeEnd, isExternal]);
+  }, [repoId, rel, line, isNode, nodeEnd, isExternal, hasNoSingleFile]);
 
   return (
     <div className="callsite-peek" ref={peekRef}>
@@ -162,7 +165,11 @@ function SourcePeek({
             <span>{sourceTitle}</span>
           </span>
           <span className="callsite-loc mono">
-            {isExternal ? "external dependency" : `${rel}:${line}`}
+            {isExternal
+              ? "external dependency"
+              : hasNoSingleFile
+                ? "directory"
+                : `${rel}:${line}`}
           </span>
           {source.kind === "edge" &&
             typeof edgeLabel === "string" &&
@@ -217,7 +224,12 @@ function SourcePeek({
           </button>
         </div>
       </div>
-      {isExternal ? (
+      {hasNoSingleFile && !isExternal ? (
+        <p className="muted callsite-msg">
+          A directory aggregates many files, so there is no single definition to
+          show. Use “Focus in graph” to open its own dependency map.
+        </p>
+      ) : isExternal ? (
         <p className="muted callsite-msg">
           External symbol — its definition lives outside this repository, so there&apos;s no source to show.
           Use “Focus here” to see where this repo references it.
@@ -254,8 +266,9 @@ export default function GraphView({
 }: {
   repoId: string;
   data: CodemapResponse;
-  // "wiki" = focused top-down dependency map; "explore" = standalone Graph view.
-  variant?: "wiki" | "explore";
+  // "wiki" = focused top-down dependency map; "explore" = standalone Graph
+  // view; "modules" = the file/directory dependency map.
+  variant?: "wiki" | "explore" | "modules";
   onFocus?: (label: string) => void;
   repoFullName?: string;
   commit?: string;
@@ -274,7 +287,7 @@ export default function GraphView({
   const hasHierarchy = (data.hierarchy?.nodes?.length ?? 0) > 0;
 
   const peekFocus =
-    variant === "wiki"
+    variant === "wiki" || variant === "modules"
       ? onFocus
       : (label: string) => setFocusReq((p) => ({ label, nonce: (p?.nonce ?? 0) + 1 }));
 

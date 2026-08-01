@@ -240,7 +240,11 @@ function buildElements(
   data: CodemapResponse,
   expanded: Set<string>,
   compactLabels = false,
-  hierarchyMode: "files" | "symbols" = "files"
+  hierarchyMode: "files" | "symbols" = "files",
+  // In the module map every "file" holds exactly one node — itself — so the
+  // per-file symbol count is noise ("·1" on every pill) and expanding a pill
+  // would only reveal a duplicate of it.
+  moduleMode = false
 ): ElementDefinition[] {
   const byFile = new Map<string, CMNode[]>();
   const fileOfNode = new Map<string, string>();
@@ -387,7 +391,9 @@ function buildElements(
           isFileMeta: 1,
           file: f,
           short: baseName(f),
-          glabel: `${displayLabels.get(f) ?? baseName(f)}  ·${nodes.length}`,
+          glabel: moduleMode
+            ? (displayLabels.get(f) ?? baseName(f))
+            : `${displayLabels.get(f) ?? baseName(f)}  ·${nodes.length}`,
           kind: "file",
           tone: "file",
           importance: imp,
@@ -1056,7 +1062,9 @@ export default function CodeGraph({
   data: CodemapResponse;
   // "wiki" = the focused map embedded in a wiki page, tuned for reading.
   // "explore" = the standalone Graph view with richer interaction.
-  variant?: "wiki" | "explore";
+  // "modules" = the file/directory dependency map, where an aggregate edge is
+  // the content rather than a summary to drill into.
+  variant?: "wiki" | "explore" | "modules";
   repoId?: string; // needed to fetch on-hover LLM edge labels
   onNodeClick?: (node: GraphNodeInfo) => void;
   onEdgeClick?: (info: EdgeClickInfo) => void;
@@ -1074,6 +1082,7 @@ export default function CodeGraph({
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [edgeHover, setEdgeHover] = useState<EdgeHoverInfo | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const moduleMode = variant === "modules";
   const mode: GraphMode = "files";
   const selectedInfo = fileInfo(data, selectedFile);
   const totalFiles = graphFileCount(data);
@@ -1158,7 +1167,7 @@ export default function CodeGraph({
 
     const cy = cytoscape({
       container: box,
-      elements: buildElements(data, expandedRef.current, compactGraph, mode),
+      elements: buildElements(data, expandedRef.current, compactGraph, mode, moduleMode),
       wheelSensitivity: 0.2,
       minZoom: 0.2,
       maxZoom: 2.5,
@@ -1384,7 +1393,9 @@ export default function CodeGraph({
         {
           // File-level aggregate edge (an expand reveals the exact references).
           selector: "edge[meta = 1]",
-          style: { "line-style": "dashed", opacity: 0.24 },
+          style: moduleMode
+            ? { opacity: 0.7, width: "mapData(weight, 1, 24, 1.4, 6)" }
+            : { "line-style": "dashed", opacity: 0.24 },
         },
         {
           // Same-file references stay visible as plain edges.
@@ -1501,7 +1512,7 @@ export default function CodeGraph({
       });
       cy.batch(() => {
         cy.elements().remove();
-        cy.add(buildElements(data, s, compactGraph, mode));
+        cy.add(buildElements(data, s, compactGraph, mode, moduleMode));
         cy.nodes().forEach((n) => {
           const p = prev.get(n.id());
           if (p) n.position(p);
