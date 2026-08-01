@@ -136,3 +136,73 @@ def test_unavailable_codemap_returns_repository_setup_report(monkeypatch):
 
     assert result["available"] is False
     assert result["setup"]["languages"][0]["missing"] == ["scip-python"]
+
+
+def test_unavailable_modulemap_returns_repository_setup_report(monkeypatch):
+    class Window:
+        available = False
+
+    class Setup:
+        def to_dict(self):
+            return {"ready": False, "languages": []}
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="abc123"),
+        code_graph=lambda: None,
+        graph_unavailable_note=lambda: "Dependency graph is not built.",
+        graph_setup=lambda: Setup(),
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+
+    result = asyncio.run(web_app.modulemap("repo"))
+
+    assert result["available"] is False
+    assert result["setup"] == {"ready": False, "languages": []}
+    assert result["nodes"] == []
+
+
+def test_modulemap_endpoint_projects_the_graph_and_stamps_the_commit(monkeypatch):
+    from codenib.graph.code_graph import CodeGraph
+
+    class Window:
+        available = False
+
+    graph = CodeGraph()
+    for name, file in (
+        ("src/a.py:alpha()", "src/a.py"),
+        ("src/b.py:beta()", "src/b.py"),
+    ):
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": file,
+                "start_line": 0,
+                "end_line": 2,
+                "unified_name": name,
+            },
+        )
+    graph._add_edge(
+        "src/a.py:alpha()",
+        "src/b.py:beta()",
+        "reference",
+        anchor_file="src/a.py",
+        anchor_line=1,
+    )
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="abc123", repo_dir=None),
+        code_graph=lambda: graph,
+        graph_unavailable_note=lambda: "",
+        graph_setup=lambda: None,
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+
+    result = asyncio.run(web_app.modulemap("repo", granularity="file"))
+
+    assert result["available"] is True
+    assert result["commit"] == "abc123"
+    assert {node["path"] for node in result["nodes"]} == {"src/a.py", "src/b.py"}
+    assert len(result["edges"]) == 1

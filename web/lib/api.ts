@@ -392,6 +392,92 @@ export async function fetchCodemap(
   return res.json();
 }
 
+/** One file or directory in the module map. */
+export interface ModuleNode {
+  id: string;
+  name: string;
+  path: string;
+  label: string;
+  short: string;
+  file: string | null; // set at file granularity; null for a directory node
+  kind: "file" | "directory";
+  symbol_count: number;
+  is_root: boolean;
+  external: boolean;
+  importance?: number;
+  community?: number;
+  ref_count?: number;
+  entry_score?: number;
+}
+
+export interface ModuleEdge {
+  source: string;
+  target: string;
+  /** Distinct symbol pairs behind this dependency — how coupled the modules are. */
+  weight: number;
+  /** Total reference sites rolled into this edge (>= weight). */
+  call_sites: number;
+  anchors: CallSite[]; // capped sample; see hidden_anchors for the remainder
+  hidden_anchors: number;
+  source_hierarchy?: string;
+  target_hierarchy?: string;
+  bundle_path?: string[];
+  bundle_lca?: string;
+  bundle_lca_kind?: string;
+}
+
+export interface ModulemapResponse {
+  available: boolean;
+  /** Resolved granularity — "auto" becomes "file" or "directory" server-side. */
+  granularity: "file" | "directory";
+  focus?: string;
+  focus_label?: string;
+  depth?: number;
+  truncated?: boolean;
+  total_modules?: number;
+  /** What the filters dropped, so the UI never implies full coverage. */
+  excluded?: { test_files: number; derived_files: number };
+  nodes: ModuleNode[];
+  edges: ModuleEdge[];
+  hierarchy?: CodemapHierarchy;
+  mermaid: string;
+  note?: string;
+  setup?: GraphSetupReport;
+  commit?: string | null;
+  fell_back?: boolean;
+}
+
+/**
+ * Module-level dependency map. Projected from symbol references through each
+ * symbol's file, so it works on existing graphs — CodeNib emits no `import`
+ * edges today.
+ */
+export async function fetchModulemap(
+  repoId: string,
+  opts: {
+    focus?: string;
+    granularity?: "auto" | "file" | "directory";
+    depth?: number;
+    maxNodes?: number;
+    includeTests?: boolean;
+    commit?: string;
+  } = {}
+): Promise<ModulemapResponse> {
+  const params = new URLSearchParams();
+  if (opts.focus) params.set("focus", opts.focus);
+  if (opts.granularity) params.set("granularity", opts.granularity);
+  if (opts.depth != null) params.set("depth", String(opts.depth));
+  if (opts.maxNodes != null) params.set("max_nodes", String(opts.maxNodes));
+  if (opts.includeTests) params.set("include_tests", "true");
+  if (opts.commit) params.set("commit", opts.commit);
+  const qs = params.toString();
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/modulemap${qs ? `?${qs}` : ""}`
+  );
+  if (!res.ok) throw new Error(`Failed to load module map (${res.status})`);
+  return res.json();
+}
+
 // Induced dependency subgraph over a wiki page's cited symbols — lets a wiki
 // page render as a view over the graph.
 export async function fetchWikiGraph(repoId: string, pageId: string): Promise<CodemapResponse> {

@@ -363,6 +363,70 @@ async def codemap(
     return result
 
 
+@app.get("/api/repos/{repo_id}/modulemap")
+async def modulemap(
+    repo_id: str,
+    focus: str | None = None,
+    granularity: str = "auto",
+    depth: int = 2,
+    max_nodes: int = 60,
+    include_tests: bool = False,
+    commit: str | None = None,
+) -> dict:
+    """Module ("which file depends on which") view, projected from the symbol graph.
+
+    The symbol codemap cannot answer this — a re-export barrel has no outgoing
+    symbol references — so this aggregates reference edges through each symbol's
+    file. Same ``{nodes, edges, hierarchy, mermaid}`` shape as ``/codemap``.
+    """
+    bundle = _bundle(repo_id)
+    window = _commit_window(repo_id)
+    graph = None
+    selected_commit = None
+    fell_back = False
+    if window.available:
+        entry = window.resolve(commit)
+        if entry is None and commit:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown commit for this repo: {commit!r}"
+            )
+        graph = await asyncio.to_thread(window.graph_for, commit)
+        if entry is not None and graph is not None:
+            selected_commit = entry.get("sha")
+    if graph is None:
+        graph = await asyncio.to_thread(bundle.code_graph)
+        selected_commit = bundle.entry.base_commit
+        fell_back = window.available
+    if graph is None:
+        return {
+            "available": False,
+            "granularity": granularity,
+            "nodes": [],
+            "edges": [],
+            "hierarchy": {"root": "hier::root", "nodes": [], "open_files": []},
+            "mermaid": "",
+            "note": bundle.graph_unavailable_note(),
+            "setup": bundle.graph_setup().to_dict(),
+        }
+    from .modulemap import build_modulemap
+
+    result = await asyncio.to_thread(
+        build_modulemap,
+        graph,
+        focus,
+        granularity,
+        depth,
+        max_nodes,
+        repo_dir=bundle.entry.repo_dir,
+        include_tests=include_tests,
+    )
+    if isinstance(result, dict):
+        result["commit"] = selected_commit
+        if fell_back:
+            result["fell_back"] = True
+    return result
+
+
 @app.post("/api/repos/{repo_id}/edge-label", response_model=EdgeLabelResponse)
 async def edge_label(repo_id: str, req: EdgeLabelRequest) -> EdgeLabelResponse:
     """Short LLM phrase describing how the source symbol uses the target.
