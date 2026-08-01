@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import io
 import json
 import os
@@ -83,6 +84,26 @@ def _orcaloca_revision_sources(checkout: Path) -> tuple[RevisionSource, ...]:
             checkout=checkout,
         ),
     )
+
+
+def _activate_orcaloca_checkout(checkout: Path) -> None:
+    """Ensure the validated checkout supplies the imported OrcaLoca policy."""
+
+    root = checkout.expanduser().resolve()
+    marker = root / "Orcar" / "search_agent.py"
+    if not marker.is_file():
+        raise FileNotFoundError(f"Not an OrcaLoca checkout: {root}")
+    loaded = sys.modules.get("Orcar")
+    loaded_path = Path(str(getattr(loaded, "__file__", ""))).resolve()
+    if loaded is not None and root not in loaded_path.parents:
+        raise RuntimeError(
+            "OrcaLoca was imported before the validated checkout was activated: "
+            f"{loaded_path}"
+        )
+    root_text = str(root)
+    sys.path[:] = [entry for entry in sys.path if entry != root_text]
+    sys.path.insert(0, root_text)
+    importlib.invalidate_caches()
 
 
 def _policy_provenance_by_provider(
@@ -620,6 +641,7 @@ def _run_orcaloca(args: argparse.Namespace) -> int:
             "trace_analysis": False,
         },
     )
+    _activate_orcaloca_checkout(args.orcaloca_checkout)
 
     if args.tokenizer_encoding:
         import tiktoken.model

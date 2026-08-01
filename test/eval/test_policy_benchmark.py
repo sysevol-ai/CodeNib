@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from codenib.eval.benchmarks.policy_benchmark import main
+from codenib.eval.benchmarks.policy_benchmark import _activate_orcaloca_checkout, main
 from codenib.eval.benchmarks.policy_compat import policy_result_path, write_json_atomic
 
 
@@ -111,3 +111,16 @@ def test_score_command_rejects_mixed_model_aggregation(tmp_path: Path) -> None:
                 str(results),
             ]
         )
+
+
+def test_orcaloca_run_activates_the_validated_checkout(monkeypatch, tmp_path) -> None:
+    checkout = tmp_path / "orcaloca"
+    marker = checkout / "Orcar" / "search_agent.py"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("class SearchAgent: pass\n", encoding="utf-8")
+    monkeypatch.setattr("sys.path", ["/installed-policy", str(checkout)])
+
+    _activate_orcaloca_checkout(checkout)
+
+    assert __import__("sys").path[0] == str(checkout.resolve())
+    assert __import__("sys").path.count(str(checkout.resolve())) == 1
