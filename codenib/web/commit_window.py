@@ -22,6 +22,7 @@ import threading
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ..paths import legacy_repo_index_dir, repo_index_dir
+from .repository_files import git_source_slice
 
 if TYPE_CHECKING:
     from ..graph.code_graph import CodeGraph
@@ -260,6 +261,20 @@ class CommitWindow:
                 )
             self._graphs[sha] = graph
             return graph
+
+    def source_for(
+        self,
+        commit: Optional[str],
+        file: str,
+        start: Optional[int] = None,
+        end: Optional[int] = None,
+    ) -> Optional[dict]:
+        """Read source from the same immutable tree as a window graph."""
+        entry = self.resolve(commit)
+        if entry is None:
+            return None
+        sha = str(entry.get("sha") or "")
+        return git_source_slice(self.repo_dir, sha, file, start, end)
 
     def summary(self) -> dict:
         """Payload for the commit selector."""

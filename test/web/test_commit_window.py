@@ -6,6 +6,7 @@
 
 import json
 import os
+import subprocess
 
 import pytest
 
@@ -190,6 +191,48 @@ class TestGraphFor:
     def test_unknown_commit_returns_none(self, tmp_path):
         _write_manifest(tmp_path, [_commit("a" * 40, "aaaaaaa", method="cold")])
         assert CommitWindow(str(tmp_path)).graph_for("deadbeef") is None
+
+
+class TestSourceFor:
+    def test_reads_the_selected_tree_instead_of_the_checkout(self, tmp_path):
+        def git(*args):
+            return subprocess.run(
+                ["git", "-C", str(tmp_path), *args],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+        git("init", "-q")
+        git("config", "user.email", "test@example.com")
+        git("config", "user.name", "Test")
+        source = tmp_path / "runtime.py"
+        source.write_text("old = 1\nline = 2\n")
+        git("add", "runtime.py")
+        git("commit", "-qm", "old")
+        old_commit = git("rev-parse", "HEAD")
+        source.write_text("new = 1\nline = 3\n")
+        git("commit", "-qam", "new")
+
+        _write_manifest(
+            tmp_path,
+            [_commit(old_commit, old_commit[:8], method="cold")],
+        )
+        result = CommitWindow(str(tmp_path)).source_for(
+            old_commit, "runtime.py", start=1, end=1
+        )
+
+        assert result == {
+            "file": "runtime.py",
+            "start_line": 1,
+            "end_line": 1,
+            "content": "old = 1\n",
+        }
+
+    def test_rejects_source_path_traversal(self, tmp_path):
+        _write_manifest(tmp_path, [_commit("a" * 40, "aaaaaaaa", method="cold")])
+
+        assert CommitWindow(str(tmp_path)).source_for(None, "../outside.py") is None
 
 
 class TestSummary:

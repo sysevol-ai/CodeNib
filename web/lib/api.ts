@@ -174,11 +174,13 @@ export async function fetchSource(
   repoId: string,
   file: string,
   start?: number,
-  end?: number
+  end?: number,
+  commit?: string
 ): Promise<SourceSlice> {
   const params = new URLSearchParams({ file });
   if (start != null) params.set("start", String(start));
   if (end != null) params.set("end", String(end));
+  if (commit) params.set("commit", commit);
   const res = await fetch(
     `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/source?${params}`
   );
@@ -502,7 +504,12 @@ export interface EdgeLabelResult {
 // nothing could be generated (the UI then shows nothing extra).
 export async function fetchEdgeLabel(
   repoId: string,
-  body: { source: EdgeEndpointInput; target: EdgeEndpointInput; anchors: CallSite[] },
+  body: {
+    source: EdgeEndpointInput;
+    target: EdgeEndpointInput;
+    anchors: CallSite[];
+    commit?: string;
+  },
   opts: { signal?: AbortSignal } = {}
 ): Promise<EdgeLabelResult> {
   const res = await fetch(

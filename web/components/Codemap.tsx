@@ -54,13 +54,11 @@ function ModuleView({
   repoId,
   data,
   loading,
-  focus,
   onFocus,
 }: {
   repoId: string;
   data: ModulemapResponse | null;
   loading: boolean;
-  focus: string;
   onFocus: (path: string) => void;
 }) {
   if (loading && !data) {
@@ -76,11 +74,12 @@ function ModuleView({
 
   const excluded = data.excluded;
   const dropped = (excluded?.test_files ?? 0) + (excluded?.derived_files ?? 0);
+  const resolvedFocus = data.focus || "";
 
   return (
     <>
       <div className="codemap-meta mono">
-        {focus ? `${data.focus_label} · ` : ""}
+        {resolvedFocus ? `${data.focus_label} · ` : ""}
         {data.nodes.length} {data.granularity === "file" ? "files" : "directories"} ·{" "}
         {data.edges.length} dependencies
         {moduleCallSites(data.edges) > 0 &&
@@ -95,7 +94,7 @@ function ModuleView({
         </p>
       )}
       {data.note && <p className="muted small">{data.note}</p>}
-      {focus && (
+      {resolvedFocus && (
         <p className="muted small">
           Centred on {data.focus_label}.{" "}
           <button type="button" className="linklike" onClick={() => onFocus("")}>
@@ -107,13 +106,14 @@ function ModuleView({
         repoId={repoId}
         data={data}
         variant="modules"
+        commit={data.commit ?? undefined}
         onFocus={(label) => onFocus(label.replace(/\/$/, ""))}
       />
       <div className="codemap-nodes">
         {data.nodes.map((n) => (
           <button
             key={n.id}
-            className={`codemap-chip ${n.is_root ? "root" : ""}`}
+            className={`codemap-chip ${n.is_root ? "root" : ""} ${n.declaration ? "is-derived" : ""}`}
             title={`${n.path} — ${n.symbol_count} symbols, referenced by ${n.ref_count ?? 0}`}
             onClick={() => onFocus(n.path)}
           >
@@ -372,7 +372,6 @@ export default function Codemap({
           repoId={repoId}
           data={modules}
           loading={modulesLoading}
-          focus={moduleFocus}
           onFocus={setModuleFocus}
         />
       ) : null}
@@ -404,13 +403,19 @@ export default function Codemap({
           {view === "structure" && (data.hierarchy?.nodes?.length ?? 0) > 0 ? (
             <HierarchyMap data={data} onNodeClick={(node) => focus(node.label)} />
           ) : (
-            <GraphView repoId={repoId} data={data} variant="explore" onFocus={focus} />
+            <GraphView
+              repoId={repoId}
+              data={data}
+              variant="explore"
+              commit={data.commit ?? undefined}
+              onFocus={focus}
+            />
           )}
           <div className="codemap-nodes">
             {data.nodes.map((n) => (
               <button
                 key={n.id}
-                className={`codemap-chip ${n.is_root ? "root" : ""}`}
+                className={`codemap-chip ${n.is_root ? "root" : ""} ${n.declaration ? "is-derived" : ""}`}
                 title={`${n.label}${n.file ? `  (${n.file}:${n.line ?? "?"})` : ""}`}
                 onClick={() => focus(n.label)}
               >

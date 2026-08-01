@@ -472,6 +472,7 @@ def build_modulemap(
     max_nodes: int = 60,
     repo_dir: Optional[str] = None,
     include_tests: bool = False,
+    repo_commit: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return the repo's module dependency graph, projected from symbol references.
 
@@ -489,8 +490,9 @@ def build_modulemap(
     granularity = granularity if granularity in GRANULARITIES else "auto"
     depth = max(1, min(int(depth), 4))
     max_nodes = max(2, min(int(max_nodes), 200))
-    derived = _DerivedFiles(repo_dir)
-    entries = discover_entry_points(repo_dir)
+    derived = _DerivedFiles(repo_dir, repo_commit)
+    # Historical graphs cannot use manifest data from the current checkout.
+    entries = [] if repo_commit else discover_entry_points(repo_dir)
     resolved = _resolve_granularity(graph, granularity, derived, include_tests)
     projection = _project(graph, resolved, derived, include_tests)
     candidates = projection.degree()

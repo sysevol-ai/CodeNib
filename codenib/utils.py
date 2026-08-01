@@ -193,8 +193,9 @@ _HEADER_MAX_LINES = 60
 # ruff's ``ruff_python_parser/src/lib.rs`` and astropy's ``formats.py`` both
 # *discuss* generated code well inside their header prose.
 _BANNER_MAX_LINES = 5
-_COMMENT_PREFIXES = ("#", "//", "/*", "*", "--", ";", "%", "<!--")
+_COMMENT_PREFIXES = ("#", "//", "*", "--", ";", "%")
 _DOCSTRING_DELIMITERS = ('"""', "'''")
+_BLOCK_COMMENT_DELIMITERS = (("/*", "*/"), ("<!--", "-->"))
 
 
 def _header_comment_block(text, max_lines=_HEADER_MAX_LINES):
@@ -223,11 +224,38 @@ def _header_comment_block(text, max_lines=_HEADER_MAX_LINES):
             if not body.endswith(delimiter) or not body:
                 open_delimiter = delimiter
             continue
+        block = next(
+            (
+                (opener, closer)
+                for opener, closer in _BLOCK_COMMENT_DELIMITERS
+                if stripped.startswith(opener)
+            ),
+            None,
+        )
+        if block is not None:
+            opener, closer = block
+            header.append(stripped)
+            if closer not in stripped[len(opener) :]:
+                open_delimiter = closer
+            continue
         if stripped.startswith(_COMMENT_PREFIXES):
             header.append(stripped)
             continue
         break  # first real statement — the banner, if any, is already behind us
     return "\n".join(header).lower()
+
+
+def source_has_generated_marker(source):
+    """Check a source header already loaded from disk or a repository object."""
+    if isinstance(source, bytes):
+        source = source.decode("utf-8", errors="ignore")
+    if not isinstance(source, str):
+        return False
+    header = _header_comment_block(source)
+    banner = "\n".join(header.splitlines()[:_BANNER_MAX_LINES])
+    if any(marker in banner for marker in _GENERATED_MARKERS):
+        return True
+    return bool(_DO_NOT_EDIT_RE.search(banner))
 
 
 def file_has_generated_marker(path, max_bytes=_GENERATED_SCAN_BYTES):
@@ -246,11 +274,7 @@ def file_has_generated_marker(path, max_bytes=_GENERATED_SCAN_BYTES):
             head = handle.read(max_bytes)
     except OSError:
         return False
-    header = _header_comment_block(head.decode("utf-8", errors="ignore"))
-    banner = "\n".join(header.splitlines()[:_BANNER_MAX_LINES])
-    if any(marker in banner for marker in _GENERATED_MARKERS):
-        return True
-    return bool(_DO_NOT_EDIT_RE.search(banner))
+    return source_has_generated_marker(head)
 
 
 def wrap_code_snippet(code_snippet, start_line, end_line):

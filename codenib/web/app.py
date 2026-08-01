@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from functools import partial
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +31,7 @@ from ..wiki import WikiBuilder
 from ..wiki.narrator import Narrator
 from .config import load_config
 from .repo_registry import RepoRegistry
+from .repository_files import live_source_slice
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -138,19 +140,37 @@ def _wiki(repo_id: str):
     return cache[repo_id]
 
 
-def _edge_labeler(repo_id: str):
-    """Lazily build + cache a per-repo edge labeler (reuses the wiki's source reader)."""
+def _edge_labeler(repo_id: str, commit: str | None = None):
+    """Build a labeler whose source reader matches the requested graph commit."""
     cache = app.state.edge_labelers
-    if repo_id not in cache:
+    bundle = _bundle(repo_id)
+    base_commit = str(bundle.entry.base_commit or "")
+    source_fn = None
+    source_commit = base_commit
+    if commit:
+        window = _commit_window(repo_id)
+        entry = window.resolve(commit) if window.available else None
+        if entry is not None:
+            source_commit = str(entry.get("sha") or "")
+            source_fn = partial(window.source_for, source_commit)
+        elif commit.strip().lower() not in {
+            base_commit.lower(),
+            base_commit[:8].lower(),
+        }:
+            raise ValueError(f"unknown commit for repository: {commit}")
+    if source_fn is None:
+        source_fn = partial(live_source_slice, bundle.entry.repo_dir)
+
+    cache_key = f"{repo_id}@{source_commit}"
+    if cache_key not in cache:
         from .edge_label import EdgeLabeler
 
         config = load_config()
-        bundle = _bundle(repo_id)
         wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
-        namespace = f"{bundle.entry.instance_id}@{bundle.entry.commit_short}"
+        namespace = f"{bundle.entry.instance_id}@{source_commit}"
         model = config.edge_label_model or config.wiki_generation_model
-        cache[repo_id] = EdgeLabeler(
-            source_fn=_wiki(repo_id).source,
+        cache[cache_key] = EdgeLabeler(
+            source_fn=source_fn,
             model=model,
             cache_dir=wiki_cache,
             cache_namespace=namespace,
@@ -158,7 +178,7 @@ def _edge_labeler(repo_id: str):
             api_base=config.wiki_generation_api_base,
             api_key=config.wiki_generation_api_key,
         )
-    return cache[repo_id]
+    return cache[cache_key]
 
 
 def _commit_window(repo_id: str):
@@ -272,9 +292,37 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
 
 @app.get("/api/repos/{repo_id}/source")
 async def source(
-    repo_id: str, file: str, start: int | None = None, end: int | None = None
+    repo_id: str,
+    file: str,
+    start: int | None = None,
+    end: int | None = None,
+    commit: str | None = None,
 ) -> dict:
-    result = _wiki(repo_id).source(file, start, end)
+    """Read source from the commit that produced the active graph payload."""
+    bundle = _bundle(repo_id)
+    result = None
+    if commit:
+        window = _commit_window(repo_id)
+        entry = window.resolve(commit) if window.available else None
+        if entry is not None:
+            result = await asyncio.to_thread(
+                window.source_for, commit, file, start, end
+            )
+        else:
+            base = str(bundle.entry.base_commit or "")
+            requested = commit.strip().lower()
+            if requested not in {base.lower(), base[:8].lower()}:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Unknown commit for this repo: {commit!r}",
+                )
+            result = await asyncio.to_thread(
+                live_source_slice, bundle.entry.repo_dir, file, start, end
+            )
+    else:
+        result = await asyncio.to_thread(
+            live_source_slice, bundle.entry.repo_dir, file, start, end
+        )
     if result is None:
         raise HTTPException(status_code=404, detail=f"File not found: {file!r}")
     return result
@@ -313,6 +361,7 @@ async def codemap(
     window = _commit_window(repo_id)
     graph = None
     selected_commit = None
+    loaded_from_window = False
     fell_back = False
     if window.available:
         entry = window.resolve(commit)
@@ -323,6 +372,7 @@ async def codemap(
         graph = await asyncio.to_thread(window.graph_for, commit)
         if entry is not None and graph is not None:
             selected_commit = entry.get("sha")
+            loaded_from_window = True
     if graph is None:
         # The snapshot was absent or unloadable (e.g. a graph.pkl written under
         # an older schema_version). Serving the repo's default graph is fine;
@@ -343,6 +393,11 @@ async def codemap(
         }
     from .codemap import build_codemap
 
+    hierarchy_graph = (
+        None
+        if loaded_from_window
+        else await asyncio.to_thread(bundle.hierarchical_graph)
+    )
     result = await asyncio.to_thread(
         build_codemap,
         graph,
@@ -351,7 +406,8 @@ async def codemap(
         depth,
         max_nodes,
         repo_dir=bundle.entry.repo_dir,
-        hierarchy_graph=await asyncio.to_thread(bundle.hierarchical_graph),
+        repo_commit=selected_commit if loaded_from_window else None,
+        hierarchy_graph=hierarchy_graph,
     )
     # Let the client confirm which snapshot it is looking at. ``fell_back``
     # marks the case where a window exists but its snapshot could not be served,
@@ -383,6 +439,7 @@ async def modulemap(
     window = _commit_window(repo_id)
     graph = None
     selected_commit = None
+    loaded_from_window = False
     fell_back = False
     if window.available:
         entry = window.resolve(commit)
@@ -393,6 +450,7 @@ async def modulemap(
         graph = await asyncio.to_thread(window.graph_for, commit)
         if entry is not None and graph is not None:
             selected_commit = entry.get("sha")
+            loaded_from_window = True
     if graph is None:
         graph = await asyncio.to_thread(bundle.code_graph)
         selected_commit = bundle.entry.base_commit
@@ -400,7 +458,9 @@ async def modulemap(
     if graph is None:
         return {
             "available": False,
-            "granularity": granularity,
+            "granularity": (
+                granularity if granularity in ("file", "directory") else "file"
+            ),
             "nodes": [],
             "edges": [],
             "hierarchy": {"root": "hier::root", "nodes": [], "open_files": []},
@@ -419,6 +479,7 @@ async def modulemap(
         max_nodes,
         repo_dir=bundle.entry.repo_dir,
         include_tests=include_tests,
+        repo_commit=selected_commit if loaded_from_window else None,
     )
     if isinstance(result, dict):
         result["commit"] = selected_commit
@@ -438,7 +499,10 @@ async def edge_label(repo_id: str, req: EdgeLabelRequest) -> EdgeLabelResponse:
     if not bool(getattr(load_config(), "edge_labels", False)):
         return EdgeLabelResponse(label="", disabled=True)
     _bundle(repo_id)  # 404 on unknown repo
-    labeler = _edge_labeler(repo_id)
+    try:
+        labeler = _edge_labeler(repo_id, req.commit)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     anchors = [a.model_dump() for a in req.anchors]
     label, cached = await asyncio.to_thread(
         labeler.label,

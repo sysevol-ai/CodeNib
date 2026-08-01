@@ -72,3 +72,42 @@ def test_ignore_test_file_off_still_returns_the_neighbour():
     )
 
     assert neighbors == ["custom-elements.tsx:JSX/IntrinsicElements"]
+
+
+def test_test_call_site_does_not_make_a_reference_only_symbol_a_test_definition():
+    graph = CodeGraph()
+    graph._add_vertex(
+        "src/runtime.py:run()",
+        {
+            "type": "function",
+            "file": "src/runtime.py",
+            "start_line": 0,
+            "unified_name": "src/runtime.py:run()",
+        },
+    )
+    # SCIP can first encounter an external symbol at a reference in a test file.
+    # Its ``file`` is provenance for that reference, not a definition location.
+    graph._add_vertex(
+        "stdlib:ExternalApi",
+        {
+            "type": "class",
+            "file": "tests/test_runtime.py",
+            "unified_name": "stdlib:ExternalApi",
+        },
+    )
+    graph._add_edge(
+        "src/runtime.py:run()",
+        "stdlib:ExternalApi",
+        "reference",
+        anchor_file="tests/test_runtime.py",
+        anchor_line=4,
+    )
+
+    neighbors, _ = RepoDependencySearcher(graph).get_neighbors(
+        "src/runtime.py:run()",
+        direction="forward",
+        etype_filter={"reference"},
+        ignore_test_file=True,
+    )
+
+    assert neighbors == ["stdlib:ExternalApi"]

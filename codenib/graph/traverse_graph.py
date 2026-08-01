@@ -11,6 +11,14 @@ from ..utils import is_test_file
 from .code_graph import CodeGraph
 
 
+def _has_definition_location(attributes) -> bool:
+    """Whether ``file`` describes a definition rather than a reference site."""
+    return any(
+        isinstance(attributes.get(field), int)
+        for field in ("start_line", "selection_line")
+    )
+
+
 class RepoDependencySearcher:
     """Traverse Repository Graph using igraph"""
 
@@ -75,12 +83,17 @@ class RepoDependencySearcher:
                 or neighbor_vertex["type"] not in ntype_filter
             ):
                 continue
-            # Check the ``file`` attribute, not just the identity: TS/JS graph
-            # identities carry no directory (``custom-elements.tsx:JSX/Foo``),
-            # so a name-only check silently lets test symbols through.
+            # Definition-backed TS/JS identities carry no directory, so inspect
+            # their ``file`` too. Reference-only external nodes also carry a file,
+            # but that is the call site; treating it as their definition would
+            # incorrectly hide production symbols first encountered from tests.
+            neighbor_attrs = neighbor_vertex.attributes()
             if ignore_test_file and (
                 is_test_file(neighbor_nid)
-                or is_test_file(neighbor_vertex.attributes().get("file") or "")
+                or (
+                    _has_definition_location(neighbor_attrs)
+                    and is_test_file(neighbor_attrs.get("file") or "")
+                )
             ):
                 continue
 

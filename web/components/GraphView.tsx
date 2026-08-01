@@ -120,6 +120,7 @@ function SourcePeek({
           label: source.tgtLabel,
         },
         anchors: source.anchors,
+        commit,
       },
       { signal: ctrl.signal }
     )
@@ -129,7 +130,7 @@ function SourcePeek({
       cancelled = true;
       ctrl.abort();
     };
-  }, [source, repoId]);
+  }, [source, repoId, commit]);
 
   useEffect(() => {
     if (isExternal || hasNoSingleFile) return; // nothing single to fetch
@@ -141,7 +142,7 @@ function SourcePeek({
     const symEnd = nodeEnd && nodeEnd >= line ? nodeEnd : line;
     const before = isNode ? PAD : 6;
     const end = isNode ? symEnd + PAD : line + 6;
-    fetchSource(repoId, rel, Math.max(1, line - before), end)
+    fetchSource(repoId, rel, Math.max(1, line - before), end, commit)
       .then((s) => {
         if (cancelled) return;
         setCode(s.content || "");
@@ -152,7 +153,7 @@ function SourcePeek({
     return () => {
       cancelled = true;
     };
-  }, [repoId, rel, line, isNode, nodeEnd, isExternal, hasNoSingleFile]);
+  }, [repoId, rel, line, isNode, nodeEnd, isExternal, hasNoSingleFile, commit]);
 
   return (
     <div className="callsite-peek" ref={peekRef}>

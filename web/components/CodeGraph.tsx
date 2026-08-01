@@ -377,6 +377,7 @@ function buildElements(
             entryScore: n.entry_score ?? 0,
             root: n.is_root ? 1 : 0,
             external: n.external ? 1 : 0,
+            declaration: n.declaration ? 1 : 0,
             treeDepth: n.depth ?? fileDepth,
           },
         });
@@ -401,6 +402,7 @@ function buildElements(
           pill: Math.min(1, nodes.length / 20), // clamped size cue: bigger file = bigger pill
           root: nodes.some((n) => n.is_root) ? 1 : 0,
           external: f === "· external" ? 1 : 0,
+          declaration: nodes.some((n) => n.declaration) ? 1 : 0,
           treeDepth: fileDepth,
         },
       });
@@ -1204,12 +1206,21 @@ export default function CodeGraph({
           },
         },
         {
+          selector: "node[declaration = 1]",
+          style: {
+            "border-style": "dashed",
+            opacity: 0.62,
+          },
+        },
+        {
           selector: "node[root = 1]",
           style: {
             "background-color": palette.focusBg,
             "border-color": palette.focusBorder,
+            "border-style": "solid",
             color: "#ffffff",
             "font-weight": 600,
+            opacity: 1,
           },
         },
         {
@@ -1374,6 +1385,7 @@ export default function CodeGraph({
             "background-color": palette.selectedBg,
             color: palette.selectedText,
             "font-weight": 700,
+            opacity: 1,
             "z-index": 30,
           },
         },

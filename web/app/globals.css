@@ -1795,10 +1795,16 @@ pre {
   border-color: var(--accent);
   color: var(--accent);
 }
+.codemap-chip.is-derived {
+  border-style: dashed;
+  opacity: 0.64;
+}
 .codemap-chip.root {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+  border-style: solid;
+  opacity: 1;
 }
 
 /* High-level wiki system map: component cards first, code snippets on demand. */
@@ -3599,6 +3605,10 @@ a.codepanel-name:hover {
 .hier-symbol:disabled {
   cursor: default;
   opacity: 0.65;
+}
+.hier-symbol.is-derived {
+  border-style: dashed;
+  opacity: 0.64;
 }
 .hier-symbol:not(:disabled):hover {
   border-color: var(--accent-border);

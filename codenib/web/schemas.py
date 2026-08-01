@@ -94,6 +94,7 @@ class EdgeLabelRequest(BaseModel):
 
     source: EdgeEndpoint
     target: EdgeEndpoint
+    commit: Optional[str] = None
     # Exact call sites where source references target (1-based), if known.
     anchors: List[CallSite] = Field(default_factory=list)
 

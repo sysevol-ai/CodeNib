@@ -160,7 +160,7 @@ export default function HierarchyMap({
         <button
           key={node.id}
           type="button"
-          className="hier-symbol"
+          className={`hier-symbol${viewNode?.declaration ? " is-derived" : ""}`}
           title={viewNode?.label ?? node.label}
           disabled={!viewNode || !onNodeClick}
           onClick={() => viewNode && onNodeClick?.(nodeToInfo(viewNode))}
