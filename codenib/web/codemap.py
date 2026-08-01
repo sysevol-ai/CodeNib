@@ -179,6 +179,34 @@ class _DerivedFiles:
 
 
 _NO_ENTRY = 1 << 20
+# Directories holding code that exists to measure the repo, not to be the repo.
+# `is_test_file` deliberately does not cover these — widening it there would
+# change what the dataset-synthesis path accepts as ground truth — so the
+# demotion lives here, where it only affects which symbol a reader lands on.
+_SIDECAR_DIRS = frozenset(
+    {
+        "benchmark",
+        "benchmarks",
+        "bench",
+        "example",
+        "examples",
+        "demo",
+        "demos",
+        "fixtures",
+        "testdata",
+    }
+)
+
+
+def _is_sidecar(path: str) -> bool:
+    """True for benchmark/example/fixture code: real, but never the headline.
+
+    sympy declares no entry point, so it falls through to out-degree and lands
+    on ``sympy/polys/benchmarks/bench_solvers.py:eqs_165x165()`` — a generated
+    165-equation benchmark, and the busiest symbol in the repo by a distance.
+    """
+    parts = _normalize_path(path).lower().split("/")
+    return any(part in _SIDECAR_DIRS for part in parts[:-1])
 
 
 def _entry_affinity(graph: CodeGraph, entry_paths: Sequence[str]) -> Dict[str, int]:
@@ -251,7 +279,8 @@ def _default_seed(
        ``package.json`` / ``pyproject.toml`` / ``Cargo.toml`` answer it exactly.
        Degree cannot know that. See :func:`_entry_affinity`.
     2. **Hand-written over derived.** Declaration stubs, generated files, build
-       artifacts and tests rank below real source but are not dropped, so an
+       artifacts, tests and benchmark/example sidecars rank below real source
+       but are not dropped, so an
        all-declaration repo still gets a map rather than nothing. Raw
        out-degree alone picks a 380-property ``SVGAttributes`` interface over
        the renderer.
@@ -280,7 +309,7 @@ def _default_seed(
         # ``custom-elements.tsx:JSX/IntrinsicElements`` carries no directory, so
         # name-based test detection misses it.
         path = a.get("file") or name
-        penalty = 1 if (derived(path) or is_test_file(path)) else 0
+        penalty = 1 if (derived(path) or is_test_file(path) or _is_sidecar(path)) else 0
         private = 1 if _is_private(a.get("unified_name") or name) else 0
         key = (-affinity.get(name, _NO_ENTRY), -penalty, -private, count, name)
         if best_key is None or key > best_key:
