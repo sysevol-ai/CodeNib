@@ -2,4 +2,4 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Third-party agent clients (Claude / Codex SDK) used as end-to-end localization baselines."""
+"""Third-party policy clients used as end-to-end localization baselines."""
