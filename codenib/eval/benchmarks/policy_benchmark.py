@@ -637,7 +637,7 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
         print(args.output)
     else:
         print(json.dumps(payload, indent=2, sort_keys=True))
-    incomplete = bool(coverage.missing or coverage.failed)
+    incomplete = bool(coverage.missing or coverage.failed or provenance_audit.invalid)
     return 1 if incomplete and args.require_complete else 0
 
 

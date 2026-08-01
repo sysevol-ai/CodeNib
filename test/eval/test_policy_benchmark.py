@@ -120,6 +120,49 @@ def test_score_command_rejects_mixed_model_aggregation(tmp_path: Path) -> None:
         )
 
 
+def test_score_command_rejects_invalid_provenance_in_strict_mode(
+    tmp_path: Path,
+) -> None:
+    cases = tmp_path / "cases.json"
+    results = tmp_path / "results"
+    output = tmp_path / "summary.json"
+    _write_cases(cases)
+    _write_result(results, provider="native")
+    _write_result(results, provider="codenib")
+    codenib_path = policy_result_path(
+        results,
+        instance_id="demo__repo-1",
+        agent="orcaloca",
+        provider="codenib",
+    )
+    payload = json.loads(codenib_path.read_text(encoding="utf-8"))
+    payload["provenance"] = {
+        "schema_version": 99,
+        "policy": {"agent": "orcaloca", "provider": "codenib"},
+    }
+    write_json_atomic(codenib_path, payload)
+    base_args = [
+        "score-orcaloca",
+        "--cases",
+        str(cases),
+        "--results-dir",
+        str(results),
+        "--output",
+        str(output),
+    ]
+
+    assert main(base_args) == 1
+    assert main([*base_args, "--allow-incomplete"]) == 0
+    summary = json.loads(output.read_text(encoding="utf-8"))
+    assert summary["provenance"]["invalid_cells"] == [
+        {
+            "instance_id": "demo__repo-1",
+            "provider": "codenib",
+            "reason": "unsupported provenance schema_version",
+        }
+    ]
+
+
 def test_orcaloca_run_activates_the_validated_checkout(monkeypatch, tmp_path) -> None:
     checkout = tmp_path / "orcaloca"
     marker = checkout / "Orcar" / "search_agent.py"
