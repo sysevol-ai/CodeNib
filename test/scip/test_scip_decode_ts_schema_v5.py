@@ -169,3 +169,26 @@ def test_explicit_import_role_is_honored_outside_static_module_span(tmp_path):
         "src/use.ts",
         3,
     ) in _typed_edges(graph, EDGE_TYPE_IMPORT)
+
+
+def test_explicit_import_role_does_not_require_source_text(tmp_path):
+    content = INDEX_FILE.read_text(encoding="utf-8")
+    marker = (
+        "    range: 3\n"
+        "    range: 28\n"
+        "    range: 36\n"
+        f'    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 '
+        'src/`types.ts`/RunnerId#"'
+    )
+    assert marker in content
+    index_file = tmp_path / "index.decoded"
+    index_file.write_text(
+        content.replace(marker, marker + "\n    symbol_roles: 2", 1),
+        encoding="utf-8",
+    )
+
+    graph = SCIPTypeScriptGraphDecoder(str(index_file), project_root=None).decode()
+
+    assert _typed_edges(graph, EDGE_TYPE_IMPORT) == {
+        ("src/use.ts", "src/types.ts", "src/use.ts", 3)
+    }

@@ -175,22 +175,24 @@ def enrich_typescript_import_edges(
     identity. Ordinary reference edges remain untouched.
     """
 
-    if project_root is None:
-        return 0
-    root = Path(project_root)
+    root = Path(project_root) if project_root is not None else None
     added = 0
     for document in extract_scip_blocks(decoded_content, "documents"):
         path_match = re.search(r'relative_path:\s*"([^"]+)"', document)
         if not path_match:
             continue
         source_file = Path(path_match.group(1)).as_posix()
-        source_path = _safe_source_path(root, source_file)
-        if source_path is None or source_file not in code_graph.name_to_vertex:
+        if source_file not in code_graph.name_to_vertex:
             continue
-        try:
-            spans = _static_module_spans(source_path.read_bytes(), source_path.suffix)
-        except (OSError, RuntimeError, TypeError, ValueError):
-            continue
+        spans = []
+        source_path = _safe_source_path(root, source_file) if root is not None else None
+        if source_path is not None:
+            try:
+                spans = _static_module_spans(
+                    source_path.read_bytes(), source_path.suffix
+                )
+            except (OSError, RuntimeError, TypeError, ValueError):
+                pass
         for occurrence in extract_scip_blocks(document, "occurrences"):
             values = [int(value) for value in _RANGE_RE.findall(occurrence)]
             if len(values) < 3:
