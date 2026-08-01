@@ -64,9 +64,9 @@ For TypeScript and TSX, schema 5 also protects the separate file-to-file import
 layer. Before starting the language server or mutating the graph, the patcher
 compares tree-sitter fingerprints of static imports and source-bearing
 re-exports at the indexed and target commits. A changed statement or anchor,
-an added file, or a rename requests a full rebuild; a body-only edit may remain
-incremental. The compiler catches that explicit request and rebuilds, so an
-incremental update cannot silently retain stale import edges.
+an added or deleted file, or a rename requests a full rebuild; a body-only edit
+may remain incremental. The compiler catches that explicit request and
+rebuilds, so an incremental update cannot silently retain stale import edges.
 
 ## How It Works
 

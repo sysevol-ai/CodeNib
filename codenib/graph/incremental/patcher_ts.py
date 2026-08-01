@@ -29,6 +29,10 @@ class PatcherTS(PatcherBase):
             raise IncrementalPatchRebuildRequired(
                 "TypeScript file additions require import-edge reindexing"
             )
+        if changed_files["deleted"]:
+            raise IncrementalPatchRebuildRequired(
+                "TypeScript file deletions require import-edge reindexing"
+            )
         if changed_files["renamed"]:
             raise IncrementalPatchRebuildRequired(
                 "TypeScript file renames require import-edge reindexing"

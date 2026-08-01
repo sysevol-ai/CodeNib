@@ -184,11 +184,11 @@ def test_ts_non_import_edit_preserves_incremental_contract(tmp_path, monkeypatch
     )
 
 
-@pytest.mark.parametrize("change_key", ["added", "renamed"])
+@pytest.mark.parametrize("change_key", ["added", "deleted", "renamed"])
 def test_ts_file_identity_changes_require_import_reindex(tmp_path, change_key):
     changes = {"modified": [], "added": [], "deleted": [], "renamed": []}
     changes[change_key] = (
-        ["src/new.ts"] if change_key == "added" else [("src/old.ts", "src/new.ts")]
+        [("src/old.ts", "src/new.ts")] if change_key == "renamed" else ["src/new.ts"]
     )
     patcher = PatcherTS(str(tmp_path), CodeGraph(str(tmp_path)))
 
