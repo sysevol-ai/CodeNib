@@ -26,7 +26,9 @@ theme:
   name: material
   font: false
   logo: assets/images/codenib-icon.svg
-  favicon: assets/images/codenib-icon.svg
+  # Use a versioned PNG so browsers do not retain the favicon served before
+  # the GitHub Pages cutover. docs/favicon.ico remains the legacy fallback.
+  favicon: assets/images/codenib-favicon-v2.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

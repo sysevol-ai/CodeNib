@@ -41,11 +41,13 @@ FORBIDDEN_PUBLIC_PREFIXES = {
 }
 
 ALLOWED_PUBLIC_STATIC_FILES = {
+    "favicon.ico",
     "assets/fonts/LICENSE-inter.txt",
     "assets/fonts/LICENSE-newsreader.txt",
     "assets/fonts/inter-latin-wght-normal.woff2",
     "assets/fonts/newsreader-latin-wght-italic.woff2",
     "assets/fonts/newsreader-latin-wght-normal.woff2",
+    "assets/images/codenib-favicon-v2.png",
     "assets/images/codenib-icon.svg",
     "assets/stylesheets/extra.css",
     "incremental_graph/incremental_interactive.html",
