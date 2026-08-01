@@ -24,6 +24,12 @@ core decoder continue to use the serial Python path.
 - `bindings/pybind_module.cpp` — Python bindings for `decode_scip(...)`,
   `classify_edge_layers(...)`, and registry inspection.
 
+`codenib_core.decode_scip(...)` is a low-level flat transport API. It does not
+apply source-aware post-decode layers, including TypeScript import enrichment,
+and must not be consumed as a complete persisted `CodeGraph`. Supported
+application entry points route through `SCIPDecoderCore` or `LSIndexer`, which
+apply the shared enrichment path used for serial/core parity.
+
 ## Build And Test
 
 Requirements:

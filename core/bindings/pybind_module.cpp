@@ -4,15 +4,17 @@
 
 // Pybind11 bindings for codenib::core SCIP decoders.
 //
-// Exposes a single function `decode_scip(index_file, project_root, language)`
-// that returns a `DecodedGraph` struct with two flat Python lists:
+// Exposes a low-level function `decode_scip(index_file, project_root,
+// language)` that returns a transport with two flat Python lists:
 //   - vertices: list of dicts
 //       {name,type,file,start_line,end_line,selection_line,unified_name,
 //        symbol_kind,has_definition}
 //   - edges:    list of 5-tuples (source_name, target_name, type,
 //                                 anchor_file_or_None, anchor_line_or_None)
 //
-// The Python-side wrapper (scip_decode_core.py) builds a CodeGraph from this.
+// The Python-side wrapper (scip_decode_core.py) builds and source-enriches the
+// supported CodeGraph contract from this raw transport. In particular, callers
+// must not treat this function as a complete schema-v5 graph entry point.
 // Anchor info is included so range-query indexes (`build_range_indexes`) on
 // the Python side can resolve call-site lines emitted by the C++ decoders.
 //
@@ -115,7 +117,11 @@ PYBIND11_MODULE(codenib_core, m) {
         py::arg("project_root") = std::optional<std::string>(std::nullopt),
         py::arg("language") = std::string("python"),
         R"pbdoc(
-Decode a SCIP `index.decoded` file into a graph representation.
+Decode a SCIP `index.decoded` file into the low-level core transport.
+
+This binding does not apply source-aware post-decode layers. Application code
+must use `codenib.scip_interface.scip_decode_core.SCIPDecoderCore` or
+`codenib.ls_router.LSIndexer` to obtain the complete CodeGraph contract.
 
 Args:
     index_file: path to the decoded SCIP index file.

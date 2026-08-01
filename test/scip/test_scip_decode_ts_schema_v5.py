@@ -13,9 +13,9 @@ INDEX_FILE = FIXTURE_ROOT / "index.decoded"
 PREFIX = "schema-v5-fixture@1.0.0:"
 
 
-def _decode(index_file: Path = INDEX_FILE):
+def _decode(index_file: Path = INDEX_FILE, project_root: Path = FIXTURE_ROOT):
     return SCIPTypeScriptGraphDecoder(
-        str(index_file), project_root=str(FIXTURE_ROOT)
+        str(index_file), project_root=str(project_root)
     ).decode()
 
 
@@ -101,6 +101,74 @@ def test_typescript_schema_v5_import_layer_is_anchored_and_keeps_references():
         "src/reexport.ts",
         0,
     ) in references
+
+
+def test_typescript_import_layer_rejects_external_package_path_collisions(tmp_path):
+    content = INDEX_FILE.read_text(encoding="utf-8")
+    use_start = content.index('documents {\n  relative_path: "src/use.ts"')
+    use_end = content.index("\ndocuments {", use_start + 1)
+    use_document = content[use_start:use_end]
+    local_target = "schema-v5-fixture 1.0.0 src/`types.ts`"
+    external_target = "third-party 9.9.9 src/`types.ts`"
+    modified_document = use_document.replace(local_target, external_target)
+    assert modified_document != use_document
+    index_file = tmp_path / "index.decoded"
+    index_file.write_text(
+        content[:use_start] + modified_document + content[use_end:],
+        encoding="utf-8",
+    )
+
+    graph = _decode(index_file)
+
+    assert not any(
+        source == "src/use.ts" and target == "src/types.ts"
+        for source, target, _anchor_file, _anchor_line in _typed_edges(
+            graph, EDGE_TYPE_IMPORT
+        )
+    )
+
+
+def test_typescript_multiline_import_uses_statement_start_anchor(tmp_path):
+    source_dir = tmp_path / "src"
+    source_dir.mkdir()
+    (source_dir / "use.ts").write_text(
+        """import {
+  DefaultRunner,
+  type Runner,
+  type RunnerId,
+} from "./types";
+""",
+        encoding="utf-8",
+    )
+    content = INDEX_FILE.read_text(encoding="utf-8")
+    marker = (
+        "    range: 0\n"
+        "    range: 29\n"
+        "    range: 35\n"
+        f'    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 '
+        'src/`types.ts`/Runner#"'
+    )
+    assert marker in content
+    index_file = tmp_path / "index.decoded"
+    index_file.write_text(
+        content.replace(
+            marker,
+            marker.replace(
+                "    range: 0\n    range: 29\n    range: 35",
+                "    range: 2\n    range: 7\n    range: 13",
+            ),
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    graph = _decode(index_file, project_root=tmp_path)
+
+    assert {
+        edge
+        for edge in _typed_edges(graph, EDGE_TYPE_IMPORT)
+        if edge[0] == "src/use.ts"
+    } == {("src/use.ts", "src/types.ts", "src/use.ts", 0)}
 
 
 def test_explicit_symbol_kind_precedes_legacy_signature_fallback(tmp_path):

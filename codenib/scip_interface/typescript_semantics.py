@@ -80,8 +80,10 @@ def extract_typescript_symbol_kinds(decoded_content: str) -> dict[str, str]:
     return {symbol: value for symbol, (value, _priority) in ranked.items()}
 
 
-def _typescript_module_path(symbol: str) -> str | None:
-    """Return the provider-resolved repository path encoded in a SCIP symbol."""
+def _typescript_symbol_target(
+    symbol: str,
+) -> tuple[tuple[str, str], str] | None:
+    """Return the package identity and path encoded in a SCIP symbol."""
 
     parts = symbol.split(" ", 4)
     if len(parts) < 5 or parts[0] != "scip-typescript":
@@ -95,7 +97,27 @@ def _typescript_module_path(symbol: str) -> str | None:
     filename = descriptor[opening + 1 : closing]
     path = f"{prefix}/{filename}" if prefix else filename
     normalized = Path(path.replace("\\", "/")).as_posix().lstrip("/")
-    return normalized or None
+    if not normalized:
+        return None
+    return (parts[2], parts[3]), normalized
+
+
+def _typescript_project_packages(decoded_content: str) -> set[tuple[str, str]]:
+    """Collect package identities backed by definitions in this SCIP index."""
+
+    packages: set[tuple[str, str]] = set()
+    for document in extract_scip_blocks(decoded_content, "documents"):
+        for occurrence in extract_scip_blocks(document, "occurrences"):
+            roles_match = _ROLES_RE.search(occurrence)
+            if not roles_match or not (int(roles_match.group(1)) & 1):
+                continue
+            target = _typescript_symbol_target(extract_symbol(occurrence) or "")
+            if target is None:
+                continue
+            package, _path = target
+            if package[0] != "." and package[1] != ".":
+                packages.add(package)
+    return packages
 
 
 def _point_in_span(
@@ -127,11 +149,14 @@ def _static_module_nodes(source: bytes, suffix: str):
     ]
 
 
-def _static_module_spans(source: bytes, suffix: str):
+def _static_module_anchors(source: bytes, suffix: str):
     return [
         (
-            (node.start_point.row, node.start_point.column),
-            (node.end_point.row, node.end_point.column),
+            (
+                (node.start_point.row, node.start_point.column),
+                (node.end_point.row, node.end_point.column),
+            ),
+            node.start_point.row,
         )
         for node in _static_module_nodes(source, suffix)
     ]
@@ -176,6 +201,7 @@ def enrich_typescript_import_edges(
     """
 
     root = Path(project_root) if project_root is not None else None
+    project_packages = _typescript_project_packages(decoded_content)
     added = 0
     for document in extract_scip_blocks(decoded_content, "documents"):
         path_match = re.search(r'relative_path:\s*"([^"]+)"', document)
@@ -184,11 +210,11 @@ def enrich_typescript_import_edges(
         source_file = Path(path_match.group(1)).as_posix()
         if source_file not in code_graph.name_to_vertex:
             continue
-        spans = []
+        module_anchors = []
         source_path = _safe_source_path(root, source_file) if root is not None else None
         if source_path is not None:
             try:
-                spans = _static_module_spans(
+                module_anchors = _static_module_anchors(
                     source_path.read_bytes(), source_path.suffix
                 )
             except (OSError, RuntimeError, TypeError, ValueError):
@@ -202,13 +228,26 @@ def enrich_typescript_import_edges(
             if roles & 1:
                 continue
             point = (values[0], values[1])
-            if not (roles & 2) and not any(
-                _point_in_span(point, span) for span in spans
-            ):
+            statement_line = next(
+                (
+                    anchor_line
+                    for span, anchor_line in module_anchors
+                    if _point_in_span(point, span)
+                ),
+                None,
+            )
+            if not (roles & 2) and statement_line is None:
                 continue
             symbol = extract_symbol(occurrence)
-            target_file = _typescript_module_path(symbol or "")
-            if not target_file or target_file == source_file:
+            target = _typescript_symbol_target(symbol or "")
+            if target is None:
+                continue
+            target_package, target_file = target
+            if target_package[0].startswith("@types/"):
+                continue
+            if target_package[0] != "." and target_package not in project_packages:
+                continue
+            if target_file == source_file:
                 continue
             target_id = code_graph.name_to_vertex.get(target_file)
             if target_id is None:
@@ -222,7 +261,9 @@ def enrich_typescript_import_edges(
                 target_file,
                 EDGE_TYPE_IMPORT,
                 anchor_file=source_file,
-                anchor_line=values[0],
+                anchor_line=(
+                    statement_line if statement_line is not None else values[0]
+                ),
             )
             added += int(code_graph.graph.ecount() > before)
     return added
