@@ -102,6 +102,7 @@ plugins:
               | model
               | ops
               | ops\.(?:expand|filter|rerank|retrieve|transform)
+              | sandbox
               | scip_interface
               | search
               | types
@@ -172,6 +173,7 @@ nav:
       - MCP Server: mcp.md
       - Agent Skills: agent_skills.md
       - Agent Integrations: agent_integrations.md
+      - Isolated Agent Execution: sandbox.md
       - RAG Ops And Planner: rag_ops.md
   - Concepts:
       - concepts/index.md

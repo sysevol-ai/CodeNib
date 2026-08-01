@@ -104,7 +104,7 @@ _SKIP_DIR_PREFIXES = frozenset(
 # `grep` file-type filter: maps a language token to the extensions it covers.
 # Mirrors the reference Grep's ``type`` parameter (ripgrep types) for the
 # languages CodeNib indexes, plus a few common siblings.
-_TYPE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
+TYPE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
     "py": (".py", ".pyi"),
     "python": (".py", ".pyi"),
     "js": (".js", ".jsx", ".mjs", ".cjs"),
@@ -119,6 +119,7 @@ _TYPE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
     "ruby": (".rb",),
     "md": (".md", ".markdown"),
 }
+_TYPE_EXTENSIONS = TYPE_EXTENSIONS
 
 _GREP_OUTPUT_MODES = ("content", "files_with_matches", "count")
 

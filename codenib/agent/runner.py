@@ -16,7 +16,17 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Union,
+)
 
 from ..compiler.manifest import RepoManifest
 from ..index.embedding.model_policy import (
@@ -53,6 +63,9 @@ from .tools.defaults import (
     ensure_default_tools_registered,
 )
 from .tools.spec import ToolRegistry
+
+if TYPE_CHECKING:
+    from ..sandbox.protocol import SandboxSession
 
 logger = get_logger(__name__)
 
@@ -178,6 +191,7 @@ class AgentRunner:
         compile_table: Optional[Any] = None,
         include_default_tools: bool = True,
         default_tool_ids: Optional[Set[str]] = None,
+        sandbox: Optional["SandboxSession"] = None,
         retry: Optional[RetryConfig] = None,
         force_localization_contract: bool = False,
         force_final_answer: bool = False,
@@ -210,6 +224,38 @@ class AgentRunner:
         # long tool-calling loop can't overflow the model context.
         self.max_context_tokens = max_context_tokens
         self.registry = registry or SkillRegistry()
+        self._sandbox = sandbox
+        if sandbox is not None and manifest is None and self.registry.list_skills():
+            raise ValueError(
+                "sandbox execution without a manifest cannot expose retrieval "
+                "skills because their source snapshot is unbound"
+            )
+        if sandbox is not None and manifest is not None:
+            manifest_revision = str(getattr(manifest, "commit", "") or "")
+            sandbox_revision = str(sandbox.metadata.source_revision or "")
+            if not manifest_revision:
+                raise ValueError(
+                    "sandbox execution requires a revision-bearing RepoManifest"
+                )
+            if manifest_revision != sandbox_revision:
+                raise ValueError(
+                    "sandbox source revision does not match RepoManifest.commit: "
+                    f"{sandbox_revision!r} != {manifest_revision!r}"
+                )
+            manifest_fingerprint = str(
+                getattr(manifest, "source_fingerprint", "") or ""
+            )
+            sandbox_fingerprint = str(sandbox.metadata.source_fingerprint or "")
+            if not manifest_fingerprint or not sandbox_fingerprint:
+                raise ValueError(
+                    "sandbox execution requires matching source fingerprints in "
+                    "the manifest and sandbox metadata"
+                )
+            if manifest_fingerprint != sandbox_fingerprint:
+                raise ValueError(
+                    "sandbox source fingerprint does not match RepoManifest: "
+                    f"{sandbox_fingerprint!r} != {manifest_fingerprint!r}"
+                )
         # Default tools (read + grep + glob + bash) are a SEPARATE type from
         # retrieval skills: they live in their own ``ToolRegistry`` and never
         # pass through the skill allow/exclude/compile_table funnel. Registered
@@ -221,7 +267,14 @@ class AgentRunner:
         self._include_defaults = include_default_tools
         self._default_ids: Set[str] = set()
         if include_default_tools:
-            ensure_default_tools_registered(self.tool_registry)
+            if sandbox is None:
+                ensure_default_tools_registered(self.tool_registry)
+            else:
+                # Import only for the explicit isolated path. Ordinary local
+                # queries do not import a container backend or contact Docker.
+                from .tools.sandbox import ensure_sandbox_tools_registered
+
+                ensure_sandbox_tools_registered(self.tool_registry, sandbox)
             # Which of the registered defaults to actually expose. Defaults to
             # ALL (read + grep + glob + bash). Restricting to a subset — e.g.
             # ``{"read"}`` — yields a graph-primary / LocAgent-style harness
@@ -322,7 +375,9 @@ class AgentRunner:
         # table can narrow that list per query, so run() renders it again after
         # resolving the query-specific subset.
         self._custom_system_prompt = system_prompt or None
-        self._environment_prompt_block = self._build_environment_block(self.session_ctx)
+        self._environment_prompt_block = self._build_environment_block(
+            self.session_ctx, sandbox=self._sandbox
+        )
         self._resource_warnings = list(resource_warnings)
         self.system_prompt = self._render_system_prompt(self.tools)
 
@@ -420,7 +475,9 @@ limited tool budget, so converge once the implementing location is confirmed.
         return ""
 
     @staticmethod
-    def _build_environment_block(session_ctx: Optional[Any]) -> str:
+    def _build_environment_block(
+        session_ctx: Optional[Any], *, sandbox: Optional["SandboxSession"] = None
+    ) -> str:
         """Render an <environment> block giving the agent a starting point.
 
         Mirrors OpenCode's environment-info layer: the agent sees the repo
@@ -428,6 +485,25 @@ limited tool budget, so converge once the implementing location is confirmed.
         before searching. Returns "" when no repo_path is available (keeps
         prompt-free tests unchanged).
         """
+        if sandbox is not None:
+            lines = [
+                "<environment>",
+                "repo_path: .",
+                "workspace_root: /workspace",
+                f"source_revision: {sandbox.metadata.source_revision or 'unversioned'}",
+                "git_metadata: unavailable; the caller collects the workspace diff",
+                "retrieval_snapshot: immutable baseline; indexes may become stale "
+                "after workspace edits",
+            ]
+            lang = getattr(session_ctx, "primary_language", None)
+            if lang:
+                lines.append(f"primary_language: {lang}")
+            size = getattr(session_ctx, "repo_size", None)
+            if size:
+                lines.append(f"repo_size: {size} files")
+            lines.append("</environment>")
+            return "\n".join(lines)
+
         repo_path = getattr(session_ctx, "repo_path", None) if session_ctx else None
         if not repo_path:
             return ""
@@ -555,6 +631,9 @@ limited tool budget, so converge once the implementing location is confirmed.
             query_chars=len(query or ""),
             max_turns=max_turns,
             tool_count=len(tools or []),
+            sandbox=(
+                self._sandbox.metadata.to_dict() if self._sandbox is not None else None
+            ),
         )
         user_query = query
         if self._enable_lsp_route_context:
@@ -1575,6 +1654,10 @@ class CodeNibAgentOptions:
     lsp_route_top_k: int = 12
     lsp_route_include_neighbors: bool = True
     retry: Optional[RetryConfig] = None
+    # Explicit isolation for the four default filesystem/shell tools. The
+    # session lifecycle remains owned by the caller so it can collect a diff
+    # and artifacts after the model turn.
+    sandbox: Optional["SandboxSession"] = None
 
     # --- extras for SessionContext.extras ---
     session_extras: Dict[str, Any] = field(default_factory=dict)
@@ -1600,6 +1683,12 @@ def query(
     opts = options or CodeNibAgentOptions()
 
     _check_exactly_one_mode(opts)
+    if opts.sandbox is not None and opts.manifest is None:
+        raise ValueError(
+            "query() sandbox execution requires a trusted, revision-matched "
+            "manifest; repo_path can run repository-selected toolchains on the "
+            "host and contexts have no source provenance"
+        )
 
     if opts.llm is None and opts.model is None:
         model_for_llm: Optional[str] = _DEFAULT_MODEL
@@ -1614,6 +1703,30 @@ def query(
     # ``load_contexts_from_manifest`` (loading) and ``AgentRunner`` (for
     # ``ResourceGuard`` freshness checks).
     manifest = _load_manifest_if_path(opts.manifest)
+    if opts.sandbox is not None and manifest is not None:
+        manifest_revision = str(manifest.commit or "")
+        sandbox_revision = str(opts.sandbox.metadata.source_revision or "")
+        if not manifest_revision:
+            raise ValueError(
+                "sandbox execution requires a revision-bearing RepoManifest"
+            )
+        if manifest_revision != sandbox_revision:
+            raise ValueError(
+                "sandbox source revision does not match RepoManifest.commit: "
+                f"{sandbox_revision!r} != {manifest_revision!r}"
+            )
+        manifest_fingerprint = str(manifest.source_fingerprint or "")
+        sandbox_fingerprint = str(opts.sandbox.metadata.source_fingerprint or "")
+        if not manifest_fingerprint or not sandbox_fingerprint:
+            raise ValueError(
+                "sandbox execution requires matching source fingerprints in the "
+                "manifest and sandbox metadata"
+            )
+        if manifest_fingerprint != sandbox_fingerprint:
+            raise ValueError(
+                "sandbox source fingerprint does not match RepoManifest: "
+                f"{sandbox_fingerprint!r} != {manifest_fingerprint!r}"
+            )
 
     # --- 1c. Surface allowed_skills ↔ compile_table mismatches before any
     # work happens. Two failure modes the caller almost certainly didn't
@@ -1723,6 +1836,7 @@ def query(
         manifest=manifest,
         session_ctx=session_ctx,
         compile_table=table,
+        sandbox=opts.sandbox,
     )
     return runner.run(prompt)
 

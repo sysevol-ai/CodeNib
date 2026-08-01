@@ -48,6 +48,15 @@ retrieval and planning surface that answers the task.
 
     [Choose an integration →](../agent_integrations.md)
 
+-   <span class="codenib-card-eyebrow">Execute safely</span>
+
+    **Isolated agent execution**
+
+    Run issue reproduction, edits, and tests through a provider-neutral,
+    resource-bounded sandbox instead of the CodeNib service host.
+
+    [Design an isolated worker →](../sandbox.md)
+
 -   <span class="codenib-card-eyebrow">Plan a query</span>
 
     **RAG ops and planner**
@@ -63,5 +72,6 @@ retrieval and planning surface that answers the task.
 
 Use the [MCP Server](../mcp.md) for the standard agent-facing workflow. Reach
 for [Agent Skills](../agent_skills.md) when you need to compose a custom runtime,
+use [Isolated Agent Execution](../sandbox.md) before running repository code,
 and use the [RAG Ops And Planner](../rag_ops.md) reference when changing query
 policy rather than wiring.
