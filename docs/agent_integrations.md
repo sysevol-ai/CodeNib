@@ -5,6 +5,25 @@ agent without importing that agent or rebuilding its indexes. Integrations bind
 to one existing `repo_manifest.json` through `ServerContext`; they never create
 an agent-specific graph, BM25 index, or cache directory.
 
+## Support Matrix
+
+The three support levels below are intentionally separate. **Provider** means
+CodeNib implements the repository-call contract. **Policy** means the pinned
+agent loop can execute with that provider. **Paired** means the repository
+provider can be swapped between native and CodeNib under one fixed case, model,
+prompt, and budget contract; it is not a general quality claim.
+
+| Integration | Provider | Policy | Paired evaluation | Required views | Boundary |
+| --- | --- | --- | --- | --- | --- |
+| LocAgent | Pinned three-tool contract | Pinned prompts and function-calling loop | Fixed-case runner | Symbol graph + BM25 | Reference and type-use are disclosed as conservative relation mappings |
+| Historical OpenHands LocAgent plugin | Python bindings for the pinned plugin revision | Not present in current OpenHands CLI | Covered through the LocAgent contract | Symbol graph + BM25 | No claim of compatibility with every OpenHands revision |
+| OrcaLoca | Pinned six-tool and private-hook contract | Upstream `SearchAgent` with an injected manager | Fixed-case runner + native File/Function Match scorer | Symbol graph | Empty `TraceAnalysisOutput`; TraceAnalysis generation is out of scope |
+| SWE-Explore | No adapter | No | No | N/A | Referenced only to distinguish its trajectory-read labels from golden-patch localization metrics |
+
+Optional upstream packages are required only for policy execution. Provider
+imports and standalone provider examples remain dependency-free. Exact pinned
+revisions, fidelity limits, commands, and measured evidence follow below.
+
 ## LocAgent And OpenHands
 
 The LocAgent provider implements the three repository functions used by
