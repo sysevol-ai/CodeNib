@@ -163,3 +163,21 @@ def get_changed_line_ranges(
 
         ranges.append((old_s, old_e, new_s, new_e))
     return ranges
+
+
+def read_file_at_revision(
+    project_root: str, revision: str, file_path: str
+) -> bytes | None:
+    """Read a repository-relative file exactly as stored at ``revision``."""
+
+    path = Path(file_path)
+    if path.is_absolute() or ".." in path.parts:
+        return None
+    try:
+        return subprocess.check_output(
+            ["git", "show", f"{_shorten_ref(revision)}:{path.as_posix()}"],
+            cwd=project_root,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return None

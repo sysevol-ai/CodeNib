@@ -705,6 +705,7 @@ class SymbolGraphBuilder:
         """Run the LSP patcher over every configured language. None = rebuild."""
         from ..graph.code_graph import CodeGraph
         from ..graph.incremental.graph_patcher import LANGUAGE_EXTENSIONS, GraphPatcher
+        from ..graph.incremental.patcher_base import IncrementalPatchRebuildRequired
 
         graph_path = os.path.join(output_dir, "graph.pkl")
         graph = CodeGraph.load_graph(graph_path)
@@ -730,17 +731,19 @@ class SymbolGraphBuilder:
                 patcher = GraphPatcher(
                     project_root=repo_path, code_graph=graph, language=lang
                 )
+                # ``patch_files`` owns startup so language-specific contract
+                # checks can request a rebuild before an LSP is launched or
+                # graph state is mutated.
+                started.append(patcher)
                 try:
-                    patcher.start_lsp()
-                except Exception as exc:  # noqa: BLE001 - missing server
-                    logger.warning(
-                        "symbol_graph: %s language server unavailable (%s)", lang, exc
+                    per_language[lang] = patcher.patch_files(
+                        changed, earlier_commit=last_commit, later_commit=head
+                    )
+                except IncrementalPatchRebuildRequired as exc:
+                    logger.info(
+                        "symbol_graph: full rebuild requested for %s (%s)", lang, exc
                     )
                     return None
-                started.append(patcher)
-                per_language[lang] = patcher.patch_files(
-                    changed, earlier_commit=last_commit, later_commit=head
-                )
                 changed_total += count
         finally:
             for patcher in started:

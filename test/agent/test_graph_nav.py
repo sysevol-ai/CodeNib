@@ -98,6 +98,18 @@ def test_find_callers_compact():
     assert n.content is not None  # marker only, no source body field populated
 
 
+def test_find_callers_omits_reference_only_source_provenance():
+    graph = _FakeGraph()
+    graph._attr[1]["has_definition"] = False
+
+    [node] = _graphnav.neighbors(graph, "doWatch", "callers")
+
+    assert node.node_name == "pkg.a.watchEffect"
+    assert node.file is None
+    assert node.start_line is None
+    assert node.node_id == "pkg.a.watchEffect"
+
+
 def test_find_callees_compact():
     g = _FakeGraph()
     res = _graphnav.neighbors(g, "doWatch", "callees")

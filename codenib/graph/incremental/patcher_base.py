@@ -18,13 +18,17 @@ from typing import Optional
 from ...languages import lsp_command_for_language, lsp_language_id_for_language
 from ...log_utils import get_logger
 from ...profiler import Profiler
-from ...types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
+from ...types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE, node_has_definition
 from ..code_graph import CodeGraph
 from . import change_mgr
 from .lsp_client import LSPClient
 from .subgraph_mgr import SubgraphMgr
 
 logger = get_logger(__name__)
+
+
+class IncrementalPatchRebuildRequired(RuntimeError):
+    """The incremental backend cannot preserve the current graph contract."""
 
 
 class PatcherBase(SubgraphMgr):
@@ -139,9 +143,9 @@ class PatcherBase(SubgraphMgr):
             uname = attrs.get("unified_name")
             if not uname:
                 continue
+            if not node_has_definition(attrs):
+                continue
             sl = attrs.get("start_line")
-            if sl is None:
-                continue  # SCIP reference vertex, not a definition
             result[uname] = {
                 "vertex_name": v["name"],
                 "start_line": sl,
@@ -282,6 +286,14 @@ class PatcherBase(SubgraphMgr):
             ],
         }
 
+    def _validate_patch_contract(
+        self,
+        changed_files: dict,
+        earlier_commit: str | None,
+        later_commit: str,
+    ) -> None:
+        """Fail before mutation when a language cannot preserve graph facts."""
+
     def patch_files(
         self,
         changed_files: dict,
@@ -304,6 +316,12 @@ class PatcherBase(SubgraphMgr):
         # Go, where SCIP-go skips test files by design — see
         # scip_decode_go.py).
         changed_files = self._filter_changed_files(changed_files)
+
+        if changed_files["modified"] and not earlier_commit:
+            raise ValueError("earlier_commit required for modified files")
+        self._validate_patch_contract(
+            changed_files, earlier_commit, effective_later_commit
+        )
 
         # Auto-start LSP if not already running
         if self.lsp_client is None:
@@ -365,8 +383,6 @@ class PatcherBase(SubgraphMgr):
 
         # 1e. Modified files: classify + build vertices
         modified = changed_files.get("modified", [])
-        if modified and not earlier_commit:
-            raise ValueError("earlier_commit required for modified files")
         mod_contexts = []
         for path in modified:
             ctx = self._incremental_prepare_vertices(
@@ -644,6 +660,7 @@ class PatcherBase(SubgraphMgr):
                     "start_line": new["start_line"],
                     "end_line": new["end_line"],
                     "unified_name": uname,
+                    **self._definition_metadata(new),
                 },
             )
             self.code_graph.symbol_ranges[vname] = (new["start_line"], new["end_line"])
@@ -678,6 +695,15 @@ class PatcherBase(SubgraphMgr):
             "affected_changed_ranges": affected_changed_ranges,
             "added_vnames": added_vnames,
             "hunks": hunks,
+        }
+
+    def _definition_metadata(self, symbol: dict) -> dict:
+        selection = symbol.get("sel_range") or {}
+        selection_line = selection.get("start", {}).get("line", symbol["start_line"])
+        return {
+            "selection_line": selection_line,
+            "symbol_kind": self._classify_symbol_kind(symbol.get("kind")),
+            "has_definition": True,
         }
 
     def _read_incremental_symbols(
@@ -963,6 +989,7 @@ class PatcherBase(SubgraphMgr):
             {
                 "start_line": new["start_line"],
                 "end_line": new["end_line"],
+                **self._definition_metadata(new),
             },
         )
         self._update_selection_range(old_vname, new_vname, new)
@@ -1052,12 +1079,18 @@ class PatcherBase(SubgraphMgr):
             self.rename_vertex(
                 old_vname,
                 new_vname,
-                {"start_line": new_start, "end_line": new_end},
+                {
+                    "start_line": new_start,
+                    "end_line": new_end,
+                    **self._definition_metadata(new),
+                },
             )
         else:
             vid = self.code_graph.name_to_vertex.get(new_vname)
             if vid is not None:
                 self.code_graph.graph.vs[vid]["end_line"] = new_end
+                for key, value in self._definition_metadata(new).items():
+                    self.code_graph.graph.vs[vid][key] = value
                 self.code_graph.symbol_ranges[new_vname] = (new_start, new_end)
 
         self._update_selection_range(old_vname, new_vname, new)

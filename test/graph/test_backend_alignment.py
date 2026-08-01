@@ -111,3 +111,24 @@ def test_reference_edges_are_reported_but_not_required_by_default():
     assert report.ok
     assert report.reference_references == 1
     assert report.candidate_references == 0
+
+
+def test_explicit_reference_only_symbol_is_not_a_definition_even_with_range():
+    reference = _graph(prefix="scip:")
+    candidate = _graph(prefix="lsp:")
+    candidate._add_vertex(
+        "lsp:phantom",
+        {
+            "type": NODE_TYPE_CLASS,
+            "file": "src/Foo.java",
+            "start_line": 1,
+            "end_line": 2,
+            "unified_name": "src/Foo.java:Phantom",
+            "has_definition": False,
+        },
+    )
+
+    report = compare_backend_graphs(reference, candidate)
+
+    assert report.ok
+    assert report.extra_symbols == ()

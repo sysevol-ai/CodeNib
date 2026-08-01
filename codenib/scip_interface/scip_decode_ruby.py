@@ -329,6 +329,7 @@ class SCIPRubyGraphDecoder(SCIPJavaGraphDecoder):
                     "end_line": line_index,
                     "selection_line": line_index,
                     "unified_name": f"{file_path}:{display_name}",
+                    "has_definition": True,
                 },
             )
             self.code_graph.symbol_ranges[alias_key] = (line_index, line_index)

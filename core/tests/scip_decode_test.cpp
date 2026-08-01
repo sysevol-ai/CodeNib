@@ -8,6 +8,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -193,11 +194,14 @@ int main(int argc, char **argv) {
   const auto file_info = graph.get_node_info_by_name("sample/module.py");
   assert(file_info.has_value());
   assert(file_info->type == NODE_TYPE_FILE);
+  assert(!file_info->has_definition.has_value());
 
   const std::string class_symbol = "sample/module.py:SampleClass";
   const auto class_info = graph.get_node_info_by_name(class_symbol);
   assert(class_info.has_value());
   assert(class_info->type == NODE_TYPE_CLASS);
+  assert(class_info->has_definition.has_value());
+  assert(*class_info->has_definition);
 
   const std::string method_symbol =
       "sample/module.py:SampleClass.sample_method()";
@@ -215,6 +219,15 @@ int main(int argc, char **argv) {
     }
   }
   assert(found_method_neighbor);
+
+  const auto serialized_path = temp_project.path() / "graph.json";
+  graph.save_graph(serialized_path.string());
+  std::ifstream serialized_file(serialized_path);
+  const std::string serialized(
+      (std::istreambuf_iterator<char>(serialized_file)),
+      std::istreambuf_iterator<char>());
+  assert(serialized.find("\"symbol_kind\": null") != std::string::npos);
+  assert(serialized.find("\"has_definition\": true") != std::string::npos);
 
   return 0;
 }

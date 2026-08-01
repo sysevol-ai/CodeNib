@@ -46,7 +46,10 @@ struct Subgraph {
 
   struct Node {
     CodeGraph::VertexData data; // includes unified_name
-    bool is_definition{true};
+    // This flag applies only to symbol definitions. Structural file and
+    // directory nodes must not acquire symbol-definition metadata when
+    // per-document subgraphs are merged.
+    bool is_definition{false};
     bool updates_unified_name{false};
   };
 
@@ -71,7 +74,8 @@ public:
   void add_symbol_node(const std::string &symbol, int line,
                        std::optional<int> scope_start_line,
                        std::optional<int> scope_end_line,
-                       const std::string &symbol_type);
+                       const std::string &symbol_type,
+                       std::optional<std::string> symbol_kind = std::nullopt);
 
   // Reference — mirrors serial CodeGraph.add_symbol_reference:
   //   attributes are set only the FIRST time the name is seen; subsequent
@@ -83,13 +87,15 @@ public:
                        const std::optional<std::string> &module_path,
                        const std::string &symbol_type,
                        std::optional<std::string> anchor_file = std::nullopt,
-                       std::optional<int> anchor_line = std::nullopt);
+                       std::optional<int> anchor_line = std::nullopt,
+                       std::optional<std::string> symbol_kind = std::nullopt);
   void add_symbol_reference_from(
       const std::string &source, const std::string &symbol,
       const std::optional<std::string> &module_path,
       const std::string &symbol_type,
       std::optional<std::string> anchor_file = std::nullopt,
-      std::optional<int> anchor_line = std::nullopt);
+      std::optional<int> anchor_line = std::nullopt,
+      std::optional<std::string> symbol_kind = std::nullopt);
 
   // CONTAIN edges carry no anchor — see CodeGraph::add_containment_edge.
   void add_containment_edge(const std::string &target_symbol);

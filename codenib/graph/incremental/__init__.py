@@ -6,10 +6,11 @@
 
 from .graph_patcher import GraphPatcher
 from .lsp_client import LSPClient
-from .patcher_base import PatcherBase
+from .patcher_base import IncrementalPatchRebuildRequired, PatcherBase
 
 __all__ = [
     "GraphPatcher",
     "LSPClient",
+    "IncrementalPatchRebuildRequired",
     "PatcherBase",
 ]

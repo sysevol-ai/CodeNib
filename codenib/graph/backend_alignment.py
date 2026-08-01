@@ -21,6 +21,7 @@ from ..types import (
     EDGE_TYPE_REFERENCE,
     NODE_TYPE_FILE,
     is_symbol_node,
+    node_has_definition,
 )
 from .code_graph import CodeGraph
 
@@ -156,7 +157,7 @@ def _definition_key(vertex) -> Optional[str]:
     attrs = vertex.attributes()
     if not is_symbol_node(attrs.get("type", "")):
         return None
-    if attrs.get("file") is None or attrs.get("start_line") is None:
+    if not node_has_definition(attrs):
         return None
     return attrs.get("unified_name") or vertex["name"]
 

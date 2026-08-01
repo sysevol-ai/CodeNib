@@ -25,6 +25,7 @@ from ..types import (
     NODE_TYPE_SYMBOL,
     edge_types_for_graph_layer,
     is_symbol_node,
+    node_has_definition,
 )
 
 # Bump when the persisted graph schema changes (vertex/edge attributes,
@@ -37,7 +38,9 @@ from ..types import (
 #                   unified_to_names aux dict (display -> identity names)
 # v4: symbol vertices persist the exact SCIP declaration occurrence as
 #     selection_line, independently from the symbol scope range.
-_SCHEMA_VERSION = 4
+# v5: symbol vertices carry optional semantic symbol_kind plus explicit
+#     has_definition provenance; decoders may emit anchored import edges.
+_SCHEMA_VERSION = 5
 
 
 @dataclass(slots=True)
@@ -154,7 +157,13 @@ class CodeGraph:
         self.scope_stack = [{file_path: None}]
 
     def add_symbol_node(
-        self, symbol, line, scope_start_line=None, scope_end_line=None, symbol_type=None
+        self,
+        symbol,
+        line,
+        scope_start_line=None,
+        scope_end_line=None,
+        symbol_type=None,
+        symbol_kind=None,
     ):
         """
         Add a symbol node to the graph.
@@ -170,33 +179,28 @@ class CodeGraph:
         # Use specific symbol type if provided, otherwise default to generic symbol
         node_type = symbol_type if symbol_type else NODE_TYPE_SYMBOL
 
+        attributes = {
+            "type": node_type,
+            "file": self.current_file,
+            "selection_line": line,
+            "has_definition": True,
+        }
+        if symbol_kind is not None:
+            attributes["symbol_kind"] = symbol_kind
+
         if scope_start_line is not None and scope_end_line is not None:
             # Store symbol range
             self.symbol_ranges[symbol] = (scope_start_line, scope_end_line)
 
             # Add symbol vertex with scope range
-            self._add_vertex(
-                symbol,
-                {
-                    "type": node_type,
-                    "file": self.current_file,
-                    "start_line": scope_start_line,
-                    "end_line": scope_end_line,
-                    "selection_line": line,
-                },
+            attributes.update(
+                {"start_line": scope_start_line, "end_line": scope_end_line}
             )
+            self._add_vertex(symbol, attributes)
         else:
             # Add symbol vertex without scope range
-            self._add_vertex(
-                symbol,
-                {
-                    "type": node_type,
-                    "file": self.current_file,
-                    "start_line": line,
-                    "end_line": line,
-                    "selection_line": line,
-                },
-            )
+            attributes.update({"start_line": line, "end_line": line})
+            self._add_vertex(symbol, attributes)
 
     def add_symbol_reference(
         self,
@@ -205,6 +209,7 @@ class CodeGraph:
         symbol_type=None,
         anchor_file: Optional[str] = None,
         anchor_line: Optional[int] = None,
+        symbol_kind=None,
     ):
         """
         Add a reference to a symbol.
@@ -221,7 +226,18 @@ class CodeGraph:
         if symbol not in self.name_to_vertex:
             file_attr = module_path if module_path else None
             node_type = symbol_type if symbol_type else NODE_TYPE_SYMBOL
-            self._add_vertex(symbol, {"type": node_type, "file": file_attr})
+            attributes = {
+                "type": node_type,
+                "file": file_attr,
+                "has_definition": False,
+            }
+            if symbol_kind is not None:
+                attributes["symbol_kind"] = symbol_kind
+            self._add_vertex(symbol, attributes)
+        elif symbol_kind is not None:
+            vertex = self.graph.vs[self.name_to_vertex[symbol]]
+            if not vertex.attributes().get("symbol_kind"):
+                vertex["symbol_kind"] = symbol_kind
 
         # Add reference edge with anchor info (defaults: current file)
         if anchor_file is None:
@@ -554,6 +570,20 @@ class CodeGraph:
             if not name:
                 continue
             copied = {key: value for key, value in attrs.items() if key != "name"}
+            existing_id = self.name_to_vertex.get(name)
+            if existing_id is None:
+                self._add_vertex(name, copied)
+                continue
+
+            existing = self.graph.vs[existing_id].attributes()
+            if is_symbol_node(existing.get("type")) and not node_has_definition(copied):
+                # A later reference-only shard must not replace first-reference
+                # provenance or erase an observed declaration. It may fill
+                # additive semantic metadata.
+                symbol_kind = copied.get("symbol_kind")
+                if symbol_kind and not existing.get("symbol_kind"):
+                    self.graph.vs[existing_id]["symbol_kind"] = symbol_kind
+                continue
             self._add_vertex(name, copied)
 
         with self.batch_edges():
@@ -772,8 +802,8 @@ class CodeGraph:
         if on_disk != _SCHEMA_VERSION:
             raise ValueError(
                 f"graph.pkl at {input_path} has schema_version={on_disk!r}, "
-                f"expected {_SCHEMA_VERSION}. Delete the cached pickle and "
-                "regenerate via the indexing pipeline (e.g. integration-serial)."
+                f"expected {_SCHEMA_VERSION}. Rebuild the repository graph "
+                "with `codenib index <repo> --preset graph --rebuild`."
             )
 
         # Create new CodeGraph instance
@@ -943,7 +973,7 @@ class CodeGraph:
             except FileNotFoundError:
                 print(f"File not found: {file_path}")
                 return None
-        elif is_symbol_node(node_type):
+        elif is_symbol_node(node_type) and node_has_definition(node.attributes()):
             # Graph source ranges are 0-based and inclusive.
             start_line = node["start_line"]
             end_line = node["end_line"]

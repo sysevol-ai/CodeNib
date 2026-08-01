@@ -60,6 +60,8 @@ _COMPARED_ATTRS = (
     "end_line",
     "selection_line",
     "unified_name",
+    "symbol_kind",
+    "has_definition",
 )
 
 # Edge attributes compared for parity. `anchor_file` / `anchor_line` were
@@ -494,6 +496,64 @@ def test_core_ruby_synthetic_parity(tmp_path):
     ).decode()
 
     _assert_graph_parity(serial_graph, core_graph, "ruby-synthetic")
+
+
+def test_core_typescript_schema_v5_fixture_parity():
+    fixture_root = Path(__file__).parent / "fixtures" / "typescript_schema_v5"
+    index = fixture_root / "index.decoded"
+
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_ts import SCIPTypeScriptGraphDecoder
+
+    serial_graph = SCIPTypeScriptGraphDecoder(
+        str(index), project_root=str(fixture_root)
+    ).decode()
+    core_graph = SCIPDecoderCore(
+        str(index),
+        project_root=str(fixture_root),
+        language="ts",
+    ).decode()
+
+    _assert_graph_parity(serial_graph, core_graph, "typescript-schema-v5")
+
+
+def test_core_typescript_schema_v5_explicit_kind_parity(tmp_path):
+    fixture_root = Path(__file__).parent / "fixtures" / "typescript_schema_v5"
+    content = (fixture_root / "index.decoded").read_text(encoding="utf-8")
+    marker = (
+        'symbol: "scip-typescript npm schema-v5-fixture 1.0.0 '
+        'src/`types.ts`/Runner#"\n'
+        '    documentation: "```ts\\ninterface Runner\\n```"'
+    )
+    assert marker in content
+    index = tmp_path / "index.decoded"
+    index.write_text(
+        content.replace(
+            marker,
+            marker.replace(
+                "\n    documentation", "\n    kind: Class\n    documentation"
+            ),
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_ts import SCIPTypeScriptGraphDecoder
+
+    serial_graph = SCIPTypeScriptGraphDecoder(
+        str(index), project_root=str(fixture_root)
+    ).decode()
+    core_graph = SCIPDecoderCore(
+        str(index),
+        project_root=str(fixture_root),
+        language="ts",
+    ).decode()
+
+    _assert_graph_parity(serial_graph, core_graph, "typescript-explicit-kind")
+    symbol = "schema-v5-fixture@1.0.0:src/types.ts:Runner"
+    attrs = serial_graph.get_node_info_by_name(symbol)
+    assert attrs["symbol_kind"] == "class"
 
 
 # --------------------------------------------------------------------------

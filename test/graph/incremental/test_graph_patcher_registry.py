@@ -12,6 +12,7 @@ import pytest
 
 from codenib.graph.code_graph import CodeGraph
 from codenib.graph.incremental.graph_patcher import GraphPatcher
+from codenib.graph.incremental.patcher_base import IncrementalPatchRebuildRequired
 from codenib.graph.incremental.patcher_cpp import PatcherCpp
 from codenib.graph.incremental.patcher_go import PatcherGo
 from codenib.graph.incremental.patcher_python import PatcherPython
@@ -138,6 +139,61 @@ def test_cpp_patch_rebuilds_range_indexes(tmp_path, monkeypatch):
     assert len(result.outgoing) == 1
     assert result.outgoing[0].anchor_file == "new.cpp"
     assert result.outgoing[0].anchor_line == 5
+
+
+def test_ts_import_change_requires_rebuild_before_lsp_start(tmp_path, monkeypatch):
+    graph = CodeGraph(str(tmp_path))
+    graph.add_file_node("src/use.ts")
+    before = b'import { Runner } from "./types";\nRunner();\n'
+    after = b'import { Runner } from "./other";\nRunner();\n'
+    monkeypatch.setattr(
+        "codenib.graph.incremental.change_mgr.read_file_at_revision",
+        lambda _root, revision, _path: before if revision == "base" else after,
+    )
+
+    patcher = PatcherTS(str(tmp_path), graph)
+    monkeypatch.setattr(
+        patcher,
+        "start_lsp",
+        lambda: pytest.fail("import guard must run before starting LSP"),
+    )
+
+    with pytest.raises(IncrementalPatchRebuildRequired, match="imports changed"):
+        patcher.patch_files(
+            {"modified": ["src/use.ts"]},
+            earlier_commit="base",
+            later_commit="target",
+        )
+
+    assert set(graph.name_to_vertex) == {"src/use.ts"}
+
+
+def test_ts_non_import_edit_preserves_incremental_contract(tmp_path, monkeypatch):
+    before = b'import { Runner } from "./types";\nconst value = 1;\n'
+    after = b'import { Runner } from "./types";\nconst value = 2;\n'
+    monkeypatch.setattr(
+        "codenib.graph.incremental.change_mgr.read_file_at_revision",
+        lambda _root, revision, _path: before if revision == "base" else after,
+    )
+
+    patcher = PatcherTS(str(tmp_path), CodeGraph(str(tmp_path)))
+    patcher._validate_patch_contract(
+        {"modified": ["src/use.ts"], "added": [], "deleted": [], "renamed": []},
+        "base",
+        "target",
+    )
+
+
+@pytest.mark.parametrize("change_key", ["added", "renamed"])
+def test_ts_file_identity_changes_require_import_reindex(tmp_path, change_key):
+    changes = {"modified": [], "added": [], "deleted": [], "renamed": []}
+    changes[change_key] = (
+        ["src/new.ts"] if change_key == "added" else [("src/old.ts", "src/new.ts")]
+    )
+    patcher = PatcherTS(str(tmp_path), CodeGraph(str(tmp_path)))
+
+    with pytest.raises(IncrementalPatchRebuildRequired, match="reindexing"):
+        patcher._validate_patch_contract(changes, "base", "target")
 
 
 @pytest.mark.parametrize("failure_stage", ["reindex", "apply"])

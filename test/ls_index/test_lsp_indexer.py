@@ -82,6 +82,10 @@ def test_generic_lsp_decoder_builds_java_symbol_graph(tmp_path):
     assert graph.graph.vs[graph.name_to_vertex[class_name]]["type"] == NODE_TYPE_CLASS
     assert graph.graph.vs[graph.name_to_vertex[ctor_name]]["type"] == NODE_TYPE_METHOD
     assert graph.graph.vs[graph.name_to_vertex[method_name]]["type"] == NODE_TYPE_METHOD
+    class_attrs = graph.graph.vs[graph.name_to_vertex[class_name]].attributes()
+    assert class_attrs["symbol_kind"] == "class"
+    assert class_attrs["has_definition"] is True
+    assert class_attrs["selection_line"] == 2
 
     class_query = graph.query_range(file_name, 10, 10, kinds={EDGE_TYPE_CONTAIN})
     assert [node.name for node in class_query.defined] == [class_name, method_name]

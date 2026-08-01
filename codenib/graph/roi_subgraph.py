@@ -8,7 +8,7 @@ from typing import List, Optional, Set
 import igraph as ig
 
 from ..log_utils import get_logger
-from ..types import NodeInfo
+from ..types import NodeInfo, is_symbol_node, node_is_reference_only
 from ..utils import is_test_file
 from .code_graph import CodeGraph
 
@@ -364,13 +364,18 @@ class ROISubgraph:
 
             # In igraph, the vertex name is stored in the "name" attribute
             node_name = vertex["name"]
+            has_source = not is_symbol_node(
+                attributes.get("type")
+            ) or not node_is_reference_only(attributes)
 
             node_info_dict = {
                 "node_name": node_name,
                 "type": attributes.get("type", ""),
-                "file": attributes.get("file", None),
-                "start_line": attributes.get("start_line", None),
-                "end_line": attributes.get("end_line", None),
+                "file": attributes.get("file", None) if has_source else None,
+                "start_line": (
+                    attributes.get("start_line", None) if has_source else None
+                ),
+                "end_line": (attributes.get("end_line", None) if has_source else None),
             }
 
             return NodeInfo(**node_info_dict)

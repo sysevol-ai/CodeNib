@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.graph.code_graph import CodeGraph
 from codenib.integrations import (
     IntegrationCapabilityError,
     RepositoryAdapter,
@@ -25,7 +26,7 @@ from codenib.integrations.locagent import (
     dispatch_locagent_tool_call,
     get_locagent_tool_schemas,
 )
-from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION
+from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_CLASS, NODE_TYPE_FUNCTION
 
 
 @pytest.fixture()
@@ -348,6 +349,38 @@ def test_optional_adapter_distance_fails_explicitly_without_graph(
         match="required 'symbol_graph' view",
     ):
         adapter.distance("first", "second")
+
+
+def test_repository_adapter_does_not_source_link_reference_only_symbol(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "types.ts").write_text("interface Phantom {}\n", encoding="utf-8")
+    graph = CodeGraph(str(repo))
+    graph._add_vertex(
+        "types.ts:Phantom",
+        {
+            "type": NODE_TYPE_CLASS,
+            "file": "types.ts",
+            "start_line": 0,
+            "end_line": 0,
+            "unified_name": "types.ts:Phantom",
+            "has_definition": False,
+        },
+    )
+    context = SimpleNamespace(
+        manifest=RepoManifest(repo_path=str(repo), commit="current"),
+        symbol_graph=graph,
+        errors={},
+    )
+
+    entity = RepositoryAdapter(context).entity_by_canonical("types.ts:Phantom")
+
+    assert entity is not None
+    assert entity.file_path == ""
+    assert entity.start_line is None
+    assert entity.end_line is None
 
 
 def test_stale_graph_fails_explicitly(tmp_path: Path) -> None:

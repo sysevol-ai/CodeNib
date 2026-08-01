@@ -265,6 +265,35 @@ class TestExpandGraphNeighbors:
 
         assert result[0].content == "l1\nl2\n"
 
+    def test_reference_only_neighbor_has_no_source_location(self):
+        graph = _FakeGraph(
+            resolve={"seed": "seed"},
+            successors={"seed": [1]},
+            info={
+                1: {
+                    "name": "missing",
+                    "unified_name": "src/types.ts:Missing",
+                    "type": "class",
+                    "file": "src/types.ts",
+                    "start_line": 0,
+                    "end_line": 3,
+                    "has_definition": False,
+                }
+            },
+        )
+
+        [result] = expand_graph_neighbors(
+            ExpandContext(code_graph=graph),
+            [QueriedNode(node_name="seed", type="function")],
+            direction="successors",
+            require_span=False,
+        )
+
+        assert result.file is None
+        assert result.start_line is None
+        assert result.end_line is None
+        assert result.node_id == "src/types.ts:Missing"
+
     def test_both_directions_share_the_per_seed_budget(self):
         graph = _FakeGraph(
             resolve={"seed": "seed"},

@@ -11,6 +11,17 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Added
+
+- Graph schema 5 records semantic symbol kinds, explicit definition
+  provenance, and anchored TypeScript/TSX import and re-export edges.
+
+### Changed
+
+- Static navigation and source adapters no longer treat reference-only symbol
+  provenance as a definition location. Existing schema 4 graph artifacts need
+  a one-time `codenib index <repo> --preset graph --rebuild`.
+
 ## [0.1.0] - 2026-07-26
 
 ### Added

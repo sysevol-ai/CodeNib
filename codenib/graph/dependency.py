@@ -28,6 +28,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ..types import is_symbol_node, node_is_reference_only
 from .code_graph import CodeGraph
 from .traverse_graph import RepoDependencySearcher
 
@@ -211,10 +212,13 @@ class DependencyAnalyzer:
 
     def _node(self, canonical_name: str, depth: int) -> DepNode:
         info = self.code_graph.get_node_info_by_name(canonical_name) or {}
+        has_source = not is_symbol_node(info.get("type")) or not node_is_reference_only(
+            info
+        )
         return DepNode(
             name=info.get("unified_name") or canonical_name,
-            file=info.get("file"),
-            line=info.get("start_line"),
+            file=info.get("file") if has_source else None,
+            line=info.get("start_line") if has_source else None,
             kind=info.get("type", ""),
             depth=depth,
         )

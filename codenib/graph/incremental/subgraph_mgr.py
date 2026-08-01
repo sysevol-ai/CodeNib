@@ -31,6 +31,7 @@ from ...types import (
     NODE_TYPE_FUNCTION,
     NODE_TYPE_METHOD,
     NODE_TYPE_SYMBOL,
+    lsp_symbol_kind,
 )
 from ..code_graph import CodeGraph
 from .lsp_client import LSPClient, uri_to_relpath
@@ -230,6 +231,12 @@ class SubgraphMgr(ABC):
     def _classify_symbol_type(self, kind: int) -> str:
         """Map LSP SymbolKind to NODE_TYPE_*. Override for language-specific."""
         return LSP_KIND_TO_NODE_TYPE.get(kind, NODE_TYPE_SYMBOL)
+
+    @staticmethod
+    def _classify_symbol_kind(kind: object) -> str | None:
+        """Map an LSP SymbolKind to the additive schema-v5 label."""
+
+        return lsp_symbol_kind(kind)
 
     # ═══════════════════════════════════════════════════════════
     # Index maintenance
@@ -654,6 +661,7 @@ class SubgraphMgr(ABC):
             sel_range = sym.get("selectionRange", range_data)
             start_line = range_data.get("start", {}).get("line", 0)
             end_line = range_data.get("end", {}).get("line", start_line)
+            selection_line = sel_range.get("start", {}).get("line", start_line)
 
             unified_name = self._build_unified_name(
                 file_path, name, parent_unified_part, kind
@@ -668,7 +676,10 @@ class SubgraphMgr(ABC):
                     "file": file_path,
                     "start_line": start_line,
                     "end_line": end_line,
+                    "selection_line": selection_line,
                     "unified_name": unified_name,
+                    "symbol_kind": self._classify_symbol_kind(kind),
+                    "has_definition": True,
                 },
             )
             g.symbol_ranges[vertex_name] = (start_line, end_line)

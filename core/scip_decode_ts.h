@@ -8,6 +8,7 @@
 
 #include "scip_decode_base.h"
 
+#include <unordered_map>
 #include <unordered_set>
 
 namespace codenib::core {
@@ -40,6 +41,7 @@ private:
                            const std::string &symbol_type) const;
 
   std::unordered_set<std::string> project_packages_;
+  std::unordered_map<std::string, std::string> symbol_kinds_;
 };
 
 } // namespace codenib::core

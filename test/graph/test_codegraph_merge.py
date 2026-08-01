@@ -24,6 +24,7 @@ def test_merge_from_combines_vertices_edges_and_range_indexes():
         "b.go:bar()",
         anchor_file="a.py",
         anchor_line=1,
+        symbol_kind="function",
     )
     python_graph.build_range_indexes()
 
@@ -35,6 +36,7 @@ def test_merge_from_combines_vertices_edges_and_range_indexes():
         scope_start_line=4,
         scope_end_line=6,
         symbol_type=NODE_TYPE_FUNCTION,
+        symbol_kind="function",
     )
     go_graph.add_containment_edge("b.go:bar()")
     go_graph.build_range_indexes()
@@ -70,3 +72,36 @@ def test_merge_from_combines_vertices_edges_and_range_indexes():
 
     defined = merged.query_range("b.go", 4, 4).defined
     assert [node.name for node in defined] == ["b.go:bar()"]
+    attrs = merged.get_node_info_by_name("b.go:bar()")
+    assert attrs["has_definition"] is True
+    assert attrs["symbol_kind"] == "function"
+
+
+def test_merge_from_later_reference_does_not_erase_definition_provenance():
+    definition = CodeGraph("repo")
+    definition.add_file_node("types.ts")
+    definition.add_symbol_node(
+        "types.ts:Runner",
+        line=2,
+        scope_start_line=2,
+        scope_end_line=5,
+        symbol_type="class",
+        symbol_kind="interface",
+    )
+
+    reference = CodeGraph("repo")
+    reference.add_file_node("use.ts")
+    reference.add_symbol_reference(
+        "types.ts:Runner",
+        module_path="types.ts",
+        anchor_file="use.ts",
+        anchor_line=0,
+    )
+
+    definition.merge_from(reference)
+
+    attrs = definition.get_node_info_by_name("types.ts:Runner")
+    assert attrs["has_definition"] is True
+    assert attrs["file"] == "types.ts"
+    assert attrs["start_line"] == 2
+    assert attrs["symbol_kind"] == "interface"

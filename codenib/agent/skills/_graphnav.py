@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from ...types import is_symbol_node, node_is_reference_only
+
 
 def _bare(s: str) -> str:
     """Strip path/qualifier prefix and a trailing ``()`` to a bare symbol token."""
@@ -141,13 +143,19 @@ def _compact(graph: Any, name: str, relation: str):
 
     info = graph.get_node_info_by_name(name) or {}
     f = info.get("file")
+    start_line = info.get("start_line")
+    end_line = info.get("end_line")
+    if is_symbol_node(info.get("type")) and node_is_reference_only(info):
+        f = None
+        start_line = None
+        end_line = None
     disp = info.get("unified_name") or name
     return QueriedNode(
         node_name=disp,
         type=info.get("type", ""),
         file=f,
-        start_line=info.get("start_line"),
-        end_line=info.get("end_line"),
+        start_line=start_line,
+        end_line=end_line,
         node_id=_node_id(f, disp),
         score=1.0,
         content=relation,  # short marker, e.g. "caller of X" — no code body

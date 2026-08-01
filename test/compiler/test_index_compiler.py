@@ -1367,3 +1367,52 @@ class TestSymbolGraphIncremental:
             "method": "empty-relevant-diff"
         }
         graph.save_graph.assert_called_once_with(str(out / "graph.pkl"))
+
+    def test_contract_rebuild_is_requested_before_lsp_start(
+        self, tmp_path, monkeypatch
+    ):
+        from codenib.compiler.index_builders import SymbolGraphBuilder
+        from codenib.graph.code_graph import CodeGraph
+        from codenib.graph.incremental.graph_patcher import GraphPatcher
+        from codenib.graph.incremental.patcher_base import (
+            IncrementalPatchRebuildRequired,
+        )
+
+        first = _git_repo(tmp_path)
+        _commit(tmp_path, "b.ts")
+        out = tmp_path / "out"
+        out.mkdir()
+        graph = MagicMock()
+        monkeypatch.setattr(CodeGraph, "load_graph", lambda _path: graph)
+        monkeypatch.setattr(
+            GraphPatcher,
+            "detect_changed_files",
+            lambda *args, **kwargs: {
+                "added": [],
+                "modified": ["b.ts"],
+                "deleted": [],
+                "renamed": [],
+            },
+        )
+        monkeypatch.setattr(
+            GraphPatcher,
+            "start_lsp",
+            lambda _self: pytest.fail("compiler started LSP before contract guard"),
+        )
+        monkeypatch.setattr(GraphPatcher, "stop_lsp", lambda _self: None)
+
+        def require_rebuild(*_args, **_kwargs):
+            raise IncrementalPatchRebuildRequired("imports changed")
+
+        monkeypatch.setattr(
+            GraphPatcher,
+            "patch_files",
+            require_rebuild,
+        )
+
+        status = SymbolGraphBuilder(languages=["ts"])._patch_graph(
+            "current_repo", str(tmp_path), str(out), first
+        )
+
+        assert status is None
+        graph.save_graph.assert_not_called()

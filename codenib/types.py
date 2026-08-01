@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Optional
+from typing import Mapping, Optional
 
 from pydantic import BaseModel
 
@@ -52,10 +52,77 @@ SYMBOL_TYPES = {
     NODE_TYPE_FIELD,
 }
 
+# LSP 3.17 ``SymbolKind`` names, normalized to the persisted graph spelling.
+# These are semantic labels; the existing coarse ``NODE_TYPE_*`` mapping
+# remains the compatibility surface for traversal and ranking.
+LSP_SYMBOL_KINDS = {
+    1: "file",
+    2: "module",
+    3: "namespace",
+    4: "package",
+    5: "class",
+    6: "method",
+    7: "property",
+    8: "field",
+    9: "constructor",
+    10: "enum",
+    11: "interface",
+    12: "function",
+    13: "variable",
+    14: "constant",
+    15: "string",
+    16: "number",
+    17: "boolean",
+    18: "array",
+    19: "object",
+    20: "key",
+    21: "null",
+    22: "enum_member",
+    23: "struct",
+    24: "event",
+    25: "operator",
+    26: "type_parameter",
+}
+
 
 def is_symbol_node(node_type):
     """Whether ``node_type`` is any symbol (class/function/method/generic)."""
     return node_type in SYMBOL_TYPES
+
+
+def node_has_definition(attributes: Mapping) -> bool:
+    """Whether a symbol vertex has an observed definition location.
+
+    Schema-v5 graphs carry an explicit boolean. The range-based fallback keeps
+    transient graphs built by older in-memory callers usable; persisted v4
+    graphs are rejected by the schema-version guard before reaching consumers.
+    """
+
+    explicit = attributes.get("has_definition")
+    if isinstance(explicit, bool):
+        return explicit
+    return (
+        is_symbol_node(attributes.get("type"))
+        and isinstance(attributes.get("file"), str)
+        and isinstance(attributes.get("start_line"), int)
+        and not isinstance(attributes.get("start_line"), bool)
+        and isinstance(attributes.get("end_line"), int)
+        and not isinstance(attributes.get("end_line"), bool)
+    )
+
+
+def node_is_reference_only(attributes: Mapping) -> bool:
+    """Whether schema v5 explicitly marks a symbol as reference-only."""
+
+    return attributes.get("has_definition") is False
+
+
+def lsp_symbol_kind(kind: object) -> Optional[str]:
+    """Return the normalized semantic label for an LSP ``SymbolKind``."""
+
+    if isinstance(kind, bool) or not isinstance(kind, int):
+        return None
+    return LSP_SYMBOL_KINDS.get(kind)
 
 
 def normalize_graph_layer(layer):

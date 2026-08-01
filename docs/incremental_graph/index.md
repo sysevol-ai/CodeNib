@@ -60,6 +60,14 @@ With the builder's default `require_verification=True`, an unadmitted patch is d
 
 Independently of verification, the builder falls back to a full rebuild whenever the incremental path cannot run safely: no previously indexed commit, no existing `graph.pkl`, an unresolvable `HEAD`, uncommitted changes to tracked files, a missing language server, or any patch failure.
 
+For TypeScript and TSX, schema 5 also protects the separate file-to-file import
+layer. Before starting the language server or mutating the graph, the patcher
+compares tree-sitter fingerprints of static imports and source-bearing
+re-exports at the indexed and target commits. A changed statement or anchor,
+an added file, or a rename requests a full rebuild; a body-only edit may remain
+incremental. The compiler catches that explicit request and rebuilds, so an
+incremental update cannot silently retain stale import edges.
+
 ## How It Works
 
 Given a base commit (matching the current graph) and a target commit:

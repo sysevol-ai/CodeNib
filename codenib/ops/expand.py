@@ -12,7 +12,13 @@ from typing import Any, List, Optional, Sequence
 
 from ..graph.code_graph import CodeGraph
 from ..log_utils import get_logger
-from ..types import EDGE_TYPE_REFERENCE, NodeInfo, QueriedNode, is_symbol_node
+from ..types import (
+    EDGE_TYPE_REFERENCE,
+    NodeInfo,
+    QueriedNode,
+    is_symbol_node,
+    node_is_reference_only,
+)
 
 logger = get_logger(__name__)
 
@@ -197,7 +203,12 @@ def _neighbor_to_queried(
     name = info.get("name")
     if not name:
         return None
-    file_path = info.get("file")
+    source_backed = not is_symbol_node(info.get("type")) or not node_is_reference_only(
+        info
+    )
+    file_path = info.get("file") if source_backed else None
+    start_line = info.get("start_line") if source_backed else None
+    end_line = info.get("end_line") if source_backed else None
     display = info.get("unified_name") or name
     score = (seed.score if seed.score is not None else 1.0 / seed_rank) or 0.0
     content = None
@@ -205,16 +216,16 @@ def _neighbor_to_queried(
         content = _read_span_content(
             repo_path=repo_path,
             file_path=file_path,
-            start_line=info.get("start_line"),
-            end_line=info.get("end_line"),
+            start_line=start_line,
+            end_line=end_line,
         )
     return QueriedNode(
         node_name=display,
         type=info.get("type", ""),
         file=file_path,
         node_id=_node_id(file_path, display),
-        start_line=info.get("start_line"),
-        end_line=info.get("end_line"),
+        start_line=start_line,
+        end_line=end_line,
         score=float(score) * score_scale,
         content=content,
     )

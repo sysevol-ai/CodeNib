@@ -27,6 +27,7 @@ from ..types import (
     NODE_TYPE_FILE,
     NODE_TYPE_METHOD,
     is_symbol_node,
+    node_has_definition,
 )
 
 _WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
@@ -673,7 +674,12 @@ class RepositoryAdapter:
             attrs = graph.vs[vertex_id].attributes()
             canonical = str(attrs.get("name") or "")
             kind = str(attrs.get("type") or "")
-            file_path = self._graph_file_path(canonical, kind, attrs.get("file"))
+            source_backed = not is_symbol_node(kind) or node_has_definition(attrs)
+            file_path = (
+                self._graph_file_path(canonical, kind, attrs.get("file"))
+                if source_backed
+                else ""
+            )
             display = str(attrs.get("unified_name") or canonical)
             qualified = self._qualified_name(display, canonical, file_path, kind)
             raw[vertex_id] = {
@@ -682,8 +688,12 @@ class RepositoryAdapter:
                 "file_path": file_path,
                 "display": display,
                 "qualified": qualified,
-                "start_line": _valid_line(attrs.get("start_line")),
-                "end_line": _valid_line(attrs.get("end_line")),
+                "start_line": (
+                    _valid_line(attrs.get("start_line")) if source_backed else None
+                ),
+                "end_line": (
+                    _valid_line(attrs.get("end_line")) if source_backed else None
+                ),
             }
 
         for edge in graph.es:

@@ -17,6 +17,10 @@ from ..types import (
     ROOT_NODE,
 )
 from .scip_indexer_base import extract_scip_blocks, extract_symbol
+from .typescript_semantics import (
+    enrich_typescript_import_edges,
+    extract_typescript_symbol_kinds,
+)
 
 
 class SCIPTypeScriptGraphDecoder:
@@ -34,6 +38,7 @@ class SCIPTypeScriptGraphDecoder:
 
         # Track project's own SCIP package names to filter external refs
         self._project_packages = set()
+        self._symbol_kinds = {}
 
     def decode(self):
         self.logger.info(f"Starting SCIP TypeScript decode from {self.index_file_path}")
@@ -46,9 +51,8 @@ class SCIPTypeScriptGraphDecoder:
             raise
 
         # Parse documents
-        document_blocks = re.findall(
-            r"documents\s*{(.*?)(?=documents\s*{|$)", content, re.DOTALL
-        )
+        document_blocks = extract_scip_blocks(content, "documents")
+        self._symbol_kinds = extract_typescript_symbol_kinds(content)
 
         # Add the root node to the graph
         self.code_graph.add_root_node(ROOT_NODE)
@@ -65,6 +69,8 @@ class SCIPTypeScriptGraphDecoder:
         with self.code_graph.batch_edges():
             for document in document_blocks:
                 self._process_document(document)
+
+        enrich_typescript_import_edges(self.code_graph, content, self.project_root)
 
         self.logger.info(
             f"Decoded {len(document_blocks)} documents, "
@@ -444,6 +450,7 @@ class SCIPTypeScriptGraphDecoder:
 
         # Classify symbol type
         symbol_type = self._classify_symbol_type(unified_symbol, cleaned_symbol)
+        symbol_kind = self._symbol_kinds.get(symbol)
 
         # Handle index file exports
         is_index_file = file_path and "/index." in file_path
@@ -471,7 +478,12 @@ class SCIPTypeScriptGraphDecoder:
 
             # Add symbol node with scope range
             self.code_graph.add_symbol_node(
-                unified_symbol, line, scope_start_line, scope_end_line, symbol_type
+                unified_symbol,
+                line,
+                scope_start_line,
+                scope_end_line,
+                symbol_type,
+                symbol_kind,
             )
 
             # Store unified_name as node attribute
@@ -509,7 +521,10 @@ class SCIPTypeScriptGraphDecoder:
                 f"current scope: {self.code_graph.current_scope}"
             )
             self.code_graph.add_symbol_node(
-                unified_symbol, line, symbol_type=symbol_type
+                unified_symbol,
+                line,
+                symbol_type=symbol_type,
+                symbol_kind=symbol_kind,
             )
 
             # Store unified_name
@@ -528,7 +543,11 @@ class SCIPTypeScriptGraphDecoder:
         # Use bitwise check instead of exact match to handle all reference types
         else:
             self.code_graph.add_symbol_reference(
-                unified_symbol, file_path, symbol_type, anchor_line=line
+                unified_symbol,
+                file_path,
+                symbol_type,
+                anchor_line=line,
+                symbol_kind=symbol_kind,
             )
             # Set unified_name for reference-only nodes (first occurrence wins)
             if unified_symbol in self.code_graph.name_to_vertex:

@@ -22,6 +22,35 @@ bool is_stdlib_symbol(const std::string &symbol) {
   return false;
 }
 
+std::optional<std::string> normalize_symbol_kind(std::string value) {
+  static const std::string suffix = "Kind";
+  if (ends_with(value, suffix)) {
+    value.resize(value.size() - suffix.size());
+  }
+  std::string normalized;
+  normalized.reserve(value.size() + 4);
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    unsigned char ch = static_cast<unsigned char>(value[i]);
+    if (std::isupper(ch)) {
+      if (i > 0 && (std::islower(static_cast<unsigned char>(value[i - 1])) ||
+                    std::isdigit(static_cast<unsigned char>(value[i - 1])))) {
+        normalized.push_back('_');
+      }
+      normalized.push_back(
+          static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    } else if (ch == '-') {
+      normalized.push_back('_');
+    } else {
+      normalized.push_back(static_cast<char>(ch));
+    }
+  }
+  if (normalized.empty() || normalized == "unspecified" ||
+      normalized == "unspecified_kind" || normalized == "unknown") {
+    return std::nullopt;
+  }
+  return normalized;
+}
+
 } // namespace
 
 void SCIPTSDecoder::prescan(const std::vector<std::string> &document_blocks) {
@@ -48,6 +77,44 @@ void SCIPTSDecoder::prescan(const std::vector<std::string> &document_blocks) {
         continue;
       if (roles & 1)
         project_packages_.insert(parts[2]);
+    }
+  }
+
+  // scip-typescript 0.4.0 leaves SymbolInformation.kind unspecified. Prefer
+  // explicit fields from future providers, then use the provider-generated
+  // first fenced signature as a narrowly scoped compatibility fallback.
+  static const re2::RE2 kind_re(
+      R"re2((?:^|\n)\s*kind:\s*([A-Za-z][A-Za-z0-9_]*))re2");
+  static const re2::RE2 documentation_re(
+      R"re2((?:^|\n)\s*documentation:\s*"((?:\\.|[^"\\])*))re2");
+  static const re2::RE2 signature_re(
+      R"re2(^```(?:ts|typescript)\\n(class|interface|enum|type)\s)re2");
+
+  for (const auto &doc : document_blocks) {
+    for (const auto &info : extract_blocks(doc, "symbols")) {
+      auto symbol = extract_symbol(info);
+      std::string raw_kind;
+      if (!symbol || !re2::RE2::PartialMatch(info, kind_re, &raw_kind))
+        continue;
+      auto kind = normalize_symbol_kind(raw_kind);
+      if (kind.has_value())
+        symbol_kinds_[*symbol] = *kind;
+    }
+  }
+  for (const auto &doc : document_blocks) {
+    for (const auto &info : extract_blocks(doc, "symbols")) {
+      auto symbol = extract_symbol(info);
+      if (!symbol || symbol_kinds_.find(*symbol) != symbol_kinds_.end())
+        continue;
+      std::string first_documentation;
+      if (!re2::RE2::PartialMatch(info, documentation_re, &first_documentation))
+        continue;
+      std::string signature_kind;
+      if (!re2::RE2::PartialMatch(first_documentation, signature_re,
+                                  &signature_kind))
+        continue;
+      symbol_kinds_[*symbol] =
+          signature_kind == "type" ? "type_alias" : signature_kind;
     }
   }
 }
@@ -332,6 +399,11 @@ void SCIPTSDecoder::process_symbol(const std::string &symbol, int line,
     return;
 
   std::string type = classify_symbol_type(unified, cleaned);
+  std::optional<std::string> symbol_kind;
+  auto kind_it = symbol_kinds_.find(symbol);
+  if (kind_it != symbol_kinds_.end()) {
+    symbol_kind = kind_it->second;
+  }
 
   // Index file refs collapse to a file-level ref edge (no symbol node).
   bool is_index_file =
@@ -350,7 +422,7 @@ void SCIPTSDecoder::process_symbol(const std::string &symbol, int line,
   if (is_definition && encl_ranges.size() >= 4) {
     int ss = encl_ranges[0];
     int se = encl_ranges[2];
-    builder.add_symbol_node(unified, line, ss, se, type);
+    builder.add_symbol_node(unified, line, ss, se, type, symbol_kind);
     builder.set_unified_name(unified, unified_name(unified, file_path, type));
     builder.add_containment_edge(unified);
     if (type == NODE_TYPE_CLASS || type == NODE_TYPE_FUNCTION ||
@@ -358,13 +430,14 @@ void SCIPTSDecoder::process_symbol(const std::string &symbol, int line,
       builder.update_current_scope(unified, ss, se);
     }
   } else if (is_definition) {
-    builder.add_symbol_node(unified, line, std::nullopt, std::nullopt, type);
+    builder.add_symbol_node(unified, line, std::nullopt, std::nullopt, type,
+                            symbol_kind);
     builder.set_unified_name(unified, unified_name(unified, file_path, type));
     builder.add_edge(builder.current_scope(), unified, EDGE_TYPE_CONTAIN);
   } else {
     builder.add_symbol_reference(unified, file_path, type,
                                  /*anchor_file=*/std::nullopt,
-                                 /*anchor_line=*/line);
+                                 /*anchor_line=*/line, symbol_kind);
     builder.set_unified_name(unified, unified_name(unified, file_path, type),
                              /*only_if_missing=*/true);
   }

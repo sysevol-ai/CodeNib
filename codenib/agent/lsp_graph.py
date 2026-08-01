@@ -23,6 +23,9 @@ from ..types import (
     NODE_TYPE_FUNCTION,
     NODE_TYPE_METHOD,
     QueriedNode,
+    is_symbol_node,
+    node_has_definition,
+    node_is_reference_only,
 )
 
 _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -289,6 +292,10 @@ def _compact_node(
         else info.get("start_line")
     )
     end_line = start_line if use_selection_line else info.get("end_line")
+    if is_symbol_node(info.get("type")) and node_is_reference_only(info):
+        file_path = None
+        start_line = None
+        end_line = None
     return QueriedNode(
         node_name=display,
         type=info.get("type", ""),
@@ -374,6 +381,8 @@ def _definitions_for_symbol(graph: Any, symbol: str, limit: int) -> list[Queried
             f"symbol {symbol!r} not found in the code graph. Use a name from "
             "a search result or read output."
         )
+    if not node_has_definition(graph.get_node_info_by_name(name) or {}):
+        raise ValueError(f"symbol {symbol!r} has no indexed definition")
     label = display_name(graph, name)
     return [
         _compact_node(
@@ -446,6 +455,14 @@ def lsp_definition(
                 "no indexed definition token at "
                 f"{file_path}:{int(line) + 1}:{int(character)}"
             )
+        raise ValueError(f"no indexed definition at {file_path}:{int(line) + 1}")
+
+    target_names = [
+        name
+        for name in target_names
+        if node_has_definition(graph.get_node_info_by_name(name) or {})
+    ]
+    if not target_names:
         raise ValueError(f"no indexed definition at {file_path}:{int(line) + 1}")
 
     nodes = [
@@ -560,7 +577,9 @@ def lsp_references(
     nodes: list[QueriedNode] = []
     for name in targets:
         label = display_name(graph, name)
-        if include_declaration:
+        if include_declaration and node_has_definition(
+            graph.get_node_info_by_name(name) or {}
+        ):
             nodes.append(
                 _compact_node(
                     graph,

@@ -29,6 +29,7 @@ from ..types import (
     NODE_TYPE_METHOD,
     NODE_TYPE_SYMBOL,
     ROOT_NODE,
+    lsp_symbol_kind,
 )
 
 _INDEX_SCHEMA_VERSION = 1
@@ -168,6 +169,7 @@ def _process_symbol_tree(
         child_scope_vertices = scope_vertices
 
         range_data = symbol.get("range") or {}
+        selection_range = symbol.get("selectionRange") or range_data
         start_line = _line(range_data, "start", default=0)
         end_line = _line(range_data, "end", default=start_line)
 
@@ -194,7 +196,12 @@ def _process_symbol_tree(
                     "file": file_path,
                     "start_line": start_line,
                     "end_line": end_line,
+                    "selection_line": _line(
+                        selection_range, "start", default=start_line
+                    ),
                     "unified_name": unified_name,
+                    "symbol_kind": lsp_symbol_kind(kind),
+                    "has_definition": True,
                 },
             )
             graph.symbol_ranges[vertex_name] = (start_line, end_line)

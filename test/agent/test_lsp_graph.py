@@ -126,6 +126,26 @@ def test_lsp_definition_accepts_symbol_seed():
     assert [node.node_name for node in results] == ["callee.py:load_config()"]
 
 
+def test_lsp_definition_rejects_reference_only_symbol_with_legacy_range():
+    graph = CodeGraph()
+    graph.add_file_node("caller.py")
+    graph.add_symbol_reference(
+        "missing.Target",
+        module_path="missing.py",
+        anchor_file="caller.py",
+        anchor_line=2,
+    )
+    target = graph.graph.vs[graph.name_to_vertex["missing.Target"]]
+    target["start_line"] = 0
+    target["end_line"] = 3
+    graph.build_range_indexes()
+
+    with pytest.raises(ValueError, match="no indexed definition"):
+        lsp_graph.lsp_definition(graph, symbol="missing.Target")
+    with pytest.raises(ValueError, match="no indexed definition"):
+        lsp_graph.lsp_definition(graph, file_path="caller.py", line=2)
+
+
 def test_lsp_definition_uses_declaration_line_not_scope_start():
     graph = CodeGraph()
     graph.add_file_node("decorated.py")

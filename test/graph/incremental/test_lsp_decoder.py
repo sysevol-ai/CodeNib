@@ -179,6 +179,11 @@ class TestDocumentSymbol:
         assert "index.ts:Axios:0" in created
         assert "index.ts:Axios.constructor():10" in created
         assert "index.ts:Axios.request():35" in created
+        attrs = g.get_node_info_by_name("index.ts:Axios:0")
+        assert attrs["type"] == "class"
+        assert attrs["symbol_kind"] == "class"
+        assert attrs["has_definition"] is True
+        assert attrs["selection_line"] == 0
 
     def test_python_class_method(self):
         g = CodeGraph(project_root="/tmp")
@@ -326,7 +331,6 @@ class TestSemanticTokensDecode:
 
 
 class TestDefinitionDecode:
-
     def test_match_exact_line(self):
         g = CodeGraph(project_root="/tmp")
         p = PatcherRust("/tmp", g)
@@ -424,7 +428,6 @@ class TestDefinitionDecode:
 
 
 class TestReferencesDecode:
-
     def test_scope_inside_function(self):
         g = CodeGraph(project_root="/tmp")
         p = PatcherRust("/tmp", g)
@@ -487,7 +490,6 @@ class TestReferencesDecode:
 
 
 class TestFlattenSymbols:
-
     def test_filters_local_variables(self):
         g = CodeGraph(project_root="/tmp")
         p = PatcherRust("/tmp", g)
