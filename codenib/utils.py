@@ -71,6 +71,60 @@ def is_non_source_file(nid):
     return path_parts[-1].endswith(_NON_SOURCE_SUFFIXES)
 
 
+_SOURCE_EXTENSIONS = frozenset(
+    {
+        ".py",
+        ".pyx",
+        ".go",
+        ".rs",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        ".c",
+        ".h",
+        ".cc",
+        ".cpp",
+        ".hpp",
+        ".cxx",
+        ".java",
+        ".rb",
+        ".php",
+        ".cs",
+        ".kt",
+        ".kts",
+        ".swift",
+        ".scala",
+        ".lua",
+        ".m",
+        ".mm",
+    }
+)
+
+
+def is_source_file(nid):
+    """Check whether a node ID / path names a file in a language we parse.
+
+    Distinct from :func:`is_non_source_file`, which asks "is this generated?".
+    This asks "is this code at all?" — a manifest can legitimately point at a
+    ``package.json`` or a README, and those do not belong on a code map.
+    """
+    if ":" in nid:
+        file_path = nid.split(":")[0]
+    else:
+        file_path = nid
+
+    normalized = file_path.replace("\\", "/").lower()
+    name = normalized.rsplit("/", 1)[-1]
+    if "." not in name:
+        return False
+    return f".{name.rsplit('.', 1)[-1]}" in _SOURCE_EXTENSIONS
+
+
 _DECLARATION_SUFFIXES = (
     ".d.ts",
     ".d.cts",

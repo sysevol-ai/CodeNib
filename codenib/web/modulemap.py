@@ -36,6 +36,7 @@ from ..graph.code_graph import CodeGraph
 from ..types import NODE_TYPE_FILE
 from ..utils import is_test_file
 from .codemap import _DerivedFiles
+from .entrypoints import discover_entry_points
 
 # Symbols that can carry a file attribution (excludes file/directory/root nodes).
 _SYMBOL_TYPES = frozenset({"function", "method", "class", "field", "symbol"})
@@ -489,6 +490,7 @@ def build_modulemap(
     depth = max(1, min(int(depth), 4))
     max_nodes = max(2, min(int(max_nodes), 200))
     derived = _DerivedFiles(repo_dir)
+    entries = discover_entry_points(repo_dir)
     resolved = _resolve_granularity(graph, granularity, derived, include_tests)
     projection = _project(graph, resolved, derived, include_tests)
     candidates = projection.degree()
@@ -524,6 +526,11 @@ def build_modulemap(
     importance, community, ref_count, entry = _score(selected, kept)
 
     hops = _hops_from(projection, root, selected_set) if root else {}
+    # What the build manifest says this repo exposes, keyed to module granularity
+    # so a directory rollup still marks the directory an entry lives in.
+    entry_labels: Dict[str, str] = {}
+    for declared in entries:
+        entry_labels.setdefault(_module_of(declared.path, resolved), declared.label)
     nodes: List[Dict[str, Any]] = []
     for module in selected:
         label = _module_label(module, resolved)
@@ -550,6 +557,10 @@ def build_modulemap(
                 "community": community[module],
                 "ref_count": ref_count[module],
                 "entry_score": entry[module],
+                # Non-null when the build manifest names this module, carrying
+                # what it called it ("preact/compat"). Distinct from
+                # ``entry_score``, which is a graph shape, not a declaration.
+                "entry_point": entry_labels.get(module),
             }
         )
 

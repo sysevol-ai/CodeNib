@@ -436,3 +436,111 @@ def test_declaration_nodes_are_flagged_and_lose_the_pagerank_restart():
         by_label["src/diff/index.js:diff()"]["importance"]
         > by_label["src/dom.d.ts:Signalish"]["importance"]
     )
+
+
+def _entry_repo(tmp_path):
+    """A repo whose manifest names a barrel that re-exports the real API.
+
+    The busiest symbol by degree sits in a helper module, so degree alone picks
+    the wrong thing — which is what the entry-point tier exists to correct.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "index.js").write_text("export { render } from './render';\n")
+    (tmp_path / "src" / "render.js").write_text("export function render() {}\n")
+    (tmp_path / "src" / "util.js").write_text("export function busy() {}\n")
+    (tmp_path / "package.json").write_text('{"name": "lib", "source": "src/index.js"}')
+
+    graph = CodeGraph()
+    graph._add_vertex("src/index.js", {"type": "file"})
+    for name, file, line in [
+        ("src/render.js:render()", "src/render.js", 0),
+        ("src/util.js:busy()", "src/util.js", 0),
+        ("src/util.js:_helper()", "src/util.js", 10),
+        ("src/util.js:leaf()", "src/util.js", 20),
+    ]:
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": file,
+                "start_line": line,
+                "end_line": line + 2,
+                "unified_name": name,
+            },
+        )
+    # The barrel re-exports render(); util.js:busy() is the degree winner.
+    graph._add_edge("src/index.js", "src/render.js:render()", "reference")
+    graph._add_edge("src/render.js:render()", "src/util.js:leaf()", "reference")
+    for i in range(6):
+        graph._add_vertex(
+            f"src/util.js:t{i}()",
+            {
+                "type": "function",
+                "file": "src/util.js",
+                "start_line": 40 + i,
+                "end_line": 41 + i,
+                "unified_name": f"src/util.js:t{i}()",
+            },
+        )
+        graph._add_edge("src/util.js:busy()", f"src/util.js:t{i}()", "reference")
+    return graph
+
+
+def test_seed_follows_the_manifest_entry_through_its_re_exports(tmp_path):
+    """The declared entry is a barrel that defines nothing, so the seed has to
+    come from what its file node re-exports."""
+    graph = _entry_repo(tmp_path)
+
+    result = build_codemap(graph, symbol=None, depth=1, repo_dir=str(tmp_path))
+
+    assert result["root"] == "src/render.js:render()"
+
+
+def test_seed_ignores_entry_points_when_the_repo_declares_none(tmp_path):
+    """Without a manifest the original out-degree ranking still applies."""
+    graph = _entry_repo(tmp_path)
+    (tmp_path / "package.json").unlink()
+
+    result = build_codemap(graph, symbol=None, depth=1, repo_dir=str(tmp_path))
+
+    assert result["root"] == "src/util.js:busy()"
+
+
+def test_seed_prefers_a_public_symbol_over_a_private_one(tmp_path):
+    """matplotlib's entry file offered `_get_executable_info().impl` — public by
+    its leaf name, private by its enclosing function."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "pkg"\n')
+
+    graph = CodeGraph()
+    for name in ("pkg/__init__.py:_private().impl()", "pkg/__init__.py:public()"):
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": "pkg/__init__.py",
+                "start_line": 0,
+                "end_line": 2,
+                "unified_name": name,
+            },
+        )
+    graph._add_vertex(
+        "pkg/other.py:target()",
+        {
+            "type": "function",
+            "file": "pkg/other.py",
+            "start_line": 0,
+            "end_line": 2,
+            "unified_name": "pkg/other.py:target()",
+        },
+    )
+    # The private one has the higher out-degree, so only the public tier saves it.
+    graph._add_edge(
+        "pkg/__init__.py:_private().impl()", "pkg/other.py:target()", "reference"
+    )
+    graph._add_edge("pkg/__init__.py:public()", "pkg/other.py:target()", "reference")
+
+    result = build_codemap(graph, symbol=None, depth=1, repo_dir=str(tmp_path))
+
+    assert result["root"] == "pkg/__init__.py:public()"

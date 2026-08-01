@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 import re
 from collections import deque
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..graph.code_graph import CodeGraph
 from ..graph.hierarchy import (
@@ -31,12 +31,14 @@ from ..graph.hierarchy import (
     hierarchy_from_view_nodes,
 )
 from ..graph.traverse_graph import RepoDependencySearcher
+from ..types import NODE_TYPE_FILE
 from ..utils import (
     file_has_generated_marker,
     is_declaration_file,
     is_non_source_file,
     is_test_file,
 )
+from .entrypoints import discover_entry_points
 
 # Node types eligible as a focus / default seed (skip file/dir/import nodes).
 _SYMBOL_TYPES = frozenset({"function", "method", "class"})
@@ -74,6 +76,11 @@ _SOURCE_EXTS = frozenset(
 )
 _MERMAID_MAX_LABEL = 42
 _DIR_TO_MODE = {"both": "all", "callees": "forward", "callers": "backward"}
+
+
+def _normalize_path(path: str) -> str:
+    """Repo-relative, forward-slashed — the form entry points are keyed by."""
+    return path.replace("\\", "/").lstrip("./")
 
 
 def _attrs(graph: CodeGraph, name: str) -> Dict[str, Any]:
@@ -171,28 +178,99 @@ class _DerivedFiles:
         return file_has_generated_marker(candidate)
 
 
-def _default_seed(
-    graph: CodeGraph, derived: Optional[_DerivedFiles] = None
-) -> Optional[str]:
-    """Highest reference out-degree node that is a named function/method/class.
+_NO_ENTRY = 1 << 20
 
-    Candidates whose file is derived (declaration stub / generated / build
-    artifact) or a test are ranked below hand-written source rather than
-    dropped: raw out-degree alone picks a 380-property ``SVGAttributes``
-    interface over the actual renderer. Only when the repo has no hand-written
-    candidate at all does the busiest derived symbol win, so a pure
-    ``.d.ts``/generated repo still gets a map instead of nothing.
+
+def _entry_affinity(graph: CodeGraph, entry_paths: Sequence[str]) -> Dict[str, int]:
+    """How close each symbol is to a declared entry point — lower is closer.
+
+    A declared entry is usually a barrel, so "symbols defined in it" is often
+    empty: preact's ``src/index.js`` and bat's ``src/lib.rs`` define nothing at
+    all, and xarray's ``__init__.py`` defines two symbols that reference
+    nothing. What they do have is the *file node's* outgoing references — the
+    things they re-export. Following that one hop is what recovers
+    ``DataArray``/``Dataset`` for xarray and ``PrettyPrinter`` for bat.
+
+    Score is ``rank * 2`` for a symbol defined in the entry file and
+    ``rank * 2 + 1`` for one it re-exports, so a direct hit in the primary entry
+    beats a re-export from it, and both beat anything in the second entry.
+    *entry_paths* must be manifest order (most authoritative first).
+    """
+    affinity: Dict[str, int] = {}
+
+    def offer(name: str, score: int) -> None:
+        if score < affinity.get(name, _NO_ENTRY):
+            affinity[name] = score
+
+    g = graph.get_graph()
+    ranks = {path: rank for rank, path in enumerate(entry_paths)}
+    if not ranks:
+        return affinity
+    for vertex in g.vs:
+        attrs = vertex.attributes()
+        node_type = attrs.get("type")
+        if node_type == NODE_TYPE_FILE:
+            rank = ranks.get(_normalize_path(attrs.get("name") or ""))
+            if rank is None:
+                continue
+            for eid in g.incident(vertex.index, mode="out"):
+                edge = g.es[eid]
+                if edge.attributes().get("type") == "reference":
+                    offer(g.vs[edge.target]["name"], rank * 2 + 1)
+        elif node_type in _SYMBOL_TYPES:
+            rank = ranks.get(_normalize_path(attrs.get("file") or ""))
+            if rank is not None:
+                offer(attrs["name"], rank * 2)
+    return affinity
+
+
+def _is_private(unified_name: str) -> bool:
+    """``pkg/mod.py:Class._helper()`` -> True.
+
+    Any underscore-prefixed component counts, not just the leaf: matplotlib's
+    busiest entry-file symbol is ``_get_executable_info().impl``, whose leaf
+    reads public but whose enclosing function is not. Only the symbol half is
+    examined, so a ``__init__.py`` path never makes a symbol look private.
+    """
+    symbol = unified_name.rpartition(":")[2] or unified_name
+    return any(part.startswith("_") for part in re.split(r"[./]", symbol) if part)
+
+
+def _default_seed(
+    graph: CodeGraph,
+    derived: Optional[_DerivedFiles] = None,
+    entry_paths: Optional[Sequence[str]] = None,
+) -> Optional[str]:
+    """The symbol a reader should land on, best-first.
+
+    Three tiers, each a tiebreak on the one before:
+
+    1. **Declared entry point.** If the repo's build manifest names files, a
+       symbol in (or re-exported by) the most authoritative one wins. "What does
+       this package expose" is the question a reader opens with, and
+       ``package.json`` / ``pyproject.toml`` / ``Cargo.toml`` answer it exactly.
+       Degree cannot know that. See :func:`_entry_affinity`.
+    2. **Hand-written over derived.** Declaration stubs, generated files, build
+       artifacts and tests rank below real source but are not dropped, so an
+       all-declaration repo still gets a map rather than nothing. Raw
+       out-degree alone picks a 380-property ``SVGAttributes`` interface over
+       the renderer.
+    3. **Public over private.** Within a tier, a leading-underscore name loses
+       to a public one — matplotlib's entry file offered
+       ``_parse_to_version_info()`` when the package's API is what a reader
+       wants.
+    4. **Reference out-degree**, the original heuristic, to break the rest.
     """
     derived = derived or _DerivedFiles()
     g = graph.get_graph()
+    affinity = _entry_affinity(graph, entry_paths or ())
     out_ref: Dict[int, int] = {}
     for e in g.es:
         if e.attributes().get("type") == "reference":
             out_ref[e.source] = out_ref.get(e.source, 0) + 1
-    # Rank: hand-written source first, then derived/test, then by out-degree.
-    # ``name`` breaks ties so the seed is stable across runs.
+    # ``name`` breaks ties last so the seed is stable across runs.
     best: Optional[str] = None
-    best_key: Optional[Tuple[int, int, str]] = None
+    best_key: Optional[Tuple[int, int, int, int, str]] = None
     for vid, count in out_ref.items():
         a = g.vs[vid].attributes()
         if not a.get("unified_name") or a.get("type") not in _SYMBOL_TYPES:
@@ -203,7 +281,8 @@ def _default_seed(
         # name-based test detection misses it.
         path = a.get("file") or name
         penalty = 1 if (derived(path) or is_test_file(path)) else 0
-        key = (-penalty, count, name)
+        private = 1 if _is_private(a.get("unified_name") or name) else 0
+        key = (-affinity.get(name, _NO_ENTRY), -penalty, -private, count, name)
         if best_key is None or key > best_key:
             best_key, best = key, name
     if best is None:  # graph with no usable reference edges — any named node
@@ -413,11 +492,12 @@ def build_codemap(
     note = ""
 
     derived = _DerivedFiles(repo_dir)
+    entry_paths = [entry.path for entry in discover_entry_points(repo_dir)]
     root = _resolve(graph, symbol) if symbol else None
     if symbol and root is None:
-        note = f"Symbol {symbol!r} not found — showing the repo's busiest symbol."
+        note = f"Symbol {symbol!r} not found — showing the repo's entry point."
     if root is None:
-        root = _default_seed(graph, derived)
+        root = _default_seed(graph, derived, entry_paths)
     if root is None:
         return {
             "available": False,

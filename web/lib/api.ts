@@ -401,6 +401,12 @@ export interface ModuleNode extends CodemapNode {
   path: string;
   kind: "file" | "directory";
   symbol_count: number;
+  /**
+   * What the build manifest calls this module ("preact/compat"), or null when
+   * it declares none. Distinct from `entry_score`, which is a graph shape —
+   * this one is the repo stating its own public surface.
+   */
+  entry_point?: string | null;
 }
 
 export interface ModuleEdge extends CodemapEdge {
