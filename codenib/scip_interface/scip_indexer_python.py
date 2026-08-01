@@ -28,8 +28,28 @@ logger = get_logger("scip_python_indexer")
 # so a too-high bound (e.g. 20 min) can never fire before the 45-min job cap
 # kills the whole job — defeating the point of the timeout.
 _SCIP_PYTHON_INDEX_TIMEOUT_S = 600  # scip-python (Node) index run
+_SCIP_PYTHON_INDEX_TIMEOUT_ENV = "CODENIB_SCIP_PYTHON_INDEX_TIMEOUT_SECONDS"
 _CONDA_ENV_CREATE_TIMEOUT_S = 600  # fallback `conda env create`
 _SCIP_PYTHON_MAX_OLD_SPACE_MB = 16384
+
+
+def _scip_python_index_timeout() -> float:
+    raw = os.environ.get(_SCIP_PYTHON_INDEX_TIMEOUT_ENV)
+    if raw is None:
+        return float(_SCIP_PYTHON_INDEX_TIMEOUT_S)
+    try:
+        timeout = float(raw)
+    except ValueError:
+        timeout = 0.0
+    if timeout <= 0:
+        logger.warning(
+            "Ignoring invalid %s=%r; using %ss",
+            _SCIP_PYTHON_INDEX_TIMEOUT_ENV,
+            raw,
+            _SCIP_PYTHON_INDEX_TIMEOUT_S,
+        )
+        return float(_SCIP_PYTHON_INDEX_TIMEOUT_S)
+    return timeout
 
 
 def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
@@ -340,7 +360,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 cmd,
                 cwd=work_dir,
                 env=self._subprocess_env(),
-                timeout=_SCIP_PYTHON_INDEX_TIMEOUT_S,
+                timeout=_scip_python_index_timeout(),
             )
             return True
         except subprocess.TimeoutExpired as exc:
@@ -477,7 +497,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                     cmd,
                     cwd=work_dir,
                     env=env,
-                    timeout=_SCIP_PYTHON_INDEX_TIMEOUT_S,
+                    timeout=_scip_python_index_timeout(),
                 )
             else:
                 # Fallback: use conda run (may have PATH issues)
@@ -486,7 +506,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 _run_checked_with_timeout(
                     conda_cmd,
                     cwd=work_dir,
-                    timeout=_SCIP_PYTHON_INDEX_TIMEOUT_S,
+                    timeout=_scip_python_index_timeout(),
                 )
             return True
         except subprocess.TimeoutExpired as e:
