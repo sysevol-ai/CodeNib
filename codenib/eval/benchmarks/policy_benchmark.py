@@ -532,6 +532,8 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
             continue
         native_elapsed = native.get("elapsed_seconds")
         codenib_elapsed = codenib.get("elapsed_seconds")
+        native_tokens = native.get("total_tokens_estimated")
+        codenib_tokens = codenib.get("total_tokens_estimated")
         paired.append(
             {
                 "instance_id": instance_id,
@@ -552,6 +554,20 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
                     and float(codenib_elapsed) > 0
                     else None
                 ),
+                "native_to_codenib_total_tokens_ratio": (
+                    float(native_tokens) / float(codenib_tokens)
+                    if native_tokens is not None
+                    and codenib_tokens is not None
+                    and float(codenib_tokens) > 0
+                    else None
+                ),
+                "codenib_total_token_reduction_fraction": (
+                    1.0 - (float(codenib_tokens) / float(native_tokens))
+                    if native_tokens is not None
+                    and codenib_tokens is not None
+                    and float(native_tokens) > 0
+                    else None
+                ),
             }
         )
 
@@ -559,6 +575,16 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
         float(row["native_to_codenib_elapsed_ratio"])
         for row in paired
         if row["native_to_codenib_elapsed_ratio"] is not None
+    ]
+    token_ratios = [
+        float(row["native_to_codenib_total_tokens_ratio"])
+        for row in paired
+        if row["native_to_codenib_total_tokens_ratio"] is not None
+    ]
+    token_reductions = [
+        float(row["codenib_total_token_reduction_fraction"])
+        for row in paired
+        if row["codenib_total_token_reduction_fraction"] is not None
     ]
     payload = {
         "metric": "OrcaLoca golden-patch subset match",
@@ -586,6 +612,12 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
             ),
             "native_to_codenib_elapsed_ratio_median": (
                 statistics.median(ratios) if ratios else None
+            ),
+            "native_to_codenib_total_tokens_ratio_median": (
+                statistics.median(token_ratios) if token_ratios else None
+            ),
+            "codenib_total_token_reduction_fraction_median": (
+                statistics.median(token_reductions) if token_reductions else None
             ),
         },
         "missing": [

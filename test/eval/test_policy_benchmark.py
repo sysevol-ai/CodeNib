@@ -53,6 +53,7 @@ def _write_result(results: Path, *, provider: str, model: str = "test-model") ->
             "provider": provider,
             "instance_id": "demo__repo-1",
             "model": model,
+            "usage": {"total_tokens_estimated": 100 if provider == "native" else 80},
             "locations": [
                 {
                     "file_path": "src/parser.py",
@@ -92,6 +93,12 @@ def test_score_command_enforces_the_requested_cell_denominator(tmp_path: Path) -
     assert complete["coverage"]["observed_cell_count"] == 2
     assert complete["coverage"]["paired_successful_count"] == 1
     assert complete["paired_summary"]["n"] == 1
+    assert complete["paired_summary"][
+        "native_to_codenib_total_tokens_ratio_median"
+    ] == pytest.approx(1.25)
+    assert complete["paired_summary"][
+        "codenib_total_token_reduction_fraction_median"
+    ] == pytest.approx(0.2)
 
 
 def test_score_command_rejects_mixed_model_aggregation(tmp_path: Path) -> None:
