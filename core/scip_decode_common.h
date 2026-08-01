@@ -50,6 +50,10 @@ struct Subgraph {
     // directory nodes must not acquire symbol-definition metadata when
     // per-document subgraphs are merged.
     bool is_definition{false};
+    // File and directory insertion uses the same upsert semantics as the
+    // serial graph: a later structural node replaces only the node type,
+    // even when the name previously denoted a symbol.
+    bool updates_structural_type{false};
     bool updates_unified_name{false};
   };
 

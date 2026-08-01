@@ -122,6 +122,7 @@ void SubgraphBuilder::add_directory_node(const std::string &dir_path) {
   Subgraph::Node &node = ensure_node(dir_path);
   apply_update(node, std::make_optional<std::string>(NODE_TYPE_DIRECTORY),
                std::nullopt, std::nullopt, std::nullopt);
+  node.updates_structural_type = true;
 }
 
 bool SubgraphBuilder::add_directory_if_needed(const std::string &dir_path) {
@@ -139,6 +140,7 @@ void SubgraphBuilder::add_file_node(const std::string &file_path) {
   Subgraph::Node &node = ensure_node(file_path);
   apply_update(node, std::make_optional<std::string>(NODE_TYPE_FILE),
                std::nullopt, std::nullopt, std::nullopt);
+  node.updates_structural_type = true;
   reset_scope_to_file(file_path);
 }
 
