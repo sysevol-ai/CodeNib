@@ -73,8 +73,10 @@ def test_baseline_task_from_dataset_instance_builds_agent_call():
         "query_text": "Fix parser edge case",
         "repo_path": "/repos/demo",
         "context": {
+            "instance_id": "demo__repo-1",
             "issue_title": "[demo__repo-1] demo/repo",
             "issue_body": "Fix parser edge case",
+            "repo_name": "demo/repo",
             "hints": "Look at parser helpers",
         },
     }
@@ -271,8 +273,10 @@ def test_run_agent_baseline_uses_baseline_task_envelope(monkeypatch, tmp_path):
             "query_text": "Fix parser edge case",
             "repo_path": "/repos/demo",
             "context": {
+                "instance_id": "demo__repo-1",
                 "issue_title": "[demo__repo-1] demo/repo",
                 "issue_body": "Fix parser edge case",
+                "repo_name": "demo/repo",
                 "hints": "Look at parser helpers",
             },
         }
@@ -384,8 +388,10 @@ def test_run_agent_baseline_resume_skips_processing_done_instances(
             "query_text": "Fix parser edge case",
             "repo_path": "/repos/demo__repo-2",
             "context": {
+                "instance_id": "demo__repo-2",
                 "issue_title": "[demo__repo-2] demo/repo",
                 "issue_body": "Fix parser edge case",
+                "repo_name": "demo/repo",
             },
         }
     ]
