@@ -34,6 +34,16 @@ function languageNames(languages: string[]): string {
   return languages.map((language) => LANGUAGE_NAMES[language] ?? language).join(", ");
 }
 
+/** Total exact reference sites behind the drawn edges. */
+function callSites(edges: CodemapResponse["edges"]): number {
+  return edges.reduce((sum, edge) => sum + (edge.weight ?? edge.anchors?.length ?? 0), 0);
+}
+
+/** Module edges keep the true total in `call_sites`; `anchors` is a sample. */
+function moduleCallSites(edges: ModulemapResponse["edges"]): number {
+  return edges.reduce((sum, edge) => sum + (edge.call_sites ?? 0), 0);
+}
+
 /**
  * Module view: "which file depends on which", projected from symbol references
  * (see `codenib/web/modulemap.py`). Clicking a module re-centres the map on it;
@@ -73,6 +83,8 @@ function ModuleView({
         {focus ? `${data.focus_label} · ` : ""}
         {data.nodes.length} {data.granularity === "file" ? "files" : "directories"} ·{" "}
         {data.edges.length} dependencies
+        {moduleCallSites(data.edges) > 0 &&
+          ` · ${moduleCallSites(data.edges)} exact call sites`}
         {data.truncated ? ` · top ${data.nodes.length} of ${data.total_modules}` : ""}
       </div>
       {/* State what the projection left out rather than implying full coverage. */}
@@ -376,6 +388,10 @@ export default function Codemap({
         <>
           <div className="codemap-meta mono">
             {data.root_label} · {data.nodes.length} symbols · {data.edges.length} edges
+            {/* The call-site total is the differentiator: these edges are exact
+                SCIP/LSP references, not inferred, and every one opens its line. */}
+            {callSites(data.edges) > 0 &&
+              ` · ${callSites(data.edges)} exact call sites`}
             {data.truncated ? " · truncated" : ""}
           </div>
           {data.fell_back && (
