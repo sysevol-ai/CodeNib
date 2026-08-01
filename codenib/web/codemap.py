@@ -31,6 +31,12 @@ from ..graph.hierarchy import (
     hierarchy_from_view_nodes,
 )
 from ..graph.traverse_graph import RepoDependencySearcher
+from ..utils import (
+    file_has_generated_marker,
+    is_declaration_file,
+    is_non_source_file,
+    is_test_file,
+)
 
 # Node types eligible as a focus / default seed (skip file/dir/import nodes).
 _SYMBOL_TYPES = frozenset({"function", "method", "class"})
@@ -123,23 +129,83 @@ def _resolve(graph: CodeGraph, symbol: str) -> Optional[str]:
     return best
 
 
-def _default_seed(graph: CodeGraph) -> Optional[str]:
-    """Highest reference out-degree node that is a named function/method/class."""
+class _DerivedFiles:
+    """Memoized "is this file derived rather than hand-written?" oracle.
+
+    Derived means a type-declaration stub (``.d.ts`` / ``.pyi``), a build
+    artifact (``dist/``, ``*.min.js``), or a source file whose header declares
+    it machine-generated. Such files are real graph content, but a single one
+    can contribute thousands of symbols — Preact's ``src/dom.d.ts`` declares 127
+    interfaces and ~1400 properties against ~5k lines of hand-written JS, and
+    xarray's generated ``_typed_ops.py`` behaves the same way. Left unweighted
+    they win every degree- and PageRank-based ranking, so the repo's default
+    codemap ends up showing nothing but HTML attribute typedefs.
+
+    The generated-header sniff needs to read files, so results are cached per
+    instance; one instance lives for one codemap request.
+    """
+
+    def __init__(self, repo_dir: Optional[str] = None) -> None:
+        self._repo_dir = repo_dir
+        self._cache: Dict[str, bool] = {}
+
+    def __call__(self, file_path: Any) -> bool:
+        if not isinstance(file_path, str) or not file_path:
+            return False
+        cached = self._cache.get(file_path)
+        if cached is None:
+            cached = self._classify(file_path)
+            self._cache[file_path] = cached
+        return cached
+
+    def _classify(self, file_path: str) -> bool:
+        if is_declaration_file(file_path) or is_non_source_file(file_path):
+            return True
+        if not self._repo_dir:
+            return False
+        candidate = (
+            file_path
+            if os.path.isabs(file_path)
+            else os.path.join(self._repo_dir, file_path)
+        )
+        return file_has_generated_marker(candidate)
+
+
+def _default_seed(
+    graph: CodeGraph, derived: Optional[_DerivedFiles] = None
+) -> Optional[str]:
+    """Highest reference out-degree node that is a named function/method/class.
+
+    Candidates whose file is derived (declaration stub / generated / build
+    artifact) or a test are ranked below hand-written source rather than
+    dropped: raw out-degree alone picks a 380-property ``SVGAttributes``
+    interface over the actual renderer. Only when the repo has no hand-written
+    candidate at all does the busiest derived symbol win, so a pure
+    ``.d.ts``/generated repo still gets a map instead of nothing.
+    """
+    derived = derived or _DerivedFiles()
     g = graph.get_graph()
     out_ref: Dict[int, int] = {}
     for e in g.es:
         if e.attributes().get("type") == "reference":
             out_ref[e.source] = out_ref.get(e.source, 0) + 1
+    # Rank: hand-written source first, then derived/test, then by out-degree.
+    # ``name`` breaks ties so the seed is stable across runs.
     best: Optional[str] = None
-    best_count = -1
+    best_key: Optional[Tuple[int, int, str]] = None
     for vid, count in out_ref.items():
         a = g.vs[vid].attributes()
-        if (
-            a.get("unified_name")
-            and a.get("type") in _SYMBOL_TYPES
-            and count > best_count
-        ):
-            best_count, best = count, a["name"]
+        if not a.get("unified_name") or a.get("type") not in _SYMBOL_TYPES:
+            continue
+        name = a["name"]
+        # Prefer the ``file`` attribute: a TS graph identity such as
+        # ``custom-elements.tsx:JSX/IntrinsicElements`` carries no directory, so
+        # name-based test detection misses it.
+        path = a.get("file") or name
+        penalty = 1 if (derived(path) or is_test_file(path)) else 0
+        key = (-penalty, count, name)
+        if best_key is None or key > best_key:
+            best_key, best = key, name
     if best is None:  # graph with no usable reference edges — any named node
         for v in g.vs:
             if v.attributes().get("unified_name"):
@@ -176,8 +242,27 @@ def _is_external(a: Dict[str, Any], repo_dir: Optional[str] = None) -> bool:
     return ("/" not in f) and (os.path.splitext(f)[1].lower() not in _SOURCE_EXTS)
 
 
+def _pagerank(
+    subref: Any, sub_names: List[str], derived_names: Set[str]
+) -> List[float]:
+    """PageRank over *subref*, restarting only on hand-written symbols.
+
+    Falls back to uniform PageRank when every node is derived (no restart mass
+    to distribute) or when the igraph build predates ``personalized_pagerank``.
+    """
+    reset = [0.0 if n in derived_names else 1.0 for n in sub_names]
+    if any(reset) and not all(reset):
+        try:
+            return subref.personalized_pagerank(
+                directed=True, damping=0.85, reset=reset
+            )
+        except (AttributeError, TypeError):  # older/newer igraph API
+            pass
+    return subref.pagerank(directed=True, damping=0.85)
+
+
 def _score(
-    graph: CodeGraph, names: List[str]
+    graph: CodeGraph, names: List[str], derived_names: Optional[Set[str]] = None
 ) -> Tuple[Dict[str, float], Dict[str, int], Dict[str, int], Dict[str, float]]:
     """PageRank importance + community + reference count + entry score per node.
 
@@ -189,11 +274,20 @@ def _score(
     many symbols reference this one); ``entry_score`` = out/(in+out) in [0,1] —
     high for drivers/entry points that call much but are called little. Never
     raises — returns neutral scores (0.0 / 0) on any failure.
+
+    *derived_names* (declaration stubs / generated / build output) are excluded
+    from the PageRank restart distribution rather than from the graph: mass
+    still flows *into* them along real references, so a hand-written
+    ``internal.d.ts`` type that the renderer genuinely leans on keeps its rank,
+    but a wall of typedefs referencing each other no longer manufactures its
+    own importance. Since ``_enrich`` prunes hub edges by target importance,
+    this also makes a hub keep its real callees over its type annotations.
     """
     imp: Dict[str, float] = {n: 0.0 for n in names}
     comm: Dict[str, int] = {n: 0 for n in names}
     refcnt: Dict[str, int] = {n: 0 for n in names}
     entry: Dict[str, float] = {n: 0.0 for n in names}
+    derived_names = derived_names or set()
     try:
         g = graph.get_graph()
         n2v = graph.name_to_vertex
@@ -206,7 +300,7 @@ def _score(
         ]
         subref = sub.subgraph_edges(ref_eids, delete_vertices=False)
         sub_names = list(subref.vs["name"])
-        pr = subref.pagerank(directed=True, damping=0.85)
+        pr = _pagerank(subref, sub_names, derived_names)
         order = sorted(range(len(pr)), key=lambda i: pr[i])
         denom = max(1, len(pr) - 1)
         for rank, i in enumerate(order):
@@ -239,6 +333,7 @@ def _enrich(
     graph: CodeGraph,
     nodes: List[Dict[str, Any]],
     edges: List[Dict[str, Any]],
+    derived: Optional[_DerivedFiles] = None,
     hub_cap: int = 8,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Tag nodes with importance/community and prune high-out-degree hubs.
@@ -248,8 +343,17 @@ def _enrich(
     ``hidden_callees`` so the UI can badge "+N". Nodes left fully disconnected by
     that fold (the low-value leaf tail) are dropped unless they're a seed/root.
     This keeps dense, high-fan-out maps from becoming hairballs.
+
+    Nodes from derived files are flagged ``declaration`` so the UI can dim them,
+    and are held out of the PageRank restart set (see :func:`_score`).
     """
-    imp, comm, refcnt, entry = _score(graph, [n["name"] for n in nodes])
+    derived = derived or _DerivedFiles()
+    derived_names: Set[str] = set()
+    for n in nodes:
+        n["declaration"] = derived(n.get("file"))
+        if n["declaration"]:
+            derived_names.add(n["name"])
+    imp, comm, refcnt, entry = _score(graph, [n["name"] for n in nodes], derived_names)
     for n in nodes:
         n["importance"] = imp.get(n["name"], 0.0)
         n["community"] = comm.get(n["name"], 0)
@@ -308,11 +412,12 @@ def build_codemap(
     max_nodes = max(2, min(int(max_nodes), 120))
     note = ""
 
+    derived = _DerivedFiles(repo_dir)
     root = _resolve(graph, symbol) if symbol else None
     if symbol and root is None:
         note = f"Symbol {symbol!r} not found — showing the repo's busiest symbol."
     if root is None:
-        root = _default_seed(graph)
+        root = _default_seed(graph, derived)
     if root is None:
         return {
             "available": False,
@@ -411,7 +516,7 @@ def build_codemap(
             edge["anchors"] = anchors
         edges.append(edge)
 
-    nodes, edges = _enrich(graph, nodes, edges)
+    nodes, edges = _enrich(graph, nodes, edges, derived)
     hierarchy = (
         hierarchy_for_view(hierarchy_graph, nodes)
         if hierarchy_graph is not None
@@ -731,7 +836,7 @@ def build_page_subgraph(
             edge["anchors"] = anchors
         edges.append(edge)
 
-    nodes, edges = _enrich(graph, nodes, edges)
+    nodes, edges = _enrich(graph, nodes, edges, _DerivedFiles(repo_dir))
     hierarchy = (
         hierarchy_for_view(hierarchy_graph, nodes)
         if hierarchy_graph is not None

@@ -75,7 +75,13 @@ class RepoDependencySearcher:
                 or neighbor_vertex["type"] not in ntype_filter
             ):
                 continue
-            if ignore_test_file and is_test_file(neighbor_nid):
+            # Check the ``file`` attribute, not just the identity: TS/JS graph
+            # identities carry no directory (``custom-elements.tsx:JSX/Foo``),
+            # so a name-only check silently lets test symbols through.
+            if ignore_test_file and (
+                is_test_file(neighbor_nid)
+                or is_test_file(neighbor_vertex.attributes().get("file") or "")
+            ):
                 continue
 
             etype = edge["type"] if "type" in edge.attributes() else "unknown"

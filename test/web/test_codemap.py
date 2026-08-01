@@ -268,3 +268,171 @@ def test_page_subgraph_maps_file_citation_to_representative_symbol(tmp_path):
     assert [node["label"] for node in result["nodes"]] == ["src/worker.py:Worker"]
     assert result["nodes"][0]["file"] == "src/worker.py"
     assert result["nodes"][0]["external"] is False
+
+
+def _preact_shaped_graph() -> CodeGraph:
+    """A graph shaped like preactjs/preact: a small, dense hand-written core
+    plus one huge ``.d.ts`` wall of interfaces referencing a shared type.
+
+    Mirrors issue #390: ``src/dom.d.ts`` declares 127 interfaces over ~1400
+    property lines, so raw reference out-degree there dwarfs anything in the
+    ~5k lines of hand-written JS.
+    """
+    graph = CodeGraph()
+
+    def add(name, kind, file, line):
+        graph._add_vertex(
+            name,
+            {
+                "type": kind,
+                "file": file,
+                "start_line": line,
+                "end_line": line + 2,
+                "unified_name": name,
+            },
+        )
+
+    add("src/render.js:render()", "function", "src/render.js", 12)
+    add("src/diff/index.js:diff()", "function", "src/diff/index.js", 30)
+    add("src/create-element.js:createVNode()", "function", "src/create-element.js", 5)
+    for target in ("src/diff/index.js:diff()", "src/create-element.js:createVNode()"):
+        graph._add_edge(
+            "src/render.js:render()",
+            target,
+            "reference",
+            anchor_file="src/render.js",
+            anchor_line=13,
+        )
+
+    # The declaration wall: one shared type plus many attribute interfaces.
+    add("src/dom.d.ts:Signalish", "class", "src/dom.d.ts", 60)
+    add("src/dom.d.ts:SVGAttributes", "class", "src/dom.d.ts", 81)
+    for i in range(40):
+        member = f"src/dom.d.ts:SVGAttributes.attr{i}"
+        add(member, "field", "src/dom.d.ts", 100 + i)
+        graph._add_edge(
+            "src/dom.d.ts:SVGAttributes",
+            member,
+            "reference",
+            anchor_file="src/dom.d.ts",
+            anchor_line=100 + i,
+        )
+        graph._add_edge(
+            member,
+            "src/dom.d.ts:Signalish",
+            "reference",
+            anchor_file="src/dom.d.ts",
+            anchor_line=100 + i,
+        )
+    return graph
+
+
+def test_default_seed_prefers_hand_written_source_over_declaration_stubs():
+    """Issue #390: the busiest symbol by raw out-degree is a ``.d.ts``
+    interface, which filled the repo's default codemap with typedefs."""
+    graph = _preact_shaped_graph()
+
+    result = build_codemap(graph, symbol=None, depth=2, max_nodes=40)
+
+    assert result["root"] == "src/render.js:render()"
+    assert "dom.d.ts" not in result["root_label"]
+    assert all(not node["declaration"] for node in result["nodes"])
+
+
+def test_default_seed_falls_back_to_declarations_when_nothing_else_exists():
+    """A repo that really is all declarations still gets a map, not an empty one."""
+    graph = CodeGraph()
+    for name in ("api.d.ts:Alpha", "api.d.ts:Beta"):
+        graph._add_vertex(
+            name,
+            {
+                "type": "class",
+                "file": "api.d.ts",
+                "start_line": 1,
+                "end_line": 3,
+                "unified_name": name,
+            },
+        )
+    graph._add_edge("api.d.ts:Alpha", "api.d.ts:Beta", "reference")
+
+    result = build_codemap(graph, symbol=None, depth=1, max_nodes=10)
+
+    assert result["available"] is True
+    assert result["root"] == "api.d.ts:Alpha"
+
+
+def test_default_seed_skips_generated_source(tmp_path):
+    """Path rules miss generated code in ordinary source files (xarray's
+    ``_typed_ops.py``); the header banner is what gives it away."""
+    (tmp_path / "pkg").mkdir()
+    generated = tmp_path / "pkg" / "_typed_ops.py"
+    generated.write_text(
+        '"""Mixin classes with arithmetic operators."""\n\n'
+        "# This file was generated using pkg.util.generate_ops. "
+        "Do not edit manually.\n\n"
+        "class VariableOpsMixin:\n    pass\n"
+    )
+    handwritten = tmp_path / "pkg" / "core.py"
+    handwritten.write_text("def compute():\n    return 1\n")
+
+    graph = CodeGraph()
+    for name, file, line in [
+        ("pkg/_typed_ops.py:VariableOpsMixin", "pkg/_typed_ops.py", 4),
+        ("pkg/core.py:compute()", "pkg/core.py", 0),
+        ("pkg/core.py:helper()", "pkg/core.py", 4),
+    ]:
+        graph._add_vertex(
+            name,
+            {
+                "type": "class" if "Mixin" in name else "function",
+                "file": file,
+                "start_line": line,
+                "end_line": line + 2,
+                "unified_name": name,
+            },
+        )
+    for i in range(9):
+        target = f"pkg/_typed_ops.py:op{i}"
+        graph._add_vertex(
+            target,
+            {
+                "type": "method",
+                "file": "pkg/_typed_ops.py",
+                "start_line": 10 + i,
+                "end_line": 11 + i,
+                "unified_name": target,
+            },
+        )
+        graph._add_edge("pkg/_typed_ops.py:VariableOpsMixin", target, "reference")
+    graph._add_edge("pkg/core.py:compute()", "pkg/core.py:helper()", "reference")
+
+    result = build_codemap(
+        graph, symbol=None, depth=1, max_nodes=20, repo_dir=str(tmp_path)
+    )
+
+    assert result["root"] == "pkg/core.py:compute()"
+
+
+def test_declaration_nodes_are_flagged_and_lose_the_pagerank_restart():
+    """Declarations stay in the map (they are real context) but stop
+    manufacturing their own importance."""
+    graph = _preact_shaped_graph()
+    graph._add_edge(
+        "src/render.js:render()",
+        "src/dom.d.ts:Signalish",
+        "reference",
+        anchor_file="src/render.js",
+        anchor_line=14,
+    )
+
+    result = build_codemap(
+        graph, symbol="render", direction="callees", depth=2, max_nodes=40
+    )
+
+    by_label = {node["label"]: node for node in result["nodes"]}
+    assert by_label["src/dom.d.ts:Signalish"]["declaration"] is True
+    assert by_label["src/render.js:render()"]["declaration"] is False
+    assert (
+        by_label["src/diff/index.js:diff()"]["importance"]
+        > by_label["src/dom.d.ts:Signalish"]["importance"]
+    )
