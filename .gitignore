@@ -12,7 +12,6 @@ build/
 *.decoded
 key.cfg
 logs/
-uv.lock
 hf_dataset/
 site/
 .venv/

@@ -116,9 +116,9 @@ dev = [
     "mypy>=0.950",
     "flake8>=4.0.1",
     "flake8-bugbear>=24.4.0",
-    # Docs. Keep this list in sync with the install step in
-    # .github/workflows/docs.yml. MkDocs 2.0 drops the plugin system with no
-    # migration path, which would take mkdocstrings and api-autonav with it.
+    # Docs. Keep this list in sync with the `docs` dependency group below.
+    # MkDocs 2.0 drops the plugin system with no migration path, which would
+    # take mkdocstrings and api-autonav with it.
     "mkdocs<2.0.0",
     "mkdocs-material>=9.5.0",
     "mkdocstrings-python>=2.0.0",
@@ -143,6 +143,17 @@ test = [
     "requests>=2.25.0",
     "sentence-transformers>=2.2.0",
     "tomli>=1.1.0; python_version < '3.11'",
+]
+
+[dependency-groups]
+# CI installs only this group for the static documentation build. Keep the
+# matching packages in the published `dev` extra for `make dev` users.
+docs = [
+    "black>=22.3.0",
+    "mkdocs<2.0.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings-python>=2.0.0",
+    "mkdocs-api-autonav>=0.4.0",
 ]
 
 [tool.setuptools]
