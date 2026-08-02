@@ -16,6 +16,7 @@ from datasets import Features
 from datasets import Sequence as Seq
 from datasets import Value
 
+from ..git_snapshot import restore_git_worktree
 from ..log_utils import get_logger
 from .base import DatasetBase
 
@@ -236,24 +237,12 @@ class CodeNibBaseDataset(DatasetBase):
 
             logger.info(f"Checking out commit {base_commit}")
             try:
-                subprocess.run(
-                    ["git", "reset", "--hard"],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                subprocess.run(
-                    ["git", "clean", "-fd"],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                subprocess.run(
-                    ["git", "checkout", "-f", base_commit],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
+                restore = restore_git_worktree(repo_path, base_commit)
+                if restore.removed_ignored_paths:
+                    logger.info(
+                        "Removed %d source-visible generated path(s)",
+                        len(restore.removed_ignored_paths),
+                    )
             except subprocess.CalledProcessError as e:
                 stderr = e.stderr.decode("utf-8")
                 logger.warning(
@@ -299,12 +288,7 @@ class CodeNibBaseDataset(DatasetBase):
                 )
 
                 try:
-                    subprocess.run(
-                        ["git", "checkout", "-f", base_commit],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
+                    restore_git_worktree(repo_path, base_commit)
                 except subprocess.CalledProcessError as e2:
                     logger.error(f"Failed to checkout commit {base_commit}: {e2}")
                     logger.error(f"STDERR: {e2.stderr.decode('utf-8')}")

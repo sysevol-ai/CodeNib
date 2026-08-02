@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
+from ..git_snapshot import restore_git_worktree
 from ..languages import normalize_language
 
 SNAPSHOT_STORE_VERSION = "1"
@@ -203,6 +204,7 @@ class SnapshotArtifactStore:
                 raise ValueError(
                     f"snapshot worktree mismatch: expected {expected}, found {actual}"
                 )
+            restore_git_worktree(target, expected)
             return target
 
         expected = self._git_output(source_repo, "rev-parse", f"{commit}^{{commit}}")
@@ -224,6 +226,7 @@ class SnapshotArtifactStore:
             stderr=subprocess.PIPE,
             text=True,
         )
+        restore_git_worktree(target, expected)
         return target
 
     def resolve(self, instance_id: str) -> Path:

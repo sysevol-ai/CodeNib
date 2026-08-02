@@ -15,7 +15,7 @@ Controlled by the `chunk_depth` parameter in `BaseCodeChunker`:
 
 | Depth | Name | Description |
 |-------|------|-------------|
-| 0 | **L0 — File** | Entire file as a single chunk. With `skeleton_mode=True`, emits a signature-only skeleton of the file. |
+| 0 | **L0 — File** | Entire file as a single chunk. With `skeleton_mode=True`, emits a signature-only skeleton and falls back to full source when no signature can be extracted. |
 | 1 | **L1 — Top-level** | Top-level definitions only: classes, standalone functions, and language-specific constructs (vars, consts, macros, etc.). Methods/members inside containers are **not** emitted. |
 | 2 | **L2 — Member** | Method/member level (default). Emits methods and members inside classes/structs/impls. When `l2_level_exclusive=True` (default), the L1 container chunks are excluded, keeping only their L2 members. |
 

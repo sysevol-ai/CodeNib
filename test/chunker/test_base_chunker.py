@@ -6,6 +6,7 @@
 
 """Tests for shared code chunker behavior."""
 
+from types import SimpleNamespace
 from typing import List, Optional, Tuple
 
 import pytest
@@ -68,3 +69,27 @@ def test_tree_sitter_language_load_is_cached_per_language(monkeypatch):
     assert calls == ["python", "go"]
     assert first.tree_sitter_language is second.tree_sitter_language
     assert third.tree_sitter_language is languages["go"]
+
+
+def test_l0_empty_skeleton_falls_back_to_full_file(monkeypatch, tmp_path):
+    source = tmp_path / "declarations.h"
+    content = "#define VALUE 1\n"
+    source.write_text(content, encoding="utf-8")
+
+    parser = SimpleNamespace(parse=lambda _code: SimpleNamespace(root_node=object()))
+    monkeypatch.setattr(
+        "codenib.code_chunking.base.get_language", lambda _lang: object()
+    )
+    monkeypatch.setattr(
+        BaseCodeChunker,
+        "_create_parser",
+        staticmethod(lambda _language: parser),
+    )
+
+    chunker = StubCodeChunker("cpp", chunk_depth=0, skeleton_mode=True)
+    chunks = chunker.chunk_file(str(source), relative_path="include/declarations.h")
+
+    assert len(chunks) == 1
+    assert chunks[0].chunk_type == "file"
+    assert chunks[0].content == content
+    assert chunks[0].node_id == "include/declarations.h"

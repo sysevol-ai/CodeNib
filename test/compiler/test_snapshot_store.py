@@ -32,7 +32,8 @@ def _make_repo(path):
     _git(path, "config", "user.email", "test@example.com")
     _git(path, "config", "user.name", "Test User")
     (path / "main.py").write_text("VALUE = 1\n", encoding="utf-8")
-    _git(path, "add", "main.py")
+    (path / ".gitignore").write_text("lib/\nnode_modules/\n", encoding="utf-8")
+    _git(path, "add", "main.py", ".gitignore")
     _git(path, "commit", "-m", "initial")
     return _git(path, "rev-parse", "HEAD")
 
@@ -105,3 +106,32 @@ def test_ensure_worktree_is_durable_and_idempotent(tmp_path):
     assert (worktree / "main.py").read_text(encoding="utf-8") == "VALUE = 1\n"
     assert _git(worktree, "rev-parse", "HEAD") == commit
     assert (binding.profile_dir / "repo").resolve() == worktree
+
+
+def test_ensure_worktree_removes_visible_generated_files_but_keeps_tool_cache(
+    tmp_path,
+):
+    source = tmp_path / "source"
+    commit = _make_repo(source)
+    store = SnapshotArtifactStore(tmp_path / "artifacts")
+    binding = store.bind(
+        "org__repo-1",
+        SourceSnapshot("org/repo", commit),
+        ArtifactProfile.create(["python"]),
+    )
+    worktree = store.ensure_worktree(binding, source_repo=source, commit=commit)
+
+    (worktree / "main.py").write_text("VALUE = 2\n", encoding="utf-8")
+    (worktree / "scratch.py").write_text("temporary\n", encoding="utf-8")
+    (worktree / "lib").mkdir()
+    (worktree / "lib" / "generated.py").write_text("generated\n", encoding="utf-8")
+    (worktree / "node_modules" / "pkg").mkdir(parents=True)
+    cached = worktree / "node_modules" / "pkg" / "index.js"
+    cached.write_text("cached\n", encoding="utf-8")
+
+    store.ensure_worktree(binding, source_repo=source, commit=commit)
+
+    assert (worktree / "main.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert not (worktree / "scratch.py").exists()
+    assert not (worktree / "lib").exists()
+    assert cached.read_text(encoding="utf-8") == "cached\n"

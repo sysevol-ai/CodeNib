@@ -173,7 +173,10 @@ class BaseCodeChunker(ABC):
                     top_level_nodes, code_content
                 )
                 if not skeleton_content:
-                    return []
+                    # L0 is the file view. Declaration-only files and language
+                    # constructs not recognized by the skeleton extractor must
+                    # remain addressable rather than disappearing from the index.
+                    skeleton_content = code_content
                 return [
                     CodeChunk(
                         skeleton_content,
