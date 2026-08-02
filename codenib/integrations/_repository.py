@@ -156,7 +156,11 @@ class RepositoryAdapter:
 
         from ..mcp.context import ServerContext
 
-        return cls(ServerContext.load(manifest_path), require_graph=require_graph)
+        views = {"symbol_graph"} if require_graph else set()
+        return cls(
+            ServerContext.load(manifest_path, views=views),
+            require_graph=require_graph,
+        )
 
     @property
     def entities(self) -> tuple[RepositoryEntity, ...]:

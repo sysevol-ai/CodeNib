@@ -33,6 +33,7 @@ _TOOL_NAMES = (
     "get_entity_contents",
     "explore_tree_structure",
 )
+_RUNTIME_VIEWS = frozenset({"symbol_graph", "bm25"})
 
 _RELATION_TO_EDGE = {
     "contains": EDGE_TYPE_CONTAIN,
@@ -182,7 +183,7 @@ class LocAgentToolProvider:
     ) -> "LocAgentToolProvider":
         from ..mcp.context import ServerContext
 
-        return cls(ServerContext.load(manifest_path), **kwargs)
+        return cls(ServerContext.load(manifest_path, views=_RUNTIME_VIEWS), **kwargs)
 
     @property
     def context(self) -> Any:

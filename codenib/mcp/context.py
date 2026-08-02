@@ -2,31 +2,79 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""ServerContext - loads a RepoManifest and available index objects from disk.
+"""ServerContext - loads a RepoManifest and selected index objects from disk.
 
 Holds vector, symbol_graph, BM25, regex, and Zoekt indexes. Each loads
-independently; failures land in ``ctx.errors`` and the corresponding
-attribute stays ``None`` so tools can surface a clear error at call time
-rather than blocking server startup.
+independently; failures land in ``ctx.errors`` and skipped or failed views keep
+their corresponding attribute at ``None`` so tools can surface a clear error at
+call time rather than blocking server startup.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
 from ..compiler.manifest import RepoManifest
-from ..index.sparse_idx import BM25CodeIndexer
 
 if TYPE_CHECKING:
     from ..graph.code_graph import CodeGraph
     from ..index.embedding.vector_store import CodeVectorStore
     from ..index.regex_idx import RegexNodeIndex
+    from ..index.sparse_idx import BM25CodeIndexer
     from ..index.trigram import ZoektSearcher
 
 logger = logging.getLogger(__name__)
+
+_VIEW_LOADERS = (
+    ("symbol_graph", "_load_symbol_graph"),
+    ("bm25", "_load_bm25"),
+    ("regex_index", "_load_regex_index"),
+    ("zoekt", "_load_zoekt"),
+    ("vector", "_load_vector"),
+)
+RUNTIME_VIEW_NAMES = frozenset(name for name, _ in _VIEW_LOADERS)
+_VIEW_DEPENDENCIES = {
+    "regex_index": frozenset({"symbol_graph"}),
+}
+
+
+def _resolve_views(views: Iterable[str] | None) -> frozenset[str]:
+    """Validate a view selection and add runtime dependencies."""
+
+    if views is None:
+        return RUNTIME_VIEW_NAMES
+    if isinstance(views, (str, bytes)):
+        raise TypeError("views must be an iterable of view names, not a string")
+
+    requested = frozenset(views)
+    invalid_types = sorted(
+        {type(view).__name__ for view in requested if not isinstance(view, str)}
+    )
+    if invalid_types:
+        raise TypeError(
+            "view names must be strings; received " + ", ".join(invalid_types)
+        )
+
+    unknown = requested - RUNTIME_VIEW_NAMES
+    if unknown:
+        supported = ", ".join(sorted(RUNTIME_VIEW_NAMES))
+        raise ValueError(
+            f"unknown runtime views {sorted(unknown)!r}; supported: {supported}"
+        )
+
+    selected = set(requested)
+    pending = list(requested)
+    while pending:
+        view = pending.pop()
+        for dependency in _VIEW_DEPENDENCIES.get(view, ()):
+            if dependency not in selected:
+                selected.add(dependency)
+                pending.append(dependency)
+    return frozenset(selected)
 
 
 @dataclass
@@ -47,26 +95,38 @@ class ServerContext:
     errors: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def load(cls, manifest_path: str | Path) -> ServerContext:
-        """Load a manifest and all available indexes.
+    def load(
+        cls,
+        manifest_path: str | Path,
+        *,
+        views: Iterable[str] | None = None,
+    ) -> ServerContext:
+        """Load a manifest and the selected runtime views.
 
-        Each index is loaded independently; a failure in one does not
-        block the others. Failed indexes are recorded in ``errors``.
+        ``views=None`` preserves the MCP server's load-all behavior. Explicit
+        selections avoid importing or starting unrelated view runtimes. Each
+        selected view is loaded independently; a failure in one does not block
+        the others. Failed views are recorded in ``errors``.
         """
+        selected = _resolve_views(views)
         manifest = RepoManifest.load(manifest_path)
         ctx = cls(manifest=manifest)
 
-        ctx._load_symbol_graph()
-        ctx._load_bm25()
-        ctx._load_regex_index()
-        ctx._load_zoekt()
-        ctx._load_vector()
+        for view, loader_name in _VIEW_LOADERS:
+            if view in selected:
+                getattr(ctx, loader_name)()
 
         cap_summary = {k: v for k, v in manifest.capabilities.items() if v}
+        loaded = [
+            view for view, _ in _VIEW_LOADERS if getattr(ctx, view, None) is not None
+        ]
         logger.info(
-            "ServerContext ready  repo=%s  commit=%s  capabilities=%s  errors=%s",
+            "ServerContext ready  repo=%s  commit=%s  requested=%s  loaded=%s  "
+            "capabilities=%s  errors=%s",
             manifest.repo_path,
             manifest.commit[:8] if manifest.commit else "N/A",
+            sorted(selected),
+            loaded or "none",
             cap_summary or "none",
             list(ctx.errors) or "none",
         )
@@ -96,6 +156,8 @@ class ServerContext:
         if not entry or not self.manifest.index_is_current("bm25"):
             return
         try:
+            from ..index.sparse_idx import BM25CodeIndexer
+
             indexer = BM25CodeIndexer()
             indexer.load_index(entry.path)
             self.bm25 = indexer

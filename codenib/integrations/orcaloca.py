@@ -63,6 +63,7 @@ ORCALOCA_HISTORY_FIELDS = (
     "file_path",
     "is_skeleton",
 )
+_RUNTIME_VIEWS = frozenset({"symbol_graph"})
 
 _CALLABLE_KINDS = {
     NODE_TYPE_CLASS,
@@ -118,7 +119,7 @@ class OrcaLocaSearchProvider:
     ) -> "OrcaLocaSearchProvider":
         from ..mcp.context import ServerContext
 
-        return cls(ServerContext.load(manifest_path), **kwargs)
+        return cls(ServerContext.load(manifest_path, views=_RUNTIME_VIEWS), **kwargs)
 
     @property
     def context(self) -> Any:

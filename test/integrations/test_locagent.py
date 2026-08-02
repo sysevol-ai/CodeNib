@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -26,12 +27,28 @@ from codenib.integrations.locagent import (
     dispatch_locagent_tool_call,
     get_locagent_tool_schemas,
 )
+from codenib.mcp.context import ServerContext
 from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_CLASS, NODE_TYPE_FUNCTION
 
 
 @pytest.fixture()
 def provider(integration_manifest: Path) -> LocAgentToolProvider:
     return LocAgentToolProvider.from_manifest(integration_manifest)
+
+
+def test_provider_loads_only_graph_and_bm25(integration_manifest: Path) -> None:
+    with patch.object(ServerContext, "load", wraps=ServerContext.load) as load:
+        provider = LocAgentToolProvider.from_manifest(integration_manifest)
+
+    load.assert_called_once_with(
+        integration_manifest,
+        views=frozenset({"symbol_graph", "bm25"}),
+    )
+    assert provider.context.symbol_graph is not None
+    assert provider.context.bm25 is not None
+    assert provider.context.regex_index is None
+    assert provider.context.zoekt is None
+    assert provider.context.vector is None
 
 
 def _schema_contract(schemas: list[dict]) -> dict:

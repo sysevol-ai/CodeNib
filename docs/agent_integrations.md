@@ -23,6 +23,9 @@ prompt, and budget contract; it is not a general quality claim.
 Optional upstream packages are required only for policy execution. Provider
 imports and standalone provider examples remain dependency-free. Exact pinned
 revisions, fidelity limits, commands, and measured evidence follow below.
+Provider startup also selects only its declared runtime views: LocAgent loads
+the symbol graph and BM25, while OrcaLoca loads only the symbol graph. Dense and
+Zoekt runtimes are not imported or started for these contracts.
 CodeNib's graph providers can represent additional languages, but this matrix
 does not extend a Python-scoped upstream policy or native comparator beyond its
 validated domain.

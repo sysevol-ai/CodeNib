@@ -8,6 +8,7 @@ import ast
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -22,11 +23,27 @@ from codenib.integrations.orcaloca import (
     OrcaLocaSearchProvider,
     make_orcaloca_search_manager_factory,
 )
+from codenib.mcp.context import ServerContext
 
 
 @pytest.fixture()
 def provider(integration_manifest: Path) -> OrcaLocaSearchProvider:
     return OrcaLocaSearchProvider.from_manifest(integration_manifest)
+
+
+def test_provider_loads_only_graph(integration_manifest: Path) -> None:
+    with patch.object(ServerContext, "load", wraps=ServerContext.load) as load:
+        provider = OrcaLocaSearchProvider.from_manifest(integration_manifest)
+
+    load.assert_called_once_with(
+        integration_manifest,
+        views=frozenset({"symbol_graph"}),
+    )
+    assert provider.context.symbol_graph is not None
+    assert provider.context.bm25 is None
+    assert provider.context.regex_index is None
+    assert provider.context.zoekt is None
+    assert provider.context.vector is None
 
 
 def _tool_contract(provider: OrcaLocaSearchProvider) -> dict:

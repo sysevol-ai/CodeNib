@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from codenib.compiler.manifest import IndexEntry, RepoManifest
-from codenib.mcp.context import ServerContext
+from codenib.mcp.context import RUNTIME_VIEW_NAMES, ServerContext
 
 
 @pytest.fixture()
@@ -53,6 +53,62 @@ def manifest_dir(tmp_path: Path) -> Path:
     manifest_path = tmp_path / "repo_manifest.json"
     manifest.save(manifest_path)
     return tmp_path
+
+
+def _record_view_loads(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    calls: list[str] = []
+    for view in ("symbol_graph", "bm25", "regex_index", "zoekt", "vector"):
+        monkeypatch.setattr(
+            ServerContext,
+            f"_load_{view}",
+            lambda _self, view=view: calls.append(view),
+        )
+    return calls
+
+
+def test_load_defaults_to_all_runtime_views(
+    manifest_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_view_loads(monkeypatch)
+
+    ServerContext.load(manifest_dir / "repo_manifest.json")
+
+    assert calls == ["symbol_graph", "bm25", "regex_index", "zoekt", "vector"]
+    assert RUNTIME_VIEW_NAMES == frozenset(calls)
+
+
+def test_load_selects_only_requested_views(
+    manifest_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_view_loads(monkeypatch)
+
+    ServerContext.load(manifest_dir / "repo_manifest.json", views={"bm25"})
+
+    assert calls == ["bm25"]
+
+
+def test_load_expands_runtime_view_dependencies(
+    manifest_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_view_loads(monkeypatch)
+
+    ServerContext.load(manifest_dir / "repo_manifest.json", views={"regex_index"})
+
+    assert calls == ["symbol_graph", "regex_index"]
+
+
+@pytest.mark.parametrize("views", ["bm25", {"unknown"}, {1}])
+def test_load_rejects_invalid_view_selections(
+    manifest_dir: Path,
+    views: object,
+) -> None:
+    expected = ValueError if views == {"unknown"} else TypeError
+
+    with pytest.raises(expected):
+        ServerContext.load(manifest_dir / "repo_manifest.json", views=views)
 
 
 def test_load_with_bm25_only(manifest_dir: Path) -> None:
