@@ -338,7 +338,11 @@ def test_generic_lsp_clear_cache_uses_shared_preservation_contract(
     keeps_graph,
     expected,
 ):
-    indexer = GenericLSPIndexer(tmp_path, language="java")
+    indexer = GenericLSPIndexer(
+        tmp_path,
+        output_dir=tmp_path / "index",
+        language="java",
+    )
     indexer.index_file.write_text("{}", encoding="utf-8")
     indexer.graph_file.write_bytes(b"graph")
 
