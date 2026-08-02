@@ -27,18 +27,27 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 project_root = Path(__file__).resolve().parents[2]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+from codenib.compiler.artifact_quality import (  # noqa: E402
+    ARTIFACT_QUALITY_SCHEMA_VERSION,
+    assess_vector_artifact,
+    required_source_files,
+    write_artifact_quality,
+)
 from codenib.compiler.snapshot_store import ArtifactProfile  # noqa: E402
 from codenib.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
+from codenib.git_snapshot import GitSourceSurface  # noqa: E402
 from codenib.index.embedding import build_hierarchical_vector_store  # noqa: E402
+from codenib.languages import extensions_for_language  # noqa: E402
 from codenib.log_utils import get_logger  # noqa: E402
 from codenib.paths import prebuilt_data_dir  # noqa: E402
 from codenib.profiler import Profiler  # noqa: E402
+from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -377,6 +386,112 @@ def _load_dataset(args):
     )
 
 
+def _vector_artifact_root(root: Path, plan_name: Optional[str]) -> Path:
+    return root / plan_name if plan_name else root
+
+
+def _vector_quality_path(root: Path, embedding_model: str) -> Path:
+    model_suffix = embedding_model.replace("/", "__")
+    return root / f"artifact_quality_{model_suffix}.json"
+
+
+def _artifact_metadata(
+    *,
+    instance: dict[str, Any],
+    languages: List[str],
+    build_levels: List[str],
+    surface: GitSourceSurface,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return {
+        "repo": instance["repo"],
+        "commit": surface.commit,
+        "tree": surface.tree,
+        **_artifact_configuration(
+            languages=languages,
+            build_levels=build_levels,
+            args=args,
+        ),
+    }
+
+
+def _artifact_configuration(
+    *,
+    languages: List[str],
+    build_levels: List[str],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return {
+        "languages": sorted(languages),
+        "build_levels": sorted(build_levels),
+        "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+        "chunking": {
+            "l0_skeleton": True,
+            "max_lines_per_chunk": args.max_lines_per_chunk,
+        },
+        "embedding": {
+            "provider": args.embedding_provider,
+            "dimension": args.embedding_dimension,
+            "index_type": args.index_type,
+            "index_metric": args.index_metric,
+            "ivf_nlist": args.ivf_nlist,
+            "ivf_nprobe": args.ivf_nprobe,
+            "max_seq_length": args.max_seq_length,
+        },
+    }
+
+
+def _required_l0_files(
+    instance: dict[str, Any], languages: List[str]
+) -> tuple[str, ...]:
+    extensions = set()
+    for language in languages:
+        extensions.update(extensions_for_language(language, "chunker"))
+    return required_source_files(instance, extensions)
+
+
+def _quality_report_is_reusable(
+    root: Path,
+    *,
+    embedding_model: str,
+    instance: dict[str, Any],
+    expected_configuration: Optional[dict[str, Any]] = None,
+) -> bool:
+    """Fast parent-process check; the child repeats the complete gate."""
+
+    quality_path = _vector_quality_path(root, embedding_model)
+    config_path = root / f"config_{embedding_model.replace('/', '__')}.json"
+    try:
+        quality = json.loads(quality_path.read_text(encoding="utf-8"))
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    artifact = config.get("artifact") or {}
+    expected_commit = str(instance.get("base_commit") or "").lower()
+    actual_commit = str(artifact.get("commit") or "").lower()
+    commit_matches = bool(
+        expected_commit
+        and actual_commit
+        and (
+            expected_commit == actual_commit
+            or actual_commit.startswith(expected_commit)
+            or expected_commit.startswith(actual_commit)
+        )
+    )
+    configuration_matches = all(
+        artifact.get(key) == value
+        for key, value in (expected_configuration or {}).items()
+    )
+    return bool(
+        quality.get("schema_version") == ARTIFACT_QUALITY_SCHEMA_VERSION
+        and quality.get("passed")
+        and quality.get("artifact") == artifact
+        and artifact.get("repo") == instance.get("repo")
+        and commit_matches
+        and configuration_matches
+    )
+
+
 def build_embeddings(args):
     """Build hierarchical embedding indices for dataset instances."""
 
@@ -385,7 +500,6 @@ def build_embeddings(args):
     # Load dataset
     dataset_obj = _load_dataset(args)
     dataset_instances = dataset_obj.load()
-
     if len(dataset_instances) == 0:
         raise ValueError(
             f"No instances found in {args.dataset or _DATASET_DEFAULTS[args.dataset_class]}"
@@ -410,6 +524,10 @@ def build_embeddings(args):
     profile_output_dir.mkdir(parents=True, exist_ok=True)
     if args.profile_dir:
         logger.info(f"Profiler summaries will be stored in: {profile_output_dir}")
+
+    failures: list[str] = []
+    succeeded = 0
+    skipped = 0
 
     # Process each instance
     for idx, instance in enumerate(dataset_instances):
@@ -480,17 +598,51 @@ def build_embeddings(args):
             logger.info(f"Target directory: {instance_final_dir}")
             logger.info(f"Languages: {instance_languages}")
 
-            # Check if embedding already exists (model-specific config)
+            surface = GitSourceSurface.load(repo_path, instance["base_commit"])
+            artifact_metadata = _artifact_metadata(
+                instance=instance,
+                languages=instance_languages,
+                build_levels=build_levels,
+                surface=surface,
+                args=args,
+            )
+            required_l0 = (
+                _required_l0_files(instance, instance_languages)
+                if "l0" in build_levels
+                else ()
+            )
+            artifact_root = _vector_artifact_root(instance_final_dir, args.plan_name)
+
+            # Reuse only artifacts that pass identity, file, and coverage checks.
             model_suffix = args.embedding_model.replace("/", "__")
-            config_file = instance_final_dir / f"config_{model_suffix}.json"
-            if config_file.exists() and not args.force_rebuild:
+            config_file = artifact_root / f"config_{model_suffix}.json"
+            existing_quality = assess_vector_artifact(
+                artifact_root,
+                embedding_model=args.embedding_model,
+                build_levels=build_levels,
+                surface=surface,
+                expected_artifact=artifact_metadata,
+                required_l0_files=required_l0,
+            )
+            if existing_quality["passed"] and not args.force_rebuild:
                 logger.info(
-                    f"Embedding already exists at {instance_final_dir}, skipping..."
+                    "Embedding already exists and passed quality gates at %s; skipping",
+                    artifact_root,
                 )
+                write_artifact_quality(
+                    _vector_quality_path(artifact_root, args.embedding_model),
+                    existing_quality,
+                )
+                skipped += 1
                 continue
             elif config_file.exists() and args.force_rebuild:
                 logger.info(
                     "Embedding already exists but force-rebuild is enabled, rebuilding..."
+                )
+            elif config_file.exists():
+                logger.warning(
+                    "Existing embedding failed quality gates (%s); rebuilding",
+                    ", ".join(existing_quality["failure_names"]),
                 )
 
             embedding_kwargs = {}
@@ -520,7 +672,24 @@ def build_embeddings(args):
                     ivf_nlist=args.ivf_nlist,
                     ivf_nprobe=args.ivf_nprobe,
                     profiler=instance_profiler,
-                    force_rebuild=args.force_rebuild,
+                    force_rebuild=args.force_rebuild or config_file.exists(),
+                    artifact_metadata=artifact_metadata,
+                )
+
+            artifact_quality = assess_vector_artifact(
+                artifact_root,
+                embedding_model=args.embedding_model,
+                build_levels=build_levels,
+                surface=surface,
+                expected_artifact=artifact_metadata,
+                required_l0_files=required_l0,
+            )
+            quality_path = _vector_quality_path(artifact_root, args.embedding_model)
+            write_artifact_quality(quality_path, artifact_quality)
+            if not artifact_quality["passed"]:
+                raise RuntimeError(
+                    "vector artifact quality failed: "
+                    + ", ".join(artifact_quality["failure_names"])
                 )
 
             # Save profiler report
@@ -579,12 +748,14 @@ def build_embeddings(args):
                 f"✓ Successfully built hierarchical embedding for {instance_id}"
             )
             logger.info(f"  - Saved to: {instance_final_dir}")
+            succeeded += 1
 
         except Exception as e:
             logger.error(f"✗ Failed to process {instance_id}: {e}")
             import traceback
 
             logger.error(traceback.format_exc())
+            failures.append(instance_id)
         finally:
             if vector_store is not None:
                 vector_store.close()
@@ -599,10 +770,21 @@ def build_embeddings(args):
                 pass
     logger.info(f"\n{'='*80}")
     logger.info("Hierarchical embedding build complete!")
-    logger.info(f"Processed {len(dataset_instances)} instance(s)")
+    logger.info(
+        "Processed %d instance(s): %d built, %d reused, %d failed",
+        len(dataset_instances),
+        succeeded,
+        skipped,
+        len(failures),
+    )
     if args.enable_profiler or args.profile_dir:
         logger.info(f"Profile logs stored in: {profile_output_dir}")
     logger.info(f"{'='*80}")
+    if failures:
+        raise RuntimeError(
+            "Embedding build failed for "
+            f"{len(failures)} instance(s): {', '.join(failures)}"
+        )
 
 
 def build_embeddings_isolated(args):
@@ -619,6 +801,7 @@ def build_embeddings_isolated(args):
 
     dataset_obj = _load_dataset(args)
     dataset_instances = dataset_obj.load()
+    repo_languages = _load_repo_language_map(args.multilingual_repo_language_csv)
 
     if len(dataset_instances) == 0:
         raise ValueError(
@@ -658,13 +841,29 @@ def build_embeddings_isolated(args):
             f"{'='*80}"
         )
 
-        # Check if already built (mirrors the skip logic in build_embeddings)
+        # Trust only artifacts carrying a passing model-specific quality report.
         instance_dir_name = instance_id.replace("/", "__")
         instance_final_dir = Path(args.storage_dir) / instance_dir_name
-        model_suffix = args.embedding_model.replace("/", "__")
-        config_file = instance_final_dir / f"config_{model_suffix}.json"
-        if config_file.exists() and not args.force_rebuild:
-            logger.info(f"  Already exists, skipping: {config_file}")
+        artifact_root = _vector_artifact_root(instance_final_dir, args.plan_name)
+        instance_languages = _resolve_languages(
+            dict(instance),
+            args.languages,
+            repo_languages,
+        )
+        expected_configuration = _artifact_configuration(
+            languages=instance_languages,
+            build_levels=[level.lower() for level in args.build_levels],
+            args=args,
+        )
+        if not args.force_rebuild and _quality_report_is_reusable(
+            artifact_root,
+            embedding_model=args.embedding_model,
+            instance=dict(instance),
+            expected_configuration=expected_configuration,
+        ):
+            logger.info(
+                "  Existing artifact passed quality gates; skipping: %s", artifact_root
+            )
             skipped += 1
             continue
 

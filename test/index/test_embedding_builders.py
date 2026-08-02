@@ -52,8 +52,10 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
         embedding_provider="huggingface",
         embedding_dimension=2,
         embedding=embedding,
+        artifact_metadata={"commit": "a" * 40},
         force_rebuild=True,
     )
 
     assert captured["embedding"] is embedding
+    assert captured["artifact_metadata"] == {"commit": "a" * 40}
     assert result.l2_documents

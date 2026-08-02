@@ -31,6 +31,7 @@ DATASET="${DATASET:-fishmingyu/codeminer-base-dataset}"
 SPLIT="${SPLIT:-test}"
 FILTER="${FILTER:-.*}"
 PROFILE_TAG="${PROFILE_TAG:-codenib_base_${SPLIT}}"
+ARTIFACT_LAYOUT="${ARTIFACT_LAYOUT:-instance}"
 
 # model:dimension:batch_size:fallback_batch_size:max_seq_length
 # Batch sizes and max_seq_length tuned for H100 80GB without flash-attn.
@@ -54,6 +55,7 @@ MODELS=(
 )
 
 mkdir -p "${STORAGE_DIR}"
+FAILED_MODELS=()
 
 for entry in "${MODELS[@]}"; do
   IFS=':' read -r MODEL DIM BATCH FALLBACK_BATCH MAX_SEQ <<< "${entry}"
@@ -68,12 +70,14 @@ for entry in "${MODELS[@]}"; do
   echo "Building embeddings: ${MODEL} (dim=${DIM}, batch=${BATCH}, max_seq=${MAX_SEQ})"
   echo "  dataset=${DATASET}  split=${SPLIT}  filter=${FILTER}"
   echo "================================================================"
+  PRIMARY_STATUS=0
   python scripts/embeddings/build_embeddings.py \
     --dataset-class codenib_base \
     --dataset "${DATASET}" \
     --split "${SPLIT}" \
     --filter-instance "${FILTER}" \
     --storage-dir "${STORAGE_DIR}" \
+    --artifact-layout "${ARTIFACT_LAYOUT}" \
     --enable-profiler \
     --profile-tag "${PROFILE_TAG}" \
     --embedding-model "${MODEL}" \
@@ -83,7 +87,7 @@ for entry in "${MODELS[@]}"; do
     --trust-remote-code \
     --isolate-instances \
     ${SEQ_FLAG} \
-    "$@" || true
+    "$@" || PRIMARY_STATUS=$?
 
   # Retry failed instances with a smaller batch size.
   # Do NOT forward --force-rebuild here: we only want to retry instances
@@ -98,12 +102,14 @@ for entry in "${MODELS[@]}"; do
     echo "----------------------------------------------------------------"
     echo "Retrying with fallback batch=${FALLBACK_BATCH} for any failures"
     echo "----------------------------------------------------------------"
+    RETRY_STATUS=0
     python scripts/embeddings/build_embeddings.py \
       --dataset-class codenib_base \
       --dataset "${DATASET}" \
       --split "${SPLIT}" \
       --filter-instance "${FILTER}" \
       --storage-dir "${STORAGE_DIR}" \
+      --artifact-layout "${ARTIFACT_LAYOUT}" \
       --enable-profiler \
       --profile-tag "${PROFILE_TAG}" \
       --embedding-model "${MODEL}" \
@@ -113,10 +119,19 @@ for entry in "${MODELS[@]}"; do
       --trust-remote-code \
       --isolate-instances \
       ${SEQ_FLAG} \
-      "${RETRY_ARGS[@]}" || true
+      "${RETRY_ARGS[@]}" || RETRY_STATUS=$?
+    if [ "${RETRY_STATUS}" -ne 0 ]; then
+      FAILED_MODELS+=("${MODEL}")
+    fi
+  elif [ "${PRIMARY_STATUS}" -ne 0 ]; then
+    FAILED_MODELS+=("${MODEL}")
   fi
 done
 
 echo ""
 echo "Done. Embeddings stored under ${STORAGE_DIR}"
 echo "Profile logs stored under ${STORAGE_DIR}/profile_log"
+if [ "${#FAILED_MODELS[@]}" -ne 0 ]; then
+  printf 'Failed models: %s\n' "${FAILED_MODELS[*]}" >&2
+  exit 1
+fi

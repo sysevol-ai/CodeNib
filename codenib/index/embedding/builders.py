@@ -8,7 +8,7 @@
 
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ...code_chunker import CodeChunker, RepoChunkingConfig
 from ...log_utils import get_logger
@@ -44,6 +44,7 @@ def build_hierarchical_vector_store(
     ivf_nprobe: int = 8,
     profiler: Optional[Profiler] = None,
     force_rebuild: bool = False,
+    artifact_metadata: Optional[Dict[str, Any]] = None,
 ) -> CodeVectorStore:
     """Build (or load) a hierarchical vector store (L0/L2) for a repository.
 
@@ -76,6 +77,7 @@ def build_hierarchical_vector_store(
                 store_path=str(store_path),
                 profiler=profiler,
                 embedding=embedding,
+                artifact_metadata=artifact_metadata,
                 **(embedding_kwargs or {}),
             )
             vector_store.load(str(store_path))
@@ -163,6 +165,7 @@ def build_hierarchical_vector_store(
         store_path=str(store_path),
         profiler=profiler,
         embedding=embedding,
+        artifact_metadata=artifact_metadata,
         **(embedding_kwargs or {}),
     )
 

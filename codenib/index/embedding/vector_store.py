@@ -242,6 +242,7 @@ class CodeVectorStore:
         store_path: Optional[str] = None,
         profiler: Optional[Profiler] = None,
         embedding: Optional[Any] = None,
+        artifact_metadata: Optional[Dict[str, Any]] = None,
         **embedding_kwargs,
     ):
         """
@@ -265,6 +266,8 @@ class CodeVectorStore:
             embedding: A pre-built embedding wrapper to reuse. When several
                 stores share one model (e.g. one per repo), pass the same
                 instance so the model is loaded onto the GPU only once.
+            artifact_metadata: Optional immutable source/build identity persisted
+                with the top-level configuration.
             **embedding_kwargs: Additional arguments for embedding model
         """
         self.embedding_model = embedding_model
@@ -284,6 +287,7 @@ class CodeVectorStore:
         self.ivf_nprobe = max(1, int(ivf_nprobe))
         self.store_path = Path(store_path) if store_path else None
         self.profiler = profiler
+        self.artifact_metadata = dict(artifact_metadata or {})
 
         # Initialize the embedding model — or reuse a shared one so the same
         # model isn't loaded onto the GPU once per store.
@@ -963,6 +967,8 @@ class CodeVectorStore:
             "l0_documents": len(self.l0_documents),
             "l2_documents": len(self.l2_documents),
         }
+        if self.artifact_metadata:
+            config["artifact"] = self.artifact_metadata
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
@@ -1041,6 +1047,9 @@ class CodeVectorStore:
                     saved_metric,
                 )
                 self.index_metric = saved_metric
+            saved_artifact = config.get("artifact")
+            if isinstance(saved_artifact, dict):
+                self.artifact_metadata = dict(saved_artifact)
 
         # Load L0
         l0_path = load_path / "l0"
