@@ -390,3 +390,11 @@ The OrcaLoca comparison covers its search policy with an empty
 experiment. File Match and Function Match use golden-patch labels and remain
 separate from the common ranked file/symbol metrics. Legacy result cells may be
 reused, but the summary reports their missing provenance explicitly.
+
+Provider semantics and model-run cost are separate gates. The pinned upstream
+probe and exact tool-output replay establish deterministic provider
+compatibility. The paired model runner preserves upstream sampling defaults
+(including OrcaLoca's `temperature=1.0`) and records one trajectory per cell, so
+its token and wall-time ratios are descriptive smoke data, not evidence of a
+performance improvement. A performance comparison requires repeated paired
+trials or an endpoint with a documented deterministic sampling contract.

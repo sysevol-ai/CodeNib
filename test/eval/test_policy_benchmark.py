@@ -117,6 +117,16 @@ def test_score_command_enforces_the_requested_cell_denominator(tmp_path: Path) -
     assert complete["paired_summary"][
         "codenib_total_token_reduction_fraction_median"
     ] == pytest.approx(0.2)
+    assert complete["comparison_scope"] == {
+        "provider_compatibility": "golden-patch localization outcomes",
+        "token_and_time_statistics": "single-trajectory descriptive statistics",
+        "performance_inference_supported": False,
+        "reason": (
+            "The runner preserves the upstream sampling policy and does not "
+            "collect repeated trials. Use deterministic tool-output replay for "
+            "provider-semantic equivalence."
+        ),
+    }
 
 
 def test_score_command_rejects_mixed_model_aggregation(tmp_path: Path) -> None:

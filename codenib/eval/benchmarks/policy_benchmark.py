@@ -658,6 +658,16 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
     payload = {
         "metric": "OrcaLoca golden-patch subset match",
         "model": model,
+        "comparison_scope": {
+            "provider_compatibility": "golden-patch localization outcomes",
+            "token_and_time_statistics": "single-trajectory descriptive statistics",
+            "performance_inference_supported": False,
+            "reason": (
+                "The runner preserves the upstream sampling policy and does not "
+                "collect repeated trials. Use deterministic tool-output replay for "
+                "provider-semantic equivalence."
+            ),
+        },
         "case_set": {
             "source_sha256": case_set.source_sha256,
             "selection_sha256": selection_sha256,
