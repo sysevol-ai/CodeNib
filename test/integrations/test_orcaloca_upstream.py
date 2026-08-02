@@ -106,9 +106,9 @@ def _location_tuple(location_info) -> tuple[str, str, int, int, str]:
 
 def test_upstream_contract_and_semantic_locations(
     upstream_modules: SimpleNamespace,
-    integration_manifest: Path,
+    orcaloca_contract_manifest: Path,
 ) -> None:
-    provider = OrcaLocaSearchProvider.from_manifest(integration_manifest)
+    provider = OrcaLocaSearchProvider.from_manifest(orcaloca_contract_manifest)
     upstream_type = upstream_modules.SearchManager
 
     for name in ORCALOCA_TOOL_NAMES:
@@ -206,6 +206,24 @@ def test_upstream_contract_and_semantic_locations(
         assert actual["file_path"] == expected["file_path"]
         assert actual["query_type"] == expected["query_type"]
         assert actual["search_query"] == expected["search_query"]
+
+    for file_path in ("src/service.py", "src/contract.py"):
+        assert provider._direct_get_file_skeleton(
+            file_path
+        ) == upstream._direct_get_file_skeleton(file_path)
+        assert provider._get_file_functions(file_path) == upstream._get_file_functions(
+            file_path
+        )
+    for class_name in (
+        "src/service.py::BillingService",
+        "src/contract.py::Writer",
+    ):
+        assert provider._direct_get_class(class_name) == upstream._direct_get_class(
+            class_name
+        )
+        assert provider._get_class_methods(class_name) == upstream._get_class_methods(
+            class_name
+        )
 
 
 def test_search_worker_decomposition_and_final_location(

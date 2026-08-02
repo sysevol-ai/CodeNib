@@ -26,6 +26,7 @@ from ..types import (
     NODE_TYPE_METHOD,
     NODE_TYPE_SYMBOL,
 )
+from ._orcaloca_python import PythonOutline, PythonSymbol, parse_python_outline
 from ._repository import RepositoryAdapter, RepositoryEntity, RepositoryPathError
 
 ORCALOCA_REVISION = "37db289be2dc3b7432183fe08b3f06becce87c27"
@@ -109,6 +110,7 @@ class OrcaLocaSearchProvider:
         self.max_output_chars = max(2_000, int(max_output_chars))
         self.history: list[dict[str, Any]] = []
         self.history_query_set: set[str] = set()
+        self._python_outline_cache: dict[str, PythonOutline | None] = {}
 
     @classmethod
     def from_manifest(
@@ -156,7 +158,16 @@ class OrcaLocaSearchProvider:
             return False
         if len(self.repository.find_files(query)) == 1:
             return True
-        return len(self.repository.find_entities(query)) == 1
+        return (
+            len(
+                [
+                    entity
+                    for entity in self.repository.find_entities(query)
+                    if self._is_orcaloca_entity(entity)
+                ]
+            )
+            == 1
+        )
 
     def get_distance_between_queries(
         self, query1: str | None, query2: str | None
@@ -174,13 +185,16 @@ class OrcaLocaSearchProvider:
             entity = self.repository.entity_for_file(files[0])
             return self._location_info(entity) if entity else None
         entities = self.repository.find_entities(query)
-        source_backed = [entity for entity in entities if self._has_source(entity)]
+        source_backed = [
+            entity for entity in entities if self._is_orcaloca_entity(entity)
+        ]
         if len(source_backed) != 1:
             return None
         return self._location_info(source_backed[0])
 
     def _get_dependency(self, query: str) -> list[OrcaLocation] | None:
         entities = self.repository.find_entities(query)
+        entities = [entity for entity in entities if self._is_orcaloca_entity(entity)]
         if len(entities) != 1:
             return None
         entity = entities[0]
@@ -192,7 +206,7 @@ class OrcaLocaSearchProvider:
             edge_types=DEPENDENCY_EDGE_TYPES,
         ):
             target = relation.target
-            if target.canonical_name in seen or not self._has_source(target):
+            if target.canonical_name in seen or not self._is_orcaloca_entity(target):
                 continue
             seen.add(target.canonical_name)
             locations.append(self._location(target))
@@ -201,14 +215,16 @@ class OrcaLocaSearchProvider:
             parent is not None
             and parent.kind == NODE_TYPE_CLASS
             and parent.canonical_name not in seen
-            and self._has_source(parent)
+            and self._is_orcaloca_entity(parent)
         ):
             locations.append(self._location(parent))
         return locations
 
     def _get_query_in_file(self, file_path: str, query: str) -> OrcaLocationInfo | None:
         entities = self.repository.find_entities(query, file_path=file_path)
-        source_backed = [entity for entity in entities if self._has_source(entity)]
+        source_backed = [
+            entity for entity in entities if self._is_orcaloca_entity(entity)
+        ]
         if len(source_backed) != 1:
             return None
         return self._location_info(source_backed[0])
@@ -228,7 +244,7 @@ class OrcaLocaSearchProvider:
 
         candidates: list[tuple[int, RepositoryEntity, str]] = []
         for entity in self.repository.entities_in_file(files[0], kinds=_CALLABLE_KINDS):
-            if not self._has_source(entity):
+            if not self._is_orcaloca_entity(entity):
                 continue
             content = self._source(entity)
             if normalized_query in self._normalize_code(content):
@@ -263,14 +279,18 @@ class OrcaLocaSearchProvider:
 
     def _search_callable_kg(self, callable: str) -> OrcaLocationInfo | None:
         entities = self.repository.find_entities(callable, kinds=_CALLABLE_KINDS)
-        source_backed = [entity for entity in entities if self._has_source(entity)]
+        source_backed = [
+            entity for entity in entities if self._is_orcaloca_entity(entity)
+        ]
         if len(source_backed) != 1:
             return None
         return self._location_info(source_backed[0])
 
     def _dfs_get_class(self, class_name: str) -> tuple[OrcaLocation, str] | None:
         classes = self.repository.find_entities(class_name, kinds={NODE_TYPE_CLASS})
-        source_backed = [entity for entity in classes if self._has_source(entity)]
+        source_backed = [
+            entity for entity in classes if self._is_orcaloca_entity(entity)
+        ]
         if len(source_backed) != 1:
             return None
         entity = source_backed[0]
@@ -280,6 +300,7 @@ class OrcaLocaSearchProvider:
         classes = self.repository.find_entities(
             class_node_name, kinds={NODE_TYPE_CLASS}
         )
+        classes = [entity for entity in classes if self._is_orcaloca_entity(entity)]
         if len(classes) != 1:
             return None
         return self._class_skeleton(classes[0])
@@ -288,12 +309,15 @@ class OrcaLocaSearchProvider:
         classes = self.repository.find_entities(
             class_node_name, kinds={NODE_TYPE_CLASS}
         )
+        classes = [entity for entity in classes if self._is_orcaloca_entity(entity)]
         if len(classes) != 1:
             return [], []
         methods = [
             child
             for child in self.repository.children(classes[0])
-            if child.kind in _METHOD_KINDS and self._has_source(child)
+            if child.kind in _METHOD_KINDS
+            and self._is_orcaloca_entity(child)
+            and self._query_type(child) == "method"
         ]
         return (
             [method.orcaloca_id for method in methods],
@@ -309,11 +333,12 @@ class OrcaLocaSearchProvider:
             return [], []
         functions = []
         for child in self.repository.children(file_entity):
-            if child.kind in _METHOD_KINDS and self._has_source(child):
+            query_type = self._query_type(child)
+            if query_type == "function" and self._is_orcaloca_entity(child):
                 functions.append(child)
             elif (
-                child.kind == NODE_TYPE_CLASS
-                and self._has_source(child)
+                query_type == "class"
+                and self._is_orcaloca_entity(child)
                 and self._line_span(child) <= self.class_skeleton_threshold
             ):
                 functions.append(child)
@@ -329,7 +354,7 @@ class OrcaLocaSearchProvider:
                 for entity in self.repository.find_entities(
                     class_name, kinds={NODE_TYPE_CLASS}
                 )
-                if entity.file_path
+                if entity.file_path and self._is_orcaloca_entity(entity)
             }
         )
 
@@ -338,6 +363,7 @@ class OrcaLocaSearchProvider:
 
     def _get_disambiguous_query_type(self, query: str) -> str | None:
         entities = self.repository.find_entities(query, kinds=_CALLABLE_KINDS)
+        entities = [entity for entity in entities if self._is_orcaloca_entity(entity)]
         if not entities:
             return None
         return self._query_type(entities[0])
@@ -354,7 +380,11 @@ class OrcaLocaSearchProvider:
             kinds=_METHOD_KINDS,
             class_name=class_name,
         )
-        methods = [method for method in methods if self._has_source(method)]
+        methods = [
+            method
+            for method in methods
+            if self._is_orcaloca_entity(method) and self._query_type(method) == "method"
+        ]
         return (
             [method.orcaloca_id for method in methods],
             [self._source(method) for method in methods],
@@ -368,6 +398,8 @@ class OrcaLocaSearchProvider:
         )
         locations = []
         for entity in entities:
+            if not self._is_orcaloca_entity(entity):
+                continue
             query_type = self._query_type(entity)
             locations.append(
                 {
@@ -482,7 +514,7 @@ class OrcaLocaSearchProvider:
         classes = self.repository.find_entities(
             class_name, file_path=file_path, kinds={NODE_TYPE_CLASS}
         )
-        classes = [entity for entity in classes if self._has_source(entity)]
+        classes = [entity for entity in classes if self._is_orcaloca_entity(entity)]
         if not classes:
             suffix = f" in {file_path}" if file_path else ""
             return f"Cannot find the class {class_name}{suffix}"
@@ -534,7 +566,11 @@ class OrcaLocaSearchProvider:
             kinds=_METHOD_KINDS,
             class_name=class_name,
         )
-        methods = [entity for entity in methods if self._has_source(entity)]
+        methods = [
+            entity
+            for entity in methods
+            if self._is_orcaloca_entity(entity) and self._query_type(entity) == "method"
+        ]
         if not methods:
             suffix = f" in {file_path}" if file_path else ""
             return f"Cannot find the method {method_name} in {class_name}{suffix}"
@@ -574,7 +610,7 @@ class OrcaLocaSearchProvider:
         entities = self.repository.find_entities(
             query_name, file_path=file_path, kinds=_CALLABLE_KINDS
         )
-        entities = [entity for entity in entities if self._has_source(entity)]
+        entities = [entity for entity in entities if self._is_orcaloca_entity(entity)]
         if not entities:
             suffix = f" in {file_path}" if file_path else ""
             return f"Cannot find the definition of {query_name}{suffix}"
@@ -652,6 +688,8 @@ class OrcaLocaSearchProvider:
         if entity.kind == NODE_TYPE_FILE:
             line_count = max(1, len(self.repository.source_lines(entity.file_path)))
             start_line, end_line = 1, line_count
+        elif symbol := self._python_symbol(entity):
+            start_line, end_line = symbol.start_line, symbol.end_line
         elif entity.start_line is not None and entity.end_line is not None:
             start_line, end_line = entity.start_line + 1, entity.end_line + 1
         else:
@@ -665,8 +703,14 @@ class OrcaLocaSearchProvider:
             end_line=end_line,
         )
 
+    def _query_type(self, entity: RepositoryEntity) -> str:
+        symbol = self._python_symbol(entity)
+        if symbol is not None:
+            return symbol.kind
+        return self._graph_query_type(entity)
+
     @staticmethod
-    def _query_type(entity: RepositoryEntity) -> str:
+    def _graph_query_type(entity: RepositoryEntity) -> str:
         if entity.kind == NODE_TYPE_FILE:
             return "file"
         if entity.kind == NODE_TYPE_CLASS:
@@ -685,17 +729,37 @@ class OrcaLocaSearchProvider:
             )
         )
 
-    @staticmethod
-    def _line_span(entity: RepositoryEntity) -> int:
+    def _is_orcaloca_entity(self, entity: RepositoryEntity) -> bool:
+        if not self._has_source(entity):
+            return False
+        outline = self._python_outline(entity.file_path)
+        if outline is None or entity.kind == NODE_TYPE_FILE:
+            return True
+        return self._python_symbol(entity) is not None
+
+    def _line_span(self, entity: RepositoryEntity) -> int:
+        symbol = self._python_symbol(entity)
+        if symbol is not None:
+            return symbol.end_line - symbol.start_line
         if entity.start_line is None or entity.end_line is None:
             return _NO_PATH
         return entity.end_line - entity.start_line
 
     def _source(self, entity: RepositoryEntity) -> str:
+        if entity.kind == NODE_TYPE_FILE:
+            outline = self._python_outline(entity.file_path)
+            if outline is not None:
+                return outline.source
+        symbol = self._python_symbol(entity)
+        if symbol is not None:
+            return symbol.source
         content, _, _ = self.repository.read_entity(entity)
         return content
 
     def _signature(self, entity: RepositoryEntity) -> str:
+        symbol = self._python_symbol(entity)
+        if symbol is not None:
+            return symbol.signature or entity.simple_name
         if not self._has_source(entity):
             return entity.simple_name
         content, _, _ = self.repository.read_range(
@@ -704,6 +768,23 @@ class OrcaLocaSearchProvider:
         return content.strip() or entity.simple_name
 
     def _class_skeleton(self, entity: RepositoryEntity) -> str:
+        symbol = self._python_symbol(entity)
+        outline = self._python_outline(entity.file_path)
+        if symbol is not None and symbol.kind == "class" and outline is not None:
+            snapshot = (
+                f"Class Signature: {symbol.signature}\n"
+                f"Docstring: {symbol.docstring}\n"
+            )
+            for method in outline.symbols:
+                if method.parent_id != symbol.node_id or method.kind != "method":
+                    continue
+                snapshot += (
+                    f"\nMethod: {method.name}\n"
+                    f"Method Signature: {method.signature}\n"
+                    f"Docstring: {method.docstring}\n"
+                )
+            return snapshot
+
         lines = [f"Class Signature: {self._signature(entity)}"]
         methods = [
             child
@@ -721,6 +802,19 @@ class OrcaLocaSearchProvider:
         return "\n".join(lines)
 
     def _file_skeleton(self, entity: RepositoryEntity) -> str:
+        outline = self._python_outline(entity.file_path)
+        if outline is not None:
+            snapshot = ""
+            for symbol in outline.symbols:
+                if symbol.parent_id != entity.file_path:
+                    continue
+                snapshot += f"\n{symbol.kind.capitalize()}: {symbol.name}\n"
+                if symbol.signature:
+                    snapshot += f"Signature: {symbol.signature}\n"
+                if symbol.docstring:
+                    snapshot += f"Docstring: {symbol.docstring}\n"
+            return snapshot
+
         lines: list[str] = []
         for child in self.repository.children(entity):
             query_type = self._query_type(child)
@@ -734,6 +828,51 @@ class OrcaLocaSearchProvider:
                 ]
             )
         return "\n".join(lines).rstrip()
+
+    def _python_outline(self, file_path: str) -> PythonOutline | None:
+        if Path(file_path).suffix.lower() != ".py":
+            return None
+        if file_path in self._python_outline_cache:
+            return self._python_outline_cache[file_path]
+
+        try:
+            source = self.repository.source_path(file_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            self._python_outline_cache[file_path] = None
+            return None
+
+        outline = parse_python_outline(file_path, source)
+        self._python_outline_cache[file_path] = outline
+        return outline
+
+    def _python_symbol(self, entity: RepositoryEntity) -> PythonSymbol | None:
+        outline = self._python_outline(entity.file_path)
+        if outline is None:
+            return None
+
+        exact = outline.symbol(entity.orcaloca_id)
+        if exact is not None:
+            return exact
+
+        candidates = [
+            symbol
+            for symbol in outline.symbols
+            if symbol.name == entity.simple_name
+            and symbol.class_name == entity.class_name
+        ]
+        if not candidates:
+            return None
+        if entity.start_line is None:
+            return candidates[0]
+        graph_start = entity.start_line + 1
+        return min(
+            candidates,
+            key=lambda symbol: (
+                abs(symbol.start_line - graph_start),
+                symbol.end_line - symbol.start_line,
+                symbol.node_id,
+            ),
+        )
 
     @staticmethod
     def _normalize_code(value: str) -> str:
@@ -804,7 +943,7 @@ def orcaloca_bug_location(
 ) -> dict[str, str]:
     """Translate one CodeNib entity to OrcaLoca's final location schema."""
 
-    query_type = OrcaLocaSearchProvider._query_type(entity)
+    query_type = OrcaLocaSearchProvider._graph_query_type(entity)
     return {
         "file_path": entity.file_path,
         "class_name": (

@@ -251,9 +251,12 @@ manifest-backed `ServerContext`.
 Compatibility is pinned to OrcaLoca revision
 `37db289be2dc3b7432183fe08b3f06becce87c27`. The adapter preserves its
 repository-relative `file::Class::method` identities, 1-based locations, and
-prompt-visible markers. Prose and ambiguous-result tie ordering may differ;
-semantic file, class, method, and source ranges are the compatibility
-boundary.
+prompt-visible markers. CodeNib's graph supplies identity and relations; a
+lazy, non-executing parse of the manifest-bound Python source restores the
+pinned policy's symbol kinds, signatures, docstrings, skeletons, and source
+ranges. Python symbols that the pinned visitor does not recognize are not
+exposed merely because CodeNib's graph is richer. Prose and ambiguous-result
+tie ordering may differ outside this semantic output boundary.
 
 ### Evaluation Metrics
 

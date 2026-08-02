@@ -22,6 +22,7 @@ from codenib.types import (
     NODE_TYPE_FILE,
     NODE_TYPE_FUNCTION,
     NODE_TYPE_METHOD,
+    NODE_TYPE_SYMBOL,
     ROOT_NODE,
 )
 
@@ -125,7 +126,6 @@ def build_integration_graph(repo_root: Path) -> CodeGraph:
         start_line=0,
         end_line=1,
     )
-
     graph._add_edge(ROOT_NODE, "src", EDGE_TYPE_CONTAIN)
     graph._add_edge(ROOT_NODE, ".github", EDGE_TYPE_CONTAIN)
     graph._add_edge(".github", ".github/workflows", EDGE_TYPE_CONTAIN)
@@ -205,3 +205,106 @@ def integration_manifest(tmp_path: Path) -> Path:
     manifest_path = tmp_path / "repo_manifest.json"
     manifest.save(manifest_path)
     return manifest_path
+
+
+@pytest.fixture()
+def orcaloca_contract_manifest(integration_manifest: Path) -> Path:
+    """Add Orca-only AST edge cases without perturbing shared BM25 fixtures."""
+
+    manifest = RepoManifest.load(integration_manifest)
+    repo_root = Path(manifest.repo_path)
+    contract_path = repo_root / "src" / "contract.py"
+    contract_path.write_text(
+        "MIGRATION_TEMPLATE = (\n"
+        '    "migration"\n'
+        ")\n"
+        "\n"
+        "class Writer:\n"
+        '    """Render migrations."""\n'
+        "\n"
+        "    @classmethod\n"
+        "    def as_string(cls, value):\n"
+        '        """Render one value."""\n'
+        "        return value\n"
+        "\n"
+        "def normalize(value):\n"
+        '    """Normalize one value."""\n'
+        "    return value\n"
+        "\n"
+        'IGNORED_ANNOTATION: str = "not indexed upstream"\n',
+        encoding="utf-8",
+    )
+
+    graph_path = Path(manifest.indexes["symbol_graph"].path)
+    graph = CodeGraph.load_graph(str(graph_path))
+    _add_vertex(graph, "src/contract.py", kind=NODE_TYPE_FILE)
+    _add_vertex(
+        graph,
+        "scip:contract:MIGRATION_TEMPLATE",
+        kind=NODE_TYPE_SYMBOL,
+        file_path="src/contract.py",
+        unified_name="src/contract.py:MIGRATION_TEMPLATE",
+        start_line=0,
+        end_line=2,
+    )
+    _add_vertex(
+        graph,
+        "scip:contract:Writer",
+        kind=NODE_TYPE_CLASS,
+        file_path="src/contract.py",
+        unified_name="src/contract.py:Writer",
+        start_line=4,
+        end_line=10,
+    )
+    _add_vertex(
+        graph,
+        "scip:contract:Writer.as_string",
+        kind=NODE_TYPE_METHOD,
+        file_path="src/contract.py",
+        unified_name="src/contract.py:Writer.as_string()",
+        start_line=7,
+        end_line=10,
+    )
+    _add_vertex(
+        graph,
+        "scip:contract:normalize",
+        kind=NODE_TYPE_FUNCTION,
+        file_path="src/contract.py",
+        unified_name="src/contract.py:normalize()",
+        start_line=12,
+        end_line=14,
+    )
+    _add_vertex(
+        graph,
+        "scip:contract:IGNORED_ANNOTATION",
+        kind=NODE_TYPE_SYMBOL,
+        file_path="src/contract.py",
+        unified_name="src/contract.py:IGNORED_ANNOTATION",
+        start_line=16,
+        end_line=16,
+    )
+    graph._add_edge("src", "src/contract.py", EDGE_TYPE_CONTAIN)
+    graph._add_edge(
+        "src/contract.py",
+        "scip:contract:MIGRATION_TEMPLATE",
+        EDGE_TYPE_CONTAIN,
+    )
+    graph._add_edge("src/contract.py", "scip:contract:Writer", EDGE_TYPE_CONTAIN)
+    graph._add_edge(
+        "scip:contract:Writer",
+        "scip:contract:Writer.as_string",
+        EDGE_TYPE_CONTAIN,
+    )
+    graph._add_edge(
+        "src/contract.py",
+        "scip:contract:normalize",
+        EDGE_TYPE_CONTAIN,
+    )
+    graph._add_edge(
+        "src/contract.py",
+        "scip:contract:IGNORED_ANNOTATION",
+        EDGE_TYPE_CONTAIN,
+    )
+    graph.build_range_indexes()
+    graph.save_graph(str(graph_path))
+    return integration_manifest

@@ -183,6 +183,53 @@ def test_file_and_method_decomposition_hooks(
     assert provider._get_disambiguous_files("service.py") == ["src/service.py"]
 
 
+def test_python_metadata_matches_pinned_orcaloca_ast_contract(
+    orcaloca_contract_manifest: Path,
+) -> None:
+    provider = OrcaLocaSearchProvider.from_manifest(orcaloca_contract_manifest)
+    global_info = provider._get_exact_loc("src/contract.py::MIGRATION_TEMPLATE")
+    method_info = provider._get_exact_loc("src/contract.py::Writer::as_string")
+
+    assert global_info is not None
+    assert global_info.type == "global_variable"
+    assert (global_info.loc.start_line, global_info.loc.end_line) == (1, 3)
+    assert method_info is not None
+    assert method_info.type == "method"
+    assert (method_info.loc.start_line, method_info.loc.end_line) == (9, 11)
+
+    assert provider._direct_get_file_skeleton("src/contract.py") == (
+        "\nGlobal_variable: MIGRATION_TEMPLATE\n"
+        "Signature: MIGRATION_TEMPLATE\n"
+        "\nClass: Writer\n"
+        "Signature: Writer\n"
+        "Docstring: Render migrations.\n"
+        "\nFunction: normalize\n"
+        "Signature: normalize(value)\n"
+        "Docstring: Normalize one value.\n"
+    )
+    assert provider._direct_get_class("src/contract.py::Writer") == (
+        "Class Signature: Writer\n"
+        "Docstring: Render migrations.\n"
+        "\nMethod: as_string\n"
+        "Method Signature: as_string(cls, value)\n"
+        "Docstring: Render one value.\n"
+    )
+
+    functions, sources = provider._get_file_functions("src/contract.py")
+    methods, method_sources = provider._get_class_methods("src/contract.py::Writer")
+    assert functions == ["src/contract.py::Writer", "src/contract.py::normalize"]
+    assert "MIGRATION_TEMPLATE" not in functions
+    assert not provider.get_node_existence("src/contract.py::IGNORED_ANNOTATION")
+    assert provider._get_exact_loc("src/contract.py::IGNORED_ANNOTATION") is None
+    assert methods == ["src/contract.py::Writer::as_string"]
+    assert sources[0].startswith("class Writer:")
+    assert method_sources == [
+        "    def as_string(cls, value):\n"
+        '        """Render one value."""\n'
+        "        return value\n"
+    ]
+
+
 def test_graph_identity_distance_and_duplicate_tracking(
     provider: OrcaLocaSearchProvider,
 ) -> None:
