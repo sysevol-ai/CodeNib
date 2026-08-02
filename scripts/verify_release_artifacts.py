@@ -71,7 +71,12 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
     required = {
         "codenib/__init__.py",
         "codenib/__main__.py",
+        "codenib/agent/tools/sandbox.py",
         "codenib/cli.py",
+        "codenib/sandbox/__init__.py",
+        "codenib/sandbox/docker.py",
+        "codenib/sandbox/protocol.py",
+        "codenib/sandbox/types.py",
         "codenib/web/frontend/index.html",
         "codenib/web/frontend/codenib-icon.svg",
         "codenib/web/frontend/runtime-config.js",
