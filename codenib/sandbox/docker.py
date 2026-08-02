@@ -33,10 +33,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Collection, Dict, Mapping, Sequence, TypedDict
 
-from ..repository_filters import (
-    DEFAULT_IGNORED_DIRS,
-    REPOSITORY_FILTER_POLICY_VERSION,
-)
+from ..repository_filters import DEFAULT_IGNORED_DIRS, REPOSITORY_FILTER_POLICY_VERSION
 from ..source_fingerprint import SOURCE_FINGERPRINT_VERSION
 from .protocol import (
     SandboxClosedError,
@@ -70,7 +67,7 @@ _SECRET_IMAGE_ENV_RE = re.compile(
 _COPY_TRUSTED_SOURCE_SCRIPT = r"""
 set -eu
 tar -C /source --exclude=.git --exclude='*/.git' -cf - . \
-  | tar -C /workspace -xf -
+  | tar -C /workspace --no-same-owner -xf -
 chown -R 65532:65532 /workspace
 """.strip()
 
@@ -87,13 +84,13 @@ export GIT_ALLOW_PROTOCOL=
 git --git-dir=/repository.git -c core.hooksPath=/dev/null \
   -c core.attributesFile=/dev/null \
   archive --format=tar --output=/tmp/source.tar "$1"
-tar -C /workspace -xf /tmp/source.tar
+tar -C /workspace --no-same-owner -xf /tmp/source.tar
 chown -R 65532:65532 /workspace
 """.strip()
 
 _COPY_VOLUME_SCRIPT = r"""
 set -eu
-tar -C /baseline -cf - . | tar -C /workspace -xf -
+tar -C /baseline -cf - . | tar -C /workspace --no-same-owner -xf -
 chown -R 65532:65532 /workspace
 """.strip()
 

@@ -218,6 +218,10 @@ def test_create_replays_default_security_flags(monkeypatch, tmp_path):
         assert "/var/run/docker.sock" not in joined
         assert all(kwargs.get("shell") is False for _, kwargs in cli.calls)
 
+    copy_calls = [call for call in run_calls if "tar -C /workspace" in " ".join(call)]
+    assert len(copy_calls) == 2
+    assert all("--no-same-owner" in " ".join(call) for call in copy_calls)
+
     session.close()
 
 

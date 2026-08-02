@@ -35,6 +35,7 @@ def test_rootless_docker_session_end_to_end(tmp_path):
     image = os.environ.get("CODENIB_TEST_DOCKER_IMAGE")
     if not image:
         pytest.skip("CODENIB_TEST_DOCKER_IMAGE is not configured")
+    docker_host = os.environ.get("CODENIB_TEST_DOCKER_HOST")
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -57,6 +58,7 @@ def test_rootless_docker_session_end_to_end(tmp_path):
 
     provider = DockerSandboxProvider(
         allowed_images={image},
+        docker_host=docker_host,
         work_root=tmp_path / "audit",
         retain_audit_logs=True,
     )
@@ -74,6 +76,10 @@ def test_rootless_docker_session_end_to_end(tmp_path):
             ExecRequest(argv=("/bin/sh", "-lc", "printf 'after\\n' > hello.txt"))
         )
         assert result.succeeded
+        executable_result = session.execute(
+            ExecRequest(argv=("/bin/sh", "-lc", "test -x scripts/run.sh"))
+        )
+        assert executable_result.succeeded
         assert session.read_file("hello.txt") == b"after\n"
         with pytest.raises(SandboxError):
             session.read_file(".env/ignored-secret.txt")
