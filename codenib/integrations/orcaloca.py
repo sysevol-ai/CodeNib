@@ -631,11 +631,21 @@ class OrcaLocaSearchProvider:
 
         entity = entities[0]
         query_type = self._query_type(entity)
-        is_skeleton = (
-            query_type == "class"
-            and self._line_span(entity) > self.class_skeleton_threshold
-        )
-        content = self._class_skeleton(entity) if is_skeleton else self._source(entity)
+        if query_type == "class":
+            content = self.search_class(query_name, file_path)
+            is_skeleton = self._line_span(entity) > self.class_skeleton_threshold
+            self._record(
+                action="search_callable",
+                search_input=search_input,
+                query=entity.orcaloca_id,
+                content=content,
+                query_type=query_type,
+                file_path=entity.file_path,
+                is_skeleton=is_skeleton,
+            )
+            return content
+
+        content = self._source(entity)
         self._record(
             action="search_callable",
             search_input=search_input,
@@ -643,12 +653,11 @@ class OrcaLocaSearchProvider:
             content=content,
             query_type=query_type,
             file_path=entity.file_path,
-            is_skeleton=is_skeleton,
+            is_skeleton=False,
         )
-        marker = "Class Skeleton" if is_skeleton else "Code Snippet"
         return self._bounded(
             f"File Path: {entity.file_path} \n"
-            f"Query Type: {query_type} \n{marker}: \n{content}"
+            f"Query Type: {query_type} \nCode Snippet: \n{content}"
         )
 
     # ------------------------------------------------------------------

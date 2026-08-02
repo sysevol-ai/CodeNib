@@ -163,6 +163,7 @@ def test_upstream_contract_and_semantic_locations(
             "BillingService", "calculate_tax", "src/service.py"
         ),
         "callable": upstream.search_callable("helper", "src/service.py"),
+        "class_callable": upstream.search_callable("Writer", "src/contract.py"),
     }
     provider_results = {
         "tree": provider.search_file_tree(),
@@ -175,6 +176,7 @@ def test_upstream_contract_and_semantic_locations(
             "BillingService", "calculate_tax", "src/service.py"
         ),
         "callable": provider.search_callable("helper", "src/service.py"),
+        "class_callable": provider.search_callable("Writer", "src/contract.py"),
     }
     markers = {
         "tree": "service.py",
@@ -183,10 +185,12 @@ def test_upstream_contract_and_semantic_locations(
         "class": "File Path: src/service.py",
         "method": "File Path: src/service.py",
         "callable": "File Path: src/service.py",
+        "class_callable": "File Path: src/contract.py",
     }
     for result_name, marker in markers.items():
         assert marker in upstream_results[result_name]
         assert marker in provider_results[result_name]
+    assert provider_results["class_callable"] == upstream_results["class_callable"]
 
     history_keys = (
         ("search_file_contents", "src/service.py"),

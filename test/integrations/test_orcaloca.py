@@ -229,6 +229,16 @@ def test_python_metadata_matches_pinned_orcaloca_ast_contract(
         "        return value\n"
     ]
 
+    callable_result = provider.search_callable("Writer", "src/contract.py")
+    callable_frame = provider.get_frame_from_history(
+        "search_callable", "src/contract.py::Writer"
+    )
+    assert callable_result.startswith(
+        "File Path: src/contract.py \nClass Content: \nclass Writer:"
+    )
+    assert callable_frame is not None
+    assert callable_frame["search_content"] == callable_result
+
 
 def test_graph_identity_distance_and_duplicate_tracking(
     provider: OrcaLocaSearchProvider,
