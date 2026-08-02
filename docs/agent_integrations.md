@@ -27,6 +27,12 @@ CodeNib's graph providers can represent additional languages, but this matrix
 does not extend a Python-scoped upstream policy or native comparator beyond its
 validated domain.
 
+A deterministic CodeNib-only contract fixture additionally exercises the
+LocAgent provider over one TypeScript/Go manifest, including source ranges,
+indexed search, and graph traversal. This checks that the provider boundary is
+language-agnostic; it is not evidence that the pinned Python-only LocAgent or
+OrcaLoca native implementations support those languages.
+
 ## LocAgent And OpenHands
 
 The LocAgent provider implements the three repository functions used by

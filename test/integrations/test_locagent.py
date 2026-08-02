@@ -433,3 +433,28 @@ def test_loading_provider_creates_no_foreign_index_directory(
     after = sorted(path.relative_to(repo_root) for path in repo_root.rglob("*"))
     assert after == before
     assert not (repo_root / "_index_data").exists()
+
+
+def test_provider_contract_is_language_agnostic(
+    multilanguage_integration_manifest: Path,
+) -> None:
+    provider = LocAgentToolProvider.from_manifest(multilanguage_integration_manifest)
+
+    typescript_source = provider.get_entity_contents(["service.ts:calculateTax"])
+    go_source = provider.get_entity_contents(["tax.go:Calculate"])
+    search = provider.search_code_snippets(
+        search_terms=["sales tax amount"],
+        file_path_or_pattern="**/*.ts",
+    )
+    traversal = provider.explore_tree_structure(
+        ["service.ts:calculateTax"],
+        dependency_type_filter=["invokes"],
+        traversal_depth=1,
+    )
+
+    assert "service.ts:calculateTax" in typescript_source
+    assert "1 | export function calculateTax" in typescript_source
+    assert "tax.go:Calculate" in go_source
+    assert "3 | func Calculate" in go_source
+    assert "service.ts:calculateTax" in search
+    assert "invokes -> service.ts:helper" in traversal

@@ -54,6 +54,7 @@ def _add_vertex(
     unified_name: str = "",
     start_line: int | None = None,
     end_line: int | None = None,
+    has_definition: bool | None = None,
 ) -> None:
     attrs: dict[str, Any] = {"type": kind}
     if file_path:
@@ -64,6 +65,8 @@ def _add_vertex(
         attrs["start_line"] = start_line
     if end_line is not None:
         attrs["end_line"] = end_line
+    if has_definition is not None:
+        attrs["has_definition"] = has_definition
     graph._add_vertex(name, attrs)
 
 
@@ -205,6 +208,84 @@ def integration_manifest(tmp_path: Path) -> Path:
     manifest_path = tmp_path / "repo_manifest.json"
     manifest.save(manifest_path)
     return manifest_path
+
+
+@pytest.fixture()
+def multilanguage_integration_manifest(integration_manifest: Path) -> Path:
+    manifest = RepoManifest.load(integration_manifest)
+    repo_root = Path(manifest.repo_path)
+    (repo_root / "service.ts").write_text(
+        "export function calculateTax(amount: number): number {\n"
+        "  return helper(amount);\n"
+        "}\n\n"
+        "export function helper(amount: number): number {\n"
+        "  return amount * 0.08;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (repo_root / "tax.go").write_text(
+        "package tax\n\n"
+        "func Calculate(amount float64) float64 {\n"
+        "    return amount * 0.08\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    graph_path = Path(manifest.indexes["symbol_graph"].path)
+    graph = CodeGraph.load_graph(str(graph_path))
+    _add_vertex(graph, "service.ts", kind=NODE_TYPE_FILE)
+    _add_vertex(graph, "tax.go", kind=NODE_TYPE_FILE)
+    _add_vertex(
+        graph,
+        "scip:ts:calculateTax",
+        kind=NODE_TYPE_FUNCTION,
+        file_path="service.ts",
+        unified_name="service.ts:calculateTax()",
+        start_line=0,
+        end_line=2,
+        has_definition=True,
+    )
+    _add_vertex(
+        graph,
+        "scip:ts:helper",
+        kind=NODE_TYPE_FUNCTION,
+        file_path="service.ts",
+        unified_name="service.ts:helper()",
+        start_line=4,
+        end_line=6,
+        has_definition=True,
+    )
+    _add_vertex(
+        graph,
+        "scip:go:tax.Calculate",
+        kind=NODE_TYPE_FUNCTION,
+        file_path="tax.go",
+        unified_name="tax.go:Calculate()",
+        start_line=2,
+        end_line=4,
+        has_definition=True,
+    )
+    graph._add_edge(ROOT_NODE, "service.ts", EDGE_TYPE_CONTAIN)
+    graph._add_edge(ROOT_NODE, "tax.go", EDGE_TYPE_CONTAIN)
+    graph._add_edge("service.ts", "scip:ts:calculateTax", EDGE_TYPE_CONTAIN)
+    graph._add_edge("service.ts", "scip:ts:helper", EDGE_TYPE_CONTAIN)
+    graph._add_edge("tax.go", "scip:go:tax.Calculate", EDGE_TYPE_CONTAIN)
+    graph._add_edge(
+        "scip:ts:calculateTax",
+        "scip:ts:helper",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="service.ts",
+        anchor_line=1,
+    )
+    graph.build_range_indexes()
+    graph.save_graph(str(graph_path))
+
+    bm25 = BM25CodeIndexer()
+    bm25.build_index_from_graph(graph)
+    bm25.save_index(manifest.indexes["bm25"].path)
+    manifest.languages = ["python", "typescript", "go"]
+    manifest.save(integration_manifest)
+    return integration_manifest
 
 
 @pytest.fixture()
