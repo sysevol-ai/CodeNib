@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from codenib.compiler.manifest import RepoManifest
+from codenib.languages import extension_to_language_map
+from codenib.repository_filters import walk_repository_files
 
 POLICY_RESULT_SCHEMA_VERSION = 1
 POLICY_PROVIDERS = ("native", "codenib")
@@ -35,29 +37,7 @@ _REQUIRED_CASE_FIELDS = {
 }
 _COMMIT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
-_SOURCE_SUFFIXES = frozenset(
-    {
-        ".c",
-        ".cc",
-        ".cpp",
-        ".cs",
-        ".go",
-        ".h",
-        ".hpp",
-        ".java",
-        ".js",
-        ".jsx",
-        ".kt",
-        ".php",
-        ".py",
-        ".rb",
-        ".rs",
-        ".scala",
-        ".swift",
-        ".ts",
-        ".tsx",
-    }
-)
+_SOURCE_SUFFIXES = frozenset(extension_to_language_map("chunker"))
 
 
 def _resolved_path(value: object, base_dir: Path) -> Path:
@@ -714,8 +694,12 @@ class PolicyProvenanceAudit:
 
 def audit_policy_provenance(
     results: Sequence[Mapping[str, Any]],
+    *,
+    source_sha256: str | None = None,
+    selection_sha256: str | None = None,
+    instance_ids: Sequence[str] | None = None,
 ) -> PolicyProvenanceAudit:
-    """Audit additive provenance while allowing honest reuse of legacy cells."""
+    """Audit provenance and, when supplied, its active case-set identity."""
 
     valid: list[PolicyCellKey] = []
     unrecorded: list[PolicyCellKey] = []
@@ -745,6 +729,33 @@ def audit_policy_provenance(
             reason = "provenance provider does not match result"
         elif str(policy.get("agent") or "") != str(result.get("agent") or ""):
             reason = "provenance agent does not match result"
+        elif any(
+            expected is not None
+            for expected in (source_sha256, selection_sha256, instance_ids)
+        ):
+            cases = provenance.get("cases")
+            if not isinstance(cases, Mapping):
+                reason = "provenance cases is not an object"
+            elif (
+                source_sha256 is not None
+                and str(cases.get("source_sha256") or "") != source_sha256
+            ):
+                reason = "provenance case source digest does not match active cases"
+            elif (
+                selection_sha256 is not None
+                and str(cases.get("selection_sha256") or "") != selection_sha256
+            ):
+                reason = "provenance case selection digest does not match active cases"
+            elif instance_ids is not None and (
+                not isinstance(cases.get("instance_ids"), Sequence)
+                or isinstance(cases.get("instance_ids"), (str, bytes))
+                or list(cases["instance_ids"])
+                != [str(instance_id) for instance_id in instance_ids]
+            ):
+                reason = "provenance instance ids do not match active cases"
+            else:
+                valid.append(key)
+                continue
         else:
             valid.append(key)
             continue
@@ -833,10 +844,8 @@ def source_files(repo_path: str | Path) -> tuple[str, ...]:
     root = Path(repo_path).expanduser().resolve()
     files = [
         path.relative_to(root).as_posix()
-        for path in root.rglob("*")
-        if path.is_file()
-        and path.suffix.lower() in _SOURCE_SUFFIXES
-        and ".git" not in path.parts
+        for path in walk_repository_files(root)
+        if path.suffix.lower() in _SOURCE_SUFFIXES
     ]
     return tuple(sorted(files))
 

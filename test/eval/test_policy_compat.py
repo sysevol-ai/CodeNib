@@ -290,6 +290,11 @@ def test_result_loading_validates_identity_and_source_listing(tmp_path: Path) ->
     repo = tmp_path / "repo"
     (repo / "src").mkdir(parents=True)
     (repo / "src/code.py").write_text("VALUE = 1\n", encoding="utf-8")
+    registry_suffixes = (".pyi", ".cxx", ".phtml", ".kts", ".sc", ".lua", ".luau")
+    for suffix in registry_suffixes:
+        (repo / "src" / f"extra{suffix}").write_text("source\n", encoding="utf-8")
+    (repo / "node_modules").mkdir()
+    (repo / "node_modules" / "ignored.py").write_text("source\n", encoding="utf-8")
     (repo / "README.md").write_text("docs\n", encoding="utf-8")
     case = PolicyBenchmarkCase.from_mapping(_case_record(tmp_path))
     native_path = policy_result_path(
@@ -309,7 +314,9 @@ def test_result_loading_validates_identity_and_source_listing(tmp_path: Path) ->
 
     loaded = load_policy_results(tmp_path / "results", agent="locagent", cases=(case,))
     assert len(loaded) == 1
-    assert source_files(repo) == ("src/code.py",)
+    assert source_files(repo) == tuple(
+        sorted(["src/code.py", *(f"src/extra{suffix}" for suffix in registry_suffixes)])
+    )
 
     write_json_atomic(
         native_path,
@@ -360,3 +367,36 @@ def test_provenance_audit_distinguishes_legacy_and_invalid_cells() -> None:
     assert record["invalid_cells"][0]["reason"] == (
         "unsupported provenance schema_version"
     )
+
+
+def test_provenance_audit_rejects_results_for_another_case_snapshot() -> None:
+    result = {
+        "instance_id": "demo__repo-1",
+        "agent": "orcaloca",
+        "provider": "codenib",
+        "provenance": {
+            "schema_version": 1,
+            "policy": {"agent": "orcaloca", "provider": "codenib"},
+            "cases": {
+                "source_sha256": "old-source",
+                "selection_sha256": "old-selection",
+                "instance_ids": ["demo__repo-1"],
+            },
+        },
+    }
+
+    record = audit_policy_provenance(
+        (result,),
+        source_sha256="active-source",
+        selection_sha256="active-selection",
+        instance_ids=("demo__repo-1",),
+    ).to_record()
+
+    assert record["valid_cell_count"] == 0
+    assert record["invalid_cells"] == [
+        {
+            "instance_id": "demo__repo-1",
+            "provider": "codenib",
+            "reason": "provenance case source digest does not match active cases",
+        }
+    ]

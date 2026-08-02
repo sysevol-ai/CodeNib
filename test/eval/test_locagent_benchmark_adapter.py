@@ -20,6 +20,7 @@ from codenib.eval.agent_runner.batch import run_baseline_batch
 from codenib.eval.baseline import BaselineTask
 from codenib.eval.benchmarks.locagent import locagent_regions, parse_locagent_locations
 from codenib.integrations._repository import RepositoryEntity
+from codenib.source_fingerprint import fingerprint_repository
 from codenib.types import NODE_TYPE_CLASS, NODE_TYPE_METHOD
 
 
@@ -89,7 +90,10 @@ def _write_manifest(tmp_path: Path) -> tuple[Path, Path]:
     (repo / "src" / "service.py").write_text("pass\n", encoding="utf-8")
     (repo / "src" / "model.py").write_text("pass\n", encoding="utf-8")
     manifest = tmp_path / "repo_manifest.json"
-    RepoManifest(repo_path=str(repo.resolve())).save(manifest)
+    RepoManifest(
+        repo_path=str(repo.resolve()),
+        source_fingerprint=fingerprint_repository(repo).value,
+    ).save(manifest)
     return repo, manifest
 
 

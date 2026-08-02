@@ -199,12 +199,42 @@ class _NativeLocAgentClient:
         return str(response.get("result", ""))
 
     def close(self) -> None:
-        if self.process.poll() is not None:
+        return_code = self.process.poll()
+        if return_code == 0:
             return
-        assert self.process.stdin is not None
-        self.process.stdin.write(json.dumps({"name": "__close__"}) + "\n")
-        self.process.stdin.flush()
-        self.process.wait(timeout=30)
+        if return_code is not None:
+            raise RuntimeError(f"LocAgent worker exited with status {return_code}")
+        try:
+            assert self.process.stdin is not None
+            self.process.stdin.write(json.dumps({"name": "__close__"}) + "\n")
+            self.process.stdin.flush()
+            return_code = self.process.wait(timeout=30)
+            if return_code != 0:
+                raise RuntimeError(f"LocAgent worker exited with status {return_code}")
+        except Exception:
+            with contextlib.suppress(Exception):
+                self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except Exception:
+                with contextlib.suppress(Exception):
+                    self.process.kill()
+                with contextlib.suppress(Exception):
+                    self.process.wait(timeout=5)
+            raise
+
+
+def _close_provider(provider: Any | None) -> str | None:
+    """Close one provider and return a recordable cleanup failure, if any."""
+
+    close = getattr(provider, "close", None) if provider is not None else None
+    if close is None:
+        return None
+    try:
+        close()
+    except Exception as exc:  # noqa: BLE001 - external worker boundary
+        return f"{type(exc).__name__}: {exc}"
+    return None
 
 
 def _run_locagent_loop(
@@ -215,6 +245,7 @@ def _run_locagent_loop(
     model: str,
     base_url: str | None,
     max_iterations: int,
+    locagent_python: Path | None = None,
 ) -> dict[str, Any]:
     from openai import OpenAI
 
@@ -222,6 +253,7 @@ def _run_locagent_loop(
         checkout,
         problem_statement=case.problem_statement,
         package_name=case.instance_id.split("_")[0],
+        python_executable=locagent_python,
     )
     client_options = {"base_url": base_url} if base_url else {}
     execution = run_locagent_policy(
@@ -347,6 +379,7 @@ def _run_locagent(args: argparse.Namespace) -> int:
                     model=args.model,
                     base_url=args.base_url,
                     max_iterations=args.max_iterations,
+                    locagent_python=args.locagent_python,
                 )
                 result.update(
                     {
@@ -370,11 +403,13 @@ def _run_locagent(args: argparse.Namespace) -> int:
                     "provenance": provenance[provider_name],
                 }
             finally:
-                close = (
-                    getattr(provider, "close", None) if provider is not None else None
-                )
-                if close is not None:
-                    close()
+                cleanup_error = _close_provider(provider)
+                if cleanup_error is not None:
+                    failed = True
+                    result["cleanup_error"] = cleanup_error
+                    result.setdefault(
+                        "error", f"provider cleanup failed: {cleanup_error}"
+                    )
             write_json_atomic(output_path, result)
             usage = result.get("usage") or {}
             print(
@@ -444,18 +479,33 @@ def _score_orcaloca_result(
     case: PolicyBenchmarkCase, result: Mapping[str, Any]
 ) -> tuple[dict[str, Any], OrcaLocaScore]:
     ground_truth = OrcaLocaGroundTruth.from_mapping(case.ground_truth)
-    raw_locations = result.get("locations")
-    locations = (
-        parse_orcaloca_locations(raw_locations)
-        if isinstance(raw_locations, list)
-        else parse_orcaloca_locations(str(result.get("raw_output", "")))
-    )
-    score = score_orcaloca_locations(ground_truth, locations)
+    failed = bool(result.get("error") or result.get("success") is False)
+    if failed:
+        score = OrcaLocaScore(
+            gold_files=ground_truth.files,
+            predicted_files=(),
+            file_match=False,
+            file_precision=0.0,
+            gold_functions=ground_truth.functions,
+            predicted_functions=(),
+            function_match=False,
+            function_precision=0.0,
+        )
+    else:
+        raw_locations = result.get("locations")
+        locations = (
+            parse_orcaloca_locations(raw_locations)
+            if isinstance(raw_locations, list)
+            else parse_orcaloca_locations(str(result.get("raw_output", "")))
+        )
+        score = score_orcaloca_locations(ground_truth, locations)
     usage = result.get("usage") or {}
     row = {
         "instance_id": case.instance_id,
         "provider": result.get("provider"),
         "error": result.get("error"),
+        "failed": failed,
+        "missing": bool(result.get("missing", False)),
         **score.to_record(),
         "elapsed_seconds": result.get("elapsed_seconds"),
         "provider_load_seconds": result.get("provider_load_seconds"),
@@ -484,12 +534,31 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
         providers=providers,
     )
     coverage = assess_policy_coverage(cases, results, providers=providers)
-    provenance_audit = audit_policy_provenance(results)
-    for result in results:
-        case = case_by_id[str(result["instance_id"])]
-        scored = _score_orcaloca_result(case, result)
-        scored_rows.append(scored)
-        rows.append(scored[0])
+    selection_sha256 = case_set.selection_sha256(cases)
+    provenance_audit = audit_policy_provenance(
+        results,
+        source_sha256=case_set.source_sha256,
+        selection_sha256=selection_sha256,
+        instance_ids=[case.instance_id for case in cases],
+    )
+    results_by_key = {
+        (str(result["instance_id"]), str(result["provider"])): result
+        for result in results
+    }
+    for case in cases:
+        for provider in providers:
+            result = results_by_key.get((case.instance_id, provider))
+            if result is None:
+                result = {
+                    "agent": "orcaloca",
+                    "provider": provider,
+                    "instance_id": case.instance_id,
+                    "error": "missing result cell",
+                    "missing": True,
+                }
+            scored = _score_orcaloca_result(case, result)
+            scored_rows.append(scored)
+            rows.append(scored[0])
 
     models = {str(result.get("model") or "") for result in results}
     models.discard("")
@@ -528,7 +597,7 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
         codenib = rows_by_key.get((instance_id, "codenib"))
         if native is None or codenib is None:
             continue
-        if native.get("error") or codenib.get("error"):
+        if native.get("failed") or codenib.get("failed"):
             continue
         native_elapsed = native.get("elapsed_seconds")
         codenib_elapsed = codenib.get("elapsed_seconds")
@@ -591,7 +660,7 @@ def _run_score_orcaloca(args: argparse.Namespace) -> int:
         "model": model,
         "case_set": {
             "source_sha256": case_set.source_sha256,
-            "selection_sha256": case_set.selection_sha256(cases),
+            "selection_sha256": selection_sha256,
         },
         "coverage": coverage.to_record(),
         "provenance": provenance_audit.to_record(),

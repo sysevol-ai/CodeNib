@@ -378,8 +378,9 @@ Before any model call, the driver checks every requested checkout commit,
 tracked-file state, manifest commit, and required capability. Result files bind
 the selected-case digest, CodeNib revision, pinned upstream revisions, model,
 and run options. The scorer retains missing and failed cells in the requested
-denominator and rejects mixed-model aggregation. `--allow-incomplete` writes an
-explicit partial audit; it does not turn a partial matrix into a complete one.
+denominator, verifies recorded case digests against the active case set, and
+rejects mixed-model aggregation. `--allow-incomplete` writes an explicit
+partial audit; it does not turn a partial matrix into a complete one.
 
 The OrcaLoca comparison covers its search policy with an empty
 `TraceAnalysisOutput`; TraceAnalysis generation is outside this compatibility

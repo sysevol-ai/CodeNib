@@ -7,12 +7,25 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from codenib.eval.benchmarks.policy_benchmark import _activate_orcaloca_checkout, main
-from codenib.eval.benchmarks.policy_compat import policy_result_path, write_json_atomic
+import codenib.eval.benchmarks.policy_benchmark as policy_benchmark
+from codenib.eval.benchmarks.policy_benchmark import (
+    _activate_orcaloca_checkout,
+    _close_provider,
+    _run_locagent_loop,
+    main,
+)
+from codenib.eval.benchmarks.policy_compat import (
+    PolicyBenchmarkCase,
+    policy_result_path,
+    write_json_atomic,
+)
 
 
 def _write_cases(path: Path) -> None:
@@ -86,6 +99,11 @@ def test_score_command_enforces_the_requested_cell_denominator(tmp_path: Path) -
     assert partial["coverage"]["expected_cell_count"] == 2
     assert partial["coverage"]["observed_cell_count"] == 1
     assert partial["coverage"]["paired_successful_count"] == 0
+    partial_summary = {row["provider"]: row for row in partial["summary"]}
+    assert partial_summary["native"]["n"] == 1
+    assert partial_summary["native"]["file_match_rate"] == 1.0
+    assert partial_summary["codenib"]["n"] == 1
+    assert partial_summary["codenib"]["file_match_rate"] == 0.0
 
     _write_result(results, provider="codenib")
     assert main(base_args) == 0
@@ -161,6 +179,252 @@ def test_score_command_rejects_invalid_provenance_in_strict_mode(
             "reason": "unsupported provenance schema_version",
         }
     ]
+
+
+def test_score_command_rejects_stale_case_provenance_in_strict_mode(
+    tmp_path: Path,
+) -> None:
+    cases = tmp_path / "cases.json"
+    results = tmp_path / "results"
+    output = tmp_path / "summary.json"
+    _write_cases(cases)
+    _write_result(results, provider="native")
+    _write_result(results, provider="codenib")
+    codenib_path = policy_result_path(
+        results,
+        instance_id="demo__repo-1",
+        agent="orcaloca",
+        provider="codenib",
+    )
+    payload = json.loads(codenib_path.read_text(encoding="utf-8"))
+    payload["provenance"] = {
+        "schema_version": 1,
+        "policy": {"agent": "orcaloca", "provider": "codenib"},
+        "cases": {
+            "source_sha256": "0" * 64,
+            "selection_sha256": "1" * 64,
+            "instance_ids": ["demo__repo-1"],
+        },
+    }
+    write_json_atomic(codenib_path, payload)
+
+    assert (
+        main(
+            [
+                "score-orcaloca",
+                "--cases",
+                str(cases),
+                "--results-dir",
+                str(results),
+                "--output",
+                str(output),
+            ]
+        )
+        == 1
+    )
+    summary = json.loads(output.read_text(encoding="utf-8"))
+    assert summary["provenance"]["invalid_cells"][0]["reason"] == (
+        "provenance case source digest does not match active cases"
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        {"error": "TimeoutError: model deadline exceeded"},
+        {"success": False},
+    ),
+)
+def test_failed_orcaloca_cell_is_an_all_miss_with_empty_function_labels(
+    failure: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    cases = tmp_path / "cases.json"
+    results = tmp_path / "results"
+    output = tmp_path / "summary.json"
+    _write_cases(cases)
+    payload = json.loads(cases.read_text(encoding="utf-8"))
+    payload["cases"][0]["ground_truth"]["gold_functions"] = []
+    cases.write_text(json.dumps(payload), encoding="utf-8")
+    _write_result(results, provider="codenib")
+    write_json_atomic(
+        policy_result_path(
+            results,
+            instance_id="demo__repo-1",
+            agent="orcaloca",
+            provider="native",
+        ),
+        {
+            "agent": "orcaloca",
+            "provider": "native",
+            "instance_id": "demo__repo-1",
+            "model": "test-model",
+            **failure,
+        },
+    )
+
+    assert (
+        main(
+            [
+                "score-orcaloca",
+                "--cases",
+                str(cases),
+                "--results-dir",
+                str(results),
+                "--output",
+                str(output),
+                "--allow-incomplete",
+            ]
+        )
+        == 0
+    )
+    summary = json.loads(output.read_text(encoding="utf-8"))
+    native = next(row for row in summary["summary"] if row["provider"] == "native")
+    assert native["n"] == 1
+    assert native["file_match_count"] == 0
+    assert native["function_match_count"] == 0
+    assert native["function_precision_mean"] == 0.0
+    assert summary["paired_summary"]["n"] == 0
+
+
+def test_locagent_loop_uses_the_configured_protocol_python(
+    monkeypatch, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    python = tmp_path / "locagent-python"
+    python.write_text("", encoding="utf-8")
+    checkout = tmp_path / "LocAgent"
+    checkout.mkdir()
+    case = PolicyBenchmarkCase.from_mapping(
+        {
+            "instance_id": "demo__repo-1",
+            "problem_statement": "Locate the parser",
+            "repo_path": str(repo),
+            "base_commit": "a" * 40,
+            "manifest_path": str(tmp_path / "manifest.json"),
+        }
+    )
+    captured = {}
+
+    def load_protocol(_checkout, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(policy_benchmark, "load_locagent_protocol", load_protocol)
+    monkeypatch.setattr(
+        policy_benchmark,
+        "run_locagent_policy",
+        lambda **_kwargs: SimpleNamespace(
+            usage={},
+            iterations=1,
+            tool_calls=0,
+            final_output="",
+            tool_trace=(),
+            trajectory=(),
+        ),
+    )
+    openai = types.ModuleType("openai")
+    openai.OpenAI = lambda **_kwargs: object()
+    monkeypatch.setitem(sys.modules, "openai", openai)
+
+    result = _run_locagent_loop(
+        case=case,
+        checkout=checkout,
+        dispatch=lambda _name, _arguments: "",
+        model="test-model",
+        base_url=None,
+        max_iterations=2,
+        locagent_python=python,
+    )
+
+    assert captured["python_executable"] == python
+    assert result["iterations"] == 1
+
+
+def test_provider_cleanup_failure_is_recordable() -> None:
+    class FailingProvider:
+        def close(self) -> None:
+            raise TimeoutError("worker did not stop")
+
+    assert _close_provider(FailingProvider()) == ("TimeoutError: worker did not stop")
+
+
+def test_locagent_run_writes_the_cell_when_provider_cleanup_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    cases = tmp_path / "cases.json"
+    output_dir = tmp_path / "results"
+    _write_cases(cases)
+
+    class FailingProvider:
+        load_seconds = 0.0
+
+        def dispatch(self, _name, _arguments):
+            return ""
+
+        def close(self) -> None:
+            raise TimeoutError("worker did not stop")
+
+    monkeypatch.setattr(
+        policy_benchmark,
+        "inspect_policy_run_preflight",
+        lambda *_args, **_kwargs: SimpleNamespace(require_eligible=lambda: None),
+    )
+    monkeypatch.setattr(
+        policy_benchmark,
+        "_policy_provenance_by_provider",
+        lambda **_kwargs: {"native": {"fixture": True}},
+    )
+    monkeypatch.setattr(
+        policy_benchmark,
+        "_NativeLocAgentClient",
+        lambda **_kwargs: FailingProvider(),
+    )
+    monkeypatch.setattr(
+        policy_benchmark,
+        "_run_locagent_loop",
+        lambda **_kwargs: {
+            "model": "test-model",
+            "elapsed_seconds": 0.1,
+            "regions": [],
+            "usage": {},
+        },
+    )
+
+    assert (
+        main(
+            [
+                "locagent",
+                "--cases",
+                str(cases),
+                "--output-dir",
+                str(output_dir),
+                "--provider",
+                "native",
+                "--locagent-checkout",
+                str(tmp_path / "LocAgent"),
+                "--locagent-python",
+                sys.executable,
+                "--native-index-dir",
+                str(tmp_path / "native-index"),
+                "--model",
+                "test-model",
+            ]
+        )
+        == 1
+    )
+    result_path = policy_result_path(
+        output_dir,
+        instance_id="demo__repo-1",
+        agent="locagent",
+        provider="native",
+    )
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["cleanup_error"] == "TimeoutError: worker did not stop"
+    assert result["error"] == (
+        "provider cleanup failed: TimeoutError: worker did not stop"
+    )
 
 
 def test_orcaloca_run_activates_the_validated_checkout(monkeypatch, tmp_path) -> None:

@@ -24,11 +24,15 @@ from codenib.eval.agent_runner.batch import run_baseline_batch
 from codenib.eval.baseline import BaselineTask
 from codenib.eval.benchmarks.orcaloca import OrcaLocaLocation
 from codenib.paths import repo_index_dir
+from codenib.source_fingerprint import fingerprint_repository
 
 
 def _write_manifest(repo, path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    RepoManifest(repo_path=str(repo.resolve())).save(path)
+    RepoManifest(
+        repo_path=str(repo.resolve()),
+        source_fingerprint=fingerprint_repository(repo).value,
+    ).save(path)
     return path
 
 
@@ -151,6 +155,76 @@ def test_agent_rejects_manifest_for_another_checkout(tmp_path) -> None:
 
     assert result.success is False
     assert "does not match" in (result.error_message or "")
+    assert called is False
+
+
+def test_agent_rejects_manifest_for_another_checkout_revision(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    source = repo / "source.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "source.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "first"], cwd=repo, check=True)
+    indexed_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    manifest = tmp_path / "repo_manifest.json"
+    RepoManifest(repo_path=str(repo.resolve()), commit=indexed_commit).save(manifest)
+
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+    subprocess.run(["git", "add", "source.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "second"], cwd=repo, check=True)
+    called = False
+
+    def run_search(*_args):
+        nonlocal called
+        called = True
+        return {"bug_locations": []}
+
+    agent = OrcaLocaAgent(
+        model="test-model",
+        manifest_path=manifest,
+        search_runner=run_search,
+    )
+    result = asyncio.run(agent.locate_code("Find the bug", str(repo)))
+
+    assert result.success is False
+    assert "revision does not match" in (result.error_message or "")
+    assert called is False
+
+
+def test_agent_rejects_manifest_for_changed_non_git_source(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "source.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    manifest = _write_manifest(repo, tmp_path / "repo_manifest.json")
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+    called = False
+
+    def run_search(*_args):
+        nonlocal called
+        called = True
+        return {"bug_locations": []}
+
+    agent = OrcaLocaAgent(
+        model="test-model",
+        manifest_path=manifest,
+        search_runner=run_search,
+    )
+    result = asyncio.run(agent.locate_code("Find the bug", str(repo)))
+
+    assert result.success is False
+    assert "fingerprint does not match" in (result.error_message or "")
     assert called is False
 
 
