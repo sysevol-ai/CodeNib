@@ -16,7 +16,6 @@ budget contract. None of these labels alone claims end-to-end task quality.
 | Integration | Status | Required views | Provider contract | Policy and evaluation | Boundary |
 | --- | --- | --- | --- | --- | --- |
 | LocAgent | CodeNib-native, revision-pinned | Symbol graph + BM25 | Pinned three-tool contract | Vendored prompts and function-calling loop; paired runner with strict common file/function@k scoring | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
-| Historical OpenHands LocAgent plugin | Contract-only | Symbol graph + BM25 | Python bindings for the pinned plugin revision | Covered through the LocAgent contract; policy is absent from current OpenHands CLI | No compatibility claim for other OpenHands revisions |
 | OrcaLoca SearchAgent | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
 | SWE-Explore | Reference-only | N/A | No adapter | No policy runner or paired evaluation | Used only to distinguish trajectory-read labels from golden-patch localization metrics |
 
@@ -55,10 +54,9 @@ indexed search, and graph traversal. This checks that the provider boundary is
 language-agnostic; it is not evidence that the pinned Python-only LocAgent or
 OrcaLoca native implementations support those languages.
 
-## LocAgent And OpenHands
+## LocAgent
 
-The LocAgent provider implements the three repository functions used by
-LocAgent and the historical OpenHands integration:
+The LocAgent provider implements the policy's three repository functions:
 
 - `search_code_snippets`
 - `get_entity_contents`
@@ -96,53 +94,9 @@ python examples/integrations/locagent.py \
 ```
 
 `provider.bindings()` returns the same-named Python callables for a runtime
-plugin. This follows the separation in
-[OpenHands PR #7371](https://github.com/OpenHands/OpenHands/pull/7371): the
-agent owns function schemas and action conversion, while the runtime supplies
-the repository functions. CodeNib dispatches calls directly and does not copy
-the historical IPython string-evaluation bridge.
-
-For the historical OpenHands runtime plugin, the complete provider-binding
-change is:
-
-```python
-import os
-
-from codenib.integrations.locagent import LocAgentToolProvider
-
-_provider = LocAgentToolProvider.from_manifest(os.environ["CODENIB_MANIFEST"])
-get_entity_contents = _provider.get_entity_contents
-search_code_snippets = _provider.search_code_snippets
-explore_tree_structure = _provider.explore_tree_structure
-```
-
-The agent-side schemas and action loop remain unchanged. Modern runtimes can
-use `provider.dispatch(name, arguments)` directly instead of constructing
-Python source from model-supplied arguments.
-
-Compatibility is revision-scoped:
-
-| Contract | Pinned revision |
-| --- | --- |
-| LocAgent behavior | `ef170542a5cca88a1bd8463335ec43de222ed5f9` |
-| OpenHands integration | `efe287ce3402706a171b3a5fb40f15914e98ef20` |
-
-Current OpenHands CLI does not contain that historical LocAgent module. The pin
-describes the supported tool contract; it is not a claim that every OpenHands
-CLI revision exposes LocAgent.
-
-Run the optional source-level probe against local upstream checkouts with:
-
-```bash
-LOCAGENT_CHECKOUT=/path/to/LocAgent \
-OPENHANDS_CHECKOUT=/path/to/OpenHands \
-  pytest -q test/integrations/test_locagent_upstream.py
-```
-
-The probe reads files directly from the pinned Git objects and does not import
-either project. To advance compatibility, update the two revision constants,
-refresh the YAML fixture from the reviewed upstream schemas, and run both this
-probe and `test/integrations/test_locagent.py` in the same change.
+plugin. Modern runtimes can use `provider.dispatch(name, arguments)` directly.
+The supported behavior is pinned to LocAgent revision
+`ef170542a5cca88a1bd8463335ec43de222ed5f9`.
 
 ### Relation Semantics
 
@@ -166,8 +120,8 @@ reference or type-use edges as exact call or inheritance facts.
 - Missing, stale, or failed graph and BM25 views produce explicit errors.
 - Tool output is deterministic and bounded by provider-level result, traversal,
   source-line, and character budgets.
-- Loading the provider never invokes LocAgent, OpenHands ACI, NetworkX,
-  LlamaIndex, or an index builder.
+- Loading the provider never invokes LocAgent, NetworkX, LlamaIndex, or an
+  index builder.
 
 ### Shared Benchmark Interface
 
@@ -397,8 +351,8 @@ ORCALOCA_CHECKOUT=/path/to/OrcaLoca \
 The upstream probe is optional and marked `integration`; without
 `ORCALOCA_CHECKOUT`, it skips before importing OrcaLoca.
 
-The base `codenib` package therefore gains no LocAgent, OpenHands, OrcaLoca,
-LlamaIndex, pandas, or NetworkX dependency.
+The base `codenib` package therefore gains no LocAgent, OrcaLoca, LlamaIndex,
+pandas, or NetworkX dependency.
 
 ## Paired Provider Compatibility
 
