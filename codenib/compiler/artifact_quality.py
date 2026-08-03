@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -277,6 +278,78 @@ def _load_vector_level(
     return documents, int(index.ntotal), failures, True
 
 
+def _vector_artifact_relative_paths(
+    model_suffix: str,
+    build_levels: Sequence[str],
+) -> tuple[Path, ...]:
+    paths = [Path(f"config_{model_suffix}.json")]
+    for level in sorted({raw_level.lower() for raw_level in build_levels}):
+        level_root = Path(level)
+        paths.extend(
+            (
+                level_root / f"config_{model_suffix}.json",
+                level_root / f"index_{model_suffix}.faiss",
+                level_root / f"documents_{model_suffix}.pkl",
+            )
+        )
+    return tuple(paths)
+
+
+def _file_fingerprint(path: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        while block := handle.read(1024 * 1024):
+            digest.update(block)
+            size += len(block)
+    return {"size": size, "sha256": digest.hexdigest()}
+
+
+def vector_artifact_file_fingerprints(
+    root: str | Path,
+    *,
+    embedding_model: str,
+    build_levels: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    """Fingerprint every file covered by a vector quality assessment."""
+
+    artifact_root = Path(root)
+    model_suffix = embedding_model.replace("/", "__")
+    fingerprints: dict[str, dict[str, Any]] = {}
+    for relative in _vector_artifact_relative_paths(model_suffix, build_levels):
+        path = artifact_root / relative
+        try:
+            fingerprints[relative.as_posix()] = _file_fingerprint(path)
+        except OSError:
+            continue
+    return fingerprints
+
+
+def vector_artifact_files_match(
+    root: str | Path,
+    *,
+    embedding_model: str,
+    build_levels: Sequence[str],
+    expected_fingerprints: object,
+) -> bool:
+    """Return whether all assessed vector files still match their report."""
+
+    if not isinstance(expected_fingerprints, Mapping):
+        return False
+    model_suffix = embedding_model.replace("/", "__")
+    expected_paths = {
+        path.as_posix()
+        for path in _vector_artifact_relative_paths(model_suffix, build_levels)
+    }
+    if set(expected_fingerprints) != expected_paths:
+        return False
+    return vector_artifact_file_fingerprints(
+        root,
+        embedding_model=embedding_model,
+        build_levels=build_levels,
+    ) == dict(expected_fingerprints)
+
+
 def assess_vector_artifact(
     root: str | Path,
     *,
@@ -315,13 +388,27 @@ def assess_vector_artifact(
     l0_paths: set[str] = set()
     invalid_document_paths: set[str] = set()
     invalid_document_metadata = 0
-    for raw_level in build_levels:
-        level = raw_level.lower()
+    normalized_levels = tuple(dict.fromkeys(level.lower() for level in build_levels))
+    unexpected_levels = []
+    for level in sorted({"l0", "l2"} - set(normalized_levels)):
+        level_root = artifact_root / level
+        if any(
+            (level_root / name).exists()
+            for name in (
+                f"config_{model_suffix}.json",
+                f"index_{model_suffix}.faiss",
+                f"documents_{model_suffix}.pkl",
+                f"index_{model_suffix}.pkl",
+            )
+        ):
+            unexpected_levels.append(level)
+            failures.append(f"unexpected_level:{level}")
+    for level in normalized_levels:
         documents, vector_count, level_failures, loaded = _load_vector_level(
             artifact_root, level, model_suffix
         )
         paths = set()
-        for document in documents:
+        for document_index, document in enumerate(documents):
             metadata = getattr(document, "metadata", {})
             if not isinstance(metadata, Mapping):
                 invalid_document_metadata += 1
@@ -330,8 +417,10 @@ def assess_vector_artifact(
             path = _path_or_none(raw_path)
             if path:
                 paths.add(path)
-            elif raw_path is not None and raw_path != "":
-                invalid_document_paths.add(str(raw_path))
+            else:
+                invalid_document_paths.add(
+                    f"{level}[{document_index}].file={raw_path!r}"
+                )
         all_paths.update(paths)
         if level == "l0":
             l0_paths.update(paths)
@@ -358,6 +447,16 @@ def assess_vector_artifact(
     missing = tuple(path for path in required if path not in l0_paths)
     if missing:
         failures.append("missing_required_l0_files")
+    file_fingerprints = vector_artifact_file_fingerprints(
+        artifact_root,
+        embedding_model=embedding_model,
+        build_levels=normalized_levels,
+    )
+    expected_file_count = len(
+        _vector_artifact_relative_paths(model_suffix, normalized_levels)
+    )
+    if len(file_fingerprints) != expected_file_count:
+        failures.append("incomplete_file_fingerprints")
     return {
         "schema_version": ARTIFACT_QUALITY_SCHEMA_VERSION,
         "kind": "vector",
@@ -365,6 +464,7 @@ def assess_vector_artifact(
         "commit": surface.commit,
         "tree": surface.tree,
         "levels": levels,
+        "unexpected_levels": unexpected_levels,
         "paths": {
             "tracked": len(classified["tracked"]),
             "submodule": len(classified["submodule"]),
@@ -373,7 +473,9 @@ def assess_vector_artifact(
             "invalid_metadata": invalid_document_metadata,
         },
         "required_l0_files": list(required),
+        "l0_files": sorted(l0_paths),
         "missing_required_l0_files": list(missing),
+        "file_fingerprints": file_fingerprints,
         "failure_names": sorted(set(failures)),
         "passed": not failures,
     }
@@ -397,5 +499,7 @@ __all__ = [
     "graph_file_paths",
     "graph_source_paths",
     "required_source_files",
+    "vector_artifact_file_fingerprints",
+    "vector_artifact_files_match",
     "write_artifact_quality",
 ]

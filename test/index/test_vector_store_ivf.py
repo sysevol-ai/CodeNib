@@ -14,6 +14,7 @@ found even at ``nprobe=1``.
 from __future__ import annotations
 
 import hashlib
+import json
 from unittest.mock import patch
 
 import faiss
@@ -166,3 +167,30 @@ def test_ivf_save_load_roundtrip(tmp_path):
     assert loaded.l2_index.ntotal == 5
     res = loaded.search(chunks[1]["content"], top_k=3)
     assert res and res[0].node_name == chunks[1]["name"]
+
+
+def test_load_rejects_faiss_dimension_mismatch(tmp_path):
+    path = tmp_path / "vs"
+    model = "test/model"
+    store = _make_store(embedding_model=model)
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+
+    config_path = path / "config_test__model.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["dimension"] = 8
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    with patch.object(
+        CodeVectorStore,
+        "_initialize_embedding_model",
+        return_value=_FakeEmbedding(8),
+    ):
+        loaded = CodeVectorStore(
+            embedding_model=model,
+            dimension=8,
+            store_path=str(path),
+        )
+
+    with pytest.raises(ValueError, match="FAISS dimension mismatch"):
+        loaded.load()

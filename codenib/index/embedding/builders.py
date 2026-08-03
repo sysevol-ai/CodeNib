@@ -18,6 +18,30 @@ from .vector_store import CodeVectorStore
 logger = get_logger(__name__)
 
 
+def _remove_unrequested_model_levels(
+    store_path: Path,
+    embedding_model: str,
+    build_levels: List[str],
+) -> None:
+    model_suffix = embedding_model.replace("/", "__")
+    requested = frozenset(build_levels)
+    for level in ("l0", "l2"):
+        if level in requested:
+            continue
+        level_path = store_path / level
+        for name in (
+            f"config_{model_suffix}.json",
+            f"index_{model_suffix}.faiss",
+            f"documents_{model_suffix}.pkl",
+            f"index_{model_suffix}.pkl",
+        ):
+            (level_path / name).unlink(missing_ok=True)
+        try:
+            level_path.rmdir()
+        except OSError:
+            pass
+
+
 def _profiler_section(profiler, label, metadata=None):
     """Return an active profiler section context if profiling is enabled."""
     if profiler is None:
@@ -57,6 +81,14 @@ def build_hierarchical_vector_store(
     if plan_name:
         store_path = store_path / plan_name
 
+    normalized_levels = [level.lower() for level in (build_levels or ["l0", "l2"])]
+    if force_rebuild:
+        _remove_unrequested_model_levels(
+            store_path,
+            embedding_model,
+            normalized_levels,
+        )
+
     if not force_rebuild:
         model_suffix = embedding_model.replace("/", "__")
         config_path = store_path / f"config_{model_suffix}.json"
@@ -84,7 +116,7 @@ def build_hierarchical_vector_store(
             return vector_store
 
     languages = languages or ["python"]
-    build_levels = [level.lower() for level in (build_levels or ["l0", "l2"])]
+    build_levels = normalized_levels
     repo_cfg = RepoChunkingConfig(languages=languages)
 
     chunks_by_level = {}

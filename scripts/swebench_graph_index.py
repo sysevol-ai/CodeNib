@@ -555,6 +555,7 @@ def _graph_artifact_metadata(
         "commit": surface.commit,
         "tree": surface.tree,
         "language": language,
+        "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         "exclude_patterns": sorted(exclude_patterns),
         "enforce_commit_surface": enforce_commit_surface,
         "source_coverage_fallback": source_coverage_fallback,

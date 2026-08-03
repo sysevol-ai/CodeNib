@@ -27,16 +27,18 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, List, Mapping, Optional
+from typing import Any, List, Mapping, Optional, Sequence
 
 project_root = Path(__file__).resolve().parents[2]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+from codenib.code_chunking.base import DEFAULT_L0_RAW_FALLBACK_MAX_LINES  # noqa: E402
 from codenib.compiler.artifact_quality import (  # noqa: E402
     ARTIFACT_QUALITY_SCHEMA_VERSION,
     assess_vector_artifact,
     required_source_files,
+    vector_artifact_files_match,
     write_artifact_quality,
 )
 from codenib.compiler.snapshot_store import ArtifactProfile  # noqa: E402
@@ -193,8 +195,9 @@ def parse_args():
         type=int,
         default=None,
         help=(
-            "Maximum lines per L2 code chunk and raw-source L0 fallback "
-            "(default: None, no splitting)"
+            "Maximum lines per L2 code chunk and raw-source L0 fallback. "
+            "By default L2 is unsplit and raw L0 fallback uses the safe limit "
+            f"{DEFAULT_L0_RAW_FALLBACK_MAX_LINES}."
         ),
     )
     parser.add_argument(
@@ -428,6 +431,11 @@ def _artifact_configuration(
         "chunking": {
             "l0_skeleton": True,
             "max_lines_per_chunk": args.max_lines_per_chunk,
+            "l0_raw_fallback_max_lines": (
+                args.max_lines_per_chunk
+                if args.max_lines_per_chunk is not None
+                else DEFAULT_L0_RAW_FALLBACK_MAX_LINES
+            ),
         },
         "embedding": {
             "provider": args.embedding_provider,
@@ -455,9 +463,11 @@ def _quality_report_is_reusable(
     *,
     embedding_model: str,
     instance: dict[str, Any],
-    expected_configuration: Optional[dict[str, Any]] = None,
+    expected_configuration: Mapping[str, Any],
+    build_levels: Sequence[str],
+    required_l0_files: Sequence[str] = (),
 ) -> bool:
-    """Fast parent-process check; the child repeats the complete gate."""
+    """Revalidate an assessed artifact before skipping its isolated child."""
 
     quality_path = _vector_quality_path(root, embedding_model)
     config_path = root / f"config_{embedding_model.replace('/', '__')}.json"
@@ -475,8 +485,17 @@ def _quality_report_is_reusable(
     actual_commit = str(artifact.get("commit") or "").lower()
     commit_matches = bool(expected_commit and expected_commit == actual_commit)
     configuration_matches = all(
-        artifact.get(key) == value
-        for key, value in (expected_configuration or {}).items()
+        artifact.get(key) == value for key, value in expected_configuration.items()
+    )
+    reported_l0_files = quality.get("l0_files")
+    required_matches = isinstance(reported_l0_files, list) and set(
+        required_l0_files
+    ).issubset(reported_l0_files)
+    files_match = vector_artifact_files_match(
+        root,
+        embedding_model=embedding_model,
+        build_levels=build_levels,
+        expected_fingerprints=quality.get("file_fingerprints"),
     )
     return bool(
         quality.get("schema_version") == ARTIFACT_QUALITY_SCHEMA_VERSION
@@ -485,6 +504,8 @@ def _quality_report_is_reusable(
         and artifact.get("repo") == instance.get("repo")
         and commit_matches
         and configuration_matches
+        and required_matches
+        and files_match
     )
 
 
@@ -851,11 +872,19 @@ def build_embeddings_isolated(args):
             build_levels=[level.lower() for level in args.build_levels],
             args=args,
         )
+        build_levels = [level.lower() for level in args.build_levels]
+        required_l0 = (
+            _required_l0_files(dict(instance), instance_languages)
+            if "l0" in build_levels
+            else ()
+        )
         if not args.force_rebuild and _quality_report_is_reusable(
             artifact_root,
             embedding_model=args.embedding_model,
             instance=dict(instance),
             expected_configuration=expected_configuration,
+            build_levels=build_levels,
+            required_l0_files=required_l0,
         ):
             logger.info(
                 "  Existing artifact passed quality gates; skipping: %s", artifact_root

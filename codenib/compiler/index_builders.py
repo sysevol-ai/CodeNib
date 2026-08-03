@@ -395,6 +395,7 @@ class VectorIndexBuilder:
             l0_chunker = CodeChunker(
                 language=primary,
                 repo_config=repo_cfg,
+                max_lines_per_chunk=self.max_lines_per_chunk,
                 chunk_depth=0,
                 skeleton_mode=True,
             )

@@ -55,7 +55,7 @@ def create_chunker(
     Args:
         language: Programming language ('python', 'cpp', 'java', etc.)
         max_lines_per_chunk: Maximum number of lines per emitted chunk. Default:
-            None (no splitting)
+            None (no general splitting; raw L0 fallbacks retain a safe bound)
         chunk_depth: Granularity level
             0 = Entire file as a chunk
             1 = Top-level declarations only

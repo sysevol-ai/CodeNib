@@ -24,6 +24,8 @@ from ..log_utils import get_logger
 
 logger = get_logger(__name__)
 
+DEFAULT_L0_RAW_FALLBACK_MAX_LINES = 300
+
 # Define structures for code chunks
 CodeChunk = namedtuple(
     "CodeChunk",
@@ -56,7 +58,9 @@ class BaseCodeChunker(ABC):
                 large logical chunks (function/class) will be split into
                 multiple sequential chunks of at most this many lines. node_id and name
                 remain the same across the split pieces. Default: None (no splitting).
-                Set to a number to enable.
+                Set to a number to enable. An L0 skeleton that cannot extract
+                any declarations falls back to raw source capped at
+                ``DEFAULT_L0_RAW_FALLBACK_MAX_LINES`` when this is None.
             chunk_depth: Depth of AST traversal for chunking:
                 0 = Treat entire file as a single chunk
                 1 = Top-level only (classes and top-level functions, no methods)
@@ -185,6 +189,11 @@ class BaseCodeChunker(ABC):
                         name=Path(file_path).name,
                         file_path=file_path,
                         node_id=path_for_node_id,
+                        line_limit=(
+                            self.max_lines_per_chunk
+                            if self.max_lines_per_chunk is not None
+                            else DEFAULT_L0_RAW_FALLBACK_MAX_LINES
+                        ),
                     )
                 return [
                     CodeChunk(
@@ -312,22 +321,22 @@ class BaseCodeChunker(ABC):
         name: str,
         file_path: str,
         node_id: str,
+        line_limit: Optional[int] = None,
     ) -> List[CodeChunk]:
         """
-        Split a logical chunk into multiple CodeChunk pieces if it exceeds max_lines_per_chunk.
+        Split a logical chunk into pieces if it exceeds the effective line limit.
         Keeps node_id and name unchanged across pieces.
         Uses balanced splitting to distribute lines evenly across chunks.
         """
         prefix = self._build_chunk_prefix(node_id, chunk_type, name)
         total_lines = end_line - start_line + 1
+        effective_limit = self.max_lines_per_chunk if line_limit is None else line_limit
 
         # Calculate number of chunks needed
-        if not self.max_lines_per_chunk or self.max_lines_per_chunk <= 0:
+        if not effective_limit or effective_limit <= 0:
             num_chunks = 1
         else:
-            num_chunks = (
-                total_lines + self.max_lines_per_chunk - 1
-            ) // self.max_lines_per_chunk
+            num_chunks = (total_lines + effective_limit - 1) // effective_limit
 
         # 1. Single chunk: no splitting needed
         if num_chunks == 1:

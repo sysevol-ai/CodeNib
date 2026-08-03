@@ -9,8 +9,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from codenib.compiler.artifact_quality import ARTIFACT_QUALITY_SCHEMA_VERSION
+from codenib.compiler.artifact_quality import (
+    ARTIFACT_QUALITY_SCHEMA_VERSION,
+    vector_artifact_file_fingerprints,
+)
 from codenib.compiler.snapshot_store import ArtifactProfile
+from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION
 from scripts import swebench_graph_index
 from scripts.embeddings import build_embeddings
 
@@ -50,6 +54,41 @@ def test_embedding_resolves_language_from_multilingual_repo_map():
     ) == ["java"]
 
 
+@pytest.mark.parametrize(("configured", "effective"), [(None, 300), (128, 128)])
+def test_embedding_artifact_records_effective_l0_fallback_limit(configured, effective):
+    args = SimpleNamespace(
+        max_lines_per_chunk=configured,
+        embedding_provider="huggingface",
+        embedding_dimension=384,
+        index_type="flat",
+        index_metric="ip",
+        ivf_nlist=100,
+        ivf_nprobe=8,
+        max_seq_length=8192,
+    )
+
+    configuration = build_embeddings._artifact_configuration(
+        languages=["cpp"],
+        build_levels=["l0", "l2"],
+        args=args,
+    )
+
+    assert configuration["chunking"]["l0_raw_fallback_max_lines"] == effective
+
+
+def test_graph_artifact_identity_tracks_repository_filter_policy():
+    metadata = swebench_graph_index._graph_artifact_metadata(
+        repo="org/repo",
+        surface=SimpleNamespace(commit="a" * 40, tree="b" * 40),
+        language="python",
+        exclude_patterns=(),
+        enforce_commit_surface=True,
+        source_coverage_fallback=True,
+    )
+
+    assert metadata["repository_filter_policy"] == REPOSITORY_FILTER_POLICY_VERSION
+
+
 def test_graph_builder_supports_codenib_base_source(monkeypatch, tmp_path):
     captured = {}
 
@@ -73,7 +112,9 @@ def test_graph_builder_supports_codenib_base_source(monkeypatch, tmp_path):
     assert captured["repo_root"] == str(tmp_path / "repos")
 
 
-def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
+def test_isolated_embedding_reuse_requires_passing_quality_report(
+    monkeypatch, tmp_path
+):
     root = tmp_path / "artifact"
     root.mkdir()
     model = "test/model"
@@ -82,6 +123,23 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
         "repo": "org/repo",
         "base_commit": "a" * 40,
     }
+    files_match = True
+    monkeypatch.setattr(
+        build_embeddings,
+        "vector_artifact_files_match",
+        lambda *_args, **_kwargs: files_match,
+    )
+
+    def is_reusable(expected_configuration=None, required_l0_files=()):
+        return build_embeddings._quality_report_is_reusable(
+            root,
+            embedding_model=model,
+            instance=instance,
+            expected_configuration=expected_configuration or {},
+            build_levels=["l0"],
+            required_l0_files=required_l0_files,
+        )
+
     (root / f"config_{suffix}.json").write_text(
         json.dumps(
             {
@@ -104,11 +162,7 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
         encoding="utf-8",
     )
 
-    assert not build_embeddings._quality_report_is_reusable(
-        root,
-        embedding_model=model,
-        instance=instance,
-    )
+    assert not is_reusable()
 
     artifact = {
         "repo": "org/repo",
@@ -118,11 +172,7 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
         json.dumps({"passed": True, "artifact": artifact}),
         encoding="utf-8",
     )
-    assert not build_embeddings._quality_report_is_reusable(
-        root,
-        embedding_model=model,
-        instance=instance,
-    )
+    assert not is_reusable()
 
     quality_path.write_text(
         json.dumps(
@@ -134,11 +184,7 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
         ),
         encoding="utf-8",
     )
-    assert not build_embeddings._quality_report_is_reusable(
-        root,
-        embedding_model=model,
-        instance=instance,
-    )
+    assert not is_reusable()
 
     quality_path.write_text(
         json.dumps(
@@ -146,16 +192,17 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
                 "schema_version": ARTIFACT_QUALITY_SCHEMA_VERSION,
                 "passed": True,
                 "artifact": artifact,
+                "l0_files": [],
             }
         ),
         encoding="utf-8",
     )
-    assert build_embeddings._quality_report_is_reusable(
-        root,
-        embedding_model=model,
-        instance=instance,
-        expected_configuration={},
-    )
+    assert is_reusable()
+    assert not is_reusable(required_l0_files=("src/required.py",))
+
+    files_match = False
+    assert not is_reusable()
+    files_match = True
 
     short_artifact = {**artifact, "commit": "a"}
     (root / f"config_{suffix}.json").write_text(
@@ -172,12 +219,7 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
         ),
         encoding="utf-8",
     )
-    assert not build_embeddings._quality_report_is_reusable(
-        root,
-        embedding_model=model,
-        instance=instance,
-        expected_configuration={},
-    )
+    assert not is_reusable()
 
     (root / f"config_{suffix}.json").write_text(
         json.dumps({"artifact": artifact}),
@@ -194,12 +236,58 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
         encoding="utf-8",
     )
 
-    assert not build_embeddings._quality_report_is_reusable(
-        root,
-        embedding_model=model,
-        instance=instance,
-        expected_configuration={"build_levels": ["l0", "l2"]},
+    assert not is_reusable(expected_configuration={"build_levels": ["l0", "l2"]})
+
+
+def test_isolated_embedding_reuse_revalidates_assessed_files(tmp_path):
+    root = tmp_path / "artifact"
+    level = root / "l0"
+    level.mkdir(parents=True)
+    model = "test/model"
+    suffix = "test__model"
+    artifact = {"repo": "org/repo", "commit": "a" * 40}
+    (root / f"config_{suffix}.json").write_text(
+        json.dumps({"artifact": artifact}), encoding="utf-8"
     )
+    for name in (
+        f"config_{suffix}.json",
+        f"index_{suffix}.faiss",
+        f"documents_{suffix}.pkl",
+    ):
+        (level / name).write_bytes(name.encode("utf-8"))
+    quality_path = root / f"artifact_quality_{suffix}.json"
+    quality_path.write_text(
+        json.dumps(
+            {
+                "schema_version": ARTIFACT_QUALITY_SCHEMA_VERSION,
+                "passed": True,
+                "artifact": artifact,
+                "l0_files": ["src/main.py"],
+                "file_fingerprints": vector_artifact_file_fingerprints(
+                    root,
+                    embedding_model=model,
+                    build_levels=["l0"],
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    kwargs = {
+        "embedding_model": model,
+        "instance": {
+            "repo": "org/repo",
+            "base_commit": "a" * 40,
+        },
+        "expected_configuration": {},
+        "build_levels": ["l0"],
+        "required_l0_files": ["src/main.py"],
+    }
+    assert build_embeddings._quality_report_is_reusable(root, **kwargs)
+
+    (level / f"index_{suffix}.faiss").write_bytes(b"corrupt")
+
+    assert not build_embeddings._quality_report_is_reusable(root, **kwargs)
 
 
 def test_graph_reuse_requires_matching_artifact_provenance(tmp_path):

@@ -11,7 +11,10 @@ from typing import List, Optional, Tuple
 
 import pytest
 
-from codenib.code_chunking.base import BaseCodeChunker
+from codenib.code_chunking.base import (
+    DEFAULT_L0_RAW_FALLBACK_MAX_LINES,
+    BaseCodeChunker,
+)
 
 
 class StubCodeChunker(BaseCodeChunker):
@@ -95,7 +98,13 @@ def test_l0_empty_skeleton_falls_back_to_full_file(monkeypatch, tmp_path):
     assert chunks[0].node_id == "include/declarations.h"
 
 
-def test_l0_empty_skeleton_fallback_honors_max_lines(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("configured_limit", "expected_limit"),
+    [(None, DEFAULT_L0_RAW_FALLBACK_MAX_LINES), (100, 100)],
+)
+def test_l0_empty_skeleton_fallback_is_bounded(
+    monkeypatch, tmp_path, configured_limit, expected_limit
+):
     source = tmp_path / "generated.h"
     source.write_text(
         "".join(f"#define VALUE_{line} {line}\n" for line in range(5000)),
@@ -114,12 +123,14 @@ def test_l0_empty_skeleton_fallback_honors_max_lines(monkeypatch, tmp_path):
 
     chunker = StubCodeChunker(
         "cpp",
-        max_lines_per_chunk=100,
+        max_lines_per_chunk=configured_limit,
         chunk_depth=0,
         skeleton_mode=True,
     )
     chunks = chunker.chunk_file(str(source), relative_path="include/generated.h")
 
-    assert len(chunks) == 51
-    assert all(chunk.end_line - chunk.start_line + 1 <= 100 for chunk in chunks)
+    assert len(chunks) == (5001 + expected_limit - 1) // expected_limit
+    assert all(
+        chunk.end_line - chunk.start_line + 1 <= expected_limit for chunk in chunks
+    )
     assert all(chunk.node_id == "include/generated.h" for chunk in chunks)

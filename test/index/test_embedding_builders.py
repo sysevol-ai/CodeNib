@@ -42,6 +42,19 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
     monkeypatch.setattr(builders, "CodeChunker", FakeChunker)
     monkeypatch.setattr(builders, "CodeVectorStore", FakeStore)
     embedding = object()
+    stale_level = tmp_path / "index" / "l0"
+    stale_level.mkdir(parents=True)
+    model_suffix = "test-model"
+    stale_files = [
+        stale_level / f"config_{model_suffix}.json",
+        stale_level / f"index_{model_suffix}.faiss",
+        stale_level / f"documents_{model_suffix}.pkl",
+        stale_level / f"index_{model_suffix}.pkl",
+    ]
+    for path in stale_files:
+        path.write_bytes(b"stale")
+    unrelated = stale_level / "index_other-model.faiss"
+    unrelated.write_bytes(b"other")
 
     result = builders.build_hierarchical_vector_store(
         repo_path=str(tmp_path),
@@ -59,3 +72,5 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
     assert captured["embedding"] is embedding
     assert captured["artifact_metadata"] == {"commit": "a" * 40}
     assert result.l2_documents
+    assert all(not path.exists() for path in stale_files)
+    assert unrelated.read_bytes() == b"other"

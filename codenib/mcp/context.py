@@ -62,6 +62,13 @@ def _close_vector(vector: CodeVectorStore) -> None:
         logger.warning("Failed to release vector resources: %s", exc)
 
 
+def _stop_zoekt(searcher: ZoektSearcher) -> None:
+    try:
+        searcher.stop()
+    except Exception as exc:
+        logger.warning("Failed to stop Zoekt runtime: %s", exc)
+
+
 def _resolve_views(views: Iterable[str] | None) -> frozenset[str]:
     """Validate a view selection and add runtime dependencies."""
 
@@ -167,7 +174,8 @@ class ServerContext:
 
         The returned mapping contains only unavailable views. Vector indexes
         follow the normal FAISS/document load path with a fixed-dimension
-        embedding probe, then release their resources before returning.
+        embedding probe. Temporary vector and Zoekt resources are released
+        before returning.
         """
 
         selected = _resolve_views(views)
@@ -195,6 +203,9 @@ class ServerContext:
                 if view not in available
             }
         finally:
+            if ctx.zoekt is not None:
+                _stop_zoekt(ctx.zoekt)
+                ctx.zoekt = None
             if ctx.vector is not None:
                 _close_vector(ctx.vector)
                 ctx.vector = None
@@ -264,6 +275,7 @@ class ServerContext:
             logger.warning("Failed to load Zoekt runtime: %s", exc)
             return
 
+        searcher = None
         try:
             searcher = ZoektSearcher(index_dir=entry.path)
             searcher.start()
@@ -274,9 +286,13 @@ class ServerContext:
                 searcher.port,
             )
         except ZoektUnavailableError as exc:
+            if searcher is not None:
+                _stop_zoekt(searcher)
             self.errors["zoekt"] = str(exc)
             logger.warning("Zoekt unavailable: %s", exc)
         except Exception as exc:
+            if searcher is not None:
+                _stop_zoekt(searcher)
             self.errors["zoekt"] = str(exc)
             logger.warning("Failed to start zoekt-webserver: %s", exc)
 
@@ -333,6 +349,8 @@ class ServerContext:
                 )
 
             stats = vector.get_stats()
+            if stats["total_documents"] <= 0:
+                raise RuntimeError("vector index contains no documents")
             self.vector = vector
             logger.info(
                 "Loaded vector index from %s (%d docs, model=%s)",

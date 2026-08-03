@@ -229,16 +229,46 @@ def _remove_relative_path(repo: Path, relative: str) -> None:
         parent = parent.parent
 
 
+def _restore_git_submodules(root: Path, surface: GitSourceSurface) -> None:
+    if not surface.submodules:
+        return
+
+    _git(root, "submodule", "sync", "--recursive")
+    _git(root, "submodule", "update", "--init", "--recursive", "--force")
+    _git(
+        root,
+        "submodule",
+        "foreach",
+        "--quiet",
+        "--recursive",
+        "git reset --hard && git clean -fd",
+    )
+    mismatches = []
+    for relative, expected in surface.submodules:
+        submodule_root = root.joinpath(*PurePosixPath(relative).parts)
+        try:
+            actual = resolve_git_commit(submodule_root)
+        except (OSError, subprocess.CalledProcessError):
+            actual = "missing"
+        if actual != expected:
+            mismatches.append(f"{relative}: expected {expected}, found {actual}")
+    if mismatches:
+        raise RuntimeError(
+            "submodule commit mismatch after restore: " + "; ".join(mismatches)
+        )
+
+
 def restore_git_worktree(
     repo: str | Path,
     commit: str,
 ) -> WorktreeRestoreResult:
-    """Restore tracked source and remove source-visible generated files.
+    """Restore tracked source, gitlinks, and source-visible generated files.
 
     Ignored dependency/tool caches and non-source build inputs are retained.
     Ignored source files that an index builder would otherwise observe are
     removed so artifacts cannot silently include generated code left by another
-    benchmark instance.
+    benchmark instance. Recorded submodules are initialized recursively and
+    reset to the commits referenced by the restored superproject.
     """
 
     root = Path(repo).expanduser().resolve()
@@ -246,6 +276,8 @@ def restore_git_worktree(
     _git(root, "checkout", "--detach", "--force", expected)
     _git(root, "reset", "--hard", expected)
     _git(root, "clean", "-fd")
+    surface = GitSourceSurface.load(root, expected)
+    _restore_git_submodules(root, surface)
 
     ignored = _ignored_visible_source_paths(root)
     for relative in ignored:

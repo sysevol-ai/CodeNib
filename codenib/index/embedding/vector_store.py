@@ -1034,10 +1034,11 @@ class CodeVectorStore:
             with open(config_path, "r") as f:
                 config = json.load(f)
 
-            if config.get("dimension") != self.dimension:
-                logger.warning(
-                    f"Dimension mismatch: expected {self.dimension}, "
-                    f"got {config.get('dimension')}"
+            saved_dimension = config.get("dimension")
+            if saved_dimension is not None and saved_dimension != self.dimension:
+                raise ValueError(
+                    f"Vector config dimension mismatch: expected {self.dimension}, "
+                    f"found {saved_dimension}"
                 )
             saved_metric = config.get("index_metric")
             if saved_metric and saved_metric != self.index_metric:
@@ -1093,6 +1094,11 @@ class CodeVectorStore:
         except Exception as e:
             logger.warning(f"Could not load FAISS index from {faiss_path}: {e}")
             return None
+        if int(index.d) != self.dimension:
+            raise ValueError(
+                f"FAISS dimension mismatch at {faiss_path}: "
+                f"expected {self.dimension}, found {int(index.d)}"
+            )
 
         # Try loading documents pickle (works for both new _Document and
         # legacy LangChain Document objects via duck-typing conversion).

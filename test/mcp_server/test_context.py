@@ -251,6 +251,40 @@ def test_validate_views_probes_vector_without_loading_embedding_model(
     vector.close.assert_called_once_with()
 
 
+def test_validate_views_rejects_empty_vector_artifact(tmp_path: Path) -> None:
+    vector_dir = tmp_path / "vector"
+    vector_dir.mkdir()
+    manifest = RepoManifest(
+        repo_path=str(tmp_path),
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(vector_dir),
+                built_at="2026-01-01T00:00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config={
+                    "embedding_model": "test-model",
+                    "embedding_provider": "huggingface",
+                    "embedding_dimension": 384,
+                },
+            ),
+        },
+    )
+    vector = MagicMock()
+    vector.embedding_model = "test-model"
+    vector.get_stats.return_value = {"total_documents": 0}
+
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ):
+        errors = ServerContext.validate_views(manifest, views={"vector"})
+
+    assert errors == {"vector": "vector index contains no documents"}
+    vector.close.assert_called_once_with()
+
+
 def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
     """RegexNodeIndex is built when symbol_graph loads successfully."""
     graph_dir = manifest_dir / "symbol_graph"
@@ -325,6 +359,25 @@ def test_zoekt_started_when_entry_fresh(manifest_dir: Path) -> None:
     fake_searcher.start.assert_called_once()
     assert ctx.zoekt is fake_searcher
     assert "zoekt" not in ctx.errors
+
+
+def test_validate_views_stops_zoekt_probe(manifest_dir: Path) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    manifest_path = manifest_dir / "repo_manifest.json"
+    _add_zoekt_entry(manifest_path, shard_dir)
+    fake_searcher = MagicMock()
+    fake_searcher.port = 9999
+
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=fake_searcher,
+    ):
+        errors = ServerContext.validate_views(manifest_path, views={"zoekt"})
+
+    assert errors == {}
+    fake_searcher.start.assert_called_once_with()
+    fake_searcher.stop.assert_called_once_with()
 
 
 def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:

@@ -15,6 +15,7 @@ import numpy as np
 from codenib.compiler.artifact_quality import (
     assess_vector_artifact,
     constrain_and_assess_graph_artifact,
+    vector_artifact_files_match,
 )
 from codenib.git_snapshot import GitSourceSurface
 from codenib.graph.code_graph import CodeGraph
@@ -148,9 +149,42 @@ def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
     assert report["passed"] is True
     assert report["artifact"] == identity
     assert report["levels"]["l0"]["documents"] == 1
+    assert report["l0_files"] == ["src/main.py"]
+    assert vector_artifact_files_match(
+        root,
+        embedding_model=model,
+        build_levels=["l0"],
+        expected_fingerprints=report["file_fingerprints"],
+    )
+
+    documents_path = level / f"documents_{suffix}.pkl"
+    original_documents = documents_path.read_bytes()
+    documents_path.write_bytes(original_documents + b"stale")
+    assert not vector_artifact_files_match(
+        root,
+        embedding_model=model,
+        build_levels=["l0"],
+        expected_fingerprints=report["file_fingerprints"],
+    )
+
+    stale_level = root / "l2"
+    stale_level.mkdir()
+    stale_index = stale_level / f"index_{suffix}.faiss"
+    stale_index.write_bytes(b"stale")
+    unexpected = assess_vector_artifact(
+        root,
+        embedding_model=model,
+        build_levels=["l0"],
+        surface=surface,
+        expected_artifact=identity,
+    )
+    assert unexpected["unexpected_levels"] == ["l2"]
+    assert "unexpected_level:l2" in unexpected["failure_names"]
+    stale_index.unlink()
+    stale_level.rmdir()
 
     documents[0].metadata = []
-    with (level / f"documents_{suffix}.pkl").open("wb") as handle:
+    with documents_path.open("wb") as handle:
         pickle.dump(documents, handle)
     invalid = assess_vector_artifact(
         root,
@@ -164,6 +198,20 @@ def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
     assert invalid["passed"] is False
     assert "invalid_document_metadata" in invalid["failure_names"]
     assert invalid["paths"]["invalid_metadata"] == 1
+
+    for metadata in ({}, {"file": ""}):
+        documents[0].metadata = metadata
+        with documents_path.open("wb") as handle:
+            pickle.dump(documents, handle)
+        invalid_path = assess_vector_artifact(
+            root,
+            embedding_model=model,
+            build_levels=["l0"],
+            surface=surface,
+            expected_artifact=identity,
+        )
+        assert "invalid_document_paths" in invalid_path["failure_names"]
+        assert invalid_path["paths"]["invalid"]
 
 
 def test_vector_quality_does_not_report_missing_level_as_empty(tmp_path):
