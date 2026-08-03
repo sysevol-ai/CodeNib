@@ -30,7 +30,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from codenib.clients.locagent_agent import load_locagent_protocol, run_locagent_policy
+from codenib.clients.locagent_agent import run_locagent_policy
+from codenib.clients.locagent_protocol import (
+    LOCAGENT_PROTOCOL_REVISION,
+    LOCAGENT_PROTOCOL_SHA256,
+    build_locagent_protocol,
+)
 from codenib.eval.benchmarks.locagent import locagent_regions, parse_locagent_locations
 from codenib.eval.benchmarks.orcaloca import (
     OrcaLocaGroundTruth,
@@ -62,7 +67,7 @@ from codenib.integrations.orcaloca import ORCALOCA_REVISION
 _CODE_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _locagent_revision_sources(checkout: Path) -> tuple[RevisionSource, ...]:
+def _locagent_revision_sources(checkout: Path | None) -> tuple[RevisionSource, ...]:
     return (
         RevisionSource(
             name="locagent",
@@ -243,20 +248,16 @@ def _close_provider(provider: Any | None) -> str | None:
 def _run_locagent_loop(
     *,
     case: PolicyBenchmarkCase,
-    checkout: Path,
     dispatch: Callable[[str, Mapping[str, Any]], str],
     model: str,
     base_url: str | None,
     max_iterations: int,
-    locagent_python: Path | None = None,
 ) -> dict[str, Any]:
     from openai import OpenAI
 
-    protocol = load_locagent_protocol(
-        checkout,
+    protocol = build_locagent_protocol(
         problem_statement=case.problem_statement,
         package_name=case.instance_id.split("_")[0],
-        python_executable=locagent_python,
     )
     client_options = {"base_url": base_url} if base_url else {}
     execution = run_locagent_policy(
@@ -303,6 +304,8 @@ def _run_locagent(args: argparse.Namespace) -> int:
         raise ValueError("--locagent-python is required for the native provider")
     if "native" in order and args.native_index_dir is None:
         raise ValueError("--native-index-dir is required for the native provider")
+    if "native" in order and args.locagent_checkout is None:
+        raise ValueError("--locagent-checkout is required for the native provider")
     revision_sources = _locagent_revision_sources(args.locagent_checkout)
     preflight = inspect_policy_run_preflight(
         cases,
@@ -329,6 +332,9 @@ def _run_locagent(args: argparse.Namespace) -> int:
             "max_completion_tokens": 4096,
             "reasoning_effort": "none",
             "custom_base_url": bool(args.base_url),
+            "protocol_revision": LOCAGENT_PROTOCOL_REVISION,
+            "protocol_sha256": LOCAGENT_PROTOCOL_SHA256,
+            "policy_runtime": "codenib-native-v1",
         },
     )
     failed = False
@@ -377,12 +383,10 @@ def _run_locagent(args: argparse.Namespace) -> int:
                     dispatch = provider.dispatch
                 result = _run_locagent_loop(
                     case=case,
-                    checkout=args.locagent_checkout,
                     dispatch=dispatch,
                     model=args.model,
                     base_url=args.base_url,
                     max_iterations=args.max_iterations,
-                    locagent_python=args.locagent_python,
                 )
                 result.update(
                     {
@@ -1235,7 +1239,11 @@ def _build_parser() -> argparse.ArgumentParser:
     locagent.add_argument(
         "--provider", choices=("native", "codenib", "both"), default="both"
     )
-    locagent.add_argument("--locagent-checkout", type=Path, required=True)
+    locagent.add_argument(
+        "--locagent-checkout",
+        type=Path,
+        help="Pinned checkout required only by the optional native provider.",
+    )
     locagent.add_argument("--locagent-python", type=Path)
     locagent.add_argument("--native-index-dir", type=Path)
     locagent.add_argument("--model", required=True)

@@ -8,16 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import subprocess
-import sys
 import time
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 from codenib.clients._manifest import ManifestResolver, select_checkout_manifest
+from codenib.clients.locagent_protocol import LocAgentProtocol, build_locagent_protocol
 from codenib.eval.baseline import BaselineLocation, BaselineRunResult
 from codenib.eval.benchmarks.locagent import LocAgentLocation, parse_locagent_locations
 from codenib.integrations._repository import RepositoryAdapter, RepositoryEntity
@@ -28,38 +25,6 @@ from codenib.types import (
     NODE_TYPE_METHOD,
     NODE_TYPE_SYMBOL,
 )
-
-_READ_ONLY_WARNING = (
-    "IMPORTANT: You should only use the provided read-only tools, never ask "
-    "for human help, and never modify files.\n"
-)
-_PROTOCOL_EXTRACT_TIMEOUT_SECONDS = 60
-_PROTOCOL_EXTRACT_SCRIPT = r"""
-import contextlib
-import io
-import json
-
-captured = io.StringIO()
-with contextlib.redirect_stdout(captured):
-    from util.prompts import general_prompt
-    from util.prompts.pipelines import auto_search_prompt
-    from util.runtime import function_calling
-
-    tools = function_calling.get_tools(
-        codeact_enable_search_keyword=True,
-        codeact_enable_search_entity=True,
-        codeact_enable_tree_structure_traverser=True,
-        simple_desc=False,
-    )
-
-print(json.dumps({
-    "system_prompt": function_calling.SYSTEM_PROMPT,
-    "task_template": auto_search_prompt.TASK_INSTRUECTION,
-    "pr_template": general_prompt.PR_TEMPLATE,
-    "followup": auto_search_prompt.FAKE_USER_MSG_FOR_LOC,
-    "tools": tools,
-}))
-"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,16 +37,6 @@ class LocAgentExecution:
     iterations: Optional[int] = None
     tool_trace: Sequence[Mapping[str, Any]] = ()
     trajectory: Sequence[Mapping[str, Any]] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class LocAgentProtocol:
-    """Pinned upstream prompts and OpenAI-compatible function schemas."""
-
-    system_prompt: str
-    instruction: str
-    followup: str
-    tools: tuple[Mapping[str, Any], ...]
 
 
 LocAgentPolicyRunner = Callable[
@@ -251,104 +206,24 @@ def locagent_locations_to_baseline(
     return tuple(output)
 
 
-@lru_cache(maxsize=8)
-def _load_upstream_assets(
-    checkout_value: str,
-    python_value: str,
-) -> tuple[str, str, str, str, tuple[Mapping[str, Any], ...]]:
-    checkout = Path(checkout_value).expanduser().resolve()
-    if not (checkout / "util" / "runtime" / "function_calling.py").is_file():
-        raise FileNotFoundError(f"Not a LocAgent checkout: {checkout}")
-    python = Path(python_value).expanduser().resolve()
-    if not python.is_file():
-        raise FileNotFoundError(f"LocAgent Python executable not found: {python}")
-
-    env = os.environ.copy()
-    current_pythonpath = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = (
-        str(checkout)
-        if not current_pythonpath
-        else os.pathsep.join((str(checkout), current_pythonpath))
-    )
-    try:
-        completed = subprocess.run(
-            [str(python), "-c", _PROTOCOL_EXTRACT_SCRIPT],
-            cwd=checkout,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=_PROTOCOL_EXTRACT_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            "LocAgent protocol extraction timed out after "
-            f"{_PROTOCOL_EXTRACT_TIMEOUT_SECONDS}s"
-        ) from exc
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip()
-        raise RuntimeError(f"LocAgent protocol extraction failed: {detail}")
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "LocAgent protocol extraction returned invalid JSON"
-        ) from exc
-    if not isinstance(payload, Mapping):
-        raise RuntimeError("LocAgent protocol extraction returned a non-object")
-    required = {
-        "system_prompt",
-        "task_template",
-        "pr_template",
-        "followup",
-        "tools",
-    }
-    missing = required - set(payload)
-    if missing:
-        raise RuntimeError(
-            "LocAgent protocol extraction omitted " + ", ".join(sorted(missing))
-        )
-    tools = payload.get("tools")
-    if not isinstance(tools, Sequence) or isinstance(tools, (str, bytes)):
-        raise RuntimeError("LocAgent protocol extraction returned invalid tools")
-    return (
-        str(payload["system_prompt"]),
-        str(payload["task_template"]),
-        str(payload["pr_template"]),
-        str(payload["followup"]),
-        tuple(json.loads(json.dumps(tools))),
-    )
-
-
 def load_locagent_protocol(
-    checkout: str | Path,
+    checkout: str | Path | None = None,
     *,
     problem_statement: str,
     package_name: str,
     python_executable: str | Path | None = None,
 ) -> LocAgentProtocol:
-    """Extract pinned LocAgent prompts and schemas in an isolated process."""
+    """Build the vendored protocol; legacy path arguments are ignored."""
 
-    system_prompt, task_template, pr_template, followup, tools = _load_upstream_assets(
-        str(Path(checkout).expanduser().resolve()),
-        str(Path(python_executable or sys.executable).expanduser().resolve()),
-    )
-    lines = problem_statement.strip().splitlines()
-    instruction = task_template.format(package_name=package_name)
-    instruction += pr_template.format(
-        title=lines[0] if lines else "",
-        description="\n".join(lines[1:]).strip(),
-    )
-    instruction += _READ_ONLY_WARNING
-    return LocAgentProtocol(
-        system_prompt=system_prompt,
-        instruction=instruction,
-        followup=followup,
-        tools=tuple(json.loads(json.dumps(tools))),
+    del checkout, python_executable
+    return build_locagent_protocol(
+        problem_statement=problem_statement,
+        package_name=package_name,
     )
 
 
 class LocAgentAgent:
-    """Run LocAgent's upstream policy over manifest-backed CodeNib tools."""
+    """Run CodeNib's pinned LocAgent policy over manifest-backed tools."""
 
     def __init__(
         self,
@@ -378,19 +253,10 @@ class LocAgentAgent:
         if max_completion_tokens < 1:
             raise ValueError("max_completion_tokens must be positive")
 
-        checkout_value = locagent_checkout or os.environ.get("LOCAGENT_CHECKOUT")
-        if policy_runner is None and not checkout_value:
-            raise ValueError("LocAgent requires locagent_checkout or LOCAGENT_CHECKOUT")
-
         self.model = str(model)
-        self.locagent_checkout = (
-            Path(checkout_value).expanduser().resolve() if checkout_value else None
-        )
-        self.locagent_python = (
-            Path(locagent_python).expanduser().resolve()
-            if locagent_python is not None
-            else None
-        )
+        # Retain these arguments for callers migrating from the checkout-backed
+        # adapter. The pinned production protocol no longer reads either path.
+        del locagent_checkout, locagent_python
         self.max_iterations = int(max_iterations)
         self.max_completion_tokens = int(max_completion_tokens)
         self.reasoning_effort = reasoning_effort
@@ -402,7 +268,7 @@ class LocAgentAgent:
             else None
         )
         self._manifest_resolver = manifest_resolver
-        self._policy_runner = policy_runner or self._run_upstream_policy
+        self._policy_runner = policy_runner or self._run_pinned_policy
         self._provider_factory = provider_factory or LocAgentToolProvider.from_manifest
         self._client_factory = client_factory
 
@@ -491,7 +357,7 @@ class LocAgentAgent:
             kwargs["api_key"] = self.api_key
         return OpenAI(**kwargs)
 
-    def _run_upstream_policy(
+    def _run_pinned_policy(
         self,
         problem_statement: str,
         repo_path: str,
@@ -499,19 +365,15 @@ class LocAgentAgent:
         context: Mapping[str, Any],
     ) -> LocAgentExecution:
         del repo_path
-        if self.locagent_checkout is None:
-            raise RuntimeError("LocAgent checkout is not configured")
         package_name = str(
             context.get("package_name")
             or context.get("repo_name")
             or provider.repository.repo_root.name
         ).replace("\\", "/")
         package_name = package_name.rsplit("/", 1)[-1]
-        protocol = load_locagent_protocol(
-            self.locagent_checkout,
+        protocol = build_locagent_protocol(
             problem_statement=problem_statement,
             package_name=package_name,
-            python_executable=self.locagent_python,
         )
         return run_locagent_policy(
             protocol=protocol,

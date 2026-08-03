@@ -8,14 +8,14 @@ an agent-specific graph, BM25 index, or cache directory.
 ## Support Matrix
 
 The support levels below are intentionally separate. **Provider** means CodeNib
-implements the repository-call contract. **Policy** means a pinned upstream
+implements the repository-call contract. **Policy** means a revision-pinned
 agent loop executes with that provider. **Paired evaluation** means the native
 and CodeNib providers can be swapped under one fixed case, model, prompt, and
 budget contract. None of these labels alone claims end-to-end task quality.
 
 | Integration | Status | Required views | Provider contract | Policy and evaluation | Boundary |
 | --- | --- | --- | --- | --- | --- |
-| LocAgent | Revision-pinned supported | Symbol graph + BM25 | Pinned three-tool contract | Pinned prompts and function-calling loop; paired runner with strict common file/function@k scoring | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
+| LocAgent | CodeNib-native, revision-pinned | Symbol graph + BM25 | Pinned three-tool contract | Vendored prompts and function-calling loop; paired runner with strict common file/function@k scoring | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
 | Historical OpenHands LocAgent plugin | Contract-only | Symbol graph + BM25 | Python bindings for the pinned plugin revision | Covered through the LocAgent contract; policy is absent from current OpenHands CLI | No compatibility claim for other OpenHands revisions |
 | OrcaLoca SearchAgent | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
 | SWE-Explore | Reference-only | N/A | No adapter | No policy runner or paired evaluation | Used only to distinguish trajectory-read labels from golden-patch localization metrics |
@@ -177,12 +177,15 @@ reasoning loop while replacing its repository data plane with
 `BaselineTask -> locate_code() -> BaselineRunResult` contract as the other
 localization baselines:
 
+```bash
+pip install "codenib[agent,graph]"
+```
+
 ```python
 from codenib.clients.locagent_agent import LocAgentAgent
 
 agent = LocAgentAgent(
     model="openai-compatible-model",
-    locagent_checkout="/path/to/LocAgent",
 )
 result = await agent.locate_code(
     query_text=issue,
@@ -191,11 +194,14 @@ result = await agent.locate_code(
 )
 ```
 
-The adapter extracts the upstream protocol lazily in an isolated subprocess
-and resolves final file, class, function, and 1-based line records through
-CodeNib's language-neutral graph. The main process never imports LocAgent or
-LiteLLM; `--locagent-python` can select a dedicated upstream environment.
-OpenAI is loaded only when the policy executes, and `--base-url` accepts an
+The adapter vendors the prompts and function schemas from the pinned revision,
+runs the policy loop in CodeNib, and resolves final file, class, function, and
+1-based line records through CodeNib's language-neutral graph. Delivery does
+not require a LocAgent checkout or a second Python environment, and it does
+not import LocAgent, LiteLLM, or LlamaIndex. The optional source-level probe
+above checks the vendored contract against pinned Git objects without importing
+upstream packages. OpenAI is loaded only when the policy executes, and
+`--base-url` accepts an
 OpenAI-compatible endpoint such as a LiteLLM proxy.
 
 The common runner reports the same ranked file/symbol accuracy, precision, and
@@ -207,7 +213,6 @@ contract.
 python examples/locagent_loc_agent.py \
   --dataset codenib_base \
   --model "$LOCAGENT_MODEL" \
-  --locagent-checkout /path/to/LocAgent \
   --result-path results/locagent.jsonl
 ```
 
@@ -429,6 +434,10 @@ python scripts/analysis/compare_agent_integrations.py score-orcaloca \
   --results-dir results/orcaloca-paired \
   --output results/orcaloca-summary.json
 ```
+
+The LocAgent checkout, Python, and native-index flags belong only to the
+optional upstream-native comparison cell. A CodeNib-only run uses
+`--provider codenib`, omits all three, and has no LlamaIndex dependency.
 
 Before any model call, the driver checks every requested checkout commit,
 tracked-file state, manifest commit, required capability, and actual loading of

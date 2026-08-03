@@ -365,15 +365,9 @@ def test_failed_orcaloca_cell_is_an_all_miss_with_empty_function_labels(
     assert summary["paired_summary"]["n"] == 0
 
 
-def test_locagent_loop_uses_the_configured_protocol_python(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_locagent_loop_uses_the_vendored_protocol(monkeypatch, tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    python = tmp_path / "locagent-python"
-    python.write_text("", encoding="utf-8")
-    checkout = tmp_path / "LocAgent"
-    checkout.mkdir()
     case = PolicyBenchmarkCase.from_mapping(
         {
             "instance_id": "demo__repo-1",
@@ -385,11 +379,11 @@ def test_locagent_loop_uses_the_configured_protocol_python(
     )
     captured = {}
 
-    def load_protocol(_checkout, **kwargs):
+    def build_protocol(**kwargs):
         captured.update(kwargs)
         return object()
 
-    monkeypatch.setattr(policy_benchmark, "load_locagent_protocol", load_protocol)
+    monkeypatch.setattr(policy_benchmark, "build_locagent_protocol", build_protocol)
     monkeypatch.setattr(
         policy_benchmark,
         "run_locagent_policy",
@@ -408,16 +402,86 @@ def test_locagent_loop_uses_the_configured_protocol_python(
 
     result = _run_locagent_loop(
         case=case,
-        checkout=checkout,
         dispatch=lambda _name, _arguments: "",
         model="test-model",
         base_url=None,
         max_iterations=2,
-        locagent_python=python,
     )
 
-    assert captured["python_executable"] == python
+    assert captured == {
+        "problem_statement": "Locate the parser",
+        "package_name": "demo",
+    }
     assert result["iterations"] == 1
+
+
+def test_codenib_locagent_run_needs_no_upstream_checkout_or_python(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from codenib.integrations.locagent import LocAgentToolProvider
+
+    cases = tmp_path / "cases.json"
+    output_dir = tmp_path / "results"
+    _write_cases(cases)
+
+    class Provider:
+        load_seconds = 0.01
+
+        def dispatch(self, _name, _arguments):
+            return ""
+
+    monkeypatch.setattr(
+        policy_benchmark,
+        "inspect_policy_run_preflight",
+        lambda *_args, **_kwargs: SimpleNamespace(require_eligible=lambda: None),
+    )
+    monkeypatch.setattr(
+        policy_benchmark,
+        "_policy_provenance_by_provider",
+        lambda **_kwargs: {"codenib": {"fixture": True}},
+    )
+    monkeypatch.setattr(
+        LocAgentToolProvider,
+        "from_manifest",
+        lambda _manifest: Provider(),
+    )
+    monkeypatch.setattr(
+        policy_benchmark,
+        "_run_locagent_loop",
+        lambda **_kwargs: {
+            "model": "test-model",
+            "elapsed_seconds": 0.1,
+            "regions": [],
+            "usage": {},
+        },
+    )
+
+    assert (
+        main(
+            [
+                "locagent",
+                "--cases",
+                str(cases),
+                "--output-dir",
+                str(output_dir),
+                "--provider",
+                "codenib",
+                "--model",
+                "test-model",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(
+        policy_result_path(
+            output_dir,
+            instance_id="demo__repo-1",
+            agent="locagent",
+            provider="codenib",
+        ).read_text(encoding="utf-8")
+    )
+    assert result["provider"] == "codenib"
+    assert "error" not in result
 
 
 def test_provider_cleanup_failure_is_recordable() -> None:

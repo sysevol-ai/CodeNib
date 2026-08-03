@@ -117,7 +117,7 @@ evaluated.
 |--------|-------|---------------|
 | [`claude_loc_agent.py`](claude_loc_agent.py) | `ClaudeLocAgent` over `claude_agent_sdk` | `pip install claude-agent-sdk` |
 | [`codex_loc_agent.py`](codex_loc_agent.py) | `CodexLocAgent` over OpenAI's `openai_codex` | see the script's header (GitHub, not PyPI) |
-| [`locagent_loc_agent.py`](locagent_loc_agent.py) | LocAgent policy over CodeNib's manifest-backed tools | pinned LocAgent checkout and its policy dependencies |
+| [`locagent_loc_agent.py`](locagent_loc_agent.py) | Pinned LocAgent policy over CodeNib's manifest-backed tools | `pip install "codenib[agent,graph]"` |
 | [`orcaloca_loc_agent.py`](orcaloca_loc_agent.py) | OrcaLoca policy over CodeNib's manifest-backed graph | pinned OrcaLoca checkout and its LlamaIndex dependencies |
 
 The Claude and Codex wrappers lock down writes (read-only sandbox +
@@ -138,7 +138,6 @@ each checkout with the graph preset, then run either policy:
 ```bash
 python examples/locagent_loc_agent.py \
     --dataset codenib_base --model "$LOCAGENT_MODEL" \
-    --locagent-checkout /path/to/LocAgent \
     --result-path results/locagent_loc.jsonl --resume
 
 python examples/orcaloca_loc_agent.py \

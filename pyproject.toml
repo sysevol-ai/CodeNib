@@ -69,6 +69,7 @@ codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
 [project.optional-dependencies]
 agent = [
     "litellm>=1.40.0",
+    "openai>=1.0.0",
 ]
 datasets = [
     "datasets>=4.0.0",

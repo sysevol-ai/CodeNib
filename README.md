@@ -50,11 +50,11 @@ agent or code-Wiki framework.
 
 ## News
 
-- **2026-08-03 — LocAgent policy integration.** CodeNib now runs LocAgent's
-  revision-pinned prompts and function-calling loop over manifest-backed BM25
-  and symbol-graph views. The paired harness swaps the native and CodeNib data
-  planes under one policy and applies strict case, provenance, and denominator
-  checks with common ranked localization metrics.
+- **2026-08-03 — Native LocAgent policy integration.** CodeNib now runs
+  revision-pinned LocAgent prompts and its function-calling loop directly over
+  manifest-backed BM25 and symbol-graph views without importing LocAgent,
+  LiteLLM, or LlamaIndex. The paired harness applies strict case,
+  provenance, denominator, and ranked-localization checks.
 - **2026-08-02 — OrcaLoca SearchAgent integration.** CodeNib can now serve a
   revision-pinned OrcaLoca `SearchAgent` through its manifest-backed symbol
   graph, preserving the upstream six-tool and private-hook contract without

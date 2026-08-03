@@ -4,11 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Run LocAgent's policy over CodeNib views with the common benchmark runner.
-
-The pinned LocAgent checkout supplies the prompts and function schemas.
-CodeNib supplies all repository tools from an existing graph-enabled manifest.
-"""
+"""Run CodeNib's pinned LocAgent policy with the common benchmark runner."""
 
 from __future__ import annotations
 
@@ -33,18 +29,6 @@ def parse_args() -> argparse.Namespace:
         "--model",
         required=True,
         help="OpenAI-compatible model name used by the LocAgent policy.",
-    )
-    parser.add_argument(
-        "--locagent-checkout",
-        type=Path,
-        default=None,
-        help="Pinned LocAgent checkout (or set LOCAGENT_CHECKOUT).",
-    )
-    parser.add_argument(
-        "--locagent-python",
-        type=Path,
-        default=None,
-        help="Python executable with the pinned LocAgent policy dependencies.",
     )
     parser.add_argument(
         "--manifest",
@@ -82,8 +66,6 @@ def main() -> None:
     def factory() -> LocAgentAgent:
         return LocAgentAgent(
             model=args.model,
-            locagent_checkout=args.locagent_checkout,
-            locagent_python=args.locagent_python,
             manifest_path=args.manifest,
             max_iterations=args.max_iterations,
             max_completion_tokens=args.max_completion_tokens,

@@ -102,10 +102,16 @@ def test_adapter_import_does_not_require_locagent_litellm_or_openai() -> None:
     script = """
 import sys
 sys.modules["litellm"] = None
+sys.modules["llama_index"] = None
 sys.modules["openai"] = None
 sys.modules["util"] = None
-from codenib.clients.locagent_agent import LocAgentAgent
+from codenib.clients.locagent_agent import LocAgentAgent, load_locagent_protocol
 assert LocAgentAgent.__name__ == "LocAgentAgent"
+protocol = load_locagent_protocol(
+    problem_statement="Fix parser",
+    package_name="demo",
+)
+assert protocol.tools[0]["function"]["name"] == "finish"
 """
 
     result = subprocess.run(
@@ -182,57 +188,27 @@ def test_parser_does_not_treat_qualified_symbol_as_file() -> None:
     assert locations[0].function_name == "BillingService.calculate_tax"
 
 
-def test_protocol_is_extracted_in_an_isolated_python_process(
-    monkeypatch,
+def test_protocol_is_vendored_and_does_not_require_upstream_paths(
     tmp_path: Path,
 ) -> None:
-    checkout = tmp_path / "LocAgent"
-    runtime = checkout / "util" / "runtime"
-    runtime.mkdir(parents=True)
-    (runtime / "function_calling.py").write_text("", encoding="utf-8")
-    python = tmp_path / "locagent-python"
-    python.write_text("", encoding="utf-8")
-    calls = []
-    payload = {
-        "system_prompt": "system",
-        "task_template": "Inspect {package_name}.\n",
-        "pr_template": "Title: {title}\n{description}\n",
-        "followup": "verify",
-        "tools": [
-            {
-                "type": "function",
-                "function": {"name": "finish", "parameters": {}},
-            }
-        ],
-    }
-
-    def run(command, **kwargs):
-        calls.append((command, kwargs))
-        return SimpleNamespace(
-            returncode=0,
-            stdout=json.dumps(payload),
-            stderr="",
-        )
-
-    locagent_client._load_upstream_assets.cache_clear()
-    monkeypatch.setattr(locagent_client.subprocess, "run", run)
     protocol = locagent_client.load_locagent_protocol(
-        checkout,
+        tmp_path / "missing-locagent-checkout",
         problem_statement="Fix parser\nPreserve ranges.",
         package_name="demo",
-        python_executable=python,
+        python_executable=tmp_path / "missing-locagent-python",
     )
-    locagent_client._load_upstream_assets.cache_clear()
 
-    assert protocol.system_prompt == "system"
-    assert protocol.followup == "verify"
-    assert "Inspect demo." in protocol.instruction
+    assert protocol.system_prompt.startswith("You are a helpful assistant")
+    assert "modules in the 'demo' package" in protocol.instruction
     assert "Title: Fix parser" in protocol.instruction
     assert "Preserve ranges." in protocol.instruction
+    assert "never modify files" in protocol.instruction
     assert protocol.tools[0]["function"]["name"] == "finish"
-    assert calls[0][0][0] == str(python.resolve())
-    assert calls[0][1]["cwd"] == checkout.resolve()
-    assert calls[0][1]["timeout"] == 60
+    assert [tool["function"]["name"] for tool in protocol.tools[1:]] == [
+        "search_code_snippets",
+        "get_entity_contents",
+        "explore_tree_structure",
+    ]
 
 
 def test_agent_resolves_locagent_output_to_generic_symbols(
@@ -343,7 +319,7 @@ def test_default_policy_loop_dispatches_tools_and_finishes(
     )
     monkeypatch.setattr(
         locagent_client,
-        "load_locagent_protocol",
+        "build_locagent_protocol",
         lambda *_args, **_kwargs: protocol,
     )
 
@@ -425,7 +401,6 @@ def test_default_policy_loop_dispatches_tools_and_finishes(
     )
     agent = LocAgentAgent(
         model="test-model",
-        locagent_checkout=tmp_path / "LocAgent",
         manifest_path=manifest,
         provider_factory=lambda _manifest: provider,
         client_factory=lambda: client,

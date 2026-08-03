@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 import yaml
 
+from codenib.clients import locagent_protocol
 from codenib.integrations.locagent import (
     LOCAGENT_REVISION,
     OPENHANDS_LOCAGENT_REVISION,
@@ -27,6 +28,14 @@ from codenib.integrations.locagent import (
 pytestmark = pytest.mark.integration
 
 _LOCAGENT_REPO_OPS = "plugins/location_tools/repo_ops/repo_ops.py"
+_LOCAGENT_PROTOCOL_FILES = {
+    "function_calling": "util/runtime/function_calling.py",
+    "finish": "util/runtime/finish.py",
+    "content_tools": "util/runtime/content_tools.py",
+    "structure_tools": "util/runtime/structure_tools.py",
+    "auto_search_prompt": "util/prompts/pipelines/auto_search_prompt.py",
+    "general_prompt": "util/prompts/general_prompt.py",
+}
 _OPENHANDS_TOOL_FILES = (
     "openhands/agenthub/loc_agent/tools/search_content.py",
     "openhands/agenthub/loc_agent/tools/explore_structure.py",
@@ -70,6 +79,10 @@ def upstream_sources() -> SimpleNamespace:
             LOCAGENT_REVISION,
             _LOCAGENT_REPO_OPS,
         ),
+        locagent_protocol={
+            name: _git_show(locagent, LOCAGENT_REVISION, path)
+            for name, path in _LOCAGENT_PROTOCOL_FILES.items()
+        },
         openhands_tools=[
             _git_show(openhands, OPENHANDS_LOCAGENT_REVISION, path)
             for path in _OPENHANDS_TOOL_FILES
@@ -124,6 +137,68 @@ def _dict_items(node: ast.AST) -> dict[str, ast.AST]:
         for key, value in zip(node.keys, node.values, strict=True)
         if key is not None
     }
+
+
+def _static_value(node: ast.AST, values: dict[str, Any]) -> Any:
+    if isinstance(node, ast.Name):
+        return values[node.id]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _static_value(node.left, values) + _static_value(node.right, values)
+    if isinstance(node, ast.Dict):
+        return {
+            _static_value(key, values): _static_value(value, values)
+            for key, value in zip(node.keys, node.values, strict=True)
+            if key is not None
+        }
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return [_static_value(item, values) for item in node.elts]
+    return ast.literal_eval(node)
+
+
+def _static_assignments(source: str) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for node in ast.parse(source).body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        try:
+            values[target.id] = _static_value(node.value, values)
+        except (KeyError, ValueError, TypeError):
+            continue
+    return values
+
+
+def _function_tool_schemas(source: str) -> dict[str, dict[str, Any]]:
+    values = _static_assignments(source)
+    schemas: dict[str, dict[str, Any]] = {}
+    for call in (
+        node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call)
+    ):
+        function_name = (
+            call.func.id
+            if isinstance(call.func, ast.Name)
+            else getattr(call.func, "attr", "")
+        )
+        if function_name != "ChatCompletionToolParamFunctionChunk":
+            continue
+        keywords = {
+            keyword.arg: keyword.value
+            for keyword in call.keywords
+            if keyword.arg is not None
+        }
+        if "name" not in keywords or "description" not in keywords:
+            continue
+        name = str(_static_value(keywords["name"], values))
+        function: dict[str, Any] = {
+            "name": name,
+            "description": _static_value(keywords["description"], values),
+        }
+        if "parameters" in keywords:
+            function["parameters"] = _static_value(keywords["parameters"], values)
+        schemas[name] = {"type": "function", "function": function}
+    return schemas
 
 
 def _parameter_shape(
@@ -216,3 +291,48 @@ def test_openhands_function_schemas_match_frozen_contract(
         _openhands_tool_contract(upstream_sources.openhands_tools) == expected["tools"]
     )
     assert dict(sorted(current.items())) == expected["tools"]
+
+
+def test_vendored_policy_assets_match_pinned_locagent_source(
+    upstream_sources: SimpleNamespace,
+) -> None:
+    sources = upstream_sources.locagent_protocol
+    function_calling = _static_assignments(sources["function_calling"])
+    auto_search = _static_assignments(sources["auto_search_prompt"])
+    general = _static_assignments(sources["general_prompt"])
+    structure = _static_assignments(sources["structure_tools"])
+
+    assert locagent_protocol.LOCAGENT_PROTOCOL_REVISION == LOCAGENT_REVISION
+    assert locagent_protocol._SYSTEM_PROMPT == function_calling["SYSTEM_PROMPT"]
+    assert (
+        locagent_protocol._TASK_INSTRUCTION_TEMPLATE == auto_search["TASK_INSTRUECTION"]
+    )
+    assert locagent_protocol._PROBLEM_TEMPLATE == general["PR_TEMPLATE"]
+    assert locagent_protocol._FOLLOWUP == auto_search["FAKE_USER_MSG_FOR_LOC"]
+
+    upstream_tools: dict[str, dict[str, Any]] = {}
+    for name in ("finish", "content_tools"):
+        upstream_tools.update(_function_tool_schemas(sources[name]))
+    upstream_tools["explore_tree_structure"] = {
+        "type": "function",
+        "function": {
+            "name": "explore_tree_structure",
+            "description": (
+                structure["_STRUCTURE_EXPLORER_DESCRIPTION"]
+                + structure["_TREE_EXAMPLE"]
+            ),
+            "parameters": structure["_STRUCTURE_EXPLORER_PARAMETERS"],
+        },
+    }
+    ordered_names = (
+        "finish",
+        "search_code_snippets",
+        "get_entity_contents",
+        "explore_tree_structure",
+    )
+    expected_tools = [upstream_tools[name] for name in ordered_names]
+    actual_tools = [
+        locagent_protocol._FINISH_TOOL,
+        *get_locagent_tool_schemas(),
+    ]
+    assert actual_tools == expected_tools

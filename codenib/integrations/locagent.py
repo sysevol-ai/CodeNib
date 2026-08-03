@@ -53,16 +53,109 @@ _ENTITY_TYPES = {
     "function": {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD, NODE_TYPE_SYMBOL},
 }
 
-_SEARCH_DESCRIPTION = """Search repository code by entity name, keyword, file
-pattern, or 1-based line number. Entity names use
-`file_path:QualifiedName`; files use repository-relative paths."""
+_SEARCH_DESCRIPTION = """Searches the codebase to retrieve relevant code snippets based on given queries(terms or line numbers).
+** Note:
+- Either `search_terms` or `line_nums` must be provided to perform a search.
+- If `search_terms` are provided, it searches for code snippets based on each term:
+- If `line_nums` is provided, it searches for code snippets around the specified lines within the file defined by `file_path_or_pattern`.
 
-_ENTITY_DESCRIPTION = """Return source for repository entities. Functions and
-classes use `file_path:QualifiedName`; files use repository-relative paths."""
+** Example Usage:
+# Search for code content contain keyword `order`, `bill`
+search_code_snippets(search_terms=["order", "bill"])
 
-_TREE_DESCRIPTION = """Traverse a pre-built repository graph upstream,
-downstream, or in both directions. Traversal can be filtered by entity and
-dependency types."""
+# Search for a class
+search_code_snippets(search_terms=["MyClass"])
+
+# Search for context around specific lines (10 and 15) within a file
+search_code_snippets(line_nums=[10, 15], file_path_or_pattern='src/example.py')
+"""  # noqa: B950 - exact text from the pinned upstream policy
+
+_ENTITY_DESCRIPTION = (
+    "\n"
+    "Searches the codebase to retrieve the complete implementations of specified "
+    "entities based on the provided entity names. \n"
+    "The tool can handle specific entity queries such as function names, class "
+    "names, or file paths.\n"
+    """
+**Usage Example:**
+# Search for a specific function implementation
+get_entity_contents(['src/my_file.py:MyClass.func_name'])
+
+# Search for a file's complete content
+get_entity_contents(['src/my_file.py'])
+
+**Entity Name Format:**
+- To specify a function or class, use the format: `file_path:QualifiedName`
+  (e.g., 'src/helpers/math_helpers.py:MathUtils.calculate_sum').
+- To search for a file's content, use only the file path (e.g., 'src/my_file.py').
+"""
+)  # noqa: B950 - exact text from the pinned upstream policy
+
+_TREE_DESCRIPTION = """
+Unified repository exploring tool that traverses a pre-built code graph to retrieve dependency structure around specified entities.
+The search can be controlled to traverse upstream (exploring dependencies that entities rely on) or downstream (exploring how entities impact others), with optional limits on traversal depth and filters for entity and dependency types.
+
+Code Graph Definition:
+* Entity Types: 'directory', 'file', 'class', 'function'.
+* Dependency Types: 'contains', 'imports', 'invokes', 'inherits'.
+* Hierarchy:
+    - Directories contain files and subdirectories.
+    - Files contain classes and functions.
+    - Classes contain inner classes and methods.
+    - Functions can contain inner functions.
+* Interactions:
+    - Files/classes/functions can import classes and functions.
+    - Classes can inherit from other classes.
+    - Classes and functions can invoke others (invocations in a class's `__init__` are attributed to the class).
+Entity ID:
+* Unique identifier including file path and module path.
+* Here's an example of an Entity ID: `"interface/C.py:C.method_a.inner_func"` identifies function `inner_func` within `method_a` of class `C` in `"interface/C.py"`.
+
+Notes:
+* Traversal Control: The `traversal_depth` parameter specifies how deep the function should explore the graph starting from the input entities.
+* Filtering: Use `entity_type_filter` and `dependency_type_filter` to narrow down the scope of the search, focusing on specific entity types and relationships.
+
+
+Example Usage:
+1. Exploring Outward Dependencies:
+    ```
+    explore_tree_structure(
+        start_entities=['src/module_a.py:ClassA'],
+        direction='downstream',
+        traversal_depth=2,
+        dependency_type_filter=['invokes', 'imports']
+    )
+    ```
+    This retrieves the dependencies of `ClassA` up to 2 levels deep, focusing only on classes and functions with 'invokes' and 'imports' relationships.
+
+2. Exploring Inward Dependencies:
+    ```
+    explore_tree_structure(
+        start_entities=['src/module_b.py:FunctionY'],
+        direction='upstream',
+        traversal_depth=-1
+    )
+    ```
+    This finds all entities that depend on `FunctionY` without restricting the traversal depth.
+3. Exploring Repository Structure:
+    ```
+    explore_tree_structure(
+      start_entities=['/'],
+      traversal_depth=2,
+      dependency_type_filter=['contains']
+    )
+    ```
+    This retrieves the tree repository structure from the root directory (/), traversing up to two levels deep and focusing only on 'contains' relationship.
+4. Generate Class Diagrams:
+    ```
+    explore_tree_structure(
+        start_entities=selected_entity_ids,
+        direction='both',
+        traverse_depth=-1,
+        dependency_type_filter=['inherits']
+    )
+    ```
+"""  # noqa: B950 - exact text from the pinned upstream policy
 
 _LOCAGENT_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
     {
@@ -76,16 +169,33 @@ _LOCAGENT_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
                     "search_terms": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Names, keywords, or code fragments to search.",
+                        "description": (
+                            "A list of names, keywords, or code snippets to search "
+                            "for within the codebase. This can include potential "
+                            "function names, class names, or general code fragments. "
+                            "Either `search_terms` or `line_nums` must be provided "
+                            "to perform a search."
+                        ),
                     },
                     "line_nums": {
                         "type": "array",
                         "items": {"type": "integer"},
-                        "description": "1-based source lines in one concrete file.",
+                        "description": (
+                            "Specific line numbers to locate code snippets within "
+                            "a specified file. Must be used alongside a valid "
+                            "`file_path_or_pattern`. Either `line_nums` or "
+                            "`search_terms` must be provided to perform a search."
+                        ),
                     },
                     "file_path_or_pattern": {
                         "type": "string",
-                        "description": "Repository-relative file path or glob.",
+                        "description": (
+                            "A glob pattern or specific file path used to filter "
+                            "search results to particular files or directories. "
+                            'Defaults to "**/*.py", meaning all Python files are '
+                            "searched by default. If `line_nums` are provided, "
+                            "this must specify a specific file path."
+                        ),
                         "default": "**/*.py",
                     },
                 },
@@ -104,7 +214,15 @@ _LOCAGENT_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
                     "entity_names": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Repository-relative file or entity identifiers.",
+                        "description": (
+                            "A list of entity names to query. Each entity name can "
+                            "represent a function, class, or file. For functions or "
+                            "classes, the format should be "
+                            "'file_path:QualifiedName' (e.g., "
+                            "'src/helpers/math_helpers.py:MathUtils.calculate_sum'). "
+                            "For files, use just the file path (e.g., "
+                            "'src/my_file.py')."
+                        ),
                     }
                 },
                 "required": ["entity_names"],
@@ -122,26 +240,60 @@ _LOCAGENT_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
                     "start_entities": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Repository entities from which traversal starts.",
+                        "description": (
+                            "List of entities (e.g., class, function, file, or "
+                            "directory paths) to begin the search from.\n"
+                            "Entities representing classes or functions must be "
+                            'formatted as "file_path:QualifiedName" (e.g., '
+                            "`interface/C.py:C.method_a.inner_func`).\n"
+                            "For files or directories, provide only the file or "
+                            "directory path (e.g., `src/module_a.py` or `src/`)."
+                        ),
                     },
                     "direction": {
                         "type": "string",
                         "enum": ["upstream", "downstream", "both"],
                         "default": "downstream",
+                        "description": (
+                            "Direction of traversal in the code graph; allowed "
+                            "options are: `upstream`, `downstream`, `both`.\n"
+                            "- 'upstream': Traversal to explore dependencies that "
+                            "the specified entities rely on (how they depend on "
+                            "others).\n"
+                            "- 'downstream': Traversal to explore the effects or "
+                            "interactions of the specified entities on others (how "
+                            "others depend on them).\n"
+                            "- 'both': Traversal on both direction."
+                        ),
                     },
                     "traversal_depth": {
                         "type": "integer",
                         "default": 2,
+                        "description": (
+                            "Maximum depth of traversal. A value of -1 indicates "
+                            "unlimited depth (subject to a maximum limit).Must be "
+                            "either `-1` or a non-negative integer (\u2265 0)."
+                        ),
                     },
                     "entity_type_filter": {
                         "type": ["array", "null"],
                         "items": {"type": "string"},
                         "default": None,
+                        "description": (
+                            "List of entity types (e.g., 'class', 'function', "
+                            "'file', 'directory') to include in the traversal. If "
+                            "None, all entity types are included."
+                        ),
                     },
                     "dependency_type_filter": {
                         "type": ["array", "null"],
                         "items": {"type": "string"},
                         "default": None,
+                        "description": (
+                            "List of dependency types (e.g., 'contains', 'imports', "
+                            "'invokes', 'inherits') to include in the traversal. If "
+                            "None, all dependency types are included."
+                        ),
                     },
                 },
                 "required": ["start_entities"],
