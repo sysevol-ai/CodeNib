@@ -153,6 +153,7 @@ def supplement_graph_source_coverage(
     supplemented_files = []
     supplemented_symbols = 0
     unreadable_files = []
+    unreadable_errors = {}
 
     for file_path in missing:
         absolute = root.joinpath(*PurePosixPath(file_path).parts)
@@ -160,19 +161,22 @@ def supplement_graph_source_coverage(
         if language is None or not absolute.is_file():
             unreadable_files.append(file_path)
             continue
-        chunker = chunkers.get(language)
-        if chunker is None:
-            chunker = create_chunker(
-                language,
-                chunk_depth=2,
-                l2_level_exclusive=False,
-                skeleton_mode=False,
-            )
-            chunkers[language] = chunker
         try:
+            chunker = chunkers.get(language)
+            if chunker is None:
+                chunker = create_chunker(
+                    language,
+                    chunk_depth=2,
+                    l2_level_exclusive=False,
+                    skeleton_mode=False,
+                )
+                chunkers[language] = chunker
             chunks = chunker.chunk_file(str(absolute), relative_path=file_path)
-        except (OSError, UnicodeError):
+        # The syntax path supplements a compiler graph. One parser or plugin
+        # failure should remain a quality diagnostic, not discard that graph.
+        except Exception as exc:
             unreadable_files.append(file_path)
+            unreadable_errors[file_path] = f"{type(exc).__name__}: {exc}"
             continue
 
         _ensure_file_hierarchy(graph, file_path)
@@ -207,7 +211,7 @@ def supplement_graph_source_coverage(
             supplemented_symbols += 1
         supplemented_files.append(file_path)
 
-    graph._invalidate_edge_index()
+    graph.invalidate_caches()
     graph.build_range_indexes()
     represented_after = represented.union(supplemented_files)
     expected_count = len(expected_files)
@@ -228,6 +232,7 @@ def supplement_graph_source_coverage(
         "supplemented_symbols": supplemented_symbols,
         "files": supplemented_files,
         "unreadable_files": unreadable_files,
+        "unreadable_errors": unreadable_errors,
     }
 
 

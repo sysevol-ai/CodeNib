@@ -82,3 +82,37 @@ def test_source_coverage_does_not_use_required_file_labels(tmp_path):
 
     assert report["candidate_files"] == 0
     assert report["files"] == []
+
+
+def test_source_coverage_records_parser_failure_without_aborting(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test User")
+    (repo / "broken.py").write_text("def broken(:\n", encoding="utf-8")
+    _git(repo, "add", "broken.py")
+    _git(repo, "commit", "-m", "initial")
+
+    class BrokenChunker:
+        def chunk_file(self, *_args, **_kwargs):
+            raise ValueError("parser failed")
+
+    monkeypatch.setattr(
+        "codenib.graph.source_coverage.create_chunker",
+        lambda *_args, **_kwargs: BrokenChunker(),
+    )
+    graph = CodeGraph(str(repo))
+    graph.add_root_node(str(repo))
+
+    report = supplement_graph_source_coverage(
+        graph,
+        repo_root=repo,
+        surface=GitSourceSurface.load(repo),
+        extensions={".py"},
+        represented_paths=(),
+    )
+
+    assert report["unreadable_files"] == ["broken.py"]
+    assert report["unreadable_errors"] == {"broken.py": "ValueError: parser failed"}
+    assert report["coverage_after"] == 0.0

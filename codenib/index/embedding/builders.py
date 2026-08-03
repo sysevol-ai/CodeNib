@@ -93,7 +93,7 @@ def build_hierarchical_vector_store(
             chunker_kwargs=dict(
                 language=languages[0],
                 repo_config=repo_cfg,
-                max_lines_per_chunk=None,
+                max_lines_per_chunk=max_lines_per_chunk,
                 chunk_depth=0,
                 skeleton_mode=True,
             )

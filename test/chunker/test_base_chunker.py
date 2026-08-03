@@ -91,5 +91,35 @@ def test_l0_empty_skeleton_falls_back_to_full_file(monkeypatch, tmp_path):
 
     assert len(chunks) == 1
     assert chunks[0].chunk_type == "file"
-    assert chunks[0].content == content
+    assert chunks[0].content == f"include/declarations.h\n{content}"
     assert chunks[0].node_id == "include/declarations.h"
+
+
+def test_l0_empty_skeleton_fallback_honors_max_lines(monkeypatch, tmp_path):
+    source = tmp_path / "generated.h"
+    source.write_text(
+        "".join(f"#define VALUE_{line} {line}\n" for line in range(5000)),
+        encoding="utf-8",
+    )
+
+    parser = SimpleNamespace(parse=lambda _code: SimpleNamespace(root_node=object()))
+    monkeypatch.setattr(
+        "codenib.code_chunking.base.get_language", lambda _lang: object()
+    )
+    monkeypatch.setattr(
+        BaseCodeChunker,
+        "_create_parser",
+        staticmethod(lambda _language: parser),
+    )
+
+    chunker = StubCodeChunker(
+        "cpp",
+        max_lines_per_chunk=100,
+        chunk_depth=0,
+        skeleton_mode=True,
+    )
+    chunks = chunker.chunk_file(str(source), relative_path="include/generated.h")
+
+    assert len(chunks) == 51
+    assert all(chunk.end_line - chunk.start_line + 1 <= 100 for chunk in chunks)
+    assert all(chunk.node_id == "include/generated.h" for chunk in chunks)

@@ -27,7 +27,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Mapping, Optional
 
 project_root = Path(__file__).resolve().parents[2]
 if str(project_root) not in sys.path:
@@ -193,8 +193,8 @@ def parse_args():
         type=int,
         default=None,
         help=(
-            "Maximum lines per L2 code chunk (default: None, no splitting to "
-            "preserve function integrity)"
+            "Maximum lines per L2 code chunk and raw-source L0 fallback "
+            "(default: None, no splitting)"
         ),
     )
     parser.add_argument(
@@ -466,18 +466,14 @@ def _quality_report_is_reusable(
         config = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
+    if not isinstance(quality, Mapping) or not isinstance(config, Mapping):
+        return False
     artifact = config.get("artifact") or {}
+    if not isinstance(artifact, Mapping):
+        return False
     expected_commit = str(instance.get("base_commit") or "").lower()
     actual_commit = str(artifact.get("commit") or "").lower()
-    commit_matches = bool(
-        expected_commit
-        and actual_commit
-        and (
-            expected_commit == actual_commit
-            or actual_commit.startswith(expected_commit)
-            or expected_commit.startswith(actual_commit)
-        )
-    )
+    commit_matches = bool(expected_commit and expected_commit == actual_commit)
     configuration_matches = all(
         artifact.get(key) == value
         for key, value in (expected_configuration or {}).items()

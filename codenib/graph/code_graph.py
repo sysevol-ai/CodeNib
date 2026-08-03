@@ -507,6 +507,10 @@ class CodeGraph:
         """Mark the edge index stale. Next _add_edge will rebuild it.
         Call after any igraph delete_edges/delete_vertices — eids shift on
         delete and cached values would point at wrong edges."""
+        self.invalidate_caches()
+
+    def invalidate_caches(self) -> None:
+        """Invalidate derived indexes after direct graph mutation."""
         self._edge_index = None
 
     # ------------------------------------------------------------------

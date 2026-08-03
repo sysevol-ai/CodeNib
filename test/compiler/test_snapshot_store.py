@@ -32,7 +32,10 @@ def _make_repo(path):
     _git(path, "config", "user.email", "test@example.com")
     _git(path, "config", "user.name", "Test User")
     (path / "main.py").write_text("VALUE = 1\n", encoding="utf-8")
-    (path / ".gitignore").write_text("lib/\nnode_modules/\n", encoding="utf-8")
+    (path / ".gitignore").write_text(
+        "lib/\nnode_modules/\ncompile_commands.json\n*.so\n",
+        encoding="utf-8",
+    )
     _git(path, "add", "main.py", ".gitignore")
     _git(path, "commit", "-m", "initial")
     return _git(path, "rev-parse", "HEAD")
@@ -125,6 +128,10 @@ def test_ensure_worktree_removes_visible_generated_files_but_keeps_tool_cache(
     (worktree / "scratch.py").write_text("temporary\n", encoding="utf-8")
     (worktree / "lib").mkdir()
     (worktree / "lib" / "generated.py").write_text("generated\n", encoding="utf-8")
+    compile_commands = worktree / "compile_commands.json"
+    compile_commands.write_text("[]\n", encoding="utf-8")
+    extension = worktree / "codenib_core.so"
+    extension.write_bytes(b"compiled-extension")
     (worktree / "node_modules" / "pkg").mkdir(parents=True)
     cached = worktree / "node_modules" / "pkg" / "index.js"
     cached.write_text("cached\n", encoding="utf-8")
@@ -134,4 +141,6 @@ def test_ensure_worktree_removes_visible_generated_files_but_keeps_tool_cache(
     assert (worktree / "main.py").read_text(encoding="utf-8") == "VALUE = 1\n"
     assert not (worktree / "scratch.py").exists()
     assert not (worktree / "lib").exists()
+    assert compile_commands.read_text(encoding="utf-8") == "[]\n"
+    assert extension.read_bytes() == b"compiled-extension"
     assert cached.read_text(encoding="utf-8") == "cached\n"

@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
 
 from codenib.compiler.artifact_quality import (  # noqa: E402
     ARTIFACT_QUALITY_SCHEMA_VERSION,
-    assess_graph_artifact,
+    constrain_and_assess_graph_artifact,
     graph_file_paths,
     required_source_files,
     write_artifact_quality,
@@ -742,7 +742,7 @@ def main() -> None:
                         instance,
                         graph_extensions,
                     )
-                    artifact_quality = assess_graph_artifact(
+                    artifact_quality = constrain_and_assess_graph_artifact(
                         graph,
                         surface,
                         required_files=required_files,
@@ -750,18 +750,11 @@ def main() -> None:
                     artifact_quality["artifact"] = artifact_metadata
                     if fallback_report is not None:
                         artifact_quality["source_coverage_fallback"] = fallback_report
-                        if fallback_report["unreadable_files"]:
-                            artifact_quality["failure_names"].append(
-                                "source_coverage_fallback_incomplete"
-                            )
-                            artifact_quality["passed"] = False
                     graph.project_root = repo_path
                     graph.save_graph(indexer.graph_file)
                     occurrence_index = getattr(graph, "lsp_occurrence_index", None)
                     if occurrence_index is not None:
-                        occurrence_index.save(
-                            Path(indexer.graph_file).with_name("lsp_index.pkl")
-                        )
+                        occurrence_index.save(indexer.lsp_index_file)
                     quality_path = instance_output_dir / "artifact_quality.json"
                     write_artifact_quality(quality_path, artifact_quality)
                     logger.info(

@@ -175,8 +175,17 @@ class BaseCodeChunker(ABC):
                 if not skeleton_content:
                     # L0 is the file view. Declaration-only files and language
                     # constructs not recognized by the skeleton extractor must
-                    # remain addressable rather than disappearing from the index.
-                    skeleton_content = code_content
+                    # remain addressable, while still honoring the configured
+                    # payload bound for a raw-source fallback.
+                    return self._split_by_max_lines(
+                        lines=lines,
+                        start_line=0,
+                        end_line=len(lines) - 1,
+                        chunk_type="file",
+                        name=Path(file_path).name,
+                        file_path=file_path,
+                        node_id=path_for_node_id,
+                    )
                 return [
                     CodeChunk(
                         skeleton_content,

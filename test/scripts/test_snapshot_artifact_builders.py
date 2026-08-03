@@ -157,6 +157,43 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(tmp_path):
         expected_configuration={},
     )
 
+    short_artifact = {**artifact, "commit": "a"}
+    (root / f"config_{suffix}.json").write_text(
+        json.dumps({"artifact": short_artifact}),
+        encoding="utf-8",
+    )
+    quality_path.write_text(
+        json.dumps(
+            {
+                "schema_version": ARTIFACT_QUALITY_SCHEMA_VERSION,
+                "passed": True,
+                "artifact": short_artifact,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert not build_embeddings._quality_report_is_reusable(
+        root,
+        embedding_model=model,
+        instance=instance,
+        expected_configuration={},
+    )
+
+    (root / f"config_{suffix}.json").write_text(
+        json.dumps({"artifact": artifact}),
+        encoding="utf-8",
+    )
+    quality_path.write_text(
+        json.dumps(
+            {
+                "schema_version": ARTIFACT_QUALITY_SCHEMA_VERSION,
+                "passed": True,
+                "artifact": artifact,
+            }
+        ),
+        encoding="utf-8",
+    )
+
     assert not build_embeddings._quality_report_is_reusable(
         root,
         embedding_model=model,

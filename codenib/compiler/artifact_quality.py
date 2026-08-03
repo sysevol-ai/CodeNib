@@ -42,30 +42,56 @@ def _path_or_none(value: object) -> str | None:
         return None
 
 
-def graph_source_paths(graph: CodeGraph) -> tuple[str, ...]:
-    """Collect every repository path represented by a graph artifact."""
-
+def _graph_paths_and_invalid(
+    graph: CodeGraph,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     paths: set[str] = set()
+    invalid: set[str] = set()
+
+    def collect(value: object, owner: str, *, required: bool = False) -> None:
+        if value is None or value == "":
+            if required:
+                invalid.add(f"{owner}={value!r}")
+            return
+        path = _path_or_none(value)
+        if path is None:
+            invalid.add(f"{owner}={value!r}")
+        else:
+            paths.add(path)
+
     for vertex in graph.graph.vs:
         attrs = vertex.attributes()
         node_type = attrs.get("type")
-        candidate = (
-            attrs.get("name") if node_type == NODE_TYPE_FILE else attrs.get("file")
-        )
-        path = _path_or_none(candidate)
-        if path:
-            paths.add(path)
+        if node_type == NODE_TYPE_DIRECTORY:
+            value = attrs.get("name")
+            if _path_or_none(value) is None:
+                invalid.add(f"vertex[{vertex.index}].name={value!r}")
+        elif node_type == NODE_TYPE_FILE:
+            collect(
+                attrs.get("name"),
+                f"vertex[{vertex.index}].name",
+                required=True,
+            )
+        else:
+            collect(attrs.get("file"), f"vertex[{vertex.index}].file")
     for edge in graph.graph.es:
-        path = _path_or_none(edge.attributes().get("anchor_file"))
-        if path:
-            paths.add(path)
+        collect(edge.attributes().get("anchor_file"), f"edge[{edge.index}].anchor_file")
     occurrence_index = getattr(graph, "lsp_occurrence_index", None)
     if occurrence_index is not None:
-        for occurrence in occurrence_index.occurrences:
-            path = _path_or_none(occurrence.file_path)
-            if path:
-                paths.add(path)
-    return tuple(sorted(paths))
+        for index, occurrence in enumerate(occurrence_index.occurrences):
+            collect(
+                occurrence.file_path,
+                f"occurrence[{index}].file_path",
+                required=True,
+            )
+    return tuple(sorted(paths)), tuple(sorted(invalid))
+
+
+def graph_source_paths(graph: CodeGraph) -> tuple[str, ...]:
+    """Collect every repository path represented by a graph artifact."""
+
+    paths, _invalid = _graph_paths_and_invalid(graph)
+    return paths
 
 
 def graph_file_paths(graph: CodeGraph) -> tuple[str, ...]:
@@ -113,7 +139,7 @@ def constrain_graph_to_source_surface(
 
     before_nodes = graph.graph.vcount()
     before_edges = graph.graph.ecount()
-    before_paths = graph_source_paths(graph)
+    before_paths, invalid_paths_before = _graph_paths_and_invalid(graph)
     before_classes = surface.classify(before_paths)
 
     keep_vertices = [
@@ -136,16 +162,16 @@ def constrain_graph_to_source_surface(
         graph.graph.delete_edges(remove_edges)
 
     graph.name_to_vertex = {
-        vertex["name"]: vertex.index
+        name: vertex.index
         for vertex in graph.graph.vs
-        if "name" in vertex.attributes()
+        if isinstance((name := vertex.attributes().get("name")), str) and name
     }
     graph.symbol_ranges = {
         name: value
         for name, value in graph.symbol_ranges.items()
         if name in graph.name_to_vertex
     }
-    graph._invalidate_edge_index()
+    graph.invalidate_caches()
 
     occurrence_index = getattr(graph, "lsp_occurrence_index", None)
     if occurrence_index is not None:
@@ -162,7 +188,7 @@ def constrain_graph_to_source_surface(
         )
     graph.build_range_indexes()
 
-    after_paths = graph_source_paths(graph)
+    after_paths, invalid_paths_after = _graph_paths_and_invalid(graph)
     after_classes = surface.classify(after_paths)
     return {
         "nodes_before": before_nodes,
@@ -175,10 +201,12 @@ def constrain_graph_to_source_surface(
         "submodule_paths": len(after_classes["submodule"]),
         "removed_outside_paths": list(before_classes["outside"]),
         "outside_paths_after": list(after_classes["outside"]),
+        "invalid_paths_before": list(invalid_paths_before),
+        "invalid_paths_after": list(invalid_paths_after),
     }
 
 
-def assess_graph_artifact(
+def constrain_and_assess_graph_artifact(
     graph: CodeGraph,
     surface: GitSourceSurface,
     *,
@@ -191,6 +219,8 @@ def assess_graph_artifact(
     required = tuple(sorted(normalize_repository_path(path) for path in required_files))
     missing = tuple(path for path in required if path not in represented)
     failures = []
+    if surface_report["invalid_paths_before"]:
+        failures.append("invalid_graph_paths")
     if surface_report["outside_paths_after"]:
         failures.append("outside_commit_paths")
     if missing:
@@ -214,7 +244,9 @@ def _load_vector_level(
     root: Path,
     level: str,
     model_suffix: str,
-) -> tuple[list[Any], int, list[str]]:
+) -> tuple[list[Any], int, list[str], bool]:
+    import faiss
+
     failures = []
     level_root = root / level
     config_path = level_root / f"config_{model_suffix}.json"
@@ -224,23 +256,25 @@ def _load_vector_level(
         if not path.is_file():
             failures.append(f"missing:{path.name}")
     if failures:
-        return [], 0, failures
+        return [], 0, failures, False
 
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         with documents_path.open("rb") as handle:
             documents = list(compat_pickle.load(handle))
-        import faiss
-
         index = faiss.read_index(str(index_path))
     except Exception as exc:
-        return [], 0, [f"unreadable_level:{type(exc).__name__}"]
-    expected = int(config.get("num_documents", -1))
-    if expected != len(documents):
+        return [], 0, [f"unreadable_level:{type(exc).__name__}"], False
+    if not isinstance(config, Mapping):
+        return [], 0, ["invalid_level_config"], False
+    expected = config.get("num_documents")
+    if not isinstance(expected, int) or isinstance(expected, bool) or expected < 0:
+        failures.append("invalid_document_config_count")
+    elif expected != len(documents):
         failures.append("document_config_count_mismatch")
     if int(index.ntotal) != len(documents):
         failures.append("faiss_document_count_mismatch")
-    return documents, int(index.ntotal), failures
+    return documents, int(index.ntotal), failures, True
 
 
 def assess_vector_artifact(
@@ -267,23 +301,31 @@ def assess_vector_artifact(
         except Exception as exc:
             failures.append(f"unreadable_top_config:{type(exc).__name__}")
         else:
-            if top_config.get("embedding_model") != embedding_model:
-                failures.append("embedding_model_mismatch")
-            if top_config.get("artifact") != dict(expected_artifact):
-                failures.append("artifact_identity_mismatch")
+            if not isinstance(top_config, Mapping):
+                failures.append("invalid_top_config")
+                top_config = {}
+            else:
+                if top_config.get("embedding_model") != embedding_model:
+                    failures.append("embedding_model_mismatch")
+                if top_config.get("artifact") != dict(expected_artifact):
+                    failures.append("artifact_identity_mismatch")
 
     levels: dict[str, Any] = {}
     all_paths: set[str] = set()
     l0_paths: set[str] = set()
     invalid_document_paths: set[str] = set()
+    invalid_document_metadata = 0
     for raw_level in build_levels:
         level = raw_level.lower()
-        documents, vector_count, level_failures = _load_vector_level(
+        documents, vector_count, level_failures, loaded = _load_vector_level(
             artifact_root, level, model_suffix
         )
         paths = set()
         for document in documents:
             metadata = getattr(document, "metadata", {})
+            if not isinstance(metadata, Mapping):
+                invalid_document_metadata += 1
+                continue
             raw_path = metadata.get("file")
             path = _path_or_none(raw_path)
             if path:
@@ -293,7 +335,7 @@ def assess_vector_artifact(
         all_paths.update(paths)
         if level == "l0":
             l0_paths.update(paths)
-        if not documents:
+        if loaded and not documents:
             level_failures.append("empty_level")
         levels[level] = {
             "documents": len(documents),
@@ -308,6 +350,8 @@ def assess_vector_artifact(
         failures.append("outside_commit_paths")
     if invalid_document_paths:
         failures.append("invalid_document_paths")
+    if invalid_document_metadata:
+        failures.append("invalid_document_metadata")
     required = tuple(
         sorted(normalize_repository_path(path) for path in required_l0_files)
     )
@@ -326,6 +370,7 @@ def assess_vector_artifact(
             "submodule": len(classified["submodule"]),
             "outside": list(classified["outside"]),
             "invalid": sorted(invalid_document_paths),
+            "invalid_metadata": invalid_document_metadata,
         },
         "required_l0_files": list(required),
         "missing_required_l0_files": list(missing),
@@ -346,8 +391,8 @@ def write_artifact_quality(path: str | Path, report: Mapping[str, Any]) -> None:
 
 __all__ = [
     "ARTIFACT_QUALITY_SCHEMA_VERSION",
-    "assess_graph_artifact",
     "assess_vector_artifact",
+    "constrain_and_assess_graph_artifact",
     "constrain_graph_to_source_surface",
     "graph_file_paths",
     "graph_source_paths",

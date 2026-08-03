@@ -13,8 +13,8 @@ import faiss
 import numpy as np
 
 from codenib.compiler.artifact_quality import (
-    assess_graph_artifact,
     assess_vector_artifact,
+    constrain_and_assess_graph_artifact,
 )
 from codenib.git_snapshot import GitSourceSurface
 from codenib.graph.code_graph import CodeGraph
@@ -54,7 +54,7 @@ def test_graph_quality_removes_paths_outside_commit(tmp_path):
     graph.add_file_node("lib/generated.py")
     graph.add_symbol_node("generated", 0, 0, 0, "function")
 
-    report = assess_graph_artifact(
+    report = constrain_and_assess_graph_artifact(
         graph,
         surface,
         required_files=["src/main.py"],
@@ -74,7 +74,7 @@ def test_graph_quality_rejects_missing_required_source_file(tmp_path):
     graph.current_file = "src/main.py"
     graph.add_symbol_node("reference_only", 0, 0, 0, "symbol")
 
-    report = assess_graph_artifact(
+    report = constrain_and_assess_graph_artifact(
         graph,
         surface,
         required_files=["src/main.py"],
@@ -82,6 +82,26 @@ def test_graph_quality_rejects_missing_required_source_file(tmp_path):
 
     assert report["passed"] is False
     assert "missing_required_source_files" in report["failure_names"]
+
+
+def test_graph_quality_reports_malformed_paths_before_constraining(tmp_path):
+    repo, surface = _source_surface(tmp_path)
+    graph = CodeGraph(str(repo))
+    graph.add_root_node(str(repo))
+    graph.add_file_node("src/main.py")
+    graph.add_file_node("../generated.py")
+
+    report = constrain_and_assess_graph_artifact(
+        graph,
+        surface,
+        required_files=["src/main.py"],
+    )
+
+    assert report["passed"] is False
+    assert "invalid_graph_paths" in report["failure_names"]
+    assert report["surface"]["invalid_paths_before"]
+    assert report["surface"]["invalid_paths_after"] == []
+    assert "../generated.py" not in graph.name_to_vertex
 
 
 def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
@@ -128,3 +148,43 @@ def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
     assert report["passed"] is True
     assert report["artifact"] == identity
     assert report["levels"]["l0"]["documents"] == 1
+
+    documents[0].metadata = []
+    with (level / f"documents_{suffix}.pkl").open("wb") as handle:
+        pickle.dump(documents, handle)
+    invalid = assess_vector_artifact(
+        root,
+        embedding_model=model,
+        build_levels=["l0"],
+        surface=surface,
+        expected_artifact=identity,
+        required_l0_files=["src/main.py"],
+    )
+
+    assert invalid["passed"] is False
+    assert "invalid_document_metadata" in invalid["failure_names"]
+    assert invalid["paths"]["invalid_metadata"] == 1
+
+
+def test_vector_quality_does_not_report_missing_level_as_empty(tmp_path):
+    _repo, surface = _source_surface(tmp_path)
+    model = "test/model"
+    root = tmp_path / "vectors"
+    root.mkdir()
+    identity = {"repo": "org/repo", "commit": surface.commit}
+    (root / "config_test__model.json").write_text(
+        json.dumps({"embedding_model": model, "artifact": identity}),
+        encoding="utf-8",
+    )
+
+    report = assess_vector_artifact(
+        root,
+        embedding_model=model,
+        build_levels=["l0"],
+        surface=surface,
+        expected_artifact=identity,
+    )
+
+    failures = report["levels"]["l0"]["failures"]
+    assert any(failure.startswith("missing:") for failure in failures)
+    assert "empty_level" not in failures

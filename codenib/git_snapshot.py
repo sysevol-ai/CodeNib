@@ -7,25 +7,33 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
+from .languages import extension_to_language_map
 from .repository_filters import repository_path_is_visible
+
+_SOURCE_SUFFIXES = frozenset(extension_to_language_map("chunker"))
+
+
+@lru_cache(maxsize=32768)
+def _normalize_repository_path(value: str) -> str:
+    value = value.replace("\\", "/")
+    if value.startswith("./"):
+        value = value[2:]
+    normalized = PurePosixPath(value)
+    if not normalized.parts or normalized.is_absolute() or ".." in normalized.parts:
+        raise ValueError(f"path must stay repository-relative: {value!r}")
+    return normalized.as_posix()
 
 
 def normalize_repository_path(path: str | Path) -> str:
     """Return a validated POSIX repository-relative path."""
 
-    value = os.fspath(path).replace("\\", "/")
-    if value.startswith("./"):
-        value = value[2:]
-    normalized = PurePosixPath(value)
-    if not normalized.parts or normalized.is_absolute() or ".." in normalized.parts:
-        raise ValueError(f"path must stay repository-relative: {path!r}")
-    return normalized.as_posix()
+    return _normalize_repository_path(os.fspath(path))
 
 
 def _git(
@@ -153,7 +161,34 @@ class WorktreeRestoreResult:
     removed_ignored_paths: tuple[str, ...]
 
 
-def _ignored_visible_paths(repo: Path) -> tuple[str, ...]:
+def _visible_source_files(repo: Path, relative: str) -> tuple[str, ...]:
+    """Expand one ignored status path to source files visible to indexers."""
+
+    target = repo.joinpath(*PurePosixPath(relative).parts)
+    if target.is_symlink() or target.is_file():
+        return (relative,) if Path(relative).suffix in _SOURCE_SUFFIXES else ()
+    if not target.is_dir():
+        return ()
+
+    files: list[str] = []
+    for current_root, dirs, names in os.walk(target, followlinks=False):
+        current = Path(current_root)
+        dirs[:] = sorted(
+            name
+            for name in dirs
+            if repository_path_is_visible((current / name).relative_to(repo))
+        )
+        for name in sorted(names):
+            path = current / name
+            source_path = path.relative_to(repo).as_posix()
+            if Path(name).suffix in _SOURCE_SUFFIXES and repository_path_is_visible(
+                source_path
+            ):
+                files.append(source_path)
+    return tuple(files)
+
+
+def _ignored_visible_source_paths(repo: Path) -> tuple[str, ...]:
     result = _git(
         repo,
         "status",
@@ -168,15 +203,8 @@ def _ignored_visible_paths(repo: Path) -> tuple[str, ...]:
             continue
         path = normalize_repository_path(os.fsdecode(record[3:]))
         if repository_path_is_visible(path):
-            paths.add(path)
-
-    # Removing an ignored directory also removes any nested status records.
-    selected: list[str] = []
-    for path in sorted(paths, key=lambda value: (value.count("/"), value)):
-        if any(path.startswith(f"{parent}/") for parent in selected):
-            continue
-        selected.append(path)
-    return tuple(selected)
+            paths.update(_visible_source_files(repo, path))
+    return tuple(sorted(paths))
 
 
 def _remove_relative_path(repo: Path, relative: str) -> None:
@@ -190,7 +218,15 @@ def _remove_relative_path(repo: Path, relative: str) -> None:
     if target.is_symlink() or target.is_file():
         target.unlink(missing_ok=True)
     elif target.is_dir():
-        shutil.rmtree(target)
+        raise RuntimeError(f"refusing to recursively remove source path: {relative}")
+
+    parent = target.parent
+    while parent != repo:
+        try:
+            parent.rmdir()
+        except OSError:
+            break
+        parent = parent.parent
 
 
 def restore_git_worktree(
@@ -199,10 +235,10 @@ def restore_git_worktree(
 ) -> WorktreeRestoreResult:
     """Restore tracked source and remove source-visible generated files.
 
-    Ignored dependency/tool caches excluded by the shared repository traversal
-    policy are retained. Ignored paths that an index builder would otherwise
-    observe are removed so artifacts cannot silently include build products
-    left by another benchmark instance.
+    Ignored dependency/tool caches and non-source build inputs are retained.
+    Ignored source files that an index builder would otherwise observe are
+    removed so artifacts cannot silently include generated code left by another
+    benchmark instance.
     """
 
     root = Path(repo).expanduser().resolve()
@@ -211,7 +247,7 @@ def restore_git_worktree(
     _git(root, "reset", "--hard", expected)
     _git(root, "clean", "-fd")
 
-    ignored = _ignored_visible_paths(root)
+    ignored = _ignored_visible_source_paths(root)
     for relative in ignored:
         _remove_relative_path(root, relative)
 
@@ -220,7 +256,12 @@ def restore_git_worktree(
         raise RuntimeError(
             f"worktree commit mismatch after restore: expected {expected}, found {actual}"
         )
-    remaining = _ignored_visible_paths(root)
+    remaining = tuple(
+        relative
+        for relative in ignored
+        if (target := root.joinpath(*PurePosixPath(relative).parts)).exists()
+        or target.is_symlink()
+    )
     if remaining:
         raise RuntimeError(
             "source-visible ignored paths remain after restore: " + ", ".join(remaining)
