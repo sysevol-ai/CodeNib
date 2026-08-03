@@ -492,6 +492,10 @@ documents, preparation retains that compiler-derived prefix and applies the
 same label-independent tree-sitter fallback to every missing tracked Python
 file. If no usable compiler document exists, the malformed or metadata-only
 artifact is rejected and the same fallback covers the full tracked surface.
+Each compiler attempt removes any earlier `index.scip` first, so retained
+documents can only come from that attempt. A graph built with source-coverage
+fallback is fully rebuilt on a later commit instead of entering the incremental
+patch path, which keeps its compiler/fallback provenance complete.
 The report distinguishes compiler availability and coverage from supplemented
 files, symbols, and final Git-surface coverage. The manifest also records
 whether generation completed or retained a partial compiler prefix. The
@@ -499,10 +503,13 @@ fallback adds definitions and containment only; it does not synthesize
 compiler reference edges. Graph audits label the resulting surface as
 `compiler`, `compiler-prefix`, `compiler-prefix+syntax`, or `syntax`.
 
-File metrics retain all 50 selected cases in the denominator, including failed
-model cells. Function metrics use the declared subset whose golden patch
-modifies or deletes a function present in the base snapshot; pure additions
-and non-function changes are not silently scored as function misses.
+File metrics validate predictions against every tracked repository file and
+retain all 50 selected cases in the denominator, including failed model cells.
+Function rankings include only locations that explicitly name a function;
+class-only locations remain file predictions. Function metrics use the declared
+subset whose golden patch modifies or deletes a function present in the base
+snapshot; pure additions and non-function changes are not silently scored as
+function misses.
 
 Before any model call, the driver checks every requested checkout commit,
 tracked-file state, manifest commit, required capability, and actual loading of

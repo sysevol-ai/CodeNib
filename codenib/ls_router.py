@@ -271,6 +271,12 @@ class LSIndexer:
 
         return getattr(self._delegate, "index_generation_report", None)
 
+    @property
+    def supports_partial_index(self) -> bool:
+        """Whether this backend can identify partial output from this run."""
+
+        return bool(getattr(self._delegate, "supports_partial_index", False))
+
     def graph_patch(
         self,
         graph: "CodeGraph",
@@ -336,8 +342,8 @@ def build_graph_for_languages_with_report(
     opt-in for evaluating candidate SCIP cold-start backends without promoting
     them. With ``allow_partial=True``, a failed language does not discard graphs
     already built for other languages. ``allow_partial_index=True`` lets a
-    backend retain a parseable compiler prefix and reports that state separately
-    from per-language availability.
+    supporting backend retain a parseable compiler prefix and reports that
+    state separately from per-language availability.
     """
     normalized = _normalize_language_sequence(languages, graph_route=graph_route)
     base_output = Path(output_dir)
@@ -353,8 +359,6 @@ def build_graph_for_languages_with_report(
         pipeline_kwargs["target_dir"] = target_dir
     if include_references:
         pipeline_kwargs["include_references"] = True
-    if allow_partial_index:
-        pipeline_kwargs["allow_partial_index"] = True
 
     def run_language(language: str, language_output: Path, language_project: str):
         indexer = LSIndexer(
@@ -366,10 +370,13 @@ def build_graph_for_languages_with_report(
             graph_route=graph_route,
             **indexer_kwargs,
         )
+        language_pipeline_kwargs = dict(pipeline_kwargs)
+        if allow_partial_index and getattr(indexer, "supports_partial_index", False):
+            language_pipeline_kwargs["allow_partial_index"] = True
         graph = indexer.run_pipeline(
             project_name=language_project,
             skip_level=skip_level,
-            **pipeline_kwargs,
+            **language_pipeline_kwargs,
         )
         report = getattr(indexer, "index_generation_report", None)
         return graph, dict(report) if isinstance(report, dict) else None

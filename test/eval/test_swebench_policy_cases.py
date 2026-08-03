@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.eval.benchmarks import swebench_policy_cases
 from codenib.eval.benchmarks.swebench_policy_cases import (
     _graph_coverage_mode,
@@ -19,6 +20,7 @@ from codenib.eval.benchmarks.swebench_policy_cases import (
     _graph_source_coverage_report,
     _scip_producer,
     _snapshot_errors,
+    build_policy_manifest,
     extract_golden_patch_labels,
     load_dataset_records,
     select_balanced_repository_cases,
@@ -113,7 +115,6 @@ def test_graph_coverage_mode_distinguishes_compiler_and_fallbacks(
         )
         == "syntax"
     )
-
     index_path.touch()
     assert _graph_coverage_mode(index_path, {}) == "compiler"
     assert (
@@ -130,6 +131,81 @@ def test_graph_coverage_mode_distinguishes_compiler_and_fallbacks(
         )
         == "compiler-prefix+syntax"
     )
+
+
+def test_build_policy_manifest_rebuilds_a_current_graph_that_fails_audit(
+    monkeypatch, tmp_path: Path
+) -> None:
+    checkout = tmp_path / "repo"
+    checkout.mkdir()
+    artifact_dir = tmp_path / "artifact"
+    indexes = artifact_dir / "indexes"
+    commit = "a" * 40
+    source_fingerprint = "sha256:fixture"
+    now = 1.0
+    manifest = RepoManifest(
+        repo_path=str(checkout),
+        commit=commit,
+        last_indexed_commit=commit,
+        source_fingerprint=source_fingerprint,
+        last_indexed_source_fingerprint=source_fingerprint,
+        languages=["python"],
+        file_count=1,
+        indexes={
+            name: IndexEntry(
+                index_type=name,
+                path=str(indexes / name),
+                built_at="1970-01-01T00:00:01+00:00",
+                built_at_epoch=now,
+                status="fresh",
+                metadata={"node_count": 1},
+                commit=commit,
+                source_fingerprint=source_fingerprint,
+            )
+            for name in ("bm25", "symbol_graph")
+        },
+        capabilities={"sparse_search": True, "symbol_navigation": True},
+    )
+    manifest_path = indexes / "repo_manifest.json"
+    manifest.save(manifest_path)
+    audit_calls = 0
+
+    def fake_assess(*_args, **_kwargs):
+        nonlocal audit_calls
+        audit_calls += 1
+        if audit_calls == 1:
+            raise EOFError("truncated graph.pkl")
+        return {"passed": True, "coverage": 1.0}
+
+    def fake_update(_self, *_args, **_kwargs):
+        persisted = RepoManifest.load(manifest_path)
+        graph_entry = persisted.indexes["symbol_graph"]
+        assert graph_entry.status == "stale"
+        assert "truncated graph.pkl" in graph_entry.metadata["stale_reason"]
+        assert persisted.capabilities["symbol_navigation"] is False
+        graph_entry.status = "fresh"
+        persisted.derive_capabilities()
+        persisted.save(manifest_path)
+        return persisted
+
+    monkeypatch.setattr(swebench_policy_cases, "_manifest_errors", lambda *_: [])
+    monkeypatch.setattr(swebench_policy_cases, "assess_policy_graph", fake_assess)
+    monkeypatch.setattr(
+        swebench_policy_cases,
+        "register_default_builders",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(swebench_policy_cases.IndexCompiler, "update_repo", fake_update)
+
+    returned_path, report = build_policy_manifest(
+        checkout,
+        artifact_dir,
+        commit=commit,
+    )
+
+    assert returned_path == manifest_path
+    assert report["reused_existing"] is False
+    assert audit_calls == 2
 
 
 def _record(repo: str, index: int) -> dict[str, str]:
@@ -195,6 +271,23 @@ def test_load_dataset_records_accepts_jsonl_and_hashes_source(tmp_path: Path) ->
 
     assert loaded == records
     assert len(digest) == 64
+
+
+@pytest.mark.parametrize(
+    "instance_id",
+    ["../../victim", "/tmp/victim", "a/b", ".", ".."],
+)
+def test_load_dataset_records_rejects_path_escaping_instance_ids(
+    tmp_path: Path,
+    instance_id: str,
+) -> None:
+    source = tmp_path / "dataset.json"
+    record = _record("org/a", 1)
+    record["instance_id"] = instance_id
+    source.write_text(json.dumps([record]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid instance_id"):
+        load_dataset_records(source)
 
 
 def test_balanced_selection_is_deterministic_and_covers_every_repo() -> None:

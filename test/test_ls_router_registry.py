@@ -529,12 +529,13 @@ def test_build_graph_for_languages_passes_route_filter_options(tmp_path, monkeyp
     assert call.pipeline_kwargs == {
         "target_dir": "lib",
         "include_references": True,
-        "allow_partial_index": True,
     }
 
 
 def test_build_graph_for_languages_reports_index_generation(tmp_path, monkeypatch):
     class FakeIndexer:
+        supports_partial_index = True
+
         def __init__(self, project_root, **_kwargs):
             self.project_root = project_root
             self.index_generation_report = {
@@ -544,7 +545,8 @@ def test_build_graph_for_languages_reports_index_generation(tmp_path, monkeypatc
                 "document_count": 3,
             }
 
-        def run_pipeline(self, **_kwargs):
+        def run_pipeline(self, **kwargs):
+            assert kwargs["allow_partial_index"] is True
             graph = CodeGraph(str(self.project_root))
             graph.add_file_node("partial.py")
             graph.build_range_indexes()

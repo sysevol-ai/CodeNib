@@ -105,6 +105,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
     development and CI environments that do not expose the tool directly.
     """
 
+    supports_partial_index = True
+
     def __init__(
         self,
         project_root: Union[str, Path],
@@ -297,6 +299,9 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             bool: True if index generation was successful, False otherwise
         """
         self.index_generation_report = None
+        if self.index_file.exists():
+            self.index_file.unlink()
+            logger.info("Removed pre-existing SCIP index before generation")
         if not self._check_indexer_available():
             self.index_generation_report = {
                 "backend": "scip-python",

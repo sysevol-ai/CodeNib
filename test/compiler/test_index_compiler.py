@@ -1483,6 +1483,31 @@ class TestSymbolGraphIncremental:
         # last_commit must not leak into build()'s kwargs
         assert "last_commit" not in built[0]
 
+    def test_source_coverage_fallback_rebuilds_instead_of_patching(
+        self, tmp_path, monkeypatch
+    ):
+        built = []
+        builder = self._builder(source_coverage_fallback=True)
+        monkeypatch.setattr(
+            builder, "build", lambda scope, **kw: built.append(kw) or "BUILT"
+        )
+        monkeypatch.setattr(
+            builder,
+            "_patch_graph",
+            lambda *_args, **_kwargs: pytest.fail("fallback graph must not be patched"),
+        )
+
+        result = builder.incremental_update(
+            "current_repo",
+            repo_path=str(tmp_path),
+            output_dir=str(tmp_path / "out"),
+            last_commit="a" * 40,
+        )
+
+        assert result == "BUILT"
+        assert len(built) == 1
+        assert "last_commit" not in built[0]
+
     def test_unverified_update_is_discarded_and_rebuilt(self, tmp_path, monkeypatch):
         """Default NullVerifier proves nothing, so the patch must be dropped."""
         builder = self._builder()  # require_verification=True by default

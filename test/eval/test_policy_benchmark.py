@@ -18,6 +18,7 @@ import codenib.eval.benchmarks.policy_benchmark as policy_benchmark
 from codenib.eval.benchmarks.policy_benchmark import (
     _activate_orcaloca_checkout,
     _close_provider,
+    _locagent_predictions,
     _run_locagent_loop,
     main,
 )
@@ -143,6 +144,44 @@ def test_score_locagent_uses_common_ranked_metrics_and_strict_denominator(
     assert complete["paired_summary"][
         "native_to_codenib_total_tokens_ratio_median"
     ] == pytest.approx(1.25)
+
+
+def test_locagent_predictions_score_repository_files_but_only_named_functions(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "Dockerfile").write_text("FROM python:3.12\n", encoding="utf-8")
+    (repo / "setup.cfg").write_text("[metadata]\n", encoding="utf-8")
+    (repo / "src" / "model.py").write_text(
+        "class Widget:\n    def save(self):\n        pass\n",
+        encoding="utf-8",
+    )
+    case = PolicyBenchmarkCase(
+        instance_id="demo__repo-1",
+        problem_statement="Locate the configuration and save method",
+        repo_path=repo,
+        base_commit="a" * 40,
+        manifest_path=tmp_path / "manifest.json",
+    )
+
+    files, functions = _locagent_predictions(
+        case,
+        {
+            "final_output": (
+                "Dockerfile\n"
+                "setup.cfg\n"
+                "src/model.py\n"
+                "Class: Widget\n"
+                "src/model.py\n"
+                "Class: Widget\n"
+                "Functions: save\n"
+            )
+        },
+    )
+
+    assert files == ("Dockerfile", "setup.cfg", "src/model.py")
+    assert functions == ("src/model.py:Widget.save",)
 
 
 def test_score_command_enforces_the_requested_cell_denominator(tmp_path: Path) -> None:

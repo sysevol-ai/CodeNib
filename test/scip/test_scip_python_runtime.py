@@ -295,3 +295,25 @@ def test_scip_python_rejects_pathless_partial_document(monkeypatch, tmp_path):
     assert indexer.generate_index(allow_partial_index=True) is False
     assert not indexer.index_file.exists()
     assert indexer.index_generation_report["status"] == "failed"
+
+
+def test_scip_python_does_not_preserve_an_index_from_an_earlier_run(
+    monkeypatch, tmp_path
+):
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "out")
+    indexer._direct_indexer_path = "/tools/scip-python"
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+    stale = Index()
+    stale.documents.add().relative_path = "stale.py"
+    indexer.index_file.write_bytes(stale.SerializeToString())
+    monkeypatch.setattr(indexer, "_run_direct", lambda *_args, **_kwargs: False)
+
+    assert indexer.generate_index(allow_partial_index=True) is False
+    assert not indexer.index_file.exists()
+    assert indexer.index_generation_report == {
+        "backend": "scip-python",
+        "status": "failed",
+        "complete": False,
+        "partial": False,
+        "document_count": 0,
+    }

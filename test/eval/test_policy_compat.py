@@ -24,6 +24,7 @@ from codenib.eval.benchmarks.policy_compat import (
     inspect_policy_run_preflight,
     load_policy_results,
     policy_result_path,
+    repository_files,
     source_files,
     write_json_atomic,
 )
@@ -63,6 +64,20 @@ def _init_repo(path: Path) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def test_repository_files_uses_the_complete_tracked_surface(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    ignored_by_traversal = repo / "node_modules" / "pinned.cfg"
+    ignored_by_traversal.parent.mkdir()
+    ignored_by_traversal.write_text("pinned=true\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "-f", "node_modules/pinned.cfg"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "commit", "-qm", "track config"], cwd=repo, check=True)
+
+    assert repository_files(repo) == ("node_modules/pinned.cfg", "source.py")
 
 
 def test_case_set_loads_metadata_selects_stably_and_hashes_semantics(
@@ -366,6 +381,15 @@ def test_result_loading_validates_identity_and_source_listing(tmp_path: Path) ->
     assert len(loaded) == 1
     assert source_files(repo) == tuple(
         sorted(["src/code.py", *(f"src/extra{suffix}" for suffix in registry_suffixes)])
+    )
+    assert repository_files(repo) == tuple(
+        sorted(
+            [
+                "README.md",
+                "src/code.py",
+                *(f"src/extra{suffix}" for suffix in registry_suffixes),
+            ]
+        )
     )
 
     write_json_atomic(

@@ -43,6 +43,7 @@ _REQUIRED_CASE_FIELDS = {
     "manifest_path",
 }
 _COMMIT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
+_INSTANCE_ID_RE = re.compile(r"[A-Za-z0-9_.-]+\Z")
 _NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
 _SOURCE_SUFFIXES = frozenset(extension_to_language_map("chunker"))
 
@@ -92,11 +93,9 @@ class PolicyBenchmarkCase:
             identifier = value.get("instance_id", "<unknown>")
             raise ValueError(f"case {identifier} is missing {sorted(missing)}")
 
-        instance_id = str(value["instance_id"]).strip()
+        instance_id = validate_policy_instance_id(value["instance_id"])
         problem_statement = str(value["problem_statement"]).strip()
         base_commit = str(value["base_commit"]).strip().lower()
-        if not instance_id:
-            raise ValueError("policy benchmark instance_id must not be empty")
         if not problem_statement:
             raise ValueError(f"case {instance_id} has an empty problem_statement")
         if not _COMMIT_RE.fullmatch(base_commit):
@@ -824,6 +823,15 @@ def validate_provider(provider: str) -> str:
     return normalized
 
 
+def validate_policy_instance_id(value: object) -> str:
+    """Return a path-safe benchmark instance identifier."""
+
+    normalized = str(value).strip()
+    if normalized in {".", ".."} or not _INSTANCE_ID_RE.fullmatch(normalized):
+        raise ValueError(f"invalid instance_id for policy benchmark: {value!r}")
+    return normalized
+
+
 def policy_result_path(
     output_dir: str | Path,
     *,
@@ -835,9 +843,8 @@ def policy_result_path(
 
     agent_name = validate_policy_name(agent, field_name="agent")
     provider_name = validate_provider(provider)
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", instance_id):
-        raise ValueError(f"invalid instance_id for result path: {instance_id!r}")
-    return Path(output_dir) / f"{instance_id}.{agent_name}.{provider_name}.json"
+    safe_instance_id = validate_policy_instance_id(instance_id)
+    return Path(output_dir) / (f"{safe_instance_id}.{agent_name}.{provider_name}.json")
 
 
 def load_policy_results(
@@ -881,16 +888,40 @@ def load_policy_results(
     return tuple(results)
 
 
-def source_files(repo_path: str | Path) -> tuple[str, ...]:
-    """List source files deterministically for free-form output validation."""
+def repository_files(repo_path: str | Path) -> tuple[str, ...]:
+    """List tracked files accepted by localization scoring.
+
+    Non-Git fixtures fall back to the shared repository traversal policy.
+    """
 
     root = Path(repo_path).expanduser().resolve()
-    files = [
-        path.relative_to(root).as_posix()
-        for path in walk_repository_files(root)
-        if path.suffix.lower() in _SOURCE_SUFFIXES
-    ]
-    return tuple(sorted(files))
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        tracked = None
+    if tracked is not None and tracked.returncode == 0:
+        return tuple(sorted(path for path in tracked.stdout.split("\0") if path))
+    return tuple(
+        sorted(
+            path.relative_to(root).as_posix() for path in walk_repository_files(root)
+        )
+    )
+
+
+def source_files(repo_path: str | Path) -> tuple[str, ...]:
+    """List source files deterministically for source-only consumers."""
+
+    return tuple(
+        path
+        for path in repository_files(repo_path)
+        if Path(path).suffix.lower() in _SOURCE_SUFFIXES
+    )
 
 
 def write_json_atomic(path: str | Path, payload: Mapping[str, Any]) -> None:
@@ -927,7 +958,9 @@ __all__ = [
     "inspect_git_revision",
     "load_policy_results",
     "policy_result_path",
+    "repository_files",
     "source_files",
+    "validate_policy_instance_id",
     "validate_policy_name",
     "validate_provider",
     "write_json_atomic",

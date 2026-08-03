@@ -57,7 +57,7 @@ from codenib.eval.benchmarks.policy_compat import (
     inspect_policy_run_preflight,
     load_policy_results,
     policy_result_path,
-    source_files,
+    repository_files,
     write_json_atomic,
 )
 from codenib.eval.retrieval_eval import compute_metrics, normalize_file_path
@@ -287,7 +287,7 @@ def _run_locagent_loop(
         "regions": list(
             locagent_regions(
                 execution.final_output,
-                valid_files=source_files(case.repo_path),
+                valid_files=repository_files(case.repo_path),
             )
         ),
         "tool_trace": list(execution.tool_trace),
@@ -576,7 +576,7 @@ def _locagent_predictions(
     raw_output = str(result.get("final_output") or result.get("raw_output") or "")
     locations = parse_locagent_locations(
         raw_output,
-        valid_files=source_files(case.repo_path),
+        valid_files=repository_files(case.repo_path),
     )
     files: list[str] = []
     functions: list[str] = []
@@ -587,11 +587,13 @@ def _locagent_predictions(
         if file_path and file_path not in seen_files:
             seen_files.add(file_path)
             files.append(file_path)
-        function_id = _locagent_symbol_id(
-            location.file_path,
-            class_name=location.class_name,
-            function_name=location.function_name,
-        )
+        function_id = ""
+        if location.function_name.strip():
+            function_id = _locagent_symbol_id(
+                location.file_path,
+                class_name=location.class_name,
+                function_name=location.function_name,
+            )
         if function_id and function_id not in seen_functions:
             seen_functions.add(function_id)
             functions.append(function_id)

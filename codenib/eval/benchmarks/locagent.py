@@ -66,6 +66,23 @@ def _match_valid_path(candidate: str, valid_files: Sequence[str]) -> str:
 
 
 def _extract_path(line: str, valid_files: Sequence[str]) -> tuple[bool, str, str]:
+    if valid_files:
+        candidate_line = line.strip().strip("`").strip()
+        if candidate_line.startswith(("- ", "* ")):
+            candidate_line = candidate_line[2:].strip()
+        candidate_line = candidate_line.strip("`'\" ")
+        normalized_line = candidate_line.replace("\\", "/")
+        for valid_path in sorted(valid_files, key=len, reverse=True):
+            start = normalized_line.find(valid_path)
+            while start >= 0:
+                prefix_ok = start == 0 or normalized_line[start - 1] == "/"
+                remainder = normalized_line[start + len(valid_path) :].strip()
+                suffix_ok = not remainder or remainder.startswith(":")
+                if prefix_ok and suffix_ok:
+                    tail = remainder[1:].strip() if remainder.startswith(":") else ""
+                    return True, valid_path, tail
+                start = normalized_line.find(valid_path, start + 1)
+
     for match in _PATH_TOKEN.finditer(line):
         candidate = _normalize_path(match.group(0))
         extension = candidate.rsplit(".", 1)[-1].lower()

@@ -755,6 +755,8 @@ class SymbolGraphBuilder:
         self, repo_path: str, output_dir: str, last_commit: str
     ) -> Optional[str]:
         """Return why the incremental path cannot run, or None if it can."""
+        if self.source_coverage_fallback:
+            return "source coverage fallback requires a provenance-complete rebuild"
         if not last_commit:
             return "no previously indexed commit"
         if not os.path.isfile(os.path.join(output_dir, "graph.pkl")):

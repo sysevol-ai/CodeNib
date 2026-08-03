@@ -37,6 +37,7 @@ from codenib.dataset.gt_locate import GTLocator, language_for_file
 from codenib.eval.benchmarks.policy_compat import (
     PolicyCaseSet,
     inspect_policy_run_preflight,
+    validate_policy_instance_id,
     write_json_atomic,
 )
 from codenib.eval.retrieval_eval import collect_targets
@@ -133,11 +134,13 @@ def load_dataset_records(path: str | Path) -> tuple[list[dict[str, Any]], str]:
         missing = _DATASET_FIELDS - set(record)
         if missing:
             raise ValueError(f"dataset record {position} is missing {sorted(missing)}")
-        instance_id = str(record["instance_id"]).strip()
-        if not instance_id or instance_id in seen:
-            raise ValueError(f"invalid or duplicate instance_id: {instance_id!r}")
+        instance_id = validate_policy_instance_id(record["instance_id"])
+        if instance_id in seen:
+            raise ValueError(f"duplicate instance_id: {instance_id!r}")
         seen.add(instance_id)
-        normalized.append(dict(record))
+        normalized_record = dict(record)
+        normalized_record["instance_id"] = instance_id
+        normalized.append(normalized_record)
     return normalized, _file_sha256(source)
 
 
@@ -161,9 +164,10 @@ def select_balanced_repository_cases(
     for raw in records:
         record = dict(raw)
         repo = str(record.get("repo") or "").strip()
-        instance_id = str(record.get("instance_id") or "").strip()
-        if not repo or not instance_id:
+        instance_id = validate_policy_instance_id(record.get("instance_id") or "")
+        if not repo:
             raise ValueError("selection records require repo and instance_id")
+        record["instance_id"] = instance_id
         grouped[repo].append(record)
     if count > sum(len(values) for values in grouped.values()):
         raise ValueError("selection count exceeds the dataset population")
@@ -428,6 +432,24 @@ def _manifest_errors(manifest_path: Path, checkout: Path, commit: str) -> list[s
     return errors
 
 
+def _invalidate_manifest_view(
+    manifest_path: Path,
+    view: str,
+    *,
+    reason: str,
+) -> None:
+    """Make a current-but-invalid artifact eligible for a forced rebuild."""
+
+    manifest = RepoManifest.load(manifest_path)
+    entry = manifest.indexes.get(view)
+    if entry is None:
+        return
+    entry.status = "stale"
+    entry.metadata["stale_reason"] = reason
+    manifest.derive_capabilities()
+    manifest.save(manifest_path)
+
+
 def _graph_source_coverage_report(
     expected: Iterable[str],
     represented: Iterable[str],
@@ -573,8 +595,15 @@ def build_policy_manifest(
         if not errors:
             try:
                 graph_quality = assess_policy_graph(manifest_path, root, commit)
-            except (OSError, RuntimeError, ValueError):
-                pass
+            except Exception as exc:  # noqa: BLE001 - failed audit forces rebuild
+                _invalidate_manifest_view(
+                    manifest_path,
+                    "symbol_graph",
+                    reason=(
+                        "policy graph quality validation failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                )
             else:
                 manifest = RepoManifest.load(manifest_path)
                 return manifest_path, _policy_build_report(
@@ -662,7 +691,7 @@ def prepare_policy_case(
     """Prepare one already-created source snapshot and return its case record."""
 
     root = Path(output_dir).expanduser().resolve()
-    instance_id = str(record["instance_id"])
+    instance_id = validate_policy_instance_id(record["instance_id"])
     case_dir = root / "prepared" / instance_id
     checkout = root / "snapshots" / instance_id / "repo"
     case_path = case_dir / "case.json"
