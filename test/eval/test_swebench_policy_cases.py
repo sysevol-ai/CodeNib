@@ -10,8 +10,12 @@ from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from codenib.eval.benchmarks import swebench_policy_cases
 from codenib.eval.benchmarks.swebench_policy_cases import (
+    _graph_coverage_mode,
+    _graph_producer,
     _graph_source_coverage_report,
     _scip_producer,
     _snapshot_errors,
@@ -81,6 +85,51 @@ def test_scip_producer_reads_artifact_metadata(tmp_path: Path) -> None:
         "version": "0.6.6",
         "arguments": ["index", "--cwd", "/repo"],
     }
+
+
+def test_graph_producer_requires_explicit_syntax_fallback(tmp_path: Path) -> None:
+    missing_index = tmp_path / "index.scip"
+
+    assert _graph_producer(
+        missing_index,
+        {"source_coverage_report": {"compiler_graph_available": False}},
+    ) == {
+        "name": "codenib-syntax-fallback",
+        "version": "1",
+        "arguments": [],
+    }
+    with pytest.raises(RuntimeError, match="no compiler provenance"):
+        _graph_producer(missing_index, {})
+
+
+def test_graph_coverage_mode_distinguishes_compiler_and_fallbacks(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.scip"
+    assert (
+        _graph_coverage_mode(
+            index_path,
+            {"source_coverage_report": {"compiler_graph_available": False}},
+        )
+        == "syntax"
+    )
+
+    index_path.touch()
+    assert _graph_coverage_mode(index_path, {}) == "compiler"
+    assert (
+        _graph_coverage_mode(
+            index_path,
+            {"source_coverage_report": {"compiler_index_complete": False}},
+        )
+        == "compiler-prefix"
+    )
+    assert (
+        _graph_coverage_mode(
+            index_path,
+            {"source_coverage_report": {"supplemented_files": 2}},
+        )
+        == "compiler-prefix+syntax"
+    )
 
 
 def _record(repo: str, index: int) -> dict[str, str]:

@@ -447,7 +447,7 @@ policy:
 ```bash
 make scip-python-tool
 export PATH="${CODENIB_SCIP_TOOLS_DIR:-/tmp/codenib/scip-tools}:$PATH"
-export CODENIB_SCIP_PYTHON_INDEX_TIMEOUT_SECONDS=3600
+export CODENIB_SCIP_PYTHON_INDEX_TIMEOUT_SECONDS=900
 
 python scripts/analysis/prepare_swebench_policy_cases.py \
   --dataset-json ~/.codenib/princeton-nlp__SWE-bench_Lite_test.json \
@@ -486,6 +486,18 @@ valid artifacts but rejects a changed dataset or selection configuration.
 Preparation performs no model requests.
 The sample is deliberately repository-balanced coverage, not a
 population-weighted estimate over all SWE-bench Lite tasks.
+
+When `scip-python` times out after emitting parseable, path-addressable protobuf
+documents, preparation retains that compiler-derived prefix and applies the
+same label-independent tree-sitter fallback to every missing tracked Python
+file. If no usable compiler document exists, the malformed or metadata-only
+artifact is rejected and the same fallback covers the full tracked surface.
+The report distinguishes compiler availability and coverage from supplemented
+files, symbols, and final Git-surface coverage. The manifest also records
+whether generation completed or retained a partial compiler prefix. The
+fallback adds definitions and containment only; it does not synthesize
+compiler reference edges. Graph audits label the resulting surface as
+`compiler`, `compiler-prefix`, `compiler-prefix+syntax`, or `syntax`.
 
 File metrics retain all 50 selected cases in the denominator, including failed
 model cells. Function metrics use the declared subset whose golden patch

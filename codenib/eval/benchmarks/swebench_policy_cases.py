@@ -468,6 +468,48 @@ def _scip_producer(index_path: Path) -> dict[str, Any]:
     }
 
 
+def _graph_producer(
+    index_path: Path,
+    graph_metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    if index_path.is_file():
+        return _scip_producer(index_path)
+    coverage = graph_metadata.get("source_coverage_report")
+    if (
+        isinstance(coverage, Mapping)
+        and coverage.get("compiler_graph_available") is False
+    ):
+        return {
+            "name": "codenib-syntax-fallback",
+            "version": "1",
+            "arguments": [],
+        }
+    raise RuntimeError(f"symbol graph has no compiler provenance: {index_path}")
+
+
+def _graph_coverage_mode(
+    index_path: Path,
+    graph_metadata: Mapping[str, Any],
+) -> str:
+    """Describe which source supplied the published graph surface."""
+
+    coverage = graph_metadata.get("source_coverage_report")
+    if not index_path.is_file():
+        if (
+            isinstance(coverage, Mapping)
+            and coverage.get("compiler_graph_available") is False
+        ):
+            return "syntax"
+        raise RuntimeError(f"symbol graph has no compiler provenance: {index_path}")
+    if not isinstance(coverage, Mapping):
+        return "compiler"
+    if coverage.get("supplemented_files"):
+        return "compiler-prefix+syntax"
+    if coverage.get("compiler_index_complete") is False:
+        return "compiler-prefix"
+    return "compiler"
+
+
 def assess_policy_graph(
     manifest_path: Path,
     checkout: Path,
@@ -493,8 +535,15 @@ def assess_policy_graph(
         represented,
         outside_commit=outside_commit,
     )
-    report["producer"] = _scip_producer(
-        Path(manifest.indexes["symbol_graph"].path) / "index.scip"
+    graph_entry = manifest.indexes["symbol_graph"]
+    index_path = Path(graph_entry.path) / "index.scip"
+    report["producer"] = _graph_producer(
+        index_path,
+        graph_entry.metadata,
+    )
+    report["coverage_mode"] = _graph_coverage_mode(
+        index_path,
+        graph_entry.metadata,
     )
     if not report["passed"]:
         raise RuntimeError(
@@ -517,11 +566,31 @@ def build_policy_manifest(
     root = Path(checkout).expanduser().resolve()
     output = Path(artifact_dir).expanduser().resolve() / "indexes"
     manifest_path = output / MANIFEST_FILENAME
+    started = time.perf_counter()
+
+    if manifest_path.is_file():
+        errors = _manifest_errors(manifest_path, root, commit)
+        if not errors:
+            try:
+                graph_quality = assess_policy_graph(manifest_path, root, commit)
+            except (OSError, RuntimeError, ValueError):
+                pass
+            else:
+                manifest = RepoManifest.load(manifest_path)
+                return manifest_path, _policy_build_report(
+                    manifest,
+                    graph_quality,
+                    duration_seconds=time.perf_counter() - started,
+                    reused_existing=True,
+                )
+
     registry = IndexBuilderRegistry()
     register_default_builders(
         registry,
         languages=["python"],
         allow_partial_graph_languages=False,
+        allow_partial_graph_index=True,
+        graph_source_coverage_fallback=True,
     )
     compiler = IndexCompiler(
         registry,
@@ -530,7 +599,6 @@ def build_policy_manifest(
             languages=["python"],
         ),
     )
-    started = time.perf_counter()
     if manifest_path.is_file():
         manifest = compiler.update_repo(
             str(root),
@@ -547,11 +615,29 @@ def build_policy_manifest(
     if errors:
         raise RuntimeError("; ".join(errors))
     graph_quality = assess_policy_graph(manifest_path, root, commit)
-    return manifest_path, {
-        "duration_seconds": time.perf_counter() - started,
+    return manifest_path, _policy_build_report(
+        manifest,
+        graph_quality,
+        duration_seconds=time.perf_counter() - started,
+        reused_existing=False,
+    )
+
+
+def _policy_build_report(
+    manifest: RepoManifest,
+    graph_quality: Mapping[str, Any],
+    *,
+    duration_seconds: float,
+    reused_existing: bool,
+) -> dict[str, Any]:
+    graph_metadata = manifest.indexes["symbol_graph"].metadata
+    return {
+        "duration_seconds": duration_seconds,
+        "reused_existing": reused_existing,
         "file_count": manifest.file_count,
         "capabilities": dict(manifest.capabilities),
-        "graph_quality": graph_quality,
+        "graph_quality": dict(graph_quality),
+        "source_coverage_report": graph_metadata.get("source_coverage_report"),
         "views": {
             name: {
                 "status": manifest.indexes[name].status,
