@@ -7,18 +7,37 @@ an agent-specific graph, BM25 index, or cache directory.
 
 ## Support Matrix
 
-The three support levels below are intentionally separate. **Provider** means
-CodeNib implements the repository-call contract. **Policy** means the pinned
-agent loop can execute with that provider. **Paired** means the repository
-provider can be swapped between native and CodeNib under one fixed case, model,
-prompt, and budget contract; it is not a general quality claim.
+The support levels below are intentionally separate. **Provider** means CodeNib
+implements the repository-call contract. **Policy** means a pinned upstream
+agent loop executes with that provider. **Paired evaluation** means the native
+and CodeNib providers can be swapped under one fixed case, model, prompt, and
+budget contract. None of these labels alone claims end-to-end task quality.
 
-| Integration | Provider | Policy | Paired evaluation | Upstream domain | Boundary |
+| Integration | Status | Required views | Provider contract | Policy and evaluation | Boundary |
 | --- | --- | --- | --- | --- | --- |
-| LocAgent | Pinned three-tool contract | Pinned prompts and function-calling loop | Fixed-case runner | Python SWE-bench repositories; symbol graph + BM25 | Reference and type-use are disclosed as conservative relation mappings |
-| Historical OpenHands LocAgent plugin | Python bindings for the pinned plugin revision | Not present in current OpenHands CLI | Covered through the LocAgent contract | Same Python contract as LocAgent | No claim of compatibility with every OpenHands revision |
-| OrcaLoca | Pinned six-tool and private-hook contract | Upstream `SearchAgent` with an injected manager | Fixed-case runner + native File/Function Match scorer | Python SWE-bench repositories; symbol graph | Empty `TraceAnalysisOutput`; TraceAnalysis generation is out of scope |
-| SWE-Explore | No adapter | No | No | N/A | Referenced only to distinguish its trajectory-read labels from golden-patch localization metrics |
+| LocAgent | Revision-pinned supported | Symbol graph + BM25 | Pinned three-tool contract | Pinned prompts and function-calling loop; fixed-case paired runner | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
+| Historical OpenHands LocAgent plugin | Contract-only | Symbol graph + BM25 | Python bindings for the pinned plugin revision | Covered through the LocAgent contract; policy is absent from current OpenHands CLI | No compatibility claim for other OpenHands revisions |
+| OrcaLoca SearchAgent | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
+| SWE-Explore | Reference-only | N/A | No adapter | No policy runner or paired evaluation | Used only to distinguish trajectory-read labels from golden-patch localization metrics |
+
+### What Supported Means
+
+A revision-pinned integration must pass four separate gates:
+
+1. Dependency-free provider tests exercise its public tools, source identities,
+   ranges, budgets, and failure behavior.
+2. An upstream probe checks the pinned tool signatures and the private hooks
+   that the policy actually invokes.
+3. Benchmark preflight verifies clean checkout commits, manifest identity,
+   declared capabilities, and successful loading of every required runtime
+   view before a model call.
+4. The paired runner records every requested cell, keeps failures in the
+   denominator, and binds the case-set, CodeNib, upstream, model, and run-option
+   identities into result provenance.
+
+Passing these gates supports the stated provider and policy boundary. It does
+not imply compatibility with an arbitrary upstream revision or with stages
+explicitly excluded by the matrix.
 
 Optional upstream packages are required only for policy execution. Provider
 imports and standalone provider examples remain dependency-free. Exact pinned
@@ -267,6 +286,26 @@ ranges. Python symbols that the pinned visitor does not recognize are not
 exposed merely because CodeNib's graph is richer. Prose and ambiguous-result
 tie ordering may differ outside this semantic output boundary.
 
+### Trace-Analysis Boundary
+
+The supported OrcaLoca integration begins at `SearchAgent`, after the optional
+upstream trace-analysis stage:
+
+```text
+issue -> [trace analysis: out of scope] -> SearchInput -> SearchAgent -> repository provider
+```
+
+Both the generic adapter and paired runner construct `SearchInput` with an
+empty `TraceAnalysisOutput`. This is a valid upstream input and is also
+OrcaLoca's fallback when its trace-analysis stage raises an exception. Holding
+that input fixed isolates the repository provider: native and CodeNib runs
+receive the same absence of trace-derived hints, while only the search manager
+changes. Consequently, the integration supports OrcaLoca SearchAgent execution
+and provider compatibility; it does not claim to reproduce OrcaLoca's complete
+trace-analysis pipeline or its published end-to-end score. A future
+trace-enabled experiment should supply one fixed, recorded trace to both
+providers rather than regenerate traces independently.
+
 ### Evaluation Metrics
 
 The dependency-free scorer under `codenib.eval.benchmarks.orcaloca` implements
@@ -387,23 +426,24 @@ python scripts/analysis/compare_agent_integrations.py score-orcaloca \
 ```
 
 Before any model call, the driver checks every requested checkout commit,
-tracked-file state, manifest commit, and required capability. Result files bind
-the selected-case digest, CodeNib revision, pinned upstream revisions, model,
-and run options. The scorer retains missing and failed cells in the requested
-denominator, verifies recorded case digests against the active case set, and
-rejects mixed-model aggregation. `--allow-incomplete` writes an explicit
-partial audit; it does not turn a partial matrix into a complete one.
+tracked-file state, manifest commit, required capability, and actual loading of
+the required runtime views. Result files bind the selected-case digest, CodeNib
+revision, pinned upstream revisions, model, and run options. The scorer retains
+missing and failed cells in the requested denominator, verifies recorded case
+digests against the active case set, and rejects mixed-model aggregation.
+`--allow-incomplete` writes an explicit partial audit; it does not turn a
+partial matrix into a complete one.
 
-The OrcaLoca comparison covers its search policy with an empty
-`TraceAnalysisOutput`; TraceAnalysis generation is outside this compatibility
-experiment. File Match and Function Match use golden-patch labels and remain
-separate from the common ranked file/symbol metrics. Legacy result cells may be
-reused, but the summary reports their missing provenance explicitly.
+The OrcaLoca comparison follows the
+[trace-analysis boundary](#trace-analysis-boundary). File Match and Function
+Match use golden-patch labels and remain separate from the common ranked
+file/symbol metrics. Legacy result cells may be reused, but the summary reports
+their missing provenance explicitly.
 
-Provider semantics and model-run cost are separate gates. The pinned upstream
-probe and exact tool-output replay establish deterministic provider
-compatibility. The paired model runner preserves upstream sampling defaults
-(including OrcaLoca's `temperature=1.0`) and records one trajectory per cell, so
-its token and wall-time ratios are descriptive smoke data, not evidence of a
-performance improvement. A performance comparison requires repeated paired
-trials or an endpoint with a documented deterministic sampling contract.
+Provider semantics and model-run cost are separate gates. Provider fixtures and
+the pinned upstream probe check the declared tool and helper semantics. The
+paired model runner preserves upstream sampling defaults (including OrcaLoca's
+`temperature=1.0`) and records one trajectory per cell, so its token and
+wall-time ratios are descriptive smoke data, not evidence of a performance
+improvement. A performance comparison requires repeated paired trials or an
+endpoint with a documented deterministic sampling contract.

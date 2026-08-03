@@ -320,3 +320,17 @@ def test_search_agent_injects_provider_without_upstream_build(
     assert isinstance(agent._search_manager, OrcaLocaSearchProvider)
     assert agent._search_manager.repo_path == str(Path(manifest.repo_path).resolve())
     assert not (Path(manifest.repo_path) / "_index_data").exists()
+
+
+def test_empty_trace_analysis_is_a_valid_upstream_input(
+    upstream_modules: SimpleNamespace,
+) -> None:
+    trace = upstream_modules.types.TraceAnalysisOutput()
+
+    assert trace.summary == ""
+    assert trace.suspicious_code == []
+    assert trace.suspicious_code_from_tracer == []
+    assert trace.related_source_code == ""
+    assert trace.is_reproduce_pass is False
+    assert trace.reproduce_code == ""
+    assert trace.env_reproduce_path == ""

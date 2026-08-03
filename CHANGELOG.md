@@ -15,6 +15,9 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 - Graph schema 5 records semantic symbol kinds, explicit definition
   provenance, and anchored TypeScript/TSX import and re-export edges.
+- Revision-pinned LocAgent and OrcaLoca SearchAgent adapters can reuse
+  manifest-backed repository views without introducing upstream agent
+  dependencies into the base package.
 
 ### Changed
 

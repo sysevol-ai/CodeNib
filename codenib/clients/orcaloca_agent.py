@@ -2,7 +2,12 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""OrcaLoca adapter for CodeNib's generic localization benchmark contract."""
+"""OrcaLoca SearchAgent adapter for the generic localization contract.
+
+The supported boundary starts at SearchAgent. The default runner intentionally
+uses an empty TraceAnalysisOutput and does not execute OrcaLoca's upstream
+trace-analysis stage.
+"""
 
 from __future__ import annotations
 
@@ -83,11 +88,15 @@ def orcaloca_locations_to_baseline(
 
 
 class OrcaLocaAgent:
-    """Run OrcaLoca policy over CodeNib views through ``locate_code``.
+    """Run OrcaLoca SearchAgent over CodeNib views through ``locate_code``.
 
     The class imports OrcaLoca, LlamaIndex, and tiktoken only when the default
     search runner executes. Tests and alternative runtimes can inject a
     dependency-free ``search_runner`` with the same raw-output contract.
+
+    Trace-analysis generation is outside this adapter. The default runner
+    supplies an empty ``TraceAnalysisOutput`` so repository-provider behavior
+    can be evaluated without changing an upstream issue-analysis input.
     """
 
     def __init__(
@@ -215,6 +224,8 @@ class OrcaLocaAgent:
 
         from codenib.integrations.orcaloca import make_orcaloca_search_manager_factory
 
+        # Trace analysis is a distinct upstream stage. Keep its output empty so
+        # this adapter changes only the repository provider used by SearchAgent.
         search_input = SearchInput(
             problem_statement=problem_statement,
             trace_analysis_output=TraceAnalysisOutput(),

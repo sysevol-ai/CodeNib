@@ -25,6 +25,8 @@ SPDX-License-Identifier: Apache-2.0
     &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/mcp/">MCP</a>
     &nbsp;&middot;&nbsp;
+    <a href="https://docs.codenib.ai/agent_integrations/">Agent Integrations</a>
+    &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/language_capabilities/">Languages</a>
   </p>
   <p>
@@ -45,6 +47,16 @@ The Wiki, Ask view, and Dependency Map are inspection clients of that same
 runtime, not the system boundary. The core implementation lives in CodeNib;
 optional model endpoints and language servers are providers rather than a host
 agent or code-Wiki framework.
+
+## News
+
+- **2026-08-02 — OrcaLoca SearchAgent integration.** CodeNib can now serve a
+  revision-pinned OrcaLoca `SearchAgent` through its manifest-backed symbol
+  graph, preserving the upstream six-tool and private-hook contract without
+  building an OrcaLoca-specific graph. The supported boundary starts at
+  `SearchAgent` with an empty `TraceAnalysisOutput`; see the
+  [agent integration support matrix](https://docs.codenib.ai/agent_integrations/)
+  for validation evidence and scope.
 
 ## System Architecture
 
@@ -128,6 +140,7 @@ for client configuration and tool contracts.
 | Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths |
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
 | MCP and LSP-shaped tools | Serve one manifest to coding agents without tying the runtime to one agent framework |
+| External policy adapters | Run revision-pinned LocAgent and OrcaLoca SearchAgent policies over the same manifest-backed views |
 | Local inspection | Audit the same context through Wiki pages, Ask answers, citations, and the Dependency Map |
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 
@@ -139,6 +152,7 @@ records chunking, graph, incremental, and C++ decoder support.
 
 - [Quickstart](https://docs.codenib.ai/quickstart/)
 - [MCP Server](https://docs.codenib.ai/mcp/)
+- [Agent Integrations](https://docs.codenib.ai/agent_integrations/)
 - [Web UI](https://docs.codenib.ai/web_demo/)
 - [Language Capabilities](https://docs.codenib.ai/language_capabilities/)
 - [Concepts and development guides](https://docs.codenib.ai/)

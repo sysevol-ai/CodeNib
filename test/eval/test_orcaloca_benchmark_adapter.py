@@ -290,6 +290,9 @@ def test_default_runner_forwards_openai_compatible_base_url(
 
     assert captured["llm"]["api_base"] == "https://gateway.example/v1"
     assert captured["agent"]["llm"].__class__ is FakeOpenAI
+    trace_analysis = captured["agent"]["search_input"].trace_analysis_output
+    assert isinstance(trace_analysis, FakeTraceAnalysisOutput)
+    assert vars(trace_analysis) == {}
     assert captured["content"] == "Locate the parser"
     assert execution.tool_calls == 0
 

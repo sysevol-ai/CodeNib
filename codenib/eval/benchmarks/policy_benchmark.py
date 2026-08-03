@@ -10,7 +10,9 @@ upstream agent's prompt and policy fixed while swapping only its repository
 provider between the pinned native implementation and CodeNib.
 
 The OrcaLoca scorer follows its published golden-patch file/function subset
-metric.  SWE-Explore trajectory read sets are a different target.
+metric. Its runner starts at SearchAgent with an empty TraceAnalysisOutput;
+upstream trace generation is intentionally outside this provider comparison.
+SWE-Explore trajectory read sets are a different target.
 """
 
 from __future__ import annotations
@@ -794,6 +796,8 @@ def _run_orcaloca(args: argparse.Namespace) -> int:
                 print(f"skip existing {output_path}", flush=True)
                 continue
 
+            # Freeze the upstream trace-analysis input so the paired arm changes
+            # only the repository provider used by SearchAgent.
             search_input = SearchInput(
                 problem_statement=case.problem_statement,
                 trace_analysis_output=TraceAnalysisOutput(),
