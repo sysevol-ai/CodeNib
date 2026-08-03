@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,8 +6,8 @@
 Unit tests for IncrementalChunkStore.
 """
 
-from codeminer.code_chunking.base import CodeChunk
-from codeminer.index.incremental.chunk_store import IncrementalChunkStore, _hash_content
+from codenib.code_chunking.base import CodeChunk
+from codenib.index.incremental.chunk_store import IncrementalChunkStore, _hash_content
 
 # ---------------------------------------------------------------------------
 # Helpers

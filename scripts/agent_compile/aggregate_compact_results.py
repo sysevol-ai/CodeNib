@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Aggregate the compact-preload experiment matrix into markdown tables.
 
-Reads the per-cell result dirs under ``--results`` (default /mnt/data/codeminer/
-results) and prints the paper-ready tables to stdout:
+Reads the per-cell result dirs under ``--results`` (default
+``${CODENIB_RESULTS_DIR}``) and prints the paper-ready tables to stdout:
 
   1. Base compact (grep / eager / eager_compact) across 4B/9B/27B/Haiku
   2. Embedding ablation on the compact agent (0.6B / jina-1.5b / 4B)
@@ -32,7 +32,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-RESULTS = "/mnt/data/codeminer/results"
+from codenib.paths import results_dir
+
+RESULTS = str(results_dir())
 random.seed(0)
 
 
@@ -329,7 +331,7 @@ def table5_recall():
 def table6_graph_value():
     print("\n\n## 6. Graph's value: GraphRAG (search+graph) vs search-only, base\n")
     print(
-        "`codeminer_context` composer (bm25 \u2295 embedding seeds \u2192 "
+        "`codenib_context` composer (bm25 \u2295 embedding seeds \u2192 "
         "call-graph). \u0394 = files the call-graph expansion recovers that "
         "search alone misses.\n"
     )

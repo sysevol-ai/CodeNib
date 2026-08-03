@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,8 +10,8 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-from codeminer.eval.agent_runner.baseline import BaselineTask
-from codeminer.eval.agent_runner.batch import baseline_done_ids, run_baseline_batch
+from codenib.eval.agent_runner.baseline import BaselineTask
+from codenib.eval.agent_runner.batch import baseline_done_ids, run_baseline_batch
 
 
 def _task(instance_id: str, *, target_symbol: str = "pkg/mod.py:foo()"):

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,18 +8,18 @@ from __future__ import annotations
 
 import sys
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.scip_interface import scip_indexer_java
-from codeminer.scip_interface.scip_decode_java import (
+from codenib.graph.code_graph import CodeGraph
+from codenib.scip_interface import scip_indexer_java
+from codenib.scip_interface.scip_decode_java import (
     SCIPJavaGraphDecoder,
     SCIPKotlinGraphDecoder,
 )
-from codeminer.scip_interface.scip_indexer_java import (
+from codenib.scip_interface.scip_indexer_java import (
     SCIPJavaIndexer,
     SCIPKotlinIndexer,
     SCIPScalaIndexer,
 )
-from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE, NODE_TYPE_FIELD
+from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE, NODE_TYPE_FIELD
 
 JAVA_INDEX = """
 metadata {
@@ -231,7 +231,7 @@ def test_scip_java_indexer_combines_stdout_without_stderr():
 
 
 def test_scip_kotlin_indexer_uses_kotlin_registry_command(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_KOTLIN_SCIP_CMD", "custom-scip-java index")
+    monkeypatch.setenv("CODENIB_KOTLIN_SCIP_CMD", "custom-scip-java index")
 
     indexer = SCIPKotlinIndexer(tmp_path, output_dir=tmp_path / "out")
 
@@ -384,7 +384,7 @@ documents {
 
 
 def test_scip_scala_indexer_uses_scala_registry_command(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_SCALA_SCIP_CMD", "custom-scip-java index")
+    monkeypatch.setenv("CODENIB_SCALA_SCIP_CMD", "custom-scip-java index")
 
     indexer = SCIPScalaIndexer(tmp_path, output_dir=tmp_path / "out")
 

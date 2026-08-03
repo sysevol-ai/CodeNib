@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from codeminer.llm.litellm_chat import LiteLLMChat, human_message
+from codenib.llm.litellm_chat import LiteLLMChat, human_message
 
 pytestmark = pytest.mark.slow
 

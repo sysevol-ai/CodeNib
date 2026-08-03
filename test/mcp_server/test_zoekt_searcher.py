@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.index.trigram.zoekt_searcher import (
+from codenib.index.trigram.zoekt_searcher import (
     ZoektSearcher,
     ZoektUnavailableError,
     _compose_query,
@@ -97,15 +97,34 @@ class TestFileMatchMapping:
         assert node.type == "file"
         assert node.file == "src/auth.py"
         assert node.node_name == "src/auth.py"
-        assert node.start_line == 10
-        assert node.end_line == 30
+        assert node.start_line == 9
+        assert node.end_line == 29
         assert node.node_id == "Python"
         # Pre + Match + Post are concatenated per fragment so the agent sees
         # the matched line in context.
         assert "def login(user):" in (node.content or "")
         assert "raise InvalidTokenError()" in (node.content or "")
+        assert "L10: def login(user):" in (node.content or "")
+        assert "L30:     raise InvalidTokenError()" in (node.content or "")
         # Score is not exposed by the JSON endpoint -- caller relies on order.
         assert node.score is None
+
+    def test_filename_match_sentinel_does_not_become_source_line(self) -> None:
+        node = _file_match_to_node(
+            {
+                "FileName": "src/auth.py",
+                "Matches": [
+                    {
+                        "LineNum": 0,
+                        "Fragments": [{"Pre": "", "Match": "auth.py", "Post": ""}],
+                    }
+                ],
+            }
+        )
+
+        assert node.start_line is None
+        assert node.end_line is None
+        assert node.content == "auth.py"
 
 
 # ------------------------------------------------------------------
@@ -139,7 +158,7 @@ class TestSearcherSearch:
 
         assert len(results) == 1
         assert results[0].file == "a.py"
-        assert results[0].start_line == 3
+        assert results[0].start_line == 2
 
         # GET /search with format=json query string (no JSON body POST).
         assert mock_get.call_args.args[0].endswith("/search")

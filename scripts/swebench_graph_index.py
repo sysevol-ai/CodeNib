@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,6 +8,7 @@ Build SCIP graph indexes for multiple benchmark sources.
 Supported sources:
 - swebench
 - swebench_multilingual
+- codenib_base
 - locbench
 - sampled_csv (for sampled instance lists like selected.csv/selected_instances.csv)
 """
@@ -19,26 +20,52 @@ import csv
 import json
 import logging
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-from codeminer.dataset.locbench import LocbenchDataset
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
-from codeminer.log_utils import get_logger
-from codeminer.ls_router import LSIndexer
-from codeminer.profiler import Profiler
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from codenib.compiler.artifact_quality import (  # noqa: E402
+    ARTIFACT_QUALITY_SCHEMA_VERSION,
+    constrain_and_assess_graph_artifact,
+    graph_file_paths,
+    required_source_files,
+    write_artifact_quality,
+)
+from codenib.compiler.snapshot_store import ArtifactProfile  # noqa: E402
+from codenib.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
+from codenib.dataset.codenib_base import CodeNibBaseDataset  # noqa: E402
+from codenib.dataset.locbench import LocbenchDataset  # noqa: E402
+from codenib.dataset.swebench import SwebenchDataset  # noqa: E402
+from codenib.dataset.swebench_multilingual import (  # noqa: E402
+    SwebenchMultilingualDataset,
+)
+from codenib.git_snapshot import GitSourceSurface  # noqa: E402
+from codenib.graph.source_coverage import supplement_graph_source_coverage  # noqa: E402
+from codenib.languages import extensions_for_language  # noqa: E402
+from codenib.languages import language_capability_rows
+from codenib.log_utils import get_logger  # noqa: E402
+from codenib.ls_router import LSIndexer  # noqa: E402
+from codenib.paths import user_state_dir  # noqa: E402
+from codenib.profiler import Profiler  # noqa: E402
+from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION  # noqa: E402
 
 logger = get_logger(__name__)
 
 DEFAULT_MULTILINGUAL_REPO_LANG_CSV = (
     Path(__file__).resolve().parents[1]
-    / "codeminer"
+    / "codenib"
     / "dataset"
     / "collect"
     / "data"
     / "swebench_multilingual_repos.csv"
+)
+GRAPH_LANGUAGES = sorted(
+    row.key for row in language_capability_rows() if row.graph_backend is not None
 )
 
 
@@ -59,7 +86,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         type=str,
-        choices=["swebench", "swebench_multilingual", "locbench", "sampled_csv"],
+        choices=[
+            "swebench",
+            "swebench_multilingual",
+            "codenib_base",
+            "locbench",
+            "sampled_csv",
+        ],
         default="swebench",
         help="Source type for instances to index.",
     )
@@ -74,6 +107,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="SWE-bench/SWE-bench_Multilingual",
         help="Dataset name used when source is swebench_multilingual.",
+    )
+    parser.add_argument(
+        "--codenib-base-dataset",
+        type=str,
+        default="fishmingyu/codeminer-base-dataset",
+        help="Dataset name used when source is codenib_base.",
     )
     parser.add_argument(
         "--locbench-dataset",
@@ -142,7 +181,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default="~/.codeminer",
+        default=str(user_state_dir()),
         help="Cache directory for datasets.",
     )
     parser.add_argument(
@@ -161,15 +200,47 @@ def parse_args() -> argparse.Namespace:
         "--language",
         type=str,
         default="auto",
-        choices=["auto", "python", "rust", "ts", "cpp"],
+        choices=["auto", *GRAPH_LANGUAGES, "js", "ts"],
         help="SCIP index language. Use auto to infer per instance.",
     )
     parser.add_argument(
         "--default-language",
         type=str,
         default="python",
-        choices=["python", "rust", "ts", "cpp"],
+        choices=GRAPH_LANGUAGES,
         help="Fallback language when auto inference is inconclusive.",
+    )
+    parser.add_argument(
+        "--artifact-layout",
+        choices=["instance", "snapshot"],
+        default="instance",
+        help=(
+            "Store each instance separately or bind it to a shared, "
+            "content-addressed repository snapshot."
+        ),
+    )
+    parser.add_argument(
+        "--artifact-profile",
+        default="benchmark-v1",
+        help="Compatibility profile name used by snapshot-addressed artifacts.",
+    )
+    parser.add_argument(
+        "--enforce-commit-surface",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Constrain graph paths to the declared base commit and reject "
+            "missing source-language ground-truth files."
+        ),
+    )
+    parser.add_argument(
+        "--source-coverage-fallback",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use tree-sitter definitions to cover tracked source files omitted "
+            "by the compiler-backed graph; reference edges remain compiler-derived."
+        ),
     )
     parser.add_argument(
         "--multilingual-repo-language-csv",
@@ -196,13 +267,33 @@ def _map_language_label(label: Optional[str], default_language: str) -> str:
     text = label.lower()
     if "rust" in text:
         return "rust"
+    if text == "go" or "golang" in text:
+        return "go"
     if "javascript" in text or "typescript" in text or text == "ts" or text == "js":
-        return "ts"
+        return "typescript"
     if "c++" in text or text == "cpp" or text == "c":
         return "cpp"
+    if "c#" in text or "csharp" in text:
+        return "csharp"
+    if "java" in text:
+        return "java"
+    if "kotlin" in text:
+        return "kotlin"
+    if "ruby" in text:
+        return "ruby"
+    if "php" in text:
+        return "php"
+    if "scala" in text:
+        return "scala"
     if "python" in text:
         return "python"
     return default_language
+
+
+def _profile_languages(language: str) -> List[str]:
+    if language in {"js", "ts", "javascript", "typescript"}:
+        return ["javascript", "typescript"]
+    return [language]
 
 
 def _load_repo_language_map(csv_path: Path) -> Dict[str, str]:
@@ -229,6 +320,8 @@ def _build_dataset(source: str, args: argparse.Namespace):
         return SwebenchDataset(dataset=args.dataset, **kwargs)
     if source == "swebench_multilingual":
         return SwebenchMultilingualDataset(dataset=args.multilingual_dataset, **kwargs)
+    if source == "codenib_base":
+        return CodeNibBaseDataset(dataset=args.codenib_base_dataset, **kwargs)
     if source == "locbench":
         return LocbenchDataset(dataset=args.locbench_dataset, **kwargs)
     raise ValueError(f"Unsupported source: {source}")
@@ -436,6 +529,7 @@ def _write_profile(
         "base_commit": instance.get("base_commit"),
         "source": source_kind,
         "language": language,
+        "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         "total_duration": sum(section["total"] for section in sections_payload),
         "sections": sections_payload,
     }
@@ -447,11 +541,50 @@ def _write_profile(
     logger.info("Saved profiler results to %s", profile_file)
 
 
+def _graph_artifact_metadata(
+    *,
+    repo: str,
+    surface: GitSourceSurface,
+    language: str,
+    exclude_patterns: Iterable[str],
+    enforce_commit_surface: bool,
+    source_coverage_fallback: bool,
+) -> Dict[str, Any]:
+    return {
+        "repo": repo,
+        "commit": surface.commit,
+        "tree": surface.tree,
+        "language": language,
+        "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+        "exclude_patterns": sorted(exclude_patterns),
+        "enforce_commit_surface": enforce_commit_surface,
+        "source_coverage_fallback": source_coverage_fallback,
+    }
+
+
+def _graph_quality_is_reusable(
+    output_dir: Path,
+    *,
+    expected_artifact: Mapping[str, Any],
+) -> bool:
+    try:
+        quality = json.loads(
+            (output_dir / "artifact_quality.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(
+        quality.get("schema_version") == ARTIFACT_QUALITY_SCHEMA_VERSION
+        and quality.get("passed")
+        and quality.get("artifact") == expected_artifact
+    )
+
+
 def main() -> None:
     args = parse_args()
 
     if args.output_path is None:
-        args.output_path = str(Path.home() / ".codeminer")
+        args.output_path = str(user_state_dir())
     output_path = Path(args.output_path).expanduser()
     output_path.mkdir(parents=True, exist_ok=True)
     logger.info("Graph indexes will be stored in: %s", output_path)
@@ -479,7 +612,13 @@ def main() -> None:
         args.force,
         effective_skip_level if effective_skip_level is not None else "none",
     )
+    snapshot_store = (
+        SnapshotArtifactStore(output_path)
+        if args.artifact_layout == "snapshot"
+        else None
+    )
 
+    failures: List[str] = []
     for idx, task in enumerate(tasks):
         instance = task.instance
         instance_id = instance["instance_id"]
@@ -502,8 +641,58 @@ def main() -> None:
             )
             logger.info("Repository checked out at: %s", repo_path)
 
-            instance_output_dir = output_path / instance_id.replace("/", "__")
-            instance_output_dir.mkdir(parents=True, exist_ok=True)
+            if snapshot_store is not None:
+                binding = snapshot_store.bind(
+                    instance_id,
+                    SourceSnapshot(repo=repo, commit=base_commit),
+                    ArtifactProfile.create(
+                        _profile_languages(task.language),
+                        name=args.artifact_profile,
+                    ),
+                )
+                repo_path = str(
+                    snapshot_store.ensure_worktree(
+                        binding,
+                        source_repo=repo_path,
+                        commit=base_commit,
+                    )
+                )
+                instance_output_dir = binding.profile_dir
+                logger.info(
+                    "Snapshot artifact: snapshot=%s profile=%s "
+                    "snapshot_hit=%s profile_hit=%s alias_hit=%s",
+                    binding.snapshot_id,
+                    binding.profile_id,
+                    binding.snapshot_hit,
+                    binding.profile_hit,
+                    binding.alias_hit,
+                )
+            else:
+                instance_output_dir = output_path / instance_id.replace("/", "__")
+                instance_output_dir.mkdir(parents=True, exist_ok=True)
+
+            surface = None
+            artifact_metadata = None
+            instance_skip_level = effective_skip_level
+            if args.enforce_commit_surface:
+                surface = GitSourceSurface.load(repo_path, base_commit)
+                artifact_metadata = _graph_artifact_metadata(
+                    repo=repo,
+                    surface=surface,
+                    language=task.language,
+                    exclude_patterns=args.exclude_patterns,
+                    enforce_commit_surface=args.enforce_commit_surface,
+                    source_coverage_fallback=args.source_coverage_fallback,
+                )
+                if instance_skip_level is not None and not _graph_quality_is_reusable(
+                    instance_output_dir,
+                    expected_artifact=artifact_metadata,
+                ):
+                    logger.warning(
+                        "Cached graph lacks matching provenance and quality gates; "
+                        "running a full rebuild"
+                    )
+                    instance_skip_level = None
 
             profiler = Profiler(
                 name=f"scip_indexer[{instance_id}]",
@@ -521,7 +710,7 @@ def main() -> None:
 
             logger.info("Starting graph indexing for %s", instance_id)
             graph = indexer.run_pipeline(
-                skip_level=effective_skip_level,
+                skip_level=instance_skip_level,
                 report_profile=False,
             )
             logger.info("Profiler summary for %s:", instance_id)
@@ -535,6 +724,46 @@ def main() -> None:
             )
 
             if graph:
+                artifact_quality = None
+                if args.enforce_commit_surface:
+                    assert surface is not None
+                    assert artifact_metadata is not None
+                    graph_extensions = extensions_for_language(task.language, "graph")
+                    fallback_report = None
+                    if args.source_coverage_fallback:
+                        fallback_report = supplement_graph_source_coverage(
+                            graph,
+                            repo_root=repo_path,
+                            surface=surface,
+                            extensions=graph_extensions,
+                            represented_paths=graph_file_paths(graph),
+                            exclude_patterns=args.exclude_patterns,
+                        )
+                    required_files = required_source_files(
+                        instance,
+                        graph_extensions,
+                    )
+                    artifact_quality = constrain_and_assess_graph_artifact(
+                        graph,
+                        surface,
+                        required_files=required_files,
+                    )
+                    artifact_quality["artifact"] = artifact_metadata
+                    if fallback_report is not None:
+                        artifact_quality["source_coverage_fallback"] = fallback_report
+                    graph.project_root = repo_path
+                    graph.save_graph(indexer.graph_file)
+                    occurrence_index = getattr(graph, "lsp_occurrence_index", None)
+                    if occurrence_index is not None:
+                        occurrence_index.save(indexer.lsp_index_file)
+                    quality_path = instance_output_dir / "artifact_quality.json"
+                    write_artifact_quality(quality_path, artifact_quality)
+                    logger.info(
+                        "Artifact quality: %s (%s)",
+                        "passed" if artifact_quality["passed"] else "failed",
+                        quality_path,
+                    )
+
                 logger.info("Successfully created graph index for %s", instance_id)
                 logger.info("Graph saved to: %s", indexer.graph_file)
                 logger.info(
@@ -542,13 +771,27 @@ def main() -> None:
                     len(graph.graph.vs),
                     len(graph.graph.es),
                 )
+                quality = indexer.index_quality_report
+                if quality is not None:
+                    logger.info(
+                        "Index quality: %s (%s)",
+                        "passed" if quality["passed"] else "failed",
+                        instance_output_dir / "index_quality.json",
+                    )
+                if (quality is not None and not quality["passed"]) or (
+                    artifact_quality is not None and not artifact_quality["passed"]
+                ):
+                    logger.error("Quality gate failed for %s", instance_id)
+                    failures.append(instance_id)
             else:
                 logger.error("Failed to create graph index for %s", instance_id)
+                failures.append(instance_id)
 
         except Exception as exc:
             logger.error(
                 "Error processing instance %s: %s", instance_id, exc, exc_info=True
             )
+            failures.append(instance_id)
             continue
 
     logger.info("\n%s", "=" * 80)
@@ -556,6 +799,11 @@ def main() -> None:
     logger.info("Processed %d instances", len(tasks))
     logger.info("Indexes stored in: %s", output_path)
     logger.info("%s", "=" * 80)
+    if failures:
+        raise SystemExit(
+            "Graph indexing failed for "
+            f"{len(failures)} instance(s): {', '.join(failures)}"
+        )
 
 
 if __name__ == "__main__":

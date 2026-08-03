@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.model import (
+from codenib.model import (
     RetrievalBudget,
     RetrievalCapabilities,
     RetrievalPlanner,
     RetrieveRerankPipeline,
 )
-from codeminer.types import QueriedNode
+from codenib.types import QueriedNode
 
 
 def _node(name: str, score: float = 1.0) -> QueriedNode:
@@ -255,10 +255,12 @@ class _FakeGraph:
     def resolve_symbol(self, symbol):
         return self.resolve.get(symbol), None
 
-    def get_successors(self, node_name):
+    def get_successors(self, node_name, edge_types=None):
+        assert edge_types == {"reference"}
         return self.successors.get(node_name, [])
 
-    def get_predecessors(self, node_name):
+    def get_predecessors(self, node_name, edge_types=None):
+        assert edge_types == {"reference"}
         return self.predecessors.get(node_name, [])
 
     def get_node_info_by_id(self, node_id):
@@ -290,7 +292,7 @@ def test_auto_pipeline_executes_structural_graph_plan(monkeypatch):
     pipeline.rerank_strategy = "llm"
     pipeline.rerank_candidate_top_k = None
     pipeline.repo_path = None
-    from codeminer.ops.expand import ExpandContext
+    from codenib.ops.expand import ExpandContext
 
     pipeline.expand_context = ExpandContext(code_graph=_FakeGraph())
 

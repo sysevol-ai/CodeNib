@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,7 +19,7 @@ from unittest.mock import patch
 import litellm
 import pytest
 
-from codeminer.llm.litellm_chat import (
+from codenib.llm.litellm_chat import (
     LiteLLMChat,
     RetryConfig,
     _no_thinking_kwargs,
@@ -34,7 +34,7 @@ def _make_response(content="ok"):
 
 def _no_sleep():
     """Patch out the backoff sleep so tests don't actually wait."""
-    return patch("codeminer.llm.litellm_chat.time.sleep", return_value=None)
+    return patch("codenib.llm.litellm_chat.time.sleep", return_value=None)
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +110,70 @@ class TestIsTransientError:
 
 
 class TestCompletionWithRetry:
+    def test_chat_rejects_extra_kwargs_that_replace_managed_fields(self):
+        with pytest.raises(ValueError, match="cannot override.*model"):
+            LiteLLMChat(
+                model="openai/local",
+                extra_kwargs={"model": "anthropic/other"},
+            )
+
+    def test_complete_returns_stripped_text_and_forwards_endpoint(self):
+        chat = LiteLLMChat(
+            model="openai/local",
+            api_base="http://localhost:4000/v1",
+            api_key="secret",
+            extra_kwargs={
+                "api_version": "2025-01-01",
+                "extra_body": {"reasoning": {"enabled": False}},
+            },
+            retry=RetryConfig(max_retries=0),
+        )
+        with patch(
+            "codenib.llm.litellm_chat.litellm.completion",
+            return_value=_make_response("  answer  "),
+        ) as mock_completion:
+            text = chat.complete([{"role": "user", "content": "hi"}], max_tokens=12)
+
+        assert text == "answer"
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs["api_base"] == "http://localhost:4000/v1"
+        assert kwargs["api_key"] == "secret"
+        assert kwargs["max_tokens"] == 12
+        assert kwargs["api_version"] == "2025-01-01"
+        assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
+
+    def test_cache_identity_excludes_secret_but_tracks_endpoint(self):
+        first = LiteLLMChat(
+            model="openai/local",
+            api_base="http://one/v1",
+            api_key="first-secret",
+        )
+        rotated = LiteLLMChat(
+            model="openai/local",
+            api_base="http://one/v1",
+            api_key="rotated-secret",
+        )
+        moved = LiteLLMChat(
+            model="openai/local",
+            api_base="http://two/v1",
+            api_key="first-secret",
+        )
+        configured = LiteLLMChat(
+            model="openai/local",
+            api_base="http://one/v1",
+            extra_kwargs={"api_version": "2025-01-01"},
+        )
+        reconfigured = LiteLLMChat(
+            model="openai/local",
+            api_base="http://one/v1",
+            extra_kwargs={"api_version": "2026-01-01"},
+        )
+
+        assert first.cache_identity == rotated.cache_identity
+        assert first.cache_identity != moved.cache_identity
+        assert configured.cache_identity != reconfigured.cache_identity
+        assert "secret" not in first.cache_identity
+
     def test_transient_then_success_is_retried(self):
         """A transient error once, then success → retried and returns success."""
         chat = LiteLLMChat(
@@ -122,7 +186,7 @@ class TestCompletionWithRetry:
         ]
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=side_effects,
             ) as mock_completion,
             _no_sleep(),
@@ -139,7 +203,7 @@ class TestCompletionWithRetry:
         )
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=litellm.AuthenticationError("bad key", "gpt-4o", "openai"),
             ) as mock_completion,
             _no_sleep(),
@@ -156,7 +220,7 @@ class TestCompletionWithRetry:
         )
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=litellm.Timeout("slow", "gpt-4o", "openai"),
             ) as mock_completion,
             _no_sleep(),
@@ -172,7 +236,7 @@ class TestCompletionWithRetry:
         chat = LiteLLMChat(model="gpt-4o", retry=RetryConfig(max_retries=0))
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=litellm.RateLimitError("rl", "gpt-4o", "openai"),
             ) as mock_completion,
             _no_sleep(),
@@ -196,10 +260,10 @@ class TestCompletionWithRetry:
         ]
         with (
             patch(
-                "codeminer.llm.litellm_chat.litellm.completion",
+                "codenib.llm.litellm_chat.litellm.completion",
                 side_effect=side_effects,
             ),
-            patch("codeminer.llm.litellm_chat.time.sleep") as mock_sleep,
+            patch("codenib.llm.litellm_chat.time.sleep") as mock_sleep,
         ):
             resp = chat._call_raw([{"role": "user", "content": "hi"}])
 

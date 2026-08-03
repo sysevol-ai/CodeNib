@@ -1,44 +1,72 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # CodeGraph Hierarchy Model
 
-The CodeGraph UI should not render the raw LSP/SCIP reference graph as the
-primary structure. Reference graphs are dense, cyclic, and quickly become a
-hairball. The model we want is a compound graph:
+CodeNib presents a repository graph as two related structures:
 
-```text
-G = (V, containment_edges, dependency_edges)
-```
+- a containment tree: repository → directory → file → symbol;
+- a reference overlay: symbol-to-symbol relationships with source anchors.
 
-- `containment_edges` form a tree: directory -> file -> symbol.
-- `dependency_edges` are the call/reference/import overlay.
+The containment tree keeps a repository readable when its reference graph is
+dense or cyclic. The reference overlay preserves the dependency information
+needed for callers, callees, and exact source navigation.
 
-This lets the UI use the containment tree as the visual backbone and draw only a
-small number of important cross-edges on top.
+## Codemap API
 
-## Current API shape
+`GET /api/repos/{repo_id}/codemap` returns a focused dependency view. The
+request accepts:
 
-`codeminer.graph.hierarchy` builds a reusable repo-level
-`HierarchicalCodeGraph` from the indexed `CodeGraph`. The web codemap response
-projects that repo-level structure onto the current focus window, so existing
-clients still receive compact `nodes`/`edges` plus the relevant containment
-ancestors:
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `symbol` | busiest indexed symbol | Symbol to focus; fuzzy resolution is handled by the backend. |
+| `direction` | `both` | `both`, `callers`, or `callees`. |
+| `depth` | `2` | Reference traversal depth. The web explorer sends `1` by default and lets the reader select `2`. |
+| `max_nodes` | `40` | Upper bound for symbols in the response. |
+| `commit` | newest available snapshot | Commit from a prebuilt commit window, when present. |
+
+The response contains compact `nodes` and `edges` for the selected window plus
+the matching containment ancestors:
 
 ```ts
 interface CodemapResponse {
-  nodes: CodemapNode[];       // symbol nodes in the current focus window
-  edges: CodemapEdge[];       // reference/call overlay
-  hierarchy: CodemapHierarchy;
+  available: boolean;
+  root?: string;
+  root_label?: string;
+  direction?: string;
+  depth?: number;
+  truncated?: boolean;
+  nodes: CodemapNode[];
+  edges: CodemapEdge[];
+  hierarchy?: CodemapHierarchy;
+  mermaid: string;
+  note?: string;
+  setup?: GraphSetupReport;
+  commit?: string | null;
+  fell_back?: boolean;
 }
 
 interface CodemapEdge {
-  source: string;              // CodemapNode id
+  source: string;
   target: string;
-  anchors?: CallSite[];
+  anchors?: Array<{ file: string; line: number | null }>;
   weight?: number;
-  source_hierarchy?: string;   // hier::symbol::<source>
-  target_hierarchy?: string;   // hier::symbol::<target>
-  bundle_path?: string[];      // source -> LCA -> target through containment
+  source_hierarchy?: string;
+  target_hierarchy?: string;
+  bundle_path?: string[];
   bundle_lca?: string;
+  bundle_lca_kind?: string;
   cross_file?: boolean;
+}
+
+interface CodemapHierarchy {
+  root: string;
+  nodes: CodemapHierarchyNode[];
+  open_files?: string[];
+  source_root?: string;
 }
 
 interface CodemapHierarchyNode {
@@ -48,165 +76,71 @@ interface CodemapHierarchyNode {
   label: string;
   path?: string;
   file?: string;
-  node_id?: string;           // present for symbol hierarchy leaves
+  node_id?: string;
   line?: number;
   end_line?: number;
   depth: number;
   child_count: number;
   symbol_count: number;
-  doi: number;                // importance - distance from focus
-  open_by_default?: boolean;
-}
-```
-
-`hierarchy.open_files` is a backend Degree-of-Interest expansion hint. The UI
-can cap it further for viewport constraints, but the ranking belongs to the data
-model rather than to ad hoc frontend path parsing. `edges[].bundle_path` connects
-the call/reference overlay back to the containment tree, which is the data needed
-for true hierarchical edge bundling.
-
-## Current frontend pass
-
-`web/components/CodeGraph.tsx` now prefers the backend hierarchy and falls back
-to deriving it from `node.file` only for older payloads. It renders:
-
-- directory compound boxes from `hierarchy.nodes`,
-- file pills/boxes under those directories,
-- symbol scope boxes (class/container symbols) under expanded files,
-- concrete symbol nodes inside those scopes,
-- reference edges between the currently visible endpoints,
-- SVG bundled paths for cross-file aggregate edges, routed through
-  `edges[].bundle_path`,
-- scope-aware SVG routes for exact same-file references, so class/member calls
-  visually follow the containment path while the original Cytoscape edge remains
-  clickable for exact source peeks.
-
-The hierarchy is intentionally mode-sensitive:
-
-- `Files`: shows the full directory/file backbone.
-- `Symbols`: expands only the DOI-like core spine and keeps the long tail as
-  file pills.
-- wiki embedded maps start in `Symbols` so the narrative page shows the cited
-  subsystem's active symbols immediately; the standalone explorer still starts
-  in `Files` as an overview.
-- manual file expansion in `Files`: preserves the same directory/file
-  projection, then semantically zooms into the clicked file's internal scope
-  tree. The global `Fit` action remains available to restore the whole graph.
-
-The dependency overlay also has lightweight layers:
-
-- `Map`: default compound view; containment stays primary, routed dependency
-  overlays are visible, raw exact edges are subdued;
-- `Routes`: emphasizes hierarchical routes/bundles and further quiets raw edges;
-- `Raw`: hides SVG routes and shows the original Cytoscape reference edges for
-  debugging exact graph structure.
-
-The wiki embedded map keeps the reader-facing controls minimal: mode switch,
-compact status, and fit. The explorer modal keeps the full edge-layer controls
-for debugging and deeper navigation.
-
-The standalone graph explorer defaults to a one-hop focus window. This follows
-Sourcetrail's focus+context pattern: start with the current symbol and immediate
-callers/callees, then let the user explicitly expand to two hops when they need
-broader context.
-
-The Cytoscape layer also applies semantic zoom classes:
-
-- low zoom: concrete symbol nodes become small landmarks and hide labels, while
-  directory/file/scope labels remain visible;
-- mid zoom: concrete symbol labels return in a compact style;
-- high zoom / hover / focus: exact symbol labels are fully readable and still
-  open source peeks without rebuilding the graph instance.
-
-## Current backend model
-
-The backend model now separates containment and dependency edges before any
-view-specific filtering. The separation is backed by the reusable graph-layer
-API in `codeminer.graph.layers`, so callers can query the same indexed
-`CodeGraph` as overlapping relation graphs (`all`, `containment`, `dependency`,
-`reference`, `import`, and `type-use`) without changing the persisted graph
-schema:
-
-```ts
-interface ContainmentNode {
-  id: string;
-  parent: string | null;
-  kind: "root" | "directory" | "file" | "symbol";
-  label: string;
-  file?: string;
-  node_id?: string;            // canonical CodeGraph symbol identity
-  line?: number;               // 1-based display line
-  end_line?: number;
+  doi: number;
   importance?: number;
-}
-
-interface DependencyEdge {
-  source: string;
-  target: string;
-  kind: "reference" | "import" | "type-use";
-  weight: number;
-  anchors: CallSite[];
-}
-
-interface HierarchicalCodeGraph {
-  root: string;
-  containment: ContainmentNode[];
-  dependencies: DependencyEdge[];
-  source_root: string;
+  open_by_default?: boolean;
+  external?: boolean;
 }
 ```
 
-The repo bundle builds this object lazily and caches it in memory. The codemap
-projection remaps visible symbol ids to frontend ids (`n0`, `n1`, ...), keeps
-invisible ancestor symbols in the route when the index has `contain` edges, and
-uses a dominant source-root heuristic so root files such as `setup.py` do not
-make package labels noisy.
+`node_id` connects a hierarchy symbol to the compact id used by
+`CodemapResponse.nodes`. Edge anchors and hierarchy line numbers are 1-based so
+they can be shown directly in the source viewer.
 
-When explicit `contain` edges are missing, the backend now has a conservative
-fallback: within a file, container-like symbols such as classes can parent
-members whose readable names share the same scope prefix (`Widget` ->
-`Widget.run()`) and whose source ranges fit inside the container. This keeps the
-compound graph from collapsing to a flat file whenever an index lacks explicit
-scope edges but still exposes SCIP/LSP-style symbol names.
+If the selected commit snapshot cannot be loaded, the endpoint serves the
+repository's default graph and sets `fell_back`. If no dependency graph is
+available, it returns `available: false` together with repository-specific
+setup information.
 
-## DOI and semantic zoom
+## Backend construction
 
-The current implementation uses DOI-style ranking in two places:
+`codenib.graph.hierarchy.build_hierarchical_code_graph` builds one
+`HierarchicalCodeGraph` from the loaded `CodeGraph`. A repository bundle builds
+this object lazily and caches it in memory.
 
-- the backend computes `doi`/`open_by_default` hints for the current focus
-  window, combining reference distance and containment-tree distance from the
-  focus symbol;
-- the frontend `Symbols` mode expands only the highest-value file spine and
-  keeps the long tail folded as file pills.
+The builder:
 
-The ranking follows the fisheye shape:
+1. creates directory and file nodes from source paths;
+2. attaches symbols using explicit `contain` edges;
+3. conservatively infers a same-file container when explicit symbol
+   containment is absent and names and source ranges establish the parent;
+4. aggregates `reference` edges by source and target while preserving distinct
+   call-site anchors;
+5. records symbol importance, depth, descendant counts, and external symbols.
 
-```text
-doi(node) = importance(node) - distance(node, focus)
-```
+For each codemap request, `hierarchy_for_view` projects the repository-level
+tree onto the focused symbols and retains the ancestors required to display
+them. It computes Degree-of-Interest values from graph importance and distance
+from the focus, then emits `open_by_default` and `open_files` hints.
 
-Nodes above threshold are expanded; the rest stay folded at directory/file level.
-The UI also applies semantic zoom:
+`attach_edge_routes` maps every visible reference edge back to its hierarchy
+leaves. It adds the source and target hierarchy ids, the route through their
+lowest common ancestor, and whether the edge crosses files.
 
-- low zoom keeps concrete symbols as landmarks and hides most labels;
-- hover/focus temporarily reveals exact labels without rebuilding Cytoscape;
-- mid/high zoom reveals symbol labels and supports source peeks.
+## Web presentation
 
-## Remaining model upgrades
+The Dependency Map has two current views:
 
-- Promote the current in-memory expansion overrides into a route-level graph
-  session state if we need them to survive modal close/reopen or page navigation.
-- Add decoders for import/type-use/read-write edges; the layer API already has
-  empty buckets for import and type-use so new decoders do not need a separate
-  graph-view contract.
+- **Structure** is the default. It renders the projected hierarchy as an
+  expandable directory/file/symbol tree. Relationships are rolled up to the
+  nearest visible ancestors, and expanding a container reveals finer-grained
+  endpoints. Edge anchors remain available when relationships are aggregated.
+- **Graph** renders a Cytoscape file overview. Files start as collapsed pills
+  grouped by directory. Clicking a file expands its symbol and scope
+  containers; clicking a concrete symbol or an exact edge opens the
+  corresponding source.
 
-## References
+The explorer also exposes focus-symbol, direction, and one-hop/two-hop
+controls. Its graph view applies semantic zoom: concrete symbol labels are
+reduced at low zoom and restored at closer zoom, while file and scope labels
+remain visible. `Fit` restores the full graph to the viewport.
 
-- Compound digraphs: Kozo Sugiyama and Kazuo Misue, "Visualization of structural
-  information: automatic drawing of compound digraphs."
-- Degree-of-interest / fisheye views: George W. Furnas, "Generalized Fisheye
-  Views."
-- Hierarchical edge bundling: Danny Holten, "Hierarchical Edge Bundles:
-  Visualization of Adjacency Relations in Hierarchical Data."
-- Interaction reference: Sourcetrail, especially its focus-and-context graph
-  navigation model.
+Wiki pages use the same hierarchy payload. When it is present, their embedded
+map renders the expandable Structure view; older payloads fall back to a flat
+system map.

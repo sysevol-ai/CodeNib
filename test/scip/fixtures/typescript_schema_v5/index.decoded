@@ -1,0 +1,261 @@
+metadata {
+  tool_info {
+    name: "scip-typescript"
+    version: "0.4.0"
+  }
+  project_root: "file:///fixture/typescript_schema_v5"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "src/use.ts"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`use.ts`/"
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 6
+    enclosing_range: 0
+  }
+  occurrences {
+    range: 0
+    range: 9
+    range: 22
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/DefaultRunner#"
+  }
+  occurrences {
+    range: 0
+    range: 29
+    range: 35
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#"
+  }
+  occurrences {
+    range: 0
+    range: 42
+    range: 50
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/RunnerId#"
+  }
+  occurrences {
+    range: 0
+    range: 58
+    range: 67
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/"
+  }
+  occurrences {
+    range: 1
+    range: 14
+    range: 25
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`missing.ts`/MissingType#"
+  }
+  occurrences {
+    range: 3
+    range: 16
+    range: 23
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`use.ts`/execute()."
+    symbol_roles: 1
+    enclosing_range: 3
+    enclosing_range: 0
+    enclosing_range: 5
+    enclosing_range: 1
+  }
+  occurrences {
+    range: 3
+    range: 28
+    range: 36
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/RunnerId#"
+  }
+  occurrences {
+    range: 3
+    range: 46
+    range: 52
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#"
+  }
+  occurrences {
+    range: 3
+    range: 59
+    range: 72
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/DefaultRunner#"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`use.ts`/"
+    documentation: "```ts\nmodule \"use.ts\"\n```"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`use.ts`/execute()."
+    documentation: "```ts\nfunction execute(id: string, runner?: Runner): string\n```"
+  }
+}
+documents {
+  relative_path: "src/reexport.ts"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`reexport.ts`/"
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 1
+    enclosing_range: 0
+  }
+  occurrences {
+    range: 0
+    range: 9
+    range: 22
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/DefaultRunner#"
+  }
+  occurrences {
+    range: 0
+    range: 29
+    range: 35
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#"
+  }
+  occurrences {
+    range: 0
+    range: 43
+    range: 52
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`reexport.ts`/"
+    documentation: "```ts\nmodule \"reexport.ts\"\n```"
+  }
+}
+documents {
+  relative_path: "src/view.tsx"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`view.tsx`/"
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 5
+    enclosing_range: 0
+  }
+  occurrences {
+    range: 0
+    range: 9
+    range: 15
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#"
+  }
+  occurrences {
+    range: 0
+    range: 23
+    range: 32
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/"
+  }
+  occurrences {
+    range: 2
+    range: 16
+    range: 20
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`view.tsx`/View()."
+    symbol_roles: 1
+    enclosing_range: 2
+    enclosing_range: 0
+    enclosing_range: 4
+    enclosing_range: 1
+  }
+  occurrences {
+    range: 2
+    range: 38
+    range: 44
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`view.tsx`/"
+    documentation: "```ts\nmodule \"view.tsx\"\n```"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`view.tsx`/View()."
+    documentation: "```ts\nfunction View(props: { runner: Runner; }): any\n```"
+  }
+}
+documents {
+  relative_path: "src/types.ts"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/"
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 17
+    enclosing_range: 0
+  }
+  occurrences {
+    range: 0
+    range: 17
+    range: 23
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#"
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 3
+    enclosing_range: 1
+  }
+  occurrences {
+    range: 1
+    range: 2
+    range: 6
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#kind."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 5
+    range: 12
+    range: 20
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/RunnerId#"
+    symbol_roles: 1
+    enclosing_range: 5
+    enclosing_range: 0
+    enclosing_range: 5
+    enclosing_range: 30
+  }
+  occurrences {
+    range: 7
+    range: 12
+    range: 16
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Mode#"
+    symbol_roles: 1
+    enclosing_range: 7
+    enclosing_range: 0
+    enclosing_range: 10
+    enclosing_range: 1
+  }
+  occurrences {
+    range: 12
+    range: 13
+    range: 26
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/DefaultRunner#"
+    symbol_roles: 1
+    enclosing_range: 12
+    enclosing_range: 0
+    enclosing_range: 16
+    enclosing_range: 1
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#"
+    documentation: "```ts\ninterface Runner\n```"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Runner#kind."
+    documentation: "```ts\n(property) kind: string\n```"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/RunnerId#"
+    documentation: "```ts\ntype RunnerId\n```"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/Mode#"
+    documentation: "```ts\nenum Mode\n```"
+  }
+  symbols {
+    symbol: "scip-typescript npm schema-v5-fixture 1.0.0 src/`types.ts`/DefaultRunner#"
+    documentation: "```ts\nclass DefaultRunner\n```"
+  }
+}

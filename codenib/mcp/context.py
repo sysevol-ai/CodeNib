@@ -1,0 +1,366 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""ServerContext - loads a RepoManifest and selected index objects from disk.
+
+Holds vector, symbol_graph, BM25, regex, and Zoekt indexes. Each loads
+independently; failures land in ``ctx.errors`` and skipped or failed views keep
+their corresponding attribute at ``None`` so tools can surface a clear error at
+call time rather than blocking server startup.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, Optional
+
+from ..compiler.manifest import RepoManifest
+
+if TYPE_CHECKING:
+    from ..graph.code_graph import CodeGraph
+    from ..index.embedding.vector_store import CodeVectorStore
+    from ..index.regex_idx import RegexNodeIndex
+    from ..index.sparse_idx import BM25CodeIndexer
+    from ..index.trigram import ZoektSearcher
+
+logger = logging.getLogger(__name__)
+
+_VIEW_LOADERS = (
+    ("symbol_graph", "_load_symbol_graph"),
+    ("bm25", "_load_bm25"),
+    ("regex_index", "_load_regex_index"),
+    ("zoekt", "_load_zoekt"),
+    ("vector", "_load_vector"),
+)
+RUNTIME_VIEW_NAMES = frozenset(name for name, _ in _VIEW_LOADERS)
+_VIEW_DEPENDENCIES = {
+    "regex_index": frozenset({"symbol_graph"}),
+}
+
+
+class _DimensionProbeEmbedding:
+    """Avoid model/API initialization while validating saved vector files."""
+
+    def __init__(self, dimension: int) -> None:
+        self.dimension = dimension
+
+    def embed_query(self, _text: str) -> list[float]:
+        return [0.0] * self.dimension
+
+    def embed_documents(self, _texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("validation probe cannot embed documents")
+
+
+def _close_vector(vector: CodeVectorStore) -> None:
+    try:
+        vector.close()
+    except Exception as exc:
+        logger.warning("Failed to release vector resources: %s", exc)
+
+
+def _stop_zoekt(searcher: ZoektSearcher) -> None:
+    try:
+        searcher.stop()
+    except Exception as exc:
+        logger.warning("Failed to stop Zoekt runtime: %s", exc)
+
+
+def _resolve_views(views: Iterable[str] | None) -> frozenset[str]:
+    """Validate a view selection and add runtime dependencies."""
+
+    if views is None:
+        return RUNTIME_VIEW_NAMES
+    if isinstance(views, (str, bytes)):
+        raise TypeError("views must be an iterable of view names, not a string")
+
+    requested = frozenset(views)
+    invalid_types = sorted(
+        {type(view).__name__ for view in requested if not isinstance(view, str)}
+    )
+    if invalid_types:
+        raise TypeError(
+            "view names must be strings; received " + ", ".join(invalid_types)
+        )
+
+    unknown = requested - RUNTIME_VIEW_NAMES
+    if unknown:
+        supported = ", ".join(sorted(RUNTIME_VIEW_NAMES))
+        raise ValueError(
+            f"unknown runtime views {sorted(unknown)!r}; supported: {supported}"
+        )
+
+    selected = set(requested)
+    pending = list(requested)
+    while pending:
+        view = pending.pop()
+        for dependency in _VIEW_DEPENDENCIES.get(view, ()):
+            if dependency not in selected:
+                selected.add(dependency)
+                pending.append(dependency)
+    return frozenset(selected)
+
+
+@dataclass
+class ServerContext:
+    """Runtime context for the MCP server.
+
+    Holds the loaded manifest and runtime-loaded index objects. Missing or
+    failed indexes stay ``None``; tools check at call time and return
+    descriptive errors.
+    """
+
+    manifest: RepoManifest
+    symbol_graph: Optional[CodeGraph] = None
+    bm25: Optional[BM25CodeIndexer] = None
+    regex_index: Optional[RegexNodeIndex] = None
+    zoekt: Optional[ZoektSearcher] = None
+    vector: Optional[CodeVectorStore] = None
+    errors: Dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def load(
+        cls,
+        manifest_path: RepoManifest | str | Path,
+        *,
+        views: Iterable[str] | None = None,
+    ) -> ServerContext:
+        """Load a manifest and the selected runtime views.
+
+        ``views=None`` preserves the MCP server's load-all behavior. Explicit
+        selections avoid importing or starting unrelated view runtimes. Each
+        selected view is loaded independently; a failure in one does not block
+        the others. Failed views are recorded in ``errors``.
+        """
+        selected = _resolve_views(views)
+        manifest = (
+            manifest_path
+            if isinstance(manifest_path, RepoManifest)
+            else RepoManifest.load(manifest_path)
+        )
+        ctx = cls(manifest=manifest)
+
+        for view, loader_name in _VIEW_LOADERS:
+            if view in selected:
+                getattr(ctx, loader_name)()
+
+        cap_summary = {k: v for k, v in manifest.capabilities.items() if v}
+        loaded = [
+            view for view, _ in _VIEW_LOADERS if getattr(ctx, view, None) is not None
+        ]
+        logger.info(
+            "ServerContext ready  repo=%s  commit=%s  requested=%s  loaded=%s  "
+            "capabilities=%s  errors=%s",
+            manifest.repo_path,
+            manifest.commit[:8] if manifest.commit else "N/A",
+            sorted(selected),
+            loaded or "none",
+            cap_summary or "none",
+            list(ctx.errors) or "none",
+        )
+        return ctx
+
+    @classmethod
+    def validate_views(
+        cls,
+        manifest: RepoManifest | str | Path,
+        *,
+        views: Iterable[str],
+    ) -> Dict[str, str]:
+        """Open selected artifacts without initializing a vector query model.
+
+        The returned mapping contains only unavailable views. Vector indexes
+        follow the normal FAISS/document load path with a fixed-dimension
+        embedding probe. Temporary vector and Zoekt resources are released
+        before returning.
+        """
+
+        selected = _resolve_views(views)
+        resolved_manifest = (
+            manifest
+            if isinstance(manifest, RepoManifest)
+            else RepoManifest.load(manifest)
+        )
+        ctx = cls(manifest=resolved_manifest)
+        available: set[str] = set()
+        try:
+            for view, loader_name in _VIEW_LOADERS:
+                if view not in selected:
+                    continue
+                loader = getattr(ctx, loader_name)
+                if view == "vector":
+                    loader(probe=True)
+                else:
+                    loader()
+                if getattr(ctx, view, None) is not None:
+                    available.add(view)
+            return {
+                view: ctx.errors.get(view, "view did not load")
+                for view in selected
+                if view not in available
+            }
+        finally:
+            if ctx.zoekt is not None:
+                _stop_zoekt(ctx.zoekt)
+                ctx.zoekt = None
+            if ctx.vector is not None:
+                _close_vector(ctx.vector)
+                ctx.vector = None
+
+    # ------------------------------------------------------------------
+    # Private loaders
+    # ------------------------------------------------------------------
+
+    def _load_symbol_graph(self) -> None:
+        entry = self.manifest.indexes.get("symbol_graph")
+        if not entry or not self.manifest.index_is_current("symbol_graph"):
+            return
+        try:
+            from ..graph.code_graph import CodeGraph
+
+            graph_path = Path(entry.path)
+            pkl = graph_path / "graph.pkl" if graph_path.is_dir() else graph_path
+            self.symbol_graph = CodeGraph.load_graph(str(pkl))
+            logger.info("Loaded symbol_graph from %s", pkl)
+        except Exception as exc:
+            self.errors["symbol_graph"] = str(exc)
+            logger.warning("Failed to load symbol_graph: %s", exc)
+
+    def _load_bm25(self) -> None:
+        entry = self.manifest.indexes.get("bm25")
+        if not entry or not self.manifest.index_is_current("bm25"):
+            return
+        try:
+            from ..index.sparse_idx import BM25CodeIndexer
+
+            indexer = BM25CodeIndexer()
+            indexer.load_index(entry.path)
+            self.bm25 = indexer
+            logger.info("Loaded BM25 index from %s", entry.path)
+        except Exception as exc:
+            self.errors["bm25"] = str(exc)
+            logger.warning("Failed to load BM25 index: %s", exc)
+
+    def _load_regex_index(self) -> None:
+        """Regex index piggybacks on symbol_graph; no separate manifest entry."""
+        if self.symbol_graph is None:
+            return
+        try:
+            from ..index.regex_idx import RegexNodeIndex
+
+            self.regex_index = RegexNodeIndex(self.symbol_graph)
+            logger.info("Built RegexNodeIndex (%d nodes)", len(self.regex_index.nodes))
+        except Exception as exc:
+            self.errors["regex_index"] = str(exc)
+            logger.warning("Failed to build RegexNodeIndex: %s", exc)
+
+    def _load_zoekt(self) -> None:
+        """Spawn a ``zoekt-webserver`` against the indexed shard directory.
+
+        The Zoekt binary is a soft dependency. When the binary is missing
+        or the webserver fails to come up, the failure is recorded in
+        :attr:`errors` and ``self.zoekt`` stays ``None`` so the
+        ``search_zoekt`` MCP tool can return a clear error.
+        """
+        entry = self.manifest.indexes.get("zoekt")
+        if not entry or not self.manifest.index_is_current("zoekt"):
+            return
+        try:
+            from ..index.trigram import ZoektSearcher, ZoektUnavailableError
+        except Exception as exc:
+            self.errors["zoekt"] = str(exc)
+            logger.warning("Failed to load Zoekt runtime: %s", exc)
+            return
+
+        searcher = None
+        try:
+            searcher = ZoektSearcher(index_dir=entry.path)
+            searcher.start()
+            self.zoekt = searcher
+            logger.info(
+                "Started zoekt-webserver  shards=%s  port=%d",
+                entry.path,
+                searcher.port,
+            )
+        except ZoektUnavailableError as exc:
+            if searcher is not None:
+                _stop_zoekt(searcher)
+            self.errors["zoekt"] = str(exc)
+            logger.warning("Zoekt unavailable: %s", exc)
+        except Exception as exc:
+            if searcher is not None:
+                _stop_zoekt(searcher)
+            self.errors["zoekt"] = str(exc)
+            logger.warning("Failed to start zoekt-webserver: %s", exc)
+
+    def _load_vector(self, *, probe: bool = False) -> None:
+        """Load vector embedding index if available."""
+        entry = self.manifest.indexes.get("vector")
+        if not entry or not self.manifest.index_is_current("vector"):
+            return
+
+        vector = None
+        try:
+            from ..index.embedding.vector_store import CodeVectorStore
+
+            cfg = entry.config
+            embedding_model = cfg.get("embedding_model")
+            embedding_provider = cfg.get("embedding_provider")
+            dimension = cfg.get("dimension", cfg.get("embedding_dimension"))
+            embedding_kwargs = cfg.get("embedding_kwargs") or {}
+            if not isinstance(embedding_kwargs, dict):
+                raise ValueError("vector manifest has invalid embedding kwargs")
+            if (
+                not embedding_model
+                or not embedding_provider
+                or not isinstance(dimension, int)
+                or dimension <= 0
+            ):
+                raise ValueError("vector manifest has incomplete embedding identity")
+
+            kwargs = dict(embedding_kwargs)
+            if probe:
+                kwargs["embedding"] = _DimensionProbeEmbedding(dimension)
+
+            # Create CodeVectorStore with embedding model from manifest
+            vector = CodeVectorStore(
+                embedding_model=embedding_model,
+                embedding_provider=embedding_provider,
+                dimension=dimension,
+                index_metric=cfg.get("index_metric", "ip"),
+                store_path=entry.path,
+                **kwargs,
+            )
+
+            # Load FAISS index from disk
+            vector.load()
+
+            # Validate model consistency
+            loaded_model = vector.embedding_model
+            manifest_model = embedding_model
+            if loaded_model != manifest_model:
+                raise RuntimeError(
+                    f"Embedding model mismatch: manifest specifies "
+                    f"{manifest_model!r}, but loaded store has {loaded_model!r}. "
+                    f"Re-run indexing with the correct model."
+                )
+
+            stats = vector.get_stats()
+            if stats["total_documents"] <= 0:
+                raise RuntimeError("vector index contains no documents")
+            self.vector = vector
+            logger.info(
+                "Loaded vector index from %s (%d docs, model=%s)",
+                entry.path,
+                stats["total_documents"],
+                embedding_model,
+            )
+        except Exception as exc:
+            if vector is not None:
+                _close_vector(vector)
+            self.vector = None
+            self.errors["vector"] = str(exc)
+            logger.warning("Failed to load vector index: %s", exc)

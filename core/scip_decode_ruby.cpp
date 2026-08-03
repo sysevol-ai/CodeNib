@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -9,28 +9,11 @@
 #include <filesystem>
 #include <fstream>
 #include <re2/re2.h>
-#include <sstream>
 #include <utility>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
-
-std::vector<int> extract_integers(const std::string &text,
-                                  const re2::RE2 &pattern) {
-  std::vector<int> results;
-  re2::StringPiece input(text);
-  int value = 0;
-  while (re2::RE2::FindAndConsume(&input, pattern, &value)) {
-    results.push_back(value);
-  }
-  return results;
-}
-
-bool ends_with(const std::string &s, const std::string &suffix) {
-  return s.size() >= suffix.size() &&
-         s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
 
 bool starts_with(const std::string &s, const std::string &prefix) {
   return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
@@ -47,15 +30,6 @@ std::string trim(std::string s) {
     --end;
   }
   return s.substr(start, end - start);
-}
-
-std::vector<std::string> split_ws(const std::string &s) {
-  std::vector<std::string> out;
-  std::istringstream iss(s);
-  std::string tok;
-  while (iss >> tok)
-    out.push_back(tok);
-  return out;
 }
 
 std::string remove_char(std::string s, char target) {
@@ -745,4 +719,4 @@ SCIPRubyDecoder::read_source_lines(const std::string &file_path) const {
   return lines;
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

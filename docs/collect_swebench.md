@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -12,8 +12,9 @@ This guide covers how to use the `collect_swebench.sh` script to sample represen
 
 The collection pipeline:
 
-1. Loads SWE-bench datasets (Python from SWE-bench Lite, others from SWE-bench Multilingual)
-2. Selects top repositories per language by instance count
+1. Loads SWE-bench datasets (Python from SWE-bench Verified, others from SWE-bench Multilingual)
+2. Filters repositories by available instance count, then samples small,
+   medium, and large repositories by source-file count
 3. Samples instances per repo with patch-size diversity
 4. Classifies difficulty (low/medium/high) using a Claude agent
 5. Extracts ground-truth code blocks from patches via tree-sitter
@@ -25,7 +26,8 @@ The collection pipeline:
 1. **Install the project:**
 
    ```bash
-   pip install -e .
+   pip install -e ".[datasets]"
+   pip install claude-agent-sdk
    ```
 
 2. **Authenticate for difficulty classification** — the pipeline uses `claude_agent_sdk` to call Claude. Choose one method:
@@ -46,7 +48,7 @@ Run the wrapper script with default settings:
 scripts/collect_swebench.sh
 ```
 
-This samples from all 5 languages (`Python`, `Rust`, `TypeScript/JavaScript`, `C++/C`, `Go`) and writes output to `~/.codeminer/swebench_sampling/`.
+This samples from all 5 languages (`Python`, `Rust`, `TypeScript/JavaScript`, `C++/C`, `Go`) and writes output to `~/.codenib/swebench_sampling/`.
 
 ## Environment Variables
 
@@ -54,13 +56,13 @@ The shell wrapper accepts these environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CACHE_DIR` | `~/.codeminer` | Root cache directory (datasets, repo clones) |
+| `CACHE_DIR` | `~/.codenib` | Root cache directory (datasets, repo clones) |
 | `OUTPUT_DIR` | `$CACHE_DIR/swebench_sampling` | Output directory for sampling artifacts |
 
 Example:
 
 ```bash
-CACHE_DIR=/data/codeminer OUTPUT_DIR=/data/output scripts/collect_swebench.sh
+CACHE_DIR=/data/codenib OUTPUT_DIR=/data/output scripts/collect_swebench.sh
 ```
 
 ## Python Script Options
@@ -85,7 +87,7 @@ PYTHONPATH=. python scripts/collect_swebench.py [OPTIONS]
 | `--max-gt-code-blocks` | `10` | Exclude instances with more GT blocks than this |
 | `--difficulty-model` | `opus` | Model for difficulty classification |
 | `--shallow-clone` / `--no-shallow-clone` | `true` | Use shallow git clones for repos |
-| `--cache-dir` | `~/.codeminer` | Root cache directory |
+| `--cache-dir` | `~/.codenib` | Root cache directory |
 | `--repo-cache-dir` | same as `--cache-dir` | Separate directory for repo clones |
 | `--output-dir` | `$cache-dir/swebench_sampling` | Output directory |
 | `--multilingual-csv-path` | bundled | Path to `swebench_multilingual_repos.csv` |
@@ -124,13 +126,15 @@ The pipeline writes the following files to the output directory:
 | `difficulty_cache.json` | Cached difficulty classifications (avoids re-calling the LLM) |
 | `gt_locator_cache.json` | Cached ground-truth extraction results |
 
-The `selected_instances.json` file is the primary output — pass it to `build_swebench_locator_hf_dataset.py` to upload to HuggingFace (see [upload_dataset_to_huggingface.md](upload_dataset_to_huggingface.md)).
+The `selected_instances.json` file is the primary output. It can be passed to
+`scripts/build_swebench_locator_hf_dataset.py` when preparing the locator
+dataset.
 
 ## Caching
 
 The pipeline caches aggressively to avoid redundant work on reruns:
 
-- **Dataset cache** (`~/.codeminer/`) — HuggingFace dataset downloads
+- **Dataset cache** (`~/.codenib/`) — HuggingFace dataset downloads
 - **Repo clones** (`cache-dir`) — shallow git clones of target repos
 - **Difficulty cache** (`difficulty_cache.json`) — LLM difficulty classifications
 - **GT cache** (`gt_locator_cache.json`) — ground-truth extraction results

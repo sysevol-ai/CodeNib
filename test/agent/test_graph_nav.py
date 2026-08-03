@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from codeminer.agent.skills import _graphnav
+from codenib.agent.skills import _graphnav
 
 
 class _FakeGraph:
@@ -96,6 +96,18 @@ def test_find_callers_compact():
     assert n.content == "caller of pkg.a.doWatch"
     assert n.file == "a.py" and n.node_id == "a.py:pkg.a.watchEffect"
     assert n.content is not None  # marker only, no source body field populated
+
+
+def test_find_callers_omits_reference_only_source_provenance():
+    graph = _FakeGraph()
+    graph._attr[1]["has_definition"] = False
+
+    [node] = _graphnav.neighbors(graph, "doWatch", "callers")
+
+    assert node.node_name == "pkg.a.watchEffect"
+    assert node.file is None
+    assert node.start_line is None
+    assert node.node_id == "pkg.a.watchEffect"
 
 
 def test_find_callees_compact():

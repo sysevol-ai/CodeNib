@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for the repo-level hierarchical code graph model."""
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.hierarchy import (
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.hierarchy import (
     attach_edge_routes,
     build_hierarchical_code_graph,
     hierarchy_for_view,

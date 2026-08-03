@@ -1,19 +1,32 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
 import { fetchRepos, type RepoInfo } from "@/lib/api";
+import { AppLink, navigate } from "@/lib/router";
 
 function repoDescription(r: RepoInfo): string {
   if (r.description) return r.description;
   return `${r.language || "Source"} repository indexed at ${r.commit_short}`;
 }
 
+// Cold graph-build time divided by mean warm patch time. The measurement
+// excludes LSP startup and transition overhead, and is not end-to-end re-index
+// latency or a fresh-rebuild equality claim.
+function incrementalNote(r: RepoInfo): string | null {
+  const s = r.incremental;
+  if (!s || s.commit_count < 1) return null;
+  const commits = `${s.commit_count} commit${s.commit_count === 1 ? "" : "s"}`;
+  // No speedup is derivable (single-commit window, no cold anchor, zero
+  // denominator) — say only what we can stand behind.
+  if (s.speedup == null) return commits;
+  return `${commits} · ${s.speedup}× warm-patch speedup`;
+}
+
 function RepoCard({ r }: { r: RepoInfo }) {
+  const incremental = incrementalNote(r);
   return (
-    <Link className="repo-card" href={`/${r.id}`} aria-label={`Open ${r.repo} wiki`}>
+    <AppLink className="repo-card" href={`/${r.id}`} aria-label={`Open ${r.repo} wiki`}>
       <div className="repo-card-title">{r.repo}</div>
       <div className="repo-card-desc">{repoDescription(r)}</div>
       <div className="repo-card-footer">
@@ -29,14 +42,23 @@ function RepoCard({ r }: { r: RepoInfo }) {
             {r.file_count.toLocaleString()} files
           </span>
         )}
-        <span className="mono">{r.commit_short}</span>
+        {incremental ? (
+          <span className="repo-metric repo-incremental" title="Cold graph-build time divided by mean warm patch time; excludes LSP startup and transition overhead">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M13 2 3 14h9l-1 8 10-12h-9z" />
+            </svg>
+            {incremental}
+          </span>
+        ) : (
+          <span className="mono">{r.commit_short}</span>
+        )}
       </div>
       <span className="repo-card-go" aria-hidden>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M5 12h14M13 6l6 6-6 6" />
         </svg>
       </span>
-    </Link>
+    </AppLink>
   );
 }
 
@@ -44,7 +66,6 @@ const repoRetryDelays = [0, 1000, 2000, 4000, 8000];
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export default function Landing() {
-  const router = useRouter();
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,7 +141,9 @@ export default function Landing() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && filtered.length > 0) router.push(`/${filtered[0].id}`);
+              if (e.key === "Enter" && filtered.length > 0) {
+                navigate(`/${filtered[0].id}`);
+              }
             }}
             placeholder="Search repositories (press Enter to open)"
             aria-label="Search repositories"
@@ -129,7 +152,11 @@ export default function Landing() {
       </section>
 
       <div className="repo-grid">
-        <div className="repo-card add-repo" role="note" aria-label="Add repo (coming soon)">
+        <AppLink
+          className="repo-card add-repo"
+          aria-label="Index your own repository"
+          href="/add-repo"
+        >
           <span className="add-plus">+</span>
           <span className="add-label">Add repo</span>
           <span className="repo-card-go" aria-hidden>
@@ -137,12 +164,12 @@ export default function Landing() {
               <path d="M5 12h14M13 6l6 6-6 6" />
             </svg>
           </span>
-        </div>
+        </AppLink>
 
         {error && (
           <div className="empty">
             <p>
-              Backend unavailable — start it with <code>codeminer-web</code> after building an index.
+              Backend unavailable — start it with <code>codenib-web</code> after building an index.
             </p>
             <p className="small muted">Request failed: {error}</p>
             <button type="button" className="codegraph-fit" onClick={loadRepos}>

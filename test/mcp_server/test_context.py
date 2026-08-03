@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for codeminer.mcp.context.ServerContext."""
+"""Unit tests for codenib.mcp.context.ServerContext."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.compiler.manifest import IndexEntry, RepoManifest
-from codeminer.mcp.context import ServerContext
+from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.mcp.context import RUNTIME_VIEW_NAMES, ServerContext
 
 
 @pytest.fixture()
@@ -53,6 +53,62 @@ def manifest_dir(tmp_path: Path) -> Path:
     manifest_path = tmp_path / "repo_manifest.json"
     manifest.save(manifest_path)
     return tmp_path
+
+
+def _record_view_loads(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    calls: list[str] = []
+    for view in ("symbol_graph", "bm25", "regex_index", "zoekt", "vector"):
+        monkeypatch.setattr(
+            ServerContext,
+            f"_load_{view}",
+            lambda _self, view=view: calls.append(view),
+        )
+    return calls
+
+
+def test_load_defaults_to_all_runtime_views(
+    manifest_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_view_loads(monkeypatch)
+
+    ServerContext.load(manifest_dir / "repo_manifest.json")
+
+    assert calls == ["symbol_graph", "bm25", "regex_index", "zoekt", "vector"]
+    assert RUNTIME_VIEW_NAMES == frozenset(calls)
+
+
+def test_load_selects_only_requested_views(
+    manifest_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_view_loads(monkeypatch)
+
+    ServerContext.load(manifest_dir / "repo_manifest.json", views={"bm25"})
+
+    assert calls == ["bm25"]
+
+
+def test_load_expands_runtime_view_dependencies(
+    manifest_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_view_loads(monkeypatch)
+
+    ServerContext.load(manifest_dir / "repo_manifest.json", views={"regex_index"})
+
+    assert calls == ["symbol_graph", "regex_index"]
+
+
+@pytest.mark.parametrize("views", ["bm25", {"unknown"}, {1}])
+def test_load_rejects_invalid_view_selections(
+    manifest_dir: Path,
+    views: object,
+) -> None:
+    expected = ValueError if views == {"unknown"} else TypeError
+
+    with pytest.raises(expected):
+        ServerContext.load(manifest_dir / "repo_manifest.json", views=views)
 
 
 def test_load_with_bm25_only(manifest_dir: Path) -> None:
@@ -107,6 +163,128 @@ def test_skip_non_fresh_index(tmp_path: Path) -> None:
     assert "bm25" not in ctx.errors
 
 
+def test_load_vector_accepts_compiler_manifest_identity(tmp_path: Path) -> None:
+    vector_dir = tmp_path / "vector"
+    vector_dir.mkdir()
+    manifest = RepoManifest(
+        repo_path=str(tmp_path),
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(vector_dir),
+                built_at="2026-01-01T00:00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config={
+                    "embedding_model": "test-model",
+                    "embedding_provider": "huggingface",
+                    "embedding_dimension": 384,
+                    "embedding_kwargs": {
+                        "max_seq_length": 8192,
+                        "revision": "model-commit",
+                    },
+                    "index_metric": "ip",
+                },
+            ),
+        },
+    )
+    manifest.save(tmp_path / "repo_manifest.json")
+
+    vector = MagicMock()
+    vector.embedding_model = "test-model"
+    vector.get_stats.return_value = {"total_documents": 3}
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ) as cls:
+        ctx = ServerContext.load(tmp_path / "repo_manifest.json")
+
+    cls.assert_called_once_with(
+        embedding_model="test-model",
+        embedding_provider="huggingface",
+        dimension=384,
+        index_metric="ip",
+        store_path=str(vector_dir),
+        max_seq_length=8192,
+        revision="model-commit",
+    )
+    vector.load.assert_called_once_with()
+    assert ctx.vector is vector
+    assert "vector" not in ctx.errors
+
+
+def test_validate_views_probes_vector_without_loading_embedding_model(
+    tmp_path: Path,
+) -> None:
+    vector_dir = tmp_path / "vector"
+    vector_dir.mkdir()
+    manifest = RepoManifest(
+        repo_path=str(tmp_path),
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(vector_dir),
+                built_at="2026-01-01T00:00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config={
+                    "embedding_model": "test-model",
+                    "embedding_provider": "huggingface",
+                    "embedding_dimension": 384,
+                },
+            ),
+        },
+    )
+    vector = MagicMock()
+    vector.embedding_model = "test-model"
+    vector.get_stats.return_value = {"total_documents": 3}
+
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ) as cls:
+        errors = ServerContext.validate_views(manifest, views={"vector"})
+
+    assert errors == {}
+    assert cls.call_args.kwargs["embedding"].dimension == 384
+    vector.load.assert_called_once_with()
+    vector.close.assert_called_once_with()
+
+
+def test_validate_views_rejects_empty_vector_artifact(tmp_path: Path) -> None:
+    vector_dir = tmp_path / "vector"
+    vector_dir.mkdir()
+    manifest = RepoManifest(
+        repo_path=str(tmp_path),
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(vector_dir),
+                built_at="2026-01-01T00:00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config={
+                    "embedding_model": "test-model",
+                    "embedding_provider": "huggingface",
+                    "embedding_dimension": 384,
+                },
+            ),
+        },
+    )
+    vector = MagicMock()
+    vector.embedding_model = "test-model"
+    vector.get_stats.return_value = {"total_documents": 0}
+
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ):
+        errors = ServerContext.validate_views(manifest, views={"vector"})
+
+    assert errors == {"vector": "vector index contains no documents"}
+    vector.close.assert_called_once_with()
+
+
 def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
     """RegexNodeIndex is built when symbol_graph loads successfully."""
     graph_dir = manifest_dir / "symbol_graph"
@@ -135,7 +313,10 @@ def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
     )
     manifest.save(manifest_dir / "repo_manifest.json")
 
-    with patch("codeminer.mcp.context.CodeGraph.load_graph", return_value=mock_graph):
+    with patch(
+        "codenib.graph.code_graph.CodeGraph.load_graph",
+        return_value=mock_graph,
+    ):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     assert ctx.symbol_graph is mock_graph
@@ -169,7 +350,10 @@ def test_zoekt_started_when_entry_fresh(manifest_dir: Path) -> None:
     fake_searcher = MagicMock()
     fake_searcher.port = 9999
 
-    with patch("codeminer.mcp.context.ZoektSearcher", return_value=fake_searcher):
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=fake_searcher,
+    ):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     fake_searcher.start.assert_called_once()
@@ -177,9 +361,28 @@ def test_zoekt_started_when_entry_fresh(manifest_dir: Path) -> None:
     assert "zoekt" not in ctx.errors
 
 
+def test_validate_views_stops_zoekt_probe(manifest_dir: Path) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    manifest_path = manifest_dir / "repo_manifest.json"
+    _add_zoekt_entry(manifest_path, shard_dir)
+    fake_searcher = MagicMock()
+    fake_searcher.port = 9999
+
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=fake_searcher,
+    ):
+        errors = ServerContext.validate_views(manifest_path, views={"zoekt"})
+
+    assert errors == {}
+    fake_searcher.start.assert_called_once_with()
+    fake_searcher.stop.assert_called_once_with()
+
+
 def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:
     """If the zoekt binary is missing, ServerContext records the error and keeps zoekt=None."""
-    from codeminer.index.trigram import ZoektUnavailableError
+    from codenib.index.trigram import ZoektUnavailableError
 
     shard_dir = manifest_dir / "zoekt"
     shard_dir.mkdir()
@@ -188,7 +391,10 @@ def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:
     fake_searcher = MagicMock()
     fake_searcher.start.side_effect = ZoektUnavailableError("binary not found")
 
-    with patch("codeminer.mcp.context.ZoektSearcher", return_value=fake_searcher):
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=fake_searcher,
+    ):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     assert ctx.zoekt is None
@@ -215,7 +421,7 @@ def test_zoekt_skipped_when_entry_failed(manifest_dir: Path) -> None:
     )
     manifest.save(manifest_dir / "repo_manifest.json")
 
-    with patch("codeminer.mcp.context.ZoektSearcher") as mock_cls:
+    with patch("codenib.index.trigram.ZoektSearcher") as mock_cls:
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     mock_cls.assert_not_called()

@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for codeminer.mcp.tools.search — BM25, regex, zoekt tool impls."""
+"""Unit tests for codenib.mcp.tools.search — BM25, regex, zoekt tool impls."""
 
 from __future__ import annotations
 
@@ -10,13 +10,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.index.trigram import ZoektUnavailableError
-from codeminer.mcp.tools.search import (
+from codenib.index.trigram import ZoektUnavailableError
+from codenib.index.trigram.zoekt_searcher import _file_match_to_node
+from codenib.mcp.tools.search import (
     search_bm25_impl,
     search_regex_impl,
     search_zoekt_impl,
 )
-from codeminer.types import NodeInfo
+from codenib.types import NodeInfo
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -74,6 +75,8 @@ class TestSearchBM25:
         assert results[0]["node_name"] == "calculate_tax"
         assert results[0]["type"] == "function"
         assert results[0]["file"] == "billing/tax.py"
+        assert results[0]["start_line"] == 11
+        assert results[0]["end_line"] == 26
         mock_bm25.search.assert_called_once_with(
             query="tax",
             top_k=10,
@@ -124,6 +127,8 @@ class TestSearchRegex:
 
         assert len(results) == 1
         assert results[0]["node_name"] == "calculate_tax"
+        assert results[0]["start_line"] == 11
+        assert results[0]["end_line"] == 26
         mock_regex.search.assert_called_once_with(
             pattern=r"def\s+\w+",
             file_glob=None,
@@ -208,12 +213,38 @@ class TestSearchZoekt:
         assert len(results) == 1
         assert results[0]["type"] == "file"
         assert results[0]["file"] == "src/auth.py"
-        assert results[0]["start_line"] == 10
+        assert results[0]["start_line"] == 11
+        assert results[0]["end_line"] == 13
         mock_zoekt.search.assert_called_once_with(
             query="InvalidTokenError",
             top_k=10,
             file_filter=None,
         )
+
+    def test_normalizes_real_zoekt_line_number_at_agent_boundary(self) -> None:
+        node = _file_match_to_node(
+            {
+                "FileName": "first.py",
+                "Matches": [
+                    {
+                        "LineNum": 1,
+                        "Fragments": [{"Pre": "", "Match": "first_line", "Post": ""}],
+                    }
+                ],
+            }
+        )
+        assert node.start_line == 0
+
+        mock_zoekt = MagicMock()
+        mock_zoekt.search.return_value = [node]
+        results = search_zoekt_impl(
+            _make_ctx(zoekt=mock_zoekt),
+            query="first_line",
+        )
+
+        assert results[0]["start_line"] == 1
+        assert results[0]["end_line"] == 1
+        assert results[0]["content"] == "L1: first_line"
 
     def test_forwards_file_filter(self) -> None:
         mock_zoekt = MagicMock()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.llm.litellm_chat import _mark_cacheable, _with_prompt_caching
+from codenib.llm.litellm_chat import _mark_cacheable, _with_prompt_caching
 
 _CC = {"type": "ephemeral"}
 
@@ -57,7 +57,7 @@ def test_non_anthropic_model_untouched():
 
 
 def test_env_disable_is_respected(monkeypatch):
-    monkeypatch.setenv("CODEMINER_DISABLE_PROMPT_CACHE", "1")
+    monkeypatch.setenv("CODENIB_DISABLE_PROMPT_CACHE", "1")
     msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "q"}]
     assert _with_prompt_caching(msgs, "claude-haiku-4-5") == msgs
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,12 +9,23 @@
 #include "code_graph.h"
 
 #include <optional>
+#include <re2/re2.h>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-namespace codeminer::core {
+namespace codenib::core {
+
+// Reusable language-neutral helpers for SCIP text-format decoders. Keep
+// language policy in language decoders; put only syntax/string primitives here.
+std::vector<int> extract_integers(const std::string &text,
+                                  const re2::RE2 &pattern);
+bool ends_with(const std::string &s, const std::string &suffix);
+std::string rstrip_chars(std::string s, const std::string &chars);
+std::string strip_backticks(std::string s);
+std::vector<std::string> split_ws(const std::string &s);
+std::vector<std::string> split_ws_limit(const std::string &s, int limit);
 
 // Per-document result produced by each language decoder worker. Language-
 // agnostic (symbol payload lives in VertexData + extras). Merged by
@@ -35,7 +46,14 @@ struct Subgraph {
 
   struct Node {
     CodeGraph::VertexData data; // includes unified_name
-    bool is_definition{true};
+    // This flag applies only to symbol definitions. Structural file and
+    // directory nodes must not acquire symbol-definition metadata when
+    // per-document subgraphs are merged.
+    bool is_definition{false};
+    // File and directory insertion uses the same upsert semantics as the
+    // serial graph: a later structural node replaces only the node type,
+    // even when the name previously denoted a symbol.
+    bool updates_structural_type{false};
     bool updates_unified_name{false};
   };
 
@@ -60,7 +78,8 @@ public:
   void add_symbol_node(const std::string &symbol, int line,
                        std::optional<int> scope_start_line,
                        std::optional<int> scope_end_line,
-                       const std::string &symbol_type);
+                       const std::string &symbol_type,
+                       std::optional<std::string> symbol_kind = std::nullopt);
 
   // Reference — mirrors serial CodeGraph.add_symbol_reference:
   //   attributes are set only the FIRST time the name is seen; subsequent
@@ -72,13 +91,15 @@ public:
                        const std::optional<std::string> &module_path,
                        const std::string &symbol_type,
                        std::optional<std::string> anchor_file = std::nullopt,
-                       std::optional<int> anchor_line = std::nullopt);
+                       std::optional<int> anchor_line = std::nullopt,
+                       std::optional<std::string> symbol_kind = std::nullopt);
   void add_symbol_reference_from(
       const std::string &source, const std::string &symbol,
       const std::optional<std::string> &module_path,
       const std::string &symbol_type,
       std::optional<std::string> anchor_file = std::nullopt,
-      std::optional<int> anchor_line = std::nullopt);
+      std::optional<int> anchor_line = std::nullopt,
+      std::optional<std::string> symbol_kind = std::nullopt);
 
   // CONTAIN edges carry no anchor — see CodeGraph::add_containment_edge.
   void add_containment_edge(const std::string &target_symbol);
@@ -133,4 +154,4 @@ private:
   std::string current_scope_;
 };
 
-} // namespace codeminer::core
+} // namespace codenib::core

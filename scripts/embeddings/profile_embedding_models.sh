@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
+CODENIB_HOME="${CODENIB_HOME:-$HOME/.codenib}"
+CODENIB_PREBUILT_DIR="${CODENIB_PREBUILT_DIR:-${CODENIB_HOME}/prebuilt}"
+CODENIB_RESULTS_DIR="${CODENIB_RESULTS_DIR:-${CODENIB_HOME}/results}"
 
 # Profile build time for multiple embedding models on a single instance.
 
 DATASET="${DATASET:-princeton-nlp/SWE-bench_Lite}"
 SPLIT="${SPLIT:-test}"
 INSTANCE_ID="${INSTANCE_ID:-astropy__astropy-12907}"
-STORAGE_DIR="${STORAGE_DIR:-/mnt/data/codeminer}"
-PROFILE_DIR="${PROFILE_DIR:-${STORAGE_DIR}/profile_log}"
+STORAGE_DIR="${STORAGE_DIR:-${CODENIB_PREBUILT_DIR}}"
+PROFILE_DIR="${PROFILE_DIR:-${CODENIB_RESULTS_DIR}/profile_log}"
 LANGS=("python")
 
 MODELS=(

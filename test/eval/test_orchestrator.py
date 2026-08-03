@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from codeminer.agent.agent_types import AgentResult, ToolCallRecord
-from codeminer.eval.agent_runner.orchestrator import (
+from codenib.agent.agent_types import AgentResult, ToolCallRecord
+from codenib.eval.agent_runner.orchestrator import (
     query_is_specific,
     scatter_gather_localize,
     verdict_is_yes,

@@ -26,6 +26,10 @@ interface ComponentLink {
   anchors: CallSite[];
   srcLabel: string;
   tgtLabel: string;
+  /** Both endpoints sit in one component, so this is a symbol-to-symbol
+   *  relationship rather than an aggregate between two components. A topical
+   *  wiki page usually cites one module, so these are most of its edges. */
+  internal: boolean;
 }
 
 type StageKey = "entry" | "core" | "capability" | "evidence";
@@ -232,8 +236,15 @@ function buildSystem(data: CodemapResponse): {
   for (const edge of data.edges as CMEdge[]) {
     const sourceGroup = groupByNode.get(edge.source);
     const targetGroup = groupByNode.get(edge.target);
-    if (!sourceGroup || !targetGroup || sourceGroup === targetGroup) continue;
-    const key = `${sourceGroup}\u0000${targetGroup}`;
+    if (!sourceGroup || !targetGroup) continue;
+    // Same-component edges used to be dropped here. A wiki page is topical and
+    // a topic usually lives in one module, so that discarded nearly every edge
+    // the page had -- including the call-site anchors that make an edge
+    // clickable. Keep them, keyed per symbol pair rather than per component.
+    const internal = sourceGroup === targetGroup;
+    const key = internal
+      ? `sym\u0000${edge.source}\u0000${edge.target}`
+      : `grp\u0000${sourceGroup}\u0000${targetGroup}`;
     const sourceNode = nodeById.get(edge.source);
     const targetNode = nodeById.get(edge.target);
     const weight = edge.weight ?? edge.anchors?.length ?? 1;
@@ -247,11 +258,15 @@ function buildSystem(data: CodemapResponse): {
         anchors: [],
         srcLabel: sourceNode?.short || groups.get(sourceGroup)?.title || sourceGroup,
         tgtLabel: targetNode?.short || groups.get(targetGroup)?.title || targetGroup,
+        internal,
       };
       links.set(key, link);
     }
     link.weight += weight;
     if (edge.anchors) link.anchors.push(...edge.anchors);
+    if (internal) continue;
+    // Stage ordering reads flow *between* components; counting a component's
+    // internal traffic as both its own inbound and outbound would flatten it.
     const source = groups.get(sourceGroup);
     const target = groups.get(targetGroup);
     if (source) source.outbound += weight;
@@ -277,7 +292,14 @@ function buildSystem(data: CodemapResponse): {
   }
 
   const orderedLinks = [...links.values()]
-    .sort((a, b) => b.weight - a.weight || a.key.localeCompare(b.key))
+    // Cross-component relationships describe the system, so they lead; the
+    // symbol-level ones follow, ordered by how much traffic they carry.
+    .sort(
+      (a, b) =>
+        Number(a.internal) - Number(b.internal) ||
+        b.weight - a.weight ||
+        a.key.localeCompare(b.key)
+    )
     .slice(0, 10);
 
   const stages = STAGE_ORDER.map((stage) => ({
@@ -286,7 +308,10 @@ function buildSystem(data: CodemapResponse): {
     groups: orderedGroups.filter((group) => group.stage === stage),
   })).filter((stage) => stage.groups.length > 0);
 
-  return { groups: orderedGroups, links: orderedLinks, stages, mainFlow: buildMainFlow(orderedGroups, orderedLinks) };
+  return { groups: orderedGroups, links: orderedLinks, stages, mainFlow: buildMainFlow(
+      orderedGroups,
+      orderedLinks.filter((link) => !link.internal)
+    ) };
 }
 
 export default function SystemMap({
@@ -394,6 +419,10 @@ export default function SystemMap({
                 key={link.key}
                 type="button"
                 className="system-link"
+                // Labels are compacted to fit the chip, and two distinct
+                // symbols can compact to the same string; keep the full pair
+                // reachable so they stay tellable apart.
+                title={`${link.srcLabel} -> ${link.tgtLabel}`}
                 disabled={!clickable}
                 onClick={() =>
                   clickable &&
@@ -405,9 +434,20 @@ export default function SystemMap({
                 }
               >
                 <span className="system-link-main">
-                  <span>{source?.title || link.source}</span>
+                  {/* A cross-component link aggregates many symbol pairs, so it
+                      is named by component; an internal one is a single pair and
+                      is named by the symbols themselves. */}
+                  <span>
+                    {link.internal
+                      ? compactSymbol(link.srcLabel)
+                      : source?.title || link.source}
+                  </span>
                   <b>-&gt;</b>
-                  <span>{target?.title || link.target}</span>
+                  <span>
+                    {link.internal
+                      ? compactSymbol(link.tgtLabel)
+                      : target?.title || link.target}
+                  </span>
                 </span>
                 <em>{link.weight} refs</em>
               </button>

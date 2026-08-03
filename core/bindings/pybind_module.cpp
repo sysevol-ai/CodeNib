@@ -1,16 +1,20 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Pybind11 bindings for codeminer::core SCIP decoders.
+// Pybind11 bindings for codenib::core SCIP decoders.
 //
-// Exposes a single function `decode_scip(index_file, project_root, language)`
-// that returns a `DecodedGraph` struct with two flat Python lists:
-//   - vertices: list of dicts {name,type,file,start_line,end_line,unified_name}
+// Exposes a low-level function `decode_scip(index_file, project_root,
+// language)` that returns a transport with two flat Python lists:
+//   - vertices: list of dicts
+//       {name,type,file,start_line,end_line,selection_line,unified_name,
+//        symbol_kind,has_definition}
 //   - edges:    list of 5-tuples (source_name, target_name, type,
 //                                 anchor_file_or_None, anchor_line_or_None)
 //
-// The Python-side wrapper (scip_decode_core.py) builds a CodeGraph from this.
+// The Python-side wrapper (scip_decode_core.py) builds and source-enriches the
+// supported CodeGraph contract from this raw transport. In particular, callers
+// must not treat this function as a complete schema-v5 graph entry point.
 // Anchor info is included so range-query indexes (`build_range_indexes`) on
 // the Python side can resolve call-site lines emitted by the C++ decoders.
 //
@@ -30,7 +34,7 @@
 #include <vector>
 
 namespace py = pybind11;
-using codeminer::core::CodeGraph;
+using codenib::core::CodeGraph;
 
 namespace {
 
@@ -42,8 +46,14 @@ py::dict vertex_to_dict(const CodeGraph::VertexData &v) {
   d["start_line"] =
       v.start_line.has_value() ? py::cast(*v.start_line) : py::none();
   d["end_line"] = v.end_line.has_value() ? py::cast(*v.end_line) : py::none();
+  d["selection_line"] =
+      v.selection_line.has_value() ? py::cast(*v.selection_line) : py::none();
   d["unified_name"] =
       v.unified_name.has_value() ? py::cast(*v.unified_name) : py::none();
+  d["symbol_kind"] =
+      v.symbol_kind.has_value() ? py::cast(*v.symbol_kind) : py::none();
+  d["has_definition"] =
+      v.has_definition.has_value() ? py::cast(*v.has_definition) : py::none();
   return d;
 }
 
@@ -51,7 +61,7 @@ py::dict decode_scip(const std::string &index_file,
                      std::optional<std::string> project_root,
                      const std::string &language) {
   auto decoder =
-      codeminer::core::make_scip_decoder(language, index_file, project_root);
+      codenib::core::make_scip_decoder(language, index_file, project_root);
 
   // Release the GIL while the C++ decoder runs (it does its own
   // std::thread-based parallelism; we don't call back into Python).
@@ -91,23 +101,27 @@ py::dict decode_scip(const std::string &index_file,
   return result;
 }
 
-codeminer::core::LayerBuckets
+codenib::core::LayerBuckets
 classify_edge_layers_py(const std::vector<std::string> &edge_types) {
   py::gil_scoped_release release;
-  return codeminer::core::classify_edge_layers(edge_types);
+  return codenib::core::classify_edge_layers(edge_types);
 }
 
 } // namespace
 
-PYBIND11_MODULE(codeminer_core, m) {
+PYBIND11_MODULE(codenib_core, m) {
   m.doc() =
-      "codeminer::core SCIP decoders (Python / Go / Rust / Ruby / TypeScript).";
+      "codenib::core SCIP decoders (Python / Go / Rust / Ruby / TypeScript).";
 
   m.def("decode_scip", &decode_scip, py::arg("index_file"),
         py::arg("project_root") = std::optional<std::string>(std::nullopt),
         py::arg("language") = std::string("python"),
         R"pbdoc(
-Decode a SCIP `index.decoded` file into a graph representation.
+Decode a SCIP `index.decoded` file into the low-level core transport.
+
+This binding does not apply source-aware post-decode layers. Application code
+must use `codenib.scip_interface.scip_decode_core.SCIPDecoderCore` or
+`codenib.ls_router.LSIndexer` to obtain the complete CodeGraph contract.
 
 Args:
     index_file: path to the decoded SCIP index file.
@@ -119,7 +133,8 @@ Args:
 Returns:
     dict with:
       - "vertices": list of dicts with keys
-          name, type, file, start_line, end_line, unified_name
+          name, type, file, start_line, end_line, selection_line, unified_name,
+          symbol_kind, has_definition
       - "edges": list of 5-tuples
           (source_name, target_name, edge_type,
            anchor_file_or_None, anchor_line_or_None)
@@ -127,13 +142,13 @@ Returns:
 )pbdoc");
 
   m.def("canonical_scip_decoder_languages",
-        &codeminer::core::canonical_scip_decoder_languages,
+        &codenib::core::canonical_scip_decoder_languages,
         R"pbdoc(
 Return the canonical language names implemented by the C++ SCIP decoder.
 )pbdoc");
 
   m.def("accepted_scip_decoder_languages",
-        &codeminer::core::accepted_scip_decoder_languages,
+        &codenib::core::accepted_scip_decoder_languages,
         R"pbdoc(
 Return canonical language names plus aliases accepted by the C++ SCIP decoder.
 )pbdoc");

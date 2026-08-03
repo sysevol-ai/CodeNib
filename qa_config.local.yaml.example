@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,7 +7,7 @@
 
 model: openai/qwen2.5-coder
 mode: hybrid
-data_dir: .codeminer_qa
+data_dir: .codenib_qa
 
 embedding_model: Qwen/Qwen3-Embedding-0.6B
 embedding_dimension: 1024

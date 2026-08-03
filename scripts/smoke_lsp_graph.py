@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -24,10 +24,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from codeminer.graph.incremental.lsp_client import LSPClient
-from codeminer.languages import normalize_graph_language
-from codeminer.ls_router import LSIndexer
-from codeminer.types import EDGE_TYPE_REFERENCE
+from codenib.graph.incremental.lsp_client import LSPClient
+from codenib.languages import normalize_graph_language
+from codenib.ls_router import LSIndexer
+from codenib.types import EDGE_TYPE_REFERENCE
 
 SMOKE_LANGUAGES = ("java", "csharp", "ruby", "php", "kotlin")
 _RUBY_LSP_VERSION = "0.26.9"
@@ -143,8 +143,8 @@ gem "scip-ruby", "{scip_ruby_version}"
 Gem::Specification.new do |spec|
   spec.name = "smoke"
   spec.version = "0.1.0"
-  spec.summary = "CodeMiner ruby-lsp smoke project"
-  spec.authors = ["CodeMiner"]
+  spec.summary = "CodeNib ruby-lsp smoke project"
+  spec.authors = ["CodeNib"]
   spec.files = ["lib/invoice.rb"]
 end
 """.strip()
@@ -230,7 +230,7 @@ def run_smoke(
             min_references=min_references,
         )
 
-    with tempfile.TemporaryDirectory(prefix=f"codeminer-{language}-lsp-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=f"codenib-{language}-lsp-") as tmp:
         return _run_smoke_in_root(
             language,
             command=command,
@@ -304,9 +304,7 @@ def run_project_smoke(
             exclude_patterns=tuple(exclude_patterns),
         )
 
-    with tempfile.TemporaryDirectory(
-        prefix=f"codeminer-{language}-lsp-project-"
-    ) as tmp:
+    with tempfile.TemporaryDirectory(prefix=f"codenib-{language}-lsp-project-") as tmp:
         return _run_lsp_indexer_smoke(
             language,
             command=command,
@@ -463,7 +461,7 @@ def _prepare_smoke_project(
     if bundle is None:
         return (
             "Ruby LSP smoke requires Bundler. Run make lsp-smoke-tools "
-            "or set CODEMINER_RUBY_LSP_CMD to a Ruby installation with bundle."
+            "or set CODENIB_RUBY_LSP_CMD to a Ruby installation with bundle."
         )
 
     for args in (
@@ -503,7 +501,7 @@ def _effective_lsp_command(
 
 class _temporary_lsp_command:
     def __init__(self, language: str, command: list[str] | None):
-        self._env_name = f"CODEMINER_{language.upper()}_LSP_CMD" if command else None
+        self._env_name = f"CODENIB_{language.upper()}_LSP_CMD" if command else None
         self._command = command
         self._previous: str | None = None
 

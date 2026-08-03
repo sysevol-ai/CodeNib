@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -23,17 +23,17 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-from codeminer.code_chunking.base import CodeChunk
-from codeminer.index.embedding.vector_store import CodeVectorStore
-from codeminer.index.incremental import (
+from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+from codenib.code_chunking.base import CodeChunk
+from codenib.index.embedding.vector_store import CodeVectorStore
+from codenib.index.incremental import (
     EmbeddingsCache,
     GitDiffDetector,
     IncrementalChunkStore,
     IncrementalIndexUpdater,
 )
-from codeminer.index.incremental.chunk_store import _hash_content
-from codeminer.index.incremental.index_updater import UpdateResult
+from codenib.index.incremental.chunk_store import _hash_content
+from codenib.index.incremental.index_updater import UpdateResult
 
 # ---------------------------------------------------------------------------
 # Helpers

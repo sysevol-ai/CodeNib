@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from codeminer.eval.agent_runner.feedback_summary import (
+from codenib.eval.agent_runner.feedback_summary import (
     load_feedback_summary,
     summarize_feedback_cells,
 )

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.code_chunker import CodeChunker
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.index import BM25CodeIndexer
-from codeminer.ls_router import LSIndexer
+from codenib.code_chunker import CodeChunker
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.index import BM25CodeIndexer
+from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.integration_serial
 
@@ -35,8 +35,8 @@ def test_bm25_transgraph_compatibility():
         print(f"Problem statement: {instance['problem_statement']}")
         dataset_obj.process_instance(instance)
         repo_path = dataset_obj.get_repo_path(instance)
-        # set output path with ~/.codeminer/instance_id
-        output_path = str(Path.home()) + "/.codeminer/" + instance["instance_id"]
+        # set output path with ~/.codenib/instance_id
+        output_path = str(Path.home()) + "/.codenib/" + instance["instance_id"]
 
         # setup codegraph
         repo_indexer = LSIndexer(repo_path, output_dir=output_path)

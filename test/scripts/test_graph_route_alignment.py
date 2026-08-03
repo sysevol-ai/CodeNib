@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import EDGE_TYPE_CONTAIN, NODE_TYPE_CLASS, NODE_TYPE_FILE
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import EDGE_TYPE_CONTAIN, NODE_TYPE_CLASS, NODE_TYPE_FILE
 from scripts import check_graph_route_alignment
 
 

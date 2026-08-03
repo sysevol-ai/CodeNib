@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from codeminer import RegexNodeIndex
-from codeminer.ls_router import LSIndexer
+from codenib import RegexNodeIndex
+from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.integration
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Build and cache hierarchical embedding indices for SWE-bench or CodeMiner-base instances.
+Build and cache hierarchical embedding indices for SWE-bench or CodeNib-base instances.
 Each instance's embedding will be stored in <storage-dir>/{instance_id}/
 
 Usage:
@@ -14,9 +14,9 @@ Usage:
         --filter-instance "^(astropy__astropy-6938)$" \\
         --force-rebuild
 
-    # CodeMiner-base (multi-language, auto-detects language per instance)
+    # CodeNib-base (multi-language, auto-detects language per instance)
     python scripts/embeddings/build_embeddings.py \\
-        --dataset-class codeminer_base \\
+        --dataset-class codenib_base \\
         --dataset fishmingyu/codeminer-base-dataset \\
         --enable-profiler
 """
@@ -27,16 +27,40 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Mapping, Optional, Sequence
 
-from codeminer.index.embedding import build_hierarchical_vector_store
-from codeminer.log_utils import get_logger
-from codeminer.profiler import Profiler
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from codenib.code_chunking.base import DEFAULT_L0_RAW_FALLBACK_MAX_LINES  # noqa: E402
+from codenib.compiler.artifact_quality import (  # noqa: E402
+    ARTIFACT_QUALITY_SCHEMA_VERSION,
+    assess_vector_artifact,
+    required_source_files,
+    vector_artifact_files_match,
+    write_artifact_quality,
+)
+from codenib.compiler.snapshot_store import ArtifactProfile  # noqa: E402
+from codenib.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
+from codenib.git_snapshot import GitSourceSurface  # noqa: E402
+from codenib.index.embedding import build_hierarchical_vector_store  # noqa: E402
+from codenib.languages import extensions_for_language  # noqa: E402
+from codenib.log_utils import get_logger  # noqa: E402
+from codenib.paths import prebuilt_data_dir  # noqa: E402
+from codenib.profiler import Profiler  # noqa: E402
+from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION  # noqa: E402
 
 logger = get_logger(__name__)
 
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+DEFAULT_MULTILINGUAL_REPO_LANG_CSV = (
+    project_root
+    / "codenib"
+    / "dataset"
+    / "collect"
+    / "data"
+    / "swebench_multilingual_repos.csv"
+)
 
 
 def parse_args():
@@ -50,11 +74,11 @@ def parse_args():
     parser.add_argument(
         "--dataset-class",
         type=str,
-        choices=["swebench", "codeminer_base"],
+        choices=["swebench", "swebench_multilingual", "codenib_base"],
         default="swebench",
         help=(
             "Dataset class to use. 'swebench' for SWE-bench Lite/Verified, "
-            "'codeminer_base' for the multi-language CodeMiner-base dataset "
+            "'codenib_base' for the multi-language CodeNib-base dataset "
             "(auto-detects language per instance from 'language_group' column)."
         ),
     )
@@ -65,7 +89,7 @@ def parse_args():
         help=(
             "HuggingFace dataset name. Defaults to "
             "'princeton-nlp/SWE-bench_Lite' for swebench, "
-            "'fishmingyu/codeminer-base-dataset' for codeminer_base."
+            "'fishmingyu/codeminer-base-dataset' for codenib_base."
         ),
     )
     parser.add_argument(
@@ -161,12 +185,19 @@ def parse_args():
         help="Programming languages to process",
     )
     parser.add_argument(
+        "--multilingual-repo-language-csv",
+        type=str,
+        default=str(DEFAULT_MULTILINGUAL_REPO_LANG_CSV),
+        help="Repo-to-language map for SWE-bench Multilingual rows.",
+    )
+    parser.add_argument(
         "--max-lines-per-chunk",
         type=int,
         default=None,
         help=(
-            "Maximum lines per L2 code chunk (default: None, no splitting to "
-            "preserve function integrity)"
+            "Maximum lines per L2 code chunk and raw-source L0 fallback. "
+            "By default L2 is unsplit and raw L0 fallback uses the safe limit "
+            f"{DEFAULT_L0_RAW_FALLBACK_MAX_LINES}."
         ),
     )
     parser.add_argument(
@@ -188,8 +219,22 @@ def parse_args():
     parser.add_argument(
         "--storage-dir",
         type=str,
-        default="/mnt/data/codeminer",
+        default=str(prebuilt_data_dir()),
         help="Base directory to store embeddings",
+    )
+    parser.add_argument(
+        "--artifact-layout",
+        choices=["instance", "snapshot"],
+        default="instance",
+        help=(
+            "Store each instance separately or bind it to a shared, "
+            "content-addressed repository snapshot."
+        ),
+    )
+    parser.add_argument(
+        "--artifact-profile",
+        default="benchmark-v1",
+        help="Compatibility profile name used by snapshot-addressed artifacts.",
     )
     parser.add_argument(
         "--force-rebuild",
@@ -238,7 +283,8 @@ def parse_args():
 
 _DATASET_DEFAULTS = {
     "swebench": "princeton-nlp/SWE-bench_Lite",
-    "codeminer_base": "fishmingyu/codeminer-base-dataset",
+    "swebench_multilingual": "SWE-bench/SWE-bench_Multilingual",
+    "codenib_base": "fishmingyu/codeminer-base-dataset",
 }
 
 
@@ -246,7 +292,7 @@ def _map_language_group(label: Optional[str], fallback: str = "python") -> List[
     """Map a dataset ``language_group`` value to chunker language string(s).
 
     Mirrors ``swebench_graph_index._map_language_label`` with an added Go
-    mapping so the codeminer-base multilingual instances get the right chunker.
+    mapping so the codenib-base multilingual instances get the right chunker.
 
     Returns a list because some language groups (e.g. "TypeScript/JavaScript")
     cover multiple chunker languages with disjoint file extensions.
@@ -256,6 +302,8 @@ def _map_language_group(label: Optional[str], fallback: str = "python") -> List[
     text = label.lower()
     if "rust" in text:
         return ["rust"]
+    if text == "go" or "golang" in text:
+        return ["go"]
     if "javascript" in text and "typescript" in text:
         return ["ts", "js"]
     if "typescript" in text or text == "ts":
@@ -264,20 +312,47 @@ def _map_language_group(label: Optional[str], fallback: str = "python") -> List[
         return ["js"]
     if "c++" in text or text in ("cpp", "c"):
         return ["cpp"]
-    if "go" in text or text == "golang":
-        return ["go"]
+    if "c#" in text or "csharp" in text:
+        return ["csharp"]
+    if "java" in text:
+        return ["java"]
+    if "kotlin" in text:
+        return ["kotlin"]
+    if "ruby" in text:
+        return ["ruby"]
+    if "php" in text:
+        return ["php"]
+    if "scala" in text:
+        return ["scala"]
     if "python" in text:
         return ["python"]
     return [fallback]
 
 
-def _resolve_languages(instance: dict, cli_languages: List[str]) -> List[str]:
+def _load_repo_language_map(path: str) -> dict[str, str]:
+    import csv
+
+    with Path(path).expanduser().open(encoding="utf-8") as fp:
+        return {
+            row["repo"]: row["language"]
+            for row in csv.DictReader(fp)
+            if row.get("repo") and row.get("language")
+        }
+
+
+def _resolve_languages(
+    instance: dict,
+    cli_languages: List[str],
+    repo_languages: Optional[dict[str, str]] = None,
+) -> List[str]:
     """Return the language list for a single instance.
 
-    If the instance has a ``language_group`` column (codeminer-base), derive
+    If the instance has a ``language_group`` column (codenib-base), derive
     the chunker language from it.  Otherwise fall back to ``cli_languages``.
     """
-    lang_group = instance.get("language_group")
+    lang_group = instance.get("language_group") or (repo_languages or {}).get(
+        instance.get("repo", "")
+    )
     if lang_group:
         return _map_language_group(lang_group, fallback=cli_languages[0])
     return list(cli_languages)
@@ -287,21 +362,150 @@ def _load_dataset(args):
     """Instantiate the dataset object based on ``--dataset-class``."""
     dataset_name = args.dataset or _DATASET_DEFAULTS[args.dataset_class]
 
-    if args.dataset_class == "codeminer_base":
-        from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+    if args.dataset_class == "codenib_base":
+        from codenib.dataset.codenib_base import CodeNibBaseDataset
 
-        return CodeMinerBaseDataset(
+        return CodeNibBaseDataset(
             dataset=dataset_name,
             split=args.split,
             filter_instance=args.filter_instance,
         )
 
-    from codeminer.dataset.swebench import SwebenchDataset
+    if args.dataset_class == "swebench_multilingual":
+        from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
+
+        return SwebenchMultilingualDataset(
+            dataset=dataset_name,
+            split=args.split,
+            filter_instance=args.filter_instance,
+        )
+
+    from codenib.dataset.swebench import SwebenchDataset
 
     return SwebenchDataset(
         dataset=dataset_name,
         split=args.split,
         filter_instance=args.filter_instance,
+    )
+
+
+def _vector_artifact_root(root: Path, plan_name: Optional[str]) -> Path:
+    return root / plan_name if plan_name else root
+
+
+def _vector_quality_path(root: Path, embedding_model: str) -> Path:
+    model_suffix = embedding_model.replace("/", "__")
+    return root / f"artifact_quality_{model_suffix}.json"
+
+
+def _artifact_metadata(
+    *,
+    instance: dict[str, Any],
+    languages: List[str],
+    build_levels: List[str],
+    surface: GitSourceSurface,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return {
+        "repo": instance["repo"],
+        "commit": surface.commit,
+        "tree": surface.tree,
+        **_artifact_configuration(
+            languages=languages,
+            build_levels=build_levels,
+            args=args,
+        ),
+    }
+
+
+def _artifact_configuration(
+    *,
+    languages: List[str],
+    build_levels: List[str],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return {
+        "languages": sorted(languages),
+        "build_levels": sorted(build_levels),
+        "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+        "chunking": {
+            "l0_skeleton": True,
+            "max_lines_per_chunk": args.max_lines_per_chunk,
+            "l0_raw_fallback_max_lines": (
+                args.max_lines_per_chunk
+                if args.max_lines_per_chunk is not None
+                else DEFAULT_L0_RAW_FALLBACK_MAX_LINES
+            ),
+        },
+        "embedding": {
+            "provider": args.embedding_provider,
+            "dimension": args.embedding_dimension,
+            "index_type": args.index_type,
+            "index_metric": args.index_metric,
+            "ivf_nlist": args.ivf_nlist,
+            "ivf_nprobe": args.ivf_nprobe,
+            "max_seq_length": args.max_seq_length,
+        },
+    }
+
+
+def _required_l0_files(
+    instance: dict[str, Any], languages: List[str]
+) -> tuple[str, ...]:
+    extensions = set()
+    for language in languages:
+        extensions.update(extensions_for_language(language, "chunker"))
+    return required_source_files(instance, extensions)
+
+
+def _quality_report_is_reusable(
+    root: Path,
+    *,
+    embedding_model: str,
+    instance: dict[str, Any],
+    expected_configuration: Mapping[str, Any],
+    build_levels: Sequence[str],
+    required_l0_files: Sequence[str] = (),
+) -> bool:
+    """Revalidate an assessed artifact before skipping its isolated child."""
+
+    quality_path = _vector_quality_path(root, embedding_model)
+    config_path = root / f"config_{embedding_model.replace('/', '__')}.json"
+    try:
+        quality = json.loads(quality_path.read_text(encoding="utf-8"))
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(quality, Mapping) or not isinstance(config, Mapping):
+        return False
+    artifact = config.get("artifact") or {}
+    if not isinstance(artifact, Mapping):
+        return False
+    expected_commit = str(instance.get("base_commit") or "").lower()
+    actual_commit = str(artifact.get("commit") or "").lower()
+    commit_matches = bool(expected_commit and expected_commit == actual_commit)
+    configuration_matches = all(
+        artifact.get(key) == value for key, value in expected_configuration.items()
+    )
+    reported_l0_files = quality.get("l0_files")
+    required_matches = isinstance(reported_l0_files, list) and set(
+        required_l0_files
+    ).issubset(reported_l0_files)
+    files_match = vector_artifact_files_match(
+        root,
+        embedding_model=embedding_model,
+        build_levels=build_levels,
+        expected_fingerprints=quality.get("file_fingerprints"),
+    )
+    return bool(
+        quality.get("schema_version") == ARTIFACT_QUALITY_SCHEMA_VERSION
+        and quality.get("passed")
+        and quality.get("artifact") == artifact
+        and artifact.get("repo") == instance.get("repo")
+        and commit_matches
+        and configuration_matches
+        and required_matches
+        and files_match
     )
 
 
@@ -313,7 +517,6 @@ def build_embeddings(args):
     # Load dataset
     dataset_obj = _load_dataset(args)
     dataset_instances = dataset_obj.load()
-
     if len(dataset_instances) == 0:
         raise ValueError(
             f"No instances found in {args.dataset or _DATASET_DEFAULTS[args.dataset_class]}"
@@ -322,6 +525,12 @@ def build_embeddings(args):
     logger.info(f"Loaded {len(dataset_instances)} instance(s)")
     logger.info(f"Dataset class: {args.dataset_class}")
     logger.info(f"Embeddings will be stored in: {args.storage_dir}")
+    repo_languages = _load_repo_language_map(args.multilingual_repo_language_csv)
+    snapshot_store = (
+        SnapshotArtifactStore(args.storage_dir)
+        if args.artifact_layout == "snapshot"
+        else None
+    )
 
     # Setup profile output directory
     profile_output_dir = (
@@ -332,6 +541,10 @@ def build_embeddings(args):
     profile_output_dir.mkdir(parents=True, exist_ok=True)
     if args.profile_dir:
         logger.info(f"Profiler summaries will be stored in: {profile_output_dir}")
+
+    failures: list[str] = []
+    succeeded = 0
+    skipped = 0
 
     # Process each instance
     for idx, instance in enumerate(dataset_instances):
@@ -357,31 +570,96 @@ def build_embeddings(args):
             dataset_obj.process_instance(instance)
             repo_path = dataset_obj.get_repo_path(instance)
 
-            # Convert instance_id to directory name (replace / with __)
-            instance_dir_name = instance_id.replace("/", "__")
-
-            # Set final directory for this instance
-            instance_final_dir = Path(args.storage_dir) / instance_dir_name
-            instance_final_dir.mkdir(parents=True, exist_ok=True)
-
             # Resolve per-instance language (uses language_group when available)
-            instance_languages = _resolve_languages(instance, args.languages)
+            instance_languages = _resolve_languages(
+                instance,
+                args.languages,
+                repo_languages,
+            )
+
+            if snapshot_store is not None:
+                binding = snapshot_store.bind(
+                    instance_id,
+                    SourceSnapshot(
+                        repo=instance["repo"],
+                        commit=instance["base_commit"],
+                    ),
+                    ArtifactProfile.create(
+                        instance_languages,
+                        name=args.artifact_profile,
+                    ),
+                )
+                repo_path = str(
+                    snapshot_store.ensure_worktree(
+                        binding,
+                        source_repo=repo_path,
+                        commit=instance["base_commit"],
+                    )
+                )
+                instance_final_dir = binding.profile_dir
+                logger.info(
+                    "Snapshot artifact: snapshot=%s profile=%s "
+                    "snapshot_hit=%s profile_hit=%s alias_hit=%s",
+                    binding.snapshot_id,
+                    binding.profile_id,
+                    binding.snapshot_hit,
+                    binding.profile_hit,
+                    binding.alias_hit,
+                )
+            else:
+                instance_dir_name = instance_id.replace("/", "__")
+                instance_final_dir = Path(args.storage_dir) / instance_dir_name
+                instance_final_dir.mkdir(parents=True, exist_ok=True)
 
             logger.info(f"Repository path: {repo_path}")
             logger.info(f"Target directory: {instance_final_dir}")
             logger.info(f"Languages: {instance_languages}")
 
-            # Check if embedding already exists (model-specific config)
+            surface = GitSourceSurface.load(repo_path, instance["base_commit"])
+            artifact_metadata = _artifact_metadata(
+                instance=instance,
+                languages=instance_languages,
+                build_levels=build_levels,
+                surface=surface,
+                args=args,
+            )
+            required_l0 = (
+                _required_l0_files(instance, instance_languages)
+                if "l0" in build_levels
+                else ()
+            )
+            artifact_root = _vector_artifact_root(instance_final_dir, args.plan_name)
+
+            # Reuse only artifacts that pass identity, file, and coverage checks.
             model_suffix = args.embedding_model.replace("/", "__")
-            config_file = instance_final_dir / f"config_{model_suffix}.json"
-            if config_file.exists() and not args.force_rebuild:
+            config_file = artifact_root / f"config_{model_suffix}.json"
+            existing_quality = assess_vector_artifact(
+                artifact_root,
+                embedding_model=args.embedding_model,
+                build_levels=build_levels,
+                surface=surface,
+                expected_artifact=artifact_metadata,
+                required_l0_files=required_l0,
+            )
+            if existing_quality["passed"] and not args.force_rebuild:
                 logger.info(
-                    f"Embedding already exists at {instance_final_dir}, skipping..."
+                    "Embedding already exists and passed quality gates at %s; skipping",
+                    artifact_root,
                 )
+                write_artifact_quality(
+                    _vector_quality_path(artifact_root, args.embedding_model),
+                    existing_quality,
+                )
+                skipped += 1
                 continue
             elif config_file.exists() and args.force_rebuild:
                 logger.info(
                     "Embedding already exists but force-rebuild is enabled, rebuilding..."
+                )
+            elif config_file.exists():
+                logger.warning(
+                    "Existing embedding failed quality gates (%s); rebuilding",
+                    ", ".join(existing_quality["failure_names"]),
                 )
 
             embedding_kwargs = {}
@@ -411,7 +689,24 @@ def build_embeddings(args):
                     ivf_nlist=args.ivf_nlist,
                     ivf_nprobe=args.ivf_nprobe,
                     profiler=instance_profiler,
-                    force_rebuild=args.force_rebuild,
+                    force_rebuild=args.force_rebuild or config_file.exists(),
+                    artifact_metadata=artifact_metadata,
+                )
+
+            artifact_quality = assess_vector_artifact(
+                artifact_root,
+                embedding_model=args.embedding_model,
+                build_levels=build_levels,
+                surface=surface,
+                expected_artifact=artifact_metadata,
+                required_l0_files=required_l0,
+            )
+            quality_path = _vector_quality_path(artifact_root, args.embedding_model)
+            write_artifact_quality(quality_path, artifact_quality)
+            if not artifact_quality["passed"]:
+                raise RuntimeError(
+                    "vector artifact quality failed: "
+                    + ", ".join(artifact_quality["failure_names"])
                 )
 
             # Save profiler report
@@ -470,12 +765,14 @@ def build_embeddings(args):
                 f"✓ Successfully built hierarchical embedding for {instance_id}"
             )
             logger.info(f"  - Saved to: {instance_final_dir}")
+            succeeded += 1
 
         except Exception as e:
             logger.error(f"✗ Failed to process {instance_id}: {e}")
             import traceback
 
             logger.error(traceback.format_exc())
+            failures.append(instance_id)
         finally:
             if vector_store is not None:
                 vector_store.close()
@@ -490,10 +787,21 @@ def build_embeddings(args):
                 pass
     logger.info(f"\n{'='*80}")
     logger.info("Hierarchical embedding build complete!")
-    logger.info(f"Processed {len(dataset_instances)} instance(s)")
+    logger.info(
+        "Processed %d instance(s): %d built, %d reused, %d failed",
+        len(dataset_instances),
+        succeeded,
+        skipped,
+        len(failures),
+    )
     if args.enable_profiler or args.profile_dir:
         logger.info(f"Profile logs stored in: {profile_output_dir}")
     logger.info(f"{'='*80}")
+    if failures:
+        raise RuntimeError(
+            "Embedding build failed for "
+            f"{len(failures)} instance(s): {', '.join(failures)}"
+        )
 
 
 def build_embeddings_isolated(args):
@@ -510,6 +818,7 @@ def build_embeddings_isolated(args):
 
     dataset_obj = _load_dataset(args)
     dataset_instances = dataset_obj.load()
+    repo_languages = _load_repo_language_map(args.multilingual_repo_language_csv)
 
     if len(dataset_instances) == 0:
         raise ValueError(
@@ -549,13 +858,37 @@ def build_embeddings_isolated(args):
             f"{'='*80}"
         )
 
-        # Check if already built (mirrors the skip logic in build_embeddings)
+        # Trust only artifacts carrying a passing model-specific quality report.
         instance_dir_name = instance_id.replace("/", "__")
         instance_final_dir = Path(args.storage_dir) / instance_dir_name
-        model_suffix = args.embedding_model.replace("/", "__")
-        config_file = instance_final_dir / f"config_{model_suffix}.json"
-        if config_file.exists() and not args.force_rebuild:
-            logger.info(f"  Already exists, skipping: {config_file}")
+        artifact_root = _vector_artifact_root(instance_final_dir, args.plan_name)
+        instance_languages = _resolve_languages(
+            dict(instance),
+            args.languages,
+            repo_languages,
+        )
+        expected_configuration = _artifact_configuration(
+            languages=instance_languages,
+            build_levels=[level.lower() for level in args.build_levels],
+            args=args,
+        )
+        build_levels = [level.lower() for level in args.build_levels]
+        required_l0 = (
+            _required_l0_files(dict(instance), instance_languages)
+            if "l0" in build_levels
+            else ()
+        )
+        if not args.force_rebuild and _quality_report_is_reusable(
+            artifact_root,
+            embedding_model=args.embedding_model,
+            instance=dict(instance),
+            expected_configuration=expected_configuration,
+            build_levels=build_levels,
+            required_l0_files=required_l0,
+        ):
+            logger.info(
+                "  Existing artifact passed quality gates; skipping: %s", artifact_root
+            )
             skipped += 1
             continue
 

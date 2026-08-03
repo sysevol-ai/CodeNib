@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Unit coverage for shared SCIP decoder normalization helpers."""
 
-from codeminer.scip_interface.scip_decode_utils import (
+from codenib.scip_interface.scip_decode_utils import (
     format_unified_name,
     normalize_scip_descriptor,
     scip_symbol_descriptor,

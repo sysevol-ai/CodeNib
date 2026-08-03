@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -15,12 +15,12 @@
 #include <unordered_set>
 #include <utility>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
 
 bool debug_enabled() {
-  static const bool enabled = std::getenv("CODEMINER_SCIP_DEBUG") != nullptr;
+  static const bool enabled = std::getenv("CODENIB_SCIP_DEBUG") != nullptr;
   return enabled;
 }
 
@@ -230,7 +230,8 @@ void CodeGraph::add_file_node(const std::string &file_path) {
 void CodeGraph::add_symbol_node(const std::string &symbol, int line,
                                 std::optional<int> scope_start_line,
                                 std::optional<int> scope_end_line,
-                                const std::string &symbol_type) {
+                                const std::string &symbol_type,
+                                std::optional<std::string> symbol_kind) {
   VertexId id = ensure_vertex(symbol);
   apply_vertex_update(id, symbol_type, current_file_, line, line);
 
@@ -239,18 +240,28 @@ void CodeGraph::add_symbol_node(const std::string &symbol, int line,
                         scope_end_line);
     symbol_ranges_[symbol] = Range{true, *scope_start_line, *scope_end_line};
   }
+  vertices_[id].selection_line = line;
+  vertices_[id].has_definition = true;
+  if (symbol_kind.has_value()) {
+    vertices_[id].symbol_kind = std::move(symbol_kind);
+  }
 }
 
 void CodeGraph::add_symbol_reference(
     const std::string &symbol, const std::optional<std::string> &module_path,
     const std::string &symbol_type, std::optional<std::string> anchor_file,
-    std::optional<int> anchor_line) {
+    std::optional<int> anchor_line, std::optional<std::string> symbol_kind) {
   const bool already_exists =
       name_to_vertex_.find(symbol) != name_to_vertex_.end();
   VertexId id = ensure_vertex(symbol);
-  std::optional<std::string> file_attr =
-      already_exists ? std::nullopt : module_path;
-  apply_vertex_update(id, symbol_type, file_attr, std::nullopt, std::nullopt);
+  if (!already_exists) {
+    apply_vertex_update(id, symbol_type, module_path, std::nullopt,
+                        std::nullopt);
+    vertices_[id].has_definition = false;
+  }
+  if (symbol_kind.has_value() && !vertices_[id].symbol_kind.has_value()) {
+    vertices_[id].symbol_kind = std::move(symbol_kind);
+  }
   if (!anchor_file.has_value() && !current_file_.empty()) {
     anchor_file = current_file_;
   }
@@ -410,6 +421,15 @@ void CodeGraph::batch_upsert_nodes(const std::vector<VertexData> &nodes) {
                           data.file, data.start_line, data.end_line);
       if (data.unified_name.has_value()) {
         vertices_[vertex_id].unified_name = data.unified_name;
+      }
+      if (data.selection_line.has_value()) {
+        vertices_[vertex_id].selection_line = data.selection_line;
+      }
+      if (data.symbol_kind.has_value()) {
+        vertices_[vertex_id].symbol_kind = data.symbol_kind;
+      }
+      if (data.has_definition.has_value()) {
+        vertices_[vertex_id].has_definition = data.has_definition;
       }
 
       if (data.start_line.has_value() && data.end_line.has_value()) {
@@ -694,9 +714,30 @@ void CodeGraph::save_graph(const std::string &output_path) const {
       out << "null";
     }
     out << ",\n";
+    out << "      \"selection_line\": ";
+    if (v.selection_line.has_value()) {
+      out << *v.selection_line;
+    } else {
+      out << "null";
+    }
+    out << ",\n";
     out << "      \"unified_name\": ";
     if (v.unified_name.has_value()) {
       out << escape_json(*v.unified_name);
+    } else {
+      out << "null";
+    }
+    out << ",\n";
+    out << "      \"symbol_kind\": ";
+    if (v.symbol_kind.has_value()) {
+      out << escape_json(*v.symbol_kind);
+    } else {
+      out << "null";
+    }
+    out << ",\n";
+    out << "      \"has_definition\": ";
+    if (v.has_definition.has_value()) {
+      out << (*v.has_definition ? "true" : "false");
     } else {
       out << "null";
     }
@@ -762,4 +803,4 @@ CodeGraph CodeGraph::load_graph(const std::string & /*input_path*/) {
       "CodeGraph::load_graph is not implemented yet for the C++ core");
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

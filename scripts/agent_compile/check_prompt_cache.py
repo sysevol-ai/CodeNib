@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -82,7 +82,7 @@ def main(argv=None) -> int:
 
     import litellm
 
-    from codeminer.llm.litellm_chat import LiteLLMChat
+    from codenib.llm.litellm_chat import LiteLLMChat
 
     extra = {"vertex_location": args.vertex_location}
     llm = LiteLLMChat(

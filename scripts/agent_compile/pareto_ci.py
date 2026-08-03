@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,7 +12,7 @@ import argparse
 from pathlib import Path
 from typing import Optional, Sequence
 
-from codeminer.eval.agent_runner.pareto import analyze_pareto, load_pareto_cells
+from codenib.eval.agent_runner.pareto import analyze_pareto, load_pareto_cells
 
 analyze = analyze_pareto
 

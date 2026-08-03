@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 
-using codeminer::core::CodeGraph;
+using codenib::core::CodeGraph;
 namespace fs = std::filesystem;
 
 namespace {
@@ -35,7 +35,7 @@ void print_usage(std::string_view prog_name) {
       << "  project_root   - Project root directory (or 'null' for none)\n"
       << "  output.json    - Output JSON file path\n"
       << "  language       - One of: "
-      << codeminer::core::accepted_scip_decoder_languages_help()
+      << codenib::core::accepted_scip_decoder_languages_help()
       << " (default: python)\n";
 }
 
@@ -78,7 +78,7 @@ std::optional<ProgramOptions> parse_arguments(int argc, char **argv) {
   }
 
   auto canonical =
-      codeminer::core::canonical_scip_decoder_language(options.language);
+      codenib::core::canonical_scip_decoder_language(options.language);
   if (!canonical) {
     std::cerr << "Error: unknown language '" << options.language << "'\n";
     print_usage(argv[0]);
@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
     std::optional<std::string> root_str;
     if (options->project_root.has_value())
       root_str = options->project_root->string();
-    auto decoder = codeminer::core::make_scip_decoder(
+    auto decoder = codenib::core::make_scip_decoder(
         options->language, options->index.string(), root_str);
 
     std::cout << "Decoding SCIP index...\n";

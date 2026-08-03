@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -38,6 +38,8 @@ from typing import Any, Dict, List, Optional
 import faiss
 import numpy as np
 
+from codenib.paths import prebuilt_data_dir
+
 
 def _norm(p: str) -> str:
     return (p or "").strip().strip("`'\"").replace("\\", "/")
@@ -65,10 +67,10 @@ def _files(docs: List[Any], idxs: List[int]) -> List[str]:
 
 
 def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
-    from codeminer.eval.agent_runner.prebuilt import stage_prebuilt_indexes
-    from codeminer.eval.agent_runner.sweep import load_dataset_rows, load_full_contexts
-    from codeminer.eval.retrieval_eval import collect_targets
-    from codeminer.graph.roi_subgraph import ROISubgraph
+    from codenib.eval.agent_runner.prebuilt import stage_prebuilt_indexes
+    from codenib.eval.agent_runner.sweep import load_dataset_rows, load_full_contexts
+    from codenib.eval.retrieval_eval import collect_targets
+    from codenib.graph.roi_subgraph import ROISubgraph
 
     rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[inst]
@@ -154,7 +156,7 @@ def _analyze(inst, cfg, prebuilt_dir, cache_root, ks, nlist, nprobe, seeds):
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from codeminer.eval.agent_runner.sweep_config import SweepConfig as SampleConfig
+    from codenib.eval.agent_runner.sweep_config import SweepConfig as SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)
@@ -163,7 +165,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--nlist", type=int, default=64)
     ap.add_argument("--nprobe", type=int, default=8)
     ap.add_argument("--seeds", type=int, default=5)
-    ap.add_argument("--prebuilt-dir", default="/mnt/data/codeminer")
+    ap.add_argument("--prebuilt-dir", default=str(prebuilt_data_dir()))
     ap.add_argument("--embedding-model", default="Qwen/Qwen3-Embedding-0.6B")
     ap.add_argument("--embedding-dim", type=int, default=1024)
     args = ap.parse_args(argv)
@@ -172,7 +174,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     cache_root = os.path.join(os.environ.get("CLAUDE_JOB_DIR", "/tmp"), "idxcmp_cache")
     cfg = SampleConfig(
         sweep_id="idxcmp",
-        subsets={"CTX": ["codeminer_context"]},
+        subsets={"CTX": ["codenib_context"]},
         instances=instances,
         embedding_model=args.embedding_model,
         embedding_dimension=args.embedding_dim,

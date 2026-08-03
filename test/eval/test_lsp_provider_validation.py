@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,15 +8,18 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.agent.lsp_provider import JSON_RPC_LSP_PROVIDER, StaticLSPProvider
-from codeminer.eval.agent_runner.lsp_provider_validation import (
+from codenib.agent.lsp_provider import JSON_RPC_LSP_PROVIDER, StaticLSPProvider
+from codenib.eval.agent_runner.lsp_provider_validation import (
     LSPProviderRequest,
     compare_static_lsp_provider,
+    default_lsp_provider_fingerprint,
+    fingerprint_lsp_start_location_set,
+    fingerprint_lsp_start_locations,
     render_lsp_provider_validation_markdown,
     summarize_lsp_provider_validation,
 )
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import NODE_TYPE_FUNCTION
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import NODE_TYPE_FUNCTION
 
 
 def _range_graph() -> CodeGraph:
@@ -84,7 +87,7 @@ def test_compare_static_lsp_provider_reports_equivalent_speedup():
     assert row.verdict == "equivalent_static_faster"
     assert row.latency_saved_ms == pytest.approx(5.0)
     assert row.speedup_ratio == pytest.approx(6.0)
-    assert row.static_call.provider == "codeminer_static_index"
+    assert row.static_call.provider == "codenib_static_index"
     assert row.reference_call.provider == JSON_RPC_LSP_PROVIDER
     assert row.static_call.metadata["lsp_method"] == "textDocument/definition"
 
@@ -152,3 +155,41 @@ def test_summarize_lsp_provider_validation_marks_promotion_ready():
     assert summary.fallback_count == 0
     assert summary.error_count == 0
     assert summary.promotion_ready is True
+
+
+def test_start_location_set_fingerprint_ignores_provider_order():
+    static_order = [
+        {"file": "callee.py", "start_line": 0},
+        {"file": "caller.py", "start_line": 3},
+        {"file": "caller.py", "start_line": 6},
+    ]
+    live_order = [
+        {"file": "caller.py", "start_line": 3},
+        {"file": "caller.py", "start_line": 6},
+        {"file": "callee.py", "start_line": 0},
+    ]
+
+    assert fingerprint_lsp_start_location_set(static_order) == (
+        fingerprint_lsp_start_location_set(live_order)
+    )
+    assert fingerprint_lsp_start_locations(static_order) != (
+        fingerprint_lsp_start_locations(live_order)
+    )
+
+
+def test_default_lsp_provider_fingerprint_uses_set_for_references():
+    reference_request = LSPProviderRequest(
+        capability="textDocument/references",
+        arguments={"file_path": "caller.py", "line": 2},
+    )
+    definition_request = LSPProviderRequest(
+        capability="textDocument/definition",
+        arguments={"file_path": "caller.py", "line": 2},
+    )
+
+    assert default_lsp_provider_fingerprint(reference_request) is (
+        fingerprint_lsp_start_location_set
+    )
+    assert default_lsp_provider_fingerprint(definition_request) is (
+        fingerprint_lsp_start_locations
+    )

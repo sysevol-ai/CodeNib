@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
-# codeminer-base on Haiku (vertex): grep / eager / eager_compact. Inherits
+# codenib-base on Haiku (vertex): grep / eager / eager_compact. Inherits
 # model=vertex_ai/claude-haiku-4-5 + vertex_location=us-east5 from design_space.
 # Tests the explore->commit collapse: eager judges direction from preload, then
 # the continuation works a distilled seed (no preload dump, no exploration

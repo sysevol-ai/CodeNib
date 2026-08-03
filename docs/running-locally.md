@@ -1,38 +1,42 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Running the Web Demo Locally (with a Local GPU LLM)
+# Running the Web UI with a Local GPU LLM
 
-This guide covers running the full CodeMiner web demo — wiki generation + Ask
-— against **any arbitrary repo** using a **local GPU LLM** (no cloud API keys).
+This guide runs generated Wiki pages and Ask against a local repository using a
+local GPU LLM, without cloud credentials. The repository must contain at least
+one [supported source language](language_capabilities.md), or you must pass an
+explicit supported `--language`.
 
 The setup has three services running in separate terminals:
 
 | Service | Script | Where to run |
 |---------|--------|--------------|
 | LLM server (llama-cpp-python) | `scripts/start_llm.sh` | GPU node |
-| CodeMiner backend (FastAPI) | `scripts/start_web.sh` | Main machine |
-| Next.js frontend | `cd web && npm run dev` | Main machine |
+| CodeNib backend (FastAPI) | `scripts/start_web.sh` | Main machine |
+| Vite frontend | `cd web && npm run dev` | Main machine |
 
 ---
 
 ## Prerequisites
 
 ### Main machine
-- CodeMiner installed: `make dev` or `pip install -e ".[dev]"`
-- Node.js + npm: `make web-deps` (once)
-- Conda env `codeminer` active
+
+- A CodeNib source checkout with development dependencies: `make dev`
+- Node.js `^20.19.0` or `>=22.12.0`, plus npm: `make web-deps` (once)
+- Conda env `codenib` active
 
 ### GPU node
+
 - Access to a node with CUDA 12.4+ driver and enough VRAM (7B model needs ~5 GB)
-- `llama-cpp-python[server]` with GPU support installed in the `codeminer` env:
+- `llama-cpp-python[server]` with GPU support installed in the `codenib` env:
 
   ```bash
   # Install the pre-built CUDA 12.4 wheel (works with any CUDA 12.4+ driver)
-  conda activate codeminer
+  conda activate codenib
   pip install "llama-cpp-python[server]==0.3.29" \
     --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
   ```
@@ -53,49 +57,30 @@ The setup has three services running in separate terminals:
 
 ## Step 1 — Index a repo
 
-For any repo you want to explore, build its BM25 index:
+For a repository you want to explore, build its BM25 index and register it in
+one command:
 
 ```bash
 # Clone the repo (skip if already cloned)
 git clone https://github.com/<owner>/<repo> ~/projects/<repo>
 
-# Build indexes
-conda activate codeminer
-cd ~/projects/CodeMiner/CodeMiner
-python - <<'EOF'
-from codeminer.compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.index_builders import IndexBuilderRegistry, register_default_builders
-
-REPO = "/absolute/path/to/your/repo"   # <-- change this
-
-registry = IndexBuilderRegistry()
-register_default_builders(registry, languages=["python"])  # change language if needed
-IndexCompiler(registry, IndexCompilerConfig(index_types=["bm25"])).compile_repo(REPO)
-print("Done! Index at", REPO + "/.codeminer_cache/")
-EOF
+# Build the index and register the repo
+conda activate codenib
+cd ~/projects/CodeNib/CodeNib
+python scripts/index_repo.py /absolute/path/to/your/repo
 ```
 
-Then register the repo in `.codeminer_qa/qa_registry.json` (create the file if
-it doesn't exist):
+The script uses CodeNib's shared language registry to detect every supported
+language represented by the repository's source extensions. Override detection
+with `--language go`; comma- or slash-separated values such as
+`javascript/typescript` also work. If detection finds nothing supported, the
+script exits instead of silently indexing the repository as Python.
 
-```json
-[
-  {
-    "instance_id": "owner__repo",
-    "repo": "owner/repo",
-    "base_commit": "<git rev-parse HEAD of the repo>",
-    "language": "python",
-    "repo_dir": "/absolute/path/to/your/repo",
-    "manifest_path": "/absolute/path/to/your/repo/.codeminer_cache/repo_manifest.json",
-    "problem_statement": ""
-  }
-]
-```
-
-Get `base_commit` with:
-```bash
-git -C /path/to/repo rev-parse HEAD
-```
+Indexes are written below
+`$CODENIB_HOME/repositories/<repo>-<id>/indexes` (default
+`~/.codenib/repositories/...`). The web registry defaults to
+`.codenib_qa/qa_registry.json`; change that path with `--registry`. Restart an
+already-running backend after registering a repository.
 
 ---
 
@@ -105,7 +90,7 @@ No tracked config edit is required. `scripts/start_web.sh` points the backend at
 the local OpenAI-compatible endpoint by exporting:
 
 ```bash
-CODEMINER_DEMO_MODEL=openai/qwen2.5-coder
+CODENIB_DEMO_MODEL=openai/qwen2.5-coder
 OPENAI_API_BASE=http://<gpu-node>:8080/v1
 ```
 
@@ -116,7 +101,7 @@ cp qa_config.local.yaml.example qa_config.local.yaml
 ```
 
 When present, `scripts/start_web.sh` automatically uses `qa_config.local.yaml`.
-Override `CODEMINER_DEMO_CONFIG` or `CODEMINER_DEMO_MODEL` before running
+Override `CODENIB_DEMO_CONFIG` or `CODENIB_DEMO_MODEL` before running
 `start_web.sh` if your local server exposes a different model name or config
 path.
 
@@ -127,17 +112,17 @@ path.
 ### Terminal 1 — LLM server (on GPU node)
 
 ```bash
-cd ~/projects/CodeMiner/CodeMiner
+cd ~/projects/CodeNib/CodeNib
 bash scripts/start_llm.sh
 ```
 
 The script will ask for your GGUF model path and start an OpenAI-compatible
 server on port 8080.
 
-### Terminal 2 — CodeMiner backend (on main machine)
+### Terminal 2 — CodeNib backend (on main machine)
 
 ```bash
-cd ~/projects/CodeMiner/CodeMiner
+cd ~/projects/CodeNib/CodeNib
 bash scripts/start_web.sh
 ```
 
@@ -147,7 +132,7 @@ starts the FastAPI backend on port 8000 pointed at your LLM server.
 ### Terminal 3 — Frontend (on main machine)
 
 ```bash
-cd ~/projects/CodeMiner/CodeMiner/web
+cd ~/projects/CodeNib/CodeNib/web
 npm run dev
 ```
 
@@ -155,15 +140,18 @@ Opens at **http://localhost:3000**.
 
 ---
 
-## Step 4 — Generate the wiki
+## Step 4 — Load or generate a page
 
 1. Open http://localhost:3000
 2. Click on your repo
-3. Click **Refresh this wiki**
-4. Wait ~30–60 seconds — the LLM generates the outline and pages
+3. Select a page
+4. On its first request, wait while the backend generates and caches it
 
-Wiki pages are cached in `.codeminer_qa/wiki_cache/` so subsequent loads are instant.
-To regenerate, delete that directory.
+Wiki pages are cached under `<data_dir>/wiki_cache` (by default
+`.codenib_qa/wiki_cache`) so subsequent loads avoid another model call.
+**Refresh this wiki** only re-fetches the current tree and page; it does not
+invalidate that cache or force generation. To regenerate, stop the backend,
+delete the `wiki_cache` directory, and start the backend again.
 
 ---
 
@@ -175,20 +163,25 @@ To regenerate, delete that directory.
 | `ContextWindowExceededError` | LLM server started without `--n_ctx 8192`. The start script sets this automatically. |
 | `Connection refused` on port 8080 | LLM server not running, or firewall blocking the GPU node port. Check Terminal 1. |
 | Wiki says "Couldn't load this page" | Check backend terminal for `WARNING outline generation failed`. Usually an LLM connectivity issue. |
-| `repos: 0` at `/api/health` | `qa_registry.json` missing or wrong path. Check `.codeminer_qa/qa_registry.json`. |
+| `repos: 0` at `/api/health` | `qa_registry.json` missing or wrong path. Check `.codenib_qa/qa_registry.json`. |
 | Backend stuck on "Loading repositories…" | Index not built. Run Step 1 again. |
-| Blank wiki after "Refresh" | Wiki cached from a failed run. Delete `.codeminer_qa/wiki_cache/` and retry. |
+| Wiki still shows degraded text after fixing the model | Stop the backend, remove `<data_dir>/wiki_cache`, and restart it so both in-memory and on-disk results are cleared. |
 
 ---
 
 ## Running over SSH
 
-If accessing from a remote machine, forward both ports — the browser calls the
-backend directly:
+With the default or another loopback API configuration, forward port 3000
+only:
 
 ```bash
-ssh -L 3000:localhost:3000 -L 8000:localhost:8000 <main-machine>
+ssh -L 3000:localhost:3000 <main-machine>
 ```
+
+The browser talks same-origin to the Vite dev server, which proxies
+`/api/*` server-side to the FastAPI backend at `CODENIB_API_BASE` (default
+`http://127.0.0.1:8000`; see `web/vite.config.ts`) — port 8000 does not need to
+be forwarded.
 
 If the LLM server is on a different node than the backend, only the backend
 needs to reach port 8080 on the GPU node — the browser never talks to port 8080

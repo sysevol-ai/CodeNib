@@ -83,13 +83,13 @@ symbol's code changes (mirrors the `EmbeddingsCache` content-hash idea).
 The whole feature is gated by a config flag, **default off** — mirrors the
 existing `rerank_strategy` / `wiki_agent` pattern in `QAConfig`.
 
-**`codeminer/web/config.py` — `QAConfig`:**
+**`codenib/web/config.py` — `QAConfig`:**
 ```python
 edge_labels: bool = False                 # master on/off switch
 edge_label_model: Optional[str] = None    # optional cheaper model; None → config.model
 ```
 `load_config()` reads `edge_labels` / `edge_label_model` from the YAML, with an
-env override `CODEMINER_EDGE_LABELS=1` (same shape as `CODEMINER_DEMO_MODEL`).
+env override `CODENIB_EDGE_LABELS=1` (same shape as `CODENIB_DEMO_MODEL`).
 
 **`qa_config.yaml` (documented, commented default):**
 ```yaml
@@ -115,7 +115,7 @@ change — same ergonomics as the `rerank_strategy` toggle.
 
 ## Backend
 
-### New module: `codeminer/web/edge_label.py`
+### New module: `codenib/web/edge_label.py`
 
 ```python
 class EdgeLabeler:
@@ -137,7 +137,7 @@ class EdgeLabeler:
   `_read_cache`/`_write_cache` shape from `agent_wiki.py:110-128`. Per-repo scoping
   via `instance_id@commit` in the filename (like `AgentWiki._key`).
 - **Model:** `config.model` threaded in exactly like `AgentWiki` (`app.py:93`).
-  Optional cheaper override env `CODEMINER_EDGE_MODEL` (short calls — a mini model
+  Optional cheaper override env `CODENIB_EDGE_MODEL` (short calls — a mini model
   is plenty).
 - **LLM call:** mirror `narrator.py:127-137` (direct `litellm.completion`, one
   message, small `max_tokens`, `temperature=0`, `_no_thinking_kwargs`, try/except).
@@ -234,11 +234,11 @@ async def edge_label(repo_id: str, req: EdgeLabelRequest):
 
 | File | Change |
 |------|--------|
-| `codeminer/web/edge_label.py` | **new** — `EdgeLabeler` + cache |
-| `codeminer/web/config.py` | `edge_labels` / `edge_label_model` in `QAConfig` + `load_config` + env override |
+| `codenib/web/edge_label.py` | **new** — `EdgeLabeler` + cache |
+| `codenib/web/config.py` | `edge_labels` / `edge_label_model` in `QAConfig` + `load_config` + env override |
 | `qa_config.yaml` | documented `edge_labels: false` default |
-| `codeminer/web/app.py` | new `POST /api/repos/{id}/edge-label` (gated) + `_edge_labeler()` helper |
-| `codeminer/web/schemas.py` | `EdgeLabelRequest` model; `edge_labels: bool` on `RepoInfo` |
+| `codenib/web/app.py` | new `POST /api/repos/{id}/edge-label` (gated) + `_edge_labeler()` helper |
+| `codenib/web/schemas.py` | `EdgeLabelRequest` model; `edge_labels: bool` on `RepoInfo` |
 | `web/lib/api.ts` | `label?` on `CodemapEdge`; `fetchEdgeLabel()` |
 | `web/components/CodeGraph.tsx` | lazy fetch on edge tap; show in SourcePeek/bar |
 | `web/components/GraphView.tsx` | render label in `SourcePeek` edge panel |
@@ -253,8 +253,8 @@ hover-fire) avoids bursts. A dense graph never triggers mass generation.
 ## Key references (verified)
 
 - Cytoscape edges + handlers: `web/components/CodeGraph.tsx:420-479`, `:1519-1552`, `:1639-1647`
-- Edge dict construction: `codeminer/web/codemap.py:398`, `:665`; enrich `:251`
-- Endpoints: `codeminer/web/app.py:131` (wiki graph), `:166` (codemap)
+- Edge dict construction: `codenib/web/codemap.py:398`, `:665`; enrich `:251`
+- Endpoints: `codenib/web/app.py:131` (wiki graph), `:166` (codemap)
 - Symbol code: `CodeGraph.get_node_content` `code_graph.py:915`; `WikiBuilder.source` `builder.py:523`
 - Edge anchors/metadata: `traverse_graph.py:88-97`; edge attrs `code_graph.py:404-407`
 - LLM call pattern: `narrator.py:127-137`; `LiteLLMChat` `litellm_chat.py:213-324`

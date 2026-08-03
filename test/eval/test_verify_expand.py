@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,8 +6,8 @@
 
 import igraph
 
-from codeminer.agent.agent_types import AgentResult
-from codeminer.eval.agent_runner.verify_expand import (
+from codenib.agent.agent_types import AgentResult
+from codenib.eval.agent_runner.verify_expand import (
     GraphNav,
     expansion_seeds_from_candidates,
     graph_verify,

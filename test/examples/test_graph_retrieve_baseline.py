@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -18,8 +18,8 @@ would land silently. The helpers covered here are pure functions:
   unexpected labels into the wrong bucket — these now log a warning so
   future leaks are visible.
 
-The runner script is not part of the ``codeminer`` package (see
-``pyproject.toml``: ``include = ["codeminer*"]``), so we load it via
+The runner script is not part of the ``codenib`` package (see
+``pyproject.toml``: ``include = ["codenib*"]``), so we load it via
 ``importlib.util`` rather than polluting ``sys.path``.
 """
 
@@ -639,7 +639,7 @@ def test_map_language_group_unknown_uses_fallback(runner):
 
 
 def test_resolve_instance_languages_prefers_language_group(runner):
-    """codeminer_base instances carry language_group; it wins over the CLI."""
+    """codenib_base instances carry language_group; it wins over the CLI."""
     inst = {"language_group": "rust"}
     assert runner._resolve_instance_languages(inst, ["python"]) == ["rust"]
 
@@ -659,7 +659,7 @@ def _ds_args(dataset):
         dataset=dataset,
         split="test",
         filter_instance="^(x)$",
-        repo_cache_dir="/tmp/codeminer-repos",
+        repo_cache_dir="/tmp/codenib-repos",
     )
 
 
@@ -674,7 +674,7 @@ def test_build_dataset_swebench_lite(runner, monkeypatch):
     out = runner._build_dataset(_ds_args("swebench_lite"))
     assert captured["dataset"] == "princeton-nlp/SWE-bench_Lite"
     assert captured["filter_instance"] == "^(x)$"
-    assert captured["repo_root"] == "/tmp/codeminer-repos"
+    assert captured["repo_root"] == "/tmp/codenib-repos"
     assert out.split == "test"
 
 
@@ -687,15 +687,15 @@ def test_build_dataset_locbench(runner, monkeypatch):
     assert captured["dataset"] == "czlll/Loc-Bench_V1"
 
 
-def test_build_dataset_codeminer_base(runner, monkeypatch):
-    """codeminer_base is imported lazily inside the factory; patch the source
+def test_build_dataset_codenib_base(runner, monkeypatch):
+    """codenib_base is imported lazily inside the factory; patch the source
     module so dispatch is verified without importing/loading the HF dataset."""
     captured = {}
     monkeypatch.setattr(
-        "codeminer.dataset.codeminer_base.CodeMinerBaseDataset",
+        "codenib.dataset.codenib_base.CodeNibBaseDataset",
         lambda **kw: captured.update(kw) or SimpleNamespace(),
     )
-    runner._build_dataset(_ds_args("codeminer_base"))
+    runner._build_dataset(_ds_args("codenib_base"))
     assert captured["dataset"] == "fishmingyu/codeminer-base-dataset"
     assert captured["filter_instance"] == "^(x)$"
 

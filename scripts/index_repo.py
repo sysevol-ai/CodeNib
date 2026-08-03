@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 """Build BM25 index for a repo and register it in qa_registry.json.
 
@@ -15,56 +15,21 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO, stream=sys.stdout, format="%(levelname)-8s %(message)s"
 )
 
-from codeminer.compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.index_builders import (
+from codenib.cli import CLIError
+from codenib.cli import detect_languages as detect_supported_languages
+from codenib.cli import normalize_languages as normalize_supported_languages
+from codenib.compiler import IndexCompiler, IndexCompilerConfig
+from codenib.compiler.index_builders import (
     IndexBuilderRegistry,
     register_default_builders,
 )
-
-_LANGUAGE_ALIASES = {
-    "python": ["python"],
-    "py": ["python"],
-    "go": ["go"],
-    "golang": ["go"],
-    "rust": ["rust"],
-    "rs": ["rust"],
-    "javascript": ["javascript"],
-    "js": ["javascript"],
-    "typescript": ["typescript"],
-    "ts": ["typescript"],
-    "cpp": ["cpp"],
-    "c++": ["cpp"],
-    "cxx": ["cpp"],
-    "cc": ["cpp"],
-    "c": ["cpp"],
-}
-
-_EXT_LANGS = {
-    ".py": ["python"],
-    ".pyi": ["python"],
-    ".pyx": ["python"],
-    ".go": ["go"],
-    ".rs": ["rust"],
-    ".js": ["javascript"],
-    ".jsx": ["javascript"],
-    ".mjs": ["javascript"],
-    ".ts": ["typescript"],
-    ".tsx": ["typescript"],
-    ".mts": ["typescript"],
-    ".cts": ["typescript"],
-    ".cpp": ["cpp"],
-    ".cc": ["cpp"],
-    ".cxx": ["cpp"],
-    ".c": ["cpp"],
-    ".h": ["cpp"],
-    ".hpp": ["cpp"],
-    ".hxx": ["cpp"],
-}
+from codenib.paths import QA_DATA_DIRNAME, repo_index_dir
 
 
 def get_base_commit(repo_dir: str) -> str:
@@ -81,37 +46,15 @@ def get_base_commit(repo_dir: str) -> str:
         return ""
 
 
-def _dedupe(languages: list[str]) -> list[str]:
-    seen = set()
-    result = []
-    for language in languages:
-        if language not in seen:
-            seen.add(language)
-            result.append(language)
-    return result
-
-
 def normalize_languages(value: str) -> list[str]:
-    languages: list[str] = []
-    for token in re.split(r"[,/]", value or ""):
-        token = token.strip().lower()
-        if not token:
-            continue
-        languages.extend(_LANGUAGE_ALIASES.get(token, [token]))
-    return _dedupe(languages) or ["python"]
+    """Normalize overrides through the project-wide language registry."""
+    values = [part for part in re.split(r"[,/]", value or "") if part.strip()]
+    return normalize_supported_languages(values)
 
 
 def detect_languages(repo_dir: str) -> list[str]:
-    counts: dict[str, int] = {}
-    for root, _, files in os.walk(repo_dir):
-        if "/.git" in root or "/.codeminer" in root:
-            continue
-        for f in files:
-            for lang in _EXT_LANGS.get(os.path.splitext(f)[1].lower(), []):
-                counts[lang] = counts.get(lang, 0) + 1
-    if not counts:
-        return ["python"]
-    return sorted(counts, key=lambda lang: (-counts[lang], lang))
+    """Detect every source language registered with the CodeNib chunker."""
+    return detect_supported_languages(repo_dir)
 
 
 def update_registry(registry_path: str, entry: dict) -> None:
@@ -127,7 +70,7 @@ def update_registry(registry_path: str, entry: dict) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Index a repo for CodeMiner web demo")
+    parser = argparse.ArgumentParser(description="Index a repo for CodeNib web demo")
     parser.add_argument("repo_dir", help="Absolute path to the repo to index")
     parser.add_argument(
         "--language",
@@ -138,8 +81,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--registry",
-        default=".codeminer_qa/qa_registry.json",
-        help="Path to qa_registry.json (default: .codeminer_qa/qa_registry.json)",
+        default=str(Path(QA_DATA_DIRNAME) / "qa_registry.json"),
+        help="Path to qa_registry.json (default: .codenib_qa/qa_registry.json)",
     )
     args = parser.parse_args()
 
@@ -148,21 +91,29 @@ def main() -> None:
         print(f"ERROR: Directory not found: {repo_dir}")
         sys.exit(1)
 
-    languages = (
-        normalize_languages(args.language)
-        if args.language
-        else detect_languages(repo_dir)
-    )
+    try:
+        languages = (
+            normalize_languages(args.language)
+            if args.language
+            else detect_languages(repo_dir)
+        )
+    except CLIError as exc:
+        parser.error(str(exc))
+    if not languages:
+        parser.error(
+            "no supported source language was detected; pass --language explicitly"
+        )
     language = "/".join(languages)
     print(f"Target languages: {', '.join(languages)}")
 
     # Build BM25 index
     reg = IndexBuilderRegistry()
     register_default_builders(reg, languages=languages)
+    cache_dir = str(repo_index_dir(repo_dir))
     manifest = IndexCompiler(
         reg,
         IndexCompilerConfig(index_types=["bm25"], languages=languages),
-    ).compile_repo(repo_dir)
+    ).compile_repo(repo_dir, cache_dir=cache_dir)
 
     print("\nIndexes built:")
     for name, idx in manifest.indexes.items():
@@ -186,7 +137,7 @@ def main() -> None:
     github_repo = f"{owner}/{repo}"
     instance_id = f"{owner}__{repo}"
     base_commit = get_base_commit(repo_dir)
-    manifest_path = os.path.join(repo_dir, ".codeminer_cache", "repo_manifest.json")
+    manifest_path = str(Path(cache_dir) / "repo_manifest.json")
 
     entry = {
         "instance_id": instance_id,

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -17,11 +17,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from codeminer.graph.backend_alignment import (
+from codenib.graph.backend_alignment import (
     BackendAlignmentTolerances,
     compare_backend_graphs,
 )
-from codeminer.graph.code_graph import CodeGraph
+from codenib.graph.code_graph import CodeGraph
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:

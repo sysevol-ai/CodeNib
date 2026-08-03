@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import { AppLink } from "@/lib/router";
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -59,7 +59,7 @@ function ShareButton() {
         <circle cx="18" cy="19" r="3" />
         <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
       </svg>
-      {done ? "Copied" : "Share"}
+      <span className="share-label">{done ? "Copied" : "Share"}</span>
     </button>
   );
 }
@@ -73,12 +73,20 @@ export default function Header({
 }) {
   return (
     <header className="site-header">
-      <Link href="/" className="brand">
-        <span className="brand-mark">◆</span> CodeMiner Wiki
-      </Link>
+      <AppLink href="/" className="brand">
+        <img className="brand-mark" src="/codenib-icon.svg" alt="" /> CodeNib Wiki
+      </AppLink>
       {center}
       <div className="header-right">
-        <span className="header-note">AI docs you can talk to</span>
+        <span className="header-note">Source-linked repository docs</span>
+        <a
+          className="header-link"
+          href="https://docs.codenib.ai"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Docs
+        </a>
         {actions}
         <ShareButton />
         <ThemeToggle />

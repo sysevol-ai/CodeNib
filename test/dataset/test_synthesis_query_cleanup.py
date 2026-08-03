@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -16,8 +16,8 @@ These lock in the pure-function behaviours behind the v2 dataset quality pass:
   anchors; without it every flagged mixed row was skipped, not regenerated.
 """
 
-from codeminer.dataset.synthesize.query_curator import QueryCurator
-from codeminer.utils import is_non_source_file
+from codenib.dataset.synthesize.query_curator import QueryCurator
+from codenib.utils import is_non_source_file
 from scripts._post_fix import _build_anchor_content_lookups, _get_anchor
 
 # ---------------------------------------------------------------------------

@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.incremental.patcher_ts import PatcherTS
-from codeminer.types import NODE_TYPE_FIELD
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.incremental.patcher_ts import PatcherTS
+from codenib.types import NODE_TYPE_FIELD
 
 
 def test_location_matcher_falls_back_to_vertex_line_attributes(tmp_path):

@@ -1,32 +1,32 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for tool schema generation (codeminer.agent.tool_schema)."""
+"""Tests for tool schema generation (codenib.agent.tool_schema)."""
 
 from __future__ import annotations
 
 import pytest
 
-from codeminer.agent.skills.core import (
+from codenib.agent.skills.core import (
     Cost,
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.tool_schema import (
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.agent.tool_schema import (
     registry_to_tools,
     skill_to_tool_schema,
     tool_to_schema,
     tools_to_schemas,
 )
-from codeminer.agent.tools.defaults import (
+from codenib.agent.tools.defaults import (
     ensure_default_tools_registered,
     get_default_tool_specs,
 )
-from codeminer.agent.tools.spec import ToolRegistry
+from codenib.agent.tools.spec import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Fixtures

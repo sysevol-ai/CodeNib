@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.eval.agent_runner.contexts import (
+from codenib.agent.skills.loader import SkillLoader
+from codenib.eval.agent_runner.contexts import (
     AgentSkillContextSpec,
     default_agent_skills_dir,
     load_agent_skill_contexts,
@@ -80,13 +80,14 @@ def test_load_agent_skill_contexts_loads_metadata_builds_then_reloads(
 
     monkeypatch.setattr(SkillLoader, "load_all", fake_load_all)
     monkeypatch.setattr(
-        "codeminer.compiler.build_skill_contexts",
+        "codenib.compiler.build_skill_contexts",
         fake_build_skill_contexts,
     )
 
     spec = AgentSkillContextSpec(
         skill_ids=["embedding_search", "bm25_search"],
         embedding_model="org/embed-small",
+        embedding_revision="model-commit",
         embedding_dimension=256,
         top_k=11,
         languages=["python", "rust"],
@@ -115,6 +116,7 @@ def test_load_agent_skill_contexts_loads_metadata_builds_then_reloads(
         "cache_dir": str(tmp_path / "cache"),
         "skills_dir": str(skills_dir),
         "embedding_model": "org/embed-small",
+        "embedding_revision": "model-commit",
         "embedding_dimension": 256,
         "default_top_k": 11,
         "default_level": "l1",

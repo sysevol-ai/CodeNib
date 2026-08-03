@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+skill_id: codenib_context
+skill_type: custom
+operator: compose.context
+cost: medium
+defaults:
+  seeds: 5
+  max_results: 30
+inputs:
+  - name: query
+    type: str
+    required: true
+    description: >-
+      The task / question / area to map (e.g. the problem statement). One call
+      returns the relevant entry-point symbols plus their callers and callees.
+  - name: seeds
+    type: int
+    required: false
+    default: 5
+    description: How many entry-point symbols to expand from.
+  - name: max_results
+    type: int
+    required: false
+    default: 30
+    description: Cap on returned symbols (budget).
+outputs:
+  type: List[QueriedNode]
+  description: >-
+    Compact, deduped set — entry-point symbols (from search) plus their
+    callers/callees (from the call graph), each with name, file:line, kind, and
+    relation. No code bodies; read the ones you want to inspect.
+index_requirements:
+  - type: bm25
+    max_age_seconds: 3600
+    scope: current_repo
+  - type: vector
+    max_age_seconds: 3600
+    scope: current_repo
+  - type: symbol_graph
+    max_age_seconds: 3600
+    scope: current_repo
+resources: []

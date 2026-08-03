@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,12 +6,12 @@
 
 from __future__ import annotations
 
-from codeminer.agent.route_context import fingerprint_lsp_route_nodes
-from codeminer.eval.agent_runner.lsp_latency import (
+from codenib.agent.route_context import fingerprint_lsp_route_nodes
+from codenib.eval.agent_runner.lsp_latency import (
     render_lsp_route_latency_markdown,
     replay_lsp_route_latency,
 )
-from codeminer.types import QueriedNode
+from codenib.types import QueriedNode
 
 
 def _node():

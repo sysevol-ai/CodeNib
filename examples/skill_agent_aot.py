@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """End-to-end demo: AoT (ahead-of-time) compile + agent query.
 
 Two-phase architecture using the high-level public API from
-``codeminer.agent``:
+``codenib.agent``:
 
     Phase 1 — ``compile_repo(...)``                  (run once per repo)
               writes BM25 / vector / symbol-graph artifacts plus
@@ -28,7 +28,7 @@ Usage::
     # Phase 1 only (no LLM credentials needed; just builds + prints):
     python examples/skill_agent_aot.py --no-llm
 
-    # Phase 1 + Phase 2 against the codeminer repo itself, using Vertex AI:
+    # Phase 1 + Phase 2 against the codenib repo itself, using Vertex AI:
     export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json
     python examples/skill_agent_aot.py \\
         --repo . \\
@@ -49,6 +49,12 @@ import os
 import sys
 from pathlib import Path
 from typing import Sequence
+
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from codenib.paths import repo_index_dir
 
 # ---------------------------------------------------------------------------
 # Pretty-printers — borrowed from examples/skill_agent.py:182 so the
@@ -102,7 +108,7 @@ def phase_one_compile(
     cache_dir: str,
 ):
     """Build indexes once and write ``repo_manifest.json``."""
-    from codeminer.agent import compile_repo
+    from codenib.agent import compile_repo
 
     print(f"\n[Phase 1] Compiling indexes for {repo_path}")
     print(f"  index_types: {list(index_types)}")
@@ -134,7 +140,7 @@ def phase_two_query(
     max_turns: int,
 ):
     """Run one query() call against the manifest. No rebuild."""
-    from codeminer.agent import CodeMinerAgentOptions, query
+    from codenib.agent import CodeNibAgentOptions, query
 
     # A coherent compile_table demonstrating CAR per-query narrowing:
     # any scenario this user might land in collapses to bm25_search.
@@ -151,7 +157,7 @@ def phase_two_query(
 
     result = query(
         prompt,
-        options=CodeMinerAgentOptions(
+        options=CodeNibAgentOptions(
             manifest=manifest,
             allowed_skills=list(allowed_skills),
             compile_table=compile_table,
@@ -170,7 +176,7 @@ def phase_two_query(
 
 
 def _default_repo() -> str:
-    """Default to the codeminer repo itself so the demo runs self-contained."""
+    """Default to the codenib repo itself so the demo runs self-contained."""
     return str(Path(__file__).resolve().parent.parent)
 
 
@@ -182,7 +188,7 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
     p.add_argument(
         "--repo",
         default=_default_repo(),
-        help="Path to the repo to compile + query (default: the codeminer repo).",
+        help="Path to the repo to compile + query (default: the codenib repo).",
     )
     p.add_argument(
         "--query",
@@ -193,7 +199,7 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
         "--cache-dir",
         default=None,
         help="Where to write the manifest + index artifacts. "
-        "Defaults to <repo>/.codeminer_cache.",
+        "Defaults to <repo>/.codenib_cache.",
     )
     p.add_argument(
         "--index-types",
@@ -242,7 +248,7 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
 def main(argv: list | None = None) -> int:
     args = parse_args(argv)
 
-    cache_dir = args.cache_dir or str(Path(args.repo).resolve() / ".codeminer_cache")
+    cache_dir = args.cache_dir or str(repo_index_dir(args.repo))
 
     # Phase 1 always runs.
     manifest = phase_one_compile(

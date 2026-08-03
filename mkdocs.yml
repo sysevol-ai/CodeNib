@@ -1,14 +1,34 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-site_name: CodeMiner
-site_description: Source-linked code intelligence for LLM tools
-repo_url: https://github.com/sysevol-ai/CodeMiner
-repo_name: sysevol-ai/CodeMiner
+site_name: CodeNib
+site_description: A multi-view data system for serving repository context to coding agents
+site_url: https://docs.codenib.ai/
+repo_url: https://github.com/sysevol-ai/CodeNib
+repo_name: sysevol-ai/CodeNib
+
+# Keep engineering plans, experiment logs, and publisher-only procedures in the
+# repository without publishing them on docs.codenib.ai. These patterns apply
+# to every generated artifact, including Markdown, JSON, images, search, and the
+# sitemap.
+exclude_docs: |
+  experiments/
+  product_roadmap.md
+  agent_runner_architecture_goal.md
+  agent_compile_design.md
+  scip_multilanguage_roadmap.md
+  upload_dataset_to_huggingface.md
+  diagnose_query_leak.md
+  codenib_namespace_migration.md
 
 theme:
   name: material
+  font: false
+  logo: assets/images/codenib-icon.svg
+  # Use a versioned PNG so browsers do not retain the favicon served before
+  # the GitHub Pages cutover. docs/favicon.ico remains the legacy fallback.
+  favicon: assets/images/codenib-favicon-v2.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -26,8 +46,13 @@ theme:
         name: Switch to light mode
   features:
     - navigation.instant
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
-    - navigation.expand
+    # `prune` replaces `expand`, which the theme documents as incompatible.
+    # Material inlines the generated API tree into every page, so keep the
+    # navigation compact instead of expanding every API entry by default.
+    - navigation.prune
     - navigation.indexes
     - navigation.top
     - search.suggest
@@ -37,8 +62,87 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+extra_css:
+  - assets/stylesheets/extra.css
+
 plugins:
   - search
+  - api-autonav:
+      modules:
+        - codenib
+      nav_section_title: API Reference
+      api_root_uri: api
+      exclude_private: true
+      # Internal tooling also contains implicit namespace packages. Skip them
+      # without changing runtime package boundaries merely for documentation.
+      on_implicit_namespace_package: skip
+      exclude:
+        # api-autonav 0.4 accepts directory roots rather than individual Python
+        # files. Enforce an exact, positive public-module allowlist by rejecting
+        # every descendant that is not named here. This also keeps future
+        # internal modules private by default.
+        - >-
+          re:(?x)^codenib\.
+          (?!
+            (?:
+              agent
+              | agent\.skills
+              | agent\.skills\.context
+              | agent\.tools
+              | code_chunking
+              | compiler
+              | graph
+              | index
+              | index\.embedding
+              | integrations
+              | integrations\.(?:locagent|orcaloca)
+              | languages
+              | llm
+              | mcp
+              | model
+              | ops
+              | ops\.(?:expand|filter|rerank|retrieve|transform)
+              | sandbox
+              | scip_interface
+              | search
+              | types
+              | web\.local
+              | wiki
+            )$
+          ).*$
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - .
+          options:
+            docstring_style: google
+            docstring_section_style: table
+            # Types come from annotations (94% of public signatures are
+            # annotated), so a missing docstring type is not a defect.
+            # Reject stale or misspelled docstring parameters that do not exist
+            # in the signature. This does not check for missing parameter docs.
+            docstring_options:
+              ignore_init_summary: true
+              warn_missing_types: false
+              warn_unknown_params: true
+            filters: public
+            members_order: source
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            show_root_heading: true
+            show_root_full_path: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_source: true
+            show_bases: true
+            show_labels: true
+            summary: true
+            unwrap_annotated: true
+            modernize_annotations: true
+            line_length: 88
 
 markdown_extensions:
   - admonition
@@ -58,34 +162,45 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started:
-      - MCP Server: mcp.md
-      - Web Demo: web_demo.md
+  - Get Started:
+      - get-started/index.md
+      - Quickstart: quickstart.md
+      - Web UI: web_demo.md
       - Running Locally: running-locally.md
       - Language Capabilities: language_capabilities.md
-  - Core Concepts:
-      - SCIP Index: scip_index.md
-      - Graph Range Query: graph_query.md
-      - Regex Index: regex_index.md
-      - Graph Cache: graph_cache_usage.md
-      - Incremental Graph:
-          - Overview: incremental_graph/index.md
-          - Interactive Demo: incremental_graph/interactive.md
-      - Core C++ Backend: core_cpp.md
   - Guides:
-      - SWE-bench Collection: collect_swebench.md
-      - Synthesis Pipeline: synthesis_pipeline.md
-      - Upload to HuggingFace: upload_dataset_to_huggingface.md
-      - Diagnose Query Leak: diagnose_query_leak.md
-      - Contributing a Language: contributing-a-language.md
-  - Agent And Retrieval:
+      - guides/index.md
+      - MCP Server: mcp.md
       - Agent Skills: agent_skills.md
-      - Agent Runner Architecture Goal: agent_runner_architecture_goal.md
-      - Agent Compile (Design): agent_compile_design.md
-      - GT Locator: gt_locator.md
-  - Operations:
-      - CI/CD: ci_cd.md
-      - SCIP Multi-Language Roadmap: scip_multilanguage_roadmap.md
-  - Experiments:
-      - Agent Compile Sweep: experiments/agent_compile.md
-      - Compact Pre-load: experiments/compact_preload.md
+      - Agent Integrations: agent_integrations.md
+      - Isolated Agent Execution: sandbox.md
+      - RAG Ops And Planner: rag_ops.md
+  - Concepts:
+      - concepts/index.md
+      - Indexes:
+          - SCIP Index: scip_index.md
+          - Regex Index: regex_index.md
+      - Code Graph:
+          - Hierarchy Model: codegraph_hierarchy_model.md
+          - Range Query: graph_query.md
+          - Graph Cache: graph_cache_usage.md
+          - Incremental Graph:
+              - Overview: incremental_graph/index.md
+              - Interactive Demo: incremental_graph/interactive.md
+      - Acceleration:
+          - Core C++ Backend: core_cpp.md
+  - API Reference
+  - Development:
+      - development/index.md
+      - Contributing:
+          - Contributing a Language: contributing-a-language.md
+          - CI/CD: ci_cd.md
+      - Project Maintenance:
+          - Releasing: releasing.md
+          - Naming: branding.md
+      - Benchmarks & Evaluation:
+          - evaluation/index.md
+          - SWE-bench Collection: collect_swebench.md
+          - Synthesis Pipeline: synthesis_pipeline.md
+          - GT Locator: gt_locator.md
+          - Evaluation Artifact Bundles: evaluation_artifacts.md

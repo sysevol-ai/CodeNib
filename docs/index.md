@@ -1,84 +1,58 @@
+---
+hide:
+  - navigation
+---
+
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeMiner
+# CodeNib
 
-CodeMiner is a source-linked indexing and retrieval layer for code tools. It
-builds repository manifests, search indexes, and SCIP/LSP-backed symbol graphs,
-then serves them through MCP, a web UI, and optional agent/eval harnesses.
+CodeNib is a multi-view data system for serving repository context to coding
+agents. It compiles repositories into reusable, source-linked lexical, semantic,
+structural, and static-navigation views, then serves the same manifest through
+MCP, Python APIs, the local Wiki, and evaluation harnesses.
 
 Language support varies by surface. Start with the generated
 [Language Capabilities](language_capabilities.md) matrix when you need to know
 which languages support chunking, graph indexing, incremental patching, or C++
 core decoder parity.
 
-## Start Here
+## Choose a path
 
-| Goal | Read |
-|------|------|
-| Build an index and expose it to an agent | [MCP Server](mcp.md) |
-| Browse indexed repos in the DeepWiki-style UI | [Web Demo](web_demo.md) |
-| Run without cloud-hosted LLM APIs | [Running Locally](running-locally.md) |
-| Understand language support and gaps | [Language Capabilities](language_capabilities.md) |
-| Add or promote a language backend | [Contributing a Language](contributing-a-language.md) |
-
-## Core Surfaces
-
-| Surface | Description |
-|---------|-------------|
-| [Index and MCP](mcp.md) | Build manifests with `IndexCompiler`; serve BM25, semantic, regex, Zoekt, and dependency-subgraph tools over MCP |
-| [Web Demo](web_demo.md) | DeepWiki-style wiki + Ask site over indexed repos, backed by the same graph and search artifacts |
-| [Graph Range Query](graph_query.md) | LSP-aligned line-range and symbol queries with typed, source-linked results |
-| [Incremental Graph](incremental_graph/index.md) | Update a graph in place after a diff where the language backend supports it |
-| [SCIP Index](scip_index.md) | SCIP and language-server graph indexing details, cache levels, and backend behavior |
-| [Core C++ Backend](core_cpp.md) | libigraph-based decoder acceleration and parity boundaries |
-
-## Developer Guides
-
-- [CI/CD](ci_cd.md) — local and remote test tiers, including serial, graph-consumer, core, and slow jobs
-- [Agent Skills](agent_skills.md) — optional retrieval/rerank/trace skills built on top of the index substrate
-- [Collecting SWE-bench Instances](collect_swebench.md) — sample representative instances across languages
-- [Synthesis Pipeline](synthesis_pipeline.md) — synthesize traversal/behavior/multiply queries and build the CodeMiner dataset
-- [Uploading to HuggingFace](upload_dataset_to_huggingface.md) — build and publish the dataset
-- [Diagnose Query Leak](diagnose_query_leak.md) — detect lexical/semantic leakage in synthesized queries
-
-## Research And Roadmaps
-
-These documents guide development decisions, but they are not required for the
-normal index -> retrieve/query -> serve path.
-
-- [SCIP Multi-Language Roadmap](scip_multilanguage_roadmap.md) — cold-start backend promotion, C++ acceleration gates, and long-running language work
-- [Agent Runner Architecture Goal](agent_runner_architecture_goal.md) — milestones and guardrails for extracting runner core from spike experiments
-- [Agent Compile Design](agent_compile_design.md) — historical design notes for scenario-gated agent skill selection
-- [Agent Compile Sweep](experiments/agent_compile.md) — experiment log and ablations for agent harness behavior
+| Goal | Section | Start with |
+|------|---------|------------|
+| Install CodeNib and explore a repository | [Get Started](get-started/index.md) | [Quickstart](quickstart.md) |
+| Serve repository context to coding agents | [Guides](guides/index.md) | [MCP Server](mcp.md) |
+| Understand indexes, graphs, and incremental updates | [Concepts](concepts/index.md) | [Incremental Graph](incremental_graph/index.md) |
+| Browse source-generated Python contracts | [API Reference](api/codenib/index.md) | `codenib` public surface |
+| Extend, test, release, or evaluate CodeNib | [Development](development/index.md) | [Contributing a Language](contributing-a-language.md) |
 
 ## Quick Start
 
 ```bash
-pip install -e ".[dev]"
+pip install codenib
+codenib wiki /path/to/repository
 ```
 
-Build a repository manifest with `IndexCompiler`; see [MCP Server](mcp.md) for
-the full example and index options.
+The default Wiki is deterministic, uses BM25, and needs no API key. CodeNib
+detects repository languages, writes a reusable manifest under
+`~/.codenib/repositories`, and opens the browser UI. This default `fast` profile
+leaves the target checkout unchanged. Read the
+[Quickstart](quickstart.md) for profiles and troubleshooting.
 
 ```bash
-codeminer-mcp /path/to/repo/.codeminer_cache/repo_manifest.json
-```
-
-For the browser UI:
-
-```bash
-make web-deps
-make web-start
+pip install "codenib[mcp]"
+codenib mcp /path/to/repository
 ```
 
 ## Serving Docs Locally
 
 ```bash
-pip install mkdocs-material
+pip install "codenib[dev]"
 mkdocs serve
 ```
 

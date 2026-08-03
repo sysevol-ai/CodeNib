@@ -1,9 +1,11 @@
 /* ---------------------------------------------------------------------------
-   CodeMiner Wiki — technical workspace theme.
+   CodeNib Wiki — technical workspace theme.
    Mostly-neutral surfaces with blue reserved for focus/selection semantics.
 --------------------------------------------------------------------------- */
 :root,
 [data-theme="light"] {
+  --font-geist-sans: system-ui;
+  --font-geist-mono: ui-monospace;
   --bg-page: #f8fafc;
   --bg-surface: #ffffff;
   --bg-subtle: #f1f5f9;
@@ -89,6 +91,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.route-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.route-loading img {
+  width: 22px;
+  height: 22px;
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
@@ -128,8 +144,8 @@ pre {
   color: var(--text);
 }
 .site-header .brand .brand-mark {
-  color: var(--text-secondary);
-  font-size: 17px;
+  height: 21px;
+  width: auto;
 }
 .site-header .header-right {
   margin-left: auto;
@@ -142,6 +158,15 @@ pre {
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
+}
+.site-header .header-link {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--text-secondary);
+  transition: color 0.15s;
+}
+.site-header .header-link:hover {
+  color: var(--text);
 }
 .btn-primary {
   display: inline-flex;
@@ -268,7 +293,10 @@ pre {
 
 .repo-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* minmax(0, 1fr), not 1fr: a track's default min-width is auto, so one card
+     holding an unbreakable string (a README that leaks a long sponsor URL)
+     widens its whole column and the three stop being equal. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   max-width: 1120px;
   width: 100%;
@@ -277,12 +305,12 @@ pre {
 }
 @media (max-width: 1024px) {
   .repo-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 680px) {
   .repo-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -316,6 +344,9 @@ pre {
   font-size: 13px;
   line-height: 1.45;
   color: var(--muted);
+  /* READMEs leak URLs and HTML attributes with no break opportunity; let them
+     wrap rather than push the card wider than its track. */
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -324,9 +355,13 @@ pre {
 .repo-card .repo-card-footer {
   margin-top: auto;
   padding-top: 12px;
+  /* reserve space for the absolutely-positioned go-arrow so the commit hash
+     never slides under it */
+  padding-right: 40px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -373,6 +408,7 @@ pre {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
 /* language tag */
@@ -383,6 +419,9 @@ pre {
   border: 1px solid var(--border-2);
   color: var(--muted);
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .landing .empty {
@@ -435,6 +474,26 @@ pre {
   }
   .wiki-onthispage {
     display: none;
+  }
+  .site-header {
+    gap: 10px;
+    padding-inline: 24px;
+  }
+  .site-header .brand {
+    white-space: nowrap;
+    font-size: 17px;
+  }
+  .site-header .header-note,
+  .breadcrumb .crumb-repo,
+  .breadcrumb .crumb-sep,
+  .breadcrumb .crumb-page {
+    display: none;
+  }
+  .breadcrumb .codegraph-launch {
+    margin-left: 0;
+  }
+  .site-header .header-right {
+    gap: 8px;
   }
 }
 @media (max-width: 820px) {
@@ -531,6 +590,56 @@ pre {
   padding-bottom: 14px;
   margin-bottom: 12px;
   border-bottom: 1px solid var(--border);
+}
+
+/* Commit selector: replaces the static "Last indexed" label when the repo has
+   a prebuilt commit window (scripts/build_commit_window.py). */
+.commit-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.commit-picker-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.commit-select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  /* Long subjects must not widen the rail. */
+  text-overflow: ellipsis;
+}
+
+/* Measured cost of reaching the selected commit. Sits beneath the select rather
+   than inside its options: native <select> options cannot be styled internally
+   in most browsers and truncate inconsistently across platforms. */
+.commit-evidence {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.commit-select:hover {
+  border-color: var(--accent, var(--fg));
+}
+
+.commit-select:focus-visible {
+  outline: 2px solid var(--accent, var(--fg));
+  outline-offset: 1px;
 }
 
 .toc-tree {
@@ -654,16 +763,21 @@ pre {
     overflow: hidden;
   }
   .breadcrumb .crumb-sep,
-  .breadcrumb .crumb-page,
+  .breadcrumb .crumb-page {
+    display: none;
+  }
   .breadcrumb .codegraph-launch {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    justify-content: center;
+    padding: 0;
+  }
+  .breadcrumb .codegraph-launch span {
     display: none;
   }
   .breadcrumb .crumb-repo {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: none;
   }
 }
 .wiki-meta {
@@ -725,7 +839,9 @@ pre {
 .onthispage-list a.active {
   background: var(--accent-soft);
   color: var(--accent);
-  font-weight: 600;
+  /* No weight change: bolding re-measures the text, so a long entry rewraps
+     onto a second line as it becomes active and the whole rail jumps while
+     the reader scrolls. The accent background and colour already mark it. */
 }
 .refresh-wiki {
   margin-top: 18px;
@@ -797,23 +913,30 @@ pre {
   padding: 2px 5px;
   font-size: 0.85em;
   color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 /* Inline citation chip: a cited symbol/file in prose; click scrolls the code pane. */
 .cite-chip {
+  /* A symbol is part of the sentence, not a control sitting in it. Border and
+     fill made every mention read as a chip and the prose read as a form; the
+     affordance now appears on hover instead. */
   display: inline;
-  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-  border-radius: 5px;
-  padding: 1px 4px;
-  margin: 0 1px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
   font: inherit;
   line-height: inherit;
   vertical-align: baseline;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .cite-chip:hover {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  border-color: var(--accent);
+  border-bottom-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .cite-chip > code {
   background: none;
@@ -827,15 +950,58 @@ pre {
   color: var(--muted);
   font-family: var(--font-geist-mono), ui-monospace, monospace;
 }
+.markdown .table-scroll {
+  width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+.markdown .table-cards {
+  display: none;
+}
 .markdown table {
   border-collapse: collapse;
-  margin: 12px 0;
+  margin: 0;
   width: 100%;
 }
 .markdown th,
 .markdown td {
   border: 1px solid var(--border);
   padding: 6px 12px;
+}
+@media (max-width: 680px) {
+  .markdown .table-scroll {
+    display: none;
+  }
+  .markdown .table-cards {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .markdown .table-card {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-2);
+  }
+  .markdown .table-card-field {
+    display: grid;
+    grid-template-columns: minmax(92px, 0.42fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 8px 10px;
+  }
+  .markdown .table-card-field + .table-card-field {
+    border-top: 1px solid var(--border);
+  }
+  .markdown .table-card-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .markdown .table-card-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }
 
 /* code blocks (header with language label + copy button) */
@@ -1152,6 +1318,9 @@ pre {
   padding-bottom: var(--askbar-h); /* clear the fixed ask bar */
   scroll-padding-bottom: var(--askbar-h);
 }
+.wiki-reading {
+  --askbar-h: 64px;
+}
 .askbar {
   position: fixed;
   /* Span only the center content column so the side rails stay uncovered. */
@@ -1166,6 +1335,37 @@ pre {
   border-top: 1px solid var(--border);
   pointer-events: none;
 }
+.askbar-collapsed {
+  left: auto;
+  right: var(--wiki-gutter);
+  width: auto;
+  padding: 0;
+  bottom: 18px;
+  border-top: 0;
+  background: transparent;
+}
+.askbar-trigger {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 15px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--accent);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.askbar-trigger:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 @media (max-width: 1180px) {
   .askbar {
     right: var(--wiki-gutter); /* right rail is hidden at this width */
@@ -1174,6 +1374,10 @@ pre {
 @media (max-width: 820px) {
   .askbar {
     left: var(--wiki-gutter); /* left rail collapses to an overlay */
+  }
+  .askbar-collapsed {
+    left: auto;
+    right: 12px;
   }
 }
 .askbar-inner {
@@ -1186,7 +1390,7 @@ pre {
   padding: 8px 8px 8px 16px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 8px;
 }
 .askbar-icon {
   color: var(--accent);
@@ -1194,10 +1398,28 @@ pre {
 }
 .askbar-input {
   flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   outline: none;
   font-size: 15px;
+  color: var(--text);
+}
+.askbar-close {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.askbar-close:hover {
+  background: var(--surface);
   color: var(--text);
 }
 .askbar-send {
@@ -1223,6 +1445,46 @@ pre {
 .askbar-kbd {
   opacity: 0.8;
   margin-left: 2px;
+}
+.header-ask {
+  display: none;
+}
+@media (max-width: 1180px) {
+  .header-ask {
+    display: inline-flex;
+  }
+  .askbar-collapsed {
+    display: none;
+  }
+}
+@media (max-width: 520px) {
+  .site-header .btn-primary {
+    width: 34px;
+    height: 34px;
+    justify-content: center;
+    padding: 0;
+  }
+  .site-header .share-label {
+    display: none;
+  }
+  .askbar-expanded {
+    left: 12px;
+    right: 12px;
+    padding: 10px 0;
+  }
+  .askbar-inner {
+    gap: 5px;
+    padding: 6px 6px 6px 11px;
+  }
+  .askbar-input {
+    font-size: 14px;
+  }
+  .askbar-send {
+    padding-inline: 12px;
+  }
+  .askbar-kbd {
+    display: none;
+  }
 }
 
 /* ===== Ask answer page ===== */
@@ -1292,6 +1554,147 @@ pre {
   /* bottom room so the last chips clear the fixed Ask bar */
   padding: 4px 0 96px;
 }
+.codemap-loading {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.codemap-unavailable {
+  min-height: min(68vh, 640px);
+  padding: clamp(48px, 9vh, 96px) clamp(20px, 7vw, 96px);
+  display: grid;
+  grid-template-columns: 52px minmax(260px, 520px) minmax(320px, 520px);
+  align-content: center;
+  justify-content: center;
+  gap: 18px 30px;
+}
+.codemap-unavailable-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.codemap-unavailable-icon svg {
+  width: 28px;
+  height: 28px;
+}
+.codemap-unavailable-copy {
+  align-self: center;
+}
+.codemap-unavailable-kicker {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.codemap-unavailable h2 {
+  margin: 5px 0 10px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+.codemap-unavailable p {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.codemap-setup {
+  align-self: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+.codemap-setup-head {
+  min-height: 38px;
+  padding: 7px 9px 7px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.codemap-setup-head button {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+}
+.codemap-setup-head button:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.codemap-setup-languages {
+  padding: 8px 13px;
+  display: grid;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.codemap-setup-language {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.codemap-setup-language strong,
+.codemap-setup-language span {
+  display: block;
+}
+.codemap-setup-language strong {
+  color: var(--text);
+  font-size: 12px;
+}
+.codemap-setup-language div > span {
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.codemap-setup-state {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.codemap-setup-state.ready {
+  background: #238636;
+}
+.codemap-setup-state.missing {
+  background: #d97706;
+}
+.codemap-setup-state.unsupported {
+  background: #8b949e;
+}
+.codemap-setup-hints {
+  margin: 0;
+  padding: 11px 16px 10px 31px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.codemap-setup-hints li + li {
+  margin-top: 4px;
+}
+.codemap-setup pre {
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.7;
+}
 .rail-graphnote p {
   margin: 0 0 8px;
   color: var(--muted);
@@ -1346,6 +1749,28 @@ pre {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.codemap-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 12px;
+  margin: 10px 0;
+  padding: 8px 10px;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12px;
+}
+.codemap-coverage-title {
+  font-weight: 700;
+}
+[data-theme="dark"] .codemap-coverage {
+  border-color: #9a5b2b;
+  background: #2a1b12;
+  color: #fdba74;
 }
 .codemap-nodes {
   display: flex;
@@ -1362,15 +1787,24 @@ pre {
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   cursor: pointer;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .codemap-chip:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
+.codemap-chip.is-derived {
+  border-style: dashed;
+  opacity: 0.64;
+}
 .codemap-chip.root {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+  border-style: solid;
+  opacity: 1;
 }
 
 /* High-level wiki system map: component cards first, code snippets on demand. */
@@ -1929,10 +2363,18 @@ pre {
   color: var(--accent);
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .codegraph-launch:hover {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--accent-border));
   box-shadow: none;
+}
+.codegraph-launch.unavailable {
+  border-color: var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
 }
 
 /* Full-screen graph-explorer modal (the single CodeGraph surface). */
@@ -1950,6 +2392,7 @@ pre {
   width: 94vw;
   height: 92vh;
   max-width: 1500px;
+  min-width: 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1965,6 +2408,17 @@ pre {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+.graph-modal-head > b,
+.graph-modal-head > [aria-hidden] {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.graph-modal-repo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .graph-modal-hint {
   margin-left: auto;
@@ -1984,6 +2438,7 @@ pre {
 .graph-modal-body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   padding: 12px 16px 16px;
 }
@@ -1994,6 +2449,129 @@ pre {
 .graph-modal-body .codegraph[data-mode="files"] .codegraph-canvas,
 .graph-modal-body .codegraph[data-mode="symbols"] .codegraph-canvas {
   height: min(74vh, 800px);
+}
+
+/* Source definition opened from an evidence-linked symbol in Wiki prose. */
+.source-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  padding: 5vh 4vw;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, #000 42%, transparent);
+}
+.source-modal {
+  width: min(900px, 92vw);
+  height: min(760px, 88vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.42);
+}
+.source-modal-head {
+  min-height: 72px;
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.source-modal-kicker {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.source-modal-title,
+.source-modal-location {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-modal-title {
+  font-size: 14px;
+  font-weight: 650;
+}
+.source-modal-location {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.source-modal-close {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+.source-modal-close:hover {
+  color: var(--text);
+}
+.source-modal-body {
+  flex: 1;
+  min-height: 0;
+}
+.source-modal .codepane-nav {
+  display: none;
+}
+@media (max-width: 900px) {
+  .codemap-unavailable {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+  .codemap-setup {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 600px) {
+  .graph-modal-scrim {
+    padding: 12px;
+  }
+  .graph-modal {
+    width: 100%;
+    height: calc(100dvh - 24px);
+    max-width: 100%;
+  }
+  .graph-modal-head {
+    min-width: 0;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+  .graph-modal-body {
+    padding: 10px;
+  }
+  .codemap-controls > * {
+    max-width: 100%;
+  }
+  .codemap-symbol {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+  .graph-modal-hint {
+    display: none;
+  }
+  .graph-modal-close {
+    margin-left: auto;
+  }
+  .source-modal-scrim {
+    padding: 12px;
+  }
+  .source-modal {
+    width: 100%;
+    height: 100%;
+  }
+  .source-modal-head {
+    min-height: 66px;
+  }
 }
 .codegraph-loading {
   display: grid;
@@ -2269,6 +2847,102 @@ pre {
   text-decoration: none;
 }
 
+/* Wiki page provenance and source-evidence ledger. */
+.page-provenance {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 2px 0 16px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.page-provenance.source-checked {
+  border-left-color: #2f855a;
+}
+.page-provenance.needs-review {
+  border-left-color: #d97706;
+}
+.provenance-state {
+  color: var(--text);
+  font-weight: 650;
+}
+.provenance-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provenance-model {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.evidence-ledger {
+  margin: 0 0 20px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.evidence-ledger > summary {
+  cursor: pointer;
+  padding: 10px 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.evidence-list {
+  border-top: 1px solid var(--border);
+}
+.evidence-row {
+  display: grid;
+  grid-template-columns: 34px minmax(120px, 0.7fr) minmax(180px, 1.3fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-decoration: none;
+  scroll-margin-top: calc(var(--top-h) + 12px);
+}
+.evidence-row:last-child {
+  border-bottom: 0;
+}
+a.evidence-row:hover {
+  color: var(--text);
+  background: var(--bg-muted);
+  text-decoration: none;
+}
+.evidence-row:target {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.evidence-id {
+  color: var(--accent);
+  font-weight: 650;
+}
+.evidence-symbol {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-location {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-route {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.evidence-row.relation {
+  grid-template-columns: 34px minmax(220px, 1fr) minmax(150px, 0.8fr);
+}
+
 /* Wiki page rendered as a view over the graph: its symbols' subsystem map. */
 .subsystem-map {
   margin: 6px 0 24px;
@@ -2327,6 +3001,14 @@ pre {
   font-weight: 500;
   padding: 2px 8px;
 }
+.subsystem-loading {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
 .callsite-close {
   width: 28px;
   height: 28px;
@@ -2366,6 +3048,16 @@ pre {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-height: calc(100vh - var(--top-h));
 }
+.ask-page .ask-codemap.empty {
+  grid-template-columns: minmax(0, 760px);
+  justify-content: center;
+  min-height: calc(100vh - var(--top-h) - var(--askbar-h));
+}
+.ask-page .ask-codemap.empty .ask-explain {
+  width: 100%;
+  border-right: 0;
+  padding-top: 64px;
+}
 .ask-explain {
   padding: 26px 30px 120px;
   border-right: 1px solid var(--border);
@@ -2375,6 +3067,18 @@ pre {
   font-size: 22px;
   line-height: 1.35;
   margin: 10px 0 18px;
+}
+.askbar-inline {
+  position: static;
+  width: 100%;
+  margin-top: 28px;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+.askbar-inline .askbar-inner {
+  width: 100%;
 }
 .ask-refs {
   margin-top: 24px;
@@ -2605,6 +3309,24 @@ pre {
   color: var(--text);
 }
 
+@media (max-width: 760px) {
+  .page-provenance {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .provenance-detail {
+    white-space: normal;
+  }
+  .evidence-row,
+  .evidence-row.relation {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .evidence-location,
+  .evidence-route {
+    grid-column: 2;
+  }
+}
+
 /* Code window header file path -> GitHub link */
 a.codepanel-name {
   text-decoration: none;
@@ -2763,4 +3485,361 @@ a.codepanel-name:hover {
   background: transparent;
   padding: 0;
   white-space: pre;
+}
+
+/* --- hierarchical drill-down map (P5) --------------------------------------
+   Nesting depth is an ordered quantity, so it is encoded as one hue stepping
+   through the surface ramp rather than a colour per level. Kind is also carried
+   by text -- a directory ends in "/", a file counts its symbols, a symbol shows
+   its line -- so nothing here depends on colour alone. Dark mode uses its own
+   steps from the same tokens. */
+.hier-map {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px 14px;
+  background: var(--bg-muted);
+}
+.hier-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.hier-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.hier-stats {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.hier-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.hier-box {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+/* One step darker per level, so depth is legible before reading a label. */
+.hier-box.hier-directory {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+.hier-box.hier-directory > .hier-box-head {
+  border-left: 3px solid var(--accent-border);
+}
+.hier-box.hier-file > .hier-box-head {
+  border-left: 3px solid var(--border-strong);
+}
+.hier-box-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.hier-box-head:hover {
+  background: var(--accent-soft);
+}
+.hier-chevron {
+  width: 13px;
+  flex: 0 0 13px;
+  text-align: center;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  color: var(--text-muted);
+}
+.hier-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.hier-box.hier-file .hier-label {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+}
+.hier-meta {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.hier-children {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 2px 10px 9px 10px;
+}
+.hier-symbol {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--code-bg);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.hier-symbol:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.hier-symbol.is-derived {
+  border-style: dashed;
+  opacity: 0.64;
+}
+.hier-symbol:not(:disabled):hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.hier-symbol-name {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.hier-symbol-line {
+  margin-inline-start: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+/* Relationships are a different kind of thing from the tree, so they carry the
+   accent while the tree stays on neutral surfaces. */
+.hier-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.hier-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+}
+.hier-link:disabled {
+  cursor: default;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+  opacity: 0.7;
+}
+.hier-link:not(:disabled):hover {
+  border-color: var(--accent);
+}
+.hier-link-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+.hier-link-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.hier-link-main b {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 700;
+}
+.hier-link em {
+  flex: 0 0 auto;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Graph / Structure switch inside the Dependency Map */
+.codemap-views {
+  display: inline-flex;
+  gap: 4px;
+  margin: 8px 0 4px;
+  padding: 3px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+.codemap-views button {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+}
+.codemap-views button.is-active {
+  background: var(--hover, rgba(127, 127, 127, 0.12));
+  color: inherit;
+  font-weight: 600;
+}
+
+/* A citation reads as the source it stands for, not as an internal handle. */
+.cite-src {
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0 0 0 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82em;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.cite-src:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.cite-src-loc {
+  opacity: 0.75;
+}
+
+@media (max-width: 600px) {
+  .graph-modal-body .hier-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .graph-modal-body .hier-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Guidance for running CodeNib on your own repository. */
+.addrepo {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 24px 72px;
+}
+.addrepo-back {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-bottom: 20px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.addrepo-back:hover {
+  color: var(--accent);
+}
+.addrepo h1 {
+  font-size: 26px;
+  margin: 0 0 14px;
+  color: var(--text-primary);
+}
+.addrepo-lede {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  margin: 0 0 32px;
+}
+.addrepo-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.addrepo-step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.addrepo-step-n {
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.addrepo-step-head h2 {
+  font-size: 16px;
+  margin: 0;
+  color: var(--text-primary);
+}
+.addrepo-steps p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.addrepo-code {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--code-bg);
+  overflow-x: auto;
+}
+.addrepo-code code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre;
+  background: none;
+  padding: 0;
+}
+.addrepo-note {
+  margin-top: 10px !important;
+  font-size: 13px !important;
+  color: var(--text-muted) !important;
+}
+.addrepo-foot {
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.addrepo-foot a {
+  color: var(--accent);
 }

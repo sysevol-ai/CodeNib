@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,17 +11,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.route_context import fingerprint_lsp_route_nodes
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.core import (
+from codenib.agent.route_context import fingerprint_lsp_route_nodes
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.types import QueriedNode
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.types import QueriedNode
 
 
 @pytest.fixture(autouse=True)

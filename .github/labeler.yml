@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,22 +10,22 @@
 scope/agent:
   - changed-files:
       - any-glob-to-any-file:
-          - codeminer/agent/**
+          - codenib/agent/**
           - test/agent/**
 
 scope/chunking:
   - changed-files:
       - any-glob-to-any-file:
-          - codeminer/code_chunking/**
+          - codenib/code_chunking/**
           - test/chunker/**
 
 scope/graph:
   - changed-files:
       - any-glob-to-any-file:
-          - codeminer/graph/**
-          - codeminer/ops/**
-          - codeminer/scip_interface/**
-          - codeminer/ls_index/**
+          - codenib/graph/**
+          - codenib/ops/**
+          - codenib/scip_interface/**
+          - codenib/ls_index/**
           - test/graph/**
           - test/ops/**
           - test/scip/**
@@ -33,25 +33,25 @@ scope/graph:
 scope/indexing:
   - changed-files:
       - any-glob-to-any-file:
-          - codeminer/index/**
+          - codenib/index/**
           - test/index/**
 
 scope/llm:
   - changed-files:
       - any-glob-to-any-file:
-          - codeminer/llm/**
+          - codenib/llm/**
 
 scope/compiler:
   - changed-files:
       - any-glob-to-any-file:
-          - codeminer/compiler/**
+          - codenib/compiler/**
           - test/compiler/**
 
 scope/eval:
   - changed-files:
       - any-glob-to-any-file:
-          - codeminer/dataset/**
-          - codeminer/eval/**
+          - codenib/dataset/**
+          - codenib/eval/**
           - test/dataset/**
 
 scope/infra:

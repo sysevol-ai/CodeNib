@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,23 +12,28 @@ from typing import Dict, Optional
 
 import pytest
 
-from codeminer.web.edge_label import EdgeLabeler, _sanitize
-
+from codenib.web.edge_label import EdgeLabeler, _sanitize
 
 # --- fake LLM ------------------------------------------------------------------
 
 
 class _Msg:
+    __slots__ = ("content",)
+
     def __init__(self, content: str) -> None:
         self.content = content
 
 
 class _Choice:
+    __slots__ = ("message",)
+
     def __init__(self, content: str) -> None:
         self.message = _Msg(content)
 
 
 class _Resp:
+    __slots__ = ("choices",)
+
     def __init__(self, content: str) -> None:
         self.choices = [_Choice(content)]
 
@@ -57,7 +62,12 @@ def _patch_llm(monkeypatch, fake: _FakeLLM) -> None:
 # --- helpers -------------------------------------------------------------------
 
 
-def _make_labeler(tmp_path, sources: Optional[Dict[str, str]] = None, model="test/m"):
+def _make_labeler(
+    tmp_path,
+    sources: Optional[Dict[str, str]] = None,
+    model="test/m",
+    **kwargs,
+):
     sources = sources or {}
 
     def source_fn(file, start, end):
@@ -70,16 +80,26 @@ def _make_labeler(tmp_path, sources: Optional[Dict[str, str]] = None, model="tes
         model=model,
         cache_dir=str(tmp_path),
         cache_namespace="inst@abc123",
+        **kwargs,
     )
 
 
-_SRC = {"a.py": "def router():\n    return validate(x)\n", "b.py": "def validate(x):\n    return x\n"}
+_SRC = {
+    "a.py": "def router():\n    return validate(x)\n",
+    "b.py": "def validate(x):\n    return x\n",
+}
 
 
 def _label(labeler):
     return labeler.label(
-        "a.py", 1, 2, "router",
-        "b.py", 1, 2, "validate",
+        "a.py",
+        1,
+        2,
+        "router",
+        "b.py",
+        1,
+        2,
+        "validate",
         anchors=[{"file": "a.py", "line": 2}],
     )
 
@@ -92,7 +112,10 @@ def _label(labeler):
     [
         ("```\nValidates user input.\n```", "validates user input"),
         ('"Loads DB config"', "loads db config"),
-        ("dispatches request to handler quickly and safely now", "dispatches request to handler quickly and"),
+        (
+            "dispatches request to handler quickly and safely now",
+            "dispatches request to handler quickly and",
+        ),
         ("Calls validate().", "calls validate()"),
         ("", ""),
         ("   ", ""),
@@ -135,7 +158,11 @@ def test_cache_key_changes_with_code(tmp_path, monkeypatch):
     assert fake.calls == 1
 
     # mutate the source symbol's code -> different content hash -> regenerate
-    labeler._source = lambda f, s, e: {"content": "def router():\n    return other()\n"} if f == "a.py" else {"content": _SRC["b.py"]}  # type: ignore
+    labeler._source = lambda f, s, e: (  # type: ignore
+        {"content": "def router():\n    return other()\n"}
+        if f == "a.py"
+        else {"content": _SRC["b.py"]}
+    )
     _label(labeler)
     assert fake.calls == 2
 
@@ -158,9 +185,7 @@ def test_no_source_skips_llm(tmp_path, monkeypatch):
     _patch_llm(monkeypatch, fake)
     labeler = _make_labeler(tmp_path, sources={})  # source_fn returns None for all
 
-    label, cached = labeler.label(
-        "x.py", 1, 2, "a", "y.py", 1, 2, "b", anchors=[]
-    )
+    label, cached = labeler.label("x.py", 1, 2, "a", "y.py", 1, 2, "b", anchors=[])
     assert label == ""
     assert fake.calls == 0
 
@@ -187,3 +212,37 @@ def test_persists_to_disk_and_reloads(tmp_path, monkeypatch):
     assert label == "loads db config"
     assert cached is True
     assert fake2.calls == 0
+
+
+def test_cache_is_scoped_to_model(tmp_path, monkeypatch):
+    first = _FakeLLM("first model")
+    _patch_llm(monkeypatch, first)
+    _label(_make_labeler(tmp_path, _SRC, model="test/first"))
+    assert first.calls == 1
+
+    second = _FakeLLM("second model")
+    _patch_llm(monkeypatch, second)
+    label, cached = _label(_make_labeler(tmp_path, _SRC, model="test/second"))
+
+    assert label == "second model"
+    assert cached is False
+    assert second.calls == 1
+
+
+def test_injected_client_is_used(tmp_path):
+    class Client:
+        cache_identity = "provider-a"
+
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, messages, **kwargs):
+            self.calls.append((messages, kwargs))
+            return "routes request"
+
+    client = Client()
+    label, cached = _label(_make_labeler(tmp_path, _SRC, llm=client))
+
+    assert label == "routes request"
+    assert cached is False
+    assert client.calls[0][1]["timeout"] == 30

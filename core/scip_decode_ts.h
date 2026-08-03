@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,9 +8,10 @@
 
 #include "scip_decode_base.h"
 
+#include <unordered_map>
 #include <unordered_set>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 class SCIPTSDecoder : public SCIPDecoderBase {
 public:
@@ -40,6 +41,7 @@ private:
                            const std::string &symbol_type) const;
 
   std::unordered_set<std::string> project_packages_;
+  std::unordered_map<std::string, std::string> symbol_kinds_;
 };
 
-} // namespace codeminer::core
+} // namespace codenib::core

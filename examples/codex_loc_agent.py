@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -20,21 +20,21 @@ e389e01f8347a4861ed139b01956fe64aa0c0fda#subdirectory=sdk/python"
     # or: export CODEX_API_KEY=...
 
 Usage:
-    # Full codeminer-base corpus (100 instances), append-only JSONL
+    # Full codenib-base corpus (100 instances), append-only JSONL
     python examples/codex_loc_agent.py \\
-        --dataset codeminer_base \\
-        --result-path .ttmp/baselines/codex_codeminer_base.jsonl
+        --dataset codenib_base \\
+        --result-path .ttmp/baselines/codex_codenib_base.jsonl
 
     # Filter to a single instance (smoke):
     python examples/codex_loc_agent.py \\
-        --dataset codeminer_base \\
+        --dataset codenib_base \\
         --filter-instance "^fmtlib__fmt-2317$" \\
         --result-path .ttmp/baselines/codex_smoke.jsonl
 
     # Resume after a crash -- skip instance_ids already in the result file:
     python examples/codex_loc_agent.py \\
-        --dataset codeminer_base \\
-        --result-path .ttmp/baselines/codex_codeminer_base.jsonl \\
+        --dataset codenib_base \\
+        --result-path .ttmp/baselines/codex_codenib_base.jsonl \\
         --resume
 
 Output: JSONL, one record per instance with retrieve_rerank-compatible
@@ -45,9 +45,9 @@ and ``usage``.
 import argparse
 import asyncio
 
-from codeminer.clients.codex_agent import CodexLocAgent
-from codeminer.eval.agent_runner.loc_baseline import add_common_args, run_agent_baseline
-from codeminer.log_utils import get_logger
+from codenib.clients.codex_agent import CodexLocAgent
+from codenib.eval.agent_runner.loc_baseline import add_common_args, run_agent_baseline
+from codenib.log_utils import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,15 +1,20 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
 # Language Capabilities
 
-This matrix is generated from `codeminer.languages.LanguageSpec`. It tracks
+This matrix is generated from `codenib.languages.LanguageSpec`. It tracks
 which surfaces are enabled for each registered language and makes core parity
 coverage explicit for languages that are graph-capable, serial-only, or
 tree-sitter-only.
+
+`yes` and `active` describe registered CodeNib capabilities, not the tools
+installed on the current machine. Run
+`codenib doctor /path/to/repository --require graph` before building a graph
+view.
 
 Update the registry first, then refresh this table:
 
@@ -18,7 +23,7 @@ python scripts/language_capability_matrix.py --write docs/language_capabilities.
 python scripts/language_capability_matrix.py --check docs/language_capabilities.md
 ```
 
-<!-- BEGIN CODEMINER_LANGUAGE_CAPABILITIES -->
+<!-- BEGIN CODENIB_LANGUAGE_CAPABILITIES -->
 | Language | Chunker | GT | Agent | Graph backend | SCIP cold-start | Incremental | LSP command | Core decoder | Core parity |
 |----------|---------|----|-------|---------------|-----------------|-------------|-------------|--------------|-------------|
 | Python | yes | yes | yes | scip | active | lsp | yes | yes | covered |
@@ -35,7 +40,7 @@ python scripts/language_capability_matrix.py --check docs/language_capabilities.
 | Lua | yes | yes | yes | none | none | none | no | no | n/a-tree-sitter-only |
 | JavaScript | yes | yes | yes | scip | active | lsp | yes | yes | covered |
 | TypeScript | yes | yes | yes | scip | active | lsp | yes | yes | covered |
-<!-- END CODEMINER_LANGUAGE_CAPABILITIES -->
+<!-- END CODENIB_LANGUAGE_CAPABILITIES -->
 
 ## SCIP Cold-Start States
 

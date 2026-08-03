@@ -1,66 +1,17 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
 #include "scip_decode_rust.h"
 
-#include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <re2/re2.h>
-#include <sstream>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
-
-std::vector<int> extract_integers(const std::string &text,
-                                  const re2::RE2 &pattern) {
-  std::vector<int> results;
-  re2::StringPiece input(text);
-  int value = 0;
-  while (re2::RE2::FindAndConsume(&input, pattern, &value)) {
-    results.push_back(value);
-  }
-  return results;
-}
-
-std::vector<std::string> split_ws_limit(const std::string &s, int limit) {
-  std::vector<std::string> out;
-  std::size_t i = 0;
-  while (i < s.size() && static_cast<int>(out.size()) < limit - 1) {
-    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
-      ++i;
-    std::size_t start = i;
-    while (i < s.size() && !std::isspace(static_cast<unsigned char>(s[i])))
-      ++i;
-    if (start < i)
-      out.emplace_back(s.substr(start, i - start));
-  }
-  // rest as single token
-  while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
-    ++i;
-  if (i < s.size())
-    out.emplace_back(s.substr(i));
-  return out;
-}
-
-bool ends_with(const std::string &s, const std::string &suffix) {
-  return s.size() >= suffix.size() &&
-         s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-std::string rstrip_chars(std::string s, const std::string &chars) {
-  while (!s.empty() && chars.find(s.back()) != std::string::npos)
-    s.pop_back();
-  return s;
-}
-
-std::string strip_backticks(std::string s) {
-  s.erase(std::remove(s.begin(), s.end(), '`'), s.end());
-  return s;
-}
 
 // Very small TOML-ish parser: pulls "name" from [package] and "members"
 // (array of strings) from [workspace]. Works on the subset of Cargo.toml
@@ -447,4 +398,4 @@ void SCIPRustDecoder::process_symbol(const std::string &symbol,
   }
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

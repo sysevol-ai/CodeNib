@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -21,14 +21,15 @@ def test_skill_loading():
     """Test that build_skill_contexts returns contexts when skills are loaded."""
     print("Test: build_skill_contexts with skill registry loading\n")
 
-    from codeminer.agent.skills.loader import SkillLoader
-    from codeminer.agent.skills.registry import SkillRegistry
-    from codeminer.compiler import required_index_types
     import os
+
+    from codenib.agent.skills.loader import SkillLoader
+    from codenib.agent.skills.registry import SkillRegistry
+    from codenib.compiler import required_index_types
 
     # Step 1: Load skills into registry
     print("Step 1: Loading skills...")
-    skills_dir = os.path.join("codeminer", "agent", "skills")
+    skills_dir = os.path.join("codenib", "agent", "skills")
     registry = SkillRegistry()
     registry.reset()
     loader = SkillLoader()
@@ -40,8 +41,7 @@ def test_skill_loading():
     # Step 2: Check required_index_types
     print("\nStep 2: Checking required_index_types...")
     needed = required_index_types(
-        ["bm25_search", "embedding_search"],
-        skill_registry=registry
+        ["bm25_search", "embedding_search"], skill_registry=registry
     )
     print(f"✓ Required index types: {needed}")
 
@@ -51,14 +51,13 @@ def test_skill_loading():
 
     # Step 3: Verify _skill_types_for
     print("\nStep 3: Checking skill_types_for...")
-    from codeminer.compiler.skill_context import _skill_types_for
-    skill_types = _skill_types_for(
-        ["bm25_search", "embedding_search"],
-        registry
-    )
+    from codenib.compiler.skill_context import _skill_types_for
+
+    skill_types = _skill_types_for(["bm25_search", "embedding_search"], registry)
     print(f"✓ Skill types: {skill_types}")
 
-    from codeminer.agent.skills.core import SkillType
+    from codenib.agent.skills.core import SkillType
+
     if SkillType.RETRIEVAL not in skill_types:
         print(f"✗ FAIL: Expected RETRIEVAL in skill_types, got {skill_types}")
         return False
@@ -74,5 +73,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

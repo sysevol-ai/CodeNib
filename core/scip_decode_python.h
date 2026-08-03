@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,7 +8,7 @@
 
 #include "scip_decode_base.h"
 
-namespace codeminer::core {
+namespace codenib::core {
 
 class SCIPPythonDecoder : public SCIPDecoderBase {
 public:
@@ -30,4 +30,4 @@ private:
                                    const std::string &original_symbol) const;
 };
 
-} // namespace codeminer::core
+} // namespace codenib::core

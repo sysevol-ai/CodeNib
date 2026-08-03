@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -20,19 +20,20 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from codeminer.graph.backend_alignment import (
+from codenib.graph.backend_alignment import (
     BackendAlignmentReport,
     BackendAlignmentTolerances,
     compare_backend_graphs,
 )
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.languages import normalize_graph_language, normalize_language
-from codeminer.ls_router import (
+from codenib.graph.code_graph import CodeGraph
+from codenib.languages import normalize_graph_language, normalize_language
+from codenib.ls_router import (
     ACTIVE_GRAPH_ROUTE,
     LSP_GRAPH_ROUTE,
     SCIP_CANDIDATE_GRAPH_ROUTE,
     build_graph_for_languages,
 )
+from codenib.paths import temp_state_dir
 
 GRAPH_ROUTES = (ACTIVE_GRAPH_ROUTE, LSP_GRAPH_ROUTE, SCIP_CANDIDATE_GRAPH_ROUTE)
 
@@ -246,7 +247,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("/tmp/codeminer-graph-route-alignment"),
+        default=temp_state_dir() / "graph-route-alignment",
     )
     parser.add_argument("--project-name")
     parser.add_argument(

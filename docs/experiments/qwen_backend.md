@@ -1,11 +1,11 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
 # Local open-model backend (Qwen2.5-Coder + Qwen3.5) — agent eval
 
-Can the CodeMiner agent run on **local open models** instead of a cloud API, and
+Can the CodeNib agent run on **local open models** instead of a cloud API, and
 does the pre-load context-engine help? Yes to running. The headline finding:
 
 > **Pre-load's value is inversely proportional to the model's own agentic
@@ -17,6 +17,11 @@ Two model families, on the same agent + prebuilt indexes:
 - **Qwen2.5-Coder** 7B/14B/32B (vLLM `--tool-call-parser hermes`)
 - **Qwen3.5** 4B/9B/27B (vLLM 0.23, `--tool-call-parser qwen3_xml`)
 
+For the native-LSP Base study, the open-model secondary block uses
+`openai/qwen3.5-27b`, matching the strongest completed Base agent run. It must
+use a separate result root and `--secondary-model --disable-thinking`; the
+pinned Haiku primary manifest and its confirmatory inference remain unchanged.
+
 ## How to run
 
 ```bash
@@ -27,10 +32,25 @@ python -m vllm.entrypoints.openai.api_server \
   --max-model-len 32768 --max-num-seqs 64 --gpu-memory-utilization 0.85 --port 8001
 
 # Qwen3.5 (needs vLLM 0.23 in a separate env: torch 2.11/cu13; driver CUDA 13 OK)
+export QWEN_RUNTIME_ROOT=${CODENIB_PREBUILT_DIR}
+export TMPDIR=${QWEN_RUNTIME_ROOT}/tmp/vllm
+export VLLM_CACHE_ROOT=${QWEN_RUNTIME_ROOT}/cache/vllm
+export TORCHINDUCTOR_CACHE_DIR=${QWEN_RUNTIME_ROOT}/cache/torchinductor
+export TRITON_CACHE_DIR=${QWEN_RUNTIME_ROOT}/cache/triton
+export CUDA_CACHE_PATH=${QWEN_RUNTIME_ROOT}/cache/cuda
+mkdir -p "$TMPDIR" "$VLLM_CACHE_ROOT" "$TORCHINDUCTOR_CACHE_DIR" \
+  "$TRITON_CACHE_DIR" "$CUDA_CACHE_PATH"
 python -m vllm.entrypoints.openai.api_server \
   --model Qwen/Qwen3.5-4B --served-model-name qwen3.5-4b \
   --enable-auto-tool-choice --tool-call-parser qwen3_xml \
   --max-model-len 32768 --gpu-memory-utilization 0.45 --port 8001
+
+# Native-LSP secondary block (H100 80 GB)
+python -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen3.5-27B --served-model-name qwen3.5-27b \
+  --enable-auto-tool-choice --tool-call-parser qwen3_xml \
+  --max-model-len 65536 --max-num-seqs 4 \
+  --gpu-memory-utilization 0.90 --port 8001
 
 # run (openai/ + OPENAI_API_BASE routes litellm to the local server)
 OPENAI_API_BASE=http://localhost:8001/v1 OPENAI_API_KEY=dummy PYTHONPATH=$PWD \
@@ -43,7 +63,7 @@ python scripts/agent_compile/run_sweep.py \
 `qwen7b_base.yaml` sets `first_turn_tool_choice: required` (Qwen2.5 needs it,
 see below); `qwen35_base.yaml` leaves it null (Qwen3.5 tool-calls under auto).
 
-## codeminer-base — single query / repo (files@5 + span@5)
+## codenib-base — single query / repo (files@5 + span@5)
 
 `span@5` = `answer_blocks@5`, span-overlap recall (see methodology). Paired,
 100 inst/arm, `format_fail=0%` for every cell below.
@@ -77,7 +97,7 @@ candidates add no accuracy (and can mislead — see synthesis). 9B is partial
 **The cross-family story is the whole point:** Qwen2.5 (turns~2, can't explore)
 is rescued by pre-load; Qwen3.5 (turns~14, explores natively) is not.
 
-## codeminer-synthesis — many queries / repo (where reuse is real)
+## codenib-synthesis — many queries / repo (where reuse is real)
 
 base is 1 query/instance, so the index build amortizes over nothing and pre-load
 can't show its reuse value. synthesis (50-80 q/repo) is the right setting.
@@ -136,12 +156,19 @@ Pre-load on a strong agent is a *trade* (saves cost, regresses behavioral)
 because candidates and the generic grep/read loop were never fused. The
 direction is a **pre-load-aware harness** that triages candidates (rule-out /
 verify / fallback-to-explore) instead of consuming them linearly. Design:
-[`.claude/design/preload-aware-harness.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/.claude/design/preload-aware-harness.md).
+[`.claude/design/preload-aware-harness.md`](https://github.com/sysevol-ai/CodeNib/blob/main/.claude/design/preload-aware-harness.md).
 
 ## Caveats / gotchas
 
 - vLLM 0.23 for Qwen3.5 needs torch 2.11/cu13 — clone the env, don't upgrade in
   place. Driver CUDA 13 already supports it; no system change needed.
+- Qwen3.5's first H100 startup JIT-compiles FlashInfer GDN kernels. NVCC uses
+  `TMPDIR`; point it and the vLLM/Torch/Triton caches at a large data volume or
+  the parallel compile can fill a small root filesystem before the API opens.
+- Use a 65,536-token server context for the 27B native-LSP secondary block. A
+  32,768-token pilot reached the harness's final structured-answer request with
+  28,673 input tokens plus a 4,096-token output allowance and received HTTP
+  400. The otherwise identical 65,536-token pilot completed all three arms.
 - Qwen3.5 uses the `qwen3_xml` tool-call format (`<function=…><parameter=…>`),
   **not** hermes — wrong parser silently drops all tool calls under auto.
 - GPU is **shared**: leave headroom for the sweep's Qwen3-Embedding on the same

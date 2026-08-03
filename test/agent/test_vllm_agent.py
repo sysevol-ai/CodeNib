@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,9 +6,9 @@ import argparse
 
 import pytest
 
-from codeminer.agent.extract_agent import KeywordExtractor
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent.extract_agent import KeywordExtractor
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.llm.litellm_chat import LiteLLMChat
 
 pytestmark = pytest.mark.slow
 

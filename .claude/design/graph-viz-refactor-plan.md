@@ -1,4 +1,4 @@
-# CodeMiner Wiki — Graph Visualization Refactor Plan
+# CodeNib Wiki — Graph Visualization Refactor Plan
 
 > Recovered 2026-06-03 after a session crash. This is the execution plan behind
 > PR #205 / branch `feat/graph-clustering-nav`. Phase 1 ("Files" layout) is

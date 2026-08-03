@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 constexpr const char *NODE_TYPE_DIRECTORY = "directory";
 constexpr const char *NODE_TYPE_FILE = "file";
@@ -44,10 +44,19 @@ public:
     std::optional<std::string> file;
     std::optional<int> start_line;
     std::optional<int> end_line;
+    // Identifier/declaration line from the SCIP occurrence. Unlike
+    // start_line, this excludes decorators, annotations, and doc comments.
+    std::optional<int> selection_line;
     // Cross-language display path: usually `{file}:{SymbolDisplay}`.
     // Matches the `unified_name` vertex attribute produced by the
-    // Python-side decoders in codeminer/scip_interface/.
+    // Python-side decoders in codenib/scip_interface/.
     std::optional<std::string> unified_name;
+    // Fine-grained provider fact (for example interface or type_alias). The
+    // coarse `type` remains stable for traversal compatibility.
+    std::optional<std::string> symbol_kind;
+    // Set only for symbol vertices: true when a definition occurrence was
+    // observed, false for reference-only symbols, nullopt for structural nodes.
+    std::optional<bool> has_definition;
   };
 
   struct EdgeData {
@@ -77,14 +86,16 @@ public:
   void add_symbol_node(const std::string &symbol, int line,
                        std::optional<int> scope_start_line = std::nullopt,
                        std::optional<int> scope_end_line = std::nullopt,
-                       const std::string &symbol_type = NODE_TYPE_SYMBOL);
+                       const std::string &symbol_type = NODE_TYPE_SYMBOL,
+                       std::optional<std::string> symbol_kind = std::nullopt);
 
   void add_symbol_reference(
       const std::string &symbol,
       const std::optional<std::string> &module_path = std::nullopt,
       const std::string &symbol_type = NODE_TYPE_SYMBOL,
       std::optional<std::string> anchor_file = std::nullopt,
-      std::optional<int> anchor_line = std::nullopt);
+      std::optional<int> anchor_line = std::nullopt,
+      std::optional<std::string> symbol_kind = std::nullopt);
 
   // CONTAIN edges deliberately carry no anchor — containment is a structural
   // relation, not a call/reference site. (See anchor invariant ii on
@@ -186,4 +197,4 @@ private:
   std::string current_scope_;
 };
 
-} // namespace codeminer::core
+} // namespace codenib::core

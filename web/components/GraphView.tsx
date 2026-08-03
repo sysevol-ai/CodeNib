@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
 import HighlightedCode from "@/components/HighlightedCode";
+import HierarchyMap from "@/components/HierarchyMap";
 import SystemMap from "@/components/SystemMap";
 import {
   fetchEdgeLabel,
@@ -15,14 +15,15 @@ import {
 
 // Cytoscape loads only when a graph is shown, so the wiki
 // narrative paints first and the graph fills in a beat later.
-const CodeGraph = dynamic(() => import("@/components/CodeGraph"), {
-  ssr: false,
-  loading: () => (
+const CodeGraph = lazy(() => import("@/components/CodeGraph"));
+
+function GraphLoading() {
+  return (
     <div className="codegraph">
       <div className="codegraph-canvas codegraph-loading">Loading graph…</div>
     </div>
-  ),
-});
+  );
+}
 
 // What a source peek is showing: an edge's exact call site(s), or a node's
 // definition. Both resolve to a (file, line) the /source endpoint can open.
@@ -77,6 +78,9 @@ function SourcePeek({
   const rel = repoRelative(site.file);
   const line = site.line ?? 1;
   const isExternal = source.kind === "node" && !!source.node.external;
+  // A directory node in the module map aggregates many files — there is no one
+  // definition to peek at.
+  const hasNoSingleFile = source.kind === "node" && !source.node.file;
   const fileName = rel.split("/").pop() || rel;
   const sourceTitle =
     source.kind === "edge"
@@ -116,6 +120,7 @@ function SourcePeek({
           label: source.tgtLabel,
         },
         anchors: source.anchors,
+        commit,
       },
       { signal: ctrl.signal }
     )
@@ -125,10 +130,10 @@ function SourcePeek({
       cancelled = true;
       ctrl.abort();
     };
-  }, [source, repoId]);
+  }, [source, repoId, commit]);
 
   useEffect(() => {
-    if (isExternal) return; // external dep — no in-repo source to fetch
+    if (isExternal || hasNoSingleFile) return; // nothing single to fetch
     let cancelled = false;
     setState("loading");
     // Node peeks use the indexed symbol span, plus a little context around it.
@@ -137,7 +142,7 @@ function SourcePeek({
     const symEnd = nodeEnd && nodeEnd >= line ? nodeEnd : line;
     const before = isNode ? PAD : 6;
     const end = isNode ? symEnd + PAD : line + 6;
-    fetchSource(repoId, rel, Math.max(1, line - before), end)
+    fetchSource(repoId, rel, Math.max(1, line - before), end, commit)
       .then((s) => {
         if (cancelled) return;
         setCode(s.content || "");
@@ -148,7 +153,7 @@ function SourcePeek({
     return () => {
       cancelled = true;
     };
-  }, [repoId, rel, line, isNode, nodeEnd, isExternal]);
+  }, [repoId, rel, line, isNode, nodeEnd, isExternal, hasNoSingleFile, commit]);
 
   return (
     <div className="callsite-peek" ref={peekRef}>
@@ -161,7 +166,11 @@ function SourcePeek({
             <span>{sourceTitle}</span>
           </span>
           <span className="callsite-loc mono">
-            {isExternal ? "external dependency" : `${rel}:${line}`}
+            {isExternal
+              ? "external dependency"
+              : hasNoSingleFile
+                ? "directory"
+                : `${rel}:${line}`}
           </span>
           {source.kind === "edge" &&
             typeof edgeLabel === "string" &&
@@ -216,7 +225,12 @@ function SourcePeek({
           </button>
         </div>
       </div>
-      {isExternal ? (
+      {hasNoSingleFile && !isExternal ? (
+        <p className="muted callsite-msg">
+          A directory aggregates many files, so there is no single definition to
+          show. Use “Focus in graph” to open its own dependency map.
+        </p>
+      ) : isExternal ? (
         <p className="muted callsite-msg">
           External symbol — its definition lives outside this repository, so there&apos;s no source to show.
           Use “Focus here” to see where this repo references it.
@@ -253,8 +267,9 @@ export default function GraphView({
 }: {
   repoId: string;
   data: CodemapResponse;
-  // "wiki" = focused top-down dependency map; "explore" = standalone Graph view.
-  variant?: "wiki" | "explore";
+  // "wiki" = focused top-down dependency map; "explore" = standalone Graph
+  // view; "modules" = the file/directory dependency map.
+  variant?: "wiki" | "explore" | "modules";
   onFocus?: (label: string) => void;
   repoFullName?: string;
   commit?: string;
@@ -270,28 +285,42 @@ export default function GraphView({
 
   // Wiki: focusing re-roots into the standalone explore graph (how you get in).
   // Explore: focus stays inside the current graph so it isn't thrown away.
+  const hasHierarchy = (data.hierarchy?.nodes?.length ?? 0) > 0;
+
   const peekFocus =
-    variant === "wiki"
+    variant === "wiki" || variant === "modules"
       ? onFocus
       : (label: string) => setFocusReq((p) => ({ label, nonce: (p?.nonce ?? 0) + 1 }));
 
   return (
     <>
       {variant === "wiki" ? (
-        <SystemMap
-          data={data}
-          onNodeClick={(node) => setPeek({ kind: "node", node })}
-          onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
-        />
+        // Drill down the containment tree when the payload carries one; the flat
+        // component view is the fallback for payloads that do not.
+        hasHierarchy ? (
+          <HierarchyMap
+            data={data}
+            onNodeClick={(node) => setPeek({ kind: "node", node })}
+            onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
+          />
+        ) : (
+          <SystemMap
+            data={data}
+            onNodeClick={(node) => setPeek({ kind: "node", node })}
+            onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
+          />
+        )
       ) : (
-        <CodeGraph
-          data={data}
-          variant={variant}
-          focusRequest={focusReq}
-          repoId={repoId}
-          onNodeClick={(node) => setPeek({ kind: "node", node })}
-          onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
-        />
+        <Suspense fallback={<GraphLoading />}>
+          <CodeGraph
+            data={data}
+            variant={variant}
+            focusRequest={focusReq}
+            repoId={repoId}
+            onNodeClick={(node) => setPeek({ kind: "node", node })}
+            onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
+          />
+        </Suspense>
       )}
       {peek && (
         <SourcePeek

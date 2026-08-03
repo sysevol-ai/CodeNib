@@ -1,13 +1,13 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Small end-to-end test for ``codeminer.agent.query`` against codeminer-base.
+"""Small end-to-end test for ``codenib.agent.query`` against codenib-base.
 
 This is the "smallest path that exercises the full agent_compile facade":
 
-    codeminer-base dataset  → CodeMinerBaseDataset.process_instance (clone + checkout)
-        → query(prompt, options=CodeMinerAgentOptions(repo_path=...))
+    codenib-base dataset  → CodeNibBaseDataset.process_instance (clone + checkout)
+        → query(prompt, options=CodeNibAgentOptions(repo_path=...))
             → build_skill_contexts  (real BM25 index build)
             → SkillLoader.load_all
             → AgentRunner.run  (mocked LLM — one tool call, then final answer)
@@ -17,7 +17,7 @@ The LLM is mocked so no API key / network call is needed; everything else
 for real. The test verifies that:
 
 * ``query()`` orchestrates pre-compile + agent loop without any caller-side
-  glue beyond ``CodeMinerAgentOptions``.
+  glue beyond ``CodeNibAgentOptions``.
 * The compile-table-driven scenario classification reaches the runner — when
   the prompt embeds a stack trace, the LLM only sees the A0 (bm25) tool.
 * The BM25 executor actually returns results (proving the indexes were
@@ -29,7 +29,7 @@ and clones a git repository. To run explicitly::
     pytest test/agent/test_query_e2e.py -v -m integration
 
 Repo + index caches are shared with the rest of the suite under
-``/tmp/codeminer-gt-test/``.
+``${CODENIB_TEMP_DIR}/gt-test/``.
 """
 
 from __future__ import annotations
@@ -43,9 +43,9 @@ from unittest.mock import MagicMock
 import pytest
 from filelock import FileLock
 
-from codeminer.agent import CodeMinerAgentOptions, query
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent import CodeNibAgentOptions, query
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.llm.litellm_chat import LiteLLMChat
 
 # Real-LLM models exercised by the @slow test below. Each entry must be a
 # fully-qualified ``litellm`` model id. Add new models here — the test body
@@ -68,12 +68,12 @@ def _reset_registry():
 
 
 @pytest.fixture(scope="session")
-def codeminer_base_cache(tmp_path_factory) -> Dict[str, Path]:
-    """User-owned, cross-worker-safe cache dirs for the codeminer-base e2e tests.
+def codenib_base_cache(tmp_path_factory) -> Dict[str, Path]:
+    """User-owned, cross-worker-safe cache dirs for the codenib-base e2e tests.
 
     Path resolution, in order:
 
-    1. ``$CODEMINER_TEST_CACHE_DIR`` — if set, used as the base directory.
+    1. ``$CODENIB_TEST_CACHE_DIR`` — if set, used as the base directory.
        CI admins point this at a persistent runner volume (e.g. a Docker
        mount) so the ~100MB repo clone and BM25 index build survive across
        jobs. The runner user must own / have write access to this path.
@@ -85,11 +85,11 @@ def codeminer_base_cache(tmp_path_factory) -> Dict[str, Path]:
     Either way, ``repos/``, ``datasets/``, and ``index/`` subdirs are
     created underneath.
     """
-    env_override = os.environ.get("CODEMINER_TEST_CACHE_DIR")
+    env_override = os.environ.get("CODENIB_TEST_CACHE_DIR")
     if env_override:
-        base = Path(env_override).expanduser() / "codeminer-base-e2e"
+        base = Path(env_override).expanduser() / "codenib-base-e2e"
     else:
-        base = tmp_path_factory.getbasetemp().parent / "codeminer-base-e2e"
+        base = tmp_path_factory.getbasetemp().parent / "codenib-base-e2e"
     base.mkdir(parents=True, exist_ok=True)
     dirs = {
         "repos": base / "repos",
@@ -102,19 +102,19 @@ def codeminer_base_cache(tmp_path_factory) -> Dict[str, Path]:
 
 
 @pytest.fixture
-def codeminer_base_index_cache(request, codeminer_base_cache) -> Path:
+def codenib_base_index_cache(request, codenib_base_cache) -> Path:
     """Per-test index cache to avoid concurrent BM25 writes under xdist."""
     safe_node_id = "".join(
         ch if ch.isalnum() or ch in "._-" else "_" for ch in request.node.nodeid
     )
-    path = codeminer_base_cache["index"] / safe_node_id
+    path = codenib_base_cache["index"] / safe_node_id
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 @pytest.fixture(scope="module")
-def codeminer_base_first_instance(codeminer_base_cache) -> Dict[str, Any]:
-    """Load the first instance of the codeminer-base dataset.
+def codenib_base_first_instance(codenib_base_cache) -> Dict[str, Any]:
+    """Load the first instance of the codenib-base dataset.
 
     Skips the test if the dataset is unreachable (no HF auth / offline /
     network blocked). The first instance is whatever the upstream dataset
@@ -124,45 +124,43 @@ def codeminer_base_first_instance(codeminer_base_cache) -> Dict[str, Any]:
     """
     pytest.importorskip("datasets")
 
-    from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+    from codenib.dataset.codenib_base import CodeNibBaseDataset
 
     # Lock lives alongside the cache so it also coordinates concurrent
-    # CI jobs that share a persistent ``CODEMINER_TEST_CACHE_DIR`` volume.
-    lock_path = codeminer_base_cache["datasets"].parent / "dataset.lock"
+    # CI jobs that share a persistent ``CODENIB_TEST_CACHE_DIR`` volume.
+    lock_path = codenib_base_cache["datasets"].parent / "dataset.lock"
     try:
         with FileLock(str(lock_path)):
-            ds = CodeMinerBaseDataset(
+            ds = CodeNibBaseDataset(
                 split="test",
-                root=str(codeminer_base_cache["datasets"]),
-                repo_root=str(codeminer_base_cache["repos"]),
+                root=str(codenib_base_cache["datasets"]),
+                repo_root=str(codenib_base_cache["repos"]),
                 log=False,
             )
             rows = ds.load(idx_range=[0, 1])
     except Exception as exc:
-        pytest.skip(f"codeminer-base dataset unavailable: {exc}")
+        pytest.skip(f"codenib-base dataset unavailable: {exc}")
 
     row = dict(rows[0])
     return {"_dataset": ds, "row": row}
 
 
 @pytest.fixture(scope="module")
-def prepared_repo(
-    codeminer_base_first_instance, codeminer_base_cache
-) -> Dict[str, Any]:
+def prepared_repo(codenib_base_first_instance, codenib_base_cache) -> Dict[str, Any]:
     """Clone + checkout the first instance's repo."""
-    from codeminer.agent.compile import normalize_language
+    from codenib.agent.compile import normalize_language
 
-    ds = codeminer_base_first_instance["_dataset"]
-    row = codeminer_base_first_instance["row"]
+    ds = codenib_base_first_instance["_dataset"]
+    row = codenib_base_first_instance["row"]
     repo_dir_name = (row.get("repo") or "unknown").replace("/", "_")
-    lock_path = codeminer_base_cache["repos"].parent / f"repo-{repo_dir_name}.lock"
+    lock_path = codenib_base_cache["repos"].parent / f"repo-{repo_dir_name}.lock"
     try:
         with FileLock(str(lock_path)):
             ds.process_instance(row)
     except Exception as exc:
         pytest.skip(f"could not check out repo for {row.get('instance_id')}: {exc}")
 
-    # Normalize the language: codeminer-base uses ``language_group`` whose
+    # Normalize the language: codenib-base uses ``language_group`` whose
     # casing is dataset-defined (observed: "Rust"), while both
     # ``build_skill_contexts`` and ``Scenario.key()`` expect canonical
     # lowercase. Falling back to "python" matches the existing
@@ -238,7 +236,7 @@ def _tools_passed_first_turn(llm) -> List[str]:
     The always-on default tools (read/grep/glob/bash) are emitted into every
     tool set; narrowing assertions look at the swept skills only.
     """
-    from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
+    from codenib.agent.tools.defaults import DEFAULT_TOOL_IDS
 
     first_call = llm._call_raw.call_args_list[0]
     schemas = first_call.kwargs.get("tools", [])
@@ -252,10 +250,8 @@ def _tools_passed_first_turn(llm) -> List[str]:
 
 
 @pytest.mark.integration
-def test_query_runs_end_to_end_on_codeminer_base(
-    prepared_repo, codeminer_base_index_cache
-):
-    """Smoke: the full query() facade runs against a real codeminer-base repo."""
+def test_query_runs_end_to_end_on_codenib_base(prepared_repo, codenib_base_index_cache):
+    """Smoke: the full query() facade runs against a real codenib-base repo."""
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
     problem_statement = prepared_repo["row"].get("problem_statement") or "fix bug"
@@ -264,13 +260,13 @@ def test_query_runs_end_to_end_on_codeminer_base(
 
     result = query(
         problem_statement,
-        options=CodeMinerAgentOptions(
+        options=CodeNibAgentOptions(
             repo_path=repo_path,
             llm=llm,
             allowed_skills=["bm25_search"],  # cheapest skill, no GPU
             primary_language=language,
             languages=(language,),
-            index_cache_dir=str(codeminer_base_index_cache),
+            index_cache_dir=str(codenib_base_index_cache),
             max_turns=3,
         ),
     )
@@ -291,7 +287,7 @@ def test_query_runs_end_to_end_on_codeminer_base(
 
 @pytest.mark.integration
 def test_compile_table_flows_through_query_pipeline(
-    prepared_repo, codeminer_base_index_cache
+    prepared_repo, codenib_base_index_cache
 ):
     """End-to-end smoke for the compile_table code path in ``query()``.
 
@@ -303,7 +299,7 @@ def test_compile_table_flows_through_query_pipeline(
     survives a real ``query()`` call with a ``compile_table`` argument.
 
     Uses a coherent table (``allowed_skills`` ⊆ ``union(table.values())``)
-    so :func:`codeminer.agent.runner._warn_on_skill_set_mismatch`
+    so :func:`codenib.agent.runner._warn_on_skill_set_mismatch`
     stays silent — orphan/overflow warnings have dedicated unit-test
     coverage in ``test_query.py``.
     """
@@ -326,14 +322,14 @@ def test_compile_table_flows_through_query_pipeline(
 
     result = query(
         prompt,
-        options=CodeMinerAgentOptions(
+        options=CodeNibAgentOptions(
             repo_path=repo_path,
             llm=llm,
             allowed_skills=["bm25_search"],
             primary_language=language,
             languages=(language,),
             compile_table=table,
-            index_cache_dir=str(codeminer_base_index_cache),
+            index_cache_dir=str(codenib_base_index_cache),
             max_turns=3,
         ),
     )
@@ -364,7 +360,7 @@ def _skip_if_vertex_unconfigured() -> None:
 
 @pytest.mark.slow
 @pytest.mark.parametrize("model", _VERTEX_MODELS)
-def test_query_with_real_vertex_model(prepared_repo, codeminer_base_index_cache, model):
+def test_query_with_real_vertex_model(prepared_repo, codenib_base_index_cache, model):
     """End-to-end with a real LLM call via Vertex AI through litellm.
 
     Parametrized over the models declared in ``_VERTEX_MODELS`` (currently
@@ -400,14 +396,14 @@ def test_query_with_real_vertex_model(prepared_repo, codeminer_base_index_cache,
 
     result = query(
         problem_statement,
-        options=CodeMinerAgentOptions(
+        options=CodeNibAgentOptions(
             repo_path=repo_path,
             llm=llm,
             allowed_skills=["bm25_search"],
             primary_language=language,
             languages=(language,),
             compile_table=table,
-            index_cache_dir=str(codeminer_base_index_cache),
+            index_cache_dir=str(codenib_base_index_cache),
             # Cap turns tightly — the test cares that the wiring works,
             # not that the model produces a brilliant answer.
             max_turns=4,
@@ -442,23 +438,23 @@ def test_query_with_real_vertex_model(prepared_repo, codeminer_base_index_cache,
 
 
 @pytest.mark.integration
-def test_query_manifest_mode_e2e(prepared_repo, codeminer_base_index_cache):
+def test_query_manifest_mode_e2e(prepared_repo, codenib_base_index_cache):
     """Two-phase AoT round-trip: compile_repo() then query(manifest=...).
 
     Exercises the full prebuilt-index code path: ``compile_repo`` writes
     a manifest + indexes to the per-test index cache;
     ``query(manifest=manifest, ...)`` then loads them via
-    :func:`codeminer.compiler.load_contexts_from_manifest`. No inline
+    :func:`codenib.compiler.load_contexts_from_manifest`. No inline
     build happens during ``query()`` — verified by the absence of any
     "Building missing indexes" log entry from
     ``compiler.skill_context`` during Phase 2.
     """
-    from codeminer.agent import compile_repo
+    from codenib.agent import compile_repo
 
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
     problem_statement = prepared_repo["row"].get("problem_statement") or "fix bug"
-    cache_dir = str(codeminer_base_index_cache)
+    cache_dir = str(codenib_base_index_cache)
 
     # Phase 1 — AoT compile (writes repo_manifest.json + bm25/ artifacts).
     manifest = compile_repo(
@@ -474,7 +470,7 @@ def test_query_manifest_mode_e2e(prepared_repo, codeminer_base_index_cache):
     llm = _two_turn_mock_llm("bm25_search", query_arg=problem_statement[:200])
     result = query(
         problem_statement,
-        options=CodeMinerAgentOptions(
+        options=CodeNibAgentOptions(
             manifest=manifest,
             llm=llm,
             allowed_skills=["bm25_search"],

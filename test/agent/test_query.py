@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the ``codeminer.agent.query`` public facade.
+"""Unit tests for the ``codenib.agent.query`` public facade.
 
 These tests mock the LLM and pass an empty ``contexts`` dict so no index
 build or network call happens. They exercise:
@@ -23,15 +23,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent import CodeMinerAgentOptions, query
-from codeminer.agent.skills.core import (
+from codenib.agent import CodeNibAgentOptions, query
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.llm.litellm_chat import LiteLLMChat
 
 
 @pytest.fixture(autouse=True)
@@ -79,7 +79,7 @@ def _tools_passed_to_llm(llm) -> List[str]:
     # Strip the always-on default layer (file_read/file_search): it is unioned
     # into every tool set regardless of compile_table narrowing, so narrowing
     # assertions look at the swept skills only.
-    from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
+    from codenib.agent.tools.defaults import DEFAULT_TOOL_IDS
 
     args, kwargs = llm._call_raw.call_args
     schemas = kwargs.get("tools", [])
@@ -90,7 +90,7 @@ def _tools_passed_to_llm(llm) -> List[str]:
 def _capture_runner_warnings():
     """Return a (records_list, install, uninstall) tuple.
 
-    The runner logger has ``propagate=False`` (see ``codeminer.log_utils``)
+    The runner logger has ``propagate=False`` (see ``codenib.log_utils``)
     so pytest's ``caplog`` doesn't see its records. Attach a list-collecting
     handler directly to the named logger instead.
     """
@@ -102,7 +102,7 @@ def _capture_runner_warnings():
         def emit(self, record: logging.LogRecord) -> None:
             records.append(record)
 
-    runner_logger = logging.getLogger("codeminer.agent.runner")
+    runner_logger = logging.getLogger("codenib.agent.runner")
     handler = _ListHandler(level=logging.WARNING)
 
     def install():
@@ -127,14 +127,14 @@ class TestPreconditions:
         ):
             query(
                 "anything",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     llm=_mock_llm_final_answer(),
                 ),
             )
 
     def test_query_with_contexts_skips_index_build(self, monkeypatch):
         """If options.contexts is set, build_skill_contexts must not run."""
-        from codeminer import compiler as compiler_mod
+        from codenib import compiler as compiler_mod
 
         called = {"n": 0}
 
@@ -147,7 +147,7 @@ class TestPreconditions:
         # won't bind their executors. That's fine — the agent won't call them.
         result = query(
             "hello",
-            options=CodeMinerAgentOptions(
+            options=CodeNibAgentOptions(
                 contexts={},
                 llm=_mock_llm_final_answer(answer="ok"),
                 allowed_skills=["bm25_search"],
@@ -174,7 +174,7 @@ class TestCompileTable:
         }
         query(
             "How does the retry path work?",
-            options=CodeMinerAgentOptions(
+            options=CodeNibAgentOptions(
                 contexts={},
                 llm=llm,
                 primary_language="python",
@@ -197,7 +197,7 @@ class TestCompileTable:
         llm = _mock_llm_final_answer()
         query(
             "Why does this loop never terminate?",
-            options=CodeMinerAgentOptions(
+            options=CodeNibAgentOptions(
                 contexts={},
                 llm=llm,
                 primary_language="python",
@@ -223,7 +223,7 @@ class TestCompileTable:
         )
         query(
             prompt,
-            options=CodeMinerAgentOptions(
+            options=CodeNibAgentOptions(
                 contexts={},
                 llm=llm,
                 primary_language="python",
@@ -247,7 +247,7 @@ class TestSkillParams:
 
         query(
             "noop",
-            options=CodeMinerAgentOptions(
+            options=CodeNibAgentOptions(
                 contexts={},
                 llm=_mock_llm_final_answer(),
                 allowed_skills=["bm25_search"],
@@ -275,7 +275,7 @@ class TestSkillParams:
         try:
             query(
                 "noop",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     contexts={},
                     llm=_mock_llm_final_answer(),
                     skill_params={"no_such_skill": {"top_k": 99}},
@@ -315,7 +315,7 @@ class TestSkillSetMismatchWarning:
         try:
             query(
                 "noop",
-                options=CodeMinerAgentOptions(
+                options=CodeNibAgentOptions(
                     contexts={},
                     llm=_mock_llm_final_answer(),
                     allowed_skills=allowed_skills,

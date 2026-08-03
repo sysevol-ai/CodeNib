@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -23,7 +23,7 @@ arms are directly co-plottable on a single files@k-vs-tokens Pareto plot.
 
 One canonical config. Each arm isolates **one axis** of the (post-prune) skill
 set so its marginal effect is attributable; all arms run on the **full**
-codeminer-base test split with the runner's neutral default prompt (no arm is
+codenib-base test split with the runner's neutral default prompt (no arm is
 steered toward its skills — adoption is the model's choice):
 
 | arm | skills (on top of the always-on `read`/`grep`/`glob`/`bash`) |
@@ -35,13 +35,13 @@ steered toward its skills — adoption is the model's choice):
 | `hybrid` | + hybrid_search fusion |
 | `rerank` | embedding_search + llm_rerank |
 | `graphnav` | bm25_search + find_callers/find_callees/trace |
-| `composer` | codeminer_context (one-call GraphRAG) |
+| `composer` | codenib_context (one-call GraphRAG) |
 | `everything` | the full kept skill set at once |
 
 `defaults_only` names the four default **tool** ids so the allowlist is
 non-empty (an empty subset trips AgentRunner's empty→full-registry fallback);
 they aren't skills, so they expose exactly the always-on tools. Toggle the
-composer's graph expansion off with `CODEMINER_COMPOSER_NO_GRAPH=1` for an
+composer's graph expansion off with `CODENIB_COMPOSER_NO_GRAPH=1` for an
 ablation.
 
 ## Scripts
@@ -49,16 +49,16 @@ ablation.
 | file | purpose |
 |---|---|
 | `feedback_plan.py` | choose a small deterministic feedback slice: fixed smoke cases plus a seed-rotated holdout, stratified by language/group. Outputs JSON instance lists for `run_sweep.py --instances ...`. |
-| `run_sweep.py` | thin CLI for `codeminer.eval.agent_runner.sweep.run_sweep`: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. |
-| `run_synthesis_sweep.py` | thin CLI for `codeminer.eval.agent_runner.query_sweep.run_query_sweep`: many query rows per prebuilt repo, loaded from `sysevol-ai/codeminer-synthesis`; `cells/<id>.json` + `synthesis_summary.json`. |
-| `feedback_summary.py` | thin report CLI for `codeminer.eval.agent_runner.feedback_summary`: arm summaries, baseline deltas, context-source counts, and runtime failure groups for small feedback runs. |
-| `aggregate.py` | thin report CLI for `codeminer.eval.reports.cost_arm_report`: per-arm metrics, skill-invocation histogram, LSP-route adoption, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
+| `run_sweep.py` | thin CLI for `codenib.eval.agent_runner.sweep.run_sweep`: `{arms} × {instances} × {reps}` agent cells on prebuilt indexes; `cells/<id>.json` + `sweep_summary.json`. |
+| `run_synthesis_sweep.py` | thin CLI for `codenib.eval.agent_runner.query_sweep.run_query_sweep`: many query rows per prebuilt repo, loaded from `sysevol-ai/codeminer-synthesis`; `cells/<id>.json` + `synthesis_summary.json`. |
+| `feedback_summary.py` | thin report CLI for `codenib.eval.agent_runner.feedback_summary`: arm summaries, baseline deltas, context-source counts, and runtime failure groups for small feedback runs. |
+| `aggregate.py` | thin report CLI for `codenib.eval.reports.cost_arm_report`: per-arm metrics, skill-invocation histogram, LSP-route adoption, easy/hard split, per-scenario cells, Pareto front → `report.md` + `metrics.json`. |
 
 The base agent-localization scorer (answer + `read` paths + retrieval nodes →
 files@k / symbols@k) lives in
-`codeminer/eval/retrieval_eval.py:score_agent_localization`, shared by the
+`codenib/eval/retrieval_eval.py:score_agent_localization`, shared by the
 runner and the offline ablations. Sweep cell scoring glue (span metrics, format
-failure, pre-load contribution) lives in `codeminer.eval.agent_runner.scoring`.
+failure, pre-load contribution) lives in `codenib.eval.agent_runner.scoring`.
 
 **Not here:** the offline *retrieval* ablations (no agent, no LLM) live in
 `scripts/retrieval_ablation/` (`graphrag_retrieve`, `graph_recall_ablation`,
@@ -100,18 +100,39 @@ python scripts/agent_compile/feedback_summary.py \
 failures, so a re-run retries them. Instances without prebuilt indexes are
 skipped and recorded in `sweep_summary.json`.
 
+### Provenance: the summary `protocol` block
+
+`synthesis_summary.json` embeds a `protocol` block so a synthesis sweep is
+reproducible from its artifact alone: `sweep_id`, `model` / `model_revision`,
+`dataset` / `dataset_revision`, `split`, `subsets`, `preload`, `reps`,
+`max_turns`, token/temperature settings, `embedding_model` /
+`embedding_revision`, `topk`, the category/query/instance caps,
+`query_selection`, and the free-form `run_metadata` mapping. The `*_revision`
+and `run_metadata` fields come from the sweep config
+(`codenib.eval.agent_runner.sweep_config.SweepConfig`); `model_revision` is
+*recorded*, not enforced — immutable local revisions must also be enforced when
+launching the model server.
+
+Per-instance query capping (`--max-queries`) is deterministic:
+`run_query_sweep` supports `dataset_order` (first N rows in dataset order —
+what `run_synthesis_sweep.py` uses) and `category_round_robin` (round-robin
+across sorted categories, starting category rotated by instance index); the
+strategy used lands in `protocol.query_selection`. On a resumed run,
+already-written cells are listed under the summary's `cached` key instead of
+being re-run, so the summary still accounts for every cell.
+
 ## Reusable Code Boundary
 
 Reusable config, harness, sweep execution, per-query sweep execution, preload,
 orchestration, scoring, and baseline helpers live in
-`codeminer.eval.agent_runner`. `scripts/agent_compile` owns experiment CLIs,
+`codenib.eval.agent_runner`. `scripts/agent_compile` owns experiment CLIs,
 configs, dataset selection, and report glue only; the old
 `scripts.agent_compile.lib` compatibility namespace has been removed.
 
 ## How indexes reach the agent
 
 Prebuilt per-instance indexes:
-`codeminer.eval.agent_runner.prebuilt` symlinks the prebuilt `vector` +
+`codenib.eval.agent_runner.prebuilt` symlinks the prebuilt `vector` +
 `graph.pkl` under `prebuilt_dir/<instance>/` into the `cache_dir/<type>` layout
 and builds BM25 fresh, then `build_skill_contexts(rebuild=False)` *loads* them
 — no cloning/reindexing, no `RepoManifest`.

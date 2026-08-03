@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for runtime-probe Pareto analysis."""
 
-from codeminer.eval.agent_runner.pareto import analyze_pareto
+from codenib.eval.agent_runner.pareto import analyze_pareto
 
 
 def _cell(

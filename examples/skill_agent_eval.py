@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@ Skill-agent evaluation driver on SWE-bench.
 Runs ``AgentRunner`` with an arbitrary subset of the skill registry against
 SWE-bench instances and reports retrieval accuracy / token usage. The skill
 subset is the unit of variation — the script delegates index lifecycle to
-``codeminer.compiler.build_skill_contexts``, which resolves each skill's
+``codenib.compiler.build_skill_contexts``, which resolves each skill's
 declared ``index_requirements`` and builds (or reuses cached) BM25 / vector
 / symbol-graph indexes accordingly.
 
@@ -20,7 +20,7 @@ Examples:
     python examples/skill_agent_eval.py \
         --skills bm25_search \
         --filter-instance "^(astropy__astropy-12907)$" \
-        --eval-instances "$HOME/.codeminer/swebench_lite_test_gt_single.json" \
+        --eval-instances "$HOME/.codenib/swebench_lite_test_gt_single.json" \
         --result-path "$HOME/skill_eval_bm25.json"
 
     # Embedding search (replaces the deleted skill_agent_eval_embedding.py)
@@ -28,7 +28,7 @@ Examples:
         --skills embedding_search \
         --embedding-model nomic-ai/CodeRankEmbed \
         --embedding-dimension 768 \
-        --index-cache-dir "$HOME/.codeminer/index_cache" \
+        --index-cache-dir "$HOME/.codenib/index_cache" \
         --result-path "$HOME/skill_eval_embedding.json"
 
     # Multiple skills — agent picks among them
@@ -57,9 +57,9 @@ if _PROJECT_ROOT not in sys.path:
 def _ensure_user_writable_hf_cache() -> None:
     """Redirect HuggingFace caches when ``HF_HOME`` is not writable.
 
-    On shared machines, ``HF_HOME`` may point to e.g. ``/mnt/conda/huggingface``
+    On shared machines, ``HF_HOME`` may point to a shared model cache
     where ``datasets`` then fails on lock-file creation. Must run before
-    importing ``codeminer.dataset`` (which transitively imports ``datasets``).
+    importing ``codenib.dataset`` (which transitively imports ``datasets``).
     Relevant for any skill that needs the embedding-model side of the
     HuggingFace cache (e.g. ``embedding_search``).
     """
@@ -87,20 +87,20 @@ def _ensure_user_writable_hf_cache() -> None:
 
 _ensure_user_writable_hf_cache()
 
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.compiler import build_skill_contexts
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.eval.retrieval_eval import (
+from codenib.agent.skills.loader import SkillLoader
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.compiler import build_skill_contexts
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
     collect_targets,
     evaluate_predictions,
 )
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.log_utils import get_logger
-from codeminer.ops.retrieve import to_queried_nodes
-from codeminer.types import QueriedNode
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.log_utils import get_logger
+from codenib.ops.retrieve import to_queried_nodes
+from codenib.types import QueriedNode
 
 logger = get_logger(__name__)
 
@@ -223,7 +223,7 @@ def run_hybrid_baseline_retrieval(
     Returns:
         List of retrieved nodes.
     """
-    from codeminer.model import HybridRetrievePipeline
+    from codenib.model import HybridRetrievePipeline
 
     if pipeline is None:
         pipeline = HybridRetrievePipeline(
@@ -251,7 +251,7 @@ def run_agent_with_skills(
     """Run ``AgentRunner`` with the given skill allowlist + pre-built contexts.
 
     ``contexts`` is the dict returned by
-    ``codeminer.compiler.build_skill_contexts`` — keyed by skill_type
+    ``codenib.compiler.build_skill_contexts`` — keyed by skill_type
     (``"retrieve"`` / ``"expand"`` / ...) and carrying the loaded index
     artifacts. The agent doesn't see the indexes directly; ``SkillLoader``
     wires each skill executor to the matching context.
@@ -263,15 +263,15 @@ def run_agent_with_skills(
     Returns:
         Tuple of (results, execution_log, usage_stats)
     """
-    from codeminer.agent.runner import AgentRunner
-    from codeminer.compiler.params import SessionContext
+    from codenib.agent.runner import AgentRunner
+    from codenib.compiler.params import SessionContext
 
     execution_log = []
     usage_stats: Dict[str, Any] = {}
     allow_set = set(allow_skills or ["bm25_search"])
 
     try:
-        skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
+        skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
 
         # SkillRegistry is a singleton; reset so this instance's contexts
         # replace the previous one (load_all skips already-registered skills).
@@ -378,7 +378,7 @@ def evaluate_instance(
         if skill_ids:  # Skip for hybrid_baseline
             # Resolve index_requirements from config.yaml on disk (#154) so a
             # cold index cache no longer silently yields an empty index union.
-            skills_dir = os.path.join(_PROJECT_ROOT, "codeminer", "agent", "skills")
+            skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
             contexts = build_skill_contexts(
                 repo_path=repo_path,
                 skill_ids=skill_ids,
@@ -426,7 +426,7 @@ def evaluate_instance(
             if pipeline_cache is not None:
                 pipeline = pipeline_cache.get(repo_path)
                 if pipeline is None:
-                    from codeminer.model import HybridRetrievePipeline
+                    from codenib.model import HybridRetrievePipeline
 
                     execution_log.append(f"Building new pipeline for {repo_path}")
                     pipeline = HybridRetrievePipeline(
@@ -582,7 +582,7 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
     # ``args._compile_table`` per instance.
     args._compile_table = None
     if getattr(args, "compile_table", None):
-        from codeminer.agent.compile import load_compile_table
+        from codenib.agent.compile import load_compile_table
 
         table_path = Path(args.compile_table)
         args._compile_table = dict(load_compile_table(table_path))
@@ -989,7 +989,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Directory under which built indexes are cached "
-            "(default: <repo_path>/.codeminer_cache). Reused across runs; "
+            "(default: <repo_path>/.codenib_cache). Reused across runs; "
             "delete to force a rebuild."
         ),
     )

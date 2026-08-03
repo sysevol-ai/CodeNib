@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,13 +10,15 @@ import os
 
 import pytest
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.incremental.graph_patcher import GraphPatcher
-from codeminer.graph.incremental.patcher_cpp import PatcherCpp
-from codeminer.graph.incremental.patcher_go import PatcherGo
-from codeminer.graph.incremental.patcher_python import PatcherPython
-from codeminer.graph.incremental.patcher_rust import PatcherRust
-from codeminer.graph.incremental.patcher_ts import PatcherTS
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.incremental.graph_patcher import GraphPatcher
+from codenib.graph.incremental.patcher_base import IncrementalPatchRebuildRequired
+from codenib.graph.incremental.patcher_cpp import PatcherCpp
+from codenib.graph.incremental.patcher_go import PatcherGo
+from codenib.graph.incremental.patcher_python import PatcherPython
+from codenib.graph.incremental.patcher_rust import PatcherRust
+from codenib.graph.incremental.patcher_ts import PatcherTS
+from codenib.types import EDGE_TYPE_REFERENCE
 
 
 @pytest.mark.parametrize(
@@ -67,8 +69,193 @@ def test_patcher_lsp_metadata_comes_from_language_registry(
     assert patcher._language_id() == language_id
 
 
+def test_cpp_patch_rebuilds_range_indexes(tmp_path, monkeypatch):
+    graph = CodeGraph(str(tmp_path))
+    graph.add_file_node("target.cpp")
+    graph._add_vertex(
+        "target.cpp:target",
+        {
+            "type": "function",
+            "file": "target.cpp",
+            "start_line": 0,
+            "end_line": 2,
+            "unified_name": "target.cpp:target()",
+        },
+    )
+    graph.symbol_ranges["target.cpp:target"] = (0, 2)
+    graph.build_range_indexes()
+
+    patcher = PatcherCpp(str(tmp_path), graph)
+
+    idx_dir = tmp_path / ".cache" / "clangd" / "index"
+    idx_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        patcher,
+        "_reindex_changed_files",
+        lambda changed_files: idx_dir,
+    )
+
+    def fake_incremental_update_idx(changed_files, *, idx_dir=None):
+        assert changed_files == ["new.cpp"]
+        assert idx_dir == tmp_path / ".cache" / "clangd" / "index"
+        graph.add_file_node("new.cpp")
+        graph._add_vertex(
+            "new.cpp:caller",
+            {
+                "type": "function",
+                "file": "new.cpp",
+                "start_line": 3,
+                "end_line": 8,
+                "unified_name": "new.cpp:caller()",
+            },
+        )
+        graph.symbol_ranges["new.cpp:caller"] = (3, 8)
+        graph._add_edge(
+            "new.cpp:caller",
+            "target.cpp:target",
+            EDGE_TYPE_REFERENCE,
+            anchor_file="new.cpp",
+            anchor_line=5,
+        )
+        return {"vertices_created": 2, "refs_added": 1}
+
+    monkeypatch.setattr(
+        patcher,
+        "_incremental_update_idx",
+        fake_incremental_update_idx,
+    )
+
+    patcher.patch_files(
+        {
+            "modified": [],
+            "added": ["new.cpp"],
+            "deleted": [],
+            "renamed": [],
+        }
+    )
+
+    result = graph.query_range("new.cpp", 5, 5)
+    assert [node.name for node in result.defined] == ["new.cpp:caller"]
+    assert len(result.outgoing) == 1
+    assert result.outgoing[0].anchor_file == "new.cpp"
+    assert result.outgoing[0].anchor_line == 5
+
+
+def test_ts_import_change_requires_rebuild_before_lsp_start(tmp_path, monkeypatch):
+    graph = CodeGraph(str(tmp_path))
+    graph.add_file_node("src/use.ts")
+    before = b'import { Runner } from "./types";\nRunner();\n'
+    after = b'import { Runner } from "./other";\nRunner();\n'
+    monkeypatch.setattr(
+        "codenib.graph.incremental.change_mgr.read_file_at_revision",
+        lambda _root, revision, _path: before if revision == "base" else after,
+    )
+
+    patcher = PatcherTS(str(tmp_path), graph)
+    monkeypatch.setattr(
+        patcher,
+        "start_lsp",
+        lambda: pytest.fail("import guard must run before starting LSP"),
+    )
+
+    with pytest.raises(IncrementalPatchRebuildRequired, match="imports changed"):
+        patcher.patch_files(
+            {"modified": ["src/use.ts"]},
+            earlier_commit="base",
+            later_commit="target",
+        )
+
+    assert set(graph.name_to_vertex) == {"src/use.ts"}
+
+
+def test_ts_non_import_edit_preserves_incremental_contract(tmp_path, monkeypatch):
+    before = b'import { Runner } from "./types";\nconst value = 1;\n'
+    after = b'import { Runner } from "./types";\nconst value = 2;\n'
+    monkeypatch.setattr(
+        "codenib.graph.incremental.change_mgr.read_file_at_revision",
+        lambda _root, revision, _path: before if revision == "base" else after,
+    )
+
+    patcher = PatcherTS(str(tmp_path), CodeGraph(str(tmp_path)))
+    patcher._validate_patch_contract(
+        {"modified": ["src/use.ts"], "added": [], "deleted": [], "renamed": []},
+        "base",
+        "target",
+    )
+
+
+@pytest.mark.parametrize("change_key", ["added", "deleted", "renamed"])
+def test_ts_file_identity_changes_require_import_reindex(tmp_path, change_key):
+    changes = {"modified": [], "added": [], "deleted": [], "renamed": []}
+    changes[change_key] = (
+        [("src/old.ts", "src/new.ts")] if change_key == "renamed" else ["src/new.ts"]
+    )
+    patcher = PatcherTS(str(tmp_path), CodeGraph(str(tmp_path)))
+
+    with pytest.raises(IncrementalPatchRebuildRequired, match="reindexing"):
+        patcher._validate_patch_contract(changes, "base", "target")
+
+
+@pytest.mark.parametrize("failure_stage", ["reindex", "apply"])
+def test_cpp_patch_failure_preserves_original_graph(
+    tmp_path,
+    monkeypatch,
+    failure_stage,
+):
+    graph = CodeGraph(str(tmp_path))
+    graph.add_file_node("source.cpp")
+    graph._add_vertex(
+        "source.cpp:kept",
+        {
+            "type": "function",
+            "file": "source.cpp",
+            "start_line": 1,
+            "end_line": 4,
+            "unified_name": "source.cpp:kept()",
+        },
+    )
+    graph.symbol_ranges["source.cpp:kept"] = (1, 4)
+    graph.build_range_indexes()
+    original_names = list(graph.graph.vs["name"])
+    original_ranges = dict(graph.symbol_ranges)
+
+    patcher = PatcherCpp(str(tmp_path), graph)
+    idx_dir = tmp_path / ".cache" / "clangd" / "index"
+    idx_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        patcher,
+        "_reindex_changed_files",
+        lambda _changed_files: None if failure_stage == "reindex" else idx_dir,
+    )
+    if failure_stage == "apply":
+
+        def fail_incremental_update(*_args, **_kwargs):
+            raise RuntimeError("decode failed")
+
+        monkeypatch.setattr(
+            patcher,
+            "_incremental_update_idx",
+            fail_incremental_update,
+        )
+
+    with pytest.raises(RuntimeError):
+        patcher.patch_files(
+            {
+                "modified": ["source.cpp"],
+                "added": [],
+                "deleted": [],
+                "renamed": [],
+            }
+        )
+
+    assert list(graph.graph.vs["name"]) == original_names
+    assert graph.symbol_ranges == original_ranges
+    result = graph.query_range("source.cpp", 2, 2)
+    assert [node.name for node in result.defined] == ["source.cpp:kept"]
+
+
 def test_python_patcher_lsp_command_allows_registry_env_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_PYTHON_LSP_CMD", "ty server")
+    monkeypatch.setenv("CODENIB_PYTHON_LSP_CMD", "ty server")
 
     patcher = PatcherPython(str(tmp_path), CodeGraph(str(tmp_path)))
 
@@ -76,7 +263,7 @@ def test_python_patcher_lsp_command_allows_registry_env_override(tmp_path, monke
 
 
 def test_rust_patcher_lsp_command_uses_registry_factory(tmp_path, monkeypatch):
-    import codeminer.scip_interface.rust_analyzer as rust_analyzer
+    import codenib.scip_interface.rust_analyzer as rust_analyzer
 
     monkeypatch.setattr(
         rust_analyzer,
@@ -96,10 +283,10 @@ def test_rust_patcher_lsp_command_uses_registry_factory(tmp_path, monkeypatch):
 
 
 def test_lsp_client_command_lookup_uses_language_registry(monkeypatch):
-    from codeminer.graph.incremental import lsp_client
+    from codenib.graph.incremental import lsp_client
 
     monkeypatch.setattr(lsp_client, "resolve_lsp_binary", lambda _binary: None)
-    monkeypatch.setenv("CODEMINER_PYTHON_LSP_CMD", "ty server")
+    monkeypatch.setenv("CODENIB_PYTHON_LSP_CMD", "ty server")
 
     assert lsp_client.LSPClient.get_lsp_command("python") == ["ty", "server"]
     assert lsp_client.LSPClient.get_lsp_command("go") == ["gopls", "serve"]
@@ -114,7 +301,7 @@ def test_lsp_client_command_lookup_uses_language_registry(monkeypatch):
 
 
 def test_lsp_binary_resolver_searches_dotnet_global_tools():
-    from codeminer.graph.incremental import lsp_client
+    from codenib.graph.incremental import lsp_client
 
     extra_dirs = {str(dir_fn()) for dir_fn in lsp_client._EXTRA_BIN_DIRS}
 
@@ -122,7 +309,7 @@ def test_lsp_binary_resolver_searches_dotnet_global_tools():
 
 
 def test_lsp_process_env_exposes_user_dotnet_install(tmp_path, monkeypatch):
-    from codeminer.graph.incremental import lsp_client
+    from codenib.graph.incremental import lsp_client
 
     dotnet_root = tmp_path / ".dotnet"
     dotnet_root.mkdir()
@@ -144,12 +331,12 @@ def test_lsp_process_env_exposes_user_dotnet_install(tmp_path, monkeypatch):
 
 
 def test_lsp_process_env_uses_ruby_overlay_bundle_gemfile(tmp_path, monkeypatch):
-    from codeminer.graph.incremental import lsp_client
+    from codenib.graph.incremental import lsp_client
 
-    monkeypatch.setenv("CODEMINER_RUBY_BUNDLE_GEMFILE", ".codeminer/Gemfile")
+    monkeypatch.setenv("CODENIB_RUBY_BUNDLE_GEMFILE", ".codenib/Gemfile")
     monkeypatch.setenv("GEM_PATH", "/tmp/global-gems")
 
     env = lsp_client._lsp_process_env("ruby", tmp_path)
 
-    assert env["BUNDLE_GEMFILE"] == str(tmp_path / ".codeminer/Gemfile")
+    assert env["BUNDLE_GEMFILE"] == str(tmp_path / ".codenib/Gemfile")
     assert "GEM_PATH" not in env

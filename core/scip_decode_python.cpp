@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <re2/re2.h>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
 
@@ -27,17 +27,6 @@ bool starts_with_upper(const std::string &value) {
 bool contains_function_parentheses(const std::string &symbol) {
   return symbol.find("()") != std::string::npos ||
          symbol.find('(') != std::string::npos;
-}
-
-std::vector<int> extract_integers(const std::string &text,
-                                  const re2::RE2 &pattern) {
-  std::vector<int> results;
-  re2::StringPiece input(text);
-  int value = 0;
-  while (re2::RE2::FindAndConsume(&input, pattern, &value)) {
-    results.push_back(value);
-  }
-  return results;
 }
 
 } // namespace
@@ -219,4 +208,4 @@ void SCIPPythonDecoder::process_symbol(const std::string &symbol, int line,
   }
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

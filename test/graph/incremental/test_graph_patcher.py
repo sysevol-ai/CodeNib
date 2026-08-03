@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -33,10 +33,10 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.graph.incremental.graph_patcher import GraphPatcher
-from codeminer.graph.incremental.lsp_client import LSPClient
-from codeminer.ls_router import LSIndexer
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.incremental.graph_patcher import GraphPatcher
+from codenib.graph.incremental.lsp_client import LSPClient
+from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.integration_serial
 
@@ -44,14 +44,14 @@ pytestmark = pytest.mark.integration_serial
 def test_ls_indexer_graph_patch_import():
     """Smoke test: LSIndexer.graph_patch lazy imports resolve correctly."""
     assert hasattr(LSIndexer, "graph_patch")
-    from codeminer.graph.incremental.graph_patcher import LANGUAGE_EXTENSIONS
+    from codenib.graph.incremental.graph_patcher import LANGUAGE_EXTENSIONS
 
     assert isinstance(LANGUAGE_EXTENSIONS, dict)
 
 
 SIMPLE_REPOS = Path(__file__).resolve().parent.parent / "scip" / "simple_repos"
 REPO_CACHE_DIRS = [
-    Path.home() / ".codeminer" / "repos",
+    Path.home() / ".codenib" / "repos",
 ]
 
 # Ensure LSP/SCIP tool directories are on PATH
@@ -112,9 +112,11 @@ def _build_graph_with_scip(
 ) -> CodeGraph:
     """Build a CodeGraph via SCIP cold-start (LSIndexer.run_pipeline).
 
-    Uses skip_level="graph" to reuse cached graph.pkl if available,
-    falling back to full pipeline if not.
+    Reuses a cached graph only for the same language and source commit,
+    falling back to a full pipeline when that exact cache is absent.
     """
+    source_commit = _git("rev-parse", "HEAD", cwd=project_root)
+    output_dir = output_dir / language / source_commit
     indexer = LSIndexer(
         project_root=project_root,
         output_dir=output_dir,
@@ -149,7 +151,7 @@ def _has_ref_edge(g: CodeGraph, src_label: str, tgt_label: str) -> bool:
 
     Label is matched against unified_name first, then name (for file vertices).
     """
-    from codeminer.types import EDGE_TYPE_REFERENCE
+    from codenib.types import EDGE_TYPE_REFERENCE
 
     for e in g.graph.es:
         if e["type"] != EDGE_TYPE_REFERENCE:
@@ -163,7 +165,7 @@ def _has_ref_edge(g: CodeGraph, src_label: str, tgt_label: str) -> bool:
 
 def _count_ref_edges_involving(g: CodeGraph, label: str) -> int:
     """Count reference edges where either end matches label exactly."""
-    from codeminer.types import EDGE_TYPE_REFERENCE
+    from codenib.types import EDGE_TYPE_REFERENCE
 
     count = 0
     for e in g.graph.es:
@@ -654,7 +656,7 @@ def _get_earlier_commit(repo_dir: Path, later_commit: str, n_back: int) -> str:
 
 
 class TestSWEBenchCpp:
-    """fmtlib/fmt: instance fmt-2317 (from codeminer-base-dataset)."""
+    """fmtlib/fmt: instance fmt-2317 (from codenib-base-dataset)."""
 
     REPO = "fmtlib/fmt"
     LATER = "ece4b4b33a96928e3d92f4965f6deeb8e3a6e6b0"
@@ -691,7 +693,7 @@ class TestSWEBenchCpp:
         g = _build_graph_with_scip(
             repo_dir,
             "cpp",
-            Path.home() / ".codeminer" / "scip_cache" / self.REPO.replace("/", "_"),
+            Path.home() / ".codenib" / "scip_cache" / self.REPO.replace("/", "_"),
         )
 
         _git("checkout", "-f", self.LATER[:12], cwd=repo_dir)
@@ -755,7 +757,7 @@ class TestSWEBenchCpp:
 
 
 class TestSWEBenchGo:
-    """caddyserver/caddy: instance caddy-5870 (from codeminer-base-dataset).
+    """caddyserver/caddy: instance caddy-5870 (from codenib-base-dataset).
     N_BACK=5 to include reverseproxy changes for richer edge testing.
     """
 
@@ -785,7 +787,7 @@ class TestSWEBenchGo:
         g = _build_graph_with_scip(
             repo_dir,
             "go",
-            Path.home() / ".codeminer" / "scip_cache" / self.REPO.replace("/", "_"),
+            Path.home() / ".codenib" / "scip_cache" / self.REPO.replace("/", "_"),
         )
         patcher.code_graph = g
 
@@ -893,7 +895,7 @@ class TestSWEBenchGo:
 
 
 class TestSWEBenchRust:
-    """astral-sh/ruff: instance ruff-15309 (from codeminer-base-dataset)."""
+    """astral-sh/ruff: instance ruff-15309 (from codenib-base-dataset)."""
 
     REPO = "astral-sh/ruff"
     LATER = "75a24bbc67aa31b825b6326cfb6e6afdf3ca90d5"
@@ -921,7 +923,7 @@ class TestSWEBenchRust:
         g = _build_graph_with_scip(
             repo_dir,
             "rust",
-            Path.home() / ".codeminer" / "scip_cache" / self.REPO.replace("/", "_"),
+            Path.home() / ".codenib" / "scip_cache" / self.REPO.replace("/", "_"),
         )
         patcher.code_graph = g
 
@@ -1015,7 +1017,7 @@ class TestSWEBenchRust:
 
 
 class TestSWEBenchPython:
-    """scikit-learn/scikit-learn: instance sklearn-10297 (from codeminer-base-dataset)."""
+    """scikit-learn/scikit-learn: instance sklearn-10297 (from codenib-base-dataset)."""
 
     REPO = "scikit-learn/scikit-learn"
     LATER = "b90661d6a46aa3619d3eec94d5281f5888add501"
@@ -1043,7 +1045,7 @@ class TestSWEBenchPython:
         g = _build_graph_with_scip(
             repo_dir,
             "python",
-            Path.home() / ".codeminer" / "scip_cache" / self.REPO.replace("/", "_"),
+            Path.home() / ".codenib" / "scip_cache" / self.REPO.replace("/", "_"),
         )
         patcher.code_graph = g
 
@@ -1153,7 +1155,7 @@ class TestSWEBenchPython:
 
 
 class TestSWEBenchTypeScript:
-    """preactjs/preact: instance preact-2896 (from codeminer-base-dataset)."""
+    """preactjs/preact: instance preact-2896 (from codenib-base-dataset)."""
 
     REPO = "preactjs/preact"
     LATER = "a9f7e676dc03b5008b8483e0937fc27c1af8287f"
@@ -1181,7 +1183,7 @@ class TestSWEBenchTypeScript:
         g = _build_graph_with_scip(
             repo_dir,
             "ts",
-            Path.home() / ".codeminer" / "scip_cache" / self.REPO.replace("/", "_"),
+            Path.home() / ".codenib" / "scip_cache" / self.REPO.replace("/", "_"),
             infer_tsconfig=True,
         )
         patcher.code_graph = g

@@ -1,0 +1,298 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release verification
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and inspect distributions
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test packaged Wiki frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Build Python distributions
+        run: |
+          BUILD_VENV="$RUNNER_TEMP/codenib-release-build-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$BUILD_VENV"
+          "$BUILD_VENV/bin/python" -m pip install \
+            --upgrade pip build twine
+          "$BUILD_VENV/bin/python" -m build
+          "$BUILD_VENV/bin/python" -m twine check dist/*
+          "$BUILD_VENV/bin/python" \
+            scripts/verify_release_artifacts.py dist
+
+      - name: Validate production release ref
+        if: github.ref_type == 'tag'
+        run: |
+          REMOTE_TAG_SHA="$(
+            git ls-remote --refs origin "refs/tags/$GITHUB_REF_NAME" |
+              cut -f1
+          )"
+          REMOTE_COMMIT_SHA="$(
+            git ls-remote origin "refs/tags/$GITHUB_REF_NAME^{}" |
+              cut -f1
+          )"
+          test -n "$REMOTE_TAG_SHA"
+          test -n "$REMOTE_COMMIT_SHA"
+          test "$REMOTE_TAG_SHA" != "$REMOTE_COMMIT_SHA"
+          test "$REMOTE_COMMIT_SHA" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$REMOTE_COMMIT_SHA" origin/main
+          python scripts/verify_release_artifacts.py dist --tag "$GITHUB_REF_NAME"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  install-smoke:
+    name: Install smoke (Python ${{ matrix.python-version }})
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+    steps:
+      - name: Checkout smoke harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install wheel
+        run: |
+          SMOKE_VENV="$RUNNER_TEMP/codenib-release-smoke-${{ matrix.python-version }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$SMOKE_VENV"
+          echo "$SMOKE_VENV/bin" >> "$GITHUB_PATH"
+          "$SMOKE_VENV/bin/python" -m pip install --upgrade pip
+          "$SMOKE_VENV/bin/python" -m pip install dist/*.whl
+
+      - name: Exercise installed CLI
+        working-directory: ${{ runner.temp }}
+        run: |
+          codenib --version
+          codenib doctor --require core
+          python "$GITHUB_WORKSPACE/scripts/smoke_release_install.py"
+
+  service-smoke:
+    name: Installed Wiki and MCP services
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Checkout service harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install wheel with MCP support
+        run: |
+          SERVICE_VENV="$RUNNER_TEMP/codenib-release-services-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$SERVICE_VENV"
+          echo "$SERVICE_VENV/bin" >> "$GITHUB_PATH"
+          "$SERVICE_VENV/bin/python" -m pip install --upgrade pip
+          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL"
+          "$SERVICE_VENV/bin/python" -m pip install "${WHEEL}[mcp]"
+
+      - name: Verify optional runtime boundary
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          unexpected = [
+              name
+              for name in ("faiss", "igraph", "litellm", "sentence_transformers")
+              if importlib.util.find_spec(name) is not None
+          ]
+          if unexpected:
+              raise SystemExit(f"unexpected optional runtimes: {unexpected}")
+
+          import sys
+          import codenib.mcp.server
+
+          eagerly_loaded = [
+              name
+              for name in ("faiss", "igraph", "litellm", "sentence_transformers")
+              if name in sys.modules
+          ]
+          if eagerly_loaded:
+              raise SystemExit(f"optional runtimes loaded eagerly: {eagerly_loaded}")
+          PY
+
+      - name: Exercise installed services
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/scripts/smoke_release_services.py"
+
+  agent-smoke:
+    name: Installed sparse Ask service
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Checkout agent harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install wheel with agent support
+        run: |
+          AGENT_VENV="$RUNNER_TEMP/codenib-release-agent-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$AGENT_VENV"
+          echo "$AGENT_VENV/bin" >> "$GITHUB_PATH"
+          "$AGENT_VENV/bin/python" -m pip install --upgrade pip
+          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL"
+          "$AGENT_VENV/bin/python" -m pip install "${WHEEL}[agent]"
+
+      - name: Verify sparse agent dependency boundary
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          unexpected = [
+              name
+              for name in ("faiss", "igraph", "sentence_transformers")
+              if importlib.util.find_spec(name) is not None
+          ]
+          if unexpected:
+              raise SystemExit(f"unexpected retrieval runtimes: {unexpected}")
+          if importlib.util.find_spec("litellm") is None:
+              raise SystemExit("LiteLLM is missing from the agent extra")
+          PY
+
+      - name: Exercise installed Ask service
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/scripts/smoke_release_agent.py"
+
+  graph-smoke:
+    name: Installed graph and Dependency Map
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Checkout graph harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install wheel and Python graph runtime
+        run: |
+          GRAPH_VENV="$RUNNER_TEMP/codenib-release-graph-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$GRAPH_VENV"
+          echo "$GRAPH_VENV/bin" >> "$GITHUB_PATH"
+          "$GRAPH_VENV/bin/python" -m pip install --upgrade pip
+          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL"
+          "$GRAPH_VENV/bin/python" -m pip install "${WHEEL}[graph]"
+
+      - name: Provision the Python SCIP provider
+        run: |
+          SCIP_ROOT="$RUNNER_TEMP/codenib-scip-python-${{ github.run_id }}-${{ github.run_attempt }}"
+          npm install --prefix "$SCIP_ROOT" "@sourcegraph/scip-python@0.6.6"
+          echo "$SCIP_ROOT/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Verify graph dependency boundary
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          required = ("google.protobuf", "igraph")
+          missing = [name for name in required if importlib.util.find_spec(name) is None]
+          if missing:
+              raise SystemExit(f"missing graph runtimes: {missing}")
+
+          unexpected = [
+              name
+              for name in ("faiss", "litellm", "sentence_transformers")
+              if importlib.util.find_spec(name) is not None
+          ]
+          if unexpected:
+              raise SystemExit(f"unexpected non-graph runtimes: {unexpected}")
+          PY
+
+      - name: Exercise installed Dependency Map
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/scripts/smoke_release_graph.py"

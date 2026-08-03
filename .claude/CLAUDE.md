@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-CodeMiner is a code analysis agent with graph-enhanced search. It parses
+CodeNib is a code analysis agent with graph-enhanced search. It parses
 multi-language codebases with tree-sitter, builds semantic graphs (igraph),
 and provides hybrid retrieval (BM25 + FAISS/Milvus embeddings + regex/trigram +
 LLM re-ranking) via litellm. Retrieval is exposed both as composable agent
@@ -14,7 +14,7 @@ skills and over the Model Context Protocol (MCP). Python 3.10+.
 ## Package structure
 
 ```
-codeminer/
+codenib/
   code_chunking/   # Tree-sitter chunkers: Python, Go, Rust, C++, JS/TS  (CLAUDE.md)
   graph/           # CodeGraph (igraph), ROI subgraph, range queries; graph/incremental/ LSP patchers  (CLAUDE.md)
   dataset/         # SWE-bench loading, ground-truth extraction, query synthesis  (CLAUDE.md)
@@ -45,7 +45,9 @@ make scip         # Install SCIP toolchain (rust-analyzer, scip-clang, TS, Pytho
 make install      # pip install -e .
 ```
 
-Pre-commit hooks: black (line-length 88), isort, flake8+bugbear, clang-format for C/C++.
+Pre-commit hooks: black (line-length 88), isort, flake8+bugbear, clang-format
+for C/C++, and the local `codenib-namespace` hook (`scripts/check_namespace.py`)
+guarding the CodeNib naming migration.
 
 ## Critical conventions
 
@@ -55,14 +57,14 @@ rules, but keep these in mind everywhere:
 - **Line numbering**: `CodeChunk.start_line`/`end_line` are **0-based**
   (tree-sitter); `CodeLocation.start_line`/`end_line` are **1-based**
   (output/HuggingFace). `_chunk_to_code_block()` in `dataset/gt_locate.py` does
-  the +1 conversion. See [`codeminer/dataset/CLAUDE.md`](../codeminer/dataset/CLAUDE.md)
-  and [`codeminer/code_chunking/CLAUDE.md`](../codeminer/code_chunking/CLAUDE.md).
+  the +1 conversion. See [`codenib/dataset/CLAUDE.md`](../codenib/dataset/CLAUDE.md)
+  and [`codenib/code_chunking/CLAUDE.md`](../codenib/code_chunking/CLAUDE.md).
 - **`.c` files** use the `cpp` chunker (not a separate C chunker).
 
 ## Frontend / web demo
 
-The DeepWiki-style web demo (FastAPI backend `codeminer/web/` + Next.js frontend
-`web/` + `codeminer/wiki/`) is on `main` (merged via PR #166/#167). To run,
+The DeepWiki-style web demo (FastAPI backend `codenib/web/` + Next.js frontend
+`web/` + `codenib/wiki/`) is on `main` (merged via PR #166/#167). To run,
 screenshot, or iterate the UI:
 
 - **How to run, screenshot (Playwright), and self-critique** the demo:
@@ -90,11 +92,24 @@ Rules for any AI/code agent (Claude Code, etc.) committing or opening PRs here.
 
 ## CI
 
-Three parallel jobs on a self-hosted runner (see `.github/workflows/ci.yml`):
+Seven jobs on a self-hosted runner, chained from a `preflight` decision job
+(see `.github/workflows/ci.yml`; full reference:
+[`docs/ci_cd.md`](../docs/ci_cd.md)):
 
-1. **unit** — fast, no external deps
-2. **integration** — needs SCIP, clangd, rust-analyzer, bear
-3. **slow** — needs LLM API keys, GPU
+1. **preflight** — no tests; computes `should-run` / `run-serial` / `run-slow`
+2. **unit** — fast, no external deps (all unmarked tests)
+3. **integration** — read-only, parallel-safe; needs SCIP, clangd, rust-analyzer, bear
+4. **integration-serial** — repo-mutating `integration_serial` tests, run sequentially
+5. **scip-core** — builds `core/`, parity-checks the C++ decoder against the serial graphs
+6. **graph-consumer** — `integration_serial_consumer` tests reading the serial `graph.pkl`
+7. **slow** — LLM API keys, GPU; opt-in (schedule, `full`-tier dispatch, or `full-ci`/`slow-ci` PR label)
+
+The serial chain (4–6) runs only when the change touches the serial-chain
+path allowlist (chunking, dataset, graph, index, ls_index, core, and a few
+graph-related scripts/tests — see [`docs/ci_cd.md`](../docs/ci_cd.md)), on
+scheduled or `full`-tier dispatch runs, or when the PR carries the
+`full-ci`/`serial-ci` label. All other changes — including agent, eval,
+model, and web code — run only unit + integration.
 
 Skip mechanisms:
 - `paths-ignore`: `**.md`, `docs/**`, `LICENSE`, `.gitignore`
@@ -110,9 +125,9 @@ Domain rules live next to the code they govern and load on demand:
 
 | Path | Covers |
 |------|--------|
-| [`codeminer/code_chunking/CLAUDE.md`](../codeminer/code_chunking/CLAUDE.md) | Chunk depth (L0/L1/L2), per-language chunk types, line-number origin |
-| [`codeminer/graph/CLAUDE.md`](../codeminer/graph/CLAUDE.md) | CodeGraph (igraph), node/edge types, pickle schema versioning, C++ decoder parity |
-| [`codeminer/dataset/CLAUDE.md`](../codeminer/dataset/CLAUDE.md) | SWE-bench loading, ground-truth extraction, line conversion, test repos |
+| [`codenib/code_chunking/CLAUDE.md`](../codenib/code_chunking/CLAUDE.md) | Chunk depth (L0/L1/L2), per-language chunk types, line-number origin |
+| [`codenib/graph/CLAUDE.md`](../codenib/graph/CLAUDE.md) | CodeGraph (igraph), node/edge types, pickle schema versioning, C++ decoder parity |
+| [`codenib/dataset/CLAUDE.md`](../codenib/dataset/CLAUDE.md) | SWE-bench loading, ground-truth extraction, line conversion, test repos |
 | [`test/CLAUDE.md`](../test/CLAUDE.md) | pytest marker tiers, fixture caches, package-shadow gotcha |
 | [`scripts/agent_compile/CLAUDE.md`](../scripts/agent_compile/CLAUDE.md) | Agent-compile RFC tooling, phase lineage, RepoManifest/IndexCompiler |
 

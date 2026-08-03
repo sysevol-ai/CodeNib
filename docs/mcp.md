@@ -1,65 +1,118 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
 # MCP Server
 
-CodeMiner ships a [Model Context Protocol](https://modelcontextprotocol.io/) server
-(`codeminer-mcp`) that exposes its search over a **pre-built index** to LLM agents.
-It is query-only: build a repository index once, then point the server at the
-resulting manifest.
+CodeNib serves a pre-built repository manifest to coding agents over
+[Model Context Protocol](https://modelcontextprotocol.io/) stdio. Index
+construction and query serving are separate: build or update a repository once,
+then reuse that manifest across agent sessions.
 
-## Build the index
-
-Indexes are compiled with `IndexCompiler` (`codeminer.compiler`), which writes
-`<repo>/.codeminer_cache/repo_manifest.json`:
-
-```python
-from codeminer.compiler import IndexCompiler, IndexCompilerConfig
-from codeminer.compiler.index_builders import (
-    IndexBuilderRegistry,
-    register_default_builders,
-)
-
-registry = IndexBuilderRegistry()
-register_default_builders(registry, languages=["python"])
-
-compiler = IndexCompiler(
-    registry,
-    IndexCompilerConfig(index_types=["bm25", "vector", "symbol_graph", "zoekt"]),
-)
-compiler.compile_repo("/path/to/repo")
-```
-
-Each tool depends on a specific index (see the table below). A build that fails — for
-example Zoekt when its binary is missing — is recorded as `failed` in the manifest and
-only that tool returns an error; the others still work.
-
-## Run the server
+## Install And Index
 
 ```bash
-codeminer-mcp /path/to/repo/.codeminer_cache/repo_manifest.json
+pip install "codenib[mcp]"
+codenib index /path/to/repository
 ```
 
-Transport is stdio; logs go to stderr (`--log-level` to adjust).
+The default `fast` preset builds BM25 without a model download. Add semantic
+search when needed:
+
+```bash
+pip install "codenib[mcp,semantic]"
+codenib index /path/to/repository --preset semantic
+```
+
+Add static navigation and dependency tools without the embedding download:
+
+```bash
+pip install "codenib[graph,mcp]"
+codenib index /path/to/repository --preset graph
+```
+
+Each build writes a manifest below
+`$CODENIB_HOME/repositories/<repo>-<id>/indexes` (default
+`~/.codenib/repositories/...`) and prints its exact path. A failed optional
+view is recorded in the manifest without invalidating successful independent
+views.
+
+## Run The Server
+
+```bash
+codenib mcp /path/to/repository
+```
+
+The command also accepts the manifest path directly:
+
+```bash
+codenib mcp ~/.codenib/repositories/<repo>-<id>/indexes/repo_manifest.json
+```
+
+Transport is stdio and logs go to stderr. A typical client configuration is:
+
+```json
+{
+  "mcpServers": {
+    "codenib": {
+      "command": "codenib",
+      "args": ["mcp", "/absolute/path/to/repository"]
+    }
+  }
+}
+```
+
+Use an absolute repository path because the client may launch the server from a
+different working directory.
 
 ## Tools
 
-| Tool | Backing index | Granularity | Use for |
-|------|---------------|-------------|---------|
-| `search_semantic` | `vector` | symbol (l0/l1/l2) | natural-language / conceptual queries |
-| `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
-| `search_regex` | `symbol_graph` | symbol | structural pattern matching |
-| `search_zoekt` | `zoekt` | file | fast substring/regex across raw file contents |
-| `dependency_subgraph` | `symbol_graph` | call graph | structural "who calls X / what does X reach" — `impact` (transitive callers / blast radius), `dependencies` (transitive callees), or `both` (1-hop neighborhood); returns nodes+edges JSON |
-| `lsp_definition` | `symbol_graph` | location | static graph analogue of go-to-definition from a symbol or file+line |
-| `lsp_references` | `symbol_graph` | locations | static graph analogue of find-references from a symbol or file+line |
-| `lsp_route` | `symbol_graph` | locations | compact route anchors for related endpoint / bridge / provider / type symbols |
-| `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
+Only tools whose backing views are fresh and available can return results.
 
-A `codeminer-guide` prompt returns guidance on choosing between these tools.
+| Tool | Backing view | Granularity | Use for |
+|---|---|---|---|
+| `search_semantic` | `vector` | file/symbol (L0/L2) | Natural-language or conceptual queries |
+| `search_bm25` | `bm25` | symbol | Exact names and keyword lookups |
+| `search_regex` | `symbol_graph` | file / symbol | Structural pattern matching |
+| `search_zoekt` | `zoekt` | file | Fast substring or regex search over files |
+| `dependency_subgraph` | `symbol_graph` | call graph | Caller impact, callee dependencies, or a one-hop neighborhood |
+| `lsp_definition` | `symbol_graph` | location | Static go-to-definition-shaped lookup |
+| `lsp_references` | `symbol_graph` | locations | Static find-references-shaped lookup |
+| `lsp_route` | `symbol_graph` | locations | Compact route anchors among related symbols |
+| `get_manifest` | manifest | repository | Repository identity, languages, view states, and capabilities |
 
-See [`codeminer/mcp/README.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/codeminer/mcp/README.md)
-for full parameter and return-shape details.
+All source locations returned by MCP use 1-based line numbers.
+
+The `codenib-guide` prompt explains how to choose among available tools.
+Parameter and return schemas live in
+[`codenib/mcp/README.md`](https://github.com/sysevol-ai/CodeNib/blob/main/codenib/mcp/README.md).
+
+## Advanced Views
+
+The `full` preset requests BM25, vectors, a symbol graph, and Zoekt:
+
+```bash
+pip install "codenib[full]"
+codenib index /path/to/repository --preset full
+```
+
+Graph and Zoekt construction also require external backend binaries. Check the
+repository's language-specific graph provider before building:
+
+```bash
+codenib doctor /path/to/repository --require graph
+```
+
+The doctor command does not currently diagnose Zoekt. Verify both Zoekt
+commands independently:
+
+```bash
+command -v zoekt-git-index
+command -v zoekt-webserver
+```
+
+See [SCIP Indexing](scip_index.md) and
+[Language Capabilities](language_capabilities.md) for backend-specific setup
+and support boundaries.

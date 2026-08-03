@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.languages import core_decoder_languages
-from codeminer.scip_interface import scip_decode_core
+from codenib.languages import core_decoder_languages
+from codenib.scip_interface import scip_decode_core
 
 
 def test_core_decoder_supported_languages_come_from_registry():
@@ -33,7 +33,7 @@ def test_core_decoder_supported_languages_come_from_registry():
 
 def test_cpp_core_decoder_registry_matches_python_registry():
     if scip_decode_core._cpp is None:
-        pytest.skip("codeminer_core pybind module not built")
+        pytest.skip("codenib_core pybind module not built")
 
     assert tuple(
         scip_decode_core._cpp.canonical_scip_decoder_languages()

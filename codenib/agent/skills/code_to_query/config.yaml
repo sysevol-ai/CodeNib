@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+skill_id: code_to_query
+skill_type: transform
+operator: code-to-query.transform
+cost: medium
+
+defaults:
+  max_snippets: 5
+  max_chars: 1800
+  include_metadata: true
+  joiner: "\n\n"
+
+inputs:
+  - name: nodes
+    type: List[QueriedNode]
+    required: true
+    description: Code nodes to transform into a search query
+  - name: max_snippets
+    type: int
+    required: false
+    default: 5
+  - name: max_chars
+    type: int
+    required: false
+    default: 1800
+  - name: include_metadata
+    type: bool
+    required: false
+    default: true
+
+outputs:
+  type: Dict[str, object]
+
+index_requirements: []
+resources: []

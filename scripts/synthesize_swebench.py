@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -16,8 +16,8 @@ python3 scripts/synthesize_swebench.py \
   --allowed-tools "Read,Grep,Glob,Bash" \
   --behavioral-consensus-runs 1 \
   --output-dir ./synthesis_output \
-  --cache-dir ~/.codeminer \
-  --repo-cache-dir ~/.codeminer
+  --cache-dir ~/.codenib \
+  --repo-cache-dir ~/.codenib
 """
 
 from __future__ import annotations
@@ -27,11 +27,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
-from codeminer.dataset.synthesize import ClaudeQuerySynthesizer
-from codeminer.dataset.utils import QueryType
-from codeminer.log_utils import get_logger
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
+from codenib.dataset.synthesize import ClaudeQuerySynthesizer
+from codenib.dataset.utils import QueryType
+from codenib.log_utils import get_logger
+from codenib.paths import user_state_dir
 
 logger = get_logger(__name__)
 
@@ -60,7 +61,7 @@ def _parse_query_types(values: List[str]) -> List[QueryType]:
 
 
 def _extract_ground_truth(instance: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Extract pre-computed ground truth from a codeminer-base-dataset instance.
+    """Extract pre-computed ground truth from a codenib-base-dataset instance.
 
     Maps ``gt_*`` prefixed fields to the format expected by
     ``ClaudeQuerySynthesizer.synthesize_query(ground_truth=...)``.
@@ -116,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
             "swebench_lite",
             "swebench_verified",
             "swebench_multilingual",
-            "codeminer_base",
+            "codenib_base",
         ],
         help="Dataset to use when loading directly (default: swebench_lite)",
     )
@@ -237,9 +238,7 @@ def main() -> None:
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else Path(".")
     output_dir.mkdir(parents=True, exist_ok=True)
     cache_dir = (
-        Path(args.cache_dir).expanduser()
-        if args.cache_dir
-        else Path.home() / ".codeminer"
+        Path(args.cache_dir).expanduser() if args.cache_dir else user_state_dir()
     )
 
     # Load instances from file or dataset
@@ -262,7 +261,7 @@ def main() -> None:
             "swebench_lite": "princeton-nlp/SWE-bench_Lite",
             "swebench_verified": "princeton-nlp/SWE-bench_Verified",
             "swebench_multilingual": "SWE-bench/SWE-bench_Multilingual",
-            "codeminer_base": "fishmingyu/codeminer-base-dataset",
+            "codenib_base": "fishmingyu/codeminer-base-dataset",
         }
         dataset_name = dataset_name_map[args.dataset]
         filter_pattern = (
@@ -276,10 +275,10 @@ def main() -> None:
             filter_pattern,
         )
 
-        if args.dataset == "codeminer_base":
-            from codeminer.dataset.codeminer_base import CodeMinerBaseDataset
+        if args.dataset == "codenib_base":
+            from codenib.dataset.codenib_base import CodeNibBaseDataset
 
-            dataset_obj = CodeMinerBaseDataset(
+            dataset_obj = CodeNibBaseDataset(
                 dataset=dataset_name,
                 split=args.split,
                 filter_instance=filter_pattern,

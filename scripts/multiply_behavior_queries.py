@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 """Synthesize N behavioral queries for one SWE-bench instance.
 
@@ -18,10 +18,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from codeminer.dataset.synthesize import ClaudeQuerySynthesizer
-from codeminer.dataset.synthesize._agent import AgentRunner
-from codeminer.dataset.utils import QueryType, get_prompt_for_query_type
-from codeminer.log_utils import get_logger
+from codenib.dataset.synthesize import ClaudeQuerySynthesizer
+from codenib.dataset.synthesize._agent import AgentRunner
+from codenib.dataset.utils import QueryType, get_prompt_for_query_type
+from codenib.log_utils import get_logger
+from codenib.paths import user_state_dir
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _post_fix import post_fix_flagged  # noqa: E402
@@ -240,9 +241,7 @@ async def _run_pipeline(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
     cache_dir = (
-        Path(args.cache_dir).expanduser()
-        if args.cache_dir
-        else Path.home() / ".codeminer"
+        Path(args.cache_dir).expanduser() if args.cache_dir else user_state_dir()
     )
 
     rng = random.Random(args.assignment_seed)

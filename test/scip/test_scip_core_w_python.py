@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -42,11 +42,11 @@ from typing import Any, Dict, List, Tuple
 
 import pytest
 
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.ls_router import LSGraphDecoder
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.ls_router import LSGraphDecoder
 
 pytestmark = pytest.mark.integration_serial
-from codeminer.ls_router import LSIndexer
+from codenib.ls_router import LSIndexer
 
 # Default instances for testing
 DEFAULT_TEST_INSTANCES = [
@@ -156,9 +156,7 @@ def ensure_decoded_scip(scip_file: Path) -> Path:
         decoded_file = scip_file.with_suffix(".scip.decoded")
 
         # Find scip.proto file - go up from test/scip to project root
-        module_dir = (
-            Path(__file__).parent.parent.parent / "codeminer" / "scip_interface"
-        )
+        module_dir = Path(__file__).parent.parent.parent / "codenib" / "scip_interface"
         proto_file = module_dir / "scip.proto"
 
         if not proto_file.exists():
@@ -773,10 +771,10 @@ def main():
     args = parser.parse_args()
 
     # Set default values
-    output_dir = Path(tempfile.gettempdir()) / "codeminer_scip_test_results"
+    output_dir = Path(tempfile.gettempdir()) / "codenib_scip_test_results"
     swebench_dataset = "princeton-nlp/SWE-bench_Verified"
     swebench_split = "test"
-    cache_dir = "~/.codeminer"
+    cache_dir = "~/.codenib"
 
     # Add these as args attributes for compatibility with process_single_instance
     args.output_dir = output_dir

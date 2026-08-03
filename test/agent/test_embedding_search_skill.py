@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -18,13 +18,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.agent.skills.registry import SkillRegistry
+from codenib.agent.skills.loader import SkillLoader
+from codenib.agent.skills.registry import SkillRegistry
 
 
 def _skill_dir() -> str:
     """Return the absolute path to the embedding_search skill package."""
-    import codeminer.agent.skills as pkg
+    import codenib.agent.skills as pkg
 
     return str(Path(pkg.__file__).parent / "embedding_search")
 

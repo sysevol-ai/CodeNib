@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -47,8 +47,8 @@ permissions:
   contents: read
 
 env:
-  CODEMINER_CI_TORCH_VERSION: "2.12.1+cpu"
-  CODEMINER_CI_TORCH_INDEX_URL: "https://download.pytorch.org/whl/cpu"
+  CODENIB_CI_TORCH_VERSION: "2.12.1+cpu"
+  CODENIB_CI_TORCH_INDEX_URL: "https://download.pytorch.org/whl/cpu"
 
 concurrency:
   # Group by PR head ref so only a *new commit on the same PR* preempts the
@@ -64,7 +64,7 @@ jobs:
   # Preflight — evaluate skip condition once for all jobs
   # =============================================================
   preflight:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     # paths-filter fetches the PR's changed-file list via the GitHub API
     # (base is empty for pull_request events), which needs pull-requests:read.
     # Job-level permissions replace the top-level block, so contents:read is
@@ -122,13 +122,13 @@ jobs:
               - "pyproject.toml"
               - "third_party/**"
               - "core/**"
-              - "codeminer/code_chunking/**"
-              - "codeminer/dataset/**"
-              - "codeminer/graph/**"
-              - "codeminer/index/**"
-              - "codeminer/ls_index/**"
-              - "codeminer/ls_router.py"
-              - "codeminer/types.py"
+              - "codenib/code_chunking/**"
+              - "codenib/dataset/**"
+              - "codenib/graph/**"
+              - "codenib/index/**"
+              - "codenib/ls_index/**"
+              - "codenib/ls_router.py"
+              - "codenib/types.py"
               - "scripts/check_graph_route_alignment.py"
               - "scripts/smoke_lsp_graph.py"
               - "scripts/smoke_scip_cold_start.py"
@@ -211,7 +211,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 20
     env:
-      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
+      CODENIB_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
       TMPDIR: ${{ github.workspace }}/../.tmp
@@ -221,19 +221,19 @@ jobs:
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
+          mkdir -p "$RUNNER_TEMP/home" "$CODENIB_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
-          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up codeminer conda env
+      - name: Set up codenib conda env
         uses: conda-incubator/setup-miniconda@v3
         with:
-          activate-environment: codeminer-test
+          activate-environment: codenib-test
           python-version: "3.12"
           auto-activate-base: false
           remove-profiles: true
@@ -243,8 +243,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install \
-            --index-url "$CODEMINER_CI_TORCH_INDEX_URL" \
-            "torch==$CODEMINER_CI_TORCH_VERSION"
+            --index-url "$CODENIB_CI_TORCH_INDEX_URL" \
+            "torch==$CODENIB_CI_TORCH_VERSION"
           pip install -e ".[test]"
 
       - name: Prewarm tree-sitter parsers
@@ -288,7 +288,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     env:
-      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
+      CODENIB_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
       TMPDIR: ${{ github.workspace }}/../.tmp
@@ -297,11 +297,11 @@ jobs:
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
+          mkdir -p "$RUNNER_TEMP/home" "$CODENIB_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
-          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -366,7 +366,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 45
     env:
-      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
+      CODENIB_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
       TMPDIR: ${{ github.workspace }}/../.tmp
@@ -375,21 +375,21 @@ jobs:
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
+          mkdir -p "$RUNNER_TEMP/home" "$CODENIB_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
-          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
 
-      - name: Persist codeminer cache across runs
+      - name: Persist codenib cache across runs
         run: |
-          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          CACHE_DIR="${{ github.workspace }}/../.cache/codenib"
           mkdir -p "$CACHE_DIR"
-          ln -sfn "$CACHE_DIR" "$HOME/.codeminer"
+          ln -sfn "$CACHE_DIR" "$HOME/.codenib"
 
       - name: Purge stale SCIP Python caches (one-time)
         run: |
-          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          CACHE_DIR="${{ github.workspace }}/../.cache/codenib"
           # Cleanup orphan v3 marker from an earlier graph-index iteration —
           # #120's _SCHEMA_VERSION check now handles graph.pkl invalidation,
           # so the ci.yml marker bump is no longer needed.
@@ -403,9 +403,9 @@ jobs:
             touch "$MARKER"
           fi
 
-      - name: Inspect codeminer cache
+      - name: Inspect codenib cache
         run: |
-          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          CACHE_DIR="${{ github.workspace }}/../.cache/codenib"
           echo "[cache] dir=$CACHE_DIR"
           du -sh "$CACHE_DIR" 2>/dev/null || true
           echo "[cache] graph.pkl count=$(find "$CACHE_DIR" -name graph.pkl 2>/dev/null | wc -l)"
@@ -424,7 +424,7 @@ jobs:
 
       - name: Run integration serial tests
         shell: bash -l {0}
-        # SCIP outputs land at ~/.codeminer/<instance_id>/ (conftest fixture
+        # SCIP outputs land at ~/.codenib/<instance_id>/ (conftest fixture
         # hard-codes this path; self-hosted runner's symlink makes it persist
         # so the downstream `scip-core` job sees it).
         #
@@ -439,7 +439,7 @@ jobs:
   # Job 3b — SCIP core  (builds core/ pybind + parity-checks the C++
   # decoder against the serial graphs persisted by integration-serial.
   # Depends on integration-serial having run first to populate
-  # $CODEMINER_SCIP_CACHE with graph_ref.pkl per language.)
+  # $CODENIB_SCIP_CACHE with graph_ref.pkl per language.)
   # =============================================================
   scip-core:
     needs: [preflight, integration-serial]
@@ -447,7 +447,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 30
     env:
-      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
+      CODENIB_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
       TMPDIR: ${{ github.workspace }}/../.tmp
@@ -456,17 +456,17 @@ jobs:
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
+          mkdir -p "$RUNNER_TEMP/home" "$CODENIB_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
-          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
 
-      - name: Persist codeminer cache across runs
+      - name: Persist codenib cache across runs
         run: |
-          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          CACHE_DIR="${{ github.workspace }}/../.cache/codenib"
           mkdir -p "$CACHE_DIR"
-          ln -sfn "$CACHE_DIR" "$HOME/.codeminer"
+          ln -sfn "$CACHE_DIR" "$HOME/.codenib"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -520,7 +520,7 @@ jobs:
         run: |
           cmake -S core -B build/core \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCODEMINER_BUILD_PYBIND=ON \
+            -DCODENIB_BUILD_PYBIND=ON \
             -DPython_EXECUTABLE="$(which python)"
           cmake --build build/core -j "$(nproc)"
 
@@ -534,7 +534,7 @@ jobs:
         # the symbols our build references.
         #
         # (No libigraph PRELOAD needed: c-igraph is vendored privately
-        # into codeminer_core.so via --exclude-libs,ALL, so it cannot
+        # into codenib_core.so via --exclude-libs,ALL, so it cannot
         # clash with the c-igraph that Python's `igraph` wheel bundles.)
         run: |
           SYS_STDCPP="$(gcc -print-file-name=libstdc++.so.6 2>/dev/null || true)"
@@ -561,7 +561,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 15
     env:
-      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
+      CODENIB_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
       TMPDIR: ${{ github.workspace }}/../.tmp
@@ -570,17 +570,17 @@ jobs:
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
+          mkdir -p "$RUNNER_TEMP/home" "$CODENIB_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
-          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
 
-      - name: Persist codeminer cache across runs
+      - name: Persist codenib cache across runs
         run: |
-          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          CACHE_DIR="${{ github.workspace }}/../.cache/codenib"
           mkdir -p "$CACHE_DIR"
-          ln -sfn "$CACHE_DIR" "$HOME/.codeminer"
+          ln -sfn "$CACHE_DIR" "$HOME/.codenib"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -606,7 +606,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 60
     env:
-      CODEMINER_CI_TMPDIR: ${{ github.workspace }}/../.tmp
+      CODENIB_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
       TMPDIR: ${{ github.workspace }}/../.tmp
@@ -616,21 +616,21 @@ jobs:
     steps:
       - name: Prepare temp HOME
         run: |
-          mkdir -p "$RUNNER_TEMP/home" "$CODEMINER_CI_TMPDIR"
+          mkdir -p "$RUNNER_TEMP/home" "$CODENIB_CI_TMPDIR"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
-          echo "TMPDIR=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
-          echo "TEMP=$CODEMINER_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMPDIR=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
+          echo "TEMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
 
-      - name: Persist codeminer cache across runs
+      - name: Persist codenib cache across runs
         run: |
-          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          CACHE_DIR="${{ github.workspace }}/../.cache/codenib"
           mkdir -p "$CACHE_DIR"
-          ln -sfn "$CACHE_DIR" "$HOME/.codeminer"
+          ln -sfn "$CACHE_DIR" "$HOME/.codenib"
 
       - name: Purge stale SCIP Python caches (one-time)
         run: |
-          CACHE_DIR="${{ github.workspace }}/../.cache/codeminer"
+          CACHE_DIR="${{ github.workspace }}/../.cache/codenib"
           # Cleanup orphan v3 marker from an earlier graph-index iteration —
           # #120's _SCHEMA_VERSION check now handles graph.pkl invalidation,
           # so the ci.yml marker bump is no longer needed.

@@ -1,12 +1,12 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
 # Synthesis Traversal Pipeline
 
-CodeMiner's synthesis pipeline generates a code-search retrieval benchmark of
+CodeNib's synthesis pipeline generates a code-search retrieval benchmark of
 natural-language queries paired with verified ground-truth symbols and files.
 Each query is grounded on real source code (not LLM-invented targets), graded by
 an LLM judge, and projected into a HuggingFace dataset organized by language
@@ -29,7 +29,7 @@ Queries fall into three families, each produced by its own multiplier script:
 | Traversal | `multiply_traversal_queries.py` | `traversal` |
 
 The standard per-config mix is the **base 50-row mix** plus an optional 10
-traversal rows, as encoded in `codeminer/dataset/codeminer_synthesis.py`:
+traversal rows, as encoded in `codenib/dataset/codenib_synthesis.py`:
 
 ```python
 EXPECTED_BASE_CATEGORY_COUNTS = {
@@ -71,21 +71,20 @@ solvability, and stance compliance, returning one of `valid` / `fix` /
 
 !!! note "Line-number origin"
     Ground-truth code blocks follow the same conventions as the rest of the
-    dataset code — see [Ground-Truth Locator](gt_locator.md) and
-    [`codeminer/dataset/CLAUDE.md`](https://github.com/sysevol-ai/CodeMiner/blob/main/codeminer/dataset/CLAUDE.md) for the
-    0-based (`CodeChunk`) vs. 1-based (`CodeLocation`) boundary.
+    dataset code — see [Ground-Truth Locator](gt_locator.md) for the 0-based
+    (`CodeChunk`) vs. 1-based (`CodeLocation`) boundary.
 
 ## Dataset wrapper
 
-`CodeMinerSynthesisDataset` (in `codeminer/dataset/codeminer_synthesis.py`) loads
-the published HuggingFace dataset, projects each row into CodeMiner's common
+`CodeNibSynthesisDataset` (in `codenib/dataset/codenib_synthesis.py`) loads
+the published HuggingFace dataset, projects each row into CodeNib's common
 dataset shape, and can clone + check out the row's repository at its
 `base_commit`.
 
 ```python
-from codeminer.dataset.codeminer_synthesis import CodeMinerSynthesisDataset
+from codenib.dataset.codenib_synthesis import CodeNibSynthesisDataset
 
-ds = CodeMinerSynthesisDataset(configs="Python,Go")  # subset of configs
+ds = CodeNibSynthesisDataset(configs="Python,Go")  # subset of configs
 data = ds.load()
 print(ds.get_summary())  # by_language / by_category / by_source_config counts
 ```
@@ -147,9 +146,11 @@ and `stance`.
 - `normalize_synthesis_record(row, config_name)` projects a raw HF row into the
   schema above. It tolerates legacy column names (`question` → `query`,
   `target_symbols` → `gt_symbols`, `target_files` → `gt_files`,
-  `target_symbol_nodes` → `gt_symbol_nodes`, `query_type`/`difficulty` →
-  `category`), fills `language_group` from the config when missing, stamps
-  `source_config`, and computes `gt_code_blocks_count`.
+  `query_type`/`difficulty` → `category`), fills `language_group` from the
+  config when missing, stamps `source_config`, and computes
+  `gt_code_blocks_count`. Source rows must use `gt_symbol_nodes` for structured
+  code blocks; rename a legacy `target_symbol_nodes` column before
+  normalization.
 - `validate_synthesis_records(rows, *, expected_category_counts=None, compare_category_distribution=True)`
   returns a structured report (`row_count`, `by_config`, `by_category`,
   `by_config_category`, `issues`, `error_count`, `warning_count`). It flags
@@ -164,6 +165,7 @@ The generation scripts use the Claude Agent SDK. Install and authenticate it
 before running the multipliers:
 
 ```bash
+pip install -e ".[datasets]"
 pip install claude-agent-sdk
 # then choose one auth path:
 claude login
@@ -189,7 +191,7 @@ python scripts/multiply_behavior_queries.py \
     --n-queries 20 --simple-ratio 0.5 \
     --model opus --judge-model opus \
     --behavioral-consensus-runs 3 \
-    --cache-dir ~/.codeminer --repo-cache-dir ~/.codeminer
+    --cache-dir ~/.codenib --repo-cache-dir ~/.codenib
 ```
 
 Flags: `--seed-file` (required), `--output-dir` (default
@@ -202,8 +204,8 @@ set 0 to skip).
 
 !!! note "Consensus voting"
     `--behavioral-consensus-runs N` runs N LLM passes per query; blocks selected
-    by majority (≥ `ceil(N/2)`) become the ground truth. `N=3` yields organic
-    multi-hop GT; `N=1` is faster but suppresses multi-hop.
+    by majority (≥ `ceil(N/2)`) become the ground truth. With `N=1`, the single
+    pass determines the selected blocks.
 
 ### `multiply_queries.py` — generic query multiplication
 
@@ -243,7 +245,7 @@ python scripts/multiply_traversal_queries.py \
     --output-dir synthesis_output_traversal_x10/ \
     --stance-counts "trace_back=10,trace_down=10,bridge=10" \
     --model opus --judge-model opus \
-    --cache-dir ~/.codeminer --repo-cache-dir ~/.codeminer
+    --cache-dir ~/.codenib --repo-cache-dir ~/.codenib
 ```
 
 Flags: `--seed-file` (required), `--output-dir` (default
@@ -265,18 +267,18 @@ or directory whose `gt_symbols` chains should be skipped), `--cache-dir`,
     diagnostics; release generation should leave it off so only `valid` rows are
     written.
 
-### `generate_codeminer_synthesis_config.py` — one full config
+### `generate_codenib_synthesis_config.py` — one full config
 
 Drives all three multipliers end-to-end for a single instance and config: it
-writes a seed file from `codeminer-base`, runs behavioral → mixed → traversal,
+writes a seed file from `codenib-base`, runs behavioral → mixed → traversal,
 normalizes and combines the rows, and runs the quality gate.
 
 ```bash
-python scripts/generate_codeminer_synthesis_config.py \
+python scripts/generate_codenib_synthesis_config.py \
     --config Python --instance-id <instance_id> \
     --include-traversal \
     --output-dir synthesis_output/Python/ \
-    --cache-dir ~/.codeminer --repo-cache-dir ~/.codeminer
+    --cache-dir ~/.codenib --repo-cache-dir ~/.codenib
 ```
 
 Flags: `--config` (required; one of `ALL_CONFIGS`), `--instance-id` (required),
@@ -298,16 +300,16 @@ The script writes `<config>_combined.json` plus a `<config>_combined.quality.jso
 report and returns nonzero on validation errors unless `--allow-quality-errors`
 is set.
 
-### `rebuild_codeminer_synthesis_dataset.py` — assemble the HF dataset
+### `rebuild_codenib_synthesis_dataset.py` — assemble the HF dataset
 
 Assembles one parquet file per language config, writes dataset-card metadata with
 the benchmark split set to `test`, runs the quality gate, and optionally uploads.
 
 ```bash
-python scripts/rebuild_codeminer_synthesis_dataset.py \
+python scripts/rebuild_codenib_synthesis_dataset.py \
     --replacement Python=synthesis_output/Python/Python_combined.json \
     --include-traversal --keep-extra-categories \
-    --output-dir build/codeminer-synthesis/ \
+    --output-dir build/codenib-synthesis/ \
     --push-to-hub sysevol-ai/codeminer-synthesis
 ```
 
@@ -350,17 +352,14 @@ Flags: `--input-dir` (required), `--repo-id` (default
 `--commit-message` (override the auto-generated message), `--dry-run` (build the
 `Dataset` locally but do not push).
 
-See [Uploading Datasets to HuggingFace](upload_dataset_to_huggingface.md) for
-general upload/auth guidance.
-
-### `report_codeminer_synthesis.py` — report and gate quality
+### `report_codenib_synthesis.py` — report and gate quality
 
 Loads the published dataset, validates it, and prints a text report
 (split table, per-config category counts, language counts, and the first issues).
 Useful as a CI quality gate.
 
 ```bash
-python scripts/report_codeminer_synthesis.py \
+python scripts/report_codenib_synthesis.py \
     --dataset sysevol-ai/codeminer-synthesis \
     --json-output reports/synthesis_quality.json
 ```
@@ -381,5 +380,5 @@ also fails on warnings, and `--no-fail` forces a zero exit.
 
 - [Ground-Truth Locator](gt_locator.md) — how GT code blocks are extracted from patches.
 - [Collecting SWE-bench Instances](collect_swebench.md) — sourcing the base instances.
-- [Uploading Datasets to HuggingFace](upload_dataset_to_huggingface.md) — upload/auth mechanics.
-- [Diagnosing Query Leaks](diagnose_query_leak.md) — analyzing lexical leakage in queries.
+- [Evaluation Artifact Bundles](evaluation_artifacts.md) — freezing generated
+  datasets and reports with content hashes.

@@ -15,7 +15,7 @@ The graph overhaul and the click-to-source differentiator are **live** on branch
   `<Mermaid>` (Mermaid is still used by the wiki diagrams).
 - **Click an edge → exact call site** (the differentiator): anchors flow
   `traverse_graph.get_neighbors` (adds `anchor_file`/`anchor_line` to edge meta,
-  additive) → `codeminer/web/codemap.py` (aggregates call sites per `(src,tgt)`
+  additive) → `codenib/web/codemap.py` (aggregates call sites per `(src,tgt)`
   edge, 1-based) → `CodemapEdge.anchors` (`web/lib/api.ts`) → `CodeGraph` edge tap
   → `CallSitePeek` in `Codemap.tsx` (source window + spotlighted line via
   `HighlightedCode`'s new `highlightLine`). Multi-site edges get a call-site pager.
@@ -52,7 +52,7 @@ roles — colour/label edges by relation). Original design rationale below.
 Two things to fix at once:
 
 1. **The graph looks crude.** Root cause: the codemap renders through **Mermaid**
-   (`web/components/Codemap.tsx` + `codeminer/web/codemap.py`), and Mermaid is a
+   (`web/components/Codemap.tsx` + `codenib/web/codemap.py`), and Mermaid is a
    *static-diagram* tool. Its auto-layout on a dense call graph is unavoidably
    messy — no zoom/pan, no clustering, no filtering, only click-a-chip-to-refocus.
    No amount of CSS fixes this; it's the wrong rendering layer.
@@ -68,7 +68,7 @@ for — is **compiler-derived reference edges anchored to exact occurrence sites
 |---|---|---|---|
 | **GitNexus** | tree-sitter AST + heuristic resolution (12-phase DAG, MRO/import inference), every edge carries a **confidence tier** (0.5–0.95) | node-to-node; docs describe no per-invocation file+line | not advertised |
 | **DeepWiki** | LLM/RAG; emits prose + diagrams + an Ask interface | line-level **citations** (RAG-selected evidence opening the file on GitHub) | citations, not traversable graph edges |
-| **CodeMiner** | **SCIP / clangd** semantic indexes | `anchor_file` + `anchor_line` **on every reference edge** | **yes — once threaded to the UI** |
+| **CodeNib** | **SCIP / clangd** semantic indexes | `anchor_file` + `anchor_line` **on every reference edge** | **yes — once threaded to the UI** |
 
 **Hero interaction:** click an edge → the code pane opens at the *exact call site*,
 highlighted. "Verifiable code intelligence, not vibes." That is hard to copy
@@ -118,13 +118,13 @@ The wiki is the most copyable surface. Don't delete it (it's real onboarding
 value), but stop shipping it as standalone prose. Reframe: a subsystem page **is** a
 saved graph neighborhood + narration, where **every claim carries a clickable
 anchor**. Graph is the spine; prose is connective tissue. This sheds "just another
-wiki" while keeping the narration layer (`codeminer/wiki/`).
+wiki" while keeping the narration layer (`codenib/wiki/`).
 
 ## What to build (the two backend gaps)
 
 **The anchor data already flows end-to-end at the storage/query layer — the drop is
 purely in the graph-*consumption* layer.** Providers thread `anchor_file`/`anchor_line`
-into `CodeGraph._add_edge` (`codeminer/graph/code_graph.py:329-405`, stored on igraph
+into `CodeGraph._add_edge` (`codenib/graph/code_graph.py:329-405`, stored on igraph
 edge attrs ~:401-405) from SCIP 5-tuples (`scip_interface/scip_decode_core.py:99-123`
 + per-language decoders) and clangd `.idx` locations (`ls_index/clangd_decode.py:847-889`).
 `CodeGraph.query_range` already exposes them via `EdgeRef.anchor_file/anchor_line`
@@ -134,17 +134,17 @@ edge attrs ~:401-405) from SCIP 5-tuples (`scip_interface/scip_decode_core.py:99
 re-builds edges without the anchor:
 
 1. `traverse_graph.RepoDependencySearcher.get_neighbors` forwards only `{"type": etype}`
-   (`codeminer/graph/traverse_graph.py:81-88`) — it has `edge.attributes()` but drops
+   (`codenib/graph/traverse_graph.py:81-88`) — it has `edge.attributes()` but drops
    the anchors. **This is the upstream origin of the drop**; `DependencyAnalyzer`
    never even receives them.
 2. `DependencyAnalyzer._bfs`/`call_path` build `DepEdge(source,target,type)` and
-   `DepEdge` has no anchor fields (`codeminer/graph/dependency.py:59-66`, `:154-160`,
+   `DepEdge` has no anchor fields (`codenib/graph/dependency.py:59-66`, `:154-160`,
    `:193-201`).
 3. MCP `dependency_subgraph` serializes that anchor-less edge
-   (`codeminer/mcp/tools/dependency.py:48`, `codeminer/mcp/server.py:178-201`).
+   (`codenib/mcp/tools/dependency.py:48`, `codenib/mcp/server.py:178-201`).
 4. Web codemap edges are `{source,target}` node-ids only — no type, no anchor, and
    the node `line` is the symbol's *own definition* line, not the call site
-   (`codeminer/web/codemap.py:203-207`; `web/lib/api.ts` `CodemapEdge`:143-146).
+   (`codenib/web/codemap.py:203-207`; `web/lib/api.ts` `CodemapEdge`:143-146).
 
    *Plan:* add `anchor_file`/`anchor_line` to `DepEdge` + `to_dict`; have
    `get_neighbors` carry the edge's anchor attrs into the tuple; thread through
@@ -159,19 +159,19 @@ re-builds edges without the anchor:
    **and** drop `codemap.py`'s `(src,tgt)` dedup.
 
 **Gap B — coarse edge types (stretch, scope later).** Only `EDGE_TYPE_CONTAIN="contain"`
-and `EDGE_TYPE_REFERENCE="reference"` exist (`codeminer/types.py:16-17`). There is no
+and `EDGE_TYPE_REFERENCE="reference"` exist (`codenib/types.py:16-17`). There is no
 CALLS/IMPORTS/EXTENDS/IMPLEMENTS distinction — even clangd inheritance/override fold
 into reference-class edges (`ls_index/clangd_decode.py:891+`). GitNexus distinguishes
 these. SCIP symbol roles can recover some; bigger backend change — defer.
 
 ## Reuse, don't reinvent (graph ops that already exist)
 
-- `DependencyAnalyzer` (`codeminer/graph/dependency.py`): `impact()` (blast radius,
+- `DependencyAnalyzer` (`codenib/graph/dependency.py`): `impact()` (blast radius,
   `:108-115`), `dependencies()` (callees, `:117-121`), `subgraph()` (1-hop, `:123-125`),
   `call_path()` (shortest A→B, `:127-161`).
-- MCP `dependency_subgraph` (`codeminer/mcp/tools/dependency.py:20-48`) →
+- MCP `dependency_subgraph` (`codenib/mcp/tools/dependency.py:20-48`) →
   `{root,direction,nodes,edges,truncated,note}`.
-- Agent skills `find_callees`/`find_callers`/`trace` (`codeminer/agent/skills/_graphnav.py`).
+- Agent skills `find_callees`/`find_callers`/`trace` (`codenib/agent/skills/_graphnav.py`).
   ⚠️ `find_callees` executor docstring says "incoming" but returns callees (stale
   docstring; behavior is correct). ⚠️ `impact_analysis` skill dir has no source
   `executor.py` in the checkout (only `__pycache__`) — verify before relying on it.
@@ -182,6 +182,117 @@ these. SCIP symbol roles can recover some; bigger backend change — defer.
 - **P2** — Cytoscape UX: compound nodes, expand-on-click, filter, **edge click → exact source**.
 - **P3** — Wiki-as-graph-views reframe.
 - **P4 (stretch)** — Gap B: fine-grained edge types from SCIP roles.
+- **P5** — Hierarchical drill-down: overview → module → file → symbol (below).
+
+## P5 — hierarchical drill-down (overview → module → file → symbol)
+
+**The ask.** The graph should open as an abstraction the reader can hold in their
+head, then expand *down* to concrete symbols — not dump a flat mesh that reads as
+noise. Today the wiki's map is a flat card list and the explore graph is a
+one-shot files-or-symbols toggle; neither lets you start coarse and drill.
+
+### The good news: the backend already models this
+
+Do **not** rebuild the data layer. `codenib/graph/hierarchy.py` already ships:
+
+- A 4-level containment tree — `root → directory → file → symbol` (depths 0–4),
+  each `ContainmentNode` carrying `child_count`, `symbol_count`, `importance`,
+  `external`, and — decisively — **`doi`** (degree of interest, `_node_doi`,
+  `hierarchy.py:497`) and **`open_by_default`**. Those two fields are precisely a
+  progressive-disclosure seed, computed and served, and currently unread.
+- A dependency overlay: `DependencyEdge` (`hierarchy.py:56`) with `kind`, `weight`
+  and **`anchors`** — the per-call-site locations the P1/P2 differentiator rests on.
+- **`HierarchicalCodeGraph.route(source_hid, target_hid)`** (`hierarchy.py:95`),
+  which walks a dependency edge through the containment tree and returns
+  `(route, lowest_common_ancestor)`. **This is the edge roll-up primitive**: when a
+  subtree is collapsed, an edge into any descendant is drawn at the ancestor the
+  route passes through. It exists and is untested against a UI.
+
+`CodeGraph.tsx` already projects the served hierarchy into Cytoscape compound
+nodes (`backendHierarchyProjection`, `CodeGraph.tsx:243+`), so the renderer is not
+starting from zero either.
+
+### The three gaps
+
+**Gap C — none. The served payload is already sufficient; roll-up belongs on the
+client.** An earlier draft of this memo claimed `hierarchy_for_view`
+(`hierarchy.py:505`) had to emit container-level dependencies because it returns
+only `{root, nodes, open_files, source_root}`. That was wrong, on two counts.
+
+First, the data is there. Every hierarchy `symbol` node carries `node_id`, the
+view id its leaf edge endpoints use, and every node carries `parent` — so a
+client can walk any endpoint to its full ancestor chain. Checked against the live
+API for `caddyserver/caddy?p=reverse-proxy`: 10/10 view nodes map into the
+hierarchy and **8/8 edges resolve both endpoints to complete chains** from symbol
+through file and directory to root.
+
+Second, and decisive: which ancestor an edge rolls up *to* depends on the open
+set, which is client state. There is no fixed set of container edges to
+precompute — only the enumeration of every possible collapse state, which is
+exponential. The correct shape is: server ships leaf edges plus the containment
+tree (it already does), and the renderer maps each endpoint to its nearest
+*visible* ancestor and aggregates. `route()` stays useful for server-side
+questions, but it is not on this path.
+
+So P5 is frontend-only.
+
+**Gap D — the frontend has no per-node expand/collapse.** `hierarchyMode` is a
+global binary `"files" | "symbols"` (`CodeGraph.tsx:243`). There is no per-container
+open/closed state, so `doi` and `open_by_default` do nothing. Fix: hold an open-set
+seeded from `open_by_default`, expand/collapse on container click, and let `doi`
+order which siblings auto-open when the open-set would otherwise overflow a budget.
+
+**Gap E — wiki pages bypass the hierarchy entirely.** `GraphView.tsx:280` renders
+`SystemMap` for `variant="wiki"`. `SystemMap` re-derives its own flat directory
+grouping and then keeps only *inter*-component edges:
+
+```js
+if (!sourceGroup || !targetGroup || sourceGroup === targetGroup) continue;  // SystemMap.tsx:235
+```
+
+A wiki page is topical, and a topic usually lives inside one module — so its
+subgraph is almost always intra-component and every edge is dropped. Observed on
+the live demo: `caddy?p=reverse-proxy` serves 10 nodes / **8 edges** from the API
+and the panel renders "1 cited component · **0 relationships**" as a flat symbol
+list. The anchored edges — the differentiator — are discarded at the last hop.
+
+### Shape of the interaction
+
+One renderer, seeded differently per surface:
+
+| Level | Opens as | Expands to |
+|---|---|---|
+| Repo overview | top-level directories, sized by `symbol_count` | directories |
+| Module | files in that directory | files |
+| File | symbols defined in it | symbols |
+| Symbol | the definition, click → source (existing `SourcePeek`) | — |
+
+- A collapsed container shows its rolled-up edges (Gap C), labelled with the
+  aggregate `weight`; expanding it replaces them with the finer edges beneath.
+- A wiki page seeds the open-set from its cited symbols' ancestors (`open_files` is
+  already served for exactly this) rather than from the repo root — so the page
+  opens *at* its subject and can be zoomed out for context.
+- Edge click keeps its current contract: open the exact call site. A rolled-up edge
+  with several anchors reuses the existing call-site pager.
+
+### Sequencing
+
+1. **P5a — renderer**: per-node open/collapse over the served tree, `doi`-ordered
+   auto-open budget, and nearest-visible-ancestor edge roll-up (see Gap C: this is
+   client-side; no backend change is needed).
+2. **P5b — adopt on wiki**: point `variant="wiki"` at the hierarchical renderer,
+   seeded from `open_files`; retire `SystemMap` or keep it only as a
+   no-graph-available fallback.
+
+### Honest caveats
+
+- **Gap E was fixed on its own** (`SystemMap` now keeps same-component edges), so
+  wiki pages already show their anchored relationships without any of P5. P5 is
+  about making the map navigable, not about recovering lost edges.
+- Roll-up needs a weight/level cap or a dense repo's overview will draw an edge
+  between every pair of top-level directories — visually the same mesh, one level up.
+- A collapsed container's rolled-up edge must keep the union of its descendants'
+  `anchors`, or expanding and collapsing silently changes what an edge click opens.
 
 ## Verify the bet end-to-end
 

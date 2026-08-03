@@ -12,7 +12,6 @@ build/
 *.decoded
 key.cfg
 logs/
-uv.lock
 hf_dataset/
 site/
 .venv/
@@ -24,11 +23,13 @@ site/
 results/
 
 # Code-QA demo (dir or symlink to a shared data dir)
-.codeminer_qa
+.codenib_qa
+# Compiled index artifacts (manifest, graph pickles, commit-window snapshots).
+.codenib_cache
 
 # Cloned repos for local demo (gitignored — add via: python scripts/index_repo.py repos/<name>)
 repos/
-.codeminer_demo/
+.codenib_demo/
 # Local verification evidence / scratch (Playwright screenshots); not source.
 /verification/
 /references/
@@ -37,6 +38,7 @@ web/loop/
 web/LOOP.md
 web/node_modules/
 web/.next/
+web/dist/
 web/out/
 web/next-env.d.ts
 web/*.tsbuildinfo

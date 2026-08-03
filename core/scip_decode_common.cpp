@@ -1,13 +1,88 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
 #include "scip_decode_common.h"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <sstream>
 #include <utility>
 
-namespace codeminer::core {
+namespace codenib::core {
+
+std::vector<int> extract_integers(const std::string &text,
+                                  const re2::RE2 &pattern) {
+  std::vector<int> results;
+  re2::StringPiece input(text);
+  int value = 0;
+  while (re2::RE2::FindAndConsume(&input, pattern, &value)) {
+    results.push_back(value);
+  }
+  return results;
+}
+
+bool ends_with(const std::string &s, const std::string &suffix) {
+  return s.size() >= suffix.size() &&
+         s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string rstrip_chars(std::string s, const std::string &chars) {
+  while (!s.empty() && chars.find(s.back()) != std::string::npos)
+    s.pop_back();
+  return s;
+}
+
+std::string strip_backticks(std::string s) {
+  s.erase(std::remove(s.begin(), s.end(), '`'), s.end());
+  return s;
+}
+
+std::vector<std::string> split_ws(const std::string &s) {
+  std::vector<std::string> out;
+  std::istringstream iss(s);
+  std::string tok;
+  while (iss >> tok)
+    out.push_back(tok);
+  return out;
+}
+
+std::vector<std::string> split_ws_limit(const std::string &s, int limit) {
+  if (limit <= 1) {
+    std::string value = s;
+    std::size_t start = 0;
+    while (start < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[start]))) {
+      ++start;
+    }
+    value = value.substr(start);
+    while (!value.empty() &&
+           std::isspace(static_cast<unsigned char>(value.back()))) {
+      value.pop_back();
+    }
+    return value.empty() ? std::vector<std::string>{}
+                         : std::vector<std::string>{std::move(value)};
+  }
+
+  std::vector<std::string> out;
+  std::size_t i = 0;
+  while (i < s.size() && static_cast<int>(out.size()) < limit - 1) {
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+      ++i;
+    std::size_t start = i;
+    while (i < s.size() && !std::isspace(static_cast<unsigned char>(s[i])))
+      ++i;
+    if (start < i)
+      out.emplace_back(s.substr(start, i - start));
+  }
+
+  while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+    ++i;
+  if (i < s.size())
+    out.emplace_back(s.substr(i));
+  return out;
+}
 
 Subgraph::Node &SubgraphBuilder::ensure_node(const std::string &name) {
   auto it = subgraph_.nodes.find(name);
@@ -47,6 +122,7 @@ void SubgraphBuilder::add_directory_node(const std::string &dir_path) {
   Subgraph::Node &node = ensure_node(dir_path);
   apply_update(node, std::make_optional<std::string>(NODE_TYPE_DIRECTORY),
                std::nullopt, std::nullopt, std::nullopt);
+  node.updates_structural_type = true;
 }
 
 bool SubgraphBuilder::add_directory_if_needed(const std::string &dir_path) {
@@ -64,6 +140,7 @@ void SubgraphBuilder::add_file_node(const std::string &file_path) {
   Subgraph::Node &node = ensure_node(file_path);
   apply_update(node, std::make_optional<std::string>(NODE_TYPE_FILE),
                std::nullopt, std::nullopt, std::nullopt);
+  node.updates_structural_type = true;
   reset_scope_to_file(file_path);
 }
 
@@ -93,7 +170,8 @@ void SubgraphBuilder::add_file_hierarchy(const std::string &file_path) {
 void SubgraphBuilder::add_symbol_node(const std::string &symbol, int line,
                                       std::optional<int> scope_start_line,
                                       std::optional<int> scope_end_line,
-                                      const std::string &symbol_type) {
+                                      const std::string &symbol_type,
+                                      std::optional<std::string> symbol_kind) {
   Subgraph::Node &node = ensure_node(symbol);
   // Definitions ALWAYS overwrite (matches serial add_symbol_node semantics).
   apply_update(node, std::make_optional<std::string>(symbol_type),
@@ -104,22 +182,28 @@ void SubgraphBuilder::add_symbol_node(const std::string &symbol, int line,
                  std::make_optional<std::string>(current_file_),
                  scope_start_line, scope_end_line);
   }
+  node.data.selection_line = line;
+  node.data.has_definition = true;
+  if (symbol_kind.has_value()) {
+    node.data.symbol_kind = std::move(symbol_kind);
+  }
   node.is_definition = true;
 }
 
 void SubgraphBuilder::add_symbol_reference(
     const std::string &symbol, const std::optional<std::string> &module_path,
     const std::string &symbol_type, std::optional<std::string> anchor_file,
-    std::optional<int> anchor_line) {
+    std::optional<int> anchor_line, std::optional<std::string> symbol_kind) {
   add_symbol_reference_from(current_scope_, symbol, module_path, symbol_type,
-                            std::move(anchor_file), anchor_line);
+                            std::move(anchor_file), anchor_line,
+                            std::move(symbol_kind));
 }
 
 void SubgraphBuilder::add_symbol_reference_from(
     const std::string &source, const std::string &symbol,
     const std::optional<std::string> &module_path,
     const std::string &symbol_type, std::optional<std::string> anchor_file,
-    std::optional<int> anchor_line) {
+    std::optional<int> anchor_line, std::optional<std::string> symbol_kind) {
   // Serial CodeGraph.add_symbol_reference: only populates attrs on FIRST
   // add. Subsequent refs leave the node alone (defs still overwrite via
   // add_symbol_node).
@@ -132,6 +216,10 @@ void SubgraphBuilder::add_symbol_reference_from(
                      : std::nullopt,
                  std::nullopt, std::nullopt);
     node.is_definition = false;
+    node.data.has_definition = false;
+  }
+  if (symbol_kind.has_value() && !node.data.symbol_kind.has_value()) {
+    node.data.symbol_kind = std::move(symbol_kind);
   }
   // Default anchor_file to the current document so range queries can
   // route reference edges to the file they originate from.
@@ -217,4 +305,4 @@ void SubgraphBuilder::reset_scope_to_file(const std::string &file_symbol) {
   current_scope_ = file_symbol;
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

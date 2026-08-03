@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for the central language metadata registry."""
 
-from codeminer.languages import (
+from codenib.languages import (
     chunker_class_path,
     chunker_class_paths,
     chunker_languages,
@@ -213,10 +213,10 @@ def test_scip_cold_start_options_track_active_and_candidate_paths(monkeypatch):
     assert options["php"].status == "active"
     assert options["php"].tool == "scip-php"
 
-    assert scip_cold_start_option("kt").command_env == "CODEMINER_KOTLIN_SCIP_CMD"
+    assert scip_cold_start_option("kt").command_env == "CODENIB_KOTLIN_SCIP_CMD"
     assert scip_cold_start_command_for_language("java") == ["scip-java", "index"]
     assert scip_cold_start_command_for_language("c#") == ["scip-dotnet"]
-    monkeypatch.setenv("CODEMINER_CSHARP_SCIP_CMD", "dotnet tool run scip-dotnet")
+    monkeypatch.setenv("CODENIB_CSHARP_SCIP_CMD", "dotnet tool run scip-dotnet")
     assert scip_cold_start_command_for_language("csharp") == [
         "dotnet",
         "tool",
@@ -409,10 +409,10 @@ def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
     assert lsp_language_id_for_language("kt") == "kotlin"
     assert lsp_command_for_language("kt") == ["kotlin-language-server", "--stdio"]
 
-    monkeypatch.setenv("CODEMINER_PYTHON_LSP_CMD", "ty server")
+    monkeypatch.setenv("CODENIB_PYTHON_LSP_CMD", "ty server")
     assert lsp_command_for_language("py") == ["ty", "server"]
 
-    monkeypatch.setenv("CODEMINER_RUBY_LSP_CMD", "bundle exec ruby-lsp")
+    monkeypatch.setenv("CODENIB_RUBY_LSP_CMD", "bundle exec ruby-lsp")
     assert lsp_command_for_language("ruby") == ["bundle", "exec", "ruby-lsp"]
 
     assert lsp_language_id_for_language("go") == "go"
@@ -426,5 +426,5 @@ def test_lsp_metadata_follows_graph_language_aliases(monkeypatch):
 
     assert lsp_language_id_for_language("java") == "java"
     assert lsp_command_for_language("java") == ["jdtls"]
-    monkeypatch.setenv("CODEMINER_JAVA_LSP_CMD", "jdtls --stdio")
+    monkeypatch.setenv("CODENIB_JAVA_LSP_CMD", "jdtls --stdio")
     assert lsp_command_for_language("java") == ["jdtls", "--stdio"]

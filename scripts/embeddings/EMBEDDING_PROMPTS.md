@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -14,7 +14,7 @@ produces off-distribution vectors and noticeably hurts retrieval quality
 prompts we use and how to verify them.
 
 The runtime registry lives in
-[`codeminer/index/embedding/prompt_registry.py`](../../codeminer/index/embedding/prompt_registry.py)
+[`codenib/index/embedding/prompt_registry.py`](../../codenib/index/embedding/prompt_registry.py)
 and is consumed automatically by `_HuggingFaceEmbeddingWrapper` —
 build/eval/rerank scripts do not need to pass prompts explicitly.
 
@@ -35,7 +35,7 @@ build/eval/rerank scripts do not need to pass prompts explicitly.
 non-empty document-side prompt. Existing FAISS indices were built with
 plain `model.encode(text)` (no prefix), so the stored vectors are
 off-distribution from how jina expects to score documents. To use jina
-with the registry entry, run `build_codeminer_base_embeddings.sh` again
+with the registry entry, run `build_codenib_base_embeddings.sh` again
 for jina with `--force-rebuild`. The other 4 models have either no
 doc-side prompt or an empty doc-side prompt — their existing indices stay
 valid; only `embed_query` changes.
@@ -63,7 +63,7 @@ Source of truth, in order of reliability:
    the file `SentenceTransformer` reads at load time:
 
    ```bash
-   d=$(ls -d /mnt/conda/huggingface/hub/models--<NAMESPACE>--<NAME>/snapshots/*/ | head -1)
+   d=$(ls -d "${HF_HOME:-$HOME/.cache/huggingface}"/hub/models--<NAMESPACE>--<NAME>/snapshots/*/ | head -1)
    cat "${d}/config_sentence_transformers.json"
    ```
 

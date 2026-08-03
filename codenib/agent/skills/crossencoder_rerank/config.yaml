@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+skill_id: crossencoder_rerank
+skill_type: custom
+operator: crossencoder.rerank
+cost: medium
+
+defaults:
+  top_k: 5
+  candidate_top_k: 50
+
+inputs:
+  - name: query
+    type: str
+    required: true
+    description: Original search query for relevance scoring.
+  - name: candidates
+    type: List[QueriedNode]
+    required: true
+    description: Candidate nodes to rerank (from bm25_search or embedding_search).
+  - name: top_k
+    type: int
+    required: false
+    default: 5
+    description: Number of top results to return after reranking.
+  - name: candidate_top_k
+    type: int
+    required: false
+    default: 50
+    description: Truncate candidate list to this size before scoring (controls cost).
+
+outputs:
+  type: List[QueriedNode]
+  description: >-
+    Reranked nodes with cross-encoder relevance scores. Higher score = more
+    relevant. Faster and more accurate than llm_rerank for pairwise relevance.
+
+index_requirements: []
+resources: []

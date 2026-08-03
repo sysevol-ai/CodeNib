@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -52,7 +52,7 @@ class FakeBM25CodeIndexer:
 
 
 def test_bm25_pipeline_routes_requested_language_to_ls_indexer(monkeypatch, tmp_path):
-    from codeminer.model import bm25_retrieve_pipeline as pipeline_module
+    from codenib.model import bm25_retrieve_pipeline as pipeline_module
 
     graph_calls = []
     FakeBM25CodeIndexer.calls = []
@@ -94,7 +94,7 @@ def test_bm25_pipeline_routes_requested_language_to_ls_indexer(monkeypatch, tmp_
 def test_graph_pipeline_routes_languages_to_graph_builder_and_rerank(
     monkeypatch, tmp_path
 ):
-    from codeminer.model import graph_retrieve_pipeline as pipeline_module
+    from codenib.model import graph_retrieve_pipeline as pipeline_module
 
     graph_calls = []
     FakeBM25CodeIndexer.calls = []
@@ -150,7 +150,7 @@ def test_graph_pipeline_routes_languages_to_graph_builder_and_rerank(
 
 
 def test_graph_retrieve_pipeline_name_is_sparse_seeded_alias():
-    from codeminer.model import graph_retrieve_pipeline as pipeline_module
+    from codenib.model import graph_retrieve_pipeline as pipeline_module
 
     assert issubclass(
         pipeline_module.GraphRetrievePipeline,

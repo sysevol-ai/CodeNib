@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 """Post-fix loop for queries flagged by the LLM judge.
 
@@ -11,7 +11,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from codeminer.log_utils import get_logger
+from codenib.log_utils import get_logger
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,7 @@ def _make_agent(*, model: str, system_prompt: str):
     # ``claude_agent_sdk`` is an optional synthesis-time dependency. Import the
     # runner only when the post-fix loop actually needs an LLM call so tests can
     # import the pure helpers in this module without that SDK installed.
-    from codeminer.dataset.synthesize._agent import AgentRunner
+    from codenib.dataset.synthesize._agent import AgentRunner
 
     return AgentRunner(
         model=model,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,8 +6,8 @@
 
 from pathlib import Path
 
-from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-from codeminer.languages import extensions_for_language
+from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+from codenib.languages import extensions_for_language
 
 
 def test_repo_chunking_config_defaults_come_from_language_registry():
@@ -60,6 +60,24 @@ def test_repo_discovery_respects_custom_extension_overrides(tmp_path: Path):
 
     assert stats["total_files"] == 1
     assert stats["files_by_language"]["python"][0]["path"] == "tool.pyw"
+
+
+def test_repo_discovery_skips_generated_and_vendored_trees(tmp_path: Path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("def app():\n    return 1\n")
+    for directory in ("site", ".next", ".codenib_cache", "third_party", "vendor"):
+        ignored = tmp_path / directory
+        ignored.mkdir()
+        (ignored / "ignored.py").write_text("def ignored():\n    return 0\n")
+
+    cfg = RepoChunkingConfig(languages=["python"], filter_tests=False)
+    chunker = CodeChunker(language="python", repo_config=cfg)
+
+    files = chunker._discover_files(tmp_path, cfg.languages)
+
+    assert [path.relative_to(tmp_path).as_posix() for path, _ in files] == [
+        "src/app.py"
+    ]
 
 
 def test_repo_language_detection_uses_registered_chunk_extensions(tmp_path: Path):

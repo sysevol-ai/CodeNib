@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,10 +6,10 @@
 
 from __future__ import annotations
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.scip_interface.scip_decode_csharp import SCIPCSharpGraphDecoder
-from codeminer.scip_interface.scip_indexer_csharp import SCIPCSharpIndexer
-from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
+from codenib.graph.code_graph import CodeGraph
+from codenib.scip_interface.scip_decode_csharp import SCIPCSharpGraphDecoder
+from codenib.scip_interface.scip_indexer_csharp import SCIPCSharpIndexer
+from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
 
 CSHARP_INDEX = """
 metadata {
@@ -221,7 +221,7 @@ namespace Hello
 
 
 def test_scip_csharp_indexer_builds_registered_command(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_CSHARP_SCIP_CMD", "custom-scip-dotnet")
+    monkeypatch.setenv("CODENIB_CSHARP_SCIP_CMD", "custom-scip-dotnet")
     (tmp_path / "Smoke.csproj").write_text(
         '<Project Sdk="Microsoft.NET.Sdk" />\n',
         encoding="utf-8",

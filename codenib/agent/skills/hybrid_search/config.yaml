@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+skill_id: hybrid_search
+skill_type: aggregate
+operator: hybrid.retrieve
+cost: high
+
+defaults:
+  top_k: 20
+  weights: []
+
+inputs:
+  - name: candidates
+    type: List[List[QueriedNode]]
+    required: true
+    description: Result lists from upstream retrievers to fuse
+  - name: top_k
+    type: int
+    required: false
+    default: 20
+  - name: weights
+    type: List[float]
+    required: false
+    default: []
+    description: "Per-retriever fusion weights. Defaults to uniform if empty or mismatched length."
+
+outputs:
+  type: List[QueriedNode]
+
+dependencies:
+  - embedding_search
+  - bm25_search
+
+index_requirements: []
+
+resources: []

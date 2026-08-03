@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,13 +11,13 @@ import time
 
 import pytest
 
-from codeminer.compiler.manifest import (
+from codenib.compiler.manifest import (
     MANIFEST_VERSION,
     IndexEntry,
     ManifestIndexStateStore,
     RepoManifest,
 )
-from codeminer.compiler.resources import (
+from codenib.compiler.resources import (
     IndexRequirement,
     IndexState,
     IndexStatus,
@@ -57,6 +57,8 @@ class TestIndexEntry:
             status="fresh",
             config={"embedding_model": "nomic-ai/CodeRankEmbed"},
             metadata={"document_count": {"l0": 42, "l2": 350}},
+            commit="abc123",
+            source_fingerprint="sha256:source",
         )
         d = original.to_dict()
         restored = IndexEntry.from_dict(d)
@@ -66,6 +68,8 @@ class TestIndexEntry:
         assert restored.status == original.status
         assert restored.config == original.config
         assert restored.metadata == original.metadata
+        assert restored.commit == original.commit
+        assert restored.source_fingerprint == original.source_fingerprint
 
     def test_from_dict_defaults(self):
         data = {
@@ -78,6 +82,8 @@ class TestIndexEntry:
         entry = IndexEntry.from_dict(data)
         assert entry.config == {}
         assert entry.metadata == {}
+        assert entry.commit == ""
+        assert entry.source_fingerprint == ""
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +225,62 @@ class TestRepoManifest:
         )
         m.derive_capabilities()
         assert m.capabilities["sparse_search"] is False
+
+    def test_derive_capabilities_stale_commit_excluded(self):
+        m = RepoManifest(
+            commit="new",
+            indexes={
+                "bm25": IndexEntry(
+                    index_type="bm25",
+                    path="/tmp/bm25",
+                    built_at="2024-01-15T10:30:00+00:00",
+                    built_at_epoch=time.time(),
+                    status="fresh",
+                    commit="old",
+                ),
+            },
+        )
+        m.derive_capabilities()
+        assert m.capabilities["sparse_search"] is False
+
+    def test_derive_capabilities_stale_source_excluded(self):
+        m = RepoManifest(
+            source_fingerprint="sha256:current",
+            indexes={
+                "bm25": IndexEntry(
+                    index_type="bm25",
+                    path="/tmp/bm25",
+                    built_at="2024-01-15T10:30:00+00:00",
+                    built_at_epoch=time.time(),
+                    status="fresh",
+                    source_fingerprint="sha256:old",
+                ),
+            },
+        )
+        m.derive_capabilities()
+        assert m.capabilities["sparse_search"] is False
+
+    def test_source_identity_roundtrip(self):
+        m = RepoManifest(
+            source_fingerprint="sha256:current",
+            last_indexed_source_fingerprint="sha256:complete",
+            indexes={
+                "bm25": IndexEntry(
+                    index_type="bm25",
+                    path="/tmp/bm25",
+                    built_at="2024-01-15T10:30:00+00:00",
+                    built_at_epoch=time.time(),
+                    status="fresh",
+                    source_fingerprint="sha256:current",
+                )
+            },
+        )
+
+        restored = RepoManifest.from_dict(m.to_dict())
+
+        assert restored.source_fingerprint == "sha256:current"
+        assert restored.last_indexed_source_fingerprint == "sha256:complete"
+        assert restored.index_is_current("bm25") is True
 
     def test_empty_manifest(self):
         m = RepoManifest()

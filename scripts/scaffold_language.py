@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Scaffold the first files for a new CodeMiner language.
+"""Scaffold the first files for a new CodeNib language.
 
 The scaffold is intentionally conservative: it creates TODO stubs and prints
 the LanguageSpec snippet and manual wiring checklist, but it does not register
@@ -118,11 +118,11 @@ def _pair_tuple_literal(values: Sequence[tuple[str, str]]) -> str:
 
 
 def _default_scip_env(key: str) -> str:
-    return f"CODEMINER_{key.upper()}_SCIP_CMD"
+    return f"CODENIB_{key.upper()}_SCIP_CMD"
 
 
 def render_language_spec(config: ScaffoldConfig) -> str:
-    """Return the LanguageSpec block to paste into codeminer/languages.py."""
+    """Return the LanguageSpec block to paste into codenib/languages.py."""
 
     aliases = _unique((config.key, *config.aliases))
     agent_aliases = tuple((alias, config.key) for alias in aliases)
@@ -163,22 +163,22 @@ def render_language_spec(config: ScaffoldConfig) -> str:
             lines.extend(
                 [
                     "    graph_indexer="
-                    "'codeminer.ls_index.lsp_indexer:GenericLSPIndexer',",
+                    "'codenib.ls_index.lsp_indexer:GenericLSPIndexer',",
                     "    graph_decoder="
-                    "'codeminer.ls_index.lsp_graph_decode:GenericLSPGraphDecoder',",
+                    "'codenib.ls_index.lsp_graph_decode:GenericLSPGraphDecoder',",
                     f"    lsp_language_id={config.key!r},",
                     "    lsp_command=('TODO-language-server', '--stdio'),",
-                    f"    lsp_command_env='CODEMINER_{config.key.upper()}_LSP_CMD',",
+                    f"    lsp_command_env='CODENIB_{config.key.upper()}_LSP_CMD',",
                 ]
             )
         elif config.graph_backend == "scip":
             lines.extend(
                 [
                     "    graph_indexer="
-                    f"'codeminer.scip_interface.scip_indexer_{config.key}:"
+                    f"'codenib.scip_interface.scip_indexer_{config.key}:"
                     f"SCIP{cls}Indexer',",
                     "    graph_decoder="
-                    f"'codeminer.scip_interface.scip_decode_{config.key}:"
+                    f"'codenib.scip_interface.scip_decode_{config.key}:"
                     f"SCIP{cls}GraphDecoder',",
                 ]
             )
@@ -220,7 +220,7 @@ def _chunker_template(config: ScaffoldConfig) -> str:
         f'''\
         #!/usr/bin/env python3
 
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -267,7 +267,7 @@ def _chunker_test_template(config: ScaffoldConfig) -> str:
     ext = config.extensions[0]
     return textwrap.dedent(
         f'''\
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -275,7 +275,7 @@ def _chunker_test_template(config: ScaffoldConfig) -> str:
 
         import pytest
 
-        from codeminer.code_chunking.{config.key}_chunker import {cls}CodeChunker
+        from codenib.code_chunking.{config.key}_chunker import {cls}CodeChunker
 
         pytestmark = pytest.mark.skip(
             reason="Scaffold stub: implement {config.key} chunker assertions."
@@ -296,7 +296,7 @@ def _scip_decoder_template(config: ScaffoldConfig) -> str:
         f'''\
         #!/usr/bin/env python3
 
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -330,7 +330,7 @@ def _scip_indexer_template(config: ScaffoldConfig) -> str:
         f'''\
         #!/usr/bin/env python3
 
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -388,7 +388,7 @@ def _ls_indexer_template(config: ScaffoldConfig) -> str:
         f'''\
         #!/usr/bin/env python3
 
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -435,7 +435,7 @@ def _ls_decoder_template(config: ScaffoldConfig) -> str:
         f'''\
         #!/usr/bin/env python3
 
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -473,7 +473,7 @@ def _incremental_patcher_template(config: ScaffoldConfig) -> str:
     )
     return textwrap.dedent(
         f'''\
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -515,7 +515,7 @@ def _incremental_test_template(config: ScaffoldConfig) -> str:
     cls = _class_prefix(config.key)
     return textwrap.dedent(
         f'''\
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -523,7 +523,7 @@ def _incremental_test_template(config: ScaffoldConfig) -> str:
 
         import pytest
 
-        from codeminer.graph.incremental.patcher_{config.key} import Patcher{cls}
+        from codenib.graph.incremental.patcher_{config.key} import Patcher{cls}
 
         pytestmark = pytest.mark.skip(
             reason="Scaffold stub: implement {config.key} patcher assertions."
@@ -541,7 +541,7 @@ def _graph_test_template(config: ScaffoldConfig) -> str:
     area = "scip" if config.graph_backend == "scip" else "ls_index"
     return textwrap.dedent(
         f'''\
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -562,11 +562,11 @@ def _graph_test_template(config: ScaffoldConfig) -> str:
 
 def _core_header_template(config: ScaffoldConfig) -> str:
     cls = _class_prefix(config.key)
-    guard = f"CODEMINER_CORE_SCIP_DECODE_{config.key.upper()}_H"
+    guard = f"CODENIB_CORE_SCIP_DECODE_{config.key.upper()}_H"
     return textwrap.dedent(
         f"""\
         /*
-         * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+         * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
          *
          * SPDX-License-Identifier: Apache-2.0
          */
@@ -576,7 +576,7 @@ def _core_header_template(config: ScaffoldConfig) -> str:
 
         #include "scip_decode_base.h"
 
-        namespace codeminer::core {{
+        namespace codenib::core {{
 
         class SCIP{cls}Decoder : public SCIPDecoderBase {{
         public:
@@ -586,7 +586,7 @@ def _core_header_template(config: ScaffoldConfig) -> str:
           Subgraph process_document(const std::string &document_block) const override;
         }};
 
-        }} // namespace codeminer::core
+        }} // namespace codenib::core
 
         #endif // {guard}
         """
@@ -598,7 +598,7 @@ def _core_cpp_template(config: ScaffoldConfig) -> str:
     return textwrap.dedent(
         f"""\
         /*
-         * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+         * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
          *
          * SPDX-License-Identifier: Apache-2.0
          */
@@ -607,7 +607,7 @@ def _core_cpp_template(config: ScaffoldConfig) -> str:
 
         #include <stdexcept>
 
-        namespace codeminer::core {{
+        namespace codenib::core {{
 
         Subgraph SCIP{cls}Decoder::process_document(
             const std::string &document_block) const {{
@@ -617,7 +617,7 @@ def _core_cpp_template(config: ScaffoldConfig) -> str:
               "serial/core parity bit-for-bit.");
         }}
 
-        }} // namespace codeminer::core
+        }} // namespace codenib::core
         """
     )
 
@@ -625,7 +625,7 @@ def _core_cpp_template(config: ScaffoldConfig) -> str:
 def _core_test_template(config: ScaffoldConfig) -> str:
     return textwrap.dedent(
         f'''\
-        # SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+        # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
         #
         # SPDX-License-Identifier: Apache-2.0
 
@@ -654,7 +654,7 @@ def build_plan(config: ScaffoldConfig) -> list[PlannedFile]:
         files.extend(
             [
                 PlannedFile(
-                    Path("codeminer") / "code_chunking" / f"{key}_chunker.py",
+                    Path("codenib") / "code_chunking" / f"{key}_chunker.py",
                     _chunker_template(config),
                 ),
                 PlannedFile(
@@ -668,11 +668,11 @@ def build_plan(config: ScaffoldConfig) -> list[PlannedFile]:
         files.extend(
             [
                 PlannedFile(
-                    Path("codeminer") / "scip_interface" / f"scip_indexer_{key}.py",
+                    Path("codenib") / "scip_interface" / f"scip_indexer_{key}.py",
                     _scip_indexer_template(config),
                 ),
                 PlannedFile(
-                    Path("codeminer") / "scip_interface" / f"scip_decode_{key}.py",
+                    Path("codenib") / "scip_interface" / f"scip_decode_{key}.py",
                     _scip_decoder_template(config),
                 ),
                 PlannedFile(
@@ -692,11 +692,11 @@ def build_plan(config: ScaffoldConfig) -> list[PlannedFile]:
         files.extend(
             [
                 PlannedFile(
-                    Path("codeminer") / "ls_index" / f"{key}_indexer.py",
+                    Path("codenib") / "ls_index" / f"{key}_indexer.py",
                     _ls_indexer_template(config),
                 ),
                 PlannedFile(
-                    Path("codeminer") / "ls_index" / f"{key}_decode.py",
+                    Path("codenib") / "ls_index" / f"{key}_decode.py",
                     _ls_decoder_template(config),
                 ),
                 PlannedFile(
@@ -710,7 +710,7 @@ def build_plan(config: ScaffoldConfig) -> list[PlannedFile]:
         files.extend(
             [
                 PlannedFile(
-                    Path("codeminer") / "graph" / "incremental" / f"patcher_{key}.py",
+                    Path("codenib") / "graph" / "incremental" / f"patcher_{key}.py",
                     _incremental_patcher_template(config),
                 ),
                 PlannedFile(
@@ -743,12 +743,12 @@ def build_plan(config: ScaffoldConfig) -> list[PlannedFile]:
 
 def _manual_wiring(config: ScaffoldConfig) -> list[str]:
     items = [
-        "Add the printed LanguageSpec to codeminer/languages.py.",
+        "Add the printed LanguageSpec to codenib/languages.py.",
         "Add alias/extension tests to test/test_languages.py.",
     ]
     if config.chunker:
         items.append(
-            "Export and route the chunker in codeminer/code_chunking/__init__.py."
+            "Export and route the chunker in codenib/code_chunking/__init__.py."
         )
     if config.graph_backend == "lsp":
         items.append(
@@ -761,10 +761,10 @@ def _manual_wiring(config: ScaffoldConfig) -> list[str]:
                 "smoke, LSP/backend alignment, and serial/core parity gates land."
             )
     elif config.graph_backend != "none":
-        items.append("Route the graph backend through codeminer/ls_router.py.")
+        items.append("Route the graph backend through codenib/ls_router.py.")
     if config.incremental_backend != "none":
         items.append(
-            "Route the patcher through codeminer/graph/incremental/graph_patcher.py."
+            "Route the patcher through codenib/graph/incremental/graph_patcher.py."
         )
     if config.core_decoder:
         items.append(
@@ -809,9 +809,9 @@ def write_plan(files: Sequence[PlannedFile], root: Path, force: bool = False) ->
 
 
 def _language_exists(key: str, root: Path = PROJECT_ROOT) -> bool:
-    languages_py = root / "codeminer" / "languages.py"
+    languages_py = root / "codenib" / "languages.py"
     if not languages_py.exists():
-        languages_py = PROJECT_ROOT / "codeminer" / "languages.py"
+        languages_py = PROJECT_ROOT / "codenib" / "languages.py"
     try:
         tree = ast.parse(languages_py.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):

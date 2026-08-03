@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
@@ -30,7 +30,7 @@ a flat **embedding pre-load context-engine** + the standard grep/read loop.
   - `preinj_embed` — embedding candidates injected into the opening prompt.
   - `preinj_graph` — embedding **+ 1-hop call-graph expansion** injected.
   - `preinj_graph_verify` — graph pre-load **+ verify-expand** closed loop
-    (`codeminer.eval.agent_runner.verify_expand`): if the committed answer does
+    (`codenib.eval.agent_runner.verify_expand`): if the committed answer does
     not resolve to a real graph symbol, inject its 1-hop neighbours and answer
     once more.
 - **Method:** per-query **paired bootstrap** (5000 resamples) of Δ vs
@@ -118,5 +118,5 @@ python scripts/agent_compile/aggregate_synthesis.py \
 ```
 
 Artifacts: cells + `pareto_ci.md` + `report_by_category.md` under
-`/mnt/data/codeminer/results/runtime_probe_python/`. Design + decision:
+`${CODENIB_RESULTS_DIR}/runtime_probe_python/`. Design + decision:
 `.claude/design/agent-runtime.md` §0.

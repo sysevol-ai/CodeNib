@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -25,8 +25,8 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.graph.code_graph import _SCHEMA_VERSION, CodeGraph, RangeQueryResult
-from codeminer.types import EDGE_TYPE_REFERENCE
+from codenib.graph.code_graph import _SCHEMA_VERSION, CodeGraph, RangeQueryResult
+from codenib.types import EDGE_TYPE_REFERENCE
 
 # ---------------------------------------------------------------------------
 # Fixture builders
@@ -41,8 +41,8 @@ def _build_simple_graph() -> CodeGraph:
     """
     g = CodeGraph()
     g.add_file_node("foo.py")
-    g.add_symbol_node("foo.py:bar", 10, 5, 20, "function")
-    g.add_symbol_node("foo.py:baz", 30, 25, 40, "function")
+    g.add_symbol_node("foo.py:bar", 10, 5, 20, "function", symbol_kind="function")
+    g.add_symbol_node("foo.py:baz", 30, 25, 40, "function", symbol_kind="function")
 
     g.update_current_scope("foo.py:bar", 5, 20)
     g.add_symbol_reference("foo.py:baz", anchor_line=12)
@@ -297,6 +297,9 @@ def test_save_load_graph_roundtrip():
         assert r1.defined == r2.defined
         assert r1.outgoing == r2.outgoing
         assert r1.incoming == r2.incoming
+        attrs = g2.get_node_info_by_name("foo.py:bar")
+        assert attrs["symbol_kind"] == "function"
+        assert attrs["has_definition"] is True
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -345,4 +348,4 @@ def test_query_range_returns_range_query_result():
 
 
 def test_schema_version_constant_exposed():
-    assert _SCHEMA_VERSION >= 3
+    assert _SCHEMA_VERSION == 5

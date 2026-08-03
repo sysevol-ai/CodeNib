@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 
 Extract symbol-level ground truth changes (functions, classes, methods) from SWE-bench unified diff patches. Identifies which symbols were modified, added, or deleted.
 
-Supports Python, Go, Rust, C/C++, C#, Java, Ruby, PHP, Kotlin, JavaScript, and TypeScript.
+Supports Python, Go, Rust, C/C++, C#, Java, Ruby, PHP, Kotlin, Swift, Scala, Lua, JavaScript, and TypeScript.
 
 ## How It Works
 
@@ -25,13 +25,13 @@ Supports Python, Go, Rust, C/C++, C#, Java, Ruby, PHP, Kotlin, JavaScript, and T
 
 ## Prerequisites
 
-- `tree-sitter-language-pack` (bundled with CodeMiner, provides parsers for all supported languages)
+- `tree-sitter-language-pack` (bundled with CodeNib, provides parsers for all supported languages)
 - `git` (for cloning and checking out repos)
 
 ## Usage
 
 ```python
-from codeminer.dataset.gt_locate import GTLocator
+from codenib.dataset.gt_locate import GTLocator
 
 locator = GTLocator(work_dir="/data/repos")
 
@@ -45,7 +45,7 @@ result = locator.analyze_instance({
 
 **Parameters:**
 
-- `work_dir` (str, optional): Directory for cloning repos. Default: `~/.codeminer/tmp` (auto-cleaned on `cleanup()`)
+- `work_dir` (str, optional): Directory for cloning repos. Default: `~/.codenib/tmp` (auto-cleaned on `cleanup()`)
 - `language` (str, optional): Force a specific language instead of auto-detecting from file extensions
 
 **Output:**
@@ -85,7 +85,7 @@ ranges = locator.get_changed_line_ranges(patch_content)
 ### Batch Processing
 
 ```python
-from codeminer.dataset.gt_locate import build_gt_metadata
+from codenib.dataset.gt_locate import build_gt_metadata
 
 results = build_gt_metadata(dataset, work_dir="/data/repos", keep_repos=True)
 ```

@@ -1,33 +1,44 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 # Code-QA demo configuration.
 #
 # Build indexes:   python scripts/build_qa_index.py   (needs network: HF + git)
-# Serve:           codeminer-web                       (or: uvicorn codeminer.web.app:app)
+# Serve:           codenib-web                       (or: uvicorn codenib.web.app:app)
 #
-# `model` is a litellm model string; override with CODEMINER_DEMO_MODEL.
-# Provider API keys come from the environment (e.g. OPENAI_API_KEY).
+# `model` is a LiteLLM model string; override with CODENIB_DEMO_MODEL.
+# Keep secrets in environment variables, not this file.
 
-model: vertex_ai/gemini-2.5-flash   # uses gcloud ADC; override via CODEMINER_DEMO_MODEL
+model: gpt-4o
+# Optional: use a different model for generated wiki prose and edge labels.
+# wiki_model: vertex_ai/gemini-2.5-flash
+# A Wiki model with the same provider prefix may reuse model_api_base/key.
+# Otherwise use its provider-native credentials, or configure a dedicated
+# endpoint via CODENIB_DEMO_WIKI_API_BASE / CODENIB_DEMO_WIKI_API_KEY.
+# wiki_api_base: http://127.0.0.1:8081/v1
+# Optional: point the Ask model at an OpenAI-compatible endpoint. Prefer the
+# CODENIB_DEMO_API_BASE and CODENIB_DEMO_API_KEY environment variables.
+# model_api_base: http://127.0.0.1:8080/v1
 
-mode: hybrid              # "sparse" (BM25 only) or "hybrid" (BM25 + embeddings)
-data_dir: .codeminer_qa
+mode: sparse              # "sparse" (BM25 only) or "hybrid" (BM25 + embeddings)
+data_dir: .codenib_qa
 # Reuse pre-built per-instance indexes (source @ base_commit + L0/L2 vectors)
 # from this read-only tree. BM25 is still built locally under data_dir.
-prebuilt_dir: /mnt/data/codeminer
-# Must match the embedding model whose files live under
-# <prebuilt_dir>/<instance_id>/{l0,l2}/index_<model_suffix>.faiss
-embedding_model: Qwen/Qwen3-Embedding-0.6B
-embedding_dimension: 1024
+prebuilt_dir: null
+embedding_model: BAAI/bge-small-en-v1.5
+embedding_dimension: 384
+# Remote embeddings use an OpenAI-compatible endpoint. Prefer the
+# CODENIB_EMBEDDING_* environment variables for endpoint and credentials.
+# embedding_provider: openai
+# embedding_base_url: http://127.0.0.1:8081/v1
 max_turns: 8
-max_tokens: 4096   # generous: gemini-2.5 is a thinking model (we disable thinking, but keep headroom)
+max_tokens: 4096
 
 # Show short LLM-written dependency phrases on graph edges (hover/click in the
 # interactive graph view). Off by default: each first-seen edge triggers one
 # small LLM call, then the phrase is cached on disk. Env override:
-# CODEMINER_EDGE_LABELS=1.
+# CODENIB_EDGE_LABELS=1.
 edge_labels: false
 # edge_label_model: openai/gpt-4o-mini   # optional cheaper model for these short calls
 
@@ -46,7 +57,7 @@ edge_labels: false
 #   Qwen/Qwen3-Reranker-4B            ~400ms @ N=25     higher quality
 #   mixedbread-ai/mxbai-rerank-large-v2  ~800ms @ N=25  not recommended (batching ceiling)
 #
-# See: codeminer/web/config.py (QAConfig), codeminer/ops/rerank.py (CrossEncoderContext)
+# See: codenib/web/config.py (QAConfig), codenib/ops/rerank.py (CrossEncoderContext)
 #      index/rerank/cross_encoder.py (build_reranker auto-detects backend from model name)
 rerank_strategy: embedding
 # crossencoder_model: Qwen/Qwen3-Reranker-0.6B
@@ -59,7 +70,7 @@ cors_origins:
   - http://localhost:3001
   - http://127.0.0.1:3001
 
-# --- which repos to feature (from the codeminer-base-dataset) ---
+# --- which repos to feature (from the codenib-base-dataset) ---
 dataset: fishmingyu/codeminer-base-dataset
 split: test
 

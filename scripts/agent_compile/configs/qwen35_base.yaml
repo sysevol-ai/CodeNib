@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Qwen2.5-Coder backend on codeminer-base — the "final agent" (flat embedding
+# Qwen2.5-Coder backend on codenib-base — the "final agent" (flat embedding
 # pre-load) vs the grep_only baseline, run against a LOCAL vLLM OpenAI server.
 #
 #   serve:  vllm ... --served-model-name qwen2.5-coder-7b --enable-auto-tool-choice
@@ -28,7 +28,7 @@ max_turns: 16
 # — force a tool call on the first turn so the agent loop is actually exercised.
 first_turn_tool_choice: null
 
-instances: []  # whole codeminer-base test split (~100 instances)
+instances: []  # whole codenib-base test split (~100 instances)
 
 subsets:
   grep_only:

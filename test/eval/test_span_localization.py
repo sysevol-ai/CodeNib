@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,8 +15,8 @@ from types import SimpleNamespace
 
 import igraph as ig
 
-from codeminer.eval.agent_runner.symbols import build_prebuilt_symbol_span_index
-from codeminer.eval.retrieval_eval import (
+from codenib.eval.agent_runner.symbols import build_prebuilt_symbol_span_index
+from codenib.eval.retrieval_eval import (
     collect_target_blocks,
     compute_block_metrics,
     dedup_spans,
@@ -79,7 +79,7 @@ def test_collect_target_blocks_empty():
 
 
 def test_collect_target_blocks_from_synthesis_symbol_nodes():
-    """codeminer-synthesis exposes 0-based gt_symbol_nodes (graph attrs) -> +1."""
+    """codenib-synthesis exposes 0-based gt_symbol_nodes (graph attrs) -> +1."""
     inst = {
         "gt_symbol_nodes": [
             {

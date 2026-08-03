@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,22 +6,23 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codeminer.agent.resource_guard import PreflightReport
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.core import (
+from codenib.agent.resource_guard import PreflightReport
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.tool_schema import registry_to_tools
-from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.agent.tool_schema import registry_to_tools
+from codenib.agent.tools.defaults import DEFAULT_TOOL_IDS
+from codenib.llm.litellm_chat import LiteLLMChat
 
 
 def _swept(tools) -> set:
@@ -131,6 +132,9 @@ class TestAgentRunnerAllowSkills:
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(llm, three_skill_registry, allow_skills={"c"})
         assert _swept(runner.tools) == {"c"}
+        assert "`c`" in runner.system_prompt
+        assert "`a`" not in runner.system_prompt
+        assert "`b`" not in runner.system_prompt
 
     def test_allow_and_exclude_combined(self, three_skill_registry):
         """exclude is applied on top of allow; overlap is excluded."""
@@ -155,7 +159,7 @@ class TestAgentRunnerAllowSkills:
         # The project logger uses propagate=False, so caplog can't see it;
         # attach our own list handler to the runner's logger directly.
         captured: list[logging.LogRecord] = []
-        runner_logger = logging.getLogger("codeminer.agent.runner")
+        runner_logger = logging.getLogger("codenib.agent.runner")
 
         class _ListHandler(logging.Handler):
             def emit(self, record: logging.LogRecord) -> None:
@@ -176,6 +180,77 @@ class TestAgentRunnerAllowSkills:
         llm = MagicMock(spec=LiteLLMChat)
         runner = AgentRunner(llm, three_skill_registry, allow_skills={"a", "ghost"})
         assert _swept(runner.tools) == {"a"}
+
+    def test_unadvertised_registered_skill_call_is_not_dispatched(
+        self, three_skill_registry
+    ):
+        """Provider-parsed hallucinations cannot bypass the active allowlist."""
+        hidden_executor = MagicMock(return_value="should not run")
+        three_skill_registry.get("b").executor_fn = hidden_executor
+        tool_call = SimpleNamespace(
+            id="call_hidden",
+            function=SimpleNamespace(name="b", arguments='{"q": "secret"}'),
+        )
+        llm = MagicMock(spec=LiteLLMChat)
+        llm._call_raw.side_effect = [
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            role="assistant",
+                            content=None,
+                            tool_calls=[tool_call],
+                        )
+                    )
+                ]
+            ),
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            role="assistant",
+                            content="Done.",
+                            tool_calls=None,
+                        )
+                    )
+                ]
+            ),
+        ]
+
+        result = AgentRunner(
+            llm,
+            three_skill_registry,
+            allow_skills={"a"},
+        ).run("test")
+
+        hidden_executor.assert_not_called()
+        assert result.tool_calls[0].skill_id == "b"
+        assert "not available in this run" in result.tool_calls[0].error
+
+    def test_compile_table_renders_prompt_from_query_tools(self, three_skill_registry):
+        llm = MagicMock(spec=LiteLLMChat)
+        llm._call_raw.return_value = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        role="assistant", content="Done.", tool_calls=None
+                    )
+                )
+            ]
+        )
+        runner = AgentRunner(
+            llm,
+            three_skill_registry,
+            allow_skills={"a", "b"},
+            compile_table={"scenarios": {}},
+        )
+
+        with patch("codenib.agent.compile.agent_compile", return_value={"a"}):
+            runner.run("test")
+
+        request_prompt = llm._call_raw.call_args.args[0][0]["content"]
+        assert "`a`" in request_prompt
+        assert "`b`" not in request_prompt
 
     def test_include_default_tools_false_withholds_defaults(self, three_skill_registry):
         """The cost-study 'structured' condition: defaults are withheld so the
@@ -232,7 +307,7 @@ class TestAllowSkillsWithResourceGuard:
         )
 
         with patch(
-            "codeminer.agent.resource_guard.ResourceGuard",
+            "codenib.agent.resource_guard.ResourceGuard",
             return_value=fake_guard,
         ):
             llm = MagicMock(spec=LiteLLMChat)
@@ -260,7 +335,7 @@ class TestAllowSkillsWithResourceGuard:
         )
 
         with patch(
-            "codeminer.agent.resource_guard.ResourceGuard",
+            "codenib.agent.resource_guard.ResourceGuard",
             return_value=fake_guard,
         ):
             llm = MagicMock(spec=LiteLLMChat)
@@ -287,7 +362,7 @@ class TestAllowSkillsWithResourceGuard:
         )
 
         with patch(
-            "codeminer.agent.resource_guard.ResourceGuard",
+            "codenib.agent.resource_guard.ResourceGuard",
             return_value=fake_guard,
         ):
             llm = MagicMock(spec=LiteLLMChat)

@@ -1,8 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
@@ -15,6 +13,7 @@ import {
   type RepoInfo,
 } from "@/lib/api";
 import { codeRefs } from "@/lib/citations";
+import { AppLink } from "@/lib/router";
 
 // DeepWiki clamps the question to ~200 chars before "Show full text".
 const Q_TRUNCATE = 200;
@@ -26,10 +25,8 @@ interface Turn {
   err: string | null;
 }
 
-function AskAnswer() {
-  const params = useParams<{ repoId: string }>();
-  const repoId = decodeURIComponent(params.repoId);
-  const q = (useSearchParams().get("q") ?? "").trim();
+function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
+  const q = query.trim();
 
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -147,9 +144,9 @@ function AskAnswer() {
       <Header
         center={
           <nav className="breadcrumb" aria-label="Breadcrumb">
-            <Link href={`/${encodeURIComponent(repoId)}`} className="mono">
+            <AppLink href={`/${encodeURIComponent(repoId)}`} className="mono">
               {repoName}
-            </Link>
+            </AppLink>
             <span className="crumb-sep">/</span>
             <span className="crumb-page">Ask</span>
           </nav>
@@ -157,16 +154,22 @@ function AskAnswer() {
       />
 
       {/* DeepWiki-style codemap: hierarchical explanation (left) + code (right). */}
-      <div className="ask-codemap">
+      <div className={`ask-codemap ${turns.length === 0 ? "empty" : ""}`}>
         <section className="ask-explain">
-          <Link className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
+          <AppLink className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
             ← Back to wiki
-          </Link>
+          </AppLink>
 
           {turns.length === 0 && (
             <>
-              <h1 className="ask-q">Ask a question</h1>
-              <p className="muted">Type a question in the bar below.</p>
+              <h1 className="ask-q">Ask about {repoName}</h1>
+              <AskBar
+                repoId={repoId}
+                repo={repoName}
+                onSubmit={followUp}
+                disabled={loading}
+                inline
+              />
             </>
           )}
 
@@ -218,34 +221,34 @@ function AskAnswer() {
           <div ref={endRef} />
         </section>
 
-        <aside className="ask-code">
-          <CodePanel
-            repoId={repoId}
-            citations={turnRefs[activeTurn] ?? []}
-            repo={repo?.repo}
-            commit={repo?.base_commit}
-            active={active}
-            onSelect={(i) => selectCitation(activeTurn, i)}
-            scrollSignal={scrollSignal}
-          />
-        </aside>
+        {turns.length > 0 && (
+          <aside className="ask-code">
+            <CodePanel
+              repoId={repoId}
+              citations={turnRefs[activeTurn] ?? []}
+              repo={repo?.repo}
+              commit={repo?.base_commit}
+              active={active}
+              onSelect={(i) => selectCitation(activeTurn, i)}
+              scrollSignal={scrollSignal}
+            />
+          </aside>
+        )}
       </div>
 
-      <AskBar repoId={repoId} repo={repoName} onSubmit={followUp} disabled={loading} />
+      {turns.length > 0 && (
+        <AskBar repoId={repoId} repo={repoName} onSubmit={followUp} disabled={loading} />
+      )}
     </div>
   );
 }
 
-export default function AskPage() {
-  return (
-    <Suspense
-      fallback={
-        <main className="ask-answer">
-          <p className="muted">Loading…</p>
-        </main>
-      }
-    >
-      <AskAnswer />
-    </Suspense>
-  );
+export default function AskPage({
+  repoId,
+  query,
+}: {
+  repoId: string;
+  query: string;
+}) {
+  return <AskAnswer repoId={repoId} query={query} />;
 }

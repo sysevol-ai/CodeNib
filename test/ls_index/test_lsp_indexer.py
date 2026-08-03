@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,13 +9,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from codeminer.ls_index.lsp_graph_decode import (
+import pytest
+
+from codenib.ls_index.lsp_graph_decode import (
     GenericLSPGraphDecoder,
     iter_lsp_symbol_definitions,
 )
-from codeminer.ls_index.lsp_indexer import GenericLSPIndexer
-from codeminer.ls_router import LSIndexer
-from codeminer.types import (
+from codenib.ls_index.lsp_indexer import GenericLSPIndexer
+from codenib.ls_router import LSIndexer
+from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
     NODE_TYPE_CLASS,
@@ -80,6 +82,10 @@ def test_generic_lsp_decoder_builds_java_symbol_graph(tmp_path):
     assert graph.graph.vs[graph.name_to_vertex[class_name]]["type"] == NODE_TYPE_CLASS
     assert graph.graph.vs[graph.name_to_vertex[ctor_name]]["type"] == NODE_TYPE_METHOD
     assert graph.graph.vs[graph.name_to_vertex[method_name]]["type"] == NODE_TYPE_METHOD
+    class_attrs = graph.graph.vs[graph.name_to_vertex[class_name]].attributes()
+    assert class_attrs["symbol_kind"] == "class"
+    assert class_attrs["has_definition"] is True
+    assert class_attrs["selection_line"] == 2
 
     class_query = graph.query_range(file_name, 10, 10, kinds={EDGE_TYPE_CONTAIN})
     assert [node.name for node in class_query.defined] == [class_name, method_name]
@@ -305,7 +311,7 @@ def test_generic_lsp_indexer_uses_resolved_lsp_command(tmp_path, monkeypatch):
         def document_symbol(self, file_path):
             return []
 
-    monkeypatch.setattr("codeminer.ls_index.lsp_indexer.LSPClient", FakeLSPClient)
+    monkeypatch.setattr("codenib.ls_index.lsp_indexer.LSPClient", FakeLSPClient)
 
     indexer = GenericLSPIndexer(tmp_path, language="java")
 
@@ -317,6 +323,36 @@ def test_generic_lsp_indexer_normalizes_language_alias(tmp_path):
     indexer = GenericLSPIndexer(tmp_path, language="rb")
 
     assert indexer.language == "ruby"
+
+
+@pytest.mark.parametrize(
+    ("level", "keeps_index", "keeps_graph", "expected"),
+    [
+        ("graph", True, True, True),
+        ("decode", True, False, True),
+        ("raw", True, False, True),
+        ("all", False, False, True),
+        ("invalid", True, True, False),
+    ],
+)
+def test_generic_lsp_clear_cache_uses_shared_preservation_contract(
+    tmp_path,
+    level,
+    keeps_index,
+    keeps_graph,
+    expected,
+):
+    indexer = GenericLSPIndexer(
+        tmp_path,
+        output_dir=tmp_path / "index",
+        language="java",
+    )
+    indexer.index_file.write_text("{}", encoding="utf-8")
+    indexer.graph_file.write_bytes(b"graph")
+
+    assert indexer.clear_cache(level) is expected
+    assert indexer.index_file.exists() is keeps_index
+    assert indexer.graph_file.exists() is keeps_graph
 
 
 def test_generic_lsp_decoder_adds_reference_edges(tmp_path):

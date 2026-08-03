@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,14 +11,14 @@ dataflow check (``check_pipeline_coherent``) that make the previously-dead
 
 from __future__ import annotations
 
-from codeminer.agent.skills.core import (
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.skills.typecheck import (
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.agent.skills.typecheck import (
     check_pipeline_coherent,
     coerce_args,
     parse_type_hint,

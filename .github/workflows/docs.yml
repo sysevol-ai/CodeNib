@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.md"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - "codenib/**/*.py"
+      - "core/**"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - "scripts/check_public_docs.py"
+      - "scripts/language_capability_matrix.py"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches:
+      - "*"
+    paths:
+      - "**.md"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - "codenib/**/*.py"
+      - "core/**"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - "scripts/check_public_docs.py"
+      - "scripts/language_capability_matrix.py"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: read
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  # Discard stale PR validation, but never interrupt a main/dispatch publish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install docs dependencies
+        run: uv sync --locked --only-group docs
+
+      - name: Check display branding
+        run: uv run --no-sync python scripts/check_namespace.py
+
+      - name: Check generated capability docs
+        run: >-
+          uv run --no-sync python scripts/language_capability_matrix.py
+          --check docs/language_capabilities.md
+
+      - name: Build docs
+        run: uv run --no-sync mkdocs build --strict
+
+      - name: Check public docs boundary
+        run: uv run --no-sync python scripts/check_public_docs.py
+
+      - name: Configure GitHub Pages
+        if: >-
+          (github.event_name == 'push' ||
+          github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' &&
+          github.event.repository.private == false
+        uses: actions/configure-pages@v6
+
+      - name: Upload GitHub Pages artifact
+        if: >-
+          (github.event_name == 'push' ||
+          github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' &&
+          github.event.repository.private == false
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    if: >-
+      (github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' &&
+      github.event.repository.private == false
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

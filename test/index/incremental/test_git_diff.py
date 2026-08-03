@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.index.incremental.git_diff import GitDiffDetector
+from codenib.index.incremental.git_diff import GitDiffDetector
 
 # ---------------------------------------------------------------------------
 # Fixtures

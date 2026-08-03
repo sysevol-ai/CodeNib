@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,7 +9,7 @@ For each instance, with NO agent/LLM (cheap, scannable over the whole dataset):
 
   - deep-search files = files of bm25.search(K) ∪ embedding.search(K), the best
     plain retrieval can do at budget K,
-  - composer files = files returned by ``codeminer_context`` (5 search seeds +
+  - composer files = files returned by ``codenib_context`` (5 search seeds +
     call-graph expansion), the graph-aware set,
 
 and asks the one question that isolates the graph's UNIQUE value:
@@ -39,6 +39,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from codenib.paths import prebuilt_data_dir
+
 
 def _norm(p: str) -> str:
     return (p or "").strip().strip("`'\"").replace("\\", "/")
@@ -48,7 +50,7 @@ def _files_of(nodes: Sequence[Any]) -> List[str]:
     """Raw (slash-normalized) candidate file paths.
 
     Kept un-rel-normalized on purpose: the embedding store carries ABSOLUTE
-    paths rooted at the build location (``~/.codeminer/<repo>/...``), not the
+    paths rooted at the build location (``~/.codenib/<repo>/...``), not the
     staged repo_path, so ``relpath`` can't strip them. Coverage is decided by
     suffix matching (``_covers``), which is robust to that.
     """
@@ -62,7 +64,7 @@ def _covers(cands: Sequence[str], target: str) -> bool:
 
 
 def _deep_search_files(retrieve: Any, query: str, budget: int) -> List[str]:
-    from codeminer.ops.retrieve import to_queried_nodes
+    from codenib.ops.retrieve import to_queried_nodes
 
     nodes: List[Any] = []
     if getattr(retrieve, "bm25", None) is not None:
@@ -90,13 +92,10 @@ def _analyze_instance(
     cache_root: str,
     budget: int,
 ) -> Dict[str, Any]:
-    from codeminer.agent.skills.registry import SkillRegistry
-    from codeminer.eval.agent_runner.prebuilt import (
-        repo_path_for,
-        stage_prebuilt_indexes,
-    )
-    from codeminer.eval.agent_runner.sweep import load_dataset_rows, load_full_contexts
-    from codeminer.eval.retrieval_eval import collect_targets
+    from codenib.agent.skills.registry import SkillRegistry
+    from codenib.eval.agent_runner.prebuilt import repo_path_for, stage_prebuilt_indexes
+    from codenib.eval.agent_runner.sweep import load_dataset_rows, load_full_contexts
+    from codenib.eval.retrieval_eval import collect_targets
 
     rows_by_id, eval_lookup = load_dataset_rows(cfg)
     row = rows_by_id[instance_id]
@@ -112,7 +111,7 @@ def _analyze_instance(
     retrieve = contexts.get("retrieve")
 
     deep = _deep_search_files(retrieve, query, budget)
-    ex = SkillRegistry().get("codeminer_context").executor_fn
+    ex = SkillRegistry().get("codenib_context").executor_fn
     comp = _files_of(ex(query=query, seeds=5, max_results=budget))
 
     missed_by_search = [t for t in targets if not _covers(deep, t)]
@@ -130,20 +129,20 @@ def _analyze_instance(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    from codeminer.eval.agent_runner.sweep_config import SweepConfig as SampleConfig
+    from codenib.eval.agent_runner.sweep_config import SweepConfig as SampleConfig
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--instances-json", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--budget", type=int, default=30)
-    ap.add_argument("--prebuilt-dir", default="/mnt/data/codeminer")
+    ap.add_argument("--prebuilt-dir", default=str(prebuilt_data_dir()))
     args = ap.parse_args(argv)
 
     instances = json.loads(args.instances_json.read_text())
     cache_root = os.path.join(os.environ.get("CLAUDE_JOB_DIR", "/tmp"), "recall_cache")
     cfg = SampleConfig(
         sweep_id="recall",
-        subsets={"CTX": ["codeminer_context"]},
+        subsets={"CTX": ["codenib_context"]},
         instances=instances,
         embedding_model="Qwen/Qwen3-Embedding-0.6B",
         embedding_dimension=1024,

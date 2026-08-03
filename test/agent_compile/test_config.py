@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from codeminer.eval.agent_runner.sweep_config import SweepConfig
+from codenib.eval.agent_runner.sweep_config import SweepConfig
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,17 +19,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.core import (
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.agent.tools.defaults import DEFAULT_TOOL_IDS
-from codeminer.compiler.params import SessionContext
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.agent.tools.defaults import DEFAULT_TOOL_IDS
+from codenib.compiler.params import SessionContext
+from codenib.llm.litellm_chat import LiteLLMChat
 
 
 @pytest.fixture(autouse=True)
@@ -199,7 +199,7 @@ class TestEmptyAllowFallback:
         llm = _mock_llm_no_tool_call()
 
         captured: List[logging.LogRecord] = []
-        runner_logger = logging.getLogger("codeminer.agent.runner")
+        runner_logger = logging.getLogger("codenib.agent.runner")
 
         class _Handler(logging.Handler):
             def emit(self, record: logging.LogRecord) -> None:
@@ -241,7 +241,7 @@ class TestEmptyAllowFallback:
         llm = _mock_llm_no_tool_call()
 
         captured: List[logging.LogRecord] = []
-        runner_logger = logging.getLogger("codeminer.agent.runner")
+        runner_logger = logging.getLogger("codenib.agent.runner")
 
         class _Handler(logging.Handler):
             def emit(self, record: logging.LogRecord) -> None:
@@ -274,7 +274,7 @@ class TestEmptyAllowFallback:
 class TestLoaderToRunner:
     def test_json_file_drives_narrowing(self, skills, tmp_path):
         """Load a compile_table from disk (JSON) and feed it to the runner."""
-        from codeminer.agent.compile import load_compile_table
+        from codenib.agent.compile import load_compile_table
 
         path = tmp_path / "compile_table.json"
         path.write_text(
@@ -300,7 +300,7 @@ class TestLoaderToRunner:
         assert _tools_passed_to_llm(llm) == ["bm25_search", "embedding_search"]
 
     def test_yaml_file_drives_narrowing(self, skills, tmp_path):
-        from codeminer.agent.compile import load_compile_table
+        from codenib.agent.compile import load_compile_table
 
         path = tmp_path / "compile_table.yaml"
         path.write_text(

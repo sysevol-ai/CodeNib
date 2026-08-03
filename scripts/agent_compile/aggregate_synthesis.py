@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Aggregate a codeminer-synthesis per-query sweep, broken down by CATEGORY.
+"""Aggregate a codenib-synthesis per-query sweep, broken down by CATEGORY.
 
 The synthesis ``category`` is the axis that discriminates grep vs retrieval:
 ``behavioral`` queries name no identifiers (grep must explore the repo blind),
@@ -36,7 +36,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from codeminer.eval.agent_runner.metrics import (
+from codenib.eval.agent_runner.metrics import (
     load_cell_jsons,
     metric_at_k,
     safe_mean,
@@ -66,6 +66,79 @@ def _fmt(v: Optional[float], nd: int = 3) -> str:
     return "n/a" if v is None else f"{v:.{nd}f}"
 
 
+def _fmt_pct(v: Optional[float]) -> str:
+    return "n/a" if v is None else f"{100 * v:.0f}%"
+
+
+def _trace_summary(cell: Dict[str, Any]) -> Dict[str, Any]:
+    summary = cell.get("trace_summary") or {}
+    return summary if isinstance(summary, dict) else {}
+
+
+def _lsp_route_context(cell: Dict[str, Any]) -> Dict[str, Any]:
+    context = _trace_summary(cell).get("lsp_route_context") or {}
+    return context if isinstance(context, dict) else {}
+
+
+def _lsp_route_tool_calls(cell: Dict[str, Any]) -> List[Dict[str, Any]]:
+    calls = _trace_summary(cell).get("lsp_route_tool_calls") or []
+    return [call for call in calls if isinstance(call, dict)]
+
+
+def _lsp_tool_call_rate(cell: Dict[str, Any]) -> float:
+    return 1.0 if _lsp_route_tool_calls(cell) else 0.0
+
+
+def _lsp_context_rate(cell: Dict[str, Any]) -> float:
+    return 1.0 if _lsp_route_context(cell).get("status") == "offered" else 0.0
+
+
+def _lsp_backend_ms(cell: Dict[str, Any]) -> Optional[float]:
+    calls = _lsp_route_tool_calls(cell)
+    if calls:
+        value = calls[0].get("duration_ms")
+        return float(value) if isinstance(value, (int, float)) else None
+    context = _lsp_route_context(cell)
+    if context.get("status") == "offered":
+        value = context.get("duration_ms")
+        return float(value) if isinstance(value, (int, float)) else None
+    return None
+
+
+def _lsp_visible_ms(cell: Dict[str, Any]) -> Optional[float]:
+    calls = _lsp_route_tool_calls(cell)
+    if calls:
+        value = calls[0].get("model_can_use_ms")
+        return float(value) if isinstance(value, (int, float)) else None
+    context = _lsp_route_context(cell)
+    if context.get("status") == "offered":
+        value = context.get("route_visible_ms", context.get("duration_ms"))
+        return float(value) if isinstance(value, (int, float)) else None
+    return None
+
+
+def _lsp_extra_trips(cell: Dict[str, Any]) -> Optional[float]:
+    calls = _lsp_route_tool_calls(cell)
+    if calls:
+        value = calls[0].get("extra_model_round_trips")
+        return float(value) if isinstance(value, (int, float)) else None
+    if _lsp_route_context(cell).get("status") == "offered":
+        return 0.0
+    return None
+
+
+def _lsp_route_count(cell: Dict[str, Any]) -> Optional[float]:
+    calls = _lsp_route_tool_calls(cell)
+    if calls:
+        value = calls[0].get("result_count")
+        return float(value) if isinstance(value, (int, float)) else None
+    context = _lsp_route_context(cell)
+    if context.get("status") == "offered":
+        value = context.get("route_count")
+        return float(value) if isinstance(value, (int, float)) else None
+    return None
+
+
 def aggregate(cells: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     # Fold reps: group by (category, arm, query_id) -> reps.
     by_q: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
@@ -92,6 +165,12 @@ def aggregate(cells: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         acc["turns"].append(_min([r.get("total_turns") for r in reps]))
         acc["tokens"].append(_min([r.get("total_tokens") for r in reps]))
         acc["cost"].append(_min([r.get("cost_usd") for r in reps]))
+        acc["lsp_tool_call_rate"].append(_mean([_lsp_tool_call_rate(r) for r in reps]))
+        acc["lsp_context_rate"].append(_mean([_lsp_context_rate(r) for r in reps]))
+        acc["lsp_backend_ms"].append(_mean([_lsp_backend_ms(r) for r in reps]))
+        acc["lsp_visible_ms"].append(_mean([_lsp_visible_ms(r) for r in reps]))
+        acc["lsp_extra_trips"].append(_mean([_lsp_extra_trips(r) for r in reps]))
+        acc["lsp_route_count"].append(_mean([_lsp_route_count(r) for r in reps]))
 
     rows = {}
     for (cat, arm), acc in cat_arm.items():
@@ -106,7 +185,7 @@ def render(agg: Dict[str, Any]) -> str:
     rows = agg["by_cat_arm"]
     cats = sorted({c for (c, _a) in rows})
     arms = sorted({a for (_c, a) in rows})
-    L = ["# CodeMiner-synthesis per-category localization", ""]
+    L = ["# CodeNib-synthesis per-category localization", ""]
     L.append(
         "Headline = `answer_rec@5` (the agent's committed-answer span recall). "
         "`retr_rec@10` is the retriever ceiling. `contrib` = fraction of answer "
@@ -215,6 +294,48 @@ def render(agg: Dict[str, Any]) -> str:
                 )
                 + " |"
             )
+        L.append("")
+    if any(
+        (m.get("lsp_tool_call_rate") or 0) > 0
+        or (m.get("lsp_context_rate") or 0) > 0
+        or m.get("lsp_backend_ms") is not None
+        for m in rows.values()
+    ):
+        L.append("## LSP route exposure")
+        L.append("")
+        head3 = [
+            "category",
+            "arm",
+            "dynamic_call",
+            "startup_context",
+            "route_count",
+            "backend_ms",
+            "visible_ms",
+            "extra_trips",
+        ]
+        L.append("| " + " | ".join(head3) + " |")
+        L.append("| " + " | ".join("---" for _ in head3) + " |")
+        for cat in cats:
+            for arm in arms:
+                m = rows.get((cat, arm))
+                if not m:
+                    continue
+                L.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            str(cat),
+                            arm,
+                            _fmt_pct(m.get("lsp_tool_call_rate")),
+                            _fmt_pct(m.get("lsp_context_rate")),
+                            _fmt(m.get("lsp_route_count"), 1),
+                            _fmt(m.get("lsp_backend_ms"), 1),
+                            _fmt(m.get("lsp_visible_ms"), 1),
+                            _fmt(m.get("lsp_extra_trips"), 1),
+                        ]
+                    )
+                    + " |"
+                )
         L.append("")
     return "\n".join(L)
 

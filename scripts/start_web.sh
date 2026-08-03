@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# Start the CodeMiner FastAPI backend pointed at a local LLM server.
+# Start the CodeNib FastAPI backend pointed at a local LLM server.
 # Run this in Terminal 2 (on your main machine).
 # See docs/running-locally.md for the full setup guide.
 
 set -e
 
-CONDA_ENV="${CONDA_ENV:-codeminer}"
-BACKEND_PORT="${CODEMINER_DEMO_PORT:-8000}"
+CONDA_ENV="${CONDA_ENV:-codenib}"
+BACKEND_PORT="${CODENIB_DEMO_PORT:-8000}"
 LLM_PORT="${LLM_PORT:-8080}"
 DEFAULT_GPU_HOST="vscode-dsmlp-l40s"
-LOCAL_MODEL="${CODEMINER_DEMO_MODEL:-openai/qwen2.5-coder}"
-CONFIG_PATH="${CODEMINER_DEMO_CONFIG:-}"
+LOCAL_MODEL="${CODENIB_DEMO_MODEL:-openai/qwen2.5-coder}"
+CONFIG_PATH="${CODENIB_DEMO_CONFIG:-}"
 
 if [ -z "$CONFIG_PATH" ]; then
     if [ -f "qa_config.local.yaml" ]; then
@@ -25,41 +25,41 @@ fi
 
 # ── Prerequisites ────────────────────────────────────────────────────────────
 
-echo "=== CodeMiner Backend ==="
+echo "=== CodeNib Backend ==="
 echo ""
 
 # Must run from repo root
 if [ ! -f "$CONFIG_PATH" ]; then
     echo "ERROR: config not found: $CONFIG_PATH"
-    echo "Run this script from the CodeMiner repo root:"
-    echo "  cd ~/projects/CodeMiner/CodeMiner"
+    echo "Run this script from the CodeNib repo root:"
+    echo "  cd ~/projects/CodeNib/CodeNib"
     echo "  bash scripts/start_web.sh"
     echo ""
     echo "For local overrides, copy qa_config.local.yaml.example to qa_config.local.yaml."
     exit 1
 fi
 
-# Check codeminer is installed
-if ! conda run -n "$CONDA_ENV" python -c "import codeminer" &>/dev/null; then
-    echo "ERROR: codeminer not installed in conda env '$CONDA_ENV'."
+# Check codenib is installed
+if ! conda run -n "$CONDA_ENV" python -c "import codenib" &>/dev/null; then
+    echo "ERROR: codenib not installed in conda env '$CONDA_ENV'."
     echo "Run:  make dev   (or pip install -e '.[dev]')"
     exit 1
 fi
 
 # Check qa_registry.json
-REGISTRY=$(CODEMINER_DEMO_CONFIG="$CONFIG_PATH" python3 -c "
+REGISTRY=$(CODENIB_DEMO_CONFIG="$CONFIG_PATH" python3 -c "
 import os, yaml
-path = os.environ['CODEMINER_DEMO_CONFIG']
+path = os.environ['CODENIB_DEMO_CONFIG']
 with open(path) as f:
     data = yaml.safe_load(f) or {}
-data_dir = os.environ.get('CODEMINER_DEMO_DATA_DIR') or data.get('data_dir', '.codeminer_qa')
+data_dir = os.environ.get('CODENIB_DEMO_DATA_DIR') or data.get('data_dir', '.codenib_qa')
 print(os.path.join(os.path.abspath(data_dir), 'qa_registry.json'))
-" 2>/dev/null || echo ".codeminer_qa/qa_registry.json")
+" 2>/dev/null || echo ".codenib_qa/qa_registry.json")
 if [ ! -f "$REGISTRY" ]; then
     echo "ERROR: No repo registry found at $REGISTRY"
     echo ""
     echo "Index a repo first:"
-    echo "  conda activate codeminer"
+    echo "  conda activate codenib"
     echo "  python scripts/index_repo.py repos/<your-repo>"
     echo ""
     echo "Or clone + index in one go:"
@@ -104,12 +104,12 @@ fi
 echo ""
 echo "Using local LLM model: $LOCAL_MODEL"
 echo "  Config: $CONFIG_PATH"
-echo "  Override with CODEMINER_DEMO_MODEL or CODEMINER_DEMO_CONFIG if needed."
+echo "  Override with CODENIB_DEMO_MODEL or CODENIB_DEMO_CONFIG if needed."
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 
 echo ""
-echo "Starting CodeMiner backend..."
+echo "Starting CodeNib backend..."
 echo "  Backend:  http://localhost:$BACKEND_PORT"
 echo "  LLM:      $LLM_BASE"
 echo "  Model:    $LOCAL_MODEL"
@@ -127,12 +127,12 @@ echo ""
 
 export OPENAI_API_KEY="fake"
 export OPENAI_API_BASE="$LLM_BASE"
-export CODEMINER_DEMO_CONFIG="$CONFIG_PATH"
-export CODEMINER_DEMO_MODEL="$LOCAL_MODEL"
-export CODEMINER_DEMO_PORT="$BACKEND_PORT"
+export CODENIB_DEMO_CONFIG="$CONFIG_PATH"
+export CODENIB_DEMO_MODEL="$LOCAL_MODEL"
+export CODENIB_DEMO_PORT="$BACKEND_PORT"
 
 conda run -n "$CONDA_ENV" --no-capture-output \
     env OPENAI_API_KEY=fake OPENAI_API_BASE="$LLM_BASE" \
-    CODEMINER_DEMO_CONFIG="$CONFIG_PATH" \
-    CODEMINER_DEMO_MODEL="$LOCAL_MODEL" \
-    python -m codeminer.web.app
+    CODENIB_DEMO_CONFIG="$CONFIG_PATH" \
+    CODENIB_DEMO_MODEL="$LOCAL_MODEL" \
+    python -m codenib.web.app

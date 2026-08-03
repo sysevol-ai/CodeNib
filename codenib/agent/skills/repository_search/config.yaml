@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+skill_id: repository_search
+skill_type: custom
+operator: hybrid.retrieve
+cost: medium
+
+defaults:
+  top_k: 10
+  include_supporting: false
+
+inputs:
+  - name: query
+    type: str
+    required: true
+    description: >-
+      A focused natural-language or identifier query about repository
+      implementation.
+  - name: top_k
+    type: int
+    required: false
+    default: 10
+    description: Number of source-bearing code chunks to return (1-20).
+  - name: include_supporting
+    type: bool
+    required: false
+    default: false
+    description: >-
+      Include tests, examples, documentation, generated files, and validation
+      harnesses. Leave false for questions about runtime implementation.
+
+outputs:
+  type: List[QueriedNode]
+  description: >-
+    Ranked, deduplicated source chunks. Uses reciprocal-rank fusion when both
+    lexical and semantic views are available and degrades to lexical search.
+
+index_requirements:
+  - type: bm25
+    max_age_seconds: 3600
+    scope: current_repo
+  - type: vector
+    max_age_seconds: 3600
+    scope: current_repo
+    required: false
+
+resources: []

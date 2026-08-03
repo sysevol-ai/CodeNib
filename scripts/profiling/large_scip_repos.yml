@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Representative large-repo SCIP profiling targets. The profiling harness
+# records the resolved commit for every run, so branch refs are acceptable for
+# exploration; pin to a commit once a repo becomes a promotion or acceleration
+# gate.
+repos:
+  - name: java-spring-framework
+    language: java
+    url: https://github.com/spring-projects/spring-framework.git
+    ref: main
+    target_dir: spring-core/src/main/java
+    expected_min_source_files: 100
+    notes: Large Java framework surface for checking whether JVM serial decode
+      becomes material outside tiny Maven fixtures.
+
+  - name: csharp-roslyn
+    language: csharp
+    url: https://github.com/dotnet/roslyn.git
+    ref: main
+    target_dir: src/Compilers/CSharp/Portable
+    expected_min_source_files: 100
+    notes: Large C# compiler surface; use to validate whether scip-dotnet still
+      dominates cold-start on real compiler-scale code.
+
+  - name: kotlin-kotlinpoet
+    language: kotlin
+    url: https://github.com/square/kotlinpoet.git
+    ref: 2.2.0
+    target_dir: kotlinpoet/src/jvmMain/kotlin
+    expected_min_source_files: 50
+    notes: Known successful Kotlin gate from the roadmap; rerun as the stable
+      Kotlin acceleration watch target before trying larger Kotlin repos.
+
+  - name: scala-sbt
+    language: scala
+    url: https://github.com/sbt/sbt.git
+    ref: 1.10.x
+    target_dir: main/src/main/scala
+    expected_min_source_files: 100
+    notes: Larger Scala 2.x SBT surface for testing whether JVM decode crosses
+      the local decode/build threshold.
+
+  - name: php-symfony
+    language: php
+    url: https://github.com/symfony/symfony.git
+    ref: 7.3
+    target_dir: src/Symfony/Component
+    expected_min_source_files: 100
+    notes: Large Composer project for checking whether PHP serial decode remains
+      negligible after dependency/tooling setup.
+
+  - name: ruby-rails
+    language: ruby
+    url: https://github.com/rails/rails.git
+    ref: main
+    target_dir: activerecord/lib
+    expected_min_source_files: 100
+    notes: Large Ruby target for validating the existing Ruby C++ decoder on a
+      framework-scale repository.

@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for ``codeminer.compiler.skill_context``.
+"""Unit tests for ``codenib.compiler.skill_context``.
 
 The function under test orchestrates: skill → index_type union → build/load
 → context dict. We mock the build + load steps so the tests stay pure
@@ -29,17 +29,18 @@ from typing import List
 
 import pytest
 
-from codeminer.agent.skills.core import (
+from codenib.agent.skills.core import (
     Cost,
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.compiler import resources as compiler_resources
-from codeminer.compiler import skill_context
-from codeminer.compiler.manifest import IndexEntry, RepoManifest
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.compiler import resources as compiler_resources
+from codenib.compiler import skill_context
+from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
 
 
 def _make_meta(
@@ -198,10 +199,11 @@ def mocked_build(monkeypatch):
     on the build/load call pattern (e.g. "missing types triggered build,
     already-built types did not").
     """
-    calls = {"compile": [], "loaded": []}
+    calls = {"compile": [], "loaded": [], "registries": [], "vector_kwargs": []}
 
     def fake_run_compiler(repo_path, index_types, cache_dir, **kwargs):
         calls["compile"].append(tuple(sorted(index_types)))
+        calls["registries"].append(kwargs["builder_registry"])
 
     def fake_load_bm25(cache_dir):
         calls["loaded"].append("bm25")
@@ -209,6 +211,7 @@ def mocked_build(monkeypatch):
 
     def fake_load_vector(cache_dir, **kwargs):
         calls["loaded"].append("vector")
+        calls["vector_kwargs"].append(kwargs)
         return object()
 
     def fake_load_graph(cache_dir):
@@ -263,7 +266,7 @@ def test_build_returns_both_keys_for_mixed_skills(registry, mocked_build, tmp_pa
 def test_custom_composer_alone_gets_retrieve_and_expand(
     registry, mocked_build, tmp_path
 ):
-    """A CUSTOM skill (e.g. ``codeminer_context``) that declares bm25 + vector
+    """A CUSTOM skill (e.g. ``codenib_context``) that declares bm25 + vector
     + symbol_graph requirements must receive ``retrieve`` AND ``expand``
     contexts even though it isn't a RETRIEVAL/EXPAND skill type.
 
@@ -273,14 +276,14 @@ def test_custom_composer_alone_gets_retrieve_and_expand(
     """
     registry.register(
         _make_meta(
-            "codeminer_context",
+            "codenib_context",
             SkillType.CUSTOM,
             index_types=["bm25", "vector", "symbol_graph"],
         )
     )
     contexts = skill_context.build_skill_contexts(
         repo_path=str(tmp_path),
-        skill_ids=["codeminer_context"],
+        skill_ids=["codenib_context"],
         cache_dir=str(tmp_path / "cache"),
         skill_registry=registry,
     )
@@ -365,6 +368,66 @@ def test_rebuild_forces_full_recompile(registry, mocked_build, tmp_path):
         rebuild=True,
     )
     assert mocked_build["compile"] == [("bm25", "vector")]
+
+
+def test_embedding_resource_limits_reach_builder_and_loader(
+    registry, mocked_build, tmp_path
+):
+    skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(tmp_path / "cache"),
+        skill_registry=registry,
+        embedding_revision="model-revision",
+        embedding_batch_size=4,
+        embedding_max_seq_length=8192,
+    )
+
+    vector_builder = mocked_build["registries"][0].get("vector")
+    assert vector_builder.embedding_kwargs == {
+        "encode_kwargs": {"batch_size": 4},
+        "max_seq_length": 8192,
+        "revision": "model-revision",
+    }
+    assert mocked_build["vector_kwargs"] == [
+        {
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 768,
+            "embedding_revision": "model-revision",
+            "embedding_kwargs": {"max_seq_length": 8192},
+            "trust_remote_code": False,
+            "default_batch_size": 4,
+        }
+    ]
+
+
+def test_bundled_embedding_policy_reaches_builder_and_loader(
+    registry, mocked_build, tmp_path
+):
+    skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(tmp_path / "cache"),
+        skill_registry=registry,
+    )
+
+    vector_builder = mocked_build["registries"][0].get("vector")
+    assert vector_builder.embedding_kwargs == {
+        "model_kwargs": {"trust_remote_code": True},
+        "revision": DEFAULT_EMBEDDING_REVISION,
+    }
+    assert mocked_build["vector_kwargs"] == [
+        {
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 768,
+            "embedding_revision": DEFAULT_EMBEDDING_REVISION,
+            "embedding_kwargs": None,
+            "trust_remote_code": True,
+            "default_batch_size": None,
+        }
+    ]
 
 
 def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):
@@ -525,8 +588,8 @@ def skills_dir(tmp_path):
     # A custom composer declaring all three indexes.
     _write_skill_config(
         root,
-        "codeminer_context",
-        "skill_id: codeminer_context\n"
+        "codenib_context",
+        "skill_id: codenib_context\n"
         "skill_type: custom\n"
         "index_requirements:\n"
         "  - type: bm25\n"
@@ -568,9 +631,7 @@ def test_required_types_disk_skips_no_requirement_skills(skills_dir):
 
 
 def test_required_types_disk_custom_composer(skills_dir):
-    got = skill_context.required_index_types(
-        ["codeminer_context"], skills_dir=skills_dir
-    )
+    got = skill_context.required_index_types(["codenib_context"], skills_dir=skills_dir)
     assert got == {"bm25", "vector", "symbol_graph"}
 
 
@@ -610,7 +671,7 @@ def test_required_types_unknown_skill_ignored_disk(skills_dir):
 
 def test_skill_types_for_disk_first_with_empty_registry(skills_dir):
     types = skill_context._skill_types_for(
-        ["bm25_search", "graph_expand", "codeminer_context"],
+        ["bm25_search", "graph_expand", "codenib_context"],
         skills_dir=skills_dir,
     )
     assert types == {SkillType.RETRIEVAL, SkillType.EXPAND, SkillType.CUSTOM}
@@ -637,7 +698,7 @@ def test_read_skill_configs_is_cached(skills_dir):
         "embedding_search",
         "graph_expand",
         "regex_search",
-        "codeminer_context",
+        "codenib_context",
     }
 
 

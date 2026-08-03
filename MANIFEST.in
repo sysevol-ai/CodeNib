@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+graft web
+include CHANGELOG.md
+include CONTRIBUTING.md
+prune web/.next
+prune web/node_modules
+prune web/playwright-report
+prune web/test-results
+global-exclude *.py[cod]

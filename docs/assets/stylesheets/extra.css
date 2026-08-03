@@ -1,0 +1,733 @@
+/* CodeNib docs: warm editorial styling adapted from stable-learning. */
+
+@font-face {
+  font-family: "Inter Variable";
+  src: url("../fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Newsreader Variable";
+  src: url("../fonts/newsreader-latin-wght-normal.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Newsreader Variable";
+  src: url("../fonts/newsreader-latin-wght-italic.woff2") format("woff2-variations");
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+:root {
+  --codenib-serif: "Newsreader Variable", Iowan Old Style, Palatino Linotype,
+    Book Antiqua, Georgia, serif;
+  --codenib-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  --md-text-font-family: var(--codenib-sans);
+  --md-code-font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+    monospace;
+  --md-primary-fg-color: #176b64;
+  --md-primary-fg-color--light: #2f8c83;
+  --md-primary-fg-color--dark: #0d4a44;
+  --md-accent-fg-color: #176b64;
+}
+
+[data-md-color-scheme="default"] {
+  color-scheme: light;
+  --codenib-bg: #f9f6ef;
+  --codenib-surface: #fffdf8;
+  --codenib-soft: #f1ece1;
+  --codenib-line: #ddd4c5;
+  --codenib-line-strong: #c9c0b0;
+  --codenib-ink: #1d1913;
+  --codenib-ink-soft: #453f36;
+  --codenib-muted: #6d6860;
+  --codenib-accent: #176b64;
+  --codenib-accent-soft: #d9e9e6;
+  --codenib-code-bg: #f1ece1;
+  --codenib-shadow: 0 10px 34px rgba(32, 28, 20, 0.055);
+
+  --md-default-bg-color: var(--codenib-bg);
+  --md-default-fg-color: var(--codenib-ink);
+  --md-default-fg-color--light: var(--codenib-ink-soft);
+  --md-default-fg-color--lighter: var(--codenib-muted);
+  --md-default-fg-color--lightest: var(--codenib-line);
+  --md-typeset-color: var(--codenib-ink);
+  --md-typeset-a-color: var(--codenib-accent);
+  --md-code-bg-color: var(--codenib-code-bg);
+  --md-code-fg-color: #353027;
+  --md-admonition-bg-color: var(--codenib-surface);
+  --md-footer-bg-color: var(--codenib-bg);
+  --md-footer-bg-color--dark: var(--codenib-bg);
+  --md-footer-fg-color: var(--codenib-muted);
+  --md-footer-fg-color--light: var(--codenib-muted);
+  --md-footer-fg-color--lighter: var(--codenib-line-strong);
+}
+
+[data-md-color-scheme="slate"] {
+  color-scheme: dark;
+  --codenib-bg: #171512;
+  --codenib-surface: #1d1a16;
+  --codenib-soft: #211e19;
+  --codenib-line: #37332b;
+  --codenib-line-strong: #575247;
+  --codenib-ink: #f3efe7;
+  --codenib-ink-soft: #ddd7cb;
+  --codenib-muted: #b8b1a3;
+  --codenib-accent: #58c1b6;
+  --codenib-accent-soft: #14332f;
+  --codenib-code-bg: #211e19;
+  --codenib-shadow: 0 10px 34px rgba(0, 0, 0, 0.24);
+
+  --md-hue: 32;
+  --md-primary-fg-color: var(--codenib-accent);
+  --md-accent-fg-color: var(--codenib-accent);
+  --md-default-bg-color: var(--codenib-bg);
+  --md-default-fg-color: var(--codenib-ink);
+  --md-default-fg-color--light: var(--codenib-ink-soft);
+  --md-default-fg-color--lighter: var(--codenib-muted);
+  --md-default-fg-color--lightest: var(--codenib-line);
+  --md-typeset-color: var(--codenib-ink);
+  --md-typeset-a-color: var(--codenib-accent);
+  --md-code-bg-color: var(--codenib-code-bg);
+  --md-code-fg-color: #e8e1d5;
+  --md-admonition-bg-color: var(--codenib-surface);
+  --md-footer-bg-color: var(--codenib-bg);
+  --md-footer-bg-color--dark: var(--codenib-bg);
+  --md-footer-fg-color: var(--codenib-muted);
+  --md-footer-fg-color--light: var(--codenib-muted);
+  --md-footer-fg-color--lighter: var(--codenib-line-strong);
+}
+
+html {
+  scroll-padding-top: 4rem;
+}
+
+body,
+.md-container,
+.md-main {
+  background: var(--codenib-bg);
+}
+
+body {
+  color: var(--codenib-ink);
+  font-family: var(--codenib-sans);
+}
+
+::selection {
+  color: var(--codenib-ink);
+  background: var(--codenib-accent-soft);
+}
+
+/* Header and search */
+.md-header,
+.md-header--shadow {
+  color: var(--codenib-ink);
+  background: var(--codenib-bg);
+  background: color-mix(in srgb, var(--codenib-bg) 92%, transparent);
+  border-bottom: 1px solid var(--codenib-line);
+  box-shadow: none;
+  backdrop-filter: blur(14px);
+}
+
+.md-header__inner {
+  min-height: 3.2rem;
+}
+
+.md-header__button {
+  color: var(--codenib-ink-soft);
+}
+
+.md-header__button:hover {
+  color: var(--codenib-accent);
+  opacity: 1;
+}
+
+.md-header__button.md-logo {
+  margin-right: 0.35rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  width: 1.15rem;
+  height: 1.4rem;
+}
+
+.md-header__title {
+  color: var(--codenib-ink);
+  font-family: var(--codenib-serif);
+  font-size: 1.08rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+}
+
+.md-header__topic {
+  font-weight: inherit;
+}
+
+.md-search__form {
+  background: var(--codenib-surface);
+  border: 1px solid var(--codenib-line);
+  border-radius: 0.55rem;
+  box-shadow: none;
+}
+
+.md-search__input {
+  color: var(--codenib-ink);
+  font-family: var(--codenib-sans);
+}
+
+.md-search__input::placeholder,
+.md-search__icon,
+.md-search__options {
+  color: var(--codenib-muted);
+}
+
+.md-search__form .md-search__icon,
+.md-search__form .md-search__options {
+  color: var(--codenib-muted) !important;
+}
+
+.md-search__output,
+.md-search-result__meta {
+  color: var(--codenib-ink);
+  background: var(--codenib-surface);
+}
+
+.md-search-result__item {
+  border-color: var(--codenib-line);
+}
+
+.md-search-result__link:hover,
+.md-search-result__link:focus {
+  background: var(--codenib-soft);
+}
+
+.md-search-result mark {
+  color: var(--codenib-accent);
+}
+
+.md-source,
+.md-source:hover {
+  color: var(--codenib-ink-soft);
+}
+
+/* Top-level information architecture. Keep the tabs quiet and editorial: the
+   active section gets one precise rule instead of a filled pill or shadow. */
+.md-tabs {
+  color: var(--codenib-ink-soft);
+  background: transparent;
+  border-top: 1px solid var(--codenib-line);
+  box-shadow: none;
+}
+
+.md-tabs__list {
+  gap: 0.15rem;
+}
+
+.md-tabs__item {
+  position: relative;
+  height: 2.65rem;
+  padding: 0 0.48rem;
+}
+
+.md-tabs__link {
+  margin-top: 0.78rem;
+  color: var(--codenib-ink-soft);
+  font-family: var(--codenib-sans);
+  font-size: 0.68rem;
+  font-weight: 560;
+  letter-spacing: -0.006em;
+  opacity: 0.78;
+  transition:
+    color 120ms ease,
+    opacity 120ms ease;
+}
+
+.md-tabs__link:hover,
+.md-tabs__link:focus,
+.md-tabs__item--active > .md-tabs__link {
+  color: var(--codenib-accent);
+  opacity: 1;
+}
+
+.md-tabs__item--active::after {
+  position: absolute;
+  right: 0.48rem;
+  bottom: -1px;
+  left: 0.48rem;
+  height: 2px;
+  background: var(--codenib-accent);
+  content: "";
+}
+
+/* Wider, calmer reading frame */
+.md-grid {
+  max-width: 72rem;
+}
+
+.md-main__inner {
+  margin-top: 1.45rem;
+}
+
+.md-content__inner {
+  margin-bottom: 3rem;
+}
+
+/* Navigation */
+.md-sidebar,
+.md-nav {
+  color: var(--codenib-ink-soft);
+  font-family: var(--codenib-sans);
+}
+
+.md-nav {
+  font-size: 0.7rem;
+}
+
+.md-nav__title {
+  color: var(--codenib-ink);
+  font-weight: 700;
+}
+
+.md-nav__item--section > .md-nav__link {
+  color: var(--codenib-ink);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.md-nav__link {
+  margin-top: 0.48em;
+  color: var(--codenib-ink-soft);
+  transition: color 120ms ease;
+}
+
+.md-nav__link:hover,
+.md-nav__link:focus {
+  color: var(--codenib-accent);
+}
+
+.md-nav__link--active,
+.md-nav__link--active:hover {
+  color: var(--codenib-accent);
+  font-weight: 650;
+}
+
+.md-nav__icon {
+  color: var(--codenib-muted);
+}
+
+.md-nav__list {
+  color: var(--codenib-line);
+}
+
+@media screen and (min-width: 76.25em) {
+  html {
+    scroll-padding-top: 6.2rem;
+  }
+
+  .md-sidebar--primary .md-sidebar__scrollwrap {
+    padding-right: 0.65rem;
+    border-right: 1px solid var(--codenib-line);
+  }
+
+  .md-sidebar--secondary .md-sidebar__scrollwrap {
+    padding-left: 0.65rem;
+    border-left: 1px solid var(--codenib-line);
+  }
+
+  /* When a landing page hides its primary navigation, use its page outline as
+     the left rail so top-level tab changes keep the same content baseline. */
+  .md-main__inner
+    > .md-sidebar--primary[hidden]
+    + .md-sidebar--secondary:not([hidden]) {
+    order: 0;
+  }
+
+  .md-main__inner
+    > .md-sidebar--primary[hidden]
+    + .md-sidebar--secondary:not([hidden])
+    .md-sidebar__scrollwrap {
+    padding-inline: 0 0.65rem;
+    border-inline-start: 0;
+    border-inline-end: 1px solid var(--codenib-line);
+  }
+
+  .md-main__inner
+    > .md-sidebar--primary[hidden]
+    + .md-sidebar--secondary:not([hidden])
+    ~ .md-content
+    > .md-content__inner {
+    margin-inline: 1.2rem 0.8rem;
+  }
+}
+
+/* Editorial typography */
+.md-typeset {
+  color: var(--codenib-ink);
+  font-family: var(--codenib-serif);
+  font-size: 0.89rem;
+  line-height: 1.72;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6 {
+  color: var(--codenib-ink);
+  font-family: var(--codenib-serif);
+  font-weight: 560;
+  letter-spacing: -0.018em;
+}
+
+.md-typeset h1 {
+  margin: 0 0 1.1rem;
+  font-size: 2.5em;
+  line-height: 1.08;
+}
+
+.md-typeset h2 {
+  margin-top: 1.9em;
+  font-size: 1.78em;
+  line-height: 1.18;
+}
+
+.md-typeset h3 {
+  margin-top: 1.65em;
+  font-size: 1.35em;
+}
+
+.md-typeset h1 + p {
+  color: var(--codenib-ink-soft);
+  font-size: 1.07em;
+  line-height: 1.72;
+}
+
+.md-typeset strong {
+  font-weight: 680;
+}
+
+.md-typeset a {
+  color: var(--codenib-accent);
+  text-decoration-color: color-mix(in srgb, var(--codenib-accent) 38%, transparent);
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.14em;
+}
+
+.md-typeset a:hover {
+  text-decoration-line: underline;
+  text-decoration-color: var(--codenib-accent);
+}
+
+.md-typeset li::marker {
+  color: var(--codenib-accent);
+}
+
+.md-typeset hr {
+  border-color: var(--codenib-line);
+}
+
+.md-typeset blockquote {
+  margin-left: 0;
+  padding: 0.25rem 0 0.25rem 1rem;
+  color: var(--codenib-ink-soft);
+  border-left: 0.15rem solid var(--codenib-accent);
+}
+
+/* Section overview pages */
+.codenib-section-lede {
+  max-width: 42rem;
+  margin-bottom: 1.5rem;
+}
+
+.codenib-section-lede p {
+  color: var(--codenib-ink-soft);
+  font-size: 1.08em;
+}
+
+.md-typeset .codenib-section-grid > ul:not([hidden]) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1.55rem 0 2.2rem;
+  padding: 0;
+}
+
+.md-typeset .codenib-section-grid > ul > li {
+  display: flex;
+  flex-direction: column;
+  min-height: 10.5rem;
+  margin: 0;
+  padding: 1.05rem 1.15rem 1.1rem;
+  color: var(--codenib-ink-soft);
+  list-style: none;
+  background: var(--codenib-surface);
+  border: 1px solid var(--codenib-line);
+  border-radius: 0.65rem;
+}
+
+.codenib-section-grid > ul > li::before {
+  display: none;
+}
+
+.codenib-section-grid strong {
+  display: block;
+  margin: 0.28rem 0 0.42rem;
+  color: var(--codenib-ink);
+  font-family: var(--codenib-serif);
+  font-size: 1.18rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.codenib-section-grid li > p {
+  margin: 0.35rem 0;
+}
+
+.codenib-section-grid li > p:last-child {
+  margin-top: auto;
+  padding-top: 0.7rem;
+  font-family: var(--codenib-sans);
+  font-size: 0.72rem;
+  font-weight: 620;
+}
+
+.codenib-card-eyebrow {
+  color: var(--codenib-muted);
+  font-family: var(--codenib-sans);
+  font-size: 0.61rem;
+  font-weight: 680;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Code */
+.md-typeset code,
+.md-typeset kbd {
+  font-family: var(--md-code-font-family);
+}
+
+.md-typeset code {
+  color: var(--md-code-fg-color);
+  background: var(--codenib-code-bg);
+  border: 1px solid var(--codenib-line);
+  border-radius: 0.28rem;
+  box-shadow: none;
+}
+
+.md-typeset pre > code {
+  border: 0;
+  border-radius: 0;
+}
+
+.md-typeset .highlight {
+  overflow: hidden;
+  border: 1px solid var(--codenib-line);
+  border-radius: 0.55rem;
+  background: var(--codenib-code-bg);
+  box-shadow: none;
+}
+
+.md-typeset .highlight pre {
+  margin: 0;
+}
+
+.md-clipboard {
+  color: var(--codenib-muted);
+}
+
+.md-clipboard:hover {
+  color: var(--codenib-accent);
+}
+
+/* Tables and data-oriented surfaces stay sans-serif. */
+.md-typeset__table {
+  display: block;
+  margin: 1.4em 0;
+}
+
+.md-typeset table:not([class]) {
+  overflow: hidden;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  color: var(--codenib-ink-soft);
+  font-family: var(--codenib-sans);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  background: var(--codenib-surface);
+  border: 1px solid var(--codenib-line);
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 0.55rem;
+  box-shadow: var(--codenib-shadow);
+}
+
+.md-typeset table:not([class]) th {
+  color: var(--codenib-ink);
+  font-weight: 680;
+  background: var(--codenib-soft);
+}
+
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  padding: 0.62rem 0.78rem;
+  border-color: var(--codenib-line);
+}
+
+/* Notes should read like editorial marginalia, not floating UI. */
+.md-typeset .admonition,
+.md-typeset details {
+  color: var(--codenib-ink-soft);
+  font-family: var(--codenib-sans);
+  font-size: 0.72rem;
+  line-height: 1.58;
+  background: var(--codenib-surface);
+  border: 1px solid var(--codenib-line);
+  border-left-width: 0.18rem;
+  border-radius: 0 0.55rem 0.55rem 0;
+  box-shadow: none;
+}
+
+.md-typeset .admonition-title,
+.md-typeset summary {
+  color: var(--codenib-ink);
+  background: var(--codenib-soft);
+}
+
+.md-typeset .tabbed-labels {
+  border-color: var(--codenib-line);
+}
+
+.md-typeset .tabbed-labels > label {
+  color: var(--codenib-muted);
+  font-family: var(--codenib-sans);
+}
+
+.md-typeset .tabbed-labels > label:hover,
+.md-typeset .tabbed-set > input:checked + label {
+  color: var(--codenib-accent);
+}
+
+/* Footer */
+.md-footer,
+.md-footer-meta {
+  color: var(--codenib-muted);
+  background: var(--codenib-bg);
+  border-top: 1px solid var(--codenib-line);
+}
+
+.md-footer__link {
+  color: var(--codenib-ink-soft);
+}
+
+.md-footer__link:hover {
+  color: var(--codenib-accent);
+  opacity: 1;
+}
+
+@media screen and (min-width: 60em) and (max-width: 76.234375em) {
+  .md-main__inner
+    > .md-sidebar--primary[hidden]
+    + .md-sidebar--secondary:not([hidden]) {
+    display: none;
+  }
+}
+
+@media screen and (max-width: 76.234375em) {
+  .md-sidebar--primary {
+    background: var(--codenib-bg);
+  }
+
+  .md-nav--primary > .md-nav__title[for="__drawer"] {
+    display: flex;
+    align-items: center;
+    min-height: 4.5rem;
+    padding: 0.7rem 0.8rem;
+    color: var(--codenib-ink);
+    background: var(--codenib-bg);
+    border-bottom: 1px solid var(--codenib-line);
+    box-shadow: none;
+    font-family: var(--codenib-serif);
+    font-size: 1.05rem;
+    font-weight: 620;
+    letter-spacing: -0.015em;
+  }
+
+  .md-nav--primary > .md-nav__title[for="__drawer"] .md-nav__button.md-logo {
+    position: static;
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    height: auto;
+    margin: 0 0.55rem 0 0;
+    padding: 0;
+    color: var(--codenib-ink-soft);
+  }
+
+  .md-nav--primary > .md-nav__title[for="__drawer"] .md-logo img,
+  .md-nav--primary > .md-nav__title[for="__drawer"] .md-logo svg {
+    width: 1.35rem;
+    height: 1.65rem;
+  }
+
+  .md-nav--primary > .md-nav__source {
+    color: var(--codenib-ink-soft);
+    background: var(--codenib-soft);
+    border-bottom: 1px solid var(--codenib-line);
+  }
+
+  .md-nav--primary > .md-nav__source .md-source {
+    color: var(--codenib-ink-soft);
+  }
+}
+
+@media screen and (max-width: 44.984375em) {
+  .md-header__inner {
+    min-height: 2.8rem;
+  }
+
+  .md-main__inner {
+    margin-top: 1rem;
+  }
+
+  .md-content__inner {
+    margin: 0 0.8rem 2rem;
+  }
+
+  .md-typeset {
+    font-size: 0.84rem;
+  }
+
+  .md-typeset h1 {
+    font-size: 2.1em;
+  }
+
+  .md-typeset h2 {
+    font-size: 1.58em;
+  }
+
+  .md-typeset .codenib-section-grid > ul:not([hidden]) {
+    grid-template-columns: 1fr;
+  }
+
+  .md-typeset .codenib-section-grid > ul > li {
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

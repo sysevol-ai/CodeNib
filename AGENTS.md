@@ -1,6 +1,6 @@
 # AGENTS.md
 
-CodeMiner is a Python 3.10+ code analysis agent with tree-sitter chunking,
+CodeNib is a Python 3.10+ code analysis agent with tree-sitter chunking,
 semantic graph construction, hybrid retrieval, and MCP-facing search tools.
 Use this file as the repo-level contract for Codex and other code agents.
 
@@ -40,8 +40,8 @@ make bootstrap-ubuntu # install Ubuntu system deps, Python dev deps, and all loc
 make bootstrap    # install Python dev deps and local toolchains without sudo/apt
 make multilang-tools # install active SCIP/LSP plus cold-start SCIP/LSP smoke tools
 make toolchain-doctor # verify locally installed toolchain commands resolve on PATH
-make scip         # install active SCIP toolchain under CODEMINER_SCIP_TOOLS_DIR
-make zoekt-tool   # install Zoekt binaries under CODEMINER_SCIP_TOOLS_DIR
+make scip         # install active SCIP toolchain under CODENIB_SCIP_TOOLS_DIR
+make zoekt-tool   # install Zoekt binaries under CODENIB_SCIP_TOOLS_DIR
 make web-deps     # install Next.js frontend dependencies
 make scip-cold-start-system-deps-ubuntu # install Ubuntu base deps for cold-start tools
 make scip-cold-start-tools # install Java/C#/JVM/Ruby/PHP SCIP smoke toolchains
@@ -49,6 +49,7 @@ make lsp-smoke-tools # install Java/C#/Ruby/PHP/Kotlin LSP smoke tools
 make ruby-project-bundle PROJECT_ROOT=/path/to/ruby/repo # prepare Ruby overlay Gemfile/bundle
 make php-project-scip-tool PROJECT_ROOT=/path/to/php/repo # optionally prewarm project-local scip-php
 make core-build   # build the C++ core/ pybind acceleration module
+make ask-quality  # run the deterministic Ask retrieval gate for this checkout
 make scip-cold-start-smoke # run generated SCIP cold-start smoke
 make scip-project-smoke # run SCIP smoke on PROJECT_ROOT/PROJECT_LANGUAGE
 make lsp-smoke    # run generated Java/C#/Ruby/PHP/Kotlin LSP graph smoke
@@ -61,7 +62,7 @@ make install      # pip install -e .
 For Ruby toolchain installs, prefer the Makefile targets over ad hoc `gem`
 commands. If the default system gem lacks Ruby headers, pass
 `RUBY_GEM=/path/to/gem` to the same target instead of installing tools outside
-`CODEMINER_SCIP_TOOLS_DIR`.
+`CODENIB_SCIP_TOOLS_DIR`.
 
 Pre-commit uses black with line length 88, isort, flake8+bugbear, and
 clang-format for C/C++.
@@ -108,10 +109,10 @@ clang-format for C/C++.
 - `CodeLocation.start_line` and `CodeLocation.end_line` are 1-based output
   locations. The conversion happens downstream in `dataset/gt_locate.py`.
 - `.c` files use the `cpp` chunker; there is no separate C chunker.
-- Graph node and edge types are centralized in `codeminer/types.py`. Use the
+- Graph node and edge types are centralized in `codenib/types.py`. Use the
   constants and helpers there instead of hard-coded string literals.
 - Persisted graph schema changes require updating `_SCHEMA_VERSION` in
-  `codeminer/graph/code_graph.py` and checking C++ decoder parity under `core/`.
+  `codenib/graph/code_graph.py` and checking C++ decoder parity under `core/`.
 - New languages should flow through the language registry instead of adding
   isolated dispatch maps.
 
@@ -123,9 +124,9 @@ before editing the listed area:
 
 | Path | Required extra context |
 | --- | --- |
-| `codeminer/code_chunking/` | `codeminer/code_chunking/CLAUDE.md` |
-| `codeminer/graph/` | `codeminer/graph/CLAUDE.md` |
-| `codeminer/dataset/` | `codeminer/dataset/CLAUDE.md` |
+| `codenib/code_chunking/` | `codenib/code_chunking/CLAUDE.md` |
+| `codenib/graph/` | `codenib/graph/CLAUDE.md` |
+| `codenib/dataset/` | `codenib/dataset/CLAUDE.md` |
 | `scripts/agent_compile/` | `scripts/agent_compile/CLAUDE.md` |
 | `test/` | `test/CLAUDE.md` |
 

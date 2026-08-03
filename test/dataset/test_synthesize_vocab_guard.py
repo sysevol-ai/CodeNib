@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,9 +12,9 @@ from an alternate consensus run.
 
 import pytest
 
-from codeminer.dataset.synthesize._types import BehavioralContext, SampledCodeBlock
-from codeminer.dataset.synthesize.verifier import Verifier
-from codeminer.dataset.synthesize.vocab_guard import (
+from codenib.dataset.synthesize._types import BehavioralContext, SampledCodeBlock
+from codenib.dataset.synthesize.verifier import Verifier
+from codenib.dataset.synthesize.vocab_guard import (
     DEFAULT_OVERLAP_THRESHOLD,
     VocabularyOverlapGuard,
     gt_identifier_tokens,

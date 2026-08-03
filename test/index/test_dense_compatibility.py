@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,9 +10,9 @@ import warnings
 
 import pytest
 
-from codeminer.code_chunker import CodeChunker
-from codeminer.index import BM25CodeIndexer
-from codeminer.ls_router import LSIndexer
+from codenib.code_chunker import CodeChunker
+from codenib.index import BM25CodeIndexer
+from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.integration
 

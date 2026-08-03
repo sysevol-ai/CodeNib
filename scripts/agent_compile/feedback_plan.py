@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -25,7 +25,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument("--seed", default="codeminer-feedback-v1")
+    parser.add_argument("--seed", default="codenib-feedback-v1")
     parser.add_argument("--group-field", default="language_group")
     parser.add_argument("--smoke-per-group", type=int, default=1)
     parser.add_argument("--holdout-per-group", type=int, default=2)
@@ -38,12 +38,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--output-json", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    from codeminer.eval.agent_runner.feedback import (
-        FeedbackPlanSpec,
-        build_feedback_plan,
-    )
-    from codeminer.eval.agent_runner.sweep import load_dataset_rows
-    from codeminer.eval.agent_runner.sweep_config import SweepConfig
+    from codenib.eval.agent_runner.feedback import FeedbackPlanSpec, build_feedback_plan
+    from codenib.eval.agent_runner.sweep import load_dataset_rows
+    from codenib.eval.agent_runner.sweep_config import SweepConfig
 
     cfg = SweepConfig.from_yaml(args.config)
     rows_by_id, _ = load_dataset_rows(cfg)

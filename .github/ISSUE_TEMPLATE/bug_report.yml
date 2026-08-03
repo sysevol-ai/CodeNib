@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -40,7 +40,7 @@ body:
     id: scope
     attributes:
       label: Scope
-      description: Which area of CodeMiner is affected? (Triage will apply the matching `scope/` label.)
+      description: Which area of CodeNib is affected? (Triage will apply the matching `scope/` label.)
       options:
         - scope/agent
         - scope/chunking

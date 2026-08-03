@@ -1,36 +1,42 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """
 Agent integration tests: AgentRunner must invoke embedding_search.
 
-Uses real FAISS over httpie/cli (shared cache with e2e tests via CODEMINER_INDEX_PATH).
+Uses real FAISS over httpie/cli (shared cache with e2e tests via CODENIB_INDEX_PATH).
 
 Run: pytest test/agent/test_agent_embedding_search.py -v
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.agent.skills.registry import SkillRegistry
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.loader import SkillLoader
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.paths import temp_state_dir
 
 pytestmark = pytest.mark.slow
 
-EMBEDDING_INDEX_PATH = "/tmp/embedding_e2e_index"
+EMBEDDING_INDEX_PATH = os.environ.get(
+    "CODENIB_INDEX_PATH",
+    str(temp_state_dir() / "embedding-e2e-index"),
+)
 
 
 class TestAgentEmbeddingSearch:
     """
-    Vertex (or CODEMINER_VERTEX_ROUTING_MODEL) + real FAISS; assert
+    Vertex (or CODENIB_VERTEX_ROUTING_MODEL) + real FAISS; assert
     tool_calls use embedding_search.
 
-    Index default: /tmp/codeminer_e2e_index — override with CODEMINER_INDEX_PATH.
+    Index default: ``${CODENIB_TEMP_DIR}/e2e-index``; override with
+    ``CODENIB_INDEX_PATH``.
     """
 
     @pytest.fixture(scope="class", autouse=True)
@@ -42,12 +48,12 @@ class TestAgentEmbeddingSearch:
     @pytest.fixture(scope="class")
     def real_embedding_search(self, httpie_cli_repo):
         """Load embedding_search skill with real FAISS index over httpie/cli."""
-        import codeminer.agent.skills as pkg
-        from codeminer.index.embedding import (
+        import codenib.agent.skills as pkg
+        from codenib.index.embedding import (
             CodeVectorStore,
             build_hierarchical_vector_store,
         )
-        from codeminer.ops.retrieve import RetrieveContext
+        from codenib.ops.retrieve import RetrieveContext
 
         repo_path = str(httpie_cli_repo)
         l0 = Path(EMBEDDING_INDEX_PATH) / "l0"

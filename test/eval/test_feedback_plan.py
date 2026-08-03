@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer.eval.agent_runner.feedback import FeedbackPlanSpec, build_feedback_plan
+from codenib.eval.agent_runner.feedback import FeedbackPlanSpec, build_feedback_plan
 
 
 def _rows():

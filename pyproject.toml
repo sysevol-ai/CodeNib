@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,73 +7,167 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codeminer"
+name = "codenib"
 version = "0.1.0"
-description = "A code analysis agent with graph-enhancement"
+description = "A multi-view data system for serving repository context to coding agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "Zhongming Yu", email = "zhy025@ucsd.edu" }]
+keywords = [
+    "code-search",
+    "coding-agents",
+    "model-context-protocol",
+    "repository-context",
+    "static-analysis",
+]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "igraph>=0.11.6",                     # For graph data structure and algorithms
-    "matplotlib>=3.4.0",                  # For visualization of graphs
-    "pytest>=6.0.0",                      # For testing
-    "rank_bm25>=0.2.2",                    # For best match
-    "langchain>=1.0.0,<1.1.0",             # Core LangChain runtime (v1+)
-    "langchain-core>=1.0.4,<1.1.0",        # Shared LangChain schemas/runnables
-    "langchain-community>=0.4.1,<0.5.0",   # Community integrations (BM25, FAISS)
-    "langchain-text-splitters>=1.0.0,<1.1.0",  # Standalone splitters package in v1
-    "langchain-openai>=1.0.2,<1.1.0",      # OpenAI embeddings (vector_store.py)
-    "litellm>=1.40.0",                     # Lightweight LLM provider abstraction
-    "langchain-huggingface>=1.0.1,<1.1.0", # HuggingFace embeddings/Runnables
-    "pymilvus>=2.6.0",                    # For Milvus vector database with BM25 support
-    "faiss-cpu>=1.7.0",                   # For FAISS similarity search
-    "sentence-transformers>=2.2.0",       # For code-text similarity
-    "einops>=0.8.0",                      # Required by current sentence-transformers embedding models
-    "tree-sitter>=0.25.2",               # For standard Parser/Tree/Node APIs
-    "tree-sitter-language-pack>=1.8.1,<1.9.0",  # Keep tree_sitter.Language ABI for chunkers
-    "fastapi>=0.100.0",                   # For API endpoints
-    "pydantic>=2.0.0",                    # For data validation
-    "uvicorn>=0.20.0",                    # ASGI server for FastAPI
-    "rich>=14.0.0",                       # For enhanced terminal output
-    "datasets>=4.0.0",                    # For dataset handling and loading (4.0+ for List feature type)
-    "PyStemmer>=3.0.0",                 # For stemmer (faster than NLTK)
-    # "vllm>=0.10.2" removed — use vLLM OpenAI-compatible server via litellm
-    "requests>=2.25.0",                 # For HTTP requests (health checks, etc.)
-    "mcp>=1.0.0",                       # Model Context Protocol SDK (FastMCP stdio server)
-    "pyyaml>=6.0",                      # Skill config + demo config parsing
+    "fastapi>=0.100.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "rank_bm25>=0.2.2",
+    "rich>=14.0.0",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-language-pack>=1.8.1,<1.9.0",
+    "uvicorn>=0.20.0",
 ]
 
+[project.urls]
+Documentation = "https://docs.codenib.ai/"
+Homepage = "https://codenib.ai"
+Issues = "https://github.com/sysevol-ai/CodeNib/issues"
+Repository = "https://github.com/sysevol-ai/CodeNib.git"
+
 [project.scripts]
-codeminer-mcp = "codeminer.mcp.server:main"
-codeminer-web = "codeminer.web.app:main"
-codeminer-lsp-provider-validate = "codeminer.eval.agent_runner.lsp_provider_cli:main"
+codenib = "codenib.cli:main"
+codenib-mcp = "codenib.mcp.server:main"
+codenib-web = "codenib.web.app:main"
+codenib-lsp-provider-validate = "codenib.eval.agent_runner.lsp_provider_cli:main"
+codenib-lsp-replay-benchmark = "codenib.eval.agent_runner.lsp_replay_benchmark:main"
+codenib-prebuilt-normalize-graphs = "codenib.eval.agent_runner.prebuilt:main"
+codenib-lsp-agent-ab = "codenib.eval.agent_runner.lsp_agent_ab:main"
+codenib-lsp-provider-protocol-check = "codenib.eval.agent_runner.lsp_agent_ab:main"
+codenib-lsp-agent-study-manifest = "codenib.eval.agent_runner.lsp_agent_study_manifest:main"
+codenib-lsp-agent-study-artifacts = "codenib.eval.agent_runner.lsp_agent_study_artifacts:main"
+codenib-lsp-agent-study-run = "codenib.eval.agent_runner.lsp_agent_study_runner:main"
+codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
 
 [project.optional-dependencies]
+agent = [
+    "litellm>=1.93.0",
+    "openai>=1.0.0",
+]
+datasets = [
+    "datasets>=4.0.0",
+]
+graph = [
+    "igraph>=0.11.6",
+    "protobuf>=3.20.0",
+]
+mcp = [
+    "mcp>=2.0.0,<3",
+]
+semantic = [
+    "einops>=0.8.0",
+    "faiss-cpu>=1.7.0",
+    "numpy>=1.24.0",
+    "openai>=1.0.0",
+    "sentence-transformers>=2.2.0",
+]
+# Vertex AI backends (``vertex_ai/...`` model strings, via gcloud ADC).
+# Keep the provider SDK coupled to LiteLLM's own compatibility constraint
+# instead of maintaining a second, looser google-cloud-aiplatform pin here.
+vertex = [
+    "litellm[google]>=1.93.0",
+]
+zoekt = [
+    "requests>=2.25.0",
+]
+full = [
+    "datasets>=4.0.0",
+    "einops>=0.8.0",
+    "faiss-cpu>=1.7.0",
+    "igraph>=0.11.6",
+    "litellm[google]>=1.93.0",
+    "mcp>=2.0.0,<3",
+    "numpy>=1.24.0",
+    "openai>=1.0.0",
+    "protobuf>=3.20.0",
+    "requests>=2.25.0",
+    "sentence-transformers>=2.2.0",
+]
 dev = [
     "black>=22.3.0",
+    "build>=1.2.0",
     "isort>=5.10.1",
     "mypy>=0.950",
     "flake8>=4.0.1",
     "flake8-bugbear>=24.4.0",
+    # Docs. Keep this list in sync with the `docs` dependency group below.
+    # MkDocs 2.0 drops the plugin system with no migration path, which would
+    # take mkdocstrings and api-autonav with it.
+    "mkdocs<2.0.0",
     "mkdocs-material>=9.5.0",
+    "mkdocstrings-python>=2.0.0",
+    "mkdocs-api-autonav>=0.4.0",
 ]
-test = ["pytest>=6.0.0", "pytest-cov>=3.0.0", "pytest-xdist>=3.0.0", "pytest-timeout>=2.1.0", "filelock>=3.0.0"]
+test = [
+    "datasets>=4.0.0",
+    "einops>=0.8.0",
+    "faiss-cpu>=1.7.0",
+    "filelock>=3.0.0",
+    "igraph>=0.11.6",
+    "litellm>=1.93.0",
+    "matplotlib>=3.4.0",
+    "mcp>=2.0.0,<3",
+    "numpy>=1.24.0",
+    "openai>=1.0.0",
+    "protobuf>=3.20.0",
+    "pytest>=6.0.0",
+    "pytest-cov>=3.0.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-xdist>=3.0.0",
+    "requests>=2.25.0",
+    "sentence-transformers>=2.2.0",
+    "tomli>=1.1.0; python_version < '3.11'",
+]
+
+[dependency-groups]
+# CI installs only this group for the static documentation build. Keep the
+# matching packages in the published `dev` extra for `make dev` users.
+docs = [
+    "black>=22.3.0",
+    "mkdocs<2.0.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings-python>=2.0.0",
+    "mkdocs-api-autonav>=0.4.0",
+]
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]  # list of folders that contain the packages (["."] by default)
-include = ["codeminer*"]  # package names should match these glob patterns (["*"] by default)
+include = ["codenib*"]  # package names should match these glob patterns (["*"] by default)
 exclude = ["eval*"]  # exclude packages matching these glob patterns
 
 [tool.setuptools.package-data]
-"codeminer.scip_interface" = ["*.proto", "*.yml", "*.sh", "README.md"]
+"codenib.agent.skills" = ["*/config.yaml", "*/skill.md"]
+"codenib.scip_interface" = ["*.proto", "*.yml", "*.sh", "README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

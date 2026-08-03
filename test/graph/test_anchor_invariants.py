@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,8 +7,8 @@
 See `CodeGraph.query_range` docstring for the three anchor invariants.
 """
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
+from codenib.graph.code_graph import CodeGraph
+from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
 
 
 def test_contain_edge_has_no_anchor():

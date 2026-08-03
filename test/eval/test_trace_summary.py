@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from codeminer.agent.runtime import AGENT_TRACE_SCHEMA_VERSION, AgentRunTrace
-from codeminer.eval.agent_runner.trace_summary import summarize_agent_trace
+from codenib.agent.runtime import AGENT_TRACE_SCHEMA_VERSION, AgentRunTrace
+from codenib.eval.agent_runner.trace_summary import summarize_agent_trace
 
 
 def _trace_with_runtime_signals() -> AgentRunTrace:
@@ -167,10 +167,10 @@ def test_summarize_agent_trace_preserves_dynamic_lsp_route_calls():
             "include_neighbors": True,
         },
         lsp_provider={
-            "provider": "codeminer_static_index",
+            "provider": "codenib_static_index",
             "capability": "route",
             "status": "ok",
-            "lsp_method": "codeminer/lspRoute",
+            "lsp_method": "codenib/lspRoute",
         },
         lsp_result_fingerprint="abc123",
         lsp_result_preview=[
@@ -201,10 +201,10 @@ def test_summarize_agent_trace_preserves_dynamic_lsp_route_calls():
             "include_neighbors": True,
         },
         "lsp_provider": {
-            "provider": "codeminer_static_index",
+            "provider": "codenib_static_index",
             "capability": "route",
             "status": "ok",
-            "lsp_method": "codeminer/lspRoute",
+            "lsp_method": "codenib/lspRoute",
         },
         "lsp_result_fingerprint": "abc123",
         "lsp_result_preview": [

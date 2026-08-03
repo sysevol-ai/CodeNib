@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,22 +9,27 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from codeminer.agent.lsp_provider import (
+from codenib.agent.lsp_provider import (
     STATIC_LSP_PROVIDER,
     LSPProviderNodes,
     StaticLSPProvider,
+    normalize_native_lsp_nodes,
 )
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.core import (
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.types import NODE_TYPE_FUNCTION
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.graph.code_graph import CodeGraph
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.scip_interface.lsp_occurrence_index import (
+    SCIPOccurrence,
+    SCIPOccurrenceIndex,
+)
+from codenib.types import NODE_TYPE_FUNCTION
 
 
 def _range_graph() -> CodeGraph:
@@ -80,13 +85,95 @@ def test_static_lsp_provider_returns_list_with_metadata():
 
     assert isinstance(result, list)
     assert isinstance(result, LSPProviderNodes)
-    assert [node.node_name for node in result] == ["callee.py:load_config()"]
+    assert [node.node_name for node in result] == ["callee.py:5"]
+    assert result[0].type == "definition"
+    assert result[0].content == "lsp definition"
     metadata = result.provider_metadata_dict()
     assert metadata["provider"] == STATIC_LSP_PROVIDER
     assert metadata["capability"] == "definition"
     assert metadata["status"] == "ok"
     assert metadata["lsp_method"] == "textDocument/definition"
     assert metadata["index_snapshot"] == "graph:demo"
+
+
+def test_static_lsp_provider_uses_exact_scip_occurrences_for_native_positions():
+    index = SCIPOccurrenceIndex(
+        [
+            SCIPOccurrence("caller.py", 1, 4, 1, 10, "local 0", 1),
+            SCIPOccurrence("caller.py", 2, 8, 2, 14, "local 0", 8),
+        ]
+    )
+    provider = StaticLSPProvider(
+        _range_graph(),
+        snapshot_id="snapshot:demo",
+        occurrence_index=index,
+    )
+
+    definition = provider.definition(file_path="caller.py", line=2, character=9)
+    references = provider.references(file_path="caller.py", line=1, character=5)
+
+    assert [(node.file, node.start_line) for node in definition] == [("caller.py", 1)]
+    assert [(node.file, node.start_line) for node in references] == [
+        ("caller.py", 1),
+        ("caller.py", 2),
+    ]
+    assert definition.provider_metadata_dict()["behavior_contract"] == (
+        "static_scip_occurrence_lsp_v1"
+    )
+    assert definition.provider_metadata_dict()["position_granularity"] == ("character")
+
+
+def test_graph_position_backend_records_character_contract(tmp_path):
+    (tmp_path / "caller.py").write_text(
+        "def run():\n    load_config()\n", encoding="utf-8"
+    )
+    graph = _range_graph()
+    graph.project_root = str(tmp_path)
+    provider = StaticLSPProvider(graph, snapshot_id="snapshot:graph-position")
+
+    definition = provider.definition(
+        file_path="caller.py", line=1, character=6, top_k=8
+    )
+
+    assert [(node.file, node.start_line) for node in definition] == [("callee.py", 4)]
+    assert definition.provider_metadata_dict()["behavior_contract"] == (
+        "static_symbol_graph_position_lsp_v1"
+    )
+    assert definition.provider_metadata_dict()["position_granularity"] == "character"
+
+
+def test_native_lsp_result_normalization_is_stable_and_deduplicated():
+    result = normalize_native_lsp_nodes(
+        [
+            {"file": "z.py", "start_line": 8},
+            {"file_path": "a.py", "start_line": "2"},
+            {"file": "z.py", "start_line": 8},
+        ],
+        capability="textDocument/references",
+    )
+
+    assert [node.model_dump() for node in result] == [
+        {
+            "node_name": "a.py:3",
+            "type": "references",
+            "file": "a.py",
+            "node_id": "a.py:3:references",
+            "start_line": 2,
+            "end_line": 2,
+            "score": 1.0,
+            "content": "lsp references",
+        },
+        {
+            "node_name": "z.py:9",
+            "type": "references",
+            "file": "z.py",
+            "node_id": "z.py:9:references",
+            "start_line": 8,
+            "end_line": 8,
+            "score": 1.0,
+            "content": "lsp references",
+        },
+    ]
 
 
 def test_static_lsp_provider_reports_fallback_reason_without_graph():
@@ -153,4 +240,4 @@ def test_runner_traces_static_lsp_provider_for_dynamic_tool_call():
         "index_snapshot": "graph:trace",
     }
     assert len(tool_event.data["lsp_result_fingerprint"]) == 64
-    assert tool_event.data["lsp_result_preview"][0]["location"] == "callee.py:5-9"
+    assert tool_event.data["lsp_result_preview"][0]["location"] == "callee.py:5-5"

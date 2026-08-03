@@ -1,16 +1,16 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
 # Regex Node Index
 
-An in-memory index for fast regex-based searching across CodeGraph nodes (similar to grep).
+An in-memory, grep-like index for regex searches across CodeGraph nodes.
 
 ## Features
 
-- **In-Memory Storage**: Fast access using Python list structure
+- **In-Memory Storage**: Searches the indexed node list without rescanning the repository
 - **Regex Matching**: Powerful regular expression search capabilities
 - **Glob Filtering**: File path filtering with glob pattern support
 
@@ -29,10 +29,12 @@ The `RegexNodeIndex` provides grep-like functionality for searching code content
 ### Basic Usage
 
 ```python
-from codeminer import CodeGraph, RegexNodeIndex
+import os
 
-# Load existing CodeGraph
-code_graph = CodeGraph.load_graph("~/.codeminer/xxx/graph.pkl")
+from codenib import CodeGraph, RegexNodeIndex
+
+# Load existing CodeGraph (load_graph does not expand "~" itself)
+code_graph = CodeGraph.load_graph(os.path.expanduser("~/.codenib/xxx/graph.pkl"))
 
 # Build index from CodeGraph
 idx = RegexNodeIndex(code_graph=code_graph)
@@ -90,7 +92,7 @@ def search(
 
 - **`use_regex`** (bool, default=True): Whether to use regex matching
   - `True`: Pattern treated as regular expression
-  - `False`: Pattern treated as plain string (faster)
+  - `False`: Pattern treated as a plain string
 
 **Returns:**
 - `List[NodeInfo]`: List of matching nodes

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,10 +15,10 @@ from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-_LANGUAGES_PATH = _PROJECT_ROOT / "codeminer" / "languages.py"
+_LANGUAGES_PATH = _PROJECT_ROOT / "codenib" / "languages.py"
 
-BEGIN_MARKER = "<!-- BEGIN CODEMINER_LANGUAGE_CAPABILITIES -->"
-END_MARKER = "<!-- END CODEMINER_LANGUAGE_CAPABILITIES -->"
+BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_CAPABILITIES -->"
+END_MARKER = "<!-- END CODENIB_LANGUAGE_CAPABILITIES -->"
 
 
 def _yes_no(value: bool) -> str:
@@ -27,7 +27,7 @@ def _yes_no(value: bool) -> str:
 
 def _language_capability_rows():
     spec = importlib.util.spec_from_file_location(
-        "_codeminer_languages_for_matrix", _LANGUAGES_PATH
+        "_codenib_languages_for_matrix", _LANGUAGES_PATH
     )
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load {_LANGUAGES_PATH}")

@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+skill_id: trace
+skill_type: expand
+operator: graph.walk
+cost: low
+defaults:
+  max_hops: 10
+inputs:
+  - name: from_symbol
+    type: str
+    required: true
+    description: Starting symbol name.
+  - name: to_symbol
+    type: str
+    required: true
+    description: Target symbol name. Returns the shortest call path from -> to.
+  - name: max_hops
+    type: int
+    required: false
+    default: 10
+outputs:
+  type: List[QueriedNode]
+  description: Ordered nodes on the shortest call path (name, file:line). Empty if unreachable.
+index_requirements:
+  - type: symbol_graph
+    max_age_seconds: 3600
+    scope: current_repo
+resources: []

@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for the typed NodeRef / EdgeRef record shape returned by query_range."""
 
-from codeminer.graph.code_graph import CodeGraph, EdgeRef, NodeRef, RangeQueryResult
-from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
+from codenib.graph.code_graph import CodeGraph, EdgeRef, NodeRef, RangeQueryResult
+from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
 
 
 def test_noderef_has_required_fields():
@@ -125,7 +125,7 @@ def test_unified_to_names_legacy_v3_pickle_tolerated(tmp_path):
 
     import igraph as ig
 
-    from codeminer.graph.code_graph import _SCHEMA_VERSION
+    from codenib.graph.code_graph import _SCHEMA_VERSION
 
     legacy = {
         "schema_version": _SCHEMA_VERSION,

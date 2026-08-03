@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -13,7 +13,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 namespace {
 
@@ -86,4 +86,4 @@ make_scip_decoder(std::string_view language, const std::string &index_file,
                          *canonical);
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

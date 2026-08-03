@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -17,23 +17,23 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.boundary import (
+from codenib.agent.boundary import (
     AGENT_LINE_OFFSET,
     from_agent_repr,
     from_agent_repr_arg,
     is_line_bearing,
     to_agent_repr,
 )
-from codeminer.agent.runner import AgentRunner, _serialize_result
-from codeminer.agent.skills.core import (
+from codenib.agent.runner import AgentRunner, _serialize_result
+from codenib.agent.skills.core import (
     SkillInputSpec,
     SkillMetadata,
     SkillOutputSpec,
     SkillType,
 )
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.types import QueriedNode
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.types import QueriedNode
 
 # ---------------------------------------------------------------------------
 # to_agent_repr -- outward (+1)

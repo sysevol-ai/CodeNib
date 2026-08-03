@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -45,9 +45,9 @@ def _agent_compile_imports_under(root: Path):
     return offenders
 
 
-def test_codeminer_does_not_import_agent_compile_scripts():
+def test_codenib_does_not_import_agent_compile_scripts():
     """Reusable packages must not depend on experiment-only script modules."""
-    offenders = _agent_compile_imports_under(PROJECT_ROOT / "codeminer")
+    offenders = _agent_compile_imports_under(PROJECT_ROOT / "codenib")
 
     assert offenders == []
 
@@ -96,8 +96,8 @@ def test_reusable_agent_packages_do_not_name_experiment_surfaces():
     )
     offenders = []
     for root in (
-        PROJECT_ROOT / "codeminer" / "agent",
-        PROJECT_ROOT / "codeminer" / "eval" / "agent_runner",
+        PROJECT_ROOT / "codenib" / "agent",
+        PROJECT_ROOT / "codenib" / "eval" / "agent_runner",
     ):
         for path in _package_text_files(root):
             text = path.read_text(encoding="utf-8").lower()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import subprocess
 
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.scip_interface.scip_decode_php import SCIPPHPGraphDecoder
-from codeminer.scip_interface.scip_indexer_php import PHPHybridIndexer, SCIPPHPIndexer
-from codeminer.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
+from codenib.graph.code_graph import CodeGraph
+from codenib.scip_interface.scip_decode_php import SCIPPHPGraphDecoder
+from codenib.scip_interface.scip_indexer_php import PHPHybridIndexer, SCIPPHPIndexer
+from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
 
 PHP_INDEX = """
 metadata {
@@ -28,7 +28,7 @@ documents {
     range: 20
     range: 5
     range: 25
-    symbol: "scip-php composer codeminer/php-scip-smoke abc Smoke/Billing/Invoice#total()."
+    symbol: "scip-php composer codenib/php-scip-smoke abc Smoke/Billing/Invoice#total()."
     symbol_roles: 1
     syntax_kind: Identifier
   }
@@ -46,7 +46,7 @@ documents {
     range: 6
     range: 3
     range: 13
-    symbol: "scip-php composer codeminer/php-scip-smoke abc Smoke/Billing/Invoice#"
+    symbol: "scip-php composer codenib/php-scip-smoke abc Smoke/Billing/Invoice#"
     symbol_roles: 1
     syntax_kind: IdentifierType
   }
@@ -55,7 +55,7 @@ documents {
     range: 16
     range: 13
     range: 23
-    symbol: "scip-php composer codeminer/php-scip-smoke abc Smoke/Billing/Invoice#"
+    symbol: "scip-php composer codenib/php-scip-smoke abc Smoke/Billing/Invoice#"
     syntax_kind: Identifier
   }
   occurrences {
@@ -63,11 +63,11 @@ documents {
     range: 28
     range: 13
     range: 33
-    symbol: "scip-php composer codeminer/php-scip-smoke abc Smoke/Billing/Invoice#total()."
+    symbol: "scip-php composer codenib/php-scip-smoke abc Smoke/Billing/Invoice#total()."
     syntax_kind: Identifier
   }
   symbols {
-    symbol: "scip-php composer codeminer/php-scip-smoke abc Smoke/Billing/Invoice#total()."
+    symbol: "scip-php composer codenib/php-scip-smoke abc Smoke/Billing/Invoice#total()."
     documentation: "```php\\npublic function total(): int\\n```"
   }
   symbols {
@@ -75,7 +75,7 @@ documents {
     documentation: "```php\\nint $value\\n```"
   }
   symbols {
-    symbol: "scip-php composer codeminer/php-scip-smoke abc Smoke/Billing/Invoice#"
+    symbol: "scip-php composer codenib/php-scip-smoke abc Smoke/Billing/Invoice#"
     documentation: "```php\\nclass Invoice\\n```"
   }
   language: "19"
@@ -157,7 +157,7 @@ function normalize(): string
 
 
 def test_scip_php_indexer_builds_registered_command(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_PHP_SCIP_CMD", "vendor/bin/scip-php")
+    monkeypatch.setenv("CODENIB_PHP_SCIP_CMD", "vendor/bin/scip-php")
 
     indexer = SCIPPHPIndexer(tmp_path, output_dir=tmp_path / "out")
 
@@ -195,7 +195,7 @@ def test_php_hybrid_indexer_falls_back_to_lsp_when_scip_fails(tmp_path, monkeypa
 
     monkeypatch.setattr(SCIPPHPIndexer, "run_pipeline", fake_scip_run_pipeline)
     monkeypatch.setattr(
-        "codeminer.ls_index.lsp_indexer.GenericLSPIndexer.run_pipeline",
+        "codenib.ls_index.lsp_indexer.GenericLSPIndexer.run_pipeline",
         fake_lsp_run_pipeline,
     )
 
@@ -225,7 +225,7 @@ def test_php_hybrid_indexer_falls_back_to_lsp_when_scip_raises(tmp_path, monkeyp
 
     monkeypatch.setattr(SCIPPHPIndexer, "run_pipeline", fake_scip_run_pipeline)
     monkeypatch.setattr(
-        "codeminer.ls_index.lsp_indexer.GenericLSPIndexer.run_pipeline",
+        "codenib.ls_index.lsp_indexer.GenericLSPIndexer.run_pipeline",
         fake_lsp_run_pipeline,
     )
 
@@ -248,11 +248,11 @@ def test_scip_php_indexer_generates_index_in_throwaway_worktree(
     tmp_path,
     monkeypatch,
 ):
-    monkeypatch.setenv("CODEMINER_PHP_SCIP_CMD", "vendor/bin/scip-php")
+    monkeypatch.setenv("CODENIB_PHP_SCIP_CMD", "vendor/bin/scip-php")
     project = tmp_path / "project"
     project.mkdir()
     (project / "composer.json").write_text(
-        '{"name":"codeminer/php-fixture","require":{}}\n',
+        '{"name":"codenib/php-fixture","require":{}}\n',
         encoding="utf-8",
     )
     (project / "src").mkdir()
@@ -261,7 +261,7 @@ def test_scip_php_indexer_generates_index_in_throwaway_worktree(
     index_cwds = []
 
     monkeypatch.setattr(
-        "codeminer.scip_interface.scip_indexer_php.shutil.which",
+        "codenib.scip_interface.scip_indexer_php.shutil.which",
         lambda command: (
             f"/usr/bin/{command}" if command in {"php", "composer", "git"} else None
         ),
@@ -275,7 +275,7 @@ def test_scip_php_indexer_generates_index_in_throwaway_worktree(
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(
-        "codeminer.scip_interface.scip_indexer_php.subprocess.run",
+        "codenib.scip_interface.scip_indexer_php.subprocess.run",
         fake_run,
     )
 
@@ -293,9 +293,9 @@ def test_scip_php_indexer_accepts_preinstalled_project_tool_without_composer(
     tmp_path,
     monkeypatch,
 ):
-    monkeypatch.setenv("CODEMINER_PHP_SCIP_CMD", "vendor/bin/scip-php")
+    monkeypatch.setenv("CODENIB_PHP_SCIP_CMD", "vendor/bin/scip-php")
     monkeypatch.setattr(
-        "codeminer.scip_interface.scip_indexer_php.shutil.which",
+        "codenib.scip_interface.scip_indexer_php.shutil.which",
         lambda command: "/usr/bin/php" if command == "php" else None,
     )
     (tmp_path / "composer.json").write_text("{}", encoding="utf-8")
@@ -313,10 +313,10 @@ def test_scip_php_indexer_accepts_preinstalled_project_tool_without_composer(
 
 
 def test_scip_php_indexer_can_use_docker_fallback(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_PHP_SCIP_CMD", "vendor/bin/scip-php")
-    monkeypatch.setenv("CODEMINER_PHP_COMPOSER_IMAGE", "composer:test")
+    monkeypatch.setenv("CODENIB_PHP_SCIP_CMD", "vendor/bin/scip-php")
+    monkeypatch.setenv("CODENIB_PHP_COMPOSER_IMAGE", "composer:test")
     monkeypatch.setattr(
-        "codeminer.scip_interface.scip_indexer_php.shutil.which",
+        "codenib.scip_interface.scip_indexer_php.shutil.which",
         lambda command: "/usr/bin/docker" if command == "docker" else None,
     )
     (tmp_path / "composer.json").write_text("{}", encoding="utf-8")
@@ -336,8 +336,8 @@ def test_scip_php_indexer_can_use_docker_fallback(tmp_path, monkeypatch):
 
 
 def test_scip_php_indexer_docker_indexes_throwaway_worktree(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEMINER_PHP_SCIP_CMD", "vendor/bin/scip-php")
-    monkeypatch.setenv("CODEMINER_PHP_COMPOSER_IMAGE", "composer:test")
+    monkeypatch.setenv("CODENIB_PHP_SCIP_CMD", "vendor/bin/scip-php")
+    monkeypatch.setenv("CODENIB_PHP_COMPOSER_IMAGE", "composer:test")
     project = tmp_path / "project"
     project.mkdir()
     (project / "composer.json").write_text("{}", encoding="utf-8")
@@ -352,7 +352,7 @@ def test_scip_php_indexer_docker_indexes_throwaway_worktree(tmp_path, monkeypatc
     docker_commands = []
 
     monkeypatch.setattr(
-        "codeminer.scip_interface.scip_indexer_php.shutil.which",
+        "codenib.scip_interface.scip_indexer_php.shutil.which",
         lambda command: (
             "/usr/bin/docker"
             if command == "docker"
@@ -367,7 +367,7 @@ def test_scip_php_indexer_docker_indexes_throwaway_worktree(tmp_path, monkeypatc
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(
-        "codeminer.scip_interface.scip_indexer_php.subprocess.run",
+        "codenib.scip_interface.scip_indexer_php.subprocess.run",
         fake_run,
     )
 

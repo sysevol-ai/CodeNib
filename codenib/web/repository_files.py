@@ -1,0 +1,216 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Safe reads from a repository checkout or an immutable Git tree."""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+from functools import lru_cache
+from typing import Optional
+
+_COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,64}\Z")
+_MAX_SOURCE_BYTES = 8 * 1024 * 1024
+
+
+def valid_commit(commit: object) -> bool:
+    return isinstance(commit, str) and _COMMIT_RE.fullmatch(commit) is not None
+
+
+def safe_repo_relative_path(repo_dir: str, file_path: str) -> Optional[str]:
+    """Return a repo-relative POSIX path without permitting an outside read.
+
+    Absolute graph paths are accepted only when they resolve inside *repo_dir*.
+    Relative paths reject parent traversal, and symlinks that escape the checkout
+    are rejected before any live-file read. The returned lexical path also names
+    the corresponding object inside a Git tree.
+    """
+    root = os.path.realpath(repo_dir)
+    if os.path.isabs(file_path):
+        candidate = os.path.realpath(file_path)
+        try:
+            if os.path.commonpath((root, candidate)) != root:
+                return None
+        except ValueError:
+            return None
+        relative = os.path.relpath(candidate, root)
+    else:
+        relative = os.path.normpath(file_path.replace("\\", os.sep))
+        if (
+            relative in ("", ".")
+            or relative == ".."
+            or relative.startswith(".." + os.sep)
+        ):
+            return None
+        candidate = os.path.realpath(os.path.join(root, relative))
+        try:
+            if os.path.commonpath((root, candidate)) != root:
+                return None
+        except ValueError:
+            return None
+    return relative.replace(os.sep, "/")
+
+
+def _git_blob(
+    repo_dir: str,
+    commit: str,
+    relative: str,
+    max_bytes: int,
+    *,
+    allow_truncated: bool = False,
+) -> Optional[bytes]:
+    if not valid_commit(commit):
+        return None
+    process: Optional[subprocess.Popen[bytes]] = None
+    try:
+        process = subprocess.Popen(
+            ["git", "-C", repo_dir, "show", f"{commit}:{relative}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        assert process.stdout is not None
+        content = process.stdout.read(max_bytes + 1)
+        process.stdout.close()
+        truncated = len(content) > max_bytes
+        if truncated and process.poll() is None:
+            process.terminate()
+        process.wait(timeout=1)
+    except (OSError, subprocess.SubprocessError):
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+        return None
+    if not truncated and process.returncode != 0:
+        return None
+    if truncated:
+        return content[:max_bytes] if allow_truncated else None
+    return content
+
+
+def git_blob_head(
+    repo_dir: str, commit: str, relative: str, max_bytes: int
+) -> Optional[bytes]:
+    """Read at most *max_bytes* from one blob in a selected Git tree."""
+    return _git_blob(repo_dir, commit, relative, max_bytes, allow_truncated=True)
+
+
+@lru_cache(maxsize=64)
+def git_grep_paths(repo_dir: str, commit: str, pattern: str) -> frozenset[str]:
+    """Return paths matching *pattern* at *commit* using one Git process."""
+    if not valid_commit(commit):
+        return frozenset()
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                repo_dir,
+                "grep",
+                "-I",
+                "-l",
+                "-i",
+                "-E",
+                pattern,
+                commit,
+                "--",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+    if result.returncode not in (0, 1):
+        return frozenset()
+    prefix = f"{commit}:"
+    return frozenset(
+        line[len(prefix) :] if line.startswith(prefix) else line.split(":", 1)[-1]
+        for line in result.stdout.splitlines()
+        if line
+    )
+
+
+@lru_cache(maxsize=64)
+def git_tree_paths(repo_dir: str, commit: str) -> Optional[frozenset[str]]:
+    """Repository paths at *commit*, or ``None`` when it is unavailable."""
+    if not valid_commit(commit):
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_dir, "ls-tree", "-r", "-z", "--name-only", commit],
+            check=False,
+            capture_output=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return frozenset(
+        path.decode("utf-8", errors="surrogateescape")
+        for path in result.stdout.split(b"\0")
+        if path
+    )
+
+
+def git_source_slice(
+    repo_dir: str,
+    commit: str,
+    file_path: str,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
+) -> Optional[dict]:
+    """Return the same 1-based source slice contract as the live wiki reader."""
+    relative = safe_repo_relative_path(repo_dir, file_path)
+    if relative is None:
+        return None
+    content = _git_blob(repo_dir, commit, relative, _MAX_SOURCE_BYTES)
+    if content is None:
+        return None
+    return _source_slice(relative, content, start, end)
+
+
+def _source_slice(
+    relative: str,
+    content: bytes,
+    start: Optional[int],
+    end: Optional[int],
+) -> dict:
+    all_lines = content.decode("utf-8", errors="replace").splitlines(keepends=True)
+    if start is not None and end is not None:
+        first = max(1, int(start))
+        chunk = all_lines[first - 1 : max(first - 1, int(end))]
+    else:
+        first = 1
+        chunk = all_lines[:400]
+    return {
+        "file": relative,
+        "start_line": first,
+        "end_line": first + len(chunk) - 1,
+        "content": "".join(chunk),
+    }
+
+
+def live_source_slice(
+    repo_dir: str,
+    file_path: str,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
+) -> Optional[dict]:
+    """Read a bounded source slice from the current checkout safely."""
+    relative = safe_repo_relative_path(repo_dir, file_path)
+    if relative is None:
+        return None
+    candidate = os.path.realpath(os.path.join(repo_dir, relative))
+    try:
+        with open(candidate, "rb") as handle:
+            content = handle.read(_MAX_SOURCE_BYTES + 1)
+    except OSError:
+        return None
+    if len(content) > _MAX_SOURCE_BYTES:
+        return None
+    return _source_slice(relative, content, start, end)

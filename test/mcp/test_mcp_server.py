@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,16 +12,50 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+import sys
 from pathlib import Path
+from typing import Literal
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mcp import Client
+from mcp.types import LATEST_PROTOCOL_VERSION
 
 # Import server module components
-import codeminer.mcp.server as server_module
-from codeminer.index.embedding.vector_store import CodeVectorStore
-from codeminer.mcp.context import ServerContext
-from codeminer.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
+import codenib.mcp.server as server_module
+from codenib.index.embedding.vector_store import CodeVectorStore
+from codenib.mcp.context import ServerContext
+from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
+
+
+def test_server_import_keeps_optional_index_runtimes_lazy() -> None:
+    script = """
+import sys
+import codenib.mcp.server
+
+optional = ("faiss", "igraph", "litellm", "requests", "sentence_transformers")
+loaded = [name for name in optional if name in sys.modules]
+if loaded:
+    raise SystemExit(f"optional runtimes loaded eagerly: {loaded}")
+"""
+
+    subprocess.run([sys.executable, "-c", script], check=True)
+
+
+def test_server_negotiates_modern_and_legacy_protocols() -> None:
+    async def negotiate(mode: Literal["auto", "legacy"]) -> tuple[str, set[str]]:
+        async with Client(server_module.mcp, mode=mode, cache=None) as client:
+            tools = await client.list_tools()
+            return client.protocol_version, {tool.name for tool in tools.tools}
+
+    modern_version, modern_tools = asyncio.run(negotiate("auto"))
+    legacy_version, legacy_tools = asyncio.run(negotiate("legacy"))
+
+    assert modern_version == LATEST_PROTOCOL_VERSION
+    assert legacy_version != modern_version
+    assert modern_tools == legacy_tools
+    assert {"get_manifest", "search_bm25", "search_semantic"} <= modern_tools
 
 
 @pytest.fixture
@@ -60,8 +94,8 @@ def mock_manifest(tmp_path: Path) -> Path:
 
 def test_init_server_missing_manifest():
     """Test that init_server raises FileNotFoundError for missing manifest."""
-    # Mock FastMCP availability
-    with patch.object(server_module, "FastMCP", MagicMock()):
+    # Mock MCPServer availability
+    with patch.object(server_module, "MCPServer", MagicMock()):
         with pytest.raises(FileNotFoundError, match="Manifest not found"):
             server_module.init_server("/nonexistent/manifest.json")
 
@@ -69,7 +103,7 @@ def test_init_server_missing_manifest():
 def test_init_server_success(mock_manifest: Path):
     """Test successful server initialization."""
     mock_mcp = MagicMock()
-    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+    with patch.object(server_module, "MCPServer", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):
@@ -94,7 +128,7 @@ def test_semantic_search_tool_no_vector_index(mock_manifest: Path):
     """Test semantic_search tool returns error when vector index not loaded."""
     # Initialize server with mock that fails vector loading
     mock_mcp = MagicMock()
-    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+    with patch.object(server_module, "MCPServer", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
             with patch.object(
                 CodeVectorStore, "load", side_effect=Exception("Load failed")
@@ -125,7 +159,7 @@ def test_semantic_search_tool_with_vector_index(mock_manifest: Path):
     mock_vector.search_with_content.return_value = [mock_node]
 
     mock_mcp = MagicMock()
-    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+    with patch.object(server_module, "MCPServer", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):
@@ -151,12 +185,12 @@ def test_lsp_definition_tool_no_symbol_graph():
 def test_lsp_definition_tool_serializes_one_based_lines():
     """Test MCP serialization converts internal graph lines to 1-based lines."""
     mock_graph = MagicMock()
-    from codeminer.types import QueriedNode
+    from codenib.types import QueriedNode
 
     mock_graph.query_range.side_effect = ValueError("should not be called")
     ctx = MagicMock(symbol_graph=mock_graph)
     with patch(
-        "codeminer.mcp.tools.lsp.StaticLSPProvider.definition"
+        "codenib.agent.lsp_provider.StaticLSPProvider.definition"
     ) as mock_definition:
         mock_definition.return_value = [
             QueriedNode(
@@ -175,11 +209,11 @@ def test_lsp_definition_tool_serializes_one_based_lines():
 
 def test_lsp_references_tool_delegates_to_core():
     """Test lsp_references wrapper calls the core graph helper."""
-    from codeminer.types import QueriedNode
+    from codenib.types import QueriedNode
 
     ctx = MagicMock(symbol_graph=MagicMock())
     with patch(
-        "codeminer.mcp.tools.lsp.StaticLSPProvider.references"
+        "codenib.agent.lsp_provider.StaticLSPProvider.references"
     ) as mock_references:
         mock_references.return_value = [
             QueriedNode(
@@ -205,7 +239,7 @@ def test_lsp_tools_reuse_agent_line_boundary():
     """MCP LSP tools share the agent 1-based input boundary."""
     ctx = MagicMock(symbol_graph=MagicMock())
     with patch(
-        "codeminer.mcp.tools.lsp.StaticLSPProvider.definition"
+        "codenib.agent.lsp_provider.StaticLSPProvider.definition"
     ) as mock_definition:
         mock_definition.return_value = []
 
@@ -221,7 +255,7 @@ def test_server_status_resource(mock_manifest: Path):
     mock_vector.get_stats.return_value = {"total_documents": 150}
 
     mock_mcp = MagicMock()
-    with patch.object(server_module, "FastMCP", return_value=mock_mcp):
+    with patch.object(server_module, "MCPServer", return_value=mock_mcp):
         with patch.object(server_module, "mcp", mock_mcp):
             with patch.object(CodeVectorStore, "load"):
                 with patch.object(CodeVectorStore, "__init__", return_value=None):

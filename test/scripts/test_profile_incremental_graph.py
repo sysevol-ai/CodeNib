@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,7 +7,7 @@
 The benchmark itself needs real SCIP/clangd + cloned repos (that side is an
 integration concern, exercised manually). These tests cover the pure helpers
 and the per-step comparison harness with mocked strategy sub-records — no LSP,
-no git, no ``codeminer.*`` heavy deps (those imports are lazy in the script).
+no git, no ``codenib.*`` heavy deps (those imports are lazy in the script).
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +6,7 @@
 
 #include "code_graph.h"
 
-namespace codeminer::core {
+namespace codenib::core {
 namespace {
 
 LayerBuckets make_empty_buckets(std::size_t edge_count) {
@@ -62,4 +62,4 @@ LayerBuckets classify_edge_layers(const std::vector<std::string> &edge_types) {
   return buckets;
 }
 
-} // namespace codeminer::core
+} // namespace codenib::core

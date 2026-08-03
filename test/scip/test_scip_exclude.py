@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.dataset.locbench import LocbenchDataset
-from codeminer.graph.traverse_graph import traverse_tree_structure
-from codeminer.ls_router import LSIndexer
+from codenib.dataset.locbench import LocbenchDataset
+from codenib.graph.traverse_graph import traverse_tree_structure
+from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.integration_serial
 
@@ -31,8 +31,8 @@ def test_scip_exclude():
     instance = dataset[0]
     dataset_obj.process_instance(instance)
     repo_path = dataset_obj.get_repo_path(instance)
-    # set output path with ~/.codeminer/instance_id
-    output_path = str(Path.home()) + "/.codeminer/" + instance["instance_id"]
+    # set output path with ~/.codenib/instance_id
+    output_path = str(Path.home()) + "/.codenib/" + instance["instance_id"]
     # setup codegraph with exclude patterns
     repo_indexer = LSIndexer(
         repo_path,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,10 +10,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.registry import SkillRegistry
-from codeminer.compiler.params import SessionContext
-from codeminer.llm.litellm_chat import LiteLLMChat
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.registry import SkillRegistry
+from codenib.compiler.params import SessionContext
+from codenib.llm.litellm_chat import LiteLLMChat
 
 
 @pytest.fixture(autouse=True)
@@ -56,10 +56,13 @@ def test_no_environment_block_without_repo_path():
     assert "repo_path:" not in runner.system_prompt
 
 
-def test_workflow_prompt_teaches_graph_and_files():
+def test_workflow_prompt_only_describes_exposed_tools():
     llm = MagicMock(spec=LiteLLMChat)
     runner = AgentRunner(llm, SkillRegistry())
     p = runner.system_prompt
-    assert "find_callers" in p and "find_callees" in p  # graph navigation verbs
     assert "grep" in p and "read" in p
     assert "glob" in p and "bash" in p
+    assert "bm25_search" not in p
+    assert "embedding_search" not in p
+    assert "codenib_context" not in p
+    assert "find_callers" not in p and "find_callees" not in p

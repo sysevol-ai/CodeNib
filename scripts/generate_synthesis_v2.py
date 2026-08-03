@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Drive codeminer-synthesis v2 (multi-repo) generation from the v2 plan.
+"""Drive codenib-synthesis v2 (multi-repo) generation from the v2 plan.
 
 Consumes the plan from ``build_synthesis_v2_plan`` (25 repos, 5/language, one
 graph-richest instance each, 20 queries/repo) and, per instance, invokes
-``generate_codeminer_synthesis_config.py`` with that repo's per-category counts.
+``generate_codenib_synthesis_config.py`` with that repo's per-category counts.
 Resumable (skips an instance whose per-config seed/output already exists). Then
-prints the ``rebuild_codeminer_synthesis_dataset.py`` assembly command.
+prints the ``rebuild_codenib_synthesis_dataset.py`` assembly command.
 
 Generation is heavy (repo clone + LSIndexer graph build + Opus curator/judge per
 query via the Claude Agent SDK), so run it where that toolchain + auth live.
@@ -41,6 +41,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from codenib.paths import prebuilt_data_dir  # noqa: E402
 from scripts.build_synthesis_v2_plan import build_plan  # noqa: E402
 
 
@@ -74,7 +75,7 @@ def _counts_arg(counts: dict) -> str:
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--output-dir", required=True, type=Path, help="generation root")
-    p.add_argument("--prebuilt-dir", default="/mnt/data/codeminer")
+    p.add_argument("--prebuilt-dir", default=str(prebuilt_data_dir()))
     p.add_argument("--repos-per-lang", type=int, default=5)
     p.add_argument("--model-name", default="opus")
     p.add_argument("--judge-model", default="opus")
@@ -120,7 +121,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             continue
         cmd = [
             sys.executable,
-            "scripts/generate_codeminer_synthesis_config.py",
+            "scripts/generate_codenib_synthesis_config.py",
             "--config",
             config,
             "--instance-id",
@@ -157,7 +158,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         for c in sorted({e["config"] for e in plan})
     )
     print(
-        f"  {sys.executable} scripts/rebuild_codeminer_synthesis_dataset.py "
+        f"  {sys.executable} scripts/rebuild_codenib_synthesis_dataset.py "
         f"{reps} --output-dir {args.output_dir}/dataset"
     )
     if failures:

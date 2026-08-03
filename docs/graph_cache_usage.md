@@ -1,189 +1,129 @@
 <!--
-SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Graph Cache Mechanism
+# Graph Cache
 
-The SCIP indexer now includes a comprehensive caching system with configurable skip levels to optimize repeated indexing operations.
+CodeNib has two cache layers with different contracts:
 
-## Overview
+1. the `codenib index` and `codenib wiki` commands manage repository manifests
+   and view freshness below `$CODENIB_HOME/repositories`;
+2. the low-level `LSIndexer` API can reuse individual graph-pipeline stages in
+   an explicitly selected output directory.
 
-The pipeline has three main stages:
-1. **Index Generation** (`index.scip`) - SCIP indexing of the repository
-2. **Index Decoding** (`index.decoded`) - Protobuf decoding to readable format
-3. **Graph Construction** (`graph.pkl`) - Building and serializing the CodeGraph using pickle
-
-## Cache Levels
-
-Use the `skip_level` parameter to control which stages are cached:
-
-### `skip_level=None` (Default)
-Run full pipeline from scratch. Regenerates everything.
-
-```python
-from codeminer.ls_router import LSIndexer
-
-indexer = LSIndexer(project_root="/path/to/repo")
-graph = indexer.run_pipeline(skip_level=None)  # Full pipeline
-```
-
-### `skip_level='raw'`
-Check if `index.scip` exists:
-- **If found**: Skip generation, proceed to decode + process
-- **If not found**: Run full pipeline
-
-```python
-graph = indexer.run_pipeline(skip_level='raw')
-```
-
-**Use case**: Code hasn't changed, but you want to regenerate the graph with different processing logic.
-
-### `skip_level='decode'`
-Check if `index.decoded` exists:
-- **If found**: Skip generation + decode, proceed to process
-- **If not found**: Run from generation stage
-
-```python
-graph = indexer.run_pipeline(skip_level='decode')
-```
-
-**Use case**: Both code and decode format unchanged, but graph construction logic updated.
-
-### `skip_level='graph'` (Fastest)
-Check if `graph.pkl` exists:
-- **If found**: Load graph from disk using pickle and return immediately
-- **If not found**: Run full pipeline
-
-```python
-graph = indexer.run_pipeline(skip_level='graph')
-```
-
-**Use case**: Reusing exact same graph for multiple operations (e.g., batch processing SWE-bench instances).
-
-**Performance**: Pickle is ~10-100x faster than JSON for large graphs.
-
-## Output Directory Structure
-
-By default, cache files are stored in `/tmp/<project_name>/`:
-
-```
-/tmp/my_project/
-├── index.scip        # SCIP binary index
-├── index.decoded     # Decoded protobuf text
-└── graph.pkl         # Serialized CodeGraph (pickle format)
-```
-
-Custom output directory:
-
-```python
-indexer = LSIndexer(
-    project_root="/path/to/repo",
-    output_dir="/path/to/cache"  # Custom cache location
-)
-```
-
-## Instance-Based Caching
-
-For SWE-bench or similar use cases with instance IDs:
-
-```python
-# Use instance_id as output directory name
-instance_id = "django__django-12345"
-output_dir = f"/cache/{instance_id}"
-
-indexer = LSIndexer(
-    project_root=repo_path,
-    output_dir=output_dir
-)
-
-# First run: generates all files
-graph = indexer.run_pipeline(skip_level='graph')
-
-# Subsequent runs: loads from cache instantly
-graph = indexer.run_pipeline(skip_level='graph')  # Fast!
-```
-
-## CLI Usage
-
-> **Note:** ls_router currently has no CLI entry point (no `__main__` / argparse). Use the Python API above instead.
+Most users should use the CLI layer. It compares the repository state with the
+stored manifest and updates only the views that need work:
 
 ```bash
-# Full pipeline
-python -m codeminer.ls_router \
-  --project-dir /path/to/repo \
-  --output graph.pkl
+codenib index /path/to/repository --preset graph
 
-# Use graph cache
-python -m codeminer.ls_router \
-  --project-dir /path/to/repo \
-  --skip-level graph
-
-# Custom output directory
-python -m codeminer.ls_router \
-  --project-dir /path/to/repo \
-  --output-dir /cache/instance-123 \
-  --skip-level graph
+# Ignore reusable index state and rebuild the selected views
+codenib index /path/to/repository --preset graph --rebuild
 ```
 
-## Performance Comparison
+## Low-Level Pipeline Stages
 
-Typical timings for a medium-sized project:
+A SCIP-backed `LSIndexer` normally produces:
 
-| Skip Level | Time     | What Runs                           |
-|------------|----------|-------------------------------------|
-| None       | ~60s     | Full: generate + decode + process   |
-| `raw`      | ~30s     | Decode + process only               |
-| `decode`   | ~10s     | Process only                        |
-| `graph`    | ~0.5s    | Load from disk                      |
-
-## Example: Batch Processing with Cache
-
-```python
-from codeminer.ls_router import LSIndexer
-
-# Process multiple instances efficiently
-instances = [
-    {"id": "inst-1", "repo": "/repos/repo1"},
-    {"id": "inst-2", "repo": "/repos/repo2"},
-]
-
-for instance in instances:
-    cache_dir = f"/cache/{instance['id']}"
-
-    indexer = LSIndexer(
-        project_root=instance['repo'],
-        output_dir=cache_dir
-    )
-
-    # First run: creates cache
-    # Subsequent runs: loads from cache
-    graph = indexer.run_pipeline(skip_level='graph')
-
-    # Use graph...
-    print(f"Instance {instance['id']}: {len(graph.graph.vs)} nodes")
+```text
+index.scip       raw SCIP protobuf
+index.decoded    decoded protobuf text
+graph.pkl        serialized CodeGraph
+lsp_index.pkl    occurrence index for LSP-shaped queries
 ```
 
-## Graph Save/Load API
+Other backends can use different raw files, but expose the same graph-stage
+interface.
 
-You can also manually save and load graphs using pickle:
+Choose the cache directory and language explicitly:
 
 ```python
-from codeminer.graph.code_graph import CodeGraph
+from codenib.ls_router import LSIndexer
 
-# Save (uses pickle for fast serialization)
+indexer = LSIndexer(
+    project_root="/path/to/repository",
+    output_dir="/path/to/cache",
+    language="python",
+)
+graph = indexer.run_pipeline(skip_level="graph")
+```
+
+`skip_level` means “reuse this stage when its artifact exists”:
+
+| Value | Reused artifact | Remaining work |
+| --- | --- | --- |
+| `None` | none | generate, decode, and construct |
+| `"raw"` | raw language index | decode and construct |
+| `"decode"` | decoded index | construct |
+| `"graph"` | serialized graph | load and return |
+
+If the requested artifact is absent, the pipeline falls back to the preceding
+work needed to recreate it. A graph that cannot be loaded also falls back to
+the pipeline.
+
+The low-level API does not provide the CLI manifest's full repository
+freshness contract. Callers that set `skip_level` are responsible for using a
+cache produced from compatible source, toolchain, and CodeNib versions.
+
+## Remove Derived Stages
+
+`clear_cache()` treats its argument as the highest stage to preserve:
+
+```python
+indexer.clear_cache("graph")   # keep raw + decoded + graph
+indexer.clear_cache("decode")  # keep raw + decoded; remove graph artifacts
+indexer.clear_cache("raw")     # keep raw; remove decoded + graph artifacts
+indexer.clear_cache("all")     # remove every pipeline artifact
+```
+
+The `"graph"` operation intentionally removes nothing. Use `"all"` to force a
+complete low-level rebuild.
+
+## Save Or Load A Graph Directly
+
+`CodeGraph` persistence is a binary CodeNib format:
+
+```python
+from codenib.graph.code_graph import CodeGraph
+
 graph.save_graph("/path/to/graph.pkl")
-
-# Load (uses pickle for fast deserialization)
-loaded_graph = CodeGraph.load_graph("/path/to/graph.pkl")
+loaded = CodeGraph.load_graph("/path/to/graph.pkl")
 ```
 
-**Note**: Pickle is binary format and much faster than JSON for large graphs.
+Use the conventional `.pkl` suffix so the storage format is clear. Persisted
+graphs contain range indexes and graph metadata; schema changes are guarded by
+CodeNib's graph schema version.
 
-## Notes
+## Graph Schema 5 Migration
 
-- Graph files include metadata (project_root) for proper reconstruction
-- Cache files are independent - you can delete any stage to force regeneration from that point
-- `skip_level=None` runs the full pipeline from scratch
-- Empty/corrupted cache files are detected and pipeline falls back to generation
+Schema 5 adds three independently queryable facts while retaining the coarse
+node and edge types used by existing traversals:
+
+- symbol vertices carry optional `symbol_kind` values such as `interface`,
+  `enum`, and `type_alias`;
+- every symbol vertex carries `has_definition`; only `true` means its file and
+  range describe an observed definition;
+- TypeScript and TSX graphs can carry anchored file-to-file `import` edges in
+  addition to their ordinary observed `reference` edges.
+
+Schema 4 `graph.pkl` files do not contain those facts and are intentionally not
+upgraded in place. `CodeGraph.load_graph()` rejects them with the existing
+schema-version diagnostic. Rebuild each CLI-managed repository once:
+
+```bash
+codenib index /path/to/repository --preset graph --rebuild
+```
+
+Low-level callers may reuse a compatible `index.decoded` and reconstruct only
+the graph stage with `skip_level="decode"`; they must not relabel an old pickle
+as schema 5. Packaged, demo, and evaluation artifacts must be regenerated by
+their owning pipeline before publication.
+
+## Relocate State
+
+The CLI state root defaults to `~/.codenib`; set `CODENIB_HOME` to move it.
+Temporary low-level indexer output defaults below `$CODENIB_TEMP_DIR` (normally
+`$TMPDIR/codenib`). An explicit `output_dir` always takes precedence for the
+`LSIndexer` instance.

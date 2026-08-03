@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,14 +15,15 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from codeminer.eval.agent_runner import write_lsp_route_latency_report  # noqa: E402
+from codenib.eval.agent_runner import write_lsp_route_latency_report  # noqa: E402
+from codenib.paths import prebuilt_data_dir  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cells-dir", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--prebuilt-dir", default="/mnt/data/codeminer")
+    parser.add_argument("--prebuilt-dir", default=str(prebuilt_data_dir()))
     args = parser.parse_args(argv)
 
     markdown = write_lsp_route_latency_report(

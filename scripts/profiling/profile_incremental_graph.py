@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -14,7 +14,7 @@ every step, run all three strategies independently and record per-step timing:
   2. ``file-level-patch`` — the patcher in naive (file-granularity) mode:
      delete + rebuild every vertex/edge of each modified file, no symbol diff.
   3. ``symbol-level-patch`` — the production incremental patcher
-     (``codeminer.graph.incremental.patcher_base``): rewire edges by changed
+     (``codenib.graph.incremental.patcher_base``): rewire edges by changed
      lines + affected symbols.
 
 Strategies run as phases so the long-lived LSP cold-start cost is amortised
@@ -31,7 +31,7 @@ derived ``speedup_vs_fully_rebuild`` / ``speedup_vs_file_level_patch`` ratios.
 super-large diffs (``"too_large"``); both are kept (not skipped) because they
 reflect real-world commit traffic.
 
-The heavy ``codeminer.*`` imports (chunker, graph, patcher, indexer) are loaded
+The heavy ``codenib.*`` imports (chunker, graph, patcher, indexer) are loaded
 lazily inside the functions that need them so the pure string/parse helpers can
 be imported and unit-tested without a full dev environment.
 
@@ -74,6 +74,7 @@ _CORE = _PROJECT_ROOT / "build" / "core"
 if _CORE.exists() and str(_CORE) not in sys.path:
     sys.path.insert(0, str(_CORE))
 
+from codenib.paths import prebuilt_data_dir  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Lazy importers — keep module import light so the pure helpers (and their
@@ -82,25 +83,25 @@ if _CORE.exists() and str(_CORE) not in sys.path:
 
 
 def _CodeChunker():
-    from codeminer.code_chunker import CodeChunker
+    from codenib.code_chunker import CodeChunker
 
     return CodeChunker
 
 
 def _CodeGraph():
-    from codeminer.graph.code_graph import CodeGraph
+    from codenib.graph.code_graph import CodeGraph
 
     return CodeGraph
 
 
 def _GraphPatcher():
-    from codeminer.graph.incremental.graph_patcher import GraphPatcher
+    from codenib.graph.incremental.graph_patcher import GraphPatcher
 
     return GraphPatcher
 
 
 def _LSIndexer():
-    from codeminer.ls_router import LSIndexer
+    from codenib.ls_router import LSIndexer
 
     return LSIndexer
 
@@ -109,7 +110,7 @@ def _LSIndexer():
 # Defaults
 # ---------------------------------------------------------------------------
 
-DEFAULT_CACHE_ROOT = Path("/mnt/data/codeminer")
+DEFAULT_CACHE_ROOT = prebuilt_data_dir()
 DEFAULT_STEPS = 5
 DEFAULT_TIMEOUT_S = 600
 DEFAULT_MAX_DELTA_LINES = 5000

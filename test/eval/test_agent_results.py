@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from codeminer.agent.agent_types import AgentResult, ToolCallRecord
-from codeminer.eval.agent_runner.results import summarize_agent_result
+from codenib.agent.agent_types import AgentResult, ToolCallRecord
+from codenib.eval.agent_runner.results import summarize_agent_result
 
 
 def test_summarize_agent_result_collects_tool_and_read_observations():

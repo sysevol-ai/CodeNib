@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,9 +8,14 @@ from __future__ import annotations
 
 import pytest
 
-from codeminer import ls_router
-from codeminer.graph.code_graph import CodeGraph
-from codeminer.ls_router import LSGraphDecoder, LSIndexer, build_graph_for_languages
+from codenib import ls_router
+from codenib.graph.code_graph import CodeGraph
+from codenib.ls_router import (
+    LSGraphDecoder,
+    LSIndexer,
+    build_graph_for_languages,
+    build_graph_for_languages_with_report,
+)
 
 
 @pytest.mark.parametrize(
@@ -182,14 +187,20 @@ def test_ls_indexer_graph_patch_constructs_graph_patcher_without_profiler_kwarg(
     indexer = LSIndexer(tmp_path, language="python", output_dir=tmp_path / "out")
     calls = {}
 
-    from codeminer.graph.incremental import graph_patcher
+    from codenib.graph.incremental import graph_patcher
 
     def fake_detect_changed_files(project_root, base_commit, target_commit, extensions):
         calls["detect"] = (project_root, base_commit, target_commit, extensions)
         return {"modified": [], "added": [], "deleted": [], "renamed": []}
 
-    def fake_patch_files(self, changed_files):
-        calls["patch"] = changed_files
+    def fake_patch_files(
+        self,
+        changed_files,
+        *,
+        earlier_commit=None,
+        later_commit=None,
+    ):
+        calls["patch"] = (changed_files, earlier_commit, later_commit)
         return {"ok": True}
 
     monkeypatch.setattr(
@@ -203,7 +214,11 @@ def test_ls_indexer_graph_patch_constructs_graph_patcher_without_profiler_kwarg(
 
     assert result == {"ok": True}
     assert calls["detect"][1:] == ("base", "HEAD", {".py"})
-    assert calls["patch"] == {"modified": [], "added": [], "deleted": [], "renamed": []}
+    assert calls["patch"] == (
+        {"modified": [], "added": [], "deleted": [], "renamed": []},
+        "base",
+        "HEAD",
+    )
 
 
 def test_build_graph_for_languages_preserves_single_language_layout(
@@ -314,6 +329,55 @@ def test_build_graph_for_languages_merges_alias_deduped_graphs(tmp_path, monkeyp
     saved = CodeGraph.load_graph(tmp_path / "out" / "graph.pkl")
     assert saved.graph.vcount() == 4
     assert saved.graph.ecount() == 2
+
+
+def test_build_graph_for_languages_can_preserve_successful_language_graphs(
+    tmp_path, monkeypatch
+):
+    calls = []
+
+    class FakeIndexer:
+        def __init__(
+            self,
+            project_root,
+            *,
+            output_dir=None,
+            profiler=None,
+            language=None,
+            decoder_backend=None,
+            graph_route="active",
+        ):
+            self.project_root = project_root
+            self.output_dir = output_dir
+            self.language = language
+            calls.append(language)
+
+        def run_pipeline(self, *, project_name=None, skip_level=None):
+            if self.language == "cpp":
+                raise RuntimeError("compilation database missing")
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node(f"{self.language}.txt")
+            graph.build_range_indexes()
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    result = build_graph_for_languages_with_report(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["python", "cpp", "go"],
+        allow_partial=True,
+    )
+
+    assert result.graph is not None
+    assert result.requested_languages == ["python", "cpp", "go"]
+    assert result.available_languages == ["python", "go"]
+    assert result.failed_languages == {"cpp": "compilation database missing"}
+    assert result.partial
+    assert calls == ["python", "cpp", "go"]
+
+    saved = CodeGraph.load_graph(tmp_path / "out" / "graph.pkl")
+    assert saved.graph.vcount() == 2
 
 
 def test_build_graph_for_languages_can_use_scip_candidate_route(tmp_path, monkeypatch):
@@ -454,6 +518,7 @@ def test_build_graph_for_languages_passes_route_filter_options(tmp_path, monkeyp
         include_references=True,
         exclude_patterns=["vendor/**"],
         graph_route="lsp",
+        allow_partial_index=True,
     )
 
     assert graph is not None
@@ -461,4 +526,48 @@ def test_build_graph_for_languages_passes_route_filter_options(tmp_path, monkeyp
     assert call.language == "ruby"
     assert call.graph_route == "lsp"
     assert call.exclude_patterns == ["vendor/**"]
-    assert call.pipeline_kwargs == {"target_dir": "lib", "include_references": True}
+    assert call.pipeline_kwargs == {
+        "target_dir": "lib",
+        "include_references": True,
+    }
+
+
+def test_build_graph_for_languages_reports_index_generation(tmp_path, monkeypatch):
+    class FakeIndexer:
+        supports_partial_index = True
+
+        def __init__(self, project_root, **_kwargs):
+            self.project_root = project_root
+            self.index_generation_report = {
+                "status": "partial",
+                "complete": False,
+                "partial": True,
+                "document_count": 3,
+            }
+
+        def run_pipeline(self, **kwargs):
+            assert kwargs["allow_partial_index"] is True
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node("partial.py")
+            graph.build_range_indexes()
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    result = ls_router.build_graph_for_languages_with_report(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["python"],
+        skip_level=None,
+        allow_partial_index=True,
+    )
+
+    assert result.graph is not None
+    assert result.index_generation_reports == {
+        "python": {
+            "status": "partial",
+            "complete": False,
+            "partial": True,
+            "document_count": 3,
+        }
+    }

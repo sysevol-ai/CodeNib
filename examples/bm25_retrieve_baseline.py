@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -23,17 +23,18 @@ import json
 import time
 from pathlib import Path
 
-from codeminer.dataset.locbench import LocbenchDataset
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.eval.retrieval_eval import (
+from codenib.dataset.locbench import LocbenchDataset
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.eval.retrieval_eval import (
     aggregate_metrics,
     average_metrics,
     collect_targets,
     evaluate_predictions,
     extract_predictions,
 )
-from codeminer.log_utils import get_logger
-from codeminer.model import BM25RetrievePipeline
+from codenib.log_utils import get_logger
+from codenib.model import BM25RetrievePipeline
+from codenib.paths import prebuilt_data_dir, user_state_dir
 
 logger = get_logger(__name__)
 
@@ -98,12 +99,12 @@ def parse_args():
     parser.add_argument(
         "--index-cache-dir",
         type=str,
-        default="/mnt/data/codeminer",
+        default=str(prebuilt_data_dir()),
     )
     parser.add_argument(
         "--repo-cache-dir",
         type=str,
-        default="~/.codeminer/",
+        default=str(user_state_dir()),
     )
     parser.add_argument("--result-path", type=str, default=None)
 
@@ -137,7 +138,7 @@ def run_bm25_pipeline(args):
     logger.info("Loaded %d instance(s)", len(dataset_instances))
 
     eval_path = args.eval_instances or str(
-        Path.home() / ".codeminer" / f"swebench_lite_{args.split}_gt.json"
+        Path.home() / ".codenib" / f"swebench_lite_{args.split}_gt.json"
     )
     eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     metrics_k = sorted(set(args.metrics_k))

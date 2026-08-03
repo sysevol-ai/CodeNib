@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
-# codeminer-base: grep / eager / eager_compact — isolate mid-run compaction's
+# codenib-base: grep / eager / eager_compact — isolate mid-run compaction's
 # token saving (eager_compact stubs bulky tool outputs after the first read so
 # later turns stop re-carrying full file/grep text). --model swaps size.
 base: design_space.yaml

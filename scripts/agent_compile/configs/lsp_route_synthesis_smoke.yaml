@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# LSP route synthesis smoke.
+#
+# This is the small feedback slice for agent-level LSP route experiments on the
+# codenib-synthesis benchmark. It keeps benchmark-specific instance selection
+# in experiment config, while the reusable sweep can further cap with
+# --max-instances and --max-queries during iteration.
+#
+# Run a one-repo smoke:
+#   PYTHONPATH=$PWD python scripts/agent_compile/run_synthesis_sweep.py \
+#     --config scripts/agent_compile/configs/lsp_route_synthesis_smoke.yaml \
+#     --output-dir results/agent_compile/lsp_route_synthesis_smoke \
+#     --synthesis-configs Go --categories traversal \
+#     --max-instances 1 --max-queries 1 --reps 1
+#
+# Arms:
+#   grep_only         - default read/grep/glob/bash baseline.
+#   lsp_route_skill   - expose lsp_route dynamically; measures adoption.
+#   lsp_route_preload - inject graph-backed LSP route context before turn 1.
+base: design_space.yaml
+
+sweep_id: lsp_route_synthesis_smoke
+reps: 1
+max_turns: 16
+
+# One representative synthesis instance per published language config.
+instances:
+  - caddyserver__caddy-6115
+  - astropy__astropy-13579
+  - astral-sh__ruff-15330
+  - axios__axios-6539
+  - fmtlib__fmt-3248
+
+subsets:
+  grep_only:
+    - read
+    - grep
+    - glob
+    - bash
+  lsp_route_skill:
+    - lsp_route
+  lsp_route_preload:
+    - read
+    - grep
+    - glob
+    - bash
+
+lsp_route_context:
+  lsp_route_preload:
+    seed_limit: 8
+    seed_policy: specific
+    query_fallback: true
+    top_k: 5
+    include_neighbors: true

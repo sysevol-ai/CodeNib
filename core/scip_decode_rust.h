@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+ * SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -10,7 +10,7 @@
 
 #include <unordered_set>
 
-namespace codeminer::core {
+namespace codenib::core {
 
 class SCIPRustDecoder : public SCIPDecoderBase {
 public:
@@ -43,4 +43,4 @@ private:
   std::unordered_set<std::string> internal_crates_;
 };
 
-} // namespace codeminer::core
+} // namespace codenib::core

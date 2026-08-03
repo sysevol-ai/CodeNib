@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,14 +6,14 @@
 
 For each cached integration language with a C++ decoder (python, go, rust, ts):
 
-  1. Locate the serial reference graph at ``~/.codeminer/<instance_id>/graph.pkl``
-     and the decoded SCIP index at ``~/.codeminer/<instance_id>/index.decoded``.
+  1. Locate the serial reference graph at ``~/.codenib/<instance_id>/graph.pkl``
+     and the decoded SCIP index at ``~/.codenib/<instance_id>/index.decoded``.
      Both are produced by the ``integration-serial`` CI job
      (``test_scip_multilingual`` for go/rust/ts, ``test_scip_swebench`` for
      python's sympy instance).
   2. Run the C++ core decoder on the same ``index.decoded``.
   3. Assert names + edges + per-vertex attributes (type, file,
-     start/end_line, unified_name) are bit-for-bit identical.
+     start/end_line, selection_line, unified_name) are bit-for-bit identical.
 
 This test intentionally does **not** rebuild the serial graph — it depends on
 the ``integration-serial → scip-core`` job chain in ``ci.yml`` to have
@@ -39,21 +39,30 @@ import pytest
 pytestmark = pytest.mark.integration_serial
 
 
-if importlib.util.find_spec("codeminer_core") is None:
+if importlib.util.find_spec("codenib_core") is None:
     pytest.skip(
-        "codeminer_core pybind module not built. "
+        "codenib_core pybind module not built. "
         "cmake -S core -B build/core && cmake --build build/core && "
         "PYTHONPATH=build/core",
         allow_module_level=True,
     )
 
-# Library load-order ritual: codeminer_core vendors c-igraph and hides its
+# Library load-order ritual: codenib_core vendors c-igraph and hides its
 # archive symbols so it does not fight Python's `igraph` wheel. Load it before
 # any transitive `igraph` import anyway; older local builds may not have the
 # same symbol isolation, and this keeps the optional-extension contract stable.
-import codeminer_core  # noqa: E402, F401
+import codenib_core  # noqa: E402, F401
 
-_COMPARED_ATTRS = ("type", "file", "start_line", "end_line", "unified_name")
+_COMPARED_ATTRS = (
+    "type",
+    "file",
+    "start_line",
+    "end_line",
+    "selection_line",
+    "unified_name",
+    "symbol_kind",
+    "has_definition",
+)
 
 # Edge attributes compared for parity. `anchor_file` / `anchor_line` were
 # added in schema v3 to support LSP-aligned line-range queries; both serial
@@ -218,6 +227,29 @@ documents {
 """.strip()
 
 
+_GO_STRUCTURAL_COLLISION_INDEX = """
+metadata {
+  tool_info {
+    name: "scip-go"
+    version: "0.1.26"
+  }
+}
+documents {
+  relative_path: "modules.go"
+  occurrences {
+    range: 0
+    range: 4
+    range: 11
+    symbol: "scip-go gomod example.com/collision v0.0.0 `example.com/collision`/modules."
+    symbol_roles: 1
+  }
+}
+documents {
+  relative_path: "modules/child.go"
+}
+""".strip()
+
+
 def _write_ruby_core_parity_project(project_root: Path) -> Path:
     (project_root / "lib/rake").mkdir(parents=True)
     (project_root / "lib/invoice.rb").write_text(
@@ -280,15 +312,29 @@ def _write_ruby_core_parity_project(project_root: Path) -> Path:
     return index
 
 
+def _write_go_structural_collision_project(project_root: Path) -> Path:
+    (project_root / "modules").mkdir()
+    (project_root / "go.mod").write_text(
+        "module example.com/collision\n", encoding="utf-8"
+    )
+    (project_root / "modules.go").write_text("var modules = 1\n", encoding="utf-8")
+    (project_root / "modules/child.go").write_text(
+        "package modules\n", encoding="utf-8"
+    )
+    index = project_root / "index.decoded"
+    index.write_text(_GO_STRUCTURAL_COLLISION_INDEX, encoding="utf-8")
+    return index
+
+
 def _pick_instance(language: str) -> Tuple[object, dict]:
     """Return (dataset_obj, instance_row) for the pinned fixture instance.
 
     Must match the instance used by ``test_scip_multilingual`` (for
     go/rust/ts) and ``test_scip_swebench`` (for python), since we rely on
-    ``~/.codeminer/<instance_id>/`` outputs produced by those tests.
+    ``~/.codenib/<instance_id>/`` outputs produced by those tests.
     """
     if language == "python":
-        from codeminer.dataset.swebench import SwebenchDataset
+        from codenib.dataset.swebench import SwebenchDataset
 
         args = argparse.Namespace(
             model="gpt-4o",
@@ -304,7 +350,7 @@ def _pick_instance(language: str) -> Tuple[object, dict]:
             )
         return dataset_obj, dict(rows[0])
 
-    from codeminer.dataset.swebench_multilingual import SwebenchMultilingualDataset
+    from codenib.dataset.swebench_multilingual import SwebenchMultilingualDataset
 
     dataset_obj = SwebenchMultilingualDataset(split="test", filter_instance=".*")
     rows = dataset_obj.load()
@@ -414,7 +460,7 @@ def _run_parity(language: str) -> None:
 
     dataset.process_instance(instance)  # idempotent: no-op if repo already cloned
     repo_path = Path(dataset.get_repo_path(instance))
-    output_dir = Path.home() / ".codeminer" / instance["instance_id"]
+    output_dir = Path.home() / ".codenib" / instance["instance_id"]
 
     graph_pkl = output_dir / "graph.pkl"
     decoded = output_dir / "index.decoded"
@@ -429,7 +475,7 @@ def _run_parity(language: str) -> None:
             pytest.fail(msg)
         pytest.skip(msg)
 
-    from codeminer.graph.code_graph import CodeGraph
+    from codenib.graph.code_graph import CodeGraph
 
     # Rebuild the serial graph in-place if the cached pickle is at an older
     # schema than what we now expect. The expensive ``index.decoded`` file is
@@ -441,7 +487,7 @@ def _run_parity(language: str) -> None:
     except ValueError as exc:
         if "schema_version" not in str(exc):
             raise
-        from codeminer.ls_router import LSIndexer
+        from codenib.ls_router import LSIndexer
 
         rebuild_indexer = LSIndexer(
             project_root=repo_path,
@@ -459,7 +505,7 @@ def _run_parity(language: str) -> None:
         serial_graph = CodeGraph.load_graph(str(graph_pkl))
 
     # Core decoder: reuse index.decoded, don't clobber graph.pkl (serial's).
-    from codeminer.ls_router import LSIndexer
+    from codenib.ls_router import LSIndexer
 
     core_indexer = LSIndexer(
         project_root=repo_path,
@@ -476,8 +522,8 @@ def _run_parity(language: str) -> None:
 def test_core_ruby_synthetic_parity(tmp_path):
     index = _write_ruby_core_parity_project(tmp_path)
 
-    from codeminer.scip_interface.scip_decode_core import SCIPDecoderCore
-    from codeminer.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_ruby import SCIPRubyGraphDecoder
 
     serial_graph = SCIPRubyGraphDecoder(str(index), project_root=str(tmp_path)).decode()
     core_graph = SCIPDecoderCore(
@@ -487,6 +533,83 @@ def test_core_ruby_synthetic_parity(tmp_path):
     ).decode()
 
     _assert_graph_parity(serial_graph, core_graph, "ruby-synthetic")
+
+
+def test_core_go_structural_collision_parity(tmp_path):
+    index = _write_go_structural_collision_project(tmp_path)
+
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_go import SCIPGoGraphDecoder
+
+    serial_graph = SCIPGoGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+    core_graph = SCIPDecoderCore(
+        str(index),
+        project_root=str(tmp_path),
+        language="go",
+    ).decode()
+
+    _assert_graph_parity(serial_graph, core_graph, "go-structural-collision")
+    node = serial_graph.graph.vs[serial_graph.name_to_vertex["modules"]]
+    assert node["type"] == "directory"
+    assert node["has_definition"] is True
+
+
+def test_core_typescript_schema_v5_fixture_parity():
+    fixture_root = Path(__file__).parent / "fixtures" / "typescript_schema_v5"
+    index = fixture_root / "index.decoded"
+
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_ts import SCIPTypeScriptGraphDecoder
+
+    serial_graph = SCIPTypeScriptGraphDecoder(
+        str(index), project_root=str(fixture_root)
+    ).decode()
+    core_graph = SCIPDecoderCore(
+        str(index),
+        project_root=str(fixture_root),
+        language="ts",
+    ).decode()
+
+    _assert_graph_parity(serial_graph, core_graph, "typescript-schema-v5")
+
+
+def test_core_typescript_schema_v5_explicit_kind_parity(tmp_path):
+    fixture_root = Path(__file__).parent / "fixtures" / "typescript_schema_v5"
+    content = (fixture_root / "index.decoded").read_text(encoding="utf-8")
+    marker = (
+        'symbol: "scip-typescript npm schema-v5-fixture 1.0.0 '
+        'src/`types.ts`/Runner#"\n'
+        '    documentation: "```ts\\ninterface Runner\\n```"'
+    )
+    assert marker in content
+    index = tmp_path / "index.decoded"
+    index.write_text(
+        content.replace(
+            marker,
+            marker.replace(
+                "\n    documentation", "\n    kind: Class\n    documentation"
+            ),
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_ts import SCIPTypeScriptGraphDecoder
+
+    serial_graph = SCIPTypeScriptGraphDecoder(
+        str(index), project_root=str(fixture_root)
+    ).decode()
+    core_graph = SCIPDecoderCore(
+        str(index),
+        project_root=str(fixture_root),
+        language="ts",
+    ).decode()
+
+    _assert_graph_parity(serial_graph, core_graph, "typescript-explicit-kind")
+    symbol = "schema-v5-fixture@1.0.0:src/types.ts:Runner"
+    attrs = serial_graph.get_node_info_by_name(symbol)
+    assert attrs["symbol_kind"] == "class"
 
 
 # --------------------------------------------------------------------------

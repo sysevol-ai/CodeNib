@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -8,19 +8,20 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <vector>
 
-using codeminer::core::CodeGraph;
-using codeminer::core::NODE_TYPE_CLASS;
-using codeminer::core::NODE_TYPE_DIRECTORY;
-using codeminer::core::NODE_TYPE_FILE;
-using codeminer::core::NODE_TYPE_METHOD;
-using codeminer::core::ROOT_NODE;
-using codeminer::core::SCIPGraphDecoder;
+using codenib::core::CodeGraph;
+using codenib::core::NODE_TYPE_CLASS;
+using codenib::core::NODE_TYPE_DIRECTORY;
+using codenib::core::NODE_TYPE_FILE;
+using codenib::core::NODE_TYPE_METHOD;
+using codenib::core::ROOT_NODE;
+using codenib::core::SCIPGraphDecoder;
 
 namespace {
 
@@ -30,7 +31,7 @@ public:
     auto base = std::filesystem::temp_directory_path();
     auto timestamp =
         std::chrono::steady_clock::now().time_since_epoch().count();
-    path_ = base / ("codeminer_scip_decoder_test-" + std::to_string(timestamp));
+    path_ = base / ("codenib_scip_decoder_test-" + std::to_string(timestamp));
     std::error_code ec;
     std::filesystem::create_directories(path_, ec);
     if (ec) {
@@ -130,26 +131,26 @@ write_test_index(const std::filesystem::path &project_root) {
 }
 
 void assert_decoder_registry() {
-  auto rb = codeminer::core::canonical_scip_decoder_language("rb");
+  auto rb = codenib::core::canonical_scip_decoder_language("rb");
   assert(rb.has_value());
   assert(*rb == "ruby");
 
-  auto js = codeminer::core::canonical_scip_decoder_language("js");
+  auto js = codenib::core::canonical_scip_decoder_language("js");
   assert(js.has_value());
   assert(*js == "typescript");
 
-  assert(codeminer::core::is_scip_decoder_language_supported("python"));
-  assert(!codeminer::core::is_scip_decoder_language_supported("java"));
+  assert(codenib::core::is_scip_decoder_language_supported("python"));
+  assert(!codenib::core::is_scip_decoder_language_supported("java"));
 
   const std::vector<std::string> accepted =
-      codeminer::core::accepted_scip_decoder_languages();
+      codenib::core::accepted_scip_decoder_languages();
   assert(accepted.size() == 8);
   assert(accepted.front() == "python");
   assert(accepted.back() == "js");
 
   try {
-    (void)codeminer::core::make_scip_decoder("java", "index.decoded",
-                                             std::nullopt);
+    (void)codenib::core::make_scip_decoder("java", "index.decoded",
+                                           std::nullopt);
     assert(false && "unknown languages must throw");
   } catch (const std::invalid_argument &error) {
     const std::string message = error.what();
@@ -193,11 +194,14 @@ int main(int argc, char **argv) {
   const auto file_info = graph.get_node_info_by_name("sample/module.py");
   assert(file_info.has_value());
   assert(file_info->type == NODE_TYPE_FILE);
+  assert(!file_info->has_definition.has_value());
 
   const std::string class_symbol = "sample/module.py:SampleClass";
   const auto class_info = graph.get_node_info_by_name(class_symbol);
   assert(class_info.has_value());
   assert(class_info->type == NODE_TYPE_CLASS);
+  assert(class_info->has_definition.has_value());
+  assert(*class_info->has_definition);
 
   const std::string method_symbol =
       "sample/module.py:SampleClass.sample_method()";
@@ -215,6 +219,15 @@ int main(int argc, char **argv) {
     }
   }
   assert(found_method_neighbor);
+
+  const auto serialized_path = temp_project.path() / "graph.json";
+  graph.save_graph(serialized_path.string());
+  std::ifstream serialized_file(serialized_path);
+  const std::string serialized(
+      (std::istreambuf_iterator<char>(serialized_file)),
+      std::istreambuf_iterator<char>());
+  assert(serialized.find("\"symbol_kind\": null") != std::string::npos);
+  assert(serialized.find("\"has_definition\": true") != std::string::npos);
 
   return 0;
 }

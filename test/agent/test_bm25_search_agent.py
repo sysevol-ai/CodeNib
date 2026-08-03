@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.agent.runner import AgentRunner
-from codeminer.agent.skills.loader import SkillLoader
-from codeminer.agent.skills.registry import SkillRegistry
+from codenib.agent.runner import AgentRunner
+from codenib.agent.skills.loader import SkillLoader
+from codenib.agent.skills.registry import SkillRegistry
 
 BM25_INDEX_PATH = "/tmp/bm25_e2e_index"
 
@@ -39,10 +39,10 @@ class TestBM25SearchAgentE2E:
     @pytest.fixture(scope="class")
     def real_bm25_search(self, httpie_cli_repo):
         """Load bm25_search skill with real BM25 index over httpie/cli."""
-        import codeminer.agent.skills as pkg
-        from codeminer.code_chunker import CodeChunker, RepoChunkingConfig
-        from codeminer.index.sparse_idx.bm25_index import BM25CodeIndexer
-        from codeminer.ops.retrieve import RetrieveContext
+        import codenib.agent.skills as pkg
+        from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+        from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+        from codenib.ops.retrieve import RetrieveContext
 
         repo_path = str(httpie_cli_repo)
         documents_file = Path(BM25_INDEX_PATH) / "documents.json"

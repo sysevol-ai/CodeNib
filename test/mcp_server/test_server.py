@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,9 +11,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from codeminer.compiler.manifest import RepoManifest
-from codeminer.mcp import server as server_mod
-from codeminer.types import NodeInfo
+from codenib.compiler.manifest import RepoManifest
+from codenib.mcp import server as server_mod
+from codenib.types import NodeInfo
 
 
 @pytest.fixture(autouse=True)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,8 +15,8 @@ import json
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from codeminer.dataset.collect.swebench_sample import SamplingConfig, run_sampling
-from codeminer.log_utils import get_logger
+from codenib.dataset.collect.swebench_sample import SamplingConfig, run_sampling
+from codenib.log_utils import get_logger
 
 logger = get_logger(__name__)
 

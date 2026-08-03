@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from codeminer.eval.agent_runner.format_diagnostics import (
+from codenib.eval.agent_runner.format_diagnostics import (
     FormatDiagnostics,
     load_format_diagnostics,
 )

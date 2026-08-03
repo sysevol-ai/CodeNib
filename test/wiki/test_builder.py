@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -11,8 +11,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from codeminer.web.repo_registry import _readme_summary
-from codeminer.wiki.builder import WikiBuilder, _slug, _top_module
+from codenib.repository_summary import readme_summary
+from codenib.wiki.builder import (
+    Symbol,
+    WikiBuilder,
+    _is_supporting_area,
+    _module_label,
+    _slug,
+    _top_module,
+)
 
 
 @dataclass
@@ -94,19 +101,79 @@ def test_readme_summary_prefers_tagline():
         "To install, run pip install myproject from PyPI today.\n\n"
         "My Project is a fast, friendly library for doing useful things.\n"
     )
-    out = _readme_summary(md)
+    out = readme_summary(md)
     assert "fast, friendly library" in out
     assert "install" not in out.lower()
 
 
 def test_readme_summary_skips_labels_and_short_lines():
-    assert _readme_summary("Requirements:\nGo 1.21\n") == ""  # label + short line
+    assert readme_summary("Requirements:\nGo 1.21\n") == ""  # label + short line
+
+
+def test_readme_summary_uses_descriptive_heading_over_setup_commands():
+    readme = (
+        "# Efficient ASE Framework based on SGLang\n\n"
+        "## Setup\n\n"
+        "```bash\n"
+        "conda create -n flashcoder python=3.10 -y\n"
+        "```\n\n"
+        "This command will deploy a backend inference server.\n\n"
+        "You can choose any model from the catalog.\n\n"
+        "Warning: Do not interrupt the cleanup process.\n"
+    )
+
+    assert readme_summary(readme) == "Efficient ASE Framework based on SGLang"
+
+
+def test_readme_summary_joins_wrapped_markdown_paragraph():
+    readme = (
+        "# {fmt}\n\n"
+        "**{fmt}** is an open-source formatting library providing a fast and safe\n"
+        "alternative to C stdio and C++ iostreams.\n\n"
+        "## Documentation\n"
+    )
+
+    assert readme_summary(readme, limit=600) == (
+        "{fmt} is an open-source formatting library providing a fast and safe "
+        "alternative to C stdio and C++ iostreams."
+    )
 
 
 def test_top_module_depth_two_and_slug():
     assert _top_module("pkg/mod/a.py") == "pkg/mod"
-    assert _top_module("solo.py") == "solo.py"  # top-level file: itself
+    assert _top_module("pkg/a.py") == "pkg"
+    assert _top_module("solo.py") == "root"
+    assert _module_label("root") == "Repository root"
+    assert _is_supporting_area("pkg/eval")
+    assert not _is_supporting_area("pkg/runtime")
     assert _slug("astropy/IO Fits") == "astropy-io-fits"
+
+
+def test_salient_files_rank_core_code_before_large_evaluation_helpers(repo_dir):
+    builder = WikiBuilder(_make_bundle(repo_dir))
+    builder._symbols_cache = (
+        Symbol(
+            file="pkg/runtime.py",
+            name="run",
+            type="function",
+            start_line=0,
+            end_line=9,
+            content="def run(): pass",
+        ),
+        Symbol(
+            file="pkg/eval/study.py",
+            name="run_study",
+            type="function",
+            start_line=0,
+            end_line=999,
+            content="def run_study(): pass",
+        ),
+    )
+
+    assert builder._salient_files(limit=2) == [
+        "pkg/runtime.py",
+        "pkg/eval/study.py",
+    ]
 
 
 def test_page_tree_has_overview_and_modules(repo_dir):
@@ -133,6 +200,41 @@ def test_module_page_surfaces_classes_and_links(repo_dir):
     assert c["start_line"] >= 1  # 0-based -> 1-based
 
 
+def test_symbol_content_is_hydrated_from_source(repo_dir):
+    source = (
+        "# module docs\n"
+        "\n"
+        "def run():\n"
+        '    """Return the runtime status."""\n'
+        '    return "ready"\n'
+    )
+    with open(f"{repo_dir}/pkg/mod/runtime.py", "w", encoding="utf-8") as handle:
+        handle.write(source)
+    document = _Doc(
+        "pkg mod runtime py run normalized retrieval tokens",
+        {
+            "file": f"{repo_dir}/pkg/mod/runtime.py",
+            "name": "run",
+            "chunk_type": "function",
+            "start_line": 2,
+            "end_line": 4,
+        },
+    )
+    bundle = _make_bundle(repo_dir)
+    bundle.vector_store = None
+    bundle.bm25 = SimpleNamespace(documents=[document])
+
+    builder = WikiBuilder(bundle)
+    symbol = builder._symbols()[0]
+    page = builder.page("mod__pkg-mod")
+
+    assert symbol.content == (
+        "def run():\n" '    """Return the runtime status."""\n' '    return "ready"'
+    )
+    assert "normalized retrieval tokens" not in page["markdown"]
+    assert "def run():" in page["citations"][0]["content"]
+
+
 def test_source_traversal_guard(repo_dir):
     wb = WikiBuilder(_make_bundle(repo_dir))
     assert wb.source("../../../etc/passwd") is None
@@ -145,14 +247,65 @@ def test_overview_links_modules(repo_dir):
     page = wb.page("overview")
     assert "?p=mod__" in page["markdown"]
     assert page["diagram"].startswith("graph TD")
+    assert "Repository at a glance" in page["markdown"]
+    assert "Representative definitions" in page["markdown"]
+    assert "```mermaid" not in page["markdown"]
+
+
+def test_overview_uses_indexed_source_file_count(repo_dir):
+    bundle = _make_bundle(repo_dir)
+    bundle.manifest = SimpleNamespace(
+        languages=["python"],
+        file_count=99,
+        indexes={
+            "bm25": SimpleNamespace(metadata={"source_file_count": 3}),
+        },
+    )
+
+    markdown = WikiBuilder(bundle).page("overview")["markdown"]
+
+    assert "| python | 3 | 4 |" in markdown
+    assert "| python | 99 |" not in markdown
+
+
+def test_overview_uses_readme_purpose_without_a_model(repo_dir):
+    with open(f"{repo_dir}/README.md", "w", encoding="utf-8") as handle:
+        handle.write(
+            "# ProjectX\n\n"
+            "ProjectX coordinates indexed source evidence for repository tools.\n"
+        )
+
+    markdown = WikiBuilder(_make_bundle(repo_dir)).page("overview")["markdown"]
+
+    assert "ProjectX coordinates indexed source evidence" in markdown
+    assert "generated from" not in markdown.lower()
+
+
+def test_architecture_reports_area_facts_and_source_citations(repo_dir):
+    page = WikiBuilder(_make_bundle(repo_dir)).page("architecture")
+    markdown = page["markdown"]
+
+    assert "4 of 4 indexed named definitions" in markdown
+    assert "## Module inventory" in markdown
+    assert "| [**pkg/mod**](?p=mod__pkg-mod) | 2 | 1 | 3 | 3 |" in markdown
+    assert "## Key definitions" in markdown
+    assert "| Definition | Kind | Area | Source |" in markdown
+    assert "`Model.fit`" in markdown
+    assert "```mermaid" not in markdown
+    assert page["citations"]
+    assert {citation["file"] for citation in page["citations"]} >= {
+        "pkg/mod/a.py",
+        "pkg/util/c.py",
+    }
 
 
 # -- Critique #8: LLM-authored content layer ---------------------------------
 
-from codeminer.wiki.narrator import Narrator, _no_thinking_kwargs  # noqa: E402
+from codenib.llm.litellm_chat import _no_thinking_kwargs  # noqa: E402
+from codenib.wiki.narrator import Narrator  # noqa: E402
 
 
-def test_narrator_gemini_25_uses_litellm_thinking_zero_budget():
+def test_shared_litellm_adapter_disables_gemini_25_thinking():
     assert _no_thinking_kwargs("vertex_ai/gemini-2.5-flash") == {
         "thinking": {"type": "disabled", "budget_tokens": 0}
     }
@@ -176,10 +329,11 @@ def test_overview_has_no_swebench_artifact(repo_dir):
     assert "Some bug happened" not in md
 
 
-def test_fallback_overview_keeps_templated_lead(repo_dir):
-    """G6: disabled narrator -> the templated factual lead is used."""
+def test_fallback_overview_keeps_factual_lead(repo_dir):
+    """G6: disabled narrator -> a deterministic repository fact is used."""
     md = WikiBuilder(_make_bundle(repo_dir)).page("overview")["markdown"]
-    assert "generated from" in md.lower()
+    assert "`o/r` is a Python repository." in md
+    assert "generated from" not in md.lower()
 
 
 class _FakeNarrator:

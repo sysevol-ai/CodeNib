@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from codeminer.agent.rerank_agent import RerankAgent
-from codeminer.dataset.swebench import SwebenchDataset
-from codeminer.graph.roi_subgraph import ROISubgraph
-from codeminer.index import BM25CodeIndexer
-from codeminer.llm.litellm_chat import LiteLLMChat
-from codeminer.ls_router import LSIndexer
+from codenib.agent.rerank_agent import RerankAgent
+from codenib.dataset.swebench import SwebenchDataset
+from codenib.graph.roi_subgraph import ROISubgraph
+from codenib.index import BM25CodeIndexer
+from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.slow
 
@@ -47,8 +47,8 @@ if __name__ == "__main__":
         print(f"Problem statement: {instance['problem_statement']}")
         dataset_obj.process_instance(instance)
         repo_path = dataset_obj.get_repo_path(instance)
-        # set output path with ~/.codeminer/instance_id
-        output_path = str(Path.home()) + "/.codeminer/" + instance["instance_id"]
+        # set output path with ~/.codenib/instance_id
+        output_path = str(Path.home()) + "/.codenib/" + instance["instance_id"]
 
         # setup codegraph
         repo_indexer = LSIndexer(repo_path, output_dir=output_path)
