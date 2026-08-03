@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import signal
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,53 @@ import pytest
 from codenib.scip_interface import scip_indexer_base, scip_indexer_python
 from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
 from codenib.scip_interface.scip_pb2 import Index
+
+
+def test_checked_run_kills_process_group_when_caller_cancels(monkeypatch):
+    class InterruptedProcess:
+        pid = 1234
+        args = ["scip-python", "index"]
+
+        def __init__(self):
+            self.communicate_calls = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def communicate(self, timeout=None):
+            self.communicate_calls += 1
+            if timeout is not None:
+                raise KeyboardInterrupt
+            return "", ""
+
+        def poll(self):
+            return None
+
+    process = InterruptedProcess()
+    killed = []
+    monkeypatch.setattr(
+        scip_indexer_python.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+    monkeypatch.setattr(scip_indexer_python.os, "getpgid", lambda pid: pid + 1)
+    monkeypatch.setattr(
+        scip_indexer_python.os,
+        "killpg",
+        lambda pgid, sig: killed.append((pgid, sig)),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        scip_indexer_python._run_checked_with_timeout(
+            process.args,
+            timeout=30,
+        )
+
+    assert killed == [(1235, signal.SIGKILL)]
+    assert process.communicate_calls == 2
 
 
 def _captured_subprocess_env(monkeypatch, tmp_path, node_options=None):

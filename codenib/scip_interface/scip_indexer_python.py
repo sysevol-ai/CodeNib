@@ -55,7 +55,7 @@ def _scip_python_index_timeout() -> float:
 
 def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
     """Like ``subprocess.run(cmd, check=True, timeout=...)`` but kills the whole
-    process group on timeout.
+    process group on timeout or caller cancellation.
 
     ``subprocess.run``'s own timeout only SIGKILLs the immediate child. conda
     (libmamba solver) and scip-python (Node) spawn grandchildren that survive
@@ -73,6 +73,19 @@ def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
                 # The process group may already have exited between timeout and kill.
                 # In that race, there is nothing left to terminate.
                 logger.debug("Process group %s already exited before SIGKILL", proc.pid)
+            proc.communicate()
+            raise
+        except BaseException:
+            # A benchmark cancellation must not orphan the Node indexer. The
+            # next run could otherwise race the old process for the same
+            # output and temporary repository configuration.
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                logger.debug(
+                    "Process group %s already exited during cancellation",
+                    proc.pid,
+                )
             proc.communicate()
             raise
         retcode = proc.poll()
