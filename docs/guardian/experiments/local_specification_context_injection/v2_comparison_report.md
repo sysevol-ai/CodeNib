@@ -1,4 +1,4 @@
-# Proposal-ready report: behavioral obligations as an agent intervention
+# Proposal-ready report: local specifications as an agent intervention
 
 ## Executive summary
 
@@ -20,9 +20,9 @@ result:
   several obligations were ambiguous or wrong. It achieved 25/60 (41.7%),
   and an invented artifact-relocation obligation drove IGEL from 3/12 to 0/12.
 - After correcting those prompts to state concrete, repository-grounded
-  obligations, the reduced v2 experiment achieved 19/30 exact successes
-  (63.3%), versus 27/60 (45.0%) in the original no-context baseline. F2P rose
-  from 91.57% to 93.91%, and P2P rose from 93.31% to 99.99%.
+  obligations, the completed v2 experiment achieved 39/60 exact successes
+  (65.0%), versus 27/60 (45.0%) in the original no-context baseline. F2P rose
+  from 91.57% to 93.66%, and P2P rose from 93.31% to 100.00% after rounding.
 
 The result supports a specific proposal direction:
 
@@ -98,7 +98,7 @@ The experiment tests three related hypotheses:
 | Original | No injected context | 60 | 27/60 (45.0%) | 1,835/2,004 (91.57%) | Baseline |
 | Universal review | Same generic review checklist for every task | 60 | 25/60 (41.7%) | 1,820/2,004 (90.82%) | More review did not improve understanding |
 | Obligation v1 | Task-specific, oracle-informed obligations | 60 | 25/60 (41.7%) | 1,707/2,004 (85.18%) | Ambiguous/wrong obligations can harm |
-| Obligation v2 | Corrected concrete, oracle-informed obligations | 30 | 19/30 (63.3%) | 941/1,002 (93.91%) | Diagnostic value of correct obligations |
+| Obligation v2 | Corrected concrete, oracle-informed obligations | 60 | 39/60 (65.0%) | 1,877/2,004 (93.66%) | Diagnostic value of correct obligations |
 
 This lineage is important. Comparing only the original baseline with v2 could
 suggest that any task-specific hint helps. The universal and v1 failures show
@@ -117,7 +117,7 @@ model*, not simply more instructions or more task-related text.
   - sqlite-utils safe import checkpoints.
 - Models: `gpt-5.6-luna`, `gpt-5.6-terra`, and `gpt-5.6-sol`.
 - Reasoning effort: medium.
-- Trials: two per task/model setting, 30 total.
+- Trials: four per task/model setting, 60 total.
 - Concurrency: three.
 - Baseline being compared: the original four-trial-per-setting, 60-trial
   no-context matrix.
@@ -163,58 +163,64 @@ diagnostic intervention, not a valid benchmark submission.
 
 | Metric | Original | Obligation v2 | Change |
 | --- | ---: | ---: | ---: |
-| Exact success | 27/60 (45.0%) | 19/30 (63.3%) | +18.3 percentage points |
-| F2P | 1,835/2,004 (91.57%) | 941/1,002 (93.91%) | +2.35 points |
-| P2P | 47,699/51,120 (93.31%) | 25,558/25,560 (99.99%) | +6.68 points |
+| Exact success | 27/60 (45.0%) | 39/60 (65.0%) | +20.0 percentage points |
+| F2P | 1,835/2,004 (91.57%) | 1,877/2,004 (93.66%) | +2.10 points |
+| P2P | 47,699/51,120 (93.31%) | 51,118/51,120 (100.00%) | +6.69 points |
 
-The exact-success risk ratio is 1.41: a v2 trial passed 41% more often than an
-original trial in this sample. Because v2 contains only 30 independent trials,
-this difference is not statistically conclusive by itself
-(two-sided Fisher exact p = 0.121). It should be treated as an effect-size
-estimate that motivates a larger confirmatory experiment.
+The exact-success risk ratio is 1.44: a v2 trial passed 44% more often than an
+original trial in this sample. An unstratified two-sided Fisher exact test gives
+`p = 0.043`. This is useful supporting evidence, but not a confirmatory test:
+the intervention is oracle-informed, the tasks were selected rather than
+randomly sampled, and the interim 30-trial result was inspected before the
+planned jobs 3 and 4 were completed.
 
 ### By task
 
 | Task | Original exact | v2 exact | Original F2P | v2 F2P |
 | --- | ---: | ---: | ---: | ---: |
-| IGEL | 3/12 (25.0%) | 3/6 (50.0%) | 196/288 (68.06%) | 107/144 (74.31%) |
-| Textual | 4/12 (33.3%) | 3/6 (50.0%) | 247/276 (89.49%) | 128/138 (92.75%) |
-| IPython | 8/12 (66.7%) | 6/6 (100%) | 197/204 (96.57%) | 102/102 (100%) |
-| FastAPI | 4/12 (33.3%) | 3/6 (50.0%) | 493/516 (95.54%) | 248/258 (96.12%) |
-| sqlite-utils | 8/12 (66.7%) | 4/6 (66.7%) | 702/720 (97.50%) | 356/360 (98.89%) |
-| **Total** | **27/60 (45.0%)** | **19/30 (63.3%)** | **1,835/2,004 (91.57%)** | **941/1,002 (93.91%)** |
+| IGEL | 3/12 (25.0%) | 7/12 (58.3%) | 196/288 (68.06%) | 215/288 (74.65%) |
+| Textual | 4/12 (33.3%) | 5/12 (41.7%) | 247/276 (89.49%) | 257/276 (93.12%) |
+| IPython | 8/12 (66.7%) | 11/12 (91.7%) | 197/204 (96.57%) | 191/204 (93.63%) |
+| FastAPI | 4/12 (33.3%) | 8/12 (66.7%) | 493/516 (95.54%) | 500/516 (96.90%) |
+| sqlite-utils | 8/12 (66.7%) | 8/12 (66.7%) | 702/720 (97.50%) | 714/720 (99.17%) |
+| **Total** | **27/60 (45.0%)** | **39/60 (65.0%)** | **1,835/2,004 (91.57%)** | **1,877/2,004 (93.66%)** |
 
-IPython is the cleanest positive result. Its prompt names concrete host
-lifecycle and channel-separation obligations, and every v2 trial passes.
+IPython has the highest exact success at 11/12. Its prompt names concrete host
+lifecycle and channel-separation obligations. The one failed Luna trial scored
+only 4/17, however, so aggregate IPython F2P is lower than the original despite
+three additional exact passes. Correct obligations improved pass probability
+but did not prevent one severe implementation failure.
 
 IGEL is the strongest evidence that obligation *quality* matters. The v1 prompt
 introduced an unsupported relocation model and produced 0/12 passes. After v2
 removed that requirement and stated the repository's configured-path seam,
-IGEL recovered to 3/6.
+IGEL recovered to 7/12. Its failures remain bimodal: four trials scored 6/24
+and one scored 23/24, so artifact-path realization is still brittle even under
+the corrected obligation model.
 
-Textual and FastAPI improve but retain three failures each. Correct obligations
-reduce ambiguity, but they do not guarantee correct protocol parsing, routing,
-or propagation.
+FastAPI doubles exact success from 4/12 to 8/12 while missing only two of
+37,608 P2P checks. This is the strongest repository-wide compatibility result.
+Textual improves more modestly from 4/12 to 5/12; most remaining failures are
+near-complete, but Luna still passes none of its four trials.
 
-sqlite-utils exact success is unchanged, although only four of 360 feature
-checks fail. This suggests that the remaining failures are narrow
-implementation or integration errors rather than a broad misunderstanding of
-the feature.
+sqlite-utils exact success is unchanged at 8/12, although only six of 720
+feature checks fail. Its remaining failures are narrow implementation or
+integration errors rather than broad feature omissions.
 
 ### By model
 
 | Model | Original exact | v2 exact | Original F2P | v2 F2P |
 | --- | ---: | ---: | ---: | ---: |
-| Luna | 5/20 (25.0%) | 6/10 (60.0%) | 592/668 (88.62%) | 323/334 (96.71%) |
-| Terra | 5/20 (25.0%) | 5/10 (50.0%) | 595/668 (89.07%) | 303/334 (90.72%) |
-| Sol | 17/20 (85.0%) | 8/10 (80.0%) | 648/668 (97.01%) | 315/334 (94.31%) |
+| Luna | 5/20 (25.0%) | 11/20 (55.0%) | 592/668 (88.62%) | 618/668 (92.51%) |
+| Terra | 5/20 (25.0%) | 11/20 (55.0%) | 595/668 (89.07%) | 611/668 (91.47%) |
+| Sol | 17/20 (85.0%) | 17/20 (85.0%) | 648/668 (97.01%) | 648/668 (97.01%) |
 
-The gain is concentrated in Luna and Terra. Sol was already near ceiling and
-slips slightly in the smaller v2 sample. A plausible interpretation is that
-explicit obligations provide more new planning information to weaker agents,
-while a stronger agent often reconstructs the same model independently and may
-gain less from additional context. More trials are needed before treating this
-as a stable model-capability interaction.
+The gain is entirely concentrated in Luna and Terra: both improve from 5/20 to
+11/20. Sol is exactly unchanged at 17/20 and 648/668 F2P. This is consistent
+with explicit obligations providing more new planning information to weaker
+agents, while Sol often reconstructs the same model independently. The
+interaction is striking but still comes from five selected tasks and should be
+tested on a broader corpus.
 
 ## What the experiment supports
 
@@ -241,11 +247,13 @@ The strongest proposal claim is therefore:
 - It does not show that current Guardian can autonomously infer the v2 prompts.
 - It does not isolate prompting from additional test/probe suggestions, because
   the prompts include both obligations and discriminating experiments.
-- It does not establish statistical significance with 30 v2 trials.
+- Its nominal `p = 0.043` does not make it confirmatory because the prompt is
+  oracle-informed, task selection is non-random, and the interim result was
+  observed before completion.
 - It does not establish generalization beyond five selected Python tasks.
 - It does not show that all failures are obligation failures. The attribution
   study implicated implementation failure in 24/65 analyzable failures, and
-  v2 still failed 11 trials.
+  v2 still failed 21 trials.
 
 ## Implication for the Guardian prototype
 
@@ -304,7 +312,8 @@ Use four arms on the same task/model matrix:
 
 For a more credible result:
 
-- use at least four trials per task/model setting;
+- retain at least four trials per task/model setting and pre-register the
+  stopping rule;
 - reuse identical task/model settings and, where possible, paired seeds;
 - include additional Python and non-Python tasks;
 - predefine handling for agent, launcher, and verifier timeouts;
@@ -317,7 +326,7 @@ For a more credible result:
 
 The key prototype target is not to match every oracle detail. It is to recover
 enough high-impact obligations to close part of the gap between the original
-45.0% baseline and the 63.3% oracle-informed ceiling.
+45.0% baseline and the 65.0% oracle-informed ceiling.
 
 ## Reproducibility and artifacts
 
@@ -328,10 +337,10 @@ enough high-impact obligations to close part of the gap between the original
 - Obligation attribution audit:
   `docs/guardian/experiments/obligation_model_attribution/report.md`
 - v1 prompt investigation:
-  `docs/guardian/experiments/behavioral_obligation_context_injection/prompt_investigation.md`
+  `docs/guardian/experiments/local_specification_context_injection/prompt_investigation.md`
 - v2 prompts:
-  `docs/guardian/experiments/behavioral_obligation_context_injection/prompts_v2`
-- v2 30-trial output:
+  `docs/guardian/experiments/local_specification_context_injection/prompts_v2`
+- v2 60-trial output (the directory retains its original interim name):
   `data/deepswe_outputs_context_injection/behavioral_obligations_python5_v2_2trials`
 - Luna/sqlite timeout replacement:
   `data/deepswe_outputs_context_injection/behavioral_obligations_python5_v2_2trials_retry_luna_sqlite_job2`

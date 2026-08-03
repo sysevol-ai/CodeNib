@@ -1,4 +1,4 @@
-# Behavioral-obligation context-injection experiment
+# Local-specification context-injection experiment
 
 This experiment injects one task-specific behavioral-obligation model into each
 of the five original Python DeepSWE tasks.
@@ -31,5 +31,5 @@ they have not yet been evaluated.
 See `prompt_investigation.md` for the trial-level diagnosis and the rationale
 for each revision.
 
-See `v2_comparison_report.md` for the reduced 30-trial v2 comparison against
+See `v2_comparison_report.md` for the completed 60-trial v2 comparison against
 the original no-context baseline.
