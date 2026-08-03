@@ -8,6 +8,7 @@ import json
 import pickle
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -143,6 +144,21 @@ def test_eligibility_checks_checkout_manifest_commit_and_capabilities(
     assert eligible.eligible
     assert eligible.repo_commit == commit
     assert eligible.manifest_commit == commit
+
+    with patch(
+        "codenib.mcp.context.ServerContext.validate_views",
+        side_effect=RuntimeError("probe failed"),
+    ):
+        failed_probe = inspect_case_eligibility(
+            case,
+            agent="orcaloca",
+            provider="codenib",
+            required_capabilities=("symbol_navigation",),
+        )
+    assert not failed_probe.eligible
+    assert any(
+        "runtime view validation failed" in reason for reason in failed_probe.reasons
+    )
 
     with graph_path.open("rb") as handle:
         stale_graph = pickle.load(handle)

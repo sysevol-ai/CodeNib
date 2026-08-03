@@ -42,6 +42,26 @@ _VIEW_DEPENDENCIES = {
 }
 
 
+class _DimensionProbeEmbedding:
+    """Avoid model/API initialization while validating saved vector files."""
+
+    def __init__(self, dimension: int) -> None:
+        self.dimension = dimension
+
+    def embed_query(self, _text: str) -> list[float]:
+        return [0.0] * self.dimension
+
+    def embed_documents(self, _texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("validation probe cannot embed documents")
+
+
+def _close_vector(vector: CodeVectorStore) -> None:
+    try:
+        vector.close()
+    except Exception as exc:
+        logger.warning("Failed to release vector resources: %s", exc)
+
+
 def _resolve_views(views: Iterable[str] | None) -> frozenset[str]:
     """Validate a view selection and add runtime dependencies."""
 
@@ -97,7 +117,7 @@ class ServerContext:
     @classmethod
     def load(
         cls,
-        manifest_path: str | Path,
+        manifest_path: RepoManifest | str | Path,
         *,
         views: Iterable[str] | None = None,
     ) -> ServerContext:
@@ -109,7 +129,11 @@ class ServerContext:
         the others. Failed views are recorded in ``errors``.
         """
         selected = _resolve_views(views)
-        manifest = RepoManifest.load(manifest_path)
+        manifest = (
+            manifest_path
+            if isinstance(manifest_path, RepoManifest)
+            else RepoManifest.load(manifest_path)
+        )
         ctx = cls(manifest=manifest)
 
         for view, loader_name in _VIEW_LOADERS:
@@ -131,6 +155,49 @@ class ServerContext:
             list(ctx.errors) or "none",
         )
         return ctx
+
+    @classmethod
+    def validate_views(
+        cls,
+        manifest: RepoManifest | str | Path,
+        *,
+        views: Iterable[str],
+    ) -> Dict[str, str]:
+        """Open selected artifacts without initializing a vector query model.
+
+        The returned mapping contains only unavailable views. Vector indexes
+        follow the normal FAISS/document load path with a fixed-dimension
+        embedding probe, then release their resources before returning.
+        """
+
+        selected = _resolve_views(views)
+        resolved_manifest = (
+            manifest
+            if isinstance(manifest, RepoManifest)
+            else RepoManifest.load(manifest)
+        )
+        ctx = cls(manifest=resolved_manifest)
+        available: set[str] = set()
+        try:
+            for view, loader_name in _VIEW_LOADERS:
+                if view not in selected:
+                    continue
+                loader = getattr(ctx, loader_name)
+                if view == "vector":
+                    loader(probe=True)
+                else:
+                    loader()
+                if getattr(ctx, view, None) is not None:
+                    available.add(view)
+            return {
+                view: ctx.errors.get(view, "view did not load")
+                for view in selected
+                if view not in available
+            }
+        finally:
+            if ctx.vector is not None:
+                _close_vector(ctx.vector)
+                ctx.vector = None
 
     # ------------------------------------------------------------------
     # Private loaders
@@ -213,12 +280,13 @@ class ServerContext:
             self.errors["zoekt"] = str(exc)
             logger.warning("Failed to start zoekt-webserver: %s", exc)
 
-    def _load_vector(self) -> None:
+    def _load_vector(self, *, probe: bool = False) -> None:
         """Load vector embedding index if available."""
         entry = self.manifest.indexes.get("vector")
         if not entry or not self.manifest.index_is_current("vector"):
             return
 
+        vector = None
         try:
             from ..index.embedding.vector_store import CodeVectorStore
 
@@ -237,21 +305,25 @@ class ServerContext:
             ):
                 raise ValueError("vector manifest has incomplete embedding identity")
 
+            kwargs = dict(embedding_kwargs)
+            if probe:
+                kwargs["embedding"] = _DimensionProbeEmbedding(dimension)
+
             # Create CodeVectorStore with embedding model from manifest
-            self.vector = CodeVectorStore(
+            vector = CodeVectorStore(
                 embedding_model=embedding_model,
                 embedding_provider=embedding_provider,
                 dimension=dimension,
                 index_metric=cfg.get("index_metric", "ip"),
                 store_path=entry.path,
-                **embedding_kwargs,
+                **kwargs,
             )
 
             # Load FAISS index from disk
-            self.vector.load()
+            vector.load()
 
             # Validate model consistency
-            loaded_model = self.vector.embedding_model
+            loaded_model = vector.embedding_model
             manifest_model = embedding_model
             if loaded_model != manifest_model:
                 raise RuntimeError(
@@ -260,7 +332,8 @@ class ServerContext:
                     f"Re-run indexing with the correct model."
                 )
 
-            stats = self.vector.get_stats()
+            stats = vector.get_stats()
+            self.vector = vector
             logger.info(
                 "Loaded vector index from %s (%d docs, model=%s)",
                 entry.path,
@@ -268,6 +341,8 @@ class ServerContext:
                 embedding_model,
             )
         except Exception as exc:
+            if vector is not None:
+                _close_vector(vector)
             self.vector = None
             self.errors["vector"] = str(exc)
             logger.warning("Failed to load vector index: %s", exc)
