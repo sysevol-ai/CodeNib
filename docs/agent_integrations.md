@@ -15,7 +15,7 @@ budget contract. None of these labels alone claims end-to-end task quality.
 
 | Integration | Status | Required views | Provider contract | Policy and evaluation | Boundary |
 | --- | --- | --- | --- | --- | --- |
-| LocAgent | Revision-pinned supported | Symbol graph + BM25 | Pinned three-tool contract | Pinned prompts and function-calling loop; fixed-case paired runner | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
+| LocAgent | Revision-pinned supported | Symbol graph + BM25 | Pinned three-tool contract | Pinned prompts and function-calling loop; paired runner with strict common file/function@k scoring | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
 | Historical OpenHands LocAgent plugin | Contract-only | Symbol graph + BM25 | Python bindings for the pinned plugin revision | Covered through the LocAgent contract; policy is absent from current OpenHands CLI | No compatibility claim for other OpenHands revisions |
 | OrcaLoca SearchAgent | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
 | SWE-Explore | Reference-only | N/A | No adapter | No policy runner or paired evaluation | Used only to distinguish trajectory-read labels from golden-patch localization metrics |
@@ -412,6 +412,11 @@ python scripts/analysis/compare_agent_integrations.py locagent \
   --native-index-dir /path/to/locagent-index \
   --model "$LOCAGENT_MODEL"
 
+python scripts/analysis/compare_agent_integrations.py score-locagent \
+  --cases /path/to/cases.json \
+  --results-dir results/locagent-paired \
+  --output results/locagent-summary.json
+
 python scripts/analysis/compare_agent_integrations.py orcaloca \
   --cases /path/to/cases.json \
   --output-dir results/orcaloca-paired \
@@ -433,6 +438,14 @@ missing and failed cells in the requested denominator, verifies recorded case
 digests against the active case set, and rejects mixed-model aggregation.
 `--allow-incomplete` writes an explicit partial audit; it does not turn a
 partial matrix into a complete one.
+
+Both scorers require explicit golden-patch `gold_files` and `gold_functions`
+in each case. `score-locagent` reports the common ranked accuracy, precision,
+and recall contract at configurable cutoffs; `score-orcaloca` reports
+OrcaLoca's unranked File Match and Function Match contract. They intentionally
+do not compare the two policies under one metric. A manifest whose persisted
+graph predates the current graph schema fails preflight and must be rebuilt;
+historical successful cells do not count as current delivery evidence.
 
 The OrcaLoca comparison follows the
 [trace-analysis boundary](#trace-analysis-boundary). File Match and Function

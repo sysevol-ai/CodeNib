@@ -77,6 +77,74 @@ def _write_result(results: Path, *, provider: str, model: str = "test-model") ->
     )
 
 
+def _write_locagent_result(
+    results: Path,
+    *,
+    provider: str,
+    model: str = "test-model",
+) -> None:
+    write_json_atomic(
+        policy_result_path(
+            results,
+            instance_id="demo__repo-1",
+            agent="locagent",
+            provider=provider,
+        ),
+        {
+            "agent": "locagent",
+            "provider": provider,
+            "instance_id": "demo__repo-1",
+            "model": model,
+            "usage": {"total_tokens": 100 if provider == "native" else 80},
+            "final_output": "src/parser.py\nFunctions: parse\n",
+        },
+    )
+
+
+def test_score_locagent_uses_common_ranked_metrics_and_strict_denominator(
+    tmp_path: Path,
+) -> None:
+    cases = tmp_path / "cases.json"
+    results = tmp_path / "results"
+    output = tmp_path / "summary.json"
+    repo = tmp_path / "repo" / "src"
+    repo.mkdir(parents=True)
+    (repo / "parser.py").write_text("def parse():\n    pass\n", encoding="utf-8")
+    _write_cases(cases)
+    payload = json.loads(cases.read_text(encoding="utf-8"))
+    payload["cases"][0]["repo_path"] = "repo"
+    cases.write_text(json.dumps(payload), encoding="utf-8")
+    _write_locagent_result(results, provider="native")
+    base_args = [
+        "score-locagent",
+        "--cases",
+        str(cases),
+        "--results-dir",
+        str(results),
+        "--output",
+        str(output),
+    ]
+
+    assert main(base_args) == 1
+    assert main([*base_args, "--allow-incomplete"]) == 0
+    partial = json.loads(output.read_text(encoding="utf-8"))
+    assert partial["coverage"]["expected_cell_count"] == 2
+    by_provider = {row["provider"]: row for row in partial["summary"]}
+    assert by_provider["native"]["file_metrics"]["1"]["accuracy"] == 1.0
+    assert by_provider["native"]["function_metrics"]["1"]["accuracy"] == 1.0
+    assert by_provider["codenib"]["failed_count"] == 1
+    assert by_provider["codenib"]["file_metrics"]["1"]["accuracy"] == 0.0
+
+    _write_locagent_result(results, provider="codenib")
+    assert main(base_args) == 0
+    complete = json.loads(output.read_text(encoding="utf-8"))
+    assert complete["coverage"]["paired_successful_count"] == 1
+    assert complete["paired_summary"]["n"] == 1
+    assert complete["paired_summary"][
+        "native_to_codenib_total_tokens_ratio_median"
+    ] == pytest.approx(1.25)
+
+
 def test_score_command_enforces_the_requested_cell_denominator(tmp_path: Path) -> None:
     cases = tmp_path / "cases.json"
     results = tmp_path / "results"
