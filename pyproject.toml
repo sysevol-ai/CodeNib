@@ -68,7 +68,7 @@ codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
 
 [project.optional-dependencies]
 agent = [
-    "litellm>=1.40.0",
+    "litellm>=1.93.0",
     "openai>=1.0.0",
 ]
 datasets = [
@@ -131,7 +131,7 @@ test = [
     "faiss-cpu>=1.7.0",
     "filelock>=3.0.0",
     "igraph>=0.11.6",
-    "litellm>=1.40.0",
+    "litellm>=1.93.0",
     "matplotlib>=3.4.0",
     "mcp>=2.0.0,<3",
     "numpy>=1.24.0",
