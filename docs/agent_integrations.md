@@ -439,6 +439,59 @@ The LocAgent checkout, Python, and native-index flags belong only to the
 optional upstream-native comparison cell. A CodeNib-only run uses
 `--provider codenib`, omits all three, and has no LlamaIndex dependency.
 
+### Fixed SWE-bench Lite coverage
+
+Prepare a broad, reproducible CodeNib-only coverage set before running the
+policy:
+
+```bash
+make scip-python-tool
+export PATH="${CODENIB_SCIP_TOOLS_DIR:-/tmp/codenib/scip-tools}:$PATH"
+export CODENIB_SCIP_PYTHON_INDEX_TIMEOUT_SECONDS=3600
+
+python scripts/analysis/prepare_swebench_policy_cases.py \
+  --dataset-json ~/.codenib/princeton-nlp__SWE-bench_Lite_test.json \
+  --output-dir results/locagent-swebench-lite-50 \
+  --count 50 \
+  --jobs 4
+
+python scripts/analysis/compare_agent_integrations.py locagent \
+  --cases results/locagent-swebench-lite-50/cases.json \
+  --output-dir results/locagent-swebench-lite-50/results \
+  --provider codenib \
+  --model "$LOCAGENT_MODEL" \
+  --max-iterations 10
+
+python scripts/analysis/compare_agent_integrations.py score-locagent \
+  --cases results/locagent-swebench-lite-50/cases.json \
+  --results-dir results/locagent-swebench-lite-50/results \
+  --provider codenib \
+  --model "$LOCAGENT_MODEL" \
+  --output results/locagent-swebench-lite-50/summary.json
+```
+
+The preparation command pins the official SWE-bench Lite dataset revision and
+the local dataset-file digest. Its label-independent, seeded selection covers
+every repository stratum, creates an isolated checkout for every base commit,
+derives labels from the golden patch, and builds the required BM25 and symbol
+graph views. A label-independent guard requires the graph to represent at
+least 95% of the commit's visible Python source files and rejects paths outside
+that commit. The final audit also requires the checkout to remain clean at its
+declared base commit. Each case report reads the actual SCIP producer and
+version from the persisted index; a failed build leaves a resumable
+`build_failure.json` sidecar. The run writes `selection.json`, `prepare_report.json`,
+`preparation_environment.json`, and `preflight.json`; `cases.json` is published
+only after every selected case is eligible. Re-running the command resumes
+valid artifacts but rejects a changed dataset or selection configuration.
+Preparation performs no model requests.
+The sample is deliberately repository-balanced coverage, not a
+population-weighted estimate over all SWE-bench Lite tasks.
+
+File metrics retain all 50 selected cases in the denominator, including failed
+model cells. Function metrics use the declared subset whose golden patch
+modifies or deletes a function present in the base snapshot; pure additions
+and non-function changes are not silently scored as function misses.
+
 Before any model call, the driver checks every requested checkout commit,
 tracked-file state, manifest commit, required capability, and actual loading of
 the required runtime views. Result files bind the selected-case digest, CodeNib
