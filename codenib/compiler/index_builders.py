@@ -542,6 +542,8 @@ class SymbolGraphBuilder:
     graph_route: str = "active"
     exclude_patterns: List[str] = field(default_factory=default_exclude_patterns)
     allow_partial_languages: bool = False
+    allow_partial_index: bool = False
+    source_coverage_fallback: bool = False
     # Admission control for incremental updates. The default proves nothing and
     # says so, which combined with require_verification=True means the builder
     # behaves exactly like a full rebuild until a real verifier is configured.
@@ -555,23 +557,28 @@ class SymbolGraphBuilder:
     def artifact_identity(self) -> Dict[str, Any]:
         graph_languages = self.languages or [self.language]
         return {
-            "builder_schema": 2,
+            "builder_schema": 3,
             "languages": list(graph_languages),
             "graph_route": self.graph_route,
             "exclude_patterns": sorted(self.exclude_patterns),
             "allow_partial_languages": self.allow_partial_languages,
+            "allow_partial_index": self.allow_partial_index,
+            "source_coverage_fallback": self.source_coverage_fallback,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
+
+    def __post_init__(self) -> None:
+        if self.allow_partial_index and not self.source_coverage_fallback:
+            raise ValueError(
+                "allow_partial_index requires source_coverage_fallback so a "
+                "partial compiler artifact cannot be published as complete"
+            )
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
         output_dir: str = kwargs["output_dir"]
 
-        from ..ls_router import (
-            GraphBuildResult,
-            build_graph_for_languages,
-            build_graph_for_languages_with_report,
-        )
+        from ..ls_router import build_graph_for_languages_with_report
 
         os.makedirs(output_dir, exist_ok=True)
         graph_languages = self.languages or [self.language]
@@ -582,37 +589,99 @@ class SymbolGraphBuilder:
             "exclude_patterns": self.exclude_patterns,
             "graph_route": self.graph_route,
         }
-        if self.allow_partial_languages:
-            result = build_graph_for_languages_with_report(
-                repo_path,
-                output_dir,
-                allow_partial=True,
-                **build_kwargs,
-            )
-        else:
-            graph = build_graph_for_languages(
-                repo_path,
-                output_dir,
-                **build_kwargs,
-            )
-            result = GraphBuildResult(
-                graph=graph,
-                requested_languages=list(graph_languages),
-                available_languages=list(graph_languages) if graph is not None else [],
-                failed_languages={},
-            )
+        if self.allow_partial_index:
+            build_kwargs["allow_partial_index"] = True
+        result = build_graph_for_languages_with_report(
+            repo_path,
+            output_dir,
+            allow_partial=self.allow_partial_languages,
+            **build_kwargs,
+        )
 
         graph = result.graph
-        if graph is None or not hasattr(graph, "graph"):
+        compiler_graph_available = graph is not None and hasattr(graph, "graph")
+        compiler_node_count = len(graph.graph.vs) if compiler_graph_available else 0
+        compiler_edge_count = len(graph.graph.es) if compiler_graph_available else 0
+        if not compiler_graph_available and not self.source_coverage_fallback:
             detail = "; ".join(
                 f"{language}: {error}"
                 for language, error in result.failed_languages.items()
             )
             suffix = f" ({detail})" if detail else ""
             raise RuntimeError(f"symbol graph builder returned no graph{suffix}")
+        if not compiler_graph_available:
+            from ..graph.code_graph import CodeGraph
+            from ..types import ROOT_NODE
+
+            graph = CodeGraph(repo_path)
+            graph.add_root_node(ROOT_NODE)
+
+        compiler_partial_languages = sorted(
+            language
+            for language, report in result.index_generation_reports.items()
+            if report.get("partial") is True
+        )
+        compiler_index_complete = (
+            False
+            if not compiler_graph_available
+            else (
+                all(
+                    result.index_generation_reports.get(language, {}).get("complete")
+                    is True
+                    for language in result.available_languages
+                )
+                if result.available_languages
+                and all(
+                    language in result.index_generation_reports
+                    for language in result.available_languages
+                )
+                else None
+            )
+        )
+        fallback_report = None
+        if self.source_coverage_fallback:
+            from ..git_snapshot import GitSourceSurface
+            from ..graph.source_coverage import supplement_graph_source_coverage
+            from ..languages import extensions_for_language
+            from .artifact_quality import graph_file_paths
+
+            surface = GitSourceSurface.load(repo_path)
+            extensions = {
+                extension
+                for language in graph_languages
+                for extension in extensions_for_language(language, "graph")
+            }
+            coverage_report = supplement_graph_source_coverage(
+                graph,
+                repo_root=repo_path,
+                surface=surface,
+                extensions=extensions,
+                represented_paths=graph_file_paths(graph),
+                exclude_patterns=self.exclude_patterns,
+            )
+            if coverage_report.get("coverage_after") != 1.0:
+                raise RuntimeError(
+                    "source coverage fallback did not cover the requested "
+                    "repository surface"
+                )
+            fallback_report = {
+                "compiler_graph_available": compiler_graph_available,
+                "compiler_index_complete": compiler_index_complete,
+                "compiler_partial_languages": compiler_partial_languages,
+                "compiler_nodes": compiler_node_count,
+                "compiler_edges": compiler_edge_count,
+                **coverage_report,
+            }
+            graph.save_graph(os.path.join(output_dir, "graph.pkl"))
+
         node_count = len(graph.graph.vs)
         if node_count == 0:
             raise RuntimeError("symbol graph builder returned an empty graph")
+        available_languages = (
+            list(graph_languages)
+            if fallback_report is not None
+            else result.available_languages
+        )
 
         return IndexStatus(
             index_type="symbol_graph",
@@ -624,10 +693,18 @@ class SymbolGraphBuilder:
             metadata={
                 **self.artifact_identity(),
                 "node_count": node_count,
-                "language": result.available_languages[0],
-                "available_languages": result.available_languages,
+                "language": available_languages[0],
+                "available_languages": available_languages,
+                "compiler_available_languages": result.available_languages,
+                "index_generation_reports": result.index_generation_reports,
+                "partial_index": bool(compiler_partial_languages),
                 "failed_languages": result.failed_languages,
                 "partial": result.partial,
+                **(
+                    {"source_coverage_report": fallback_report}
+                    if fallback_report is not None
+                    else {}
+                ),
             },
         )
 
@@ -823,6 +900,8 @@ def register_default_builders(
     embedding_max_seq_length: Optional[int] = None,
     exclude_patterns: Optional[List[str]] = None,
     allow_partial_graph_languages: bool = False,
+    allow_partial_graph_index: bool = False,
+    graph_source_coverage_fallback: bool = False,
 ) -> None:
     """Register all standard index builders with sensible defaults."""
     langs = languages or ["python"]
@@ -859,6 +938,8 @@ def register_default_builders(
             languages=list(langs),
             graph_route=graph_route,
             allow_partial_languages=allow_partial_graph_languages,
+            allow_partial_index=allow_partial_graph_index,
+            source_coverage_fallback=graph_source_coverage_fallback,
             exclude_patterns=(
                 list(exclude_patterns)
                 if exclude_patterns is not None

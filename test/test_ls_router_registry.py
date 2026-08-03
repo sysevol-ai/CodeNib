@@ -518,6 +518,7 @@ def test_build_graph_for_languages_passes_route_filter_options(tmp_path, monkeyp
         include_references=True,
         exclude_patterns=["vendor/**"],
         graph_route="lsp",
+        allow_partial_index=True,
     )
 
     assert graph is not None
@@ -525,4 +526,46 @@ def test_build_graph_for_languages_passes_route_filter_options(tmp_path, monkeyp
     assert call.language == "ruby"
     assert call.graph_route == "lsp"
     assert call.exclude_patterns == ["vendor/**"]
-    assert call.pipeline_kwargs == {"target_dir": "lib", "include_references": True}
+    assert call.pipeline_kwargs == {
+        "target_dir": "lib",
+        "include_references": True,
+        "allow_partial_index": True,
+    }
+
+
+def test_build_graph_for_languages_reports_index_generation(tmp_path, monkeypatch):
+    class FakeIndexer:
+        def __init__(self, project_root, **_kwargs):
+            self.project_root = project_root
+            self.index_generation_report = {
+                "status": "partial",
+                "complete": False,
+                "partial": True,
+                "document_count": 3,
+            }
+
+        def run_pipeline(self, **_kwargs):
+            graph = CodeGraph(str(self.project_root))
+            graph.add_file_node("partial.py")
+            graph.build_range_indexes()
+            return graph
+
+    monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
+
+    result = ls_router.build_graph_for_languages_with_report(
+        tmp_path / "repo",
+        tmp_path / "out",
+        languages=["python"],
+        skip_level=None,
+        allow_partial_index=True,
+    )
+
+    assert result.graph is not None
+    assert result.index_generation_reports == {
+        "python": {
+            "status": "partial",
+            "complete": False,
+            "partial": True,
+            "document_count": 3,
+        }
+    }

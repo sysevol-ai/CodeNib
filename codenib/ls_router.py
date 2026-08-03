@@ -24,10 +24,10 @@ Example:
     graph = decoder.decode()
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Type, Union
+from typing import Any, Dict, List, Optional, Sequence, Type, Union
 
 from .graph.code_graph import CodeGraph
 from .languages import (
@@ -61,6 +61,7 @@ class GraphBuildResult:
     requested_languages: List[str]
     available_languages: List[str]
     failed_languages: Dict[str, str]
+    index_generation_reports: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     @property
     def partial(self) -> bool:
@@ -264,6 +265,12 @@ class LSIndexer:
 
         return getattr(self._delegate, "index_quality_report", None)
 
+    @property
+    def index_generation_report(self):
+        """Latest backend generation report, when the indexer provides one."""
+
+        return getattr(self._delegate, "index_generation_report", None)
+
     def graph_patch(
         self,
         graph: "CodeGraph",
@@ -315,6 +322,7 @@ def build_graph_for_languages_with_report(
     decoder_backend: Optional[str] = None,
     graph_route: str = ACTIVE_GRAPH_ROUTE,
     allow_partial: bool = False,
+    allow_partial_index: bool = False,
 ) -> GraphBuildResult:
     """Build a graph and report per-language availability.
 
@@ -327,7 +335,9 @@ def build_graph_for_languages_with_report(
     for backend comparison; ``graph_route="scip-candidate"`` is an explicit
     opt-in for evaluating candidate SCIP cold-start backends without promoting
     them. With ``allow_partial=True``, a failed language does not discard graphs
-    already built for other languages.
+    already built for other languages. ``allow_partial_index=True`` lets a
+    backend retain a parseable compiler prefix and reports that state separately
+    from per-language availability.
     """
     normalized = _normalize_language_sequence(languages, graph_route=graph_route)
     base_output = Path(output_dir)
@@ -343,6 +353,8 @@ def build_graph_for_languages_with_report(
         pipeline_kwargs["target_dir"] = target_dir
     if include_references:
         pipeline_kwargs["include_references"] = True
+    if allow_partial_index:
+        pipeline_kwargs["allow_partial_index"] = True
 
     def run_language(language: str, language_output: Path, language_project: str):
         indexer = LSIndexer(
@@ -354,16 +366,19 @@ def build_graph_for_languages_with_report(
             graph_route=graph_route,
             **indexer_kwargs,
         )
-        return indexer.run_pipeline(
+        graph = indexer.run_pipeline(
             project_name=language_project,
             skip_level=skip_level,
             **pipeline_kwargs,
         )
+        report = getattr(indexer, "index_generation_report", None)
+        return graph, dict(report) if isinstance(report, dict) else None
 
     if len(normalized) == 1:
         language = normalized[0]
+        generation_report = None
         try:
-            graph = run_language(language, base_output, pname)
+            graph, generation_report = run_language(language, base_output, pname)
         except Exception as exc:
             if not allow_partial:
                 raise
@@ -377,21 +392,29 @@ def build_graph_for_languages_with_report(
             requested_languages=normalized,
             available_languages=[language] if graph is not None else [],
             failed_languages=failures,
+            index_generation_reports=(
+                {language: generation_report} if generation_report is not None else {}
+            ),
         )
 
     combined = CodeGraph(str(Path(project_root).absolute()))
     available: List[str] = []
+    generation_reports: Dict[str, Dict[str, Any]] = {}
     for language in normalized:
         language_output = base_output / "graphs" / language
         language_project = f"{pname}-{language}"
         try:
-            graph = run_language(language, language_output, language_project)
+            graph, generation_report = run_language(
+                language, language_output, language_project
+            )
         except Exception as exc:
             if not allow_partial:
                 raise
             failures[language] = str(exc)
             logger.warning("Graph build unavailable for %s: %s", language, exc)
             continue
+        if generation_report is not None:
+            generation_reports[language] = generation_report
         if graph is None:
             message = (
                 f"Failed to build code graph for language {language!r} "
@@ -411,6 +434,7 @@ def build_graph_for_languages_with_report(
             requested_languages=normalized,
             available_languages=[],
             failed_languages=failures,
+            index_generation_reports=generation_reports,
         )
 
     base_output.mkdir(parents=True, exist_ok=True)
@@ -425,6 +449,7 @@ def build_graph_for_languages_with_report(
         requested_languages=normalized,
         available_languages=available,
         failed_languages=failures,
+        index_generation_reports=generation_reports,
     )
 
 
@@ -441,6 +466,7 @@ def build_graph_for_languages(
     profiler: Optional[Profiler] = None,
     decoder_backend: Optional[str] = None,
     graph_route: str = ACTIVE_GRAPH_ROUTE,
+    allow_partial_index: bool = False,
 ) -> Union[CodeGraph, None]:
     """Build a strict CodeGraph for one or more graph languages."""
 
@@ -456,6 +482,7 @@ def build_graph_for_languages(
         profiler=profiler,
         decoder_backend=decoder_backend,
         graph_route=graph_route,
+        allow_partial_index=allow_partial_index,
     ).graph
 
 

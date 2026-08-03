@@ -37,6 +37,7 @@ from codenib.compiler.resources import (
     ResourceResolver,
 )
 from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
+from codenib.ls_router import GraphBuildResult
 from codenib.repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     default_exclude_patterns,
@@ -212,11 +213,16 @@ class TestSymbolGraphBuilder:
 
         def fake_build_graph_for_languages(*args, **kwargs):
             calls.append((args, kwargs))
-            return mock_graph
+            return GraphBuildResult(
+                graph=mock_graph,
+                requested_languages=["python"],
+                available_languages=["python"],
+                failed_languages={},
+            )
 
         monkeypatch.setattr(
             ls_router,
-            "build_graph_for_languages",
+            "build_graph_for_languages_with_report",
             fake_build_graph_for_languages,
         )
 
@@ -237,6 +243,7 @@ class TestSymbolGraphBuilder:
             (
                 ("/fake/repo", output),
                 {
+                    "allow_partial": False,
                     "languages": ["python"],
                     "project_name": "repo",
                     "skip_level": None,
@@ -251,8 +258,13 @@ class TestSymbolGraphBuilder:
 
         monkeypatch.setattr(
             ls_router,
-            "build_graph_for_languages",
-            lambda *args, **kwargs: None,
+            "build_graph_for_languages_with_report",
+            lambda *args, **kwargs: GraphBuildResult(
+                graph=None,
+                requested_languages=["python"],
+                available_languages=[],
+                failed_languages={"python": "indexer returned no graph"},
+            ),
         )
 
         builder = SymbolGraphBuilder()
@@ -264,20 +276,129 @@ class TestSymbolGraphBuilder:
                 output_dir=output,
             )
 
+    def test_build_can_fall_back_when_compiler_returns_no_graph(
+        self, monkeypatch, tmp_path
+    ):
+        from codenib import ls_router
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages_with_report",
+            lambda *args, **kwargs: GraphBuildResult(
+                graph=None,
+                requested_languages=["python"],
+                available_languages=[],
+                failed_languages={"python": "indexer returned no graph"},
+                index_generation_reports={
+                    "python": {
+                        "status": "failed",
+                        "complete": False,
+                        "partial": False,
+                        "document_count": 0,
+                    }
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            "codenib.git_snapshot.GitSourceSurface.load",
+            lambda _repo_path: object(),
+        )
+        monkeypatch.setattr(
+            "codenib.languages.extensions_for_language",
+            lambda _language, _capability: {".py"},
+        )
+
+        def fake_supplement(graph, **_kwargs):
+            assert graph.graph.vs[0]["type"] == "root"
+            graph.add_file_node("fallback.py")
+            graph.build_range_indexes()
+            return {
+                "coverage_before": 0.0,
+                "coverage_after": 1.0,
+                "supplemented_files": 1,
+            }
+
+        monkeypatch.setattr(
+            "codenib.graph.source_coverage.supplement_graph_source_coverage",
+            fake_supplement,
+        )
+
+        output = tmp_path / "graph"
+        status = SymbolGraphBuilder(
+            allow_partial_index=True,
+            source_coverage_fallback=True,
+        ).build(
+            scope="current_repo",
+            repo_path="/fake/repo",
+            output_dir=str(output),
+        )
+
+        report = status.metadata["source_coverage_report"]
+        assert status.state == IndexState.FRESH
+        assert status.metadata["available_languages"] == ["python"]
+        assert status.metadata["compiler_available_languages"] == []
+        assert report["compiler_graph_available"] is False
+        assert report["compiler_index_complete"] is False
+        assert report["compiler_nodes"] == 0
+        assert report["compiler_edges"] == 0
+        assert report["coverage_after"] == 1.0
+        assert (output / "graph.pkl").is_file()
+
+    def test_build_rejects_incomplete_source_coverage_fallback(
+        self, monkeypatch, tmp_path
+    ):
+        from codenib import ls_router
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages_with_report",
+            lambda *args, **kwargs: GraphBuildResult(
+                graph=None,
+                requested_languages=["python"],
+                available_languages=[],
+                failed_languages={"python": "indexer returned no graph"},
+            ),
+        )
+        monkeypatch.setattr(
+            "codenib.git_snapshot.GitSourceSurface.load",
+            lambda _repo_path: object(),
+        )
+        monkeypatch.setattr(
+            "codenib.languages.extensions_for_language",
+            lambda _language, _capability: {".py"},
+        )
+        monkeypatch.setattr(
+            "codenib.graph.source_coverage.supplement_graph_source_coverage",
+            lambda *_args, **_kwargs: {"coverage_after": 0.5},
+        )
+
+        with pytest.raises(RuntimeError, match="did not cover"):
+            SymbolGraphBuilder(source_coverage_fallback=True).build(
+                scope="current_repo",
+                repo_path="/fake/repo",
+                output_dir=str(tmp_path / "graph"),
+            )
+
     def test_build_forwards_multiple_languages(self, monkeypatch, tmp_path):
         from codenib import ls_router
 
         mock_graph = MagicMock()
         mock_graph.graph.vs = [MagicMock()]
+        mock_graph.graph.es = []
         calls = []
 
         def fake_build_graph_for_languages(*args, **kwargs):
             calls.append((args, kwargs))
-            return mock_graph
+            return GraphBuildResult(
+                graph=mock_graph,
+                requested_languages=["python", "go"],
+                available_languages=["python", "go"],
+                failed_languages={},
+            )
 
         monkeypatch.setattr(
             ls_router,
-            "build_graph_for_languages",
+            "build_graph_for_languages_with_report",
             fake_build_graph_for_languages,
         )
 
@@ -303,11 +424,16 @@ class TestSymbolGraphBuilder:
 
         def fake_build_graph_for_languages(*args, **kwargs):
             calls.append((args, kwargs))
-            return mock_graph
+            return GraphBuildResult(
+                graph=mock_graph,
+                requested_languages=["java"],
+                available_languages=["java"],
+                failed_languages={},
+            )
 
         monkeypatch.setattr(
             ls_router,
-            "build_graph_for_languages",
+            "build_graph_for_languages_with_report",
             fake_build_graph_for_languages,
         )
 
@@ -321,6 +447,82 @@ class TestSymbolGraphBuilder:
 
         assert status.metadata["graph_route"] == "scip-candidate"
         assert calls[0][1]["graph_route"] == "scip-candidate"
+
+    def test_build_records_source_coverage_fallback_report(self, monkeypatch, tmp_path):
+        from codenib import ls_router
+
+        mock_graph = MagicMock()
+        mock_graph.graph.vs = [MagicMock()]
+        mock_graph.graph.es = []
+        calls = []
+        report = {
+            "coverage_before": 0.5,
+            "coverage_after": 1.0,
+            "supplemented_files": ["missing.py"],
+        }
+
+        def fake_build_graph_for_languages(*args, **kwargs):
+            calls.append((args, kwargs))
+            return GraphBuildResult(
+                graph=mock_graph,
+                requested_languages=["python"],
+                available_languages=["python"],
+                failed_languages={},
+                index_generation_reports={
+                    "python": {
+                        "status": "partial",
+                        "complete": False,
+                        "partial": True,
+                        "document_count": 10,
+                    }
+                },
+            )
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages_with_report",
+            fake_build_graph_for_languages,
+        )
+        monkeypatch.setattr(
+            "codenib.compiler.artifact_quality.graph_file_paths",
+            lambda _graph: {"covered.py"},
+        )
+        monkeypatch.setattr(
+            "codenib.git_snapshot.GitSourceSurface.load",
+            lambda _repo_path: object(),
+        )
+        monkeypatch.setattr(
+            "codenib.languages.extensions_for_language",
+            lambda _language, _capability: {".py"},
+        )
+        monkeypatch.setattr(
+            "codenib.graph.source_coverage.supplement_graph_source_coverage",
+            lambda *_args, **_kwargs: report,
+        )
+
+        builder = SymbolGraphBuilder(
+            languages=["python"],
+            allow_partial_index=True,
+            source_coverage_fallback=True,
+        )
+        status = builder.build(
+            scope="current_repo",
+            repo_path="/fake/repo",
+            output_dir=str(tmp_path / "graph"),
+        )
+
+        assert calls[0][1]["allow_partial_index"] is True
+        assert status.metadata["source_coverage_fallback"] is True
+        assert status.metadata["source_coverage_report"] == {
+            "compiler_graph_available": True,
+            "compiler_index_complete": False,
+            "compiler_partial_languages": ["python"],
+            "compiler_nodes": 1,
+            "compiler_edges": 0,
+            **report,
+        }
+        assert status.metadata["partial_index"] is True
+        mock_graph.save_graph.assert_called_once()
 
     def test_build_records_partial_language_coverage(self, monkeypatch, tmp_path):
         from codenib import ls_router
@@ -419,6 +621,8 @@ class TestRegisterDefaultBuilders:
         assert symbol_graph.languages == ["rust", "python"]
         assert symbol_graph.graph_route == "scip-candidate"
         assert symbol_graph.allow_partial_languages is False
+        assert symbol_graph.allow_partial_index is False
+        assert symbol_graph.source_coverage_fallback is False
 
     def test_can_register_partial_multi_language_graph_builder(self):
         registry = IndexBuilderRegistry()
@@ -431,6 +635,24 @@ class TestRegisterDefaultBuilders:
         symbol_graph = registry.get("symbol_graph")
         assert isinstance(symbol_graph, SymbolGraphBuilder)
         assert symbol_graph.allow_partial_languages is True
+
+    def test_can_register_partial_index_graph_builder(self):
+        registry = IndexBuilderRegistry()
+        register_default_builders(
+            registry,
+            languages=["python"],
+            allow_partial_graph_index=True,
+            graph_source_coverage_fallback=True,
+        )
+
+        symbol_graph = registry.get("symbol_graph")
+        assert isinstance(symbol_graph, SymbolGraphBuilder)
+        assert symbol_graph.allow_partial_index is True
+        assert symbol_graph.source_coverage_fallback is True
+
+    def test_partial_index_requires_source_coverage_fallback(self):
+        with pytest.raises(ValueError, match="requires source_coverage_fallback"):
+            SymbolGraphBuilder(allow_partial_index=True)
 
 
 # ---------------------------------------------------------------------------
