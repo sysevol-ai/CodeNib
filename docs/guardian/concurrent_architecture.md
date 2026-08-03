@@ -39,7 +39,7 @@ Pier task container
 ├── Codex transport (Codex only)
 │   ├── /app/.guardian/bin/guardian-start
 │   ├── /app/.guardian/bin/guardian-checkpoint
-│   └── deepsweguardian.codex_bridge
+│   └── scripts.guardian.deepswe.harness.bridge
 │
 ├── MCP transport (MCP-native solvers only)
 │   └── codeminer.guardian.mcp_server
@@ -180,7 +180,7 @@ normal task workflow and make lifecycle state easy to inspect:
 The lazy-start script launches:
 
 ```text
-python -m deepsweguardian.codex_bridge
+python -m scripts.guardian.deepswe.harness.bridge
 ```
 
 The bridge writes atomically replaced outputs under:
@@ -362,10 +362,10 @@ Turn and wall-clock limits remain safety boundaries even without a token limit.
 
 | Responsibility | Current implementation |
 | --- | --- |
-| Pier wrapper and solver routing | `deepsweguardian/guardian_coding_agent.py` |
-| Codex lazy-start action | `deepsweguardian/lazy_start.py` |
-| Codex final checkpoint | `deepsweguardian/checkpoint.py` |
-| Codex watcher and report bridge | `deepsweguardian/codex_bridge.py` |
+| Pier wrapper and solver routing | `scripts/guardian/deepswe/harness/agent.py` |
+| Codex lazy-start action | `scripts/guardian/deepswe/harness/launcher.py` |
+| Codex final checkpoint | `scripts/guardian/deepswe/harness/checkpoint.py` |
+| Codex watcher and report bridge | `scripts/guardian/deepswe/harness/bridge.py` |
 | MCP tool and watcher | `codeminer/guardian/mcp_server.py` |
 | Commit-scoped cycle composition | `codeminer/guardian/cycle.py` |
 | Shared tool-agent mechanics | `codeminer/guardian/agent/runtime.py` |
@@ -382,6 +382,11 @@ backlog counts. A zero-finding degraded report is not a clean review: the coding
 agent must inspect the backlog and perform the missing validation before
 finishing.
 
+The DeepSWE harness deliberately remains outside the `codeminer` package.
+Pier imports its custom agent on the host before the task container starts;
+placing that module below `codeminer` would execute `codeminer/__init__.py` and
+require the engine's tree-sitter and LLM dependencies in the host environment.
+
 ## Pier invocation shape
 
 The exact task, model, mounts, and budget vary by experiment. A Guardian run
@@ -391,7 +396,7 @@ uses this integration shape:
 pier run \
   -p deep-swe/tasks/<task> \
   --agent-import-path \
-    deepsweguardian.guardian_coding_agent:GuardianCodingAgent \
+    scripts.guardian.deepswe.harness.agent:GuardianCodingAgent \
   --ak solver=codex \
   --ak guardian_arm=memory \
   --ak guardian_model=codex:<model> \

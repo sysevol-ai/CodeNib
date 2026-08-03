@@ -7,7 +7,7 @@
 The default matrix is the five Python tasks selected for the Guardian study,
 three Codex model variants, and four fixed trial slots per setting: 60 slots in
 total. Up to three trials run concurrently by default and use the same artifact
-contract as ``deepswe_guardian_ablation.py``.
+contract as ``scripts.guardian.deepswe.ablation``.
 
 The runner is resumable. A slot with valid ``metadata.json`` is treated as a
 recorded trial, including a trial whose Pier return code is non-zero. An
@@ -16,7 +16,7 @@ interrupted slot without valid metadata is archived before it is retried.
 Example:
 
     /home/xiangye/miniconda3/envs/codeminer/bin/python \
-      scripts/guardian/deepswe_solo_matrix.py --dry-run
+      -m scripts.guardian.deepswe.solo_matrix --dry-run
 
 Remove ``--dry-run`` to launch the pending trials. Use ``--rerun-recorded`` only
 when all selected slots should be replaced with fresh trials; old artifacts are
@@ -31,16 +31,17 @@ import json
 import shutil
 import sys
 import time
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import (FIRST_COMPLETED, Future, ThreadPoolExecutor,
+                                wait)
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from scripts.guardian import deepswe_guardian_ablation as ablation
+from scripts.guardian.deepswe import ablation
 
 DEFAULT_TASKS = (
     "igel-persist-feature-schema",
@@ -57,7 +58,7 @@ DEFAULT_MODELS = (
 DEFAULT_REASONING_EFFORT = "medium"
 DEFAULT_RUNS = 4
 DEFAULT_CONCURRENCY = 3
-DEFAULT_CODEMINER_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CODEMINER_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_ROOT = DEFAULT_CODEMINER_ROOT / "data" / "deepswe_outputs"
 
 
@@ -351,7 +352,7 @@ def _validate(args: argparse.Namespace) -> None:
         if missing_contexts:
             paths = ", ".join(str(path) for path in missing_contexts)
             raise FileNotFoundError(f"task context files do not exist: {paths}")
-    profile = args.codeminer_root / "deepsweguardian" / "task_venv_profile.sh"
+    profile = ablation._harness_path(args.codeminer_root) / "task_venv_profile.sh"
     if not profile.is_file():
         raise FileNotFoundError(f"task virtualenv profile does not exist: {profile}")
     if not args.dry_run and shutil.which("pier") is None:

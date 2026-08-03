@@ -20,8 +20,8 @@ def guardian_start_script(
     """Return a lock-protected launcher for the Guardian filesystem bridge."""
 
     process_marker = (
-        "deepsweguardian.codex_bridge"
-        if "deepsweguardian.codex_bridge" in command
+        "scripts.guardian.deepswe.harness.bridge"
+        if "scripts.guardian.deepswe.harness.bridge" in command
         else ""
     )
     return f"""#!/usr/bin/env python3

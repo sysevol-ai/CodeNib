@@ -12,7 +12,6 @@ import shutil
 import sys
 from pathlib import Path
 
-
 DEFAULT_OUTPUT_ROOT = Path("/mnt/data/xiangye/deepswe_outputs")
 
 

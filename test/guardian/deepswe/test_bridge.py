@@ -10,7 +10,7 @@ from unittest.mock import Mock
 from codeminer.guardian.cycle import GuardianConfig
 from codeminer.guardian.loop import Hypothesis
 from codeminer.guardian.report import GuardianReport, report_views
-from deepsweguardian import codex_bridge
+from scripts.guardian.deepswe.harness import bridge as codex_bridge
 
 
 def _report() -> GuardianReport:

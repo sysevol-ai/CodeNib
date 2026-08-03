@@ -9,22 +9,15 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
-import sys
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scripts.guardian.deepswe.results import (COUNTED_JOB_IDS,
+                                              DEFAULT_OUTPUT_ROOT, _load_rows,
+                                              _metric_mean, _metric_sum,
+                                              _with_costs)
 
-from deepswe_guardian_table import (
-    COUNTED_JOB_IDS,
-    DEFAULT_OUTPUT_ROOT,
-    _load_rows,
-    _metric_mean,
-    _metric_sum,
-    _with_costs,
-)
-
-DEFAULT_DASHBOARD_DIR = Path("deepswe_dashboard")
+DEFAULT_DASHBOARD_DIR = Path(__file__).resolve().parent / "dashboard"
 
 
 def _num(value: Any) -> float | None:

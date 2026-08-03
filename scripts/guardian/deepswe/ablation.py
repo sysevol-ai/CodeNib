@@ -6,7 +6,7 @@
 
 Example:
 
-    python scripts/guardian/deepswe_guardian_ablation.py \\
+    python -m scripts.guardian.deepswe.ablation \\
         --model gpt-5.6-terra \\
         --reasoning-effort medium \\
         --tasks igel-persist-feature-schema
@@ -64,6 +64,13 @@ DEFAULT_OUTPUT_ROOT = Path("/mnt/data/xiangye/deepswe_outputs")
 DEFAULT_JOBS_DIR = DEFAULT_DEEPSWE_ROOT / "jobs"
 DEFAULT_CONDA_ENV = Path("/home/xiangye/miniconda3/envs/codeminer")
 DEFAULT_TREE_SITTER_CACHE = Path("/home/xiangye/.cache/tree-sitter-language-pack")
+DEEPSWE_HARNESS_RELATIVE_PATH = Path("scripts/guardian/deepswe/harness")
+
+
+def _harness_path(codeminer_root: Path) -> Path:
+    """Return the dependency-isolated Pier harness in the CodeNib checkout."""
+
+    return codeminer_root / DEEPSWE_HARNESS_RELATIVE_PATH
 
 
 def _slug(value: str) -> str:
@@ -191,7 +198,7 @@ def _common_mounts(args: argparse.Namespace, logs_dir: Path) -> list[dict[str, s
         {
             "type": "bind",
             "source": str(
-                args.codeminer_root / "deepsweguardian" / "task_venv_profile.sh"
+                _harness_path(args.codeminer_root) / "task_venv_profile.sh"
             ),
             "target": "/etc/profile.d/zz-deepswe-task-venv.sh",
         },
@@ -281,7 +288,7 @@ def _build_pier_command(
         cmd.extend(
             [
                 "--agent-import-path",
-                "deepsweguardian.guardian_coding_agent:GuardianCodingAgent",
+                "scripts.guardian.deepswe.harness.agent:GuardianCodingAgent",
                 "--ak",
                 "solver=codex",
                 "--ak",

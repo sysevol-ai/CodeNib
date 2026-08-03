@@ -11,16 +11,17 @@ import threading
 import time
 from pathlib import Path
 
-from scripts.guardian import deepswe_solo_matrix as matrix
+from scripts.guardian.deepswe import solo_matrix as matrix
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _args(tmp_path, *extra):
     codeminer_root = tmp_path / "codeminer"
     deepswe_root = tmp_path / "deep-swe"
-    (codeminer_root / "deepsweguardian").mkdir(parents=True)
-    (codeminer_root / "deepsweguardian" / "task_venv_profile.sh").touch()
+    harness = codeminer_root / matrix.ablation.DEEPSWE_HARNESS_RELATIVE_PATH
+    harness.mkdir(parents=True)
+    (harness / "task_venv_profile.sh").touch()
     for task in matrix.DEFAULT_TASKS:
         (deepswe_root / "tasks" / task).mkdir(parents=True)
     return matrix.parse_args(
@@ -259,11 +260,12 @@ def test_run_plan_limits_parallel_trials_to_configured_concurrency(
     assert {status["status"] for status in statuses.values()} == {"recorded"}
 
 
-def test_script_can_be_invoked_directly():
+def test_runner_module_can_be_invoked_directly():
     proc = subprocess.run(
         [
             sys.executable,
-            str(REPO_ROOT / "scripts" / "guardian" / "deepswe_solo_matrix.py"),
+            "-m",
+            "scripts.guardian.deepswe.solo_matrix",
             "--help",
         ],
         cwd=REPO_ROOT,

@@ -7,13 +7,13 @@
 Registers with Pier via::
 
     pier run \\
-      --agent-import-path codeminer.guardian.guardian_coding_agent:GuardianCodingAgent \\
+      --agent-import-path scripts.guardian.deepswe.harness.agent:GuardianCodingAgent \\
       --model gpt-5.6-luna \\
       --ak solver=codex \\
       --ak guardian_arm=memory \\
       --ak reasoning_effort=max \\
       --ae "CODEX_FORCE_AUTH_JSON=1" \\
-      --mounts-json '[{"type":"bind","source":"/home/xiangye/CodeMiner","target":"/codeminer"}]' \\
+      --mounts-json '<CodeNib source and log mounts>' \\
       -p deep-swe/tasks/<task>
 
 Architecture (single Pier container):
@@ -58,7 +58,7 @@ from pier.models.agent.network import NetworkAllowlist
 from pier.models.task.config import MCPServerConfig
 
 from .checkpoint import guardian_checkpoint_script
-from .lazy_start import guardian_start_script
+from .launcher import guardian_start_script
 
 if TYPE_CHECKING:
     from pier.models.agent.install import AgentInstallSpec
@@ -91,12 +91,12 @@ def _as_bool(value: object) -> bool:
 def _load_solver_class(name: str) -> type[BaseAgent]:
     try:
         module_path, class_name = _SOLVER_REGISTRY[name]
-    except KeyError:
+    except KeyError as exc:
         known = ", ".join(_SOLVER_REGISTRY)
         raise ValueError(
-            f"Unknown solver '{name}'. Known solvers: {known}. "
+            f"Unknown solver {name!r}. Known solvers: {known}. "
             "Pass --ak solver=<name> to choose."
-        )
+        ) from exc
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
 
@@ -217,11 +217,11 @@ class GuardianCodingAgent(BaseInstalledAgent):
         solver_cls = _load_solver_class(solver)
         self._inner: BaseAgent = solver_cls(
             logs_dir,
+            *args,
             model_name=model_name,
             logger=logger,
             mcp_servers=combined_mcp,
             skills_dir=skills_dir,
-            *args,
             **kwargs,
         )
 
@@ -415,7 +415,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         bridge_command = [
             self._codeminer_python,
             "-m",
-            "deepsweguardian.codex_bridge",
+            "scripts.guardian.deepswe.harness.bridge",
             "--repo",
             self._guardian_repo,
             "--arm",

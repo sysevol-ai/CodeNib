@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 
-from deepsweguardian.lazy_start import guardian_start_script
+from scripts.guardian.deepswe.harness.launcher import guardian_start_script
 
 
 def _git(repo, *args):

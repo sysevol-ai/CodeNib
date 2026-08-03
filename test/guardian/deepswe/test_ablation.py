@@ -7,8 +7,8 @@
 import json
 from pathlib import Path
 
-from scripts.guardian import deepswe_export_dashboard_data as dashboard
-from scripts.guardian import deepswe_guardian_ablation as ablation
+from scripts.guardian.deepswe import ablation
+from scripts.guardian.deepswe import export_dashboard as dashboard
 
 
 def test_no_budget_limit_is_forwarded_to_guardian_agent(tmp_path):
@@ -87,7 +87,12 @@ def test_task_virtualenv_profile_is_mounted_in_both_arms(tmp_path):
             if item["target"] == "/etc/profile.d/zz-deepswe-task-venv.sh"
         )
         assert profile["source"] == str(
-            tmp_path / "deepsweguardian" / "task_venv_profile.sh"
+            tmp_path
+            / "scripts"
+            / "guardian"
+            / "deepswe"
+            / "harness"
+            / "task_venv_profile.sh"
         )
 
 

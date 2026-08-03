@@ -10,7 +10,8 @@ import json
 import subprocess
 import sys
 
-from deepsweguardian.checkpoint import guardian_checkpoint_script
+from scripts.guardian.deepswe.harness.checkpoint import \
+    guardian_checkpoint_script
 
 
 def _git(repo, *args):
