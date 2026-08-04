@@ -66,20 +66,15 @@ def cosil_locations_to_baseline(
         file_path = files[0]
         resolved = provider.resolve_location(file_path, parsed.kind, parsed.name)
         if resolved is None:
-            location = BaselineLocation(
-                name=(f"{parsed.name}()" if parsed.kind == "function" else parsed.name),
-                type=parsed.kind,
-                file_path=file_path,
-            )
-        else:
-            kind, name, start, end = resolved
-            location = BaselineLocation(
-                name=f"{name}()" if kind in {"function", "method"} else name,
-                type=kind,
-                file_path=file_path,
-                line_start=start,
-                line_end=end,
-            )
+            continue
+        kind, name, start, end = resolved
+        location = BaselineLocation(
+            name=f"{name}()" if kind in {"function", "method"} else name,
+            type=kind,
+            file_path=file_path,
+            line_start=start,
+            line_end=end,
+        )
         key = (
             location.file_path,
             location.name,

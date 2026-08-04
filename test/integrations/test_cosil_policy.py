@@ -8,13 +8,14 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from codenib.clients.cosil_agent import CoSILAgent
+from codenib.clients.cosil_agent import CoSILAgent, cosil_locations_to_baseline
 from codenib.compiler.manifest import RepoManifest
 from codenib.eval.benchmarks.cosil import (
     CoSILLocation,
     parse_cosil_files,
     parse_cosil_locations,
 )
+from codenib.integrations.cosil import CoSILRepositoryProvider
 
 
 def _tool_call(call_id: str, name: str, arguments: str = "{}") -> SimpleNamespace:
@@ -221,6 +222,37 @@ def test_xml_parser_preserves_same_named_root_and_limits_to_five() -> None:
 
     assert len(result) == 5
     assert all(item.file_path == "django/db/models.py" for item in result)
+
+
+def test_baseline_conversion_rejects_unresolved_xml_symbols(
+    integration_manifest: Path,
+) -> None:
+    provider = CoSILRepositoryProvider.from_manifest(integration_manifest)
+
+    result = cosil_locations_to_baseline(
+        (
+            CoSILLocation(
+                file_path="src/service.py",
+                kind="function",
+                name="BillingService.calculate_tax",
+            ),
+            CoSILLocation(
+                file_path="src/service.py",
+                kind="function",
+                name="calculate_tax",
+            ),
+            CoSILLocation(
+                file_path="src/service.py",
+                kind="class",
+                name="MissingService",
+            ),
+        ),
+        provider,
+    )
+
+    assert len(result) == 1
+    assert result[0].name == "BillingService.calculate_tax()"
+    assert result[0].type == "method"
 
 
 def test_native_policy_runs_reflection_tools_and_xml_summary(
