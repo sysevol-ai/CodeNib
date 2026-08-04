@@ -50,18 +50,18 @@ agent or code-Wiki framework.
 
 ## News
 
-- **2026-08-03 — Native LocAgent policy integration.** CodeNib now runs
-  revision-pinned LocAgent prompts and its function-calling loop directly over
-  manifest-backed BM25 and symbol-graph views without importing LocAgent,
-  LiteLLM, or LlamaIndex. The paired harness applies strict case,
-  provenance, denominator, and ranked-localization checks.
-- **2026-08-02 — OrcaLoca SearchAgent integration.** CodeNib can now serve a
-  revision-pinned OrcaLoca `SearchAgent` through its manifest-backed symbol
-  graph, preserving the upstream six-tool and private-hook contract without
-  building an OrcaLoca-specific graph. The supported boundary starts at
-  `SearchAgent` with an empty `TraceAnalysisOutput`; see the
-  [agent integration support matrix](https://docs.codenib.ai/agent_integrations/)
-  for validation evidence and scope.
+- **2026-08-03 — Native LocAgent policy.**
+  [`LocAgentAgent`](codenib/clients/locagent_agent.py) runs pinned prompts and
+  function calls over [`LocAgentToolProvider`](codenib/integrations/locagent.py),
+  with no LocAgent, LiteLLM, or LlamaIndex dependency. Its
+  [paired harness](codenib/eval/benchmarks/policy_benchmark.py) validates
+  provenance and ranked localization.
+- **2026-08-02 — OrcaLoca SearchAgent.**
+  [`OrcaLocaAgent`](codenib/clients/orcaloca_agent.py) binds upstream
+  `SearchAgent` to
+  [`OrcaLocaSearchProvider`](codenib/integrations/orcaloca.py), preserving its
+  six-tool contract without a second graph. Scope: empty `TraceAnalysisOutput`;
+  see the [validation matrix](https://docs.codenib.ai/agent_integrations/).
 
 ## System Architecture
 
