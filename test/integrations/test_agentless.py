@@ -142,6 +142,21 @@ def test_qualified_method_does_not_resolve_another_class(
     )
 
 
+def test_function_signature_resolves_to_skeleton_symbol(
+    integration_manifest: Path,
+) -> None:
+    provider = AgentlessRepositoryProvider.from_manifest(integration_manifest)
+
+    entity = provider.resolve_entity(
+        "src/service.py",
+        "method",
+        "BillingService.calculate_tax(self, amount)",
+    )
+
+    assert entity is not None
+    assert entity.qualified_name == "BillingService.calculate_tax"
+
+
 def test_source_ast_resolves_assignment_exposed_by_skeleton(
     integration_manifest: Path,
 ) -> None:

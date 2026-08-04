@@ -214,7 +214,11 @@ class AgentlessRepositoryProvider:
             kinds = {NODE_TYPE_CLASS, NODE_TYPE_FIELD, NODE_TYPE_SYMBOL}
         else:
             kinds = set(_SYMBOL_KINDS)
-        requested = name.strip().removesuffix("()")
+        requested = name.strip()
+        if kind in {"function", "method"}:
+            requested = requested.split("(", 1)[0].strip()
+        else:
+            requested = requested.removesuffix("()")
         matches = self.repository.find_entities(
             requested,
             file_path=resolved[0],

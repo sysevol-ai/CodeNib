@@ -17,6 +17,7 @@ _FIELD = re.compile(
 )
 _LINE_RANGE = re.compile(r"(-?\d+)(?:\s*(?:-|:|to)\s*(-?\d+))?", re.IGNORECASE)
 _LIST_PREFIX = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
+_FILE_HEADING = re.compile(r"^(?:[^/\s]+/)*[^/\s]+\.[A-Za-z0-9_+-]+(?::.*)?$")
 
 
 def _normalize(value: object) -> str:
@@ -27,10 +28,15 @@ def _normalize(value: object) -> str:
     return text.lstrip("/")
 
 
-def _match_file(line: str, valid_files: Sequence[str], root_name: str) -> str:
+def _file_candidate(line: str) -> str:
     candidate = _normalize(line).strip("# ")
     if candidate.lower().startswith("file:"):
         candidate = _normalize(candidate.split(":", 1)[1]).strip("# ")
+    return candidate
+
+
+def _match_file(line: str, valid_files: Sequence[str], root_name: str) -> str:
+    candidate = _file_candidate(line)
     roots = tuple(filter(None, (root_name.strip("/"),)))
     for file_path in sorted(valid_files, key=len, reverse=True):
         accepted = {file_path}
@@ -45,6 +51,10 @@ def _match_file(line: str, valid_files: Sequence[str], root_name: str) -> str:
     if len(suffix_matches) == 1:
         return suffix_matches[0]
     return ""
+
+
+def _looks_like_file_heading(line: str) -> bool:
+    return bool(_FILE_HEADING.fullmatch(_file_candidate(line)))
 
 
 def _symbols(value: str) -> list[str]:
@@ -126,6 +136,10 @@ def parse_agentless_locations(
         if file_path:
             flush_file()
             current_file = file_path
+            continue
+        if _looks_like_file_heading(line):
+            flush_file()
+            current_file = ""
             continue
         if not current_file:
             continue
