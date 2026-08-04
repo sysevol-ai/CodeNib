@@ -287,6 +287,7 @@ def run_cosil_policy(
     tool_trace: list[dict[str, Any]] = []
     started = time.perf_counter()
     temperature_supported = True
+    max_completion_tokens_supported = True
     tool_reasoning_disabled = False
 
     def complete(
@@ -297,12 +298,16 @@ def run_cosil_policy(
         tools: Sequence[Mapping[str, Any]] | None = None,
         tool_choice: str | None = None,
     ) -> tuple[str, dict[str, Any]]:
-        nonlocal temperature_supported, tool_reasoning_disabled
+        nonlocal max_completion_tokens_supported, temperature_supported
+        nonlocal tool_reasoning_disabled
         request: dict[str, Any] = {
             "model": model,
             "messages": list(messages),
-            "max_completion_tokens": max_completion_tokens,
         }
+        token_parameter = (
+            "max_completion_tokens" if max_completion_tokens_supported else "max_tokens"
+        )
+        request[token_parameter] = max_completion_tokens
         if temperature_supported:
             request["temperature"] = temperature
         if tools is not None:
@@ -319,6 +324,13 @@ def run_cosil_policy(
                 if temperature_supported and _unsupported_temperature(exc):
                     temperature_supported = False
                     request.pop("temperature", None)
+                    continue
+                if max_completion_tokens_supported and (
+                    _unsupported_max_completion_tokens(exc)
+                ):
+                    max_completion_tokens_supported = False
+                    request.pop("max_completion_tokens", None)
+                    request["max_tokens"] = max_completion_tokens
                     continue
                 if (
                     tools is not None
@@ -620,6 +632,25 @@ def _unsupported_temperature(exc: Exception) -> bool:
                 return True
     message = str(exc).lower()
     return "temperature" in message and "unsupported value" in message
+
+
+def _unsupported_max_completion_tokens(exc: Exception) -> bool:
+    body = getattr(exc, "body", None)
+    if isinstance(body, Mapping):
+        detail = body.get("error", body)
+        if isinstance(detail, Mapping):
+            param = str(detail.get("param") or "").lower()
+            message = str(detail.get("message") or "").lower()
+            if param == "max_completion_tokens" and any(
+                marker in message
+                for marker in ("unsupported", "unrecognized", "unknown")
+            ):
+                return True
+    message = str(exc).lower()
+    return "max_completion_tokens" in message and any(
+        marker in message
+        for marker in ("unexpected keyword", "unsupported", "unrecognized", "unknown")
+    )
 
 
 def _requires_no_reasoning_with_tools(exc: Exception) -> bool:

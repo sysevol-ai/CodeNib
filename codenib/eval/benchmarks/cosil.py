@@ -16,7 +16,7 @@ _LOCATIONS_XML = re.compile(r"<locations\b[^>]*>.*?</locations>", re.DOTALL)
 
 
 def _normalize(value: object) -> str:
-    text = str(value or "").strip().strip("`'\".,;()[]{} ")
+    text = str(value or "").strip().strip("`'\"()[]{} ").rstrip(",;")
     text = text.replace("\\", "/")
     while text.startswith("./"):
         text = text[2:]

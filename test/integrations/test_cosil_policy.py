@@ -66,6 +66,10 @@ class _UnsupportedTemperatureError(Exception):
     }
 
 
+class _UnsupportedMaxCompletionTokensError(TypeError):
+    pass
+
+
 class _TemperatureRejectingCompletions(_Completions):
     def __init__(self, responses: list[dict]) -> None:
         super().__init__(responses)
@@ -77,6 +81,22 @@ class _TemperatureRejectingCompletions(_Completions):
         if "temperature" in request and not self.rejected:
             self.rejected = True
             raise _UnsupportedTemperatureError
+        return super().create(**request)
+
+
+class _MaxCompletionTokensRejectingCompletions(_Completions):
+    def __init__(self, responses: list[dict]) -> None:
+        super().__init__(responses)
+        self.attempts: list[dict] = []
+        self.rejected = False
+
+    def create(self, **request):
+        self.attempts.append(request)
+        if "max_completion_tokens" in request and not self.rejected:
+            self.rejected = True
+            raise _UnsupportedMaxCompletionTokensError(
+                "create() got an unexpected keyword argument 'max_completion_tokens'"
+            )
         return super().create(**request)
 
 
@@ -139,6 +159,10 @@ def test_file_parser_requires_balanced_fences_and_known_paths() -> None:
         valid_files=("django/db/models.py",),
         root_name="django",
     ) == ("django/db/models.py",)
+    assert parse_cosil_files(
+        "```\n.github/scripts/check.py\n```",
+        valid_files=(".github/scripts/check.py",),
+    ) == (".github/scripts/check.py",)
 
 
 def test_xml_parser_is_structured_and_candidate_bounded() -> None:
@@ -329,6 +353,40 @@ def test_policy_retries_without_unsupported_temperature(
     assert result.success is True
     assert "temperature" in completions.attempts[0]
     assert all("temperature" not in item for item in completions.attempts[1:])
+
+
+def test_policy_retries_with_legacy_max_tokens(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.cosil_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    completions = _MaxCompletionTokensRejectingCompletions(
+        [
+            {"content": "```\nsrc/model.py\n```"},
+            {"content": "```\nsrc/model.py\n```"},
+            {"content": "No tool call"},
+            {"content": "<locations></locations>"},
+        ]
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    agent = CoSILAgent(
+        model="legacy-sdk-model",
+        manifest_path=integration_manifest,
+        max_tool_rounds=1,
+        prune_tool_results=False,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix tax model", manifest.repo_path))
+
+    assert result.success is True
+    assert "max_completion_tokens" in completions.attempts[0]
+    assert "max_tokens" in completions.attempts[1]
+    assert all("max_completion_tokens" not in item for item in completions.attempts[1:])
 
 
 def test_policy_disables_reasoning_when_tools_require_it(
