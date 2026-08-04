@@ -123,7 +123,7 @@ class BM25IndexBuilder:
         )
         os.makedirs(output_dir, exist_ok=True)
         indexer.save_index(output_dir)
-        from .artifact_quality import bm25_artifact_file_fingerprints
+        from .artifact_fingerprints import bm25_artifact_file_fingerprints
 
         artifact_files = bm25_artifact_file_fingerprints(output_dir)
 

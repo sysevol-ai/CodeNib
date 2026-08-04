@@ -17,7 +17,6 @@ from ..graph.code_graph import CodeGraph
 from ..types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, ROOT_NODE, is_symbol_node
 
 ARTIFACT_QUALITY_SCHEMA_VERSION = 1
-_BM25_ARTIFACT_PATHS = (Path("documents.json"), Path("bm25_metadata.json"))
 
 
 def required_source_files(
@@ -306,39 +305,6 @@ def _file_fingerprint(path: Path) -> dict[str, Any]:
     return {"size": size, "sha256": digest.hexdigest()}
 
 
-def bm25_artifact_file_fingerprints(
-    root: str | Path,
-) -> dict[str, dict[str, Any]]:
-    """Fingerprint the complete persisted BM25 artifact."""
-
-    artifact_root = Path(root)
-    fingerprints: dict[str, dict[str, Any]] = {}
-    for relative in _BM25_ARTIFACT_PATHS:
-        path = artifact_root / relative
-        if path.is_symlink() or not path.is_file():
-            raise ValueError(f"invalid BM25 artifact file: {path}")
-        fingerprints[relative.as_posix()] = _file_fingerprint(path)
-    return fingerprints
-
-
-def bm25_artifact_files_match(
-    root: str | Path,
-    *,
-    expected_fingerprints: object,
-) -> bool:
-    """Return whether every persisted BM25 file matches its build record."""
-
-    if not isinstance(expected_fingerprints, Mapping):
-        return False
-    if set(expected_fingerprints) != {path.as_posix() for path in _BM25_ARTIFACT_PATHS}:
-        return False
-    try:
-        observed = bm25_artifact_file_fingerprints(root)
-    except (OSError, ValueError):
-        return False
-    return observed == dict(expected_fingerprints)
-
-
 def vector_artifact_file_fingerprints(
     root: str | Path,
     *,
@@ -528,8 +494,6 @@ def write_artifact_quality(path: str | Path, report: Mapping[str, Any]) -> None:
 __all__ = [
     "ARTIFACT_QUALITY_SCHEMA_VERSION",
     "assess_vector_artifact",
-    "bm25_artifact_file_fingerprints",
-    "bm25_artifact_files_match",
     "constrain_and_assess_graph_artifact",
     "constrain_graph_to_source_surface",
     "graph_file_paths",

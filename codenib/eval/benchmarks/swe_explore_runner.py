@@ -21,7 +21,7 @@ from typing import Any, Mapping, Sequence
 
 from codenib._version import package_version
 from codenib.cli import detect_languages, index_repository
-from codenib.compiler.artifact_quality import (
+from codenib.compiler.artifact_fingerprints import (
     bm25_artifact_file_fingerprints,
     bm25_artifact_files_match,
 )

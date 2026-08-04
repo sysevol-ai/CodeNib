@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from codenib.compiler.artifact_quality import bm25_artifact_file_fingerprints
+from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.eval.benchmarks import swe_explore_runner
