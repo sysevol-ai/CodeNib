@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -316,6 +317,26 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     submodule_file.write_text("value = 5\n", encoding="utf-8")
     submodule = audit_swe_explore_snapshot(case, repos)
     submodule_file.unlink()
+    embedded_repo = repo / "embedded"
+    embedded_repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=embedded_repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=embedded_repo, check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=embedded_repo,
+        check=True,
+    )
+    (embedded_repo / "nested.py").write_text("value = 6\n", encoding="utf-8")
+    subprocess.run(["git", "add", "nested.py"], cwd=embedded_repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "embedded fixture"],
+        cwd=embedded_repo,
+        check=True,
+    )
+    embedded = audit_swe_explore_snapshot(case, repos)
+    shutil.rmtree(embedded_repo)
     source_file.write_text("value = 2\n", encoding="utf-8")
     dirty = audit_swe_explore_snapshot(case, repos)
 
@@ -331,6 +352,8 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert skipped.valid
     assert submodule.unexpected_source_files == ("deps/library/untracked.py",)
     assert not submodule.valid
+    assert embedded.unexpected_source_files == ("embedded/nested.py",)
+    assert not embedded.valid
     assert dirty.revision_matches is True
     assert dirty.is_clean is False
     assert not dirty.valid

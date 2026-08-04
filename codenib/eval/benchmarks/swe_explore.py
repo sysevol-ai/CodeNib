@@ -579,29 +579,17 @@ def _unexpected_source_files(
     if worktrees is None:
         return None
     indexed_files = _chunker_source_files(repo)
-    candidates: set[Path] = set()
+    tracked_files: set[Path] = set()
     for worktree in worktrees:
-        untracked = _git_paths(
-            worktree, "ls-files", "--others", "--exclude-standard", "-z"
-        )
-        ignored = _git_paths(
-            worktree,
-            "ls-files",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-            "-z",
-        )
-        if untracked is None or ignored is None:
+        tracked = _git_paths(worktree, "ls-files", "-z")
+        if tracked is None:
             return None
-        candidates.update(
-            _absolute_lexical(worktree / path) for path in set(untracked).union(ignored)
-        )
+        tracked_files.update(_absolute_lexical(worktree / path) for path in tracked)
     root = _absolute_lexical(repo)
     return tuple(
         sorted(
             path.relative_to(root).as_posix()
-            for path in candidates.intersection(indexed_files)
+            for path in indexed_files.difference(tracked_files)
         )
     )
 
