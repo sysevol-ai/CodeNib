@@ -64,6 +64,21 @@ class _TemperatureRejectingCompletions(_Completions):
         return super().create(**request)
 
 
+class _MaxCompletionTokensRejectingCompletions(_Completions):
+    def __init__(self, responses: list[str]) -> None:
+        super().__init__(responses)
+        self.attempts: list[dict] = []
+
+    def create(self, **request):
+        self.attempts.append(request)
+        if "max_completion_tokens" in request:
+            raise TypeError(
+                "Completions.create() got an unexpected keyword argument "
+                "'max_completion_tokens'"
+            )
+        return super().create(**request)
+
+
 def test_file_parser_accepts_root_prefixed_ranked_output() -> None:
     result = parse_agentless_files(
         "```\nrepo/src/service.py\n- src/model.py\nmissing.py\n```",
@@ -72,6 +87,16 @@ def test_file_parser_accepts_root_prefixed_ranked_output() -> None:
     )
 
     assert result == ("src/service.py", "src/model.py")
+
+
+def test_file_parser_preserves_dot_prefixed_repository_paths() -> None:
+    result = parse_agentless_files(
+        ".github/scripts/tool.py\n.config.py",
+        valid_files=(".github/scripts/tool.py", ".config.py"),
+        root_name="repo",
+    )
+
+    assert result == (".github/scripts/tool.py", ".config.py")
 
 
 def test_location_parser_accepts_rendered_markdown_heading() -> None:
@@ -130,6 +155,16 @@ def test_location_parser_preserves_agentless_location_types() -> None:
             name="TaxRule",
         ),
     )
+
+
+def test_location_parser_rejects_nonpositive_and_reversed_ranges() -> None:
+    result = parse_agentless_locations(
+        "src/service.py\nline: 0, -2, 10-5",
+        valid_files=("src/service.py",),
+        root_name="repo",
+    )
+
+    assert result == ()
 
 
 def test_native_policy_runs_three_stages_over_manifest(
@@ -228,6 +263,36 @@ def test_policy_retries_without_unsupported_temperature(
     assert all("temperature" not in item for item in completions.attempts[1:])
 
 
+def test_policy_falls_back_to_legacy_max_tokens(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.agentless_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    completions = _MaxCompletionTokensRejectingCompletions(
+        [
+            "src/service.py",
+            "src/service.py\nfunction: helper",
+            "src/service.py\nline: 6",
+        ]
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    agent = AgentlessAgent(
+        model="legacy-sdk-model",
+        manifest_path=integration_manifest,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix helper", manifest.repo_path))
+
+    assert result.success is True
+    assert "max_completion_tokens" in completions.attempts[0]
+    assert all("max_tokens" in item for item in completions.attempts[1:])
+
+
 def test_policy_retries_file_only_symbol_and_line_outputs(
     integration_manifest: Path,
     monkeypatch,
@@ -317,6 +382,35 @@ def test_invalid_line_stage_falls_back_to_valid_symbol_stage(
     assert result.success is True
     assert [location.name for location in result.locations] == ["helper()"]
     assert len(client.chat.completions.requests) == 3
+
+
+def test_invalid_parsed_line_stage_falls_back_to_valid_symbol_stage(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.agentless_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    client = _Client(
+        [
+            "repo/src/service.py",
+            "src/service.py\nfunction: helper",
+            "src/service.py\nfunction: missing_symbol",
+        ]
+    )
+    agent = AgentlessAgent(
+        model="test-model",
+        manifest_path=integration_manifest,
+        max_retries=1,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix helper", manifest.repo_path))
+
+    assert result.success is True
+    assert [location.name for location in result.locations] == ["helper()"]
 
 
 def test_invalid_symbol_stage_stops_before_line_context(

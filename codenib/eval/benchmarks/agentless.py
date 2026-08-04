@@ -15,12 +15,12 @@ _FIELD = re.compile(
     r"(lines?|class(?:es)?|functions?|methods?|variables?)\s*:\s*(.+?)\s*$",
     re.IGNORECASE,
 )
-_LINE_RANGE = re.compile(r"(\d+)(?:\s*(?:-|:|to)\s*(\d+))?", re.IGNORECASE)
+_LINE_RANGE = re.compile(r"(-?\d+)(?:\s*(?:-|:|to)\s*(-?\d+))?", re.IGNORECASE)
 _LIST_PREFIX = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
 
 
 def _normalize(value: object) -> str:
-    text = str(value or "").strip().strip("`'\".,;()[]{} ")
+    text = str(value or "").strip().strip("`'\"()[]{} ").rstrip(",;")
     text = _LIST_PREFIX.sub("", text).replace("\\", "/")
     while text.startswith("./"):
         text = text[2:]
@@ -132,8 +132,10 @@ def parse_agentless_locations(
         current_has_detail = True
         if field.startswith("line"):
             for line_match in _LINE_RANGE.finditer(value):
-                start = max(1, int(line_match.group(1)))
-                end = max(start, int(line_match.group(2) or start))
+                start = int(line_match.group(1))
+                end = int(line_match.group(2) or start)
+                if start < 1 or end < start:
+                    continue
                 output.append(
                     AgentlessLocation(
                         file_path=current_file,

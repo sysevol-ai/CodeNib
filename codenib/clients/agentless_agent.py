@@ -234,12 +234,14 @@ class AgentlessAgent:
                 valid_files=provider.files,
                 root_name=provider.project_root_name,
             )
+            parsed = _valid_locations(parsed, provider)
             if not parsed and execution.symbol_output:
                 parsed = parse_agentless_locations(
                     execution.symbol_output,
                     valid_files=provider.files,
                     root_name=provider.project_root_name,
                 )
+                parsed = _valid_locations(parsed, provider)
             if not parsed and execution.file_output:
                 parsed = tuple(
                     AgentlessLocation(file_path=file_path)
@@ -318,24 +320,37 @@ def run_agentless_policy(
     trajectory: list[dict[str, Any]] = []
     started = time.perf_counter()
     temperature_supported = True
+    max_completion_tokens_supported = True
 
     def complete(stage: str, prompt: str, temperature: float) -> str:
-        nonlocal temperature_supported
+        nonlocal max_completion_tokens_supported, temperature_supported
         request: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_completion_tokens": max_completion_tokens,
         }
+        token_parameter = (
+            "max_completion_tokens" if max_completion_tokens_supported else "max_tokens"
+        )
+        request[token_parameter] = max_completion_tokens
         if temperature_supported:
             request["temperature"] = temperature
-        try:
-            response = client.chat.completions.create(**request)
-        except Exception as exc:
-            if not temperature_supported or not _unsupported_temperature(exc):
+        while True:
+            try:
+                response = client.chat.completions.create(**request)
+                break
+            except Exception as exc:
+                if temperature_supported and _unsupported_temperature(exc):
+                    temperature_supported = False
+                    request.pop("temperature", None)
+                    continue
+                if max_completion_tokens_supported and (
+                    _unsupported_max_completion_tokens(exc)
+                ):
+                    max_completion_tokens_supported = False
+                    request.pop("max_completion_tokens", None)
+                    request["max_tokens"] = max_completion_tokens
+                    continue
                 raise
-            temperature_supported = False
-            request.pop("temperature", None)
-            response = client.chat.completions.create(**request)
         prompt_tokens, completion_tokens, cached_tokens = _response_usage(response)
         usage["prompt_tokens"] += prompt_tokens
         usage["completion_tokens"] += completion_tokens
@@ -440,17 +455,26 @@ def _contains_valid_location(
     locations: Sequence[AgentlessLocation],
     provider: AgentlessRepositoryProvider,
 ) -> bool:
+    return bool(_valid_locations(locations, provider))
+
+
+def _valid_locations(
+    locations: Sequence[AgentlessLocation],
+    provider: AgentlessRepositoryProvider,
+) -> tuple[AgentlessLocation, ...]:
+    valid: list[AgentlessLocation] = []
     for location in locations:
         files = provider.resolve_files([location.file_path], limit=1)
         if not files:
             continue
         if location.kind == "line" and location.line_start is not None:
             line_count = len(provider.repository.source_lines(files[0]))
-            if 1 <= location.line_start <= line_count:
-                return True
+            line_end = location.line_end or location.line_start
+            if 1 <= location.line_start <= line_end <= line_count:
+                valid.append(location)
         elif provider.resolve_entity(files[0], location.kind, location.name):
-            return True
-    return False
+            valid.append(location)
+    return tuple(valid)
 
 
 def _response_text(response: Any) -> str:
@@ -505,6 +529,25 @@ def _unsupported_temperature(exc: Exception) -> bool:
                 return True
     message = str(exc).lower()
     return "temperature" in message and "unsupported value" in message
+
+
+def _unsupported_max_completion_tokens(exc: Exception) -> bool:
+    body = getattr(exc, "body", None)
+    if isinstance(body, Mapping):
+        detail = body.get("error", body)
+        if isinstance(detail, Mapping):
+            param = str(detail.get("param") or "").lower()
+            message = str(detail.get("message") or "").lower()
+            if param == "max_completion_tokens" and any(
+                marker in message
+                for marker in ("unsupported", "unrecognized", "unknown")
+            ):
+                return True
+    message = str(exc).lower()
+    return "max_completion_tokens" in message and any(
+        marker in message
+        for marker in ("unexpected keyword", "unsupported", "unrecognized", "unknown")
+    )
 
 
 __all__ = [
