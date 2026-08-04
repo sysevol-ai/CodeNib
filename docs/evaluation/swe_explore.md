@@ -20,7 +20,7 @@ complete: 451 Verified, 182 Multilingual, and 215 Pro rows resolve uniquely.
 
 ## Fixed Case Set
 
-The checked-in [case set](swe_explore_cases.json) fixes 20 cases before
+The checked-in [case set](../assets/swe_explore_cases.json) fixes 20 cases before
 execution: two Python cases and three each for Go, Rust, TypeScript,
 JavaScript, C, and C++. Every repository is a clean detached checkout at the
 joined `base_commit`; no failed case is removed from the denominator.

@@ -117,6 +117,17 @@ def test_source_inventory_rejects_unapproved_nested_asset(tmp_path):
     assert "assets/experiments/private.json" in errors[0]
 
 
+def test_source_inventory_allows_pinned_swe_explore_case_set(tmp_path):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "index.md").write_text("# Home\n", encoding="utf-8")
+    cases = docs_dir / "assets" / "swe_explore_cases.json"
+    cases.parent.mkdir()
+    cases.write_text('{"cases": []}\n', encoding="utf-8")
+
+    assert check_public_docs._check_source_inventory(docs_dir, _config()) == []
+
+
 def test_source_links_detect_encoded_autolink_html_and_repository_urls(tmp_path):
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()

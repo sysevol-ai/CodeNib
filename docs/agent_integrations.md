@@ -106,7 +106,7 @@ Python, Go, Rust, TypeScript, JavaScript, C, and C++. All 20 passed checkout,
 manifest, build, load, and query gates. On the validation machine, median
 first-build, view-load, and query times were 0.81 s, 64 ms, and 67 ms. These are
 compatibility measurements, not a population estimate or a claim of task-level
-agent improvement. The [case set](evaluation/swe_explore_cases.json)
+agent improvement. The [case set](assets/swe_explore_cases.json)
 and [validation report](evaluation/swe_explore.md) record the exact
 scope.
 
@@ -116,7 +116,7 @@ joined source commits:
 ```bash
 codenib-swe-explore-benchmark \
   --bench /path/to/bench.final.public.jsonl \
-  --case-set docs/evaluation/swe_explore_cases.json \
+  --case-set docs/assets/swe_explore_cases.json \
   --repos-root /path/to/repos \
   --output results/codenib-swe-explore.json \
   --top-k 5,10,20
