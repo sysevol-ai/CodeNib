@@ -148,6 +148,29 @@ def test_location_parser_resets_block_on_unselected_file_heading() -> None:
     assert result == (AgentlessLocation(file_path="src/service.py"),)
 
 
+def test_location_parser_accepts_inline_path_line_locations() -> None:
+    result = parse_agentless_locations(
+        "service.py:4\nrepo/src/model.py: line 2",
+        valid_files=("src/service.py", "src/model.py"),
+        root_name="repo",
+    )
+
+    assert result == (
+        AgentlessLocation(
+            file_path="src/service.py",
+            kind="line",
+            line_start=4,
+            line_end=4,
+        ),
+        AgentlessLocation(
+            file_path="src/model.py",
+            kind="line",
+            line_start=2,
+            line_end=2,
+        ),
+    )
+
+
 def test_location_parser_splits_whitespace_separated_variables() -> None:
     result = parse_agentless_locations(
         "src/service.py\nvariables: TAX_RATE DEFAULT_RATE",

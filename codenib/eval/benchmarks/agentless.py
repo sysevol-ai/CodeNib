@@ -37,6 +37,7 @@ def _file_candidate(line: str) -> str:
 
 def _match_file(line: str, valid_files: Sequence[str], root_name: str) -> str:
     candidate = _file_candidate(line)
+    path_candidate = candidate.split(":", 1)[0]
     roots = tuple(filter(None, (root_name.strip("/"),)))
     for file_path in sorted(valid_files, key=len, reverse=True):
         accepted = {file_path}
@@ -46,10 +47,27 @@ def _match_file(line: str, valid_files: Sequence[str], root_name: str) -> str:
         if any(candidate.startswith(value + ":") for value in accepted):
             return file_path
     suffix_matches = tuple(
-        file_path for file_path in valid_files if file_path.endswith("/" + candidate)
+        file_path
+        for file_path in valid_files
+        if file_path.endswith("/" + path_candidate)
     )
     if len(suffix_matches) == 1:
         return suffix_matches[0]
+    return ""
+
+
+def _file_suffix(line: str, file_path: str, root_name: str) -> str:
+    candidate = _file_candidate(line)
+    path_candidate, separator, suffix = candidate.partition(":")
+    accepted = {file_path}
+    root = root_name.strip("/")
+    if root:
+        accepted.add(f"{root}/{file_path}")
+    for value in sorted(accepted, key=len, reverse=True):
+        if candidate.startswith(value + ":"):
+            return candidate[len(value) + 1 :].strip()
+    if separator and file_path.endswith("/" + path_candidate):
+        return suffix.strip()
     return ""
 
 
@@ -136,8 +154,14 @@ def parse_agentless_locations(
         if file_path:
             flush_file()
             current_file = file_path
-            continue
-        if _looks_like_file_heading(line):
+            suffix = _file_suffix(line, file_path, root_name)
+            if not suffix:
+                continue
+            if re.fullmatch(r"-?\d+(?:\s*(?:-|:|to)\s*-?\d+)?", suffix):
+                line = f"line: {suffix}"
+            else:
+                line = re.sub(r"^(lines?)\s+", r"\1: ", suffix, flags=re.IGNORECASE)
+        elif _looks_like_file_heading(line):
             flush_file()
             current_file = ""
             continue
