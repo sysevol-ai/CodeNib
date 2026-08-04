@@ -17,6 +17,7 @@ budget contract. None of these labels alone claims end-to-end task quality.
 | --- | --- | --- | --- | --- | --- |
 | LocAgent | CodeNib-native, revision-pinned | Symbol graph + BM25 | Pinned three-tool contract | Vendored prompts and function-calling loop; paired runner with strict common file/function@k scoring | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
 | Agentless v1.5.0 | CodeNib-native, revision-pinned | Symbol graph | Python tree, symbol skeleton, and line-window context | Vendored three-stage localization prompts; shared ranked file/symbol scoring | Localization only; repair and patch validation are excluded |
+| CoSIL | CodeNib-native, revision-pinned | Symbol graph | Pinned four-tool contract | Vendored file reflection, function tool loop, prune policy, and shared localization scoring | RQ1 file/function localization only; line localization and patch generation are excluded |
 | OrcaLoca SearchAgent | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
 | SWE-Explore | Official explorer-compatible, revision-pinned | BM25 | Ranked `ContextRegion` explorer protocol | Official runner adapter, pinned scorer contract, and strict seven-language compatibility run | Trajectory-read localization only; no patch-generation or issue-resolution claim |
 
@@ -50,8 +51,9 @@ inside the upstream runtime. Provider imports and standalone provider examples
 remain dependency-free. Exact pinned
 revisions, fidelity limits, commands, and measured evidence follow below.
 Provider startup also selects only its declared runtime views: LocAgent loads
-the symbol graph and BM25, while Agentless and OrcaLoca load only the symbol
-graph. Dense and Zoekt runtimes are not imported or started for these contracts.
+the symbol graph and BM25, while Agentless, CoSIL, and OrcaLoca load only the
+symbol graph. Dense and Zoekt runtimes are not imported or started for these
+contracts.
 CodeNib's graph providers can represent additional languages, but this matrix
 does not extend a Python-scoped upstream policy or native comparator beyond its
 validated domain.
@@ -314,6 +316,84 @@ pytest -q test/integrations/test_agentless.py \
 
 AGENTLESS_CHECKOUT=/path/to/Agentless \
 pytest -q test/integrations/test_agentless_upstream.py
+```
+
+## CoSIL
+
+The CoSIL integration follows the two scripts used by the
+[pinned public RQ1 path](https://github.com/ZhonghaoJiang/CoSIL/tree/0568e423735b399d5b089996961fea9ae142e4c7/CoSIL/fl):
+
+1. rank files and reflect that ranking against their import statements;
+2. inspect candidate classes and functions through four tools, optionally prune
+   irrelevant observations, and emit a final XML location summary.
+
+`CoSILRepositoryProvider` implements the pinned tools:
+
+- `get_code_of_class`
+- `get_code_of_class_function`
+- `get_code_of_file_function`
+- `exit`
+
+The provider loads only CodeNib's symbol graph. File identity comes from that
+manifest view, while a lazy Python AST parse of requested candidate files
+restores CoSIL's exact class/function classification and source ranges. It does
+not load CoSIL's `repo_structures/<instance>.json` or build another graph.
+
+```python
+from codenib.integrations.cosil import CoSILRepositoryProvider
+
+provider = CoSILRepositoryProvider.from_manifest(
+    "/path/to/repo_manifest.json",
+)
+source = provider.dispatch(
+    "get_code_of_class_function",
+    {
+        "file_name": "src/service.py",
+        "class_name": "Service",
+        "func_name": "run",
+    },
+)
+```
+
+Inspect the candidate contract without CoSIL installed:
+
+```bash
+python examples/integrations/cosil.py \
+  --manifest /path/to/repo_manifest.json \
+  --file src/service.py
+```
+
+`CoSILAgent` vendors the file/reflection prompts, four-tool loop, optional
+per-result prune loop, and XML summary prompt from revision
+`0568e423735b399d5b089996961fea9ae142e4c7`. The optional upstream probe compares
+those prompt and schema objects directly with the pinned Git tree. The runtime
+does not import CoSIL, Agentless, LiteLLM, or a second index implementation.
+
+```bash
+python examples/cosil_loc_agent.py \
+  --dataset codenib_base \
+  --model "$COSIL_MODEL" \
+  --result-path results/cosil.jsonl
+```
+
+This boundary matches CoSIL's file and function localization experiment. It
+does not claim compatibility with its line-localization, patch-generation, or
+test-validation stages. If import reflection is malformed, CodeNib retains the
+validated initial file ranking rather than turning an empty reflection into an
+empty candidate set.
+
+The AST compatibility check compared all 1,791 eligible Python files from five
+SWE-bench Lite repository snapshots (Requests, Flask, Django, SymPy, and
+Pylint) against CoSIL's pinned `parse_python_file`; class, function, method,
+range, and source records matched for every file. This validates the provider
+contract, not CoSIL's model-dependent localization score.
+
+```bash
+pytest -q test/integrations/test_cosil.py \
+  test/integrations/test_cosil_policy.py
+
+COSIL_CHECKOUT=/path/to/CoSIL \
+pytest -q test/integrations/test_cosil_upstream.py
 ```
 
 ## OrcaLoca
