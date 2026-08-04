@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -301,7 +302,7 @@ class CoSILProtocol:
         self,
         *,
         candidate_structure: str,
-        collected_code: Sequence[tuple[str, str]],
+        collected_code: Sequence[tuple[str, Mapping[str, Any], str]],
     ) -> list[dict[str, str]]:
         bug_report = _BUG_REPORT_NO_STRUCTURE.format(
             problem_statement=self.problem_statement
@@ -309,8 +310,12 @@ class CoSILProtocol:
         retrieved = ""
         if collected_code:
             blocks = "\n\n".join(
-                f'<code from="{name}">\n{content}\n</code>'  # noqa: B907
-                for name, content in collected_code
+                (
+                    f"Tool: {name}\n"
+                    f"Arguments: {json.dumps(dict(arguments), sort_keys=True)}\n"
+                    f"<code>\n{content}\n</code>"
+                )
+                for name, arguments, content in collected_code
             )
             retrieved = f"Relevant code retrieved during analysis:\n\n{blocks}\n\n"
         summary = _LOCATION_SUMMARY.format(bug_file_list=candidate_structure)

@@ -320,7 +320,11 @@ def run_cosil_policy(
                     temperature_supported = False
                     request.pop("temperature", None)
                     continue
-                if tools is not None and _requires_no_reasoning_with_tools(exc):
+                if (
+                    tools is not None
+                    and not tool_reasoning_disabled
+                    and _requires_no_reasoning_with_tools(exc)
+                ):
                     tool_reasoning_disabled = True
                     request["reasoning_effort"] = "none"
                     continue
@@ -404,7 +408,7 @@ def run_cosil_policy(
         max_rounds=max_tool_rounds,
     )
     tools = get_cosil_tool_schemas()
-    collected_code: list[tuple[str, str]] = []
+    collected_code: list[tuple[str, Mapping[str, Any], str]] = []
 
     for round_index in range(max_tool_rounds):
         _content, assistant = complete(
@@ -430,6 +434,17 @@ def run_cosil_policy(
                 result = f"Tool call failed: {exc}"
                 error = result
             kept = name != "exit"
+            trace_entry: dict[str, Any] = {
+                "phase": "location",
+                "round": round_index + 1,
+                "name": name,
+                "arguments": arguments,
+                "seconds": time.perf_counter() - tool_started,
+                "output_chars": len(result),
+                "kept": kept,
+                "error": error,
+            }
+            tool_trace.append(trace_entry)
             if kept and prune_tool_results and error is None:
                 kept = _prune_tool_result(
                     protocol=protocol,
@@ -440,21 +455,11 @@ def run_cosil_policy(
                     arguments=arguments,
                     tool_result=result,
                     max_rounds=max_prune_rounds,
+                    tool_trace=tool_trace,
                 )
                 if not kept:
                     result = _FALSE_OBSERVATION
-            elapsed = time.perf_counter() - tool_started
-            tool_trace.append(
-                {
-                    "round": round_index + 1,
-                    "name": name,
-                    "arguments": arguments,
-                    "seconds": elapsed,
-                    "output_chars": len(result),
-                    "kept": kept,
-                    "error": error,
-                }
-            )
+            trace_entry["kept"] = kept
             messages.append(
                 {
                     "role": "tool",
@@ -464,7 +469,7 @@ def run_cosil_policy(
                 }
             )
             if kept and error is None:
-                collected_code.append((name, result))
+                collected_code.append((name, arguments, result))
             if name == "exit":
                 should_exit = True
         if should_exit:
@@ -499,6 +504,7 @@ def _prune_tool_result(
     arguments: Mapping[str, Any],
     tool_result: str,
     max_rounds: int,
+    tool_trace: list[dict[str, Any]],
 ) -> bool:
     messages: list[dict[str, Any]] = protocol.prune_messages(
         tool_name=tool_name,
@@ -521,10 +527,25 @@ def _prune_tool_result(
             function = dict(call.get("function") or {})
             name = str(function.get("name") or "")
             arguments = _tool_arguments(function.get("arguments"))
+            tool_started = time.perf_counter()
             try:
                 result = provider.dispatch(name, arguments)
+                error = None
             except Exception as exc:  # noqa: BLE001 - policy observation
                 result = f"Tool call failed: {exc}"
+                error = result
+            tool_trace.append(
+                {
+                    "phase": "prune",
+                    "round": _round_index + 1,
+                    "name": name,
+                    "arguments": arguments,
+                    "seconds": time.perf_counter() - tool_started,
+                    "output_chars": len(result),
+                    "kept": name != "exit" and error is None,
+                    "error": error,
+                }
+            )
             messages.append(
                 {
                     "role": "tool",

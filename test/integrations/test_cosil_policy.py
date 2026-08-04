@@ -103,6 +103,18 @@ class _ToolReasoningRejectingCompletions(_Completions):
         return super().create(**request)
 
 
+class _AlwaysToolReasoningRejectingCompletions(_Completions):
+    def __init__(self, responses: list[dict]) -> None:
+        super().__init__(responses)
+        self.attempts: list[dict] = []
+
+    def create(self, **request):
+        self.attempts.append(request)
+        if request.get("tools"):
+            raise _ToolReasoningError
+        return super().create(**request)
+
+
 def test_file_parser_requires_balanced_fences_and_known_paths() -> None:
     valid = ("src/service.py", "src/model.py")
 
@@ -122,6 +134,11 @@ def test_file_parser_requires_balanced_fences_and_known_paths() -> None:
         )
         == ()
     )
+    assert parse_cosil_files(
+        "```\ndjango/db/models.py\n```",
+        valid_files=("django/db/models.py",),
+        root_name="django",
+    ) == ("django/db/models.py",)
 
 
 def test_xml_parser_is_structured_and_candidate_bounded() -> None:
@@ -158,6 +175,23 @@ def test_xml_parser_is_structured_and_candidate_bounded() -> None:
         )
         == ()
     )
+
+
+def test_xml_parser_preserves_same_named_root_and_limits_to_five() -> None:
+    locations = "".join(
+        "<location><file>django/db/models.py</file><type>function</type>"
+        f"<name>candidate_{index}</name></location>"
+        for index in range(6)
+    )
+
+    result = parse_cosil_locations(
+        f"<locations>{locations}</locations>",
+        valid_files=("django/db/models.py",),
+        root_name="django",
+    )
+
+    assert len(result) == 5
+    assert all(item.file_path == "django/db/models.py" for item in result)
 
 
 def test_native_policy_runs_reflection_tools_and_xml_summary(
@@ -229,6 +263,7 @@ def test_native_policy_runs_reflection_tools_and_xml_summary(
     ]
     assert "def calculate_tax" in requests[3]["messages"][-1]["content"]
     assert "Relevant code retrieved" in requests[4]["messages"][1]["content"]
+    assert '"file_name": "src/service.py"' in requests[4]["messages"][1]["content"]
 
 
 def test_failed_reflection_keeps_initial_file_candidates(
@@ -330,6 +365,39 @@ def test_policy_disables_reasoning_when_tools_require_it(
     assert tool_attempts[1]["reasoning_effort"] == "none"
 
 
+def test_policy_bounds_reasoning_fallback_retry(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.cosil_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    completions = _AlwaysToolReasoningRejectingCompletions(
+        [
+            {"content": "```\nsrc/model.py\n```"},
+            {"content": "```\nsrc/model.py\n```"},
+        ]
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    agent = CoSILAgent(
+        model="reasoning-model",
+        manifest_path=integration_manifest,
+        max_tool_rounds=1,
+        prune_tool_results=False,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix tax model", manifest.repo_path))
+
+    assert result.success is False
+    tool_attempts = [item for item in completions.attempts if item.get("tools")]
+    assert len(tool_attempts) == 2
+    assert "reasoning_effort" not in tool_attempts[0]
+    assert tool_attempts[1]["reasoning_effort"] == "none"
+
+
 def test_prune_false_masks_code_before_next_main_round(
     integration_manifest: Path,
     monkeypatch,
@@ -352,7 +420,16 @@ def test_prune_false_masks_code_before_next_main_round(
                     )
                 ]
             },
-            {"content": "I inspected the function"},
+            {
+                "tool_calls": [
+                    _tool_call(
+                        "prune-1",
+                        "get_code_of_class",
+                        '{"file_name":"src/service.py",'
+                        '"class_name":"BillingService"}',
+                    )
+                ]
+            },
             {"content": "```\nFalse\n```"},
             {"tool_calls": [_tool_call("main-2", "exit")]},
             {"content": "<locations></locations>"},
@@ -370,6 +447,12 @@ def test_prune_false_masks_code_before_next_main_round(
     result = asyncio.run(agent.locate_code("Fix tax helper", manifest.repo_path))
 
     assert result.success is True
+    assert result.usage["tool_calls"] == 3
+    assert [item["phase"] for item in result.raw_output["tool_trace"]] == [
+        "location",
+        "prune",
+        "location",
+    ]
     requests = client.chat.completions.requests
     next_main_messages = requests[5]["messages"]
     assert "not related to the bug" in next_main_messages[-1]["content"]

@@ -70,6 +70,20 @@ def test_project_structure_keeps_cosil_python_boundary(
     )
 
 
+def test_resolve_files_prefers_valid_path_before_root_prefix(
+    provider: CoSILRepositoryProvider,
+    monkeypatch,
+) -> None:
+    provider._files = ("repo/module.py",)
+    monkeypatch.setattr(
+        provider.repository,
+        "find_files",
+        lambda value: [value] if value == "repo/module.py" else [],
+    )
+
+    assert provider.resolve_files(["repo/module.py"]) == ("repo/module.py",)
+
+
 def test_candidate_structure_matches_upstream_fields(
     provider: CoSILRepositoryProvider,
 ) -> None:

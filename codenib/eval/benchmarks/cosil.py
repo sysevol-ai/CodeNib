@@ -25,6 +25,8 @@ def _normalize(value: object) -> str:
 
 def _match_file(value: object, valid_files: Sequence[str], root_name: str) -> str:
     candidate = _normalize(value)
+    if candidate in valid_files:
+        return candidate
     prefix = root_name.strip("/") + "/" if root_name.strip("/") else ""
     if prefix and candidate.startswith(prefix):
         candidate = candidate[len(prefix) :]
@@ -78,6 +80,7 @@ def parse_cosil_locations(
     *,
     valid_files: Iterable[str],
     root_name: str = "",
+    limit: int = 5,
 ) -> tuple[CoSILLocation, ...]:
     """Parse a well-formed ``<locations>`` document and reject unknown files."""
 
@@ -103,6 +106,8 @@ def parse_cosil_locations(
             continue
         seen.add(key)
         output.append(CoSILLocation(file_path=file_path, kind=kind, name=name))
+        if len(output) >= max(1, int(limit)):
+            break
     return tuple(output)
 
 

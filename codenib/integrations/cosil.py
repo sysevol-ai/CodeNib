@@ -275,7 +275,7 @@ class CoSILRepositoryProvider:
             value = value.replace("\\", "/")
             while value.startswith("./"):
                 value = value[2:]
-            if value.startswith(root_prefix):
+            if value not in self._files and value.startswith(root_prefix):
                 value = value[len(root_prefix) :]
             matches = self.repository.find_files(value)
             for match in matches:
