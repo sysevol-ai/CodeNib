@@ -119,7 +119,7 @@ def parse_agentless_locations(
         current_has_detail = False
 
     for raw_line in str(raw_output or "").splitlines():
-        line = raw_line.strip().strip("`").strip()
+        line = _LIST_PREFIX.sub("", raw_line.strip()).strip("`").strip()
         if not line:
             continue
         file_path = _match_file(line, files, root_name)

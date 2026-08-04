@@ -159,6 +159,27 @@ def test_location_parser_splits_whitespace_separated_variables() -> None:
     )
 
 
+def test_location_parser_accepts_numbered_field_prefixes() -> None:
+    result = parse_agentless_locations(
+        "src/service.py\n1. `function: helper`\n2) line: 4",
+        valid_files=("src/service.py",),
+    )
+
+    assert result == (
+        AgentlessLocation(
+            file_path="src/service.py",
+            kind="function",
+            name="helper",
+        ),
+        AgentlessLocation(
+            file_path="src/service.py",
+            kind="line",
+            line_start=4,
+            line_end=4,
+        ),
+    )
+
+
 def test_location_parser_preserves_agentless_location_types() -> None:
     result = parse_agentless_locations(
         """
