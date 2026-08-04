@@ -39,6 +39,7 @@ from .policy_compat import (
     write_json_atomic,
 )
 from .swe_explore import (
+    SWE_EXPLORE_BENCHMARK_SHA256,
     SWE_EXPLORE_DATASET_REVISION,
     SWE_EXPLORE_METRICS,
     SWE_EXPLORE_SOURCE_DATASETS,
@@ -75,6 +76,7 @@ __all__ = [
     "PolicyProvenanceIssue",
     "PolicyRunPreflight",
     "RevisionSource",
+    "SWE_EXPLORE_BENCHMARK_SHA256",
     "SWE_EXPLORE_DATASET_REVISION",
     "SWE_EXPLORE_METRICS",
     "SWE_EXPLORE_SOURCE_DATASETS",

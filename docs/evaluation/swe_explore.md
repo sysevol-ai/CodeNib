@@ -10,6 +10,7 @@ generation or SWE-bench issue resolution.
 | --- | --- |
 | SWE-Explore code | `3c12dc5a551937038afcbdb6eb6bbf19f3ddd8c1` |
 | SWE-Explore release | `bdb0ae45d7c337d9e1dc3ebfe2a0af6bc7c1fbd9` |
+| Public benchmark SHA-256 | `dc4f114ececd0bfb987361c26ae5e2440456e2cccb36adfccb09ea5385aec202` |
 | SWE-bench Verified | `c104f840cc67f8b6eec6f759ebc8b2693d585d4a` |
 | SWE-bench Multilingual | `2b7aced941b4873e9cad3e76abbae93f481d1beb` |
 | SWE-bench Pro | `2dd05cab1572ce1d59fdc699b386692ff8e0bd29` |
@@ -23,9 +24,14 @@ complete: 451 Verified, 182 Multilingual, and 215 Pro rows resolve uniquely.
 The checked-in [case set](../assets/swe_explore_cases.json) fixes 20 cases before
 execution: two Python cases and three each for Go, Rust, TypeScript,
 JavaScript, C, and C++. Every repository is a clean detached checkout at the
-joined `base_commit`; no failed case is removed from the denominator.
-Runner-level failures contribute zero to aggregate quality metrics rather than
-being silently averaged away.
+joined `base_commit`. The audit rejects tracked changes plus untracked or
+gitignored source files that CodeNib's chunker would index. The runner also
+requires the default BM25 artifact profile and records it per case.
+
+Coverage always uses all requested cases. Quality metrics are conditioned on
+successful cases because zero-imputation would make lower-is-better noise
+rates look artificially good; the report records that metric denominator and
+lists every failed case separately.
 
 ## Contract Results
 

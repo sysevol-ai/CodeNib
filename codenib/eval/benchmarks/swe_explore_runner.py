@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import platform
@@ -20,11 +21,13 @@ from typing import Any, Mapping, Sequence
 
 from codenib._version import package_version
 from codenib.cli import detect_languages, index_repository
-from codenib.compiler.manifest import MANIFEST_FILENAME
+from codenib.compiler.index_builders import BM25IndexBuilder
+from codenib.compiler.manifest import MANIFEST_FILENAME, RepoManifest
 from codenib.integrations.swe_explore import CodeNibSWEExploreExplorer
 from codenib.paths import repo_index_dir
 
 from .swe_explore import (
+    SWE_EXPLORE_BENCHMARK_SHA256,
     SWE_EXPLORE_DATASET_REVISION,
     SWE_EXPLORE_METRICS,
     SWE_EXPLORE_SOURCE_DATASETS,
@@ -48,12 +51,21 @@ def run_swe_explore_benchmark(
     top_ks: Sequence[int],
     build_indexes: bool = True,
     rebuild: bool = False,
+    expected_bench_sha256: str | None = SWE_EXPLORE_BENCHMARK_SHA256,
 ) -> dict[str, Any]:
     """Run a fixed case set without dropping preparation or query failures."""
 
     normalized_ks = tuple(sorted(set(int(value) for value in top_ks)))
     if not normalized_ks or normalized_ks[0] <= 0:
         raise ValueError("SWE-Explore top-k values must be positive")
+    benchmark_digest = _file_sha256(bench_path)
+    if expected_bench_sha256 is not None and not hmac.compare_digest(
+        benchmark_digest, expected_bench_sha256.lower()
+    ):
+        raise ValueError(
+            "SWE-Explore benchmark SHA-256 mismatch: "
+            f"expected {expected_bench_sha256.lower()}, observed {benchmark_digest}"
+        )
     case_labels, case_set_digest = _load_case_set(case_set_path)
     source_rows = _load_pinned_source_rows()
     sources = load_swe_explore_sources(source_rows)
@@ -96,12 +108,14 @@ def run_swe_explore_benchmark(
             )
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "provenance": {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "codenib": _code_provenance(),
             "swe_explore_upstream_revision": SWE_EXPLORE_UPSTREAM_REVISION,
             "swe_explore_dataset_revision": SWE_EXPLORE_DATASET_REVISION,
+            "benchmark_sha256": benchmark_digest,
+            "expected_benchmark_sha256": expected_bench_sha256,
             "source_datasets": {
                 name: {"dataset": dataset, "revision": revision}
                 for name, (dataset, revision) in SWE_EXPLORE_SOURCE_DATASETS.items()
@@ -152,6 +166,11 @@ def _run_case(
             raise RuntimeError("BM25 build failed")
 
     manifest_path = repo_index_dir(repo) / MANIFEST_FILENAME
+    bm25_profile = _validated_bm25_profile(
+        manifest_path,
+        languages=detected_languages,
+        required_top_k=max(top_ks),
+    )
     load_started = time.perf_counter()
     explorer = CodeNibSWEExploreExplorer.from_repository(
         repo, manifest_path=manifest_path
@@ -189,12 +208,47 @@ def _run_case(
         "snapshot": snapshot.to_record(),
         "detected_languages": detected_languages,
         "manifest_path": str(manifest_path),
+        "bm25_profile": bm25_profile,
         "timing_seconds": {
             "build": build_seconds,
             "load": load_seconds,
             "query": query_seconds,
         },
         "evaluations": evaluations,
+    }
+
+
+def _validated_bm25_profile(
+    manifest_path: str | Path,
+    *,
+    languages: Sequence[str],
+    required_top_k: int,
+) -> dict[str, Any]:
+    """Validate and record the physical BM25 contract used by a run."""
+
+    manifest = RepoManifest.load(manifest_path)
+    entry = manifest.indexes.get("bm25")
+    if entry is None or not manifest.index_is_current("bm25"):
+        raise ValueError("SWE-Explore requires a fresh BM25 manifest entry")
+
+    expected = BM25IndexBuilder(languages=list(languages)).artifact_identity()
+    actual = {key: entry.config.get(key) for key in expected}
+    mismatches = {
+        key: {"expected": expected[key], "observed": actual[key]}
+        for key in expected
+        if actual[key] != expected[key]
+    }
+    if mismatches:
+        raise ValueError(f"SWE-Explore BM25 profile mismatch: {mismatches}")
+    if int(actual["max_k"]) < required_top_k:
+        raise ValueError(
+            "SWE-Explore BM25 max_k is smaller than the requested region cutoff: "
+            f"{actual['max_k']} < {required_top_k}"
+        )
+    return {
+        "config": actual,
+        "commit": entry.commit,
+        "source_fingerprint": entry.source_fingerprint,
     }
 
 
@@ -224,6 +278,10 @@ def _load_case_set(path: str | Path) -> tuple[dict[str, str], str]:
     if not cases:
         raise ValueError("SWE-Explore case set is empty")
     return cases, hashlib.sha256(content).hexdigest()
+
+
+def _file_sha256(path: str | Path) -> str:
+    return hashlib.sha256(Path(path).expanduser().read_bytes()).hexdigest()
 
 
 def _load_pinned_source_rows() -> dict[str, Any]:
@@ -281,6 +339,11 @@ def _summarize(
             if row.get("success") is not True
         ],
         "timing_seconds": {},
+        "metric_aggregation": {
+            "population": "successful_cases",
+            "n": len(successful),
+            "failures_reported_separately": True,
+        },
         "metrics_by_top_k": {},
     }
     for stage in ("build", "load", "query"):
@@ -295,12 +358,8 @@ def _summarize(
         metric_summary: dict[str, float | None] = {}
         for metric in SWE_EXPLORE_METRICS:
             values = [
-                (
-                    float(row["evaluations"][str(top_k)]["metrics"][metric])
-                    if row.get("success") is True
-                    else 0.0
-                )
-                for row in rows
+                float(row["evaluations"][str(top_k)]["metrics"][metric])
+                for row in successful
             ]
             metric_summary[metric] = statistics.fmean(values) if values else None
         summary["metrics_by_top_k"][str(top_k)] = metric_summary
@@ -339,6 +398,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repos-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--top-k", default=(5, 10, 20), type=_parse_top_ks)
+    parser.add_argument(
+        "--bench-sha256",
+        default=SWE_EXPLORE_BENCHMARK_SHA256,
+        help="expected SHA-256 of --bench (defaults to the pinned public release)",
+    )
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--rebuild", action="store_true")
     return parser
@@ -353,6 +417,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         top_ks=args.top_k,
         build_indexes=not args.no_build,
         rebuild=args.rebuild,
+        expected_bench_sha256=args.bench_sha256,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_name(f".{args.output.name}.{os.getpid()}.tmp")

@@ -229,7 +229,8 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     )
     source_file = repo / "a.py"
     source_file.write_text("value = 1\n", encoding="utf-8")
-    subprocess.run(["git", "add", "a.py"], cwd=repo, check=True)
+    (repo / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
+    subprocess.run(["git", "add", "a.py", ".gitignore"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -261,10 +262,23 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     case = load_swe_explore_cases(bench, sources={instance_id: source})[0]
 
     clean = audit_swe_explore_snapshot(case, repos)
+    untracked_file = repo / "untracked.py"
+    untracked_file.write_text("value = 2\n", encoding="utf-8")
+    untracked = audit_swe_explore_snapshot(case, repos)
+    untracked_file.unlink()
+    ignored_file = repo / "ignored.py"
+    ignored_file.write_text("value = 3\n", encoding="utf-8")
+    ignored = audit_swe_explore_snapshot(case, repos)
+    ignored_file.unlink()
     source_file.write_text("value = 2\n", encoding="utf-8")
     dirty = audit_swe_explore_snapshot(case, repos)
 
     assert clean.valid
+    assert clean.unexpected_source_files == ()
+    assert untracked.unexpected_source_files == ("untracked.py",)
+    assert not untracked.valid
+    assert ignored.unexpected_source_files == ("ignored.py",)
+    assert not ignored.valid
     assert dirty.revision_matches is True
     assert dirty.is_clean is False
     assert not dirty.valid

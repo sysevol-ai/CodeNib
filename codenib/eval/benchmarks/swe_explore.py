@@ -24,9 +24,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from codenib.integrations.swe_explore import SWEExploreContextRegion, SWEExploreResult
+from codenib.languages import extension_to_language_map
+from codenib.repository_filters import repository_path_is_visible
 
 SWE_EXPLORE_UPSTREAM_REVISION = "3c12dc5a551937038afcbdb6eb6bbf19f3ddd8c1"
 SWE_EXPLORE_DATASET_REVISION = "bdb0ae45d7c337d9e1dc3ebfe2a0af6bc7c1fbd9"
+SWE_EXPLORE_BENCHMARK_SHA256 = (
+    "dc4f114ececd0bfb987361c26ae5e2440456e2cccb36adfccb09ea5385aec202"
+)
 SWE_EXPLORE_SOURCE_DATASETS: Mapping[str, tuple[str, str]] = {
     "verified": (
         "princeton-nlp/SWE-bench_Verified",
@@ -214,6 +219,7 @@ class SWEExploreSnapshotAudit:
     observed_commit: str | None
     revision_matches: bool | None
     is_clean: bool | None
+    unexpected_source_files: tuple[str, ...] | None
 
     @property
     def valid(self) -> bool:
@@ -226,6 +232,11 @@ class SWEExploreSnapshotAudit:
             "observed_commit": self.observed_commit,
             "revision_matches": self.revision_matches,
             "is_clean": self.is_clean,
+            "unexpected_source_files": (
+                list(self.unexpected_source_files)
+                if self.unexpected_source_files is not None
+                else None
+            ),
             "valid": self.valid,
         }
 
@@ -313,12 +324,19 @@ def audit_swe_explore_snapshot(
     repo = resolve_swe_explore_repo(case, repos_root)
     observed = _git_output(repo, "rev-parse", "HEAD")
     status = _git_output(repo, "status", "--porcelain", "--untracked-files=no")
+    unexpected_source_files = _unexpected_source_files(repo)
+    is_clean = (
+        status == "" and not unexpected_source_files
+        if status is not None and unexpected_source_files is not None
+        else None
+    )
     return SWEExploreSnapshotAudit(
         repo_path=str(repo),
         expected_commit=case.base_commit,
         observed_commit=observed.lower() if observed else None,
         revision_matches=(observed.lower() == case.base_commit if observed else None),
-        is_clean=(status == "" if status is not None else None),
+        is_clean=is_clean,
+        unexpected_source_files=unexpected_source_files,
     )
 
 
@@ -543,6 +561,38 @@ def _git_output(repo: Path, *args: str) -> str | None:
     return completed.stdout.strip()
 
 
+def _unexpected_source_files(repo: Path) -> tuple[str, ...] | None:
+    """Return untracked or ignored files that the source chunker would index."""
+
+    untracked = _git_paths(repo, "ls-files", "--others", "--exclude-standard", "-z")
+    ignored = _git_paths(
+        repo,
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "-z",
+    )
+    if untracked is None or ignored is None:
+        return None
+    source_extensions = extension_to_language_map("chunker")
+    return tuple(
+        sorted(
+            path
+            for path in set(untracked).union(ignored)
+            if repository_path_is_visible(path)
+            and PurePosixPath(path).suffix.lower() in source_extensions
+        )
+    )
+
+
+def _git_paths(repo: Path, *args: str) -> tuple[str, ...] | None:
+    output = _git_output(repo, *args)
+    if output is None:
+        return None
+    return tuple(path for path in output.split("\0") if path)
+
+
 def _source_line_counts(
     repo: Path, regions: Sequence[SWEExploreContextRegion]
 ) -> dict[str, int]:
@@ -718,6 +768,7 @@ def _ratio(numerator: float | int, denominator: float | int) -> float:
 
 
 __all__ = [
+    "SWE_EXPLORE_BENCHMARK_SHA256",
     "SWE_EXPLORE_DATASET_REVISION",
     "SWE_EXPLORE_METRICS",
     "SWE_EXPLORE_SOURCE_DATASETS",

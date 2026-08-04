@@ -4,14 +4,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from types import SimpleNamespace
 
+import pytest
+
+from codenib.compiler.index_builders import BM25IndexBuilder
+from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.eval.benchmarks import swe_explore_runner
 from codenib.eval.benchmarks.swe_explore import SWE_EXPLORE_METRICS
 
 
-def test_runner_keeps_case_failures_in_denominator(monkeypatch, tmp_path) -> None:
+def test_runner_reports_failures_separately_from_quality_metrics(
+    monkeypatch, tmp_path
+) -> None:
     case_set = tmp_path / "cases.json"
     case_set.write_text(
         json.dumps(
@@ -48,20 +55,99 @@ def test_runner_keeps_case_failures_in_denominator(monkeypatch, tmp_path) -> Non
         }
 
     monkeypatch.setattr(swe_explore_runner, "_run_case", run_case)
+    bench = tmp_path / "bench.jsonl"
+    bench.write_text("fixture\n", encoding="utf-8")
 
     report = swe_explore_runner.run_swe_explore_benchmark(
-        bench_path=tmp_path / "bench.jsonl",
+        bench_path=bench,
         case_set_path=case_set,
         repos_root=tmp_path / "repos",
         top_ks=(5,),
+        expected_bench_sha256=hashlib.sha256(bench.read_bytes()).hexdigest(),
     )
 
     assert report["summary"]["requested_cases"] == 2
     assert report["summary"]["successful_cases"] == 1
     assert report["summary"]["failed_cases"] == 1
     assert report["summary"]["failure_ids"] == ["failed"]
-    assert report["summary"]["metrics_by_top_k"]["5"]["recall"] == 0.5
+    assert report["summary"]["metric_aggregation"] == {
+        "population": "successful_cases",
+        "n": 1,
+        "failures_reported_separately": True,
+    }
+    assert report["summary"]["metrics_by_top_k"]["5"]["recall"] == 1.0
     assert report["cases"][1]["error_type"] == "RuntimeError"
+
+
+def test_runner_rejects_unpinned_benchmark_bytes(tmp_path) -> None:
+    bench = tmp_path / "bench.jsonl"
+    bench.write_text("modified release\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="benchmark SHA-256 mismatch"):
+        swe_explore_runner.run_swe_explore_benchmark(
+            bench_path=bench,
+            case_set_path=tmp_path / "unused.json",
+            repos_root=tmp_path / "repos",
+            top_ks=(5,),
+        )
+
+
+def test_bm25_profile_validation_rejects_incompatible_artifact(tmp_path) -> None:
+    manifest_path = tmp_path / "repo_manifest.json"
+    profile = BM25IndexBuilder(languages=["python"]).artifact_identity()
+    profile["max_k"] = 15
+    manifest = RepoManifest(
+        indexes={
+            "bm25": IndexEntry(
+                index_type="bm25",
+                path=str(tmp_path / "bm25"),
+                built_at="2026-08-04T00:00:00+00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config=profile,
+            )
+        }
+    )
+    manifest.save(manifest_path)
+
+    with pytest.raises(ValueError, match="BM25 profile mismatch"):
+        swe_explore_runner._validated_bm25_profile(
+            manifest_path,
+            languages=("python",),
+            required_top_k=20,
+        )
+
+
+def test_bm25_profile_validation_records_exact_artifact(tmp_path) -> None:
+    manifest_path = tmp_path / "repo_manifest.json"
+    profile = BM25IndexBuilder(languages=["python", "go"]).artifact_identity()
+    manifest = RepoManifest(
+        indexes={
+            "bm25": IndexEntry(
+                index_type="bm25",
+                path=str(tmp_path / "bm25"),
+                built_at="2026-08-04T00:00:00+00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config=profile,
+                commit="abc123",
+                source_fingerprint="sha256:source",
+            )
+        }
+    )
+    manifest.save(manifest_path)
+
+    observed = swe_explore_runner._validated_bm25_profile(
+        manifest_path,
+        languages=("python", "go"),
+        required_top_k=20,
+    )
+
+    assert observed == {
+        "config": profile,
+        "commit": "abc123",
+        "source_fingerprint": "sha256:source",
+    }
 
 
 def test_runner_rejects_duplicate_case_ids(tmp_path) -> None:

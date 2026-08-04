@@ -28,8 +28,8 @@ A revision-pinned integration must pass four separate gates:
 2. An upstream probe checks the pinned tool signatures and the private hooks
    that the policy actually invokes.
 3. Benchmark preflight verifies clean checkout commits, manifest identity,
-   declared capabilities, and successful loading of every required runtime
-   view before a model call.
+   index-visible untracked files, builder profiles, declared capabilities, and
+   successful loading of every required runtime view before a model call.
 4. The paired runner records every requested cell, keeps failures in the
    denominator, and binds the case-set, CodeNib, upstream, model, and run-option
    identities into result provenance.
@@ -40,8 +40,9 @@ explicitly excluded by the matrix.
 
 For a benchmark integration such as SWE-Explore, the policy gate is replaced
 by its public explorer protocol and evaluator. CodeNib checks every metric
-against the pinned official scorer and keeps preparation failures in the case
-denominator; it does not reinterpret trajectory labels as golden-patch labels.
+against the pinned official scorer. Coverage retains preparation failures;
+quality is success-conditioned with its denominator stated explicitly. It does
+not reinterpret trajectory labels as golden-patch labels.
 
 Optional upstream packages are required only for policy execution. Provider
 imports and standalone provider examples remain dependency-free. Exact pinned
@@ -103,7 +104,8 @@ Silently repairing them would make CodeNib's scores incomparable.
 
 The fixed compatibility subset contains 20 base-commit checkouts across
 Python, Go, Rust, TypeScript, JavaScript, C, and C++. All 20 passed checkout,
-manifest, build, load, and query gates. On the validation machine, median
+benchmark-digest, BM25-profile, build, load, and query gates. Snapshot checks
+include index-visible untracked and gitignored source files. On the validation machine, median
 first-build, view-load, and query times were 0.81 s, 64 ms, and 67 ms. These are
 compatibility measurements, not a population estimate or a claim of task-level
 agent improvement. The [case set](assets/swe_explore_cases.json)
