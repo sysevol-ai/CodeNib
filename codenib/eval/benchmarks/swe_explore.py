@@ -622,7 +622,9 @@ def _audited_source_files(
     suppressed = tuple(
         sorted(
             path.relative_to(root).as_posix()
-            for path in indexed_files.intersection(suppressed_files)
+            for path in suppressed_files
+            if path in indexed_files
+            or (not path.exists() and _has_chunker_source_extension(path))
         )
     )
     return unexpected, suppressed
@@ -672,6 +674,12 @@ def _chunker_source_files(repo: Path) -> set[Path]:
         _absolute_lexical(path)
         for path, _language in chunker._discover_files(repo, languages)
     }
+
+
+def _has_chunker_source_extension(path: Path) -> bool:
+    from codenib.languages import extension_to_language_map
+
+    return path.suffix in extension_to_language_map("chunker")
 
 
 def _absolute_lexical(path: Path) -> Path:

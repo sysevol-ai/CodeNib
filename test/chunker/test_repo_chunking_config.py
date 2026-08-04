@@ -62,6 +62,37 @@ def test_repo_discovery_respects_custom_extension_overrides(tmp_path: Path):
     assert stats["files_by_language"]["python"][0]["path"] == "tool.pyw"
 
 
+def test_repo_discovery_is_sorted_independently_of_walk_order(
+    tmp_path: Path, monkeypatch
+):
+    for directory in (tmp_path, tmp_path / "zeta", tmp_path / "alpha"):
+        directory.mkdir(exist_ok=True)
+        (directory / "z.py").write_text("z = 1\n", encoding="utf-8")
+        (directory / "a.py").write_text("a = 1\n", encoding="utf-8")
+
+    def reverse_walk(root: Path):
+        root = Path(root)
+        directories = ["zeta", "alpha"]
+        yield str(root), directories, ["z.py", "a.py"]
+        for directory in directories:
+            yield str(root / directory), [], ["z.py", "a.py"]
+
+    monkeypatch.setattr("codenib.code_chunker.os.walk", reverse_walk)
+    cfg = RepoChunkingConfig(languages=["python"], filter_tests=False)
+    chunker = CodeChunker(language="python", repo_config=cfg)
+
+    files = chunker._discover_files(tmp_path, cfg.languages)
+
+    assert [path.relative_to(tmp_path).as_posix() for path, _ in files] == [
+        "a.py",
+        "alpha/a.py",
+        "alpha/z.py",
+        "z.py",
+        "zeta/a.py",
+        "zeta/z.py",
+    ]
+
+
 def test_repo_discovery_skips_generated_and_vendored_trees(tmp_path: Path):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("def app():\n    return 1\n")

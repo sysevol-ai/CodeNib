@@ -407,7 +407,10 @@ class CodeChunker:
                     language = extension_to_language[file_path.suffix]
                     files_to_process.append((file_path, language))
 
-        return files_to_process
+        return sorted(
+            files_to_process,
+            key=lambda item: item[0].relative_to(repo_path).as_posix(),
+        )
 
     def _should_include_directory(self, dir_path: Path) -> bool:
         """Check if a directory should be included in processing."""

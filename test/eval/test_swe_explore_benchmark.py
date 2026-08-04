@@ -401,6 +401,29 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
         ["git", "update-index", "--no-skip-worktree", "a.py"], cwd=repo, check=True
     )
     subprocess.run(["git", "checkout", "--", "a.py"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "update-index", "--skip-worktree", "a.py"], cwd=repo, check=True
+    )
+    source_file.unlink()
+    sparse_source = audit_swe_explore_snapshot(case, repos)
+    subprocess.run(
+        ["git", "update-index", "--no-skip-worktree", "a.py"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "checkout", "--", "a.py"], cwd=repo, check=True)
+    gitignore = repo / ".gitignore"
+    subprocess.run(
+        ["git", "update-index", "--skip-worktree", ".gitignore"],
+        cwd=repo,
+        check=True,
+    )
+    gitignore.unlink()
+    sparse_non_source = audit_swe_explore_snapshot(case, repos)
+    subprocess.run(
+        ["git", "update-index", "--no-skip-worktree", ".gitignore"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "checkout", "--", ".gitignore"], cwd=repo, check=True)
     source_file.write_text("value = 2\n", encoding="utf-8")
     dirty = audit_swe_explore_snapshot(case, repos)
 
@@ -428,6 +451,10 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert not assume_unchanged.valid
     assert skip_worktree.suppressed_source_files == ("a.py",)
     assert not skip_worktree.valid
+    assert sparse_source.suppressed_source_files == ("a.py",)
+    assert not sparse_source.valid
+    assert sparse_non_source.suppressed_source_files == ()
+    assert sparse_non_source.valid
     assert dirty.revision_matches is True
     assert dirty.is_clean is False
     assert not dirty.valid

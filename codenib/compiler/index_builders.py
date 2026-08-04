@@ -93,8 +93,8 @@ class BM25IndexBuilder:
 
     def artifact_identity(self) -> Dict[str, Any]:
         return {
-            # v5 binds the two persisted BM25 files to the manifest entry.
-            "builder_schema": 5,
+            # v6 also fixes source discovery order across filesystems.
+            "builder_schema": 6,
             "languages": list(self.languages),
             "max_k": self.max_k,
             "max_lines_per_chunk": self.max_lines_per_chunk,
