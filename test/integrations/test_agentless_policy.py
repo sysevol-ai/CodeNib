@@ -40,6 +40,30 @@ class _Client:
         self.chat = SimpleNamespace(completions=_Completions(responses))
 
 
+class _UnsupportedTemperatureError(Exception):
+    body = {
+        "error": {
+            "message": "Unsupported value for temperature",
+            "param": "temperature",
+            "code": "unsupported_value",
+        }
+    }
+
+
+class _TemperatureRejectingCompletions(_Completions):
+    def __init__(self, responses: list[str]) -> None:
+        super().__init__(responses)
+        self.attempts: list[dict] = []
+        self.rejected = False
+
+    def create(self, **request):
+        self.attempts.append(request)
+        if "temperature" in request and not self.rejected:
+            self.rejected = True
+            raise _UnsupportedTemperatureError
+        return super().create(**request)
+
+
 def test_file_parser_accepts_root_prefixed_ranked_output() -> None:
     result = parse_agentless_files(
         "```\nrepo/src/service.py\n- src/model.py\nmissing.py\n```",
@@ -156,6 +180,36 @@ def test_empty_issue_returns_explicit_failure(integration_manifest: Path) -> Non
 
     assert result.success is False
     assert result.error_message == "Agentless requires a non-empty problem statement"
+
+
+def test_policy_retries_without_unsupported_temperature(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.agentless_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    completions = _TemperatureRejectingCompletions(
+        [
+            "```\nsrc/service.py\n```",
+            "```\nsrc/service.py\nfunction: helper\n```",
+            "```\nsrc/service.py\nline: 6\n```",
+        ]
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    agent = AgentlessAgent(
+        model="reasoning-model",
+        manifest_path=integration_manifest,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix helper", manifest.repo_path))
+
+    assert result.success is True
+    assert "temperature" in completions.attempts[0]
+    assert all("temperature" not in item for item in completions.attempts[1:])
 
 
 def test_invalid_line_stage_falls_back_to_valid_symbol_stage(

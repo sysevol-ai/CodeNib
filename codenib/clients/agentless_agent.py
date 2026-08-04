@@ -317,14 +317,25 @@ def run_agentless_policy(
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0}
     trajectory: list[dict[str, Any]] = []
     started = time.perf_counter()
+    temperature_supported = True
 
     def complete(stage: str, prompt: str, temperature: float) -> str:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_completion_tokens=max_completion_tokens,
-            temperature=temperature,
-        )
+        nonlocal temperature_supported
+        request: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_completion_tokens": max_completion_tokens,
+        }
+        if temperature_supported:
+            request["temperature"] = temperature
+        try:
+            response = client.chat.completions.create(**request)
+        except Exception as exc:
+            if not temperature_supported or not _unsupported_temperature(exc):
+                raise
+            temperature_supported = False
+            request.pop("temperature", None)
+            response = client.chat.completions.create(**request)
         prompt_tokens, completion_tokens, cached_tokens = _response_usage(response)
         usage["prompt_tokens"] += prompt_tokens
         usage["completion_tokens"] += completion_tokens
@@ -333,7 +344,7 @@ def run_agentless_policy(
         trajectory.append(
             {
                 "stage": stage,
-                "temperature": temperature,
+                "temperature": temperature if temperature_supported else None,
                 "prompt": prompt,
                 "response": content,
             }
@@ -479,6 +490,22 @@ def _response_usage(response: Any) -> tuple[int, int, int]:
     details = getattr(usage, "prompt_tokens_details", None)
     cached = int(getattr(details, "cached_tokens", 0) or 0)
     return prompt, completion, cached
+
+
+def _unsupported_temperature(exc: Exception) -> bool:
+    body = getattr(exc, "body", None)
+    if isinstance(body, Mapping):
+        detail = body.get("error", body)
+        if isinstance(detail, Mapping):
+            param = str(detail.get("param") or "").lower()
+            code = str(detail.get("code") or "").lower()
+            message = str(detail.get("message") or "").lower()
+            if param == "temperature" and (
+                code == "unsupported_value" or "unsupported" in message
+            ):
+                return True
+    message = str(exc).lower()
+    return "temperature" in message and "unsupported value" in message
 
 
 __all__ = [
