@@ -611,6 +611,16 @@ def _audited_source_files(
             if entry[0] == "S" or entry[0].islower():
                 suppressed_files.add(path)
     root = _absolute_lexical(repo)
+    indexed_dependencies = set(indexed_files)
+    for path in indexed_files:
+        if not path.is_symlink():
+            continue
+        try:
+            target = _absolute_lexical(path.resolve(strict=True))
+        except (OSError, RuntimeError):
+            continue
+        if target in tracked_files:
+            indexed_dependencies.add(target)
     unexpected = tuple(
         sorted(
             path.relative_to(root).as_posix()
@@ -623,8 +633,8 @@ def _audited_source_files(
         sorted(
             path.relative_to(root).as_posix()
             for path in suppressed_files
-            if path in indexed_files
-            or (not path.exists() and _has_chunker_source_extension(path))
+            if path in indexed_dependencies
+            or (not path.exists() and _is_potential_chunker_source_file(root, path))
         )
     )
     return unexpected, suppressed
@@ -676,10 +686,28 @@ def _chunker_source_files(repo: Path) -> set[Path]:
     }
 
 
-def _has_chunker_source_extension(path: Path) -> bool:
-    from codenib.languages import extension_to_language_map
+def _is_potential_chunker_source_file(repo: Path, path: Path) -> bool:
+    from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+    from codenib.languages import chunker_languages, extension_to_language_map
 
-    return path.suffix in extension_to_language_map("chunker")
+    try:
+        relative = path.relative_to(repo)
+    except ValueError:
+        return False
+    languages = list(chunker_languages())
+    chunker = CodeChunker(
+        language=languages[0],
+        repo_config=RepoChunkingConfig(languages=languages),
+    )
+    current = repo
+    for part in relative.parts[:-1]:
+        current /= part
+        if not chunker._should_include_directory(current):
+            return False
+    return chunker._should_process_file_path(
+        path,
+        extension_to_language_map("chunker"),
+    )
 
 
 def _absolute_lexical(path: Path) -> Path:

@@ -263,8 +263,17 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     )
     source_file = repo / "a.py"
     source_file.write_text("value = 1\n", encoding="utf-8")
+    minified_source = repo / "app.min.js"
+    minified_source.write_text("const bundled = true;\n", encoding="utf-8")
+    vendor_source = repo / "vendor" / "a.py"
+    vendor_source.parent.mkdir()
+    vendor_source.write_text("value = 1\n", encoding="utf-8")
     (repo / ".gitignore").write_text("ignored.py\n.codenib-extra/\n", encoding="utf-8")
-    subprocess.run(["git", "add", "a.py", ".gitignore"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "add", "a.py", "app.min.js", "vendor/a.py", ".gitignore"],
+        cwd=repo,
+        check=True,
+    )
     subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -310,7 +319,7 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     prefixed = audit_swe_explore_snapshot(case, repos)
     (prefixed_dir / "a.py").unlink()
     prefixed_dir.rmdir()
-    skipped_file = repo / "app.min.js"
+    skipped_file = repo / "bundle.min.js"
     skipped_file.write_text("const bundled = true;\n", encoding="utf-8")
     skipped = audit_swe_explore_snapshot(case, repos)
     skipped_file.unlink()
@@ -424,6 +433,36 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
         check=True,
     )
     subprocess.run(["git", "checkout", "--", ".gitignore"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--skip-worktree",
+            "app.min.js",
+            "vendor/a.py",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    minified_source.unlink()
+    vendor_source.unlink()
+    sparse_filtered_sources = audit_swe_explore_snapshot(case, repos)
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--no-skip-worktree",
+            "app.min.js",
+            "vendor/a.py",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "--", "app.min.js", "vendor/a.py"],
+        cwd=repo,
+        check=True,
+    )
     source_file.write_text("value = 2\n", encoding="utf-8")
     dirty = audit_swe_explore_snapshot(case, repos)
 
@@ -455,6 +494,8 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert not sparse_source.valid
     assert sparse_non_source.suppressed_source_files == ()
     assert sparse_non_source.valid
+    assert sparse_filtered_sources.suppressed_source_files == ()
+    assert sparse_filtered_sources.valid
     assert dirty.revision_matches is True
     assert dirty.is_clean is False
     assert not dirty.valid
@@ -475,7 +516,15 @@ def test_snapshot_audit_rejects_tracked_source_symlink_outside_checkout(
     external = tmp_path / "external.py"
     external.write_text("value = 1\n", encoding="utf-8")
     (repo / "linked.py").symlink_to(external)
-    subprocess.run(["git", "add", "linked.py"], cwd=repo, check=True)
+    internal_target = repo / "vendor" / "target.py"
+    internal_target.parent.mkdir()
+    internal_target.write_text("value = 1\n", encoding="utf-8")
+    (repo / "internal.py").symlink_to("vendor/target.py")
+    subprocess.run(
+        ["git", "add", "linked.py", "internal.py", "vendor/target.py"],
+        cwd=repo,
+        check=True,
+    )
     subprocess.run(["git", "commit", "-qm", "symlink fixture"], cwd=repo, check=True)
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -498,10 +547,17 @@ def test_snapshot_audit_rejects_tracked_source_symlink_outside_checkout(
         ground_truth=_ground_truth(),
         source=source,
     )
+    subprocess.run(
+        ["git", "update-index", "--assume-unchanged", "vendor/target.py"],
+        cwd=repo,
+        check=True,
+    )
+    internal_target.write_text("value = 2\n", encoding="utf-8")
 
     audit = audit_swe_explore_snapshot(case, repos)
 
     assert audit.revision_matches is True
     assert audit.unexpected_source_files == ("linked.py",)
+    assert audit.suppressed_source_files == ("vendor/target.py",)
     assert audit.is_clean is False
     assert not audit.valid
