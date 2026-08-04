@@ -129,6 +129,26 @@ def test_location_parser_accepts_rendered_markdown_heading() -> None:
     )
 
 
+def test_location_parser_splits_whitespace_separated_variables() -> None:
+    result = parse_agentless_locations(
+        "src/service.py\nvariables: TAX_RATE DEFAULT_RATE",
+        valid_files=("src/service.py",),
+    )
+
+    assert result == (
+        AgentlessLocation(
+            file_path="src/service.py",
+            kind="variable",
+            name="TAX_RATE",
+        ),
+        AgentlessLocation(
+            file_path="src/service.py",
+            kind="variable",
+            name="DEFAULT_RATE",
+        ),
+    )
+
+
 def test_location_parser_preserves_agentless_location_types() -> None:
     result = parse_agentless_locations(
         """

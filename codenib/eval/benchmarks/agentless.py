@@ -153,9 +153,12 @@ def parse_agentless_locations(
             kind = "method"
         else:
             kind = "function"
+        symbols = _symbols(value)
+        if kind == "variable":
+            symbols = [name for symbol in symbols for name in symbol.split()]
         output.extend(
             AgentlessLocation(file_path=current_file, kind=kind, name=symbol)
-            for symbol in _symbols(value)
+            for symbol in symbols
         )
     flush_file()
 
