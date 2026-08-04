@@ -39,6 +39,11 @@ def _match_file(line: str, valid_files: Sequence[str], root_name: str) -> str:
             return file_path
         if any(candidate.startswith(value + ":") for value in accepted):
             return file_path
+    suffix_matches = tuple(
+        file_path for file_path in valid_files if file_path.endswith("/" + candidate)
+    )
+    if len(suffix_matches) == 1:
+        return suffix_matches[0]
     return ""
 
 

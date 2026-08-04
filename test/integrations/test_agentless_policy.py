@@ -113,6 +113,16 @@ def test_file_parser_preserves_dot_prefixed_repository_paths() -> None:
     assert result == (".github/scripts/tool.py", ".config.py")
 
 
+def test_file_parser_accepts_only_unique_path_suffixes() -> None:
+    result = parse_agentless_files(
+        "service.py\nmodel.py",
+        valid_files=("src/service.py", "src/model.py", "vendor/model.py"),
+        root_name="repo",
+    )
+
+    assert result == ("src/service.py",)
+
+
 def test_location_parser_accepts_rendered_markdown_heading() -> None:
     result = parse_agentless_locations(
         "### File: src/service.py ###\nfunction: helper",
@@ -468,6 +478,37 @@ def test_invalid_parsed_line_stage_falls_back_to_valid_symbol_stage(
 
     assert result.success is True
     assert [location.name for location in result.locations] == ["helper()"]
+
+
+def test_unselected_line_stage_file_falls_back_to_selected_symbol(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.agentless_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    client = _Client(
+        [
+            "repo/src/service.py",
+            "src/service.py\nfunction: helper",
+            "src/other.py\nfunction: helper",
+        ]
+    )
+    agent = AgentlessAgent(
+        model="test-model",
+        manifest_path=integration_manifest,
+        max_retries=1,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix helper", manifest.repo_path))
+
+    assert result.success is True
+    assert [(location.file_path, location.name) for location in result.locations] == [
+        ("src/service.py", "helper()")
+    ]
 
 
 def test_invalid_symbol_stage_stops_before_line_context(

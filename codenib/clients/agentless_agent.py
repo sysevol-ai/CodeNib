@@ -236,16 +236,23 @@ class AgentlessAgent:
                 if isinstance(raw_execution, AgentlessExecution)
                 else AgentlessExecution(line_output=str(raw_execution))
             )
+            selected_files = parse_agentless_files(
+                execution.file_output,
+                valid_files=provider.files,
+                root_name=provider.project_root_name,
+                limit=self.top_n_files,
+            )
+            stage_files = selected_files if execution.file_output else provider.files
             parsed = parse_agentless_locations(
                 execution.final_output,
-                valid_files=provider.files,
+                valid_files=stage_files,
                 root_name=provider.project_root_name,
             )
             parsed = _valid_locations(parsed, provider)
             if not parsed and execution.symbol_output:
                 parsed = parse_agentless_locations(
                     execution.symbol_output,
-                    valid_files=provider.files,
+                    valid_files=stage_files,
                     root_name=provider.project_root_name,
                 )
                 parsed = _valid_locations(parsed, provider)
