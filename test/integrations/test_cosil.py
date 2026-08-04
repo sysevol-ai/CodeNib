@@ -70,6 +70,15 @@ def test_project_structure_keeps_cosil_python_boundary(
     )
 
 
+def test_default_filter_keeps_production_test_packages(
+    provider: CoSILRepositoryProvider,
+) -> None:
+    assert provider._accept_file("django/test/client.py")
+    assert not provider._accept_file("tests/client.py")
+    assert not provider._accept_file("django/tests/client.py")
+    assert not provider._accept_file("django/test_client.py")
+
+
 def test_resolve_files_prefers_valid_path_before_root_prefix(
     provider: CoSILRepositoryProvider,
 ) -> None:

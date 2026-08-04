@@ -419,8 +419,19 @@ class CoSILRepositoryProvider:
         path = PurePosixPath(file_path)
         if path.suffix != ".py":
             return False
-        return self.include_tests or not any(
-            part.startswith("test") for part in path.parts
+        if self.include_tests:
+            return True
+
+        file_name = path.name.lower()
+        directories = tuple(part.lower() for part in path.parts[:-1])
+        if directories and directories[0] in {"test", "tests"}:
+            return False
+        if any(part in {"tests", "__tests__", "spec", "specs"} for part in directories):
+            return False
+        return not (
+            file_name == "test.py"
+            or file_name.startswith("test_")
+            or file_name.endswith(("_test.py", "_spec.py"))
         )
 
     def _resolved_outline(self, file_name: str) -> CoSILOutline | None:
