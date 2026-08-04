@@ -99,8 +99,8 @@ def parse_cosil_locations(
         file_path = _match_file(node.findtext("file") or "", files, root_name)
         name = str(node.findtext("name") or "").strip()
         kind = str(node.findtext("type") or "function").strip().lower()
-        if kind not in {"function", "class", "variable"}:
-            kind = "function"
+        if kind not in {"function", "class"}:
+            continue
         key = (file_path, kind, name)
         if not file_path or not name or key in seen:
             continue

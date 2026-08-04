@@ -180,6 +180,11 @@ def test_xml_parser_is_structured_and_candidate_bounded() -> None:
             <type>function</type>
             <name>hallucinated</name>
           </location>
+          <location>
+            <file>src/service.py</file>
+            <type>variable</type>
+            <name>unsupported</name>
+          </location>
         </locations>
         """,
         valid_files=("src/service.py",),

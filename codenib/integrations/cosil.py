@@ -277,12 +277,9 @@ class CoSILRepositoryProvider:
                 value = value[2:]
             if value not in self._files and value.startswith(root_prefix):
                 value = value[len(root_prefix) :]
-            matches = self.repository.find_files(value)
-            for match in matches:
-                if match in self._files and match not in seen:
-                    seen.add(match)
-                    output.append(match)
-                    break
+            if value in self._files and value not in seen:
+                seen.add(value)
+                output.append(value)
             if limit is not None and len(output) >= limit:
                 break
         return tuple(output)

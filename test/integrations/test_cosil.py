@@ -72,16 +72,21 @@ def test_project_structure_keeps_cosil_python_boundary(
 
 def test_resolve_files_prefers_valid_path_before_root_prefix(
     provider: CoSILRepositoryProvider,
-    monkeypatch,
 ) -> None:
     provider._files = ("repo/module.py",)
-    monkeypatch.setattr(
-        provider.repository,
-        "find_files",
-        lambda value: [value] if value == "repo/module.py" else [],
-    )
 
     assert provider.resolve_files(["repo/module.py"]) == ("repo/module.py",)
+    assert provider.resolve_files(["repo/repo/module.py"]) == ("repo/module.py",)
+
+
+def test_resolve_files_rejects_inexact_directories(
+    provider: CoSILRepositoryProvider,
+) -> None:
+    assert provider.resolve_files(["wrong/service.py"]) == ()
+    assert provider.get_code_of_file_function("wrong/service.py", "helper") == (
+        "You provide a wrong file name or function name. Please try another "
+        "file name again. It may be a class function."
+    )
 
 
 def test_candidate_structure_matches_upstream_fields(
