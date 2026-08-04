@@ -89,6 +89,42 @@ def test_load_selects_only_requested_views(
     assert calls == ["bm25"]
 
 
+def test_load_views_adds_resources_idempotently(
+    manifest_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = ServerContext.load(manifest_dir / "repo_manifest.json", views=())
+    loaded_bm25 = object()
+    calls = []
+
+    def load_bm25(self):
+        calls.append("bm25")
+        self.bm25 = loaded_bm25
+
+    monkeypatch.setattr(ServerContext, "_load_bm25", load_bm25)
+
+    assert ctx.load_views({"bm25"}) == {}
+    assert ctx.load_views({"bm25"}) == {}
+
+    assert calls == ["bm25"]
+    assert ctx.loaded_views == frozenset({"bm25"})
+
+
+def test_close_releases_live_runtime_resources(manifest_dir: Path) -> None:
+    ctx = ServerContext.load(manifest_dir / "repo_manifest.json", views=())
+    vector = MagicMock()
+    zoekt = MagicMock()
+    ctx.vector = vector
+    ctx.zoekt = zoekt
+
+    ctx.close()
+
+    assert ctx.vector is None
+    assert ctx.zoekt is None
+    vector.close.assert_called_once_with()
+    zoekt.stop.assert_called_once_with()
+
+
 def test_load_expands_runtime_view_dependencies(
     manifest_dir: Path,
     monkeypatch: pytest.MonkeyPatch,

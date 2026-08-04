@@ -20,6 +20,11 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from codenib._version import package_version
+from codenib.agent.runtime.explorer import (
+    REPOSITORY_EXPLORER_POLICIES,
+    normalize_repository_explorer_policy,
+    repository_explorer_build_views,
+)
 from codenib.cli import detect_languages, index_repository
 from codenib.compiler.artifact_fingerprints import (
     bm25_artifact_file_fingerprints,
@@ -55,10 +60,21 @@ def run_swe_explore_benchmark(
     top_ks: Sequence[int],
     build_indexes: bool = True,
     rebuild: bool = False,
+    policy: str = "auto",
+    planning_budget: str = "balanced",
+    retrieval_level: str = "l2",
     expected_bench_sha256: str | None = SWE_EXPLORE_BENCHMARK_SHA256,
 ) -> dict[str, Any]:
     """Run a fixed case set without dropping preparation or query failures."""
 
+    normalized_policy = normalize_repository_explorer_policy(policy)
+    build_views = repository_explorer_build_views(normalized_policy)
+    planning_budget = str(planning_budget).strip().lower()
+    retrieval_level = str(retrieval_level).strip().lower()
+    if planning_budget not in {"fast", "balanced", "thorough"}:
+        raise ValueError("planning_budget must be fast, balanced, or thorough")
+    if retrieval_level not in {"l0", "l2"}:
+        raise ValueError("retrieval_level must be l0 or l2")
     normalized_ks = tuple(sorted(set(int(value) for value in top_ks)))
     if not normalized_ks or normalized_ks[0] <= 0:
         raise ValueError("SWE-Explore top-k values must be positive")
@@ -97,6 +113,10 @@ def run_swe_explore_benchmark(
                     top_ks=normalized_ks,
                     build_indexes=build_indexes,
                     rebuild=rebuild,
+                    policy=normalized_policy,
+                    planning_budget=planning_budget,
+                    retrieval_level=retrieval_level,
+                    build_views=build_views,
                 )
             )
         except Exception as exc:
@@ -112,7 +132,7 @@ def run_swe_explore_benchmark(
             )
 
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "provenance": {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "codenib": _code_provenance(),
@@ -128,6 +148,10 @@ def run_swe_explore_benchmark(
             "top_ks": list(normalized_ks),
             "build_indexes": build_indexes,
             "rebuild": rebuild,
+            "explorer_policy": normalized_policy,
+            "planning_budget": planning_budget,
+            "retrieval_level": retrieval_level,
+            "materialized_views": list(build_views),
         },
         "summary": _summarize(rows, normalized_ks),
         "cases": rows,
@@ -142,6 +166,10 @@ def _run_case(
     top_ks: Sequence[int],
     build_indexes: bool,
     rebuild: bool,
+    policy: str,
+    planning_budget: str,
+    retrieval_level: str,
+    build_views: Sequence[str],
 ) -> dict[str, Any]:
     snapshot = audit_swe_explore_snapshot(case, repos_root)
     if not snapshot.valid:
@@ -162,31 +190,43 @@ def _run_case(
         _manifest, failed = index_repository(
             repo,
             languages=detected_languages,
-            views=("bm25",),
+            views=build_views,
             rebuild=rebuild,
         )
         build_seconds = time.perf_counter() - started
         if failed:
-            raise RuntimeError("BM25 build failed")
+            raise RuntimeError("required view builds failed: " + ", ".join(failed))
 
     manifest_path = repo_index_dir(repo) / MANIFEST_FILENAME
-    bm25_profile = _validated_bm25_profile(
+    view_profiles = _validated_view_profiles(
         manifest_path,
+        views=build_views,
         languages=detected_languages,
         required_top_k=max(top_ks),
     )
     load_started = time.perf_counter()
     explorer = CodeNibSWEExploreExplorer.from_repository(
-        repo, manifest_path=manifest_path
+        repo,
+        manifest_path=manifest_path,
+        policy=policy,
+        budget=planning_budget,
+        level=retrieval_level,
     )
-    load_seconds = time.perf_counter() - load_started
-    query_started = time.perf_counter()
-    results = explorer.explore(
-        instance_id=case.instance_id,
-        query=case.query,
-        top_k=max(top_ks),
-    )
-    query_seconds = time.perf_counter() - query_started
+    try:
+        preparation = explorer.prepare(case.query)
+        load_seconds = time.perf_counter() - load_started
+        query_started = time.perf_counter()
+        results = explorer.explore(
+            instance_id=case.instance_id,
+            query=case.query,
+            top_k=max(top_ks),
+        )
+        query_seconds = time.perf_counter() - query_started
+        query_trace = (
+            explorer.last_trace.to_record() if explorer.last_trace is not None else None
+        )
+    finally:
+        explorer.close()
     all_regions = flatten_swe_explore_results(results)
 
     evaluations: dict[str, Any] = {}
@@ -200,7 +240,7 @@ def _run_case(
         evaluations[str(top_k)] = swe_explore_prediction_record(
             instance_id=case.instance_id,
             regions=regions,
-            explorer="codenib",
+            explorer=f"codenib-{policy.replace('_', '-')}",
             metrics=metrics,
         )
 
@@ -212,7 +252,10 @@ def _run_case(
         "snapshot": snapshot.to_record(),
         "detected_languages": detected_languages,
         "manifest_path": str(manifest_path),
-        "bm25_profile": bm25_profile,
+        "policy": policy,
+        "view_profiles": view_profiles,
+        "selected_plan": preparation.plan.name,
+        "query_trace": query_trace,
         "timing_seconds": {
             "build": build_seconds,
             "load": load_seconds,
@@ -220,6 +263,40 @@ def _run_case(
         },
         "evaluations": evaluations,
     }
+
+
+def _validated_view_profiles(
+    manifest_path: str | Path,
+    *,
+    views: Sequence[str],
+    languages: Sequence[str],
+    required_top_k: int,
+) -> dict[str, Any]:
+    """Validate and record every view required by one explorer policy."""
+
+    manifest = RepoManifest.load(manifest_path)
+    profiles: dict[str, Any] = {}
+    for view in views:
+        if view == "bm25":
+            profiles[view] = _validated_bm25_profile(
+                manifest_path,
+                languages=languages,
+                required_top_k=required_top_k,
+            )
+            continue
+        entry = manifest.indexes.get(view)
+        if entry is None or not manifest.index_is_current(view):
+            raise ValueError(f"SWE-Explore requires a fresh {view} manifest entry")
+        artifact_path = Path(entry.path).expanduser()
+        if not artifact_path.exists():
+            raise ValueError(f"SWE-Explore {view} artifact is missing: {artifact_path}")
+        profiles[view] = {
+            "config": dict(entry.config),
+            "commit": entry.commit,
+            "source_fingerprint": entry.source_fingerprint,
+            "artifact_path": entry.path,
+        }
+    return profiles
 
 
 def _validated_bm25_profile(
@@ -420,6 +497,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--rebuild", action="store_true")
+    parser.add_argument(
+        "--policy",
+        choices=tuple(sorted(REPOSITORY_EXPLORER_POLICIES)),
+        default="auto",
+        help="native CodeNib exploration policy (bm25 is the compatibility control)",
+    )
+    parser.add_argument(
+        "--planning-budget",
+        choices=("fast", "balanced", "thorough"),
+        default="balanced",
+    )
+    parser.add_argument("--retrieval-level", choices=("l0", "l2"), default="l2")
     return parser
 
 
@@ -432,6 +521,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         top_ks=args.top_k,
         build_indexes=not args.no_build,
         rebuild=args.rebuild,
+        policy=args.policy,
+        planning_budget=args.planning_budget,
+        retrieval_level=args.retrieval_level,
         expected_bench_sha256=args.bench_sha256,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

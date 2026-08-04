@@ -96,3 +96,29 @@ if bundle.runner is None:
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_retrieval_planner_export_does_not_import_pipeline_extras() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = """
+import sys
+
+for name in ("faiss", "igraph", "litellm", "sentence_transformers"):
+    sys.modules[name] = None
+
+from codenib.model import RetrievalPlanner
+from codenib.agent.runtime import RepositoryContextExplorer
+
+if RetrievalPlanner.__name__ != "RetrievalPlanner":
+    raise SystemExit("planner export did not resolve")
+if RepositoryContextExplorer.__name__ != "RepositoryContextExplorer":
+    raise SystemExit("explorer export did not resolve")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

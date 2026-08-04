@@ -50,12 +50,13 @@ agent or code-Wiki framework.
 
 ## News
 
-- **2026-08-03 — SWE-Explore benchmark compatibility.**
-  [`CodeNibSWEExploreExplorer`](codenib/integrations/swe_explore.py) serves the
-  official ranked-region contract from a manifest-backed BM25 view. A strict
-  [20-case, seven-language validation](docs/evaluation/swe_explore.md)
-  completed every case and matched all 1,020 real-output metric values from the
-  pinned official evaluator.
+- **2026-08-04 — Native repository explorer.**
+  [`RepositoryContextExplorer`](codenib/agent/runtime/explorer.py) plans BM25,
+  dense, hybrid, reranked, and graph routes over manifest-backed views and
+  loads only the route selected for each query. SWE-Explore is now a thin
+  ranked-region benchmark adapter; its existing
+  [20-case validation](docs/evaluation/swe_explore.md) remains an explicitly
+  labeled BM25 compatibility control.
 - **2026-08-03 — Native LocAgent policy.**
   [`LocAgentAgent`](codenib/clients/locagent_agent.py) runs pinned prompts and
   function calls over [`LocAgentToolProvider`](codenib/integrations/locagent.py),
@@ -142,6 +143,20 @@ locations for follow-up reads and citations. See
 [MCP Server](https://docs.codenib.ai/mcp/)
 for client configuration and tool contracts.
 
+The same planner is available directly to Python agents:
+
+```python
+from codenib.agent import RepositoryContextExplorer
+
+with RepositoryContextExplorer.from_repository(
+    "/path/to/repository", policy="auto"
+) as explorer:
+    result = explorer.explore("where is request retry behavior implemented?", top_k=10)
+```
+
+Each result includes source-validated evidence plus the selected plan,
+capabilities, loaded views, fusion, graph, and reranking trace.
+
 ## What CodeNib Provides
 
 | Surface | Purpose |
@@ -151,7 +166,8 @@ for client configuration and tool contracts.
 | Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths |
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
 | MCP and LSP-shaped tools | Serve one manifest to coding agents without tying the runtime to one agent framework |
-| External integrations | Run revision-pinned LocAgent and OrcaLoca policies and serve SWE-Explore's explorer contract over the same manifest-backed views |
+| External integrations | Run revision-pinned LocAgent and OrcaLoca policies over the same manifest-backed views |
+| Benchmark adapters | Project native CodeNib evidence into pinned external data and scorer contracts such as SWE-Explore |
 | Local inspection | Audit the same context through Wiki pages, Ask answers, citations, and the Dependency Map |
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 

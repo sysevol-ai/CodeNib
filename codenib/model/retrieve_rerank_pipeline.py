@@ -11,13 +11,12 @@ from typing import Dict, List, Optional, Sequence, Set
 
 from ..code_chunker import CodeChunker, RepoChunkingConfig
 from ..graph.code_graph import CodeGraph
-from ..graph.roi_subgraph import ROISubgraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
 from ..index.rerank.cross_encoder import build_reranker
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
-from ..ops.expand import ExpandContext, expand_graph_neighbors, nodeinfo_to_queried
+from ..ops.expand import ExpandContext, expand_graph_region
 from ..ops.rerank import RerankContext, rerank_by_embedding
 from ..ops.retrieve import (
     RetrieveContext,
@@ -583,62 +582,19 @@ class RetrieveRerankPipeline:
         if not graph_seeds:
             return []
 
-        if graph_plan.use_ppr or graph_plan.hops > 1:
-            expanded = self._expand_graph_roi(graph_seeds, graph_plan)
-        else:
-            expanded = []
-
-        if not expanded:
-            expanded = self._expand_graph_neighbors(graph_seeds, graph_plan)
+        expanded = expand_graph_region(
+            self.expand_context,
+            graph_seeds,
+            top_k=graph_plan.expand_top_k,
+            hops=graph_plan.hops,
+            direction=graph_plan.direction,
+            use_ppr=graph_plan.use_ppr,
+            repo_path=self.repo_path,
+            include_content=True,
+        )
 
         candidates = dedup_queried_nodes([*graph_seeds, *expanded])
         return candidates[: graph_plan.expand_top_k]
-
-    def _expand_graph_roi(
-        self, seeds: List[QueriedNode], graph_plan
-    ) -> List[QueriedNode]:
-        graph = self.expand_context.code_graph
-        if graph is None or not hasattr(graph, "name_to_vertex"):
-            return []
-
-        seed_names = _resolve_graph_seed_names(graph, seeds)
-        if not seed_names:
-            return []
-
-        roi = ROISubgraph(graph)
-        if graph_plan.use_ppr:
-            nodes = roi.expand_ppr(
-                seed_names,
-                top_k=graph_plan.expand_top_k,
-                damping=self.expand_context.default_damping,
-                filter_tests=self.expand_context.filter_tests,
-            )
-        else:
-            subgraph = roi.extract_subgraph(
-                seed_names,
-                k_hop=graph_plan.hops,
-                direction=_roi_direction(graph_plan.direction),
-            )
-            nodes = roi.get_filtered_subgraph_nodes(
-                subgraph,
-                filter_tests=self.expand_context.filter_tests,
-            )[: graph_plan.expand_top_k]
-        return nodeinfo_to_queried(nodes)
-
-    def _expand_graph_neighbors(
-        self, seeds: List[QueriedNode], graph_plan
-    ) -> List[QueriedNode]:
-        per_seed = max(1, graph_plan.expand_top_k // max(1, len(seeds)))
-        return expand_graph_neighbors(
-            self.expand_context,
-            seeds,
-            per_seed=per_seed,
-            direction=_neighbor_direction(graph_plan.direction),
-            repo_path=self.repo_path,
-            include_content=True,
-            symbol_only=True,
-            require_span=True,
-        )
 
     @staticmethod
     def _merge_hybrid(
@@ -1010,41 +966,3 @@ def _planner_trace(
             "rationale": plan.rationale,
         },
     }
-
-
-def _resolve_graph_seed_names(
-    graph: CodeGraph, seeds: Sequence[QueriedNode]
-) -> List[str]:
-    name_to_vertex = getattr(graph, "name_to_vertex", {})
-    out: List[str] = []
-    seen: Set[str] = set()
-    for seed in seeds:
-        candidates = [seed.node_id, seed.node_name]
-        if seed.file and seed.node_name:
-            candidates.append(f"{seed.file}:{seed.node_name}")
-        for candidate in candidates:
-            if candidate and candidate in name_to_vertex and candidate not in seen:
-                seen.add(candidate)
-                out.append(candidate)
-                break
-    return out
-
-
-def _roi_direction(direction: str) -> str:
-    normalized = (direction or "both").strip().lower()
-    if normalized in {"callees", "successors", "forward", "out"}:
-        return "forward"
-    if normalized in {"callers", "predecessors", "backward", "in"}:
-        return "backward"
-    return "both"
-
-
-def _neighbor_direction(direction: str) -> str:
-    normalized = (direction or "both").strip().lower()
-    if normalized in {"forward", "out"}:
-        return "successors"
-    if normalized in {"backward", "in"}:
-        return "predecessors"
-    if normalized in {"callees", "successors", "callers", "predecessors", "both"}:
-        return normalized
-    return "both"

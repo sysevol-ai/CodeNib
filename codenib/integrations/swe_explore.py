@@ -2,24 +2,27 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""SWE-Explore's ranked-region contract over CodeNib repository views.
+"""SWE-Explore's ranked-region contract over CodeNib repository exploration.
 
 The official benchmark asks an explorer for ranked, repository-relative,
 1-based inclusive source regions.  CodeNib stores chunk ranges as 0-based
-inclusive locations.  This module owns that conversion and keeps benchmark
-serving separate from index construction.
+inclusive locations. This module owns only that protocol conversion; planning,
+retrieval, graph expansion, reranking, and source validation stay in CodeNib's
+native repository-context runtime.
 """
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ._repository import RepositoryAdapter, RepositoryPathError
-
-_RUNTIME_VIEWS = frozenset({"bm25"})
+from ..agent.runtime.explorer import (
+    RepositoryContextExplorer,
+    RepositoryExplorePreparation,
+    RepositoryExploreTrace,
+)
+from ..model.retrieval_planner import BudgetInput
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,18 +64,17 @@ class SWEExploreResult:
 
 
 class CodeNibSWEExploreExplorer:
-    """Serve ranked CodeNib BM25 chunks under SWE-Explore's protocol.
+    """Adapt CodeNib's native explorer to SWE-Explore's region protocol."""
 
-    The explorer loads only the BM25 view declared by the manifest.  It does
-    not build or update indexes; callers must materialize the view explicitly
-    before constructing the explorer.
-    """
-
-    def __init__(self, context: Any, *, include_snippets: bool = False) -> None:
-        self.repository = RepositoryAdapter(context, require_graph=False)
-        self.bm25 = self.repository.require_view("bm25", "bm25")
+    def __init__(
+        self,
+        explorer: RepositoryContextExplorer,
+        *,
+        include_snippets: bool = False,
+    ) -> None:
+        self.runtime = explorer
         self.include_snippets = bool(include_snippets)
-        self._source_lines: dict[str, list[str]] = {}
+        self.last_trace: RepositoryExploreTrace | None = None
 
     @classmethod
     def from_manifest(
@@ -80,13 +82,19 @@ class CodeNibSWEExploreExplorer:
         manifest_path: str | Path,
         *,
         include_snippets: bool = False,
+        policy: str = "auto",
+        budget: BudgetInput = "balanced",
+        level: str = "l2",
     ) -> "CodeNibSWEExploreExplorer":
-        """Load only the BM25 artifact from an existing CodeNib manifest."""
+        """Bind the protocol adapter to an existing CodeNib manifest."""
 
-        from ..mcp.context import ServerContext
-
-        context = ServerContext.load(manifest_path, views=_RUNTIME_VIEWS)
-        return cls(context, include_snippets=include_snippets)
+        runtime = RepositoryContextExplorer.from_manifest(
+            manifest_path,
+            policy=policy,
+            budget=budget,
+            level=level,
+        )
+        return cls(runtime, include_snippets=include_snippets)
 
     @classmethod
     def from_repository(
@@ -95,21 +103,41 @@ class CodeNibSWEExploreExplorer:
         *,
         manifest_path: str | Path | None = None,
         include_snippets: bool = False,
+        policy: str = "auto",
+        budget: BudgetInput = "balanced",
+        level: str = "l2",
     ) -> "CodeNibSWEExploreExplorer":
         """Resolve and validate the manifest bound to one checkout."""
 
-        from ..clients._manifest import select_checkout_manifest
-
-        selected = select_checkout_manifest(
+        runtime = RepositoryContextExplorer.from_repository(
             repo_path,
-            integration_name="SWE-Explore",
             manifest_path=manifest_path,
+            policy=policy,
+            budget=budget,
+            level=level,
         )
-        return cls.from_manifest(selected, include_snippets=include_snippets)
+        return cls(
+            runtime,
+            include_snippets=include_snippets,
+        )
 
     @property
     def context(self) -> Any:
-        return self.repository.context
+        return self.runtime.context
+
+    def close(self) -> None:
+        self.runtime.close()
+
+    def prepare(self, query: str) -> RepositoryExplorePreparation:
+        """Load the native views selected for a benchmark query."""
+
+        return self.runtime.prepare(query)
+
+    def __enter__(self) -> "CodeNibSWEExploreExplorer":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
 
     def explore(
         self,
@@ -124,100 +152,27 @@ class CodeNibSWEExploreExplorer:
         metrics apply a separate cumulative-line budget in the scorer.
         """
 
-        if isinstance(top_k, bool) or not isinstance(top_k, int):
-            raise TypeError("top_k must be an integer")
-        if top_k < 0:
-            raise ValueError("top_k must be non-negative")
-        if top_k == 0 or not str(query or "").strip():
-            return []
-
-        max_candidates = max(top_k, top_k * 4)
-        index_limit = getattr(self.bm25, "max_k", max_candidates)
-        if isinstance(index_limit, int) and index_limit > 0:
-            max_candidates = min(max_candidates, index_limit)
-        candidates = self.bm25.search(
-            query=str(query),
-            top_k=max_candidates,
-            return_code_content=False,
+        result = self.runtime.explore(
+            str(query or ""),
+            top_k=top_k,
+            include_content=self.include_snippets,
         )
-
-        results: list[SWEExploreResult] = []
-        seen: set[tuple[str, int, int]] = set()
-        for candidate in candidates:
-            region = self._region_from_candidate(candidate)
-            if region is None:
-                continue
-            key = (region.path, region.start, region.end)
-            if key in seen:
-                continue
-            seen.add(key)
-            results.append(
-                SWEExploreResult(
-                    instance_id=str(instance_id),
-                    score=_finite_score(getattr(candidate, "score", 0.0)),
-                    regions=(region,),
-                )
+        self.last_trace = result.trace
+        return [
+            SWEExploreResult(
+                instance_id=str(instance_id),
+                score=item.score,
+                regions=(
+                    SWEExploreContextRegion(
+                        path=item.path,
+                        start=item.start_line + 1,
+                        end=item.end_line + 1,
+                        snippet=item.content,
+                    ),
+                ),
             )
-            if len(results) >= top_k:
-                break
-        return results
-
-    def _region_from_candidate(self, candidate: Any) -> SWEExploreContextRegion | None:
-        raw_path = str(getattr(candidate, "file", "") or "").strip()
-        if not raw_path:
-            return None
-        try:
-            path = self._relative_path(raw_path)
-            lines = self._lines(path)
-        except (OSError, RepositoryPathError, UnicodeError):
-            return None
-        if not lines:
-            return None
-
-        start = _line_number(getattr(candidate, "start_line", None))
-        end = _line_number(getattr(candidate, "end_line", None))
-        if start is None or end is None or end < start or start >= len(lines):
-            return None
-        end = min(end, len(lines) - 1)
-        snippet = "\n".join(lines[start : end + 1]) if self.include_snippets else None
-        return SWEExploreContextRegion(
-            path=path,
-            start=start + 1,
-            end=end + 1,
-            snippet=snippet,
-        )
-
-    def _relative_path(self, value: str) -> str:
-        raw = Path(value).expanduser()
-        if raw.is_absolute():
-            try:
-                value = raw.resolve().relative_to(self.repository.repo_root).as_posix()
-            except ValueError as exc:
-                raise RepositoryPathError(
-                    f"retrieval result is outside the manifest repository: {raw}"
-                ) from exc
-        return self.repository.normalize_path(value)
-
-    def _lines(self, path: str) -> list[str]:
-        lines = self._source_lines.get(path)
-        if lines is None:
-            lines = self.repository.source_lines(path)
-            self._source_lines[path] = lines
-        return lines
-
-
-def _line_number(value: Any) -> int | None:
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-        return value
-    return None
-
-
-def _finite_score(value: Any) -> float:
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return score if math.isfinite(score) else 0.0
+            for item in result.evidence
+        ]
 
 
 __all__ = [

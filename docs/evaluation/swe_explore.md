@@ -1,8 +1,9 @@
 # SWE-Explore Compatibility Validation
 
 This validation checks whether CodeNib can participate in the official
-SWE-Explore explorer and evaluator contracts. It does not measure patch
-generation or SWE-bench issue resolution.
+SWE-Explore explorer and evaluator contracts. The reported run is the explicit
+`bm25` compatibility control, not CodeNib's native multi-view `auto` policy. It
+does not measure patch generation or SWE-bench issue resolution.
 
 ## Pinned Inputs
 
@@ -26,7 +27,9 @@ execution: two Python cases and three each for Go, Rust, TypeScript,
 JavaScript, C, and C++. Every repository is a clean detached checkout at the
 joined `base_commit`. The audit rejects tracked changes plus untracked or
 gitignored source files that CodeNib's chunker would index. The runner also
-requires the default BM25 artifact profile and records it per case.
+requires the default BM25 artifact profile and records it per case. The current
+runner can separately execute `dense`, `hybrid`, `hybrid_rerank`, `graph`, or
+`auto`; those arms require new measurements and are not backfilled here.
 
 Coverage always uses all requested cases. Quality metrics are conditioned on
 successful cases because zero-imputation would make lower-is-better noise
@@ -39,7 +42,7 @@ lists every failed case separately.
 | --- | ---: |
 | Snapshot revision and cleanliness | 20/20 |
 | BM25 view construction | 20/20 |
-| Selective BM25-only loading | 20/20 |
+| Selective BM25-only loading (`--policy bm25`) | 20/20 |
 | Ranked region query | 20/20 |
 | Official runner completion | 20/20 |
 | Generated differential metric cells | 4,250/4,250 |
@@ -62,7 +65,7 @@ query serving.
 
 ## Localization Summary
 
-The table reports the CodeNib arm only. Values are means over the fixed 20
+The table reports the CodeNib BM25 control only. Values are means over the fixed 20
 cases and characterize this compatibility subset rather than a repository
 population.
 

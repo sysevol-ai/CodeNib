@@ -16,6 +16,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING, Dict, Optional
 
 from ..compiler.manifest import RepoManifest
@@ -120,6 +121,7 @@ class ServerContext:
     zoekt: Optional[ZoektSearcher] = None
     vector: Optional[CodeVectorStore] = None
     errors: Dict[str, str] = field(default_factory=dict)
+    _view_lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     @classmethod
     def load(
@@ -143,9 +145,7 @@ class ServerContext:
         )
         ctx = cls(manifest=manifest)
 
-        for view, loader_name in _VIEW_LOADERS:
-            if view in selected:
-                getattr(ctx, loader_name)()
+        ctx.load_views(selected)
 
         cap_summary = {k: v for k, v in manifest.capabilities.items() if v}
         loaded = [
@@ -162,6 +162,50 @@ class ServerContext:
             list(ctx.errors) or "none",
         )
         return ctx
+
+    @property
+    def loaded_views(self) -> frozenset[str]:
+        """Return the runtime views currently available in this context."""
+
+        return frozenset(
+            view
+            for view, _loader_name in _VIEW_LOADERS
+            if getattr(self, view, None) is not None
+        )
+
+    def load_views(self, views: Iterable[str]) -> Dict[str, str]:
+        """Load additional manifest views without disturbing loaded resources.
+
+        View dependencies are resolved in the same way as :meth:`load`. The
+        operation is idempotent and serialized so query-time planners can
+        safely request only the backends selected for a query. The returned
+        mapping contains requested views that remain unavailable.
+        """
+
+        selected = _resolve_views(views)
+        with self._view_lock:
+            for view, loader_name in _VIEW_LOADERS:
+                if view not in selected or getattr(self, view, None) is not None:
+                    continue
+                getattr(self, loader_name)()
+                if getattr(self, view, None) is not None:
+                    self.errors.pop(view, None)
+            return {
+                view: self.errors.get(view, "view did not load")
+                for view in selected
+                if getattr(self, view, None) is None
+            }
+
+    def close(self) -> None:
+        """Release runtime resources owned by this context."""
+
+        with self._view_lock:
+            if self.zoekt is not None:
+                _stop_zoekt(self.zoekt)
+                self.zoekt = None
+            if self.vector is not None:
+                _close_vector(self.vector)
+                self.vector = None
 
     @classmethod
     def validate_views(

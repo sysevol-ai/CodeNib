@@ -19,7 +19,6 @@ budget contract. None of these labels alone claims end-to-end task quality.
 | Agentless v1.5.0 | CodeNib-native, revision-pinned | Symbol graph | Python tree, symbol skeleton, and line-window context | Vendored three-stage localization prompts; shared ranked file/symbol scoring | Localization only; repair and patch validation are excluded |
 | CoSIL | CodeNib-native, revision-pinned | Symbol graph | Pinned four-tool contract | Vendored file reflection, function tool loop, prune policy, and shared localization scoring | RQ1 file/function localization only; line localization and patch generation are excluded |
 | OrcaLoca SearchAgent | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
-| SWE-Explore | Official explorer-compatible, revision-pinned | BM25 | Ranked `ContextRegion` explorer protocol | Official runner adapter, pinned scorer contract, and strict seven-language compatibility run | Trajectory-read localization only; no patch-generation or issue-resolution claim |
 
 ### What Supported Means
 
@@ -40,12 +39,6 @@ Passing these gates supports the stated provider and policy boundary. It does
 not imply compatibility with an arbitrary upstream revision or with stages
 explicitly excluded by the matrix.
 
-For a benchmark integration such as SWE-Explore, the policy gate is replaced
-by its public explorer protocol and evaluator. CodeNib checks every metric
-against the pinned official scorer. Coverage retains preparation failures;
-quality is success-conditioned with its denominator stated explicitly. It does
-not reinterpret trajectory labels as golden-patch labels.
-
 Optional upstream packages are required only where the policy still executes
 inside the upstream runtime. Provider imports and standalone provider examples
 remain dependency-free. Exact pinned
@@ -64,15 +57,27 @@ indexed search, and graph traversal. This checks that the provider boundary is
 language-agnostic; it is not evidence that the pinned Python-only LocAgent or
 OrcaLoca native implementations support those languages.
 
-## SWE-Explore
+## Benchmark Adapters
 
-CodeNib implements SWE-Explore's ranked-region explorer protocol without
-importing the benchmark at runtime:
+Benchmark adapters do not define CodeNib's repository algorithm. They join
+pinned datasets, translate native evidence into an external protocol, and run
+that benchmark's scorer. Coverage retains preparation failures; quality is
+success-conditioned with its denominator stated explicitly.
+
+### SWE-Explore
+
+CodeNib's native `RepositoryContextExplorer` owns route planning, retrieval,
+graph expansion, reranking, and source validation. The SWE-Explore adapter only
+converts its 0-based evidence into the benchmark's repository-relative,
+1-based inclusive `ContextRegion` records:
 
 ```python
 from codenib.integrations.swe_explore import CodeNibSWEExploreExplorer
 
-explorer = CodeNibSWEExploreExplorer.from_repository("/path/to/checkout")
+explorer = CodeNibSWEExploreExplorer.from_repository(
+    "/path/to/checkout",
+    policy="auto",
+)
 results = explorer.explore(
     instance_id="org__repo-123",
     query="issue text",
@@ -80,10 +85,11 @@ results = explorer.explore(
 )
 ```
 
-The adapter loads only the manifest's BM25 view. It emits repository-relative,
-1-based inclusive regions, clips ranges to source files, rejects escaping
-paths, removes exact duplicate regions, and preserves retrieval order. Index
-construction remains a separate operation.
+`auto` plans against manifest-advertised BM25, vector, and symbol-graph
+capabilities and loads only the selected query route. Stable ablation policies
+are `bm25`, `dense`, `hybrid`, `hybrid_rerank`, and `graph`. Index construction
+remains a separate operation; the strict runner materializes and records the
+exact views required by the selected policy.
 
 Compatibility is pinned to SWE-Explore revision
 `3c12dc5a551937038afcbdb6eb6bbf19f3ddd8c1` and released dataset revision
@@ -106,7 +112,8 @@ preserves malformed optional trajectory ranges under upstream semantics: the
 released data contains 455 reversed optional ranges and 8 with `end=0`.
 Silently repairing them would make CodeNib's scores incomparable.
 
-The fixed compatibility subset contains 20 base-commit checkouts across
+The released compatibility result is the explicit `bm25` control on 20
+base-commit checkouts across
 Python, Go, Rust, TypeScript, JavaScript, C, and C++. All 20 passed checkout,
 benchmark-digest, BM25-profile, build, load, and query gates. Snapshot checks
 include index-visible untracked and gitignored source files. On the validation machine, median
@@ -125,8 +132,14 @@ codenib-swe-explore-benchmark \
   --case-set docs/assets/swe_explore_cases.json \
   --repos-root /path/to/repos \
   --output results/codenib-swe-explore.json \
+  --policy auto \
   --top-k 5,10,20
 ```
+
+Use `--policy bm25` to reproduce the published compatibility control. The
+runner records the policy, materialized view set, selected per-query plan, and
+runtime trace; no native `auto` quality number is claimed until that arm is
+executed on the pinned case set.
 
 The upstream SWE-Explore runner can also select `--explorers codenib`. Its
 native BM25 control has a Python/document-oriented extension allowlist, so the

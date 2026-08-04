@@ -175,6 +175,121 @@ def expand_graph_neighbors(
     return out
 
 
+def expand_graph_region(
+    context: ExpandContext,
+    seeds: Sequence[QueriedNode],
+    *,
+    top_k: int = 50,
+    hops: int = 2,
+    direction: str = "both",
+    use_ppr: bool = False,
+    repo_path: Optional[str] = None,
+    include_content: bool = False,
+) -> List[QueriedNode]:
+    """Expand ranked seeds through a bounded graph region.
+
+    Multi-hop and PPR expansion share this operator so manifest-backed
+    runtimes and the standalone retrieval pipeline execute the same graph
+    semantics. If no region can be resolved, the function falls back to the
+    one-hop neighbor operator.
+    """
+
+    graph = context.code_graph
+    if graph is None or not seeds or top_k <= 0:
+        return []
+
+    seed_names: List[str] = []
+    for seed in seeds:
+        canonical = _resolve_seed(graph, seed)
+        if canonical is not None and canonical not in seed_names:
+            seed_names.append(canonical)
+    if not seed_names:
+        return []
+    if not hasattr(graph, "get_graph") or not hasattr(graph, "name_to_vertex"):
+        return _expand_neighbor_fallback(
+            context,
+            seeds,
+            top_k=top_k,
+            direction=direction,
+            repo_path=repo_path,
+            include_content=include_content,
+        )
+
+    from ..graph.roi_subgraph import ROISubgraph
+
+    roi = ROISubgraph(graph)
+    if use_ppr:
+        nodes = roi.expand_ppr(
+            seed_names,
+            top_k=top_k,
+            damping=context.default_damping,
+            filter_tests=context.filter_tests,
+        )
+    else:
+        subgraph = roi.extract_subgraph(
+            seed_names,
+            k_hop=max(1, int(hops)),
+            direction=_roi_direction(direction),
+        )
+        nodes = roi.get_filtered_subgraph_nodes(
+            subgraph,
+            filter_tests=context.filter_tests,
+        )[:top_k]
+
+    expanded = nodeinfo_to_queried(nodes)
+    if include_content:
+        expanded = hydrate_candidate_contents(expanded, repo_path=repo_path)
+    if expanded:
+        return expanded[:top_k]
+
+    return _expand_neighbor_fallback(
+        context,
+        seeds,
+        top_k=top_k,
+        direction=direction,
+        repo_path=repo_path,
+        include_content=include_content,
+    )
+
+
+def _expand_neighbor_fallback(
+    context: ExpandContext,
+    seeds: Sequence[QueriedNode],
+    *,
+    top_k: int,
+    direction: str,
+    repo_path: Optional[str],
+    include_content: bool,
+) -> List[QueriedNode]:
+    per_seed = max(1, top_k // max(1, len(seeds)))
+    return expand_graph_neighbors(
+        context,
+        seeds,
+        per_seed=per_seed,
+        direction=_neighbor_direction(direction),
+        repo_path=repo_path,
+        include_content=include_content,
+    )[:top_k]
+
+
+def _roi_direction(direction: str) -> str:
+    normalized = (direction or "both").strip().lower()
+    if normalized in {"callees", "successors", "forward", "out"}:
+        return "forward"
+    if normalized in {"callers", "predecessors", "backward", "in"}:
+        return "backward"
+    return "both"
+
+
+def _neighbor_direction(direction: str) -> str:
+    normalized = (direction or "both").strip().lower()
+    if normalized in {"forward", "out"}:
+        return "successors"
+    if normalized in {"backward", "in"}:
+        return "predecessors"
+    return normalized
+
+
 def _resolve_seed(graph: CodeGraph, seed: QueriedNode) -> Optional[str]:
     for value in (seed.node_id, seed.node_name):
         if not value:

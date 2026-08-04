@@ -59,10 +59,19 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     )
     from codenib.agent.runtime import (
         AGENT_TRACE_SCHEMA_VERSION,
+        REPOSITORY_EXPLORER_POLICIES,
         AgentRunTrace,
         AgentTraceEvent,
         ContextLedger,
         ContextLedgerEntry,
+        RepositoryContextExplorer,
+        RepositoryEvidence,
+        RepositoryExplorePreparation,
+        RepositoryExplorerCapabilityError,
+        RepositoryExploreResult,
+        RepositoryExploreTrace,
+        normalize_repository_explorer_policy,
+        repository_explorer_build_views,
     )
     from codenib.agent.tool_schema import registry_to_tools, skill_to_tool_schema
 
@@ -156,6 +165,39 @@ _EXPORTS = {
     "AgentTraceEvent": ("codenib.agent.runtime", "AgentTraceEvent"),
     "ContextLedger": ("codenib.agent.runtime", "ContextLedger"),
     "ContextLedgerEntry": ("codenib.agent.runtime", "ContextLedgerEntry"),
+    "REPOSITORY_EXPLORER_POLICIES": (
+        "codenib.agent.runtime",
+        "REPOSITORY_EXPLORER_POLICIES",
+    ),
+    "RepositoryContextExplorer": (
+        "codenib.agent.runtime",
+        "RepositoryContextExplorer",
+    ),
+    "RepositoryEvidence": ("codenib.agent.runtime", "RepositoryEvidence"),
+    "RepositoryExplorePreparation": (
+        "codenib.agent.runtime",
+        "RepositoryExplorePreparation",
+    ),
+    "RepositoryExploreResult": (
+        "codenib.agent.runtime",
+        "RepositoryExploreResult",
+    ),
+    "RepositoryExploreTrace": (
+        "codenib.agent.runtime",
+        "RepositoryExploreTrace",
+    ),
+    "RepositoryExplorerCapabilityError": (
+        "codenib.agent.runtime",
+        "RepositoryExplorerCapabilityError",
+    ),
+    "normalize_repository_explorer_policy": (
+        "codenib.agent.runtime",
+        "normalize_repository_explorer_policy",
+    ),
+    "repository_explorer_build_views": (
+        "codenib.agent.runtime",
+        "repository_explorer_build_views",
+    ),
     "registry_to_tools": ("codenib.agent.tool_schema", "registry_to_tools"),
     "skill_to_tool_schema": (
         "codenib.agent.tool_schema",
@@ -182,6 +224,13 @@ __all__ = [
     "PlainChatHistory",
     "RerankAgent",
     "RerankResult",
+    "REPOSITORY_EXPLORER_POLICIES",
+    "RepositoryContextExplorer",
+    "RepositoryEvidence",
+    "RepositoryExplorePreparation",
+    "RepositoryExploreResult",
+    "RepositoryExploreTrace",
+    "RepositoryExplorerCapabilityError",
     "TokenBudgetedChatHistory",
     "ToolCallRecord",
     "StaticLSPProvider",
@@ -198,11 +247,13 @@ __all__ = [
     "is_specific_lsp_symbol_seed",
     "lsp_result_metadata",
     "normalize_lsp_route_seed_policy",
+    "normalize_repository_explorer_policy",
     "query",
     "rerank_nodes_with_query",
     "render_lsp_route_context",
     "registry_to_tools",
     "run_agent_in_directory",
+    "repository_explorer_build_views",
     "skill_to_tool_schema",
 ]
 
