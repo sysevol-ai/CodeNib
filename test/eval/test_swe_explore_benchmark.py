@@ -322,6 +322,45 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     submodule_file.write_text("value = 5\n", encoding="utf-8")
     submodule = audit_swe_explore_snapshot(case, repos)
     submodule_file.unlink()
+    submodule_checkout = repo / "deps" / "library"
+    pinned_submodule_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=submodule_checkout,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=submodule_checkout, check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=submodule_checkout,
+        check=True,
+    )
+    (submodule_checkout / "new.py").write_text("value = 7\n", encoding="utf-8")
+    subprocess.run(["git", "add", "new.py"], cwd=submodule_checkout, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "advance submodule"],
+        cwd=submodule_checkout,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "submodule.deps/library.ignore", "all"],
+        cwd=repo,
+        check=True,
+    )
+    submodule_revision = audit_swe_explore_snapshot(case, repos)
+    subprocess.run(
+        ["git", "reset", "--hard", "-q", pinned_submodule_commit],
+        cwd=submodule_checkout,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "--unset", "submodule.deps/library.ignore"],
+        cwd=repo,
+        check=True,
+    )
     embedded_repo = repo / "embedded"
     embedded_repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=embedded_repo, check=True)
@@ -342,11 +381,33 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     )
     embedded = audit_swe_explore_snapshot(case, repos)
     shutil.rmtree(embedded_repo)
+    subprocess.run(
+        ["git", "update-index", "--assume-unchanged", "a.py"], cwd=repo, check=True
+    )
+    source_file.write_text("value = 8\n", encoding="utf-8")
+    assume_unchanged = audit_swe_explore_snapshot(case, repos)
+    subprocess.run(
+        ["git", "update-index", "--no-assume-unchanged", "a.py"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "checkout", "--", "a.py"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "update-index", "--skip-worktree", "a.py"], cwd=repo, check=True
+    )
+    source_file.write_text("value = 9\n", encoding="utf-8")
+    skip_worktree = audit_swe_explore_snapshot(case, repos)
+    subprocess.run(
+        ["git", "update-index", "--no-skip-worktree", "a.py"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "checkout", "--", "a.py"], cwd=repo, check=True)
     source_file.write_text("value = 2\n", encoding="utf-8")
     dirty = audit_swe_explore_snapshot(case, repos)
 
     assert clean.valid
     assert clean.unexpected_source_files == ()
+    assert clean.suppressed_source_files == ()
+    assert clean.submodule_revisions_match is True
     assert untracked.unexpected_source_files == ("untracked.py",)
     assert not untracked.valid
     assert ignored.unexpected_source_files == ("ignored.py",)
@@ -359,8 +420,14 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert submodule_skipped.valid
     assert submodule.unexpected_source_files == ("deps/library/untracked.py",)
     assert not submodule.valid
+    assert submodule_revision.submodule_revisions_match is False
+    assert not submodule_revision.valid
     assert embedded.unexpected_source_files == ("embedded/nested.py",)
     assert not embedded.valid
+    assert assume_unchanged.suppressed_source_files == ("a.py",)
+    assert not assume_unchanged.valid
+    assert skip_worktree.suppressed_source_files == ("a.py",)
+    assert not skip_worktree.valid
     assert dirty.revision_matches is True
     assert dirty.is_clean is False
     assert not dirty.valid

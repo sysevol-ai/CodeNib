@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from codenib.compiler.artifact_quality import bm25_artifact_file_fingerprints
 from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.eval.benchmarks import swe_explore_runner
@@ -120,16 +121,26 @@ def test_bm25_profile_validation_rejects_incompatible_artifact(tmp_path) -> None
 
 def test_bm25_profile_validation_records_exact_artifact(tmp_path) -> None:
     manifest_path = tmp_path / "repo_manifest.json"
+    artifact_path = tmp_path / "bm25"
+    artifact_path.mkdir()
+    (artifact_path / "documents.json").write_text("[]", encoding="utf-8")
+    (artifact_path / "bm25_metadata.json").write_text(
+        '{"max_k": 128}', encoding="utf-8"
+    )
+    artifact_files = bm25_artifact_file_fingerprints(artifact_path)
     profile = BM25IndexBuilder(languages=["python", "go"]).artifact_identity()
     manifest = RepoManifest(
         indexes={
             "bm25": IndexEntry(
                 index_type="bm25",
-                path=str(tmp_path / "bm25"),
+                path=str(artifact_path),
                 built_at="2026-08-04T00:00:00+00:00",
                 built_at_epoch=0.0,
                 status="fresh",
-                config=profile,
+                config={
+                    **profile,
+                    "artifact_file_fingerprints": artifact_files,
+                },
                 commit="abc123",
                 source_fingerprint="sha256:source",
             )
@@ -147,7 +158,17 @@ def test_bm25_profile_validation_records_exact_artifact(tmp_path) -> None:
         "config": profile,
         "commit": "abc123",
         "source_fingerprint": "sha256:source",
+        "artifact_path": str(artifact_path),
+        "artifact_file_fingerprints": artifact_files,
     }
+
+    (artifact_path / "documents.json").write_text("[{}]", encoding="utf-8")
+    with pytest.raises(ValueError, match="artifact files do not match"):
+        swe_explore_runner._validated_bm25_profile(
+            manifest_path,
+            languages=("python", "go"),
+            required_top_k=20,
+        )
 
 
 def test_runner_rejects_duplicate_case_ids(tmp_path) -> None:

@@ -219,6 +219,8 @@ class SWEExploreSnapshotAudit:
     revision_matches: bool | None
     is_clean: bool | None
     unexpected_source_files: tuple[str, ...] | None
+    suppressed_source_files: tuple[str, ...] | None
+    submodule_revisions_match: bool | None
 
     @property
     def valid(self) -> bool:
@@ -236,6 +238,12 @@ class SWEExploreSnapshotAudit:
                 if self.unexpected_source_files is not None
                 else None
             ),
+            "suppressed_source_files": (
+                list(self.suppressed_source_files)
+                if self.suppressed_source_files is not None
+                else None
+            ),
+            "submodule_revisions_match": self.submodule_revisions_match,
             "valid": self.valid,
         }
 
@@ -331,12 +339,20 @@ def audit_swe_explore_snapshot(
         if worktrees is not None
         else None
     )
-    unexpected_source_files = _unexpected_source_files(repo, worktrees)
+    source_audit = _audited_source_files(repo, worktrees)
+    unexpected_source_files = source_audit[0] if source_audit is not None else None
+    suppressed_source_files = source_audit[1] if source_audit is not None else None
+    submodule_revisions_match = _submodule_revisions_match(repo)
     is_clean = (
-        all(status == "" for status in statuses) and not unexpected_source_files
+        all(status == "" for status in statuses)
+        and not unexpected_source_files
+        and not suppressed_source_files
+        and submodule_revisions_match is True
         if statuses is not None
         and all(status is not None for status in statuses)
         and unexpected_source_files is not None
+        and suppressed_source_files is not None
+        and submodule_revisions_match is not None
         else None
     )
     return SWEExploreSnapshotAudit(
@@ -346,6 +362,8 @@ def audit_swe_explore_snapshot(
         revision_matches=(observed.lower() == case.base_commit if observed else None),
         is_clean=is_clean,
         unexpected_source_files=unexpected_source_files,
+        suppressed_source_files=suppressed_source_files,
+        submodule_revisions_match=submodule_revisions_match,
     )
 
 
@@ -567,26 +585,33 @@ def _git_output(repo: Path, *args: str) -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return completed.stdout.strip()
+    return completed.stdout.rstrip("\r\n")
 
 
-def _unexpected_source_files(
+def _audited_source_files(
     repo: Path,
     worktrees: tuple[Path, ...] | None,
-) -> tuple[str, ...] | None:
-    """Return chunker inputs whose bytes are not bound to the audited Git state."""
+) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    """Classify chunker inputs not bound to ordinary tracked Git files."""
 
     if worktrees is None:
         return None
     indexed_files = _chunker_source_files(repo)
     tracked_files: set[Path] = set()
+    suppressed_files: set[Path] = set()
     for worktree in worktrees:
-        tracked = _git_paths(worktree, "ls-files", "-z")
-        if tracked is None:
+        entries = _git_paths(worktree, "ls-files", "-v", "-z")
+        if entries is None:
             return None
-        tracked_files.update(_absolute_lexical(worktree / path) for path in tracked)
+        for entry in entries:
+            if len(entry) < 3 or entry[1] != " ":
+                return None
+            path = _absolute_lexical(worktree / entry[2:])
+            tracked_files.add(path)
+            if entry[0] == "S" or entry[0].islower():
+                suppressed_files.add(path)
     root = _absolute_lexical(repo)
-    return tuple(
+    unexpected = tuple(
         sorted(
             path.relative_to(root).as_posix()
             for path in indexed_files
@@ -594,6 +619,13 @@ def _unexpected_source_files(
             or _symlink_target_is_unbound(path, tracked_files)
         )
     )
+    suppressed = tuple(
+        sorted(
+            path.relative_to(root).as_posix()
+            for path in indexed_files.intersection(suppressed_files)
+        )
+    )
+    return unexpected, suppressed
 
 
 def _symlink_target_is_unbound(path: Path, tracked_files: set[Path]) -> bool:
@@ -620,6 +652,13 @@ def _checked_out_git_worktrees(repo: Path) -> tuple[Path, ...] | None:
     worktrees = [repo]
     worktrees.extend(Path(line) for line in output.splitlines() if line.strip())
     return tuple(dict.fromkeys(_absolute_lexical(path) for path in worktrees))
+
+
+def _submodule_revisions_match(repo: Path) -> bool | None:
+    output = _git_output(repo, "submodule", "status", "--recursive")
+    if output is None:
+        return None
+    return all(line.startswith(" ") for line in output.splitlines() if line)
 
 
 def _chunker_source_files(repo: Path) -> set[Path]:

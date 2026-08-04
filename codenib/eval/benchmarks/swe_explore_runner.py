@@ -21,6 +21,10 @@ from typing import Any, Mapping, Sequence
 
 from codenib._version import package_version
 from codenib.cli import detect_languages, index_repository
+from codenib.compiler.artifact_quality import (
+    bm25_artifact_file_fingerprints,
+    bm25_artifact_files_match,
+)
 from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.manifest import MANIFEST_FILENAME, RepoManifest
 from codenib.integrations.swe_explore import CodeNibSWEExploreExplorer
@@ -245,10 +249,21 @@ def _validated_bm25_profile(
             "SWE-Explore BM25 max_k is smaller than the requested region cutoff: "
             f"{actual['max_k']} < {required_top_k}"
         )
+    artifact_files = entry.metadata.get(
+        "artifact_file_fingerprints",
+        entry.config.get("artifact_file_fingerprints"),
+    )
+    if not bm25_artifact_files_match(
+        entry.path,
+        expected_fingerprints=artifact_files,
+    ):
+        raise ValueError("SWE-Explore BM25 artifact files do not match the manifest")
     return {
         "config": actual,
         "commit": entry.commit,
         "source_fingerprint": entry.source_fingerprint,
+        "artifact_path": entry.path,
+        "artifact_file_fingerprints": bm25_artifact_file_fingerprints(entry.path),
     }
 
 

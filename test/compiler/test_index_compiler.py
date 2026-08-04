@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -104,6 +105,14 @@ class TestBM25IndexBuilder:
 
         # Mock indexer
         mock_indexer_instance = MagicMock()
+
+        def save_index(directory):
+            root = Path(directory)
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "documents.json").write_text("[]", encoding="utf-8")
+            (root / "bm25_metadata.json").write_text("{}", encoding="utf-8")
+
+        mock_indexer_instance.save_index.side_effect = save_index
         MockIndexer.return_value = mock_indexer_instance
 
         builder = BM25IndexBuilder(languages=["python"], max_k=64)
@@ -120,8 +129,12 @@ class TestBM25IndexBuilder:
         assert status.metadata["file_count"] == 3
         assert status.metadata["chunk_count"] == 3
         assert status.metadata["source_file_count"] == 2
-        assert status.metadata["builder_schema"] == 4
+        assert status.metadata["builder_schema"] == 5
         assert status.metadata["max_k"] == 64
+        assert set(status.metadata["artifact_file_fingerprints"]) == {
+            "documents.json",
+            "bm25_metadata.json",
+        }
         assert status.path == output
         mock_indexer_instance.save_index.assert_called_once_with(output)
 
@@ -135,7 +148,7 @@ class TestBM25IndexBuilder:
             assert result == "result"
 
     def test_artifact_identity_tracks_source_body_indexing(self):
-        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 4
+        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 5
 
 
 # ---------------------------------------------------------------------------
