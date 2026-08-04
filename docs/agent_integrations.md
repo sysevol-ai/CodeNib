@@ -16,6 +16,7 @@ budget contract. None of these labels alone claims end-to-end task quality.
 | Integration | Status | Required views | Provider contract | Policy and evaluation | Boundary |
 | --- | --- | --- | --- | --- | --- |
 | LocAgent | CodeNib-native, revision-pinned | Symbol graph + BM25 | Pinned three-tool contract | Vendored prompts and function-calling loop; paired runner with strict common file/function@k scoring | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
+| Agentless v1.5.0 | CodeNib-native, revision-pinned | Symbol graph | Python tree, symbol skeleton, and line-window context | Vendored three-stage localization prompts; shared ranked file/symbol scoring | Localization only; repair and patch validation are excluded |
 | OrcaLoca SearchAgent | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
 | SWE-Explore | Official explorer-compatible, revision-pinned | BM25 | Ranked `ContextRegion` explorer protocol | Official runner adapter, pinned scorer contract, and strict seven-language compatibility run | Trajectory-read localization only; no patch-generation or issue-resolution claim |
 
@@ -44,12 +45,13 @@ against the pinned official scorer. Coverage retains preparation failures;
 quality is success-conditioned with its denominator stated explicitly. It does
 not reinterpret trajectory labels as golden-patch labels.
 
-Optional upstream packages are required only for policy execution. Provider
-imports and standalone provider examples remain dependency-free. Exact pinned
+Optional upstream packages are required only where the policy still executes
+inside the upstream runtime. Provider imports and standalone provider examples
+remain dependency-free. Exact pinned
 revisions, fidelity limits, commands, and measured evidence follow below.
 Provider startup also selects only its declared runtime views: LocAgent loads
-the symbol graph and BM25, while OrcaLoca loads only the symbol graph. Dense and
-Zoekt runtimes are not imported or started for these contracts.
+the symbol graph and BM25, while Agentless and OrcaLoca load only the symbol
+graph. Dense and Zoekt runtimes are not imported or started for these contracts.
 CodeNib's graph providers can represent additional languages, but this matrix
 does not extend a Python-scoped upstream policy or native comparator beyond its
 validated domain.
@@ -250,6 +252,68 @@ Run the provider and common-runner tests with:
 ```bash
 pytest -q test/integrations/test_locagent.py \
   test/eval/test_locagent_benchmark_adapter.py
+```
+
+## Agentless
+
+`AgentlessAgent` preserves the classic Agentless v1.5.0 localization sequence:
+
+1. rank files from the filtered Python project tree;
+2. identify classes, functions, methods, and variables from compressed files;
+3. refine them to source-linked edit locations in numbered context windows.
+
+CodeNib supplies all three inputs from one manifest-backed symbol graph and its
+bound checkout. It does not build Agentless's per-case AST artifact, import
+Agentless or LibCST, or run the downstream repair and patch-validation phases.
+The output is normalized to `BaselineRunResult`, so file and symbol ranking use
+the same denominator and metrics as other localization policies.
+
+```python
+from codenib.clients.agentless_agent import AgentlessAgent
+
+agent = AgentlessAgent(model="openai-compatible-model")
+result = await agent.locate_code(
+    query_text=issue,
+    repo_path=checkout,
+)
+```
+
+The standalone provider can inspect the exact context delivered to each stage:
+
+```bash
+python examples/integrations/agentless.py \
+  --manifest /path/to/repo_manifest.json \
+  --file src/service.py
+```
+
+Run the policy through the shared benchmark harness with:
+
+```bash
+python examples/agentless_loc_agent.py \
+  --dataset codenib_base \
+  --model "$AGENTLESS_MODEL" \
+  --result-path results/agentless.jsonl
+```
+
+Compatibility is pinned to Agentless `v1.5.0`, revision
+`b150f28465a77a81a7f4776384957a4271f5bd69`. The optional upstream probe reads
+that Git object and checks the three vendored prompts byte-for-byte. The
+provider intentionally keeps Agentless's Python-only and `test*` subtree
+filters. Its stdlib-AST skeleton preserves the policy's classes, callables, and
+module assignments, but formatting can differ from Agentless's LibCST output;
+that distinction is treated as provider fidelity, not exact artifact equality.
+
+The older `codenib.model.AgentlessPipeline` remains available for compatibility
+with existing callers. It uses CodeNib-specific structured prompts and is not
+the revision-pinned Agentless policy described in this matrix.
+
+```bash
+pytest -q test/integrations/test_agentless.py \
+  test/integrations/test_agentless_policy.py \
+  test/model/test_agentless_pipeline.py
+
+AGENTLESS_CHECKOUT=/path/to/Agentless \
+pytest -q test/integrations/test_agentless_upstream.py
 ```
 
 ## OrcaLoca
