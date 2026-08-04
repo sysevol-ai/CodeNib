@@ -365,6 +365,7 @@ def run_agentless_policy(
     if not files:
         usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
         usage["elapsed_seconds"] = time.perf_counter() - started
+        usage["model_calls"] = len(trajectory)
         return AgentlessExecution(
             file_output=file_output,
             usage=usage,
@@ -443,8 +444,6 @@ def _contains_valid_location(
         files = provider.resolve_files([location.file_path], limit=1)
         if not files:
             continue
-        if location.kind == "file":
-            return True
         if location.kind == "line" and location.line_start is not None:
             line_count = len(provider.repository.source_lines(files[0]))
             if 1 <= location.line_start <= line_count:

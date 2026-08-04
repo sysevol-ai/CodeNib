@@ -74,6 +74,22 @@ def test_file_parser_accepts_root_prefixed_ranked_output() -> None:
     assert result == ("src/service.py", "src/model.py")
 
 
+def test_location_parser_accepts_rendered_markdown_heading() -> None:
+    result = parse_agentless_locations(
+        "### File: src/service.py ###\nfunction: helper",
+        valid_files=("src/service.py",),
+        root_name="repo",
+    )
+
+    assert result == (
+        AgentlessLocation(
+            file_path="src/service.py",
+            kind="function",
+            name="helper",
+        ),
+    )
+
+
 def test_location_parser_preserves_agentless_location_types() -> None:
     result = parse_agentless_locations(
         """
@@ -210,6 +226,67 @@ def test_policy_retries_without_unsupported_temperature(
     assert result.success is True
     assert "temperature" in completions.attempts[0]
     assert all("temperature" not in item for item in completions.attempts[1:])
+
+
+def test_policy_retries_file_only_symbol_and_line_outputs(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.agentless_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    client = _Client(
+        [
+            "src/service.py",
+            "src/service.py",
+            "src/service.py\nfunction: helper",
+            "src/service.py",
+            "src/service.py\nline: 6",
+        ]
+    )
+    agent = AgentlessAgent(
+        model="test-model",
+        manifest_path=integration_manifest,
+        max_retries=2,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix helper", manifest.repo_path))
+
+    assert result.success is True
+    assert result.usage["model_calls"] == 5
+    assert [item["stage"] for item in result.raw_output["trajectory"]] == [
+        "file",
+        "symbol",
+        "symbol",
+        "line",
+        "line",
+    ]
+
+
+def test_empty_file_stage_records_model_call(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.agentless_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    client = _Client(["missing.py"])
+    agent = AgentlessAgent(
+        model="test-model",
+        manifest_path=integration_manifest,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix missing code", manifest.repo_path))
+
+    assert result.success is True
+    assert result.locations == ()
+    assert result.usage["model_calls"] == 1
 
 
 def test_invalid_line_stage_falls_back_to_valid_symbol_stage(

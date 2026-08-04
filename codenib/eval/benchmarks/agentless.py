@@ -28,10 +28,9 @@ def _normalize(value: object) -> str:
 
 
 def _match_file(line: str, valid_files: Sequence[str], root_name: str) -> str:
-    candidate = _normalize(line)
+    candidate = _normalize(line).strip("# ")
     if candidate.lower().startswith("file:"):
-        candidate = _normalize(candidate.split(":", 1)[1])
-    candidate = candidate.strip("# ")
+        candidate = _normalize(candidate.split(":", 1)[1]).strip("# ")
     roots = tuple(filter(None, (root_name.strip("/"),)))
     for file_path in sorted(valid_files, key=len, reverse=True):
         accepted = {file_path}

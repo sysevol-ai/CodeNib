@@ -110,3 +110,27 @@ def test_unknown_coarse_location_does_not_expand_to_whole_file(
     )
 
     assert result == ""
+
+
+def test_source_ast_resolves_assignment_exposed_by_skeleton(
+    integration_manifest: Path,
+) -> None:
+    provider = AgentlessRepositoryProvider.from_manifest(integration_manifest)
+
+    entity = provider.resolve_entity("src/model.py", "variable", "TaxRule.rate")
+    context = provider.line_context(
+        ["src/model.py"],
+        [
+            AgentlessLocation(
+                file_path="src/model.py",
+                kind="variable",
+                name="TaxRule.rate",
+            )
+        ],
+        context_window=0,
+    )
+
+    assert entity is not None
+    assert entity.qualified_name == "TaxRule.rate"
+    assert (entity.start_line, entity.end_line) == (1, 1)
+    assert "2|    rate = 0.08" in context

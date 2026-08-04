@@ -56,6 +56,7 @@ class AgentlessRepositoryProvider:
 
     def __init__(self, context: Any) -> None:
         self.repository = RepositoryAdapter(context, require_graph=True)
+        self._source_entity_cache: dict[str, tuple[RepositoryEntity, ...]] = {}
         self._files = tuple(
             file_path
             for file_path in self.repository.files
@@ -226,7 +227,118 @@ class AgentlessRepositoryProvider:
                 file_path=resolved[0],
                 kinds=kinds,
             )
+        if len(matches) == 1:
+            return matches[0]
+        return self._resolve_source_entity(resolved[0], name, kinds)
+
+    def _resolve_source_entity(
+        self,
+        file_path: str,
+        name: str,
+        kinds: set[str],
+    ) -> RepositoryEntity | None:
+        requested = name.strip().removesuffix("()")
+        entities = tuple(
+            entity
+            for entity in self._source_entities(file_path)
+            if entity.kind in kinds
+        )
+        exact = tuple(
+            entity
+            for entity in entities
+            if entity.qualified_name == requested or entity.display_name == requested
+        )
+        if len(exact) == 1:
+            return exact[0]
+        simple = requested.rsplit(".", 1)[-1]
+        matches = tuple(entity for entity in entities if entity.simple_name == simple)
         return matches[0] if len(matches) == 1 else None
+
+    def _source_entities(self, file_path: str) -> tuple[RepositoryEntity, ...]:
+        cached = self._source_entity_cache.get(file_path)
+        if cached is not None:
+            return cached
+        content, _, _ = self.repository.read_range(file_path)
+        try:
+            module = ast.parse(content)
+        except SyntaxError:
+            self._source_entity_cache[file_path] = ()
+            return ()
+
+        entities: list[RepositoryEntity] = []
+
+        def add_entity(
+            node: ast.AST,
+            *,
+            simple_name: str,
+            kind: str,
+            parents: tuple[str, ...],
+        ) -> None:
+            qualified_name = ".".join((*parents, simple_name))
+            start = max(0, int(getattr(node, "lineno", 1)) - 1)
+            end = max(start, int(getattr(node, "end_lineno", start + 1)) - 1)
+            entities.append(
+                RepositoryEntity(
+                    vertex_id=-1,
+                    canonical_name=f"source:{file_path}:{qualified_name}",
+                    display_name=qualified_name,
+                    kind=kind,
+                    file_path=file_path,
+                    qualified_name=qualified_name,
+                    simple_name=simple_name,
+                    start_line=start,
+                    end_line=end,
+                    parent_name=".".join(parents) or None,
+                    class_name=parents[-1] if parents else None,
+                )
+            )
+
+        def visit(nodes: Sequence[ast.stmt], parents: tuple[str, ...] = ()) -> None:
+            for node in nodes:
+                if isinstance(node, ast.ClassDef):
+                    add_entity(
+                        node,
+                        simple_name=node.name,
+                        kind=NODE_TYPE_CLASS,
+                        parents=parents,
+                    )
+                    visit(node.body, (*parents, node.name))
+                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    add_entity(
+                        node,
+                        simple_name=node.name,
+                        kind=NODE_TYPE_METHOD if parents else NODE_TYPE_FUNCTION,
+                        parents=parents,
+                    )
+                elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    for target_name in self._assignment_names(node):
+                        add_entity(
+                            node,
+                            simple_name=target_name,
+                            kind=NODE_TYPE_FIELD if parents else NODE_TYPE_SYMBOL,
+                            parents=parents,
+                        )
+
+        visit(module.body)
+        result = tuple(entities)
+        self._source_entity_cache[file_path] = result
+        return result
+
+    @staticmethod
+    def _assignment_names(node: ast.Assign | ast.AnnAssign) -> tuple[str, ...]:
+        targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+        names: list[str] = []
+
+        def collect(target: ast.AST) -> None:
+            if isinstance(target, ast.Name):
+                names.append(target.id)
+            elif isinstance(target, (ast.Tuple, ast.List)):
+                for element in target.elts:
+                    collect(element)
+
+        for target in targets:
+            collect(target)
+        return tuple(names)
 
     def _location_interval(
         self, file_path: str, location: Any
