@@ -25,7 +25,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from codenib.integrations.swe_explore import SWEExploreContextRegion, SWEExploreResult
 from codenib.languages import extension_to_language_map
-from codenib.repository_filters import repository_path_is_visible
+from codenib.repository_filters import DEFAULT_IGNORED_DIRS
 
 SWE_EXPLORE_UPSTREAM_REVISION = "3c12dc5a551937038afcbdb6eb6bbf19f3ddd8c1"
 SWE_EXPLORE_DATASET_REVISION = "bdb0ae45d7c337d9e1dc3ebfe2a0af6bc7c1fbd9"
@@ -580,9 +580,17 @@ def _unexpected_source_files(repo: Path) -> tuple[str, ...] | None:
         sorted(
             path
             for path in set(untracked).union(ignored)
-            if repository_path_is_visible(path)
+            if _chunker_directory_is_visible(path)
             and PurePosixPath(path).suffix.lower() in source_extensions
         )
+    )
+
+
+def _chunker_directory_is_visible(path: str) -> bool:
+    """Match ``CodeChunker``'s exact-name default directory exclusions."""
+
+    return not any(
+        part in DEFAULT_IGNORED_DIRS for part in PurePosixPath(path).parts[:-1]
     )
 
 

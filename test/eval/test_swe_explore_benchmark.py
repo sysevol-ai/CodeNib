@@ -229,7 +229,7 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     )
     source_file = repo / "a.py"
     source_file.write_text("value = 1\n", encoding="utf-8")
-    (repo / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("ignored.py\n.codenib-extra/\n", encoding="utf-8")
     subprocess.run(["git", "add", "a.py", ".gitignore"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
     commit = subprocess.run(
@@ -270,6 +270,12 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     ignored_file.write_text("value = 3\n", encoding="utf-8")
     ignored = audit_swe_explore_snapshot(case, repos)
     ignored_file.unlink()
+    prefixed_dir = repo / ".codenib-extra"
+    prefixed_dir.mkdir()
+    (prefixed_dir / "a.py").write_text("value = 4\n", encoding="utf-8")
+    prefixed = audit_swe_explore_snapshot(case, repos)
+    (prefixed_dir / "a.py").unlink()
+    prefixed_dir.rmdir()
     source_file.write_text("value = 2\n", encoding="utf-8")
     dirty = audit_swe_explore_snapshot(case, repos)
 
@@ -279,6 +285,8 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert not untracked.valid
     assert ignored.unexpected_source_files == ("ignored.py",)
     assert not ignored.valid
+    assert prefixed.unexpected_source_files == (".codenib-extra/a.py",)
+    assert not prefixed.valid
     assert dirty.revision_matches is True
     assert dirty.is_clean is False
     assert not dirty.valid
