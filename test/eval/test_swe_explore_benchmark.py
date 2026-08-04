@@ -313,6 +313,10 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     skipped_file.write_text("const bundled = true;\n", encoding="utf-8")
     skipped = audit_swe_explore_snapshot(case, repos)
     skipped_file.unlink()
+    submodule_skipped_file = repo / "deps" / "library" / "app.min.js"
+    submodule_skipped_file.write_text("const bundled = true;\n", encoding="utf-8")
+    submodule_skipped = audit_swe_explore_snapshot(case, repos)
+    submodule_skipped_file.unlink()
     submodule_file = repo / "deps" / "library" / "untracked.py"
     submodule_file.write_text("value = 5\n", encoding="utf-8")
     submodule = audit_swe_explore_snapshot(case, repos)
@@ -350,6 +354,8 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert not prefixed.valid
     assert skipped.unexpected_source_files == ()
     assert skipped.valid
+    assert submodule_skipped.unexpected_source_files == ()
+    assert submodule_skipped.valid
     assert submodule.unexpected_source_files == ("deps/library/untracked.py",)
     assert not submodule.valid
     assert embedded.unexpected_source_files == ("embedded/nested.py",)
