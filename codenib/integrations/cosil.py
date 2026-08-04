@@ -455,7 +455,6 @@ class CoSILRepositoryProvider:
         lines = source.splitlines()
         classes: list[CoSILClass] = []
         functions: list[CoSILFunction] = []
-        class_method_names: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
                 methods: list[CoSILMethod] = []
@@ -472,7 +471,6 @@ class CoSILRepositoryProvider:
                             source="\n".join(lines[start - 1 : end]),
                         )
                     )
-                    class_method_names.add(child.name)
                 start = int(node.lineno)
                 end = int(node.end_lineno or start)
                 classes.append(
@@ -484,9 +482,8 @@ class CoSILRepositoryProvider:
                         methods=tuple(methods),
                     )
                 )
-            elif isinstance(node, ast.FunctionDef):
-                if node.name in class_method_names:
-                    continue
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef):
                 start = int(node.lineno)
                 end = int(node.end_lineno or start)
                 functions.append(

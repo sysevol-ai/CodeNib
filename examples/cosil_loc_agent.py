@@ -44,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-tool-rounds", type=int, default=10)
     parser.add_argument("--max-prune-rounds", type=int, default=3)
     parser.add_argument("--max-completion-tokens", type=int, default=4096)
+    parser.add_argument("--max-tool-context-chars", type=int, default=32_000)
     parser.add_argument(
         "--no-prune",
         action="store_true",
@@ -77,6 +78,7 @@ def main() -> None:
             prune_tool_results=not args.no_prune,
             max_prune_rounds=args.max_prune_rounds,
             max_completion_tokens=args.max_completion_tokens,
+            max_tool_context_chars=args.max_tool_context_chars,
             base_url=args.base_url,
         )
 

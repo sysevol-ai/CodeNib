@@ -327,6 +327,54 @@ def test_native_policy_runs_reflection_tools_and_xml_summary(
     assert '"file_name": "src/service.py"' in requests[4]["messages"][1]["content"]
 
 
+def test_tool_context_budget_bounds_history_and_summary(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    monkeypatch.setattr(
+        "codenib.clients.cosil_agent.select_checkout_manifest",
+        lambda *_args, **_kwargs: integration_manifest,
+    )
+    client = _Client(
+        [
+            {"content": "```\nsrc/service.py\n```"},
+            {"content": "```\nsrc/service.py\n```"},
+            {
+                "tool_calls": [
+                    _tool_call(
+                        "call-1",
+                        "get_code_of_file_function",
+                        '{"file_name":"src/service.py","func_name":"helper"}',
+                    )
+                ]
+            },
+            {"content": "No further tool calls"},
+            {"content": "<locations></locations>"},
+        ]
+    )
+    agent = CoSILAgent(
+        model="test-model",
+        manifest_path=integration_manifest,
+        max_tool_rounds=2,
+        prune_tool_results=False,
+        max_tool_context_chars=24,
+        client_factory=lambda: client,
+    )
+
+    result = asyncio.run(agent.locate_code("Fix helper", manifest.repo_path))
+
+    assert result.success is True
+    delivered = client.chat.completions.requests[3]["messages"][-1]["content"]
+    assert len(delivered) == 24
+    assert delivered.endswith("...[truncated]")
+    summary = client.chat.completions.requests[4]["messages"][1]["content"]
+    assert delivered in summary
+    trace = result.raw_output["tool_trace"][0]
+    assert trace["output_chars"] > trace["delivered_chars"] == 24
+    assert trace["truncated"] is True
+
+
 def test_failed_reflection_keeps_initial_file_candidates(
     integration_manifest: Path,
     monkeypatch,

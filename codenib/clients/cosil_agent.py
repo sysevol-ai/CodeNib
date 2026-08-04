@@ -28,6 +28,7 @@ _FALSE_OBSERVATION = (
     "I have already checked this function/class and it is not related to the bug. "
     "Don't check the functions it calls."
 )
+_TRUNCATION_MARKER = "\n...[truncated]"
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +105,7 @@ class CoSILAgent:
         prune_tool_results: bool = True,
         max_prune_rounds: int = 3,
         max_completion_tokens: int = 4096,
+        max_tool_context_chars: int = 32_000,
         base_url: str | None = None,
         api_key: str | None = None,
         policy_runner: CoSILPolicyRunner | None = None,
@@ -124,6 +126,8 @@ class CoSILAgent:
             raise ValueError("tool and prune round limits must be positive")
         if max_completion_tokens < 1:
             raise ValueError("max_completion_tokens must be positive")
+        if max_tool_context_chars < 1:
+            raise ValueError("max_tool_context_chars must be positive")
 
         self.model = str(model)
         self.top_n_files = int(top_n_files)
@@ -132,6 +136,7 @@ class CoSILAgent:
         self.prune_tool_results = bool(prune_tool_results)
         self.max_prune_rounds = int(max_prune_rounds)
         self.max_completion_tokens = int(max_completion_tokens)
+        self.max_tool_context_chars = int(max_tool_context_chars)
         self.base_url = base_url
         self.api_key = api_key
         self._manifest_path = (
@@ -259,6 +264,7 @@ class CoSILAgent:
             prune_tool_results=self.prune_tool_results,
             max_prune_rounds=self.max_prune_rounds,
             max_completion_tokens=self.max_completion_tokens,
+            max_tool_context_chars=self.max_tool_context_chars,
         )
 
 
@@ -274,8 +280,12 @@ def run_cosil_policy(
     prune_tool_results: bool = True,
     max_prune_rounds: int = 3,
     max_completion_tokens: int = 4096,
+    max_tool_context_chars: int = 32_000,
 ) -> CoSILExecution:
     """Run CoSIL's file reflection, tool loop, pruning, and XML summary."""
+
+    if max_tool_context_chars < 1:
+        raise ValueError("max_tool_context_chars must be positive")
 
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0}
     trajectory: list[dict[str, Any]] = []
@@ -284,6 +294,16 @@ def run_cosil_policy(
     temperature_supported = True
     max_completion_tokens_supported = True
     tool_reasoning_disabled = False
+    remaining_tool_context_chars = int(max_tool_context_chars)
+
+    def deliver_tool_result(value: str) -> tuple[str, bool]:
+        nonlocal remaining_tool_context_chars
+        delivered, truncated = _truncate_tool_result(
+            value,
+            remaining_tool_context_chars,
+        )
+        remaining_tool_context_chars -= len(delivered)
+        return delivered, truncated
 
     def complete(
         *,
@@ -435,19 +455,22 @@ def run_cosil_policy(
             arguments = _tool_arguments(function.get("arguments"))
             tool_started = time.perf_counter()
             try:
-                result = provider.dispatch(name, arguments)
+                raw_result = provider.dispatch(name, arguments)
                 error = None
             except Exception as exc:  # noqa: BLE001 - policy observation
-                result = f"Tool call failed: {exc}"
-                error = result
-            kept = name != "exit"
+                raw_result = f"Tool call failed: {exc}"
+                error = raw_result
+            result, truncated = deliver_tool_result(raw_result)
+            kept = name != "exit" and bool(result)
             trace_entry: dict[str, Any] = {
                 "phase": "location",
                 "round": round_index + 1,
                 "name": name,
                 "arguments": arguments,
                 "seconds": time.perf_counter() - tool_started,
-                "output_chars": len(result),
+                "output_chars": len(raw_result),
+                "delivered_chars": len(result),
+                "truncated": truncated,
                 "kept": kept,
                 "error": error,
             }
@@ -463,6 +486,7 @@ def run_cosil_policy(
                     tool_result=result,
                     max_rounds=max_prune_rounds,
                     tool_trace=tool_trace,
+                    deliver_tool_result=deliver_tool_result,
                 )
                 if not kept:
                     result = _FALSE_OBSERVATION
@@ -512,6 +536,7 @@ def _prune_tool_result(
     tool_result: str,
     max_rounds: int,
     tool_trace: list[dict[str, Any]],
+    deliver_tool_result: Callable[[str], tuple[str, bool]],
 ) -> bool:
     messages: list[dict[str, Any]] = protocol.prune_messages(
         tool_name=tool_name,
@@ -536,11 +561,12 @@ def _prune_tool_result(
             arguments = _tool_arguments(function.get("arguments"))
             tool_started = time.perf_counter()
             try:
-                result = provider.dispatch(name, arguments)
+                raw_result = provider.dispatch(name, arguments)
                 error = None
             except Exception as exc:  # noqa: BLE001 - policy observation
-                result = f"Tool call failed: {exc}"
-                error = result
+                raw_result = f"Tool call failed: {exc}"
+                error = raw_result
+            result, truncated = deliver_tool_result(raw_result)
             tool_trace.append(
                 {
                     "phase": "prune",
@@ -548,8 +574,10 @@ def _prune_tool_result(
                     "name": name,
                     "arguments": arguments,
                     "seconds": time.perf_counter() - tool_started,
-                    "output_chars": len(result),
-                    "kept": name != "exit" and error is None,
+                    "output_chars": len(raw_result),
+                    "delivered_chars": len(result),
+                    "truncated": truncated,
+                    "kept": name != "exit" and error is None and bool(result),
                     "error": error,
                 }
             )
@@ -601,6 +629,16 @@ def _finish_execution(
         tool_trace=tuple(tool_trace),
         trajectory=tuple(trajectory),
     )
+
+
+def _truncate_tool_result(value: str, limit: int) -> tuple[str, bool]:
+    text = str(value)
+    if len(text) <= limit:
+        return text, False
+    if limit <= len(_TRUNCATION_MARKER):
+        return _TRUNCATION_MARKER[:limit], True
+    prefix_length = limit - len(_TRUNCATION_MARKER)
+    return text[:prefix_length] + _TRUNCATION_MARKER, True
 
 
 def _tool_arguments(value: Any) -> dict[str, Any]:

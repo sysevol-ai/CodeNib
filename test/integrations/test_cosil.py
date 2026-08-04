@@ -201,3 +201,26 @@ class Service:
     assert outline is not None
     assert [item.name for item in outline.classes[0].methods] == ["shared"]
     assert [item.name for item in outline.functions] == ["shared"]
+
+
+def test_outline_limits_static_functions_to_module_scope() -> None:
+    outline = CoSILRepositoryProvider._parse_outline(
+        "module.py",
+        """
+class Service:
+    def shared(self):
+        return 1
+
+def shared():
+    return 2
+
+def outer():
+    def nested():
+        return 3
+    return nested()
+""".strip(),
+    )
+
+    assert outline is not None
+    assert [item.name for item in outline.classes[0].methods] == ["shared"]
+    assert [item.name for item in outline.functions] == ["shared", "outer"]
