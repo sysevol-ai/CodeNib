@@ -13,6 +13,7 @@ import pytest
 
 from codenib.eval.benchmarks.swe_explore import (
     SWE_EXPLORE_METRICS,
+    SWEExploreCase,
     SWEExploreGroundTruth,
     SWEExploreSourceRecord,
     audit_swe_explore_snapshot,
@@ -363,3 +364,50 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert dirty.revision_matches is True
     assert dirty.is_clean is False
     assert not dirty.valid
+
+
+def test_snapshot_audit_rejects_tracked_source_symlink_outside_checkout(
+    tmp_path: Path,
+) -> None:
+    instance_id = "org__repo-1"
+    repos = tmp_path / "repos"
+    repo = repos / instance_id
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=repo, check=True
+    )
+    external = tmp_path / "external.py"
+    external.write_text("value = 1\n", encoding="utf-8")
+    (repo / "linked.py").symlink_to(external)
+    subprocess.run(["git", "add", "linked.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "symlink fixture"], cwd=repo, check=True)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    source = SWEExploreSourceRecord(
+        instance_id=instance_id,
+        repo="org/repo",
+        base_commit=commit,
+        problem_statement="Fix it",
+        dataset="verified",
+    )
+    case = SWEExploreCase(
+        instance_id=instance_id,
+        dataset="verified",
+        repo_dir=f"repos/{instance_id}",
+        ground_truth=_ground_truth(),
+        source=source,
+    )
+
+    audit = audit_swe_explore_snapshot(case, repos)
+
+    assert audit.revision_matches is True
+    assert audit.unexpected_source_files == ("linked.py",)
+    assert audit.is_clean is False
+    assert not audit.valid

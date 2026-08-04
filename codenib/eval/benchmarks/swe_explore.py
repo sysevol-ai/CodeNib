@@ -574,7 +574,7 @@ def _unexpected_source_files(
     repo: Path,
     worktrees: tuple[Path, ...] | None,
 ) -> tuple[str, ...] | None:
-    """Return uncommitted files that are in the chunker's actual input set."""
+    """Return chunker inputs whose bytes are not bound to the audited Git state."""
 
     if worktrees is None:
         return None
@@ -589,9 +589,21 @@ def _unexpected_source_files(
     return tuple(
         sorted(
             path.relative_to(root).as_posix()
-            for path in indexed_files.difference(tracked_files)
+            for path in indexed_files
+            if path not in tracked_files
+            or _symlink_target_is_unbound(path, tracked_files)
         )
     )
+
+
+def _symlink_target_is_unbound(path: Path, tracked_files: set[Path]) -> bool:
+    if not path.is_symlink():
+        return False
+    try:
+        target = _absolute_lexical(path.resolve(strict=True))
+    except (OSError, RuntimeError):
+        return True
+    return target not in tracked_files
 
 
 def _checked_out_git_worktrees(repo: Path) -> tuple[Path, ...] | None:
