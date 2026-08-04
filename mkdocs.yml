@@ -200,6 +200,7 @@ nav:
           - Naming: branding.md
       - Benchmarks & Evaluation:
           - evaluation/index.md
+          - SWE-Explore Compatibility: evaluation/swe_explore.md
           - SWE-bench Collection: collect_swebench.md
           - Synthesis Pipeline: synthesis_pipeline.md
           - GT Locator: gt_locator.md

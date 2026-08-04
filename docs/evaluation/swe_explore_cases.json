@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "description": "Deterministic 20-case, seven-language SWE-Explore compatibility subset",
+  "swe_explore_upstream_revision": "3c12dc5a551937038afcbdb6eb6bbf19f3ddd8c1",
+  "swe_explore_dataset_revision": "bdb0ae45d7c337d9e1dc3ebfe2a0af6bc7c1fbd9",
+  "cases": [
+    {
+      "instance_id": "pydata__xarray-3305",
+      "language": "python"
+    },
+    {
+      "instance_id": "pydata__xarray-6992",
+      "language": "python"
+    },
+    {
+      "instance_id": "gohugoio__hugo-12171",
+      "language": "go"
+    },
+    {
+      "instance_id": "gohugoio__hugo-12562",
+      "language": "go"
+    },
+    {
+      "instance_id": "gohugoio__hugo-12579",
+      "language": "go"
+    },
+    {
+      "instance_id": "nushell__nushell-12950",
+      "language": "rust"
+    },
+    {
+      "instance_id": "nushell__nushell-13605",
+      "language": "rust"
+    },
+    {
+      "instance_id": "nushell__nushell-13831",
+      "language": "rust"
+    },
+    {
+      "instance_id": "facebook__docusaurus-9897",
+      "language": "typescript"
+    },
+    {
+      "instance_id": "facebook__docusaurus-10130",
+      "language": "typescript"
+    },
+    {
+      "instance_id": "facebook__docusaurus-10309",
+      "language": "typescript"
+    },
+    {
+      "instance_id": "preactjs__preact-2757",
+      "language": "javascript"
+    },
+    {
+      "instance_id": "preactjs__preact-2896",
+      "language": "javascript"
+    },
+    {
+      "instance_id": "preactjs__preact-3010",
+      "language": "javascript"
+    },
+    {
+      "instance_id": "redis__redis-10068",
+      "language": "c"
+    },
+    {
+      "instance_id": "redis__redis-10095",
+      "language": "c"
+    },
+    {
+      "instance_id": "redis__redis-11631",
+      "language": "c"
+    },
+    {
+      "instance_id": "fmtlib__fmt-2317",
+      "language": "cpp"
+    },
+    {
+      "instance_id": "fmtlib__fmt-3248",
+      "language": "cpp"
+    },
+    {
+      "instance_id": "fmtlib__fmt-3272",
+      "language": "cpp"
+    }
+  ]
+}

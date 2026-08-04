@@ -65,6 +65,7 @@ codenib-lsp-agent-study-manifest = "codenib.eval.agent_runner.lsp_agent_study_ma
 codenib-lsp-agent-study-artifacts = "codenib.eval.agent_runner.lsp_agent_study_artifacts:main"
 codenib-lsp-agent-study-run = "codenib.eval.agent_runner.lsp_agent_study_runner:main"
 codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
+codenib-swe-explore-benchmark = "codenib.eval.benchmarks.swe_explore_runner:main"
 
 [project.optional-dependencies]
 agent = [

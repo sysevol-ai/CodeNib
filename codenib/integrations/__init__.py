@@ -10,10 +10,18 @@ from ._repository import (
     RepositoryEntity,
     RepositoryPathError,
 )
+from .swe_explore import (
+    CodeNibSWEExploreExplorer,
+    SWEExploreContextRegion,
+    SWEExploreResult,
+)
 
 __all__ = [
+    "CodeNibSWEExploreExplorer",
     "IntegrationCapabilityError",
     "RepositoryAdapter",
     "RepositoryEntity",
     "RepositoryPathError",
+    "SWEExploreContextRegion",
+    "SWEExploreResult",
 ]

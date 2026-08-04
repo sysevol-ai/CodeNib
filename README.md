@@ -50,6 +50,12 @@ agent or code-Wiki framework.
 
 ## News
 
+- **2026-08-03 — SWE-Explore benchmark compatibility.**
+  [`CodeNibSWEExploreExplorer`](codenib/integrations/swe_explore.py) serves the
+  official ranked-region contract from a manifest-backed BM25 view. A strict
+  [20-case, seven-language validation](docs/evaluation/swe_explore.md)
+  completed every case and matched all 1,020 real-output metric values from the
+  pinned official evaluator.
 - **2026-08-03 — Native LocAgent policy.**
   [`LocAgentAgent`](codenib/clients/locagent_agent.py) runs pinned prompts and
   function calls over [`LocAgentToolProvider`](codenib/integrations/locagent.py),
@@ -145,7 +151,7 @@ for client configuration and tool contracts.
 | Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths |
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
 | MCP and LSP-shaped tools | Serve one manifest to coding agents without tying the runtime to one agent framework |
-| External policy adapters | Run revision-pinned LocAgent and OrcaLoca SearchAgent policies over the same manifest-backed views |
+| External integrations | Run revision-pinned LocAgent and OrcaLoca policies and serve SWE-Explore's explorer contract over the same manifest-backed views |
 | Local inspection | Audit the same context through Wiki pages, Ask answers, citations, and the Dependency Map |
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 
