@@ -55,6 +55,21 @@ def test_root_prefixed_file_response_resolves_to_repository_path(
     ) == ("src/service.py", "src/model.py")
 
 
+def test_valid_file_named_after_repository_is_not_stripped(
+    integration_manifest: Path,
+    monkeypatch,
+) -> None:
+    provider = AgentlessRepositoryProvider.from_manifest(integration_manifest)
+    provider._files = ("repo/module.py",)
+    monkeypatch.setattr(
+        provider.repository,
+        "find_files",
+        lambda value: [value] if value == "repo/module.py" else [],
+    )
+
+    assert provider.resolve_files("repo/module.py") == ("repo/module.py",)
+
+
 def test_skeleton_uses_source_signatures_without_function_bodies(
     integration_manifest: Path,
 ) -> None:
