@@ -227,6 +227,38 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"], cwd=repo, check=True
     )
+    submodule_origin = tmp_path / "submodule-origin"
+    submodule_origin.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=submodule_origin, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=submodule_origin, check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=submodule_origin,
+        check=True,
+    )
+    (submodule_origin / "library.py").write_text("value = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "library.py"], cwd=submodule_origin, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "submodule fixture"],
+        cwd=submodule_origin,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            str(submodule_origin),
+            "deps/library",
+        ],
+        cwd=repo,
+        check=True,
+    )
     source_file = repo / "a.py"
     source_file.write_text("value = 1\n", encoding="utf-8")
     (repo / ".gitignore").write_text("ignored.py\n.codenib-extra/\n", encoding="utf-8")
@@ -276,6 +308,14 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     prefixed = audit_swe_explore_snapshot(case, repos)
     (prefixed_dir / "a.py").unlink()
     prefixed_dir.rmdir()
+    skipped_file = repo / "app.min.js"
+    skipped_file.write_text("const bundled = true;\n", encoding="utf-8")
+    skipped = audit_swe_explore_snapshot(case, repos)
+    skipped_file.unlink()
+    submodule_file = repo / "deps" / "library" / "untracked.py"
+    submodule_file.write_text("value = 5\n", encoding="utf-8")
+    submodule = audit_swe_explore_snapshot(case, repos)
+    submodule_file.unlink()
     source_file.write_text("value = 2\n", encoding="utf-8")
     dirty = audit_swe_explore_snapshot(case, repos)
 
@@ -287,6 +327,10 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert not ignored.valid
     assert prefixed.unexpected_source_files == (".codenib-extra/a.py",)
     assert not prefixed.valid
+    assert skipped.unexpected_source_files == ()
+    assert skipped.valid
+    assert submodule.unexpected_source_files == ("deps/library/untracked.py",)
+    assert not submodule.valid
     assert dirty.revision_matches is True
     assert dirty.is_clean is False
     assert not dirty.valid

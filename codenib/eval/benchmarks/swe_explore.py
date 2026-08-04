@@ -18,14 +18,13 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from codenib.integrations.swe_explore import SWEExploreContextRegion, SWEExploreResult
-from codenib.languages import extension_to_language_map
-from codenib.repository_filters import DEFAULT_IGNORED_DIRS
 
 SWE_EXPLORE_UPSTREAM_REVISION = "3c12dc5a551937038afcbdb6eb6bbf19f3ddd8c1"
 SWE_EXPLORE_DATASET_REVISION = "bdb0ae45d7c337d9e1dc3ebfe2a0af6bc7c1fbd9"
@@ -323,11 +322,21 @@ def audit_swe_explore_snapshot(
         raise ValueError("snapshot audit requires a joined SWE-Explore source record")
     repo = resolve_swe_explore_repo(case, repos_root)
     observed = _git_output(repo, "rev-parse", "HEAD")
-    status = _git_output(repo, "status", "--porcelain", "--untracked-files=no")
-    unexpected_source_files = _unexpected_source_files(repo)
+    worktrees = _checked_out_git_worktrees(repo)
+    statuses = (
+        tuple(
+            _git_output(worktree, "status", "--porcelain", "--untracked-files=no")
+            for worktree in worktrees
+        )
+        if worktrees is not None
+        else None
+    )
+    unexpected_source_files = _unexpected_source_files(repo, worktrees)
     is_clean = (
-        status == "" and not unexpected_source_files
-        if status is not None and unexpected_source_files is not None
+        all(status == "" for status in statuses) and not unexpected_source_files
+        if statuses is not None
+        and all(status is not None for status in statuses)
+        and unexpected_source_files is not None
         else None
     )
     return SWEExploreSnapshotAudit(
@@ -561,37 +570,73 @@ def _git_output(repo: Path, *args: str) -> str | None:
     return completed.stdout.strip()
 
 
-def _unexpected_source_files(repo: Path) -> tuple[str, ...] | None:
-    """Return untracked or ignored files that the source chunker would index."""
+def _unexpected_source_files(
+    repo: Path,
+    worktrees: tuple[Path, ...] | None,
+) -> tuple[str, ...] | None:
+    """Return uncommitted files that are in the chunker's actual input set."""
 
-    untracked = _git_paths(repo, "ls-files", "--others", "--exclude-standard", "-z")
-    ignored = _git_paths(
-        repo,
-        "ls-files",
-        "--others",
-        "--ignored",
-        "--exclude-standard",
-        "-z",
-    )
-    if untracked is None or ignored is None:
+    if worktrees is None:
         return None
-    source_extensions = extension_to_language_map("chunker")
+    indexed_files = _chunker_source_files(repo)
+    candidates: set[Path] = set()
+    for worktree in worktrees:
+        untracked = _git_paths(
+            worktree, "ls-files", "--others", "--exclude-standard", "-z"
+        )
+        ignored = _git_paths(
+            worktree,
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "-z",
+        )
+        if untracked is None or ignored is None:
+            return None
+        candidates.update(
+            _absolute_lexical(worktree / path) for path in set(untracked).union(ignored)
+        )
+    root = _absolute_lexical(repo)
     return tuple(
         sorted(
-            path
-            for path in set(untracked).union(ignored)
-            if _chunker_directory_is_visible(path)
-            and PurePosixPath(path).suffix.lower() in source_extensions
+            path.relative_to(root).as_posix()
+            for path in candidates.intersection(indexed_files)
         )
     )
 
 
-def _chunker_directory_is_visible(path: str) -> bool:
-    """Match ``CodeChunker``'s exact-name default directory exclusions."""
-
-    return not any(
-        part in DEFAULT_IGNORED_DIRS for part in PurePosixPath(path).parts[:-1]
+def _checked_out_git_worktrees(repo: Path) -> tuple[Path, ...] | None:
+    output = _git_output(
+        repo,
+        "submodule",
+        "foreach",
+        "--recursive",
+        "--quiet",
+        "pwd",
     )
+    if output is None:
+        return None
+    worktrees = [repo]
+    worktrees.extend(Path(line) for line in output.splitlines() if line.strip())
+    return tuple(dict.fromkeys(_absolute_lexical(path) for path in worktrees))
+
+
+def _chunker_source_files(repo: Path) -> set[Path]:
+    from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+    from codenib.languages import chunker_languages
+
+    languages = list(chunker_languages())
+    config = RepoChunkingConfig(languages=languages)
+    chunker = CodeChunker(language=languages[0], repo_config=config)
+    return {
+        _absolute_lexical(path)
+        for path, _language in chunker._discover_files(repo, languages)
+    }
+
+
+def _absolute_lexical(path: Path) -> Path:
+    return Path(os.path.abspath(path))
 
 
 def _git_paths(repo: Path, *args: str) -> tuple[str, ...] | None:
