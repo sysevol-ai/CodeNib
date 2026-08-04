@@ -96,10 +96,17 @@ def agentless_locations_to_baseline(
         file_path = files[0]
         entity: RepositoryEntity | None = None
         if parsed.kind == "line" and parsed.line_start is not None:
-            entity = provider.repository.containing_entity(
+            candidate = provider.repository.containing_entity(
                 file_path,
                 max(0, parsed.line_start - 1),
             )
+            endpoint = parsed.line_end or parsed.line_start
+            if (
+                candidate is not None
+                and candidate.end_line is not None
+                and endpoint - 1 <= candidate.end_line
+            ):
+                entity = candidate
         elif parsed.name:
             entity = provider.resolve_entity(file_path, parsed.kind, parsed.name)
 

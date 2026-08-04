@@ -127,6 +127,21 @@ def test_unknown_coarse_location_does_not_expand_to_whole_file(
     assert result == ""
 
 
+def test_qualified_method_does_not_resolve_another_class(
+    integration_manifest: Path,
+) -> None:
+    provider = AgentlessRepositoryProvider.from_manifest(integration_manifest)
+
+    assert (
+        provider.resolve_entity(
+            "src/service.py",
+            "method",
+            "Missing.calculate_tax",
+        )
+        is None
+    )
+
+
 def test_source_ast_resolves_assignment_exposed_by_skeleton(
     integration_manifest: Path,
 ) -> None:

@@ -8,13 +8,17 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from codenib.clients.agentless_agent import AgentlessAgent
+from codenib.clients.agentless_agent import (
+    AgentlessAgent,
+    agentless_locations_to_baseline,
+)
 from codenib.compiler.manifest import RepoManifest
 from codenib.eval.benchmarks.agentless import (
     AgentlessLocation,
     parse_agentless_files,
     parse_agentless_locations,
 )
+from codenib.integrations.agentless import AgentlessRepositoryProvider
 
 
 class _Completions:
@@ -82,6 +86,16 @@ class _MaxCompletionTokensRejectingCompletions(_Completions):
 def test_file_parser_accepts_root_prefixed_ranked_output() -> None:
     result = parse_agentless_files(
         "```\nrepo/src/service.py\n- src/model.py\nmissing.py\n```",
+        valid_files=("src/service.py", "src/model.py"),
+        root_name="repo",
+    )
+
+    assert result == ("src/service.py", "src/model.py")
+
+
+def test_file_parser_strips_list_markers_before_markdown_delimiters() -> None:
+    result = parse_agentless_files(
+        "- `src/service.py`\n1. `src/model.py`",
         valid_files=("src/service.py", "src/model.py"),
         root_name="repo",
     )
@@ -165,6 +179,29 @@ def test_location_parser_rejects_nonpositive_and_reversed_ranges() -> None:
     )
 
     assert result == ()
+
+
+def test_cross_symbol_line_range_preserves_exact_bounds(
+    integration_manifest: Path,
+) -> None:
+    provider = AgentlessRepositoryProvider.from_manifest(integration_manifest)
+
+    result = agentless_locations_to_baseline(
+        (
+            AgentlessLocation(
+                file_path="src/service.py",
+                kind="line",
+                line_start=4,
+                line_end=6,
+            ),
+        ),
+        provider,
+    )
+
+    assert len(result) == 1
+    assert result[0].name == ""
+    assert result[0].type == "line"
+    assert (result[0].line_start, result[0].line_end) == (4, 6)
 
 
 def test_native_policy_runs_three_stages_over_manifest(

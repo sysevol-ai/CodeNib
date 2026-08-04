@@ -214,22 +214,15 @@ class AgentlessRepositoryProvider:
             kinds = {NODE_TYPE_CLASS, NODE_TYPE_FIELD, NODE_TYPE_SYMBOL}
         else:
             kinds = set(_SYMBOL_KINDS)
+        requested = name.strip().removesuffix("()")
         matches = self.repository.find_entities(
-            name,
+            requested,
             file_path=resolved[0],
             kinds=kinds,
         )
         if len(matches) == 1:
             return matches[0]
-        if "." in name:
-            matches = self.repository.find_entities(
-                name.rsplit(".", 1)[-1],
-                file_path=resolved[0],
-                kinds=kinds,
-            )
-        if len(matches) == 1:
-            return matches[0]
-        return self._resolve_source_entity(resolved[0], name, kinds)
+        return self._resolve_source_entity(resolved[0], requested, kinds)
 
     def _resolve_source_entity(
         self,
@@ -250,6 +243,8 @@ class AgentlessRepositoryProvider:
         )
         if len(exact) == 1:
             return exact[0]
+        if "." in requested:
+            return None
         simple = requested.rsplit(".", 1)[-1]
         matches = tuple(entity for entity in entities if entity.simple_name == simple)
         return matches[0] if len(matches) == 1 else None

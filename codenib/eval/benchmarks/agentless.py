@@ -20,8 +20,8 @@ _LIST_PREFIX = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
 
 
 def _normalize(value: object) -> str:
-    text = str(value or "").strip().strip("`'\"()[]{} ").rstrip(",;")
-    text = _LIST_PREFIX.sub("", text).replace("\\", "/")
+    text = _LIST_PREFIX.sub("", str(value or "").strip())
+    text = text.strip("`'\"()[]{} ").rstrip(",;").replace("\\", "/")
     while text.startswith("./"):
         text = text[2:]
     return text.lstrip("/")
