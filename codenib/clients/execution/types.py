@@ -42,16 +42,25 @@ class NetworkAccess(str, Enum):
     DISABLED = "disabled"
 
 
+class ExecutionIsolation(str, Enum):
+    """Where enforcement of process isolation is owned."""
+
+    NATIVE = "native"
+    EXTERNAL = "external"
+
+
 @dataclass(frozen=True, slots=True)
 class ExecutionPolicy:
     """Capabilities that an executor must enforce or reject explicitly."""
 
     filesystem: FilesystemAccess = FilesystemAccess.READ_ONLY
     network: NetworkAccess = NetworkAccess.INHERIT
+    isolation: ExecutionIsolation = ExecutionIsolation.NATIVE
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "filesystem", FilesystemAccess(self.filesystem))
         object.__setattr__(self, "network", NetworkAccess(self.network))
+        object.__setattr__(self, "isolation", ExecutionIsolation(self.isolation))
 
 
 def _validate_string_mapping(
@@ -217,6 +226,7 @@ __all__ = [
     "AgentRunRequest",
     "AgentRunResult",
     "ExecutionPolicy",
+    "ExecutionIsolation",
     "FilesystemAccess",
     "NetworkAccess",
     "RunStatus",

@@ -27,6 +27,7 @@ from .types import (
     AgentRunErrorCode,
     AgentRunRequest,
     AgentRunResult,
+    ExecutionIsolation,
     FilesystemAccess,
     NetworkAccess,
     RunStatus,
@@ -165,13 +166,15 @@ class CodexExecutor:
             "--color",
             "never",
             "--skip-git-repo-check",
-            "--sandbox",
-            sandbox,
             "--cd",
             str(request.workspace),
-            "--config",
-            'approval_policy="never"',
         ]
+        if request.policy.isolation is ExecutionIsolation.EXTERNAL:
+            command.append("--dangerously-bypass-approvals-and-sandbox")
+        else:
+            command.extend(
+                ("--sandbox", sandbox, "--config", 'approval_policy="never"')
+            )
         if request.model:
             command.extend(("--model", request.model))
         if request.reasoning_effort:

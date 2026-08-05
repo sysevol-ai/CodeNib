@@ -39,8 +39,7 @@ class ProcessRequest:
             raise TypeError("argv must be a sequence of strings")
         argv = tuple(self.argv)
         if not argv or any(
-            not isinstance(value, str) or not value or "\x00" in value
-            for value in argv
+            not isinstance(value, str) or not value or "\x00" in value for value in argv
         ):
             raise ValueError("argv must contain non-empty, NUL-free strings")
         cwd = Path(self.cwd).expanduser().resolve()
@@ -94,9 +93,7 @@ class ProcessRunner(Protocol):
     async def run(self, request: ProcessRequest) -> ProcessResult: ...
 
 
-async def _read_bounded(
-    stream: asyncio.StreamReader, limit: int
-) -> tuple[bytes, bool]:
+async def _read_bounded(stream: asyncio.StreamReader, limit: int) -> tuple[bytes, bool]:
     chunks: list[bytes] = []
     retained = 0
     truncated = False

@@ -21,6 +21,7 @@ from codenib.clients.execution import (
     AgentRunRequest,
     CodexExecutor,
     ExecutableNotFoundError,
+    ExecutionIsolation,
     ExecutionPolicy,
     FilesystemAccess,
     LocalProcessRunner,
@@ -163,6 +164,26 @@ def test_codex_executor_translates_workspace_write_policy(tmp_path: Path) -> Non
     assert "--model" not in command
 
 
+def test_codex_executor_delegates_sandboxing_only_when_explicit(tmp_path: Path) -> None:
+    output = _jsonl(
+        {
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": "done"},
+        }
+    )
+    runner = FakeProcessRunner(_process_result(output))
+    policy = ExecutionPolicy(isolation=ExecutionIsolation.EXTERNAL)
+
+    result = asyncio.run(
+        CodexExecutor(process_runner=runner).run(_request(tmp_path, policy=policy))
+    )
+
+    assert result.succeeded
+    command = runner.requests[0].argv
+    assert "--dangerously-bypass-approvals-and-sandbox" in command
+    assert "--sandbox" not in command
+
+
 def test_codex_executor_rejects_unenforceable_network_policy(tmp_path: Path) -> None:
     runner = FakeProcessRunner(_process_result(""))
     policy = ExecutionPolicy(network=NetworkAccess.DISABLED)
@@ -209,9 +230,7 @@ def test_codex_executor_classifies_operational_failures(
     expected_status: RunStatus,
 ) -> None:
     result = asyncio.run(
-        CodexExecutor(process_runner=FakeProcessRunner(process)).run(
-            _request(tmp_path)
-        )
+        CodexExecutor(process_runner=FakeProcessRunner(process)).run(_request(tmp_path))
     )
 
     assert result.status is expected_status
