@@ -2,7 +2,7 @@
 
 This directory owns CodeNib's external DeepSWE experiment integration:
 
-- `harness/` is the dependency-isolated Pier adapter and Guardian bridge;
+- `harness/` is the dependency-isolated DeepSWE adapter and Guardian bridge;
 - `ablation.py` and `solo_matrix.py` launch trials;
 - `results.py` and `export_dashboard.py` are thin command-line adapters over
   `codenib.eval.benchmarks.deepswe`;
@@ -26,11 +26,16 @@ python -m scripts.guardian.deepswe.results --help
 python -m scripts.guardian.deepswe.export_dashboard --help
 ```
 
-Pier loads the Guardian wrapper through:
+The DeepSWE runner loads the Guardian wrapper through:
 
 ```text
 scripts.guardian.deepswe.harness.agent:GuardianCodingAgent
 ```
+
+The wrapper delegates local-specification discovery and aggregation to
+`codenib.clients.guardian`. Its host-specific responsibility is limited to
+mounting that packaged runtime, launching the solver, and exchanging
+commit-scoped reports through the filesystem.
 
 Generated trial data belongs under `data/deepswe_outputs/`; generated
 `dashboard/data.json` is ignored and can be recreated by the exporter.

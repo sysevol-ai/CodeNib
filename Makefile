@@ -868,6 +868,3 @@ web-logs:
 
 web-follow:
 	./scripts/dev_web.sh follow
-
-guardian-image:
-	docker build -t guardian-runtime:latest -f codeminer/guardian/Dockerfile .

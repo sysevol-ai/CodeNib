@@ -1,5 +1,10 @@
 # Repository Guardian — Prototype Design (one-month build)
 
+> **Archived design.** This document describes the removed
+> `codeminer.guardian` prototype. The current direction is the
+> local-specification Guardian implemented in `codenib.clients.guardian` and
+> described by `docs/guardian/reframed.md`.
+
 > **Status:** prototype definition for the one-month build that follows the
 > committed Phase-1 skeleton (`10dd58a feat(guardian): single-cycle Repository
 > Guardian skeleton`). Companion to `idea_description.md`, the RFC, and

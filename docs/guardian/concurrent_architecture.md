@@ -1,5 +1,10 @@
 # Guardian + Coding Agent — Concurrent Architecture
 
+> **Archived design.** This document describes the removed
+> `codeminer.guardian` loop architecture. The current implementation lives in
+> `codenib.clients.guardian`; its DeepSWE adapter lives under
+> `scripts/guardian/deepswe/harness`.
+
 ## Purpose
 
 Repository Guardian is a read-only review sidecar for a DeepSWE coding agent.

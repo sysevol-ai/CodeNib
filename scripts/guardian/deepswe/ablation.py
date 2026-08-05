@@ -197,9 +197,7 @@ def _common_mounts(args: argparse.Namespace, logs_dir: Path) -> list[dict[str, s
         {"type": "bind", "source": str(logs_dir), "target": "/logs/agent"},
         {
             "type": "bind",
-            "source": str(
-                _harness_path(args.codeminer_root) / "task_venv_profile.sh"
-            ),
+            "source": str(_harness_path(args.codeminer_root) / "task_venv_profile.sh"),
             "target": "/etc/profile.d/zz-deepswe-task-venv.sh",
         },
     ]
@@ -210,8 +208,16 @@ def _guardian_mounts(
     logs_dir: Path,
 ) -> list[dict[str, str]]:
     return _common_mounts(args, logs_dir) + [
-        {"type": "bind", "source": str(args.codeminer_root), "target": "/codeminer"},
-        {"type": "bind", "source": str(args.conda_env), "target": "/opt/codeminer-env"},
+        {
+            "type": "bind",
+            "source": str(args.codeminer_root),
+            "target": "/codenib-src",
+        },
+        {
+            "type": "bind",
+            "source": str(args.conda_env),
+            "target": "/opt/codenib-env",
+        },
         {
             "type": "bind",
             "source": str(args.tree_sitter_cache),
@@ -292,24 +298,17 @@ def _build_pier_command(
                 "--ak",
                 "solver=codex",
                 "--ak",
-                f"guardian_arm={args.guardian_arm}",
-                "--ak",
                 f"guardian_model={args.guardian_model}",
                 "--ak",
-                f"guardian_max_context_tokens={args.guardian_max_context_tokens}",
+                f"guardian_explorer_count={args.guardian_explorer_count}",
+                "--ak",
+                f"guardian_max_findings={args.guardian_max_findings}",
+                "--ak",
+                f"guardian_rollout_timeout={args.guardian_rollout_timeout}",
                 "--mounts-json",
                 json.dumps(_guardian_mounts(args, logs_dir)),
             ]
         )
-        if args.guardian_no_budget_limit:
-            cmd.extend(["--ak", "guardian_no_budget_limit=true"])
-        else:
-            cmd.extend(
-                [
-                    "--ak",
-                    f"guardian_budget_tokens={args.guardian_budget_tokens}",
-                ]
-            )
         if str(args.codeminer_root) not in env_pythonpath.split(os.pathsep):
             os.environ["PYTHONPATH"] = (
                 str(args.codeminer_root)
@@ -407,17 +406,14 @@ def _run_trial(
             getattr(args, "context_injection_sha256", "") or ""
         ),
         "guardian_model": args.guardian_model if baseline == "guardian" else "",
-        "guardian_arm": args.guardian_arm if baseline == "guardian" else "",
-        "guardian_budget_tokens": (
-            None
-            if baseline == "guardian" and args.guardian_no_budget_limit
-            else args.guardian_budget_tokens if baseline == "guardian" else None
+        "guardian_explorer_count": (
+            args.guardian_explorer_count if baseline == "guardian" else None
         ),
-        "guardian_no_budget_limit": (
-            args.guardian_no_budget_limit if baseline == "guardian" else False
+        "guardian_max_findings": (
+            args.guardian_max_findings if baseline == "guardian" else None
         ),
-        "guardian_max_context_tokens": (
-            args.guardian_max_context_tokens if baseline == "guardian" else None
+        "guardian_rollout_timeout": (
+            args.guardian_rollout_timeout if baseline == "guardian" else None
         ),
         "repeat_index": repeat_index,
         "returncode": proc.returncode,
@@ -488,27 +484,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--reasoning-effort", required=True)
     parser.add_argument("--tasks", nargs="+", required=True, help="DeepSWE task names")
     parser.add_argument("--runs", type=int, default=4)
-    parser.add_argument("--guardian-arm", default="memory")
-    parser.add_argument("--guardian-model", default=None)
-    guardian_budget = parser.add_mutually_exclusive_group()
-    guardian_budget.add_argument(
-        "--guardian-budget-tokens",
-        type=int,
-        default=50_000,
+    parser.add_argument(
+        "--baselines",
+        nargs="+",
+        choices=("solo", "guardian"),
+        default=("solo", "guardian"),
+        help="Select which experiment arms to run",
     )
-    guardian_budget.add_argument(
-        "--guardian-no-budget-limit",
-        action="store_true",
-        help=(
-            "Disable Guardian's cycle token limit while retaining turn and "
-            "wall-clock limits"
-        ),
+    parser.add_argument("--guardian-model", default=None)
+    parser.add_argument(
+        "--guardian-explorer-count",
+        type=int,
+        default=2,
+        help="Number of independent local-specification explorers",
     )
     parser.add_argument(
-        "--guardian-max-context-tokens",
+        "--guardian-max-findings",
         type=int,
-        default=200_000,
-        help="Model context window allocated to Guardian's L2 loop",
+        default=5,
+        help="Maximum evidence-admitted findings delivered per review",
+    )
+    parser.add_argument(
+        "--guardian-rollout-timeout",
+        type=float,
+        default=600.0,
+        help="Timeout in seconds for each explorer or aggregator rollout",
     )
     parser.add_argument("--codeminer-root", type=Path, default=DEFAULT_CODEMINER_ROOT)
     parser.add_argument("--deepswe-root", type=Path, default=DEFAULT_DEEPSWE_ROOT)
@@ -547,33 +547,35 @@ def main(argv: list[str] | None = None) -> int:
                 raise FileNotFoundError(f"task does not exist: {task_path}")
 
         plan: list[tuple[str, int]] = []
-        solo_existing = {
-            int(str(row.get("job_id", "")).removeprefix("job_"))
-            for row in _existing_jobs(
-                args.output_root,
-                task=task,
-                baseline="solo",
-                model=args.model,
-                reasoning_effort=args.reasoning_effort,
-            )
-            if str(row.get("job_id", "")).removeprefix("job_").isdigit()
-        }
-        for idx in range(1, args.runs + 1):
-            if idx in solo_existing and not args.force_solo:
-                existing_dir = (
-                    args.output_root
-                    / _setting_slug(args.model, args.reasoning_effort)
-                    / _slug(task)
-                    / "solo"
-                    / f"job_{idx}"
+        if "solo" in args.baselines:
+            solo_existing = {
+                int(str(row.get("job_id", "")).removeprefix("job_"))
+                for row in _existing_jobs(
+                    args.output_root,
+                    task=task,
+                    baseline="solo",
+                    model=args.model,
+                    reasoning_effort=args.reasoning_effort,
                 )
-                print(
-                    f"[skip] {task} solo job_{idx}: existing trial in "
-                    f"{existing_dir}"
-                )
-            else:
-                plan.append(("solo", idx))
-        plan.extend(("guardian", i + 1) for i in range(args.runs))
+                if str(row.get("job_id", "")).removeprefix("job_").isdigit()
+            }
+            for idx in range(1, args.runs + 1):
+                if idx in solo_existing and not args.force_solo:
+                    existing_dir = (
+                        args.output_root
+                        / _setting_slug(args.model, args.reasoning_effort)
+                        / _slug(task)
+                        / "solo"
+                        / f"job_{idx}"
+                    )
+                    print(
+                        f"[skip] {task} solo job_{idx}: existing trial in "
+                        f"{existing_dir}"
+                    )
+                else:
+                    plan.append(("solo", idx))
+        if "guardian" in args.baselines:
+            plan.extend(("guardian", i + 1) for i in range(args.runs))
 
         if args.dry_run:
             for baseline, idx in plan:

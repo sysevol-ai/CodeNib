@@ -1,217 +1,193 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for the Codex filesystem bridge."""
 
 import json
-from unittest.mock import Mock
 
-from codeminer.guardian.cycle import GuardianConfig
-from codeminer.guardian.loop import Hypothesis
-from codeminer.guardian.report import GuardianReport, report_views
+from codenib.clients.execution import (
+    AgentRunResult,
+    ExecutionIsolation,
+    RunStatus,
+    TokenUsage,
+)
+from codenib.clients.guardian import (
+    Evidence,
+    FindingStatus,
+    GuardianConfig,
+    GuardianFinding,
+    GuardianResult,
+    ReviewStatus,
+)
 from scripts.guardian.deepswe.harness import bridge as codex_bridge
 
 
-def _report() -> GuardianReport:
-    hypothesis = Hypothesis.create(
-        claim="pkg.mod violates its dependency contract",
-        consequence="dependent callers may fail",
-        remedy="restore the contract and add regression coverage",
-        origin="exploration",
-        locus=["pkg/mod.py"],
-        evidence=["probe-valid:fixture:1"],
-        grade="finding",
+def _result() -> GuardianResult:
+    finding = GuardianFinding(
+        statement="Public state copies preserve the selected mode",
+        status=FindingStatus.VIOLATED,
+        evidence=(
+            Evidence(
+                path="tests/test_state.py",
+                line_start=12,
+                line_end=16,
+                description="the public copy path must retain mode",
+            ),
+        ),
+        patch_assessment="the candidate copy omits mode",
+        recommendation="preserve mode in every public copy path",
+        confidence=0.9,
     )
-    findings, backlog, retractions = report_views([hypothesis])
-    return GuardianReport(
-        repo="/repo",
-        commit="abc123def456",
-        generated_at="2026-07-20 00:00:00 UTC",
-        churn_window="90 days ago",
-        llm_model="codex:gpt-5.6-luna",
-        llm_backend="codex-sdk",
-        llm_transport_history=["codex-sdk"],
-        findings=findings,
-        backlog=backlog,
-        retractions=retractions,
-        exit_reason="ReportSubmitted",
-        analysis_status="complete",
+    rollout = AgentRunResult(
+        status=RunStatus.COMPLETED,
+        final_message="{}",
+        trajectory=(),
+        usage=TokenUsage(input_tokens=100, cached_input_tokens=60, output_tokens=10),
+        duration_seconds=1,
+        raw_output='{"type":"turn.completed"}\n',
+        stderr="",
+        exit_code=0,
+    )
+    return GuardianResult(
+        base_commit="a" * 40,
+        candidate_commit="b" * 40,
+        status=ReviewStatus.COMPLETE,
+        findings=(finding,),
+        summary="One mismatch remains.",
+        rollouts=(rollout,),
     )
 
 
-def test_run_bridge_once_writes_markdown_json_and_status(tmp_path, monkeypatch):
-    monkeypatch.setattr(codex_bridge, "_head", lambda _repo: "abc123def456")
-    monkeypatch.setattr(codex_bridge, "run_cycle", lambda _cfg: _report())
-    monkeypatch.setenv("GUARDIAN_RUNTIME_PYTHON", "/opt/codeminer-env/bin/python")
-    monkeypatch.setenv("GUARDIAN_TASK_PYTHON", "/opt/venv/bin/python")
-    monkeypatch.setenv("VIRTUAL_ENV", "/opt/venv")
+class FakeGuardian:
+    def __init__(self, result):
+        self.result = result
+        self.requests = []
 
-    cfg = GuardianConfig(repo_path="/repo", use_llm=True)
+    async def review(self, request):
+        self.requests.append(request)
+        return self.result
+
+
+def test_run_bridge_once_writes_report_status_and_rollouts(tmp_path, monkeypatch):
+    result = _result()
+    reviewer = FakeGuardian(result)
+    heads = iter([result.candidate_commit])
+    monkeypatch.setattr(codex_bridge, "_head", lambda _repo: next(heads))
+    monkeypatch.setattr(codex_bridge, "GuardianAgent", lambda *_a, **_k: reviewer)
+    monkeypatch.setenv("GUARDIAN_EPISODES_DIR", str(tmp_path / "episodes"))
+    monkeypatch.setenv("GUARDIAN_RUNTIME_PYTHON", "/opt/codenib-env/bin/python")
+    inbox = tmp_path / "messages.jsonl"
+
     codex_bridge.run_bridge(
-        cfg,
-        out_dir=str(tmp_path),
+        GuardianConfig(explorer_model="cheap", aggregator_model="strong"),
+        repo_path=str(tmp_path),
+        message_inbox=str(inbox),
+        out_dir=str(tmp_path / "out"),
         poll_interval=1,
         once=True,
-        baseline_commit="base000",
+        baseline_commit=result.base_commit,
     )
 
-    md = (tmp_path / "findings.md").read_text(encoding="utf-8")
-    data = json.loads((tmp_path / "findings.json").read_text(encoding="utf-8"))
-    status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
-
-    assert "pkg.mod violates its dependency contract" in md
-    assert data["findings"][0]["remedy"].startswith("restore")
-    assert data["llm_model"] == "codex:gpt-5.6-luna"
-    assert data["llm_backend"] == "codex-sdk"
-    assert status["commit"] == "abc123def456"
-    assert status["findings"] == 1
-    assert status["backlog"] == 0
-    assert status["degraded"] is False
+    output = tmp_path / "out"
+    markdown = (output / "findings.md").read_text(encoding="utf-8")
+    data = json.loads((output / "findings.json").read_text(encoding="utf-8"))
+    status = json.loads((output / "status.json").read_text(encoding="utf-8"))
+    assert "Public state copies preserve" in markdown
+    assert data["findings"][0]["status"] == "violated"
+    assert status["commit"] == result.candidate_commit
     assert status["analysis_status"] == "complete"
-    assert status["exit_reason"] == "ReportSubmitted"
-    assert status["llm_model"] == "codex:gpt-5.6-luna"
-    assert status["llm_backend"] == "codex-sdk"
-    assert status["llm_transport_history"] == ["codex-sdk"]
+    assert status["exit_reason"] == "ReviewCompleted"
+    assert status["llm_backend"] == "codex-cli"
+    assert status["llm_tokens"]["total"] == 110
     assert status["interpreters"]["guardian_runtime_python"] == (
-        "/opt/codeminer-env/bin/python"
+        "/opt/codenib-env/bin/python"
     )
-    assert status["interpreters"]["task_interpreter"] == "/opt/venv/bin/python"
-    assert status["interpreters"]["task_virtualenv"] == "/opt/venv"
-    assert status["running"] is False
+    assert (output / "rollouts" / "rollout_01.jsonl").exists()
+    assert reviewer.requests[0].base_commit == result.base_commit
 
 
-def test_run_bridge_once_does_not_analyze_the_baseline(tmp_path, monkeypatch):
-    run_cycle = Mock()
-    monkeypatch.setattr(codex_bridge, "_head", lambda _repo: "base000")
-    monkeypatch.setattr(codex_bridge, "run_cycle", run_cycle)
+def test_run_bridge_does_not_review_baseline(tmp_path, monkeypatch):
+    result = _result()
+    reviewer = FakeGuardian(result)
+    monkeypatch.setattr(codex_bridge, "_head", lambda _repo: result.base_commit)
+    monkeypatch.setattr(codex_bridge, "GuardianAgent", lambda *_a, **_k: reviewer)
 
-    cfg = GuardianConfig(repo_path="/repo", use_llm=True)
     codex_bridge.run_bridge(
-        cfg,
-        out_dir=str(tmp_path),
+        GuardianConfig(explorer_model="cheap", aggregator_model="strong"),
+        repo_path=str(tmp_path),
+        message_inbox=str(tmp_path / "messages.jsonl"),
+        out_dir=str(tmp_path / "out"),
         poll_interval=1,
         once=True,
-        baseline_commit="base000",
+        baseline_commit=result.base_commit,
     )
 
-    status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
-    run_cycle.assert_not_called()
-    assert not (tmp_path / "findings.json").exists()
-    assert status["commit"] == "base000"
+    assert reviewer.requests == []
+    status = json.loads((tmp_path / "out" / "status.json").read_text())
+    assert status["analysis_status"] == "pending"
     assert status["llm_backend"] == "not_started"
-    assert status["running"] is False
 
 
-def test_main_builds_llm_enabled_guardian_config(tmp_path, monkeypatch):
+def test_main_builds_reframed_guardian_config(tmp_path, monkeypatch):
     seen = {}
 
-    def fake_run_bridge(
-        config, *, out_dir, poll_interval, once=False, baseline_commit=None
-    ):
+    def fake_run_bridge(config, **kwargs):
         seen["config"] = config
-        seen["out_dir"] = out_dir
-        seen["poll_interval"] = poll_interval
-        seen["once"] = once
-        seen["baseline_commit"] = baseline_commit
+        seen.update(kwargs)
 
     monkeypatch.setattr(codex_bridge, "run_bridge", fake_run_bridge)
-
     codex_bridge.main(
         [
             "--repo",
-            "/repo",
-            "--out-dir",
             str(tmp_path),
-            "--arm",
-            "memory",
-            "--memory-dir",
-            str(tmp_path / "memory"),
-            "--model",
-            "vertex_ai/gemini-2.5-flash",
-            "--top-n",
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--message-inbox",
+            str(tmp_path / "messages.jsonl"),
+            "--explorer-model",
+            "codex:gpt-cheap",
+            "--aggregator-model",
+            "codex:gpt-strong",
+            "--explorer-count",
             "3",
-            "--budget-tokens",
-            "1234",
-            "--poll-interval",
-            "2",
+            "--max-findings",
+            "4",
+            "--rollout-timeout",
+            "123",
             "--once",
         ]
     )
 
-    cfg = seen["config"]
-    assert cfg.use_llm is True
-    assert cfg.llm_model == "vertex_ai/gemini-2.5-flash"
-    assert cfg.top_n == 3
-    assert cfg.budget_tokens == 1234
-    assert seen["out_dir"] == str(tmp_path)
-    assert seen["poll_interval"] == 2
+    config = seen["config"]
+    assert config.explorer_model == "gpt-cheap"
+    assert config.aggregator_model == "gpt-strong"
+    assert config.explorer_count == 3
+    assert config.max_findings == 4
+    assert config.rollout_timeout_seconds == 123
+    assert config.execution_isolation is ExecutionIsolation.EXTERNAL
+    assert seen["repo_path"] == str(tmp_path)
     assert seen["once"] is True
-    assert seen["baseline_commit"] is None
-
-
-def test_main_can_disable_cycle_token_limit(tmp_path, monkeypatch):
-    seen = {}
-
-    def fake_run_bridge(
-        config, *, out_dir, poll_interval, once=False, baseline_commit=None
-    ):
-        seen["config"] = config
-
-    monkeypatch.setattr(codex_bridge, "run_bridge", fake_run_bridge)
-
-    codex_bridge.main(
-        [
-            "--repo",
-            "/repo",
-            "--out-dir",
-            str(tmp_path),
-            "--no-budget-limit",
-            "--once",
-        ]
-    )
-
-    assert seen["config"].budget_tokens is None
-
-
-def test_main_defaults_out_dir_to_home_guardian(monkeypatch):
-    seen = {}
-
-    def fake_run_bridge(
-        config, *, out_dir, poll_interval, once=False, baseline_commit=None
-    ):
-        seen["out_dir"] = out_dir
-
-    monkeypatch.setattr(codex_bridge, "run_bridge", fake_run_bridge)
-    monkeypatch.setenv("HOME", "/tmp/codex-home")
-
-    codex_bridge.main(["--repo", "/repo", "--once"])
-
-    assert seen["out_dir"] == "/tmp/codex-home/.guardian"
 
 
 def test_main_reads_recorded_baseline_file(tmp_path, monkeypatch):
+    baseline = tmp_path / "base_commit"
+    baseline.write_text("a" * 40 + "\n", encoding="utf-8")
     seen = {}
-    baseline_file = tmp_path / "base_commit"
-    baseline_file.write_text("base000\n", encoding="utf-8")
-
-    def fake_run_bridge(
-        config, *, out_dir, poll_interval, once=False, baseline_commit=None
-    ):
-        seen["baseline_commit"] = baseline_commit
-
-    monkeypatch.setattr(codex_bridge, "run_bridge", fake_run_bridge)
+    monkeypatch.setattr(
+        codex_bridge,
+        "run_bridge",
+        lambda _config, **kwargs: seen.update(kwargs),
+    )
 
     codex_bridge.main(
         [
             "--repo",
-            "/repo",
-            "--out-dir",
             str(tmp_path),
             "--baseline-file",
-            str(baseline_file),
+            str(baseline),
             "--once",
         ]
     )
 
-    assert seen["baseline_commit"] == "base000"
+    assert seen["baseline_commit"] == "a" * 40

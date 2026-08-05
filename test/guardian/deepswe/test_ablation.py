@@ -11,7 +11,7 @@ from scripts.guardian.deepswe import ablation
 from scripts.guardian.deepswe import export_dashboard as dashboard
 
 
-def test_no_budget_limit_is_forwarded_to_guardian_agent(tmp_path):
+def test_local_specification_rollout_controls_are_forwarded(tmp_path):
     args = ablation.parse_args(
         [
             "--model",
@@ -20,7 +20,12 @@ def test_no_budget_limit_is_forwarded_to_guardian_agent(tmp_path):
             "medium",
             "--tasks",
             "fixture-task",
-            "--guardian-no-budget-limit",
+            "--guardian-explorer-count",
+            "3",
+            "--guardian-max-findings",
+            "4",
+            "--guardian-rollout-timeout",
+            "123",
         ]
     )
 
@@ -31,12 +36,12 @@ def test_no_budget_limit_is_forwarded_to_guardian_agent(tmp_path):
         logs_dir=Path(tmp_path),
     )
 
-    assert args.guardian_no_budget_limit is True
-    assert "guardian_no_budget_limit=true" in command
-    assert not any(part.startswith("guardian_budget_tokens=") for part in command)
+    assert "guardian_explorer_count=3" in command
+    assert "guardian_max_findings=4" in command
+    assert "guardian_rollout_timeout=123.0" in command
 
 
-def test_finite_budget_remains_the_default(tmp_path):
+def test_reframed_guardian_defaults_are_explicit(tmp_path):
     args = ablation.parse_args(
         [
             "--model",
@@ -55,8 +60,43 @@ def test_finite_budget_remains_the_default(tmp_path):
         logs_dir=Path(tmp_path),
     )
 
-    assert args.guardian_no_budget_limit is False
-    assert "guardian_budget_tokens=50000" in command
+    assert "guardian_explorer_count=2" in command
+    assert "guardian_max_findings=5" in command
+    assert "guardian_rollout_timeout=600.0" in command
+
+
+def test_baseline_selection_can_run_only_guardian(tmp_path, monkeypatch):
+    task = tmp_path / "deep-swe" / "tasks" / "fixture-task"
+    task.mkdir(parents=True)
+    seen = []
+    monkeypatch.setattr(
+        ablation,
+        "_run_trial",
+        lambda _args, **kwargs: seen.append(kwargs) or {},
+    )
+
+    assert (
+        ablation.main(
+            [
+                "--model",
+                "gpt-5.6-terra",
+                "--reasoning-effort",
+                "medium",
+                "--tasks",
+                "fixture-task",
+                "--runs",
+                "1",
+                "--baselines",
+                "guardian",
+                "--deepswe-root",
+                str(tmp_path / "deep-swe"),
+                "--output-root",
+                str(tmp_path / "outputs"),
+            ]
+        )
+        == 0
+    )
+    assert seen == [{"task": "fixture-task", "baseline": "guardian", "repeat_index": 1}]
 
 
 def test_task_virtualenv_profile_is_mounted_in_both_arms(tmp_path):
@@ -94,6 +134,34 @@ def test_task_virtualenv_profile_is_mounted_in_both_arms(tmp_path):
             / "harness"
             / "task_venv_profile.sh"
         )
+
+
+def test_guardian_mounts_use_codenib_names(tmp_path):
+    args = ablation.parse_args(
+        [
+            "--model",
+            "gpt-5.6-terra",
+            "--reasoning-effort",
+            "medium",
+            "--tasks",
+            "fixture-task",
+            "--codeminer-root",
+            str(tmp_path),
+            "--conda-env",
+            str(tmp_path / "env"),
+        ]
+    )
+    command = ablation._build_pier_command(
+        args,
+        task="fixture-task",
+        baseline="guardian",
+        logs_dir=tmp_path / "logs",
+    )
+    mounts = json.loads(command[command.index("--mounts-json") + 1])
+    targets = {item["target"] for item in mounts}
+    assert "/codenib-src" in targets
+    assert "/opt/codenib-env" in targets
+    assert "/codeminer" not in targets
 
 
 def test_guardian_run_status_aggregates_every_cycle(tmp_path):

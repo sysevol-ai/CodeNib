@@ -50,7 +50,7 @@ def main() -> int:
     )
     parser.add_argument("--repo", default=os.getcwd())
     parser.add_argument("--guardian-dir", default="/app/.guardian/out")
-    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--interval", type=float, default=2.0)
     parser.add_argument("--start-command", default=DEFAULT_START_COMMAND)
     parser.add_argument("--baseline-file", default=DEFAULT_BASELINE_FILE)
@@ -140,7 +140,7 @@ def main() -> int:
             analysis_status = str(status.get("analysis_status") or "unknown")
             exit_reason = str(status.get("exit_reason") or "")
             submitted = (
-                exit_reason == "ReportSubmitted"
+                exit_reason in {"ReportSubmitted", "ReviewCompleted"}
                 and analysis_status in {"complete", "degraded"}
             )
             print(

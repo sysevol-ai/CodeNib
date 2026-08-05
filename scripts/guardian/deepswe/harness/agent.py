@@ -10,7 +10,6 @@ Registers with Pier via::
       --agent-import-path scripts.guardian.deepswe.harness.agent:GuardianCodingAgent \\
       --model gpt-5.6-luna \\
       --ak solver=codex \\
-      --ak guardian_arm=memory \\
       --ak reasoning_effort=max \\
       --ae "CODEX_FORCE_AUTH_JSON=1" \\
       --mounts-json '<CodeNib source and log mounts>' \\
@@ -23,19 +22,9 @@ Architecture (single Pier container):
     │            installs the solver-specific lazy Guardian action
     └── run():   delegates to the inner solver's run()
 
-MCP-native solvers receive ``query_guardian``. Codex receives filesystem
-``guardian-start`` and ``guardian-checkpoint`` actions because that bridge also
-provides a synchronized final report. Only one Guardian transport is registered
-per solver, avoiding duplicate analysis cycles and model spend.
-
-For MCP-native solvers, the Guardian server is registered as a stdio
-MCPServerConfig injected into the inner solver's ``mcp_servers``. The inner
-solver (e.g. ClaudeCode) writes that config in its own setup().
-
-A/B/C arms are controlled via ``--ak guardian_arm=<arm>``:
-    A: pass ``--agent codex`` (no GuardianCodingAgent)
-    B: ``--ak guardian_arm=memoryless``
-    C: ``--ak guardian_arm=memory``  (default)
+Codex receives filesystem ``guardian-start`` and ``guardian-checkpoint``
+actions. The bridge runs the independent ``codenib.clients.guardian`` policy;
+the installed Codex harness continues to own the implementation loop.
 """
 
 from __future__ import annotations
@@ -47,7 +36,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 _PROMPTS = Path(__file__).parent / "prompts"
-_PROMPT_PATH = _PROMPTS / "coding_agent.md"
 _CODEX_PROMPT_PATH = _PROMPTS / "codex_file_bridge.md"
 
 from pier.agents.base import BaseAgent
@@ -55,7 +43,6 @@ from pier.agents.installed.base import BaseInstalledAgent
 from pier.environments.base import BaseEnvironment
 from pier.models.agent.context import AgentContext
 from pier.models.agent.network import NetworkAllowlist
-from pier.models.task.config import MCPServerConfig
 
 from .checkpoint import guardian_checkpoint_script
 from .launcher import guardian_start_script
@@ -69,7 +56,6 @@ if TYPE_CHECKING:
 
 _SOLVER_REGISTRY: dict[str, tuple[str, str]] = {
     "codex": ("pier.agents.installed.codex", "Codex"),
-    "claude-code": ("pier.agents.installed.claude_code", "ClaudeCode"),
 }
 
 
@@ -80,12 +66,6 @@ def _quote_shell_path(path: str) -> str:
     if path.startswith("~/"):
         return "$HOME/" + shlex.quote(path[2:])
     return shlex.quote(path)
-
-
-def _as_bool(value: object) -> bool:
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _load_solver_class(name: str) -> type[BaseAgent]:
@@ -107,33 +87,27 @@ def _load_solver_class(name: str) -> type[BaseAgent]:
 
 
 class GuardianCodingAgent(BaseInstalledAgent):
-    """Pier custom agent: any solver + Guardian as an MCP sidecar."""
+    """Pier custom agent: Codex solver plus a Guardian review sidecar."""
 
     def __init__(
         self,
         logs_dir: Path,
         model_name: str | None = None,
         logger: logging.Logger | None = None,
-        mcp_servers: list[MCPServerConfig] | None = None,
+        mcp_servers: list[Any] | None = None,
         skills_dir: str | None = None,
         # Guardian kwargs (from --ak)
         solver: str = "codex",
-        guardian_arm: str = "memory",
         guardian_repo: str = "/app",
-        guardian_memory_dir: str = "/app/.guardian/memory",
         guardian_model: str = "codex:gpt-5.6-luna",
-        guardian_top_n: int = 5,
-        guardian_budget_tokens: int = 50_000,
-        guardian_no_budget_limit: bool = False,
-        guardian_max_context_tokens: int = 200_000,
+        guardian_explorer_count: int = 2,
+        guardian_max_findings: int = 5,
+        guardian_rollout_timeout: float = 600,
         guardian_poll_interval: int = 10,
         guardian_findings_dir: str = "/app/.guardian/out",
         guardian_checkpoint_dir: str = "/app/.guardian/bin",
-        # Path to codeminer source tree inside the container
-        codeminer_path: str = "/codeminer",
-        # Path to the mounted host Python env that has codeminer's deps installed
-        # (litellm, rich, pydantic, etc.) — avoids PyPI downloads inside the container
-        codeminer_python: str = "/opt/codeminer-env/bin/python",
+        codenib_path: str = "/codenib-src",
+        codenib_python: str = "/opt/codenib-env/bin/python",
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -146,16 +120,13 @@ class GuardianCodingAgent(BaseInstalledAgent):
         )
 
         self._solver_name = solver
-        self._codeminer_path = codeminer_path
-        self._codeminer_python = codeminer_python
+        self._codenib_path = codenib_path
+        self._codenib_python = codenib_python
         self._guardian_repo = guardian_repo
-        self._guardian_arm = guardian_arm
-        self._guardian_memory_dir = guardian_memory_dir
         self._guardian_model = guardian_model
-        self._guardian_top_n = int(guardian_top_n)
-        self._guardian_budget_tokens = int(guardian_budget_tokens)
-        self._guardian_no_budget_limit = _as_bool(guardian_no_budget_limit)
-        self._guardian_max_context_tokens = int(guardian_max_context_tokens)
+        self._guardian_explorer_count = int(guardian_explorer_count)
+        self._guardian_max_findings = int(guardian_max_findings)
+        self._guardian_rollout_timeout = float(guardian_rollout_timeout)
         self._guardian_poll_interval = int(guardian_poll_interval)
         self._guardian_findings_dir = guardian_findings_dir
         self._guardian_checkpoint_dir = guardian_checkpoint_dir
@@ -167,51 +138,6 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_codex_home = "/tmp/guardian-codex-home"
         self._guardian_codex_secrets_dir = "/tmp/guardian-codex-secrets"
 
-        # Build the Guardian MCPServerConfig (stdio transport).
-        # The inner solver's setup() writes this to its MCP config file.
-        guardian_mcp_args = [
-            "-m",
-            "codeminer.guardian.mcp_server",
-            "--repo",
-            guardian_repo,
-            "--arm",
-            guardian_arm,
-            "--memory-dir",
-            guardian_memory_dir,
-            "--message-inbox",
-            self._guardian_message_inbox,
-            "--model",
-            guardian_model,
-            "--top-n",
-            str(guardian_top_n),
-            "--max-context-tokens",
-            str(self._guardian_max_context_tokens),
-            "--poll-interval",
-            str(guardian_poll_interval),
-            "--trace-log",
-            "/logs/agent/guardian_queries.jsonl",
-            "--baseline-file",
-            self._guardian_baseline_file,
-        ]
-        if self._guardian_no_budget_limit:
-            guardian_mcp_args.append("--no-budget-limit")
-        else:
-            guardian_mcp_args.extend(
-                ["--budget-tokens", str(self._guardian_budget_tokens)]
-            )
-        guardian_mcp = MCPServerConfig(
-            name="guardian",
-            transport="stdio",
-            command="python",
-            args=guardian_mcp_args,
-        )
-
-        # Codex uses the synchronized filesystem bridge below. Registering both
-        # transports would run duplicate Guardian cycles for the same commit.
-        combined_mcp = list(mcp_servers or [])
-        if solver != "codex":
-            combined_mcp.append(guardian_mcp)
-
         # Instantiate the inner solver, forwarding all remaining kwargs
         # so that solver-specific flags (e.g. reasoning_effort for codex) pass through.
         solver_cls = _load_solver_class(solver)
@@ -220,7 +146,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
             *args,
             model_name=model_name,
             logger=logger,
-            mcp_servers=combined_mcp,
+            mcp_servers=list(mcp_servers or []),
             skills_dir=skills_dir,
             **kwargs,
         )
@@ -242,22 +168,12 @@ class GuardianCodingAgent(BaseInstalledAgent):
 
     def network_allowlist(self) -> NetworkAllowlist:
         inner = self._inner.network_allowlist()
-        extra: list[str] = []
-        model = self._guardian_model
-        if model.startswith("vertex_ai/") or model.startswith("gemini/"):
-            # Vertex AI / Google AI Studio inference + auth
-            extra = [".googleapis.com", "accounts.google.com"]
-        elif model.startswith("anthropic/"):
-            extra = ["api.anthropic.com"]
-        elif model.startswith("openai/") or model.startswith("gpt"):
-            extra = ["api.openai.com"]
-        elif model.startswith("codex:"):
-            extra = [
-                "chatgpt.com",
-                "ab.chatgpt.com",
-                "auth.openai.com",
-                "api.openai.com",
-            ]
+        extra = [
+            "chatgpt.com",
+            "ab.chatgpt.com",
+            "auth.openai.com",
+            "api.openai.com",
+        ]
         return NetworkAllowlist(domains=inner.domains + extra)
 
     def install_spec(self) -> "AgentInstallSpec | None":
@@ -281,13 +197,11 @@ class GuardianCodingAgent(BaseInstalledAgent):
                 pass
 
     async def setup(self, environment: BaseEnvironment) -> None:
-        # Delegate to inner solver — it handles MCP config registration, skills, etc.
-        # Guardian runs via a mounted host Python env (self._codeminer_python) that
-        # already has codeminer's deps installed; no container pip install needed.
+        # Guardian runs from a mounted CodeNib environment; no container install
+        # is needed during the benchmark task.
         await self._record_guardian_baseline(environment)
         await self._inner.setup(environment)
-        if self._solver_name == "codex":
-            await self._install_codex_bridge_actions(environment)
+        await self._install_codex_bridge_actions(environment)
 
     async def _record_guardian_baseline(self, environment: BaseEnvironment) -> None:
         """Persist cycle-0 HEAD without starting a Guardian model cycle."""
@@ -376,7 +290,6 @@ class GuardianCodingAgent(BaseInstalledAgent):
         # The launcher runs later as an agent action, so bake the sidecar-only
         # credentials and Pier proxy settings into its child environment now.
         _persistent = getattr(environment, "_persistent_env", {})
-        gtoken = _persistent.get("GOOGLE_OAUTH_ACCESS_TOKEN", "")
         auth_json_path = self._resolve_codex_auth_json_path()
         codex_home = _persistent.get("CODEX_HOME", "") or self._get_env("CODEX_HOME")
         codex_force_auth = _persistent.get(
@@ -394,12 +307,11 @@ class GuardianCodingAgent(BaseInstalledAgent):
         _egress = getattr(environment, "_egress_proxy_env", {})
         task_virtualenv = str(_persistent.get("VIRTUAL_ENV", "") or "").strip()
         bridge_environment = {
-            "PYTHONPATH": self._codeminer_path,
-            "GUARDIAN_RUNTIME_PYTHON": self._codeminer_python,
+            "PYTHONPATH": self._codenib_path,
+            "GUARDIAN_RUNTIME_PYTHON": self._codenib_python,
             "GUARDIAN_TASK_PYTHON": (
                 f"{task_virtualenv.rstrip('/')}/bin/python" if task_virtualenv else ""
             ),
-            "GOOGLE_OAUTH_ACCESS_TOKEN": gtoken,
             "HTTPS_PROXY": _egress.get("HTTPS_PROXY", ""),
             "HTTP_PROXY": _egress.get("HTTP_PROXY", ""),
             "https_proxy": _egress.get("HTTPS_PROXY", ""),
@@ -413,23 +325,23 @@ class GuardianCodingAgent(BaseInstalledAgent):
             bridge_environment["CODEX_FORCE_AUTH_JSON"] = codex_force_auth
 
         bridge_command = [
-            self._codeminer_python,
+            self._codenib_python,
             "-m",
             "scripts.guardian.deepswe.harness.bridge",
             "--repo",
             self._guardian_repo,
-            "--arm",
-            self._guardian_arm,
-            "--memory-dir",
-            self._guardian_memory_dir,
             "--message-inbox",
             self._guardian_message_inbox,
-            "--model",
+            "--explorer-model",
             self._guardian_model,
-            "--top-n",
-            str(self._guardian_top_n),
-            "--max-context-tokens",
-            str(self._guardian_max_context_tokens),
+            "--aggregator-model",
+            self._guardian_model,
+            "--explorer-count",
+            str(self._guardian_explorer_count),
+            "--max-findings",
+            str(self._guardian_max_findings),
+            "--rollout-timeout",
+            str(self._guardian_rollout_timeout),
             "--poll-interval",
             str(self._guardian_poll_interval),
             "--out-dir",
@@ -437,12 +349,6 @@ class GuardianCodingAgent(BaseInstalledAgent):
             "--baseline-file",
             self._guardian_baseline_file,
         ]
-        if self._guardian_no_budget_limit:
-            bridge_command.append("--no-budget-limit")
-        else:
-            bridge_command.extend(
-                ["--budget-tokens", str(self._guardian_budget_tokens)]
-            )
         start_script = shlex.quote(
             guardian_start_script(
                 command=bridge_command,
@@ -455,8 +361,9 @@ class GuardianCodingAgent(BaseInstalledAgent):
         )
         message_script = shlex.quote(
             "#!/bin/sh\n"
-            f"exec {shlex.quote(self._codeminer_python)} "
-            f"{shlex.quote(self._codeminer_path + '/codeminer/guardian/interaction.py')} "
+            f"PYTHONPATH={shlex.quote(self._codenib_path)} "
+            f"exec {shlex.quote(self._codenib_python)} "
+            "-m codenib.clients.guardian.interaction "
             f"--inbox {shlex.quote(self._guardian_message_inbox)} "
             f"--repo {shlex.quote(self._guardian_repo)} "
             '"$@"\n'
@@ -531,18 +438,17 @@ print("guardian bridge still running after wait", file=sys.stderr)
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        if self._solver_name == "codex":
-            guardian_preamble = _CODEX_PROMPT_PATH.read_text()
-        else:
-            guardian_preamble = _PROMPT_PATH.read_text()
+        guardian_preamble = _CODEX_PROMPT_PATH.read_text()
         augmented = f"{guardian_preamble}\n\n---\n\n{instruction}"
         try:
             await self._inner.run(augmented, environment, context)
         finally:
-            if self._solver_name == "codex":
-                await self._wait_for_codex_bridge_idle(environment)
-                await self._stop_codex_bridge(environment)
-                await self._write_codex_token_summary(environment)
+            await self._wait_for_codex_bridge_idle(
+                environment,
+                timeout_sec=int(self._guardian_rollout_timeout * 2 + 60),
+            )
+            await self._stop_codex_bridge(environment)
+            await self._write_codex_token_summary(environment)
 
     async def _write_codex_token_summary(self, environment: BaseEnvironment) -> None:
         """Parse codex turn.completed events and write token totals to codex_tokens.json."""

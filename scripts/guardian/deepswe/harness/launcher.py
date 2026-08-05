@@ -99,9 +99,7 @@ def main() -> int:
 
         child_environment = os.environ.copy()
         child_environment.update(ENVIRONMENT)
-        child_environment.setdefault(
-            "CODEMINER_CODEX_BIN", shutil.which("codex") or ""
-        )
+        child_environment.setdefault("CODENIB_CODEX_BIN", shutil.which("codex") or "")
         log = LOG_FILE.open("a", encoding="utf-8")
         process = subprocess.Popen(
             COMMAND,
