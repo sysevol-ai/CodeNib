@@ -168,7 +168,7 @@ capabilities, loaded views, fusion, graph, and reranking trace.
 | Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths |
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
 | MCP and LSP-shaped tools | Serve one manifest to coding agents without tying the runtime to one agent framework |
-| External integrations | Run revision-pinned LocAgent and OrcaLoca policies over the same manifest-backed views |
+| Agent compatibility | Reuse one manifest across revision-pinned LocAgent, Agentless v1.5.0, CoSIL, and OrcaLoca SearchAgent contracts; see the [support matrix](https://docs.codenib.ai/agent_integrations/) |
 | Benchmark compatibility | Evaluate CodeNib's native exploration against pinned external datasets and scorers, including [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench) |
 | Local inspection | Audit the same context through Wiki pages, Ask answers, citations, and the Dependency Map |
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
