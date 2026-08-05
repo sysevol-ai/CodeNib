@@ -51,42 +51,21 @@ agent or code-Wiki framework.
 
 ## News
 
-- **2026-08-05 — CodeNib 0.2.0 Alpha 2: stronger defaults and managed
-  language providers.** The local CLI and reusable Pages workflow now select
-  BM25+dense retrieval by default, while retaining an explicit no-model
-  fallback for resource-constrained environments.
-  `codenib toolchain` detects repository languages, installs pinned
-  package-managed SCIP/LSP providers under `~/.codenib/toolchains`, and leaves
-  system and project prerequisites explicit.
-- **2026-08-05 — CodeNib 0.2.0 Alpha 1: build once, serve everywhere.**
-  [`codenib publish`](https://docs.codenib.ai/github_pages/) and the reusable
-  GitHub workflow deploy a no-model static Wiki and retain a matching BM25 or
-  opt-in vector-enhanced context artifact for the indexed commit. The verified
-  artifact can be rebound to that checkout and served through MCP without
-  rebuilding; incremental caches remain private build state rather than part
-  of the downloadable serving artifact. See the
-  [0.2 release notes](https://docs.codenib.ai/releases/0.2.0/).
-- **2026-08-04 — Native repository explorer.**
-  [`RepositoryContextExplorer`](codenib/agent/runtime/explorer.py) plans BM25,
-  dense, hybrid, reranked, and graph routes over manifest-backed views and
-  loads only the route selected for each query. CodeNib runs these plans on
-  [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench) through a
-  compatibility layer that preserves CodeNib's planner while producing the
-  benchmark's source-region format and official metrics. The existing
-  [20-case validation](docs/evaluation/swe_explore.md) remains an explicitly
-  labeled BM25 compatibility control.
-- **2026-08-03 — Native LocAgent policy.**
-  [`LocAgentAgent`](codenib/clients/locagent_agent.py) runs pinned prompts and
-  function calls over [`LocAgentToolProvider`](codenib/integrations/locagent.py),
-  with no LocAgent, LiteLLM, or LlamaIndex dependency. Its
-  [paired harness](codenib/eval/benchmarks/policy_benchmark.py) validates
-  provenance and ranked localization.
-- **2026-08-02 — OrcaLoca SearchAgent.**
-  [`OrcaLocaAgent`](codenib/clients/orcaloca_agent.py) binds upstream
-  `SearchAgent` to
-  [`OrcaLocaSearchProvider`](codenib/integrations/orcaloca.py), preserving its
-  six-tool contract without a second graph. Scope: empty `TraceAnalysisOutput`;
-  see the [validation matrix](https://docs.codenib.ai/agent_integrations/).
+- **2026-08-05 — CodeNib 0.2.0 Alpha 2.** Hybrid retrieval is now the default,
+  and `codenib toolchain` manages pinned per-language SCIP/LSP providers.
+  [Release notes](https://docs.codenib.ai/releases/0.2.0/)
+- **2026-08-05 — CodeNib 0.2.0 Alpha 1.** `codenib publish` builds a static
+  Wiki and reusable context artifact for Pages or MCP.
+  [Pages guide](https://docs.codenib.ai/github_pages/)
+- **2026-08-04 — Native repository explorer.** CodeNib's planner now targets
+  the SWE-Explore source-region protocol.
+  [Validation](docs/evaluation/swe_explore.md)
+- **2026-08-03 — Native LocAgent policy.** LocAgent runs directly on CodeNib
+  views without LocAgent, LiteLLM, or LlamaIndex dependencies.
+  [Support matrix](https://docs.codenib.ai/agent_integrations/)
+- **2026-08-02 — OrcaLoca SearchAgent.** Its six-tool search loop now reuses
+  CodeNib's symbol graph.
+  [Support matrix](https://docs.codenib.ai/agent_integrations/)
 
 ## System Architecture
 
