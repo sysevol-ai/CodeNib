@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 from mcp.server import MCPServer
 
+from ..compiler.manifest import RepoManifest
 from .context import ServerContext
 from .prompts import CODENIB_GUIDE
 from .tools.dependency import dependency_subgraph_impl
@@ -303,7 +304,14 @@ async def get_manifest() -> dict[str, Any]:
     """Return the repo manifest as a dict."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
-    return _ctx.manifest.to_dict()
+    result = _ctx.manifest.to_dict()
+    result["runtime"] = {
+        "loaded_views": sorted(_ctx.loaded_views),
+        "view_errors": dict(sorted(_ctx.errors.items())),
+    }
+    if _ctx.artifact is not None:
+        result["artifact"] = dict(_ctx.artifact)
+    return result
 
 
 # ------------------------------------------------------------------
@@ -402,6 +410,21 @@ def _parse_args(
         help="Path to repo_manifest.json produced by IndexCompiler.",
     )
     parser.add_argument(
+        "--artifact",
+        type=str,
+        help="Verified portable context artifact directory.",
+    )
+    parser.add_argument(
+        "--repo",
+        type=str,
+        help="Exact repository checkout bound to --artifact.",
+    )
+    parser.add_argument(
+        "--repository",
+        type=str,
+        help="Expected owner/repository identity for --artifact.",
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -411,10 +434,14 @@ def _parse_args(
     return parser.parse_args(argv)
 
 
-def init_server(manifest_path: str | Path) -> None:
+def init_server(
+    manifest_path: RepoManifest | str | Path,
+    *,
+    artifact: dict[str, Any] | None = None,
+) -> None:
     """Initialize the global ServerContext from a manifest file.
 
-    Loads the manifest and hydrates all available indexes into the
+    Loads the manifest and opens all available indexes in the
     module-level ``_ctx``. Safe to call from tests with a temporary
     manifest path.
 
@@ -422,11 +449,22 @@ def init_server(manifest_path: str | Path) -> None:
         FileNotFoundError: if ``manifest_path`` does not exist.
     """
     global _ctx
-    resolved = Path(manifest_path).resolve()
-    if not resolved.exists():
-        raise FileNotFoundError(f"Manifest not found: {resolved}")
-    logger.info("Loading manifest from %s", resolved)
-    _ctx = ServerContext.load(resolved)
+    if isinstance(manifest_path, RepoManifest):
+        manifest = manifest_path
+        logger.info(
+            "Loading in-memory manifest for %s@%s",
+            manifest.repo_path,
+            (manifest.commit or "")[:12],
+        )
+    else:
+        resolved = Path(manifest_path).resolve()
+        if not resolved.exists():
+            raise FileNotFoundError(f"Manifest not found: {resolved}")
+        logger.info("Loading manifest from %s", resolved)
+        manifest = RepoManifest.load(resolved)
+    if _ctx is not None:
+        _ctx.close()
+    _ctx = ServerContext.load(manifest, artifact=artifact)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -434,9 +472,15 @@ def main(argv: list[str] | None = None) -> None:
     program_name = _cli_program_name()
     args = _parse_args(argv)
     manifest_path = args.manifest_flag or args.manifest
-    if not manifest_path:
+    if args.artifact and manifest_path:
+        logger.error("Choose either a manifest or --artifact, not both")
+        sys.exit(1)
+    if args.artifact and not args.repo:
+        logger.error("--artifact requires --repo with the exact checkout")
+        sys.exit(1)
+    if not args.artifact and not manifest_path:
         logger.error(
-            "No manifest provided. Use: %s <manifest> or --manifest <path>",
+            "No context provided. Use: %s <manifest> or --artifact <dir> --repo <dir>",
             program_name,
         )
         sys.exit(1)
@@ -448,7 +492,27 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     try:
-        init_server(manifest_path)
+        if args.artifact:
+            from ..artifacts import bind_context_artifact
+
+            binding = bind_context_artifact(
+                args.artifact,
+                args.repo,
+                expected_repository=args.repository,
+            )
+            artifact = binding.artifact
+            init_server(
+                binding.manifest,
+                artifact={
+                    "verified": True,
+                    "schema": artifact.metadata["schema"],
+                    "repository": artifact.repository,
+                    "commit": artifact.commit,
+                    "views": list(artifact.views),
+                },
+            )
+        else:
+            init_server(manifest_path)
         logger.info("Starting MCP server on stdio...")
         mcp.run(transport="stdio")
     except FileNotFoundError as exc:

@@ -51,6 +51,26 @@ The command also accepts the manifest path directly:
 codenib mcp ~/.codenib/repositories/<repo>-<id>/indexes/repo_manifest.json
 ```
 
+### Load a Published Artifact
+
+A Pages publishing run can produce the same query-serving views once and reuse
+them in MCP at the indexed commit:
+
+```bash
+codenib artifact fetch owner/repository --repo /path/to/repository
+codenib artifact mcp-config \
+  ~/.codenib/artifacts/owner/repository/<full-commit> \
+  --repo /path/to/repository \
+  --host codex
+```
+
+`artifact fetch` derives the full commit from the checkout unless `--commit` is
+provided. It requires `GH_TOKEN` with Actions read access. The MCP process
+rechecks artifact hashes, repository identity, commit, and the filtered source
+fingerprint on every start; it does not rebuild or silently substitute a stale
+view. See [Publish With GitHub Pages](github_pages.md#reuse-the-artifact-through-mcp)
+for the trust boundary and Claude/generic configuration options.
+
 Transport is stdio and logs go to stderr. A typical client configuration is:
 
 ```json

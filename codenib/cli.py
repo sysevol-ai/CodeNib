@@ -439,10 +439,24 @@ def _run_index(args: argparse.Namespace) -> int:
 
 def _run_mcp(args: argparse.Namespace) -> int:
     _require_modules(("mcp",), extra="mcp", feature="the MCP server")
-    manifest_path = resolve_manifest_path(args.path)
     from .mcp.server import main as mcp_main
 
-    mcp_main([str(manifest_path), "--log-level", args.log_level])
+    if args.artifact:
+        repo_path = resolve_repo_path(args.repo)
+        command = [
+            "--artifact",
+            str(Path(args.artifact).expanduser().resolve()),
+            "--repo",
+            str(repo_path),
+            "--log-level",
+            args.log_level,
+        ]
+        if args.repository:
+            command.extend(("--repository", args.repository))
+        mcp_main(command)
+    else:
+        manifest_path = resolve_manifest_path(args.path)
+        mcp_main([str(manifest_path), "--log-level", args.log_level])
     return 0
 
 
@@ -522,6 +536,104 @@ def _run_artifact_pack(args: argparse.Namespace) -> int:
     print(f"Commit:           {result.commit or 'working tree'}")
     print(f"Views:            {', '.join(result.views)}")
     print(f"Manifest:         {result.metadata_path}")
+    return 0
+
+
+def _artifact_checkout_commit(repo_path: Path, explicit: str | None) -> str:
+    from .compiler.checkout_identity import checkout_commit
+
+    commit = (explicit or checkout_commit(repo_path) or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise CLIError(
+            "artifact operations require a Git checkout with a full resolved HEAD"
+        )
+    return commit
+
+
+def _run_artifact_verify(args: argparse.Namespace) -> int:
+    from .artifacts import bind_context_artifact, verify_context_artifact
+
+    try:
+        if args.repo:
+            binding = bind_context_artifact(
+                args.path,
+                resolve_repo_path(args.repo),
+                expected_repository=args.repository,
+                expected_commit=args.commit,
+            )
+            artifact = binding.artifact
+            checkout = binding.repo_path
+        else:
+            artifact = verify_context_artifact(
+                args.path,
+                expected_repository=args.repository,
+                expected_commit=args.commit,
+            )
+            checkout = None
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(str(exc)) from exc
+
+    print(f"Context artifact: {artifact.root}")
+    print(f"Repository:       {artifact.repository}")
+    print(f"Commit:           {artifact.commit}")
+    print(f"Views:            {', '.join(artifact.views)}")
+    print(f"Files:            {artifact.file_count}")
+    print(f"Bytes:            {artifact.byte_count}")
+    print(f"Checkout:         {checkout or 'not checked'}")
+    return 0
+
+
+def _run_artifact_fetch(args: argparse.Namespace) -> int:
+    from .artifacts import bind_context_artifact, fetch_github_context_artifact
+
+    repo_path = resolve_repo_path(args.repo)
+    commit = _artifact_checkout_commit(repo_path, args.commit)
+    try:
+        result = fetch_github_context_artifact(
+            args.repository,
+            commit,
+            output_dir=args.output,
+            artifact_name=args.artifact_name,
+            token_env=args.token_env,
+            api_url=args.github_api_url,
+            force=args.force,
+        )
+        binding = bind_context_artifact(
+            result.artifact.root,
+            repo_path,
+            expected_repository=args.repository,
+            expected_commit=commit,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(str(exc)) from exc
+
+    state = "downloaded" if result.downloaded else "cached"
+    print(f"Context artifact: {binding.artifact.root}")
+    print(f"Repository:       {binding.artifact.repository}")
+    print(f"Commit:           {binding.artifact.commit}")
+    print(f"Views:            {', '.join(binding.artifact.views)}")
+    print(f"State:            {state}")
+    if result.record is not None:
+        print(f"GitHub artifact:  {result.record.artifact_id}")
+    return 0
+
+
+def _run_artifact_mcp_config(args: argparse.Namespace) -> int:
+    from .artifacts import render_artifact_mcp_config
+
+    try:
+        config = render_artifact_mcp_config(
+            args.path,
+            resolve_repo_path(args.repo),
+            host=args.host,
+            server_name=args.name,
+            command=args.command,
+            expected_repository=args.repository,
+            claude_scope=args.claude_scope,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(str(exc)) from exc
+    print(config, end="")
     return 0
 
 
@@ -1558,6 +1670,74 @@ def build_parser() -> argparse.ArgumentParser:
     )
     artifact_pack_parser.set_defaults(handler=_run_artifact_pack)
 
+    artifact_verify_parser = artifact_subparsers.add_parser(
+        "verify",
+        help="verify artifact integrity and optionally bind an exact checkout",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    artifact_verify_parser.add_argument("path")
+    artifact_verify_parser.add_argument(
+        "--repo",
+        help="exact checkout used to verify commit and source identity",
+    )
+    artifact_verify_parser.add_argument(
+        "--repository",
+        help="expected owner/repository identity",
+    )
+    artifact_verify_parser.add_argument(
+        "--commit",
+        help="expected full Git commit",
+    )
+    artifact_verify_parser.set_defaults(handler=_run_artifact_verify)
+
+    artifact_fetch_parser = artifact_subparsers.add_parser(
+        "fetch",
+        help="download and verify a commit-matched GitHub Actions artifact",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    artifact_fetch_parser.add_argument("repository", help="GitHub owner/repository")
+    artifact_fetch_parser.add_argument(
+        "--repo",
+        default=".",
+        help="exact local checkout to bind",
+    )
+    artifact_fetch_parser.add_argument("--commit", help="full commit; defaults to HEAD")
+    artifact_fetch_parser.add_argument("--output")
+    artifact_fetch_parser.add_argument("--artifact-name")
+    artifact_fetch_parser.add_argument(
+        "--token-env",
+        default="GH_TOKEN",
+        help="environment variable containing a GitHub token with Actions read",
+    )
+    artifact_fetch_parser.add_argument(
+        "--github-api-url",
+        default=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+    )
+    artifact_fetch_parser.add_argument("--force", action="store_true")
+    artifact_fetch_parser.set_defaults(handler=_run_artifact_fetch)
+
+    artifact_config_parser = artifact_subparsers.add_parser(
+        "mcp-config",
+        help="render a Codex, Claude, or generic MCP configuration",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    artifact_config_parser.add_argument("path")
+    artifact_config_parser.add_argument("--repo", default=".")
+    artifact_config_parser.add_argument(
+        "--host",
+        choices=("claude", "codex", "json"),
+        required=True,
+    )
+    artifact_config_parser.add_argument("--name", default="codenib")
+    artifact_config_parser.add_argument("--command", default="codenib")
+    artifact_config_parser.add_argument("--repository")
+    artifact_config_parser.add_argument(
+        "--claude-scope",
+        choices=("local", "project", "user"),
+        default="project",
+    )
+    artifact_config_parser.set_defaults(handler=_run_artifact_mcp_config)
+
     publish_parser = subparsers.add_parser(
         "publish",
         help="incrementally build and publish a static Wiki plus context artifact",
@@ -1600,6 +1780,19 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=".",
         help="repository directory or repo_manifest.json",
+    )
+    mcp_parser.add_argument(
+        "--artifact",
+        help="verified portable context artifact directory",
+    )
+    mcp_parser.add_argument(
+        "--repo",
+        default=".",
+        help="exact checkout bound to --artifact",
+    )
+    mcp_parser.add_argument(
+        "--repository",
+        help="expected owner/repository identity for --artifact",
     )
     mcp_parser.add_argument(
         "--log-level",

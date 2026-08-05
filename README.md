@@ -142,6 +142,8 @@ route needs no model credential or model download. The optional `semantic`
 route builds the matching vector artifact with a local Hugging Face model or an
 explicit BYO OpenAI-compatible endpoint; query-time search remains in the local
 or MCP runtime. See [GitHub Pages](https://docs.codenib.ai/github_pages/).
+The published BM25/vector artifact can then be verified against an exact local
+checkout and served through MCP without rebuilding the repository views.
 
 See the
 [Quickstart](https://docs.codenib.ai/quickstart/)

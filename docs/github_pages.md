@@ -147,3 +147,60 @@ store owns deployment:
 
 Its outputs include `site-path`, `context-path`, `context-manifest`,
 `artifact-name`, `cache-hit`, `cache-key`, and `source-commit`.
+
+## Reuse the Artifact Through MCP
+
+The uploaded context artifact can serve an exact local checkout without
+rebuilding its BM25 or vector views. Check out the commit first, then fetch the
+artifact with a token that has **Actions: read** permission:
+
+```bash
+git -C /path/to/repository checkout <full-commit>
+export GH_TOKEN=github_pat_...
+
+codenib artifact fetch owner/repository \
+  --repo /path/to/repository \
+  --commit <full-commit>
+```
+
+CodeNib resolves the newest non-expired artifact whose workflow
+`head_sha` exactly matches the commit. It checks GitHub's archive digest,
+extracts with file-count, expanded-size, symlink, and traversal limits, verifies
+every inventoried file, and compares the local checkout's commit and source
+fingerprint before an index loader runs. The downloaded artifact uses JSON for
+portable vector documents; CodeNib never loads a pickle from this path.
+
+These checks establish artifact integrity and source compatibility, not trust in
+an arbitrary workflow publisher. Fetch only artifacts produced by a workflow
+and pinned CodeNib revision that you trust. Semantic artifacts also contain a
+provider and endpoint identity; review that identity before exposing model
+credentials to the MCP process.
+
+The command prints the verified cache directory. Start MCP directly:
+
+```bash
+codenib mcp \
+  --artifact ~/.codenib/artifacts/owner/repository/<full-commit> \
+  --repo /path/to/repository \
+  --repository owner/repository
+```
+
+Or generate a reviewable client configuration command:
+
+```bash
+codenib artifact mcp-config \
+  ~/.codenib/artifacts/owner/repository/<full-commit> \
+  --repo /path/to/repository \
+  --repository owner/repository \
+  --host codex
+```
+
+`--host claude` emits the corresponding `claude mcp add-json` command;
+`--host json` emits a project-scoped `.mcp.json` document. Review the output
+before running or placing it. CodeNib does not edit a client configuration
+automatically.
+
+BM25 serving requires no model credential. A semantic artifact reuses its
+stored vectors but still needs the manifest-selected embedding provider for
+each query embedding. Provider credentials stay in the MCP process environment
+and are never copied into client configuration or the context artifact.

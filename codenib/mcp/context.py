@@ -17,7 +17,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
 
 from ..compiler.manifest import RepoManifest
 from ..provider_routes import resolve_embedding_artifact_route
@@ -122,6 +122,7 @@ class ServerContext:
     zoekt: Optional[ZoektSearcher] = None
     vector: Optional[CodeVectorStore] = None
     errors: Dict[str, str] = field(default_factory=dict)
+    artifact: Optional[Mapping[str, Any]] = None
     _view_lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     @classmethod
@@ -130,6 +131,7 @@ class ServerContext:
         manifest_path: RepoManifest | str | Path,
         *,
         views: Iterable[str] | None = None,
+        artifact: Mapping[str, Any] | None = None,
     ) -> ServerContext:
         """Load a manifest and the selected runtime views.
 
@@ -144,7 +146,7 @@ class ServerContext:
             if isinstance(manifest_path, RepoManifest)
             else RepoManifest.load(manifest_path)
         )
-        ctx = cls(manifest=manifest)
+        ctx = cls(manifest=manifest, artifact=dict(artifact) if artifact else None)
 
         ctx.load_views(selected)
 
@@ -283,6 +285,8 @@ class ServerContext:
 
             indexer = BM25CodeIndexer()
             indexer.load_index(entry.path)
+            if indexer.project_root == "source":
+                indexer.project_root = self.manifest.repo_path
             self.bm25 = indexer
             logger.info("Loaded BM25 index from %s", entry.path)
         except Exception as exc:
