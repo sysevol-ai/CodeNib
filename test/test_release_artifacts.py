@@ -49,7 +49,8 @@ def test_alpha_release_notes_use_test_registry_and_pages_permissions() -> None:
     notes = (root / "docs" / "releases" / "0.2.0.md").read_text(encoding="utf-8")
 
     assert notes.count("--index-url https://test.pypi.org/simple/") == 2
-    assert notes.count("--extra-index-url https://pypi.org/simple/") == 2
+    assert notes.count("--no-deps --only-binary=:all:") == 2
+    assert "--extra-index-url" not in notes
     for permission in ("contents: read", "pages: write", "id-token: write"):
         assert permission in notes
 
