@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.artifacts.security import assert_publishable_tree
+from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.web.static_export import (
     STATIC_EXPORT_MANIFEST,
     export_static_wiki,
@@ -250,6 +250,9 @@ def test_publishability_rejects_json_escaped_windows_path(tmp_path: Path) -> Non
     )
 
     class ResolvedWindowsPath:
+        def expanduser(self):
+            return self
+
         def resolve(self):
             return windows_path
 
