@@ -27,6 +27,7 @@ from ..llm.options import (
     validate_model_options,
 )
 from ..paths import QA_DATA_DIRNAME, REPO_INDEX_DIRNAME
+from ..provider_routes import normalize_provider
 
 DEFAULT_CONFIG_PATH = "qa_config.yaml"
 CACHE_DIR_NAME = REPO_INDEX_DIRNAME
@@ -310,9 +311,11 @@ def load_config(path: Optional[str] = None) -> QAConfig:
     if os.environ.get("CODENIB_EMBEDDING_API_KEY"):
         cfg.embedding_api_key = os.environ["CODENIB_EMBEDDING_API_KEY"]
 
-    cfg.embedding_provider = cfg.embedding_provider.strip().lower()
-    if cfg.embedding_provider not in {"huggingface", "openai"}:
-        raise ValueError("embedding_provider must be either 'huggingface' or 'openai'")
+    cfg.embedding_provider = normalize_provider(cfg.embedding_provider)
+    if cfg.embedding_provider not in {"huggingface", "openai", "github_models"}:
+        raise ValueError(
+            "embedding_provider must be huggingface, openai, or github_models"
+        )
 
     return cfg
 

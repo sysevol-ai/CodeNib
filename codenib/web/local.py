@@ -112,6 +112,7 @@ def prepare_local_wiki(
     model: str | None = None,
     api_base: str | None = None,
     api_key_env: str | None = None,
+    embedding_api_key_env: str | None = None,
     model_options: Mapping[str, Any] | None = None,
 ) -> LocalWiki:
     """Write the registry and config consumed by the existing Wiki service."""
@@ -182,6 +183,14 @@ def prepare_local_wiki(
                 f"API key environment variable is unset or empty: {api_key_env}"
             )
         runtime_env["CODENIB_DEMO_API_KEY"] = api_key
+    if embedding_api_key_env:
+        embedding_api_key = os.environ.get(embedding_api_key_env)
+        if not embedding_api_key:
+            raise ValueError(
+                "Embedding API key environment variable is unset or empty: "
+                f"{embedding_api_key_env}"
+            )
+        runtime_env["CODENIB_EMBEDDING_API_KEY"] = embedding_api_key
 
     return LocalWiki(
         repo_path=repo_path,

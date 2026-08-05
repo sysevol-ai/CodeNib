@@ -66,12 +66,15 @@ def test_optional_capabilities_have_named_extras() -> None:
         "graph",
         "mcp",
         "semantic",
+        "semantic-remote",
         "vertex",
         "zoekt",
         "full",
     } <= set(extras)
     assert "litellm" in _names(extras["agent"])
     assert {"faiss-cpu", "sentence-transformers"} <= _names(extras["semantic"])
+    assert {"faiss-cpu", "numpy", "openai"} <= _names(extras["semantic-remote"])
+    assert "sentence-transformers" not in _names(extras["semantic-remote"])
     assert "igraph" in _names(extras["graph"])
     assert "mcp" in _names(extras["mcp"])
 
