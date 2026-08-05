@@ -44,6 +44,16 @@ https://arxiv.org/abs/2607.25431
         validate_readme_citation("# CodeNib\n")
 
 
+def test_alpha_release_notes_use_test_registry_and_pages_permissions() -> None:
+    root = Path(__file__).resolve().parents[1]
+    notes = (root / "docs" / "releases" / "0.2.0.md").read_text(encoding="utf-8")
+
+    assert notes.count("--index-url https://test.pypi.org/simple/") == 2
+    assert notes.count("--extra-index-url https://pypi.org/simple/") == 2
+    for permission in ("contents: read", "pages: write", "id-token: write"):
+        assert permission in notes
+
+
 def test_registry_publishers_use_separate_workflows() -> None:
     workflows = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
