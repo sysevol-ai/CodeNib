@@ -23,6 +23,8 @@ from codenib.paths import toolchain_dir
             toolchains.TYPESCRIPT_LANGUAGE_SERVER_VERSION,
         ),
         ("TYPESCRIPT_VERSION", toolchains.TYPESCRIPT_VERSION),
+        ("YARN_VERSION", toolchains.YARN_VERSION),
+        ("PNPM_VERSION", toolchains.PNPM_VERSION),
         ("BASEDPYRIGHT_VERSION", toolchains.BASEDPYRIGHT_VERSION),
         ("SCIP_GO_VERSION", toolchains.SCIP_GO_VERSION),
         ("GOPLS_VERSION", toolchains.GOPLS_VERSION),
