@@ -25,6 +25,7 @@ from codenib.llm.usage import (
     UsageRecord,
     UsageTracker,
     _extract_token_usage,
+    runtime_cost_provenance,
 )
 
 # ---------------------------------------------------------------------------
@@ -203,6 +204,20 @@ class TestUsageTracker:
             )
         assert tracker.records[0].usage.cost_usd is None
         assert tracker.totals().total_tokens == 7
+
+
+def test_runtime_cost_provenance_labels_unpinned_estimates():
+    with patch("codenib.llm.usage._installed_litellm_version", return_value="1.2.3"):
+        priced = runtime_cost_provenance("provider/model", 0.25)
+        unpriced = runtime_cost_provenance("provider/local", None)
+
+    assert priced == {
+        "kind": "runtime_estimate",
+        "calculator": "litellm.completion_cost",
+        "calculator_version": "1.2.3",
+        "model": "provider/model",
+    }
+    assert unpriced["kind"] == "unavailable"
 
 
 # ---------------------------------------------------------------------------

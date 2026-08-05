@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -211,9 +212,17 @@ def test_run_query_sweep_stages_only_declared_indexes(monkeypatch, tmp_path):
             "tool_calls": [],
             "trace_summary": {},
             "total_turns": 1,
-            "total_tokens": 1,
+            "prompt_tokens": 7,
+            "completion_tokens": 2,
+            "total_tokens": 12,
             "cost_usd": 0.0,
+            "cost_provenance": {
+                "kind": "runtime_estimate",
+                "calculator": "fixture",
+                "model": "provider/model",
+            },
             "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 3,
         },
     )
     monkeypatch.setattr(
@@ -276,6 +285,16 @@ def test_run_query_sweep_stages_only_declared_indexes(monkeypatch, tmp_path):
         str(output_dir / "cache" / "org__repo-1"),
         {"vector"},
     )
+    cell = json.loads(
+        (output_dir / "cells" / "query-1__vector__rep1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert cell["prompt_tokens"] == 7
+    assert cell["completion_tokens"] == 2
+    assert cell["cache_read_input_tokens"] == 0
+    assert cell["cache_creation_input_tokens"] == 3
+    assert cell["cost_provenance"]["calculator"] == "fixture"
 
     resumed = run_query_sweep(
         cfg,

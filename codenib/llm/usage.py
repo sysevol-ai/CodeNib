@@ -20,7 +20,9 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from functools import lru_cache
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any, Dict, List, Optional
 
 from ..log_utils import get_logger
 
@@ -32,9 +34,11 @@ class TokenUsage:
     """Cumulative token counts (plus optional USD cost).
 
     ``cache_read_input_tokens`` / ``cache_creation_input_tokens`` are the
-    Anthropic prompt-cache breakdown of ``prompt_tokens`` (the cached prefix is
-    *included* in ``prompt_tokens``): reads are billed ~0.1x input, writes
-    ~1.25x. Both are 0 when prompt caching is off or unsupported.
+    provider's prompt-cache classes. Anthropic reports them separately from
+    uncached ``input_tokens``; total processed input is therefore their sum.
+    Other providers may normalize ``prompt_tokens`` differently, so offline
+    repricing must declare the token semantics in its pricing snapshot rather
+    than infer them here. Cache fields are 0 when caching is off or unsupported.
     """
 
     prompt_tokens: int = 0
@@ -126,6 +130,30 @@ class UsageTracker:
         for rec in self.records:
             total = total.add(rec.usage)
         return total
+
+
+def runtime_cost_provenance(model: str, cost_usd: Optional[float]) -> Dict[str, Any]:
+    """Describe a best-effort LiteLLM runtime estimate without pinning a price.
+
+    The calculator version makes historical records auditable, but this is not
+    an immutable pricing snapshot. Reports that need reproducible repricing
+    must use raw token classes and a separate catalog.
+    """
+
+    return {
+        "kind": "runtime_estimate" if cost_usd is not None else "unavailable",
+        "calculator": "litellm.completion_cost",
+        "calculator_version": _installed_litellm_version(),
+        "model": str(model),
+    }
+
+
+@lru_cache(maxsize=1)
+def _installed_litellm_version() -> Optional[str]:
+    try:
+        return version("litellm")
+    except PackageNotFoundError:
+        return None
 
 
 def _extract_token_usage(response: Any) -> TokenUsage:

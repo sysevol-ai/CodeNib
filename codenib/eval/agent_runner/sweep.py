@@ -24,6 +24,8 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
+from codenib.llm.usage import runtime_cost_provenance
+
 from .sweep_config import SweepConfig
 
 # language_group (HF column) -> classify() language key
@@ -367,7 +369,6 @@ def run_cell(
     # Sum token usage across every run so verify/scatter arms are charged for
     # the closed loop, not just their final turn.
     usage_totals = accounting.usage_totals()
-
     return {
         "nodes": observations["nodes"],
         "tool_calls": observations["tool_calls"],
@@ -385,6 +386,7 @@ def run_cell(
         "completion_tokens": usage_totals["completion_tokens"],
         "total_tokens": usage_totals["total_tokens"],
         "cost_usd": usage_totals["cost_usd"],
+        "cost_provenance": runtime_cost_provenance(cfg.model, usage_totals["cost_usd"]),
         "cache_read_input_tokens": usage_totals["cache_read_input_tokens"],
         "cache_creation_input_tokens": usage_totals["cache_creation_input_tokens"],
     }
@@ -563,6 +565,7 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     "completion_tokens": out["completion_tokens"],
                     "total_tokens": out["total_tokens"],
                     "cost_usd": out["cost_usd"],
+                    "cost_provenance": out.get("cost_provenance"),
                     "cache_read_input_tokens": out["cache_read_input_tokens"],
                     "cache_creation_input_tokens": out["cache_creation_input_tokens"],
                     "elapsed_seconds": time.time() - t,
@@ -590,6 +593,16 @@ def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dic
                     "metrics": {},
                     "metrics_meaningful": gt_meaningful,
                     "tool_calls": [],
+                    "prompt_tokens": None,
+                    "completion_tokens": None,
+                    "total_tokens": None,
+                    "cost_usd": None,
+                    "cost_provenance": {
+                        "kind": "unavailable",
+                        "model": cfg.model,
+                    },
+                    "cache_read_input_tokens": None,
+                    "cache_creation_input_tokens": None,
                     "error": str(exc),
                     "elapsed_seconds": time.time() - t,
                 }

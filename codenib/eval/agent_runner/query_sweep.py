@@ -323,6 +323,7 @@ def run_query_sweep(
 
         for row, subset_id, skills, rep, cell_id, cell_path in plan:
             cell_started = time.time()
+            out: Optional[Dict[str, Any]] = None
             gt_blocks = collect_target_blocks(row)
             target_files, target_symbols = query_targets(
                 row, simplified_symbols=cfg.gt_simplified_symbols
@@ -378,9 +379,13 @@ def run_query_sweep(
                     "trace_summary": out.get("trace_summary"),
                     "answer": out["answer"],
                     "total_turns": out["total_turns"],
+                    "prompt_tokens": out["prompt_tokens"],
+                    "completion_tokens": out["completion_tokens"],
                     "total_tokens": out["total_tokens"],
                     "cost_usd": out["cost_usd"],
+                    "cost_provenance": out.get("cost_provenance"),
                     "cache_read_input_tokens": out["cache_read_input_tokens"],
+                    "cache_creation_input_tokens": out["cache_creation_input_tokens"],
                     "elapsed_seconds": time.time() - cell_started,
                     "error": None,
                 }
@@ -414,9 +419,35 @@ def run_query_sweep(
                     "instance_id": instance_id,
                     "query_id": row["query_id"],
                     "category": row.get("category"),
+                    "length_variant": row.get("length_variant"),
+                    "source_config": row.get("source_config"),
                     "subset_id": subset_id,
+                    "skills": skills,
+                    "model": cfg.model,
+                    "rep": rep,
+                    "language": language_key_for_query_row(row),
                     "success": False,
                     "metrics": {},
+                    "metrics_meaningful": bool(target_files or gt_blocks),
+                    "query": row["query"],
+                    "total_turns": out.get("total_turns") if out else None,
+                    "prompt_tokens": out.get("prompt_tokens") if out else None,
+                    "completion_tokens": (
+                        out.get("completion_tokens") if out else None
+                    ),
+                    "total_tokens": out.get("total_tokens") if out else None,
+                    "cost_usd": out.get("cost_usd") if out else None,
+                    "cost_provenance": (
+                        out.get("cost_provenance")
+                        if out
+                        else {"kind": "unavailable", "model": cfg.model}
+                    ),
+                    "cache_read_input_tokens": (
+                        out.get("cache_read_input_tokens") if out else None
+                    ),
+                    "cache_creation_input_tokens": (
+                        out.get("cache_creation_input_tokens") if out else None
+                    ),
                     "error": str(exc),
                     "elapsed_seconds": time.time() - cell_started,
                 }
