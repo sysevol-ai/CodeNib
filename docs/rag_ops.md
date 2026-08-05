@@ -52,6 +52,47 @@ The current deliberate limits are:
 - Index construction is outside ops. Build indexes through compiler/indexer
   surfaces, then pass loaded resources through context objects.
 
+## Validated Models
+
+CodeNib's Hugging Face and OpenAI-compatible adapters accept more models than
+the list below. The matrix records the narrower surface for which this project
+has retained end-to-end evidence. **Benchmark** means a complete 100-row
+[CodeNib Base](https://huggingface.co/datasets/fishmingyu/codeminer-base-dataset)
+result artifact exists; **runtime** means the shipped route and model-specific
+prompt contract are tested, but the model was not part of that five-model
+quality sweep.
+
+### Embedding Models
+
+| Model | Dimension | Roles exercised | Evidence |
+| --- | ---: | --- | --- |
+| [CodeRankEmbed](https://huggingface.co/nomic-ai/CodeRankEmbed) | 768 | Default local dense and hybrid route | Runtime default; packaging, prompt registry, build, load, and query paths |
+| [SweRankEmbed-Small](https://huggingface.co/Salesforce/SweRankEmbed-Small) | 768 | Dense retrieval; first-stage retrieval for rerank | Benchmark, 100/100 rows |
+| [SweRankEmbed-Large](https://huggingface.co/fishmingyu/SweRankEmbed-Large) | 3,584 | Dense retrieval; embedding rerank | Benchmark, 100/100 rows |
+| [jina-code-embeddings-1.5b](https://huggingface.co/jinaai/jina-code-embeddings-1.5b) | 1,536 | Dense retrieval; embedding rerank | Benchmark, 100/100 rows |
+| [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) | 1,024 | Dense retrieval; first-stage retrieval for rerank | Benchmark, 100/100 rows |
+| [Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | 2,560 | Dense retrieval; embedding rerank | Benchmark, 100/100 rows |
+
+### Rerank Models
+
+| Model or family | Strategy | Retained benchmark coverage |
+| --- | --- | --- |
+| SweRankEmbed-Large, jina-code-embeddings-1.5b, Qwen3-Embedding-4B | Dual-encoder candidate rerank | Complete 2 first-stage models x 3 rerank models matrix, 100 rows per pair |
+| [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) | Pairwise yes/no scoring | 100 rows at candidate widths 30, 50, and 100 |
+| [Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Pairwise yes/no scoring | 100-row runs across first-stage models and candidate widths 30, 50, and 100 |
+| [Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Pairwise yes/no scoring | 100 rows at candidate widths 30, 50, and 100 with SweRankEmbed-Small |
+| [mxbai-rerank-large-v2](https://huggingface.co/mixedbread-ai/mxbai-rerank-large-v2) | Sentence-Transformers cross-encoder | 100 rows at candidate width 30 with SweRankEmbed-Small |
+| [SweRankLLM-Small](https://huggingface.co/Salesforce/SweRankLLM-Small) | RankGPT-style listwise rerank | 100 rows with SweRankEmbed-Small retrieval |
+
+The reproducible entry points are the
+[embedding sweep](https://github.com/sysevol-ai/CodeNib/blob/main/scripts/embeddings/eval_codenib_base_embeddings.sh)
+and
+[rerank matrix](https://github.com/sysevol-ai/CodeNib/blob/main/scripts/embeddings/eval_codenib_base_rerank_matrix.sh).
+Historical retrieval artifacts recorded model IDs but not immutable model
+revisions; the paper artifact reports that provenance limit. A model not listed
+here may still run through a generic adapter, but it is not a validated quality
+claim.
+
 ## Query-Aware Planner
 
 `RetrievalPlanner` is deterministic. It does not call an LLM. It maps three

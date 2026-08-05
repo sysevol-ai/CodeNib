@@ -20,6 +20,25 @@ interpret every result.
 
 </div>
 
+## Dataset And Benchmark Support
+
+Dataset loading, benchmark scoring, and agent-policy compatibility are
+different surfaces. A loader entry means CodeNib can prepare snapshots and
+ground truth; it does not imply that every retrieval route or external policy
+has been evaluated on that dataset. See the separate
+[agent integration matrix](../agent_integrations.md) for policy boundaries.
+
+| Dataset or benchmark | CodeNib surface | Evaluation use | Validated evidence and boundary |
+| --- | --- | --- | --- |
+| [CodeNib Base](https://huggingface.co/datasets/fishmingyu/codeminer-base-dataset) | `CodeNibBaseDataset` | Retrieval, graph, rerank, LSP, and agent-context studies | Frozen 100-row, five-language-group test split; complete five-embedding and rerank result sets. The pre-rename Hub ID is retained for artifact identity. |
+| [CodeNib Synthesis](https://huggingface.co/datasets/sysevol-ai/codeminer-synthesis) | `CodeNibSynthesisDataset` plus quality audit | Behavioral, hint, reasoning, and traversal queries | Five language configurations and 500 retained rows; synthetic queries complement rather than replace issue-derived CodeNib Base labels. |
+| [SWE-bench Lite](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Lite) and [Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified) | `SwebenchDataset`, collection, checkout, and GT locator | Retrieval baselines and fixed-case localization-policy preparation | Loader, patch-to-location ground truth, clean-checkout, and policy preflight paths are covered; individual agent support remains policy-specific. |
+| [SWE-bench Multilingual](https://huggingface.co/datasets/SWE-bench/SWE-bench_Multilingual) | `SwebenchMultilingualDataset`, collection, and GT locator | Multilingual source for CodeNib Base and benchmark joins | Dedicated schema and repository preparation; all 182 rows used by the pinned SWE-Explore release join resolve uniquely. |
+| [Loc-Bench v1](https://huggingface.co/datasets/czlll/Loc-Bench_V1) | `LocbenchDataset` | Retrieval and shared localization runners | Dataset, checkout, and location-label adapters are implemented; no paper-wide aggregate is claimed. |
+| [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench) | `CodeNibSWEExploreExplorer` and compatible 17-metric scorer | Ranked source-region benchmark | Fixed 20-case, seven-language run; 1,020/1,020 real-output metric cells match the pinned official evaluator. [Full validation](swe_explore.md). |
+| [SWE-bench Pro](https://huggingface.co/datasets/ScaleAI/SWE-bench_Pro) | Pinned source join for SWE-Explore | Supplies issue text and commit identity omitted by the released region rows | Join-only boundary: all 215 referenced rows resolve uniquely; this is not a general Pro task runner. |
+| Local JSON | `LocalJsonDataset` | Custom repository/query/location inputs | Schema adapter with inline file and symbol ground truth; reproducibility is owned by the caller's input file. |
+
 <div class="codenib-section-grid" markdown>
 
 -   <span class="codenib-card-eyebrow">Collect</span>

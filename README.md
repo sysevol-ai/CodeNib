@@ -58,13 +58,16 @@ agent or code-Wiki framework.
   Wiki and reusable context artifact for Pages or MCP.
   [Pages guide](https://docs.codenib.ai/github_pages/)
 - **2026-08-04 — Native repository explorer.** CodeNib's planner now targets
-  the SWE-Explore source-region protocol.
+  the [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench)
+  source-region protocol.
   [Validation](docs/evaluation/swe_explore.md)
-- **2026-08-03 — Native LocAgent policy.** LocAgent runs directly on CodeNib
+- **2026-08-03 — Native LocAgent policy.**
+  [LocAgent](https://github.com/gersteinlab/LocAgent) runs directly on CodeNib
   views without LocAgent, LiteLLM, or LlamaIndex dependencies.
   [Support matrix](https://docs.codenib.ai/agent_integrations/)
-- **2026-08-02 — OrcaLoca SearchAgent.** Its six-tool search loop now reuses
-  CodeNib's symbol graph.
+- **2026-08-02 — OrcaLoca SearchAgent.**
+  [OrcaLoca](https://github.com/fishmingyu/OrcaLoca)'s six-tool search loop
+  now reuses CodeNib's symbol graph.
   [Support matrix](https://docs.codenib.ai/agent_integrations/)
 
 ## System Architecture
@@ -201,11 +204,11 @@ capabilities, loaded views, fusion, graph, and reranking trace.
 |---|---|
 | Incremental compiler | Build independently managed views, reuse unchanged content, repair supported transitions, and conservatively rebuild outside those boundaries |
 | Agent context runtime | Plan capability-aware retrieval and navigation, then assemble bounded source-linked evidence |
-| Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths |
+| Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths; see the [validated model matrix](https://docs.codenib.ai/rag_ops/#validated-models) |
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
 | MCP and LSP-shaped tools | Serve one manifest to coding agents without tying the runtime to one agent framework |
-| Agent compatibility | Reuse one manifest across revision-pinned LocAgent, Agentless v1.5.0, CoSIL, and OrcaLoca SearchAgent contracts; see the [support matrix](https://docs.codenib.ai/agent_integrations/) |
-| Benchmark compatibility | Evaluate CodeNib's native exploration against pinned external datasets and scorers, including [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench) |
+| Agent compatibility | Reuse one manifest across revision-pinned [LocAgent](https://github.com/gersteinlab/LocAgent), [Agentless](https://github.com/OpenAutoCoder/Agentless), [CoSIL](https://github.com/ZhonghaoJiang/CoSIL), and [OrcaLoca](https://github.com/fishmingyu/OrcaLoca) contracts; see the [support matrix](https://docs.codenib.ai/agent_integrations/) |
+| Benchmark compatibility | Evaluate native exploration against pinned external datasets and scorers, including [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench); see the [dataset and benchmark matrix](https://docs.codenib.ai/evaluation/) |
 | Local inspection | Audit the same context through Wiki pages, Ask answers, citations, and the Dependency Map |
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 
@@ -219,6 +222,8 @@ records chunking, graph, incremental, and C++ decoder support.
 - [GitHub Pages](https://docs.codenib.ai/github_pages/)
 - [MCP Server](https://docs.codenib.ai/mcp/)
 - [Agent Integrations](https://docs.codenib.ai/agent_integrations/)
+- [RAG Models and Planner](https://docs.codenib.ai/rag_ops/)
+- [Benchmarks and Evaluation](https://docs.codenib.ai/evaluation/)
 - [Web UI](https://docs.codenib.ai/web_demo/)
 - [Language Capabilities](https://docs.codenib.ai/language_capabilities/)
 - [Concepts and development guides](https://docs.codenib.ai/)

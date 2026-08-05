@@ -12,13 +12,14 @@ implements the repository-call contract. **Policy** means a revision-pinned
 agent loop executes with that provider. **Paired evaluation** means the native
 and CodeNib providers can be swapped under one fixed case, model, prompt, and
 budget contract. None of these labels alone claims end-to-end task quality.
+Integration links point to the exact upstream revisions checked by the probes.
 
 | Integration | Status | Required views | Provider contract | Policy and evaluation | Boundary |
 | --- | --- | --- | --- | --- | --- |
-| LocAgent | CodeNib-native, revision-pinned | Symbol graph + BM25 | Pinned three-tool contract | Vendored prompts and function-calling loop; paired runner with strict common file/function@k scoring | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
-| Agentless v1.5.0 | CodeNib-native, revision-pinned | Symbol graph | Python tree, symbol skeleton, and line-window context | Vendored three-stage localization prompts; shared ranked file/symbol scoring | Localization only; repair and patch validation are excluded |
-| CoSIL | CodeNib-native, revision-pinned | Symbol graph | Pinned four-tool contract | Vendored file reflection, function tool loop, prune policy, and shared localization scoring | RQ1 file/function localization only; line localization and patch generation are excluded |
-| OrcaLoca SearchAgent | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
+| [LocAgent](https://github.com/gersteinlab/LocAgent/tree/ef170542a5cca88a1bd8463335ec43de222ed5f9) | CodeNib-native, revision-pinned | Symbol graph + BM25 | Pinned three-tool contract | Vendored prompts and function-calling loop; paired runner with strict common file/function@k scoring | Python SWE-bench repositories; reference and type-use are disclosed as conservative relation mappings |
+| [Agentless v1.5.0](https://github.com/OpenAutoCoder/Agentless/tree/b150f28465a77a81a7f4776384957a4271f5bd69) | CodeNib-native, revision-pinned | Symbol graph | Python tree, symbol skeleton, and line-window context | Vendored three-stage localization prompts; shared ranked file/symbol scoring | Localization only; repair and patch validation are excluded |
+| [CoSIL](https://github.com/ZhonghaoJiang/CoSIL/tree/0568e423735b399d5b089996961fea9ae142e4c7/CoSIL/fl) | CodeNib-native, revision-pinned | Symbol graph | Pinned four-tool contract | Vendored file reflection, function tool loop, prune policy, and shared localization scoring | RQ1 file/function localization only; line localization and patch generation are excluded |
+| [OrcaLoca SearchAgent](https://github.com/fishmingyu/OrcaLoca/tree/37db289be2dc3b7432183fe08b3f06becce87c27) | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
 
 ### What Supported Means
 
@@ -148,7 +149,7 @@ native BM25 control has a Python/document-oriented extension allowlist, so the
 seven-language aggregate is useful as an integration smoke test but not as a
 fair cross-language algorithm comparison.
 
-## LocAgent
+## [LocAgent](https://github.com/gersteinlab/LocAgent)
 
 The LocAgent provider implements the policy's three repository functions:
 
@@ -189,8 +190,11 @@ python examples/integrations/locagent.py \
 
 `provider.bindings()` returns the same-named Python callables for a runtime
 plugin. Modern runtimes can use `provider.dispatch(name, arguments)` directly.
-The supported behavior is pinned to LocAgent revision
-`ef170542a5cca88a1bd8463335ec43de222ed5f9`.
+The supported behavior is pinned to
+[LocAgent revision `ef170542`](https://github.com/gersteinlab/LocAgent/tree/ef170542a5cca88a1bd8463335ec43de222ed5f9).
+The tool surface is also checked against the
+[OpenHands LocAgent implementation](https://github.com/OpenHands/OpenHands/tree/efe287ce3402706a171b3a5fb40f15914e98ef20/openhands/agenthub/loc_agent)
+at its recorded revision.
 
 ### Relation Semantics
 
@@ -272,7 +276,7 @@ pytest -q test/integrations/test_locagent.py \
   test/eval/test_locagent_benchmark_adapter.py
 ```
 
-## Agentless
+## [Agentless](https://github.com/OpenAutoCoder/Agentless)
 
 `AgentlessAgent` preserves the classic Agentless v1.5.0 localization sequence:
 
@@ -313,8 +317,9 @@ python examples/agentless_loc_agent.py \
   --result-path results/agentless.jsonl
 ```
 
-Compatibility is pinned to Agentless `v1.5.0`, revision
-`b150f28465a77a81a7f4776384957a4271f5bd69`. The optional upstream probe reads
+Compatibility is pinned to
+[Agentless `v1.5.0`](https://github.com/OpenAutoCoder/Agentless/tree/b150f28465a77a81a7f4776384957a4271f5bd69).
+The optional upstream probe reads
 that Git object and checks the three vendored prompts byte-for-byte. The
 provider intentionally keeps Agentless's Python-only and `test*` subtree
 filters. Its stdlib-AST skeleton preserves the policy's classes, callables, and
@@ -334,7 +339,7 @@ AGENTLESS_CHECKOUT=/path/to/Agentless \
 pytest -q test/integrations/test_agentless_upstream.py
 ```
 
-## CoSIL
+## [CoSIL](https://github.com/ZhonghaoJiang/CoSIL)
 
 The CoSIL integration follows the two scripts used by the
 [pinned public RQ1 path](https://github.com/ZhonghaoJiang/CoSIL/tree/0568e423735b399d5b089996961fea9ae142e4c7/CoSIL/fl):
@@ -412,7 +417,7 @@ COSIL_CHECKOUT=/path/to/CoSIL \
 pytest -q test/integrations/test_cosil_upstream.py
 ```
 
-## OrcaLoca
+## [OrcaLoca](https://github.com/fishmingyu/OrcaLoca)
 
 The OrcaLoca provider replaces its repository data plane while retaining the
 upstream search policy. It implements the six functions exposed to the model:
@@ -470,8 +475,9 @@ gets isolated lightweight query history, while source, symbol identity,
 containment, dependency distance, and ranges all come from the same
 manifest-backed `ServerContext`.
 
-Compatibility is pinned to OrcaLoca revision
-`37db289be2dc3b7432183fe08b3f06becce87c27`. The adapter preserves its
+Compatibility is pinned to
+[OrcaLoca revision `37db289`](https://github.com/fishmingyu/OrcaLoca/tree/37db289be2dc3b7432183fe08b3f06becce87c27).
+The adapter preserves its
 repository-relative `file::Class::method` identities, 1-based locations, and
 prompt-visible markers. CodeNib's graph supplies identity and relations; a
 lazy, non-executing parse of the manifest-bound Python source restores the
