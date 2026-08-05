@@ -62,13 +62,22 @@ def test_registry_publishers_use_separate_workflows() -> None:
     test = load("release-test.yml")
     verification = load("release-verify.yml")
 
-    verification_job = {
+    production_verification_job = {
+        "name": "Verify release artifacts",
+        "uses": "./.github/workflows/release-verify.yml",
+        "with": {"full": "${{ github.event_name != 'pull_request' }}"},
+        "permissions": {"contents": "read"},
+    }
+    test_verification_job = {
         "name": "Verify release artifacts",
         "uses": "./.github/workflows/release-verify.yml",
         "permissions": {"contents": "read"},
     }
-    assert production["jobs"]["verify"] == verification_job
-    assert test["jobs"]["verify"] == verification_job
+    assert production["jobs"]["verify"] == production_verification_job
+    assert test["jobs"]["verify"] == test_verification_job
+    assert production["concurrency"]["cancel-in-progress"] == (
+        "${{ github.ref_type != 'tag' }}"
+    )
 
     assert set(production["jobs"]) == {
         "verify",
@@ -91,4 +100,16 @@ def test_registry_publishers_use_separate_workflows() -> None:
     )
 
     assert set(verification["on"]) == {"workflow_call"}
+    assert verification["on"]["workflow_call"]["inputs"]["full"] == {
+        "description": "Run the cross-version and installed-service matrix.",
+        "type": "boolean",
+        "default": "true",
+    }
+    for job_name in (
+        "install-smoke",
+        "service-smoke",
+        "agent-smoke",
+        "graph-smoke",
+    ):
+        assert verification["jobs"][job_name]["if"] == "inputs.full"
     assert not any(name.startswith("publish-") for name in verification["jobs"])

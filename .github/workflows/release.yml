@@ -35,12 +35,14 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
   verify:
     name: Verify release artifacts
     uses: ./.github/workflows/release-verify.yml
+    with:
+      full: ${{ github.event_name != 'pull_request' }}
     permissions:
       contents: read
 

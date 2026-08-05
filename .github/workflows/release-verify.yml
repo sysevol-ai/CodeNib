@@ -6,6 +6,11 @@ name: Release verification
 
 on:
   workflow_call:
+    inputs:
+      full:
+        description: Run the cross-version and installed-service matrix.
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -79,6 +84,7 @@ jobs:
 
   install-smoke:
     name: Install smoke (Python ${{ matrix.python-version }})
+    if: inputs.full
     needs: build
     runs-on: self-hosted
     timeout-minutes: 15
@@ -123,6 +129,7 @@ jobs:
 
   service-smoke:
     name: Installed Wiki and MCP services
+    if: inputs.full
     needs: build
     runs-on: self-hosted
     timeout-minutes: 20
@@ -183,6 +190,7 @@ jobs:
 
   agent-smoke:
     name: Installed sparse Ask service
+    if: inputs.full
     needs: build
     runs-on: self-hosted
     timeout-minutes: 20
@@ -234,6 +242,7 @@ jobs:
 
   graph-smoke:
     name: Installed graph and Dependency Map
+    if: inputs.full
     needs: build
     runs-on: self-hosted
     timeout-minutes: 20
