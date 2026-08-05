@@ -73,6 +73,39 @@ Force a clean rebuild with:
 codenib wiki /path/to/repository --rebuild
 ```
 
+## Export A Static Wiki
+
+An existing manifest can be frozen into a serverless directory for GitHub
+Pages or another static host:
+
+```bash
+codenib index /path/to/repository
+codenib export /path/to/repository --output /tmp/repository-wiki
+```
+
+The export records the repository commit, source fingerprint, view
+capabilities, source-location convention, generation mode, and content hashes
+in `codenib-static.json`. It also embeds source slices used by page citations,
+so reading a page does not require the local FastAPI process. CodeNib rejects
+an export when the checkout no longer matches the manifest.
+
+For a GitHub project Pages site, set its mount path to the repository name:
+
+```bash
+codenib export . \
+  --output /tmp/my-project \
+  --base-path /my-project
+```
+
+The output must be outside the target checkout. CodeNib can replace a prior
+CodeNib export, but it refuses to delete an unrelated non-empty directory.
+
+Static mode publishes only capabilities with a serverless implementation:
+Wiki navigation, embedded citations, and precomputed page dependency views.
+Interactive Ask, on-demand edge labels, and arbitrary dependency queries need
+an authenticated CodeNib runtime and are not exposed by the export. No API key,
+GitHub token, endpoint credential, or build-machine absolute path is serialized.
+
 ## Select Repository Views
 
 | Preset | Required package | Views |

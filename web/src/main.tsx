@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import "@/app/globals.css";
 import { routeSegments, useBrowserLocation } from "@/lib/router";
+import { assetUrl, restoreStaticRoute } from "@/lib/runtime";
 
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
 const WikiPageView = lazy(() => import("@/app/[repoId]/page"));
@@ -12,7 +13,7 @@ const AddRepo = lazy(() => import("@/app/add-repo/page"));
 function RouteLoading() {
   return (
     <div className="route-loading" role="status">
-      <img src="/codenib-icon.svg" alt="" />
+      <img src={assetUrl("/codenib-icon.svg")} alt="" />
       <span>Loading CodeNib…</span>
     </div>
   );
@@ -38,6 +39,8 @@ function App() {
   }
   return <WikiPageView repoId={repoId} />;
 }
+
+restoreStaticRoute();
 
 const root = document.getElementById("root");
 if (!root) {
