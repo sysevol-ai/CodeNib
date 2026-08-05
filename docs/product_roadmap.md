@@ -263,25 +263,30 @@ pre-generated pages, and dependency data when those views are available.
 - Support Pages base paths and reject path traversal or secret-bearing output.
 - Verify an export through local static-server and browser smoke tests.
 
-### H2: GitHub Models and BYO providers
+### H2: Local and BYO inference routes ([#419](https://github.com/sysevol-ai/CodeNib/issues/419))
 
-- Give GitHub Models an explicit chat and embedding configuration rather than
-  requiring users to infer an OpenAI-compatible endpoint.
+- Keep the zero-credential path model-free; it must not depend on a hosted
+  inference product to remain useful.
+- Let semantic builds use either a pinned local embedding model or an explicit
+  OpenAI-compatible endpoint. Agent-authored pages use provider-native LiteLLM
+  routes or an explicit BYO endpoint.
 - Apply one precedence rule across CLI, environment, config, and provider
-  defaults; record endpoint identity without credentials.
+  defaults; record provider and endpoint identity without credentials.
 - Validate model, embedding dimension, prompt version, timeout, and budget
-  before an expensive build.
+  before an expensive build, and reject the retired GitHub Models route rather
+  than silently sending requests to a dead service.
 
-### H3: GitHub Action and Pages
+### H3: GitHub Action and Pages ([#422](https://github.com/sysevol-ai/CodeNib/issues/422))
 
 - Restore a compatible prior artifact, update only invalidated views, and
   publish both a commit-addressed context artifact and a static Wiki.
-- Use GitHub Models when permitted, accept an explicit BYO secret, and degrade
-  deterministically when neither is available.
+- Use a local embedding model when the semantic preset requests it, accept an
+  explicit BYO secret for remote embeddings, and degrade deterministically to
+  the model-free product path when no inference route is selected.
 - Never run secret-bearing generation against untrusted fork code or expose
   an Actions token in browser assets.
 
-### H4: Artifact-backed MCP
+### H4: Artifact-backed MCP ([#424](https://github.com/sysevol-ai/CodeNib/issues/424))
 
 - Generate client configuration for supported MCP hosts.
 - Resolve an artifact by repository identity and commit, verify compatibility,
@@ -289,7 +294,7 @@ pre-generated pages, and dependency data when those views are available.
 - Keep tool results bounded, source-linked, and explicit about unavailable
   views.
 
-### H5: Cost-quality accounting
+### H5: Cost-quality accounting ([#426](https://github.com/sysevol-ai/CodeNib/issues/426))
 
 - Report localization quality and cost on the same paired query set.
 - Use **cost per successfully localized query**, not cost per resolved issue,
@@ -302,8 +307,20 @@ pre-generated pages, and dependency data when those views are available.
 
 - Deploy a fresh public repository from a pinned CodeNib release.
 - Reuse its downloaded artifact through MCP at the indexed commit.
-- Exercise GitHub Models, a BYO endpoint, and the no-model fallback.
+- Exercise the no-model path, a pinned local embedding model, and a BYO
+  endpoint.
 - Publish security, provider, migration, and artifact compatibility guidance.
+
+### Post-release: Optional managed semantic plane
+
+The open-source release does not require a CodeNib-operated model service.
+After H6, a managed embedding endpoint may remove model downloads for teams
+that want a hosted route. It must preserve the same inference-route and vector
+compatibility contract, use content-addressed batching and caching, isolate
+tenants, enforce explicit retention and rate limits, and expose measured cost.
+Static Pages and BM25/MCP serving must continue to work when that service is
+absent. This is a separate service milestone, not a hidden prerequisite for the
+open-source product.
 
 Each hosted milestone lands as an independently reviewable PR. Local contract
 tests and a focused end-to-end smoke run precede slow remote CI.
