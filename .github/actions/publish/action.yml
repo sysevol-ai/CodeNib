@@ -201,7 +201,10 @@ runs:
         } | sha256sum | cut -d' ' -f1)"
         cache_prefix="codenib-${RUNNER_OS}-${repository_key}-${identity}"
         cache_key="${cache_prefix}-${source_commit}"
-        safe_repository="$(printf '%s' "$repository" | tr '/:@ ' '----' | tr -cd 'A-Za-z0-9_.-')"
+        safe_repository="$({
+          printf '%s' "$repository" | tr '[:upper:]' '[:lower:]' | \
+            tr '/:@ ' '----' | tr -cd 'a-z0-9_.-'
+        })"
         safe_repository="${safe_repository:-repository}"
         artifact_name="${INPUT_ARTIFACT_NAME:-codenib-context-${safe_repository}-${source_commit:0:12}}"
         if [[ ! "$artifact_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then

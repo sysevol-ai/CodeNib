@@ -220,6 +220,7 @@ def test_publish_action_cache_identity_is_public_and_commit_addressed() -> None:
     assert "git -C" in script
     assert "source_commit" in script
     assert "GITHUB_SHA" not in script
+    assert "tr '[:upper:]' '[:lower:]'" in script
     assert "INPUT_PRESET" in script
     assert "INPUT_EMBEDDING_PROVIDER" in script
     assert "INPUT_EMBEDDING_ENDPOINT" in script
