@@ -106,6 +106,23 @@ Interactive Ask, on-demand edge labels, and arbitrary dependency queries need
 an authenticated CodeNib runtime and are not exposed by the export. No API key,
 GitHub token, endpoint credential, or build-machine absolute path is serialized.
 
+To build the index and both distribution surfaces in one command:
+
+```bash
+codenib publish . \
+  --preset fast \
+  --site-output /tmp/repository-wiki \
+  --context-output /tmp/repository-context \
+  --base-path /repository
+```
+
+The context directory is commit-addressed query-serving state with an
+artifact-relative manifest and file hashes. It excludes mutable maintenance
+caches. Portable publication currently supports `fast` and `semantic`; use the
+local or MCP runtime for graph and Zoekt views. See
+[Publish With GitHub Pages](github_pages.md) for the no-model Action, GitHub
+Models, and BYO endpoint configurations.
+
 ## Select Repository Views
 
 | Preset | Required package | Views |

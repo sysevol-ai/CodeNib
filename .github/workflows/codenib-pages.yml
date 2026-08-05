@@ -1,0 +1,134 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: CodeNib Pages
+
+on:
+  workflow_call:
+    inputs:
+      preset:
+        description: CodeNib view preset.
+        type: string
+        default: fast
+      python-version:
+        description: Python runtime used for indexing.
+        type: string
+        default: "3.12"
+      embedding-provider:
+        description: Embedding provider; semantic defaults to github_models.
+        type: string
+        default: ""
+      embedding-model:
+        description: Embedding model id.
+        type: string
+        default: ""
+      embedding-dimension:
+        description: Embedding vector width.
+        type: string
+        default: ""
+      embedding-endpoint:
+        description: BYO OpenAI-compatible embedding API base.
+        type: string
+        default: ""
+      retention-days:
+        description: Portable context artifact retention.
+        type: number
+        default: 14
+    secrets:
+      embedding_api_key:
+        description: Optional BYO embedding credential.
+        required: false
+    outputs:
+      page-url:
+        description: Deployed Pages URL.
+        value: ${{ jobs.deploy.outputs.page-url }}
+      context-artifact:
+        description: Downloadable context artifact name.
+        value: ${{ jobs.build.outputs.context-artifact }}
+
+concurrency:
+  group: codenib-pages-${{ github.repository_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.event_name != 'pull_request_target' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      models: read
+      pages: write
+    outputs:
+      context-artifact: ${{ steps.publish.outputs.artifact-name }}
+      site-path: ${{ steps.publish.outputs.site-path }}
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout the exact CodeNib workflow revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .codenib-action
+          persist-credentials: false
+
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+
+      - name: Build Wiki and context artifact
+        id: publish
+        uses: ./.codenib-action/.github/actions/publish
+        env:
+          CODENIB_ACTION_EMBEDDING_KEY: >-
+            ${{ inputs.preset == 'semantic' &&
+            inputs.embedding-provider == 'openai' &&
+            secrets.embedding_api_key || '' }}
+        with:
+          base-path: ${{ steps.pages.outputs.base_path }}
+          embedding-api-key-env: >-
+            ${{ inputs.preset == 'semantic' &&
+            inputs.embedding-provider == 'openai' &&
+            secrets.embedding_api_key &&
+            'CODENIB_ACTION_EMBEDDING_KEY' || '' }}
+          embedding-dimension: ${{ inputs.embedding-dimension }}
+          embedding-endpoint: ${{ inputs.embedding-endpoint }}
+          embedding-model: ${{ inputs.embedding-model }}
+          embedding-provider: ${{ inputs.embedding-provider }}
+          preset: ${{ inputs.preset }}
+          python-version: ${{ inputs.python-version }}
+          repository: ${{ github.repository }}
+          retention-days: ${{ inputs.retention-days }}
+          revision: ${{ job.workflow_sha }}
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: ${{ steps.publish.outputs.site-path }}
+
+  deploy:
+    if: ${{ needs.build.result == 'success' }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page-url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

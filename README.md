@@ -50,6 +50,12 @@ agent or code-Wiki framework.
 
 ## News
 
+- **2026-08-04 — Commit-addressed Pages publishing.**
+  [`codenib publish`](docs/github_pages.md) and the reusable GitHub workflow
+  build a no-model BM25 or opt-in semantic Wiki, deploy the static inspection
+  surface, and retain the matching portable context views for the indexed
+  commit. Incremental caches remain private build state rather than part of the
+  downloadable serving artifact.
 - **2026-08-04 — Native repository explorer.**
   [`RepositoryContextExplorer`](codenib/agent/runtime/explorer.py) plans BM25,
   dense, hybrid, reranked, and graph routes over manifest-backed views and
@@ -129,6 +135,13 @@ source citations, and available page-level dependency data. It contains no
 provider credential; interactive Ask and runtime graph exploration remain on
 the local or MCP serving path.
 
+For a repository-hosted Wiki, CodeNib also ships a reusable GitHub workflow
+that incrementally builds the same manifest, deploys the static site to Pages,
+and uploads the matching commit-addressed context artifact. Its default `fast`
+route needs no model credential; semantic search can opt into GitHub Models or
+a BYO OpenAI-compatible endpoint. See
+[GitHub Pages](https://docs.codenib.ai/github_pages/).
+
 See the
 [Quickstart](https://docs.codenib.ai/quickstart/)
 for ports, advanced indexing, and troubleshooting.
@@ -192,6 +205,7 @@ records chunking, graph, incremental, and C++ decoder support.
 ## Documentation
 
 - [Quickstart](https://docs.codenib.ai/quickstart/)
+- [GitHub Pages](https://docs.codenib.ai/github_pages/)
 - [MCP Server](https://docs.codenib.ai/mcp/)
 - [Agent Integrations](https://docs.codenib.ai/agent_integrations/)
 - [Web UI](https://docs.codenib.ai/web_demo/)

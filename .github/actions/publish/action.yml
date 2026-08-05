@@ -1,0 +1,330 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Publish CodeNib repository context
+description: Build a static Wiki and a portable, commit-addressed context artifact.
+
+inputs:
+  repository-path:
+    description: Repository checkout to index.
+    default: "."
+  repository:
+    description: Stable owner/repository identity.
+    default: ""
+  preset:
+    description: Portable CodeNib view preset (fast or semantic).
+    default: fast
+  python-version:
+    description: Python runtime used to build the artifact.
+    default: "3.12"
+  embedding-provider:
+    description: Embedding provider; semantic defaults to github_models.
+    default: ""
+  embedding-model:
+    description: Embedding model id.
+    default: ""
+  embedding-dimension:
+    description: Embedding vector width for a non-default model.
+    default: ""
+  embedding-endpoint:
+    description: BYO OpenAI-compatible embedding API base.
+    default: ""
+  embedding-api-key-env:
+    description: Name of an environment variable containing the embedding key.
+    default: ""
+  base-path:
+    description: URL path where the static Wiki is mounted.
+    default: "/"
+  site-output:
+    description: Static site output directory; defaults under RUNNER_TEMP.
+    default: ""
+  context-output:
+    description: Context artifact output directory; defaults under RUNNER_TEMP.
+    default: ""
+  artifact-name:
+    description: Uploaded context artifact name.
+    default: ""
+  upload-context:
+    description: Upload the context artifact with actions/upload-artifact.
+    default: "true"
+  retention-days:
+    description: Context artifact retention in days.
+    default: "14"
+  cache:
+    description: Restore and save incremental CodeNib repository state.
+    default: "true"
+  revision:
+    description: Optional CodeNib revision included in cache compatibility.
+    default: ""
+
+outputs:
+  site-path:
+    description: Absolute static site path.
+    value: ${{ steps.inputs.outputs.site_path }}
+  context-path:
+    description: Absolute portable context artifact path.
+    value: ${{ steps.inputs.outputs.context_path }}
+  context-manifest:
+    description: Portable context metadata path.
+    value: ${{ steps.inputs.outputs.context_manifest }}
+  artifact-name:
+    description: Uploaded context artifact name.
+    value: ${{ steps.inputs.outputs.artifact_name }}
+  cache-hit:
+    description: Whether the exact commit cache key was restored.
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-key:
+    description: Immutable cache key for this build.
+    value: ${{ steps.inputs.outputs.cache_key }}
+  source-commit:
+    description: Exact commit indexed from repository-path.
+    value: ${{ steps.inputs.outputs.source_commit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve public build identity
+      id: inputs
+      shell: bash
+      env:
+        ACTION_REF: ${{ github.action_ref }}
+        INPUT_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        INPUT_BASE_PATH: ${{ inputs.base-path }}
+        INPUT_CACHE: ${{ inputs.cache }}
+        INPUT_CONTEXT_OUTPUT: ${{ inputs.context-output }}
+        INPUT_EMBEDDING_DIMENSION: ${{ inputs.embedding-dimension }}
+        INPUT_EMBEDDING_ENDPOINT: ${{ inputs.embedding-endpoint }}
+        INPUT_EMBEDDING_MODEL: ${{ inputs.embedding-model }}
+        INPUT_EMBEDDING_PROVIDER: ${{ inputs.embedding-provider }}
+        INPUT_PRESET: ${{ inputs.preset }}
+        INPUT_PYTHON_VERSION: ${{ inputs.python-version }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
+        INPUT_REVISION: ${{ inputs.revision }}
+        INPUT_SITE_OUTPUT: ${{ inputs.site-output }}
+        INPUT_RETENTION_DAYS: ${{ inputs.retention-days }}
+        INPUT_UPLOAD_CONTEXT: ${{ inputs.upload-context }}
+      run: |
+        set -euo pipefail
+
+        require_single_line() {
+          local name="$1"
+          local value="${!name}"
+          if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+            echo "$name must not contain a line break" >&2
+            exit 2
+          fi
+        }
+        for name in \
+          INPUT_ARTIFACT_NAME INPUT_BASE_PATH INPUT_CACHE INPUT_CONTEXT_OUTPUT \
+          INPUT_EMBEDDING_DIMENSION INPUT_EMBEDDING_ENDPOINT \
+          INPUT_EMBEDDING_MODEL INPUT_EMBEDDING_PROVIDER INPUT_PRESET \
+          INPUT_PYTHON_VERSION INPUT_REPOSITORY INPUT_REPOSITORY_PATH \
+          INPUT_RETENTION_DAYS INPUT_REVISION INPUT_SITE_OUTPUT \
+          INPUT_UPLOAD_CONTEXT; do
+          require_single_line "$name"
+        done
+
+        case "$INPUT_PRESET" in
+          fast|semantic) ;;
+          *) echo "unsupported CodeNib preset: $INPUT_PRESET" >&2; exit 2 ;;
+        esac
+        case "$INPUT_CACHE:$INPUT_UPLOAD_CONTEXT" in
+          true:true|true:false|false:true|false:false) ;;
+          *) echo "cache and upload-context must be true or false" >&2; exit 2 ;;
+        esac
+        if [[ ! "$INPUT_RETENTION_DAYS" =~ ^[0-9]+$ ]] ||
+          (( INPUT_RETENTION_DAYS < 1 || INPUT_RETENTION_DAYS > 90 )); then
+          echo "retention-days must be an integer from 1 through 90" >&2
+          exit 2
+        fi
+
+        embedding_provider="$INPUT_EMBEDDING_PROVIDER"
+        if [[ "$INPUT_PRESET" == "semantic" && -z "$embedding_provider" ]]; then
+          embedding_provider="github_models"
+        fi
+        case "$embedding_provider" in
+          ""|github_models|huggingface|openai) ;;
+          *) echo "unsupported embedding provider: $embedding_provider" >&2; exit 2 ;;
+        esac
+
+        repo_path="$(realpath -e "$INPUT_REPOSITORY_PATH" 2>/dev/null || true)"
+        if [[ -z "$repo_path" || ! -d "$repo_path" ]]; then
+          echo "repository-path must resolve to a directory" >&2
+          exit 2
+        fi
+        source_commit="$(git -C "$repo_path" rev-parse --verify HEAD 2>/dev/null || true)"
+        if [[ ! "$source_commit" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "repository-path must be a Git checkout with a resolved HEAD" >&2
+          exit 2
+        fi
+
+        case "$INPUT_PRESET" in
+          fast) extras="" ;;
+          semantic)
+            if [[ "$embedding_provider" == "huggingface" ]]; then
+              extras="semantic"
+            else
+              extras="semantic-remote"
+            fi
+            ;;
+        esac
+
+        site_path="${INPUT_SITE_OUTPUT:-$RUNNER_TEMP/codenib-site}"
+        context_path="${INPUT_CONTEXT_OUTPUT:-$RUNNER_TEMP/codenib-context}"
+        site_path="$(realpath -m "$site_path")"
+        context_path="$(realpath -m "$context_path")"
+        if [[ "$site_path" == "$context_path" ||
+          "$site_path" == "$context_path"/* ||
+          "$context_path" == "$site_path"/* ]]; then
+          echo "site-output and context-output must not overlap" >&2
+          exit 2
+        fi
+        frontend_path="$(realpath -m "$GITHUB_ACTION_PATH/../../../web/dist")"
+        repository="${INPUT_REPOSITORY:-$GITHUB_REPOSITORY}"
+        if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+          echo "repository must use owner/name form" >&2
+          exit 2
+        fi
+        repository_key="${GITHUB_REPOSITORY_ID:-$repository}"
+        revision="${INPUT_REVISION:-${ACTION_REF:-source}}"
+        source_hash="$({
+          sha256sum "$GITHUB_ACTION_PATH/action.yml"
+          sha256sum "$GITHUB_ACTION_PATH/../../../pyproject.toml"
+        } | sha256sum | cut -d' ' -f1)"
+        identity="$({
+          printf '%s\0' "$revision" "$source_hash" "$INPUT_PYTHON_VERSION"
+          printf '%s\0' "$INPUT_PRESET" "$embedding_provider"
+          printf '%s\0' "$INPUT_EMBEDDING_MODEL" "$INPUT_EMBEDDING_DIMENSION"
+          printf '%s\0' "$INPUT_EMBEDDING_ENDPOINT"
+        } | sha256sum | cut -d' ' -f1)"
+        cache_prefix="codenib-${RUNNER_OS}-${repository_key}-${identity}"
+        cache_key="${cache_prefix}-${source_commit}"
+        safe_repository="$(printf '%s' "$repository" | tr '/:@ ' '----' | tr -cd 'A-Za-z0-9_.-')"
+        safe_repository="${safe_repository:-repository}"
+        artifact_name="${INPUT_ARTIFACT_NAME:-codenib-context-${safe_repository}-${source_commit:0:12}}"
+        if [[ ! "$artifact_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+          echo "artifact-name must be 1-128 portable filename characters" >&2
+          exit 2
+        fi
+
+        {
+          echo "artifact_name=$artifact_name"
+          echo "cache_key=$cache_key"
+          echo "cache_prefix=$cache_prefix-"
+          echo "context_manifest=$context_path/codenib-context.json"
+          echo "context_path=$context_path"
+          echo "embedding_provider=$embedding_provider"
+          echo "extras=$extras"
+          echo "frontend_path=$frontend_path"
+          echo "repository=$repository"
+          echo "site_path=$site_path"
+          echo "source_commit=$source_commit"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Set up Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: ${{ github.action_path }}/../../../web/package-lock.json
+
+    - name: Restore incremental repository state
+      id: restore
+      if: ${{ inputs.cache == 'true' }}
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: ~/.codenib/repositories
+        key: ${{ steps.inputs.outputs.cache_key }}
+        restore-keys: ${{ steps.inputs.outputs.cache_prefix }}
+
+    - name: Build static frontend
+      shell: bash
+      env:
+        FRONTEND_OUTPUT: ${{ steps.inputs.outputs.frontend_path }}
+      run: |
+        set -euo pipefail
+        npm ci --prefix "$GITHUB_ACTION_PATH/../../../web"
+        npm run build --prefix "$GITHUB_ACTION_PATH/../../../web" -- \
+          --outDir "$FRONTEND_OUTPUT"
+
+    - name: Install CodeNib
+      shell: bash
+      env:
+        EXTRAS: ${{ steps.inputs.outputs.extras }}
+      run: |
+        set -euo pipefail
+        if [[ -n "$EXTRAS" ]]; then
+          python -m pip install "$GITHUB_ACTION_PATH/../../..[$EXTRAS]"
+        else
+          python -m pip install "$GITHUB_ACTION_PATH/../../.."
+        fi
+
+    - name: Publish repository context
+      shell: bash
+      env:
+        CODENIB_ACTION_EMBEDDING_KEY_ENV: ${{ inputs.embedding-api-key-env }}
+        CONTEXT_OUTPUT: ${{ steps.inputs.outputs.context_path }}
+        EMBEDDING_DIMENSION: ${{ inputs.embedding-dimension }}
+        EMBEDDING_ENDPOINT: ${{ inputs.embedding-endpoint }}
+        EMBEDDING_MODEL: ${{ inputs.embedding-model }}
+        EMBEDDING_PROVIDER: ${{ steps.inputs.outputs.embedding_provider }}
+        FRONTEND_OUTPUT: ${{ steps.inputs.outputs.frontend_path }}
+        GITHUB_TOKEN: >-
+          ${{ inputs.preset == 'semantic' &&
+          steps.inputs.outputs.embedding_provider == 'github_models' &&
+          github.token || '' }}
+        INPUT_BASE_PATH: ${{ inputs.base-path }}
+        INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
+        PRESET: ${{ inputs.preset }}
+        REPOSITORY: ${{ steps.inputs.outputs.repository }}
+        SITE_OUTPUT: ${{ steps.inputs.outputs.site_path }}
+      run: |
+        set -euo pipefail
+        command=(
+          codenib publish "$INPUT_REPOSITORY_PATH"
+          --preset "$PRESET"
+          --site-output "$SITE_OUTPUT"
+          --context-output "$CONTEXT_OUTPUT"
+          --repository "$REPOSITORY"
+          --base-path "$INPUT_BASE_PATH"
+          --frontend-dir "$FRONTEND_OUTPUT"
+        )
+        if [[ -n "$EMBEDDING_PROVIDER" ]]; then
+          command+=(--embedding-provider "$EMBEDDING_PROVIDER")
+        fi
+        if [[ -n "$EMBEDDING_MODEL" ]]; then
+          command+=(--embedding-model "$EMBEDDING_MODEL")
+        fi
+        if [[ -n "$EMBEDDING_DIMENSION" ]]; then
+          command+=(--embedding-dimension "$EMBEDDING_DIMENSION")
+        fi
+        if [[ -n "$EMBEDDING_ENDPOINT" ]]; then
+          command+=(--embedding-endpoint "$EMBEDDING_ENDPOINT")
+        fi
+        if [[ -n "$CODENIB_ACTION_EMBEDDING_KEY_ENV" ]]; then
+          command+=(--embedding-api-key-env "$CODENIB_ACTION_EMBEDDING_KEY_ENV")
+        fi
+        "${command[@]}"
+
+    - name: Save incremental repository state
+      if: ${{ inputs.cache == 'true' && steps.restore.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: ~/.codenib/repositories
+        key: ${{ steps.inputs.outputs.cache_key }}
+
+    - name: Upload portable context artifact
+      if: ${{ inputs.upload-context == 'true' }}
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      with:
+        name: ${{ steps.inputs.outputs.artifact_name }}
+        path: ${{ steps.inputs.outputs.context_path }}
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}

@@ -165,6 +165,7 @@ nav:
   - Get Started:
       - get-started/index.md
       - Quickstart: quickstart.md
+      - GitHub Pages: github_pages.md
       - Web UI: web_demo.md
       - Running Locally: running-locally.md
       - Language Capabilities: language_capabilities.md

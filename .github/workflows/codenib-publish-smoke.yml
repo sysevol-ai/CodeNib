@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: CodeNib Publish Smoke
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/publish/**"
+      - ".github/workflows/codenib-pages.yml"
+      - ".github/workflows/codenib-publish-smoke.yml"
+      - "codenib/artifacts/**"
+      - "codenib/cli.py"
+      - "codenib/web/**"
+      - "pyproject.toml"
+      - "setup.py"
+      - "web/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/actions/publish/**"
+      - ".github/workflows/codenib-pages.yml"
+      - ".github/workflows/codenib-publish-smoke.yml"
+      - "codenib/artifacts/**"
+      - "codenib/cli.py"
+      - "codenib/web/**"
+      - "pyproject.toml"
+      - "setup.py"
+      - "web/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-model:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare fixture repository
+        id: fixture
+        shell: bash
+        env:
+          FIXTURE_SOURCE: ${{ github.workspace }}/test/fixtures/publish_repo/sample.py
+          REPOSITORY_PATH: ${{ runner.temp }}/codenib-publish-repo
+        run: |
+          set -euo pipefail
+          mkdir -p "$REPOSITORY_PATH"
+          cp "$FIXTURE_SOURCE" "$REPOSITORY_PATH/sample.py"
+          git -C "$REPOSITORY_PATH" init --quiet
+          git -C "$REPOSITORY_PATH" config user.name "CodeNib Smoke"
+          git -C "$REPOSITORY_PATH" config user.email "codenib@example.invalid"
+          git -C "$REPOSITORY_PATH" add sample.py
+          git -C "$REPOSITORY_PATH" commit --quiet -m "fixture"
+          echo "path=$REPOSITORY_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Exercise local publish Action
+        id: publish
+        uses: ./.github/actions/publish
+        env:
+          CODENIB_ACTION_TEST_TOKEN: never-publish-this-value
+        with:
+          base-path: /publish-smoke
+          cache: "false"
+          repository-path: ${{ steps.fixture.outputs.path }}
+          upload-context: "false"
+
+      - name: Validate published identities
+        shell: bash
+        env:
+          CONTEXT_MANIFEST: ${{ steps.publish.outputs.context-manifest }}
+          SITE_PATH: ${{ steps.publish.outputs.site-path }}
+        run: |
+          set -euo pipefail
+          test -f "$SITE_PATH/index.html"
+          test -f "$SITE_PATH/codenib-static.json"
+          test -f "$CONTEXT_MANIFEST"
+          jq -e '.schema == "codenib.context-artifact.v1"' "$CONTEXT_MANIFEST"
+          jq -e '.views == ["bm25"]' "$CONTEXT_MANIFEST"
+          if grep -R -F "never-publish-this-value" "$SITE_PATH" "$(dirname "$CONTEXT_MANIFEST")"; then
+            echo "configured test token leaked into publication output" >&2
+            exit 1
+          fi
