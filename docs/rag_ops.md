@@ -77,7 +77,7 @@ quality sweep.
 
 | Model or family | Strategy | Retained benchmark coverage |
 | --- | --- | --- |
-| SweRankEmbed-Large, jina-code-embeddings-1.5b, Qwen3-Embedding-4B | Dual-encoder candidate rerank | Complete 2 first-stage models x 3 rerank models matrix, 100 rows per pair |
+| [SweRankEmbed-Large](https://huggingface.co/fishmingyu/SweRankEmbed-Large), [jina-code-embeddings-1.5b](https://huggingface.co/jinaai/jina-code-embeddings-1.5b), [Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | Dual-encoder candidate rerank | Complete 2 first-stage models x 3 rerank models matrix, 100 rows per pair |
 | [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) | Pairwise yes/no scoring | 100 rows at candidate widths 30, 50, and 100 |
 | [Qwen3-Reranker-4B](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | Pairwise yes/no scoring | 100-row runs across first-stage models and candidate widths 30, 50, and 100 |
 | [Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Pairwise yes/no scoring | 100 rows at candidate widths 30, 50, and 100 with SweRankEmbed-Small |
