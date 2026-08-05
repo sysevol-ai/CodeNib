@@ -231,9 +231,86 @@ Acceptance evidence on 2026-07-26:
   Dependency Map rendered a real retrieval-pipeline neighborhood with nine
   symbols, eight edges, and the partial-language coverage notice.
 
+## Hosted Distribution Program
+
+Status: active. Tracked by
+[RFC #415](https://github.com/sysevol-ai/CodeNib/issues/415).
+
+The local Developer Preview above established the compiler and runtime. The
+next product stage makes their output reusable across deployment surfaces:
+
+> Build repository context once, then serve the same provenance-checked
+> artifact to people and coding agents.
+
+The program has two user-facing surfaces that share one artifact contract:
+
+1. **Static Wiki.** A public repository can build or incrementally update its
+   views in GitHub Actions and publish a useful, serverless Pages site.
+2. **Agent runtime.** Local and team MCP clients can load the artifact for the
+   exact repository commit instead of compiling another private copy.
+
+Generation and embeddings are build-time provider capabilities in the static
+surface. A Pages export never contains a provider credential, and it does not
+claim query-time semantic search when no authenticated runtime exists. The
+offline fallback remains useful through lexical search, source navigation,
+pre-generated pages, and dependency data when those views are available.
+
+### H1: Static artifact contract ([#416](https://github.com/sysevol-ai/CodeNib/issues/416))
+
+- Export deterministic, API-shaped Wiki data and the packaged frontend.
+- Record repository, commit, source fingerprint, schema, builder profile,
+  capabilities, source-address semantics, and generation provenance.
+- Support Pages base paths and reject path traversal or secret-bearing output.
+- Verify an export through local static-server and browser smoke tests.
+
+### H2: GitHub Models and BYO providers
+
+- Give GitHub Models an explicit chat and embedding configuration rather than
+  requiring users to infer an OpenAI-compatible endpoint.
+- Apply one precedence rule across CLI, environment, config, and provider
+  defaults; record endpoint identity without credentials.
+- Validate model, embedding dimension, prompt version, timeout, and budget
+  before an expensive build.
+
+### H3: GitHub Action and Pages
+
+- Restore a compatible prior artifact, update only invalidated views, and
+  publish both a commit-addressed context artifact and a static Wiki.
+- Use GitHub Models when permitted, accept an explicit BYO secret, and degrade
+  deterministically when neither is available.
+- Never run secret-bearing generation against untrusted fork code or expose
+  an Actions token in browser assets.
+
+### H4: Artifact-backed MCP
+
+- Generate client configuration for supported MCP hosts.
+- Resolve an artifact by repository identity and commit, verify compatibility,
+  then load it without rebuilding the repository.
+- Keep tool results bounded, source-linked, and explicit about unavailable
+  views.
+
+### H5: Cost-quality accounting
+
+- Report localization quality and cost on the same paired query set.
+- Use **cost per successfully localized query**, not cost per resolved issue,
+  until patch generation and test outcomes are measured.
+- Separate cached and uncached model input, embedding and reranking calls,
+  amortized build cost, and provider price snapshots. Copilot premium requests
+  remain a separate billing unit rather than a token-cost proxy.
+
+### H6: Hosted release acceptance
+
+- Deploy a fresh public repository from a pinned CodeNib release.
+- Reuse its downloaded artifact through MCP at the indexed commit.
+- Exercise GitHub Models, a BYO endpoint, and the no-model fallback.
+- Publish security, provider, migration, and artifact compatibility guidance.
+
+Each hosted milestone lands as an independently reviewable PR. Local contract
+tests and a focused end-to-end smoke run precede slow remote CI.
+
 ## Completion Rule
 
-The product goal remains active until all acceptance gates relevant to the
-Developer Preview are implemented, locally verified, documented, and
-reproduced from the packaged artifact. A single successful demo repository or
-green remote CI run does not complete the goal.
+The Developer Preview baseline is complete. The hosted product goal remains
+active until H1-H6 are implemented, locally verified, documented, and
+reproduced from pinned release artifacts. A single successful demo repository
+or green remote CI run does not complete the goal.
