@@ -68,6 +68,7 @@ retrieval floor the agent builds on.
 | [`embedding_retrieve_baseline.py`](embedding_retrieve_baseline.py) | Dense embedding (FAISS) only. Supports **`--index-type flat\|ivf`** (see below). |
 | [`graph_retrieve_baseline.py`](graph_retrieve_baseline.py) | Symbol-graph / GraphRAG retrieval. |
 | [`retrieve_rerank.py`](retrieve_rerank.py) | Retrieve → rerank cascade (`RetrieveRerankPipeline`). |
+| [`swerank_retrieve_rerank.py`](swerank_retrieve_rerank.py) | Runnable SweRank recipe over one local repository. |
 | [`agentless.py`](agentless.py) | Agentless-style retrieval pipeline. |
 
 ```bash
@@ -76,6 +77,52 @@ python examples/embedding_retrieve_baseline.py \
     --embedding-model nomic-ai/CodeRankEmbed \
     --result-path results/embedding_baseline.json
 ```
+
+### SweRank retrieve → rerank
+
+The recipe makes the candidate funnel explicit: SweRankEmbed-Small retrieves
+100 L2 code chunks, the selected reranker scores the first 30, and CodeNib
+returns the final 10 by default. Install the semantic stack first:
+
+```bash
+pip install "codenib[semantic,agent]"
+```
+
+For the SweRankLLM listwise route, serve SweRankLLM-Small through an
+OpenAI-compatible endpoint and run the recipe in a second terminal:
+
+```bash
+pip install vllm
+vllm serve Salesforce/SweRankLLM-Small \
+  --served-model-name swerank-llm-small --port 9000
+
+python examples/swerank_retrieve_rerank.py /path/to/repo \
+  --query "Issue or change request to localize"
+```
+
+The one-process alternative uses SweRankEmbed-Large to rescore the candidate
+contents and does not need an LLM server. The model card requires a CUDA stack
+with FlashAttention for this 7B route:
+
+```bash
+python examples/swerank_retrieve_rerank.py /path/to/repo \
+  --query "Issue or change request to localize" \
+  --reranker embed-large
+```
+
+The default dense-index cache is outside the checkout and keyed by the clean
+Git commit or, for dirty and non-Git repositories, a source-content
+fingerprint. Pass `--index-dir` only when the caller manages that identity
+boundary itself.
+
+Both model routes apply the prompt names published by the model cards through
+CodeNib's embedding prompt registry and L2-normalize vectors before inner-product
+scoring. SweRank weights use CC-BY-NC-4.0 and were trained for issue localization
+on Python repositories; other languages are a supported execution path, not a
+retained quality claim. CodeNib implements the published RankGPT prompt and
+permutation parser but retains its own overlapping window score aggregation, so
+this is an integration recipe rather than a claim of bit-for-bit reproduction
+of the upstream evaluation harness.
 
 ### FAISS index type: flat vs IVF
 

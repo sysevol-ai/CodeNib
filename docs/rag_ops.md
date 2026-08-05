@@ -88,6 +88,11 @@ The reproducible entry points are the
 [embedding sweep](https://github.com/sysevol-ai/CodeNib/blob/main/scripts/embeddings/eval_codenib_base_embeddings.sh)
 and
 [rerank matrix](https://github.com/sysevol-ai/CodeNib/blob/main/scripts/embeddings/eval_codenib_base_rerank_matrix.sh).
+For a repository-level invocation rather than a dataset sweep, use the
+[SweRank retrieve-rerank recipe](https://github.com/sysevol-ai/CodeNib/blob/main/examples/swerank_retrieve_rerank.py).
+It exposes a SweRankEmbed-Small → SweRankLLM-Small listwise path
+and a one-process SweRankEmbed-Small → SweRankEmbed-Large path over the same
+`RetrieveRerankPipeline` contract.
 Historical retrieval artifacts recorded model IDs but not immutable model
 revisions; the paper artifact reports that provenance limit. A model not listed
 here may still run through a generic adapter, but it is not a validated quality

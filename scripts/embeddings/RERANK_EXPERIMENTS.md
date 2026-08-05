@@ -145,7 +145,9 @@ Provider strings follow litellm conventions:
 - Anthropic: `anthropic/claude-sonnet-4-6`
 - OpenAI: `openai/gpt-4o-mini`
 - Google: `gemini/gemini-3-flash-preview` (verify exact ID via litellm docs)
-- Salesforce SweRankLLM: needs a custom listwise wrapper (TODO).
+- Salesforce SweRankLLM: use
+  `examples/swerank_retrieve_rerank.py --reranker llm-small`; it selects the
+  implemented RankGPT text contract rather than structured JSON output.
 
 ## Env knobs (matrix sweep)
 

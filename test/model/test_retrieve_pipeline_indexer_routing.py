@@ -156,3 +156,49 @@ def test_graph_retrieve_pipeline_name_is_sparse_seeded_alias():
         pipeline_module.GraphRetrievePipeline,
         pipeline_module.SparseSeededGraphRetrievePipeline,
     )
+
+
+def test_retrieve_rerank_cache_miss_reuses_loaded_embedding(monkeypatch, tmp_path):
+    from codenib.model import retrieve_rerank_pipeline as pipeline_module
+
+    embedding = object()
+    built_store = object()
+    builder_calls = []
+
+    class FakeVectorStore:
+        def __init__(self, **kwargs):
+            self.embedding = embedding
+            self.l0_documents = []
+            self.l2_documents = []
+
+    def fake_build_vector_store(**kwargs):
+        builder_calls.append(kwargs)
+        return built_store
+
+    monkeypatch.setattr(pipeline_module, "CodeVectorStore", FakeVectorStore)
+    monkeypatch.setattr(
+        pipeline_module,
+        "build_hierarchical_vector_store",
+        fake_build_vector_store,
+    )
+
+    pipeline = object.__new__(pipeline_module.RetrieveRerankPipeline)
+    pipeline.repo_path = str(tmp_path)
+    pipeline.index_path = tmp_path / "index"
+    pipeline.index_path.mkdir()
+    pipeline.retrieval_level = "l2"
+    pipeline.languages = ["python"]
+    pipeline.max_lines_per_chunk = 300
+    pipeline.index_metric = "ip"
+    pipeline.profiler = None
+
+    result = pipeline._initialize_vector_store(
+        embedding_model="Salesforce/SweRankEmbed-Small",
+        embedding_provider="huggingface",
+        embedding_dimension=768,
+        embedding_kwargs={"encode_kwargs": {"normalize_embeddings": True}},
+    )
+
+    assert result is built_store
+    assert len(builder_calls) == 1
+    assert builder_calls[0]["embedding"] is embedding
