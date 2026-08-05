@@ -23,13 +23,13 @@ def test_project_identity_and_tag_match_release_metadata() -> None:
     name, version = project_identity(root / "pyproject.toml")
 
     assert name == "codenib"
-    assert expected_tag(version) == "v0.1.0"
-    validate_tag("v0.1.0", version)
+    assert expected_tag(version) == "v0.2.0a1"
+    validate_tag("v0.2.0a1", version)
 
 
 def test_release_tag_must_match_project_version() -> None:
     with pytest.raises(ReleaseValidationError, match="does not match"):
-        validate_tag("v0.2.0", "0.1.0")
+        validate_tag("v0.1.0", "0.2.0a1")
 
 
 def test_packaged_readme_requires_the_arxiv_citation() -> None:

@@ -13,7 +13,8 @@ installed distribution metadata generated from it.
 ## Automated Gates
 
 The reusable Release verification workflow runs from both publishing
-workflows. It:
+workflows. Pull requests build and inspect the distribution once. Pushes to
+`main`, version tags, and explicit TestPyPI dispatches run the complete gate:
 
 1. Tests and production-builds the packaged Wiki frontend.
 2. Builds one sdist and one universal wheel.
@@ -61,8 +62,11 @@ that each pending publisher appears on the corresponding registry account page
 before dispatching a publish workflow.
 
 The corresponding GitHub environments should restrict deployments to trusted
-maintainers. Each publishing workflow receives `id-token: write` only in its
-publishing job; no long-lived PyPI token or runner-local `.pypirc` is used.
+maintainers. TestPyPI currently publishes through OIDC. Production PyPI uses
+the environment-scoped `PYPI_API_TOKEN` fallback added after the `v0.1.0`
+bootstrap; [issue #384](https://github.com/sysevol-ai/CodeNib/issues/384)
+tracks restoring its trusted publisher and revoking that token. No publishing
+workflow reads a runner-local `.pypirc`.
 
 ## Public Surface Gate
 
@@ -92,7 +96,8 @@ on PyPI.
    TestPyPI Release workflow from `main`.
 6. Confirm the TestPyPI registry-download and installed-CLI smoke job passes.
 7. Complete the public-surface gate above.
-8. Confirm the PyPI pending publisher is visible.
+8. Confirm the production `pypi` environment still has its scoped publisher
+   credential, or complete #384 and update the workflow to OIDC first.
 9. Create and push an annotated `v<version>` tag.
 10. Confirm the PyPI deployment and generated prerelease GitHub Release.
 

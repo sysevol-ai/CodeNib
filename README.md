@@ -31,6 +31,7 @@ SPDX-License-Identifier: Apache-2.0
   </p>
   <p>
     <a href="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml"><img src="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://pypi.org/project/codenib/"><img src="https://img.shields.io/pypi/v/codenib.svg" alt="PyPI version"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>
     <img src="https://img.shields.io/badge/Release-Developer_Preview-EA580C.svg" alt="Developer Preview">
@@ -50,12 +51,14 @@ agent or code-Wiki framework.
 
 ## News
 
-- **2026-08-04 — Commit-addressed Pages publishing.**
-  [`codenib publish`](docs/github_pages.md) and the reusable GitHub workflow
-  deploy a no-model static Wiki and retain a matching BM25 or opt-in
-  vector-enhanced context artifact for the indexed commit. Incremental caches
-  remain private build state rather than part of the downloadable serving
-  artifact.
+- **2026-08-05 — CodeNib 0.2.0 Alpha 1: build once, serve everywhere.**
+  [`codenib publish`](https://docs.codenib.ai/github_pages/) and the reusable
+  GitHub workflow deploy a no-model static Wiki and retain a matching BM25 or
+  opt-in vector-enhanced context artifact for the indexed commit. The verified
+  artifact can be rebound to that checkout and served through MCP without
+  rebuilding; incremental caches remain private build state rather than part
+  of the downloadable serving artifact. See the
+  [0.2.0 Alpha 1 notes](https://docs.codenib.ai/releases/0.2.0/).
 - **2026-08-04 — Native repository explorer.**
   [`RepositoryContextExplorer`](codenib/agent/runtime/explorer.py) plans BM25,
   dense, hybrid, reranked, and graph routes over manifest-backed views and
