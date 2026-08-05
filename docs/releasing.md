@@ -28,11 +28,14 @@ workflows. It:
    repository-aware diagnostics, a real caller-to-callee graph edge, source
    anchors, and the installed Dependency Map API.
 
-Manually dispatching the TestPyPI Release workflow from `main` runs these gates
-and then publishes to TestPyPI. Production publishing remains in the separate
-Release workflow and requires a `v<version>` tag that exactly matches
-`project.version`. After PyPI publication, the workflow creates a prerelease
-GitHub Release containing the distributions and `SHA256SUMS`.
+Manually dispatching the TestPyPI Release workflow from `main` runs these gates,
+publishes to TestPyPI, then downloads that exact version from TestPyPI's public
+simple index. The workflow byte-compares the downloaded wheel with the verified
+build before installing it in a fresh environment and exercising a real BM25
+index build. Production publishing remains in the separate Release workflow
+and requires a `v<version>` tag that exactly matches `project.version`. After
+PyPI publication, the workflow creates a prerelease GitHub Release containing
+the distributions and `SHA256SUMS`.
 
 ## Trusted Publisher Setup
 
@@ -87,7 +90,7 @@ on PyPI.
 4. Merge the release commit to `main` and confirm its package gates pass.
 5. Confirm the TestPyPI pending publisher is visible, then dispatch the
    TestPyPI Release workflow from `main`.
-6. Install and test the TestPyPI artifact in a clean environment.
+6. Confirm the TestPyPI registry-download and installed-CLI smoke job passes.
 7. Complete the public-surface gate above.
 8. Confirm the PyPI pending publisher is visible.
 9. Create and push an annotated `v<version>` tag.

@@ -91,13 +91,37 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "${{ secrets.PYPI_API_TOKEN }}"
     )
 
-    assert set(test["jobs"]) == {"verify", "publish-testpypi"}
+    assert set(test["jobs"]) == {
+        "verify",
+        "publish-testpypi",
+        "verify-testpypi-install",
+    }
     test_publisher = test["jobs"]["publish-testpypi"]
     assert test_publisher["environment"]["name"] == "testpypi"
     assert (
         publisher_step(test_publisher)["with"]["repository-url"]
         == "https://test.pypi.org/legacy/"
     )
+    test_install = test["jobs"]["verify-testpypi-install"]
+    assert test_install["needs"] == "publish-testpypi"
+    assert test_install["runs-on"] == "ubuntu-latest"
+    assert test_install["permissions"] == {"contents": "read"}
+    step_names = [step["name"] for step in test_install["steps"]]
+    assert step_names.index("Resolve release version") < step_names.index(
+        "Download and verify the TestPyPI wheel"
+    )
+    assert step_names.index("Download and verify the TestPyPI wheel") < (
+        step_names.index("Install the registry wheel")
+    )
+    install_steps = {step["name"]: step for step in test_install["steps"]}
+    assert install_steps["Resolve release version"]["id"] == "version"
+    download = install_steps["Download and verify the TestPyPI wheel"]["run"]
+    assert "--index-url https://test.pypi.org/simple/" in download
+    assert "--no-deps" in download
+    assert "hashlib.sha256" in download
+    exercise = install_steps["Exercise the installed CLI"]["run"]
+    assert "doctor --require core --require wiki" in exercise
+    assert "scripts/smoke_release_install.py" in exercise
 
     assert set(verification["on"]) == {"workflow_call"}
     assert verification["on"]["workflow_call"]["inputs"]["full"] == {
