@@ -20,9 +20,28 @@ from codenib.web.local import prepare_local_wiki
 def test_parser_exposes_release_commands() -> None:
     parser = cli.build_parser()
 
-    for command in ("index", "wiki", "mcp", "doctor"):
+    for command in ("index", "wiki", "export", "mcp", "doctor"):
         args = parser.parse_args([command])
         assert args.command == command
+
+
+def test_export_parser_accepts_pages_mount_options() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "export",
+            ".",
+            "--output",
+            "/tmp/wiki",
+            "--base-path",
+            "/project",
+            "--frontend-dir",
+            "/tmp/frontend",
+        ]
+    )
+
+    assert args.output == "/tmp/wiki"
+    assert args.base_path == "/project"
+    assert args.frontend_dir == "/tmp/frontend"
 
 
 def test_wiki_parser_accepts_headless_quality_audit() -> None:

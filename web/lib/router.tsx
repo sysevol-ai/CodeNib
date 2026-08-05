@@ -4,6 +4,7 @@ import {
   type AnchorHTMLAttributes,
   type MouseEvent,
 } from "react";
+import { stripBasePath, withBasePath } from "./runtime";
 
 export interface BrowserLocation {
   pathname: string;
@@ -12,13 +13,13 @@ export interface BrowserLocation {
 
 function currentLocation(): BrowserLocation {
   return {
-    pathname: window.location.pathname,
+    pathname: stripBasePath(window.location.pathname),
     search: window.location.search,
   };
 }
 
 export function navigate(href: string): void {
-  window.history.pushState(null, "", href);
+  window.history.pushState(null, "", withBasePath(href));
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
@@ -57,7 +58,7 @@ export function AppLink({
     navigate(href);
   }
 
-  return <a {...props} href={href} target={target} onClick={follow} />;
+  return <a {...props} href={withBasePath(href)} target={target} onClick={follow} />;
 }
 
 export function routeSegments(pathname: string): string[] {

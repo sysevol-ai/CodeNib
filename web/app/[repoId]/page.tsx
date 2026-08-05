@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
 import { AppLink } from "@/lib/router";
+import { isStaticRuntime } from "@/lib/runtime";
 import {
   fetchCommits,
   fetchRepos,
@@ -54,6 +55,7 @@ function stripGeneratedDiagrams(
 // Link a repo-relative source path to the exact blob on GitHub at the indexed commit.
 function ghFileUrl(
   repo: string | undefined,
+  sourceUrl: string | null | undefined,
   commit: string | undefined,
   file: string,
   start?: number | null,
@@ -61,7 +63,8 @@ function ghFileUrl(
 ): string | null {
   if (!repo) return null;
   const lines = start ? `#L${start}${end && end !== start ? `-L${end}` : ""}` : "";
-  return `https://github.com/${repo}/blob/${commit || "HEAD"}/${file}${lines}`;
+  const root = (sourceUrl || `https://github.com/${repo}`).replace(/\/+$/, "");
+  return `${root}/blob/${commit || "HEAD"}/${file}${lines}`;
 }
 
 function TocTree({
@@ -122,6 +125,8 @@ function commitEvidence(commits: CommitRef[], selected?: string): string | null 
 }
 
 export default function WikiPageView({ repoId }: { repoId: string }) {
+
+  const staticRuntime = isStaticRuntime();
 
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
@@ -289,6 +294,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
   }, [sourceCitation]);
 
   const hasGraph = !!repo?.capabilities?.codemap;
+  const hasPageGraph = hasGraph || !!repo?.capabilities?.wiki_graph;
   const generationMode = page?.generation?.mode ?? "offline";
   // "Source checked" is the strict claim: every substantial block is cited
   // and every referenced source identifier resolves. Generated pages that only
@@ -329,36 +335,38 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
             </button>
             <span className="crumb-sep">/</span>
             <span className="crumb-repo mono">{repo ? repo.repo : repoId}</span>
-            <button
-              className={`codegraph-launch ${hasGraph ? "" : "unavailable"}`}
-              onClick={() => openGraph()}
-              title={
-                hasGraph
-                  ? "Open the interactive code dependency graph"
-                  : "Dependency graph is not indexed for this repository"
-              }
-              aria-label={
-                hasGraph
-                  ? "Open dependency map"
-                  : "Set up dependency map"
-              }
-            >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden
+            {(!staticRuntime || hasGraph) && (
+              <button
+                className={`codegraph-launch ${hasGraph ? "" : "unavailable"}`}
+                onClick={() => openGraph()}
+                title={
+                  hasGraph
+                    ? "Open the interactive code dependency graph"
+                    : "Dependency graph is not indexed for this repository"
+                }
+                aria-label={
+                  hasGraph
+                    ? "Open dependency map"
+                    : "Set up dependency map"
+                }
               >
-                <circle cx="5" cy="6" r="2" />
-                <circle cx="19" cy="7" r="2" />
-                <circle cx="12" cy="19" r="2" />
-                <path d="m7 6.2 10 .6M6.5 8l4.4 9.2m6.5-8.3-4.3 8.4" />
-              </svg>
-              <span>Dependency Map</span>
-            </button>
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden
+                >
+                  <circle cx="5" cy="6" r="2" />
+                  <circle cx="19" cy="7" r="2" />
+                  <circle cx="12" cy="19" r="2" />
+                  <path d="m7 6.2 10 .6M6.5 8l4.4 9.2m6.5-8.3-4.3 8.4" />
+                </svg>
+                <span>Dependency Map</span>
+              </button>
+            )}
             {page && <span className="crumb-sep">/</span>}
             {page && <span className="crumb-page">{page.title}</span>}
           </nav>
@@ -445,7 +453,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                   )}
                 </div>
               )}
-              {hasGraph && (
+              {hasPageGraph && (
                 <details
                   className="subsystem-map"
                   open={pageGraphOpen}
@@ -483,7 +491,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                           repoId={repoId}
                           data={pageGraph}
                           variant="wiki"
-                          onFocus={(label) => openGraph(label)}
+                          onFocus={hasGraph ? (label) => openGraph(label) : undefined}
                           repoFullName={repo?.repo}
                           commit={repo?.base_commit}
                         />
@@ -500,6 +508,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                     {page.evidence.items.map((item) => {
                       const url = ghFileUrl(
                         repo?.repo,
+                        repo?.source_url,
                         repo?.base_commit,
                         item.file,
                         item.start_line,
@@ -556,7 +565,12 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                         <summary>Relevant source files ({wikiFiles.length})</summary>
                         <div className="relevant-files-list">
                           {wikiFiles.map((f) => {
-                            const url = ghFileUrl(repo?.repo, repo?.base_commit, f);
+                            const url = ghFileUrl(
+                              repo?.repo,
+                              repo?.source_url,
+                              repo?.base_commit,
+                              f,
+                            );
                             return url ? (
                               <a
                                 key={f}

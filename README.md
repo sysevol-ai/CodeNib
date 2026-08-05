@@ -117,6 +117,18 @@ codenib doctor --require core --require wiki
 codenib index /path/to/repository
 ```
 
+Export that indexed commit as a serverless Wiki when a live Ask backend is not
+needed:
+
+```bash
+codenib export /path/to/repository --output /tmp/repository-wiki
+```
+
+The export contains a versioned provenance manifest, precomputed Wiki pages,
+source citations, and available page-level dependency data. It contains no
+provider credential; interactive Ask and runtime graph exploration remain on
+the local or MCP serving path.
+
 See the
 [Quickstart](https://docs.codenib.ai/quickstart/)
 for ports, advanced indexing, and troubleshooting.

@@ -1,15 +1,6 @@
-declare global {
-  interface Window {
-    __CODENIB_API_BASE__?: string;
-  }
-}
+import { apiBase, isStaticRuntime, staticDataUrl } from "./runtime";
 
-function browserApiBase(): string {
-  if (typeof window === "undefined") return "";
-  return (window.__CODENIB_API_BASE__ ?? "").replace(/\/+$/, "");
-}
-
-export const API_BASE = browserApiBase();
+export const API_BASE = apiBase();
 
 /** Strip an absolute index prefix (e.g. /home/.../repo/) to a repo-relative path. */
 export function repoRelative(path: string | null | undefined): string {
@@ -24,6 +15,7 @@ export interface RepoInfo {
   id: string;
   name: string;
   repo: string;
+  source_url?: string | null;
   base_commit: string;
   commit_short: string;
   language: string;
@@ -71,7 +63,8 @@ export interface ChatResponse {
 }
 
 export async function fetchRepos(opts: { signal?: AbortSignal } = {}): Promise<RepoInfo[]> {
-  const res = await fetch(`${API_BASE}/api/repos`, { signal: opts.signal });
+  const url = isStaticRuntime() ? staticDataUrl("repos.json") : `${API_BASE}/api/repos`;
+  const res = await fetch(url, { signal: opts.signal });
   if (!res.ok) throw new Error(`Failed to load repos (${res.status})`);
   return res.json();
 }
@@ -157,15 +150,19 @@ export interface SourceSlice {
 }
 
 export async function fetchWikiTree(repoId: string): Promise<WikiTree> {
-  const res = await fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki`);
+  const url = isStaticRuntime()
+    ? staticDataUrl("repos", repoId, "wiki.json")
+    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load wiki (${res.status})`);
   return res.json();
 }
 
 export async function fetchWikiPage(repoId: string, pageId: string): Promise<WikiPage> {
-  const res = await fetch(
-    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}`
-  );
+  const url = isStaticRuntime()
+    ? staticDataUrl("repos", repoId, "pages", `${pageId}.json`)
+    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load page (${res.status})`);
   return res.json();
 }
@@ -177,6 +174,9 @@ export async function fetchSource(
   end?: number,
   commit?: string
 ): Promise<SourceSlice> {
+  if (isStaticRuntime()) {
+    throw new Error("Source slices are embedded in static Wiki citations");
+  }
   const params = new URLSearchParams({ file });
   if (start != null) params.set("start", String(start));
   if (end != null) params.set("end", String(end));
@@ -198,6 +198,9 @@ export async function askQuestion(
   repoId: string,
   messages: ChatMessage[]
 ): Promise<ChatResponse> {
+  if (isStaticRuntime()) {
+    throw new Error("Interactive Ask requires a CodeNib runtime");
+  }
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -365,7 +368,10 @@ export interface CommitWindowResponse {
 // Repos without a prebuilt window return available=false; callers should then
 // fall back to the repo's single indexed commit.
 export async function fetchCommits(repoId: string): Promise<CommitWindowResponse> {
-  const res = await fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/commits`);
+  const url = isStaticRuntime()
+    ? staticDataUrl("repos", repoId, "commits.json")
+    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/commits`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load commits (${res.status})`);
   return res.json();
 }
@@ -380,6 +386,9 @@ export async function fetchCodemap(
     commit?: string;
   } = {}
 ): Promise<CodemapResponse> {
+  if (isStaticRuntime()) {
+    throw new Error("Interactive dependency exploration requires a CodeNib runtime");
+  }
   const params = new URLSearchParams();
   if (opts.symbol) params.set("symbol", opts.symbol);
   if (opts.direction) params.set("direction", opts.direction);
@@ -459,6 +468,9 @@ export async function fetchModulemap(
     commit?: string;
   } = {}
 ): Promise<ModulemapResponse> {
+  if (isStaticRuntime()) {
+    throw new Error("Interactive module exploration requires a CodeNib runtime");
+  }
   const params = new URLSearchParams();
   if (opts.focus) params.set("focus", opts.focus);
   if (opts.granularity) params.set("granularity", opts.granularity);
@@ -477,9 +489,10 @@ export async function fetchModulemap(
 // Induced dependency subgraph over a wiki page's cited symbols — lets a wiki
 // page render as a view over the graph.
 export async function fetchWikiGraph(repoId: string, pageId: string): Promise<CodemapResponse> {
-  const res = await fetch(
-    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}/graph`
-  );
+  const url = isStaticRuntime()
+    ? staticDataUrl("repos", repoId, "page-graphs", `${pageId}.json`)
+    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}/graph`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load page graph (${res.status})`);
   return res.json();
 }
@@ -512,6 +525,9 @@ export async function fetchEdgeLabel(
   },
   opts: { signal?: AbortSignal } = {}
 ): Promise<EdgeLabelResult> {
+  if (isStaticRuntime()) {
+    throw new Error("Generated edge labels require a CodeNib runtime");
+  }
   const res = await fetch(
     `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/edge-label`,
     {

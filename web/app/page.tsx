@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
 import { fetchRepos, type RepoInfo } from "@/lib/api";
 import { AppLink, navigate } from "@/lib/router";
+import { isStaticRuntime } from "@/lib/runtime";
 
 function repoDescription(r: RepoInfo): string {
   if (r.description) return r.description;
@@ -66,6 +67,7 @@ const repoRetryDelays = [0, 1000, 2000, 4000, 8000];
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export default function Landing() {
+  const staticRuntime = isStaticRuntime();
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,8 +80,9 @@ export default function Landing() {
 
     const run = async () => {
       let lastError: unknown = null;
-      for (let attempt = 0; attempt < repoRetryDelays.length; attempt += 1) {
-        const delay = repoRetryDelays[attempt];
+      const delays = staticRuntime ? [0] : repoRetryDelays;
+      for (let attempt = 0; attempt < delays.length; attempt += 1) {
+        const delay = delays[attempt];
         if (delay > 0) {
           if (active) setError("Connecting to backend; retrying repository list...");
           await sleep(delay);
@@ -152,24 +155,30 @@ export default function Landing() {
       </section>
 
       <div className="repo-grid">
-        <AppLink
-          className="repo-card add-repo"
-          aria-label="Index your own repository"
-          href="/add-repo"
-        >
-          <span className="add-plus">+</span>
-          <span className="add-label">Add repo</span>
-          <span className="repo-card-go" aria-hidden>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </span>
-        </AppLink>
+        {!staticRuntime && (
+          <AppLink
+            className="repo-card add-repo"
+            aria-label="Index your own repository"
+            href="/add-repo"
+          >
+            <span className="add-plus">+</span>
+            <span className="add-label">Add repo</span>
+            <span className="repo-card-go" aria-hidden>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </span>
+          </AppLink>
+        )}
 
         {error && (
           <div className="empty">
             <p>
-              Backend unavailable — start it with <code>codenib-web</code> after building an index.
+              {staticRuntime ? (
+                "Static Wiki data is unavailable."
+              ) : (
+                <>Backend unavailable — start it with <code>codenib-web</code> after building an index.</>
+              )}
             </p>
             <p className="small muted">Request failed: {error}</p>
             <button type="button" className="codegraph-fit" onClick={loadRepos}>

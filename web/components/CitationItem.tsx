@@ -6,7 +6,7 @@ import { fetchSource, repoRelative, type Citation } from "@/lib/api";
 
 /** A code reference backing an answer / wiki page; expands to show the source. */
 export default function CitationItem({ repoId, c }: { repoId: string; c: Citation }) {
-  const [src, setSrc] = useState<string | null>(null);
+  const [src, setSrc] = useState<string | null>(c.content ?? null);
   const [open, setOpen] = useState(false);
   const rel = repoRelative(c.file);
   async function toggle() {

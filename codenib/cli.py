@@ -238,6 +238,35 @@ def _run_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_export(args: argparse.Namespace) -> int:
+    repo_path = resolve_repo_path(args.repo)
+    manifest_path = resolve_manifest_path(str(repo_path))
+    output_dir = (
+        Path(args.output).expanduser().resolve()
+        if args.output
+        else manifest_path.parent / "static-wiki"
+    )
+
+    from .web.static_export import export_static_wiki
+
+    try:
+        result = export_static_wiki(
+            repo_path,
+            manifest_path,
+            output_dir,
+            frontend_dir=args.frontend_dir,
+            base_path=args.base_path,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(str(exc)) from exc
+
+    print(f"Static Wiki: {result.output_dir}")
+    print(f"Repository:  {result.repo_id}")
+    print(f"Pages:       {result.page_count}")
+    print(f"Manifest:    {result.manifest_path}")
+    return 0
+
+
 def _model_options_for_args(
     args: argparse.Namespace,
     *,
@@ -975,6 +1004,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the Wiki audit and print its complete JSON report",
     )
     wiki_parser.set_defaults(handler=_run_wiki)
+
+    export_parser = subparsers.add_parser(
+        "export",
+        help="export an indexed repository Wiki for static hosting",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    export_parser.add_argument("repo", nargs="?", default=".")
+    export_parser.add_argument(
+        "--output",
+        help="output directory; defaults beside the repository manifest",
+    )
+    export_parser.add_argument(
+        "--base-path",
+        default="/",
+        help="URL path where the static site will be mounted",
+    )
+    export_parser.add_argument(
+        "--frontend-dir",
+        help="path to a prebuilt CodeNib frontend or web source checkout",
+    )
+    export_parser.set_defaults(handler=_run_export)
 
     mcp_parser = subparsers.add_parser(
         "mcp",
