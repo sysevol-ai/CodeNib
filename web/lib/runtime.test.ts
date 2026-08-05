@@ -41,7 +41,8 @@ describe("runtime base paths", () => {
     staticWindow();
 
     expect(withBasePath("/demo")).toBe("/project/demo");
-    expect(withBasePath("/project/demo")).toBe("/project/demo");
+    // Route paths are app-relative, even when the first segment matches the mount.
+    expect(withBasePath("/project")).toBe("/project/project");
     expect(stripBasePath("/project/demo")).toBe("/demo");
     expect(staticDataUrl("repos", "demo", "pages", "overview.json")).toBe(
       "/project/data/repos/demo/pages/overview.json",
