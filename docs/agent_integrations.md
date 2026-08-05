@@ -57,19 +57,21 @@ indexed search, and graph traversal. This checks that the provider boundary is
 language-agnostic; it is not evidence that the pinned Python-only LocAgent or
 OrcaLoca native implementations support those languages.
 
-## Benchmark Adapters
+## Benchmark Compatibility
 
-Benchmark adapters do not define CodeNib's repository algorithm. They join
-pinned datasets, translate native evidence into an external protocol, and run
-that benchmark's scorer. Coverage retains preparation failures; quality is
-success-conditioned with its denominator stated explicitly.
+These integrations evaluate CodeNib's native repository algorithms against
+pinned external datasets and scorer contracts. They join benchmark data,
+translate source evidence at the protocol boundary, and run the corresponding
+scorer. Coverage retains preparation failures; quality is success-conditioned
+with its denominator stated explicitly.
 
-### SWE-Explore
+### [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench)
 
 CodeNib's native `RepositoryContextExplorer` owns route planning, retrieval,
-graph expansion, reranking, and source validation. The SWE-Explore adapter only
-converts its 0-based evidence into the benchmark's repository-relative,
-1-based inclusive `ContextRegion` records:
+graph expansion, reranking, and source validation. The SWE-Explore
+compatibility layer preserves that execution path and converts the resulting
+0-based evidence into the benchmark's repository-relative, 1-based inclusive
+`ContextRegion` records for official evaluation:
 
 ```python
 from codenib.integrations.swe_explore import CodeNibSWEExploreExplorer

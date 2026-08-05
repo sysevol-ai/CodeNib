@@ -53,8 +53,10 @@ agent or code-Wiki framework.
 - **2026-08-04 — Native repository explorer.**
   [`RepositoryContextExplorer`](codenib/agent/runtime/explorer.py) plans BM25,
   dense, hybrid, reranked, and graph routes over manifest-backed views and
-  loads only the route selected for each query. SWE-Explore is now a thin
-  ranked-region benchmark adapter; its existing
+  loads only the route selected for each query. CodeNib runs these plans on
+  [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench) through a
+  compatibility layer that preserves CodeNib's planner while producing the
+  benchmark's source-region format and official metrics. The existing
   [20-case validation](docs/evaluation/swe_explore.md) remains an explicitly
   labeled BM25 compatibility control.
 - **2026-08-03 — Native LocAgent policy.**
@@ -167,7 +169,7 @@ capabilities, loaded views, fusion, graph, and reranking trace.
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
 | MCP and LSP-shaped tools | Serve one manifest to coding agents without tying the runtime to one agent framework |
 | External integrations | Run revision-pinned LocAgent and OrcaLoca policies over the same manifest-backed views |
-| Benchmark adapters | Project native CodeNib evidence into pinned external data and scorer contracts such as SWE-Explore |
+| Benchmark compatibility | Evaluate CodeNib's native exploration against pinned external datasets and scorers, including [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench) |
 | Local inspection | Audit the same context through Wiki pages, Ask answers, citations, and the Dependency Map |
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
 

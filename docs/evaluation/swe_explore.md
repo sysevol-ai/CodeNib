@@ -1,15 +1,17 @@
 # SWE-Explore Compatibility Validation
 
-This validation checks whether CodeNib can participate in the official
-SWE-Explore explorer and evaluator contracts. The reported run is the explicit
-`bm25` compatibility control, not CodeNib's native multi-view `auto` policy. It
-does not measure patch generation or SWE-bench issue resolution.
+This validation runs CodeNib's native repository explorer against the
+published data and official metrics from
+[SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench). The reported run
+is the explicit `bm25` compatibility control, not CodeNib's native multi-view
+`auto` policy. It does not measure patch generation or SWE-bench issue
+resolution.
 
 ## Pinned Inputs
 
 | Input | Revision |
 | --- | --- |
-| SWE-Explore code | `3c12dc5a551937038afcbdb6eb6bbf19f3ddd8c1` |
+| [SWE-Explore code](https://github.com/Qiushao-E/SWE-Explore-Bench) | `3c12dc5a551937038afcbdb6eb6bbf19f3ddd8c1` |
 | SWE-Explore release | `bdb0ae45d7c337d9e1dc3ebfe2a0af6bc7c1fbd9` |
 | Public benchmark SHA-256 | `dc4f114ececd0bfb987361c26ae5e2440456e2cccb36adfccb09ea5385aec202` |
 | SWE-bench Verified | `c104f840cc67f8b6eec6f759ebc8b2693d585d4a` |
