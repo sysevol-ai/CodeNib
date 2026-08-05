@@ -124,12 +124,18 @@ for current_root, directories, files in os.walk(root):
     current = pathlib.Path(current_root)
     for filename in sorted(files):
         path = current / filename
+        relative_path = path.relative_to(root)
+        if any(
+            part in ignored or part.startswith('.codenib')
+            for part in relative_path.parts
+        ):
+            continue
         mode = path.lstat().st_mode
         if stat.S_ISLNK(mode):
             raise SystemExit('source fingerprint does not permit symlinks')
         if not stat.S_ISREG(mode):
             continue
-        relative = path.relative_to(root).as_posix().encode(
+        relative = relative_path.as_posix().encode(
             'utf-8', errors='surrogateescape'
         )
         hasher.update(b'F\0')

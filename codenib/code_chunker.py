@@ -23,7 +23,7 @@ from .languages import (
 )
 from .log_utils import get_logger
 from .paths import user_state_dir
-from .repository_filters import DEFAULT_IGNORED_DIRS
+from .repository_filters import DEFAULT_IGNORED_DIRS, repository_path_is_visible
 from .utils import is_test_file
 
 logger = get_logger(__name__)
@@ -397,13 +397,22 @@ class CodeChunker:
             root_path = Path(root)
 
             # Filter directories
-            dirs[:] = [d for d in dirs if self._should_include_directory(root_path / d)]
+            dirs[:] = [
+                directory
+                for directory in dirs
+                if repository_path_is_visible(
+                    (root_path / directory).relative_to(repo_path)
+                )
+                and self._should_include_directory(root_path / directory)
+            ]
 
             # Process files in current directory
             for file_name in files:
                 file_path = root_path / file_name
 
-                if self._should_process_file(file_path, extension_to_language):
+                if repository_path_is_visible(
+                    file_path.relative_to(repo_path)
+                ) and self._should_process_file(file_path, extension_to_language):
                     language = extension_to_language[file_path.suffix]
                     files_to_process.append((file_path, language))
 
@@ -632,12 +641,22 @@ class CodeChunker:
         # Count files by extension
         extension_counts = {}
         for root, dirs, files in os.walk(repo_path):
-            # Skip common ignore directories
-            dirs[:] = [d for d in dirs if d not in self.repo_config.ignore_dirs]
+            root_path = Path(root)
+            dirs[:] = [
+                directory
+                for directory in dirs
+                if repository_path_is_visible(
+                    (root_path / directory).relative_to(repo_path)
+                )
+                and self._should_include_directory(root_path / directory)
+            ]
 
             for file in files:
-                file_path = Path(root) / file
-                if file_path.suffix:
+                file_path = root_path / file
+                if (
+                    repository_path_is_visible(file_path.relative_to(repo_path))
+                    and file_path.suffix
+                ):
                     extension_counts[file_path.suffix] = (
                         extension_counts.get(file_path.suffix, 0) + 1
                     )

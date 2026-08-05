@@ -474,8 +474,8 @@ def test_snapshot_audit_checks_commit_and_tracked_cleanliness(tmp_path: Path) ->
     assert not untracked.valid
     assert ignored.unexpected_source_files == ("ignored.py",)
     assert not ignored.valid
-    assert prefixed.unexpected_source_files == (".codenib-extra/a.py",)
-    assert not prefixed.valid
+    assert prefixed.unexpected_source_files == ()
+    assert prefixed.valid
     assert skipped.unexpected_source_files == ()
     assert skipped.valid
     assert submodule_skipped.unexpected_source_files == ()

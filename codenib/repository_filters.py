@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Iterable, Iterator
 
-REPOSITORY_FILTER_POLICY_VERSION = 2
+REPOSITORY_FILTER_POLICY_VERSION = 3
 
 DEFAULT_IGNORED_DIRS = frozenset(
     {
@@ -83,7 +83,8 @@ def walk_repository_files(
         current = Path(current_root)
         for filename in sorted(files):
             path = current / filename
-            if not _is_within(path, excluded):
+            relative = path.relative_to(root_path)
+            if repository_path_is_visible(relative) and not _is_within(path, excluded):
                 yield path
 
 

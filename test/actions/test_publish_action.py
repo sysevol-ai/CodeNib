@@ -291,6 +291,12 @@ def test_reusable_workflow_is_fork_safe_and_binds_its_exact_revision() -> None:
         "contents": "read",
         "pages": "write",
     }
+    caller_checkout = next(
+        step
+        for step in build["steps"]
+        if step.get("name") == "Checkout caller repository"
+    )
+    assert caller_checkout["with"]["path"] == "repository"
     exact_checkout = next(
         step
         for step in build["steps"]
@@ -298,6 +304,7 @@ def test_reusable_workflow_is_fork_safe_and_binds_its_exact_revision() -> None:
     )
     assert exact_checkout["with"]["repository"] == "${{ job.workflow_repository }}"
     assert exact_checkout["with"]["ref"] == "${{ job.workflow_sha }}"
+    assert exact_checkout["with"]["path"] == ".codenib-action"
     assert exact_checkout["with"]["persist-credentials"] == "false"
     secret_steps = [
         step for step in build["steps"] if "secrets.embedding_api_key" in str(step)
@@ -306,6 +313,7 @@ def test_reusable_workflow_is_fork_safe_and_binds_its_exact_revision() -> None:
         "Build Wiki and context artifact"
     ]
     publish = secret_steps[0]
+    assert publish["with"]["repository-path"] == "repository"
     secret_expression = publish["env"]["CODENIB_ACTION_EMBEDDING_KEY"]
     assert "inputs.preset == 'semantic'" in secret_expression
     assert "inputs.embedding-provider == 'openai'" in secret_expression

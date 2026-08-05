@@ -43,6 +43,16 @@ def test_fingerprint_ignores_generated_and_explicit_artifact_roots(tmp_path):
     )
 
 
+def test_fingerprint_ignores_git_worktree_pointer_file(tmp_path):
+    (tmp_path / "module.py").write_text("VALUE = 1\n")
+    initial = fingerprint_repository(tmp_path)
+
+    (tmp_path / ".git").write_text("gitdir: /shared/repository/.git/worktrees/test\n")
+
+    observed = fingerprint_repository(tmp_path)
+    assert observed == initial
+
+
 def test_fingerprint_includes_symlink_target_and_content(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

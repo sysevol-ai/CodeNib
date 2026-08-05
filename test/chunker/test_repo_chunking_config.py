@@ -96,7 +96,14 @@ def test_repo_discovery_is_sorted_independently_of_walk_order(
 def test_repo_discovery_skips_generated_and_vendored_trees(tmp_path: Path):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("def app():\n    return 1\n")
-    for directory in ("site", ".next", ".codenib_cache", "third_party", "vendor"):
+    for directory in (
+        "site",
+        ".next",
+        ".codenib_cache",
+        ".codenib-action",
+        "third_party",
+        "vendor",
+    ):
         ignored = tmp_path / directory
         ignored.mkdir()
         (ignored / "ignored.py").write_text("def ignored():\n    return 0\n")
@@ -120,6 +127,9 @@ def test_repo_language_detection_uses_registered_chunk_extensions(tmp_path: Path
     (tmp_path / "app.rb").write_text("class App\nend\n")
     (tmp_path / "index.php").write_text("<?php\nfunction index() {}\n")
     (tmp_path / "Main.kt").write_text("class Main {}\n")
+    hidden_tool = tmp_path / ".codenib-action"
+    hidden_tool.mkdir()
+    (hidden_tool / "Hidden.swift").write_text("struct Hidden {}\n")
 
     chunker = CodeChunker(language="python")
 

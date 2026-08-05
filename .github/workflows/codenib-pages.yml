@@ -70,6 +70,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          path: repository
           persist-credentials: false
 
       - name: Checkout the exact CodeNib workflow revision
@@ -106,6 +107,7 @@ jobs:
           preset: ${{ inputs.preset }}
           python-version: ${{ inputs.python-version }}
           repository: ${{ github.repository }}
+          repository-path: repository
           retention-days: ${{ inputs.retention-days }}
           revision: ${{ job.workflow_sha }}
 
