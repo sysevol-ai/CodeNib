@@ -115,18 +115,17 @@ environment variables beat the YAML (`load_config()` in
 | `wiki_model_options` | `CODENIB_DEMO_WIKI_MODEL_OPTIONS` | Nested overrides applied only to Wiki, narration, and edge-label calls |
 | `data_dir` | `CODENIB_DEMO_DATA_DIR` | Where checked-out repos, indexes, and the registry live (default `.codenib_qa/`) |
 | `prebuilt_dir` | `CODENIB_DEMO_PREBUILT_DIR` | Read-only tree of pre-built per-instance artifacts (see above) |
-| `embedding_provider` | `CODENIB_EMBEDDING_PROVIDER` | `huggingface` (in-process), `openai` (BYO endpoint), or `github_models` |
+| `embedding_provider` | `CODENIB_EMBEDDING_PROVIDER` | `huggingface` (in-process) or `openai` (BYO endpoint) |
 | `embedding_model` / `embedding_base_url` / `embedding_api_key` | `CODENIB_EMBEDDING_MODEL` / `CODENIB_EMBEDDING_BASE_URL` / `CODENIB_EMBEDDING_API_KEY` | Embedding model plus the endpoint and credential for the remote provider |
 | `edge_labels` | `CODENIB_EDGE_LABELS` | Opt-in LLM-written edge phrases in the graph view (off by default; each first-seen edge costs one small LLM call, then cached) |
 | `edge_label_model` | `CODENIB_EDGE_MODEL` | Optional cheaper model for the short edge-label calls |
 
 The manifest's embedding route is authoritative when the service reopens a
 vector view. Runtime configuration may provide its credential, but cannot swap
-the artifact to another provider, model, dimension, or endpoint. GitHub Models
-routes discover `GITHUB_TOKEN` or `GH_TOKEN`; a custom credential can be copied
-into `CODENIB_EMBEDDING_API_KEY` through the `codenib wiki`
-`--embedding-api-key-env` option. No credential is persisted in the manifest
-or vector-store configuration.
+the artifact to another provider, model, dimension, or endpoint. A BYO
+credential can be copied into `CODENIB_EMBEDDING_API_KEY` through the
+`codenib wiki --embedding-api-key-env` option. No credential is persisted in
+the manifest or vector-store configuration.
 
 When `wiki_model` and `model` use the same LiteLLM provider prefix, Wiki may
 reuse `model_api_base` and `model_api_key`. A different provider never inherits

@@ -92,21 +92,27 @@ codenib wiki /path/to/repository --preset semantic
 The semantic preset downloads CodeRankEmbed on first use. CodeNib pins the
 built-in model to an immutable revision and enables remote model code only for
 that revision; caller-supplied models or revisions are not trusted implicitly.
-To keep embeddings out of the local process, use GitHub Models instead:
+To keep embeddings out of the local process, use a BYO OpenAI-compatible
+embedding service:
 
 ```bash
 pip install "codenib[semantic-remote]"
-export GITHUB_TOKEN=...
+export EMBEDDING_API_KEY=...
 codenib doctor --require semantic \
-  --embedding-provider github_models --probe-embedding
-codenib wiki . --preset semantic --embedding-provider github_models
+  --embedding-provider openai \
+  --embedding-endpoint https://inference.example.com/v1 \
+  --embedding-api-key-env EMBEDDING_API_KEY \
+  --probe-embedding
+codenib wiki . --preset semantic \
+  --embedding-provider openai \
+  --embedding-endpoint https://inference.example.com/v1 \
+  --embedding-api-key-env EMBEDDING_API_KEY
 ```
 
-The default hosted route uses `openai/text-embedding-3-small`. Select another
-`publisher/model` with `--embedding-model` and declare its vector width with
-`--embedding-dimension`. A BYO OpenAI-compatible service uses
-`--embedding-provider openai --embedding-endpoint ...`; add
-`--embedding-api-key-env` only when that service requires authentication.
+The remote default is `text-embedding-3-small` with dimension 1536. Select
+another model with `--embedding-model` and declare its vector width with
+`--embedding-dimension`; omit `--embedding-api-key-env` only when the endpoint
+is intentionally unauthenticated.
 Provider, model, endpoint, dimension, and vector-shaping options become part of
 the vector artifact identity. Credentials, retries, timeouts, and batching stay
 process-local, and CodeNib refuses to reopen an artifact through a different
@@ -163,25 +169,9 @@ codenib wiki . --generate \
   --api-key-env LOCAL_LLM_KEY
 ```
 
-GitHub Models uses the token already available to a GitHub-hosted Action when
-the workflow grants `models: read`, or a user token outside Actions:
-
-```bash
-export GITHUB_TOKEN=...
-codenib doctor --require agent \
-  --model-provider github_models \
-  --model openai/gpt-4.1 \
-  --probe-model
-codenib wiki . --generate \
-  --model-provider github_models \
-  --model openai/gpt-4.1
-```
-
-GitHub Models usage is billed separately from GitHub Copilot; see GitHub's
-[Models billing documentation](https://docs.github.com/en/billing/concepts/product-billing/github-models).
-CodeNib passes the credential only to the running client. It is never written
-to `repo_manifest.json`, vector configuration, Wiki caches, or a static Pages
-export.
+CodeNib passes BYO credentials only to the running client. They are never
+written to `repo_manifest.json`, vector configuration, Wiki caches, or a static
+Pages export.
 
 Provider-native LiteLLM routes use their normal model prefix and credentials:
 
@@ -205,7 +195,6 @@ Choose the route that matches the server actually receiving the request:
 
 | Backend | `--model` shape | Endpoint and authentication |
 | --- | --- | --- |
-| GitHub Models | `publisher/model` with `--model-provider github_models` | Fixed GitHub Models inference endpoint; `GITHUB_TOKEN`, `GH_TOKEN`, or `--api-key-env` |
 | OpenAI | `openai/<model>` | `OPENAI_API_KEY` |
 | Anthropic | `anthropic/<model>` | `ANTHROPIC_API_KEY` |
 | OpenAI-compatible gateway or vLLM | `openai/<served-model>` | `--api-base .../v1`; add `--api-key-env` only when the gateway requires it |

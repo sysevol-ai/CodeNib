@@ -11,7 +11,7 @@ from threading import Thread
 
 import pytest
 
-from codenib import cli, provider_routes
+from codenib import cli
 
 
 class _EmbeddingHandler(BaseHTTPRequestHandler):
@@ -54,7 +54,7 @@ class _EmbeddingHandler(BaseHTTPRequestHandler):
         return
 
 
-def test_github_models_semantic_build_uses_remote_sdk_without_sentence_transformers(
+def test_openai_semantic_build_uses_remote_sdk_without_sentence_transformers(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -64,25 +64,23 @@ def test_github_models_semantic_build_uses_remote_sdk_without_sentence_transform
         "def answer(value: int) -> int:\n    return value + 1\n"
     )
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("GITHUB_TOKEN", "runtime-token")
+    monkeypatch.setenv("EMBEDDING_API_KEY", "runtime-token")
     monkeypatch.setitem(sys.modules, "sentence_transformers", None)
     _EmbeddingHandler.requests = []
     server = ThreadingHTTPServer(("127.0.0.1", 0), _EmbeddingHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     endpoint = f"http://127.0.0.1:{server.server_port}/inference"
-    monkeypatch.setattr(provider_routes, "GITHUB_MODELS_BASE_URL", endpoint)
-
     try:
         manifest, failed = cli.index_repository(
             repo,
             languages=["python"],
             views=["vector"],
-            embedding_provider="github_models",
-            embedding_model="openai/text-embedding-3-small",
+            embedding_provider="openai",
+            embedding_model="text-embedding-3-small",
             embedding_dimension=4,
             embedding_endpoint=endpoint,
-            embedding_credential_env="GITHUB_TOKEN",
+            embedding_credential_env="EMBEDDING_API_KEY",
         )
     finally:
         server.shutdown()
@@ -91,12 +89,12 @@ def test_github_models_semantic_build_uses_remote_sdk_without_sentence_transform
 
     assert failed == []
     entry = manifest.indexes["vector"]
-    assert entry.config["embedding_provider"] == "github_models"
+    assert entry.config["embedding_provider"] == "openai"
     assert entry.config["embedding_endpoint"] == endpoint
     assert entry.config["embedding_dimension"] == 4
     serialized = json.dumps(entry.config, sort_keys=True)
     assert "runtime-token" not in serialized
-    assert "GITHUB_TOKEN" not in serialized
+    assert "EMBEDDING_API_KEY" not in serialized
     assert _EmbeddingHandler.requests
     assert all(
         request["path"] == "/inference/embeddings"
