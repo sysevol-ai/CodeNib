@@ -20,7 +20,7 @@ from codenib.web.local import prepare_local_wiki
 def test_parser_exposes_release_commands() -> None:
     parser = cli.build_parser()
 
-    for command in ("index", "wiki", "export", "mcp", "doctor"):
+    for command in ("index", "wiki", "export", "publish", "mcp", "doctor"):
         args = parser.parse_args([command])
         assert args.command == command
 
@@ -42,6 +42,46 @@ def test_export_parser_accepts_pages_mount_options() -> None:
     assert args.output == "/tmp/wiki"
     assert args.base_path == "/project"
     assert args.frontend_dir == "/tmp/frontend"
+
+
+def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
+    publish = cli.build_parser().parse_args(
+        [
+            "publish",
+            ".",
+            "--preset",
+            "semantic",
+            "--site-output",
+            "/tmp/site",
+            "--context-output",
+            "/tmp/context",
+            "--repository",
+            "example/project",
+            "--base-path",
+            "/project",
+            "--embedding-provider",
+            "github_models",
+        ]
+    )
+    artifact = cli.build_parser().parse_args(
+        [
+            "artifact",
+            "pack",
+            ".",
+            "--output",
+            "/tmp/context",
+            "--view",
+            "bm25,vector",
+        ]
+    )
+
+    assert publish.preset == "semantic"
+    assert publish.site_output == "/tmp/site"
+    assert publish.context_output == "/tmp/context"
+    assert publish.repository == "example/project"
+    assert publish.embedding_provider == "github_models"
+    assert artifact.artifact_command == "pack"
+    assert artifact.view == ["bm25,vector"]
 
 
 def test_wiki_parser_accepts_headless_quality_audit() -> None:
@@ -792,7 +832,7 @@ def test_prepare_local_wiki_rejects_mismatched_checkout(
         languages=["python"],
     ).save(str(manifest_path))
     monkeypatch.setattr(
-        "codenib.web.local._checkout_commit",
+        "codenib.compiler.checkout_identity.checkout_commit",
         lambda _repo_path: "b" * 40,
     )
 

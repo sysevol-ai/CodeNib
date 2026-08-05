@@ -11,9 +11,9 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.artifacts.security import assert_publishable_tree
 from codenib.web.static_export import (
     STATIC_EXPORT_MANIFEST,
-    _assert_publishable,
     export_static_wiki,
     normalize_base_path,
 )
@@ -254,10 +254,11 @@ def test_publishability_rejects_json_escaped_windows_path(tmp_path: Path) -> Non
             return windows_path
 
     with pytest.raises(ValueError, match="absolute build-machine path"):
-        _assert_publishable(
+        assert_publishable_tree(
             root,
             forbidden_paths=(ResolvedWindowsPath(),),
             environ={},
+            label="static export",
         )
 
 
@@ -333,6 +334,16 @@ def test_static_export_does_not_replace_an_unrelated_directory(export_setup) -> 
         )
 
     assert (export_setup.output / "keep.txt").read_text() == "keep"
+
+
+def test_static_export_rejects_index_root_overlap(export_setup) -> None:
+    with pytest.raises(ValueError, match="outside the index root"):
+        export_static_wiki(
+            export_setup.repo,
+            export_setup.manifest_path,
+            export_setup.manifest_path.parent,
+            frontend_dir=export_setup.frontend,
+        )
 
 
 def test_static_export_rejects_absolute_citation_paths(

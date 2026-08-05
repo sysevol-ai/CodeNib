@@ -16,10 +16,10 @@ from typing import Any, Mapping
 
 import yaml
 
+from ..compiler.checkout_identity import validate_checkout_identity
 from ..compiler.manifest import RepoManifest
 from ..compiler.snapshot_store import normalize_repo
 from ..llm.options import validate_model_options
-from ..source_fingerprint import fingerprint_repository
 from .config import RepoEntry, save_registry
 
 
@@ -46,49 +46,6 @@ def _origin_url(repo_path: Path) -> str | None:
         text=True,
     )
     return result.stdout.strip() if result.returncode == 0 else None
-
-
-def _checkout_commit(repo_path: Path) -> str | None:
-    result = subprocess.run(
-        ["git", "-C", str(repo_path), "rev-parse", "HEAD"],
-        capture_output=True,
-        check=False,
-        text=True,
-    )
-    return result.stdout.strip() if result.returncode == 0 else None
-
-
-def _validate_checkout_identity(
-    repo_path: Path,
-    manifest: RepoManifest,
-    *,
-    artifact_root: Path,
-) -> None:
-    expected_source = (manifest.source_fingerprint or "").strip()
-    if expected_source:
-        actual_source = fingerprint_repository(
-            repo_path,
-            exclude_roots=(artifact_root,),
-        ).value
-        if actual_source != expected_source:
-            raise ValueError(
-                "repository source files do not match the indexed content. "
-                "Rebuild the index for the current working tree before starting "
-                "the Wiki."
-            )
-
-    expected = (manifest.commit or "").strip()
-    actual = _checkout_commit(repo_path)
-    if not expected or not actual:
-        return
-    if actual.startswith(expected) or expected.startswith(actual):
-        return
-    raise ValueError(
-        "repository checkout does not match the indexed snapshot: "
-        f"HEAD is {actual[:12]}, manifest is {expected[:12]}. "
-        "Rebuild the index or check out the manifest commit before starting "
-        "the Wiki."
-    )
 
 
 def _repository_slug(repo_path: Path) -> str:
@@ -119,7 +76,7 @@ def prepare_local_wiki(
     repo_path = repo_path.expanduser().resolve()
     manifest_path = manifest_path.expanduser().resolve()
     manifest = RepoManifest.load(str(manifest_path))
-    _validate_checkout_identity(
+    validate_checkout_identity(
         repo_path,
         manifest,
         artifact_root=manifest_path.parent,

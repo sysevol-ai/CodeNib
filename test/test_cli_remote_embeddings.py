@@ -12,6 +12,9 @@ from threading import Thread
 import pytest
 
 from codenib import cli
+from codenib.artifacts import stage_context_artifact
+from codenib.compiler.manifest import MANIFEST_FILENAME
+from codenib.paths import repo_index_dir
 
 
 class _EmbeddingHandler(BaseHTTPRequestHandler):
@@ -104,3 +107,19 @@ def test_openai_semantic_build_uses_remote_sdk_without_sentence_transformers(
         request["authorization"] == "Bearer runtime-token"
         for request in _EmbeddingHandler.requests
     )
+
+    artifact = tmp_path / "portable-context"
+    stage_context_artifact(
+        repo,
+        repo_index_dir(repo) / MANIFEST_FILENAME,
+        artifact,
+        repository="example/semantic-project",
+        views=["vector"],
+        environ={"GITHUB_TOKEN": "runtime-token"},
+    )
+    serialized = b"".join(
+        path.read_bytes() for path in artifact.rglob("*") if path.is_file()
+    )
+    assert str(repo).encode() not in serialized
+    assert b"runtime-token" not in serialized
+    assert not (artifact / "views" / "vector" / "incremental_state.json").exists()

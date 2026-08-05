@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -19,6 +18,7 @@ from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 
 from .._version import package_version
+from ..artifacts.security import assert_publishable_tree, file_sha256
 from ..compiler.manifest import RepoManifest
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
@@ -26,17 +26,6 @@ from .local import prepare_local_wiki
 STATIC_EXPORT_SCHEMA_VERSION = "1.0"
 STATIC_EXPORT_MANIFEST = "codenib-static.json"
 
-_SENSITIVE_ENV_NAMES = {
-    "ANTHROPIC_API_KEY",
-    "AZURE_API_KEY",
-    "CODENIB_DEMO_API_KEY",
-    "GITHUB_TOKEN",
-    "GOOGLE_API_KEY",
-    "OPENAI_API_KEY",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-}
-_SENSITIVE_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
 _DOCUMENT_BASE_RE = re.compile(r"<base\s+[^>]*href=(['\"])[^'\"]*\1[^>]*>", re.I)
 _DOCUMENT_REFERENCE_RE = re.compile(
     r"(?P<prefix>\b(?:src|href)=)(?P<quote>['\"])(?P<url>[^'\"]*)(?P=quote)",
@@ -437,79 +426,33 @@ def _file_inventory(root: Path) -> list[dict[str, Any]]:
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.name == STATIC_EXPORT_MANIFEST:
             continue
-        data = path.read_bytes()
+        size, digest = file_sha256(path)
         files.append(
             {
                 "path": path.relative_to(root).as_posix(),
-                "bytes": len(data),
-                "sha256": hashlib.sha256(data).hexdigest(),
+                "bytes": size,
+                "sha256": digest,
             }
         )
     return files
 
 
-def _secret_values(environ: Mapping[str, str]) -> list[bytes]:
-    values = []
-    for name, value in environ.items():
-        upper = name.upper()
-        sensitive = upper in _SENSITIVE_ENV_NAMES or upper.endswith(
-            _SENSITIVE_ENV_SUFFIXES
-        )
-        if sensitive and len(value) >= 8:
-            values.append(value.encode("utf-8"))
-    return values
-
-
-def _serialized_patterns(values: Iterable[str]) -> set[bytes]:
-    patterns: set[bytes] = set()
-    for value in values:
-        if not value:
-            continue
-        patterns.add(value.encode("utf-8"))
-        escaped = json.dumps(value, ensure_ascii=True)[1:-1]
-        patterns.add(escaped.encode("utf-8"))
-    return patterns
-
-
-def _assert_publishable(
-    root: Path,
-    *,
-    forbidden_paths: Iterable[Path],
-    environ: Mapping[str, str],
-) -> None:
-    forbidden_values: list[str] = []
-    for path in forbidden_paths:
-        resolved = path.resolve()
-        forbidden_values.extend((str(resolved), resolved.as_posix()))
-    forbidden = _serialized_patterns(forbidden_values)
-    secrets = _serialized_patterns(
-        value.decode("utf-8") for value in _secret_values(environ)
-    )
-    for path in root.rglob("*"):
-        if path.is_symlink():
-            raise ValueError(f"static export contains a symbolic link: {path}")
-        if not path.is_file():
-            continue
-        data = path.read_bytes()
-        if any(value and value in data for value in forbidden):
-            raise ValueError(
-                "static export contains an absolute build-machine path in "
-                f"{path.relative_to(root)}"
-            )
-        if any(secret in data for secret in secrets):
-            raise ValueError(
-                "static export contains a configured credential in "
-                f"{path.relative_to(root)}"
-            )
-
-
-def _validated_output(repo_path: Path, output_dir: Path) -> Path:
+def _validated_output(
+    repo_path: Path,
+    manifest_root: Path,
+    output_dir: Path,
+) -> Path:
     repo_path = repo_path.resolve()
+    manifest_root = manifest_root.resolve()
     output_dir = output_dir.expanduser().resolve()
-    if output_dir == repo_path or repo_path in output_dir.parents:
-        raise ValueError("static export output must be outside the target repository")
-    if output_dir in repo_path.parents:
-        raise ValueError("static export output must not contain the target repository")
+    for source, label in (
+        (repo_path, "target repository"),
+        (manifest_root, "index root"),
+    ):
+        if output_dir == source or source in output_dir.parents:
+            raise ValueError(f"static export output must be outside the {label}")
+        if output_dir in source.parents:
+            raise ValueError(f"static export output must not contain the {label}")
     if output_dir.exists() and not output_dir.is_dir():
         raise ValueError(f"static export output is not a directory: {output_dir}")
     if output_dir.exists() and any(output_dir.iterdir()):
@@ -534,7 +477,7 @@ def export_static_wiki(
 
     repo_path = repo_path.expanduser().resolve()
     manifest_path = manifest_path.expanduser().resolve()
-    output_dir = _validated_output(repo_path, output_dir)
+    output_dir = _validated_output(repo_path, manifest_path.parent, output_dir)
     base_path = normalize_base_path(base_path)
     frontend = _prebuilt_frontend(frontend_dir)
     environment = os.environ if environ is None else environ
@@ -614,10 +557,11 @@ def export_static_wiki(
                 graphs[page_id],
             )
 
-        _assert_publishable(
+        assert_publishable_tree(
             stage,
             forbidden_paths=(repo_path, manifest_path.parent),
             environ=environment,
+            label="static export",
         )
         source_manifest = bundle.manifest
         export_manifest = {
@@ -652,10 +596,11 @@ def export_static_wiki(
             "files": _file_inventory(stage),
         }
         manifest_file = _write_json(stage, STATIC_EXPORT_MANIFEST, export_manifest)
-        _assert_publishable(
+        assert_publishable_tree(
             stage,
             forbidden_paths=(repo_path, manifest_path.parent),
             environ=environment,
+            label="static export",
         )
 
         if output_dir.exists():

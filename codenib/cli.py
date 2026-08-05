@@ -475,6 +475,121 @@ def _run_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _default_distribution_dir(manifest_path: Path, name: str, commit: str) -> Path:
+    identity = (commit or "working-tree")[:12]
+    return manifest_path.parent.parent / "exports" / f"{name}-{identity}"
+
+
+def _publication_environment(credential_env: str | None = None) -> dict[str, str]:
+    environment = dict(os.environ)
+    selected = credential_env or environment.get("CODENIB_EMBEDDING_API_KEY_ENV")
+    if selected and environment.get(selected):
+        environment["CODENIB_PUBLICATION_CREDENTIAL_SECRET"] = environment[selected]
+    return environment
+
+
+def _run_artifact_pack(args: argparse.Namespace) -> int:
+    repo_path = resolve_repo_path(args.repo)
+    manifest_path = resolve_manifest_path(str(repo_path))
+    from .artifacts import stage_context_artifact
+    from .compiler.manifest import RepoManifest
+
+    manifest = RepoManifest.load(manifest_path)
+    output_dir = (
+        Path(args.output).expanduser().resolve()
+        if args.output
+        else _default_distribution_dir(
+            manifest_path,
+            "context",
+            manifest.commit,
+        )
+    )
+    selected_views = _split_values(args.view) or None
+    try:
+        result = stage_context_artifact(
+            repo_path,
+            manifest_path,
+            output_dir,
+            repository=args.repository or os.environ.get("GITHUB_REPOSITORY"),
+            views=selected_views,
+            environ=_publication_environment(),
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(str(exc)) from exc
+
+    print(f"Context artifact: {result.output_dir}")
+    print(f"Repository:       {result.repository}")
+    print(f"Commit:           {result.commit or 'working tree'}")
+    print(f"Views:            {', '.join(result.views)}")
+    print(f"Manifest:         {result.metadata_path}")
+    return 0
+
+
+def _run_publish(args: argparse.Namespace) -> int:
+    selected_views = _selected_views(args.preset, args.view)
+    unsupported = sorted(set(selected_views) - {"bm25", "vector"})
+    if unsupported:
+        raise CLIError(
+            "portable publication currently supports bm25 and vector views; "
+            f"unsupported: {', '.join(unsupported)}"
+        )
+    index_result = _run_index(args)
+    if index_result:
+        return index_result
+
+    repo_path = resolve_repo_path(args.repo)
+    manifest_path = resolve_manifest_path(str(repo_path))
+    from .artifacts import stage_context_artifact
+    from .compiler.manifest import RepoManifest
+    from .web.static_export import export_static_wiki
+
+    manifest = RepoManifest.load(manifest_path)
+    site_output = (
+        Path(args.site_output).expanduser().resolve()
+        if args.site_output
+        else _default_distribution_dir(manifest_path, "wiki", manifest.commit)
+    )
+    context_output = (
+        Path(args.context_output).expanduser().resolve()
+        if args.context_output
+        else _default_distribution_dir(manifest_path, "context", manifest.commit)
+    )
+    if (
+        site_output == context_output
+        or site_output in context_output.parents
+        or context_output in site_output.parents
+    ):
+        raise CLIError("Wiki and context artifact outputs must not overlap")
+    publication_environment = _publication_environment(args.embedding_api_key_env)
+    try:
+        site = export_static_wiki(
+            repo_path,
+            manifest_path,
+            site_output,
+            frontend_dir=args.frontend_dir,
+            base_path=args.base_path,
+            environ=publication_environment,
+        )
+        context = stage_context_artifact(
+            repo_path,
+            manifest_path,
+            context_output,
+            repository=args.repository or os.environ.get("GITHUB_REPOSITORY"),
+            views=selected_views,
+            environ=publication_environment,
+            validate_checkout=False,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(str(exc)) from exc
+
+    print(f"Published Wiki:    {site.output_dir}")
+    print(f"Context artifact:  {context.output_dir}")
+    print(f"Repository:        {context.repository}")
+    print(f"Commit:            {context.commit or 'working tree'}")
+    print(f"Views:             {', '.join(context.views)}")
+    return 0
+
+
 def _model_options_for_args(
     args: argparse.Namespace,
     *,
@@ -1414,6 +1529,66 @@ def build_parser() -> argparse.ArgumentParser:
         help="path to a prebuilt CodeNib frontend or web source checkout",
     )
     export_parser.set_defaults(handler=_run_export)
+
+    artifact_parser = subparsers.add_parser(
+        "artifact",
+        help="package portable repository-context artifacts",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    artifact_subparsers = artifact_parser.add_subparsers(
+        dest="artifact_command",
+        required=True,
+    )
+    artifact_pack_parser = artifact_subparsers.add_parser(
+        "pack",
+        help="stage current manifest views as a portable context artifact",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    artifact_pack_parser.add_argument("repo", nargs="?", default=".")
+    artifact_pack_parser.add_argument("--output")
+    artifact_pack_parser.add_argument(
+        "--repository",
+        help="stable owner/repository identity; defaults to origin or directory name",
+    )
+    artifact_pack_parser.add_argument(
+        "--view",
+        action="append",
+        default=[],
+        help="current view to include; repeat or use a comma-separated list",
+    )
+    artifact_pack_parser.set_defaults(handler=_run_artifact_pack)
+
+    publish_parser = subparsers.add_parser(
+        "publish",
+        help="incrementally build and publish a static Wiki plus context artifact",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    publish_parser.add_argument("repo", nargs="?", default=".")
+    publish_parser.add_argument(
+        "--preset",
+        choices=("fast", "semantic"),
+        default="fast",
+    )
+    publish_parser.add_argument("--language", action="append", default=[])
+    publish_parser.add_argument("--view", action="append", default=[])
+    publish_parser.add_argument("--rebuild", action="store_true")
+    _add_embedding_route_arguments(publish_parser)
+    publish_parser.add_argument("--site-output")
+    publish_parser.add_argument("--context-output")
+    publish_parser.add_argument(
+        "--repository",
+        help="stable owner/repository identity; defaults to origin or directory name",
+    )
+    publish_parser.add_argument(
+        "--base-path",
+        default="/",
+        help="URL path where the static site will be mounted",
+    )
+    publish_parser.add_argument(
+        "--frontend-dir",
+        help="path to a prebuilt CodeNib frontend or web source checkout",
+    )
+    publish_parser.set_defaults(handler=_run_publish)
 
     mcp_parser = subparsers.add_parser(
         "mcp",
