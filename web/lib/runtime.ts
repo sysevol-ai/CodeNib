@@ -39,7 +39,6 @@ export function withBasePath(path: string): string {
   const base = appBasePath();
   const absolute = path.startsWith("/") ? path : `/${path}`;
   if (base === "/") return absolute;
-  if (absolute === base || absolute.startsWith(`${base}/`)) return absolute;
   return `${base}${absolute}`;
 }
 
