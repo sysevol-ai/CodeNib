@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote, urlsplit
-from xml.sax.saxutils import quoteattr
 
 from .._version import package_version
 from ..compiler.manifest import RepoManifest
@@ -38,8 +37,11 @@ _SENSITIVE_ENV_NAMES = {
     "AWS_SESSION_TOKEN",
 }
 _SENSITIVE_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
-_ABSOLUTE_REFERENCE_RE = re.compile(r"(?:src|href)=(['\"])/(?!/)")
 _DOCUMENT_BASE_RE = re.compile(r"<base\s+[^>]*href=(['\"])[^'\"]*\1[^>]*>", re.I)
+_DOCUMENT_REFERENCE_RE = re.compile(
+    r"(?P<prefix>\b(?:src|href)=)(?P<quote>['\"])(?P<url>[^'\"]*)(?P=quote)",
+    re.I,
+)
 _SAFE_BASE_PATH_RE = re.compile(r"^/[A-Za-z0-9._~!$&()*+,;=:@%/-]*$")
 _SAFE_PAGE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -251,20 +253,43 @@ def _copy_frontend(source: Path, target: Path, *, base_path: str) -> None:
 
     index = target / "index.html"
     index_text = index.read_text(encoding="utf-8")
-    references = _DOCUMENT_BASE_RE.sub("", index_text)
-    if base_path != "/" and _ABSOLUTE_REFERENCE_RE.search(references):
-        raise ValueError(
-            "prebuilt frontend contains root-relative assets and cannot be "
-            "mounted below '/'; rebuild it with the current CodeNib frontend"
+    index_text = _DOCUMENT_BASE_RE.sub("", index_text)
+
+    def mount_reference(match: re.Match[str]) -> str:
+        url = match.group("url")
+        if not url or url.startswith(("#", "?")):
+            return match.group(0)
+
+        parsed = urlsplit(url)
+        if parsed.scheme or parsed.netloc:
+            return match.group(0)
+        if parsed.path.startswith("/"):
+            if base_path != "/":
+                raise ValueError(
+                    "prebuilt frontend contains root-relative assets and cannot be "
+                    "mounted below '/'; rebuild it with the current CodeNib frontend"
+                )
+            return match.group(0)
+
+        decoded = unquote(parsed.path)
+        if any(part in {".", ".."} for part in PurePosixPath(decoded).parts):
+            if not decoded.startswith("./") or any(
+                part == ".." for part in PurePosixPath(decoded).parts
+            ):
+                raise ValueError("prebuilt frontend asset path contains traversal")
+        relative = parsed.path[2:] if parsed.path.startswith("./") else parsed.path
+        mount = "" if base_path == "/" else base_path
+        mounted = f"{mount}/{relative}"
+        if parsed.query:
+            mounted += f"?{parsed.query}"
+        if parsed.fragment:
+            mounted += f"#{parsed.fragment}"
+        return (
+            f'{match.group("prefix")}{match.group("quote")}'
+            f'{mounted}{match.group("quote")}'
         )
-    document_base = f"{base_path.rstrip('/')}/" if base_path != "/" else "/"
-    base_element = f"<base href={quoteattr(document_base)}>"
-    if _DOCUMENT_BASE_RE.search(index_text):
-        index_text = _DOCUMENT_BASE_RE.sub(base_element, index_text, count=1)
-    elif "<head>" in index_text:
-        index_text = index_text.replace("<head>", f"<head>\n    {base_element}", 1)
-    else:
-        raise ValueError("prebuilt frontend index.html has no <head> element")
+
+    index_text = _DOCUMENT_REFERENCE_RE.sub(mount_reference, index_text)
     index.write_text(index_text, encoding="utf-8")
 
 
@@ -435,14 +460,31 @@ def _secret_values(environ: Mapping[str, str]) -> list[bytes]:
     return values
 
 
+def _serialized_patterns(values: Iterable[str]) -> set[bytes]:
+    patterns: set[bytes] = set()
+    for value in values:
+        if not value:
+            continue
+        patterns.add(value.encode("utf-8"))
+        escaped = json.dumps(value, ensure_ascii=True)[1:-1]
+        patterns.add(escaped.encode("utf-8"))
+    return patterns
+
+
 def _assert_publishable(
     root: Path,
     *,
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str],
 ) -> None:
-    forbidden = [str(path.resolve()).encode("utf-8") for path in forbidden_paths]
-    secrets = _secret_values(environ)
+    forbidden_values: list[str] = []
+    for path in forbidden_paths:
+        resolved = path.resolve()
+        forbidden_values.extend((str(resolved), resolved.as_posix()))
+    forbidden = _serialized_patterns(forbidden_values)
+    secrets = _serialized_patterns(
+        value.decode("utf-8") for value in _secret_values(environ)
+    )
     for path in root.rglob("*"):
         if path.is_symlink():
             raise ValueError(f"static export contains a symbolic link: {path}")
