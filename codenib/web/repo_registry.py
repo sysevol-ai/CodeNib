@@ -395,7 +395,23 @@ class RepoRegistry:
 
     def _load_vector_store(self, vec_entry: Any) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
-        artifact_config = vec_entry.config or {}
+        artifact_config = dict(vec_entry.config or {})
+        if not artifact_config.get("embedding_route") and not artifact_config.get(
+            "embedding_provider"
+        ):
+            # Pre-provider manifests from build_qa_index.py intentionally relied
+            # on the QA runtime route. Keep that narrow compatibility path while
+            # requiring all newly built artifacts to persist their provider.
+            artifact_config["embedding_provider"] = self._config.embedding_provider
+            if self._config.embedding_base_url:
+                artifact_config["embedding_endpoint"] = self._config.embedding_base_url
+            logger.warning(
+                "Vector artifact at %s has no embedding provider; using the "
+                "configured legacy route %s. Rebuild the manifest to persist "
+                "its compatibility identity.",
+                vec_entry.path,
+                self._config.embedding_provider,
+            )
         route = resolve_embedding_artifact_route(artifact_config)
         configured_endpoint = normalize_endpoint(self._config.embedding_base_url)
         if configured_endpoint is not None and configured_endpoint != route.endpoint:

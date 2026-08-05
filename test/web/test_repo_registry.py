@@ -406,6 +406,38 @@ def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
     assert created[0].kwargs["revision"] == "immutable-model-revision"
 
 
+def test_vector_store_supports_legacy_prebuilt_provider_fallback(monkeypatch):
+    created = []
+
+    class FakeVectorStore:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.embedding = object()
+            created.append(self)
+
+        def load(self, _path):
+            pass
+
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: FakeVectorStore,
+    )
+    registry = RepoRegistry(QAConfig(embedding_provider="huggingface"))
+    entry = SimpleNamespace(
+        path="/tmp/legacy-prebuilt",
+        config={
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_dimension": 768,
+        },
+    )
+
+    registry._load_vector_store(entry)
+
+    assert created[0].kwargs["embedding_provider"] == "huggingface"
+    assert created[0].kwargs["embedding_model"] == "nomic-ai/CodeRankEmbed"
+    assert created[0].kwargs["dimension"] == 768
+
+
 def test_vector_store_cache_separates_model_revisions(monkeypatch):
     created = []
 

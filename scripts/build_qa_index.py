@@ -236,18 +236,23 @@ def build_one_prebuilt(cfg, row, force: bool) -> RepoEntry:
     )
     # Vector index entry points at the pre-built dir. CodeVectorStore.load()
     # reads <path>/config_<suffix>.json + <path>/{l0,l2}/{index,documents}_<suffix>.*
+    vector_config = {
+        "embedding_model": cfg.embedding_model,
+        "embedding_provider": cfg.embedding_provider,
+        "embedding_dimension": cfg.embedding_dimension,
+    }
+    if cfg.embedding_base_url:
+        vector_config["embedding_endpoint"] = cfg.embedding_base_url
     manifest.indexes["vector"] = IndexEntry(
         index_type="vector",
         path=inst_dir,
         built_at=now.isoformat(),
         built_at_epoch=now.timestamp(),
         status="fresh",
-        config={
-            "embedding_model": cfg.embedding_model,
-            "embedding_dimension": cfg.embedding_dimension,
-        },
+        config=vector_config,
         metadata={
             "embedding_model": cfg.embedding_model,
+            "embedding_provider": cfg.embedding_provider,
             "levels": ["l0", "l2"],
             "source": "prebuilt",
         },
